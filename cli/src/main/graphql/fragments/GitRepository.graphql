@@ -1,0 +1,15 @@
+fragment GitRepositoryFragment on GitRepository {
+    id
+    slug
+    name
+    ownerId
+    cloneUrl
+    description
+    contentType
+    visibility
+    defaultBranch
+    archived
+    diskSizeBytes
+    created
+    updated
+}

@@ -1,0 +1,201 @@
+"A classification for time events, defining what kind of marker it represents (e.g. chapter, annotation, cue point) and its validation schema"
+type TimeEventType {
+    "Unique string identifier for this time event type (e.g. 'chapter', 'annotation', 'cue-point')"
+    id: String!
+    "Human-readable display name for this time event type"
+    name: String!
+    "Human-readable description of what this time event type represents"
+    description: String!
+    "Optional JSON Schema used to validate the attributes of time events of this type"
+    schema: JSON
+    "JSON configuration controlling behavior, display options, or processing rules for events of this type"
+    configuration: JSON!
+    "Attribute definitions that describe the fields available on events of this type, following the same model as data template attributes"
+    attributes: [TemplateAttribute!]!
+}
+
+"A time-based marker on a media content timeline, representing an event or annotation at a specific millisecond offset within audio or video content"
+type TimeEvent {
+    "Unique identifier for this time event"
+    id: UUID!
+    "The ID of the metadata (media content) that this time event belongs to"
+    metadataId: UUID!
+    "The version of the metadata that this time event is associated with"
+    metadataVersion: Int!
+    "The type classification of this time event"
+    type: TimeEventType!
+    "Start position of this event on the media timeline, in milliseconds from the beginning"
+    startOffsetMs: Long!
+    "Optional end position of this event on the media timeline, in milliseconds from the beginning; null for point-in-time events"
+    endOffsetMs: Long
+    "Sort order for display when multiple events share the same offset (lower values appear first)"
+    sort: Int!
+    "Optional JSON attributes carrying additional data specific to this event's type (validated against the type's schema if defined)"
+    attributes: JSON
+    "Timestamp when this time event was created"
+    created: DateTime!
+    "Timestamp when this time event was last modified"
+    modified: DateTime!
+    "Computed duration in milliseconds (endOffsetMs - startOffsetMs); null if endOffsetMs is not set"
+    durationMs: Long
+    "Metadata relationships associated with this time event, optionally filtered by relationship type"
+    metadataRelationships(filter: [String!]): [TimeEventMetadataRelationship!]!
+}
+
+"A typed relationship between a time event and a metadata item, allowing time events to reference multiple metadata items under different relationship semantics"
+type TimeEventMetadataRelationship {
+    "The ID of the time event that owns this relationship"
+    timeEventId: UUID!
+    "The ID of the related metadata item"
+    metadataId: UUID!
+    "Optional version of the related metadata item"
+    metadataVersion: Int
+    "The type of relationship (e.g. 'slide', 'resource', 'reference')"
+    relationship: String!
+    "Optional JSON attributes providing additional context about this relationship"
+    attributes: JSON
+    "The related metadata item, resolved from metadataId"
+    metadata: Metadata!
+}
+
+"Input for creating or updating a relationship between a time event and a metadata item"
+input TimeEventMetadataRelationshipInput {
+    "The ID of the metadata item to link"
+    metadataId: UUID!
+    "Optional version of the metadata item to link"
+    metadataVersion: Int
+    "The type of relationship (e.g. 'slide', 'resource', 'reference')"
+    relationship: String!
+    "Optional JSON attributes providing additional context about this relationship"
+    attributes: JSON
+}
+
+"Input for creating or updating a time event on a media timeline"
+input TimeEventInput {
+    "The time event type ID classifying this event"
+    type: String!
+    "Start position of this event on the media timeline, in milliseconds from the beginning"
+    startOffsetMs: Long!
+    "Optional end position of this event on the media timeline, in milliseconds from the beginning; omit for point-in-time events"
+    endOffsetMs: Long
+    "Sort order for display when multiple events share the same offset (lower values appear first)"
+    sort: Int
+    "Optional JSON attributes carrying additional data specific to this event's type"
+    attributes: JSON
+}
+
+"Input for creating or updating a time event type definition"
+input TimeEventTypeInput {
+    "Unique string identifier for this time event type"
+    id: String!
+    "Human-readable display name for this time event type"
+    name: String!
+    "Human-readable description of what this time event type represents"
+    description: String!
+    "Optional JSON Schema used to validate the attributes of time events of this type"
+    schema: JSON
+    "Optional JSON configuration controlling behavior, display options, or processing rules for events of this type"
+    configuration: JSON
+}
+
+"Filter criteria for querying time events on a media timeline"
+input TimeEventFilter {
+    "Only return events whose type ID is in this list"
+    types: [String!]
+    "Only return events that start at or after this millisecond offset"
+    startAfterMs: Long
+    "Only return events that end at or before this millisecond offset"
+    endBeforeMs: Long
+    "Only return events that are active at this exact millisecond offset (startOffsetMs <= atOffsetMs and endOffsetMs >= atOffsetMs or endOffsetMs is null)"
+    atOffsetMs: Long
+}
+
+extend type Metadata {
+    "Retrieve time events associated with this metadata item, optionally filtered by type and time range"
+    timeEvents(filter: TimeEventFilter): [TimeEvent!]!
+    "Retrieve time events that are active at a specific millisecond offset, optionally filtered by type IDs"
+    timeEventsAtOffset(offsetMs: Long!, types: [String!]): [TimeEvent!]!
+}
+
+extend type Query {
+    "Retrieve all registered time event type definitions"
+    timeEventTypes: [TimeEventType!]!
+    "Retrieve a single time event type by its string ID; returns null if not found"
+    timeEventType(id: String!): TimeEventType
+}
+
+"Mutation operations for managing time event types and time events on media content timelines"
+type TimeEventMutation {
+    "Create a new time event type definition (admin only)"
+    addType(type: TimeEventTypeInput!): TimeEventType!
+    "Update an existing time event type definition (admin only)"
+    editType(id: String!, type: TimeEventTypeInput!): TimeEventType!
+    "Delete a time event type definition by its string ID (admin only)"
+    deleteType(id: String!): Boolean!
+
+    "Add an attribute definition to a time event type at the specified sort position (admin only)"
+    addTypeAttribute(typeId: String!, attribute: TemplateAttributeInput!, sort: Int!): TimeEventType!
+    "Remove an attribute definition from a time event type by key (admin only)"
+    deleteTypeAttribute(typeId: String!, key: String!): TimeEventType!
+    "Replace all attribute definitions on a time event type (admin only)"
+    setTypeAttributes(typeId: String!, attributes: [TemplateAttributeInput!]!): TimeEventType!
+
+    "Create a new time event on a specific metadata item's timeline"
+    add(metadataId: UUID!, metadataVersion: Int!, timeEvent: TimeEventInput!): TimeEvent!
+    "Update an existing time event"
+    edit(id: UUID!, timeEvent: TimeEventInput!): TimeEvent!
+    "Delete a time event by its unique ID"
+    delete(id: UUID!): Boolean!
+    "Delete multiple time events by their unique IDs and return the number actually deleted"
+    deleteAll(ids: [UUID!]!): Int!
+
+    "Replace all time events on a metadata item's timeline with the provided list (batch upsert)"
+    setTimeEvents(metadataId: UUID!, metadataVersion: Int!, timeEvents: [TimeEventInput!]!): [TimeEvent!]!
+    "Delete all time events of a specific type from a metadata item's timeline"
+    deleteTimeEventsByType(metadataId: UUID!, metadataVersion: Int!, type: String!): Boolean!
+
+    "Add a metadata relationship to a time event"
+    addMetadataRelationship(timeEventId: UUID!, relationship: TimeEventMetadataRelationshipInput!): TimeEventMetadataRelationship!
+    "Remove a metadata relationship from a time event"
+    deleteMetadataRelationship(timeEventId: UUID!, metadataId: UUID!, relationship: String!): Boolean!
+    "Replace all metadata relationships on a time event with the provided list"
+    setMetadataRelationships(timeEventId: UUID!, relationships: [TimeEventMetadataRelationshipInput!]!): [TimeEventMetadataRelationship!]!
+    "Update the attributes on an existing time event metadata relationship"
+    editMetadataRelationshipAttributes(timeEventId: UUID!, metadataId: UUID!, relationship: String!, attributes: JSON!): Boolean!
+
+    "Import a PDF file as timeline events on a media item. Each PDF page is rendered as an image, uploaded as metadata, and linked to a new time event via a metadata relationship. Processing happens asynchronously via a background job."
+    importPdfAsTimelineEvents(
+        "The metadata ID of the uploaded PDF file to process"
+        pdfMetadataId: UUID!,
+        "The metadata ID of the media item to create timeline events on"
+        targetMetadataId: UUID!,
+        "The version of the target metadata item"
+        targetMetadataVersion: Int!,
+        "The time event type ID to use for the created events"
+        eventTypeId: String!,
+        "The relationship type string for linking page images to events (e.g. 'slide', 'page')"
+        relationship: String!,
+        "The total duration of the target media in milliseconds, used to distribute events evenly"
+        durationMs: Long!
+    ): Boolean!
+}
+
+extend type Mutation {
+    "Access time event mutation operations"
+    timeEvents: TimeEventMutation!
+}
+
+"Real-time event emitted when time events on a metadata item's timeline are created, updated, or deleted in bulk (e.g. by a PDF import job)"
+type TimeEventChangedEvent {
+    "The UUID of the metadata item whose timeline was modified"
+    metadataId: UUID!
+    "The version of the metadata item whose timeline was modified"
+    metadataVersion: Int!
+    "The number of time events that were created or affected"
+    eventCount: Int!
+}
+
+extend type Subscription {
+    "Subscribe to time event change notifications for a specific metadata item. Emits an event whenever the item's timeline events are modified by a background process. API tokens require the read-only `content:view` scope."
+    timeEventChanged(metadataId: UUID!): TimeEventChangedEvent!
+}

@@ -1,0 +1,197 @@
+"A saved analytics query definition that can be executed with parameters to retrieve analytics data"
+type AnalyticsQuery {
+    "Unique identifier for this analytics query"
+    id: UUID!
+    "Unique string key used to reference this query programmatically"
+    key: String!
+    "Human-readable display name for this query"
+    name: String!
+    "Human-readable description of what this query does"
+    description: String!
+    "The raw query string to execute (e.g. SQL or domain-specific query language)"
+    query: String
+    "Optional JSON configuration controlling query behavior, formatting, or execution options"
+    configuration: JSON
+    "When set, results are cached and refreshed in the background on this interval (in seconds). When null, every execution runs against the analytics store directly."
+    refreshIntervalSeconds: Int
+    "Ordered list of parameters that this query accepts for execution"
+    parameters: [AnalyticsQueryParameter!]!
+    "Access control permissions assigned to this query"
+    permissions: [Permission!]!
+    "The output columns this query returns, probed without fetching rows. Empty if undeterminable. Lets clients filter queries by the shape a consumer requires (e.g. a recommendation strategy needing metadata_id/collection_id)."
+    columns: [AnalyticsQueryColumn!]!
+}
+
+"Describes a single output column of an analytics query, derived from its result-set metadata."
+type AnalyticsQueryColumn {
+    "The output column name, as returned by the query (e.g. metadata_id)"
+    name: String!
+    "The SQL type name of the column (e.g. varchar, bigint, double)"
+    typeName: String!
+    "Whether the column may contain nulls (best-effort, from result-set metadata)"
+    nullable: Boolean!
+}
+
+"Data type for a query parameter value"
+enum QueryParameterType {
+    "UTF-8 text string"
+    STRING
+    "Whole number (32-bit signed integer)"
+    INTEGER
+    "Floating-point decimal number"
+    FLOAT
+    "True or false boolean value"
+    BOOLEAN
+    "Calendar date without time (e.g. 2024-01-15)"
+    DATE
+    "Time of day without date (e.g. 09:30:00)"
+    TIME
+    "Combined date and time (e.g. 2024-01-15T09:30:00Z)"
+    DATETIME
+    "An ordered list of values; use arrayType to specify the element type"
+    ARRAY
+    "A nested JSON object"
+    OBJECT
+    "No value / void — used when a parameter placeholder is needed but carries no data"
+    NONE
+}
+
+"A parameter definition for an analytics query, describing its name, type, and constraints"
+type AnalyticsQueryParameter {
+    "Unique parameter identifier used as the placeholder name in the query string"
+    parameter: String!
+    "Human-readable display name for this parameter"
+    name: String!
+    "Human-readable description of what this parameter controls"
+    description: String!
+    "The data type of this parameter's value"
+    type: QueryParameterType!
+    "When type is ARRAY, specifies the data type of elements within the array"
+    arrayType: QueryParameterType!
+    "Default value used when no explicit value is provided at execution time"
+    defaultValue: JSON
+    "Whether this parameter must be supplied when executing the query"
+    required: Boolean!
+    "Sort order for display purposes (lower values appear first)"
+    sort: Int!
+}
+
+"Input for creating or updating an analytics query parameter definition"
+input AnalyticsQueryParameterInput {
+    "Unique parameter identifier used as the placeholder name in the query string"
+    parameter: String!
+    "Human-readable display name for this parameter"
+    name: String!
+    "Human-readable description of what this parameter controls"
+    description: String!
+    "The data type of this parameter's value"
+    type: QueryParameterType!
+    "When type is ARRAY, specifies the data type of elements within the array"
+    arrayType: QueryParameterType
+    "Default value used when no explicit value is provided at execution time"
+    defaultValue: JSON
+    "Whether this parameter must be supplied when executing the query"
+    required: Boolean
+}
+
+"Input for creating or updating an analytics query definition"
+input AnalyticsQueryInput {
+    "Existing query ID for updates; omit or null when creating a new query"
+    id: UUID
+    "Unique string key used to reference this query programmatically"
+    key: String!
+    "Human-readable display name for this query"
+    name: String!
+    "Human-readable description of what this query does"
+    description: String!
+    "The raw query string to execute (e.g. SQL or domain-specific query language)"
+    query: String!
+    "Ordered list of parameter definitions that this query accepts"
+    parameters: [AnalyticsQueryParameterInput!]!
+    "Optional JSON configuration controlling query behavior, formatting, or execution options"
+    configuration: JSON
+    "When set, results are cached and refreshed in the background on this interval (in seconds). When null or omitted, results are never cached."
+    refreshIntervalSeconds: Int
+}
+
+"A named parameter value to pass when executing an analytics query"
+input AnalyticsQueryExecutionParameterInput {
+    "The parameter identifier matching a parameter defined on the query"
+    parameter: String
+    "The value to bind to the parameter, as a JSON-compatible value"
+    value: JSON
+}
+
+"The result of executing an analytics query, containing the returned data rows"
+type AnalyticsQueryResponse {
+    "Array of result records, where each record is a JSON object representing one row of data"
+    records: [JSON!]!
+    "Whether the records were served from the query result cache instead of being computed for this request"
+    cached: Boolean!
+    "Whether cached records are older than the query's configured refresh interval and are awaiting refresh"
+    stale: Boolean!
+    "When the records were last computed by the analytics store; null for uncached executions, where the records are always current"
+    refreshedAt: DateTime
+}
+
+"Query operations for managing and executing analytics queries"
+type AnalyticsQueries {
+
+    "Retrieve all analytics query definitions"
+    all: [AnalyticsQuery!]!
+
+    "Retrieve a single analytics query by its unique ID"
+    queryById(id: UUID!): AnalyticsQuery!
+
+    "Look up an analytics query by its unique string key; returns null if not found"
+    queryByKey(key: String!): AnalyticsQuery
+
+    "Execute an analytics query identified by its string key, passing the given parameter values, and return the results"
+    executeByKey(key: String!, parameters: [AnalyticsQueryExecutionParameterInput!]!): AnalyticsQueryResponse!
+
+    "Execute an analytics query identified by its UUID, passing the given parameter values, and return the results"
+    execute(queryId: UUID!, parameters: [AnalyticsQueryExecutionParameterInput!]!): AnalyticsQueryResponse!
+}
+
+"Mutation operations for creating, updating, and deleting analytics query definitions"
+type AnalyticsQueriesMutation {
+    "Create a new analytics query definition"
+    add(query: AnalyticsQueryInput!, sourceRef: SourceRefInput): AnalyticsQuery!
+    "Update an existing analytics query definition. When authorName and authorEmail are supplied and the query has a linked git file, the updated SQL and parameters are also pushed to git as part of the response."
+    edit(query: AnalyticsQueryInput!, sourceRef: SourceRefInput, authorName: String, authorEmail: String): AnalyticsQuery!
+    "Delete an analytics query definition by its unique ID"
+    delete(id: UUID!): Boolean!
+    "Grant a permission on a query"
+    addPermission(permission: PermissionInput!): Permission!
+    "Revoke a permission from a query"
+    deletePermission(permission: PermissionInput!): Permission!
+    "Refresh the cached results for a query on demand: re-executes every cached parameter combination in the background and replaces the cached records. Returns true when the refresh was enqueued, false when the query does not cache results."
+    refresh(queryId: UUID!): Boolean!
+    "Commit the query's current SQL back to its linked git file. Returns the new commit SHA, or null when the query has no source ref."
+    pushToGit(queryId: UUID!, authorName: String!, authorEmail: String!): String
+    "One-shot backfill: commit every git-backed analytics query in the given repository to its linked file, regenerating the @bosca-query metadata block. Returns the number of queries that produced a commit."
+    pushAllToGit(repositoryId: UUID!, authorName: String!, authorEmail: String!): Int!
+}
+
+"Mutation operations for the analytics domain"
+type AnalyticsMutation {
+    "Access analytics query mutations"
+    queries: AnalyticsQueriesMutation!
+}
+
+"Root analytics query type providing access to all analytics features"
+type Analytics {
+
+    "Access analytics query operations"
+    queries: AnalyticsQueries!
+}
+
+extend type Query {
+    "Access the analytics domain for queries, dashboards, and visualizations"
+    analytics: Analytics!
+}
+
+extend type Mutation {
+    "Access analytics mutation operations"
+    analytics: AnalyticsMutation!
+}

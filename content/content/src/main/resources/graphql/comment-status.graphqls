@@ -1,0 +1,16 @@
+"""
+Moderation status of a comment. A shared, always-loaded enum: the comments
+module (social/comments) and the Work Ops comment types both reference it, so it
+must exist independent of the optional `comments` feature flag. (Previously this
+lived in a now-removed legacy content comment schema.)
+"""
+enum CommentStatus {
+    "Comment has been approved and is visible"
+    APPROVED
+    "Comment has been blocked by a moderator"
+    BLOCKED
+    "Comment is pending initial (automated) moderation"
+    PENDING
+    "Comment is awaiting manual moderator approval before becoming visible"
+    PENDING_APPROVAL
+}

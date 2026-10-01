@@ -1,0 +1,37 @@
+suite: bosca-collector application.yaml configmap
+templates:
+  - templates/configmap-appconfig.yaml
+values:
+  - ../values.yaml
+set:
+  global:
+    domain: example.com
+  appConfig:
+    domain: example.com
+    realm: Bosca
+    databaseUrl: jdbc:postgresql://postgres-bosca-rw:5432/bosca
+release:
+  name: test
+  namespace: bosca
+tests:
+  - it: defaults the analytics queries to the Bosca warehouse events table
+    asserts:
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: 'experimentation:\s*\n\s*eventsTable: "warehouse.bosca.events"'
+
+  - it: renders a deployment-specific warehouse events table
+    set:
+      appConfig.experimentationEventsTable: warehouse.passion.events
+    asserts:
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: 'experimentation:\s*\n\s*eventsTable: "warehouse.passion.events"'
+
+  - it: falls back to the Bosca warehouse events table when the value is empty
+    set:
+      appConfig.experimentationEventsTable: ""
+    asserts:
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: 'experimentation:\s*\n\s*eventsTable: "warehouse.bosca.events"'

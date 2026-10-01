@@ -1,0 +1,18 @@
+<page route="/cart" title="Cart">
+  {# scope="server-session": the Cart model lives in the server session; the client only ever receives an
+     opaque session id (an HttpOnly session cookie), never the cart contents. Same @Serializable model + @click. #}
+  <script server provides="cart" scope="server-session">
+    bosca.bml.sample.Cart()
+  </script>
+  <html>
+    <head><title>BML Cart — server-held state</title></head>
+    <body>
+      <h1>Server-side cart</h1>
+      <island name="cart-view">
+        <p>{ cart.itemCount } item(s) in your cart</p>
+      </island>
+      <button @click="cart.addItem">Add item</button>
+      <button @click="cart.clear">Clear</button>
+    </body>
+  </html>
+</page>

@@ -1,0 +1,33 @@
+fragment MetadataSupplementary on MetadataSupplementary {
+    id
+    planId
+    key
+    name
+    uploaded
+    attributes
+    content {
+        ...MetadataSupplementaryContent
+    }
+    source {
+        id
+        identifier
+    }
+}
+
+fragment MetadataSupplementaryContent on MetadataSupplementaryContent {
+    type
+    length
+}
+
+fragment MetadataSupplementaryContentDownload on MetadataSupplementaryContent {
+    type
+    length
+    urls {
+        download {
+            url
+            headers {
+                ...SignedUrlHeader
+            }
+        }
+    }
+}

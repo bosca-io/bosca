@@ -1,0 +1,8 @@
+Bosca Studio (Administration) has been deployed.
+
+1. Access the application:
+{{- if .Values.gateway.enabled }}
+  Exposed via Gateway API HTTPRoute on hostnames: {{ .Values.gateway.hostnames | join ", " }}
+{{- else if contains "ClusterIP" .Values.service.type }}
+  kubectl port-forward svc/{{ include "bosca-common.fullname" . }} {{ .Values.service.port }}:{{ .Values.service.port }}
+{{- end }}

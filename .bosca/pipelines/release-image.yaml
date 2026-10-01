@@ -1,0 +1,107 @@
+name: Bosca Image Release
+# Builds one Bosca image and pushes it to ghcr.io/bosca-io/bosca/<image>:<version>.
+# Images version independently, so each run publishes the image and version entered
+# when the run is started. The build steps live in scripts/release/build-image.sh.
+#
+# Secrets: GITHUB_USERNAME and GITHUB_TOKEN (a token that can write packages to the
+# bosca-io organization).
+on:
+  release:
+    inputs:
+      image:
+        type: choice
+        description: Image to publish
+        options:
+          - bosca-server
+          - bosca-runner
+          - analytics-collector
+          - artifacts-server
+          - git-server
+          - kubernetes-controller
+          - bml-message-server
+          - notifications-web
+          - profiles-web
+          - bosca-cli
+          - bosca-studio
+          - bosca-io
+          - imageprocessor
+          - bosca-gateway
+          - recommendation-trainer
+          - recommendation-model-loader
+      version:
+        description: Version tag to publish, for example 6.31.0
+
+concurrency:
+  group: image-release-${{ inputs.image }}
+  cancel-in-progress: false
+
+env:
+  GRADLE_OPTS: "-Xmx4g -XX:+UseG1GC"
+
+jobs:
+  publish-image:
+    # Native images are linux/amd64, so this runner must be Linux x86_64.
+    runner: linux
+    timeout: 120m
+    secrets: [GITHUB_USERNAME, GITHUB_TOKEN]
+    steps:
+      - name: Checkout
+        uses: checkout
+      - name: Setup Registry
+        # Exports BOSCA_REGISTRY_URL / BOSCA_REGISTRY_TOKEN: bml-message-server bundles the
+        # bosca-messages project from it and the BML sites install @bosca npm packages from it.
+        uses: setup-registry
+        with:
+          repository: bosca-maven
+      - name: Setup Java
+        # Oracle GraalVM: the Linux native builds use --gc=G1.
+        uses: setup-java
+        with:
+          distribution: graal
+          stream: 25i1
+          version: "25.0.3"
+      - name: Setup Rust
+        # Configuring the server build compiles firebase-scrypt's native library with Cargo.
+        uses: setup-rust
+        with:
+          toolchain: stable
+      - name: Setup Node
+        uses: setup-node
+        with:
+          version: "22"
+      - name: Setup pnpm
+        uses: setup-pnpm
+        with:
+          version: "10"
+      - name: Log in to the GitHub Container Registry
+        run: printf '%s' "$GITHUB_TOKEN" | docker login ghcr.io --username "$GITHUB_USERNAME" --password-stdin
+        env:
+          GITHUB_USERNAME: ${{ secrets.GITHUB_USERNAME }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push image
+        run: scripts/release/build-image.sh "$IMAGE" "$VERSION"
+        env:
+          IMAGE: ${{ inputs.image }}
+          VERSION: ${{ inputs.version }}
+      - name: Log out of the GitHub Container Registry
+        if: always()
+        run: docker logout ghcr.io
+
+  notify:
+    runner: linux
+    timeout: 5m
+    needs: [publish-image]
+    if: always()
+    steps:
+      - name: Notify Success
+        uses: notify
+        if: needs.publish-image.result == 'success'
+        with:
+          channel: slack
+          message: "Image ${{ inputs.image }}:${{ inputs.version }} published to ghcr.io/bosca-io/bosca"
+      - name: Notify Failure
+        uses: notify
+        if: needs.publish-image.result == 'failure'
+        with:
+          channel: slack
+          message: "Image ${{ inputs.image }}:${{ inputs.version }} release FAILED — check pipeline logs"

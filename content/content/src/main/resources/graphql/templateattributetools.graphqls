@@ -1,0 +1,75 @@
+"A reusable tool definition that can be referenced by template attributes. Tools execute queries and extract results via a path expression, enabling dynamic data lookups within attribute editors."
+type TemplateAttributeTool {
+    "Unique identifier for this tool"
+    id: UUID!
+    "Unique key used to reference this tool programmatically"
+    key: String!
+    "Display name for the tool, shown in the UI"
+    name: String!
+    "Optional human-readable description of what this tool does"
+    description: String
+    "The query string to execute when the tool is invoked (e.g., a GraphQL query or search expression)"
+    query: String!
+    "Optional path expression used to extract the relevant result from the query response (e.g., a JSON path)"
+    resultPath: String
+    "Optional JSON configuration for additional tool settings or parameters"
+    configuration: JSON
+}
+
+"Input for creating or updating a reusable template attribute tool definition"
+input TemplateAttributeToolInput {
+    "Unique key used to reference this tool programmatically"
+    key: String!
+    "Display name for the tool, shown in the UI"
+    name: String!
+    "Optional human-readable description of what this tool does"
+    description: String
+    "The query string to execute when the tool is invoked"
+    query: String!
+    "Optional path expression to extract the relevant result from the query response"
+    resultPath: String
+    "Optional JSON configuration for additional tool settings or parameters"
+    configuration: JSON
+}
+
+"Query operations for listing and retrieving reusable template attribute tools"
+type TemplateAttributeTools {
+    "Retrieve all template attribute tools"
+    all: [TemplateAttributeTool!]!
+    "Retrieve a specific template attribute tool by its unique ID"
+    get(
+        "The unique identifier of the tool to retrieve"
+        id: UUID!
+    ): TemplateAttributeTool
+}
+
+"Mutation operations for managing reusable template attribute tools"
+type TemplateAttributeToolsMutation {
+    "Create a new template attribute tool and return the created tool"
+    add(
+        "The tool definition to create"
+        tool: TemplateAttributeToolInput!
+    ): TemplateAttributeTool!
+    "Update an existing template attribute tool and return the updated tool"
+    edit(
+        "The unique identifier of the tool to update"
+        id: UUID!
+        "The updated tool definition"
+        tool: TemplateAttributeToolInput!
+    ): TemplateAttributeTool!
+    "Delete a template attribute tool by its ID. Returns true if the tool was deleted."
+    delete(
+        "The unique identifier of the tool to delete"
+        id: UUID!
+    ): Boolean
+}
+
+extend type Content {
+    "Access query operations for reusable template attribute tools"
+    templateAttributeTools: TemplateAttributeTools!
+}
+
+extend type ContentMutation {
+    "Access mutation operations for managing reusable template attribute tools"
+    templateAttributeTools: TemplateAttributeToolsMutation!
+}

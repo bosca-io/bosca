@@ -1,0 +1,101 @@
+{
+  "comment": "JGit org.eclipse.jgit.lib.Config.getEnum() resolves the configured value by reflectively calling <enumDefault>.getClass().getMethod(\"values\").invoke(null) in Config.allValuesOf — UNCONDITIONALLY, even when the config key is unset. In a GraalVM native image values() is stripped unless registered, so the call throws IllegalArgumentException 'Enumerated values of type X not available' (JGitText.enumValuesNotAvailable). First seen 2026-06-21 on GraphQL git.pullRequests[].mergeable (ResolveMerger reads diff.algorithm -> DiffAlgorithm$SupportedAlgorithm). This list is the COMPLETE set of enum defaults across EVERY Config.getEnum call site in jgit 7.6.0 (whole-jar javap trace), so every reachable git operation in this server + git-jobs (server-side merge, upload-pack/receive-pack transport, fsck, dircache, object hashing, submodule/fetch sync) is covered, not just the merge path. All enums are 'final class' (no constant-specific bodies, so registering values() on the type is sufficient) EXCEPT BranchConfig$BranchRebaseMode, which has a constant-specific body ($1): its default constant's getClass() may be the $1 subclass, so $1 is registered with allPublicMethods to expose the inherited static values(). Re-run the whole-jar getEnum trace if JGit is upgraded past 7.6.0.",
+  "reflection": [
+    {
+      "type": "org.eclipse.jgit.diff.DiffAlgorithm$SupportedAlgorithm",
+      "methods": [{ "name": "values", "parameterTypes": [] }]
+    },
+    {
+      "type": "org.eclipse.jgit.api.MergeCommand$ConflictStyle",
+      "methods": [{ "name": "values", "parameterTypes": [] }]
+    },
+    {
+      "type": "org.eclipse.jgit.api.MergeCommand$FastForwardMode",
+      "methods": [{ "name": "values", "parameterTypes": [] }]
+    },
+    {
+      "type": "org.eclipse.jgit.lib.CoreConfig$AutoCRLF",
+      "methods": [{ "name": "values", "parameterTypes": [] }]
+    },
+    {
+      "type": "org.eclipse.jgit.lib.CoreConfig$CheckStat",
+      "methods": [{ "name": "values", "parameterTypes": [] }]
+    },
+    {
+      "type": "org.eclipse.jgit.lib.CoreConfig$EOL",
+      "methods": [{ "name": "values", "parameterTypes": [] }]
+    },
+    {
+      "type": "org.eclipse.jgit.lib.CoreConfig$HideDotFiles",
+      "methods": [{ "name": "values", "parameterTypes": [] }]
+    },
+    {
+      "type": "org.eclipse.jgit.lib.CoreConfig$SymLinks",
+      "methods": [{ "name": "values", "parameterTypes": [] }]
+    },
+    {
+      "type": "org.eclipse.jgit.lib.CoreConfig$TrustStat",
+      "methods": [{ "name": "values", "parameterTypes": [] }]
+    },
+    {
+      "type": "org.eclipse.jgit.lib.CoreConfig$LogRefUpdates",
+      "methods": [{ "name": "values", "parameterTypes": [] }]
+    },
+    {
+      "type": "org.eclipse.jgit.lib.GcConfig$PackRefsMode",
+      "methods": [{ "name": "values", "parameterTypes": [] }]
+    },
+    {
+      "type": "org.eclipse.jgit.lib.BranchConfig$BranchRebaseMode",
+      "methods": [{ "name": "values", "parameterTypes": [] }]
+    },
+    {
+      "type": "org.eclipse.jgit.lib.BranchConfig$BranchRebaseMode$1",
+      "allPublicMethods": true
+    },
+    {
+      "type": "org.eclipse.jgit.lib.CommitConfig$CleanupMode",
+      "methods": [{ "name": "values", "parameterTypes": [] }]
+    },
+    {
+      "type": "org.eclipse.jgit.lib.GpgConfig$GpgFormat",
+      "methods": [{ "name": "values", "parameterTypes": [] }]
+    },
+    {
+      "type": "org.eclipse.jgit.lib.ObjectChecker$ErrorType",
+      "methods": [{ "name": "values", "parameterTypes": [] }]
+    },
+    {
+      "type": "org.eclipse.jgit.lib.SubmoduleConfig$FetchRecurseSubmodulesMode",
+      "methods": [{ "name": "values", "parameterTypes": [] }]
+    },
+    {
+      "type": "org.eclipse.jgit.submodule.SubmoduleWalk$IgnoreSubmoduleMode",
+      "methods": [{ "name": "values", "parameterTypes": [] }]
+    },
+    {
+      "type": "org.eclipse.jgit.transport.HttpConfig$HttpRedirectMode",
+      "methods": [{ "name": "values", "parameterTypes": [] }]
+    },
+    {
+      "type": "org.eclipse.jgit.transport.PushConfig$PushDefault",
+      "methods": [{ "name": "values", "parameterTypes": [] }]
+    },
+    {
+      "type": "org.eclipse.jgit.transport.PushConfig$PushRecurseSubmodulesMode",
+      "methods": [{ "name": "values", "parameterTypes": [] }]
+    },
+    {
+      "type": "org.eclipse.jgit.transport.TransferConfig$FsckMode",
+      "methods": [{ "name": "values", "parameterTypes": [] }]
+    },
+    {
+      "type": "org.eclipse.jgit.dircache.DirCache$DirCacheVersion",
+      "methods": [{ "name": "values", "parameterTypes": [] }]
+    },
+    {
+      "type": "org.eclipse.jgit.util.sha1.SHA1$Sha1Implementation",
+      "methods": [{ "name": "values", "parameterTypes": [] }]
+    }
+  ]
+}

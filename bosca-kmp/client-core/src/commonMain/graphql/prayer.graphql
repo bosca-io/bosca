@@ -1,0 +1,213 @@
+fragment PrayerFragment on Prayer {
+    id
+    title
+    content
+    status
+    profileId
+    profile {
+        id
+        name
+    }
+    created
+    modified
+    lastActivityAt
+    answeredAt
+    prayerActionCount
+    prayedByMe
+    likeCount
+    likedByMe
+    commentCount
+    suppressAnniversaries
+    attributes
+}
+
+fragment PrayerCommentFragment on PrayerComment {
+    id
+    prayerId
+    profileId
+    profile {
+        id
+        name
+    }
+    content
+    created
+    parentId
+    attributes
+}
+
+fragment PrayerAnniversaryFragment on PrayerAnniversary {
+    prayerId
+    milestone
+    postedAt
+}
+
+query GetPrayerFeed($groupIds: [UUID!], $status: [PrayerStatus!], $limit: Int, $offset: Int) {
+    profiles {
+        current {
+            community {
+                prayers(groupIds: $groupIds, status: $status, limit: $limit, offset: $offset) {
+                    prayers {
+                        ...PrayerFragment
+                    }
+                    total
+                }
+            }
+        }
+    }
+}
+
+query GetSharedPrayers($limit: Int, $offset: Int) {
+    profiles {
+        current {
+            community {
+                sharedPrayers(limit: $limit, offset: $offset) {
+                    prayers {
+                        ...PrayerFragment
+                    }
+                    total
+                }
+            }
+        }
+    }
+}
+
+query GetGroupPrayers($groupId: UUID!, $status: [PrayerStatus!], $limit: Int, $offset: Int) {
+    community {
+        group(id: $groupId) {
+            id
+            prayers(limit: $limit, offset: $offset, status: $status) {
+                prayers {
+                    ...PrayerFragment
+                }
+                total
+            }
+        }
+    }
+}
+
+query GetPrayerWithComments($commentLimit: Int, $commentOffset: Int, $prayedByLimit: Int) {
+    profiles {
+        current {
+            community {
+                prayers(limit: 200, offset: 0) {
+                    prayers {
+                        id
+                        comments(limit: $commentLimit, offset: $commentOffset) {
+                            ...PrayerCommentFragment
+                            replies(limit: 50, offset: 0) {
+                                ...PrayerCommentFragment
+                            }
+                        }
+                        prayedBy(limit: $prayedByLimit, offset: 0) {
+                            profileId
+                            profile {
+                                id
+                                name
+                            }
+                            prayedAt
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+
+mutation AddPrayer($groupId: UUID!, $title: String!, $content: JSON!, $attributes: JSON) {
+    community {
+        addPrayer(groupId: $groupId, title: $title, content: $content, attributes: $attributes) {
+            ...PrayerFragment
+        }
+    }
+}
+
+mutation DeletePrayer($id: UUID!) {
+    community {
+        deletePrayer(id: $id)
+    }
+}
+
+mutation LikePrayer($id: UUID!) {
+    community {
+        likePrayer(id: $id) {
+            ...PrayerFragment
+        }
+    }
+}
+
+mutation UnlikePrayer($id: UUID!) {
+    community {
+        unlikePrayer(id: $id) {
+            ...PrayerFragment
+        }
+    }
+}
+
+mutation MarkPrayed($id: UUID!) {
+    community {
+        markPrayed(id: $id) {
+            ...PrayerFragment
+        }
+    }
+}
+
+mutation UnmarkPrayed($id: UUID!) {
+    community {
+        unmarkPrayed(id: $id) {
+            ...PrayerFragment
+        }
+    }
+}
+
+mutation UpdatePrayerStatus($id: UUID!, $status: PrayerStatus!) {
+    community {
+        updatePrayerStatus(id: $id, status: $status) {
+            ...PrayerFragment
+        }
+    }
+}
+
+mutation AddPrayerComment($prayerId: UUID!, $content: String!, $parentId: Long, $attributes: JSON) {
+    community {
+        addPrayerComment(prayerId: $prayerId, content: $content, parentId: $parentId, attributes: $attributes) {
+            ...PrayerCommentFragment
+        }
+    }
+}
+
+mutation DeletePrayerComment($prayerId: UUID!, $commentId: Long!) {
+    community {
+        deletePrayerComment(prayerId: $prayerId, commentId: $commentId)
+    }
+}
+
+mutation SharePrayer($id: UUID!, $profileId: UUID!) {
+    community {
+        sharePrayer(id: $id, profileId: $profileId) {
+            ...PrayerFragment
+        }
+    }
+}
+
+mutation UnsharePrayer($id: UUID!, $profileId: UUID!) {
+    community {
+        unsharePrayer(id: $id, profileId: $profileId) {
+            ...PrayerFragment
+        }
+    }
+}
+
+mutation SendPrayerToChat($prayerId: UUID!, $channelId: UUID!, $clientId: UUID!) {
+    community {
+        sendPrayerToChat(prayerId: $prayerId, channelId: $channelId, clientId: $clientId)
+    }
+}
+
+mutation SuppressPrayerAnniversaries($id: UUID!, $suppress: Boolean!) {
+    community {
+        suppressPrayerAnniversaries(id: $id, suppress: $suppress) {
+            ...PrayerFragment
+        }
+    }
+}

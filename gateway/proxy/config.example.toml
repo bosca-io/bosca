@@ -1,0 +1,55 @@
+[gateway]
+bind = "0.0.0.0:9999"
+drain_timeout_secs = 30
+studio_url = "https://studio.bosca.io"
+
+# CIDRs of trusted upstream proxies (LB, Cilium, nginx ingress, etc.).
+# When the inbound peer is in any of these CIDRs, the proxy reads
+# `X-Forwarded-Proto` / `X-Forwarded-Host` / `X-Forwarded-For` from
+# the request and uses them as the canonical client view. From any
+# other peer, those inbound headers are ignored (anything else lets
+# any client lie about being any IP / scheme / host).
+#
+# Empty list (the default) = no upstream is trusted; treat every
+# connection as a direct client.
+# trusted_proxies = ["10.0.0.0/8", "172.16.0.0/12"]
+
+# Scheme to claim in outbound `X-Forwarded-Proto` and the
+# `{{request.scheme}}` template variable when no trusted-proxy hop
+# provided one. Useful when the proxy is bound to plain HTTP inside a
+# cluster but TLS is terminated upstream by an L4 LB that does NOT
+# send `X-Forwarded-Proto`. Trusted-hop values win for individual
+# requests; this is the fallback.
+# external_scheme = "https"
+
+[bosca]
+api_url = "http://localhost:8080"
+api_token = "${GATEWAY_BOSCA_TOKEN}"
+poll_interval_secs = 30
+cache_file = "/var/lib/gateway/config-cache.json"
+
+[auth.oauth2]
+issuer = "https://auth.bosca.io"
+# authorization_endpoint = "https://auth.bosca.io/oauth2/authorize"
+# token_endpoint = "https://auth.bosca.io/oauth2/token"
+client_id = "gateway"
+client_secret = "${GATEWAY_OAUTH2_SECRET}"
+redirect_uri = "https://gateway.bosca.io/oauth2/callback"
+scopes = ["openid", "profile", "email"]
+session_ttl_secs = 28800
+
+[auth.jwt]
+issuer = "https://auth.bosca.io"
+audience = "bosca-gateway"
+jwks_uri = "https://auth.bosca.io/.well-known/jwks.json"
+jwks_cache_ttl_secs = 3600
+
+[auth.basic]
+# Bosca-side validator that re-uses BoscaAuthMiddleware. Accepts:
+#   - Basic <user>:<password>         (password credentials)
+#   - Basic api_token:bsk_<...>       (API token tunneled via Basic)
+#   - Bearer <JWT>                     (Studio-backed Gateway session)
+# The proxy forwards whichever shape it received from the client and
+# trusts Bosca's reply.
+validation_endpoint = "https://api.bosca.io/api/v1/gateway/validate"
+cache_ttl_secs = 60

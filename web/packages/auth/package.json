@@ -1,0 +1,71 @@
+{
+  "name": "@bosca/auth-client-browser",
+  "version": "0.1.0",
+  "scripts": {
+    "build": "tsc --build",
+    "build.watch": "tsc --build --watch",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "test": "vitest . --browser",
+    "test:ci": "vitest run --coverage --browser.enabled=false && vitest run --browser --browser.headless"
+  },
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./src/index.ts",
+      "types": "./src/index.ts"
+    },
+    "./core": {
+      "import": "./src/core.ts",
+      "types": "./src/core.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bosca-io/bosca.git"
+  },
+  "author": "Bosca Contributors",
+  "license": "Apache-2.0",
+  "bugs": {
+    "url": "https://github.com/bosca-io/bosca/issues"
+  },
+  "homepage": "https://github.com/bosca-io/bosca#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "peerDependencies": {
+    "vue": "catalog:"
+  },
+  "peerDependenciesMeta": {
+    "vue": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "vue": "catalog:",
+    "@stylistic/eslint-plugin-ts": "catalog:",
+    "@tsconfig/node18": "catalog:",
+    "@types/node": "catalog:",
+    "@typescript-eslint/eslint-plugin": "catalog:",
+    "@typescript-eslint/parser": "catalog:",
+    "@eslint/eslintrc": "catalog:",
+    "@eslint/js": "catalog:",
+    "eslint": "catalog:",
+    "globals": "catalog:",
+    "@vitest/browser": "catalog:lib",
+    "@vitest/browser-playwright": "catalog:lib",
+    "@vitest/coverage-v8": "catalog:lib",
+    "happy-dom": "catalog:",
+    "playwright": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:lib"
+  },
+  "packageManager": "pnpm@10.26.1+sha512.664074abc367d2c9324fdc18037097ce0a8f126034160f709928e9e9f95d98714347044e5c3164d65bd5da6c59c6be362b107546292a8eecb7999196e5ce58fa"
+}

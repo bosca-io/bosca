@@ -1,0 +1,47 @@
+query GetWorkOpsWorklogs($taskId: UUID!, $offset: Long! = 0, $limit: Int! = 50) {
+    workOps {
+        worklogs {
+            forTask(taskId: $taskId, offset: $offset, limit: $limit) {
+                ...WorkOpsWorkLogFragment
+            }
+        }
+    }
+}
+
+query GetWorkOpsWorklog($id: UUID!) {
+    workOps {
+        worklogs {
+            worklog(id: $id) {
+                ...WorkOpsWorkLogFragment
+            }
+        }
+    }
+}
+
+mutation LogWorkOpsWork($taskId: UUID!, $input: WorkOpsWorkLogInput!) {
+    workOps {
+        worklogs {
+            logWork(taskId: $taskId, input: $input) {
+                ...WorkOpsWorkLogFragment
+            }
+        }
+    }
+}
+
+mutation UpdateWorkOpsWorklog($id: UUID!, $input: WorkOpsWorkLogInput!) {
+    workOps {
+        worklogs {
+            updateWorklog(id: $id, input: $input) {
+                ...WorkOpsWorkLogFragment
+            }
+        }
+    }
+}
+
+mutation DeleteWorkOpsWorklog($id: UUID!) {
+    workOps {
+        worklogs {
+            deleteWorklog(id: $id)
+        }
+    }
+}

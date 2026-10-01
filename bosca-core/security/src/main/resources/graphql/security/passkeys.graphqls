@@ -1,0 +1,27 @@
+"A registered WebAuthn passkey credential for passwordless authentication"
+type Passkey {
+    "Base64url-encoded credential ID assigned by the authenticator"
+    credentialId: String!
+    "Human-readable label for identifying this passkey (e.g. 'MacBook Pro Touch ID')"
+    name: String!
+    "ISO-8601 timestamp when this passkey was registered"
+    createdAt: String!
+    "ISO-8601 timestamp of the most recent authentication using this passkey, null if never used"
+    lastUsedAt: String
+    "Transport hints reported by the authenticator (e.g. 'internal', 'usb', 'ble', 'nfc')"
+    transports: [String!]!
+}
+
+"Query operations for WebAuthn passkeys"
+type Passkeys {
+    "List all registered passkeys for the current principal"
+    current: [Passkey!]!
+    "List all registered passkeys for a specific principal (admin only)"
+    all(principalId: UUID!): [Passkey!]!
+}
+
+"Mutation operations for managing WebAuthn passkeys"
+type PasskeysMutation {
+    "Remove a registered passkey by its credential ID. Cannot remove the last credential on the account."
+    delete(credentialId: String!): Boolean!
+}

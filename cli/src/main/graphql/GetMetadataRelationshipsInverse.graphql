@@ -1,0 +1,9 @@
+query GetMetadataRelationshipsInverse($id: UUID!) {
+    content {
+        metadata(id: $id) {
+            relationships(inverse: true) {
+                ...MetadataRelationship
+            }
+        }
+    }
+}

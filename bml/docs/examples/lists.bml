@@ -1,0 +1,61 @@
+{# Page: a sortable list.
+   `ListOps` is compiled into a typed TypeScript client and a Kotlin dispatcher.
+   `list-item` comes from list-item.bml in the same BML source set. #}
+<page route="/lists/{id:UUID}">
+
+  <script server provides="listView">
+    // `bosca` is the generated typed Kotlin GraphQL client; GetListView is a generated operation.
+    bosca.query(GetListView(id = id)).list
+  </script>
+
+  <contract>
+    interface ListOps {
+        suspend fun reorder(listId: String, ids: List<String>)
+    }
+  </contract>
+
+  <html lang="en">
+    <head><title>{ listView.title }</title></head>
+    <body>
+      <header class="list-header">
+        <h1>{ listView.title }</h1>
+        <if listView.items.isEmpty()>
+          <p class="empty">This list has no items yet.</p>
+        <else>
+          <p class="count">{ listView.items.size } items</p>
+        </if>
+      </header>
+
+      <island name="sortable" client="ts" :id="id.toString()">
+        <ul data-items class="sortable">
+          <for (index, item) in listView.items>
+            <list-item
+              :id="item.id.toString()"
+              :label="item.label"
+              :pinned="item.pinned"
+              :position="index"
+            />
+          </for>
+        </ul>
+
+        <script client>
+          import Sortable from "sortablejs"
+          import { ListOps } from "./ListOps"
+
+          // Each instance scopes DOM access to its root and gets a unique Sortable group.
+          const listId = ctx.props.id as string
+          const list = ctx.root.querySelector<HTMLUListElement>("[data-items]")!
+          const sortable = Sortable.create(list, {
+            animation: 150,
+            group: ctx.scoped("items"),
+            onEnd: async () => {
+              const ids = [...list.children].map((item) => (item as HTMLElement).dataset.id!)
+              await ListOps.reorder(listId, ids)
+            },
+          })
+          ctx.onUnmount(() => sortable.destroy())
+        </script>
+      </island>
+    </body>
+  </html>
+</page>

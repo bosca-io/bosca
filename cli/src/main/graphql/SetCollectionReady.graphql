@@ -1,0 +1,7 @@
+mutation SetCollectionReady($id: UUID!) {
+    content {
+        collection {
+            setReady(id: $id)
+        }
+    }
+}

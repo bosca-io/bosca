@@ -1,0 +1,87 @@
+"A long-lived API token credential for programmatic access. The raw token value is only available at creation time."
+type ApiToken {
+    "Credential ID in the principal_credentials table"
+    id: Long!
+    "ID of the principal this token authenticates as"
+    principalId: UUID!
+    "Human-readable name for identifying this token"
+    name: String!
+    "Optional description of this token's purpose"
+    description: String
+    "First 12 characters of the raw token, for identification in the UI"
+    tokenPrefix: String!
+    "List of scopes restricting this token's permissions. Null means unrestricted."
+    scopes: [String!]
+    "Subset of the principal's groups this token may act under. Null means all groups."
+    allowedGroups: [UUID!]
+    "When this token expires. Null means it never expires."
+    expiresAt: DateTime
+    "When this token was last used for authentication"
+    lastUsedAt: DateTime
+    "IP address of the most recent authentication using this token"
+    lastUsedIp: String
+    "When this token was revoked. Null means it is still active."
+    revokedAt: DateTime
+    "Whether this token is currently usable (not revoked and not expired)"
+    active: Boolean!
+}
+
+"Response returned when creating a new API token. Contains the raw token value which is only shown once."
+type ApiTokenCreationResponse {
+    "The created token metadata"
+    apiToken: ApiToken!
+    "The raw token value. Store this securely — it cannot be retrieved again."
+    rawToken: String!
+}
+
+"Input for creating a new API token"
+input ApiTokenInput {
+    "Human-readable name for the token (e.g. 'CI Deploy Token')"
+    name: String!
+    "Optional description of this token's intended use"
+    description: String
+    "Scopes to restrict this token's permissions. Omit for unrestricted access."
+    scopes: [String!]
+    "Group IDs to restrict this token to. Must be a subset of the principal's groups. Omit for all groups."
+    allowedGroups: [UUID!]
+    "When this token should expire. Omit for no expiration."
+    expiresAt: DateTime
+}
+
+"Describes an available API token scope"
+type ApiTokenScopeInfo {
+    "The scope identifier (e.g. 'content:view')"
+    name: String!
+    "Human-readable description of what this scope permits"
+    description: String!
+}
+
+"Query operations for API tokens"
+type ApiTokens {
+    "List all API tokens for the current principal"
+    my(limit: Int!, offset: Long!): [ApiToken!]!
+    "List all API tokens for a specific principal. Allowed for the principal themselves; listing another principal's tokens requires admin."
+    forPrincipal(principalId: UUID!, limit: Int!, offset: Long!): [ApiToken!]!
+    "Retrieve a specific API token by credential ID"
+    token(id: Long!): ApiToken
+    "List all available scope values"
+    availableScopes: [ApiTokenScopeInfo!]!
+}
+
+"Mutation operations for managing API tokens"
+type ApiTokensMutation {
+    "Create a new API token for the current principal. The raw token is only returned in this response."
+    create(input: ApiTokenInput!): ApiTokenCreationResponse!
+    "Create a new API token for a specific principal. Allowed for the principal themselves (equivalent to create); minting a token for another principal requires admin."
+    createForPrincipal(principalId: UUID!, input: ApiTokenInput!): ApiTokenCreationResponse!
+    "Revoke an API token immediately. The token can no longer be used for authentication."
+    revoke(id: Long!): Boolean!
+    "Revoke all API tokens for the current principal"
+    revokeAll: Boolean!
+    "Revoke all API tokens for a specific principal. Allowed for the principal themselves (equivalent to revokeAll); revoking another principal's tokens requires admin."
+    revokeAllForPrincipal(principalId: UUID!): Boolean!
+    "Update a token's name, description, or scopes"
+    edit(id: Long!, name: String, description: String, scopes: [String!]): ApiToken!
+    "Permanently delete a revoked token record"
+    delete(id: Long!): Boolean!
+}

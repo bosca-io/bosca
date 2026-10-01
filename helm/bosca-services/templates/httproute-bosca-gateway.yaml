@@ -1,0 +1,41 @@
+{{- /*
+HTTPRoute for the Rust bosca-gateway subchart (GraphQL stitch proxy).
+One catch-all rule per hostname declared on `bosca-gateway.gateway.hostnames`;
+the proxy handles every path itself, so we don't split traffic here.
+
+Hostnames + listener + cert + HTTP→HTTPS redirect are wired the same way as
+every other subchart: declare `bosca-gateway.gateway.hostnames: [...]` in
+values.yaml and `gateway.yaml` / `httproute-redirect.yaml` aggregate them in.
+*/ -}}
+{{- $bg := index .Values "bosca-gateway" -}}
+{{- if and
+    .Values.gateway.enabled
+    $bg
+    $bg.enabled
+    $bg.gateway
+    $bg.gateway.enabled
+    $bg.gateway.hostnames
+}}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ printf "bosca-gateway-%s" (.Values.global.domain | replace "." "-") | quote }}
+  labels:
+    app.kubernetes.io/part-of: bosca
+spec:
+  parentRefs:
+    - name: {{ .Values.gateway.name | default "bosca-gateway" | quote }}
+      port: 443
+  hostnames:
+{{- range $h := $bg.gateway.hostnames }}
+    - {{ $h | quote }}
+{{- end }}
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: {{ printf "%s-bosca-gateway" $.Release.Name | quote }}
+          port: {{ ($bg.service).port | default 8443 }}
+{{- end }}

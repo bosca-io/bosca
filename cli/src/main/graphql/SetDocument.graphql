@@ -1,0 +1,7 @@
+mutation SetDocument($id: UUID!, $version: Int!, $document: DocumentInput!, $collaborationSync: CollaborationSyncMode) {
+    content {
+        metadata {
+            setMetadataDocument(id: $id, version: $version, document: $document, collaborationSync: $collaborationSync)
+        }
+    }
+}

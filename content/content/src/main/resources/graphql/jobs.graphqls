@@ -1,0 +1,10 @@
+"Mutation operations for managing job executions across the system"
+type JobsMutation {
+    "Cancel a specific active job by its queue job ID. Removes the job from the processing queue and marks it as cancelled in all relevant job history tables."
+    cancel(jobId: UUID!): Boolean!
+}
+
+extend type Mutation {
+    "Access job management mutations"
+    jobs: JobsMutation!
+}

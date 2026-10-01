@@ -1,0 +1,69 @@
+query GetWorkOpsPortfolios($offset: Long! = 0, $limit: Int! = 50) {
+    workOps {
+        portfolios {
+            all(offset: $offset, limit: $limit) {
+                ...WorkOpsPortfolioFragment
+            }
+        }
+    }
+}
+
+query GetWorkOpsPortfolio($id: UUID!) {
+    workOps {
+        portfolios {
+            portfolio(id: $id) {
+                ...WorkOpsPortfolioFragment
+            }
+        }
+    }
+}
+
+query GetWorkOpsPortfolioByKey($key: String!) {
+    workOps {
+        portfolios {
+            portfolioByKey(key: $key) {
+                ...WorkOpsPortfolioFragment
+            }
+        }
+    }
+}
+
+mutation CreateWorkOpsPortfolio($input: WorkOpsPortfolioInput!) {
+    workOps {
+        portfolios {
+            create(input: $input) {
+                ...WorkOpsPortfolioFragment
+            }
+        }
+    }
+}
+
+mutation UpdateWorkOpsPortfolio($id: UUID!, $input: WorkOpsPortfolioInput!, $expectedVersion: Long!) {
+    workOps {
+        portfolios {
+            update(id: $id, input: $input, expectedVersion: $expectedVersion) {
+                ...WorkOpsPortfolioFragment
+            }
+        }
+    }
+}
+
+mutation ArchiveWorkOpsPortfolio($id: UUID!, $expectedVersion: Long!) {
+    workOps {
+        portfolios {
+            archive(id: $id, expectedVersion: $expectedVersion) {
+                ...WorkOpsPortfolioFragment
+            }
+        }
+    }
+}
+
+mutation UnarchiveWorkOpsPortfolio($id: UUID!, $expectedVersion: Long!) {
+    workOps {
+        portfolios {
+            unarchive(id: $id, expectedVersion: $expectedVersion) {
+                ...WorkOpsPortfolioFragment
+            }
+        }
+    }
+}

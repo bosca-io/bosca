@@ -1,0 +1,29 @@
+query EvaluateAllFlags($installationId: String!, $device: AnalyticsDevice) {
+    featureFlags {
+        evaluateAll(installationId: $installationId, device: $device) {
+            flagKey
+            value
+            variationKey
+            experimentId
+        }
+    }
+}
+
+query EvaluateFlag($flagKey: String!, $installationId: String!, $device: AnalyticsDevice) {
+    featureFlags {
+        evaluate(flagKey: $flagKey, installationId: $installationId, device: $device) {
+            flagKey
+            value
+            variationKey
+            experimentId
+        }
+    }
+}
+
+subscription FlagUpdated {
+    flagUpdated {
+        flagKey
+        flagId
+        action
+    }
+}

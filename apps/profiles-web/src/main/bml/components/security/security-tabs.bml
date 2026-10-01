@@ -1,0 +1,13 @@
+<component tag="security-tabs">
+  <prop name="active" type="String" required/>
+  <prop name="connectedCount" type="Int" required/>
+  <prop name="passkeyCount" type="Int" required/>
+  <prop name="signInCount" type="Int" required/>
+
+  <nav class="tabs security-tabs" aria-label="Security settings">
+    <a href="/security?tab=password" class="{ if (active == "password") "active" else "" }">Password</a>
+    <a href="/security?tab=connected" class="{ if (active == "connected") "active" else "" }">Connected <span>{ connectedCount }</span></a>
+    <a href="/security?tab=passkeys" class="{ if (active == "passkeys") "active" else "" }">Passkeys <span>{ passkeyCount }</span></a>
+    <a href="/security?tab=logins" class="{ if (active == "logins") "active" else "" }">Sign-ins <span>{ signInCount }</span></a>
+  </nav>
+</component>

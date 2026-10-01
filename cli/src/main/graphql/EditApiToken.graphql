@@ -1,0 +1,9 @@
+mutation EditApiToken($id: Long!, $name: String, $description: String, $scopes: [String!]) {
+    security {
+        apiTokens {
+            edit(id: $id, name: $name, description: $description, scopes: $scopes) {
+                ...ApiTokenFragment
+            }
+        }
+    }
+}

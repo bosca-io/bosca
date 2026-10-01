@@ -1,0 +1,237 @@
+suite: bosca-kubernetes-controller autoRegister hook
+templates:
+  - templates/configmap-register-cluster.yaml
+  - templates/job-register-cluster.yaml
+  - templates/secret-sa-token.yaml
+  - templates/serviceaccount-kubeconfig.yaml
+  - templates/clusterrolebinding.yaml
+  - templates/deployment.yaml
+  # deployment.yaml includes configmap-appconfig.yaml via `include`; helm-unittest
+  # needs both available in the suite to resolve the cross-template reference.
+  - templates/configmap-appconfig.yaml
+values:
+  - ../values.yaml
+set:
+  global:
+    domain: example.com
+  appConfig:
+    domain: example.com
+    databaseUrl: "jdbc:postgresql://postgres-bosca-rw:5432/bosca"
+release:
+  name: test
+  namespace: bosca
+tests:
+  - it: renders the script ConfigMap by default
+    template: templates/configmap-register-cluster.yaml
+    asserts:
+      - isKind:
+          of: ConfigMap
+      - equal:
+          path: metadata.annotations["helm.sh/hook"]
+          value: post-install,post-upgrade
+      - exists:
+          path: data["register.sh"]
+
+  - it: renders the registration Job as a post-install hook
+    template: templates/job-register-cluster.yaml
+    asserts:
+      - isKind:
+          of: Job
+      - equal:
+          path: metadata.annotations["helm.sh/hook"]
+          value: post-install,post-upgrade
+      - equal:
+          path: metadata.annotations["helm.sh/hook-delete-policy"]
+          value: before-hook-creation
+      - equal:
+          path: spec.template.spec.serviceAccountName
+          value: test-bosca-kubernetes-controller
+
+  - it: passes the cluster name + environment through env vars
+    template: templates/job-register-cluster.yaml
+    set:
+      autoRegister:
+        name: prod-east
+        environment: PRODUCTION
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: CLUSTER_NAME
+            value: prod-east
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: CLUSTER_ENVIRONMENT
+            value: PRODUCTION
+
+  - it: defaults the bosca-server URL to the in-namespace Service
+    template: templates/job-register-cluster.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: SERVER_URL
+            value: http://bosca-server.bosca.svc.cluster.local:8080
+
+  - it: respects an explicit autoRegister.serverUrl override
+    template: templates/job-register-cluster.yaml
+    set:
+      autoRegister:
+        serverUrl: http://my-bosca-server:8080
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: SERVER_URL
+            value: http://my-bosca-server:8080
+
+  - it: mounts the admin password Secret as a file
+    template: templates/job-register-cluster.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: admin-password
+            secret:
+              secretName: initialization
+              items:
+                - key: admin_password
+                  path: admin_password
+
+  - it: renders the dedicated kubeconfig SA
+    template: templates/serviceaccount-kubeconfig.yaml
+    asserts:
+      - isKind:
+          of: ServiceAccount
+      - equal:
+          path: metadata.name
+          value: test-bosca-kubernetes-controller-kubeconfig
+
+  - it: renders a long-lived SA token Secret bound to the dedicated kubeconfig SA
+    template: templates/secret-sa-token.yaml
+    asserts:
+      - isKind:
+          of: Secret
+      - equal:
+          path: type
+          value: kubernetes.io/service-account-token
+      - equal:
+          path: metadata.annotations["kubernetes.io/service-account.name"]
+          value: test-bosca-kubernetes-controller-kubeconfig
+      - equal:
+          path: metadata.name
+          value: test-bosca-kubernetes-controller-sa-token
+
+  - it: ClusterRoleBinding subject is the dedicated kubeconfig SA, not a pod SA
+    template: templates/clusterrolebinding.yaml
+    asserts:
+      - equal:
+          path: subjects[0].kind
+          value: ServiceAccount
+      - equal:
+          path: subjects[0].name
+          value: test-bosca-kubernetes-controller-kubeconfig
+      - equal:
+          path: subjects[0].namespace
+          value: bosca
+      # Pin the subject count so an accidental re-introduction of the
+      # deployment SA shows up as a test failure.
+      - lengthEqual:
+          path: subjects
+          count: 1
+
+  - it: the controller deployment does NOT run as the dedicated kubeconfig SA
+    template: templates/deployment.yaml
+    asserts:
+      - notEqual:
+          path: spec.template.spec.serviceAccountName
+          value: test-bosca-kubernetes-controller-kubeconfig
+
+  - it: the registration Job does NOT run as the dedicated kubeconfig SA
+    template: templates/job-register-cluster.yaml
+    asserts:
+      - notEqual:
+          path: spec.template.spec.serviceAccountName
+          value: test-bosca-kubernetes-controller-kubeconfig
+
+  - it: omits the kubeconfig SA + binding when auto-register is disabled
+    set:
+      autoRegister:
+        enabled: false
+    template: templates/serviceaccount-kubeconfig.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: omits the ClusterRoleBinding when auto-register is disabled
+    set:
+      autoRegister:
+        enabled: false
+    template: templates/clusterrolebinding.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: mounts the SA token Secret into the registration Job
+    template: templates/job-register-cluster.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: sa-token
+            secret:
+              secretName: test-bosca-kubernetes-controller-sa-token
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: sa-token
+            mountPath: /etc/bosca-sa-token
+            readOnly: true
+
+  - it: register.sh reads the SA token from the long-lived Secret mount
+    template: templates/configmap-register-cluster.yaml
+    asserts:
+      - matchRegex:
+          path: data["register.sh"]
+          pattern: 'SA_DIR=/etc/bosca-sa-token'
+      - matchRegex:
+          path: data["register.sh"]
+          pattern: 'Waiting for ServiceAccount token Secret to be populated'
+
+  - it: register.sh no longer reads the projected pod token
+    template: templates/configmap-register-cluster.yaml
+    asserts:
+      # The explanatory comment may still mention /var/run/... as the path
+      # we deliberately do NOT use, so we assert the SA_DIR assignment is
+      # only ever the long-lived Secret mount, not the projected token.
+      - notMatchRegex:
+          path: data["register.sh"]
+          pattern: 'SA_DIR=/var/run'
+
+  - it: omits the script ConfigMap when auto-register is disabled
+    set:
+      autoRegister:
+        enabled: false
+    template: templates/configmap-register-cluster.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: omits the registration Job when auto-register is disabled
+    set:
+      autoRegister:
+        enabled: false
+    template: templates/job-register-cluster.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: omits the SA-token Secret when auto-register is disabled
+    set:
+      autoRegister:
+        enabled: false
+    template: templates/secret-sa-token.yaml
+    asserts:
+      - hasDocuments:
+          count: 0

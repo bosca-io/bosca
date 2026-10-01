@@ -1,0 +1,62 @@
+<page route="/login">
+  <script server provides="branding">bosca.profiles.web.branding()</script>
+  <script server provides="providers">bosca.profiles.web.loginProviders()</script>
+
+  <site-layout title="Sign in" :brand="branding.name" :logo="branding.logoUrl" :footer="branding.footerHtml" :signedIn="false">
+    <main class="login-shell">
+      <div class="login-card">
+        <p class="eyebrow">Account</p>
+        <h1>Sign in</h1>
+        <p class="card-copy">Use your account credentials to manage your profile and account settings.</p>
+        <island name="sign-in" client="ts">
+          <form ref="form">
+            <label class="field">
+              <span>Email or username</span>
+              <input ref="identifier" name="identifier" type="text" autocomplete="username" required/>
+            </label>
+            <label class="field">
+              <span>Password</span>
+              <input ref="password" name="password" type="password" autocomplete="current-password" required/>
+            </label>
+            <p class="status error" ref="error" hidden></p>
+            <button class="primary" ref="submit" type="submit">Sign in</button>
+          </form>
+          <if providers.isNotEmpty()>
+            <div class="login-divider"><span>or</span></div>
+            <div class="login-providers">
+              <for provider in providers>
+                <a class="button oauth-button" :href="provider.loginUrl">Continue with { provider.name }</a>
+              </for>
+            </div>
+          </if>
+          <script client>
+            const requested = new URLSearchParams(location.search).get("redirect")
+                ?? new URLSearchParams(location.search).get("return")
+            const destination = profilesReturnPath(requested)
+
+            const form = ctx.ref<HTMLFormElement>("form")
+            const identifier = ctx.ref<HTMLInputElement>("identifier")
+            const password = ctx.ref<HTMLInputElement>("password")
+            const submit = ctx.ref<HTMLButtonElement>("submit")
+            const error = ctx.ref<HTMLParagraphElement>("error")
+            if (form && identifier && password && submit && error) {
+              ctx.on<SubmitEvent>(form, "submit", async (event) => {
+                event.preventDefault()
+                submit.disabled = true
+                error.hidden = true
+                try {
+                  await auth.signInWithPassword(identifier.value.trim(), password.value, "profiles-web")
+                  location.assign(destination)
+                } catch (reason) {
+                  error.textContent = reason instanceof Error ? reason.message : "Sign in failed. Please try again."
+                  error.hidden = false
+                  submit.disabled = false
+                }
+              })
+            }
+          </script>
+        </island>
+      </div>
+    </main>
+  </site-layout>
+</page>

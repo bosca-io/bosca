@@ -1,0 +1,66 @@
+query GetWorkOpsLabelsGlobal {
+    workOps {
+        labels {
+            global {
+                id
+                name
+                colorHex
+                scope
+                portfolioId
+                programId
+                projectId
+                version
+            }
+        }
+    }
+}
+
+query GetWorkOpsLabelsByProject($projectId: UUID!) {
+    workOps {
+        labels {
+            byProject(projectId: $projectId) {
+                id
+                name
+                colorHex
+                scope
+                projectId
+                version
+            }
+        }
+    }
+}
+
+mutation CreateWorkOpsLabel($input: CreateWorkOpsLabelInput!) {
+    workOps {
+        labels {
+            create(input: $input) {
+                id
+                name
+                colorHex
+                scope
+                version
+            }
+        }
+    }
+}
+
+mutation UpdateWorkOpsLabel($id: UUID!, $name: String!, $colorHex: String, $expectedVersion: Long!) {
+    workOps {
+        labels {
+            update(id: $id, name: $name, colorHex: $colorHex, expectedVersion: $expectedVersion) {
+                id
+                name
+                colorHex
+                version
+            }
+        }
+    }
+}
+
+mutation DeleteWorkOpsLabel($id: UUID!) {
+    workOps {
+        labels {
+            delete(id: $id)
+        }
+    }
+}

@@ -1,0 +1,140 @@
+# Pin the Service/Deployment to the bare name `tf-serving` (no release prefix).
+# bosca-server/bosca-runner reach this via the recommendation ML_MODEL
+# strategy's configured URL, which defaults to http://tf-serving:8501 (see
+# TfServingConfiguration). Renaming requires updating that strategy config.
+fullnameOverride: "tf-serving"
+nameOverride: ""
+
+replicaCount: 1
+
+# TF Serving holds one version per model in memory and restarts when selection changes.
+# A rollout that briefly drops to zero is acceptable — bosca-server falls back
+# to heuristic recommendations whenever serving is unreachable.
+strategy:
+  type: Recreate
+
+image:
+  # Public upstream image; override to a mirrored repository in locked-down clusters.
+  repository: tensorflow/serving
+  tag: ""             # defaults to chart appVersion
+  pullPolicy: IfNotPresent
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+podSecurityContext: {}
+securityContext: {}
+
+service:
+  type: ClusterIP
+  port: 8501          # REST API — the bosca TfServingClient uses REST
+  grpcPort: 8500      # gRPC — exposed for completeness; bosca does not use it
+
+# How quickly the serving script notices a changed exact-version manifest written by the loader.
+configPollIntervalSeconds: 5
+
+# The two recommender models TF Serving loads, each served at /v1/models/<name> from
+# <modelBasePath>/<name>/. Names MUST match the trainer's artifact names and the recommendation strategy's
+# TfServingConfiguration (modelName = "recommender-personalized", contentModelName = "recommender-content").
+models:
+  - recommender-content
+  - recommender-personalized
+modelBasePath: /models
+
+# Model loader sidecar. Polls bosca-server for newly trained models and writes
+# them into the shared model volume, where the TF Serving container loads
+# them. Built from experimentation/ml/recommendation-model-loader and published
+# by that repo's CI. Runs in this pod (not a separate Deployment) so the model
+# volume can be a plain emptyDir / single-node RWO claim — no ReadWriteMany.
+loader:
+  enabled: true
+  image:
+    registry: ghcr.io/bosca-io/bosca
+    repository: recommendation-model-loader
+    # NOT the chart appVersion (that pins the TF Serving image). This tracks the
+    # Bosca platform release the loader image was published with — bump it with
+    # each recommendation-ml release (see experimentation release-recommendation-ml).
+    tag: "5.12.15"
+    pullPolicy: IfNotPresent
+  # Artifacts server the loader polls for the latest trained models, and the
+  # namespace (custom `ml` artifact type).
+  artifactsUrl: "http://bosca-bosca-artifacts-server:8084"
+  artifactsNamespace: "model"
+  # Bosca GraphQL supplies the active strategy pin and versions used by a running model experiment. The
+  # loader uses an explicit selection before the newest artifact, with one resident version per model.
+  boscaUrl: "http://bosca-bosca-server:8080"
+  # Where each downloaded model's versions are written. MUST match the base_path TF Serving serves each model
+  # from (modelBasePath/<name>) so the server picks them up.
+  contentModelDir: /models/recommender-content
+  personalizedModelDir: /models/recommender-personalized
+  pollIntervalSeconds: 15
+  # API token the loader presents to the artifacts server (scoped
+  # artifacts:ml:{ns}/*:*:pull). Shares the recommendation-ml Secret with the
+  # trainer; populate from the pull token the artifacts installer logs.
+  secrets:
+    boscaToken:
+      enabled: true
+      name: recommendation-ml
+      key: bosca_token
+    artifactsToken:
+      enabled: true
+      name: recommendation-ml
+      key: artifacts_pull_token
+  extraEnv: {}
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+
+# Model storage. The loader sidecar (see `loader` below) writes trained model
+# versions into this volume and the TF Serving container serves them — both run
+# in THIS pod, so the volume is shared between containers and never needs to be
+# ReadWriteMany. (The loader used to be a separate Deployment, which forced an
+# RWX claim that block-storage CSI drivers like DigitalOcean's cannot provision.)
+#
+# Default is an emptyDir: on a pod restart the loader re-syncs the newest and currently selected versions
+# from Bosca and TF Serving falls back to heuristics meanwhile.
+# To avoid that re-download, enable persistence below — because there is only one
+# consumer pod, a node-local ReadWriteOnce class (e.g. openebs-hostpath) works.
+persistence:
+  enabled: false
+  create: true
+  existingClaim: ""
+  accessModes:
+    - ReadWriteOnce
+  storageClass: ""
+  size: 5Gi
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 512Mi
+  limits:
+    cpu: "2"
+    memory: 2Gi
+
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+
+extraEnv: {}
+
+envFromConfigMaps:
+  - otel-env
+
+imagePullSecrets:
+  - name: docker-registry
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+global:
+  # Registry (and path) for every Bosca image; when set, it overrides image.registry.
+  imageRegistry: ""
+  domain: ""

@@ -1,0 +1,80 @@
+{# Git pull-request activity — one typed template covers creation, edits, merge/close/reopen,
+   reviews, inline comments, thread resolution, assignments, and source-branch updates. The
+   event-triggered pipeline chooses recipients and supplies this payload. #}
+<message key="git-pull-request">
+  <script server provides="m">
+    import bosca.messages.GitPullRequestNotification
+    message.payload(GitPullRequestNotification.serializer())
+  </script>
+  <script server provides="assets">message.assetsUrl ?: error("BmlMessageContext.assetsUrl is required — emails cannot reference relative asset URLs")</script>
+  <script server provides="subject">
+    when (m.action) {
+      "OPENED" -> t("git-pr.subject.opened", "PR #{number} opened: {title}", "number" to m.number, "title" to m.title)
+      "MERGED" -> t("git-pr.subject.merged", "PR #{number} merged: {title}", "number" to m.number, "title" to m.title)
+      "CLOSED" -> t("git-pr.subject.closed", "PR #{number} closed: {title}", "number" to m.number, "title" to m.title)
+      "REOPENED" -> t("git-pr.subject.reopened", "PR #{number} reopened: {title}", "number" to m.number, "title" to m.title)
+      "READY_FOR_REVIEW" -> t("git-pr.subject.ready", "PR #{number} is ready for review: {title}", "number" to m.number, "title" to m.title)
+      "REVIEWED" -> t("git-pr.subject.reviewed", "New review on PR #{number}: {title}", "number" to m.number, "title" to m.title)
+      "COMMENTED" -> t("git-pr.subject.commented", "New comment on PR #{number}: {title}", "number" to m.number, "title" to m.title)
+      "THREAD_RESOLVED" -> t("git-pr.subject.resolved", "Thread resolved on PR #{number}: {title}", "number" to m.number, "title" to m.title)
+      "ASSIGNED" -> t("git-pr.subject.assigned", "Assignment changed on PR #{number}: {title}", "number" to m.number, "title" to m.title)
+      "UNASSIGNED" -> t("git-pr.subject.unassigned", "Assignment changed on PR #{number}: {title}", "number" to m.number, "title" to m.title)
+      "SOURCE_UPDATED" -> t("git-pr.subject.source-updated", "New commits on PR #{number}: {title}", "number" to m.number, "title" to m.title)
+      else -> t("git-pr.subject.updated", "PR #{number} updated: {title}", "number" to m.number, "title" to m.title)
+    }
+  </script>
+  <script server provides="headline">
+    when (m.action) {
+      "OPENED" -> t("git-pr.headline.opened", "Pull request opened")
+      "MERGED" -> t("git-pr.headline.merged", "Pull request merged")
+      "CLOSED" -> t("git-pr.headline.closed", "Pull request closed")
+      "REOPENED" -> t("git-pr.headline.reopened", "Pull request reopened")
+      "READY_FOR_REVIEW" -> t("git-pr.headline.ready", "Ready for review")
+      "REVIEWED" -> t("git-pr.headline.reviewed", "New pull request review")
+      "COMMENTED" -> t("git-pr.headline.commented", "New review comment")
+      "THREAD_RESOLVED" -> t("git-pr.headline.resolved", "Review thread resolved")
+      "ASSIGNED" -> t("git-pr.headline.assigned", "Pull request assigned")
+      "UNASSIGNED" -> t("git-pr.headline.unassigned", "Pull request unassigned")
+      "SOURCE_UPDATED" -> t("git-pr.headline.source-updated", "Source branch updated")
+      else -> t("git-pr.headline.updated", "Pull request updated")
+    }
+  </script>
+  <script server provides="lede">t("git-pr.lede", "There is new activity on {repository} pull request #{number}.", "repository" to m.repositoryName, "number" to m.number)</script>
+  <script server provides="eyebrow">t("git-pr.eyebrow", "Git · Pull request")</script>
+  <script server provides="cta">t("git-pr.cta", "View pull request")</script>
+  <script server provides="reason">t("git-pr.reason", "You're receiving this because you're involved with this pull request on {appName}.", "appName" to m.appName)</script>
+  <script server provides="reviewDetail">m.reviewStatus?.replace('_', ' ')?.lowercase()?.replaceFirstChar { it.uppercase() }.orEmpty()</script>
+  <script server provides="location">m.filePath?.let { path -> m.lineNumber?.let { "$path:$it" } ?: path }.orEmpty()</script>
+  <email>
+    <subject>{ subject }</subject>
+    <bosca-shell :brand="m.appName" :logo="m.logoUrl" :logoOnly="m.logoOnly" title="{ m.appName } · Pull Request Activity" :preheader="subject" :assets="assets" :unsubscribe="message.unsubscribeUrl" :preferences="message.preferencesUrl" :reason="reason" :primaryColor="m.primaryColor">
+
+      <bosca-heading :eyebrow="eyebrow" :headline="headline" :name="message.recipientName" :primaryColor="m.primaryColor" :accentColor="m.accentColor">
+        { lede }
+      </bosca-heading>
+
+      <panel accent :accentColor="m.accentColor">
+        <p class="em-metalabel" style="margin:0;font-family:'Geist Mono',ui-monospace,Menlo,Consolas,monospace;font-size:10px;letter-spacing:0.18em;font-weight:500;text-transform:uppercase;color:{ m.accentColor };">{ m.repositoryName }&nbsp;&nbsp;·&nbsp;&nbsp;PR #{ m.number }</p>
+        <p style="margin:8px 0 0;font-family:'Geist',-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-weight:600;font-size:17px;line-height:1.35;letter-spacing:-0.01em;color:{ m.primaryColor };">{ m.title }</p>
+        <p style="margin:5px 0 0;font-family:'Geist Mono',ui-monospace,Menlo,Consolas,monospace;font-size:12px;line-height:1.5;color:#5a6072;">{ m.sourceBranch } → { m.targetBranch }</p>
+        <if m.actorName != null && m.actorName.isNotBlank()>
+          <p style="margin:10px 0 0;font-family:'Geist',-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:13px;line-height:1.5;color:#5a6072;"><span t="git-pr.actor-label">By </span> { m.actorName }</p>
+        </if>
+        <if reviewDetail.isNotBlank()>
+          <p style="margin:14px 0 0;font-family:'Geist',-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:13px;line-height:1.5;color:{ m.primaryColor };"><span t="git-pr.review-label">Review</span>: { reviewDetail }</p>
+        </if>
+        <if location.isNotBlank()>
+          <p style="margin:10px 0 0;font-family:'Geist Mono',ui-monospace,Menlo,Consolas,monospace;font-size:12px;line-height:1.5;color:#5a6072;">{ location }</p>
+        </if>
+        <if m.body != null && m.body.isNotBlank()>
+          <p style="margin:16px 0 0;padding:12px 14px;border-left:3px solid #d8dde7;background:#f6f7f9;font-family:'Geist',-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:13px;line-height:1.6;color:#34394a;white-space:pre-wrap;">{ m.body }</p>
+        </if>
+        <if m.taskKeys.isNotEmpty()>
+          <p style="margin:12px 0 0;font-family:'Geist Mono',ui-monospace,Menlo,Consolas,monospace;font-size:11px;line-height:1.5;color:#5a6072;">{ m.taskKeys.joinToString(" · ") }</p>
+        </if>
+        <cta-button wide :href="m.pullRequestUrl" :label="cta" :primaryColor="m.primaryColor"/>
+      </panel>
+
+    </bosca-shell>
+  </email>
+</message>

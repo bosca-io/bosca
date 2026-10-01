@@ -1,0 +1,6 @@
+fragment MetadataProfile on MetadataProfile {
+    profile {
+        ...Profile
+    }
+    relationship
+}

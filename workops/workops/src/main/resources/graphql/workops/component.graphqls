@@ -1,0 +1,54 @@
+# Work Ops — WorkOpsComponent (R9)
+#
+# Phase 5 ships the project-scoped WorkOpsComponent surface. WorkOpsTasks
+# reference components via `componentIds` (already a column on
+# `workops.task` from V2). Phase 5 stores the assignee mode on
+# the component; Phase 7 wires the auto-assignee fallback into
+# `TaskService.create`.
+
+"""
+How a component resolves a default assignee on tasks that don't
+already have one (R9). The first component on the task is the one
+whose mode is consulted.
+"""
+enum WorkOpsComponentAssigneeMode {
+    UNASSIGNED
+    COMPONENT_LEAD
+    PROJECT_DEFAULT
+    COMPONENT_LEAD_OR_PROJECT_DEFAULT
+}
+
+"""
+A team / codebase ownership tag inside a project. Multiple
+components per task are supported through `WorkOpsTask.componentIds`.
+"""
+type WorkOpsComponent {
+    id: UUID!
+    projectId: UUID!
+    project: WorkOpsProject!
+    name: String!
+    description: String
+    defaultAssigneeProfileId: UUID
+    leadProfileId: UUID
+    assigneeMode: WorkOpsComponentAssigneeMode!
+    version: Long!
+}
+
+input CreateWorkOpsComponentInput {
+    projectId: UUID!
+    name: String!
+    description: String
+    defaultAssigneeProfileId: UUID
+    leadProfileId: UUID
+    assigneeMode: WorkOpsComponentAssigneeMode! = UNASSIGNED
+}
+
+type WorkOpsComponents {
+    component(id: UUID!): WorkOpsComponent
+    byProject(projectId: UUID!): [WorkOpsComponent!]!
+}
+
+type WorkOpsComponentsMutation {
+    create(input: CreateWorkOpsComponentInput!): WorkOpsComponent!
+    delete(id: UUID!): Boolean!
+}

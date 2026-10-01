@@ -1,0 +1,26 @@
+{
+  "name": "@bosca/imageprocessor",
+  "version": "0.0.0",
+  "private": true,
+  "files": ["lib"],
+  "scripts": {
+    "dev": "ts-node ./src/main.ts",
+    "build": "tsc --build",
+    "test": "pnpm build && node --test tests/*.test.cjs",
+    "start": "node ./dist/main.js",
+    "lint": "echo 'no eslint config'",
+    "lint:fix": "echo 'no eslint config'"
+  },
+  "dependencies": {
+    "blurhash": "catalog:",
+    "fastify": "catalog:",
+    "sharp": "catalog:"
+  },
+  "devDependencies": {
+    "@tsconfig/node18": "catalog:",
+    "@types/node": "catalog:",
+    "globals": "catalog:",
+    "ts-node": "catalog:",
+    "typescript": "catalog:"
+  }
+}

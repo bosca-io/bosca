@@ -1,0 +1,38 @@
+{# Confirm linking a new sign-in method to an existing account. #}
+<message key="account-link">
+  <script server provides="m">
+    import bosca.messages.AccountLink
+    message.payload(AccountLink.serializer())
+  </script>
+  <script server provides="assets">message.assetsUrl ?: error("BmlMessageContext.assetsUrl is required — emails cannot reference relative asset URLs")</script>
+  <script server provides="subject">t("account-link.subject", "Confirm your {appName} account link", "appName" to m.appName)</script>
+  <script server provides="eyebrow">t("account-link.eyebrow", "Security")</script>
+  <script server provides="headline">t("account-link.headline", "Confirm account link")</script>
+  <script server provides="cta">t("account-link.cta", "Confirm account link")</script>
+  <script server provides="preheader">t("account-link.preheader", "Confirm that you want to link this sign-in method to your {appName} account.", "appName" to m.appName)</script>
+  <script server provides="reason">t("account-link.reason", "You're receiving this security email because a request was made to link a sign-in method to your {appName} account.", "appName" to m.appName)</script>
+  <email>
+    <subject>{ subject }</subject>
+    <bosca-shell :brand="m.appName" :logo="m.logoUrl" :logoOnly="m.logoOnly" title="{ m.appName } · Account Link" :preheader="preheader" :assets="assets" :unsubscribe="message.unsubscribeUrl" :preferences="message.preferencesUrl" :reason="reason" :primaryColor="m.primaryColor">
+
+      <bosca-heading :eyebrow="eyebrow" :headline="headline" :name="message.recipientName" :primaryColor="m.primaryColor" :accentColor="m.accentColor">
+        <span t="account-link.lede">A new sign-in method is ready to be linked to your { m.appName } account. Confirm the request to continue.</span>
+      </bosca-heading>
+
+      <cta-button :href="m.confirmUrl" :label="cta" :primaryColor="m.primaryColor"/>
+
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+        <tr>
+          <td t="account-link.ignore" style="padding:22px 0 0;font-family:'Geist',-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:13px;line-height:1.6;color:#5a6072;">If you didn't request this account link, leave it unconfirmed and review your account security.</td>
+        </tr>
+        <tr>
+          <td style="padding:24px 0 0;">
+            <p t="shared.paste-label" style="margin:0 0 5px;font-family:'Geist Mono',ui-monospace,Menlo,Consolas,monospace;font-size:10px;letter-spacing:0.18em;font-weight:500;text-transform:uppercase;color:#898fa1;">Or paste this link into your browser</p>
+            <a :href="m.confirmUrl" style="font-family:'Geist Mono',ui-monospace,Menlo,Consolas,monospace;font-size:12px;line-height:1.6;color:{ m.accentColor };word-break:break-all;">{ m.confirmUrl }</a>
+          </td>
+        </tr>
+      </table>
+
+    </bosca-shell>
+  </email>
+</message>

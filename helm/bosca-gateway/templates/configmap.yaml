@@ -1,0 +1,43 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "bosca-gateway.fullname" . }}-config
+  labels:
+    {{- include "bosca-gateway.labels" . | nindent 4 }}
+data:
+  config.toml: |
+    [gateway]
+    bind = {{ .Values.gateway.bind | quote }}
+    drain_timeout_secs = {{ .Values.gateway.drainTimeoutSecs }}
+    {{- if .Values.gateway.trustedProxies }}
+    trusted_proxies = {{ .Values.gateway.trustedProxies | toJson }}
+    {{- end }}
+    {{- if .Values.gateway.externalScheme }}
+    external_scheme = {{ .Values.gateway.externalScheme | quote }}
+    {{- end }}
+    {{- if .Values.gateway.studioUrl }}
+    studio_url = {{ .Values.gateway.studioUrl | quote }}
+    {{- end }}
+
+    [bosca]
+    api_url = {{ .Values.bosca.apiUrl | quote }}
+    api_token = "${GATEWAY_BOSCA_TOKEN}"
+    poll_interval_secs = {{ .Values.bosca.pollIntervalSecs }}
+    cache_file = {{ .Values.bosca.cacheFile | quote }}
+
+    {{- if .Values.auth.jwt.enabled }}
+    [auth.jwt]
+    issuer = {{ .Values.auth.jwt.issuer | quote }}
+    audience = {{ .Values.auth.jwt.audience | quote }}
+    jwks_uri = {{ .Values.auth.jwt.jwksUri | quote }}
+    jwks_cache_ttl_secs = {{ .Values.auth.jwt.jwksCacheTtlSecs }}
+    {{- if .Values.auth.jwt.allowInsecureJwksUri }}
+    allow_insecure_jwks_uri = true
+    {{- end }}
+    {{- end }}
+
+    {{- if .Values.auth.basic.enabled }}
+    [auth.basic]
+    validation_endpoint = {{ .Values.auth.basic.validationEndpoint | quote }}
+    cache_ttl_secs = {{ .Values.auth.basic.cacheTtlSecs }}
+    {{- end }}

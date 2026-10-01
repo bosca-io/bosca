@@ -1,0 +1,174 @@
+# Selects step- and job-level fields persisted by server schema V17+.
+# The server must be deployed before any agent built from this file —
+# older servers will reject this query with a GraphQL validation error.
+mutation ClaimJob($agentId: UUID!, $labels: [String!]!, $jobId: UUID) {
+    git {
+        claimJob(agentId: $agentId, labels: $labels, jobId: $jobId) {
+            id
+            pipelineRunId
+            name
+            status
+            attempt
+            runnerLabel
+            agentId
+            matrixValues
+            dependsOn
+            timeoutMinutes
+            started
+            finished
+            steps {
+                id
+                pipelineJobId
+                name
+                ordinal
+                status
+                uses
+                run
+                image
+                condition
+                workingDirectory
+                with
+                env
+                exitCode
+                started
+                finished
+            }
+        }
+    }
+}
+
+mutation UpdateJobStatus($jobId: UUID!, $status: GitPipelineRunStatus!, $errorMessage: String) {
+    git {
+        updateJobStatus(jobId: $jobId, status: $status, errorMessage: $errorMessage) {
+            id
+            name
+            status
+            started
+            finished
+        }
+    }
+}
+
+mutation UpdateStepStatus($stepId: UUID!, $status: GitPipelineRunStatus!, $exitCode: Int, $errorMessage: String) {
+    git {
+        updateStepStatus(stepId: $stepId, status: $status, exitCode: $exitCode, errorMessage: $errorMessage)
+    }
+}
+
+mutation ReportCommitStatus($repositoryId: UUID!, $commitSha: String!, $context: String!, $state: GitCommitStatusState!, $description: String, $targetUrl: String, $jobId: UUID!) {
+    git {
+        reportCommitStatus(repositoryId: $repositoryId, commitSha: $commitSha, context: $context, state: $state, description: $description, targetUrl: $targetUrl, jobId: $jobId)
+    }
+}
+
+mutation AppendPipelineLogs($repositoryId: UUID!, $runId: UUID!, $jobId: UUID!, $stepId: UUID!, $lines: [LogLineInput!]!) {
+    git {
+        appendPipelineLogs(repositoryId: $repositoryId, runId: $runId, jobId: $jobId, stepId: $stepId, lines: $lines)
+    }
+}
+
+mutation DecryptPipelineSecrets($repositoryId: UUID!, $names: [String!]!) {
+    git {
+        decryptPipelineSecrets(repositoryId: $repositoryId, names: $names) {
+            name
+            value
+        }
+    }
+}
+
+mutation CreateReleaseTag($jobId: UUID!, $repository: String!, $tag: String, $message: String) {
+    git {
+        createReleaseTag(jobId: $jobId, repository: $repository, tag: $tag, message: $message) {
+            tag
+            ref
+            commitSha
+            tagSha
+            created
+        }
+    }
+}
+
+mutation AllocateBuildNumberFromJob($jobId: UUID!, $platform: String!, $applicationId: String!, $sourceVersion: String!, $buildKey: String, $minimum: String) {
+    git {
+        allocateBuildNumberFromJob(jobId: $jobId, platform: $platform, applicationId: $applicationId, sourceVersion: $sourceVersion, buildKey: $buildKey, minimum: $minimum) {
+            number
+            value
+            reused
+        }
+    }
+}
+
+mutation ResolveJobSecrets($jobId: UUID!) {
+    git {
+        resolveJobSecrets(jobId: $jobId) {
+            name
+            value
+        }
+    }
+}
+
+mutation DeployFromJob($jobId: UUID!, $environmentKey: String!, $repository: String, $target: String, $overrides: JSON) {
+    git {
+        deployFromJob(jobId: $jobId, environmentKey: $environmentKey, repository: $repository, target: $target, overrides: $overrides) {
+            reference
+            status
+        }
+    }
+}
+
+mutation RollbackFromJob($jobId: UUID!, $environmentKey: String!, $repository: String, $target: String, $toRevision: Int, $overrides: JSON) {
+    git {
+        rollbackFromJob(jobId: $jobId, environmentKey: $environmentKey, repository: $repository, target: $target, toRevision: $toRevision, overrides: $overrides) {
+            reference
+            status
+        }
+    }
+}
+
+mutation PlayRolloutFromJob($jobId: UUID!, $environmentKey: String!, $rolloutPercentage: Float!, $repository: String, $target: String) {
+    git {
+        playRolloutFromJob(jobId: $jobId, environmentKey: $environmentKey, rolloutPercentage: $rolloutPercentage, repository: $repository, target: $target) {
+            reference
+            status
+        }
+    }
+}
+
+mutation AppStoreReviewFromJob($jobId: UUID!, $environmentKey: String!, $mode: GitReleaseAppStoreReviewMode!, $repository: String, $target: String) {
+    git {
+        appStoreReviewFromJob(jobId: $jobId, environmentKey: $environmentKey, mode: $mode, repository: $repository, target: $target) {
+            state
+            complete
+            approved
+        }
+    }
+}
+
+mutation StoreHealthFromJob($jobId: UUID!, $environmentKey: String!, $maxCrashRate: Float!, $windowSeconds: Long!, $repository: String, $target: String) {
+    git {
+        storeHealthFromJob(jobId: $jobId, environmentKey: $environmentKey, maxCrashRate: $maxCrashRate, windowSeconds: $windowSeconds, repository: $repository, target: $target) {
+            crashRate
+            maxCrashRate
+            windowSeconds
+            healthy
+        }
+    }
+}
+
+mutation MarkReleasedFromJob($jobId: UUID!) {
+    git {
+        markReleasedFromJob(jobId: $jobId)
+    }
+}
+
+mutation GenerateReleaseNotesFromJob($jobId: UUID!) {
+    git {
+        generateReleaseNotesFromJob(jobId: $jobId)
+    }
+}
+
+query JobDeploymentHealth($jobId: UUID!, $environmentKey: String!, $repository: String) {
+    git {
+        jobDeploymentHealth(jobId: $jobId, environmentKey: $environmentKey, repository: $repository)
+    }
+}

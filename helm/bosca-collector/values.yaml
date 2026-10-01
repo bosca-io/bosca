@@ -1,0 +1,132 @@
+replicaCount: 1
+
+# Rolling updates keep the current collector available until its replacement
+# is ready. Production overrides can raise maxSurge for faster rollouts.
+strategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxSurge: 25%
+    maxUnavailable: 0
+
+image:
+  registry: ghcr.io/bosca-io/bosca
+  repository: analytics-collector
+  tag: ""
+  pullPolicy: IfNotPresent
+
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+commonAnnotations: {}
+
+podSecurityContext: {}
+securityContext: {}
+
+service:
+  type: ClusterIP
+  port: 8080
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: "1"
+    memory: 512Mi
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 80
+
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+
+appConfig:
+  domain: ""
+  realm: ""
+  databaseUrl: ""
+  databaseMaxConnections: 20
+  # Fully qualified Trino events table seeded into the analytics queries. Keep it equal to the
+  # bosca-server and bosca-runner value.
+  experimentationEventsTable: warehouse.bosca.events
+  natsHost: nats
+  iceberg:
+    catalog: bosca
+    fileIO: "org.apache.iceberg.aws.s3.S3FileIO"
+    namespace: bosca
+    table: events
+    warehouseLocation: "s3://warehouse/warehouse"
+    databaseUrl: ""
+
+envFromConfigMaps:
+  - server-v3-env
+  - otel-env
+
+# Secrets — see templates/secret.yaml. Set create:false to consume an existing Secret.
+secrets:
+  database:
+    create: true
+    secretName: pg-creds-bosca-server
+    usernameKey: username
+    passwordKey: password
+    username: ""
+    password: ""
+  nats:
+    create: true
+    secretName: nats
+    key: token
+    value: ""
+  jwt:
+    create: true
+    secretName: jwt
+    key: secret
+    value: ""
+  s3:
+    create: true
+    secretName: s3
+    accessKeyIdKey: ACCESS_KEY_ID
+    secretAccessKeyKey: ACCESS_SECRET_KEY
+    accessKeyId: ""
+    secretAccessKey: ""
+  iceberg:
+    create: true
+    secretName: pg-creds-bosca-warehouse
+    usernameKey: username
+    passwordKey: password
+    username: ""
+    password: ""
+
+imagePullSecrets:
+  - name: docker-registry
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# Gateway / HTTPRoute exposure for the analytics ingest endpoint. The
+# legacy CLI exposes collector at `a.<domain>` (e.g., a.example.com)
+# so browser SDKs can post events without crossing the API domain.
+# Set `enabled: true` + `hostnames: [a.<domain>]` to mirror that.
+gateway:
+  enabled: true
+  gatewayName: bosca-gateway
+  gatewayNamespace: ""
+  hostnames: []
+
+global:
+  # Registry (and path) for every Bosca image; when set, it overrides image.registry.
+  imageRegistry: ""
+  domain: ""
+
+# Port of the management listener (bosca.server.management-port). It serves GET /api/v1/live on its own event loop,
+# so liveness keeps answering while request event loops are busy. Every /api/v1/live probe targets it; readiness
+# stays on `http` because it checks dependencies.
+managementPort: 9090

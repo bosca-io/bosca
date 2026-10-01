@@ -1,0 +1,39 @@
+"An external content source that can be used to import or sync content into Bosca"
+type Source {
+    "Unique identifier for this source"
+    id: UUID!
+    "Display name of the source"
+    name: String!
+    "Description of what this source provides"
+    description: String!
+    "Source-specific configuration (connection details, API keys, etc.)"
+    configuration: JSON!
+}
+
+"Input for creating or updating a content source"
+input SourceInput {
+    "Display name for the source"
+    name: String!
+    "Description of what this source provides"
+    description: String!
+    "Source-specific configuration"
+    configuration: JSON!
+}
+
+"Mutation operations for managing content sources"
+type SourceMutation {
+    "Register a new content source"
+    add(source: SourceInput!): Source!
+    "Update an existing content source"
+    edit(id: UUID!, source: SourceInput!): Source!
+    "Delete a content source"
+    delete(id: UUID!): Boolean
+}
+
+"Query operations for browsing content sources"
+type Sources {
+    "List all registered content sources"
+    all: [Source!]!
+    "Get a specific source by ID"
+    source(id: UUID!): Source
+}

@@ -1,0 +1,5 @@
+mutation AddProfileAttributes($id: UUID! $attributes: [ProfileAttributeInput!]!) {
+    profiles {
+        addAttributes(id: $id, attributes: $attributes)
+    }
+}

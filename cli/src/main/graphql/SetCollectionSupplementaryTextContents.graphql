@@ -1,0 +1,7 @@
+mutation SetCollectionSupplementaryTextContents($supplementaryId: UUID!, $contentType: String!, $content: String!) {
+    content {
+        collection {
+            setSupplementaryTextContents(supplementaryId: $supplementaryId, contentType: $contentType, content: $content)
+        }
+    }
+}

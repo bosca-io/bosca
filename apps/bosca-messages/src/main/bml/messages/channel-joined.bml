@@ -1,0 +1,28 @@
+<message key="channel-joined">
+  <script server provides="m">
+    import bosca.messages.ChannelJoinedNotification
+    message.payload(ChannelJoinedNotification.serializer())
+  </script>
+  <script server provides="assets">message.assetsUrl ?: error("BmlMessageContext.assetsUrl is required — emails cannot reference relative asset URLs")</script>
+  <script server provides="subject">t("channel-joined.subject", "{profileName} joined {channelName}", "profileName" to m.joinedProfileName, "channelName" to m.channelName)</script>
+  <script server provides="emailTitle">t("channel-joined.message.title", "{appName} · New channel member", "appName" to m.appName)</script>
+  <script server provides="eyebrow">t("channel-joined.eyebrow", "Chat")</script>
+  <script server provides="headline">t("channel-joined.headline", "New channel member")</script>
+  <script server provides="cta">t("channel-joined.cta", "Open chat")</script>
+  <script server provides="preheader">subject</script>
+  <script server provides="reason">t("social.reason", "You're receiving this because your social notification preferences include email for this activity.")</script>
+  <push>
+    <title t="channel-joined.push.title">New channel member</title>
+    <body t="channel-joined.push.body">{ m.joinedProfileName } joined { m.channelName }</body>
+    <action id="open-chat" default t="channel-joined.push.action.open">Open chat</action>
+  </push>
+  <email>
+    <subject>{ subject }</subject>
+    <bosca-shell :brand="m.appName" :logo="m.logoUrl" :logoOnly="m.logoOnly" :title="emailTitle" :preheader="preheader" :assets="assets" :unsubscribe="message.unsubscribeUrl" :preferences="message.preferencesUrl" :reason="reason" :primaryColor="m.primaryColor">
+      <bosca-heading :eyebrow="eyebrow" :headline="headline" :name="message.recipientName" :primaryColor="m.primaryColor" :accentColor="m.accentColor">
+        <span t="channel-joined.lede">{ m.joinedProfileName } joined { m.channelName }.</span>
+      </bosca-heading>
+      <cta-button :href="m.actionUrl" :label="cta" :primaryColor="m.primaryColor"/>
+    </bosca-shell>
+  </email>
+</message>

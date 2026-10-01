@@ -1,0 +1,6 @@
+dependencies:
+- name: bosca-common
+  repository: file://../bosca-common
+  version: 0.1.0
+digest: sha256:d4d1f9e7c00dcdcb8a7e09f49a2bee827cc06c72203d3a1940e227cb2b5256e2
+generated: "2026-05-17T15:33:59.178194-05:00"

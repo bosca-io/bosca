@@ -1,0 +1,113 @@
+mutation RegisterAgent($name: String!, $labels: [String!]!, $mode: GitAgentMode!) {
+    git {
+        registerAgent(name: $name, labels: $labels, mode: $mode) {
+            agent {
+                id
+                name
+                labels
+                mode
+                status
+                ephemeral
+                created
+            }
+            token
+        }
+    }
+}
+
+mutation RegisterEphemeralAgent($jobId: UUID!, $name: String!, $labels: [String!]!, $parentAgentId: UUID!, $timeoutMinutes: Int!) {
+    git {
+        registerEphemeralAgent(jobId: $jobId, name: $name, labels: $labels, parentAgentId: $parentAgentId, timeoutMinutes: $timeoutMinutes) {
+            agent {
+                id
+                name
+                labels
+                mode
+                status
+                ephemeral
+                jobId
+                parentAgentId
+                created
+            }
+            token
+        }
+    }
+}
+
+mutation DeregisterAgent($id: UUID!) {
+    git {
+        deregisterAgent(id: $id)
+    }
+}
+
+mutation SetAgentInstanceId($agentId: UUID!, $instanceId: String!) {
+    git {
+        setAgentInstanceId(agentId: $agentId, instanceId: $instanceId)
+    }
+}
+
+mutation AgentHeartbeat($agentId: UUID!) {
+    git {
+        agentHeartbeat(agentId: $agentId)
+    }
+}
+
+query TargetedJobStatus($agentId: UUID!, $jobId: UUID!, $attempt: Int) {
+    git {
+        targetedJobStatus(agentId: $agentId, jobId: $jobId, attempt: $attempt)
+    }
+}
+
+query ListPipelineAgents($status: GitAgentStatus) {
+    git {
+        pipelineAgents(status: $status) {
+            id
+            name
+            labels
+            mode
+            status
+            ephemeral
+            jobId
+            parentAgentId
+            instanceId
+            lastHeartbeat
+            expiresAt
+            created
+        }
+    }
+}
+
+mutation ConfigureOrchestrator($agentId: UUID!, $config: GitOrchestratorConfigInput!) {
+    git {
+        configureOrchestrator(agentId: $agentId, config: $config) {
+            id
+            name
+            mode
+            status
+        }
+    }
+}
+
+mutation GetOrchestratorConfig($agentId: UUID!) {
+    git {
+        getOrchestratorConfig(agentId: $agentId) {
+            provider
+            credentials {
+                selfDestructTokenScope
+            }
+            defaults {
+                region
+                size
+                image
+            }
+            runnerProfiles
+            maxConcurrentVms
+            maxJobTimeoutMinutes
+            maxVmLifetimeMinutes
+            alertSinks {
+                type
+                url
+            }
+        }
+    }
+}

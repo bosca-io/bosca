@@ -1,0 +1,28 @@
+<component tag="profile-attribute-card">
+  <prop name="attribute" type="bosca.profiles.web.ProfileAttributeRow" required/>
+
+  <article class="attribute-row">
+    <div class="attribute-summary">
+      <div>
+        <div class="attribute-title-line">
+          <div class="row-title">{ attribute.typeName }</div>
+          <if !attribute.protected>
+            <span class="attribute-dirty">
+              <span class="attribute-dirty-marker" tabindex="0" aria-label="Unsaved changes">*</span>
+              <span class="attribute-dirty-popover" role="tooltip">
+                <strong>Unsaved changes</strong>
+                <span>This attribute has changes that need to be saved.</span>
+              </span>
+            </span>
+          </if>
+        </div>
+        <div class="row-meta">{ attribute.description }</div>
+      </div>
+      <div class="badge-row">
+        <if attribute.verified><span class="badge">Verified</span></if>
+        <if attribute.protected><span class="badge neutral">Managed</span></if>
+      </div>
+    </div>
+    <slot/>
+  </article>
+</component>

@@ -1,0 +1,79 @@
+"The lifecycle phase of a workflow state"
+enum WorkflowStateType {
+    "Content is advertised/promoted to users"
+    ADVERTISED
+    "Content is awaiting approval from a reviewer"
+    APPROVAL
+    "Content has been approved by a reviewer"
+    APPROVED
+    "Content is in draft/editing phase"
+    DRAFT
+    "A workflow processing step has failed"
+    FAILURE
+    "Content is pending initial processing"
+    PENDING
+    "Content is being actively processed by a workflow"
+    PROCESSING
+    "Content is published and visible to end users"
+    PUBLISHED
+}
+
+"A state in the content workflow lifecycle, defining what happens when content enters or exits this state"
+type WorkflowState {
+    "State-specific configuration"
+    configuration: JSON
+    "Human-readable description of this state"
+    description: String!
+    "Unique string identifier for this state (e.g. 'draft', 'published')"
+    id: String!
+    "Name of the background job to execute in this state"
+    jobName: String
+    "Display name of this state"
+    name: String!
+    "The lifecycle phase this state belongs to"
+    type: WorkflowStateType!
+}
+
+"Query operations for browsing workflow states"
+type WorkflowStates {
+    "List all defined workflow states"
+    all: [WorkflowState!]!
+    "Get a specific workflow state by ID"
+    state(id: String!): WorkflowState
+}
+
+"Input for creating or updating a workflow state"
+input WorkflowStateInput {
+    "State-specific configuration"
+    configuration: JSON!
+    "Human-readable description of this state"
+    description: String!
+    "Unique string identifier for this state"
+    id: String!
+    "Name of the background job to execute in this state"
+    jobName: String
+    "Display name of this state"
+    name: String!
+    "The lifecycle phase this state belongs to"
+    type: WorkflowStateType!
+}
+
+"Mutation operations for managing workflow states"
+type WorkflowStatesMutation {
+    "Create a new workflow state"
+    add(state: WorkflowStateInput!): WorkflowState
+    "Delete a workflow state by ID"
+    delete(id: String!): Boolean!
+    "Update an existing workflow state"
+    edit(state: WorkflowStateInput!): WorkflowState
+}
+
+extend type Query {
+    "Access workflow state queries"
+    states: WorkflowStates!
+}
+
+extend type Mutation {
+    "Access workflow state mutations"
+    states: WorkflowStatesMutation!
+}

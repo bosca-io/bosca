@@ -1,0 +1,237 @@
+replicaCount: 1
+
+image:
+  registry: ghcr.io/bosca-io/bosca
+  repository: kubernetes-controller
+  tag: ""
+  pullPolicy: IfNotPresent
+
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+commonAnnotations: {}
+
+podSecurityContext: {}
+securityContext: {}
+
+service:
+  type: ClusterIP
+  port: 8082
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: "1"
+    memory: 512Mi
+
+appConfig:
+  domain: ""
+  realm: ""
+  databaseUrl: ""
+  natsHost: nats
+  redisHost: redis
+  redisPort: 6380
+  analyticsServerUrl: ""
+  jobQueueFactory: nats
+
+# Each entry renders one namespace-scoped JobProfile custom resource.
+# podTemplate is a native Kubernetes PodTemplateSpec, so tolerations, affinity,
+# topology spread constraints, runtime classes, volumes, and accelerator
+# resources pass through unchanged.
+jobProfiles: []
+#  - name: android
+#    namespace: bosca
+#    spec:
+#      maxParallelism: 4
+#      job:
+#        backoffLimit: 0
+#        ttlSecondsAfterFinished: 3600
+#        activeDeadlineSeconds: 7200
+#        startupFailureGraceSeconds: 120
+#      podTemplate:
+#        spec:
+#          serviceAccountName: bosca-ci
+#          restartPolicy: Never
+#          tolerations:
+#            - key: dedicated
+#              operator: Equal
+#              value: android-builds
+#              effect: NoSchedule
+#          containers:
+#            - name: worker
+#              image: ghcr.io/bosca-io/bosca/bosca-cli:latest
+#              args:
+#                - ci
+#                - agent
+#                - start
+#                - --ephemeral
+#              # The Secret supplies BOSCA_ENDPOINT. The CI dispatcher injects a
+#              # unique, expiring BOSCA_TOKEN plus the agent/job IDs per execution.
+#              envFrom:
+#                - secretRef:
+#                    name: bosca-ci-kubernetes
+#              resources:
+#                requests:
+#                  cpu: "4"
+#                  memory: 8Gi
+#                limits:
+#                  cpu: "8"
+#                  memory: 16Gi
+#  - name: recommendations-gpu
+#    spec:
+#      maxParallelism: 2
+#      job:
+#        backoffLimit: 0
+#        ttlSecondsAfterFinished: 3600
+#        activeDeadlineSeconds: 21600
+#        startupFailureGraceSeconds: 300
+#      podTemplate:
+#        spec:
+#          serviceAccountName: bosca-training
+#          restartPolicy: Never
+#          nodeSelector:
+#            accelerator: nvidia-l40s
+#          tolerations:
+#            - key: dedicated
+#              operator: Equal
+#              value: model-training
+#              effect: NoSchedule
+#          containers:
+#            - name: worker
+#              image: ghcr.io/bosca-io/bosca/recommendation-trainer:latest
+#              envFrom:
+#                - configMapRef:
+#                    name: server-v3-env
+#              resources:
+#                requests:
+#                  cpu: "4"
+#                  memory: 16Gi
+#                  nvidia.com/gpu: "1"
+#                limits:
+#                  cpu: "8"
+#                  memory: 32Gi
+#                  nvidia.com/gpu: "1"
+
+envFromConfigMaps:
+  - server-v3-env
+  - otel-env
+
+# Secrets — see templates/secret.yaml. Set create:false to consume an existing Secret.
+secrets:
+  database:
+    create: true
+    secretName: pg-creds-bosca-kubernetes-controller
+    usernameKey: username
+    passwordKey: password
+    username: ""
+    password: ""
+  nats:
+    create: true
+    secretName: nats
+    key: token
+    value: ""
+  jwt:
+    create: true
+    secretName: jwt
+    key: secret
+    value: ""
+  cfg:
+    create: true
+    secretName: cfg
+    key: secret
+    value: ""
+
+rbac:
+  create: true
+  # Broad cluster admin. The controller performs `helm install/upgrade/uninstall`
+  # of arbitrary charts, "apply manifest", and delete on workloads + supporting
+  # resources. A chart can introduce any resource type (CRDs, RBAC, gateway API,
+  # etc.), so an enumerated allowlist drifts the moment a new chart is installed.
+  # The real authorization boundary is the Bosca admin-group gate enforced at
+  # three layers (resolver, controller HTTP route, fabric8 caller).
+  rules:
+    - apiGroups: ["*"]
+      resources: ["*"]
+      verbs: ["*"]
+    - nonResourceURLs: ["*"]
+      verbs: ["*"]
+
+serviceMonitor:
+  enabled: false
+  interval: 30s
+  path: /metrics
+  port: http
+
+# Post-install hook: register the host cluster with bosca-server using the
+# pod's projected ServiceAccount token. Lets the studio talk to "this cluster"
+# right after install without manually pasting a kubeconfig.
+#
+# Requirements:
+#   - bosca-server is installed and reachable in the namespace.
+#   - The `initialization` Secret (bosca-server's bootstrap admin password)
+#     exists in the namespace. The chart defaults match bosca-server's defaults.
+#
+# The Job is idempotent on `name` — re-running after success is a no-op.
+autoRegister:
+  enabled: true
+  name: in-cluster
+  provider: in-cluster
+  region: ""
+  # PRODUCTION | STAGING | DEVELOPMENT — mutations against PRODUCTION
+  # surface an extra confirmation in the studio UI.
+  environment: DEVELOPMENT
+  # bosca-server endpoint. Empty → resolves to
+  # http://bosca-server.<release-namespace>.svc.cluster.local:8080.
+  # Override when bosca-server's release name is not the chart name.
+  serverUrl: ""
+  # Bootstrap admin credentials. Defaults match bosca-server's
+  # secrets.initialization defaults.
+  adminSecret:
+    name: initialization
+    key: admin_password
+    identifier: admin
+  image:
+    repository: alpine
+    tag: "3.20"
+    pullPolicy: IfNotPresent
+  # Retry budget for waiting on bosca-server + login. Total wait =
+  # retries * retryDelaySeconds; activeDeadlineSeconds = that + 120.
+  retries: 60
+  retryDelaySeconds: 5
+  # Helm hook ordering. Higher numbers run later. Stay above core
+  # bosca-server hooks but below anything that depends on a registered cluster.
+  hookWeight: "5"
+  # Cleanup window after success — the Job (and its pod logs) stick around
+  # this long before garbage collection so you can inspect a clean run.
+  ttlSecondsAfterFinished: 600
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+imagePullSecrets:
+  - name: docker-registry
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+global:
+  # Registry (and path) for every Bosca image; when set, it overrides image.registry.
+  imageRegistry: ""
+  domain: ""
+
+# Port of the management listener (bosca.server.management-port). It serves GET /api/v1/live on its own event loop,
+# so liveness keeps answering while request event loops are busy. Every /api/v1/live probe targets it; readiness
+# stays on `http` because it checks dependencies.
+managementPort: 9090

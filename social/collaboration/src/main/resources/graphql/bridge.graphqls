@@ -1,0 +1,99 @@
+"The external messaging platform a bridge binding targets"
+enum BridgePlatform {
+    "Slack via the Web API and Events API"
+    SLACK
+    "Microsoft Teams via the Bot Framework"
+    TEAMS
+}
+
+"A binding that links a Bosca chat channel to a channel on an external messaging platform for bidirectional message synchronization"
+type BridgeBinding {
+    "Unique identifier for this binding"
+    id: UUID!
+    "ID of the Bosca chat channel this binding mirrors"
+    channelId: UUID!
+    "External platform this binding delivers to and receives from"
+    platform: BridgePlatform!
+    "External channel identifier on the target platform (e.g. a Slack channel id)"
+    externalChannelId: String!
+    "External workspace identifier (e.g. Slack team id, Teams tenant id)"
+    workspaceId: String!
+    "Optional webhook URL used for outbound delivery when bot tokens are not configured"
+    webhookUrl: String
+    "Whether this binding is currently active and routing messages"
+    active: Boolean!
+    "Timestamp when this binding was created"
+    createdAt: DateTime
+}
+
+"Input for creating a new bridge binding between a Bosca channel and an external platform channel"
+input CreateBridgeBindingInput {
+    "ID of the Bosca chat channel to bridge"
+    channelId: UUID!
+    "External platform to bridge with"
+    platform: BridgePlatform!
+    "External channel identifier"
+    externalChannelId: String!
+    "External workspace identifier"
+    workspaceId: String!
+    "Optional webhook URL for outbound delivery"
+    webhookUrl: String
+    "Optional bot token used to authenticate API calls. Stored encrypted via the configuration service."
+    botToken: String
+}
+
+"A persistent mapping between an external messaging-platform user and a Bosca profile, used to attribute inbound bridged messages to the right local user instead of a placeholder sender"
+type BridgeIdentityMapping {
+    "Unique identifier for this mapping"
+    id: UUID!
+    "External platform this mapping applies to"
+    platform: BridgePlatform!
+    "External user identifier on the target platform (e.g. a Slack user id like U01234567)"
+    externalUserId: String!
+    "External workspace identifier (e.g. Slack team id)"
+    workspaceId: String!
+    "Bosca profile this external user is mapped to, or null when the mapping has been removed but the row is being preserved for audit"
+    profileId: UUID
+    "Display name as known on the external platform; rendered in the admin UI when the local profile lookup fails"
+    displayName: String!
+    "Email address recorded for the external user, when available"
+    email: String
+}
+
+"Input for creating or updating a bridge identity mapping"
+input MapBridgeIdentityInput {
+    "Platform the mapping applies to"
+    platform: BridgePlatform!
+    "External user identifier on the target platform"
+    externalUserId: String!
+    "External workspace identifier"
+    workspaceId: String!
+    "Display name as known on the external platform"
+    displayName: String!
+    "Optional email address recorded for the external user"
+    email: String
+    "Bosca profile id to attribute inbound messages to, or null to disconnect the external user from a profile"
+    profileId: UUID
+}
+
+"Root query type for bridge administration"
+type Bridge {
+    "Active bridge bindings for a chat channel"
+    bindings(channelId: UUID!): [BridgeBinding!]!
+    "All identity mappings recorded for a particular external workspace, ordered by display name"
+    identities(platform: BridgePlatform!, workspaceId: String!): [BridgeIdentityMapping!]!
+}
+
+"Mutation operations for managing bridge bindings to external messaging platforms"
+type BridgeMutation {
+    "Create a new bridge binding linking a Bosca channel to an external platform channel"
+    createBinding(input: CreateBridgeBindingInput!): BridgeBinding!
+    "Deactivate an existing bridge binding, halting message synchronization"
+    deactivateBinding(id: UUID!): Boolean!
+    "Set or rotate the encrypted bot token for a binding. Pass an empty string or null to clear it."
+    setBotToken(id: UUID!, token: String): Boolean!
+    "Create or update an identity mapping between an external platform user and a Bosca profile"
+    mapIdentity(input: MapBridgeIdentityInput!): BridgeIdentityMapping!
+    "Delete a previously recorded identity mapping. Inbound messages from the external user will fall back to the placeholder sender until re-mapped."
+    deleteIdentity(id: UUID!): Boolean!
+}

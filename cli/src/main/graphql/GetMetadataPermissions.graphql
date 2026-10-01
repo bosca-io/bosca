@@ -1,0 +1,9 @@
+query GetMetadataPermissions($id: UUID!) {
+    content {
+        metadata(id: $id) {
+            permissions {
+                ...Permission
+            }
+        }
+    }
+}

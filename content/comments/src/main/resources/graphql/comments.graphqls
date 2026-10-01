@@ -1,0 +1,88 @@
+"A comment on metadata content with support for threaded replies, likes, and moderation"
+type Comment {
+    "Unique identifier"
+    id: Long!
+    "The UUID of the metadata this comment belongs to"
+    metadataId: UUID
+    "The version of the metadata"
+    version: Int
+    "The profile that authored this comment"
+    profile: Profile
+    "When the comment was created"
+    created: DateTime!
+    "When the comment was last modified"
+    modified: DateTime!
+    "The current moderation status of the comment"
+    status: CommentStatus!
+    "The text content of the comment"
+    content: String!
+    "Custom user-facing attributes"
+    attributes: JSON
+    "Moderator-only system attributes"
+    systemAttributes: JSON
+    "Number of likes on this comment"
+    likes: Int!
+    "Whether the current user has liked this comment"
+    likedByMe: Boolean!
+    "Whether this comment is pinned to the top of its thread"
+    pinned: Boolean!
+    "The visibility scope of the comment; only PUBLIC comments are shown to non-authors once approved"
+    visibility: ProfileVisibility!
+    "Threaded replies to this comment, as a page with total count"
+    replies(limit: Int!, offset: Int!): Comments!
+}
+
+# CommentStatus is defined once in the always-loaded content schema
+# (comment-status.graphqls) and shared with the Work Ops comment types; this
+# module references it rather than redefining it.
+
+"A page of comments plus the total count."
+type Comments {
+    "The comments on this page, newest first."
+    comments: [Comment!]!
+    "Total number of comments visible to the caller."
+    count: Int!
+}
+
+"Input for creating a comment."
+input CommentInput {
+    "The text content of the comment"
+    content: String!
+    "Optional parent comment id for a threaded reply"
+    parentId: Long
+    "Custom attributes to attach to the comment"
+    attributes: JSON
+    "Moderator-only system attributes (managers only)"
+    systemAttributes: JSON
+    "Optional profile id to post as (managers only, for impersonation)"
+    impersonateId: UUID
+    "Optional; the server defaults a comment's visibility to the author's profile visibility."
+    visibility: ProfileVisibility
+}
+
+"""
+Comment operations for a metadata item (the value of `MetadataMutation.comments`).
+`setCommentStatus` is the approve/block moderation decision.
+"""
+type CommentsMutation {
+    "Add a comment. Starts in PENDING status and is moderated asynchronously."
+    addComment(comment: CommentInput!, metadataId: UUID!, metadataVersion: Int!): Comment!
+    "Like a comment. Returns the new likes count."
+    addCommentLike(commentId: Long!, metadataId: UUID!, metadataVersion: Int!): Int!
+    "Unlike a comment. Returns the new likes count."
+    deleteCommentLike(commentId: Long!, metadataId: UUID!, metadataVersion: Int!): Int!
+    "Soft-delete a comment. Managers/SA can delete any; a user can delete only their own."
+    deleteComment(commentId: Long!, metadataId: UUID!, metadataVersion: Int!): Boolean!
+    "Set the moderation status of a comment — the approve/block decision (requires MANAGE or SA)."
+    setCommentStatus(commentId: Long!, metadataId: UUID!, metadataVersion: Int!, status: CommentStatus!): Boolean!
+    "Pin or unpin a comment so it floats to the top of its thread (requires MANAGE or SA)."
+    setCommentPinned(commentId: Long!, metadataId: UUID!, metadataVersion: Int!, pinned: Boolean!): Boolean!
+    "Set a comment's visibility scope — e.g. PUBLIC so an approved comment is shown to everyone. Managers/SA may set any comment; a user may set their own."
+    setCommentVisibility(commentId: Long!, metadataId: UUID!, metadataVersion: Int!, visibility: ProfileVisibility!): Boolean!
+    "Replace all custom attributes on a comment (requires MANAGE)."
+    setCommentAttributes(commentId: Long!, metadataId: UUID!, metadataVersion: Int!, attributes: JSON!): Boolean!
+    "Replace all system attributes on a comment (requires MANAGE)."
+    setCommentSystemAttributes(commentId: Long!, metadataId: UUID!, metadataVersion: Int!, attributes: JSON!): Boolean!
+    "Merge system attributes into a comment (requires MANAGE)."
+    mergeCommentSystemAttributes(commentId: Long!, metadataId: UUID!, metadataVersion: Int!, attributes: JSON!): Boolean!
+}

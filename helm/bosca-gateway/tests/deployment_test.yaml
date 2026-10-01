@@ -1,0 +1,159 @@
+suite: bosca-gateway Deployment template
+release:
+  name: bosca-gateway
+tests:
+  - it: renders a Deployment by default
+    template: templates/deployment.yaml
+    asserts:
+      - isKind:
+          of: Deployment
+      - matchRegex:
+          path: metadata.name
+          pattern: "bosca-gateway$"
+
+  - it: pulls the gateway image from the GitHub Container Registry by default
+    template: templates/deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: "ghcr.io/bosca-io/bosca/bosca-gateway:0.1.0"
+
+  - it: pulls from global.imageRegistry when it is set
+    template: templates/deployment.yaml
+    set:
+      global.imageRegistry: mirror.example.com/bosca/
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: "mirror.example.com/bosca/bosca-gateway:0.1.0"
+
+  - it: fails clearly when no image registry is configured
+    template: templates/deployment.yaml
+    set:
+      image.registry: ""
+    asserts:
+      - failedTemplate:
+          errorMessage: "Set image.registry (or global.imageRegistry) to the registry that hosts Bosca images"
+
+  - it: applies pod-security defaults the operator must not weaken
+    template: templates/deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.securityContext.runAsNonRoot
+          value: true
+      - equal:
+          path: spec.template.spec.securityContext.runAsUser
+          value: 65534
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.allowPrivilegeEscalation
+          value: false
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.readOnlyRootFilesystem
+          value: true
+
+  - it: wires bosca-api-token (shared secret with bosca-server) from the Secret
+    template: templates/deployment.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: GATEWAY_BOSCA_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: bosca-gateway
+                key: bosca-api-token
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          any: true
+          content:
+            name: GATEWAY_OAUTH2_SECRET
+
+  - it: probes target the listener port
+    template: templates/deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.httpGet.path
+          value: /healthz
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.httpGet.path
+          value: /readyz
+
+  - it: passes --config flag explicitly
+    template: templates/deployment.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --config
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: /etc/gateway/config.toml
+
+  - it: includes a preStop sleep so LB deregistration completes before SIGTERM
+    template: templates/deployment.yaml
+    asserts:
+      - exists:
+          path: spec.template.spec.containers[0].lifecycle.preStop.exec.command
+
+  - it: omits replicas when autoscaling.enabled is true (default)
+    template: templates/deployment.yaml
+    asserts:
+      - notExists:
+          path: spec.replicas
+
+  - it: sets replicas when autoscaling is disabled
+    template: templates/deployment.yaml
+    set:
+      autoscaling:
+        enabled: false
+      replicaCount: 5
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 5
+
+  - it: uses an existing secret when secrets.existingSecret is set
+    template: templates/deployment.yaml
+    set:
+      secrets:
+        existingSecret: my-pre-provisioned-secret
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: GATEWAY_BOSCA_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: my-pre-provisioned-secret
+                key: bosca-api-token
+
+  - it: mounts the config from the ConfigMap and the cache PVC
+    template: templates/deployment.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: config
+            mountPath: /etc/gateway
+            readOnly: true
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: cache
+            mountPath: /var/lib/gateway
+
+  - it: cache volume is always emptyDir (stateless proxy)
+    template: templates/deployment.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: cache
+            emptyDir: {}
+
+  - it: includes imagePullSecrets so the private registry image can be pulled
+    template: templates/deployment.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.imagePullSecrets
+          content:
+            name: docker-registry

@@ -1,0 +1,32 @@
+mutation RegisterPushDevice($device: DeviceInput!) {
+    devices {
+        register(device: $device) {
+            id
+            installationId
+        }
+    }
+}
+
+mutation CheckInPushInstallation($installationId: String!) {
+    devices {
+        checkInInstallation(installationId: $installationId)
+    }
+}
+
+mutation ClearPushDevicePrincipal($id: UUID!) {
+    devices {
+        clearPrincipal(id: $id)
+    }
+}
+
+mutation AddDevicePushToken($id: UUID!, $provider: PushProvider!, $token: String!) {
+    devices {
+        addPushToken(id: $id, provider: $provider, token: $token)
+    }
+}
+
+mutation RemoveDevicePushToken($id: UUID!, $provider: PushProvider!, $token: String!) {
+    devices {
+        removePushToken(id: $id, provider: $provider, token: $token)
+    }
+}

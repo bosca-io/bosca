@@ -1,0 +1,9 @@
+query GetApiToken($id: Long!) {
+    security {
+        apiTokens {
+            token(id: $id) {
+                ...ApiTokenFragment
+            }
+        }
+    }
+}

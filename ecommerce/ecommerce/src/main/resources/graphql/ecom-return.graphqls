@@ -1,0 +1,79 @@
+"""
+A return / RMA lifecycle: REQUESTED → APPROVED → RECEIVED → REFUNDED; REJECTED is the admin off-ramp
+from REQUESTED/APPROVED. Restock + refund happen at the REFUNDED step (the cart's item-refund path).
+"""
+enum ReturnStatus { REQUESTED APPROVED RECEIVED REFUNDED REJECTED }
+
+extend type Ecom {
+    "A store's returns/RMAs, newest first. status null = all states. Admin."
+    returns(storeId: UUID!, status: ReturnStatus, offset: Int! = 0, limit: Int! = 50): [EcomReturn!]!
+    "The returns against an order (cart), newest first. Admin."
+    returnsByCart(cartId: UUID!): [EcomReturn!]!
+    "A single return by id. Admin. (Named ecomReturn — `return` is reserved.)"
+    ecomReturn(id: UUID!): EcomReturn
+}
+
+extend type EcomMutation {
+    "Return / RMA operations."
+    returns: ReturnsMutation!
+}
+
+"""A return/RMA against a paid order (the cart is the order)."""
+type EcomReturn {
+    id: UUID!
+    "The order (cart) this return is against."
+    cartId: UUID!
+    storeId: UUID!
+    companyId: UUID!
+    status: ReturnStatus!
+    "Why the buyer is returning; on rejection, the admin's reason."
+    reason: String
+    "How the refund is issued once REFUNDED."
+    tender: RefundTender!
+    "The order lines (and quantities) being returned."
+    lines: [EcomReturnLine!]!
+    "The amount refunded once REFUNDED (zero before that)."
+    refundedAmount: Money!
+    "A check number when the refund tender is CHECK."
+    checkNumber: String
+    created: DateTime!
+    modified: DateTime!
+}
+
+"""One returned order line: the cart item + quantity coming back."""
+type EcomReturnLine {
+    itemId: UUID!
+    catalogProductId: UUID!
+    quantity: Int!
+}
+
+"""The full return/RMA lifecycle. Admin."""
+type ReturnsMutation {
+    "Open a return request for an order's lines (REQUESTED)."
+    request(input: ReturnInput!): EcomReturn!
+    "Approve a requested return (REQUESTED → APPROVED)."
+    approve(id: UUID!): EcomReturn!
+    "Reject a return with a reason (REQUESTED/APPROVED → REJECTED)."
+    reject(id: UUID!, reason: String): EcomReturn!
+    "Mark the returned goods physically received (APPROVED → RECEIVED)."
+    receive(id: UUID!): EcomReturn!
+    "Restock the lines and issue the refund (RECEIVED → REFUNDED)."
+    refund(id: UUID!): EcomReturn!
+}
+
+"""Requests a return/RMA against a paid order."""
+input ReturnInput {
+    cartId: UUID!
+    reason: String
+    "How the eventual refund is issued. Defaults to the original payment method."
+    tender: RefundTender! = ORIGINAL
+    "A check number when tender is CHECK."
+    checkNumber: String
+    lines: [ReturnLineInput!]!
+}
+
+"""One requested return line: the order's cart item and the quantity coming back."""
+input ReturnLineInput {
+    itemId: UUID!
+    quantity: Int!
+}

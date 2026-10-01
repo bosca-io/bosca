@@ -1,0 +1,109 @@
+apiVersion: kubernetes.bosca.io/v1alpha1
+kind: JobProfile
+metadata:
+  name: {{ required "profile.name is required" .Values.profile.name | quote }}
+  labels:
+    {{- include "bosca-common.labels" . | nindent 4 }}
+spec:
+  maxParallelism: {{ .Values.profile.maxParallelism }}
+  workerContainerName: worker
+  job:
+    backoffLimit: {{ .Values.profile.job.backoffLimit }}
+    ttlSecondsAfterFinished: {{ .Values.profile.job.ttlSecondsAfterFinished }}
+    activeDeadlineSeconds: {{ .Values.profile.job.activeDeadlineSeconds }}
+    startupFailureGraceSeconds: {{ .Values.profile.job.startupFailureGraceSeconds }}
+  podTemplate:
+    metadata:
+      labels:
+        {{- include "bosca-common.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: recommendation-training
+    spec:
+      automountServiceAccountToken: false
+      restartPolicy: Never
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- include "bosca-common.podSecurityContext" . | nindent 8 }}
+      containers:
+        - name: worker
+          image: {{ include "bosca-common.boscaImage" (dict "image" (merge (dict "tag" (default .Chart.AppVersion .Values.image.tag)) .Values.image) "global" .Values.global) }}
+          imagePullPolicy: {{ include "bosca-common.imagePullPolicy" .Values.image }}
+          args:
+            - train
+            # Kubernetes expands $(VAR_NAME) references in container arguments.
+            # Pass connection settings as direct-CLI flags while keeping the
+            # secret-backed token out of the rendered manifest.
+            - --bosca-url
+            - $(BOSCA_URL)
+            {{- if .Values.secrets.boscaToken.enabled }}
+            - --bosca-token
+            - $(BOSCA_API_TOKEN)
+            {{- end }}
+            {{- range .Values.extraArgs }}
+            - {{ . | quote }}
+            {{- end }}
+          securityContext:
+            {{- include "bosca-common.securityContext" . | nindent 12 }}
+          envFrom:
+            {{- range .Values.envFromConfigMaps }}
+            - configMapRef:
+                name: {{ . }}
+            {{- end }}
+          env:
+            # BOSCA_URL/token: the trainer reads interaction + content data from Bosca's GraphQL API.
+            - name: BOSCA_URL
+              value: {{ .Values.boscaUrl | quote }}
+            {{- if .Values.secrets.boscaToken.enabled }}
+            - name: BOSCA_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.boscaToken.name }}
+                  key: {{ .Values.secrets.boscaToken.key }}
+            {{- end }}
+            # ARTIFACTS_*: the trainer pushes each trained model tarball to the artifacts server.
+            - name: ARTIFACTS_URL
+              value: {{ .Values.artifactsUrl | quote }}
+            - name: ARTIFACTS_NAMESPACE
+              value: {{ .Values.artifactsNamespace | default "model" | quote }}
+            {{- if .Values.secrets.artifactsToken.enabled }}
+            - name: ARTIFACTS_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.artifactsToken.name }}
+                  key: {{ .Values.secrets.artifactsToken.key }}
+            {{- end }}
+            {{- if .Values.secrets.artifactsPullToken.enabled }}
+            # Each ephemeral Job hydrates the latest model version before export so registry state, rather
+            # than an empty scratch volume, drives versioning and served-facet continuity checks.
+            - name: ARTIFACTS_PULL_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.artifactsPullToken.name }}
+                  key: {{ .Values.secrets.artifactsPullToken.key }}
+            {{- end }}
+            {{- range $k, $v := .Values.extraEnv }}
+            - name: {{ $k }}
+              value: {{ $v | quote }}
+            {{- end }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: scratch
+              mountPath: /models
+      volumes:
+        - name: scratch
+          emptyDir: {}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

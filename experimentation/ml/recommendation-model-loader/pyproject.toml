@@ -1,0 +1,27 @@
+[project]
+name = "bosca-recommendation-model-loader"
+version = "0.1.0"
+description = "Sidecar that polls Bosca's content storage for new trained recommendation model versions and downloads them to TF Serving's local model directory."
+requires-python = ">=3.12"
+dependencies = [
+    "requests>=2.31.0",
+]
+
+[project.scripts]
+recommendation-model-loader = "model_loader:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-cov>=5.0.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# Flat-module application (model_loader.py + bosca_storage.py + bosca_selection.py), run via the venv interpreter directly —
+# never built or installed as a wheel. Declaring it non-packaged stops `uv run`/`uv sync` from trying to
+# hatch-build it, which fails because there is no package dir named after the project.
+[tool.uv]
+package = false

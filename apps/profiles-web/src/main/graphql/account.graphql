@@ -1,0 +1,312 @@
+query Dashboard {
+  profiles {
+    current {
+      id
+      name
+      isPrimary
+      relationships { type }
+    }
+  }
+  security {
+    principals {
+      current {
+        verified
+        lastLogin
+      }
+    }
+  }
+  devices {
+    devices { id }
+  }
+}
+
+query ProfileDetails {
+  profiles {
+    attributeTypes {
+      all {
+        id
+        name
+        description
+        visibility
+        protected
+        formSchema {
+          id
+          key
+          schema
+          uiSchema
+        }
+      }
+    }
+    current {
+      id
+      name
+      slug
+      visibility
+      searchable
+      isPrimary
+      created
+      modified
+      attributes {
+        id
+        typeId
+        source
+        priority
+        attributes
+        confidence
+        visibility
+        expires
+        verified
+        verificationSource
+        type {
+          id
+          name
+          description
+          visibility
+          protected
+          formSchema {
+            id
+            key
+            schema
+            uiSchema
+          }
+        }
+      }
+    }
+  }
+}
+
+mutation EditProfile($id: UUID!, $profile: ProfileInput!) {
+  profiles {
+    edit(id: $id, profile: $profile) {
+      id
+      name
+      slug
+      visibility
+      searchable
+      modified
+    }
+  }
+}
+
+mutation SaveProfileAttribute($id: UUID!, $attributes: [ProfileAttributeInput!]!) {
+  profiles { addAttributes(id: $id, attributes: $attributes) }
+}
+
+mutation DeleteProfileAttribute($profileId: UUID!, $attributeId: UUID!) {
+  profiles { deleteAttribute(id: $profileId, attributeId: $attributeId) }
+}
+
+query Relationships {
+  profiles {
+    current {
+      id
+      name
+      isPrimary
+      relationships {
+        type
+        profile { id name slug }
+      }
+      incomingRelationshipRequests {
+        id
+        type
+        created
+        requester { id name slug }
+        target { id name slug }
+      }
+      outgoingRelationshipRequests {
+        id
+        type
+        created
+        requester { id name slug }
+        target { id name slug }
+      }
+    }
+  }
+}
+
+query SearchFriendProfiles($query: String!, $limit: Int!, $offset: Int!) {
+  search {
+    search(query: {
+      query: $query
+      filter: ["_type = \"profile\""]
+      storageSystemName: "Profile Search Index"
+      limit: $limit
+      offset: $offset
+    }) {
+      documents {
+        profile {
+          id
+          name
+          slug
+          attributes { typeId attributes }
+        }
+      }
+    }
+  }
+}
+
+mutation RequestFriendship($requesterId: UUID!, $targetId: UUID!) {
+  profiles {
+    requestRelationship(
+      requesterProfileId: $requesterId
+      targetProfileId: $targetId
+      type: "friend"
+    ) {
+      id
+      type
+      created
+      target { id name slug }
+    }
+  }
+}
+
+mutation ApproveRelationship($id: UUID!) {
+  profiles { approveRelationshipRequest(requestId: $id) { id status } }
+}
+
+mutation DeclineRelationship($id: UUID!) {
+  profiles { declineRelationshipRequest(requestId: $id) { id status } }
+}
+
+mutation CancelRelationship($id: UUID!) {
+  profiles { cancelRelationshipRequest(requestId: $id) { id status } }
+}
+
+mutation RemoveRelationship($sourceId: UUID!, $targetId: UUID!, $type: String!) {
+  profiles { removeRelationship(sourceProfileId: $sourceId, targetProfileId: $targetId, type: $type) }
+}
+
+query CommunicationPreferences {
+  communications {
+    notificationTypes {
+      key
+      name
+      description
+      optional
+      hidden
+      displayOrder
+    }
+    myNotificationPreferences {
+      channel
+      type
+      optedOut
+    }
+    myNotificationSettings {
+      timeZone
+      dndStartLocal
+      dndEndLocal
+    }
+  }
+}
+
+mutation UpdateCommunicationPreference($channel: DeliveryChannel!, $type: String!, $optedOut: Boolean!) {
+  communications {
+    updateMyNotificationPreference(channel: $channel, type: $type, optedOut: $optedOut) {
+      channel
+      type
+      optedOut
+    }
+  }
+}
+
+mutation UpdateQuietHours($timeZone: String, $start: String, $end: String) {
+  communications {
+    updateMyQuietHours(timeZone: $timeZone, dndStartLocal: $start, dndEndLocal: $end) {
+      timeZone
+      dndStartLocal
+      dndEndLocal
+    }
+  }
+}
+
+query RegisteredDevices {
+  devices {
+    devices {
+      id
+      platform
+      created
+      modified
+      lastCheckIn
+      pushTokens { provider }
+    }
+  }
+  security {
+    apiTokens {
+      my(limit: 100, offset: 0) {
+        id
+        name
+        description
+        tokenPrefix
+        scopes
+        expiresAt
+        lastUsedAt
+        lastUsedIp
+        revokedAt
+        active
+      }
+    }
+  }
+}
+
+mutation DeleteDevice($id: UUID!) {
+  devices { delete(id: $id) }
+}
+
+mutation RevokeApiToken($id: Long!) {
+  security { apiTokens { revoke(id: $id) } }
+}
+
+query AccountSecurity {
+  security {
+    thirdPartyProviders
+    principals {
+      current {
+        id
+        verified
+        created
+        lastLogin
+        credentials {
+          identifier
+          type
+          provider
+          originator
+          lastOriginator
+        }
+        loginHistory(limit: 25) {
+          id
+          method
+          revokedAt
+          current
+          created
+        }
+      }
+    }
+    passkeys {
+      current {
+        credentialId
+        name
+        createdAt
+        lastUsedAt
+        transports
+      }
+    }
+  }
+}
+
+query LoginProviders {
+  security {
+    thirdPartyProviders
+  }
+}
+
+mutation DeleteCredential($principalId: UUID!, $type: CredentialType!, $identifier: String!) {
+  security { deleteCredential(principalId: $principalId, type: $type, identifier: $identifier) }
+}
+
+mutation RevokeLogin($loginId: Long!) {
+  security { principal { revokeLogin(loginId: $loginId) } }
+}
+
+mutation DeletePasskey($credentialId: String!) {
+  security { passkeys { delete(credentialId: $credentialId) } }
+}

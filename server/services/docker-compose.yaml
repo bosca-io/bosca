@@ -1,0 +1,285 @@
+name: bosca-dependencies
+
+services:
+  nats:
+    image: nats
+    ports:
+      - "8222:8222"
+      - "6222:6222"
+      - "4222:4222"
+    volumes:
+      - ./nats/nats.config:/etc/nats/nats.config
+    command: [ "-c", "/etc/nats/nats.config" ]
+    networks:
+      - boscanet
+
+  meilisearch:
+    image: getmeili/meilisearch:v1.39.0
+    restart: always
+    ports:
+      - 7701:7700
+    environment:
+      MEILI_MASTER_KEY: p8JcB_HuMHRxN7uVXfrG2wU06b5k7oTvaAAYo6nsi9M
+      MEILI_EXPERIMENTAL_DUMPLESS_UPGRADE: true
+    volumes:
+      - bosca-meilisearch:/meili_data
+    networks:
+      - boscanet
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:7700/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  postgres:
+    # pgvector image (a superset of the official postgres image) so the recommender's V175 migration can
+    # `CREATE EXTENSION vector` locally, where `bosca` is a superuser. Prod (CloudNativePG) enables the
+    # extension via the operator (helm/bosca-infra Database.extensions), not this image.
+    image: pgvector/pgvector:pg18
+    restart: always
+    command: -c 'max_connections=400'
+    ports:
+      - '5433:5432'
+    volumes:
+      - bosca-postgres:/var/lib/postgresql
+    environment:
+      - POSTGRES_PASSWORD=bosca
+      - POSTGRES_USER=bosca
+      - POSTGRES_DB=bosca
+    healthcheck:
+      test: [ "CMD", "pg_isready", "-U", "bosca" ]
+      interval: 10s
+      retries: 5
+      start_period: 10s
+    networks:
+      - boscanet
+
+  postgres-warehouse:
+    image: postgres:18.1-alpine
+    restart: always
+    command: -c 'max_connections=400'
+    ports:
+      - '5434:5432'
+    volumes:
+      - bosca-postgres-warehouse:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_PASSWORD=bosca-warehouse
+      - POSTGRES_USER=bosca-warehouse
+      - POSTGRES_DB=bosca-warehouse
+    healthcheck:
+      test: [ "CMD", "pg_isready", "-U", "bosca-warehouse" ]
+      interval: 10s
+      retries: 5
+      start_period: 10s
+    networks:
+      - boscanet
+
+  s3proxy:
+    image: andrewgaul/s3proxy:3.0.0
+    ports:
+      - "8000:8000"
+    environment:
+      S3PROXY_AUTHORIZATION: aws-v2-or-v4
+      S3PROXY_IDENTITY: bosca-s3
+      S3PROXY_CREDENTIAL: bosca-s3
+      S3PROXY_ENDPOINT: http://0.0.0.0:8000
+      JCLOUDS_PROVIDER: filesystem-nio2
+      S3PROXY_IGNORE_UNKNOWN_HEADERS: true
+      JCLOUDS_FILESYSTEM_NIO2_BASEDIR: /tmp/s3proxy
+    networks:
+      - boscanet
+    volumes:
+      - ./s3proxy:/tmp/s3proxy
+
+  mc:
+    image: minio/mc:latest
+    depends_on:
+      - s3proxy
+    entrypoint: >
+      /bin/sh -c "
+      until (mc alias set s3proxy http://s3proxy:8000 bosca-s3 bosca-s3) do echo '...waiting...' && sleep 1; done;
+      mc mb -p s3proxy/warehouse;
+      mc mb -p s3proxy/storage;
+      tail -f /dev/null
+      "
+    networks:
+      - boscanet
+
+  trino:
+    image: trinodb/trino:479
+    ports:
+      - 8089:8089
+    depends_on:
+      - s3proxy
+    volumes:
+      - ./trino:/etc/trino
+    networks:
+      - boscanet
+
+  jaeger:
+    image: cr.jaegertracing.io/jaegertracing/jaeger:2.13.0
+    restart: always
+    ports:
+      - "16686:16686"
+      - "4317:4317"
+      - "4318:4318"
+      - "5778:5778"
+      - "9411:9411"
+    networks:
+      - boscanet
+
+  dragonfly:
+    image: 'docker.dragonflydb.io/dragonflydb/dragonfly'
+    ulimits:
+      memlock: -1
+    environment:
+      DFLY_cluster_mode: emulated
+      DFLY_lock_on_hashtags: true
+      DFLY_default_lua_flags: allow-undeclared-keys
+    ports:
+      - "6380:6379"
+    # For better performance, consider `host` mode instead `port` to avoid docker NAT.
+    # `host` mode is NOT currently supported in Swarm Mode.
+    # https://docs.docker.com/compose/compose-file/compose-file-v3/#network_mode
+    # network_mode: "host"
+    volumes:
+      - bosca-dragonflydata:/data
+    networks:
+      - boscanet
+
+  tf-serving:
+    image: tensorflow/serving:latest
+    restart: always
+    ports:
+      - "8501:8501"
+    volumes:
+      # Bind-mount a host dir (not a named volume) so the model-loader can run FROM SOURCE on the host
+      # (IntelliJ "Recommendation Model Loader") and write models TF Serving picks up. The published
+      # in-container loader (profile ml-published) writes here too.
+      - ./models:/models
+      - ./tf-serving/serve.sh:/serve.sh:ro
+    # serve.sh generates a model config listing only the recommender models that currently have a version,
+    # and regenerates it as models appear (tf-serving hot-reloads). This is required because tf-serving will
+    # NOT start while a configured model has zero versions — and the personalized model is empty until there
+    # are enough interactions to train it. See serve.sh for the full rationale.
+    entrypoint: ["/bin/bash", "/serve.sh"]
+    networks:
+      - boscanet
+
+  # The recommendation trainer + model-loader (source in experimentation/ml/recommendation-{trainer,
+  # model-loader}). In this source workspace they are normally run FROM SOURCE (IntelliJ run configs
+  # "Recommendation Trainer" / "Recommendation Model Loader"), so they are gated behind the `ml-published`
+  # profile and NOT started by default — that frees port 8090 for the source trainer and avoids two loaders
+  # writing the same models. To run the published images instead: `docker compose --profile ml-published up`.
+#  recommendation-trainer:
+#    image: ghcr.io/bosca-io/bosca/recommendation-trainer:5.12.15
+#    platform: linux/amd64
+#    profiles: ["ml-published"]
+#    restart: always
+#    ports:
+#      - "8090:8090"
+#    environment:
+#      - BOSCA_URL=http://bosca-server:8080
+#      - ARTIFACTS_URL=http://artifacts-server:8084
+#      - ARTIFACTS_NAMESPACE=model
+#      - ARTIFACTS_API_TOKEN=${ARTIFACTS_PUSH_TOKEN:-}
+#      - ARTIFACTS_PULL_API_TOKEN=${ARTIFACTS_PULL_TOKEN:-}
+#    networks:
+#      - boscanet
+#
+#  recommendation-model-loader:
+#    image: ghcr.io/bosca-io/bosca/recommendation-model-loader:5.12.15
+#    platform: linux/amd64
+#    profiles: ["ml-published"]
+#    restart: always
+#    volumes:
+#      - ./models:/models
+#    environment:
+#      - ARTIFACTS_URL=http://artifacts-server:8084
+#      - ARTIFACTS_NAMESPACE=model
+#      - ARTIFACTS_API_TOKEN=${ARTIFACTS_PULL_TOKEN:-}
+#      - CONTENT_MODEL_DIR=/models/recommender-content
+#      - PERSONALIZED_MODEL_DIR=/models/recommender-personalized
+#      - POLL_INTERVAL=60
+#    networks:
+#      - boscanet
+
+  # Local semantic-embedding server used by the content indexing pipeline. The public ONNX export avoids
+  # requiring an HF token, while matching the 768-dimensional EmbeddingGemma vectors stored by content.
+  # Port 8092 matches the Bosca Server/Runner IntelliJ run configurations.
+  text-embeddings-inference:
+    image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.8.1
+    # The pinned TEI image is amd64-only. Docker Desktop runs it under emulation on Apple Silicon.
+    platform: linux/amd64
+    restart: always
+    ports:
+      - "8092:80"
+    command:
+      - --model-id
+      - onnx-community/embeddinggemma-300m-ONNX
+      - --port
+      - "80"
+      - --dtype
+      - float32
+      - --pooling
+      - mean
+    volumes:
+      - bosca-tei-cache:/data
+    networks:
+      - boscanet
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:80/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5m
+
+  # Dedicated git hosting server (clone/push over smart HTTP) — the platform's
+  # only git transport; bosca-server serves no /git endpoint. Runs the published
+  # native image from ghcr.io: the Dockerfile in git/git-server only packages a CI-built
+  # binary, so there is nothing to build from source here. Port 8091 matches
+  # bosca-server's GIT_URL default (http://localhost:8091). Alternative without
+  # Docker: ./gradlew :git:git-server:run from the workspace root (same port).
+  # JWT / NATS token / s3 keys / Meilisearch key are omitted — the image's dev
+  # defaults already match this stack's services.
+  bosca-git-server:
+    image: ghcr.io/bosca-io/bosca/git-server:5.11.0
+    restart: always
+    ports:
+      - "8091:8091"
+    environment:
+      - GIT_HTTP_PORT=8091
+      - DATABASE_URL=jdbc:postgresql://postgres:5432/bosca
+      - DATABASE_USER=bosca
+      - DATABASE_PASSWORD=bosca
+      - NATS_HOST=nats:4222
+      - MEILISEARCH_URL=http://meilisearch:7700
+      - STORAGE_ENDPOINT=http://s3proxy:8000
+      - STORAGE_BUCKET=storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_started
+      s3proxy:
+        condition: service_started
+      meilisearch:
+        condition: service_healthy
+    networks:
+      - boscanet
+    profiles:
+      - git-server
+
+networks:
+  boscanet:
+
+volumes:
+  bosca-postgres:
+  bosca-postgres-warehouse:
+  bosca-postgresjobqueue:
+  bosca-ollama:
+  bosca-qdrant:
+  bosca-meilisearch:
+  bosca-meilisearch2:
+  bosca-dragonflydata:
+  bosca-tei-cache:

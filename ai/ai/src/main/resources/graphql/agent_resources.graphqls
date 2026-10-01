@@ -1,0 +1,104 @@
+"""
+A resource the Bosca MCP server can offer to MCP clients (MCP `resources` requests).
+Exactly one implementation variant is set (staticText, metadataId,
+documentMetadataId [+ documentVersion], contentMetadataId, scriptId, or
+graphqlOperation [+ transforms]); the application layer enforces the XOR.
+"""
+type AgentResource {
+    "Unique identifier for this resource"
+    id: UUID!
+    "Unique key used to reference this resource programmatically"
+    key: String!
+    "Display name for the resource"
+    name: String!
+    "Human-readable description of what this resource provides"
+    description: String!
+    "Optional JSON configuration for additional resource settings"
+    configuration: JSON
+    "Inline static content (staticText impl variant)."
+    staticText: String
+    "Metadata id whose object is returned as JSON (metadataId impl variant)."
+    metadataId: UUID
+    "Metadata id whose document body is returned (documentMetadataId impl variant)."
+    documentMetadataId: UUID
+    "Optional document version to return; defaults to the active version (paired with documentMetadataId)."
+    documentVersion: Int
+    "Metadata id whose file/blob content is returned (contentMetadataId impl variant)."
+    contentMetadataId: UUID
+    "Script id whose output is returned (scriptId impl variant)."
+    scriptId: UUID
+    "Pinned GraphQL operation text whose output is returned (graphqlOperation impl variant)."
+    graphqlOperation: String
+    "Optional JSONPath-style mapping of MCP arguments to the operation's GraphQL variables."
+    graphqlInputTransform: String
+    "Optional JSONPath-style mapping of the GraphQL response to the resource's output."
+    graphqlOutputTransform: String
+    "If set, the AGENT_PROJECT Git repository this resource is linked to."
+    gitRepositoryId: UUID
+    "If set, the path in the Git repository where this resource's `.md` file lives."
+    gitPath: String
+    "Last sync error message, if the most recent pull/push failed. `null` when sync succeeded."
+    lastSyncError: String
+}
+
+"Input for creating or updating an agent resource. Exactly one implementation variant should be set."
+input AgentResourceInput {
+    "Unique key used to reference this resource programmatically"
+    key: String!
+    "Display name for the resource"
+    name: String!
+    "Human-readable description of what this resource provides"
+    description: String!
+    "Optional JSON configuration for additional resource settings"
+    configuration: JSON
+    "Inline static content (staticText impl variant)."
+    staticText: String
+    "Metadata id whose object is returned as JSON (metadataId impl variant)."
+    metadataId: UUID
+    "Metadata id whose document body is returned (documentMetadataId impl variant)."
+    documentMetadataId: UUID
+    "Optional document version (paired with documentMetadataId)."
+    documentVersion: Int
+    "Metadata id whose file/blob content is returned (contentMetadataId impl variant)."
+    contentMetadataId: UUID
+    "Script id whose output is returned (scriptId impl variant)."
+    scriptId: UUID
+    "Pinned GraphQL operation text (graphqlOperation impl variant)."
+    graphqlOperation: String
+    "Optional JSONPath-style mapping of MCP arguments to the operation's GraphQL variables."
+    graphqlInputTransform: String
+    "Optional JSONPath-style mapping of the GraphQL response to the resource's output."
+    graphqlOutputTransform: String
+}
+
+"Query operations for listing and retrieving agent resources"
+type AgentResources {
+    "Retrieve all agent resources"
+    all: [AgentResource!]!
+    "Retrieve a specific agent resource by its unique ID"
+    resource(
+        "The unique identifier of the resource to retrieve"
+        id: UUID!
+    ): AgentResource
+}
+
+"Mutation operations for managing agent resources"
+type AgentResourcesMutation {
+    "Create a new agent resource definition"
+    add(
+        "The resource definition to create"
+        resource: AgentResourceInput!
+    ): AgentResource
+    "Update an existing agent resource definition"
+    edit(
+        "The unique identifier of the resource to update"
+        id: UUID!
+        "The updated resource definition"
+        resource: AgentResourceInput!
+    ): AgentResource
+    "Delete an agent resource by its ID. Returns true if the resource was deleted."
+    delete(
+        "The unique identifier of the resource to delete"
+        id: UUID!
+    ): Boolean!
+}

@@ -1,0 +1,20 @@
+{# The site root: where a caller lands without a token. The real entrances are the /preferences
+   and /unsubscribe links minted into notification email footers (each carries the recipient's
+   token). Also the deployment's health-probe target. #}
+<page route="/">
+  <script server provides="branding">
+    bosca.notifications.web.branding()
+  </script>
+
+  <site-layout title="Notification preferences" :brand="branding.name" :logo="branding.logoUrl" :footer="branding.footerText">
+    <main class="wrap">
+      <div class="card">
+        <h1>Notification preferences</h1>
+        <p class="sub">This is where the links in the footer of { branding.name } email land. To manage
+        what you receive — or to unsubscribe — open any email we've sent you and use its
+        "Manage preferences" or "Unsubscribe" link. Those links carry your personal access
+        token, so no sign-in is needed.</p>
+      </div>
+    </main>
+  </site-layout>
+</page>

@@ -1,0 +1,82 @@
+"External sync binding for a localization project"
+type LocalizationSyncState {
+    "Unique identifier"
+    id: UUID!
+    "The project this sync state belongs to"
+    projectId: UUID!
+    "Sync provider identifier (e.g. 'crowdin')"
+    provider: String!
+    "Provider-specific external project identifier"
+    externalId: String
+    "Timestamp of the most recent sync operation, null if never synced"
+    lastSynced: DateTime
+    "Provider-specific configuration (organization slugs, file mappings). Never store secrets here — this field is readable by anyone with VIEW access."
+    syncConfig: JSON
+    "Free-form JSON attributes"
+    attributes: JSON
+}
+
+"Input for configuring a sync provider binding"
+input LocalizationSyncConfigInput {
+    "The project the binding applies to"
+    projectId: UUID!
+    "Sync provider identifier"
+    provider: String
+    "Provider-specific external project identifier"
+    externalId: String
+    "Provider-specific configuration blob"
+    syncConfig: JSON
+}
+
+"Summary of a sync operation against an external provider"
+type SyncResult {
+    "Source strings added to the provider during this sync"
+    stringsAdded: Int!
+    "Source strings updated on the provider during this sync"
+    stringsUpdated: Int!
+    "Translations added in Bosca during this sync"
+    translationsAdded: Int!
+    "Translations updated in Bosca during this sync"
+    translationsUpdated: Int!
+    "Human-readable error messages for items that could not be synchronized"
+    errors: [String!]!
+}
+
+"Target file format for translation export"
+enum ExportFormat {
+    "Android / Compose Multiplatform strings.xml"
+    ANDROID_XML
+    "iOS .strings file"
+    IOS_STRINGS
+    "iOS .stringsdict plist for plural forms"
+    IOS_STRINGSDICT
+    "Nuxt @nuxtjs/i18n nested JSON"
+    JSON_I18N
+    "Flat {key: value} JSON"
+    JSON_FLAT
+    "Nested JSON with dot-separated keys expanded"
+    JSON_NESTED
+    "Flutter Application Resource Bundle"
+    ARB
+    "XLIFF 1.2 for CAT tool interoperability"
+    XLIFF
+}
+
+"Rendered export payload ready to be written to disk or streamed to the browser"
+type ExportResult {
+    "Serialized export body"
+    content: String!
+    "MIME type appropriate for the format"
+    contentType: String!
+    "Default filename (may include path segments, e.g. 'values-es/strings.xml')"
+    fileName: String!
+}
+
+"Input for an export operation"
+input ExportRequestInput {
+    projectId: UUID!
+    languageTag: String!
+    format: ExportFormat!
+    "Which translation states to include; defaults to [PUBLISHED] when omitted"
+    statesFilter: [TranslationState!]
+}

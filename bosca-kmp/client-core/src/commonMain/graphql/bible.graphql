@@ -1,0 +1,107 @@
+fragment BibleChapterContent on BibleChapter {
+    reference {
+        usfm
+        human
+        humanShort
+    }
+    component
+}
+
+fragment BibleChapterInfo on BibleChapter {
+    reference {
+        usfm
+        human
+        humanShort
+    }
+}
+
+fragment BibleBookInfo on BibleBook {
+    nameShort
+    nameLong
+    abbreviation
+    reference {
+        usfm
+        human
+        humanShort
+    }
+    chapters {
+        ...BibleChapterInfo
+    }
+}
+
+fragment BibleInfo on Bible {
+    systemId
+    name
+    nameLocal
+    description
+    abbreviation
+    abbreviationLocal
+    styles
+    variant
+    defaultVariant
+    languages {
+        iso
+        name
+        nameLocal
+        script
+        scriptCode
+        scriptDirection
+    }
+}
+
+query GetBibleMetadata($id: UUID!, $version: Int, $variant: String) {
+    content {
+        metadata(id: $id, version: $version) {
+            id
+            name
+            version
+            bible(variant: $variant) {
+                ...BibleInfo
+                books {
+                    ...BibleBookInfo
+                }
+            }
+        }
+    }
+}
+
+query GetBibleChapter($id: UUID!, $version: Int, $variant: String, $usfm: String!) {
+    content {
+        metadata(id: $id, version: $version) {
+            bible(variant: $variant) {
+                chapter(usfm: $usfm) {
+                    ...BibleChapterContent
+                }
+            }
+        }
+    }
+}
+
+query FindBibleVerse($id: UUID!, $name: String!) {
+    content {
+        metadata(id: $id) {
+            bible {
+                find(human: $name) {
+                    reference {
+                        human
+                        usfm
+                    }
+                    chapter {
+                        reference {
+                            usfm
+                            human
+                            humanShort
+                        }
+                    }
+                    book {
+                        reference {
+                            human
+                            usfm
+                        }
+                    }
+                    component
+                }
+            }
+        }
+    }
+}

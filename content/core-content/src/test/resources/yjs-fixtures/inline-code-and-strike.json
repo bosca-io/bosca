@@ -1,0 +1,40 @@
+{
+  "type": "doc",
+  "content": [
+    {
+      "type": "paragraph",
+      "content": [
+        {
+          "type": "text",
+          "text": "try "
+        },
+        {
+          "type": "text",
+          "text": "foo()",
+          "marks": [
+            {
+              "type": "code"
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "text": ". Old "
+        },
+        {
+          "type": "text",
+          "text": "content",
+          "marks": [
+            {
+              "type": "strike"
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "text": " is gone."
+        }
+      ]
+    }
+  ]
+}

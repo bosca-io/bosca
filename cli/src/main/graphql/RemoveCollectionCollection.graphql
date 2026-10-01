@@ -1,0 +1,9 @@
+mutation RemoveCollectionCollection($collectionId: UUID!, $id: UUID!) {
+    content {
+        collection {
+            removeChildCollection(id: $collectionId, collectionId: $id) {
+                id
+            }
+        }
+    }
+}

@@ -1,0 +1,28 @@
+fragment CollectionTemplate on CollectionTemplate {
+  configuration
+  defaultAttributes
+  filters {
+    filters {
+      name
+      filter
+    }
+  }
+  ordering {
+    ...Ordering
+  }
+  attributes {
+    key
+    name
+    description
+    type
+    supplementaryKey
+    ui
+    list
+    location
+    configuration
+    workflows {
+      autoRun
+    }
+  }
+}
+

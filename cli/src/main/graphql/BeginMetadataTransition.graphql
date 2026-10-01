@@ -1,0 +1,5 @@
+mutation BeginMetadataTransition($id: UUID!, $version: Int!, $state: String!, $stateValid: DateTime, $status: String!, $restart: Boolean!) {
+    transitions {
+        beginTransition(request: {metadataId: $id, version: $version, stateId: $state, stateValid: $stateValid, status: $status, restart: $restart})
+    }
+}

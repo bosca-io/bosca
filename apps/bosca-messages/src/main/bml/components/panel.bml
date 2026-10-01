@@ -1,0 +1,30 @@
+{# The resolved content box inside the card: a soft gray surface (#f9fafb) with a hairline
+   border. `accent` adds the green left rule that marks the entries needing attention
+   (security-alert) apart from everyday informational panels. #}
+<component tag="panel">
+  <prop name="accent" type="Boolean" default="false"/>
+  <prop name="accentColor" type="String" default="#047a52"/>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+    <tr>
+      <td style="padding:2px 0 0;">
+        <if accent>
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f9fafb;border:1px solid #e5e8ee;border-left:3px solid { accentColor };border-radius:10px;">
+            <tr>
+              <td style="padding:20px 22px 22px;">
+                <slot/>
+              </td>
+            </tr>
+          </table>
+        <else>
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f9fafb;border:1px solid #e5e8ee;border-radius:10px;">
+            <tr>
+              <td style="padding:20px 22px 22px;">
+                <slot/>
+              </td>
+            </tr>
+          </table>
+        </if>
+      </td>
+    </tr>
+  </table>
+</component>

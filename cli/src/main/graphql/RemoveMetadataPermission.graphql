@@ -1,0 +1,10 @@
+mutation RemoveMetadataPermission($permission: PermissionInput!) {
+    content {
+        metadata {
+            deletePermission(permission: $permission) {
+                groupId
+                action
+            }
+        }
+    }
+}

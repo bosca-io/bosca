@@ -1,0 +1,49 @@
+"""
+Binds a stored script to analytics events so every event batch flows through the script inline in
+the processor's transform chain, bypassing the durable pipeline run machinery (and its bookkeeping).
+The script receives the whole batch and filters it itself — there is no event-type routing.
+"""
+type AnalyticsScriptBinding {
+    "Unique identifier for this binding"
+    id: UUID!
+    "The scripting-module script this binding runs over every batch"
+    scriptId: UUID!
+    "When true the script's returned batch replaces the events flowing through (pass through / filter); when false the script runs for side effects only and its output is ignored"
+    transform: Boolean!
+    "When false the binding is skipped entirely"
+    enabled: Boolean!
+    "Execution order; lower ordinals run first and (for transforms) their output feeds higher ordinals"
+    ordinal: Int!
+    "Row creation timestamp"
+    created: DateTime!
+    "Row last-modified timestamp"
+    modified: DateTime!
+}
+
+"Query operations for analytics script bindings."
+type AnalyticsScriptBindings {
+    "All bindings (enabled and disabled), in execution order"
+    all: [AnalyticsScriptBinding!]!
+    "A single binding by id, or null if none exists"
+    binding(id: UUID!): AnalyticsScriptBinding
+}
+
+"Mutation operations for analytics script bindings."
+type AnalyticsScriptBindingsMutation {
+    "Bind a script to run over every analytics event batch (transform defaults to true — the script's output replaces the batch)"
+    add(scriptId: UUID!, transform: Boolean, enabled: Boolean, ordinal: Int): AnalyticsScriptBinding!
+    "Replace the mutable fields of an existing binding"
+    update(id: UUID!, scriptId: UUID!, transform: Boolean, enabled: Boolean, ordinal: Int): AnalyticsScriptBinding!
+    "Delete a binding by id"
+    delete(id: UUID!): Boolean!
+}
+
+extend type Analytics {
+    "Access analytics script bindings (scripts that run inline over analytics events)"
+    scriptBindings: AnalyticsScriptBindings!
+}
+
+extend type AnalyticsMutation {
+    "Access mutation operations for analytics script bindings"
+    scriptBindings: AnalyticsScriptBindingsMutation!
+}

@@ -1,0 +1,357 @@
+bosca:
+  server:
+    port: ${BOSCA_SERVER_PORT:8080}
+    development: ${BOSCA_DEVELOPMENT:true}
+    compression-enabled: ${BOSCA_SERVER_COMPRESSION_ENABLED:true}
+
+cors:
+  allowAnyHost: "$CORS_ALLOW_ANY_HOST:true"
+  allowCredentials: "$CORS_ALLOW_CREDENTIALS:true"
+  anyMethod: "$CORS_ANY_METHOD:true"
+  maxAgeSeconds: "$CORS_MAX_AGE_SECONDS:86400"
+  allowedHeaders:
+    - X-BA-Session-ID
+    - X-Installation-ID
+    - X-App-ID
+    - X-App-Version
+    - Content-Type
+    - Content-Length
+    - Content-Range
+    - Content-Disposition
+    - Authorization
+    - Cookie
+
+jwt:
+  domain: "$JWT_DOMAIN:localhost"
+  admin-domain: "$JWT_ADMIN_DOMAIN:localhost"
+  audience: "$JWT_AUDIENCE:Bosca"
+  realm: "$JWT_REALM:Bosca"
+  issuer: "$JWT_ISSUER:Bosca"
+  secret: "$JWT_SECRET:c534b2595b38f5d9cb33f8cd05996c95"
+  cookie-secure: ${JWT_COOKIE_SECURE:false}
+  expiration-time: ${JWT_EXPIRATION_TIME:2592000}
+  # Additional host-only auth cookie prefixes. `_bat` is always available and must not be listed.
+  # Example: [{ prefix: _bat_preview, domains: [preview.example.com] }]
+  cookie-prefixes: []
+
+security:
+  autoVerify: ${SECURITY_AUTO_VERIFY:false}
+  encryption:
+    key: "$SECURITY_ENCRYPTION_KEY:changeme"
+
+introspection:
+  enabled: ${INTROSPECTION_ENABLED:true}
+
+mcp:
+  enabled: ${MCP_ENABLED:true}
+
+content:
+  storage:
+    type: "$STORAGE_TYPE:s3"
+    bucket: "$STORAGE_BUCKET:storage"
+    urlUploadPrefix: "$STORAGE_URL_UPLOAD_PREFIX:http://localhost:8080"
+    forcePathStyle: ${STORAGE_FORCE_PATH_STYLE:true}
+    region: "$STORAGE_REGION:us-east-1"
+    urlPrefix: "$STORAGE_URL_PREFIX:http://localhost:8080"
+    endpoint: "$STORAGE_ENDPOINT:http://localhost:8000"
+    accessKeyId: "$STORAGE_ACCESS_KEY_ID:bosca-s3"
+    accessKeySecret: "$STORAGE_ACCESS_KEY_SECRET:bosca-s3"
+  urlSigner:
+    secretKey: "$STORAGE_URL_SIGNER_SECRET_KEY:10df7d451e8365cd6a8d43d408a25c82"
+  index:
+    batchSize: ${CONTENT_INDEX_BATCH_SIZE:100}
+    excludeTypes:
+      - Study Step
+      - Daily Day
+      - OBS Step
+      - Banner
+      - Standalone Page
+    excludeContentTypePrefix:
+      - image/
+      - application/
+  images:
+    resizer:
+      url: "$IMAGE_RESIZER_URL:http://localhost:8003"
+      sizes:
+        - name: thumbnail
+          ratio: 25
+          size:
+            height: 270
+            width: 480
+        - name: small
+          ratio: 50
+          size:
+            height: 540
+            width: 960
+        - name: medium
+          ratio: 75
+          size:
+            height: 810
+            width: 1440
+        - name: large
+          ratio: 100
+          size:
+            height: 1080
+            width: 1920
+        - name: thumbnail-original
+          ratio: 25
+        - name: small-original
+          ratio: 50
+        - name: medium-original
+          ratio: 75
+        - name: large-original
+          ratio: 100
+
+database:
+  migrations:
+    - core-migrations
+    - scheduler-migrations
+  postgres:
+    url: "$DATABASE_URL:jdbc:postgresql://localhost:5433/bosca"
+    user: "$DATABASE_USER:bosca"
+    password: "$DATABASE_PASSWORD:bosca"
+  trino-admin:
+    url: "$TRINO_DATABASE_URL:jdbc:trino://localhost:8089"
+    user: "$TRINO_DATABASE_USER:admin"
+    password: "$TRINO_DATABASE_PASSWORD:"
+    driverClassName: "io.trino.jdbc.TrinoDriver"
+  trino-readonly:
+    url: "$TRINO_DATABASE_URL:jdbc:trino://localhost:8089"
+    user: "$TRINO_DATABASE_READONLY_USER:rouser"
+    password: "$TRINO_DATABASE_READONLY_PASSWORD:"
+    driverClassName: "io.trino.jdbc.TrinoDriver"
+
+initialization:
+  password:
+    admin: "$INIT_ADMIN_PASSWORD:password"
+    sa: "$INIT_SA_PASSWORD:sa-password"
+
+community:
+  enabled: ${COMMUNITY_ENABLED:true}
+
+# Comments (metadata comments, threaded replies, likes, the moderation status
+# workflow, and async auto-moderation). Set COMMENTS_ENABLED=false to drop the
+# comments schema, providers, and GraphQL surface from the server.
+comments:
+  enabled: ${COMMENTS_ENABLED:true}
+
+# Chat + collaboration both depend on NATS (JetStream-backed message store
+# for chat, NATS pub/sub for collaboration's federation listener and
+# dispatch event bus). Set to false in deployments without NATS in their
+# cluster to opt the entire family out — schema, providers, routes, and
+# all.
+chat:
+  enabled: "${CHAT_ENABLED:true}"
+
+workops:
+  enabled: "${WORKOPS_ENABLED:true}"
+
+# Ecommerce (companies, catalogs, products, carts, payments, subscriptions,
+# fulfillment, the ecom queue runner and scheduled jobs). Defaults off; set
+# ECOMMERCE_ENABLED=true in deployments that sell to pull in the ecom schema,
+# providers, GraphQL surface, migrations, and the ecomQueueRunner.
+ecommerce:
+  enabled: "${ECOMMERCE_ENABLED:true}"
+
+# Semantic content embeddings for the recommender. Off unless the text-embeddings-inference sidecar (and its
+# gated EmbeddingGemma model) is deployed; the embedding is computed in bosca-runner at index time. The URL
+# defaults to the in-cluster sidecar service.
+embedding:
+  enabled: "${EMBEDDINGS_ENABLED:false}"
+  url: "${BOSCA_EMBEDDINGS_URL:http://text-embeddings-inference:80}"
+
+# TensorFlow Serving endpoint for recommendation models; the default matches the code default.
+recommendations:
+  tfServing:
+    url: "$RECOMMENDATIONS_TF_SERVING_URL:http://tf-serving:8501"
+
+kubernetes:
+  enabled: "${KUBERNETES_ENABLED:false}"
+
+# Gateway proxies authenticated HTTP traffic to upstream services.
+# Defaults to true; set GATEWAY_ENABLED=false to drop the module
+# (its schema, providers, REST config route, and DB migrations) from
+# a deployment that doesn't use it.
+#
+# proxy.sharedToken: bearer token the Rust proxy presents to read its
+# routing topology from /api/v1/gateway/config. This is a read-only
+# capability scoped to that one endpoint — it cannot mutate gateways,
+# routes, or grants and is not a general principal. The dev default
+# matches gateway/proxy/config.dev.toml; prod deployments must override
+# GATEWAY_PROXY_SHARED_TOKEN with a real secret rendered into the
+# proxy's config by the same orchestration layer.
+gateway:
+  enabled: "${GATEWAY_ENABLED:true}"
+  proxy:
+    sharedToken: "${GATEWAY_PROXY_SHARED_TOKEN:dev-gateway-proxy-shared-token-not-for-prod}"
+
+redis:
+  host: "$REDIS_HOST:localhost"
+  port: ${REDIS_PORT:6380}
+  database: ${REDIS_DATABASE:0}
+  namespace: "$REDIS_NAMESPACE:"
+
+nats:
+  url: "$NATS_HOST:localhost:4222"
+  token: "$NATS_TOKEN:OAVKZTG7ST62YCPUJYJ6LBQDMKLAUD4NRBPZ4GXUXNUJW2ATCFKKYGHV"
+  username: "$NATS_USERNAME:"
+  password: "$NATS_PASSWORD:"
+
+natsMonitoring:
+  monitoringUrl: "$NATS_MONITORING_URL:http://localhost:8222"
+
+cache:
+  type: "$CACHE_TYPE:nats"
+
+experimentation:
+  eventsTable: "$EXPERIMENTATION_EVENTS_TABLE:warehouse.bosca.events"
+  assignmentsTable: "$EXPERIMENTATION_ASSIGNMENTS_TABLE:bosca.experimentation.assignments"
+  postgresCatalog: "$EXPERIMENTATION_POSTGRES_CATALOG:bosca"
+
+# Git hosting (clone/push) is the dedicated git-server's job — run it locally with
+# `./gradlew :git:git-server:run` (port 8091). bosca-server only browses/commits
+# repositories through its services and builds clone URLs from `git.url`.
+git:
+  url: "${GIT_URL:http://localhost:8091}"
+  ci:
+    # Comma-separated JobProfile names. Blank preserves ordinary polling agents.
+    kubernetesJobProfiles: "$CI_KUBERNETES_JOB_PROFILES:"
+  # Local dev listens so a server-only setup still pulls git-synced entities
+  # (agents, pipelines, scripts, analytics queries). Production disables this —
+  # the runner owns it.
+  sync:
+    listeners: ${GIT_SYNC_LISTENERS:true}
+
+jobQueue:
+  processExpiredJobs: true
+  factory: "$JOB_QUEUE_FACTORY:nats"
+
+pubsub:
+  type: "$PUBSUB_TYPE:nats"
+
+distributedLock:
+  type: "$DISTRIBUTED_LOCK_TYPE:nats"
+
+mailer:
+  type: "$MAILER_TYPE:sendgrid"
+  from:
+    name: "$MAILER_FROM_NAME:Bosca"
+    email: "$MAILER_FROM_EMAIL:noreply@example.com"
+  # Public pages minted unsubscribe tokens are appended to (?token=...) for BML email
+  # renders; blank disables unsubscribe-link minting.
+  unsubscribeUrl: "$MAILER_UNSUBSCRIBE_URL:"
+  preferencesUrl: "$MAILER_PREFERENCES_URL:"
+
+# Public origin of the Studio web app. Auth email links (verify, reset password, account-link)
+# route back to the host the user came from when it is listed in `allowed-origins` (multi-host);
+# `url` is the fallback used when the host is unknown or not allow-listed.
+app:
+  url: "$APP_URL:http://localhost:3000"
+  # Blank falls back to `app.url`; set this to the account-security page used by alert emails.
+  security-alert-url: "$SECURITY_ALERT_URL:"
+  # Blank falls back to `${app.url}/welcome`; set WELCOME_EMAIL_URL for another onboarding entry.
+  welcome-url: "$WELCOME_EMAIL_URL:"
+  allowed-origins:
+    - "$APP_ALLOWED_ORIGIN:http://localhost:3000"
+
+# Passkey ceremonies accept https://<jwt.domain> and https://<jwt.admin-domain>. WEBAUTHN_EXTRA_ORIGIN adds
+# one more origin, such as a Studio host on a subdomain of jwt.domain; unset leaves the defaults unchanged.
+webauthn:
+  extraOrigins:
+    - "$WEBAUTHN_EXTRA_ORIGIN:"
+
+meilisearch:
+  url: "$MEILISEARCH_URL:http://localhost:7701"
+  apiKey: "$MEILISEARCH_API_KEY:p8JcB_HuMHRxN7uVXfrG2wU06b5k7oTvaAAYo6nsi9M"
+  indexPrefix: "$MEILISEARCH_INDEX_PREFIX:"
+
+oauth2:
+  providers:
+    - type: google
+      clientId: ${GOOGLE_CLIENT_ID:}
+      clientSecret: ${GOOGLE_CLIENT_SECRET:}
+      callback: "$OAUTH2_GOOGLE_REDIRECT:http://localhost:8080/oauth2/google/callback"
+      adminCallback: "$OAUTH2_GOOGLE_ADMIN_REDIRECT:http://localhost:8080/oauth2/google/callback"
+      authorizeUrl: https://accounts.google.com/o/oauth2/auth
+      accessTokenUrl: https://accounts.google.com/o/oauth2/token
+      userInfoUrl: https://www.googleapis.com/oauth2/v1/userinfo
+      scopes:
+        - https://www.googleapis.com/auth/userinfo.profile
+        - https://www.googleapis.com/auth/userinfo.email
+      enabled: true
+    - type: facebook
+      clientId: ${FACEBOOK_CLIENT_ID:}
+      clientSecret: ${FACEBOOK_CLIENT_SECRET:}
+      callback: "$OAUTH2_FACEBOOK_REDIRECT:http://localhost:8080/oauth2/facebook/callback"
+      adminCallback: "$OAUTH2_FACEBOOK_ADMIN_REDIRECT:http://localhost:8080/oauth2/facebook/callback"
+      authorizeUrl: https://www.facebook.com/v19.0/dialog/oauth
+      accessTokenUrl: https://graph.facebook.com/v19.0/oauth/access_token
+      userInfoUrl: https://graph.facebook.com/me
+      scopes:
+        - public_profile
+        - email
+      enabled: false
+  redirects:
+    - "$OAUTH2_ALLOWED_REDIRECT:http://localhost:8080"
+    - "http://localhost:3000"
+
+packages: [core, security-initial, profiles, languages, messages-localization, search-index, root-collection-installer, bible, community-ai, ai, kit, docs, maintenance, hubspot, feeds, recommendations, default-embedding-pipeline, default-git-email-pipelines, default-transactional-email-pipelines, default-social-notification-pipelines]
+
+runners:
+  enabled:
+    - indexQueueRunner
+    - messagesJobQueueRunner
+    - contentQueueRunner
+    - profileQueueRunner
+    - communityRunner
+    - commonQueueRunner
+    - gitQueueRunner
+    - workopsQueueRunner
+    - analyticsQueueRunner
+    - scriptingQueueRunner
+    - backupQueueRunner
+    - segmentationQueueRunner
+    - experimentationQueueRunner
+    - formsJobQueueRunner
+    - pipelinesQueueRunner
+    - feedsQueueRunner
+    - ecomQueueRunner
+    - recommendationsQueueRunner
+
+google:
+  tts:
+    account: "$GOOGLE_TTS_ACCOUNT:"
+  genai:
+    account: "$GOOGLE_TTS_ACCOUNT:"
+    vertexai:
+      enabled: true
+
+koog:
+#  anthropic: {}
+#  google: {}
+#  openrouter: {}
+#  deepseek: {}
+  openai:
+    apikey: "$OPENAI_API_KEY:changeme"
+
+timeout: {}
+
+scripting:
+  executionTimeoutSeconds: ${SCRIPTING_EXECUTION_TIMEOUT_SECONDS:600}
+
+scheduler:
+  enabled: ${SCHEDULER_ENABLED:true}
+
+localization:
+  messages:
+    project: ${LOCALIZATION_MESSAGES_PROJECT:Bosca}
+  crowdin:
+    token: "$CROWDIN_API_TOKEN:"
+    organizationDomain: "$CROWDIN_ORG_DOMAIN:"
+
+analyticsServer:
+  appId: "$ANALYTICS_APP_ID:bosca-server"
+  url: "$ANALYTICS_SERVER_URL:http://localhost:8081"
+
+analyticsProcessor:
+  enabled: "${ANALYTICS_PROCESSOR_ENABLED:false}"

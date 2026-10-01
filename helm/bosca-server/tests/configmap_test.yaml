@@ -1,0 +1,249 @@
+suite: bosca-server application.yaml configmap
+templates:
+  - templates/configmap-appconfig.yaml
+values:
+  - ../values.yaml
+set:
+  global:
+    domain: example.com
+  appConfig:
+    domain: example.com
+    databaseUrl: "jdbc:postgresql://postgres-bosca-rw:5432/bosca"
+    natsHost: nats
+    meilisearchHost: meilisearch
+release:
+  name: test
+  namespace: bosca
+tests:
+  - it: renders a ConfigMap named *-config
+    asserts:
+      - isKind:
+          of: ConfigMap
+      - equal:
+          path: metadata.name
+          value: test-bosca-server-config
+
+  - it: contains application.yaml with correct domain
+    asserts:
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: 'domain: "example.com"'
+
+  - it: allows Bosca GraphQL client identity headers
+    asserts:
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: '(?m)^\s+- X-Installation-ID$'
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: '(?m)^\s+- X-App-ID$'
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: '(?m)^\s+- X-App-Version$'
+
+  - it: renders authentication cookie prefix mappings
+    set:
+      appConfig.authCookiePrefixes:
+        - prefix: _bat_preview
+          domains:
+            - preview.example.com
+    asserts:
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: "cookie-prefixes:\\s+- domains:\\s+- preview.example.com\\s+prefix: _bat_preview"
+
+  - it: enables response compression by default
+    asserts:
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: "compression-enabled: true"
+
+  - it: can disable response compression
+    set:
+      appConfig.compressionEnabled: false
+    asserts:
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: "compression-enabled: false"
+
+  - it: disables HTTP2 by default
+    asserts:
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: "http2-enabled: false"
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: "http2-max-concurrent-streams: 100"
+
+  - it: can enable HTTP2
+    set:
+      appConfig.http2Enabled: true
+    asserts:
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: "http2-enabled: true"
+
+  - it: configures the HTTP2 concurrent stream limit
+    set:
+      appConfig.http2MaxConcurrentStreams: 256
+    asserts:
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: "http2-max-concurrent-streams: 256"
+
+  - it: contains NATS URL with namespace
+    asserts:
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: "nats://nats.bosca.svc.cluster.local:4222"
+
+  - it: contains NATS monitoring URL backing the /system/nats status page
+    asserts:
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: 'monitoringUrl: "\$NATS_MONITORING_URL:http://nats.bosca.svc.cluster.local:8222"'
+
+  - it: contains Meilisearch URL with namespace
+    asserts:
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: "meilisearch.bosca.svc.cluster.local:7700"
+
+  - it: contains database URL
+    asserts:
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: "jdbc:postgresql://postgres-bosca-rw:5432/bosca"
+
+  - it: defaults recommendation analytics to the Bosca warehouse events table
+    asserts:
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: 'experimentation:\s*\n\s*eventsTable: "warehouse.bosca.events"'
+
+  - it: renders a deployment-specific warehouse events table
+    set:
+      appConfig.experimentationEventsTable: warehouse.passion.events
+    asserts:
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: 'experimentation:\s*\n\s*eventsTable: "warehouse.passion.events"'
+
+  - it: contains core-migrations
+    asserts:
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: "core-migrations"
+
+  - it: enables default email pipeline installers
+    asserts:
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: 'packages: .*"default-git-email-pipelines".*"default-transactional-email-pipelines"'
+
+  - it: enables default social notification pipelines
+    asserts:
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: 'packages: .*"default-social-notification-pipelines"'
+
+  - it: preserves env var references for secrets
+    asserts:
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: "\\$JWT_SECRET"
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: "\\$NATS_TOKEN"
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: "\\$SECURITY_ENCRYPTION_KEY"
+
+  - it: wires the welcome URL to WELCOME_EMAIL_URL
+    asserts:
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: 'welcome-url: "\$WELCOME_EMAIL_URL:"'
+
+  - it: renders an explicit security alert destination
+    set:
+      appConfig.securityAlertUrl: https://profiles.example/security?tab=logins
+    asserts:
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: 'security-alert-url: "https://profiles.example/security\?tab=logins"'
+
+  - it: renders an explicit social notification origin
+    set:
+      appConfig.socialNotificationsUrl: https://social.example
+    asserts:
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: 'social:\s*\n\s*notifications:\s*\n\s*url: "https://social.example"'
+
+  - it: renders an explicit profile notification origin
+    set:
+      appConfig.profileNotificationsUrl: https://profiles.example
+    asserts:
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: 'profile-url: "https://profiles.example"'
+
+  - it: wires Google GenAI to the service-account environment variable
+    asserts:
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: 'genai:\s*\n\s*vertexai:\s*\n\s*enabled: false\s*\n\s*account: \$\{GOOGLE_GENAI_ACCOUNT:\}'
+
+  - it: wires gateway.proxy.sharedToken to GATEWAY_PROXY_SHARED_TOKEN
+    asserts:
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: 'sharedToken: \$\{GATEWAY_PROXY_SHARED_TOKEN:\}'
+
+  - it: disables ecommerce by default
+    asserts:
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: "ecommerce:\\s*\\n\\s*enabled: false"
+
+  - it: enables ecommerce when ecommerceEnabled is set
+    set:
+      appConfig.ecommerceEnabled: true
+    asserts:
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: "ecommerce:\\s*\\n\\s*enabled: true"
+
+  - it: disables git-sync listeners by default (the runner owns pull listening)
+    asserts:
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: "sync:\\s*\\n\\s*listeners: false"
+
+  - it: honors an explicit gitSync.listeners override
+    set:
+      appConfig.gitSync.listeners: true
+    asserts:
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: "sync:\\s*\\n\\s*listeners: true"
+
+  - it: renders the opt-in Kubernetes CI profile allowlist
+    set:
+      appConfig.kubernetesJobProfiles:
+        - android
+        - gpu
+    asserts:
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: "kubernetesJobProfiles:\\s*\\n\\s*- android\\s*\\n\\s*- gpu"
+
+  - it: inherits the umbrella Kubernetes CI profile allowlist
+    set:
+      global.ciKubernetesJobProfiles:
+        - android
+    asserts:
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: "kubernetesJobProfiles:\\s*\\n\\s*- android"

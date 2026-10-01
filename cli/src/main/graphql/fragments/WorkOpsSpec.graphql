@@ -1,0 +1,36 @@
+fragment WorkOpsSpecFragment on WorkOpsSpec {
+    id
+    key
+    metadataId
+    programId
+    projectId
+    ownerProfileId
+    parentSpecId
+    sortOrder
+    childCount
+    childDoneCount
+    gitRepositoryId
+    gitPath
+    watcherProfileIds
+    labelIds
+    deletedAt
+    createdAt
+    modifiedAt
+    createdByPrincipalId
+    modifiedByPrincipalId
+    version
+    project {
+        id
+        key
+        name
+    }
+    status {
+        id
+        name
+        category
+    }
+    parentSpec {
+        id
+        key
+    }
+}

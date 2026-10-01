@@ -1,0 +1,47 @@
+suite: bosca-gateway Ingress template
+templates:
+  - templates/ingress.yaml
+tests:
+  - it: does not render an Ingress by default
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: renders an Ingress when enabled
+    set:
+      ingress:
+        enabled: true
+        className: nginx
+        hosts:
+          - host: gateway.example.com
+            paths:
+              - path: /
+                pathType: Prefix
+    asserts:
+      - isKind:
+          of: Ingress
+      - equal:
+          path: spec.ingressClassName
+          value: nginx
+      - equal:
+          path: spec.rules[0].host
+          value: gateway.example.com
+
+  - it: configures TLS when provided
+    set:
+      ingress:
+        enabled: true
+        className: nginx
+        hosts:
+          - host: gateway.example.com
+            paths:
+              - path: /
+                pathType: Prefix
+        tls:
+          - hosts:
+              - gateway.example.com
+            secretName: gateway-tls
+    asserts:
+      - equal:
+          path: spec.tls[0].secretName
+          value: gateway-tls

@@ -1,0 +1,6 @@
+subscription OnCollectionChanged {
+    collection {
+        id
+        type
+    }
+}

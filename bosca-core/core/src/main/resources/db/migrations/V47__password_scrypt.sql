@@ -1,0 +1,1 @@
+alter type principal_credential_type add value 'password_scrypt' after 'password';

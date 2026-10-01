@@ -1,0 +1,130 @@
+# Work Ops — WorkOpsBoard (R8)
+#
+# Phase 5 populates the read + write surface for kanban / scrum
+# boards plus their columns. Phase 5 boards do NOT yet evaluate a
+# saved-filter (Phase 6 WorkOpsSavedFilter); the `filterId` field stores
+# the reference but the runtime card-listing uses
+# project-scoped statusId membership only.
+
+enum WorkOpsBoardType {
+    KANBAN
+    SCRUM
+}
+
+"""
+How a board groups rows. `PROJECT` is the cross-project swimlane
+strategy from R30; `QUERY` is Phase 6 (saved-filter swimlanes).
+Phase 5 supports `NONE`, `ASSIGNEE`, `EPIC`, `PRIORITY`, `PROJECT`.
+"""
+enum WorkOpsSwimlaneStrategy {
+    NONE
+    ASSIGNEE
+    EPIC
+    PRIORITY
+    PROJECT
+    QUERY
+}
+
+"""
+A configurable view onto tasks from one or more projects. Scope
+options (at most one parent; all null = multi-project board):
+- projectId: single-project board
+- programId: program-scoped board (all projects in program)
+- portfolioId: portfolio-scoped board
+- all null: standalone multi-project board (scope from `projects`)
+"""
+type WorkOpsBoard {
+    id: UUID!
+    projectId: UUID
+    project: WorkOpsProject
+    programId: UUID
+    program: WorkOpsProgram
+    portfolioId: UUID
+    portfolio: WorkOpsPortfolio
+    "Explicit project membership (populated for all boards including single-project)."
+    projects: [WorkOpsProject!]!
+    name: String!
+    type: WorkOpsBoardType!
+    "Saved filter id."
+    filterId: UUID
+    "Optional sub-filter for kanban swimlanes."
+    subFilterId: UUID
+    swimlaneStrategy: WorkOpsSwimlaneStrategy!
+    columns: [WorkOpsBoardColumn!]!
+    sprints(offset: Long! = 0, limit: Int! = 50): [WorkOpsSprint!]!
+    createdAt: DateTime!
+    modifiedAt: DateTime!
+    version: Long!
+}
+
+"""
+One column on a WorkOpsBoard. Columns collect tasks whose status is in
+[statusIds]; dragging a card across columns issues the workflow
+transition that lands the task in one of the target column's
+statuses (R8 — boards never bypass the workflow).
+"""
+type WorkOpsBoardColumn {
+    id: UUID!
+    boardId: UUID!
+    name: String!
+    displayOrder: Int!
+    statusIds: [UUID!]!
+    statuses: [WorkOpsStatus!]!
+    wipLimit: Int
+}
+
+input CreateWorkOpsBoardInput {
+    projectId: UUID
+    programId: UUID
+    portfolioId: UUID
+    "For multi-project boards: the explicit set of projects this board spans."
+    projectIds: [UUID!]
+    name: String!
+    type: WorkOpsBoardType!
+    swimlaneStrategy: WorkOpsSwimlaneStrategy! = NONE
+}
+
+input CreateWorkOpsBoardColumnInput {
+    boardId: UUID!
+    name: String!
+    displayOrder: Int!
+    statusIds: [UUID!]!
+    wipLimit: Int
+}
+
+input UpdateWorkOpsBoardInput {
+    name: String!
+    type: WorkOpsBoardType!
+    swimlaneStrategy: WorkOpsSwimlaneStrategy!
+    expectedVersion: Long!
+    "Project IDs to add to this board's project set."
+    addProjectIds: [UUID!]
+    "Project IDs to remove from this board's project set."
+    removeProjectIds: [UUID!]
+}
+
+input UpdateWorkOpsBoardColumnInput {
+    id: UUID!
+    name: String!
+    displayOrder: Int!
+    statusIds: [UUID!]!
+    wipLimit: Int
+}
+
+type WorkOpsBoards {
+    board(id: UUID!): WorkOpsBoard
+    byProject(projectId: UUID!): [WorkOpsBoard!]!
+    byProgram(programId: UUID!): [WorkOpsBoard!]!
+    byPortfolio(portfolioId: UUID!): [WorkOpsBoard!]!
+    "Find multi-project boards that include any of the given project IDs."
+    byProjects(projectIds: [UUID!]!): [WorkOpsBoard!]!
+}
+
+type WorkOpsBoardsMutation {
+    create(input: CreateWorkOpsBoardInput!): WorkOpsBoard!
+    update(id: UUID!, input: UpdateWorkOpsBoardInput!): WorkOpsBoard!
+    addColumn(input: CreateWorkOpsBoardColumnInput!): WorkOpsBoardColumn!
+    updateColumn(input: UpdateWorkOpsBoardColumnInput!): WorkOpsBoardColumn!
+    deleteColumn(columnId: UUID!): Boolean!
+    delete(boardId: UUID!): Boolean!
+}

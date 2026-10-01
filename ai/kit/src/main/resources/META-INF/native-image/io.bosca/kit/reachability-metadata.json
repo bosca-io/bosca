@@ -1,0 +1,1501 @@
+{
+  "comment": "Koog calls kotlin.jvm.internal.Reflection.typeOf(Class) on these types (storage keys, node IO types, feature keys). When full kotlin-reflect is active in the native image (it is in bosca-server, for the scripting engine), typeOf eagerly deserializes each class's @Metadata; unregistered classes throw KotlinReflectionInternalError 'Unresolved class'. List derived by scanning all ai.koog jvm jars for Reflection.typeOf call sites. ALSO: the Item/GooglePart hierarchies are registered because koog's OpenAI and Google clients encode request bodies via JsonContentPolymorphicSerializer, whose serialize() resolves the runtime subtype's serializer reflectively (Companion field -> serializer() method). Unregistered subtypes fail in native with kotlinx 'Class X is not registered for polymorphic serialization in the scope of Y' (misleading message; the reflective lookup returned null). These are the only two JsonContentPolymorphicSerializer hierarchies in koog 1.1.1/1.1.1-beta. ALSO: top-level request/response DTOs of every koog provider client (+Companions) are registered because KtorKoogHttpClient.post/sse serializes bodies with setBody(value, TypeInfo(KClass)) and decodes with body(TypeInfo(KClass)) - ktor resolves those serializers via the reflective KClass.serializerOrNull() Companion lookup, and streaming uses reified decodeFromString (runtime typeOf). List = every ai.koog class constant fed to Reflection.getOrCreateKotlinClass/typeOf inside *Client classes across all provider jars.",
+  "reflection": [
+    {
+      "type": "ai.koog.agents.core.agent.context.AgentContextData",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.agents.core.agent.context.GraphAgentContextData",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.agents.core.agent.context.PlannerAgentContextData",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.agents.core.agent.context.AIAgentGraphContextBase",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.agents.core.dsl.extension.ModeratedMessage",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.agents.core.dsl.extension.ReceivedToolResults",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.agents.core.dsl.extension.ToolCalls",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.agents.core.environment.ReceivedToolResult",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.agents.core.feature.debugger.Debugger",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.agents.core.feature.message.FeatureMessage",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.agents.core.tools.ToolDescriptor",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.agents.ext.agent.CriticResultFromLLM",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.agents.chatMemory.feature.ChatMemory",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.agents.features.eventHandler.feature.EventHandler",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.agents.features.opentelemetry.feature.OpenTelemetry",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.agents.features.opentelemetry.integration.otlp.OtlpExportRequest",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.agents.features.tokenizer.feature.MessageTokenizer",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.agents.features.tracing.feature.Tracing",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.agents.longtermmemory.feature.LongTermMemory",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.agents.snapshot.feature.Persistence",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.agents.planner.llm.SimplePlan",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.message.Message",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.message.Message$Assistant",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.message.Message$User",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.message.MessagePart$Tool$Call",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.streaming.StreamFrame",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.serialization.JSONElement",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.serialization.JSONObject",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.serialization.TypeToken",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "io.ktor.http.HttpStatusCode",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "io.ktor.utils.io.ByteReadChannel",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "kotlinx.coroutines.flow.Flow",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.google.models.GooglePart$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.google.models.GooglePart$FileData$$serializer",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.google.models.GooglePart$FileData$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.google.models.GooglePart$FileData",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.google.models.GooglePart$FunctionCall$$serializer",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.google.models.GooglePart$FunctionCall$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.google.models.GooglePart$FunctionCall",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.google.models.GooglePart$FunctionResponse$$serializer",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.google.models.GooglePart$FunctionResponse$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.google.models.GooglePart$FunctionResponse",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.google.models.GooglePart$InlineData$$serializer",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.google.models.GooglePart$InlineData$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.google.models.GooglePart$InlineData",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.google.models.GooglePart$Text$$serializer",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.google.models.GooglePart$Text$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.google.models.GooglePart$Text",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.google.models.GooglePart",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$CodeInterpreterToolCall$$serializer",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$CodeInterpreterToolCall$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$CodeInterpreterToolCall$Output$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$CodeInterpreterToolCall$Output$Image$$serializer",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$CodeInterpreterToolCall$Output$Image$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$CodeInterpreterToolCall$Output$Image",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$CodeInterpreterToolCall$Output$Logs$$serializer",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$CodeInterpreterToolCall$Output$Logs$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$CodeInterpreterToolCall$Output$Logs",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$CodeInterpreterToolCall$Output",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$CodeInterpreterToolCall",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$ComputerToolCall$$serializer",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$ComputerToolCall$Action$Click$$serializer$annotationImpl$kotlinx_serialization_json_JsonClassDiscriminator$0",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$ComputerToolCall$Action$Click$$serializer",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$ComputerToolCall$Action$Click$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$ComputerToolCall$Action$Click",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$ComputerToolCall$Action$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$ComputerToolCall$Action$Coordinates$$serializer",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$ComputerToolCall$Action$Coordinates$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$ComputerToolCall$Action$Coordinates",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$ComputerToolCall$Action$DoubleClick$$serializer",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$ComputerToolCall$Action$DoubleClick$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$ComputerToolCall$Action$DoubleClick",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$ComputerToolCall$Action$Drag$$serializer",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$ComputerToolCall$Action$Drag$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$ComputerToolCall$Action$Drag",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$ComputerToolCall$Action$KeyPress$$serializer",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$ComputerToolCall$Action$KeyPress$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$ComputerToolCall$Action$KeyPress",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$ComputerToolCall$Action$Move$$serializer",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$ComputerToolCall$Action$Move$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$ComputerToolCall$Action$Move",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$ComputerToolCall$Action$Screenshot$$serializer",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$ComputerToolCall$Action$Screenshot$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$ComputerToolCall$Action$Screenshot",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$ComputerToolCall$Action$Scroll$$serializer",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$ComputerToolCall$Action$Scroll$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$ComputerToolCall$Action$Scroll",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$ComputerToolCall$Action$Type$$serializer",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$ComputerToolCall$Action$Type$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$ComputerToolCall$Action$Type",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$ComputerToolCall$Action$Wait$$serializer",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$ComputerToolCall$Action$Wait$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$ComputerToolCall$Action$Wait",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$ComputerToolCall$Action",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$ComputerToolCall$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$ComputerToolCall$PendingSafetyCheck$$serializer",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$ComputerToolCall$PendingSafetyCheck$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$ComputerToolCall$PendingSafetyCheck",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$ComputerToolCall",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$ComputerToolCallOutput$$serializer",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$ComputerToolCallOutput$AcknowledgedSafetyCheck$$serializer",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$ComputerToolCallOutput$AcknowledgedSafetyCheck$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$ComputerToolCallOutput$AcknowledgedSafetyCheck",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$ComputerToolCallOutput$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$ComputerToolCallOutput$Output$$serializer",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$ComputerToolCallOutput$Output$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$ComputerToolCallOutput$Output",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$ComputerToolCallOutput",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$CustomToolCall$$serializer",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$CustomToolCall$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$CustomToolCall",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$CustomToolCallOutput$$serializer",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$CustomToolCallOutput$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$CustomToolCallOutput",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$FileSearchToolCall$$serializer",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$FileSearchToolCall$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$FileSearchToolCall$FileSearchToolResult$$serializer",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$FileSearchToolCall$FileSearchToolResult$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$FileSearchToolCall$FileSearchToolResult",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$FileSearchToolCall",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$FunctionToolCall$$serializer",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$FunctionToolCall$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$FunctionToolCall",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$FunctionToolCallOutput$$serializer",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$FunctionToolCallOutput$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$FunctionToolCallOutput",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$ImageGenerationCall$$serializer",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$ImageGenerationCall$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$ImageGenerationCall",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$InputMessage$$serializer",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$InputMessage$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$InputMessage",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$ItemReference$$serializer",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$ItemReference$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$ItemReference",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$LocalShellCall$$serializer",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$LocalShellCall$Action$$serializer",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$LocalShellCall$Action$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$LocalShellCall$Action",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$LocalShellCall$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$LocalShellCall",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$LocalShellCallOutput$$serializer",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$LocalShellCallOutput$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$LocalShellCallOutput",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$McpApprovalRequest$$serializer",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$McpApprovalRequest$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$McpApprovalRequest",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$McpApprovalResponse$$serializer",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$McpApprovalResponse$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$McpApprovalResponse",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$McpListTools$$serializer",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$McpListTools$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$McpListTools",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$McpToolCall$$serializer",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$McpToolCall$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$McpToolCall",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$OutputMessage$$serializer",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$OutputMessage$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$OutputMessage",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$Reasoning$$serializer",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$Reasoning$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$Reasoning$Content$$serializer",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$Reasoning$Content$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$Reasoning$Content",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$Reasoning$Summary$$serializer",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$Reasoning$Summary$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$Reasoning$Summary",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$Reasoning",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$Text$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$Text",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$WebSearchToolCall$$serializer",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$WebSearchToolCall$Action$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$WebSearchToolCall$Action$Find$$serializer",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$WebSearchToolCall$Action$Find$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$WebSearchToolCall$Action$Find",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$WebSearchToolCall$Action$OpenPage$$serializer",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$WebSearchToolCall$Action$OpenPage$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$WebSearchToolCall$Action$OpenPage",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$WebSearchToolCall$Action$Search$$serializer",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$WebSearchToolCall$Action$Search$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$WebSearchToolCall$Action$Search",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$WebSearchToolCall$Action",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$WebSearchToolCall$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item$WebSearchToolCall",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.Item",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.anthropic.AnthropicCacheControl",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.anthropic.AnthropicCacheControl$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.anthropic.models.AnthropicModelsResponse",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.anthropic.models.AnthropicModelsResponse$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.anthropic.models.AnthropicResponse",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.anthropic.models.AnthropicResponse$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.deepseek.models.DeepSeekModelsResponse",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.deepseek.models.DeepSeekModelsResponse$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.google.models.GoogleEmbeddingBatchRequest",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.google.models.GoogleEmbeddingBatchRequest$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.google.models.GoogleEmbeddingBatchResponse",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.google.models.GoogleEmbeddingBatchResponse$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.google.models.GoogleEmbeddingRequest",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.google.models.GoogleEmbeddingRequest$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.google.models.GoogleEmbeddingResponse",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.google.models.GoogleEmbeddingResponse$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.google.models.GoogleModelsResponse",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.google.models.GoogleModelsResponse$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.google.models.GoogleRequest",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.google.models.GoogleRequest$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.google.models.GoogleResponse",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.google.models.GoogleResponse$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.mistralai.models.MistralAIEmbeddingRequest",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.mistralai.models.MistralAIEmbeddingRequest$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.mistralai.models.MistralAIEmbeddingResponse",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.mistralai.models.MistralAIEmbeddingResponse$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.mistralai.models.MistralAIModerationRequest",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.mistralai.models.MistralAIModerationRequest$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.mistralai.models.MistralAIModerationResponse",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.mistralai.models.MistralAIModerationResponse$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.mistralai.models.MistralModelsResponse",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.mistralai.models.MistralModelsResponse$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.OpenAIModerationRequest",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.OpenAIModerationRequest$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.OpenAIModerationResponse",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.OpenAIModerationResponse$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.OpenAIEmbeddingRequest",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.OpenAIEmbeddingRequest$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.OpenAIEmbeddingResponse",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.OpenAIEmbeddingResponse$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.OpenAIModelsResponse",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.OpenAIModelsResponse$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.OpenAIResponsesAPIResponse",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openai.models.OpenAIResponsesAPIResponse$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openrouter.models.OpenRouterEmbeddingRequest",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openrouter.models.OpenRouterEmbeddingRequest$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openrouter.models.OpenRouterEmbeddingResponse",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openrouter.models.OpenRouterEmbeddingResponse$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openrouter.models.OpenRouterModelsResponse",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.clients.openrouter.models.OpenRouterModelsResponse$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.ollama.client.dto.EmbeddingBatchRequestDTO",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.ollama.client.dto.EmbeddingBatchRequestDTO$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.ollama.client.dto.EmbeddingRequestDTO",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.ollama.client.dto.EmbeddingRequestDTO$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.ollama.client.dto.OllamaPullModelRequestDTO",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.ollama.client.dto.OllamaPullModelRequestDTO$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.ollama.client.dto.OllamaShowModelRequestDTO",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "ai.koog.prompt.executor.ollama.client.dto.OllamaShowModelRequestDTO$Companion",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    }
+  ],
+  "resources": [
+    {
+      "glob": "META-INF/services/kotlin.reflect.jvm.internal.impl.km.internal.extensions.MetadataExtensions"
+    },
+    {
+      "glob": "META-INF/services/kotlin.reflect.jvm.internal.impl.resolve.ExternalOverridabilityCondition"
+    },
+    {
+      "glob": "META-INF/services/kotlin.reflect.jvm.internal.impl.util.ModuleVisibilityHelper"
+    },
+    {
+      "glob": "kotlin/kotlin.kotlin_builtins"
+    },
+    {
+      "glob": "kotlin/annotation/annotation.kotlin_builtins"
+    },
+    {
+      "glob": "kotlin/collections/collections.kotlin_builtins"
+    },
+    {
+      "glob": "kotlin/coroutines/coroutines.kotlin_builtins"
+    },
+    {
+      "glob": "kotlin/internal/internal.kotlin_builtins"
+    },
+    {
+      "glob": "kotlin/ranges/ranges.kotlin_builtins"
+    },
+    {
+      "glob": "kotlin/reflect/reflect.kotlin_builtins"
+    }
+  ]
+}

@@ -1,0 +1,98 @@
+query GetWorkOpsStatuses {
+    workOps {
+        statuses {
+            all {
+                id
+                name
+                description
+                category
+                colorHex
+                version
+            }
+        }
+    }
+}
+
+query GetWorkOpsWorkflows {
+    workOps {
+        workflows {
+            all {
+                id
+                name
+                description
+                initialStateId
+                version
+                states {
+                    id
+                    workflowId
+                    statusId
+                    name
+                    displayOrder
+                }
+                transitions {
+                    id
+                    workflowId
+                    name
+                    description
+                    fromStateIds
+                    toStateId
+                }
+            }
+        }
+    }
+}
+
+query GetWorkOpsWorkflow($id: UUID!) {
+    workOps {
+        workflows {
+            workflow(id: $id) {
+                id
+                name
+                description
+                initialStateId
+                version
+                states {
+                    id
+                    workflowId
+                    statusId
+                    status {
+                        id
+                        name
+                        category
+                        colorHex
+                    }
+                    name
+                    displayOrder
+                    slaPolicyId
+                }
+                transitions {
+                    id
+                    workflowId
+                    name
+                    description
+                    fromStateIds
+                    toStateId
+                    conditions
+                    validators
+                    postFunctions
+                    screenId
+                }
+            }
+        }
+    }
+}
+
+query GetWorkOpsWorkflowSchemes {
+    workOps {
+        workflows {
+            schemes {
+                id
+                name
+                description
+                defaultWorkflowId
+                perTaskTypeWorkflowIds
+                version
+            }
+        }
+    }
+}

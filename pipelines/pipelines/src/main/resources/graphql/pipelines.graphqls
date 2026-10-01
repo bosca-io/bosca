@@ -1,0 +1,553 @@
+"A stored, reusable pipeline — a graph of typed nodes that triggers/analytics run."
+type Pipeline {
+    id: UUID!
+    name: String!
+    description: String!
+    "Fully-qualified type the pipeline's Input node accepts (consumers filter by this)."
+    acceptedInputType: String!
+    "Free-form categorization labels — the UI groups and filters pipelines by these."
+    tags: [String!]!
+    "When true, the pipeline runs automatically whenever its accepted event fires."
+    triggered: Boolean!
+    "Optimistic-locking version."
+    version: Int!
+    "The node/edge graph — drives the Vue Flow editor and the executor."
+    graph: JSON!
+    "The PIPELINE_PROJECT Git repository this pipeline is serialized to, when linked."
+    gitRepositoryId: UUID
+    "Repository-relative path of the pipeline's YAML file (e.g. pipelines/notify-slack.yaml), when linked."
+    gitPath: String
+    "Last Git sync error for this pipeline, or null when the last sync succeeded."
+    lastSyncError: String
+    "Declared input shape for JSON-input pipelines (JSON Schema subset), or null when unconstrained or event-typed."
+    inputSchema: JSON
+    "Declared output type — \"JSON\" or a fully-qualified type name; null when undeclared or there is no Output node."
+    outputType: String
+    "Declared output shape (JSON Schema subset), or null when undeclared."
+    outputSchema: JSON
+    "Whether the graph has an Output node. Without one, a Run Pipeline caller receives no output and its downstream nodes are skipped."
+    hasOutput: Boolean!
+    "The typed fields of a declared object-shape input (acceptedType = \"SHAPE\"); empty otherwise."
+    inputFields: [PipelineShapeField!]!
+    "The typed fields of a declared object-shape output (outputType = \"SHAPE\"); empty otherwise."
+    outputFields: [PipelineShapeField!]!
+    "Stable URL handle for the REST endpoint (POST/GET /api/v1/p/{key}); empty when not endpoint-exposed."
+    key: String!
+    "When true, the pipeline is callable via its REST endpoint."
+    api: Boolean!
+    "When true (and api is on), the endpoint is callable without an EXECUTE grant."
+    public: Boolean!
+    "Cron expression to run this pipeline on a schedule, or null when not scheduled."
+    schedule: String
+    "Max durable runs in flight at once; null = unlimited. Excess triggers are shed."
+    maxConcurrentRuns: Int
+    "Max durable runs started per rolling minute; null = unlimited. Excess triggers are shed."
+    maxRunsPerMinute: Int
+    "Group permission grants on this pipeline. Empty unless the caller can MANAGE it."
+    permissions: [Permission!]!
+}
+
+"Lifecycle status of a durable pipeline run."
+enum PipelineRunStatus { RUNNING SUSPENDED OK FAILED CANCELLED }
+
+"Outcome of a single node execution within a run."
+enum PipelineNodeExecutionStatus { OK FAILED SKIPPED SUSPENDED }
+
+"Editor-palette grouping for a node type."
+enum PipelineNodeCategory { INPUT OUTPUT TRANSFORM FETCH COMBINE ROUTE ACTION }
+
+"The value kind a node port accepts/emits; ANY = dynamic/unknown."
+enum PipelineSlotKind { ANY STRING INTEGER NUMBER BOOLEAN UUID OBJECT ARRAY }
+
+"The editor control a node setting renders as."
+enum PipelineSettingControl { TEXT TEXTAREA INTEGER NUMBER BOOLEAN ENUM CODE SCHEMA CONDITION REFERENCE LIST GROUP_LIST }
+
+"The server-loaded list a REFERENCE setting picks from."
+enum PipelineSettingReference { JOB SCRIPT PIPELINE EVENT ATTRIBUTE_TYPE SEARCH_INDEX SECRET SEGMENT GIT_PIPELINE GIT_ARTIFACT TYPE ENVIRONMENT_TYPE MESSAGE_PROJECT MESSAGE_TEMPLATE NOTIFICATION_TYPE }
+
+"A registered pipeline node type — one palette entry in the pipeline editor."
+type PipelineNodeType {
+    "Stable node-type key — the polymorphic 'type' discriminator used in the graph JSON."
+    key: String!
+    "Human-friendly palette label."
+    label: String!
+    "Functional kind (drawn as the node's chrome)."
+    category: PipelineNodeCategory!
+    "Top-level organizational group for the palette and node browser (e.g. 'WorkOps'); null = unannotated — clients fall back to bucketing by category."
+    group: String
+    "Second-level grouping under group (e.g. 'Releases'); null = directly under group."
+    subgroup: String
+    "One-sentence tooltip describing what the node does; empty when the node declares none."
+    description: String!
+    "Typed input slots (ports) this node accepts; empty when the node imposes no per-slot constraints."
+    inputs: [PipelineNodeInputSlot!]!
+    "The node's output ports. A single output is one slot ('out', drawn as the anonymous handle); empty is a single implicit output of unknown kind; 2+ (or an error port) are named, wireable ports."
+    outputs: [PipelineNodeOutputSlot!]!
+    "The node's editable settings, in display order — each names a settings key and the control the editor renders for it. Empty = the node has no configuration. Renders the node's whole form, data-driven."
+    settings: [PipelineNodeSettingSlot!]!
+}
+
+"One choice of an ENUM setting, or a literal extra prepended to a REFERENCE picker."
+type PipelineNodeSettingOption {
+    "Value stored in the node's settings."
+    value: String!
+    "Label shown to the builder; falls back to the value when null."
+    label: String
+}
+
+"One editable setting of a node type — the editor renders the control named by 'control' and writes its value into the node's settings under 'name'."
+type PipelineNodeSettingSlot {
+    "Settings key written into the node's graph JSON."
+    name: String!
+    "The editor control to render."
+    control: PipelineSettingControl!
+    "Field label; null lets the editor humanize the name."
+    label: String
+    "Hint shown under the field; null = none."
+    description: String
+    "Placeholder text; null = none."
+    placeholder: String
+    "The node's own default, string-encoded — drives omit-on-default, the new-node seed, and the placeholder; null = none."
+    default: String
+    "Whether a value must be provided."
+    required: Boolean!
+    "Mask a TEXT control as a password."
+    secret: Boolean!
+    "Render the field monospace."
+    mono: Boolean!
+    "A CODE control's language ('jsonata' enables the live preview); null = none."
+    language: String
+    "The server list a REFERENCE control picks from; null = not a reference."
+    reference: PipelineSettingReference
+    "Choices for an ENUM, or literal extras prepended to a REFERENCE picker."
+    options: [PipelineNodeSettingOption!]!
+    "Sub-fields of a GROUP_LIST row."
+    fields: [PipelineNodeSettingSlot!]!
+    "Singular row label for a GROUP_LIST (e.g. 'Case'); null = generic."
+    itemLabel: String
+    "Optional section header to group the field under; null = no header."
+    group: String
+    "Show this field only when the named setting's effective value equals visibleWhenEquals; null = always."
+    visibleWhenSetting: String
+    "The value visibleWhenSetting must equal for this field to show."
+    visibleWhenEquals: String
+}
+
+"One named output port of a node type — a wireable handle; error ports route recoverable failures to a downstream branch."
+type PipelineNodeOutputSlot {
+    "Port name; an edge's sourcePort matches a value emitted on this port."
+    name: String!
+    "Value kind emitted on this port."
+    kind: PipelineSlotKind!
+    "Whether this is an error port — an emitted-but-unwired error port fails the run instead of reporting success."
+    error: Boolean!
+    "Fully-qualified serial name an OBJECT port emits (a specific object), matched against a downstream slot's type; null = any object."
+    type: String
+    "Human display label for the emitted value, shown in the inspector's Produces section; null = use the port name."
+    typeLabel: String
+    "Short human description of what the port emits; null = none."
+    description: String
+    "The emitted object type's fields, for the editor's hover introspection; null when the port isn't a specific object."
+    structure: [PipelineNodeFieldDescriptor!]
+}
+
+"One field of a typed slot's object — its name, a coarse type label, and (for object/list-of-object fields) its own nested fields, for the Type Browser's recursive introspection."
+type PipelineNodeFieldDescriptor {
+    "Field name as it appears in the object's JSON."
+    name: String!
+    "Coarse, UI-friendly type label (String, Int, Boolean, Enum, List<...>, Map, or a short type name)."
+    type: String!
+    "The field type's own fields when it is an object (or a list of objects); null for a leaf, a cycle, or past the walk depth."
+    fields: [PipelineNodeFieldDescriptor!]
+}
+
+"One field of an author-declared object shape (a pipeline's Input/Output contract) — its name and a type label."
+type PipelineShapeField {
+    "Field name as it appears in the object."
+    name: String!
+    "Type label — a catalogued type (optionally []-suffixed for a list), \"JSON\", or a primitive."
+    type: String!
+}
+
+"A reusable, named object shape — a first-class type an Input/Output references by name (as \"shape:<name>\")."
+type PipelineNamedShape {
+    "Unique shape name, e.g. ReleaseBundle."
+    name: String!
+    "The shape's typed fields."
+    fields: [PipelineShapeField!]!
+}
+
+"One typed input port of a node type — the constraints the editor and engine enforce on what may be wired into it."
+type PipelineNodeInputSlot {
+    "Port name; the edge's target port matches a value to this slot."
+    name: String!
+    "Accepted value kind."
+    kind: PipelineSlotKind!
+    "Display label for the palette."
+    typeLabel: String!
+    "Short human description of what this slot expects, shown in the editor; null = none."
+    description: String
+    "Fully-qualified serial name an OBJECT value must carry (a specific object); null = any object."
+    type: String
+    "JSON-Schema-subset shape the value must satisfy, validated even when the upstream output kind is unknown; null = none."
+    schema: JSON
+    "Whether a value must be wired into this slot."
+    required: Boolean!
+    "The expected object type's fields, for the editor's hover introspection; null when the slot isn't a specific object."
+    structure: [PipelineNodeFieldDescriptor!]
+}
+
+"One finished pipeline execution recorded in run history (the append-only audit; distinct from PipelineRunState, the live durable run)."
+type PipelineHistoryRun {
+    "Id of this history entry (not the run — see runId)."
+    id: UUID!
+    pipelineId: UUID!
+    "The durable run this history entry came from (open its per-node timeline via Query.pipelines.run); null for inline manual/API runs."
+    runId: UUID
+    "Name of the pipeline that ran."
+    pipelineName: String!
+    "The event that fired the run."
+    eventName: String!
+    "Terminal outcome: OK, FAILED, or CANCELLED."
+    outcome: PipelineRunStatus!
+    startedAt: DateTime!
+    finishedAt: DateTime
+    durationMs: Long
+    errorMessage: String
+}
+
+"The live, durable state of an in-flight pipeline run (distinct from the append-only run history above)."
+type PipelineRunState {
+    id: UUID!
+    pipelineId: UUID!
+    status: PipelineRunStatus!
+    "The event that triggered the run."
+    eventName: String!
+    "Ids of the nodes this run is currently parked on (awaiting out-of-band work)."
+    awaitingNodeIds: [String!]!
+    "The parked nodes resolved from the graph snapshot — the type tells a HUMAN wait (gate.approval / waitForInput) from external work (a build, a health check)."
+    awaitingNodes: [PipelineAwaitingNode!]!
+    "Ids of the nodes that have already completed (the checkpoint)."
+    completedNodeIds: [String!]!
+    "The per-node execution timeline for this run, in execution order."
+    nodes: [PipelineNodeExecution!]!
+    "The step-oriented progress view: one row per Status node and per human wait, recursing into fan-out children (per-item rows) — never engine plumbing nodes."
+    steps: [PipelineRunStep!]!
+    "For a run a For Each spawned: the 0-based index of the item it processes; null for a Run Pipeline child or a top-level run."
+    itemIndex: Int
+    "The child runs the given For Each / Run Pipeline node spawned under this run, in item order — empty until the node has started fanning out."
+    childRuns(nodeId: String!): [PipelineRunState!]!
+    "Set when the run failed or was cancelled."
+    error: String
+    createdAt: DateTime!
+    "Last state change — for a suspended run, how long it has been waiting."
+    modifiedAt: DateTime!
+}
+
+"One row of a run's step-oriented progress view: an authored Status milestone or a human wait."
+type PipelineRunStep {
+    nodeId: String!
+    title: String!
+    "STATUS (an authored milestone) or HUMAN (an approval / input wait)."
+    kind: PipelineRunStepKind!
+    status: PipelineRunStepStatus!
+    "Child-pipeline nesting depth; 0 = the run's own graph."
+    depth: Int!
+    "For fan-out children: which item this row belongs to."
+    item: String
+    "The run this row's node belongs to — a nested row carries its CHILD run's id (what Approve resolves against); null on pre-run plan rows."
+    runId: UUID
+    "The node-type key (status, gate.approval, waitForInput) — which controls a WAITING row offers."
+    type: String
+    "The artifact type of the channel this row belongs to (from the upstream artifact select), or null for channel-agnostic rows."
+    channelType: String
+}
+
+enum PipelineRunStepKind { STATUS, HUMAN }
+enum PipelineRunStepStatus { PENDING, RUNNING, WAITING, DONE, FAILED }
+
+"A node a run is parked on, resolved from the run's graph snapshot."
+type PipelineAwaitingNode {
+    nodeId: String!
+    "The node-type key (e.g. gate.approval, release.buildWait) — gate.approval and waitForInput mean a human is being waited on."
+    type: String!
+    "The node's display name (falls back to its id)."
+    name: String!
+    "The run actually parked on this node — a drilled-through row carries its CHILD run's id (what resolveGate/provideInput must target)."
+    runId: UUID
+}
+
+"One event in a run's per-node execution timeline — a node may have several (e.g. suspended then ok)."
+type PipelineNodeExecution {
+    "Id of the node that executed."
+    nodeId: String!
+    status: PipelineNodeExecutionStatus!
+    startedAt: DateTime!
+    finishedAt: DateTime!
+    "finished − started, in milliseconds."
+    durationMs: Long!
+    "The output port the value left on (routing/error), or null for the implicit output."
+    port: String
+    "Failure message when status is FAILED."
+    error: String
+    "Size-bounded JSON snapshot of the node's output, or null when none/skipped/capped."
+    output: JSON
+}
+
+"A stored pipeline whose graph no longer decodes against the loaded node types — surfaced so it can be deleted."
+type BrokenPipeline {
+    id: UUID!
+    name: String!
+    "The pipeline's endpoint key (may be empty)."
+    key: String!
+    "Why the graph failed to decode."
+    error: String!
+}
+
+"Pipeline query operations."
+type Pipelines {
+    "All pipelines."
+    all: [Pipeline!]!
+    "A pipeline by id, or null if not found."
+    pipeline(id: UUID!): Pipeline
+    "Pipelines whose stored graph no longer decodes (renamed/removed node types, corrupt data) — absent from `all` and unopenable, surfaced here so they can be deleted."
+    broken: [BrokenPipeline!]!
+    "Every node type registered across loaded modules — drives the editor palette."
+    nodeTypes: [PipelineNodeType!]!
+    "Every catalogued concrete value type and its domain interfaces/base types — drives Cast targets."
+    types: [String!]!
+    "Run history for a pipeline, newest first."
+    runs(pipelineId: UUID!, offset: Int = 0, limit: Int = 50): [PipelineHistoryRun!]!
+    "Run history across every pipeline, newest first."
+    allRuns(offset: Int = 0, limit: Int = 50): [PipelineHistoryRun!]!
+    "In-flight durable runs (running or suspended), newest activity first."
+    activeRuns(offset: Int = 0, limit: Int = 50): [PipelineRunState!]!
+    "The step plan of the triggered pipeline(s) accepting this event — all PENDING; what a dashboard shows before any run exists."
+    stepsForTrigger(eventName: String!): [PipelineRunStep!]!
+    "The dead-letter queue: runs that terminally FAILED, newest first — triage + replay."
+    deadLetter(offset: Int = 0, limit: Int = 50): [PipelineRunState!]!
+    "Node secrets' metadata (names + timestamps; never values)."
+    secrets: [PipelineSecret!]!
+    "Reusable named object shapes — first-class types an Input/Output can reference (as \"shape:<name>\")."
+    shapes: [PipelineNamedShape!]!
+    "A single durable run's live state + (via its nodes field) per-node timeline, by run id; in-flight or finished."
+    run(runId: UUID!): PipelineRunState
+    "Per-node execution metrics for a pipeline across its run history — busiest node first."
+    nodeMetrics(pipelineId: UUID!): [PipelineNodeMetrics!]!
+}
+
+"Aggregate execution metrics for one node across a pipeline's runs (over OK+FAILED completions)."
+type PipelineNodeMetrics {
+    "Id of the node."
+    nodeId: String!
+    "Number of completions (OK + FAILED)."
+    executions: Long!
+    "How many completions were FAILED."
+    failures: Long!
+    "failures / executions, 0..1."
+    failureRate: Float!
+    "Median completion duration in milliseconds."
+    p50DurationMs: Float!
+    "95th-percentile completion duration in milliseconds."
+    p95DurationMs: Float!
+}
+
+"Input for creating or updating a pipeline."
+input PipelineInput {
+    "Omit to create; provide the id to update."
+    id: UUID
+    name: String!
+    description: String
+    acceptedInputType: String!
+    "Free-form categorization labels; omit to leave untagged."
+    tags: [String!]
+    "Run automatically when the accepted event fires."
+    triggered: Boolean
+    "Stable URL handle for the REST endpoint; required when api is true."
+    key: String
+    "Expose the pipeline as a REST endpoint (POST/GET /api/v1/p/{key})."
+    api: Boolean
+    "Make the REST endpoint callable without an EXECUTE grant."
+    public: Boolean
+    "Cron expression to run this pipeline on a schedule; null/blank = not scheduled."
+    schedule: String
+    "Max durable runs in flight at once; null/≤0 = unlimited."
+    maxConcurrentRuns: Int
+    "Max durable runs started per rolling minute; null/≤0 = unlimited."
+    maxRunsPerMinute: Int
+    "Required when updating (optimistic locking)."
+    version: Int
+    "The node/edge graph."
+    graph: JSON!
+}
+
+"Result of a pipeline dry run: per-node trace, no side effects executed."
+type PipelineDryRun {
+    "Keyed by node id → that node's output (encoded via its carried serializer)."
+    outputs: JSON!
+    "Keyed by node id → what the action node WOULD have done (job/email/script details)."
+    actions: JSON!
+    "Keyed by node id → error message, when the run aborted at that node."
+    errors: JSON!
+    "Keyed by node id → reason the node was skipped (e.g. its branch wasn't taken)."
+    skipped: JSON!
+    "Top-level error message when the run aborted, or null on success."
+    error: String
+}
+
+"A named node secret — metadata only; the value is AES/GCM-encrypted at rest and never returned."
+type PipelineSecret {
+    name: String!
+    createdAt: DateTime!
+    modifiedAt: DateTime!
+}
+
+"Result of a manual pipeline run."
+type PipelineRunResult {
+    "True unless the run terminally failed (a still-suspended run started fine)."
+    ok: Boolean!
+    "The durable run's id — use it to track a run that suspended (status SUSPENDED)."
+    runId: UUID!
+    "OK (finished), FAILED/CANCELLED (terminal failure), or SUSPENDED (parked past the brief on-demand block)."
+    status: PipelineRunStatus!
+    "The value that reached the Output node (encoded to JSON), or null when the pipeline has none / hasn't finished."
+    output: JSON
+    "Error message when the run failed (including input-schema violations), or null."
+    error: String
+}
+
+"Entry in a Git backfill request: which pipeline to serialize and where to write it in the repo."
+input PipelineBackfillEntryInput {
+    "The unique identifier of the pipeline to serialize."
+    pipelineId: UUID!
+    "The target path in the repository (e.g. pipelines/notify-slack.yaml)."
+    gitPath: String!
+}
+
+"A single validation error attributed to a file path in a PIPELINE_PROJECT repo."
+type PipelineRepoValidationError {
+    "The repository-relative path of the file that failed validation."
+    path: String!
+    "Human-readable validation error message."
+    message: String!
+}
+
+"Result of a PIPELINE_PROJECT Git sync operation."
+type PipelineRepoSyncResult {
+    "Whether the operation succeeded."
+    ok: Boolean!
+    "The last commit SHA produced, if any."
+    commitSha: String
+    "Validation errors, if any. Non-empty only when the operation failed validation."
+    validationErrors: [PipelineRepoValidationError!]
+    "Other error message, if any. Set when the operation failed for non-validation reasons."
+    errorMessage: String
+}
+
+"Pipeline mutation operations."
+type PipelinesMutation {
+    """
+    Create or update a pipeline (optimistic-locked by version). When the pipeline is
+    Git-linked and authorName/authorEmail are provided, the saved pipeline is serialized
+    to its YAML file and committed (best-effort — a push failure is recorded as
+    lastSyncError on the pipeline but does not fail the save).
+    """
+    save(
+        input: PipelineInput!
+        "Commit author name for the Git push (only used when the pipeline is Git-linked)."
+        authorName: String
+        "Commit author email for the Git push (only used when the pipeline is Git-linked)."
+        authorEmail: String
+    ): Pipeline!
+    "Soft-delete a pipeline by id."
+    delete(id: UUID!): Boolean!
+    "Clone a pipeline: a full copy of the graph, named '… (copy)', created inactive."
+    clone(id: UUID!): Pipeline!
+    """
+    Dry-run a pipeline: traverse the graph, execute NO actions. The payload is decoded as the
+    typed event (eventType, defaulting to the pipeline's accepted type) — or validated against
+    the input schema and passed through for JSON-input pipelines, where eventType is omitted.
+    """
+    dryRun(id: UUID!, eventType: String, payload: JSON!): PipelineDryRun!
+    """
+    Run a pipeline now, inline, FOR REAL — action nodes execute their side effects. The payload
+    is the pipeline's input (validated against the input schema for JSON-input pipelines, or
+    decoded as the accepted event type). Runs under the caller's principal and is recorded in
+    run history as a "manual" run.
+    """
+    run(id: UUID!, payload: JSON!): PipelineRunResult!
+    "Cancel an in-flight (running or suspended) durable run; a later resume for it is ignored."
+    cancelRun(runId: UUID!): Boolean!
+    "Supply the value a Wait for Input node is parked on and resume the run with it as that node's output. Authorized by the pipeline's EXECUTE permission. Approvals, forms, and chosen options all use this."
+    provideInput(runId: UUID!, nodeId: String!, input: JSON!): Boolean!
+    "Decide an Approval Gate: approved resumes the run with the gate's inbound value flowing on unchanged; rejected fails the run at the gate (with the note)."
+    resolveGate(runId: UUID!, nodeId: String!, approved: Boolean!, note: String): Boolean!
+    "Restart a dead-lettered (failed) run: re-run from its seed input against the current pipeline. Null if the source run is gone."
+    restartRun(runId: UUID!): PipelineRunState
+    "Remove a terminal run (e.g. a dead-lettered failure) from the queue and run views by soft-deleting it. False when the run is missing or still in-flight (cancel it first)."
+    deleteRun(runId: UUID!): Boolean!
+    "Create or replace a node secret; the value is encrypted at rest and never returned."
+    setSecret(name: String!, value: String!): PipelineSecret!
+    "Delete a node secret by name."
+    deleteSecret(name: String!): Boolean!
+    "Create or replace a reusable named object shape from its typed fields (a JSON array of { name, type })."
+    saveShape(name: String!, fields: JSON!): PipelineNamedShape!
+    "Delete a named object shape by name."
+    deleteShape(name: String!): Boolean!
+    "Grant a group an action (e.g. EXECUTE) on a pipeline — gates its non-public REST endpoint."
+    addPermission(permission: PermissionInput!): Boolean!
+    "Revoke a previously granted group action on a pipeline."
+    deletePermission(permission: PermissionInput!): Boolean!
+    """
+    Bulk-export pipelines to a PIPELINE_PROJECT Git repository. Each entry is linked to its
+    target gitPath and then pushed; the operation commits one YAML file per entry. Entries
+    that fail do not stop the others.
+    """
+    backfill(
+        "The target PIPELINE_PROJECT repository."
+        repositoryId: UUID!
+        "The pipelines to serialize and commit."
+        entries: [PipelineBackfillEntryInput!]!
+        "Commit author name (shown in Git history)."
+        authorName: String!
+        "Commit author email (shown in Git history)."
+        authorEmail: String!
+    ): PipelineRepoSyncResult!
+}
+
+extend type Query {
+    "Access pipeline queries."
+    pipelines: Pipelines!
+}
+
+extend type Mutation {
+    "Access pipeline mutations."
+    pipelines: PipelinesMutation!
+}
+
+"""
+A live status change for a durable run, streamed over the `pipelineRun`
+subscription. Run-level when `nodeId` is null (`runStatus` is set); node-level otherwise
+(`nodeStatus` / `port` / `error` describe the node).
+"""
+type PipelineRunUpdate {
+    "The run this update belongs to."
+    runId: UUID!
+    "The run's new status on a run-level transition; null for a node-level event."
+    runStatus: PipelineRunStatus
+    "The node whose status changed; null for a run-level transition."
+    nodeId: String
+    "The node's outcome on a node-level update; null for a run-level transition."
+    nodeStatus: PipelineNodeExecutionStatus
+    "The output port the node's value left on (routing / error), when applicable."
+    port: String
+    "Failure message when a node or the run failed."
+    error: String
+    "When the change occurred."
+    at: DateTime!
+}
+
+extend type Subscription {
+    "Live run + per-node status changes for a durable run. Admin-gated."
+    pipelineRun(runId: UUID!): PipelineRunUpdate!
+}

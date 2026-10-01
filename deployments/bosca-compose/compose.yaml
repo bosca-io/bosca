@@ -1,0 +1,204 @@
+name: ${COMPOSE_PROJECT_NAME:-bosca}
+
+x-service: &service
+  restart: unless-stopped
+  stop_grace_period: 60s
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+x-bosca-env: &bosca-env
+  OTEL_SDK_DISABLED: "true"
+  BOSCA_DOMAIN: ${BOSCA_DOMAIN:?Run install.sh first}
+  APP_URL: ${APP_URL:?Run install.sh first}
+  GIT_URL: ${GIT_URL:?Run install.sh first}
+  JWT_COOKIE_SECURE: ${JWT_COOKIE_SECURE:-true}
+  DATABASE_PASSWORD: ${DATABASE_PASSWORD:?Run install.sh first}
+  JWT_SECRET: ${JWT_SECRET:?Run install.sh first}
+  SECURITY_ENCRYPTION_KEY: ${SECURITY_ENCRYPTION_KEY:?Run install.sh first}
+  STORAGE_URL_SIGNER_SECRET_KEY: ${STORAGE_URL_SIGNER_SECRET_KEY:?Run install.sh first}
+  PIPELINE_SECRET_KEY: ${PIPELINE_SECRET_KEY:?Run install.sh first}
+  NATS_TOKEN: ${NATS_TOKEN:?Run install.sh first}
+  MEILISEARCH_API_KEY: ${MEILISEARCH_API_KEY:?Run install.sh first}
+
+services:
+  postgres:
+    <<: *service
+    # Bosca's migrations require vector even when embedding computation is disabled.
+    image: ${POSTGRES_IMAGE:-pgvector/pgvector:pg18}
+    mem_limit: 320m
+    shm_size: 64m
+    environment:
+      POSTGRES_DB: bosca
+      POSTGRES_USER: bosca
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:?Run install.sh first}
+      PGDATA: /var/lib/postgresql/18/docker
+    command:
+      - postgres
+      - -c
+      - max_connections=40
+      - -c
+      - shared_buffers=64MB
+      - -c
+      - effective_cache_size=256MB
+      - -c
+      - work_mem=1MB
+      - -c
+      - maintenance_work_mem=32MB
+      - -c
+      - max_parallel_workers=1
+    volumes:
+      - ./data/postgres:/var/lib/postgresql
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U bosca -d bosca"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  nats:
+    <<: *service
+    # Bosca's distributed counters require NATS 2.12 or newer.
+    image: ${NATS_IMAGE:-nats:2.12.15-alpine}
+    mem_limit: 128m
+    environment:
+      # NATS parses environment substitutions as config values, including numbers.
+      NATS_TOKEN: '"${NATS_TOKEN:?Run install.sh first}"'
+      GOMEMLIMIT: 96MiB
+    command: ["-c", /etc/nats/nats.conf]
+    volumes:
+      - ./config/nats.conf:/etc/nats/nats.conf:ro
+      - ./data/nats:/data
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, "http://127.0.0.1:8222/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  meilisearch:
+    <<: *service
+    image: ${MEILISEARCH_IMAGE:-getmeili/meilisearch:v1.39.0}
+    mem_limit: 256m
+    environment:
+      MEILI_ENV: production
+      MEILI_MASTER_KEY: ${MEILISEARCH_API_KEY:?Run install.sh first}
+      MEILI_NO_ANALYTICS: "true"
+      MEILI_MAX_INDEXING_MEMORY: 64Mb
+      MEILI_MAX_INDEXING_THREADS: "1"
+    volumes:
+      - ./data/meilisearch:/meili_data
+    healthcheck:
+      test: [CMD, curl, -fsS, "http://127.0.0.1:7700/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  bml-message-server:
+    <<: *service
+    image: ${BOSCA_IMAGE_REGISTRY:-ghcr.io/bosca-io/bosca}/bml-message-server:${BML_MESSAGE_VERSION:-6.23.0}
+    mem_limit: 256m
+    command: ["-Xms32m", "-Xmx128m"]
+    environment:
+      OTEL_SDK_DISABLED: "true"
+      PORT: "9093"
+      BML_MESSAGE_ARTIFACTS_URL: ${BML_MESSAGE_ARTIFACTS_URL:?Set the Artifacts server URL in .env}
+      BML_MESSAGE_ARTIFACTS_TOKEN: ${BML_MESSAGE_ARTIFACTS_TOKEN:?Set the existing Artifacts access token in .env}
+      BML_MESSAGE_PROJECTS: bosca-messages
+      BML_GRAPHQL_ENDPOINT: http://server:8080/graphql
+      BML_MESSAGE_PUBLIC_URL: ${APP_URL:?Run install.sh first}/bml-messages
+      BML_MESSAGE_CACHE_DIR: /app/message-cache
+    ports:
+      - "127.0.0.1:${BML_PORT:-9093}:9093"
+    volumes:
+      - ./data/message-cache:/app/message-cache
+    healthcheck:
+      test: [CMD, bash, -ec, "exec 3<>/dev/tcp/127.0.0.1/9093; printf 'GET /api/v1/ready HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n' >&3; read -r protocol status rest <&3; test \"$$status\" = 200"]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 60s
+
+  server:
+    <<: *service
+    image: ${BOSCA_IMAGE_REGISTRY:-ghcr.io/bosca-io/bosca}/bosca-server:${SERVER_VERSION:-6.28.2}
+    mem_limit: 768m
+    # These images contain native executables; JAVA_OPTS does not set their heap.
+    command: ["-Xms64m", "-Xmx512m", "-config=/app/config/application.yaml"]
+    environment:
+      <<: *bosca-env
+      INIT_ADMIN_PASSWORD: ${INIT_ADMIN_PASSWORD:?Run install.sh first}
+      INIT_SA_PASSWORD: ${INIT_SA_PASSWORD:?Run install.sh first}
+      BML_MESSAGE_SERVER_URL: http://bml-message-server:9093
+    ports:
+      - "127.0.0.1:${API_PORT:-8080}:8080"
+    volumes:
+      - ./config/server.yaml:/app/config/application.yaml:ro
+      - ./data/storage:/storage
+      - ./data/server-tmp:/tmp
+    depends_on:
+      postgres: {condition: service_healthy}
+      nats: {condition: service_healthy}
+      meilisearch: {condition: service_healthy}
+      bml-message-server: {condition: service_healthy}
+    healthcheck:
+      # Readiness checks the primary database and completed GraphQL initialization.
+      test: [CMD, bash, -ec, "exec 3<>/dev/tcp/127.0.0.1/8080; printf 'GET /api/v1/ready HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n' >&3; read -r protocol status rest <&3; test \"$$status\" = 200"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 120s
+
+  git:
+    <<: *service
+    image: ${BOSCA_IMAGE_REGISTRY:-ghcr.io/bosca-io/bosca}/git-server:${GIT_VERSION:-6.27.7}
+    mem_limit: 896m
+    command: ["-Xms64m", "-Xmx640m", "-config=/app/config/application.yaml"]
+    environment: *bosca-env
+    ports:
+      - "127.0.0.1:${GIT_PORT:-8091}:8091"
+    volumes:
+      - ./config/git.yaml:/app/config/application.yaml:ro
+      - ./data/storage:/storage
+      - ./data/git-tmp:/tmp
+    depends_on:
+      server: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, bash, -ec, "exec 3<>/dev/tcp/127.0.0.1/8091"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+
+  studio:
+    <<: *service
+    image: ${BOSCA_IMAGE_REGISTRY:-ghcr.io/bosca-io/bosca}/bosca-studio:${STUDIO_VERSION:-6.28.4}
+    mem_limit: 256m
+    ports:
+      - "127.0.0.1:${STUDIO_PORT:-3000}:3000"
+    environment:
+      NODE_OPTIONS: --max-old-space-size=160
+      HOST: 0.0.0.0
+      PORT: "3000"
+      API_URL: http://server:8080
+      GRAPHQL_URL: http://server:8080/graphql
+      COLLABORATION_URL: http://server:8080
+      NUXT_API_URL: http://server:8080
+      NUXT_GRAPHQL_URL: http://server:8080/graphql
+      NUXT_PUBLIC_API_URL: ${APP_URL:?Run install.sh first}
+      NUXT_PUBLIC_GRAPHQL_URL: ${APP_URL:?Run install.sh first}/graphql
+      NUXT_PUBLIC_WS_URL: ${WS_URL:?Run install.sh first}
+      NUXT_PUBLIC_AUTH_DOMAIN: ${BOSCA_DOMAIN:?Run install.sh first}
+      NUXT_PUBLIC_GIT_SERVER_URL: ${GIT_URL:?Run install.sh first}
+      NUXT_PUBLIC_GIT_BASE_URL: /
+      NUXT_PUBLIC_APP_VERSION: ${STUDIO_VERSION:-6.28.4}
+    depends_on:
+      server: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:3000/auth/login').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s

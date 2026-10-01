@@ -1,0 +1,11 @@
+apiVersion: v2
+name: tf-serving
+description: TensorFlow Serving for the TFRS recommender model — consumed by bosca-server/bosca-runner recommendations
+type: application
+version: 0.1.0
+# TensorFlow Serving image version (the `image.tag` default).
+appVersion: "2.16.1"
+dependencies:
+  - name: bosca-common
+    version: ">=0.1.0"
+    repository: "file://../bosca-common"

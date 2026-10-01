@@ -1,0 +1,7 @@
+query GetProfileSlug($id: UUID!) {
+    profiles {
+        profile(id: $id) {
+            slug
+        }
+    }
+}

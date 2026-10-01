@@ -1,0 +1,90 @@
+"A named bundle of Studio subsystem access that can be assigned to user profiles."
+type StudioPersona {
+    "The unique identifier of this persona."
+    id: UUID!
+    "The display name of this persona."
+    name: String!
+    "A description of what this persona grants access to."
+    description: String
+    "The list of Studio subsystem identifiers this persona grants access to."
+    subsystemIds: [String!]!
+    "Whether this persona is currently active and can be assigned."
+    enabled: Boolean!
+    "The timestamp when this persona was created."
+    created: DateTime!
+    "The timestamp when this persona was last modified."
+    modified: DateTime!
+}
+
+"Input for creating or updating a Studio persona definition."
+input StudioPersonaInput {
+    "The UUID of an existing persona to update. Null when creating."
+    id: UUID
+    "The display name of the persona."
+    name: String!
+    "A description of what this persona grants access to."
+    description: String
+    "The list of Studio subsystem identifiers this persona grants access to."
+    subsystemIds: [String!]!
+    "Whether the persona is active."
+    enabled: Boolean
+}
+
+"Query operations for Studio persona management."
+type StudioPersonas {
+    "Retrieve all persona definitions. Requires administrator access."
+    all: [StudioPersona!]!
+    "Retrieve a single persona by its unique identifier. Requires administrator access."
+    persona(
+        "The UUID of the persona to retrieve."
+        id: UUID!
+    ): StudioPersona
+    "Retrieve all personas assigned to a profile."
+    byProfile(
+        "The UUID of the profile to look up personas for."
+        profileId: UUID!
+    ): [StudioPersona!]!
+}
+
+"Mutation operations for Studio persona management and profile assignment."
+type StudioPersonasMutation {
+    "Create a new persona definition. Requires administrator access."
+    create(
+        "The persona definition to create."
+        input: StudioPersonaInput!
+    ): StudioPersona!
+    "Update an existing persona definition. Requires administrator access."
+    update(
+        "The persona definition to update. The id field must be set."
+        input: StudioPersonaInput!
+    ): StudioPersona!
+    "Delete a persona definition and all its profile assignments. Requires administrator access."
+    delete(
+        "The UUID of the persona to delete."
+        id: UUID!
+    ): Boolean!
+    "Assign a persona to a profile. Requires administrator access."
+    assignToProfile(
+        "The UUID of the persona to assign."
+        personaId: UUID!
+        "The UUID of the profile to assign the persona to."
+        profileId: UUID!
+    ): Boolean!
+    "Remove a persona assignment from a profile. Requires administrator access."
+    removeFromProfile(
+        "The UUID of the persona to remove."
+        personaId: UUID!
+        "The UUID of the profile to remove the persona from."
+        profileId: UUID!
+    ): Boolean!
+}
+
+extend type Profiles {
+    "Access Studio persona query operations."
+    studioPersonas: StudioPersonas!
+}
+
+extend type ProfilesMutation {
+    "Access Studio persona mutation operations."
+    studioPersonas: StudioPersonasMutation!
+}

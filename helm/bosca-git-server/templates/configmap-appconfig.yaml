@@ -1,0 +1,91 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "bosca-common.fullname" . }}-config
+  labels:
+    {{- include "bosca-common.labels" . | nindent 4 }}
+data:
+  application.yaml: |
+    packages:
+      - "git-search-index"
+
+    bosca:
+      server:
+        management-port: {{ $.Values.managementPort }}
+        port: 8091
+        development: false
+
+    database:
+      postgres:
+        url: {{ .Values.appConfig.databaseUrl | quote }}
+        user: $DATABASE_USER
+        password: $DATABASE_PASSWORD
+        maxConnections: {{ .Values.appConfig.databaseMaxConnections | default 20 }}
+
+    cache:
+      type: nats
+
+    jobQueue:
+      factory: nats
+
+    pubsub:
+      type: nats
+
+    distributedLock:
+      type: nats
+
+    counter:
+      type: nats
+
+    nats:
+      url: nats://{{ .Values.appConfig.natsHost }}.{{ .Release.Namespace }}.svc.cluster.local:4222
+      token: $NATS_TOKEN
+
+    jwt:
+      domain: {{ .Values.appConfig.domain | quote }}
+      admin-domain: admin.{{ .Values.appConfig.domain }}
+      audience: {{ .Values.appConfig.domain | quote }}
+      realm: {{ .Values.appConfig.realm | default .Values.appConfig.domain | quote }}
+      issuer: {{ .Values.appConfig.domain | quote }}
+      secret: $JWT_SECRET
+      expiration-time: 2592000
+
+    analyticsServer:
+      appId: bosca-git-server
+      url: http://{{ .Release.Name }}-bosca-collector.{{ .Release.Namespace }}.svc.cluster.local:8080
+
+    app:
+      url: {{ .Values.appConfig.studioUrl | default (printf "https://studio.%s" .Values.appConfig.domain) | quote }}
+
+    git:
+      url: {{ .Values.appConfig.gitUrl | default (printf "https://git.%s" .Values.appConfig.domain) | quote }}
+      push:
+        rate-limit:
+          enabled: {{ .Values.appConfig.pushRateLimit.enabled }}
+          max: {{ .Values.appConfig.pushRateLimit.max }}
+          window-seconds: {{ .Values.appConfig.pushRateLimit.windowSeconds }}
+
+    pipeline:
+      secretKey: $PIPELINE_SECRET_KEY
+
+    meilisearch:
+      url: http://{{ .Values.appConfig.meilisearchHost }}.{{ .Release.Namespace }}.svc.cluster.local:7700
+      apiKey: $MEILISEARCH_API_KEY
+
+    content:
+      storage:
+        type: s3
+        bucket: $AWS_BUCKET
+        endpoint: $AWS_ENDPOINT
+        region: $AWS_REGION
+        urlPrefix: https://{{ .Values.appConfig.domain }}
+        urlUploadPrefix: https://upload.{{ .Values.appConfig.domain }}
+        forcePathStyle: true
+      urlSigner:
+        secretKey: $URL_SECRET_KEY
+
+    scheduler:
+      enabled: false
+
+    runners:
+      enabled: []

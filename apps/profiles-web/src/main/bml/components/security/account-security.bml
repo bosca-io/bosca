@@ -1,0 +1,97 @@
+<component tag="account-security">
+  <prop name="initial" type="bosca.profiles.web.SecurityModel" required/>
+  <script server provides="model">
+    bosca.profiles.web.SecurityModel(
+      initial.principalId,
+      initial.verified,
+      initial.created,
+      initial.lastLogin,
+      initial.credentials,
+      initial.thirdPartyProviders,
+      initial.passkeys,
+      initial.logins,
+      initial.tab,
+    )
+  </script>
+
+  <island name="account-security" :key="initial.tab">
+    <div class="stack">
+      <security-tabs
+        :active="model.tab"
+        :connectedCount="model.thirdPartyProviders.size"
+        :passkeyCount="model.passkeys.size"
+        :signInCount="model.activeLoginCount"
+      />
+
+      <if model.connectedTab>
+        <security-section title="Connected accounts" description="Use a supported identity provider as another way to sign in.">
+          <if model.thirdPartyProviders.isEmpty()>
+            <p class="empty compact">No third-party providers are enabled.</p>
+          <else>
+            <div class="provider-grid">
+              <for provider in model.thirdPartyProviders>
+                <security-provider-row :provider="provider"/>
+              </for>
+            </div>
+          </if>
+
+          <if model.hasOauthCredentials>
+            <div class="list inset-list">
+              <for credential in model.credentials>
+                <if credential.oauth>
+                  <security-credential-row :credential="credential" :canUnlink="model.hasPassword">
+                    <button class="small danger" type="button" @click="model.unlinkCredential(credential.identifier, ctx)">Unlink</button>
+                  </security-credential-row>
+                </if>
+              </for>
+            </div>
+          </if>
+        </security-section>
+      </if>
+
+      <if model.passkeysTab>
+        <security-section title="Passkeys" description="Passwordless credentials registered to your account.">
+          <if model.passkeys.isEmpty()>
+            <p class="empty compact">No passkeys are registered.</p>
+          <else>
+            <div class="list">
+              <for passkey in model.passkeys>
+                <security-passkey-row :passkey="passkey">
+                  <button class="small danger" type="button" @click="model.deletePasskey(passkey.credentialId, ctx)">Remove</button>
+                </security-passkey-row>
+              </for>
+            </div>
+          </if>
+        </security-section>
+      </if>
+
+      <if model.loginsTab>
+        <security-section title="Sign-ins" description="Review active and revoked sign-ins for this account.">
+          <if model.logins.isEmpty()>
+            <p class="empty compact">No sign-ins have been recorded yet.</p>
+          <else>
+            <div class="list">
+              <for login in model.logins>
+                <security-sign-in-row :login="login">
+                  <if login.active><button class="small danger" type="button" @click="model.revokeLogin(login.id, ctx)">Revoke sign-in</button></if>
+                </security-sign-in-row>
+              </for>
+            </div>
+          </if>
+        </security-section>
+      </if>
+
+      <if model.passwordTab>
+        <security-password-panel :hasPassword="model.hasPassword"/>
+      </if>
+
+      <if model.message != null>
+        <if model.authenticationInvalidated>
+          <toast-message :message="model.message" :failed="model.failed" :id="model.messageId" actionHref="/login" actionLabel="Sign in again" :actionSignOut="true"/>
+        <else>
+          <toast-message :message="model.message" :failed="model.failed" :id="model.messageId"/>
+        </if>
+      </if>
+    </div>
+  </island>
+</component>

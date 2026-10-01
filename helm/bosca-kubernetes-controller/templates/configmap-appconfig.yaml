@@ -1,0 +1,56 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "bosca-common.fullname" . }}-config
+  labels:
+    {{- include "bosca-common.labels" . | nindent 4 }}
+data:
+  application.yaml: |
+    bosca:
+      server:
+        management-port: {{ $.Values.managementPort }}
+        host: 0.0.0.0
+        port: 8082
+
+    database:
+      postgres:
+        url: {{ .Values.appConfig.databaseUrl | quote }}
+        user: $DATABASE_USER
+        password: $DATABASE_PASSWORD
+
+    nats:
+      url: nats://{{ .Values.appConfig.natsHost }}.{{ .Release.Namespace }}.svc.cluster.local:4222
+      token: $NATS_TOKEN
+
+    pubsub:
+      type: nats
+
+    distributedLock:
+      type: nats
+
+    jobQueue:
+      factory: {{ .Values.appConfig.jobQueueFactory | default "nats" }}
+
+    redis:
+      host: {{ .Values.appConfig.redisHost | default "redis" }}.{{ .Release.Namespace }}.svc.cluster.local
+      port: {{ .Values.appConfig.redisPort | default 6380 }}
+
+    jwt:
+      domain: {{ .Values.appConfig.domain | quote }}
+      admin-domain: admin.{{ .Values.appConfig.domain }}
+      audience: {{ .Values.appConfig.domain | quote }}
+      realm: {{ .Values.appConfig.realm | default .Values.appConfig.domain | quote }}
+      issuer: {{ .Values.appConfig.domain | quote }}
+      secret: $JWT_SECRET
+      expiration-time: 2592000
+
+    security:
+      encryption:
+        key: $SECURITY_ENCRYPTION_KEY
+
+    kubernetes:
+      streamPath: /stream
+
+    analyticsServer:
+      appId: kubernetes-controller
+      url: {{ .Values.appConfig.analyticsServerUrl | default (printf "http://%s-bosca-collector.%s.svc.cluster.local:8080" .Release.Name .Release.Namespace) | quote }}

@@ -1,0 +1,121 @@
+name: bosca-leyden-aot
+
+services:
+  nats:
+    image: nats
+    command: ["-c", "/etc/nats/nats.config"]
+    volumes:
+      - ../../services/nats/nats.config:/etc/nats/nats.config:ro
+    networks:
+      - aotnet
+
+  postgres:
+    # pgvector image (a superset of the official postgres image) so the V175 metadata-embeddings migration
+    # can `CREATE EXTENSION vector` locally, where `bosca` is a superuser.
+    image: pgvector/pgvector:pg18
+    command: -c 'max_connections=400'
+    environment:
+      POSTGRES_PASSWORD: bosca
+      POSTGRES_USER: bosca
+      POSTGRES_DB: bosca
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "bosca"]
+      interval: 5s
+      retries: 10
+      start_period: 5s
+    networks:
+      - aotnet
+
+  dragonfly:
+    image: docker.dragonflydb.io/dragonflydb/dragonfly
+    ulimits:
+      memlock: -1
+    environment:
+      DFLY_cluster_mode: emulated
+      DFLY_lock_on_hashtags: true
+      DFLY_default_lua_flags: allow-undeclared-keys
+    networks:
+      - aotnet
+
+  meilisearch:
+    image: getmeili/meilisearch:v1.39.0
+    environment:
+      MEILI_MASTER_KEY: p8JcB_HuMHRxN7uVXfrG2wU06b5k7oTvaAAYo6nsi9M
+      MEILI_EXPERIMENTAL_DUMPLESS_UPGRADE: true
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7700/health"]
+      interval: 5s
+      retries: 10
+    networks:
+      - aotnet
+
+  s3proxy:
+    image: andrewgaul/s3proxy:3.0.0
+    environment:
+      S3PROXY_AUTHORIZATION: aws-v2-or-v4
+      S3PROXY_IDENTITY: bosca-s3
+      S3PROXY_CREDENTIAL: bosca-s3
+      S3PROXY_ENDPOINT: http://0.0.0.0:8000
+      JCLOUDS_PROVIDER: filesystem-nio2
+      S3PROXY_IGNORE_UNKNOWN_HEADERS: true
+      JCLOUDS_FILESYSTEM_NIO2_BASEDIR: /tmp/s3proxy
+    networks:
+      - aotnet
+
+  mc:
+    image: minio/mc:latest
+    depends_on:
+      - s3proxy
+    entrypoint: >
+      /bin/sh -c "
+      until (mc alias set s3proxy http://s3proxy:8000 bosca-s3 bosca-s3) do echo '...waiting...' && sleep 1; done;
+      mc mb -p s3proxy/warehouse;
+      mc mb -p s3proxy/storage;
+      tail -f /dev/null
+      "
+    networks:
+      - aotnet
+
+  bosca-server:
+    image: azul/zulu-openjdk:26.0.0-jdk
+    working_dir: /app
+    volumes:
+      - ../../backend/servers/bosca-server/build/install/bosca-server:/app:ro
+      - aot-output:/aot
+    environment:
+      JAVA_OPTS: "-XX:AOTCacheOutput=/aot/app.aot -XX:AOTMode=record"
+      DATABASE_URL: "jdbc:postgresql://postgres:5432/bosca"
+      DATABASE_USER: bosca
+      DATABASE_PASSWORD: bosca
+      REDIS_HOST: dragonfly
+      REDIS_PORT: "6379"
+      NATS_URL: "nats:4222"
+      NATS_TOKEN: "OAVKZTG7ST62YCPUJYJ6LBQDMKLAUD4NRBPZ4GXUXNUJW2ATCFKKYGHV"
+      MEILISEARCH_URL: "http://meilisearch:7700"
+      MEILISEARCH_API_KEY: "p8JcB_HuMHRxN7uVXfrG2wU06b5k7oTvaAAYo6nsi9M"
+      S3_ENDPOINT: "http://s3proxy:8000"
+      S3_ACCESS_KEY_ID: bosca-s3
+      S3_ACCESS_KEY_SECRET: bosca-s3
+      S3_BUCKET: storage
+    entrypoint: ["./bin/bosca-server"]
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      meilisearch:
+        condition: service_healthy
+      nats:
+        condition: service_started
+      dragonfly:
+        condition: service_started
+      s3proxy:
+        condition: service_started
+    networks:
+      - aotnet
+
+networks:
+  aotnet:
+
+volumes:
+  aot-output:

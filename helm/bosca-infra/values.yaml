@@ -1,0 +1,378 @@
+# ═══════════════════════════════════════════════════════════════════
+# BOSCA INFRA — Infrastructure layer
+#
+# Deploy before bosca-services. Provides:
+#   - PostgreSQL (CNPG Cluster + Pooler + managed roles)
+#   - Redis (Dragonfly CR)
+#   - NATS (official chart)
+#   - Meilisearch (official chart)
+#   - Trino (optional, for analytics warehouse)
+#   - Optional Gradle Build Cache Node for CI
+#   - Application secrets (auto-generated on first install)
+#
+# Prerequisites (install before this chart):
+#   - CloudNativePG operator in cnpg-system namespace
+#   - Dragonfly operator
+#
+# Usage:
+#   helm install bosca-infra helm/bosca-infra --set global.domain=example.com
+# ═══════════════════════════════════════════════════════════════════
+
+global:
+  domain: ""
+  storageClass: openebs-hostpath
+
+# OpenEBS is installed cluster-wide via helm/scripts/bootstrap.sh
+# (not a subchart here). bosca-infra just references its StorageClass.
+
+# ── NATS ─────────────────────────────────────────────────────────
+
+nats:
+  enabled: true
+  fullnameOverride: nats
+  container:
+    resources:
+      requests:
+        cpu: 250m
+        memory: 512Mi
+      limits:
+        cpu: "2"
+        memory: 5Gi
+  config:
+    jetstream:
+      enabled: true
+      memoryStore:
+        enabled: true
+        maxSize: 4Gi
+      fileStore:
+        enabled: true
+        pvc:
+          enabled: true
+          size: 10Gi
+          storageClassName: openebs-hostpath
+    # HTTP monitoring endpoint (port 8222), backing the Studio /system/nats page.
+    # Defaults to disabled upstream, which leaves 8222 unreachable and makes
+    # monitoringUrl (http://nats.<ns>.svc.cluster.local:8222) time out on connect.
+    # config.monitor.enabled starts the http_port listener and adds 8222 to the
+    # headless Service; service.ports.monitor.enabled (below) is *also* required
+    # because the app config targets the main `nats` Service, not the headless one.
+    monitor:
+      enabled: true
+    # Raise max_payload from the 1MB NATS default to 4MiB. There's no
+    # first-class chart key for it, so it goes through config.merge, which
+    # patches raw nats-server config. Plain integer (bytes) needs no << >>.
+    merge:
+      max_payload: 4194304
+  service:
+    ports:
+      monitor:
+        enabled: true
+
+# ── Meilisearch ──────────────────────────────────────────────────
+
+meilisearch:
+  enabled: true
+  fullnameOverride: meilisearch
+  environment:
+    MEILI_ENV: production
+  persistence:
+    enabled: true
+    size: 10Gi
+    storageClass: openebs-hostpath
+
+# ── Trino (optional) ─────────────────────────────────────────────
+
+trino:
+  enabled: false
+  fullnameOverride: trino
+  server:
+    workers: 1
+  catalogs:
+    bosca: |
+      connector.name=postgresql
+      connection-url=jdbc:postgresql://postgres-bosca-ro:5432/bosca
+      connection-user=${ENV:DATABASE_USERNAME}
+      connection-password=${ENV:DATABASE_PASSWORD}
+      # Expose Postgres array columns (e.g. metadata.labels text[]) as Trino arrays; the default hides them,
+      # breaking the recommender's content-features query (array_join(m.labels, ...)).
+      postgresql.array-mapping=AS_ARRAY
+    warehouse: |
+      connector.name=iceberg
+      iceberg.catalog.type=jdbc
+      iceberg.jdbc-catalog.catalog-name=bosca
+      iceberg.jdbc-catalog.driver-class=org.postgresql.Driver
+      iceberg.jdbc-catalog.connection-url=jdbc:postgresql://postgres-bosca-rw:5432/bosca-warehouse
+      iceberg.jdbc-catalog.connection-user=${ENV:ICEBERG_DATABASE_USERNAME}
+      iceberg.jdbc-catalog.connection-password=${ENV:ICEBERG_DATABASE_PASSWORD}
+      fs.native-s3.enabled=true
+  envFrom:
+    - secretRef:
+        name: pg-creds-bosca-readonly
+    - secretRef:
+        name: pg-creds-bosca-warehouse
+
+# ── PostgreSQL (CNPG) ────────────────────────────────────────────
+
+postgres:
+  enabled: true
+  instances: 3
+  imageName: "ghcr.io/cloudnative-pg/postgresql:17"
+  memoryGi: 4
+  # ── One-time migration switch ──────────────────────────────────
+  # Set `migration.enabled: true` for a single helm upgrade to:
+  #   1. Materialize the CNPG-managed `postgres-bosca-superuser` Secret.
+  #   2. Run a Helm post-upgrade Job that executes migration.sql as the
+  #      `postgres` superuser against the live cluster.
+  # Set back to `false` and helm-upgrade again. CNPG will then delete the
+  # superuser Secret (per `enableSuperuserAccess: false`) and the Job is
+  # removed by the helm hook-delete-policy. The Job is intentionally NOT
+  # a recurring hook — CNPG's model is bootstrap-once + immutable, so
+  # post-bootstrap reconciliation should be an explicit, opt-in event.
+  migration:
+    enabled: false
+    # Override migration.sql to apply different SQL. Defaults to the
+    # bundled script that handles the common CLI-→-helm cutover (clears
+    # SET-role defaults, REASSIGNs legacy ownership, regrants readonly).
+    sql: ""
+  storage:
+    size: 50Gi
+    storageClass: openebs-hostpath
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: "2"
+      memory: 4Gi
+  # Memory-dependent params (shared_buffers, effective_cache_size, etc.)
+  # are auto-computed from memoryGi. Explicit values here override.
+  parameters:
+    archive_mode: "on"
+    archive_timeout: 5min
+    auto_explain.log_min_duration: 10s
+    checkpoint_completion_target: "0.9"
+    default_statistics_target: "100"
+    dynamic_shared_memory_type: posix
+    effective_io_concurrency: "300"
+    full_page_writes: "on"
+    huge_pages: "off"
+    log_destination: csvlog
+    log_directory: /controller/log
+    log_filename: postgres
+    log_rotation_age: "0"
+    log_rotation_size: "0"
+    log_truncate_on_rotation: "false"
+    logging_collector: "on"
+    max_connections: "200"
+    max_parallel_workers: "32"
+    max_replication_slots: "32"
+    max_worker_processes: "32"
+    pg_stat_statements.max: "10000"
+    pg_stat_statements.track: all
+    random_page_cost: "1.1"
+    shared_memory_type: mmap
+    shared_preload_libraries: ""
+    ssl_max_protocol_version: TLSv1.3
+    ssl_min_protocol_version: TLSv1.3
+    wal_keep_size: 512MB
+    wal_level: logical
+    wal_log_hints: "on"
+    wal_receiver_timeout: 5s
+    wal_sender_timeout: 5s
+  pg_hba:
+    - host all all 10.0.0.0/8 md5
+    - host all all 172.16.0.0/12 md5
+    - host all all 192.168.0.0/16 md5
+  database: bosca
+  owner: bosca
+  schemas:
+    - artifacts
+    - bx_artifact
+    - bx_manifest
+    - chat
+    - collaboration
+    - git
+    - kubernetes
+    - localization
+    - workops
+  monitoring:
+    enabled: false
+  pooler:
+    enabled: true
+    instances: 2
+    poolMode: session
+    maxClientConn: 1000
+    defaultPoolSize: 25
+  backup:
+    barmanObjectStore:
+      destinationPath: ""
+      s3Credentials:
+        accessKeyId:
+          name: postgres-backups
+          key: ACCESS_KEY_ID
+        secretAccessKey:
+          name: postgres-backups
+          key: ACCESS_SECRET_KEY
+        region:
+          name: postgres-backups
+          key: REGION
+      wal:
+        compression: gzip
+        maxParallel: 2
+    retentionPolicy: "30d"
+  scheduledBackup:
+    enabled: false
+    schedule: "0 0 2 * * *"
+  # Replica cluster mode (DR / failover / cross-cluster migration).
+  # When enabled, this cluster bootstraps by restoring from the source's S3
+  # backup, then continuously replays WAL as a hot standby. No direct network
+  # connection to the source is required — replication happens through S3.
+  # To promote to primary: set replica.enabled: false and helm upgrade.
+  replica:
+    enabled: false
+    sourceName: postgres-bosca       # name of the source CNPG cluster
+    source:
+      destinationPath: ""            # e.g., s3://your-backup-bucket
+      endpointURL: ""                # e.g., https://sfo3.digitaloceanspaces.com
+      s3CredentialsSecret: postgres-backups
+      accessKeyIdKey: ACCESS_KEY_ID
+      secretAccessKeyKey: ACCESS_SECRET_KEY
+  roles:
+    - name: bosca-server
+      secretName: pg-creds-bosca-server
+      access: readwrite
+    - name: bosca-runner
+      secretName: pg-creds-bosca-runner
+      access: readwrite
+    - name: bosca-kubernetes-controller
+      secretName: pg-creds-bosca-kubernetes-controller
+      access: readwrite
+    - name: bosca-artifacts-server
+      secretName: pg-creds-bosca-artifacts-server
+      access: readwrite
+    - name: bosca-git-server
+      secretName: pg-creds-bosca-git-server
+      access: readwrite
+    - name: bosca-warehouse
+      secretName: pg-creds-bosca-warehouse
+      access: readwrite
+    - name: bosca-readonly
+      secretName: pg-creds-bosca-readonly
+      access: readonly
+  databases:
+    - name: bosca
+      owner: bosca
+      # pgvector powers the recommender's semantic content embeddings. Declared here so the CloudNativePG
+      # operator (a superuser) ensures the extension on BOTH fresh and existing clusters — the app role
+      # never needs CREATE EXTENSION rights, and there's no fresh-vs-existing-cluster special case.
+      extensions:
+        - vector
+    - name: bosca-warehouse
+      owner: bosca-warehouse
+
+# ── cert-manager ClusterIssuer ───────────────────────────────────
+# The cert-manager *operator* is installed cluster-wide by
+# helm/scripts/bootstrap.sh. This block only configures the
+# ClusterIssuer used by the bosca-services Gateway to obtain TLS
+# certs via Cloudflare DNS01.
+#
+# The API token itself is NOT in helm values — it lives in
+# secrets.yaml (namespace: cert-manager). This template just
+# references it by name + key.
+
+certManager:
+  clusterIssuer:
+    enabled: false
+    name: letsencrypt-prod
+    email: ""                              # required when enabled
+    acmeServer: "https://acme-v02.api.letsencrypt.org/directory"
+    privateKeySecretName: letsencrypt-prod-account-key
+    cloudflare:
+      tokenSecretName: cloudflare-api-token
+      tokenSecretKey: api-token
+
+# ── Redis (Dragonfly) ────────────────────────────────────────────
+
+redis:
+  enabled: true
+  replicas: 1
+  resources:
+    requests:
+      cpu: 512m
+      memory: 2Gi
+    limits:
+      cpu: "3"
+      memory: 2Gi
+
+# ── Gradle Build Cache Node (optional CI task-output cache) ──────
+# Upstream has deprecated Build Cache Node and ends distribution/support after
+# 2026-12-31. Keep this deployment isolated so it can be replaced by
+# Develocity Edge without changing the Gradle client environment contract.
+
+gradleBuildCache:
+  enabled: false
+  image:
+    repository: gradle/build-cache-node
+    tag: "21.2"
+    pullPolicy: IfNotPresent
+  service:
+    port: 5071
+  config:
+    # Pre-create this Secret with a `config.yaml` key. Cache access is disabled
+    # by default, so the config must define the CI user used by build workers.
+    # Keep the matching clear-text username/password in `username` and
+    # `password` keys for Gradle HTTP Basic authentication.
+    #
+    # Example config.yaml (generate the hash with the image's `hash` command):
+    #   version: 5
+    #   cache:
+    #     accessControl:
+    #       anonymousLevel: "none"
+    #       users:
+    #         ci:
+    #           password: "<salt-hash-string>"
+    #           level: "readwrite"
+    #   uiAccess:
+    #     type: "disabled"
+    existingSecret: gradle-build-cache
+    configKey: config.yaml
+  storage:
+    size: 10Gi
+    # Empty uses global.storageClass.
+    storageClass: ""
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: "2"
+      memory: 2Gi
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 999
+    runAsGroup: 0
+    fsGroup: 0
+    fsGroupChangePolicy: OnRootMismatch
+
+# ── S3 Proxy (local S3-compatible storage for dev/on-prem) ────────
+
+s3proxy:
+  enabled: false
+  image: "andrewgaul/s3proxy:3.0.0"
+  accessKeyId: "bosca-s3"
+  secretAccessKey: "bosca-s3"
+  storage: 10Gi
+  storageClass: openebs-hostpath
+
+# ── Shared ConfigMaps (server-v3-env, otel-env) ──────────────────
+
+s3:
+  region: us-east-1
+  endpoint: ""
+  bucket: storage
+
+otel:
+  endpoint: "none"
+  tracesExporter: "none"
+  metricsExporter: "none"
+  logsExporter: "none"

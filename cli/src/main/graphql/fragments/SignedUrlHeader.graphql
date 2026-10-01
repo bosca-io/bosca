@@ -1,0 +1,4 @@
+fragment SignedUrlHeader on SignedUrlHeader {
+    name
+    value
+}

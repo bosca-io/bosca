@@ -1,0 +1,1282 @@
+"Controls who can discover and access a repository without explicit permission grants."
+enum GitVisibility {
+    "Visible to unauthenticated users for clone and fetch."
+    PUBLIC
+    "Appears in listings for authenticated users but requires a grant for access."
+    INTERNAL
+    "Invisible without an explicit permission grant."
+    PRIVATE
+}
+
+"Classifies the intended content of a repository."
+enum GitRepositoryContentType {
+    "General-purpose repository."
+    GENERAL
+    "Contains script source files for the scripting engine."
+    SCRIPT_PROJECT
+    "Contains documentation files."
+    DOCUMENTATION
+    "Contains analytic query definitions."
+    ANALYTIC_QUERY_PROJECT
+    "Contains AI agent, tool, MCP server, and prompt definitions as Markdown files with YAML frontmatter."
+    AGENT_PROJECT
+    "Contains pipeline definitions as YAML files."
+    PIPELINE_PROJECT
+}
+
+"Determines how a pull request's source branch is integrated into the target."
+enum GitMergeStrategy {
+    "Create a merge commit combining both branches."
+    MERGE_COMMIT
+    "Squash all source commits into a single commit on the target."
+    SQUASH
+    "Replay source commits on top of the target branch."
+    REBASE
+    "Move the target branch pointer forward (only if no divergence)."
+    FAST_FORWARD
+}
+
+"Configurable policies for merge behaviour and commit requirements."
+type GitRepositoryConfiguration {
+    "The merge strategies permitted when completing pull requests."
+    mergeStrategies: [GitMergeStrategy!]!
+    "Whether squash is pre-selected in the merge dialog."
+    squashByDefault: Boolean!
+    "Whether the source branch is deleted after a successful PR merge."
+    deleteBranchOnMerge: Boolean!
+    "Whether pushed commits must carry a valid GPG signature."
+    requireSignedCommits: Boolean!
+}
+
+"A Bosca-hosted git repository."
+type GitRepository {
+    "Unique identifier."
+    id: UUID!
+    "URL-safe identifier used in clone URLs. Immutable after creation."
+    slug: String!
+    "Display name."
+    name: String!
+    "Optional description."
+    description: String
+    "The owner's profile or organization ID."
+    ownerId: UUID!
+    "Access visibility level."
+    visibility: GitVisibility!
+    "The branch used as the default for PRs and browsing."
+    defaultBranch: String!
+    "Whether the repository is archived (read-only)."
+    archived: Boolean!
+    "Whether the repository has been soft-deleted."
+    deleted: Boolean!
+    "The repository this was forked from, if any."
+    forkedFromId: UUID
+    "The intended content classification."
+    contentType: GitRepositoryContentType
+    "Whether the current caller may execute builds in this repository."
+    canExecute: Boolean!
+    "Total storage consumed in bytes."
+    diskSizeBytes: Long!
+    "Merge and commit policy configuration."
+    configuration: GitRepositoryConfiguration!
+    "When the repository was created."
+    created: DateTime!
+    "When the repository was last updated."
+    updated: DateTime!
+    "The fully-qualified HTTP clone URL for this repository."
+    cloneUrl: String!
+    "Permission grants on this repository. Only visible to users with MANAGE permission."
+    permissions: [Permission!]!
+}
+
+"Input for creating a new repository."
+input CreateGitRepositoryInput {
+    "URL-safe slug. Becomes immutable after creation."
+    slug: String!
+    "Display name."
+    name: String!
+    "Optional description."
+    description: String
+    "The owner profile or organization ID."
+    ownerId: UUID!
+    "Access visibility. Defaults to PRIVATE."
+    visibility: GitVisibility
+    "Default branch name. Defaults to main."
+    defaultBranch: String
+    "Content classification."
+    contentType: GitRepositoryContentType
+    "Whether to create an initial commit with a README."
+    initializeWithReadme: Boolean
+    "Name of a .gitignore template to include."
+    gitignoreTemplate: String
+    "Name of a LICENSE template to include."
+    licenseTemplate: String
+}
+
+"Input for updating mutable repository fields. Slug is deliberately absent."
+input UpdateGitRepositoryInput {
+    "New display name."
+    name: String
+    "New description."
+    description: String
+    "New visibility level."
+    visibility: GitVisibility
+    "New default branch."
+    defaultBranch: String
+    "New content classification."
+    contentType: GitRepositoryContentType
+}
+
+"Input for forking a repository."
+input ForkGitRepositoryInput {
+    "The source repository to fork."
+    sourceRepositoryId: UUID!
+    "The owner of the new fork."
+    newOwnerId: UUID!
+    "Optional slug override for the fork."
+    slug: String
+    "Optional name override for the fork."
+    name: String
+}
+
+"Entry type within a git tree."
+enum GitTreeEntryType { BLOB TREE SUBMODULE SYMLINK }
+
+"A single entry in a directory listing."
+type GitTreeEntry {
+    name: String!
+    path: String!
+    type: GitTreeEntryType!
+    mode: Int!
+    sha: String!
+    size: Long
+}
+
+"File content at a specific ref."
+type GitBlob {
+    "UTF-8 content, null for binary or large files."
+    content: String
+    size: Long!
+    sha: String!
+    isBinary: Boolean!
+    mimeType: String
+}
+
+"Commit metadata."
+type GitCommitInfo {
+    sha: String!
+    message: String!
+    authorName: String!
+    authorEmail: String!
+    authorDate: String!
+    committerName: String!
+    committerEmail: String!
+    committerDate: String!
+    parentShas: [String!]!
+}
+
+"Branch with ahead/behind counts relative to default branch."
+type GitBranchInfo {
+    name: String!
+    sha: String!
+    ahead: Int!
+    behind: Int!
+}
+
+"Tag metadata."
+type GitTagInfo {
+    name: String!
+    sha: String!
+    targetSha: String
+    taggerName: String
+    taggerEmail: String
+    message: String
+    isAnnotated: Boolean!
+}
+
+"Per-line blame attribution."
+type GitBlameLine {
+    lineNumber: Int!
+    commitSha: String!
+    authorName: String!
+    authorEmail: String!
+    content: String!
+}
+
+"Events that trigger webhook delivery."
+enum GitWebhookEvent {
+    PUSH
+    PULL_REQUEST_OPENED
+    PULL_REQUEST_CLOSED
+    PULL_REQUEST_MERGED
+    PULL_REQUEST_UPDATED
+    REVIEW_SUBMITTED
+    BRANCH_CREATED
+    BRANCH_DELETED
+    TAG_CREATED
+    TAG_DELETED
+    PIPELINE_RUN_STARTED
+    PIPELINE_RUN_COMPLETED
+}
+
+"A webhook endpoint subscribed to repository events."
+type GitWebhook {
+    id: UUID!
+    repositoryId: UUID!
+    url: String!
+    events: [GitWebhookEvent!]!
+    active: Boolean!
+    created: DateTime!
+}
+
+"A single webhook delivery attempt."
+type GitWebhookDelivery {
+    id: UUID!
+    webhookId: UUID!
+    event: String!
+    responseStatus: Int
+    retryCount: Int!
+    success: Boolean!
+    created: DateTime!
+}
+
+"Input for creating or updating a webhook."
+input GitWebhookInput {
+    url: String!
+    secret: String!
+    events: [GitWebhookEvent!]!
+    active: Boolean
+}
+
+"Repository-level statistics."
+type GitRepoStats {
+    commitCount: Long!
+    branchCount: Int!
+    tagCount: Int!
+    contributorCount: Int!
+    diskSizeBytes: Long!
+}
+
+"Queries for the git repository system."
+type Git {
+    "Look up a repository by owner slug and repo slug."
+    repository(owner: String!, repo: String!): GitRepository
+    "Look up a repository by its unique ID."
+    repositoryById(id: UUID!): GitRepository
+    "List repositories, optionally filtered by owner and/or content type."
+    repositories(ownerId: UUID, contentType: GitRepositoryContentType, includeArchived: Boolean): [GitRepository!]!
+    "List branch protection rules for a repository."
+    branchProtectionRules(repositoryId: UUID!): [GitBranchProtectionRule!]!
+    "Look up a pull request by repository and number."
+    pullRequest(repositoryId: UUID!, number: Int!): GitPullRequest
+    "List pull requests for a repository with optional filters."
+    pullRequests(repositoryId: UUID!, status: GitPullRequestStatus, authorId: UUID, offset: Long, limit: Int): [GitPullRequest!]!
+    "List pull requests across all repositories visible to the caller."
+    allPullRequests(status: GitPullRequestStatus, authorId: UUID, offset: Long, limit: Int): [GitPullRequest!]!
+    "List unresolved pull requests in the order they would be merged, with the requested pull request last."
+    pullRequestMergePlan(id: UUID!): [GitPullRequest!]!
+    "List directory contents at a ref."
+    tree(repositoryId: UUID!, ref: String, path: String): [GitTreeEntry!]!
+    "Read a file's content at a ref."
+    blob(repositoryId: UUID!, ref: String!, path: String!): GitBlob
+    "List commit history, optionally filtered to a path."
+    commits(repositoryId: UUID!, ref: String, path: String, limit: Int, offset: Long): [GitCommitInfo!]!
+    "Get a single commit by SHA."
+    commit(repositoryId: UUID!, sha: String!): GitCommitInfo
+    "List all branches with head SHA and ahead/behind counts."
+    branches(repositoryId: UUID!): [GitBranchInfo!]!
+    "List all tags."
+    tags(repositoryId: UUID!): [GitTagInfo!]!
+    "Per-line blame attribution for a file."
+    blame(repositoryId: UUID!, ref: String!, path: String!): [GitBlameLine!]!
+    "Repository statistics."
+    stats(repositoryId: UUID!): GitRepoStats!
+    "Permission grants for a repository. Requires MANAGE permission."
+    permissions(repositoryId: UUID!): [Permission!]!
+    "Compare two refs (branches, tags, or SHAs)."
+    compare(repositoryId: UUID!, baseRef: String!, headRef: String!): GitComparisonResult!
+    "Search indexed code across repositories, optionally scoped by repository and language."
+    searchCode(query: String!, repositoryId: UUID, language: String, offset: Int, limit: Int): GitCodeSearchResponse!
+    "Search indexed repositories visible to the caller."
+    searchRepositories(query: String!, visibility: GitVisibility, archived: Boolean, offset: Int, limit: Int): GitRepositorySearchResponse!
+    "Search file paths matching a query."
+    searchPaths(repositoryId: UUID!, query: String!, ref: String): [GitTreeEntry!]!
+    "Search file content matching a query."
+    searchContent(repositoryId: UUID!, query: String!, ref: String, limit: Int): [GitSearchResult!]!
+    "List webhooks for a repository. Requires MANAGE permission."
+    webhooks(repositoryId: UUID!): [GitWebhook!]!
+    "List commit statuses for a specific commit."
+    commitStatuses(repositoryId: UUID!, commitSha: String!): [GitCommitStatus!]!
+    "List task references for a repository by task key."
+    taskCommitReferences(repositoryId: UUID!, taskKey: String!): [GitTaskCommitReference!]!
+    "List task PR references for a repository by task key."
+    taskPullRequestReferences(repositoryId: UUID!, taskKey: String!): [GitTaskPullRequestReference!]!
+    "Get the source ref for a script, if it's git-backed."
+    scriptSourceRef(scriptId: UUID!): GitScriptSourceRef
+    "Get the source ref for a query, if it's git-backed."
+    querySourceRef(queryId: UUID!): GitQuerySourceRef
+    "List all source refs for a repository."
+    sourceRefs(repositoryId: UUID!): [GitScriptSourceRef!]!
+    "List delivery history for a webhook."
+    webhookDeliveries(webhookId: UUID!, offset: Long, limit: Int): [GitWebhookDelivery!]!
+}
+
+"A branch protection rule that enforces review requirements and push restrictions."
+type GitBranchProtectionRule {
+    "Unique identifier."
+    id: UUID!
+    "The repository this rule belongs to."
+    repositoryId: UUID!
+    "Glob pattern matching branch names (e.g. main, release/*)."
+    pattern: String!
+    "When true, direct pushes are rejected; changes must come through a merged PR."
+    requirePullRequest: Boolean!
+    "Minimum approving reviews before a PR can merge."
+    requiredApprovals: Int!
+    "When true, approvals are dismissed when new commits are pushed to the PR."
+    dismissStaleReviews: Boolean!
+    "When true, at least one approval must come from a code owner."
+    requireCodeOwnerReview: Boolean!
+    "Named CI checks that must pass before merge."
+    requireStatusChecks: [String!]!
+    "When true, only fast-forward or squash merges are allowed."
+    requireLinearHistory: Boolean!
+    "Whether force-pushes are permitted."
+    allowForcePush: Boolean!
+    "Whether matching branches can be deleted."
+    allowDeletion: Boolean!
+    "When set, only these profiles can push."
+    restrictPushAccess: [UUID!]
+}
+
+"Input for creating or updating a branch protection rule."
+input GitBranchProtectionRuleInput {
+    "Glob pattern matching branch names."
+    pattern: String!
+    "Require changes through PRs."
+    requirePullRequest: Boolean
+    "Minimum approving reviews."
+    requiredApprovals: Int
+    "Dismiss approvals on new commits."
+    dismissStaleReviews: Boolean
+    "Require code owner approval."
+    requireCodeOwnerReview: Boolean
+    "Required CI status checks."
+    requireStatusChecks: [String!]
+    "Require linear history."
+    requireLinearHistory: Boolean
+    "Allow force push."
+    allowForcePush: Boolean
+    "Allow branch deletion."
+    allowDeletion: Boolean
+    "Restrict push to these profiles."
+    restrictPushAccess: [UUID!]
+}
+
+"Lifecycle state of a pull request."
+enum GitPullRequestStatus {
+    OPEN
+    MERGED
+    CLOSED
+    DRAFT
+}
+
+"A repository-scoped real-time pipeline status event."
+type GitPipelineStatusEvent {
+    repositoryId: UUID!
+    pipelineRunId: UUID!
+    pipelineId: UUID!
+    status: GitPipelineRunStatus!
+}
+
+"A repository-scoped real-time pull-request activity event."
+type GitPullRequestActivityEvent {
+    repositoryId: UUID!
+    pullRequestId: UUID!
+    number: Int!
+    action: GitPullRequestActivityAction!
+    title: String!
+    sourceBranch: String!
+    targetBranch: String!
+    authorId: UUID!
+    taskKeys: [String!]!
+    repositoryName: String!
+    recipientIds: [UUID!]!
+    actorId: UUID
+    actorName: String
+    body: String
+    filePath: String
+    lineNumber: Int
+    reviewStatus: GitReviewStatus
+    assigneeId: UUID
+}
+
+enum GitPullRequestActivityAction {
+    OPENED
+    UPDATED
+    MERGED
+    CLOSED
+    REOPENED
+    READY_FOR_REVIEW
+    REVIEWED
+    COMMENTED
+    THREAD_RESOLVED
+    ASSIGNED
+    UNASSIGNED
+    SOURCE_UPDATED
+}
+
+"Verdict submitted with a pull request review."
+enum GitReviewStatus {
+    APPROVED
+    CHANGES_REQUESTED
+    COMMENT_ONLY
+}
+
+"Classification of a file change within a diff."
+enum GitDiffChangeType {
+    ADD
+    MODIFY
+    DELETE
+    RENAME
+    COPY
+}
+
+"Classification of a line within a diff hunk."
+enum GitDiffLineType {
+    CONTEXT
+    ADD
+    DELETE
+}
+
+"A pull request within a repository."
+type GitPullRequest {
+    id: UUID!
+    "The repository this PR belongs to."
+    repositoryId: UUID!
+    "Per-repository auto-incrementing number (e.g. #42)."
+    number: Int!
+    title: String!
+    "Markdown description."
+    description: String
+    "Profile ID of the PR author."
+    authorId: UUID!
+    sourceBranch: String!
+    targetBranch: String!
+    "Non-null for cross-fork PRs."
+    sourceRepositoryId: UUID
+    status: GitPullRequestStatus!
+    "The strategy used when merged."
+    mergeStrategy: GitMergeStrategy
+    mergedBy: UUID
+    mergedAt: DateTime
+    "The SHA of the merge commit."
+    mergeSha: String
+    created: DateTime!
+    updated: DateTime!
+    "Whether the PR can be cleanly merged."
+    mergeable: Boolean!
+    "Files with merge conflicts, if any."
+    conflictingFiles: [String!]!
+    "Profile IDs of users assigned to this PR."
+    assigneeIds: [UUID!]!
+    "Resolved assignee profiles."
+    assignees: [Profile!]!
+    "Pull requests that must be merged before this pull request."
+    dependencies: [GitPullRequest!]!
+    "Pull requests that directly depend on this pull request."
+    dependents: [GitPullRequest!]!
+    "Reviews submitted on this PR."
+    reviews: [GitReview!]!
+    "Structured diff between source and target branches."
+    diff: [GitDiffFile!]!
+}
+
+"A review submitted on a pull request."
+type GitReview {
+    id: UUID!
+    pullRequestId: UUID!
+    reviewerId: UUID!
+    status: GitReviewStatus!
+    body: String
+    dismissedAt: DateTime
+    dismissReason: String
+    created: DateTime!
+    "Line-level comments anchored to the diff."
+    comments: [GitReviewComment!]!
+}
+
+"A comment anchored to a specific line in a pull request diff."
+type GitReviewComment {
+    id: UUID!
+    reviewId: UUID!
+    pullRequestId: UUID!
+    authorId: UUID!
+    filePath: String!
+    oldLineNumber: Int
+    newLineNumber: Int
+    commitSha: String!
+    content: String!
+    "Whether the comment's diff context has changed due to a force-push."
+    outdated: Boolean!
+    resolved: Boolean!
+    created: DateTime!
+    updated: DateTime!
+}
+
+"A file changed in a diff."
+type GitDiffFile {
+    oldPath: String
+    newPath: String
+    changeType: GitDiffChangeType!
+    hunks: [GitDiffHunk!]!
+}
+
+"A contiguous region of changed lines."
+type GitDiffHunk {
+    oldStart: Int!
+    oldCount: Int!
+    newStart: Int!
+    newCount: Int!
+    "Total number of lines in the hunk before pagination."
+    totalLineCount: Int!
+    "A bounded page of diff lines."
+    lines(offset: Int = 0, limit: Int = 2000): [GitDiffLine!]!
+}
+
+"A single line in a diff hunk."
+type GitDiffLine {
+    type: GitDiffLineType!
+    oldLineNumber: Int
+    newLineNumber: Int
+    content: String!
+}
+
+"Input for creating a pull request."
+input CreateGitPullRequestInput {
+    repositoryId: UUID!
+    title: String!
+    description: String
+    sourceBranch: String!
+    targetBranch: String!
+    sourceRepositoryId: UUID
+    isDraft: Boolean
+}
+
+"Input for updating a pull request."
+input UpdateGitPullRequestInput {
+    title: String
+    description: String
+}
+
+"Input for submitting a review."
+input SubmitGitReviewInput {
+    pullRequestId: UUID!
+    status: GitReviewStatus!
+    body: String
+}
+
+"Input for adding a review comment anchored to a diff line."
+input AddGitReviewCommentInput {
+    reviewId: UUID!
+    pullRequestId: UUID!
+    filePath: String!
+    oldLineNumber: Int
+    newLineNumber: Int
+    commitSha: String!
+    content: String!
+}
+
+"State of a CI/CD commit status check."
+enum GitCommitStatusState {
+    PENDING
+    SUCCESS
+    FAILURE
+    ERROR
+}
+
+"A CI/CD status check on a specific commit."
+type GitCommitStatus {
+    id: UUID!
+    repositoryId: UUID!
+    commitSha: String!
+    "The status check name (e.g. 'ci/build', 'ci/test')."
+    context: String!
+    state: GitCommitStatusState!
+    description: String
+    targetUrl: String
+    created: DateTime!
+}
+
+"A task-to-commit reference extracted from commit messages."
+type GitTaskCommitReference {
+    id: UUID!
+    repositoryId: UUID!
+    taskKey: String!
+    commitSha: String!
+    created: DateTime!
+}
+
+"A task-to-pull-request reference extracted from PR metadata."
+type GitTaskPullRequestReference {
+    id: UUID!
+    repositoryId: UUID!
+    taskKey: String!
+    pullRequestId: UUID!
+    pullRequestNumber: Int!
+    created: DateTime!
+}
+
+"Links a script to a git file. Git is source of truth; database caches the deployed version."
+type GitScriptSourceRef {
+    scriptId: UUID!
+    repositoryId: UUID!
+    "Path to the script file in the repository (e.g. 'scripts/on-publish.kts')."
+    path: String!
+    "Branch, tag, or commit SHA to track."
+    ref: String!
+    "The commit SHA currently deployed to the database."
+    resolvedCommit: String
+}
+
+"Links an analytics query to a git file."
+type GitQuerySourceRef {
+    queryId: UUID!
+    repositoryId: UUID!
+    path: String!
+    ref: String!
+    resolvedCommit: String
+}
+
+"Links an entity to a file in a git repository."
+input SourceRefInput {
+    "The repository containing the file."
+    repositoryId: UUID!
+    "Path to the file in the repository."
+    path: String!
+    "Branch, tag, or commit SHA to track. Defaults to 'main'."
+    ref: String! = "main"
+}
+
+"Structured comparison between two refs."
+type GitComparisonResult {
+    baseRef: String!
+    headRef: String!
+    commits: [GitCommitInfo!]!
+    files: [GitDiffFile!]!
+    filesChanged: Int!
+    insertions: Int!
+    deletions: Int!
+}
+
+"A search result from content search across repository files."
+type GitSearchResult {
+    filePath: String!
+    lineNumber: Int!
+    snippet: String!
+}
+
+"A match from indexed code search across repositories."
+type GitCodeSearchResult {
+    repositoryId: UUID!
+    repositoryName: String!
+    repositorySlug: String!
+    filePath: String!
+    language: String!
+    snippet: String!
+}
+
+"A page of indexed code-search results."
+type GitCodeSearchResponse {
+    results: [GitCodeSearchResult!]!
+    estimatedHits: Long!
+}
+
+"A repository returned by indexed repository search."
+type GitRepositorySearchResult {
+    id: UUID!
+    name: String!
+    slug: String!
+    description: String!
+    ownerId: UUID!
+    visibility: GitVisibility!
+    defaultBranch: String!
+    archived: Boolean!
+}
+
+"A page of indexed repository-search results."
+type GitRepositorySearchResponse {
+    results: [GitRepositorySearchResult!]!
+    estimatedHits: Long!
+}
+
+"Mutations for the git repository system."
+type GitMutation {
+    "Create a new repository."
+    createRepository(input: CreateGitRepositoryInput!): GitRepository!
+    "Update mutable fields on a repository."
+    updateRepository(id: UUID!, input: UpdateGitRepositoryInput!): GitRepository!
+    "Archive a repository, preventing further pushes."
+    archiveRepository(id: UUID!): GitRepository!
+    "Soft-delete a repository. Data retained for 30 days."
+    deleteRepository(id: UUID!): GitRepository!
+    "Restore a soft-deleted repository."
+    restoreRepository(id: UUID!): GitRepository!
+    "Transfer a repository to a new owner."
+    transferRepository(id: UUID!, newOwnerId: UUID!): GitRepository!
+    "Rename a repository's slug (the clone-URL path segment). Breaking for existing clones, which must be re-pointed at the new URL; physical storage is unaffected. Requires MANAGE permission."
+    renameRepository(id: UUID!, newSlug: String!): GitRepository!
+    "Run garbage collection on a repository: compacts all packs into a single self-contained pack and updates the stored disk-size metric. Requires MANAGE permission. Use to repair repos whose RECEIVE packs were stored without thickening, or to reduce disk footprint after large deletes."
+    runRepositoryGc(id: UUID!): GitRepository!
+    "Repair a repository by running GC with bitmap generation disabled and pack index v2. Requires MANAGE permission. Use when bitmaps have become corrupt or when standard GC fails on legacy thin-pack data."
+    runRepositoryRepair(id: UUID!): GitRepository!
+    "Fork a repository into a new owner's namespace."
+    forkRepository(input: ForkGitRepositoryInput!): GitRepository!
+    "Grant a permission action to a group on a repository. Requires MANAGE permission."
+    addPermission(permission: PermissionInput!): Boolean!
+    "Revoke a permission action from a group on a repository. Requires MANAGE permission."
+    removePermission(permission: PermissionInput!): Boolean!
+    "Create a branch from a source ref (branch name, tag name, or SHA). Requires EDIT permission."
+    createBranch(repositoryId: UUID!, branchName: String!, sourceRef: String!): GitBranchInfo!
+    "Delete a tag (name without the refs/tags/ prefix). Fires TAG_DELETED webhooks. Requires EDIT permission."
+    deleteTag(repositoryId: UUID!, tag: String!): Boolean!
+    "Delete a branch. Refuses the default branch and branches matching a protection rule. Fires BRANCH_DELETED webhooks. Requires EDIT permission."
+    deleteBranch(repositoryId: UUID!, branchName: String!): Boolean!
+    "Create a branch protection rule. Requires MANAGE permission."
+    createBranchProtectionRule(repositoryId: UUID!, input: GitBranchProtectionRuleInput!): GitBranchProtectionRule!
+    "Update a branch protection rule. Requires MANAGE permission."
+    updateBranchProtectionRule(id: UUID!, input: GitBranchProtectionRuleInput!): GitBranchProtectionRule!
+    "Delete a branch protection rule. Requires MANAGE permission."
+    deleteBranchProtectionRule(id: UUID!): Boolean!
+    "Create a pull request."
+    createPullRequest(input: CreateGitPullRequestInput!): GitPullRequest!
+    "Update a pull request's title or description."
+    updatePullRequest(id: UUID!, input: UpdateGitPullRequestInput!): GitPullRequest!
+    "Merge a pull request using the specified strategy."
+    mergePullRequest(id: UUID!, strategy: GitMergeStrategy!): GitPullRequest!
+    "Merge every unresolved dependency in dependency-first order, then merge the requested pull request."
+    mergePullRequestWithDependencies(id: UUID!, strategy: GitMergeStrategy!): [GitPullRequest!]!
+    "Add a pull request that must be merged before this pull request."
+    addPullRequestDependency(id: UUID!, dependencyId: UUID!): GitPullRequest!
+    "Remove a direct pull request dependency."
+    removePullRequestDependency(id: UUID!, dependencyId: UUID!): GitPullRequest!
+    "Close a pull request without merging."
+    closePullRequest(id: UUID!): GitPullRequest!
+    "Reopen a previously closed pull request."
+    reopenPullRequest(id: UUID!): GitPullRequest!
+    "Mark a draft pull request as ready for review."
+    markPullRequestReady(id: UUID!): GitPullRequest!
+    "Assign a profile to a pull request."
+    assignPullRequest(id: UUID!, profileId: UUID!): GitPullRequest!
+    "Remove an assignee from a pull request."
+    unassignPullRequest(id: UUID!, profileId: UUID!): GitPullRequest!
+    "Submit a review on a pull request."
+    submitReview(input: SubmitGitReviewInput!): GitReview!
+    "Add a comment anchored to a specific diff line."
+    addReviewComment(input: AddGitReviewCommentInput!): GitReviewComment!
+    "Resolve all comments in a thread at the given file and line."
+    resolveReviewThread(pullRequestId: UUID!, filePath: String!, lineNumber: Int!): Boolean!
+    "Create a webhook. Requires MANAGE permission."
+    createWebhook(repositoryId: UUID!, input: GitWebhookInput!): GitWebhook!
+    "Update a webhook. Requires MANAGE permission."
+    updateWebhook(id: UUID!, input: GitWebhookInput!): GitWebhook!
+    "Delete a webhook. Requires MANAGE permission."
+    deleteWebhook(id: UUID!): Boolean!
+    "Run garbage collection on a repository. Requires MANAGE permission."
+    runGc(repositoryId: UUID!): Boolean!
+    "Import a repository from an external clone URL."
+    importRepository(cloneUrl: String!, ownerId: UUID!, slug: String!, name: String!): GitRepository!
+    "Link a script to a git file. Git becomes source of truth for the script's source."
+    setScriptSourceRef(scriptId: UUID!, repositoryId: UUID!, path: String!, ref: String!): GitScriptSourceRef!
+    "Remove a script's git source ref, reverting to database-only source."
+    removeScriptSourceRef(scriptId: UUID!): Boolean!
+    "Link a query to a git file."
+    setQuerySourceRef(queryId: UUID!, repositoryId: UUID!, path: String!, ref: String!): GitQuerySourceRef!
+    "Remove a query's git source ref."
+    removeQuerySourceRef(queryId: UUID!): Boolean!
+    "Manually trigger sync for all source refs in a repository."
+    syncSourceRefs(repositoryId: UUID!): Int!
+    "Create a backup bundle and return the storage path."
+    backupRepository(repositoryId: UUID!): String!
+    "Record a CI/CD commit status check."
+    recordCommitStatus(repositoryId: UUID!, commitSha: String!, context: String!, state: GitCommitStatusState!, description: String, targetUrl: String): GitCommitStatus!
+    "Commit a file to a repository branch. Creates or updates the file at the given path."
+    commitFile(input: CommitFileInput!): CommitFileResult!
+    "Delete a file from a repository branch."
+    deleteFile(repositoryId: UUID!, branch: String! = "main", path: String!, authorName: String!, authorEmail: String!): CommitFileResult!
+}
+
+"Input for committing a file to a repository."
+input CommitFileInput {
+    repositoryId: UUID!
+    branch: String! = "main"
+    path: String!
+    content: String!
+    message: String!
+    authorName: String!
+    authorEmail: String!
+}
+
+"Result of a file commit."
+type CommitFileResult {
+    commitSha: String!
+    branch: String!
+    path: String!
+}
+
+# ─── CI/CD Pipeline Types ────────────────────────────────────────────
+
+"State of a CI/CD pipeline run or job."
+enum GitPipelineRunStatus { QUEUED RUNNING SUCCESS FAILURE CANCELLED SKIPPED }
+
+"What triggered a pipeline run."
+enum GitPipelineTriggerType { PUSH PULL_REQUEST TAG MANUAL SCHEDULE RELEASE PROMOTION }
+
+"Operating mode of a build agent."
+enum GitAgentMode { RUNNER ORCHESTRATOR }
+
+"Current status of a build agent."
+enum GitAgentStatus { ONLINE OFFLINE BUSY DRAINING }
+
+"A CI/CD pipeline defined by a YAML file in the repository."
+type GitPipeline {
+    id: UUID!
+    repositoryId: UUID!
+    "Path to the YAML file (e.g., .bosca/pipelines/build.yaml)."
+    filePath: String!
+    name: String!
+    created: DateTime!
+    updated: DateTime!
+    "Trigger types configured on this pipeline (from its YAML `on:` block)."
+    triggerTypes: [GitPipelineTriggerType!]!
+    "Server-owned execution assignments for this pipeline's default-branch schedule triggers."
+    schedules: [ScheduledJob!]!
+    "Recent runs of this pipeline."
+    runs(offset: Long, limit: Int): [GitPipelineRun!]!
+}
+
+"A single execution of a pipeline."
+type GitPipelineRun {
+    id: UUID!
+    pipelineId: UUID!
+    repositoryId: UUID!
+    commitSha: String!
+    ref: String!
+    triggerType: GitPipelineTriggerType!
+    triggeredBy: UUID
+    status: GitPipelineRunStatus!
+    "Per-pipeline auto-incrementing number."
+    number: Int!
+    concurrencyGroup: String
+    "The effective trigger parameters (dotted keys: release.*, promotion.*, inputs.*) the run was started with."
+    parameters: JSON!
+    created: DateTime!
+    started: DateTime
+    finished: DateTime
+    "Duration in seconds, null if not started."
+    durationSeconds: Long
+    "Jobs within this run."
+    jobs: [GitPipelineJob!]!
+    "Build artifacts uploaded during this run."
+    artifacts: [GitPipelineArtifact!]!
+}
+
+"A build artifact produced by a pipeline run."
+type GitPipelineArtifact {
+    id: UUID!
+    repositoryId: UUID!
+    pipelineRunId: UUID!
+    runNumber: Int!
+    name: String!
+    sizeBytes: Long!
+    created: DateTime!
+}
+
+"A job within a pipeline run."
+type GitPipelineJob {
+    id: UUID!
+    pipelineRunId: UUID!
+    name: String!
+    status: GitPipelineRunStatus!
+    runnerLabel: String!
+    agentId: UUID
+    matrixValues: JSON
+    dependsOn: [String!]!
+    timeoutMinutes: Int
+    "Artifact requirements gating dispatch: the declared list with coordinates resolved at run creation."
+    requirements: JSON
+    "Pipeline requirements gating dispatch: upstream pipeline runs that must SUCCEED first, correlation refs resolved at run creation."
+    pipelineRequirements: JSON
+    "When the requirement checker verified every requirement (artifacts and pipelines); null while waiting (and for ungated jobs)."
+    requirementsSatisfiedAt: DateTime
+    "When a user explicitly bypassed external requirements for this job."
+    requirementsBypassedAt: DateTime
+    "The principal that explicitly bypassed external requirements."
+    requirementsBypassedBy: UUID
+    "The optional explanation supplied with the requirement override."
+    requirementsBypassReason: String
+    "The earliest requirement-timeout expiry; a job still waiting past this fails, naming the unmet dependencies."
+    requirementsDeadline: DateTime
+    "True while this queued job is waiting on unmet requirements — the 'waiting on requirements' state."
+    awaitingRequirements: Boolean!
+    "The job's deferred if: condition (references needs.* or always()/failure()/cancelled()); evaluated when its dependencies settle. Null for ordinary jobs."
+    condition: String
+    "When the deferred condition evaluated true — a deferred job dispatches only after this is set."
+    conditionSatisfiedAt: DateTime
+    "The environment KEY this job targets; null for ordinary jobs."
+    environment: String
+    "The secret NAMES this job may resolve (declared by the pipeline); empty = the legacy repository set."
+    secretNames: [String!]!
+    "Whether this job parks for human approval before dispatch (its own approval flag or its environment's policy)."
+    approvalRequired: Boolean!
+    "When the job was approved; an approval-required job dispatches only after this is set."
+    approvedAt: DateTime
+    "Who approved the job."
+    approvedBy: UUID
+    "The approver's comment."
+    approvalComment: String
+    "True while the job is parked at its approval gate: queued, unapproved, every earlier gate cleared."
+    awaitingApproval: Boolean!
+    "Failure summary for job-level failures outside any step (disk check, secret decryption, dead agent, timeout)."
+    errorMessage: String
+    "Which execution attempt this is (1 = first run; incremented by re-run-failed)."
+    attempt: Int!
+    started: DateTime
+    finished: DateTime
+    "The agent assigned to this job, if any."
+    agent: GitPipelineAgent
+    "Steps within this job."
+    steps: [GitPipelineStep!]!
+}
+
+"An individual step within a pipeline job."
+type GitPipelineStep {
+    id: UUID!
+    pipelineJobId: UUID!
+    name: String!
+    ordinal: Int!
+    status: GitPipelineRunStatus!
+    uses: String
+    run: String
+    image: String
+    condition: String
+    workingDirectory: String
+    with: JSON!
+    env: JSON!
+    exitCode: Int
+    "Failure summary from the tail of the step's log output, set by the agent when the step fails."
+    errorMessage: String
+    started: DateTime
+    finished: DateTime
+}
+
+"A registered build agent."
+type GitPipelineAgent {
+    id: UUID!
+    name: String!
+    labels: [String!]!
+    mode: GitAgentMode!
+    status: GitAgentStatus!
+    "Whether this agent was created for a single job and will be destroyed after."
+    ephemeral: Boolean!
+    "The job this transient agent is scoped to."
+    jobId: UUID
+    "The orchestrator agent that spawned this transient agent."
+    parentAgentId: UUID
+    "Hypervisor instance ID (e.g., DigitalOcean droplet ID)."
+    instanceId: String
+    lastHeartbeat: DateTime
+    expiresAt: DateTime
+    created: DateTime!
+    "The job this agent is currently executing, if any."
+    currentJob: GitPipelineJob
+    "Recent jobs assigned to this agent."
+    recentJobs(limit: Int): [GitPipelineJob!]!
+}
+
+"A secret available to pipelines (name only, value never exposed via API)."
+type GitPipelineSecretInfo {
+    id: UUID!
+    name: String!
+    "When set, the secret resolves only for jobs bound to this environment key."
+    environmentKey: String
+    created: DateTime!
+    updated: DateTime!
+}
+
+"Log output from a pipeline step."
+type GitPipelineLogLine {
+    lineNumber: Int!
+    timestamp: DateTime!
+    content: String!
+    stream: String!
+}
+
+"Returned when registering a new agent. Token is only shown once."
+type GitPipelineAgentRegistration {
+    agent: GitPipelineAgent!
+    "The agent token. Only returned at registration time — store it securely."
+    token: String!
+}
+
+"Result of the uses:deploy action (deployFromJob)."
+type GitReleaseDeployOutcome {
+    "Target-native reference for humans (e.g. release@revision, a Play track)."
+    reference: String!
+    "The recorded deployment status."
+    status: String!
+}
+
+enum GitReleaseAppStoreReviewMode {
+    BETA
+    APP_STORE
+}
+
+type GitAppStoreReviewOutcome {
+    state: String!
+    complete: Boolean!
+    approved: Boolean!
+}
+
+type GitStoreHealthOutcome {
+    "Highest Play crash-rate percentage observed in the requested window."
+    crashRate: Float!
+    maxCrashRate: Float!
+    windowSeconds: Long!
+    healthy: Boolean!
+}
+
+"A durable app build number allocated by uses:allocate-build-number."
+type GitAppBuildNumber {
+    "Monotonic durable sequence; Android embeds this value directly."
+    number: Long!
+    "Platform-formatted value to embed in the app binary."
+    value: String!
+    "True when a retry recovered an existing allocation for the same source identity."
+    reused: Boolean!
+}
+
+"Result of the uses:tag action (createReleaseTag)."
+type GitCreateTagResult {
+    tag: String!
+    "Fully-qualified tag ref, refs/tags/<tag>."
+    ref: String!
+    "SHA of the tagged commit."
+    commitSha: String!
+    "SHA of the annotated-tag object (the pre-existing one on an idempotent no-op)."
+    tagSha: String!
+    "False when the tag already existed at the same commit — the idempotent no-op."
+    created: Boolean!
+}
+
+# ─── CI/CD Pipeline Queries ──────────────────────────────────────────
+
+extend type Git {
+    "List pipelines for a repository."
+    pipelines(repositoryId: UUID!): [GitPipeline!]!
+    "Every pipeline across all repositories — the author-time picker for release relays."
+    allPipelines: [GitPipeline!]!
+    "The artifacts a pipeline's definition declares it produces (parsed at the repo's default branch), for the Use Artifact picker. Coordinates are the raw `${{ }}` templates."
+    declaredArtifacts(pipelineId: UUID!): [GitArtifactDefinition!]!
+    "Get a specific pipeline run."
+    pipelineRun(id: UUID!): GitPipelineRun
+    "Get the current status of a job attempt assigned to this agent. A stale attempt is reported as cancelled."
+    targetedJobStatus(agentId: UUID!, jobId: UUID!, attempt: Int): GitPipelineRunStatus
+    "List pipeline runs for a repository."
+    pipelineRuns(repositoryId: UUID!, offset: Long, limit: Int): [GitPipelineRun!]!
+    "Get log output for a pipeline step. With tail: true, returns the last `limit` lines (offset is ignored). With beforeLine, returns the last `limit` lines whose line number is below it (offset and tail are ignored) — use this to page backwards, since stored line numbers can have gaps."
+    pipelineLogs(stepId: UUID!, offset: Int, limit: Int, tail: Boolean, beforeLine: Int): [GitPipelineLogLine!]!
+    "List registered build agents. System admins see all agents; agent credentials see only themselves and their direct children."
+    pipelineAgents(status: GitAgentStatus): [GitPipelineAgent!]!
+    "List secrets for a repository (names only). Requires MANAGE permission."
+    pipelineSecrets(repositoryId: UUID!): [GitPipelineSecretInfo!]!
+    "The uses:verify-deployment gate's observation: the current deployment's health for an environment (probed once), or NONE when nothing is deployed. Agents poll this until HEALTHY or timeout."
+    jobDeploymentHealth(jobId: UUID!, environmentKey: String!, repository: String): String!
+}
+
+"An artifact a pipeline's job declares it produces — enough to resolve it in the registry (type + namespace + type-specific coordinate). The coordinate is the raw `${{ }}` template as authored."
+type GitArtifactDefinition {
+    "Registry type the coordinate resolves against: docker, helm, maven, npm, raw, ml."
+    type: String!
+    "Registry namespace the artifact is published to, e.g. bosca-maven."
+    namespace: String!
+    "Type-specific coordinate (repository + version in that type's form); may contain `${{ }}`."
+    coordinate: String!
+}
+
+# ─── CI/CD Pipeline Mutations ────────────────────────────────────────
+
+extend type GitMutation {
+    "Manually trigger a pipeline run. Requires EDIT permission."
+    triggerPipeline(pipelineId: UUID!, ref: String!): GitPipelineRun!
+    "Assigns a principal to a schedule. Self/admin assignments activate immediately; another person's assignment waits for confirmation. Requires MANAGE permission."
+    assignPipelineSchedule(scheduleId: UUID!, principalId: UUID!): ScheduledJob!
+    "Confirms a pending schedule assignment. The assigned principal or an administrator may confirm."
+    confirmPipelineScheduleAssignment(scheduleId: UUID!): ScheduledJob!
+    "Clears a schedule assignment. The assigned principal or a repository manager may clear it."
+    clearPipelineScheduleAssignment(scheduleId: UUID!): ScheduledJob!
+    "Cancel a running pipeline. Requires EDIT permission."
+    cancelPipelineRun(id: UUID!): GitPipelineRun!
+    "Permanently delete a terminal pipeline run and its logs and artifacts. Requires MANAGE permission."
+    deletePipelineRun(id: UUID!): Boolean!
+    "Cancel exactly one queued or running pipeline job. Requires EDIT permission."
+    cancelPipelineJob(jobId: UUID!): GitPipelineJob!
+    "Re-run exactly one failed or cancelled pipeline job in its existing run. Requires EDIT permission."
+    rerunPipelineJob(jobId: UUID!): GitPipelineJob!
+    "Runs a queued requirement-waiting job anyway, or reopens a terminal requirement failure, while preserving same-run dependencies, conditions, and approvals. Requires EDIT permission."
+    runPipelineJobAnyway(jobId: UUID!, reason: String): GitPipelineJob!
+    "Re-runs only a terminal run's FAILED/CANCELLED jobs — succeeded jobs keep their results; the run keeps its identity."
+    rerunFailedJobs(runId: UUID!): GitPipelineRun!
+    "Approves an approval-gated job (approve-when-ready: dependencies and requirements must have cleared). An approved gate completes immediately."
+    approvePipelineJob(jobId: UUID!, comment: String): GitPipelineJob!
+    "Rejects an approval-gated job — the job fails with the rejection recorded."
+    rejectPipelineJob(jobId: UUID!, comment: String): GitPipelineJob!
+    "The uses:tag action — creates a release tag from a running job; the runs it triggers inherit this run's initiating principal. tag defaults to the run's release.version. Idempotent: same commit no-ops, a different commit fails."
+    createReleaseTag(jobId: UUID!, repository: String!, tag: String, message: String): GitCreateTagResult!
+    "Allocates a durable Android versionCode or iOS CFBundleVersion for this job's source commit and version. Retries return the same allocation."
+    allocateBuildNumberFromJob(jobId: UUID!, platform: String!, applicationId: String!, sourceVersion: String!, buildKey: String, minimum: String): GitAppBuildNumber!
+    "The uses:deploy action — deploys an environment per the target repository's .bosca/deploy.yaml; environment permission evaluated against the run's initiating principal. repository defaults to the job's own; overrides are step-level config-key overrides."
+    deployFromJob(jobId: UUID!, environmentKey: String!, repository: String, target: String, overrides: JSON): GitReleaseDeployOutcome!
+    "The uses:rollback action — target-honest rollback (helm restores the revision AND reverts the ops-repo values). toRevision 0 = the previous revision."
+    rollbackFromJob(jobId: UUID!, environmentKey: String!, repository: String, target: String, toRevision: Int, overrides: JSON): GitReleaseDeployOutcome!
+    "The uses:play-rollout action — advances a Google Play staged rollout to a store-neutral percentage (0–100) without re-uploading."
+    playRolloutFromJob(jobId: UUID!, environmentKey: String!, rolloutPercentage: Float!, repository: String, target: String): GitReleaseDeployOutcome!
+    "Reads the selected TestFlight beta or full App Store review state once; the agent polls this action."
+    appStoreReviewFromJob(jobId: UUID!, environmentKey: String!, mode: GitReleaseAppStoreReviewMode!, repository: String, target: String): GitAppStoreReviewOutcome!
+    "Runs one Play-vitals crash-rate gate. Continuous telemetry remains in the Pipelines engine."
+    storeHealthFromJob(jobId: UUID!, environmentKey: String!, maxCrashRate: Float!, windowSeconds: Long!, repository: String, target: String): GitStoreHealthOutcome!
+    "The uses:mark-released action — stamps the run's workops release released; idempotent."
+    markReleasedFromJob(jobId: UUID!): Boolean!
+    generateReleaseNotesFromJob(jobId: UUID!): Boolean!
+    "Re-run a pipeline at the same commit. Requires EDIT permission."
+    rerunPipeline(runId: UUID!): GitPipelineRun!
+    "Register a persistent build agent. Requires system admin."
+    registerAgent(name: String!, labels: [String!]!, mode: GitAgentMode!): GitPipelineAgentRegistration!
+    "Register a transient agent scoped to a single job. Called by orchestrators."
+    registerEphemeralAgent(jobId: UUID!, name: String!, labels: [String!]!, parentAgentId: UUID!, timeoutMinutes: Int!): GitPipelineAgentRegistration!
+    "Record the cloud provider instance ID for an agent (e.g., DigitalOcean droplet ID). Called by orchestrators after provisioning so the VM can be reconciled on restart."
+    setAgentInstanceId(agentId: UUID!, instanceId: String!): Boolean!
+    "Update a build agent's name and labels. Requires MANAGE permission."
+    updateAgent(id: UUID!, name: String!, labels: [String!]!): GitPipelineAgent!
+    "Deregister a build agent. Requires system admin or agent self-deregister."
+    deregisterAgent(id: UUID!): Boolean!
+    "Set a pipeline secret. Requires MANAGE permission."
+    setPipelineSecret(repositoryId: UUID!, name: String!, value: String!, environmentKey: String): GitPipelineSecretInfo!
+    "Grants a group an action on the secret itself (use = EXECUTE). Requires MANAGE permission."
+    addPipelineSecretPermission(repositoryId: UUID!, name: String!, groupId: UUID!, action: PermissionAction!): Boolean!
+    "Revokes a secret grant. Requires MANAGE permission."
+    removePipelineSecretPermission(repositoryId: UUID!, name: String!, groupId: UUID!, action: PermissionAction!): Boolean!
+    "Delete a pipeline secret. Requires MANAGE permission."
+    deletePipelineSecret(repositoryId: UUID!, name: String!): Boolean!
+    "Claim the requested job, or the next available job matching the agent's labels when jobId is omitted."
+    claimJob(agentId: UUID!, labels: [String!]!, jobId: UUID): GitPipelineJob
+    "Update a job's status and optional failure summary. Called by CLI runners after execution."
+    updateJobStatus(jobId: UUID!, status: GitPipelineRunStatus!, errorMessage: String): GitPipelineJob!
+    "Update a step's status, exit code, and failure summary. Called by CLI runners during execution."
+    updateStepStatus(stepId: UUID!, status: GitPipelineRunStatus!, exitCode: Int, errorMessage: String): Boolean!
+    "Report a commit status check. Called by CLI runners to update CI status."
+    reportCommitStatus(repositoryId: UUID!, commitSha: String!, context: String!, state: GitCommitStatusState!, description: String, targetUrl: String, jobId: UUID): Boolean!
+    "Set the orchestrator's provider configuration (credentials, VM profiles, limits). Requires system admin."
+    configureOrchestrator(agentId: UUID!, config: GitOrchestratorConfigInput!): GitPipelineAgent!
+    "Retrieve the orchestrator's provider configuration. Called by the CLI on startup."
+    getOrchestratorConfig(agentId: UUID!): GitOrchestratorConfig
+    "Record an agent heartbeat. Called periodically by CLI runners."
+    agentHeartbeat(agentId: UUID!): Boolean!
+    "Append log lines to a pipeline step. Called by CLI runners during execution."
+    appendPipelineLogs(repositoryId: UUID!, runId: UUID!, jobId: UUID!, stepId: UUID!, lines: [LogLineInput!]!): Boolean!
+    "Decrypt secrets for a pipeline job. Called by CLI runners before step execution."
+    decryptPipelineSecrets(repositoryId: UUID!, names: [String!]!): [DecryptedSecret!]!
+    "Resolves a running job's secrets for its agent: only what the pipeline declared (or the legacy repository set), honoring environment scopes, evaluated against the run's initiating principal."
+    resolveJobSecrets(jobId: UUID!): [DecryptedSecret!]!
+}
+
+"Input for a single log line from a pipeline step."
+input LogLineInput {
+    lineNumber: Int!
+    timestamp: DateTime!
+    content: String!
+    stream: String
+}
+
+"A decrypted secret value. Only returned via agent-authenticated requests."
+type DecryptedSecret {
+    name: String!
+    value: String!
+}
+
+"Server-side configuration for an orchestrator agent."
+type GitOrchestratorConfig {
+    provider: String!
+    credentials: GitProviderCredentials!
+    defaults: GitVmDefaults!
+    "Maps runner labels to VM profiles. Key is the label, value is the profile."
+    runnerProfiles: JSON!
+    maxConcurrentVms: Int!
+    maxJobTimeoutMinutes: Int!
+    maxVmLifetimeMinutes: Int!
+    alertSinks: [GitAlertSink!]!
+}
+
+"Provider credential metadata. Actual API tokens are supplied via CLI local config."
+type GitProviderCredentials {
+    selfDestructTokenScope: String
+}
+
+"Default VM configuration when no runner profile matches."
+type GitVmDefaults {
+    region: String!
+    size: String!
+    image: String!
+}
+
+"Notification sink for resource management alerts."
+type GitAlertSink {
+    type: String!
+    url: String!
+}
+
+"Input for configuring an orchestrator agent."
+input GitOrchestratorConfigInput {
+    provider: String!
+    credentials: GitProviderCredentialsInput!
+    defaults: GitVmDefaultsInput!
+    "Maps runner labels to VM profiles as JSON. Example: {\"linux-8cpu\": {\"size\": \"s-8vcpu-16gb\"}}"
+    runnerProfiles: JSON
+    maxConcurrentVms: Int
+    maxJobTimeoutMinutes: Int
+    maxVmLifetimeMinutes: Int
+    alertSinks: [GitAlertSinkInput!]
+}
+
+input GitProviderCredentialsInput {
+    selfDestructTokenScope: String
+}
+
+input GitVmDefaultsInput {
+    region: String!
+    size: String!
+    image: String!
+}
+
+input GitAlertSinkInput {
+    type: String!
+    url: String!
+}
+
+extend type Query {
+    "Git repository operations."
+    git: Git!
+}
+
+extend type Mutation {
+    "Git repository mutations."
+    git: GitMutation!
+}
+
+extend type Subscription {
+    # Streams log lines in real-time for an active pipeline step.
+    pipelineStepLogs(repositoryId: UUID!, stepId: UUID!): GitPipelineLogLine!
+    "Streams pipeline status changes after verifying VIEW access to the selected repository."
+    gitPipelineEvents(repositoryId: UUID!): GitPipelineStatusEvent!
+    "Streams pull-request activity after verifying VIEW access to the selected repository."
+    gitPullRequestEvents(repositoryId: UUID!): GitPullRequestActivityEvent!
+}

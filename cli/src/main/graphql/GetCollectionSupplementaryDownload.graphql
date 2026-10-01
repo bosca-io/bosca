@@ -1,0 +1,9 @@
+query GetCollectionSupplementaryDownload($supplementaryId: UUID!) {
+    content {
+        collectionSupplementary(supplementaryId: $supplementaryId) {
+            content {
+                ...CollectionSupplementaryContentDownload
+            }
+        }
+    }
+}

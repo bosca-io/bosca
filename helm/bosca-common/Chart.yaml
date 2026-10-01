@@ -1,0 +1,5 @@
+apiVersion: v2
+name: bosca-common
+description: Shared library chart providing reusable Helm template helpers for all Bosca service charts
+type: library
+version: 0.1.0

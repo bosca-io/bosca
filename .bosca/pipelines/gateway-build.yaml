@@ -1,0 +1,58 @@
+name: Bosca Gateway
+# Validation pipeline for PRs and main pushes — runs the same
+# fmt/clippy/test pass the release pipeline does, but does NOT push
+# an image. Cheap enough to run on every push thanks to the cached
+# `proxy/target`.
+#
+# Images are published by release-image.yaml.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "gateway/proxy/**"
+      - ".bosca/pipelines/gateway-build.yaml"
+  pull_request:
+    branches: [main]
+  manual: true
+
+concurrency:
+  group: gateway-build-${{ branch }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runner: linux
+    timeout: 30m
+    steps:
+      - name: Checkout
+        uses: checkout
+      - name: Setup Registry
+        working-directory: gateway
+        uses: setup-registry
+        with:
+          repository: bosca-maven
+      - name: Setup Rust
+        working-directory: gateway
+        uses: setup-rust
+        with:
+          toolchain: stable
+      - name: Cache Cargo
+        working-directory: gateway
+        uses: cache
+        with:
+          key: cargo-bosca-gateway-${{ hashFiles('gateway/proxy/Cargo.lock') }}
+          paths:
+            - "~/.cargo/registry"
+            - "~/.cargo/git"
+            - "proxy/target"
+          restore-keys:
+            - "cargo-bosca-gateway-"
+      - name: cargo fmt --check
+        working-directory: gateway/proxy
+        run: cargo fmt --all -- --check
+      - name: cargo clippy
+        working-directory: gateway/proxy
+        run: cargo clippy --all-targets -- -D warnings
+      - name: cargo test
+        working-directory: gateway/proxy
+        run: cargo test --lib --all-features

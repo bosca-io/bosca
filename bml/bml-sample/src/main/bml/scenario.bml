@@ -1,0 +1,48 @@
+<page route="/scenario/{mode}" title="Scenario">
+  {# A coverage scenario: route-param `mode` drives the list size so a render test can exercise BOTH arms of
+     every for-loop and if/else-if/else, the defaulted-prop fallbacks, and the scoped-style dedup. #}
+  <script server provides="items">
+    when (mode) {
+      "empty" -> emptyList<String>()
+      "one" -> listOf("solo")
+      else -> listOf("a", "b", "c")
+    }
+  </script>
+  <html>
+    <head><title>Scenario</title></head>
+    <body>
+      <ol class="indexed">
+        <for (i, x) in items>
+          <li>{ i }={ x }</li>
+        </for>
+      </ol>
+      <div class="plain">
+        <for y in items>
+          <span class="y">{ y }</span>
+        </for>
+      </div>
+      <if items.isEmpty()>
+        <p class="state">none</p>
+      <else-if items.size == 1>
+        <p class="state">single</p>
+      <else>
+        <p class="state">{ items.size } total</p>
+      </if>
+      <div class="raw">{@ "<i>" + mode + "</i>" }</div>
+      <p :title="mode" class="m-{ mode }" {...mapOf("data-n" to items.size)}>attrs</p>
+      <!-- badge twice: first without tone (default "info") exercises the fallback; the scoped <style> inlines once -->
+      <badge :label="mode"/>
+      <badge :label="mode" tone="hot"/>
+      <!-- item-list with NO title (default "Items") and the route's items (empty in 'empty' mode) -->
+      <item-list :items="items"/>
+      <!-- a SECOND item-list: title provided (non-default arm) + scoped style deduped (useStyleOnce false) -->
+      <item-list :items="items" title="Second"/>
+      <!-- counter-view without count (default 0 arm) then with count (provided arm + style dedup) -->
+      <counter-view/>
+      <counter-view :count="items.size"/>
+      <island name="size" :start="items.size">
+        <span class="island-size">{ items.size }</span>
+      </island>
+    </body>
+  </html>
+</page>

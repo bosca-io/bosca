@@ -1,0 +1,7 @@
+mutation DeleteCollection($id: UUID!) {
+    content {
+        collection {
+            delete(id: $id, recursive: true)
+        }
+    }
+}

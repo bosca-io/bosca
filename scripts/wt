@@ -1,0 +1,197 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+Manage bosca-workspace Git worktrees.
+
+Usage:
+  wt create <name> [start-point]
+  wt list
+  wt open <worktree>
+  wt delete [--force] <worktree>
+
+Commands:
+  create  Create a worktree in ../bosca-workspace-trees/<name> and open it in
+          IntelliJ IDEA. The start point defaults to HEAD.
+  list    List all active worktrees.
+  open    Open an existing worktree in IntelliJ IDEA.
+  delete  Remove a worktree only when it is clean.
+          --force permits removal when changes are present.
+
+<worktree> may be a path, directory name, or branch name.
+
+Environment:
+  WT_IDEA_COMMAND  IntelliJ launcher to use instead of auto-detection.
+EOF
+}
+
+die() {
+  echo "wt: $*" >&2
+  exit 1
+}
+
+repository_root() {
+  git rev-parse --show-toplevel 2>/dev/null ||
+    die "run this command from a Git worktree"
+}
+
+main_worktree() {
+  git -C "$1" worktree list --porcelain | awk '
+    /^worktree / { print substr($0, 10); exit }
+  '
+}
+
+canonical_directory() {
+  (cd "$1" 2>/dev/null && pwd -P)
+}
+
+resolve_worktree() {
+  local repository selector canonical matches count
+  repository="$1"
+  selector="$2"
+  canonical=""
+
+  if [ -d "$selector" ]; then
+    canonical="$(canonical_directory "$selector")"
+  fi
+
+  matches="$(git -C "$repository" worktree list --porcelain | awk \
+    -v selector="$selector" -v canonical="$canonical" '
+      function emit() {
+        if (path == "") return
+        count = split(path, parts, "/")
+        name = parts[count]
+        short_branch = branch
+        sub(/^refs\/heads\//, "", short_branch)
+        if (path == selector || path == canonical || name == selector ||
+            branch == selector || short_branch == selector) {
+          print path
+        }
+      }
+      /^worktree / { emit(); path = substr($0, 10); branch = ""; next }
+      /^branch / { branch = substr($0, 8); next }
+      END { emit() }
+    ')"
+
+  count="$(printf '%s\n' "$matches" | awk 'NF { count++ } END { print count + 0 }')"
+  [ "$count" -gt 0 ] || die "no worktree matches '$selector'"
+  [ "$count" -eq 1 ] || die "'$selector' matches more than one worktree; use its full path"
+  printf '%s\n' "$matches"
+}
+
+open_intellij() {
+  local path
+  path="$1"
+
+  if [ -n "${WT_IDEA_COMMAND:-}" ]; then
+    command "$WT_IDEA_COMMAND" "$path"
+  elif command -v idea >/dev/null 2>&1; then
+    idea "$path"
+  elif [ "$(uname -s)" = "Darwin" ] && command -v open >/dev/null 2>&1; then
+    open -a "IntelliJ IDEA" "$path"
+  else
+    die "IntelliJ launcher not found; set WT_IDEA_COMMAND to its executable"
+  fi
+}
+
+worktree_is_clean() {
+  local path status
+  path="$1"
+  status="$(git -C "$path" status --porcelain --untracked-files=all)"
+
+  if [ -n "$status" ]; then
+    echo "wt: refusing to delete a worktree with changes:" >&2
+    printf '%s\n' "$status" >&2
+    echo "wt: commit or stash the changes, or pass --force" >&2
+    return 1
+  fi
+}
+
+create_worktree() {
+  local repository primary trees_directory name start_point directory_name path
+  [ "$#" -ge 1 ] && [ "$#" -le 2 ] || die "usage: wt create <name> [start-point]"
+
+  repository="$(repository_root)"
+  primary="$(main_worktree "$repository")"
+  trees_directory="$(dirname "$primary")/bosca-workspace-trees"
+  name="$1"
+  start_point="${2:-HEAD}"
+  directory_name="${name//\//-}"
+  path="$trees_directory/$directory_name"
+
+  [ -n "$name" ] || die "worktree name cannot be empty"
+  [ ! -e "$path" ] || die "destination already exists: $path"
+  ! git -C "$repository" show-ref --verify --quiet "refs/heads/$name" ||
+    die "branch already exists: $name (use 'wt open $name' to open it)"
+
+  mkdir -p "$trees_directory"
+  echo "Creating worktree $path on new branch $name"
+  git -C "$repository" worktree add -b "$name" "$path" "$start_point"
+
+  echo "Opening $path in IntelliJ IDEA"
+  open_intellij "$path"
+}
+
+list_worktrees() {
+  local repository
+  repository="$(repository_root)"
+  git -C "$repository" worktree list
+}
+
+open_worktree() {
+  local repository path
+  [ "$#" -eq 1 ] || die "usage: wt open <worktree>"
+  repository="$(repository_root)"
+  path="$(resolve_worktree "$repository" "$1")"
+  echo "Opening $path in IntelliJ IDEA"
+  open_intellij "$path"
+}
+
+delete_worktree() {
+  local force selector repository path primary
+  force=false
+  selector=""
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --force|-f) force=true ;;
+      --help|-h) usage; exit 0 ;;
+      -*) die "unknown option for delete: $1" ;;
+      *)
+        [ -z "$selector" ] || die "usage: wt delete [--force] <worktree>"
+        selector="$1"
+        ;;
+    esac
+    shift
+  done
+
+  [ -n "$selector" ] || die "usage: wt delete [--force] <worktree>"
+  repository="$(repository_root)"
+  path="$(resolve_worktree "$repository" "$selector")"
+  primary="$(main_worktree "$repository")"
+
+  [ "$path" != "$primary" ] || die "the primary worktree cannot be deleted"
+
+  if [ "$force" = false ]; then
+    worktree_is_clean "$path"
+    git -C "$repository" worktree remove "$path"
+  else
+    echo "Force-removing $path"
+    git -C "$repository" worktree remove --force "$path"
+  fi
+}
+
+command_name="${1:-}"
+if [ "$#" -gt 0 ]; then
+  shift
+fi
+
+case "$command_name" in
+  create|new) create_worktree "$@" ;;
+  list|ls) list_worktrees "$@" ;;
+  open) open_worktree "$@" ;;
+  delete|remove|rm) delete_worktree "$@" ;;
+  help|--help|-h|"") usage ;;
+  *) die "unknown command '$command_name' (run 'wt help' for usage)" ;;
+esac

@@ -1,0 +1,64 @@
+"""
+R14 — automation rules. The trigger / conditions / actions ride
+as JSON blobs over the wire because the underlying sealed
+hierarchies have many variants — admins author them through
+templates in the workops admin UI rather than raw GraphQL.
+"""
+type WorkOpsAutomationRule {
+    id: UUID!
+    scope: String!
+    scopeId: UUID
+    name: String!
+    description: String
+    enabled: Boolean!
+    """Discriminated `{ "type": "TaskCreated", ... }` blob."""
+    trigger: JSON!
+    """List of `Condition` discriminated objects."""
+    conditions: JSON!
+    """List of `Action` discriminated objects."""
+    actions: JSON!
+    runAsProfileId: UUID!
+    failureMode: String!
+    executionLogRetentionDays: Int!
+    maxFiresPerTaskPerHour: Int!
+    version: Long!
+}
+
+type WorkOpsAutomationExecutionLog {
+    id: UUID!
+    ruleId: UUID!
+    taskId: UUID
+    outcome: String!
+    startedAt: DateTime!
+    finishedAt: DateTime
+    durationMs: Long
+    errorMessage: String
+}
+
+input WorkOpsAutomationRuleInput {
+    scope: String!
+    scopeId: UUID
+    name: String!
+    description: String
+    enabled: Boolean!
+    trigger: JSON!
+    conditions: JSON!
+    actions: JSON!
+    runAsProfileId: UUID!
+    failureMode: String!
+    executionLogRetentionDays: Int!
+    maxFiresPerTaskPerHour: Int!
+}
+
+type WorkOpsAutomationQuery {
+    rules(scope: String!, scopeId: UUID): [WorkOpsAutomationRule!]!
+    rule(id: UUID!): WorkOpsAutomationRule
+    executionLogs(ruleId: UUID!, offset: Long!, limit: Int!): [WorkOpsAutomationExecutionLog!]!
+}
+
+type WorkOpsAutomationMutation {
+    create(input: WorkOpsAutomationRuleInput!): WorkOpsAutomationRule!
+    update(id: UUID!, input: WorkOpsAutomationRuleInput!, expectedVersion: Long!): WorkOpsAutomationRule!
+    delete(id: UUID!): Boolean!
+    setEnabled(id: UUID!, enabled: Boolean!, expectedVersion: Long!): WorkOpsAutomationRule!
+}

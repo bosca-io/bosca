@@ -1,0 +1,15 @@
+"A pre-signed URL for uploading or downloading content, with optional required headers"
+type SignedUrl {
+    "HTTP headers that must be included when making requests to this URL"
+    headers: [SignedUrlHeader!]!
+    "The pre-signed URL for upload or download"
+    url: String!
+}
+
+"An HTTP header name-value pair required for signed URL requests"
+type SignedUrlHeader {
+    "Header name (e.g. 'Content-Type', 'x-amz-content-sha256')"
+    name: String!
+    "Header value"
+    value: String!
+}

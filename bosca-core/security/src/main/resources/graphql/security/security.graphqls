@@ -1,0 +1,385 @@
+"The classification of a security group, indicating whether it represents a principal group or a system-managed group"
+enum GroupType {
+    "A principal group used for custom access control and role assignment"
+    PRINCIPAL
+    "A system-managed group"
+    SYSTEM
+}
+
+"An action that can be granted or denied through permissions on entities"
+enum PermissionAction {
+    "Permission to permanently remove an entity"
+    DELETE
+    "Permission to modify an entity's content or attributes"
+    EDIT
+    "Permission to execute or trigger an entity (e.g. run a workflow or job)"
+    EXECUTE
+    "Permission to act on behalf of another principal"
+    IMPERSONATE
+    "Permission to list or enumerate child entities"
+    LIST
+    "Permission to manage an entity's configuration, permissions, and lifecycle"
+    MANAGE
+    "Permission to read or view an entity's content"
+    VIEW
+}
+
+"Supported third-party OAuth providers for social login and account linking"
+enum ThirdPartyType {
+    "Google OAuth 2.0 authentication provider"
+    GOOGLE,
+    "Facebook OAuth authentication provider"
+    FACEBOOK,
+    "Apple Sign In authentication provider"
+    APPLE
+}
+
+"Input for granting or revoking a permission, specifying the action, target entity, and security group"
+input PermissionInput {
+    "The permission action to grant or revoke (e.g. VIEW, EDIT, DELETE)"
+    action: PermissionAction!
+    "The ID of the entity the permission applies to"
+    entityId: String!
+    "The ID of the security group being granted or denied this permission"
+    groupId: String!
+}
+
+"The type of credential used to authenticate a principal"
+enum CredentialType {
+    "Long-lived API token for programmatic access"
+    API_TOKEN
+    "OAuth 2.0 token-based credential from a third-party provider"
+    OAUTH2
+    "WebAuthn passkey credential for passwordless biometric/security-key authentication"
+    PASSKEY
+    "Standard password credential using the platform's default hashing algorithm"
+    PASSWORD
+    "Password credential using the scrypt key derivation function (used for imported accounts)"
+    PASSWORD_SCRYPT
+}
+
+"A security group used for role-based access control. Groups are assigned to principals and can be granted permissions on entities."
+type Group {
+    "Human-readable description of the group's purpose and scope"
+    description: String!
+    "Unique identifier for this security group"
+    id: UUID!
+    "Display name of the security group"
+    name: String!
+    "The classification of this group (principal or system)"
+    type: GroupType!
+}
+
+"Query operations for listing and searching security groups"
+type Groups {
+    "Paginated list of all security groups, optionally filtered by group type"
+    all(limit: Int!, offset: Long!, type: GroupType): [Group!]!
+    "Search for security groups by name or description, optionally filtered by group type"
+    find(nameOrDescription: String!, limit: Int!, offset: Long!, type: GroupType): [Group!]!
+}
+
+"Mutation operations for creating, editing, and deleting security groups"
+type GroupsMutation {
+    "Create a new security group with the specified name, description, and type"
+    addGroup(description: String!, groupType: GroupType!, name: String!): Group!
+    "Permanently delete a security group by its unique identifier"
+    deleteGroup(id: UUID!): Boolean!
+    "Update an existing security group's name, description, and type"
+    editGroup(description: String!, groupType: GroupType!, id: UUID!, name: String!): Group!
+}
+
+"Query operations for authenticating with username/password credentials"
+type Login {
+    "Authenticate using a username or email identifier and password. Returns tokens and principal information."
+    password(identifier: String!, password: String!): LoginResponse!
+}
+
+"Mutation operations for authentication, password recovery, and token refresh"
+type LoginMutation {
+    "Initiate a forgot-password flow by sending a password reset email to the identifier"
+    forgotPassword(identifier: String!): Boolean!
+    "Reset a password using a valid reset token received via email"
+    resetPassword(token: String!, password: String!): Boolean!
+    "Authenticate using a username or email identifier and password. Returns tokens and principal information. The optional originator identifies the originating client/app and is echoed back on the response."
+    password(identifier: String!, password: String!, originator: String): LoginResponse!
+    "Obtain a new access token using a valid refresh token"
+    refreshToken(refreshToken: String!): LoginResponse!
+    "Exchange a single-use token for a JWT and refresh token. Used for cross-domain OAuth2 authentication when the session cookie cannot transfer between domains."
+    exchangeToken(token: String!): LoginResponse!
+    "Sign out only the current session, leaving the principal's other sign-ins active, and clear the session cookie."
+    signOut: Boolean!
+}
+
+"The response returned after a successful authentication, containing the principal, profiles, and access/refresh tokens"
+type LoginResponse {
+    "The authenticated principal (user account)"
+    principal: Principal!
+    "List of user profiles associated with the authenticated principal, null if none exist"
+    profile: [Profile!]
+    "Refresh token for obtaining new access tokens, null if refresh tokens are disabled"
+    refreshToken: String
+    "The JWT access token for authenticating subsequent API requests"
+    token: Token!
+    "True when this sign-in created the account (first-time third-party signup), false when authenticating an existing one"
+    accountCreated: Boolean!
+    "The caller-supplied login request originator, echoed back so the caller can correlate the response; null when none was provided"
+    originator: String
+}
+
+"A permission granted to a security group, representing a specific action allowance"
+type Permission {
+    "The permitted action (e.g. VIEW, EDIT, DELETE)"
+    action: PermissionAction!
+    "The security group that holds this permission"
+    group: Group!
+    "ID of the security group that holds this permission"
+    groupId: UUID!
+}
+
+"A permission granted to a security group on a specific entity"
+type EntityPermission {
+    "The permitted action on the entity (e.g. VIEW, EDIT, DELETE)"
+    action: PermissionAction!
+    "The security group that holds this permission"
+    group: Group!
+    "ID of the security group that holds this permission"
+    groupId: UUID!
+}
+
+"A principal represents an authenticated user account in the system. Principals have credentials for login, belong to security groups for authorization, and own one or more user profiles."
+type Principal {
+    "Unique identifier for this principal"
+    id: UUID!
+    "List of authentication credentials associated with this principal"
+    credentials: [PrincipalCredential!]!
+    "Security groups this principal belongs to, determining their permissions"
+    groups: [Group!]!
+    "Whether this principal's email or identity has been verified"
+    verified: Boolean!
+    "Whether this principal is an anonymous (unauthenticated guest) identity rather than a registered account"
+    anonymous: Boolean!
+    "User profiles owned by this principal"
+    profiles: [Profile!]!
+    "ID of the primary user profile for this principal, null if not set"
+    primaryProfileId: UUID
+    "Principal attributes, visible only to the principal or a system administrator"
+    attributes: JSON
+    "Timestamp of when this principal was created"
+    created: DateTime!
+    "Timestamp of when this principal was last modified"
+    modified: DateTime!
+    "Timestamp of the principal's most recent login, null if never logged in"
+    lastLogin: DateTime
+    "Successful interactive authentications for this principal, newest first. Visible only to the principal or a system administrator."
+    loginHistory(offset: Long! = 0, limit: Int! = 25): [PrincipalLogin!]!
+    "When this principal was soft-deleted by an administrator, or null if active. A soft-deleted principal is blocked from authenticating until restored, and is excluded from listings unless includeDeleted is set."
+    deletedAt: DateTime
+}
+
+"One successful interactive authentication for a principal."
+type PrincipalLogin {
+    "Stable identifier for this history entry."
+    id: Long!
+    "The authentication proof that minted the login."
+    method: String!
+    "When this login was explicitly revoked."
+    revokedAt: DateTime
+    "Whether this history entry represents the login making the current request."
+    current: Boolean!
+    "When the authentication succeeded."
+    created: DateTime!
+}
+
+"An authentication credential associated with a principal, used for login"
+type PrincipalCredential {
+    "The login identifier (e.g. email address or username)"
+    identifier: String!
+    "The type of credential (OAuth2, password, or scrypt password)"
+    type: CredentialType!
+    "OAuth provider key, or null for non-OAuth credentials"
+    provider: String
+    "The original originator: the client/app the credential was first created from; null when none"
+    originator: String
+    "The last originator: the client/app of the most recent login using this credential; null when none"
+    lastOriginator: String
+}
+
+"Mutation operations for managing the current principal's credentials and profile settings"
+type PrincipalMutation {
+    "Add or update a login identifier with a password for the current principal"
+    identifier(identifier: String!, password: String!): Boolean!
+    "Change the current principal's password. Provide identifier to target a specific credential."
+    password(identifier: String, newPassword: String!, oldPassword: String!): Boolean!
+    "Set the primary profile for a principal. If principalId is omitted, applies to the current principal."
+    setPrimaryProfile(profileId: UUID!, principalId: UUID): Boolean!
+    "Remove the primary profile association from a principal. If principalId is omitted, applies to the current principal."
+    clearPrimaryProfile(principalId: UUID): Boolean!
+    "Revoke one of the current principal's recorded sign-ins without affecting any other login."
+    revokeLogin(loginId: Long!): Boolean!
+}
+
+"Query operations for listing and accessing principals (user accounts)"
+type Principals {
+    "Paginated list of all principals in the system. Soft-deleted principals are excluded unless includeDeleted is true."
+    all(limit: Int!, offset: Long!, includeDeleted: Boolean! = false): [Principal!]!
+    "The currently authenticated principal"
+    current: Principal!
+    "Retrieve a specific principal by their unique identifier. Returns null if not found."
+    principal(id: UUID!): Principal
+}
+
+"Root query type for security features, providing access to groups, login, and principal management"
+type Security {
+    "List of all available permission action names"
+    actions: [String!]!
+    "Access API token queries for managing long-lived programmatic access tokens"
+    apiTokens: ApiTokens!
+    "Access security group queries for listing and searching groups"
+    groups: Groups!
+    "Access login queries for password-based authentication"
+    login: Login!
+    "Access passkey queries for listing registered WebAuthn credentials"
+    passkeys: Passkeys!
+    "Enabled third-party providers available for sign-in and account linking"
+    thirdPartyProviders: [ThirdPartyType!]!
+
+    @deprecated
+    "The currently authenticated principal"
+    principal: Principal
+    "Access principal queries for listing and retrieving user accounts"
+    principals: Principals!
+    "Access admin-only account administration queries (e.g. finding duplicate accounts to merge)"
+    admin: AdminQuery!
+}
+
+"Root mutation type for security features, providing access to authentication, authorization, group management, and signup"
+type SecurityMutation {
+    "Add a principal to a security group, granting them the group's permissions"
+    addPrincipalGroup(groupId: UUID!, principalId: UUID!): Boolean!
+    "Access API token mutations for creating, revoking, and managing long-lived programmatic access tokens"
+    apiTokens: ApiTokensMutation!
+    "Access passkey mutations for managing registered WebAuthn credentials"
+    passkeys: PasskeysMutation!
+    "Remove a specific credential from a principal. Used to disconnect OAuth providers or remove password credentials. Cannot remove the last credential."
+    deleteCredential(principalId: UUID!, type: CredentialType!, identifier: String!): Boolean!
+    "Remove all expired refresh tokens"
+    expireRefreshTokens: Boolean!
+    "Access mutation operations for creating, editing, and deleting security groups"
+    groups: GroupsMutation!
+    "Access mutation operations for authentication, password recovery, and token refresh"
+    login: LoginMutation!
+    "Set a new password using a verification token (typically from an email verification flow)"
+    password(newPassword: String!, verificationToken: String!): Boolean!
+    "Access mutation operations for managing the current principal's credentials and profile"
+    principal: PrincipalMutation!
+    "Remove a principal from a security group, revoking the group's permissions"
+    removePrincipalGroup(groupId: UUID!, principalId: UUID!): Boolean!
+    "Resend the email verification message for a principal that has not yet been verified"
+    resendVerification(principalId: UUID!): Boolean!
+    "Send a password reset email to a principal, initiating the forgot-password flow"
+    sendPasswordReset(principalId: UUID!): Boolean!
+    "Administratively set a new password for a principal, bypassing the old-password requirement"
+    setPassword(principalId: UUID!, password: String!): Boolean!
+    "Access mutation operations for user registration and account creation"
+    signup: SignupMutation!
+    "Connect an additional third-party (OAuth) login to the currently authenticated account"
+    connectThirdParty(type: ThirdPartyType!, token: String!): Boolean!
+    "Access account-linking mutations for completing a pending link after a sign-up collision"
+    link: LinkMutation!
+    "Access admin-only account administration mutations (duplicate-account merge)"
+    admin: AdminMutation!
+}
+
+"Mutations for completing an account link after a sign-up collided with an existing verified account. Each takes the single-use pending-link token issued when the collision was detected."
+type LinkMutation {
+    "Complete the link by re-authenticating with the existing account's password. Returns tokens for the existing account, now carrying the newly-linked credential."
+    confirmPassword(token: String!, password: String!): LoginResponse!
+    "Send a one-time magic-link to the existing account's verified email (the only proof option for accounts without a password)."
+    requestEmailProof(token: String!): Boolean!
+    "Complete the link using the one-time token delivered by requestEmailProof. Returns tokens for the existing account."
+    confirmEmail(proofToken: String!): LoginResponse!
+}
+
+"Admin-only read side of account administration."
+type AdminQuery {
+    "List groups of verified principals that share an email address — i.e. duplicate accounts to merge."
+    duplicateAccounts: [DuplicatedAccountIds!]!
+}
+
+"Admin-only account administration mutations. Nothing here is automatic or self-serve."
+type AdminMutation {
+    "Merge the duplicate principal into the survivor: the survivor keeps everything, the duplicate is retired."
+    mergePrincipals(survivorId: UUID!, duplicateId: UUID!): Principal!
+    "Mark a principal deleted — the reversible staging step before permanent deletion. Revokes the principal's sessions and blocks it from authenticating until restorePrincipal is called."
+    markPrincipalDeleted(id: UUID!): Principal!
+    "Reverse markPrincipalDeleted, re-enabling the account."
+    restorePrincipal(id: UUID!): Principal!
+    "Permanently delete a principal and everything the database cascades from it (credentials, group memberships, emails, tokens, and the principal's linked profiles). The principal MUST already be soft-deleted via markPrincipalDeleted; this two-stage requirement guards against accidental one-click destruction."
+    deletePrincipal(id: UUID!): Boolean!
+}
+
+"A set of distinct principals that share the same verified email address (duplicate accounts)."
+type DuplicatedAccountIds {
+    "The shared verified email address."
+    email: String!
+    "The distinct principals that own this email."
+    principals: [Principal!]!
+}
+
+"How a user can prove ownership of an existing account when linking a new sign-in method to it."
+enum LinkProofMethod {
+    "Re-authenticate with the existing account's password (only when it has one)."
+    PASSWORD
+    "Prove control of the account's verified email via a one-time emailed link (always available)."
+    EMAIL
+}
+
+"A challenge returned when a sign-up's email already belongs to an existing verified account. The client drives the security.link.* mutations with the token to complete the link."
+type LinkChallenge {
+    "Single-use, short-lived pending-link token."
+    token: String!
+    "The proof methods available for the existing account."
+    methods: [LinkProofMethod!]!
+}
+
+"The outcome of a sign-up. Exactly one field is non-null: principal (password sign-up succeeded), loginResponse (third-party sign-up succeeded), or linkChallenge (the email already has a verified account — drive the link challenge)."
+type SignupResult {
+    "The newly-created account, when a password sign-up succeeded."
+    principal: Principal
+    "The account and tokens, when a third-party sign-up succeeded."
+    loginResponse: LoginResponse
+    "Present when the email already belongs to an existing verified account; complete the link with security.link.*."
+    linkChallenge: LinkChallenge
+}
+
+"Mutation operations for user registration, including password-based signup, third-party OAuth signup, and email verification"
+type SignupMutation {
+    "Register a new user with an identifier (email), password, and initial profile. Optional languageTag sets the preferred language."
+    password(identifier: String!, password: String!, profile: ProfileInput!, languageTag: String): Principal! @deprecated(reason: "Use passwordV2, which returns a SignupResult that can carry an account-link challenge when the email already belongs to a verified account; this field throws an error in that case.")
+    "Register or sign in using a third-party OAuth provider (Google, Facebook, or Apple). Returns tokens and principal information."
+    thirdparty(type: ThirdPartyType!, token: String!, languageTag: String): LoginResponse! @deprecated(reason: "Use thirdpartyV2, which returns a SignupResult that can carry an account-link challenge when the verified email already belongs to a different account; this field throws an error in that case.")
+    "Register a new user with an identifier (email), password, and initial profile. Returns a SignupResult that is a link challenge when the email already belongs to a verified account, so the client can complete the link instead of failing. The optional originator identifies the originating client/app; it is stamped on the new credential and echoed back."
+    passwordV2(identifier: String!, password: String!, profile: ProfileInput!, languageTag: String, originator: String): SignupResult!
+    "Register or sign in using a third-party OAuth provider (Google, Facebook, or Apple). Returns a SignupResult that is a link challenge when the verified email already belongs to a different account. The optional originator identifies the originating client/app; it is stamped on a newly-created credential and echoed back."
+    thirdpartyV2(type: ThirdPartyType!, token: String!, languageTag: String, originator: String): SignupResult!
+    "Verify a new account's email address using the verification token sent during password signup"
+    passwordVerify(verificationToken: String!): Boolean! @deprecated(reason: "Use passwordVerifyV2, which returns a SignupResult that can carry an account-link challenge when the proven email already belongs to a verified account; this field throws an error in that case.")
+    "Verify a new account's email address using the verification token sent during password signup. Returns a SignupResult that is a link challenge when the proven email already belongs to a verified account, so the client can complete the link instead of failing."
+    passwordVerifyV2(verificationToken: String!): SignupResult!
+    "Resend the email verification message for a pending signup"
+    resendPasswordVerification(identifier: String!): Boolean!
+}
+
+"Input for providing a signup token that grants access to a specific context (e.g. an organization)"
+input SignupTokenInput {
+    "The type of signup token being provided"
+    type: SignupTokenType!
+    "The token string value"
+    token: String!
+}
+
+"The context type that a signup token grants access to"
+enum SignupTokenType {
+    "A token that grants access to join a specific organization during signup"
+    ORGANIZATION
+}

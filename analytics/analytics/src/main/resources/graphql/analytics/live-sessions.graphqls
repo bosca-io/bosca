@@ -1,0 +1,18 @@
+"A live session on the map: one active visitor at a coarse, IP-derived location, tagged with the application and version they are on."
+type LiveSession {
+    "Client-side render key for the session; it is not a server-side de-duplication key."
+    sessionId: String!
+    "Coarse, IP-derived latitude (city-centroid precision)."
+    lat: Float!
+    "Coarse, IP-derived longitude (city-centroid precision)."
+    lon: Float!
+    "The application the session belongs to, if known (heartbeats published before this field existed have none)."
+    appId: String
+    "The application version the session is on, if known."
+    appVersion: String
+}
+
+extend type Subscription {
+    "Stream currently-active sessions — the retained snapshot first, then live heartbeats as they arrive. Omit appId for every application, or pass one to filter to a single app. Omit appVersion for all versions, or pass one to filter to a single version."
+    liveSessions(appId: String, appVersion: String): LiveSession!
+}

@@ -1,0 +1,13 @@
+<component tag="security-passkey-row">
+  <prop name="passkey" type="bosca.profiles.web.PasskeyRow" required/>
+
+  <div class="list-row">
+    <div class="row-main">
+      <div class="row-title">{ passkey.name }</div>
+      <div class="row-meta">Created <local-date-time :value="passkey.created"/></div>
+      <if passkey.lastUsed.isNotBlank()><div class="row-meta">Last used <local-date-time :value="passkey.lastUsed"/></div></if>
+      <if passkey.transports.isNotBlank()><div class="row-meta">{ passkey.transports }</div></if>
+    </div>
+    <div class="row-actions"><slot/></div>
+  </div>
+</component>

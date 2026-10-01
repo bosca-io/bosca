@@ -1,0 +1,100 @@
+"A logical grouping of translatable strings and documents for a single application or context"
+type LocalizationProject {
+    "Unique identifier for this project"
+    id: UUID!
+    "Human-readable project name"
+    name: String!
+    "Optional description surfaced in the admin UI"
+    description: String
+    "BCP-47 language tag of the source language (must exist in public.languages)"
+    sourceLanguage: String!
+    "Free-form JSON attributes"
+    attributes: JSON
+    "Timestamp when this project was created"
+    created: DateTime!
+    "Timestamp when this project was last modified"
+    modified: DateTime!
+
+    "Target languages this project translates into"
+    languages: [LocalizationProjectLanguage!]!
+    "Export formats configured for this project"
+    formats: [LocalizationProjectFormat!]!
+
+    "Paginated list of translatable strings belonging to this project"
+    strings(offset: Int, limit: Int): [LocalizationString!]!
+    "Metadata items linked to this project for document translation"
+    documents: [LocalizationProjectDocument!]!
+    "External sync binding for this project, or null if none is configured"
+    syncState: LocalizationSyncState
+    "Per-group permission grants for this project"
+    permissions: [LocalizationProjectPermission!]!
+    "Translation coverage snapshot for a specific language"
+    progress(languageTag: String!): TranslationProgress!
+    "Every translation in the project currently in the given workflow state (for a single language)"
+    translationsByState(languageTag: String!, state: TranslationState!): [LocalizationTranslation!]!
+    "Every translation in the project attributed to the given origin (for a single language)"
+    translationsByOrigin(languageTag: String!, origin: TranslationOrigin!): [LocalizationTranslation!]!
+}
+
+"A target language declared for a localization project"
+type LocalizationProjectLanguage {
+    "The project this language belongs to"
+    projectId: UUID!
+    "BCP-47 language tag"
+    languageTag: String!
+    "When this language was added"
+    created: DateTime!
+}
+
+"An export format configured for a localization project"
+type LocalizationProjectFormat {
+    "The project this format belongs to"
+    projectId: UUID!
+    "The export format"
+    format: ExportFormat!
+    "When this format was added"
+    created: DateTime!
+}
+
+"Input for creating or editing a LocalizationProject"
+input LocalizationProjectInput {
+    "Human-readable project name"
+    name: String!
+    "Optional description surfaced in the admin UI"
+    description: String
+    "BCP-47 language tag of the source language"
+    sourceLanguage: String
+    "Free-form JSON attributes"
+    attributes: JSON
+}
+
+"A group-to-project permission grant within the localization subsystem"
+type LocalizationProjectPermission {
+    "The project this permission applies to"
+    projectId: UUID!
+    "The security group granted the action; null if the group was deleted"
+    group: Group
+    "The permission action granted (VIEW, EDIT, MANAGE)"
+    action: PermissionAction!
+}
+
+"Root namespace for localization queries"
+type Localization {
+    "Every project visible to the caller"
+    projects(offset: Int, limit: Int): [LocalizationProject!]!
+    "Look up a single project by ID"
+    project(id: UUID!): LocalizationProject
+    "Look up a single string by its primary key"
+    string(id: UUID!): LocalizationString
+    "Look up a single string by its (projectId, key) unique pair"
+    stringByKey(projectId: UUID!, key: String!): LocalizationString
+    "Render translations of a project+language in the requested format"
+    export(request: ExportRequestInput!): ExportResult!
+    "Export a translated document as HTML for external translation tool round-tripping"
+    exportDocumentAsHtml(documentId: UUID!, languageTag: String!): String!
+}
+
+extend type Query {
+    "Entry point for localization queries"
+    localization: Localization!
+}

@@ -1,0 +1,91 @@
+"Root namespace for localization mutations; all operations respect per-project ACLs"
+type LocalizationMutation {
+    "Create a new project and its three project-scoped groups"
+    addProject(input: LocalizationProjectInput!): LocalizationProject!
+    "Edit an existing project's mutable fields"
+    editProject(id: UUID!, input: LocalizationProjectInput!): LocalizationProject!
+    "Delete a project (cascades to strings, translations, documents, and permissions)"
+    deleteProject(id: UUID!): Boolean!
+
+    "Grant a project-scoped permission to a security group"
+    addProjectPermission(projectId: UUID!, groupId: UUID!, action: PermissionAction!): Boolean!
+    "Revoke a project-scoped permission grant"
+    removeProjectPermission(projectId: UUID!, groupId: UUID!, action: PermissionAction!): Boolean!
+
+    "Add a target language to a project"
+    addProjectLanguage(projectId: UUID!, languageTag: String!): LocalizationProjectLanguage!
+    "Remove a target language from a project"
+    removeProjectLanguage(projectId: UUID!, languageTag: String!): Boolean!
+
+    "Add an export format to a project"
+    addProjectFormat(projectId: UUID!, format: ExportFormat!): LocalizationProjectFormat!
+    "Remove an export format from a project"
+    removeProjectFormat(projectId: UUID!, format: ExportFormat!): Boolean!
+
+    "Attach a metadata item to a string for translator context"
+    addStringMetadata(stringId: UUID!, metadataId: UUID!): LocalizationStringMetadata!
+    "Detach a metadata item from a string"
+    removeStringMetadata(stringId: UUID!, metadataId: UUID!): Boolean!
+
+    "Add a new translatable string to a project"
+    addString(input: LocalizationStringInput!): LocalizationString!
+    "Edit a string's key, context, placeholders, tags, or plural flag"
+    editString(id: UUID!, input: LocalizationStringInput!): LocalizationString!
+    "Delete a string (cascades to its translations)"
+    deleteString(id: UUID!): Boolean!
+
+    "Upsert a non-plural translation"
+    setTranslation(input: LocalizationTranslationInput!): LocalizationTranslation!
+    "Transition a translation to a new workflow state"
+    transitionTranslation(id: UUID!, toState: TranslationState!): LocalizationTranslation!
+    "Delete a translation by string and language"
+    deleteTranslation(stringId: UUID!, languageTag: String!): Boolean!
+
+    "Upsert a plural translation row"
+    setPluralTranslation(input: LocalizationPluralTranslationInput!): LocalizationPluralTranslation!
+    "Transition a plural translation row to a new workflow state"
+    transitionPluralTranslation(id: UUID!, toState: TranslationState!): LocalizationPluralTranslation!
+    "Delete every plural row for a (stringId, languageTag) pair"
+    deletePluralTranslations(stringId: UUID!, languageTag: String!): Boolean!
+
+    "Transition every translation in a project+language from one state to another; returns count of rows updated"
+    bulkTransition(
+        projectId: UUID!,
+        languageTag: String!,
+        fromState: TranslationState!,
+        toState: TranslationState!
+    ): Int!
+
+    "Link an existing metadata item to a project as a translatable document"
+    addProjectDocument(input: LocalizationProjectDocumentInput!): LocalizationProjectDocument!
+    "Unlink a metadata item from a project"
+    removeProjectDocument(projectId: UUID!, metadataId: UUID!): Boolean!
+
+    "Upsert the translated content of a project document for a language"
+    setDocumentTranslation(input: LocalizationDocumentTranslationInput!): LocalizationDocumentTranslation!
+    "Transition a document translation to a new workflow state"
+    transitionDocumentTranslation(id: UUID!, toState: TranslationState!): LocalizationDocumentTranslation!
+
+    "Import translated HTML back into a document translation"
+    importDocumentFromHtml(
+        documentId: UUID!,
+        languageTag: String!,
+        html: String!,
+        origin: TranslationOrigin,
+        originDetail: String
+    ): LocalizationDocumentTranslation!
+
+    "Configure or update the external sync provider binding for a project"
+    configureSync(input: LocalizationSyncConfigInput!): LocalizationSyncState!
+    "Push source strings and translations to the configured sync provider"
+    syncToProvider(projectId: UUID!): SyncResult!
+    "Pull translations from the configured sync provider"
+    syncFromProvider(projectId: UUID!): SyncResult!
+    "Remove the sync provider binding for a project"
+    removeSync(projectId: UUID!): Boolean!
+}
+
+extend type Mutation {
+    "Entry point for localization mutations"
+    localization: LocalizationMutation!
+}

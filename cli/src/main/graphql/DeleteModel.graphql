@@ -1,0 +1,5 @@
+mutation DeleteModel($id: UUID!) {
+    models {
+        delete(id: $id)
+    }
+}

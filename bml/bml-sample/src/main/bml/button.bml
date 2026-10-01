@@ -1,0 +1,8 @@
+<component tag="button">
+  <style scoped>
+  button {
+    border: 1px solid #000;
+  }
+  </style>
+  <html:button><slot /></html:button>
+</component>

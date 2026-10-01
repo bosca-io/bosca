@@ -1,0 +1,22 @@
+fragment DocumentTemplate on DocumentTemplate {
+    metadata {
+        id
+        version
+        slug
+    }
+    configuration
+    schema
+    content
+    attributes {
+        key
+        name
+        description
+        type
+        ui
+        workflows {
+            autoRun
+        }
+        configuration
+    }
+}
+

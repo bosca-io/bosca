@@ -1,0 +1,49 @@
+query GetWorkOpsSprint($id: UUID!) {
+    workOps {
+        sprints {
+            sprint(id: $id) {
+                ...WorkOpsSprintFragment
+            }
+        }
+    }
+}
+
+query GetWorkOpsSprintsByBoard($boardId: UUID!, $offset: Long! = 0, $limit: Int! = 50) {
+    workOps {
+        sprints {
+            byBoard(boardId: $boardId, offset: $offset, limit: $limit) {
+                ...WorkOpsSprintFragment
+            }
+        }
+    }
+}
+
+mutation CreateWorkOpsSprint($input: CreateWorkOpsSprintInput!) {
+    workOps {
+        sprints {
+            create(input: $input) {
+                ...WorkOpsSprintFragment
+            }
+        }
+    }
+}
+
+mutation StartWorkOpsSprint($input: StartWorkOpsSprintInput!) {
+    workOps {
+        sprints {
+            start(input: $input) {
+                ...WorkOpsSprintFragment
+            }
+        }
+    }
+}
+
+mutation CloseWorkOpsSprint($input: CloseWorkOpsSprintInput!) {
+    workOps {
+        sprints {
+            close(input: $input) {
+                ...WorkOpsSprintFragment
+            }
+        }
+    }
+}

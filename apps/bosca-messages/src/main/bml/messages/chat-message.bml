@@ -1,0 +1,70 @@
+<message key="chat-message">
+  <script server provides="m">
+    import bosca.messages.ChatMessageNotification
+    message.payload(ChatMessageNotification.serializer())
+  </script>
+  <script server provides="content">bosca.messages.chatMessageContent(message, m)</script>
+  <script server provides="assets">message.assetsUrl ?: error("BmlMessageContext.assetsUrl is required — emails cannot reference relative asset URLs")</script>
+  <script server provides="preview">
+    content.messageText?.trim()?.takeIf { it.isNotEmpty() }
+      ?.let { if (it.length <= 280) it else it.take(279) + "…" }
+      ?: if (content.attachmentCount > 0) {
+        t("chat-message.attachment-preview", "Sent an attachment")
+      } else {
+        t("chat-message.empty-preview", "Sent a message")
+      }
+  </script>
+  <script server provides="subject">
+    if (m.direct) {
+      t("chat-message.direct.subject", "{senderName} sent you a message", "senderName" to m.senderName)
+    } else {
+      t("chat-message.subject", "{senderName} sent a message in {channelName}", "senderName" to m.senderName, "channelName" to m.channelName)
+    }
+  </script>
+  <script server provides="headline">
+    if (m.direct) {
+      t("chat-message.direct.headline", "New message from {senderName}", "senderName" to m.senderName)
+    } else {
+      t("chat-message.headline", "New message in {channelName}", "channelName" to m.channelName)
+    }
+  </script>
+  <script server provides="emailTitle">t("chat-message.message.title", "{appName} · New message", "appName" to m.appName)</script>
+  <script server provides="eyebrow">t("chat-message.eyebrow", "Chat")</script>
+  <script server provides="cta">t("chat-message.cta", "Open chat")</script>
+  <script server provides="preheader">t("chat-message.preheader", "{senderName}: {preview}", "senderName" to m.senderName, "preview" to preview)</script>
+  <script server provides="reason">t("social.reason", "You're receiving this because your social notification preferences include email for this activity.")</script>
+  <script server provides="pushTitle">
+    if (m.direct) {
+      t("chat-message.direct.push.title", "{senderName}", "senderName" to m.senderName)
+    } else {
+      t("chat-message.push.title", "{senderName} in {channelName}", "senderName" to m.senderName, "channelName" to m.channelName)
+    }
+  </script>
+  <script server provides="lede">
+    if (m.direct) {
+      t("chat-message.direct.lede", "{senderName} sent you a direct message while you were away.", "senderName" to m.senderName)
+    } else {
+      t("chat-message.lede", "{senderName} sent a message while you were away from the channel.", "senderName" to m.senderName)
+    }
+  </script>
+  <push>
+    <title>{ pushTitle }</title>
+    <body>{ preview }</body>
+    <action id="open-chat" default t="chat-message.push.action.open">Open chat</action>
+    <image/>
+    <attachments/>
+    <conversation/>
+  </push>
+  <email>
+    <subject>{ subject }</subject>
+    <bosca-shell :brand="m.appName" :logo="m.logoUrl" :logoOnly="m.logoOnly" :title="emailTitle" :preheader="preheader" :assets="assets" :unsubscribe="message.unsubscribeUrl" :preferences="message.preferencesUrl" :reason="reason" :primaryColor="m.primaryColor">
+      <bosca-heading :eyebrow="eyebrow" :headline="headline" :name="message.recipientName" :primaryColor="m.primaryColor" :accentColor="m.accentColor">
+        <span>{ lede }</span>
+      </bosca-heading>
+      <panel :accentColor="m.accentColor">
+        <p style="margin:0;font-family:'Geist',-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:14px;line-height:1.65;color:#34394a;white-space:pre-wrap;">{ preview }</p>
+        <cta-button wide :href="m.actionUrl" :label="cta" :primaryColor="m.primaryColor"/>
+      </panel>
+    </bosca-shell>
+  </email>
+</message>

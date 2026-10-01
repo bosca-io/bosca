@@ -1,0 +1,7 @@
+query GetStorageSystem($id: UUID!) {
+    storageSystems {
+        storageSystem(id: $id) {
+            ...StorageSystem
+        }
+    }
+}

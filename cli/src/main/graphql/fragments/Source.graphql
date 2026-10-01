@@ -1,0 +1,6 @@
+fragment Source on Source {
+    id
+    name
+    description
+    configuration
+}

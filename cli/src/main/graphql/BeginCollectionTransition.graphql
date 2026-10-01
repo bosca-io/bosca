@@ -1,0 +1,5 @@
+mutation BeginCollectionTransition($id: UUID!, $state: String!, $status: String!, $restart: Boolean!) {
+    transitions {
+        beginTransition(request: {collectionId: $id, stateId: $state, status: $status, restart: $restart})
+    }
+}

@@ -1,0 +1,38 @@
+<resources>
+    <string name="hello_community">Hello Community</string>
+    <string name="onboarding_title">Welcome</string>
+    <string name="onboarding_subtitle">Your community platform</string>
+    <string name="onboarding_get_started">Get Started</string>
+
+    <string name="login_title">Sign in</string>
+    <string name="login_identifier_label">Email or username</string>
+    <string name="login_password_label">Password</string>
+    <string name="login_password_hide">Hide</string>
+    <string name="login_password_show">Show</string>
+    <string name="login_continue_button">Continue</string>
+    <string name="login_divider_text">or</string>
+    <string name="login_google_button">Continue with Google</string>
+    <string name="login_register_button">Don't have an account? Register here.</string>
+
+    <string name="register_title">Register</string>
+    <string name="register_name_label">Full Name</string>
+    <string name="register_identifier_label">Email/Username</string>
+    <string name="register_password_label">Password</string>
+    <string name="register_button">Register</string>
+    <string name="register_login_button">Already have an account? Login here.</string>
+
+    <string name="verify_title">Verify Account</string>
+    <string name="verify_message">Please enter the verification code sent to %1$s.</string>
+    <string name="verify_default_identifier">your email</string>
+    <string name="verify_code_label">Verification Code</string>
+    <string name="verify_button">Verify</string>
+    <string name="verify_resend_button">Resend Verification Code</string>
+    <string name="verify_refresh_button">Refresh Status</string>
+    <string name="verify_logout_button">Logout</string>
+
+    <string name="login_error_default">Login failed</string>
+    <string name="signup_error_default">Signup failed</string>
+    <string name="verify_error_default">Verification failed</string>
+    <string name="verify_resend_error_default">Failed to resend verification</string>
+    <string name="verify_refresh_error_default">Failed to refresh verification status</string>
+</resources>

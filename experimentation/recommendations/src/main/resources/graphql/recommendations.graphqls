@@ -1,0 +1,741 @@
+"Defines the algorithm a strategy uses for candidate generation. Personalization (the learned ranker, dismissals, rating re-ranking) is applied at read time, so strategies carry no per-profile targeting."
+enum RecommendationStrategyType {
+    "Content with the highest recent interaction velocity across all users. Materialized on a schedule as a global pool."
+    TRENDING
+    "Item-to-item recommendations (\"you liked X, here's related Z\") from a co-occurrence analytics query, served anchored on a source item rather than a profile feed."
+    CO_ENGAGEMENT
+    "\"People like you\" item-to-item recommendations — co-occurrence conditioned on all of the viewer's cohort memberships (derived from their personalization signals), served anchored on a source item and folded into `recommended`."
+    COHORT_CO_ENGAGEMENT
+    "Personalized recommendations from a trained TensorFlow Recommenders model served via TF Serving, retrieved and ranked live per request."
+    PERSONALIZED
+}
+
+"A user's feedback gesture on a recommended item (routed to a profile rating, or a dismissal for HIDE)."
+enum RecommendationFeedback {
+    "Strong positive — more like this."
+    BOOST
+    "Negative — less like this."
+    LOWER
+    "Positive interest — I care about this."
+    CARE
+    "Remove from the feed (dismissal, not a rating)."
+    HIDE
+}
+
+"Lifecycle status of a recommendation strategy."
+enum RecommendationStrategyStatus {
+    "The strategy is being configured and does not yet produce recommendations."
+    DRAFT
+    "The strategy is live and actively generating recommendations."
+    ACTIVE
+    "The strategy was previously active but has been temporarily suspended."
+    PAUSED
+    "The strategy is retired and no longer produces recommendations."
+    ARCHIVED
+}
+
+"A candidate-generation or model-ranking signal that contributed to a recommendation result."
+enum RecommendationSource {
+    "Similarity from the independently served item-to-item content model."
+    CONTENT_MODEL
+    "Retrieval or ranking from the personalized TensorFlow model."
+    PERSONALIZED_MODEL
+    "Globally trending content from an evaluated trending strategy."
+    TRENDING
+    "Whole-audience item-to-item co-engagement."
+    CO_ENGAGEMENT
+    "Item-to-item co-engagement conditioned on a viewer cohort."
+    COHORT_CO_ENGAGEMENT
+}
+
+"Input for creating or updating a recommendation strategy."
+input RecommendationStrategyInput {
+    "The display name of the strategy."
+    name: String!
+    "A description of how this strategy generates recommendations."
+    description: String
+    "The algorithm type used to generate recommendations."
+    type: RecommendationStrategyType!
+    "The lifecycle status of the strategy."
+    status: RecommendationStrategyStatus
+    "The UUID of an analytics query whose results drive recommendation generation."
+    analyticsQueryId: UUID
+    "Strategy-specific configuration parameters as JSON (e.g., decay rate, similarity threshold, lookback days)."
+    configuration: JSON
+    "Priority for ordering when multiple strategies contribute to a placement. Higher values are evaluated first."
+    priority: Int
+    "Maximum number of recommendations this strategy should produce per profile."
+    maxRecommendations: Int
+    "A cron expression for automatic periodic evaluation. Set to null to disable scheduled evaluation."
+    evaluationSchedule: String
+}
+
+"Input for creating or updating a recommendation placement."
+input RecommendationPlacementInput {
+    "The display name of the placement."
+    name: String!
+    "A description of where this placement appears in the application."
+    description: String
+    "A URL-friendly unique identifier for this placement (e.g., home_feed, article_sidebar)."
+    slug: String!
+    "Maximum number of recommendation items to display in this placement."
+    maxItems: Int
+    "Placement-specific display configuration as JSON."
+    configuration: JSON
+}
+
+"Metadata eligibility rules for a recommendation context. Each configured facet must match."
+input RecommendationMetadataFilterInput {
+    "When non-empty, only metadata whose content type starts with one of these prefixes is assigned to the context."
+    includedContentTypePrefixes: [String!]! = []
+    "Content-type prefixes omitted when no include-list is supplied. The defaults remove raw assets from ordinary app/site recommendations."
+    excludedContentTypePrefixes: [String!]! = ["image/", "video/", "audio/", "font/", "model/", "application/octet-stream"]
+    "When non-empty, only metadata whose `attributes.type` exactly matches one of these values is assigned."
+    includedAttributeTypes: [String!]! = []
+    "Metadata `attributes.type` values omitted when no attribute-type include-list is supplied."
+    excludedAttributeTypes: [String!]! = []
+}
+
+"Collection eligibility rules for a recommendation context. Each configured facet must match."
+input RecommendationCollectionFilterInput {
+    "When non-empty, only collections whose canonical type matches one of these values are assigned."
+    includedTypes: [String!]! = []
+    "Canonical collection types omitted when no type include-list is supplied."
+    excludedTypes: [String!]! = []
+    "When non-empty, only collections whose `attributes.type` exactly matches one of these values is assigned."
+    includedAttributeTypes: [String!]! = []
+    "Collection `attributes.type` values omitted when no attribute-type include-list is supplied."
+    excludedAttributeTypes: [String!]! = []
+}
+
+"Content-shape rules for a recommendation context. A null collection filter excludes collections."
+input RecommendationContentFilterInput {
+    metadata: RecommendationMetadataFilterInput! = {}
+    collections: RecommendationCollectionFilterInput = {}
+}
+
+"The saved metadata eligibility rules attached to a recommendation context."
+type RecommendationMetadataFilter {
+    "The complete content-type allow-list when non-empty."
+    includedContentTypePrefixes: [String!]!
+    "The content-type deny-list used when the allow-list is empty."
+    excludedContentTypePrefixes: [String!]!
+    "The complete `attributes.type` allow-list when non-empty."
+    includedAttributeTypes: [String!]!
+    "The `attributes.type` deny-list used when the allow-list is empty."
+    excludedAttributeTypes: [String!]!
+}
+
+"The saved collection eligibility rules attached to a recommendation context."
+type RecommendationCollectionFilter {
+    "The complete canonical collection-type allow-list when non-empty."
+    includedTypes: [String!]!
+    "The canonical collection-type deny-list used when the allow-list is empty."
+    excludedTypes: [String!]!
+    "The complete `attributes.type` allow-list when non-empty."
+    includedAttributeTypes: [String!]!
+    "The `attributes.type` deny-list used when the allow-list is empty."
+    excludedAttributeTypes: [String!]!
+}
+
+"The saved content-shape rules attached to a recommendation context."
+type RecommendationContentFilter {
+    metadata: RecommendationMetadataFilter!
+    collections: RecommendationCollectionFilter
+}
+
+"Input for defining a named recommendation-use context and its content classification rules."
+input RecommendationContextInput {
+    "The type value used to select this context in recommendation requests, such as `default` or `image_picker`."
+    type: String!
+    "The administrator-facing context name."
+    name: String!
+    "A description of where this context is used."
+    description: String
+    "Rules used to assign this context to metadata and collections when content is saved or reclassified."
+    contentFilter: RecommendationContentFilterInput! = {}
+    "Importance settings captured by the next trained model."
+    weights: RecommendationWeightsInput! = {}
+}
+
+"A named recommendation-use context backed by cached content classifications and model candidate facets."
+type RecommendationContext {
+    id: UUID!
+    type: String!
+    name: String!
+    description: String!
+    contentFilter: RecommendationContentFilter!
+    weights: RecommendationWeights!
+    revision: Long!
+    selectionRevision: Long!
+    activeModelVersion: Long
+    requestedModelVersion: Long
+    created: DateTime!
+    modified: DateTime!
+}
+
+"Saved context importance; zero disables contribution, never eligibility."
+type RecommendationWeights {
+    similarity: RecommendationSimilarityWeights!
+    typePreferences: [RecommendationTypePreference!]!
+    defaultTypePreference: Float!
+    content: Float!
+    coEngagement: Float!
+    cohortCoEngagement: Float!
+    learnedNeighbor: Float!
+    personalization: Float!
+    rating: Float!
+}
+
+"Saved similarity weights, normalized within their group in the model."
+type RecommendationSimilarityWeights {
+    semantic: Float!
+    categories: Float!
+    labels: Float!
+    language: Float!
+    mime: Float!
+    type: Float!
+    collections: Float!
+}
+
+"Preference for an exact trimmed, lowercase attributes.type value."
+type RecommendationTypePreference {
+    type: String!
+    weight: Float!
+}
+
+"Editable context importance; zero disables contribution, never eligibility."
+input RecommendationWeightsInput {
+    similarity: RecommendationSimilarityWeightsInput! = {}
+    typePreferences: [RecommendationTypePreferenceInput!]! = []
+    defaultTypePreference: Float! = 0.5
+    content: Float! = 1.0
+    coEngagement: Float! = 1.0
+    cohortCoEngagement: Float! = 1.0
+    learnedNeighbor: Float! = 1.0
+    personalization: Float! = 1.0
+    rating: Float! = 1.0
+}
+
+"Editable similarity weights, normalized within their group in the model."
+input RecommendationSimilarityWeightsInput {
+    semantic: Float! = 0.2
+    categories: Float! = 0.2
+    labels: Float! = 0.2
+    language: Float! = 0.2
+    mime: Float! = 0.2
+    type: Float! = 0.2
+    collections: Float! = 0.2
+}
+
+"Preference for an exact trimmed, lowercase attributes.type value."
+input RecommendationTypePreferenceInput {
+    type: String!
+    weight: Float!
+}
+
+"A recommendation strategy that controls how content is selected and ranked for user profiles."
+type RecommendationStrategy {
+    "The unique identifier of the strategy."
+    id: UUID!
+    "The display name of the strategy."
+    name: String!
+    "A description of how this strategy generates recommendations."
+    description: String!
+    "The algorithm type used to generate recommendations."
+    type: RecommendationStrategyType!
+    "The lifecycle status of the strategy."
+    status: RecommendationStrategyStatus!
+    "The UUID of the analytics query used for recommendation generation."
+    analyticsQueryId: UUID
+    "Strategy-specific configuration parameters as JSON."
+    configuration: JSON
+    "Priority for ordering when multiple strategies contribute to a placement."
+    priority: Int!
+    "Maximum number of candidates this strategy produces per evaluation."
+    maxRecommendations: Int!
+    "The UUID of the scheduler job driving automatic evaluation. Null when no schedule is set."
+    scheduledJobId: UUID
+    "The cron expression from the linked scheduled job, resolved at query time."
+    evaluationSchedule: String
+    "The timestamp of the last strategy evaluation."
+    lastEvaluated: DateTime
+    "The timestamp when this strategy was created."
+    created: DateTime!
+    "The timestamp when this strategy was last modified."
+    modified: DateTime!
+}
+
+"A content recommendation candidate. Each recommendation points to either a metadata item or a collection."
+type RecommendationResult {
+    "The unique identifier of the recommendation."
+    id: UUID!
+    "The UUID of the recommended metadata item, if this is a metadata recommendation."
+    metadataId: UUID
+    "The recommended metadata item, resolved from metadataId."
+    metadata: Metadata
+    "The UUID of the recommended collection, if this is a collection recommendation."
+    collectionId: UUID
+    "The concrete base or variant language selected for this collection recommendation."
+    collectionLanguageTag: String
+    "The recommended collection, resolved from collectionId."
+    collection: Collection
+    "The relevance score for this recommendation (higher is more relevant)."
+    score: Float!
+    "The candidate-generation and model-ranking signals that contributed to this result."
+    sources: [RecommendationSource!]!
+    "The strategy that produced this recommendation."
+    strategy: RecommendationStrategy
+    "A human-readable explanation of why this content was recommended."
+    reason: String
+    "Additional context about the recommendation scoring factors."
+    context: JSON
+    "When this recommendation expires and should no longer be served."
+    expiresAt: DateTime
+    "The timestamp when this recommendation was generated."
+    created: DateTime!
+    "True when this is a read-time fallback — content similar to the profile's activity, or trending, surfaced because no actual personalized recommendation was available — rather than a genuine personalized/ML recommendation."
+    fallback: Boolean!
+}
+
+"A named location within the application where recommendations are displayed."
+type RecommendationPlacement {
+    "The unique identifier of the placement."
+    id: UUID!
+    "The display name of the placement."
+    name: String!
+    "A description of where this placement appears."
+    description: String!
+    "The URL-friendly unique identifier for this placement."
+    slug: String!
+    "Maximum number of items to display in this placement."
+    maxItems: Int!
+    "Placement-specific display configuration as JSON."
+    configuration: JSON
+    "The timestamp when this placement was created."
+    created: DateTime!
+    "The timestamp when this placement was last modified."
+    modified: DateTime!
+    "The strategies that contribute recommendations to this placement, ordered by priority."
+    strategies: [RecommendationStrategy!]!
+}
+
+"Query operations for managing recommendation strategies (admin only)."
+type RecommendationStrategies {
+    "Retrieve a paginated list of all recommendation strategies."
+    all(
+        "The zero-based offset for pagination."
+        offset: Long!
+        "The maximum number of strategies to return."
+        limit: Int!
+    ): [RecommendationStrategy!]!
+    "Retrieve a single strategy by its identifier."
+    strategy(
+        "The UUID of the strategy to retrieve."
+        id: UUID!
+    ): RecommendationStrategy
+}
+
+"Mutation operations for managing recommendation strategies (admin only)."
+type RecommendationStrategiesMutation {
+    "Create a new recommendation strategy."
+    add(
+        "The strategy definition."
+        strategy: RecommendationStrategyInput!
+    ): RecommendationStrategy!
+    "Update an existing strategy."
+    edit(
+        "The UUID of the strategy to update."
+        id: UUID!
+        "The updated strategy definition."
+        strategy: RecommendationStrategyInput!
+    ): RecommendationStrategy!
+    "Delete a strategy and all its generated recommendations."
+    delete(
+        "The UUID of the strategy to delete."
+        id: UUID!
+    ): Boolean!
+    "Manually trigger evaluation of a strategy, generating fresh recommendations."
+    evaluate(
+        "The UUID of the strategy to evaluate."
+        strategyId: UUID!
+    ): RecommendationStrategy!
+    "One-click setup of the built-in ML-vs-heuristic A/B test: a feature flag with a 50/50 split, an experiment, and its conversion goals. Created dormant (review and start it from the experiments UI). Idempotent — returns the existing experiment if already set up."
+    provisionEngineExperiment: EngineExperimentProvisioning!
+    "One-click setup of the model-vs-model online A/B test: routes traffic 50/50 between two TF Serving model versions and measures which wins on real engagement. Idempotent — re-points the test to the requested version pair. Created dormant."
+    provisionModelExperiment(
+        "The current/champion model version."
+        championVersion: Long!
+        "The candidate/challenger model version to test against it."
+        challengerVersion: Long!
+    ): EngineExperimentProvisioning!
+    "Enqueue a TFRS model training run now. The recommendations runner picks it up and calls the trainer service; training then runs in the background (it can take minutes to hours). Optionally override the trainer's defaults (e.g. epochs, lookbackDays, embeddingDim) as a JSON object. Returns true once the run is enqueued."
+    trainModel(
+        "Optional JSON object of trainer config overrides; null uses the trainer's defaults."
+        configuration: JSON
+    ): Boolean!
+    "Enqueue a durable semantic-data backfill. By default only missing embeddings are filled; set overwriteExisting to refresh all ready, recommendable content. A model training run starts afterward when any embeddings changed."
+    backfillSemanticData(
+        "Whether to recompute existing embeddings in addition to filling missing ones."
+        overwriteExisting: Boolean! = false
+    ): Boolean!
+}
+
+"Result of provisioning the recommendation-engine A/B test scaffold."
+type EngineExperimentProvisioning {
+    "The experiment id — open it in the experiments UI to review and start the test."
+    experimentId: UUID!
+    "The feature flag key driving the ML-vs-heuristic split."
+    flagKey: String!
+    "True if the scaffold was newly created; false if it already existed."
+    created: Boolean!
+}
+
+"Query operations for managing recommendation placements (admin only)."
+type RecommendationPlacements {
+    "Retrieve all recommendation placements."
+    all: [RecommendationPlacement!]!
+    "Retrieve a single placement by its identifier."
+    placement(
+        "The UUID of the placement to retrieve."
+        id: UUID!
+    ): RecommendationPlacement
+    "Retrieve a single placement by its URL-friendly slug."
+    placementBySlug(
+        "The unique slug identifying the placement."
+        slug: String!
+    ): RecommendationPlacement
+}
+
+"Mutation operations for managing recommendation placements (admin only)."
+type RecommendationPlacementsMutation {
+    "Create a new recommendation placement with strategy associations."
+    add(
+        "The placement definition."
+        placement: RecommendationPlacementInput!
+        "The strategy UUIDs to associate with this placement."
+        strategyIds: [UUID!]!
+    ): RecommendationPlacement!
+    "Update an existing placement and its strategy associations."
+    edit(
+        "The UUID of the placement to update."
+        id: UUID!
+        "The updated placement definition."
+        placement: RecommendationPlacementInput!
+        "The updated strategy UUIDs for this placement."
+        strategyIds: [UUID!]!
+    ): RecommendationPlacement!
+    "Delete a placement and its strategy associations."
+    delete(
+        "The UUID of the placement to delete."
+        id: UUID!
+    ): Boolean!
+}
+
+enum RecommendationTrainingStatus { QUEUED RUNNING COMPLETED FAILED }
+
+type RecommendationContextModel {
+    "Context captured when this generation was queued; independent of later edits."
+    context: RecommendationContext!
+    version: Long!
+    contextId: UUID!
+    revision: Long!
+    selectionRevision: Long!
+    status: RecommendationTrainingStatus!
+    exported: Boolean!
+    personalized: Boolean!
+    pinned: Boolean!
+    failure: String
+    created: DateTime!
+    started: DateTime
+    completed: DateTime
+    contentModelName: String!
+    personalizedModelName: String!
+}
+
+"""Model versions visible under the caller's artifact pull permissions."""
+type RecommendationModelSelection {
+    personalizedVersions: [Long!]!
+}
+
+"Administrator context reads and artifact-filtered model discovery."
+type RecommendationContexts {
+    "Recent training history plus protected active and pinned versions. Artifact tokens see only versions they can pull."
+    models(contextId: UUID!): [RecommendationContextModel!]!
+    "Exact exported versions needed by serving or awaiting load validation. Artifact tokens see only versions they can pull."
+    servingModels: [RecommendationContextModel!]!
+    "Retrieve saved contexts. Artifact tokens see only contexts with model versions they can pull."
+    all: [RecommendationContext!]!
+    "Retrieve a context by identifier."
+    context(id: UUID!): RecommendationContext
+    "Retrieve a context by the type value used in requests."
+    contextByType(type: String!): RecommendationContext
+}
+
+"Administrator context mutations and artifact-authorized training export reports."
+type RecommendationContextsMutation {
+    "Recompute content assignments for all saved contexts without starting model training. Requires administrator access."
+    recompute: Boolean!
+    "Train a new model using this context's saved settings. Requires administrator access."
+    trainModel(contextId: UUID!): RecommendationContextModel!
+    "Request activation of a retained model after it loads."
+    activateModel(contextId: UUID!, version: Long!): RecommendationContextModel!
+    pinModel(contextId: UUID!, version: Long!, pinned: Boolean!): RecommendationContextModel!
+    "Delete terminal model history and queue artifact removal. Active, requested, and in-flight models cannot be deleted."
+    deleteModel(contextId: UUID!, version: Long!): Boolean!
+    "Trainer callback after validation and upload. Requires administrator access or artifact push permission for the exact reported model exports."
+    modelExported(version: Long!, personalized: Boolean!): Boolean!
+    "Save a new context without queuing content reclassification or model training."
+    add(context: RecommendationContextInput!): RecommendationContext!
+    "Save context changes without queuing content reclassification or model training."
+    edit(id: UUID!, context: RecommendationContextInput!): RecommendationContext!
+    "Delete a context without queuing content reclassification."
+    delete(id: UUID!): Boolean!
+}
+
+"Unified query entry point for the recommendation system. Provides personalized content feeds, semantic similarity, trending content, and admin operations for strategies, placements, and contexts."
+type Recommendation {
+    "The authenticated user's personalized feed (\"For you\"), retrieved and ranked live from the trained model. Defaults to the caller's own profile; supplying an explicit profileId is allowed only for its owner or an admin/service account."
+    forYou(
+        "The profile whose feed to retrieve. Omit to use the authenticated user's profile; an explicit id is permitted only for its owner or an admin/service account."
+        profileId: UUID
+        "The zero-based offset for pagination."
+        offset: Long!
+        "The maximum number of recommendations to return."
+        limit: Int!
+        "The saved recommendation context type to apply. Omit to use `default`."
+        contextType: String
+        "The BCP 47 content language to return. Omit to use the profile's preferred locale, then English."
+        languageTag: String
+    ): [RecommendationResult!]!
+    "Retrieve recommendations for a specific display placement."
+    placement(
+        "The profile to personalize for. Omit to use the authenticated user's profile (or the anonymous set)."
+        profileId: UUID
+        "The slug identifying the display location."
+        placementSlug: String!
+        "The maximum number of recommendations to return."
+        limit: Int!
+        "The saved recommendation context type to apply. Omit to use `default`."
+        contextType: String
+        "The BCP 47 content language to return. Omit to use the profile's preferred locale when personalized, then English."
+        languageTag: String
+    ): [RecommendationResult!]!
+    "Retrieve similar metadata using the selected context model, including its weighted content features and direct collection memberships."
+    similar(
+        "The UUID of the content to find similar items for."
+        metadataId: UUID!
+        "The maximum number of similar items to return."
+        limit: Int!
+        "The saved recommendation context type to apply. Omit to use `default`."
+        contextType: String
+        "The BCP 47 content language to return. Omit to use English."
+        languageTag: String
+    ): [RecommendationResult!]!
+    "Behavioral co-engagement for a source content item — \"people who engaged with this also engaged with…\" (from CO_ENGAGEMENT strategies), distinct from `similar`'s content similarity. Supplying profileId personalizes (re-ranks for that viewer and drops their dismissals); omit it for the global set."
+    coEngaged(
+        "The UUID of the source content item being viewed."
+        metadataId: UUID!
+        "The viewing profile to personalize for. Omit to personalize for the authenticated user (or the global set if anonymous)."
+        profileId: UUID
+        "The maximum number of co-engaged items to return."
+        limit: Int!
+        "The saved recommendation context type to apply. Omit to use `default`."
+        contextType: String
+        "The BCP 47 content language to return. Omit to use the profile's preferred locale when personalized, then English."
+        languageTag: String
+    ): [RecommendationResult!]!
+    "Recommendations ranked by the selected context model using the source item and optional profile. Falls back to the matching content-similarity model when personalization is unavailable. Sources are computed only when selected."
+    recommended(
+        "The UUID of the content item being viewed."
+        metadataId: UUID!
+        "The viewing profile to personalize for. Omit to personalize for the authenticated user (or population-level ranking if anonymous)."
+        profileId: UUID
+        "The maximum number of items to return."
+        limit: Int!
+        "The saved recommendation context type to apply. Omit to use `default`."
+        contextType: String
+        "The BCP 47 content language to return. Omit to use the profile's preferred locale when personalized, then English."
+        languageTag: String
+    ): [RecommendationResult!]!
+    "Retrieve globally trending content based on recent interaction velocity."
+    trending(
+        "The zero-based offset for pagination."
+        offset: Long!
+        "The maximum number of trending items to return."
+        limit: Int!
+        "The saved recommendation context type to apply. Omit to use `default`."
+        contextType: String
+        "The BCP 47 content language to return. Omit to use English."
+        languageTag: String
+    ): [RecommendationResult!]!
+    "Access recommendation strategy management operations (admin only)."
+    strategies: RecommendationStrategies!
+    "Access recommendation placement management operations (admin only)."
+    placements: RecommendationPlacements!
+    "Access saved recommendation context management operations (admin only)."
+    contexts: RecommendationContexts!
+    modelSelection: RecommendationModelSelection!
+    "Access Personalization Signal definitions — the config for how profile attributes/segments personalize recommendations (admin only)."
+    personalizationSignals: PersonalizationSignals!
+}
+
+"Unified mutation entry point for the recommendation system. Provides user preference operations and admin management for strategies, placements, and contexts."
+type RecommendationMutation {
+    "Dismiss a content item so it will not appear in future recommendations for this profile. Provide either metadataId or collectionId."
+    dismiss(
+        "The UUID of the profile."
+        profileId: UUID!
+        "The UUID of the metadata item to dismiss."
+        metadataId: UUID
+        "The UUID of the collection to dismiss."
+        collectionId: UUID
+    ): Boolean!
+    "Undo a previous dismissal, allowing the content item to appear in recommendations again."
+    undismiss(
+        "The UUID of the profile."
+        profileId: UUID!
+        "The UUID of the metadata item to un-dismiss."
+        metadataId: UUID
+        "The UUID of the collection to un-dismiss."
+        collectionId: UUID
+    ): Boolean!
+    "Record a feedback gesture on a content item, routed to the right primitive (rating, or dismissal for HIDE). Provide either metadataId or collectionId."
+    feedback(
+        "The UUID of the profile giving feedback."
+        profileId: UUID!
+        "The feedback gesture."
+        gesture: RecommendationFeedback!
+        "The UUID of the metadata item, or null when targeting a collection."
+        metadataId: UUID
+        "The version of the metadata item (optional)."
+        metadataVersion: Int
+        "The UUID of the collection, or null when targeting a metadata item."
+        collectionId: UUID
+    ): Boolean!
+    "Access recommendation strategy mutation operations (admin only)."
+    strategies: RecommendationStrategiesMutation!
+    "Access recommendation placement mutation operations (admin only)."
+    placements: RecommendationPlacementsMutation!
+    "Access saved recommendation context mutation operations (admin only)."
+    contexts: RecommendationContextsMutation!
+    "Manage Personalization Signal definitions (admin only)."
+    personalizationSignals: PersonalizationSignalsMutation!
+}
+
+"Where a Personalization Signal sources its raw value from."
+enum PersonalizationSignalSourceType {
+    "A profile attribute type — sourceId is a ProfileAttributeType id."
+    ATTRIBUTE
+    "A segment — sourceId is a segment id."
+    SEGMENT
+}
+
+"How a Personalization Signal's computed value is interpreted (trainer encoding + cohort treatment). The JSONata expression must produce a value matching this type."
+enum PersonalizationSignalValueType {
+    "A single string label (e.g. \"25-34\", \"female\") — embedded; usable as a cohort membership."
+    CATEGORICAL
+    "An array of string labels — multi-hot; feature-only."
+    MULTI_CATEGORICAL
+    "A number — bucketized/normalized; feature-only unless the expression buckets it to a label."
+    NUMERIC
+    "A boolean — a binary feature; usable as a cohort membership."
+    BOOLEAN
+}
+
+"Input for creating or updating a Personalization Signal definition."
+input PersonalizationSignalDefinitionInput {
+    "Stable signal identifier / feature + cohort membership name (e.g. age_band, gender). Unique."
+    key: String!
+    "Whether this signal derives from a profile attribute type or a segment."
+    sourceType: PersonalizationSignalSourceType!
+    "The ProfileAttributeType id (ATTRIBUTE) or segment id (SEGMENT) this signal derives from."
+    sourceId: String!
+    "JSONata producing the signal's value from the attribute (value + confidence/verified/…); a null result excludes it."
+    expression: String!
+    "How the produced value is interpreted."
+    valueType: PersonalizationSignalValueType!
+    "Ranking/weight among signals; higher is stronger."
+    priority: Int
+    "Feed the model's user tower."
+    useAsFeature: Boolean
+    "Create a \"people like you\" cohort membership for every distinct generated value (must be CATEGORICAL/BOOLEAN)."
+    useAsCohort: Boolean
+    "Whether the definition is active."
+    enabled: Boolean
+}
+
+"An admin-configured Personalization Signal definition — how to derive a keyed, typed personalization value from a profile attribute (or segment) for the recommender."
+type PersonalizationSignalDefinition {
+    "The unique identifier of the definition."
+    id: UUID!
+    "Stable signal identifier / feature + cohort membership name."
+    key: String!
+    "Whether this signal derives from a profile attribute type or a segment."
+    sourceType: PersonalizationSignalSourceType!
+    "The ProfileAttributeType id or segment id this signal derives from."
+    sourceId: String!
+    "JSONata producing the signal's value."
+    expression: String!
+    "How the produced value is interpreted."
+    valueType: PersonalizationSignalValueType!
+    "Ranking/weight among signals."
+    priority: Int!
+    "Whether it feeds the model's user tower."
+    useAsFeature: Boolean!
+    "Whether each distinct generated value becomes a cohort membership."
+    useAsCohort: Boolean!
+    "Whether the definition is active."
+    enabled: Boolean!
+    "When this definition was created."
+    created: DateTime!
+    "When this definition was last modified."
+    modified: DateTime!
+}
+
+"Query operations for Personalization Signal definitions (admin only)."
+type PersonalizationSignals {
+    "Retrieve a paginated list of all Personalization Signal definitions, highest priority first."
+    all(
+        "The zero-based offset for pagination."
+        offset: Long!
+        "The maximum number of definitions to return."
+        limit: Int!
+    ): [PersonalizationSignalDefinition!]!
+    "Retrieve a single definition by its identifier."
+    signal(
+        "The UUID of the definition to retrieve."
+        id: UUID!
+    ): PersonalizationSignalDefinition
+}
+
+"Mutation operations for Personalization Signal definitions (admin only)."
+type PersonalizationSignalsMutation {
+    "Create a definition. Validates key uniqueness, JSONata parseability, and the cohort/valueType rule."
+    add(
+        "The definition to create."
+        signal: PersonalizationSignalDefinitionInput!
+    ): PersonalizationSignalDefinition!
+    "Update an existing definition (same validation as add)."
+    edit(
+        "The UUID of the definition to update."
+        id: UUID!
+        "The updated definition."
+        signal: PersonalizationSignalDefinitionInput!
+    ): PersonalizationSignalDefinition!
+    "Delete a definition."
+    delete(
+        "The UUID of the definition to delete."
+        id: UUID!
+    ): Boolean!
+}
+
+extend type Query {
+    "Access the recommendation system for personalized content discovery and admin management."
+    recommendation: Recommendation!
+}
+
+extend type Mutation {
+    "Access recommendation mutations for user preferences and admin management."
+    recommendation: RecommendationMutation!
+}

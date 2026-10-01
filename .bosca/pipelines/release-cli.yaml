@@ -1,0 +1,139 @@
+name: Bosca CLI Release
+# Builds the native `bosca` CLI and publishes it as the GitHub release cli-v<version> on
+# bosca-io/bosca, which cli/install.sh and `bosca version --check` read. The version is
+# entered when the run is started.
+#
+# Secrets: GITHUB_TOKEN (a token that can create releases on bosca-io/bosca) and
+# MACOS_KEYCHAIN_PASSWORD (see cli/MACOS_SIGNING.md).
+on:
+  release:
+    inputs:
+      version:
+        description: CLI version to publish, for example 6.31.0 (tagged cli-v<version>)
+
+concurrency:
+  group: cli-release
+  cancel-in-progress: false
+
+env:
+  GRADLE_OPTS: "-Xmx4g -XX:+UseG1GC"
+
+jobs:
+  linux-x86_64:
+    runner: linux
+    timeout: 60m
+    steps:
+      - name: Checkout
+        uses: checkout
+      - name: Setup Java
+        uses: setup-java
+        with:
+          distribution: graal
+          stream: 25i1
+          version: "25.0.3"
+      - name: Setup Rust
+        # Configuring the build compiles firebase-scrypt's native library with Cargo.
+        uses: setup-rust
+        with:
+          toolchain: stable
+      - name: Build native binary
+        run: ./gradlew --no-daemon --no-configuration-cache :cli:nativeCompile
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+      - name: Package
+        run: |
+          mkdir -p dist
+          tar -czf "dist/bosca-${RELEASE_VERSION}-linux-x86_64.tar.gz" -C cli/build/native/nativeCompile bosca
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+      - name: Upload package
+        uses: upload-artifact
+        with:
+          name: cli-linux-x86_64
+          paths:
+            - dist
+
+  macos-arm64:
+    runner: macos
+    timeout: 90m
+    secrets: [MACOS_KEYCHAIN_PASSWORD]
+    steps:
+      - name: Checkout
+        uses: checkout
+      - name: Setup Java
+        uses: setup-java
+        with:
+          distribution: graal
+          stream: 25i1
+          version: "25.0.3"
+      - name: Setup Rust
+        uses: setup-rust
+        with:
+          toolchain: stable
+      - name: Unlock signing keychain
+        run: |
+          KEYCHAIN="${SIGNING_KEYCHAIN:-$HOME/Library/Keychains/login.keychain-db}"
+          security set-keychain-settings "$KEYCHAIN"
+          security unlock-keychain -p "$MACOS_KEYCHAIN_PASSWORD" "$KEYCHAIN"
+        env:
+          MACOS_KEYCHAIN_PASSWORD: ${{ secrets.MACOS_KEYCHAIN_PASSWORD }}
+      - name: Build, sign, and notarize installer
+        run: ./gradlew --no-daemon --no-configuration-cache :cli:distNativeMacosPkg
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+      - name: Package
+        run: |
+          mkdir -p dist
+          cp cli/build/native/nativeCompile/bosca.pkg "dist/bosca-${RELEASE_VERSION}-macos-arm64.pkg"
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+      - name: Upload package
+        uses: upload-artifact
+        with:
+          name: cli-macos-arm64
+          paths:
+            - dist
+
+  publish:
+    runner: linux
+    timeout: 15m
+    needs: [linux-x86_64, macos-arm64]
+    secrets: [GITHUB_TOKEN]
+    steps:
+      - name: Checkout
+        uses: checkout
+      - name: Download Linux package
+        uses: download-artifact
+        with:
+          name: cli-linux-x86_64
+          path: .
+      - name: Download macOS package
+        uses: download-artifact
+        with:
+          name: cli-macos-arm64
+          path: .
+      - name: Publish GitHub release
+        run: scripts/release/publish-cli.sh "$RELEASE_VERSION" dist
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_COMMIT: ${{ env.COMMIT_SHA }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  notify:
+    runner: linux
+    timeout: 5m
+    needs: [publish]
+    if: always()
+    steps:
+      - name: Notify Success
+        uses: notify
+        if: needs.publish.result == 'success'
+        with:
+          channel: slack
+          message: "Bosca CLI ${{ inputs.version }} published to github.com/bosca-io/bosca/releases"
+      - name: Notify Failure
+        uses: notify
+        if: needs.publish.result == 'failure'
+        with:
+          channel: slack
+          message: "Bosca CLI ${{ inputs.version }} release FAILED — check pipeline logs"

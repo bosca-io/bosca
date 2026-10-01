@@ -1,0 +1,87 @@
+# Labels retain the established chart name. The dispatch contract itself uses
+# profile.name below, independently of a Helm release prefix.
+fullnameOverride: "recommendation-trainer"
+nameOverride: ""
+
+# Stable Kubernetes workload configuration consumed by TrainModelJobExecutor.
+# The profile name must match ML_TRAINER_JOB_PROFILE (default:
+# `recommendation-trainer`) in bosca-runner.
+profile:
+  name: recommendation-trainer
+  # Model publication is serialized. Duplicate scheduled requests are also
+  # collapsed by the recommendations executor's distributed lock.
+  maxParallelism: 1
+  job:
+    backoffLimit: 0
+    ttlSecondsAfterFinished: 3600
+    activeDeadlineSeconds: 21600
+    startupFailureGraceSeconds: 600
+
+image:
+  # Built from experimentation/ml/recommendation-trainer — must be published to this repo by CI.
+  registry: ghcr.io/bosca-io/bosca
+  repository: recommendation-trainer
+  # Defaults to chart appVersion. Keep an explicit deployment override when
+  # advancing the trainer/model-loader pair.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+podSecurityContext: {}
+securityContext: {}
+
+# Bosca server the trainer reads training data from (analytics queries).
+boscaUrl: "http://bosca-bosca-server:8080"
+
+# Artifacts server the trainer pushes each trained SavedModel to, and the
+# namespace (custom `ml` artifact type). The artifacts installer provisions the
+# namespace + push/pull tokens on first boot.
+artifactsUrl: "http://bosca-bosca-artifacts-server:8084"
+artifactsNamespace: "model"
+
+# API tokens the trainer presents. boscaToken authorizes the analytics queries it
+# reads training data with; artifactsToken authorizes model pushes; and artifactsPullToken authorizes
+# version discovery plus champion hydration in each ephemeral Job. The referenced Secrets are pre-created
+# (see umbrella secrets.yaml); populate the artifact tokens from the values the artifacts installer logs.
+secrets:
+  boscaToken:
+    enabled: true
+    name: recommendation-ml
+    key: bosca_token
+  artifactsToken:
+    enabled: true
+    name: recommendation-ml
+    key: artifacts_push_token
+  artifactsPullToken:
+    enabled: true
+    name: recommendation-ml
+    key: artifacts_pull_token
+
+# Static arguments appended to `train` for deployment-wide defaults, for
+# example ["--min-interactions", "500", "--epochs", "30"]. Per-run JSON
+# configuration dispatched by Bosca is applied afterward and takes precedence.
+extraArgs: []
+
+extraEnv: {}
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 1Gi
+  limits:
+    cpu: "2"
+    memory: 4Gi
+
+envFromConfigMaps:
+  - otel-env
+
+imagePullSecrets:
+  - name: docker-registry
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+global:
+  # Registry (and path) for every Bosca image; when set, it overrides image.registry.
+  imageRegistry: ""
+  domain: ""

@@ -1,0 +1,13 @@
+query GetBibleReference($id: UUID!, $version: Int, $usfm: String!) {
+    content {
+        metadata(id: $id, version: $version) {
+            bible {
+                chapter(usfm: $usfm) {
+                    reference {
+                        human
+                    }
+                }
+            }
+        }
+    }
+}

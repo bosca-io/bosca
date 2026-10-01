@@ -1,0 +1,29 @@
+{{- if .Values.certManager.clusterIssuer.enabled }}
+{{- /*
+DNS01 ClusterIssuer for cert-manager. The cert-manager operator itself
+(plus CRDs) is installed cluster-wide by helm/scripts/bootstrap.sh —
+this template only renders the *configuration* (issuer + provider).
+
+The Cloudflare API-token Secret is NOT rendered here. It lives in
+secrets.yaml (namespace: cert-manager) so the token never enters helm
+release storage. The issuer references it by name+key below.
+*/ -}}
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: {{ .Values.certManager.clusterIssuer.name | default "letsencrypt-prod" | quote }}
+  labels:
+    app.kubernetes.io/part-of: bosca
+spec:
+  acme:
+    server: {{ .Values.certManager.clusterIssuer.acmeServer | default "https://acme-v02.api.letsencrypt.org/directory" | quote }}
+    email: {{ required "certManager.clusterIssuer.email is required" .Values.certManager.clusterIssuer.email | quote }}
+    privateKeySecretRef:
+      name: {{ .Values.certManager.clusterIssuer.privateKeySecretName | default "letsencrypt-prod-account-key" | quote }}
+    solvers:
+      - dns01:
+          cloudflare:
+            apiTokenSecretRef:
+              name: {{ .Values.certManager.clusterIssuer.cloudflare.tokenSecretName | default "cloudflare-api-token" | quote }}
+              key: {{ .Values.certManager.clusterIssuer.cloudflare.tokenSecretKey | default "api-token" | quote }}
+{{- end }}

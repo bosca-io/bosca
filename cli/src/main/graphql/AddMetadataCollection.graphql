@@ -1,0 +1,9 @@
+mutation AddMetadataCollection($collectionId: UUID!, $id: UUID!) {
+    content {
+        collection {
+            addChildMetadata(id: $collectionId, metadataId: $id) {
+                id
+            }
+        }
+    }
+}

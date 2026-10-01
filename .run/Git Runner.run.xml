@@ -1,0 +1,15 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="Git Runner" type="JetRunConfigurationType">
+    <envs>
+      <env name="BOSCA_ENDPOINT" value="http://localhost:8080/graphql" />
+      <!-- Configure BOSCA_TOKEN locally. -->
+    </envs>
+    <option name="MAIN_CLASS_NAME" value="bosca.cli.MainKt" />
+    <module name="cli.main" />
+    <option name="PROGRAM_PARAMETERS" value="ci agent start" />
+    <shortenClasspath name="NONE" />
+    <method v="2">
+      <option name="Make" enabled="true" />
+    </method>
+  </configuration>
+</component>

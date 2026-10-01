@@ -1,0 +1,126 @@
+replicaCount: 1
+
+image:
+  registry: ghcr.io/bosca-io/bosca
+  repository: bml-message-server
+  tag: ""
+  pullPolicy: IfNotPresent
+
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+commonAnnotations: {}
+
+podSecurityContext: {}
+securityContext: {}
+
+service:
+  type: ClusterIP
+  port: 9093
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 512Mi
+  limits:
+    cpu: "1"
+    memory: 1Gi
+
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+
+# The server is configured purely by env (no application.yaml).
+appConfig:
+  # Raw artifacts registry origin the message-project jars are fetched from (bml-message namespace).
+  artifactsUrl: "http://bosca-artifacts-server:8084"
+  # Comma-separated seed projects; publish events auto-register new ones.
+  projects: ""
+  # Public base the asset + tracking URLs are minted from, e.g. https://messages.example.com.
+  publicUrl: ""
+  # Jar cache directory — backed by an emptyDir; versions re-fetch on pod replacement.
+  cacheDir: /app/message-cache
+  pollSeconds: 60
+  renderTimeoutMs: 10000
+  # NATS enables event-driven hot reload (publish event); the poll is the backstop either way.
+  natsUrl: "nats://nats:4222"
+  # Analytics collector origin engagement events (clicks/opens) are POSTed to for CTR reporting.
+  analyticsUrl: "http://bosca-collector:8080"
+  analyticsAppId: ""
+  # Bind a Bosca localization project (name or UUID) to render each send in the recipient's
+  # bosca.profiles.locale. Empty = unlocalized rendering, unchanged output.
+  localizationProject: ""
+  # Bosca GraphQL origin for template data and catalog reads. Always required: every render
+  # receives an authenticated, request-bound GraphQL client.
+  graphqlEndpoint: "http://bosca-bosca-server:8080/graphql"
+  # Translation states rendered (server default PUBLISHED); widen (e.g. PUBLISHED,IN_REVIEW)
+  # for preview environments. Catalog refresh cadence in seconds (server default 300).
+  localizationStates: ""
+  localizationTtlSeconds: ""
+
+envFromConfigMaps:
+  - otel-env
+
+# Secrets — see templates/secret.yaml. Set create:false to consume an existing Secret.
+secrets:
+  artifacts:
+    create: true
+    secretName: bml-message-artifacts
+    key: token
+    # Registry token with raw pull on the bml-message namespace.
+    value: ""
+  tracking:
+    create: true
+    secretName: bml-message-tracking
+    key: secret
+    # HMAC secret for the first-party click/open tokens. Empty disables link rewriting
+    # and the /c /o routes entirely.
+    value: ""
+  nats:
+    create: true
+    secretName: nats
+    key: token
+    value: ""
+  analytics:
+    create: true
+    secretName: bml-message-analytics
+    key: apiKey
+    value: ""
+  localization:
+    create: false
+    # Service token with catalog-read access to the localization project.
+    secretName: ""
+    key: token
+    value: ""
+
+imagePullSecrets:
+  - name: docker-registry
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# Gateway / HTTPRoute exposure. ONLY the public surface is routed: version-pinned bundle
+# assets (/assets/**) and the engagement tracking routes (/c/**, /o/**). The render and
+# status/health APIs are cluster-internal and must never be added here.
+# Set `enabled: true` + `hostnames: [messages.<domain>]`.
+gateway:
+  enabled: true
+  gatewayName: bosca-gateway
+  gatewayNamespace: ""
+  hostnames: []
+
+global:
+  # Registry (and path) for every Bosca image; when set, it overrides image.registry.
+  imageRegistry: ""
+  domain: ""
+
+# Port of the management listener (bosca.server.management-port). It serves GET /api/v1/live on its own event loop,
+# so liveness keeps answering while request event loops are busy. Every /api/v1/live probe targets it; readiness
+# stays on `http` because it checks dependencies.
+managementPort: 9090

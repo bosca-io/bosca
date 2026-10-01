@@ -1,0 +1,30 @@
+{{- $domain := include "bosca-common.domain" . -}}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: server-v3-env
+  labels:
+    {{- include "bosca-common.labels" . | nindent 4 }}
+data:
+  BOSCA_DOMAIN: {{ $domain | quote }}
+  REDIS_HOST: redis.{{ .Release.Namespace }}.svc.cluster.local
+  REDIS_PORT: "6379"
+  NATS_HOST: nats.{{ .Release.Namespace }}.svc.cluster.local
+  NATS_PORT: "4222"
+  AWS_REGION: {{ .Values.s3.region | default "us-east-1" | quote }}
+  AWS_ENDPOINT: {{ .Values.s3.endpoint | default (ternary "http://s3proxy:8000" "" .Values.s3proxy.enabled) | quote }}
+  AWS_BUCKET: {{ .Values.s3.bucket | default "storage" | quote }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: otel-env
+  labels:
+    {{- include "bosca-common.labels" . | nindent 4 }}
+data:
+  OTEL_RESOURCE_ATTRIBUTES: "service.namespace={{ .Release.Namespace }}"
+  OTEL_EXPORTER_OTLP_ENDPOINT: {{ .Values.otel.endpoint | default "none" | quote }}
+  OTEL_TRACES_EXPORTER: {{ .Values.otel.tracesExporter | default "none" | quote }}
+  OTEL_METRICS_EXPORTER: {{ .Values.otel.metricsExporter | default "none" | quote }}
+  OTEL_LOGS_EXPORTER: {{ .Values.otel.logsExporter | default "none" | quote }}

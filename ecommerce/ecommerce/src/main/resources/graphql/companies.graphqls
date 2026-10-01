@@ -1,0 +1,92 @@
+"""
+A seller/tenant. Identity (name, branding, membership) lives on the linked organization profile in
+the profiles domain (created with the company); this row carries the commerce linkage. Everything
+else in the module hangs off a company.
+"""
+type Company {
+    id: UUID!
+    "The backing organization in the profiles domain (created with the company)."
+    organization: Organization!
+    "The organization's profile — the company's public identity."
+    profile: Profile!
+    "Credit instruments issued by this company, paged."
+    credits(offset: Int! = 0, limit: Int! = 25): [CompanyCredit!]!
+    "The unit this company's product/container dimensions are stored in. Defaults INCHES."
+    lengthUnit: LengthUnit!
+    "The unit this company's product/container weights are stored in. Defaults POUNDS."
+    weightUnit: WeightUnit!
+    created: DateTime!
+    modified: DateTime!
+}
+
+"""The linear unit a company stores its product/container dimensions in."""
+enum LengthUnit {
+    INCHES
+    CENTIMETERS
+}
+
+"""The weight unit a company stores its product/container weights in."""
+enum WeightUnit {
+    POUNDS
+    KILOGRAMS
+}
+
+"""
+A numbered credit instrument (gift/store credit) issued by a company, spendable as a COMPANY_CREDIT
+payment. Balance changes are audited.
+"""
+type CompanyCredit {
+    id: UUID!
+    company: Company!
+    "The redeemable number (natural key)."
+    number: String!
+    description: String
+    "Remaining spendable balance."
+    balance: Money!
+    "Total spent from this credit so far."
+    paid: Money!
+    "When the credit stops being redeemable, if it expires."
+    expires: DateTime
+    created: DateTime!
+}
+
+"""Company creates and per-company operations."""
+type CompaniesMutation {
+    "Create a company. Also creates its organization + profile pair in the profiles domain."
+    add(input: CompanyInput!): Company!
+    "Operations on an existing company."
+    company(id: UUID!): CompanyMutation!
+}
+
+"""Mutations scoped to one company (the namespace field's id)."""
+type CompanyMutation {
+    "Issue a numbered company credit instrument (gift/store credit). Admin."
+    addCredit(input: CompanyCreditInput!): CompanyCredit!
+    "Edit an issued credit's description/balance/account/expiry (number and spent total are immutable). Admin."
+    editCredit(id: UUID!, input: CompanyCreditInput!): CompanyCredit!
+    "Soft-delete an issued credit instrument. Admin."
+    deleteCredit(id: UUID!): Boolean!
+    "Set the units this company stores product/container dimensions and weights in. Admin."
+    setUnits(lengthUnit: LengthUnit!, weightUnit: WeightUnit!): Company!
+}
+
+"""Creates a company plus its organization + profile pair in the profiles domain."""
+input CompanyInput {
+    "The organization/company name."
+    name: String!
+    "Free-form attributes for the created organization."
+    attributes: JSON = null
+}
+
+"""Issues a numbered company credit instrument."""
+input CompanyCreditInput {
+    "Restrict redemption to one account, if set."
+    accountId: UUID = null
+    "The redeemable number (unique). Generated server-side when omitted."
+    number: String = null
+    description: String = null
+    "Initial spendable balance."
+    balance: Money!
+    "Expiry, if the credit should lapse."
+    expires: DateTime = null
+}

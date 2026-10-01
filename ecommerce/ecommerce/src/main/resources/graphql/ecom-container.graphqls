@@ -1,0 +1,65 @@
+extend type Ecom {
+    "A shipping container (box type) by id. Admin."
+    container(id: UUID!): EcomContainer
+    "A company's shipping containers (the box catalog the packer fills). Admin."
+    containers(companyId: UUID!): [EcomContainer!]!
+}
+
+extend type EcomMutation {
+    "Shipping-container (box catalog) administration. Admin."
+    containers: ContainersMutation!
+}
+
+"""
+A box type a company packs shipments into: outer dimensions + tare weight, and the inner capacity
+(maximum packable dimensions + payload weight) the packer honors. Units are the company's own
+consistent choice.
+"""
+type EcomContainer {
+    id: UUID!
+    companyId: UUID!
+    name: String!
+    width: Float!
+    height: Float!
+    length: Float!
+    "Tare (empty) weight of the container itself."
+    weight: Float!
+    "Inner capacity — maximum packable width."
+    supportedWidth: Float!
+    supportedHeight: Float!
+    supportedLength: Float!
+    "Maximum payload weight the container can carry."
+    supportedWeight: Float!
+    created: DateTime!
+    modified: DateTime!
+}
+
+"""Container (box catalog) creates and per-container operations. Admin."""
+type ContainersMutation {
+    "Create a container (box type) in a company."
+    add(input: ContainerInput!): EcomContainer!
+    "Operations on an existing container."
+    container(id: UUID!): ContainerMutation!
+}
+
+"""Operations on one container. Admin."""
+type ContainerMutation {
+    "Edit the container's name, dimensions, and capacity."
+    edit(input: ContainerInput!): EcomContainer!
+    "Soft-delete the container."
+    delete: Boolean!
+}
+
+"""Creates or edits a shipping container (box type)."""
+input ContainerInput {
+    companyId: UUID!
+    name: String!
+    width: Float!
+    height: Float!
+    length: Float!
+    weight: Float!
+    supportedWidth: Float!
+    supportedHeight: Float!
+    supportedLength: Float!
+    supportedWeight: Float!
+}

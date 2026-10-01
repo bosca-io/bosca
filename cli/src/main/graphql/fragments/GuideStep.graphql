@@ -1,0 +1,9 @@
+fragment GuideStep on GuideStep {
+    metadata {
+        ...Metadata
+    }
+    modules {
+        ...GuideStepModule
+    }
+}
+

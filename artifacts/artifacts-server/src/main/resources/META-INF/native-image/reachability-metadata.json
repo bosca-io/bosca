@@ -1,0 +1,127 @@
+{
+  "reflection": [
+    {
+      "type": "apple.security.AppleProvider",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "bosca.server.netty.CompressionOffloadHandler"
+    },
+    {
+      "type": "bosca.server.netty.DrainingHttpHandler"
+    },
+    {
+      "type": "bosca.server.netty.BodylessH2cUpgradeHandler"
+    },
+    {
+      "type": "bosca.server.netty.Http1ExchangeSequencer"
+    },
+    {
+      "type": "bosca.server.netty.Http1ProtocolSelectionHandler"
+    },
+    {
+      "type": "bosca.server.netty.Http2PriorKnowledgeHandler"
+    },
+    {
+      "type": "bosca.server.netty.Http2StreamProtocolSelector"
+    },
+    {
+      "type": "bosca.server.netty.Http2StreamInitializer"
+    },
+    {
+      "type": "bosca.server.netty.Http2WebSocketCloseFrameHandler"
+    },
+    {
+      "type": "bosca.server.netty.Http2WebSocketProtocolViolationHandler"
+    },
+    {
+      "type": "bosca.server.netty.Http2WebSocketStreamHandler"
+    },
+    {
+      "type": "bosca.server.netty.NettyHttpHandler"
+    },
+    {
+      "type": "bosca.server.netty.NettyServerEngine$start$1"
+    },
+    {
+      "type": "bosca.server.netty.SelectiveContentCompressor"
+    },
+    {
+      "type": "bosca.server.netty.WebSocketUpgradePreparer"
+    },
+    {
+      "type": "boolean[]"
+    },
+    {
+      "type": "byte[]"
+    },
+    {
+      "type": "char[]"
+    },
+    {
+      "type": "double[]"
+    },
+    {
+      "type": "float[]"
+    },
+    {
+      "type": "int[]"
+    },
+    {
+      "type": "long[]"
+    },
+    {
+      "type": "short[]"
+    },
+    {
+      "type": "java.lang.Object[]"
+    },
+    {
+      "type": "java.lang.String[]"
+    },
+    {
+      "type": "java.sql.Statement[]"
+    },
+    {
+      "type": "sun.security.provider.NativePRNG",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "sun.security.provider.SHA",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "sun.security.provider.SHA2$SHA256",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "sun.security.provider.SHA5$SHA512",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    }
+  ]
+}

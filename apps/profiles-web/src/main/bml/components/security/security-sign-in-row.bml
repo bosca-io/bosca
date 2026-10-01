@@ -1,0 +1,15 @@
+<component tag="security-sign-in-row">
+  <prop name="login" type="bosca.profiles.web.LoginRow" required/>
+
+  <div class="list-row">
+    <div class="row-main">
+      <div class="row-title">
+        { login.method }
+        <if login.current && login.active><span class="badge inline">Current</span></if>
+      </div>
+      <div class="row-meta">Signed in <local-date-time :value="login.created"/></div>
+      <if login.revokedAt.isNotBlank()><div class="row-meta danger-text">Revoked <local-date-time :value="login.revokedAt"/></div></if>
+    </div>
+    <div class="row-actions"><slot/></div>
+  </div>
+</component>

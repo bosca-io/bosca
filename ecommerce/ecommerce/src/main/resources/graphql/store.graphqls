@@ -1,0 +1,143 @@
+"""Whether a store is an online (VIRTUAL) or in-person (PHYSICAL) selling context."""
+enum StoreType { VIRTUAL PHYSICAL }
+
+extend type Ecom {
+    "A store by id."
+    store(id: UUID!): Store
+    "A store by its unique storefront identifier (slug)."
+    storeByIdentifier(identifier: String!): Store
+    "Every store belonging to a company, ordered by name."
+    stores(companyId: UUID!): [Store!]!
+    "A company's payment providers (each row's secret-bearing configuration stays admin-gated)."
+    paymentProviders(companyId: UUID!): [PaymentProvider!]!
+    "A company's shipping providers (configuration admin-gated, as with payments)."
+    shippingProviders(companyId: UUID!): [ShippingProvider!]!
+    "Registered payment provider implementation keys (valid ProviderInput.providerKey values). Admin."
+    paymentProviderKeys: [String!]!
+    "Registered shipping provider implementation keys (valid ShippingProviderInput.providerKey values). Admin."
+    shippingProviderKeys: [String!]!
+}
+
+extend type EcomMutation {
+    "Store creates and per-store operations. Admin."
+    stores: StoresMutation!
+    "Payment/shipping provider registration. Admin."
+    providers: ProvidersMutation!
+}
+
+"""
+A selling context: binds a company, the catalog it sells, the default payment provider, the shipping
+line product, and cart expiration policy. Carts, payments, plans, and promotions are all
+store-scoped.
+"""
+type Store {
+    id: UUID!
+    "Unique storefront key (slug) — replaces the legacy minion instance binding."
+    identifier: String!
+    name: String!
+    company: Company!
+    catalog: Catalog!
+    type: StoreType!
+    "Default provider used to settle payments in this store."
+    paymentProvider: PaymentProvider
+    "The catalog entry used to add shipping as a cart line."
+    shippingCatalogProduct: CatalogProduct!
+    "How long carts live without activity before the expiration sweep reclaims them."
+    cartExpirationSeconds: Int!
+}
+
+"""
+A configured payment gateway. Behavior is a DI-registered PaymentProvider implementation selected by
+providerKey; this row carries its settings.
+"""
+type PaymentProvider {
+    id: UUID!
+    company: Company!
+    name: String!
+    "DI key of the provider implementation (e.g. stripe, test)."
+    providerKey: String!
+    "Provider settings. May hold secrets — admin-permission-gated, never on storefront paths."
+    configuration: ProviderConfiguration!
+}
+
+"""
+A configured shipping-rate source. Behavior is a DI-registered ShippingProvider implementation
+selected by providerKey.
+"""
+type ShippingProvider {
+    id: UUID!
+    company: Company!
+    name: String!
+    "Business key, unique across the module."
+    key: String!
+    "DI key of the provider implementation (e.g. shippo, fixed-rate)."
+    providerKey: String!
+    "Provider settings. Admin-permission-gated."
+    configuration: ProviderConfiguration!
+}
+
+"""Store creates and per-store operations. Admin."""
+type StoresMutation {
+    "Create a store (selling context binding a catalog, payment provider, and cart policy)."
+    add(input: StoreInput!): Store!
+    "Operations on an existing store."
+    store(id: UUID!): StoreMutation!
+}
+
+"""Mutations scoped to one store. Admin."""
+type StoreMutation {
+    "Edit the store's bindings and cart policy."
+    edit(input: StoreInput!): Store!
+}
+
+"""Payment/shipping provider registration. Admin."""
+type ProvidersMutation {
+    "Register a payment provider configuration; behavior binds via DI provider key."
+    addPayment(input: ProviderInput!): PaymentProvider!
+    "Register a shipping provider configuration; behavior binds via DI provider key."
+    addShipping(input: ShippingProviderInput!): ShippingProvider!
+    "Edit a payment provider. Omit `configuration` to keep the existing settings (never read back)."
+    editPayment(id: UUID!, input: ProviderInput!): PaymentProvider!
+    "Edit a shipping provider. Omit `configuration` to keep the existing settings."
+    editShipping(id: UUID!, input: ShippingProviderInput!): ShippingProvider!
+    "Soft-delete a payment provider. Ensure no store still binds it first."
+    deletePayment(id: UUID!): Boolean!
+    "Soft-delete a shipping provider. Ensure no store/fulfillment center still binds it first."
+    deleteShipping(id: UUID!): Boolean!
+}
+
+"""Creates or edits a store."""
+input StoreInput {
+    companyId: UUID!
+    "Unique storefront key (slug)."
+    identifier: String!
+    name: String!
+    catalogId: UUID!
+    type: StoreType!
+    "Default payment provider for the store."
+    paymentProviderId: UUID!
+    "The catalog entry used to add shipping as a cart line."
+    shippingCatalogProductId: UUID!
+    "Cart lifetime (seconds) before the expiration sweep reclaims it."
+    cartExpirationSeconds: Int! = 86400
+}
+
+"""Registers a payment provider configuration."""
+input ProviderInput {
+    companyId: UUID!
+    name: String!
+    "DI key of the provider implementation."
+    providerKey: String!
+    configuration: JSON = null
+}
+
+"""Registers a shipping provider configuration."""
+input ShippingProviderInput {
+    companyId: UUID!
+    name: String!
+    "Business key, unique across the module."
+    key: String!
+    "DI key of the provider implementation."
+    providerKey: String!
+    configuration: JSON = null
+}

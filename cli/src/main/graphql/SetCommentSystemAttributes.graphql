@@ -1,0 +1,7 @@
+mutation SetCommentSystemAttributes($metadataId: UUID!, $version: Int!, $id: Long!, $attributes: JSON!) {
+    content {
+        metadata {
+            setCommentSystemAttributes(metadataId: $metadataId, metadataVersion: $version, commentId: $id, attributes: $attributes)
+        }
+    }
+}

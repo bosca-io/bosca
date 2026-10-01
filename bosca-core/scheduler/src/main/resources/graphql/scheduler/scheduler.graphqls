@@ -1,0 +1,275 @@
+"The current execution status of a scheduled job run."
+enum ExecutionStatus {
+    "The job is queued and waiting to be executed."
+    PENDING
+    "The job is currently being executed."
+    RUNNING
+    "The job has finished executing successfully."
+    COMPLETED
+    "The job execution failed due to an error."
+    FAILED
+    "The job execution was skipped (e.g. because a concurrent run was already in progress and concurrent execution is disabled)."
+    SKIPPED
+    "The job execution was cancelled by an administrator before it completed."
+    CANCELLED
+    "The job became stale — no status update was received within the expected execution window."
+    STALE
+}
+
+"The source that triggered a job execution."
+enum JobHistorySource {
+    "The job was triggered by the cron-based scheduler at its scheduled time."
+    SCHEDULER
+    "The job was triggered by an external event or manual invocation."
+    EVENT
+}
+
+"Whether and how a scheduled job's execution principal has been assigned."
+enum ScheduledJobPrincipalState {
+    NOT_REQUIRED
+    NEEDS_PRINCIPAL
+    PENDING_CONFIRMATION
+    ACTIVE
+}
+
+"A scheduled job definition that configures recurring or on-demand background task execution using cron expressions. Jobs reference a job definition by name and pass parameters to it."
+type ScheduledJob {
+    "The unique identifier of this scheduled job."
+    id: UUID!
+    "A human-readable name for this scheduled job."
+    name: String!
+    "An optional description of what this scheduled job does."
+    description: String
+    "The name of the job definition to execute. Must match a registered JobDefinition name in the system."
+    jobName: String!
+    "The parameters passed to the job definition on each execution, stored as JSON."
+    jobParameters: JSON!
+    "The cron expression defining the schedule (e.g. '0 0 * * *' for daily at midnight). Null if the job is only triggered manually or by events."
+    cronExpression: String
+    "Whether this scheduled job is enabled and will be executed on its schedule."
+    enabled: Boolean!
+    "Whether multiple instances of this job are allowed to run concurrently. If false, overlapping runs are skipped."
+    allowConcurrent: Boolean!
+    "Whether the scheduler should execute missed runs that occurred while the scheduler was down (catch-up execution)."
+    catchUp: Boolean!
+    "The maximum number of missed runs to catch up on when the scheduler restarts. Prevents excessive catch-up execution."
+    maxCatchUp: Int!
+    "The timestamp when this scheduled job was created."
+    createdAt: DateTime!
+    "The timestamp when this scheduled job was last updated."
+    updatedAt: DateTime!
+    "The UUID of the principal who created this scheduled job."
+    createdBy: UUID!
+    "The principal whose permissions this job executes with; distinct from createdBy."
+    executionPrincipalId: UUID
+    "The durable assignment/consent state for the execution principal."
+    principalState: ScheduledJobPrincipalState!
+    "The principal who assigned the execution identity."
+    principalAssignedBy: UUID
+    "The assigned principal or administrator who confirmed the identity."
+    principalConfirmedBy: UUID
+    "The timestamp of the last execution of this scheduled job. Null if the job has never been executed."
+    lastRunAt: DateTime
+    "The timestamp of the next planned execution based on the cron expression. Null if the job is disabled or has no cron expression."
+    nextRunAt: DateTime
+    "Retrieve a paginated and filtered list of execution history entries for this scheduled job."
+    history(
+        "The maximum number of history entries to return."
+        limit: Int
+        "The zero-based offset for pagination."
+        offset: Long
+        "Filter history entries by execution status."
+        status: ExecutionStatus
+        "Filter history entries by trigger source (SCHEDULER or EVENT)."
+        source: JobHistorySource
+    ): [JobHistory!]!
+    "Count the execution history entries for this scheduled job, optionally filtered by status and source."
+    historyCount(
+        "Filter the count by execution status."
+        status: ExecutionStatus
+        "Filter the count by trigger source."
+        source: JobHistorySource
+    ): Long!
+}
+
+"A record of a single job execution, including timing, status, and error details. Tracks both scheduled and event-triggered runs."
+type JobHistory {
+    "The unique identifier of this history entry."
+    id: UUID!
+    "The UUID of the scheduled job that produced this execution. Null if the job was triggered outside of a scheduled job context."
+    scheduledJobId: UUID
+    "The UUID of the underlying job execution in the job queue system."
+    jobId: UUID!
+    "The name of the job that was executed."
+    name: String
+    "The timestamp when this execution was originally scheduled to run."
+    scheduledFor: DateTime!
+    "The timestamp when this execution was actually triggered."
+    triggeredAt: DateTime!
+    "The source that triggered this execution (SCHEDULER for cron-based, EVENT for manual or event-triggered)."
+    source: JobHistorySource!
+    "The current execution status of this run."
+    status: ExecutionStatus!
+    "The timestamp when this execution completed. Null if the job is still running or pending."
+    completedAt: DateTime
+    "The error message if the execution failed. Null if the execution succeeded or is still in progress."
+    errorMessage: String
+    "Whether this execution was a catch-up run for a missed scheduled execution."
+    wasCatchUp: Boolean!
+    "The timestamp until which this execution was delayed before being allowed to run. Null if the job was not delayed."
+    delayedUntil: DateTime
+    "The job ID of the enclosing parent execution, if this row represents a child fanned out from a multi-job or other composite executor. Null for top-level jobs."
+    parentJobId: UUID
+    "The job definition snapshot at the time of execution, stored as JSON."
+    definition: JSON
+    "Additional context information about this execution, stored as JSON."
+    context: JSON
+}
+
+"Input for creating or updating a scheduled job definition."
+input ScheduledJobInput {
+    "A human-readable name for this scheduled job."
+    name: String!
+    "An optional description of what this scheduled job does."
+    description: String
+    "The name of the job definition to execute. Must match a registered JobDefinition name in the system."
+    jobName: String!
+    "The parameters to pass to the job definition on each execution, stored as JSON."
+    jobParameters: JSON!
+    "The cron expression defining the schedule (e.g. '0 0 * * *' for daily at midnight). Null for manually-triggered-only jobs."
+    cronExpression: String
+    "Whether this scheduled job should be enabled upon creation. Defaults to false if not specified."
+    enabled: Boolean
+    "Whether multiple instances of this job are allowed to run concurrently. Defaults to false if not specified."
+    allowConcurrent: Boolean
+    "Whether the scheduler should catch up on missed runs. Defaults to false if not specified."
+    catchUp: Boolean
+    "The maximum number of missed runs to catch up on. Defaults to a system-defined limit if not specified."
+    maxCatchUp: Int
+    "Whether the job must have a confirmed execution principal before it can be enabled."
+    requiresPrincipal: Boolean
+}
+
+"Metadata about a registered job definition that can be referenced by scheduled jobs. Provides the schema for job parameters."
+type JobDefinitionInfo {
+    "The unique string identifier of this job definition."
+    id: String!
+    "The human-readable name of this job definition."
+    name: String!
+    "A human-friendly label for admin UIs. Falls back to name when blank."
+    displayName: String!
+    "The name of the queue this job definition executes on."
+    queueName: String!
+    "A JSON Schema describing the expected parameters for this job definition. Null if the job accepts no parameters or has no defined schema."
+    parameterSchema: JSON
+}
+
+"The result of validating a cron expression, including whether it is valid and a preview of upcoming execution times."
+type CronValidationResult {
+    "Whether the cron expression is syntactically valid."
+    valid: Boolean!
+    "A description of the validation error, if the expression is invalid. Null if the expression is valid."
+    error: String
+    "A preview list of the next upcoming execution timestamps based on the cron expression. Empty if the expression is invalid."
+    nextRuns: [DateTime!]!
+}
+
+"Query operations for the job scheduler, including listing scheduled jobs, viewing execution history, and discovering available job definitions."
+type Scheduler {
+    "Retrieve a paginated list of scheduled jobs, optionally filtered by enabled status."
+    jobs(
+        "Filter jobs by enabled status. If null, returns both enabled and disabled jobs."
+        enabled: Boolean
+        "The maximum number of jobs to return."
+        limit: Int
+        "The zero-based offset for pagination."
+        offset: Long
+    ): [ScheduledJob!]!
+    "Retrieve a single scheduled job by its unique identifier. Returns null if the job does not exist."
+    job(
+        "The UUID of the scheduled job to retrieve."
+        id: UUID!
+    ): ScheduledJob
+    "Retrieve a paginated list of execution history entries across all scheduled jobs, optionally filtered by status and source."
+    history(
+        "The maximum number of history entries to return."
+        limit: Int
+        "The zero-based offset for pagination."
+        offset: Long
+        "Filter history entries by execution status."
+        status: ExecutionStatus
+        "Filter history entries by trigger source."
+        source: JobHistorySource
+    ): [JobHistory!]!
+    "Count the total execution history entries across all scheduled jobs, optionally filtered by status and source."
+    historyCount(
+        "Filter the count by execution status."
+        status: ExecutionStatus
+        "Filter the count by trigger source."
+        source: JobHistorySource
+    ): Long!
+    "Retrieve all registered job definitions that can be used when creating scheduled jobs."
+    availableJobDefinitions: [JobDefinitionInfo!]!
+    "Validate a cron expression and preview upcoming execution times."
+    validateCronExpression(
+        "The cron expression to validate (e.g. '0 0 * * *', '*/5 * * * *')."
+        expression: String!
+    ): CronValidationResult!
+}
+
+"Mutation operations for managing scheduled jobs, including CRUD operations and manual triggering."
+type SchedulerMutation {
+    "Create a new scheduled job with the specified configuration."
+    create(
+        "The scheduled job configuration to create."
+        input: ScheduledJobInput!
+    ): ScheduledJob!
+    "Update an existing scheduled job's configuration."
+    edit(
+        "The UUID of the scheduled job to update."
+        id: UUID!
+        "The updated scheduled job configuration."
+        input: ScheduledJobInput!
+    ): ScheduledJob!
+    "Delete a scheduled job by its unique identifier. Returns true if the deletion was successful."
+    delete(
+        "The UUID of the scheduled job to delete."
+        id: UUID!
+    ): Boolean!
+    "Enable a previously disabled scheduled job, allowing it to execute on its defined schedule."
+    enable(
+        "The UUID of the scheduled job to enable."
+        id: UUID!
+    ): ScheduledJob!
+    "Disable a scheduled job, preventing it from executing on its defined schedule. The job can still be triggered manually."
+    disable(
+        "The UUID of the scheduled job to disable."
+        id: UUID!
+    ): ScheduledJob!
+    "Administrator assignment of an execution principal; activates immediately with the admin as confirmer."
+    assignExecutionPrincipal(id: UUID!, principalId: UUID!): ScheduledJob!
+    "Confirms a pending assignment. The assigned principal or an administrator may confirm."
+    confirmExecutionPrincipal(id: UUID!): ScheduledJob!
+    "Clears and parks a principal-required job. Requires administrator access."
+    clearExecutionPrincipal(id: UUID!): ScheduledJob!
+    "Manually trigger an immediate execution of a scheduled job, regardless of its cron schedule or enabled status."
+    trigger(
+        "The UUID of the scheduled job to trigger."
+        id: UUID!
+    ): JobHistory!
+    "Cancel a pending or running job execution. Marks the execution as cancelled and records the cancellation time."
+    cancel(
+        "The UUID of the job history entry to cancel."
+        id: UUID!
+    ): JobHistory!
+}
+
+extend type Query {
+    "Access the job scheduler query operations for listing jobs, viewing history, and discovering available job definitions."
+    scheduler: Scheduler!
+}
+
+extend type Mutation {
+    "Access the job scheduler mutation operations for creating, editing, deleting, and triggering scheduled jobs."
+    scheduler: SchedulerMutation!
+}

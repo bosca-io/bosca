@@ -1,0 +1,7 @@
+# Work Ops — OKR (R19)
+#
+# Populated in Phase 9 (specs/workops/plan.md §9). Owns `objective(...)`,
+# `keyResult(...)`, and the cascaded `parentObjectiveId` rollup logic.
+# Per the Implementation Decisions section, OKRs attach only to
+# WorkOpsPortfolio or WorkOpsProgram — never directly to a WorkOpsProject. Intentionally
+# empty for Phase 1.

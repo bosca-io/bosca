@@ -1,0 +1,54 @@
+{
+  "name": "@bosca/web",
+  "private": true,
+  "scripts": {
+    "build": "pnpm -r run build",
+    "build:packages": "pnpm --filter './packages/*' run build",
+    "build:projects": "pnpm --filter './projects/*' run build",
+    "prepare:projects": "pnpm --filter './projects/*' run nuxt:prepare",
+    "dev:studio": "pnpm --filter @bosca/studio dev",
+    "dev:bosca.io": "pnpm --filter @bosca/bosca-io dev",
+    "test": "pnpm -r run test",
+    "test:ci": "pnpm -r run test:ci",
+    "lint": "pnpm --filter './packages/*' --filter @bosca/studio --filter @bosca/bosca-io run lint",
+    "lint:fix": "pnpm --filter './packages/*' --filter @bosca/studio --filter @bosca/bosca-io run lint:fix",
+    "typecheck": "pnpm -r run typecheck",
+    "codegen": "pnpm -r run codegen",
+    "clean": "rm -rf node_modules packages/*/node_modules packages/*/dist projects/*/node_modules projects/*/.nuxt projects/*/.output"
+  },
+  "packageManager": "pnpm@10.26.1+sha512.664074abc367d2c9324fdc18037097ce0a8f126034160f709928e9e9f95d98714347044e5c3164d65bd5da6c59c6be362b107546292a8eecb7999196e5ce58fa",
+  "pnpm": {
+    "overrides": {
+      "vue": "catalog:",
+      "@vue/runtime-core": "catalog:",
+      "@vue/runtime-dom": "catalog:",
+      "@vue/server-renderer": "catalog:",
+      "@vue/compiler-core": "catalog:",
+      "@vue/compiler-dom": "catalog:",
+      "@vue/compiler-sfc": "catalog:",
+      "@vue/shared": "catalog:",
+      "@vue/reactivity": "catalog:",
+      "cssstyle>lru-cache": "10.4.3",
+      "@asamuzakjp/css-color>lru-cache": "10.4.3",
+      "@asamuzakjp/dom-selector>lru-cache": "10.4.3",
+      "@codemirror/view": "6.43.0",
+      "esbuild": "^0.28.2",
+      "lodash": "^4.18.0",
+      "h3": "1.15.11"
+    },
+    "onlyBuiltDependencies": [
+      "@parcel/watcher",
+      "better-sqlite3",
+      "core-js",
+      "edgedriver",
+      "esbuild",
+      "geckodriver",
+      "json-editor-vue",
+      "maplibre-gl",
+      "protobufjs",
+      "sharp",
+      "unrs-resolver",
+      "vue-demi"
+    ]
+  }
+}

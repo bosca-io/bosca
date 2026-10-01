@@ -1,0 +1,319 @@
+# Work Ops — Specs and Requirements
+
+enum WorkOpsSpecVersionSource {
+    WORKOPS
+    GIT_SYNC
+}
+
+enum WorkOpsGenerationSource {
+    CLAUDE_CODE
+    MANUAL
+    KIT
+}
+
+enum WorkOpsSpecContextType {
+    GIT_RESOURCE
+    METADATA
+    COLLECTION
+    PROFILE
+    CHAT_CHANNEL
+    AI_SESSION
+    SPEC
+    TASK
+    PROJECT
+    EXTERNAL_URI
+}
+
+enum WorkOpsRequirementParent {
+    SPEC
+    TASK
+}
+
+type WorkOpsSpec {
+    id: UUID!
+    key: String!
+    metadataId: UUID!
+    "The backing content document. Its name is the spec's display name. Null when the caller lacks VIEW on the metadata."
+    metadata: Metadata
+    programId: UUID
+    projectId: UUID
+    project: WorkOpsProject
+    status: WorkOpsStatus!
+    ownerProfileId: UUID!
+    owner: Profile
+    parentSpecId: UUID
+    "Resolved parent spec, if this is a child."
+    parentSpec: WorkOpsSpec
+    sortOrder: Int!
+    "Count of direct child specs."
+    childCount: Int!
+    "Count of child specs in a done-category status."
+    childDoneCount: Int!
+    "Direct child specs ordered by sortOrder."
+    children(offset: Long! = 0, limit: Int! = 50): [WorkOpsSpec!]!
+    gitRepositoryId: UUID
+    gitPath: String
+    watcherProfileIds: [UUID!]!
+    labelIds: [UUID!]!
+    deletedAt: DateTime
+    createdAt: DateTime!
+    modifiedAt: DateTime!
+    createdByPrincipalId: UUID!
+    modifiedByPrincipalId: UUID!
+    version: Long!
+    "Workflow transitions for this spec. With currentOnly (default), only those reachable from the current state."
+    transitions(currentOnly: Boolean! = true): [WorkOpsWorkflowTransition!]!
+    history(offset: Long! = 0, limit: Int! = 50): [WorkOpsSpecHistoryEntry!]!
+    requirements(offset: Long! = 0, limit: Int! = 50): [WorkOpsRequirement!]!
+    requirementCount: Long!
+    contexts: [WorkOpsSpecContext!]!
+    taskGenerations(offset: Long! = 0, limit: Int! = 50): [WorkOpsSpecTaskGeneration!]!
+    comments(offset: Long! = 0, limit: Long! = 50): [WorkOpsSpecComment!]!
+}
+
+type WorkOpsRequirement {
+    id: UUID!
+    key: String!
+    metadataId: UUID!
+    parentType: WorkOpsRequirementParent!
+    parentId: UUID!
+    status: WorkOpsStatus!
+    priority: WorkOpsPriority!
+    assigneeProfileId: UUID
+    assignee: Profile
+    taskId: UUID
+    "The linked task that manages this requirement's lifecycle state."
+    task: WorkOpsTask
+    sortOrder: Int!
+    labelIds: [UUID!]!
+    deletedAt: DateTime
+    createdAt: DateTime!
+    modifiedAt: DateTime!
+    createdByPrincipalId: UUID!
+    modifiedByPrincipalId: UUID!
+    version: Long!
+    history(offset: Long! = 0, limit: Int! = 50): [WorkOpsRequirementHistoryEntry!]!
+}
+
+type WorkOpsSpecContext {
+    id: UUID!
+    specId: UUID!
+    contextType: WorkOpsSpecContextType!
+    targetId: String!
+    label: String
+    attributes: JSON
+    addedByProfileId: UUID!
+    createdAt: DateTime!
+}
+
+type WorkOpsSpecTaskGeneration {
+    id: UUID!
+    specId: UUID!
+    metadataVersion: Int!
+    source: WorkOpsGenerationSource!
+    agentSessionId: UUID
+    generatedTaskIds: [UUID!]!
+    createdAt: DateTime!
+    createdByPrincipalId: UUID!
+}
+
+type WorkOpsSpecComment {
+    id: Long!
+    parentId: Long
+    specId: UUID!
+    profileId: UUID!
+    profile: Profile
+    impersonatorId: UUID
+    visibility: ProfileVisibility!
+    created: DateTime!
+    modified: DateTime!
+    status: CommentStatus!
+    content: String!
+    likes: Int!
+    deleted: Boolean!
+    replies(offset: Long! = 0, limit: Long! = 50): [WorkOpsSpecComment!]!
+}
+
+type WorkOpsSpecHistoryEntry {
+    id: UUID!
+    specId: UUID!
+    changedAt: DateTime!
+    changedByPrincipalId: UUID!
+    changedByProfileId: UUID
+    changes: [WorkOpsFieldChange!]!
+}
+
+type WorkOpsRequirementHistoryEntry {
+    id: UUID!
+    requirementId: UUID!
+    changedAt: DateTime!
+    changedByPrincipalId: UUID!
+    changedByProfileId: UUID
+    changes: [WorkOpsFieldChange!]!
+}
+
+input CreateWorkOpsSpecInput {
+    "Existing metadata to attach. If omitted, a new bosca/v-document metadata is created automatically using `name` (or the minted spec key) as the title."
+    metadataId: UUID
+    "Name for the auto-created metadata. Used only when metadataId is not provided. Defaults to the minted spec key (e.g. SPEC-1)."
+    name: String
+    programId: UUID
+    projectId: UUID
+    parentSpecId: UUID
+    sortOrder: Int
+    workflowId: UUID
+    gitRepositoryId: UUID
+    gitPath: String
+}
+
+input UpdateWorkOpsSpecInput {
+    programId: UUID
+    clearProgramId: Boolean
+    projectId: UUID
+    clearProjectId: Boolean
+    ownerProfileId: UUID
+    parentSpecId: UUID
+    clearParentSpecId: Boolean
+    sortOrder: Int
+    gitRepositoryId: UUID
+    clearGitRepositoryId: Boolean
+    gitPath: String
+    clearGitPath: Boolean
+    externalReferences: JSON
+    clearExternalReferences: Boolean
+    expectedVersion: Long!
+}
+
+input CreateWorkOpsRequirementInput {
+    "Existing metadata to link. If omitted, a new metadata + document is created automatically."
+    metadataId: UUID
+    "Name for the auto-created metadata. Used only when metadataId is not provided."
+    name: String
+    parentType: WorkOpsRequirementParent!
+    parentId: UUID!
+    workflowId: UUID
+    priorityId: UUID
+    assigneeProfileId: UUID
+    sortOrder: Int
+}
+
+input UpdateWorkOpsRequirementInput {
+    priorityId: UUID
+    assigneeProfileId: UUID
+    clearAssignee: Boolean
+    sortOrder: Int
+    externalReferences: JSON
+    clearExternalReferences: Boolean
+    expectedVersion: Long!
+}
+
+input CreateWorkOpsSpecContextInput {
+    contextType: WorkOpsSpecContextType!
+    targetId: String!
+    label: String
+    attributes: JSON
+}
+
+input WorkOpsSpecCommentInput {
+    parentId: Long
+    visibility: ProfileVisibility! = USER
+    content: String!
+    attributes: JSON
+    systemAttributes: JSON
+}
+
+type WorkOpsSpecs {
+    spec(id: UUID!): WorkOpsSpec
+    specByKey(key: String!): WorkOpsSpec
+    byProject(projectId: UUID!, offset: Long! = 0, limit: Int! = 50): [WorkOpsSpec!]!
+    byProgram(programId: UUID!, offset: Long! = 0, limit: Int! = 50): [WorkOpsSpec!]!
+    byOwner(ownerProfileId: UUID!, offset: Long! = 0, limit: Int! = 50): [WorkOpsSpec!]!
+    "Child specs of a parent spec, ordered by sortOrder."
+    children(parentSpecId: UUID!, offset: Long! = 0, limit: Int! = 50): [WorkOpsSpec!]!
+}
+
+type WorkOpsSpecsMutation {
+    create(input: CreateWorkOpsSpecInput!): WorkOpsSpec!
+    update(id: UUID!, input: UpdateWorkOpsSpecInput!): WorkOpsSpec!
+    softDelete(id: UUID!, expectedVersion: Long!): WorkOpsSpec!
+    restore(id: UUID!, expectedVersion: Long!): WorkOpsSpec!
+    addContext(specId: UUID!, input: CreateWorkOpsSpecContextInput!): WorkOpsSpecContext!
+    removeContext(specId: UUID!, contextId: UUID!): Boolean!
+    "Transition the spec through its workflow. The only permitted path for a status change."
+    transition(id: UUID!, transitionId: UUID!, expectedVersion: Long!, resolutionId: UUID): WorkOpsSpec!
+    "Generate tasks from the spec's requirements. Returns the generation record with task IDs."
+    generateTasks(specId: UUID!, metadataVersion: Int!, source: WorkOpsGenerationSource!, agentSessionId: UUID): WorkOpsSpecTaskGeneration!
+    "Push the spec's current content to its linked git repository. Returns the commit SHA, or null if no git binding."
+    pushToGit(specId: UUID!, content: String!, authorName: String!, authorEmail: String!): String
+    "Pull the spec's content from its linked git repository at a specific commit."
+    pullFromGit(specId: UUID!, commitSha: String!): WorkOpsSpec
+}
+
+type WorkOpsRequirements {
+    requirement(id: UUID!): WorkOpsRequirement
+    requirementByKey(key: String!): WorkOpsRequirement
+    bySpec(specId: UUID!, offset: Long! = 0, limit: Int! = 50): [WorkOpsRequirement!]!
+    byTask(taskId: UUID!, offset: Long! = 0, limit: Int! = 50): [WorkOpsRequirement!]!
+}
+
+type WorkOpsRequirementsMutation {
+    create(input: CreateWorkOpsRequirementInput!): WorkOpsRequirement!
+    update(id: UUID!, input: UpdateWorkOpsRequirementInput!): WorkOpsRequirement!
+    softDelete(id: UUID!, expectedVersion: Long!): WorkOpsRequirement!
+    restore(id: UUID!, expectedVersion: Long!): WorkOpsRequirement!
+    "Move a requirement to a different parent (spec or task)."
+    moveToParent(id: UUID!, parentType: WorkOpsRequirementParent!, parentId: UUID!, expectedVersion: Long!): WorkOpsRequirement!
+}
+
+type WorkOpsRequirementComment {
+    id: Long!
+    parentId: Long
+    requirementId: UUID!
+    profileId: UUID!
+    profile: Profile
+    impersonatorId: UUID
+    visibility: ProfileVisibility!
+    created: DateTime!
+    modified: DateTime!
+    status: CommentStatus!
+    content: String!
+    likes: Int!
+    deleted: Boolean!
+    replies(offset: Long! = 0, limit: Long! = 50): [WorkOpsRequirementComment!]!
+}
+
+input WorkOpsRequirementCommentInput {
+    parentId: Long
+    visibility: ProfileVisibility! = USER
+    content: String!
+    attributes: JSON
+    systemAttributes: JSON
+}
+
+type WorkOpsRequirementComments {
+    forRequirement(requirementId: UUID!, offset: Long! = 0, limit: Long! = 50): [WorkOpsRequirementComment!]!
+    countForRequirement(requirementId: UUID!): Long!
+    comment(requirementId: UUID!, commentId: Long!): WorkOpsRequirementComment
+}
+
+type WorkOpsRequirementCommentsMutation {
+    add(requirementId: UUID!, input: WorkOpsRequirementCommentInput!): WorkOpsRequirementComment!
+    like(requirementId: UUID!, commentId: Long!): Int!
+    unlike(requirementId: UUID!, commentId: Long!): Int!
+    setStatus(requirementId: UUID!, commentId: Long!, status: CommentStatus!): Boolean!
+    delete(requirementId: UUID!, commentId: Long!): Boolean!
+}
+
+type WorkOpsSpecComments {
+    forSpec(specId: UUID!, offset: Long! = 0, limit: Long! = 50): [WorkOpsSpecComment!]!
+    countForSpec(specId: UUID!): Long!
+    comment(specId: UUID!, commentId: Long!): WorkOpsSpecComment
+}
+
+type WorkOpsSpecCommentsMutation {
+    add(specId: UUID!, input: WorkOpsSpecCommentInput!): WorkOpsSpecComment!
+    like(specId: UUID!, commentId: Long!): Int!
+    unlike(specId: UUID!, commentId: Long!): Int!
+    setStatus(specId: UUID!, commentId: Long!, status: CommentStatus!): Boolean!
+    delete(specId: UUID!, commentId: Long!): Boolean!
+}

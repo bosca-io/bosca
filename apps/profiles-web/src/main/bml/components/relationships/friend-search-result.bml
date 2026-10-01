@@ -1,0 +1,14 @@
+<component tag="friend-search-result">
+  <prop name="profile" type="bosca.profiles.web.ProfileSearchRow" required/>
+
+  <div class="friend-search-result">
+    <div class="friend-search-identity">
+      <profile-avatar :name="profile.name" :initials="profile.initials" :src="profile.avatarUrl"/>
+      <div class="row-main">
+        <div class="row-title">{ profile.name }</div>
+        <if profile.slug.isNotBlank()><div class="row-meta">@{ profile.slug }</div></if>
+      </div>
+    </div>
+    <slot/>
+  </div>
+</component>

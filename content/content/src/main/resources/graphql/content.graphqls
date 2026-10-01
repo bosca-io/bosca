@@ -1,0 +1,132 @@
+"A union of collection and metadata items, representing any child item within a collection"
+union CollectionItem = Collection | Metadata
+
+"A union of all content types that can be resolved by slug — collections, metadata, or profiles"
+union ContentItem = Collection | Metadata | Profile
+
+"A union of all relationship types between content items"
+union ContentRelationship = CollectionMetadataRelationship | CollectionLanguageVariantMetadataRelationship | MetadataRelationship
+
+"The primary content query type providing access to all content management features — collections, metadata, categories, workflow states, and search"
+type Content {
+
+    "Access category queries"
+    categories: Categories!
+
+    "Access collection queries"
+    collections: Collections!
+
+    "Check which collection IDs the current user has the specified permission actions on. Returns the subset of IDs where all actions are allowed."
+    checkCollectionActions(
+        actions: [PermissionAction!]!
+        ids: [UUID!]!
+    ): [UUID!]!
+
+    "Check which metadata IDs the current user has the specified permission actions on. Returns the subset of IDs where all actions are allowed."
+    checkMetadataActions(
+        actions: [PermissionAction!]!
+        ids: [UUID!]!
+    ): [UUID!]!
+
+    @deprecated
+    "Get a collection by ID (deprecated: use collections.collection instead)"
+    collection(id: UUID): Collection
+
+    @deprecated
+    "Get a collection supplementary by ID (deprecated: use collection.supplementary instead)"
+    collectionSupplementary(supplementaryId: UUID!): CollectionSupplementary
+
+    @deprecated
+    "List all collection templates (deprecated: use collections.templates instead)"
+    collectionTemplates: CollectionTemplates!
+
+    "Access document template queries"
+    documentTemplates: DocumentTemplates!
+
+    "Access data template queries"
+    dataTemplates: DataTemplates!
+
+    "Access guide template queries"
+    guideTemplates: GuideTemplates!
+
+    @deprecated
+    "Find collections matching criteria (deprecated: use collections.find instead)"
+    findCollections(query: FindQueryInput!): [Collection!]!
+
+    @deprecated
+    "Find collections by system criteria (deprecated: use collections.findBySystem instead)"
+    findCollectionsBySystem(query: FindQueryInput!): [Collection!]!
+
+    @deprecated
+    "Count collections matching criteria (deprecated: use collections.findCount instead)"
+    findCollectionsCount(query: FindQueryInput!): Int!
+
+    "Find metadata items matching the query criteria"
+    findMetadata(query: FindQueryInput!): [Metadata!]!
+
+    "Find metadata items by system criteria (bypasses normal permission checks)"
+    findMetadataBySystem(query: FindQueryInput!): [Metadata!]!
+
+    "Count metadata items matching the query criteria"
+    findMetadataCount(query: FindQueryInput!): Int!
+
+    "Get a specific metadata item by ID and optional version"
+    metadata(id: UUID!, version: Int): Metadata
+
+    "Metadata items that have comments, most-recent-comment first — the moderation landing list."
+    commentedMetadata(offset: Int!, limit: Int!): [Metadata!]!
+
+    "Get a metadata supplementary item by its ID"
+    metadataSupplementary(supplementaryId: UUID!): MetadataSupplementary
+
+    "Look up a content item (collection, metadata, or profile) by its URL slug"
+    slug(slug: String!): ContentItem
+
+    "Check whether a slug is available for use"
+    slugAvailable(slug: String!): Boolean!
+
+    "Access content source queries"
+    sources: Sources!
+
+    "Access workflow state queries"
+    states: WorkflowStates!
+
+    "Access workflow transition queries"
+    transitions: Transitions!
+
+    "Get the JSON schema for document content validation"
+    documentContentSchema: JSON!
+
+    "Run a comprehensive health check across all content, identifying issues that may require editorial attention such as broken relationships, unpublished dependencies, and workflow problems"
+    healthCheck: ContentHealthCheck!
+}
+
+"Mutation operations for all content management features"
+type ContentMutation {
+    "Access category mutations"
+    category: CategoryMutation!
+
+    "Access collection mutations"
+    collection: CollectionMutation!
+
+    "Access metadata mutations"
+    metadata: MetadataMutation!
+
+    "Access content health check mutations for resolving identified issues"
+    healthCheck: ContentHealthCheckMutation!
+
+    "Rebuild all storage system content indexes"
+    rebuildStorageSystemContent: Boolean!
+
+    "Trigger an image resize operation"
+    resizeImage: Boolean!
+
+    "Access content source mutations"
+    sources: SourceMutation!
+
+    "Access workflow state mutations"
+    states: WorkflowStatesMutation!
+
+    "Access workflow transition mutations"
+    transitions: TransitionsMutation!
+}

@@ -1,0 +1,9 @@
+mutation EditCategory($id: UUID!, $input: CategoryInput!) {
+    content {
+        category {
+            edit(id: $id, category: $input) {
+                ...Category
+            }
+        }
+    }
+}

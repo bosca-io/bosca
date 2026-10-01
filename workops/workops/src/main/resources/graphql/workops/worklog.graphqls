@@ -1,0 +1,46 @@
+enum WorklogVisibility { ALL, ROLE, PROFILES }
+
+"""
+R15 — worklogs, durations, and epic rollups. Durations enter as
+the YouTrack/Jira shorthand `1w 2d 3h 30m` and round-trip back
+out the same way through `WorkOpsWorkLog.timeSpentShort`.
+"""
+type WorkOpsWorkLog {
+    id: UUID!
+    taskId: UUID!
+    profileId: UUID!
+    timeSpentSeconds: Long!
+    timeSpentShort: String!
+    startedAt: DateTime!
+    comment: String
+    visibility: WorklogVisibility!
+    createdAt: DateTime!
+    modifiedAt: DateTime!
+}
+
+input WorkOpsWorkLogInput {
+    timeSpent: String!
+    startedAt: DateTime!
+    comment: String
+    visibility: WorklogVisibility!
+    estimateAdjustment: String
+}
+
+type WorkOpsTimeAggregate {
+    totalEstimateSeconds: Long!
+    totalRemainingSeconds: Long!
+    totalSpentSeconds: Long!
+    taskCount: Long!
+    doneCount: Long!
+}
+
+type WorkOpsWorklogQuery {
+    forTask(taskId: UUID!, offset: Long!, limit: Int!): [WorkOpsWorkLog!]!
+    worklog(id: UUID!): WorkOpsWorkLog
+}
+
+type WorkOpsWorklogMutation {
+    logWork(taskId: UUID!, input: WorkOpsWorkLogInput!): WorkOpsWorkLog!
+    updateWorklog(id: UUID!, input: WorkOpsWorkLogInput!): WorkOpsWorkLog!
+    deleteWorklog(id: UUID!): Boolean!
+}

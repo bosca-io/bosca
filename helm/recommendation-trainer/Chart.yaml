@@ -1,0 +1,12 @@
+apiVersion: v2
+name: recommendation-trainer
+description: Ephemeral TFRS model trainer dispatched through Bosca Kubernetes Jobs
+type: application
+version: 0.1.0
+# Latest published trainer compatible with direct JobProfile execution. The
+# chart passes Bosca connection settings as CLI arguments for this release.
+appVersion: "5.16.4"
+dependencies:
+  - name: bosca-common
+    version: ">=0.1.0"
+    repository: "file://../bosca-common"

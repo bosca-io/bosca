@@ -1,0 +1,59 @@
+suite: notifications-web Gateway routing
+templates:
+  - templates/gateway.yaml
+  - templates/httproute-notifications-web.yaml
+  - templates/httproute-redirect.yaml
+values:
+  - ../values.yaml
+release:
+  name: isolated-notifications
+  namespace: bosca
+set:
+  global:
+    domain: test.local
+  notifications-web:
+    enabled: true
+    gateway:
+      enabled: true
+      hostnames:
+        - notify.test.local
+tests:
+  - it: adds the notifications hostname to the shared Gateway
+    template: templates/gateway.yaml
+    asserts:
+      - equal:
+          path: spec.listeners[1].name
+          value: https-notify-test-local
+      - equal:
+          path: spec.listeners[1].hostname
+          value: notify.test.local
+
+  - it: routes HTTPS notifications traffic to notifications-web
+    template: templates/httproute-notifications-web.yaml
+    asserts:
+      - equal:
+          path: spec.parentRefs[0].port
+          value: 443
+      - equal:
+          path: spec.hostnames[0]
+          value: notify.test.local
+      - equal:
+          path: spec.rules[0].backendRefs[0]
+          value:
+            name: isolated-notifications-notifications-web
+            port: 9094
+
+  - it: redirects HTTP notifications traffic to HTTPS
+    template: templates/httproute-redirect.yaml
+    asserts:
+      - equal:
+          path: spec.parentRefs[0].port
+          value: 80
+      - equal:
+          path: spec.hostnames[0]
+          value: notify.test.local
+      - equal:
+          path: spec.rules[0].filters[0].requestRedirect
+          value:
+            scheme: https
+            statusCode: 301

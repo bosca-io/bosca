@@ -1,0 +1,46 @@
+query GetWorkOpsMilestonesByProgram($programId: UUID!) {
+    workOps {
+        milestones {
+            byProgram(programId: $programId) {
+                id
+                programId
+                name
+                description
+                targetDate
+                state
+                closedAt
+                version
+            }
+        }
+    }
+}
+
+mutation CreateWorkOpsMilestone($input: CreateWorkOpsMilestoneInput!) {
+    workOps {
+        milestones {
+            create(input: $input) {
+                id
+                programId
+                name
+                description
+                targetDate
+                state
+                version
+            }
+        }
+    }
+}
+
+mutation CloseWorkOpsMilestone($id: UUID!, $expectedVersion: Long!) {
+    workOps {
+        milestones {
+            close(id: $id, expectedVersion: $expectedVersion) {
+                id
+                name
+                state
+                closedAt
+                version
+            }
+        }
+    }
+}

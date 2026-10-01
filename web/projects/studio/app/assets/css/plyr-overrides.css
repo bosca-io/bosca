@@ -1,0 +1,32 @@
+:root {
+  --plyr-color-main: var(--brand-2);
+  --plyr-video-background: var(--bg-1);
+  --plyr-menu-background: var(--bg-2);
+  --plyr-menu-color: var(--fg-1);
+  --plyr-control-color: var(--fg-1);
+  --plyr-audio-control-color: var(--fg-1);
+  --plyr-audio-controls-background: var(--bg-2);
+  --plyr-badge-background: var(--brand-2);
+  --plyr-badge-text-color: var(--bg-0);
+  --plyr-range-fill-background: var(--brand-2);
+  --plyr-range-thumb-background: var(--fg-0);
+  --plyr-tooltip-background: var(--bg-3);
+  --plyr-tooltip-color: var(--fg-1);
+  --plyr-font-family: var(--font-sans);
+  --plyr-font-size-base: 14px;
+  --plyr-control-spacing: 8px;
+}
+
+.plyr {
+  border-radius: var(--r-md);
+}
+
+.plyr--audio .plyr__controls {
+  border-radius: var(--r-md);
+  border: 1px solid var(--line);
+}
+
+.plyr__menu__container {
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line);
+}

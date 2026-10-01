@@ -1,0 +1,21 @@
+apiVersion: v2
+name: bosca-infra
+description: Bosca infrastructure — PostgreSQL, NATS, Meilisearch, Redis, Gradle build cache, and application secrets
+type: application
+version: 0.1.0
+dependencies:
+  - name: bosca-common
+    version: ">=0.1.0"
+    repository: "file://../bosca-common"
+  - name: nats
+    version: "2.14.0"
+    repository: "https://nats-io.github.io/k8s/helm/charts/"
+    condition: nats.enabled
+  - name: meilisearch
+    version: "0.32.0"
+    repository: "https://meilisearch.github.io/meilisearch-kubernetes/"
+    condition: meilisearch.enabled
+  - name: trino
+    version: "1.42.2"
+    repository: "https://trinodb.github.io/charts"
+    condition: trino.enabled

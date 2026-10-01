@@ -1,0 +1,25 @@
+<message key="prayer-comment">
+  <script server provides="m">
+    import bosca.messages.PrayerCommentNotification
+    message.payload(PrayerCommentNotification.serializer())
+  </script>
+  <script server provides="title">
+    if (m.reply) {
+      t("prayer-comment.reply.push.title", "New reply")
+    } else {
+      t("prayer-comment.push.title", "New prayer comment")
+    }
+  </script>
+  <script server provides="body">
+    if (m.reply) {
+      t("prayer-comment.reply.push.body", "{actorName} replied to your comment", "actorName" to m.actorName)
+    } else {
+      t("prayer-comment.push.body", "{actorName} commented on your prayer", "actorName" to m.actorName)
+    }
+  </script>
+  <push>
+    <title>{ title }</title>
+    <body>{ body }</body>
+    <action id="open-prayer" default t="prayer.push.action.open">Open prayer</action>
+  </push>
+</message>

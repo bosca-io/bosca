@@ -1,0 +1,336 @@
+"The type of community group, defining its purpose and default behavior"
+enum CommunityGroupType {
+    "A family unit group for household or family members"
+    FAMILY
+    "A small group for Bible study, support, or fellowship gatherings"
+    SMALL_GROUP
+    "A custom group type with user-defined purpose and behavior"
+    CUSTOM
+}
+
+"The visibility level of a community group, controlling who can discover and access it"
+enum CommunityVisibility {
+    "Visible to all users and discoverable through search and listings"
+    PUBLIC
+    "Visible only to members; requires an invitation or signup token to join"
+    PRIVATE
+    "Not discoverable through search or listings; accessible only via direct link or token"
+    HIDDEN
+}
+
+"A community group that brings together members around a shared purpose such as family, small group study, or custom activities. Groups contain members, chat channels, activities, and prayer requests."
+type CommunityGroup {
+    "Unique identifier for this community group"
+    id: UUID!
+    "Display name of the community group"
+    name: String!
+    "Human-readable description of the group's purpose"
+    description: String!
+    "The type classification of this group (family, small group, or custom)"
+    type: CommunityGroupType!
+    "The visibility level controlling who can discover and access this group"
+    visibility: CommunityVisibility!
+    "Custom attributes associated with this group as a JSON object"
+    attributes: JSON
+
+    "List of all members belonging to this group"
+    members: [CommunityGroupMember!]!
+    "List of chat channels associated with this group"
+    channels: [ChatChannel!]!
+    "List of activities (events, studies, service projects) within this group"
+    activities: [CommunityActivity!]!
+    "Paginated list of prayer requests submitted to this group, optionally filtered by status"
+    prayers(status: [PrayerStatus!], limit: Int, offset: Int): Prayers!
+    "List of active signup tokens that can be used to join this group"
+    signupTokens: [CommunityGroupSignupToken!]!
+}
+
+"A time-limited token that allows a new user to join a community group without a direct invitation"
+type CommunityGroupSignupToken {
+    "The unique token string used in the join URL or form"
+    token: String!
+    "ID of the community group this token grants access to"
+    groupId: UUID!
+    "Timestamp when this signup token was created"
+    created: DateTime!
+    "Timestamp when this signup token expires and can no longer be used"
+    expires: DateTime!
+}
+
+"A membership record linking a user profile to a community group"
+type CommunityGroupMember {
+    "ID of the community group this membership belongs to"
+    groupId: UUID!
+    "ID of the member's user profile"
+    profileId: UUID!
+    "The full user profile of the member"
+    profile: Profile!
+}
+
+"The lifecycle status of a prayer request"
+enum PrayerStatus {
+    "The prayer is currently active and visible to group members"
+    ACTIVE
+    "The prayer was cancelled by the submitter"
+    CANCELLED
+    "The prayer has been marked as answered"
+    ANSWERED
+    "The prayer is pending initial review or action"
+    PENDING
+    "The prayer has been blocked by a moderator"
+    BLOCKED
+    "The prayer is awaiting moderator approval before becoming visible"
+    PENDING_APPROVAL
+}
+
+"Paginated container for listing prayer requests with a total count"
+type Prayers {
+    "The prayer requests for the current page"
+    prayers: [Prayer!]!
+    "Total number of prayer requests matching the filter"
+    total: Long!
+}
+
+"A prayer request submitted by a community member, with lifecycle tracking and moderation support"
+type Prayer {
+    "Unique identifier for this prayer request"
+    id: UUID!
+    "ID of the user profile that submitted this prayer"
+    profileId: UUID!
+    "Display title of the prayer request"
+    title: String!
+    "Structured content of the prayer request as a JSON object"
+    content: JSON!
+    "Current lifecycle status of this prayer request"
+    status: PrayerStatus!
+    "Timestamp when this prayer was created"
+    created: DateTime!
+    "Timestamp when this prayer was last modified"
+    modified: DateTime!
+    "Timestamp when this prayer was marked as answered, null if not yet answered"
+    answeredAt: DateTime
+    "Timestamp of the most recent activity (create, prayed, liked, commented, status change)"
+    lastActivityAt: DateTime!
+    "Number of users who have marked this prayer as prayed"
+    prayerActionCount: Int!
+    "Whether the current authenticated user has prayed for this request"
+    prayedByMe: Boolean!
+    "Paginated list of users who have prayed for this request"
+    prayedBy(limit: Int, offset: Int): [PrayedByEntry!]!
+    "Number of users who have liked this prayer"
+    likeCount: Int!
+    "Whether the current authenticated user has liked this prayer"
+    likedByMe: Boolean!
+    "Paginated list of users who have liked this prayer (face pile)"
+    likes(limit: Int, offset: Int): [PrayerLike!]!
+    "Number of comments on this prayer"
+    commentCount: Int!
+    "Top-level comments on this prayer, ordered by newest first"
+    comments(limit: Int, offset: Int): [PrayerComment!]!
+    "Profiles this prayer has been shared with (visible to owner only)"
+    shares: [PrayerShare!]!
+    "Whether anniversary cards are suppressed for this prayer"
+    suppressAnniversaries: Boolean!
+    "Anniversary milestones posted for this prayer"
+    anniversaries: [PrayerAnniversary!]!
+    "Custom attributes associated with this prayer as a JSON object"
+    attributes: JSON
+    "The full user profile of the prayer submitter"
+    profile: Profile!
+}
+
+"A milestone anniversary for an answered prayer (Praise & Celebration)"
+type PrayerAnniversary {
+    "ID of the prayer this anniversary belongs to"
+    prayerId: UUID!
+    "The original prayer"
+    prayer: Prayer
+    "The milestone label (e.g. 3_months, 1_year, 2_years)"
+    milestone: String!
+    "Timestamp when this anniversary was posted"
+    postedAt: DateTime!
+}
+
+"A record of a prayer being shared with a specific profile"
+type PrayerShare {
+    "ID of the profile this prayer was shared with"
+    profileId: UUID!
+    "The full user profile of the person"
+    profile: Profile!
+    "Timestamp when the prayer was shared"
+    sharedAt: DateTime!
+}
+
+"A comment on a prayer request, supporting threaded replies"
+type PrayerComment {
+    "Unique identifier for this comment"
+    id: Long!
+    "ID of the prayer this comment belongs to"
+    prayerId: UUID!
+    "ID of the parent comment if this is a reply, null for top-level"
+    parentId: Long
+    "ID of the user who wrote this comment"
+    profileId: UUID!
+    "The full user profile of the commenter"
+    profile: Profile!
+    "The comment text content"
+    content: String!
+    "Timestamp when this comment was created"
+    created: DateTime!
+    "Replies to this comment, ordered oldest first"
+    replies(limit: Int, offset: Int): [PrayerComment!]!
+    "Custom attributes associated with this comment as a JSON object"
+    attributes: JSON
+}
+
+"A record of a user who has liked a prayer request"
+type PrayerLike {
+    "ID of the user who liked"
+    profileId: UUID!
+    "The full user profile of the person who liked"
+    profile: Profile!
+    "Timestamp when the user liked this prayer"
+    likedAt: DateTime!
+}
+
+"A record of a user who has prayed for a prayer request"
+type PrayedByEntry {
+    "ID of the user who prayed"
+    profileId: UUID!
+    "The full user profile of the person who prayed"
+    profile: Profile!
+    "Timestamp when the user marked this prayer as prayed"
+    prayedAt: DateTime!
+}
+
+"A scheduled or recurring activity within a community group, such as a meeting, event, study session, or service project"
+type CommunityActivity {
+    "Unique identifier for this activity"
+    id: UUID!
+    "ID of the community group this activity belongs to"
+    groupId: UUID!
+    "Display name of the activity"
+    name: String!
+    "Human-readable description of the activity"
+    description: String!
+    "The type classification of this activity (e.g. 'meeting', 'event', 'study', 'service')"
+    type: String!
+    "Structured content for the activity as a JSON object (e.g. agenda, materials, links)"
+    content: JSON
+    "Scheduling information as a JSON object (e.g. recurrence rules, start/end times)"
+    schedule: JSON
+}
+
+extend type ChatChannel {
+    "The parent community group this channel belongs to, null for standalone channels"
+    group: CommunityGroup
+}
+
+extend type MessageContent {
+    "The referenced prayer request, populated when type is PRAYER"
+    prayer: Prayer
+    "The referenced community activity, populated when type is ACTIVITY"
+    activity: CommunityActivity
+}
+
+"Root query type for community features, providing access to groups and channels"
+type Community {
+    "Retrieve a single community group by its unique identifier"
+    group(id: UUID!): CommunityGroup
+    "Access paginated listing of all community groups"
+    all: CommunityGroups!
+}
+
+"Paginated container for listing community groups with a total count"
+type CommunityGroups {
+    "Paginated list of community groups"
+    groups(limit: Int!, offset: Long!): [CommunityGroup!]!
+    "Total number of community groups available"
+    total: Long!
+}
+
+"A user profile's community memberships, providing access to their groups and channels"
+type ProfileCommunity {
+    "List of community groups the user belongs to"
+    groups: [CommunityGroup!]!
+    "List of chat channels the user is a member of"
+    channels: [ChatChannel!]!
+    "Aggregated prayer feed across the user's community groups, optionally filtered by group and/or status"
+    prayers(groupIds: [UUID!], status: [PrayerStatus!], limit: Int, offset: Int): Prayers!
+    "Prayers that have been explicitly shared with this user"
+    sharedPrayers(limit: Int, offset: Int): Prayers!
+}
+
+"Mutation operations for managing community groups, activities, prayers, and membership"
+type CommunityMutation {
+    "Grant a group permission on a community group"
+    addPermission(permission: PermissionInput!): EntityPermission!
+    "Remove a group permission from a community group"
+    deletePermission(permission: PermissionInput!): EntityPermission!
+
+    "Create a new community group with the specified name, description, type, visibility, and optional attributes"
+    createGroup(name: String!, description: String!, type: CommunityGroupType!, visibility: CommunityVisibility!, attributes: JSON): CommunityGroup!
+    "Update an existing community group. Only provided fields are modified."
+    updateGroup(id: UUID!, name: String, description: String, type: CommunityGroupType, visibility: CommunityVisibility, attributes: JSON): CommunityGroup!
+    "Add a user profile as a member of a community group"
+    addMember(groupId: UUID!, profileId: UUID!): Boolean!
+    "Remove a user profile from a community group"
+    removeMember(groupId: UUID!, profileId: UUID!): Boolean!
+
+    "Create a new chat channel associated with a community group"
+    createChannel(groupId: UUID!, name: String!, type: ChatChannelType!, attributes: JSON): ChatChannel!
+
+    "Create a new activity within a community group"
+    createActivity(groupId: UUID!, name: String!, description: String!, type: String!, content: JSON, schedule: JSON): CommunityActivity!
+    "Update an existing community activity. Only provided fields are modified."
+    updateActivity(id: UUID!, name: String, description: String, type: String, content: JSON, schedule: JSON): CommunityActivity!
+
+    "Submit a new prayer request to a community group"
+    addPrayer(groupId: UUID!, title: String!, content: JSON!, attributes: JSON): Prayer!
+    "Update the lifecycle status of a prayer request. Owners may set ACTIVE, CANCELLED, or ANSWERED. Group moderators may set BLOCKED, ACTIVE, or PENDING_APPROVAL."
+    updatePrayerStatus(id: UUID!, status: PrayerStatus!): Prayer!
+    "Mark that the current user has prayed for a prayer request"
+    markPrayed(id: UUID!): Prayer!
+    "Remove the current user's prayed mark from a prayer request"
+    unmarkPrayed(id: UUID!): Prayer!
+    "Like a prayer request"
+    likePrayer(id: UUID!): Prayer!
+    "Remove the current user's like from a prayer request"
+    unlikePrayer(id: UUID!): Prayer!
+    "Add a comment to a prayer request"
+    addPrayerComment(prayerId: UUID!, content: String!, parentId: Long, attributes: JSON): PrayerComment!
+    "Delete a comment from a prayer request (soft-delete)"
+    deletePrayerComment(prayerId: UUID!, commentId: Long!): Boolean!
+    "Send a prayer reference to a chat channel as a PRAYER message content block"
+    sendPrayerToChat(prayerId: UUID!, channelId: UUID!, clientId: UUID!): Boolean!
+    "Share a prayer with a specific profile (owner-only)"
+    sharePrayer(id: UUID!, profileId: UUID!): Prayer!
+    "Remove a prayer share from a specific profile (owner-only)"
+    unsharePrayer(id: UUID!, profileId: UUID!): Prayer!
+    "Toggle anniversary suppression for a prayer (owner-only)"
+    suppressPrayerAnniversaries(id: UUID!, suppress: Boolean!): Prayer!
+    "Delete a prayer request by its unique identifier"
+    deletePrayer(id: UUID!): Boolean!
+
+    "Generate a new time-limited signup token for a community group"
+    addCommunityGroupSignupToken(groupId: UUID!): CommunityGroupSignupToken!
+    "Delete an existing signup token from a community group"
+    deleteCommunityGroupSignupToken(groupId: UUID!, token: String!): Boolean!
+    "Join a community group using a valid signup token"
+    join(token: String!): CommunityGroup!
+}
+
+extend type Query {
+    "Access community features including groups, channels, and activities"
+    community: Community!
+}
+
+extend type Profile {
+    "Access the user's community memberships including groups and channels"
+    community: ProfileCommunity
+}
+
+extend type Mutation {
+    "Access mutation operations for community groups, channels, messages, activities, and prayers"
+    community: CommunityMutation!
+}

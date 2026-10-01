@@ -1,0 +1,10 @@
+query GetRepositoryById($id: UUID!) {
+    git {
+        repositoryById(id: $id) {
+            id
+            slug
+            ownerId
+            cloneUrl
+        }
+    }
+}

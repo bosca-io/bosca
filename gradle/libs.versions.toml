@@ -1,0 +1,303 @@
+# Shared dependencies for the Bosca workspace and buildSrc.
+# Keep one version per dependency family across the root Gradle build.
+
+[versions]
+acp = "0.25.0"
+antlr = "4.13.2"
+adaptive = "1.3.0-beta01"
+adaptive-layout = "1.3.0-beta01"
+android-gradle-plugin = "9.1.1"
+androidx-activity-compose = "1.13.0"
+androidx-paging = "3.5.0"
+androidx-security-crypto = "1.1.0"
+androidx-sqlite = "2.7.0"
+androidx-work = "2.11.2"
+apollo = "5.0.0"
+auth0-jwks-rsa = "0.23.0"
+auth0-jwt = "4.5.1"
+aws = "2.42.27"
+bcpkix-jdk18on = "1.86"
+bosca = "7.3.4"
+caffeine = "3.2.3"
+cdk8s = "2.70.54"
+cdk8s-plus30 = "2.4.10"
+clikt = "5.1.0"
+coil = "3.4.0"
+commonmark = "0.28.0"
+commons-compress = "1.27.1"
+commons-math = "3.6.1"
+components-resources = "1.11.1"
+compose-hot-reload = "1.1.1"
+compose-multiplatform = "1.11.1"
+compose-multiplatform-adaptive = "1.3.0-beta01"
+compose-multiplatform-lifecycle = "2.10.0"
+constructs = "10.6.0"
+fabric8-kubernetes-client = "7.4.0"
+firebase-messaging = "24.1.2"
+firebaseadmin = "9.5.0"
+flyway = "12.2.0"
+foundation = "1.11.1"
+google-androidpublisher = "v3-rev20250904-2.0.0"
+google-auth = "1.23.0"
+google-cloud-storage = "2.64.1"
+google-cloud-texttospeech = "2.89.0"
+google-genai = "1.46.0"
+google-services = "4.4.3"
+graalvm-buildtools = "1.0.0"
+graalvm-sdk = "25.1.3"
+hadoop = "3.5.0"
+haze = "1.7.2"
+ical4j = "4.2.4"
+iceberg = "1.10.1"
+intellij-platform = "2.18.1"
+java-graphql = "25.0"
+java-graphql-scalars = "24.0"
+jetbrains-lifecycle = "2.10.0"
+jgit = "7.6.0.202603022253-r"
+jsonata = "0.9.9"
+jte = "3.2.3"
+junit = "4.13.2"
+junit-jupiter = "1.21.4"
+junit-platform = "6.0.3"
+koog = "1.1.1"
+koog-a2a = "1.0.0-beta"
+koog-additions = "1.1.1-beta"
+koog-planner = "1.1.1-beta"
+kotlin = "2.4.0"
+kotlinpoet-ksp = "2.3.0"
+kotlinx-benchmark = "0.4.17"
+kotlinx-browser = "0.5.0"
+kotlinx-coroutines = "1.11.0"
+kotlinx-datetime = "0.8.0"
+kotlinx-serialization = "1.11.0"
+kover = "0.9.8"
+ksoup = "0.2.6"
+ksoup-kotlinx = "0.2.6"
+ksp = "2.3.9"
+ktor = "3.5.0"
+lettuce = "7.5.1.RELEASE"
+logback = "1.6.1"
+lucide = "2.2.1"
+material-icons-extended = "1.7.3"
+material3 = "1.11.0-alpha07"
+material3-adaptive-navigation-suite = "1.11.0-alpha07"
+mcp = "0.11.0"
+mockk = "1.14.11"
+nats = "2.25.2"
+navigation3 = "1.1.0"
+netty = "4.2.17.Final"
+okhttp-bom = "5.3.2"
+oshai-logging = "7.0.7"
+otel-kotlin = "1.60.1"
+parquet = "1.17.0"
+pdfbox = "3.0.7"
+postgres = "42.7.13"
+proguard = "7.9.1"
+room3 = "3.0.1"
+runtime = "1.11.1"
+slf4j = "2.0.17"
+snakeyaml = "2.6"
+tamboui = "0.4.0"
+testcontainers = "2.0.5"
+trino = "480"
+webauthn4j = "0.28.4.RELEASE"
+
+[libraries]
+acp = { module = "com.agentclientprotocol:acp", version.ref = "acp" }
+antlr-runtime = { module = "org.antlr:antlr4-runtime", version.ref = "antlr" }
+antlr-tool = { module = "org.antlr:antlr4", version.ref = "antlr" }
+android-gradle-plugin = { module = "com.android.tools.build:gradle", version.ref = "android-gradle-plugin" }
+androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "androidx-activity-compose" }
+androidx-room3-compiler = { module = "androidx.room3:room3-compiler", version.ref = "room3" }
+androidx-room3-runtime = { module = "androidx.room3:room3-runtime", version.ref = "room3" }
+androidx-security-crypto = { module = "androidx.security:security-crypto", version.ref = "androidx-security-crypto" }
+androidx-sqlite-bundled = { module = "androidx.sqlite:sqlite-bundled", version.ref = "androidx-sqlite" }
+androidx-work-runtime = { module = "androidx.work:work-runtime-ktx", version.ref = "androidx-work" }
+apollo-cache = { module = "com.apollographql.apollo:apollo-normalized-cache", version.ref = "apollo" }
+apollo-runtime = { module = "com.apollographql.apollo:apollo-runtime", version.ref = "apollo" }
+auth0-jwks-rsa = { module = "com.auth0:jwks-rsa", version.ref = "auth0-jwks-rsa" }
+auth0-jwt = { module = "com.auth0:java-jwt", version.ref = "auth0-jwt" }
+aws-bom = { module = "software.amazon.awssdk:bom", version.ref = "aws" }
+bcpkix-jdk18on = { module = "org.bouncycastle:bcpkix-jdk18on", version.ref = "bcpkix-jdk18on" }
+bcprov-jdk18on = { module = "org.bouncycastle:bcprov-jdk18on", version.ref = "bcpkix-jdk18on" }
+caffeine = { module = "com.github.ben-manes.caffeine:caffeine", version.ref = "caffeine" }
+cdk8s = { module = "org.cdk8s:cdk8s", version.ref = "cdk8s" }
+cdk8splus30 = { module = "org.cdk8s:cdk8s-plus-30", version.ref = "cdk8s-plus30" }
+clikt = { module = "com.github.ajalt.clikt:clikt", version.ref = "clikt" }
+coil-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil" }
+coil-network-ktor = { module = "io.coil-kt.coil3:coil-network-ktor3", version.ref = "coil" }
+coil-network-okhttp = { module = "io.coil-kt.coil3:coil-network-okhttp", version.ref = "coil" }
+commonmark = { module = "org.commonmark:commonmark", version.ref = "commonmark" }
+commonmark-ext-autolink = { module = "org.commonmark:commonmark-ext-autolink", version.ref = "commonmark" }
+commonmark-ext-gfm-strikethrough = { module = "org.commonmark:commonmark-ext-gfm-strikethrough", version.ref = "commonmark" }
+commonmark-ext-gfm-tables = { module = "org.commonmark:commonmark-ext-gfm-tables", version.ref = "commonmark" }
+commonmark-ext-task-list-items = { module = "org.commonmark:commonmark-ext-task-list-items", version.ref = "commonmark" }
+commons-compress = { module = "org.apache.commons:commons-compress", version.ref = "commons-compress" }
+commons-math = { module = "org.apache.commons:commons-math3", version.ref = "commons-math" }
+compose-adaptive = { module = "org.jetbrains.compose.material3.adaptive:adaptive", version.ref = "adaptive" }
+compose-adaptive-layout = { module = "org.jetbrains.compose.material3.adaptive:adaptive-layout", version.ref = "adaptive-layout" }
+compose-adaptive-navigation = { module = "org.jetbrains.compose.material3.adaptive:adaptive-navigation", version.ref = "adaptive" }
+compose-components-resources = { module = "org.jetbrains.compose.components:components-resources", version.ref = "components-resources" }
+compose-foundation = { module = "org.jetbrains.compose.foundation:foundation", version.ref = "foundation" }
+compose-material-icons-extended = { module = "org.jetbrains.compose.material:material-icons-extended", version.ref = "material-icons-extended" }
+compose-material3 = { module = "org.jetbrains.compose.material3:material3", version.ref = "material3" }
+compose-material3-adaptive-navigation-suite = { module = "org.jetbrains.compose.material3:material3-adaptive-navigation-suite", version.ref = "material3-adaptive-navigation-suite" }
+compose-runtime = { module = "org.jetbrains.compose.runtime:runtime", version.ref = "runtime" }
+compose-ui = { module = "org.jetbrains.compose.ui:ui", version.ref = "compose-multiplatform" }
+compose-ui-test = { module = "org.jetbrains.compose.ui:ui-test", version.ref = "compose-multiplatform" }
+compose-ui-test-junit4 = { module = "org.jetbrains.compose.ui:ui-test-junit4", version.ref = "compose-multiplatform" }
+compose-ui-tooling-preview = { module = "org.jetbrains.compose.ui:ui-tooling-preview", version.ref = "compose-multiplatform" }
+constructs = { module = "software.constructs:constructs", version.ref = "constructs" }
+fabric8-kubernetes-client = { module = "io.fabric8:kubernetes-client" }
+fabric8-kubernetes-client-bom = { module = "io.fabric8:kubernetes-client-bom", version.ref = "fabric8-kubernetes-client" }
+fabric8-kubernetes-httpclient-okhttp = { module = "io.fabric8:kubernetes-httpclient-okhttp" }
+fabric8-kubernetes-model-gatewayapi = { module = "io.fabric8:kubernetes-model-gatewayapi" }
+firebase-messaging = { module = "com.google.firebase:firebase-messaging-ktx", version.ref = "firebase-messaging" }
+firebase-messaging-base = { module = "com.google.firebase:firebase-messaging", version.ref = "firebase-messaging" }
+firebaseadmin = { module = "com.google.firebase:firebase-admin", version.ref = "firebaseadmin" }
+flyway-core = { module = "org.flywaydb:flyway-core", version.ref = "flyway" }
+flyway-postgresql = { module = "org.flywaydb:flyway-database-postgresql", version.ref = "flyway" }
+google-androidpublisher = { module = "com.google.apis:google-api-services-androidpublisher", version.ref = "google-androidpublisher" }
+google-auth-oauth2 = { module = "com.google.auth:google-auth-library-oauth2-http", version.ref = "google-auth" }
+google-cloud-storage = { module = "com.google.cloud:google-cloud-storage", version.ref = "google-cloud-storage" }
+google-cloud-texttospeech = { module = "com.google.cloud:google-cloud-texttospeech", version.ref = "google-cloud-texttospeech" }
+google-genai = { module = "com.google.genai:google-genai", version.ref = "google-genai" }
+graalvm-nativeimage = { module = "org.graalvm.sdk:nativeimage", version.ref = "graalvm-sdk" }
+hadoop-common = { module = "org.apache.hadoop:hadoop-common", version.ref = "hadoop" }
+hadoop-mapreduce-client-core = { module = "org.apache.hadoop:hadoop-mapreduce-client-core", version.ref = "hadoop" }
+haze = { module = "dev.chrisbanes.haze:haze", version.ref = "haze" }
+haze-materials = { module = "dev.chrisbanes.haze:haze-materials", version.ref = "haze" }
+ical4j = { module = "org.mnode.ical4j:ical4j", version.ref = "ical4j" }
+iceberg-aws = { module = "org.apache.iceberg:iceberg-aws", version.ref = "iceberg" }
+iceberg-core = { module = "org.apache.iceberg:iceberg-core", version.ref = "iceberg" }
+iceberg-data = { module = "org.apache.iceberg:iceberg-data", version.ref = "iceberg" }
+iceberg-parquet = { module = "org.apache.iceberg:iceberg-parquet", version.ref = "iceberg" }
+java-graphql = { module = "com.graphql-java:graphql-java", version.ref = "java-graphql" }
+java-graphql-extended-scalars = { module = "com.graphql-java:graphql-java-extended-scalars", version.ref = "java-graphql-scalars" }
+jetbrains-lifecycle-runtime-compose = { module = "org.jetbrains.androidx.lifecycle:lifecycle-runtime-compose", version.ref = "jetbrains-lifecycle" }
+jetbrains-lifecycle-viewmodel-compose = { module = "org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "jetbrains-lifecycle" }
+jetbrains-lifecycle-viewmodelNavigation3 = { module = "org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-navigation3", version.ref = "compose-multiplatform-lifecycle" }
+jetbrains-material3-adaptiveNavigation3 = { module = "org.jetbrains.compose.material3.adaptive:adaptive-navigation3", version.ref = "compose-multiplatform-adaptive" }
+jetbrains-navigation3-ui = { module = "org.jetbrains.androidx.navigation3:navigation3-ui", version.ref = "navigation3" }
+jgit = { module = "org.eclipse.jgit:org.eclipse.jgit", version.ref = "jgit" }
+jgit-http-server = { module = "org.eclipse.jgit:org.eclipse.jgit.http.server", version.ref = "jgit" }
+jsonata = { module = "com.dashjoin:jsonata", version.ref = "jsonata" }
+jte-kotlin = { module = "gg.jte:jte-kotlin", version.ref = "jte" }
+jte-models = { module = "gg.jte:jte-models", version.ref = "jte" }
+junit = { module = "junit:junit", version.ref = "junit" }
+junit-jupiter = { module = "org.testcontainers:junit-jupiter", version.ref = "junit-jupiter" }
+junit-platform-jupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junit-platform" }
+koog-a2a-server = { module = "ai.koog:a2a-server", version.ref = "koog-a2a" }
+koog-a2a-transport-server-jsonrpc-http = { module = "ai.koog:a2a-transport-server-jsonrpc-http", version.ref = "koog-a2a" }
+koog-agents = { module = "ai.koog:koog-agents", version.ref = "koog" }
+koog-agents-additions = { module = "ai.koog:koog-agents-additions", version.ref = "koog-additions" }
+koog-agents-event-handler = { module = "ai.koog:agents-features-event-handler", version.ref = "koog" }
+koog-agents-memory = { module = "ai.koog:agents-features-memory", version.ref = "koog" }
+koog-agents-planner = { module = "ai.koog:agents-planner", version.ref = "koog-planner" }
+koog-agents-snapshot = { module = "ai.koog:agents-features-snapshot", version.ref = "koog" }
+koog-agents-test = { module = "ai.koog:agents-test", version.ref = "koog" }
+koog-prompt-llm = { module = "ai.koog:prompt-llm", version.ref = "koog" }
+koog-prompt-model = { module = "ai.koog:prompt-model", version.ref = "koog" }
+kotlin-ksp = { module = "com.google.devtools.ksp:symbol-processing-api", version.ref = "ksp" }
+kotlin-reflect = { module = "org.jetbrains.kotlin:kotlin-reflect", version.ref = "kotlin" }
+kotlin-scripting-common = { module = "org.jetbrains.kotlin:kotlin-scripting-common", version.ref = "kotlin" }
+kotlin-scripting-compiler = { module = "org.jetbrains.kotlin:kotlin-scripting-compiler-embeddable", version.ref = "kotlin" }
+kotlin-scripting-ide = { module = "org.jetbrains.kotlin:kotlin-scripting-ide-services", version.ref = "kotlin" }
+kotlin-scripting-jvm = { module = "org.jetbrains.kotlin:kotlin-scripting-jvm", version.ref = "kotlin" }
+kotlin-scripting-jvm-host = { module = "org.jetbrains.kotlin:kotlin-scripting-jvm-host", version.ref = "kotlin" }
+kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
+kotlin-test-junit = { module = "org.jetbrains.kotlin:kotlin-test-junit", version.ref = "kotlin" }
+kotlinpoet-ksp = { module = "com.squareup:kotlinpoet-ksp", version.ref = "kotlinpoet-ksp" }
+kotlinx-benchmark-runtime = { module = "org.jetbrains.kotlinx:kotlinx-benchmark-runtime", version.ref = "kotlinx-benchmark" }
+kotlinx-browser = { module = "org.jetbrains.kotlinx:kotlinx-browser", version.ref = "kotlinx-browser" }
+kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinx-coroutines" }
+kotlinx-coroutines-core-jvm = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm", version.ref = "kotlinx-coroutines" }
+kotlinx-coroutines-reactive = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-reactive", version.ref = "kotlinx-coroutines" }
+kotlinx-coroutines-rx3 = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-rx3", version.ref = "kotlinx-coroutines" }
+kotlinx-coroutines-swing = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-swing", version.ref = "kotlinx-coroutines" }
+kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "kotlinx-coroutines" }
+kotlinx-datetime = { module = "org.jetbrains.kotlinx:kotlinx-datetime", version.ref = "kotlinx-datetime" }
+kotlinx-serialization-cbor = { module = "org.jetbrains.kotlinx:kotlinx-serialization-cbor", version.ref = "kotlinx-serialization" }
+kotlinx-serialization-core = { module = "org.jetbrains.kotlinx:kotlinx-serialization-core", version.ref = "kotlinx-serialization" }
+kotlinx-serialization-hocon = { module = "org.jetbrains.kotlinx:kotlinx-serialization-hocon", version.ref = "kotlinx-serialization" }
+kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinx-serialization" }
+kotlinx-serialization-protobuf = { module = "org.jetbrains.kotlinx:kotlinx-serialization-protobuf", version.ref = "kotlinx-serialization" }
+ksoup = { module = "com.fleeksoft.ksoup:ksoup", version.ref = "ksoup" }
+ksoup-kotlinx = { module = "com.fleeksoft.ksoup:ksoup-kotlinx", version.ref = "ksoup-kotlinx" }
+ktor-client-android = { module = "io.ktor:ktor-client-android", version.ref = "ktor" }
+ktor-client-cio = { module = "io.ktor:ktor-client-cio", version.ref = "ktor" }
+ktor-client-content-negotiation = { module = "io.ktor:ktor-client-content-negotiation", version.ref = "ktor" }
+ktor-client-core = { module = "io.ktor:ktor-client-core", version.ref = "ktor" }
+ktor-client-darwin = { module = "io.ktor:ktor-client-darwin", version.ref = "ktor" }
+ktor-client-java = { module = "io.ktor:ktor-client-java", version.ref = "ktor" }
+ktor-client-js = { module = "io.ktor:ktor-client-js", version.ref = "ktor" }
+ktor-client-mock = { module = "io.ktor:ktor-client-mock", version.ref = "ktor" }
+ktor-client-websockets = { module = "io.ktor:ktor-client-websockets", version.ref = "ktor" }
+ktor-serialization-kotlinx-json = { module = "io.ktor:ktor-serialization-kotlinx-json", version.ref = "ktor" }
+ktor-server-auth = { module = "io.ktor:ktor-server-auth", version.ref = "ktor" }
+ktor-server-cio = { module = "io.ktor:ktor-server-cio", version.ref = "ktor" }
+ktor-server-core = { module = "io.ktor:ktor-server-core", version.ref = "ktor" }
+ktor-server-netty = { module = "io.ktor:ktor-server-netty", version.ref = "ktor" }
+ktor-server-sse = { module = "io.ktor:ktor-server-sse", version.ref = "ktor" }
+ktor-server-websockets = { module = "io.ktor:ktor-server-websockets", version.ref = "ktor" }
+lettuce-core = { module = "io.lettuce:lettuce-core", version.ref = "lettuce" }
+logback-classic = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
+lucide-icons = { module = "com.composables:icons-lucide-cmp", version.ref = "lucide" }
+mcp-sdk = { module = "io.modelcontextprotocol:kotlin-sdk-server", version.ref = "mcp" }
+mockk = { module = "io.mockk:mockk", version.ref = "mockk" }
+nats = { module = "io.nats:jnats", version.ref = "nats" }
+netty-bom = { module = "io.netty:netty-bom", version.ref = "netty" }
+netty-buffer = { module = "io.netty:netty-buffer", version.ref = "netty" }
+netty-codec-http = { module = "io.netty:netty-codec-http", version.ref = "netty" }
+netty-codec-http2 = { module = "io.netty:netty-codec-http2", version.ref = "netty" }
+netty-common = { module = "io.netty:netty-common", version.ref = "netty" }
+netty-handler = { module = "io.netty:netty-handler", version.ref = "netty" }
+netty-transport = { module = "io.netty:netty-transport", version.ref = "netty" }
+netty-transport-classes-epoll = { module = "io.netty:netty-transport-classes-epoll", version.ref = "netty" }
+netty-transport-native-epoll = { module = "io.netty:netty-transport-native-epoll", version.ref = "netty" }
+okhttp = { module = "com.squareup.okhttp3:okhttp" }
+okhttp-bom = { module = "com.squareup.okhttp3:okhttp-bom", version.ref = "okhttp-bom" }
+okhttp-coroutines = { module = "com.squareup.okhttp3:okhttp-coroutines" }
+okhttp-mockwebserver = { module = "com.squareup.okhttp3:mockwebserver3" }
+oshai-logging = { module = "io.github.oshai:kotlin-logging-jvm", version.ref = "oshai-logging" }
+opentelemetry-exporter-otlp = { module = "io.opentelemetry:opentelemetry-exporter-otlp", version.ref = "otel-kotlin" }
+opentelemetry-kotlin = { module = "io.opentelemetry:opentelemetry-extension-kotlin", version.ref = "otel-kotlin" }
+opentelemetry-sdk-extension-autoconfigure = { module = "io.opentelemetry:opentelemetry-sdk-extension-autoconfigure", version.ref = "otel-kotlin" }
+opentelemetry-semconv = { module = "io.opentelemetry.semconv:opentelemetry-semconv", version = "1.40.0" }
+paging-common = { module = "androidx.paging:paging-common", version.ref = "androidx-paging" }
+paging-compose = { module = "androidx.paging:paging-compose", version.ref = "androidx-paging" }
+parquet-column = { module = "org.apache.parquet:parquet-column", version.ref = "parquet" }
+pdfbox = { module = "org.apache.pdfbox:pdfbox", version.ref = "pdfbox" }
+postgresql = { module = "org.postgresql:postgresql", version.ref = "postgres" }
+slf4j-api = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
+snakeyaml = { module = "org.yaml:snakeyaml", version.ref = "snakeyaml" }
+tamboui-widgets = { module = "dev.tamboui:tamboui-widgets", version.ref = "tamboui" }
+testcontainers = { module = "org.testcontainers:testcontainers", version.ref = "testcontainers" }
+testcontainers-postgresql = { module = "org.testcontainers:testcontainers-postgresql", version.ref = "testcontainers" }
+trino = { module = "io.trino:trino-jdbc", version.ref = "trino" }
+webauthn4j-core = { module = "com.webauthn4j:webauthn4j-core", version.ref = "webauthn4j" }
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "android-gradle-plugin" }
+androidx-room3 = { id = "androidx.room3", version.ref = "room3" }
+apollo-kotlin = { id = "com.apollographql.apollo", version.ref = "apollo" }
+bosca-bml = { id = "io.bosca.bml", version.ref = "bosca" }
+bosca-graphql = { id = "io.bosca.graphql", version.ref = "bosca" }
+compose-hot-reload = { id = "org.jetbrains.compose.hot-reload", version.ref = "compose-hot-reload" }
+google-services = { id = "com.google.gms.google-services", version.ref = "google-services" }
+graalvm = { id = "org.graalvm.buildtools.native", version.ref = "graalvm-buildtools" }
+gradle-node = { id = "com.github.node-gradle.node", version = "7.1.0" }
+intellij-platform = { id = "org.jetbrains.intellij.platform", version.ref = "intellij-platform" }
+jte-gradle = { id = "gg.jte.gradle", version.ref = "jte" }
+kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+kotlin-compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+kotlin-compose-multiplatform = { id = "org.jetbrains.compose", version.ref = "compose-multiplatform" }
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+kotlin-ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
+kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
+kotlin-multiplatform-android-library = { id = "com.android.kotlin.multiplatform.library", version.ref = "android-gradle-plugin" }
+kotlin-native-cocoapods = { id = "org.jetbrains.kotlin.native.cocoapods", version.ref = "kotlin" }
+kotlin-plugin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+kotlinx-benchmark = { id = "org.jetbrains.kotlinx.benchmark", version.ref = "kotlinx-benchmark" }
+kover = { id = "org.jetbrains.kotlinx.kover", version.ref = "kover" }
+shadow = { id = "com.gradleup.shadow", version = "9.4.0" }

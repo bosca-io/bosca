@@ -1,0 +1,294 @@
+scalar DateTime
+scalar JSON
+scalar Long
+scalar UUID
+
+schema {
+  query: Query
+  mutation: Mutation
+}
+
+type Query {
+  profiles: Profiles!
+  search: Search!
+  security: Security!
+  communications: CommunicationsQueries!
+  devices: Devices!
+}
+
+type Mutation {
+  profiles: ProfilesMutation!
+  security: SecurityMutation!
+  communications: CommunicationsMutations!
+  devices: DevicesMutation!
+}
+
+enum ProfileVisibility { FRIENDS FRIENDS_OF_FRIENDS PUBLIC SYSTEM USER }
+enum CredentialType { API_TOKEN OAUTH2 PASSKEY PASSWORD PASSWORD_SCRYPT }
+enum DeliveryChannel { EMAIL PUSH }
+enum PlatformType { IOS ANDROID WEB DESKTOP }
+enum ThirdPartyType { GOOGLE FACEBOOK APPLE }
+
+input ProfileAttributeInput {
+  id: UUID
+  metadataId: UUID
+  metadataSupplementary: UUID
+  attributes: JSON
+  confidence: Int!
+  expiration: DateTime
+  priority: Int!
+  source: String!
+  typeId: String!
+  visibility: ProfileVisibility!
+}
+
+input ProfileInput {
+  slug: String
+  name: String!
+  attributes: [ProfileAttributeInput!]!
+  visibility: ProfileVisibility!
+  searchable: Boolean
+}
+
+type Profiles {
+  current: [Profile!]
+  attributeTypes: ProfileAttributeTypes!
+}
+
+type ProfilesMutation {
+  edit(id: UUID, profile: ProfileInput!): Profile
+  addAttributes(id: UUID!, attributes: [ProfileAttributeInput!]!): Boolean!
+  deleteAttribute(attributeId: UUID!, id: UUID): Boolean!
+  requestRelationship(requesterProfileId: UUID!, targetProfileId: UUID!, type: String!, attributes: JSON): ProfileRelationshipRequest!
+  approveRelationshipRequest(requestId: UUID!): ProfileRelationshipRequest!
+  declineRelationshipRequest(requestId: UUID!): ProfileRelationshipRequest!
+  cancelRelationshipRequest(requestId: UUID!): ProfileRelationshipRequest!
+  removeRelationship(sourceProfileId: UUID!, targetProfileId: UUID!, type: String!): Boolean!
+}
+
+type Profile {
+  id: UUID!
+  name: String!
+  slug: String
+  visibility: ProfileVisibility!
+  searchable: Boolean!
+  isPrimary: Boolean!
+  created: DateTime!
+  modified: DateTime!
+  attributes: [ProfileAttribute!]!
+  relationships(type: String, limit: Int, offset: Long): [ProfileRelationship!]!
+  incomingRelationshipRequests(type: String, limit: Int, offset: Long): [ProfileRelationshipRequest!]!
+  outgoingRelationshipRequests(type: String, limit: Int, offset: Long): [ProfileRelationshipRequest!]!
+}
+
+type ProfileAttribute {
+  id: UUID!
+  typeId: String!
+  type: ProfileAttributeType!
+  source: String!
+  priority: Int!
+  attributes: JSON
+  confidence: Int!
+  created: DateTime!
+  expires: DateTime
+  visibility: ProfileVisibility!
+  verified: Boolean!
+  verificationSource: String
+}
+
+type ProfileAttributeType {
+  id: String!
+  name: String!
+  description: String!
+  visibility: ProfileVisibility!
+  protected: Boolean!
+  formSchemaId: UUID
+  formSchema: FormSchema
+}
+
+type FormSchema {
+  id: UUID!
+  key: String!
+  schema: JSON!
+  uiSchema: JSON!
+}
+
+type ProfileAttributeTypes {
+  all: [ProfileAttributeType!]!
+}
+
+type ProfileRelationship {
+  profile: Profile!
+  type: String!
+}
+
+type ProfileRelationshipRequest {
+  id: UUID!
+  requester: Profile!
+  target: Profile!
+  type: String!
+  status: ProfileRelationshipRequestStatus!
+  created: DateTime!
+  modified: DateTime!
+}
+
+enum ProfileRelationshipRequestStatus { PENDING APPROVED DECLINED CANCELLED }
+
+input SearchQuery {
+  query: String!
+  filter: [String!]
+  limit: Int
+  offset: Int
+  storageSystemName: String
+}
+
+type Search {
+  search(query: SearchQuery): SearchResult
+}
+
+type SearchResult {
+  documents: [SearchDocument!]!
+}
+
+type SearchDocument {
+  profile: Profile
+}
+
+type Security {
+  principals: Principals!
+  passkeys: Passkeys!
+  apiTokens: ApiTokens!
+  thirdPartyProviders: [ThirdPartyType!]!
+}
+
+type SecurityMutation {
+  passkeys: PasskeysMutation!
+  apiTokens: ApiTokensMutation!
+  principal: PrincipalMutation!
+  deleteCredential(principalId: UUID!, type: CredentialType!, identifier: String!): Boolean!
+}
+
+type PrincipalMutation {
+  password(identifier: String, newPassword: String!, oldPassword: String!): Boolean!
+  revokeLogin(loginId: Long!): Boolean!
+}
+
+type Principals {
+  current: Principal!
+}
+
+type Principal {
+  id: UUID!
+  credentials: [PrincipalCredential!]!
+  verified: Boolean!
+  created: DateTime!
+  lastLogin: DateTime
+  loginHistory(offset: Long! = 0, limit: Int! = 25): [PrincipalLogin!]!
+}
+
+type PrincipalCredential {
+  identifier: String!
+  type: CredentialType!
+  provider: String
+  originator: String
+  lastOriginator: String
+}
+
+type ApiTokens {
+  my(limit: Int!, offset: Long!): [ApiToken!]!
+}
+
+type ApiTokensMutation {
+  revoke(id: Long!): Boolean!
+}
+
+type ApiToken {
+  id: Long!
+  name: String!
+  description: String
+  tokenPrefix: String!
+  scopes: [String!]
+  expiresAt: DateTime
+  lastUsedAt: DateTime
+  lastUsedIp: String
+  revokedAt: DateTime
+  active: Boolean!
+}
+
+type PrincipalLogin {
+  id: Long!
+  method: String!
+  revokedAt: DateTime
+  current: Boolean!
+  created: DateTime!
+}
+
+type Passkeys {
+  current: [Passkey!]!
+}
+
+type PasskeysMutation {
+  delete(credentialId: String!): Boolean!
+}
+
+type Passkey {
+  credentialId: String!
+  name: String!
+  createdAt: String!
+  lastUsedAt: String
+  transports: [String!]!
+}
+
+type CommunicationsQueries {
+  notificationTypes: [NotificationType!]!
+  myNotificationPreferences: [NotificationPreference!]!
+  myNotificationSettings: NotificationSettings
+}
+
+type CommunicationsMutations {
+  updateMyNotificationPreference(channel: DeliveryChannel!, type: String!, optedOut: Boolean!): NotificationPreference!
+  updateMyQuietHours(timeZone: String, dndStartLocal: String, dndEndLocal: String): NotificationSettings!
+}
+
+type NotificationType {
+  key: String!
+  name: String!
+  description: String
+  optional: Boolean!
+  system: Boolean!
+  hidden: Boolean!
+  displayOrder: Int!
+}
+
+type NotificationPreference {
+  channel: DeliveryChannel!
+  type: String!
+  optedOut: Boolean!
+}
+
+type NotificationSettings {
+  timeZone: String
+  dndStartLocal: String
+  dndEndLocal: String
+}
+
+type Devices {
+  devices(principalId: UUID): [Device!]!
+}
+
+type DevicesMutation {
+  delete(id: UUID!): Boolean!
+}
+
+type Device {
+  id: UUID!
+  platform: PlatformType!
+  created: DateTime!
+  modified: DateTime!
+  lastCheckIn: DateTime!
+  pushTokens: [PushToken!]!
+}
+
+type PushToken {
+  provider: String!
+}

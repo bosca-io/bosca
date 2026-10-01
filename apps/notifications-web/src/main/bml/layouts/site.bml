@@ -1,0 +1,32 @@
+{# The site shell every page renders inside: light, email-adjacent chrome — configurable logo or
+   brand line, the page's content (default slot), and custom footer HTML. This site is the
+   public landing for the links in notification email footers; it is anonymous and single-purpose,
+   so there is no navigation. #}
+<component tag="site-layout">
+  <prop name="title" type="String" required/>
+  <prop name="brand" type="String" default="Bosca"/>
+  <prop name="logo" type="String" default=""/>
+  <prop name="footer" type="String" default="© Bosca"/>
+
+  <html lang="en">
+    <head>
+      <meta charset="utf-8"/>
+      <meta name="viewport" content="width=device-width, initial-scale=1"/>
+      <meta name="robots" content="noindex"/>
+      <title>{ brand } — { title }</title>
+    </head>
+    <body>
+      <header class="site-head">
+        <if logo.isNotBlank()>
+          <img class="brand-logo" :src="logo" :alt="brand"/>
+        <else>
+          <span class="brand">{ brand }</span>
+        </if>
+      </header>
+      <slot/>
+      <footer class="site-foot">
+        {@ footer }
+      </footer>
+    </body>
+  </html>
+</component>

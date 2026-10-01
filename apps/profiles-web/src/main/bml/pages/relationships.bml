@@ -1,0 +1,17 @@
+<page route="/relationships" requireAuth>
+  <script server provides="branding">bosca.profiles.web.branding()</script>
+  <script server provides="loaded">bosca.profiles.web.relationshipsModel()</script>
+
+  <site-layout title="Relationships" :brand="branding.name" :logo="branding.logoUrl" :footer="branding.footerHtml">
+    <main class="shell">
+      <header class="page-head">
+        <div>
+          <p class="eyebrow">Relationships</p>
+          <h1>Your connections</h1>
+          <p class="lede">Manage friends and respond to requests involving your primary profile.</p>
+        </div>
+      </header>
+      <profile-relationships :initial="loaded"/>
+    </main>
+  </site-layout>
+</page>

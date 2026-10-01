@@ -1,0 +1,72 @@
+<page route="/devices" requireAuth>
+  <script server provides="branding">bosca.profiles.web.branding()</script>
+  <script server provides="loaded">bosca.profiles.web.devicesModel()</script>
+  <script server provides="model">bosca.profiles.web.DevicesModel(loaded.devices, loaded.tokens, loaded.tab)</script>
+
+  <site-layout title="Devices" :brand="branding.name" :logo="branding.logoUrl" :footer="branding.footerHtml">
+    <main class="shell">
+      <header class="page-head">
+        <div>
+          <p class="eyebrow">Devices</p>
+          <h1>Devices and tokens</h1>
+          <p class="lede">Review the devices and API credentials that can access your account.</p>
+        </div>
+      </header>
+      <island name="registered-devices">
+        <div class="stack">
+          <nav class="tabs" aria-label="Device access">
+            <a href="/devices" class="{ if (model.devicesTab) "active" else "" }">Devices <span>{ model.devices.size }</span></a>
+            <a href="/devices?tab=tokens" class="{ if (model.tokensTab) "active" else "" }">API tokens <span>{ model.tokens.size }</span></a>
+          </nav>
+          <section class="card section-card">
+            <if model.devicesTab>
+              <div class="section-heading"><div><h2>Registered devices</h2><p class="card-copy">Removing a device also removes its push registrations.</p></div></div>
+              <if model.devices.isEmpty()>
+                <p class="empty">No devices are registered to this account.</p>
+              <else>
+                <div class="list">
+                  <for device in model.devices>
+                    <div class="list-row">
+                      <div class="row-main">
+                        <div class="row-title">{ device.platform }</div>
+                        <div class="row-meta">Last check-in { device.lastCheckIn } · { device.pushTokenCount } push registration(s)</div>
+                        <div class="row-meta">Registered <local-date-time :value="device.created"/></div>
+                      </div>
+                      <div class="row-actions">
+                        <button class="small danger" type="button" @click="model.delete(device.id, ctx)">Remove device</button>
+                      </div>
+                    </div>
+                  </for>
+                </div>
+              </if>
+            <else>
+              <div class="section-heading"><div><h2>API tokens</h2><p class="card-copy">Long-lived credentials used by integrations and command-line clients.</p></div></div>
+              <if model.tokens.isEmpty()>
+                <p class="empty">No API tokens have been created.</p>
+              <else>
+                <div class="list">
+                  <for token in model.tokens>
+                    <div class="list-row">
+                      <div class="row-main">
+                        <div class="row-title">{ token.name } <code class="token-prefix">{ token.prefix }</code></div>
+                        <if token.description.isNotBlank()><div class="row-meta">{ token.description }</div></if>
+                        <if token.scopes.isNotBlank()><div class="row-meta">Scopes: { token.scopes }</div></if>
+                        <if token.lastUsedAt.isNotBlank()><div class="row-meta">Last used <local-date-time :value="token.lastUsedAt"/>{ if (token.lastUsedIp.isNotBlank()) " from " + token.lastUsedIp else "" }</div></if>
+                        <if token.expiresAt.isNotBlank()><div class="row-meta">Expires <local-date-time :value="token.expiresAt"/></div></if>
+                        <if token.revokedAt.isNotBlank()><div class="row-meta danger-text">Revoked <local-date-time :value="token.revokedAt"/></div></if>
+                      </div>
+                      <div class="row-actions">
+                        <if token.active><button class="small danger" type="button" @click="model.revokeToken(token.id, ctx)">Revoke</button></if>
+                      </div>
+                    </div>
+                  </for>
+                </div>
+              </if>
+            </if>
+            <if model.message != null><toast-message :message="model.message" :failed="model.failed" :id="model.messageId"/></if>
+          </section>
+        </div>
+      </island>
+    </main>
+  </site-layout>
+</page>

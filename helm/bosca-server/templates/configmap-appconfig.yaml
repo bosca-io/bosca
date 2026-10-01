@@ -1,0 +1,316 @@
+{{- /*
+  The `content:` block in application.yaml is built as a defaults dict and then
+  deep-merged with `.Values.appConfig.content`, so users may override any leaf
+  without restating the whole tree. Lists (e.g. images.resizer.sizes) are
+  replaced wholesale by the override — mergeOverwrite does not deep-merge list
+  elements.
+*/ -}}
+{{- $domain := include "bosca-common.domain" . -}}
+{{- $contentDefaults := dict
+      "storage" (dict
+        "type" "s3"
+        "bucket" "$AWS_BUCKET"
+        "endpoint" "$AWS_ENDPOINT"
+        "region" "$AWS_REGION"
+        "urlPrefix" (printf "https://%s" $domain)
+        "urlUploadPrefix" (printf "https://upload.%s" $domain)
+        "forcePathStyle" true)
+      "index" (dict
+        "batchSize" 500)
+      "urlSigner" (dict
+        "secretKey" "$URL_SECRET_KEY")
+      "images" (dict
+        "resizer" (dict
+          "url" (printf "http://imageprocessor.%s.svc.cluster.local:8003" .Release.Namespace)
+          "sizes" (list
+            (dict "name" "thumbnail"          "ratio" 25  "size" (dict "height" 270  "width" 480))
+            (dict "name" "small"              "ratio" 50  "size" (dict "height" 540  "width" 960))
+            (dict "name" "medium"             "ratio" 75  "size" (dict "height" 810  "width" 1440))
+            (dict "name" "large"              "ratio" 100 "size" (dict "height" 1080 "width" 1920))
+            (dict "name" "thumbnail-original" "ratio" 25)
+            (dict "name" "small-original"     "ratio" 50)
+            (dict "name" "medium-original"    "ratio" 75)
+            (dict "name" "large-original"     "ratio" 100))))
+-}}
+{{- /* Legacy compatibility: keep honoring the flat appConfig.indexExclude* keys. */ -}}
+{{- with .Values.appConfig.indexExcludeTypes -}}
+  {{- $_ := set (index $contentDefaults "index") "excludeTypes" . -}}
+{{- end -}}
+{{- with .Values.appConfig.indexExcludeContentTypePrefix -}}
+  {{- $_ := set (index $contentDefaults "index") "excludeContentTypePrefix" . -}}
+{{- end -}}
+{{- $content := mergeOverwrite $contentDefaults (deepCopy (.Values.appConfig.content | default dict)) -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "bosca-common.fullname" . }}-config
+  labels:
+    {{- include "bosca-common.labels" . | nindent 4 }}
+data:
+  application.yaml: |
+    bosca:
+      server:
+        management-port: {{ $.Values.managementPort }}
+        port: 8080
+        development: false
+        compression-enabled: {{ .Values.appConfig.compressionEnabled }}
+        http2-enabled: {{ .Values.appConfig.http2Enabled }}
+        http2-max-concurrent-streams: {{ .Values.appConfig.http2MaxConcurrentStreams }}
+
+    cors:
+      allowAnyHost: "$CORS_ALLOW_ANY_HOST:true"
+      allowCredentials: "$CORS_ALLOW_CREDENTIALS:true"
+      anyMethod: "$CORS_ANY_METHOD:true"
+      maxAgeSeconds: "$CORS_MAX_AGE_SECONDS:86400"
+      allowedHeaders:
+        - X-BA-Session-ID
+        - X-Installation-ID
+        - X-App-ID
+        - X-App-Version
+        - Content-Type
+        - Content-Length
+        - Content-Range
+        - Content-Disposition
+        - Authorization
+        - Cookie
+
+    initialization:
+      password:
+        admin: $INITIAL_ADMIN_PASSWORD
+
+    jwt:
+      domain: {{ include "bosca-common.domain" . | quote }}
+      admin-domain: admin.{{ include "bosca-common.domain" . }}
+      audience: {{ include "bosca-common.domain" . | quote }}
+      realm: {{ .Values.appConfig.realm | default (include "bosca-common.domain" .) | quote }}
+      issuer: {{ include "bosca-common.domain" . | quote }}
+      secret: $JWT_SECRET
+      expiration-time: 5184000
+      cookie-prefixes:
+        {{- toYaml (.Values.appConfig.authCookiePrefixes | default (list)) | nindent 8 }}
+
+    security:
+      autoVerify: {{ .Values.appConfig.autoVerify | default false }}
+      encryption:
+        key: $SECURITY_ENCRYPTION_KEY
+      scrypt:
+        base64SaltSeparator: ${SCRYPT_SALT_SEPARATOR:}
+        base64SignerKey: ${SCRYPT_SIGNER_KEY:}
+        memCost: ${SCRYPT_MEM_COST:4}
+        rounds: ${SCRYPT_ROUNDS:8}
+
+    content:
+      {{- toYaml $content | nindent 6 }}
+
+    oauth2:
+      providers:
+        - type: google
+          clientId: ${GOOGLE_CLIENT_ID:}
+          clientSecret: ${GOOGLE_CLIENT_SECRET:}
+          {{- with .Values.appConfig.googleSupportedClientIds }}
+          supportedClientIds:
+            {{- range . }}
+            - {{ . | quote }}
+            {{- end }}
+          {{- end }}
+          callback: https://{{ include "bosca-common.domain" . }}/oauth2/google/callback
+          adminCallback: https://admin.{{ include "bosca-common.domain" . }}/oauth2/google/callback?admin=true
+          authorizeUrl: https://accounts.google.com/o/oauth2/auth
+          accessTokenUrl: https://accounts.google.com/o/oauth2/token
+          userInfoUrl: https://www.googleapis.com/oauth2/v1/userinfo
+          scopes:
+            - https://www.googleapis.com/auth/userinfo.profile
+            - https://www.googleapis.com/auth/userinfo.email
+          enabled: true
+        - type: facebook
+          clientId: ${FACEBOOK_APP_ID:}
+          clientSecret: ${FACEBOOK_APP_SECRET:}
+          callback: https://{{ include "bosca-common.domain" . }}/oauth2/facebook/callback
+          adminCallback: https://admin.{{ include "bosca-common.domain" . }}/oauth2/facebook/callback?admin=true
+          authorizeUrl: https://www.facebook.com/v12.0/dialog/oauth
+          accessTokenUrl: https://graph.facebook.com/v12.0/oauth/access_token
+          userInfoUrl: https://graph.facebook.com/me?fields=id,name,email,picture
+          scopes:
+            - public_profile
+            - email
+          enabled: true
+      redirects:
+        {{- range .Values.appConfig.oauth2Redirects }}
+        - {{ . | quote }}
+        {{- end }}
+
+    database:
+      migrations:
+        - core-migrations
+      postgres:
+        url: {{ .Values.appConfig.databaseUrl | quote }}
+        user: $DATABASE_USER
+        password: $DATABASE_PASSWORD
+        maxConnections: {{ .Values.appConfig.databaseMaxConnections | default 500 }}
+      trino-admin:
+        url: jdbc:trino://trino.{{ .Release.Namespace }}.svc.cluster.local:8080
+        user: admin
+        password: ""
+        driverClassName: "io.trino.jdbc.TrinoDriver"
+      trino-readonly:
+        url: jdbc:trino://trino.{{ .Release.Namespace }}.svc.cluster.local:8080
+        user: rouser
+        password: ""
+        driverClassName: "io.trino.jdbc.TrinoDriver"
+
+    experimentation:
+      eventsTable: {{ .Values.appConfig.experimentationEventsTable | default "warehouse.bosca.events" | quote }}
+
+    nats:
+      url: nats://{{ .Values.appConfig.natsHost }}.{{ .Release.Namespace }}.svc.cluster.local:4222
+      token: $NATS_TOKEN
+
+    # HTTP monitoring endpoint (port 8222) backing the Studio /system/nats page.
+    # This is a separate interface from the NATS protocol URL above (4222); the
+    # nats-admin module HTTP-GETs /varz, /jsz, etc. here. Without it the server
+    # defaults to http://localhost:8222 — unreachable from this pod — and the
+    # status page reports "Disconnected" even while messaging is healthy.
+    natsMonitoring:
+      monitoringUrl: "$NATS_MONITORING_URL:http://{{ .Values.appConfig.natsHost }}.{{ .Release.Namespace }}.svc.cluster.local:8222"
+
+    mailer:
+      type: {{ .Values.appConfig.mailerType | default "sendgrid" | quote }}
+      from:
+        name: {{ .Values.appConfig.mailerFromName | default "Support" | quote }}
+        email: {{ .Values.appConfig.mailerFromEmail | default (printf "noreply@%s" (include "bosca-common.domain" .)) | quote }}
+      # Public pages a minted unsubscribe token is appended to (?token=...) for BML email
+      # renders. Studio's /unsubscribe page serves both roles (preference matrix +
+      # unsubscribe-all); without these keys the app config leaves them blank and no
+      # unsubscribe/preferences links render in email footers.
+      unsubscribeUrl: {{ .Values.appConfig.mailerUnsubscribeUrl | default (printf "https://studio.%s/unsubscribe" (include "bosca-common.domain" .)) | quote }}
+      preferencesUrl: {{ .Values.appConfig.mailerPreferencesUrl | default (printf "https://studio.%s/unsubscribe" (include "bosca-common.domain" .)) | quote }}
+
+    localization:
+      baseName: messages-administration
+      application:
+        suffix: {{ .Values.appConfig.localizationSuffix | default "" | quote }}
+
+    # Public origin of the Studio web app (fallback) + the hosts an auth email link may route back to.
+    app:
+      url: {{ .Values.appConfig.appUrl | default (printf "https://studio.%s" (include "bosca-common.domain" .)) | quote }}
+      security-alert-url: {{ .Values.appConfig.securityAlertUrl | default (.Values.appConfig.appUrl | default (printf "https://studio.%s" (include "bosca-common.domain" .))) | quote }}
+      welcome-url: "$WELCOME_EMAIL_URL:"
+      allowed-origins:
+        {{- range (.Values.appConfig.appAllowedOrigins | default (list (printf "https://studio.%s" (include "bosca-common.domain" .)))) }}
+        - {{ . | quote }}
+        {{- end }}
+
+    social:
+      notifications:
+        url: {{ .Values.appConfig.socialNotificationsUrl | default (.Values.appConfig.appUrl | default (printf "https://studio.%s" (include "bosca-common.domain" .))) | quote }}
+        profile-url: {{ .Values.appConfig.profileNotificationsUrl | default (printf "https://profiles.%s" (include "bosca-common.domain" .)) | quote }}
+
+    meilisearch:
+      url: http://{{ .Values.appConfig.meilisearchHost }}.{{ .Release.Namespace }}.svc.cluster.local:7700
+      apiKey: $MEILISEARCH_API_KEY
+
+    # Semantic content embeddings for the recommender. When enabled, the `default-embedding-pipeline`
+    # (triggered on MetadataSetReady) computes a per-metadata vector via the text-embeddings-inference
+    # (TEI) sidecar and stores it in pgvector. Off by default; the URL default matches the TEI Service.
+    embedding:
+      enabled: {{ .Values.appConfig.embeddingEnabled | default false }}
+      url: {{ .Values.appConfig.embeddingUrl | default "http://text-embeddings-inference:80" | quote }}
+
+    hubspot:
+      token: $HUBSPOT_TOKEN
+
+    cache:
+      type: nats
+
+    jobQueue:
+      factory: nats
+
+    pubsub:
+      type: nats
+
+    distributedLock:
+      type: nats
+
+    counter:
+      type: nats
+
+    google:
+      genai:
+        vertexai:
+          enabled: false
+        account: ${GOOGLE_GENAI_ACCOUNT:}
+      tts:
+        account: ${GOOGLE_TTS_ACCOUNT:}
+
+    koog:
+      openai:
+        apikey: $OPENAI_API_KEY
+
+    analyticsServer:
+      appId: bosca-server
+      url: http://{{ .Release.Name }}-bosca-collector.{{ .Release.Namespace }}.svc.cluster.local:8080
+
+    # `git.url` is read by the cloneUrl GraphQL resolver
+    # (GitRepositoryController.kt) to produce HTTP clone URLs. Without it,
+    # cloneUrl returns "" and the CI runner errors with "could not resolve
+    # repository slug" during checkout. Git hosting itself is bosca-git-server's
+    # job — bosca-server serves no git transport.
+    #
+    # `git.sync.listeners` gates the git-sync pull listeners in domain modules
+    # (agents, pipelines, scripts, analytics queries). bosca-runner owns pull
+    # listening in this deployment — the push-event subscription is a broadcast,
+    # so a second listener here would re-pull every push. Override via
+    # appConfig.gitSync.listeners; hasKey is used (not `default`) so an explicit
+    # `false` override sticks.
+    {{- $gitSync := .Values.appConfig.gitSync | default dict }}
+    {{- $kubernetesJobProfiles := .Values.appConfig.kubernetesJobProfiles | default (.Values.global.ciKubernetesJobProfiles | default (list)) }}
+    git:
+      url: {{ .Values.appConfig.gitUrl | default (printf "https://git.%s" .Values.appConfig.domain) | quote }}
+      ci:
+        kubernetesJobProfiles:
+          {{- toYaml $kubernetesJobProfiles | nindent 10 }}
+      sync:
+        listeners: {{ if hasKey $gitSync "listeners" }}{{ $gitSync.listeners }}{{ else }}false{{ end }}
+
+    comments:
+      enabled: ${COMMENTS_ENABLED:true}
+
+    community:
+      enabled: true
+
+    chat:
+      enabled: true
+
+    workops:
+      enabled: true
+
+    ecommerce:
+      enabled: {{ .Values.appConfig.ecommerceEnabled | default false }}
+
+    kubernetes:
+      enabled: true
+
+    introspection:
+      enabled: false
+
+    mcp:
+      enabled: true
+
+    scheduler:
+      enabled: false
+
+    gateway:
+      enabled: true
+      proxy:
+        sharedToken: ${GATEWAY_PROXY_SHARED_TOKEN:}
+
+    {{- $packages := concat (list "core" "security-initial" "profiles" "languages" "search-index" "root-collection-installer" "bible" "community-ai" "ai" "kit" "docs" "maintenance" "default-git-email-pipelines" "default-transactional-email-pipelines" "default-social-notification-pipelines") (.Values.appConfig.extraPackages | default (list)) | uniq }}
+    packages: {{ $packages | toJson }}
+
+    runners:
+      enabled: []
+
+    scripting:
+      executionTimeoutSeconds: 600
+
+    timeout: {}

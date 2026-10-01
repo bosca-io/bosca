@@ -1,0 +1,19 @@
+query GetEmotions($languageTag: String) {
+  content {
+    slug(slug: "emotions") {
+      ... on Collection {
+        id
+        name
+        collections(languageTag: $languageTag, limit: 12, offset: 0) {
+          id
+          name
+          slug
+          metadata(offset: 0, limit: 100) {
+            name
+            attributes
+          }
+        }
+      }
+    }
+  }
+}

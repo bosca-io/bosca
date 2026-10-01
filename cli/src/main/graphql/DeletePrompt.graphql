@@ -1,0 +1,5 @@
+mutation DeletePrompt($id: UUID!) {
+    prompts {
+        delete(id: $id)
+    }
+}

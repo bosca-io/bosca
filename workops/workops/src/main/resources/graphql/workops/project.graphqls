@@ -1,0 +1,107 @@
+# Work Ops — WorkOpsProject (R1)
+#
+# Phase 2 ships the read + write surface for WorkOpsProjects (the unit teams
+# work in). WorkOpsProject keys are globally unique because the task key
+# carries the project key as a prefix (e.g. BOS-1, BOS-2, …).
+
+"""
+Bottom tier of the delivery hierarchy. WorkOpsTasks live inside projects;
+a project's `key` is the prefix of every task key it mints.
+"""
+type WorkOpsProject {
+    id: UUID!
+    "Globally unique uppercase code (2–10 chars). Prefix of every task key."
+    key: String!
+    name: String!
+    description: String
+    "Profile id of the project owner."
+    ownerProfileId: UUID!
+    "Resolved owner profile."
+    owner: Profile
+    "Resolved WorkOpsProgram parent."
+    program: WorkOpsProgram!
+    "The active task-type scheme (R3) — null until Phase 2 seeds it."
+    defaultTaskTypeSchemeId: UUID
+    "The active workflow scheme (R4) — null until Phase 3 lands."
+    defaultWorkflowSchemeId: UUID
+    "Form schema key used to render the task creation form for this project."
+    taskCreationFormSchemaKey: String!
+    archivedAt: DateTime
+    createdAt: DateTime!
+    modifiedAt: DateTime!
+    version: Long!
+    "Per-entity permission rows. Requires MANAGE."
+    permissions: [EntityPermission!]!
+    "Analytics applications this project owns (the sessions.<appId> / error-group appId), for release health telemetry."
+    analyticsApplications: [WorkOpsProjectAnalyticsApplication!]!
+    "Analytics services this project owns (the http.<service> name), for release health telemetry."
+    analyticsServices: [WorkOpsProjectAnalyticsService!]!
+    "Git repositories this project owns — the release relay reads them to tag/build the project."
+    repositories: [WorkOpsProjectRepository!]!
+}
+
+"A git repository a project owns; repositoryId references a git-module Repository."
+type WorkOpsProjectRepository {
+    id: UUID!
+    projectId: UUID!
+    repositoryId: UUID!
+}
+
+"An analytics application a project owns — the appId used in sessions.<appId> counters and error groups."
+type WorkOpsProjectAnalyticsApplication {
+    id: UUID!
+    projectId: UUID!
+    applicationId: String!
+}
+
+"An analytics service a project owns — the service name used in http.<service> response-code counters."
+type WorkOpsProjectAnalyticsService {
+    id: UUID!
+    projectId: UUID!
+    service: String!
+}
+
+input WorkOpsProjectInput {
+    programId: UUID!
+    key: String!
+    name: String!
+    description: String
+    ownerProfileId: UUID!
+    defaultTaskTypeSchemeId: UUID
+    "Form schema key for task creation. Defaults to 'workops.create-task'."
+    taskCreationFormSchemaKey: String
+}
+
+type WorkOpsProjects {
+    "Every project, ordered by key."
+    all: [WorkOpsProject!]!
+    "Fetch a project by id."
+    project(id: UUID!): WorkOpsProject
+    "Fetch a project by key — the form used in task keys."
+    projectByKey(key: String!): WorkOpsProject
+    "Paginated list of every project in a program."
+    byProgram(programId: UUID!, offset: Long! = 0, limit: Int! = 50): [WorkOpsProject!]!
+}
+
+type WorkOpsProjectsMutation {
+    create(input: WorkOpsProjectInput!): WorkOpsProject!
+    update(id: UUID!, input: WorkOpsProjectInput!, expectedVersion: Long!): WorkOpsProject!
+    "Move a project to another program. Requires MANAGE on the project and destination program."
+    move(id: UUID!, programId: UUID!, expectedVersion: Long!): WorkOpsProject!
+    archive(id: UUID!, expectedVersion: Long!): WorkOpsProject!
+    unarchive(id: UUID!, expectedVersion: Long!): WorkOpsProject!
+    addPermission(id: UUID!, groupId: UUID!, action: PermissionAction!): Boolean!
+    removePermission(id: UUID!, groupId: UUID!, action: PermissionAction!): Boolean!
+    "Add an analytics application (appId) to a project. Idempotent. Requires MANAGE."
+    addAnalyticsApplication(projectId: UUID!, applicationId: String!): WorkOpsProjectAnalyticsApplication!
+    "Remove one of a project's analytics applications by id. Requires MANAGE."
+    removeAnalyticsApplication(projectId: UUID!, id: UUID!): Boolean!
+    "Add an analytics service (service name) to a project. Idempotent. Requires MANAGE."
+    addAnalyticsService(projectId: UUID!, service: String!): WorkOpsProjectAnalyticsService!
+    "Remove one of a project's analytics services by id. Requires MANAGE."
+    removeAnalyticsService(projectId: UUID!, id: UUID!): Boolean!
+    "Associate a git repository with a project. Idempotent. Requires MANAGE."
+    addProjectRepository(projectId: UUID!, repositoryId: UUID!): WorkOpsProjectRepository!
+    "Remove one of a project's associated repositories by id. Requires MANAGE."
+    removeProjectRepository(projectId: UUID!, id: UUID!): Boolean!
+}

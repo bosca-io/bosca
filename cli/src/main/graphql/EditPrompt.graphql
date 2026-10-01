@@ -1,0 +1,7 @@
+mutation EditPrompt($id: UUID!, $input: PromptInput!) {
+    prompts {
+        edit(id: $id, prompt: $input) {
+            ...Prompt
+        }
+    }
+}

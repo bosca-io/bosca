@@ -1,0 +1,26 @@
+{# The Bosca primary action: a solid dark button (ink #0e1019 on white), matching the platform's
+   existing email button treatment. Two shapes — the standalone inline CTA (welcome/verify/reset)
+   and the full-width `wide` CTA inside panels (security-alert, form-submission). #}
+<component tag="cta-button">
+  <prop name="href" type="String" default="#"/>
+  <prop name="label" type="String" required/>
+  <prop name="wide" type="Boolean" default="false"/>
+  <prop name="primaryColor" type="String" default="#0e1019"/>
+  <if wide>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:20px 0 0;">
+      <tr>
+        <td :bgcolor="primaryColor" align="center" style="background:{ primaryColor };border-radius:8px;">
+          <a :href="href" style="display:block;padding:12px 22px;font-family:'Geist',-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:14px;font-weight:600;letter-spacing:0.01em;color:#ffffff;border-radius:8px;text-align:center;white-space:nowrap;">{ label }</a>
+        </td>
+      </tr>
+    </table>
+  <else>
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+      <tr>
+        <td :bgcolor="primaryColor" style="background:{ primaryColor };border-radius:8px;">
+          <a :href="href" style="display:inline-block;padding:12px 26px;font-family:'Geist',-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:14px;font-weight:600;letter-spacing:0.01em;color:#ffffff;border-radius:8px;white-space:nowrap;">{ label }</a>
+        </td>
+      </tr>
+    </table>
+  </if>
+</component>

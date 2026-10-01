@@ -1,0 +1,120 @@
+fragment ReaderStepFields on GuideStep {
+    id
+    date
+    metadata {
+        id
+        name
+    }
+    modules {
+        id
+        metadata {
+            id
+            name
+        }
+    }
+}
+
+query ReaderContent($id: UUID!) {
+    content {
+        metadata(id: $id) {
+            id
+            version
+            name
+            slug
+            document {
+                title
+                content
+                template {
+                    documentTemplate {
+                        containers {
+                            id
+                            name
+                        }
+                    }
+                }
+            }
+            guide {
+                type
+                stepCount
+                steps(limit: 200, offset: 0) {
+                    ...ReaderStepFields
+                }
+            }
+            relationships(filter: ["image.featured", "image.featured.square"]) {
+                relationship
+                metadata {
+                    slug
+                }
+            }
+        }
+    }
+    profiles {
+        current {
+            guides {
+                progressions {
+                    all(limit: 50, offset: 0) {
+                        metadata {
+                            id
+                        }
+                        completedStepIds
+                        nextStepId
+                        percentage
+                    }
+                }
+            }
+        }
+    }
+}
+
+query ProfileMarks($limit: Int!, $offset: Long!) {
+    profiles {
+        current {
+            marks {
+                all(limit: $limit, offset: $offset) {
+                    id
+                    metadata {
+                        id
+                    }
+                }
+            }
+        }
+    }
+}
+
+query ReaderStepContent($id: UUID!) {
+    content {
+        metadata(id: $id) {
+            id
+            name
+            document {
+                title
+                content
+                template {
+                    documentTemplate {
+                        containers {
+                            id
+                            name
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+mutation AddGuideProgress($metadataId: UUID!, $metadataVersion: Int!, $stepId: Long!, $attributes: JSON!) {
+    profiles {
+        profile {
+            addProgress(
+                metadataId: $metadataId
+                metadataVersion: $metadataVersion
+                stepId: $stepId
+                attributes: $attributes
+            ) {
+                completedStepIds
+                nextStepId
+                percentage
+            }
+        }
+    }
+}

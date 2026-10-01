@@ -1,0 +1,59 @@
+suite: text-embeddings-inference deployment
+templates:
+  - templates/deployment.yaml
+values:
+  - ../values.yaml
+release:
+  name: bosca
+  namespace: bosca
+tests:
+  - it: gives model download and warmup a startup probe budget
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].startupProbe.httpGet.path
+          value: /health
+      - equal:
+          path: spec.template.spec.containers[0].startupProbe.periodSeconds
+          value: 5
+      - equal:
+          path: spec.template.spec.containers[0].startupProbe.timeoutSeconds
+          value: 5
+      - equal:
+          path: spec.template.spec.containers[0].startupProbe.failureThreshold
+          value: 60
+
+  - it: gives health checks enough time during CPU inference
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.timeoutSeconds
+          value: 15
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.timeoutSeconds
+          value: 15
+
+  - it: accepts deployment-specific probe overrides
+    set:
+      startupProbe:
+        periodSeconds: 10
+        timeoutSeconds: 8
+        failureThreshold: 30
+      livenessProbe:
+        timeoutSeconds: 20
+      readinessProbe:
+        timeoutSeconds: 12
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].startupProbe.periodSeconds
+          value: 10
+      - equal:
+          path: spec.template.spec.containers[0].startupProbe.timeoutSeconds
+          value: 8
+      - equal:
+          path: spec.template.spec.containers[0].startupProbe.failureThreshold
+          value: 30
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.timeoutSeconds
+          value: 20
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.timeoutSeconds
+          value: 12

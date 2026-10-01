@@ -1,0 +1,8 @@
+@import bosca.pages.PageContext.localize
+@import bosca.pages.PageContext.details
+@param profile: bosca.messages.models.ProfileModel
+@param verifyLink: String
+!{val title = localize(details.title).toString()}
+${localize("email.verification")}
+
+${localize("email.verification.welcome.text", profile.name, title, verifyLink, title)}

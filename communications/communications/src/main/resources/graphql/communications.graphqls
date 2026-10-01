@@ -1,0 +1,290 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Communications delivery tracking, email preferences, and event template mapping.
+# ─────────────────────────────────────────────────────────────────────────────
+
+enum DeliveryStatusType {
+    PENDING
+    SENT
+    DELIVERED
+    DEFERRED
+    BOUNCED
+    DROPPED
+    OPENED
+    CLICKED
+    SPAM_REPORT
+    UNSUBSCRIBED
+    FAILED
+}
+
+"Aggregate delivery status for a message to a specific recipient."
+type DeliveryStatus {
+    messageId: UUID!
+    recipientId: UUID!
+    recipientName: String
+    recipientEmail: String
+    channel: DeliveryChannel!
+    status: DeliveryStatusType!
+    attempts: Int!
+    lastAttemptAt: DateTime
+    deliveredAt: DateTime
+    bouncedAt: DateTime
+    openedAt: DateTime
+    clickedAt: DateTime
+    errorCode: String
+    errorMessage: String
+    "The resolved template and payload supplied to render this delivery."
+    bmlTemplate: BmlMessageTemplateRender
+    createdAt: DateTime!
+    updatedAt: DateTime!
+}
+
+"The resolved message template and parameters captured for a delivery render attempt."
+type BmlMessageTemplateRender {
+    project: String!
+    templateKey: String!
+    "The concrete published artifact version returned by the renderer."
+    version: String
+    "The template payload supplied by the communication."
+    parameters: JSON
+}
+
+"A recipient delivery status with identity resolved through the profile service."
+type RecipientDeliveryStatus {
+    delivery: DeliveryStatus!
+    recipientName: String
+    recipientEmail: String
+}
+
+"Recent aggregate delivery statuses and their total count."
+type DeliveryStatuses {
+    statuses: [RecipientDeliveryStatus!]!
+    total: Long!
+}
+
+"A single delivery event, including gate decisions (why a message was suppressed or deferred)."
+type DeliveryEvent {
+    messageId: UUID!
+    recipientId: UUID!
+    channel: DeliveryChannel!
+    status: DeliveryStatusType!
+    providerEvent: String
+    errorCode: String
+    errorMessage: String
+    createdAt: DateTime!
+}
+
+"Delivery channels a notification preference can apply to."
+enum DeliveryChannel {
+    EMAIL
+    PUSH
+}
+
+"""An admin-definable notification type — the unit users opt in or out of, per
+delivery channel. The key is the immutable contract sending code references.
+Non-optional types always deliver and cannot be opted out. System types are
+seeded, cannot be deleted, and their optional flag cannot be changed. Hidden
+types remain available to administrators and sending code but are omitted from
+user preference controls. For optional types, the channel-specific defaults
+apply until a user explicitly changes the corresponding preference."""
+type NotificationType {
+    key: String!
+    name: String!
+    description: String
+    optional: Boolean!
+    system: Boolean!
+    defaultEmailEnabled: Boolean!
+    defaultPushEnabled: Boolean!
+    hidden: Boolean!
+    displayOrder: Int!
+    updatedAt: DateTime!
+}
+
+"""Per-user notification preference for a specific channel and notification
+type. Non-optional types always deliver and cannot be opted out."""
+type NotificationPreference {
+    profileId: UUID!
+    channel: DeliveryChannel!
+    type: String!
+    optedOut: Boolean!
+    updatedAt: DateTime!
+}
+
+"""A channel-scoped route from a Bosca notification type to a preference owned by
+an external provider. Unmapped preference cells remain stored in Bosca."""
+type NotificationPreferenceMapping {
+    type: String!
+    channel: DeliveryChannel!
+    provider: String!
+    externalId: String!
+}
+
+"""Per-profile notification settings: quiet hours for push delivery.
+Times are HH:MM in the profile's local time; timeZone is an IANA zone id."""
+type NotificationSettings {
+    profileId: UUID!
+    timeZone: String
+    dndStartLocal: String
+    dndEndLocal: String
+    updatedAt: DateTime!
+}
+
+"""A registered BML message project: pin/rollback control over which published artifact
+version sends render (null pin = the message server's active/latest version)."""
+type BmlMessageProject {
+    key: String!
+    description: String
+    "Provenance: the git repository (by id) containing the project's message units."
+    repositoryId: UUID
+    "When set, sends render THIS published version instead of the active one."
+    pinnedVersion: String
+    created: DateTime!
+    modified: DateTime!
+}
+
+"""A rendered email template preview: the resolved reference, the artifact version that
+rendered, and every authored detail — subject, browser-viewable HTML (bml-inline images as
+data: URIs), and the plain-text alternative."""
+type EmailPreview {
+    project: String!
+    templateKey: String!
+    "The published artifact version that rendered (pin / override / active)."
+    version: String!
+    subject: String!
+    html: String!
+    text: String!
+}
+
+"""A project the BML Message Server currently hosts: the active (latest published)
+version, the registry pin when one is set (what sends actually render), and the active
+version's template keys."""
+type BmlMessageHostedProject {
+    project: String!
+    activeVersion: String!
+    pinnedVersion: String
+    templates: [BmlMessageTemplateInfo!]!
+}
+
+"""One template of a hosted project. samplePayload is the payload skeleton derived from the
+template's declared payload serializer — the preview pre-fills it so authors see the structure;
+null when the template takes no payload. payloadSchema is the same serializer projected as a
+JSON-Schema subset (type/properties/required/items/enum) — the machine-readable contract
+authoring surfaces (e.g. the pipeline node inspector) render per field."""
+type BmlMessageTemplateInfo {
+    key: String!
+    samplePayload: JSON
+    payloadSchema: JSON
+    "Whether this BML message unit provides email output."
+    supportsEmail: Boolean!
+    "Whether this BML message unit provides push output from the same payload and project version."
+    supportsPush: Boolean!
+}
+
+type CommunicationsQueries {
+    "Get delivery status for a specific message and recipient."
+    deliveryStatus(messageId: UUID!, recipientId: UUID!): DeliveryStatus
+
+    "List delivery statuses for all recipients of a message."
+    messageStatuses(messageId: UUID!): [DeliveryStatus!]!
+
+    "List aggregate delivery statuses across all recipients, newest first."
+    deliveryStatuses(offset: Long! = 0, limit: Int! = 50): DeliveryStatuses!
+
+    "List delivery history for a recipient, newest first."
+    recipientHistory(recipientId: UUID!, offset: Long! = 0, limit: Int! = 50): [DeliveryStatus!]!
+
+    "List raw delivery events for a recipient, newest first — includes gate decisions. Requires the admin group."
+    recipientEvents(recipientId: UUID!, offset: Long! = 0, limit: Int! = 50): [DeliveryEvent!]!
+
+    "The notification type catalog, ordered for presentation. Public: the preference UIs need it to render."
+    notificationTypes: [NotificationType!]!
+
+    "External notification preference mappings. Requires the admin group."
+    notificationPreferenceMappings: [NotificationPreferenceMapping!]!
+
+    "The current user's full channel × type preference matrix, with opted-in defaults for unset combinations."
+    myNotificationPreferences: [NotificationPreference!]!
+
+    "The current user's notification settings (push quiet hours)."
+    myNotificationSettings: NotificationSettings
+
+    "Get a user's full notification preference matrix. Requires the admin group."
+    notificationPreferences(profileId: UUID!): [NotificationPreference!]!
+
+    "Get a user's notification settings. Requires the admin group."
+    notificationSettings(profileId: UUID!): NotificationSettings
+
+    """All-channel preferences for the profile an unsubscribe token belongs to,
+    for the manage-preferences page reached from an email link. Null for an unknown token."""
+    tokenNotificationPreferences(token: String!): [NotificationPreference!]
+
+    "List registered BML message projects. Requires the admin group."
+    bmlMessageProjects: [BmlMessageProject!]!
+
+    "Get a registered BML message project. Requires the admin group."
+    bmlMessageProject(projectKey: String!): BmlMessageProject
+
+    "The message projects the BML Message Server hosts, for authoring dropdowns. Requires the editor group."
+    bmlMessageHostedProjects: [BmlMessageHostedProject!]!
+
+    "A hosted message project's published versions, newest first. Requires the editor group."
+    bmlMessageProjectVersions(project: String!): [String!]!
+
+    """Render a BML message template's email channel through the production resolution + render path
+    (the registry pin applies; version overrides it), minus send-only concerns: no click-tracking
+    rewrite, no minted unsubscribe links. payload is the template payload as a JSON string.
+    Requires the editor group."""
+    emailPreview(project: String!, templateKey: String!, payload: String, version: String, recipientName: String, recipientEmail: String, locale: String): EmailPreview!
+}
+
+type CommunicationsMutations {
+    "Process a one-click unsubscribe via token."
+    unsubscribe(token: String!): Boolean!
+
+    "Set the current user's opt-out for a channel + type. Non-optional types cannot be opted out."
+    updateMyNotificationPreference(channel: DeliveryChannel!, type: String!, optedOut: Boolean!): NotificationPreference!
+
+    """Set the current user's push quiet hours. Provide timeZone (IANA id) and both HH:MM
+    local times together, or all null to clear."""
+    updateMyQuietHours(timeZone: String, dndStartLocal: String, dndEndLocal: String): NotificationSettings!
+
+    "Set a user's opt-out for a channel + type on their behalf. Requires edit permission on the profile."
+    setNotificationPreference(profileId: UUID!, channel: DeliveryChannel!, type: String!, optedOut: Boolean!): NotificationPreference!
+
+    """Set a user's push quiet hours on their behalf. Provide timeZone (IANA id) and both
+    HH:MM local times together, or all null to clear. Requires edit permission on the profile."""
+    setNotificationSettings(profileId: UUID!, timeZone: String, dndStartLocal: String, dndEndLocal: String): NotificationSettings!
+
+    """Update a preference via an unsubscribe token, for the manage-preferences page
+    reached from an email link. The channel defaults to EMAIL when absent (the original
+    email-only contract). Returns false for an unknown token."""
+    updateTokenNotificationPreference(token: String!, type: String!, optedOut: Boolean!, channel: DeliveryChannel): Boolean!
+
+    """Create or update a notification type. The key is immutable once created; the
+    optional flag of system types cannot be changed. Requires the admin group."""
+    setNotificationType(key: String!, name: String!, description: String, optional: Boolean!, defaultEmailEnabled: Boolean!, defaultPushEnabled: Boolean!, displayOrder: Int!, hidden: Boolean!): NotificationType!
+
+    "Delete a non-system notification type. Requires the admin group."
+    deleteNotificationType(key: String!): Boolean!
+
+    """Create or replace the external mapping for one notification type and channel.
+    The type must exist and be optional. Requires the admin group."""
+    setNotificationPreferenceMapping(type: String!, channel: DeliveryChannel!, provider: String!, externalId: String!): NotificationPreferenceMapping!
+
+    "Delete an external notification preference mapping. Requires the admin group."
+    deleteNotificationPreferenceMapping(type: String!, channel: DeliveryChannel!): Boolean!
+
+    "Register or update a BML message project. Requires the admin group."
+    registerBmlMessageProject(projectKey: String!, description: String, repositoryId: UUID): BmlMessageProject!
+
+    """Pin a BML message project's sends to a published artifact version, or clear the pin with
+    null (back to the active/latest version) — data-driven rollback, no redeploy. Requires the
+    admin group."""
+    pinBmlMessageProjectVersion(projectKey: String!, version: String): BmlMessageProject!
+
+    "Remove a BML message project registration. Requires the admin group."
+    removeBmlMessageProject(projectKey: String!): Boolean!
+
+}
+
+extend type Query { communications: CommunicationsQueries! }
+extend type Mutation { communications: CommunicationsMutations! }

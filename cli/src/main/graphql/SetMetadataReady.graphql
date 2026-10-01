@@ -1,0 +1,7 @@
+mutation SetMetadataReady($id: UUID!) {
+    content {
+        metadata {
+            setMetadataReady(id: $id)
+        }
+    }
+}

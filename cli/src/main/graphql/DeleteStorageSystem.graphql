@@ -1,0 +1,5 @@
+mutation DeleteStorageSystem($id: UUID!) {
+    storageSystems {
+        delete(id: $id)
+    }
+}

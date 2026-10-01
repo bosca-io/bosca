@@ -1,0 +1,7 @@
+query GetConfigurations {
+    configurations {
+        all {
+            ...Configuration
+        }
+    }
+}

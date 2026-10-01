@@ -1,0 +1,98 @@
+suite: bosca-io deployment
+templates:
+  - templates/deployment.yaml
+  - templates/service.yaml
+values:
+  - ../values.yaml
+set:
+  global:
+    domain: example.com
+release:
+  name: test
+  namespace: bosca
+tests:
+  - it: renders a Deployment with the bosca-io image
+    template: templates/deployment.yaml
+    asserts:
+      - isKind:
+          of: Deployment
+      - matchRegex:
+          path: spec.template.spec.containers[0].image
+          pattern: bosca-io
+
+  - it: exposes port 3000 (Nuxt default)
+    template: templates/deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].ports[0].containerPort
+          value: 3000
+
+  - it: exposes the selected image tag as the public application version
+    template: templates/deployment.yaml
+    set:
+      image.tag: "6.10.0"
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: NUXT_PUBLIC_APP_VERSION
+            value: "6.10.0"
+
+  - it: allows an explicit public application version override
+    template: templates/deployment.yaml
+    set:
+      extraEnv:
+        NUXT_PUBLIC_APP_VERSION: custom-version
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: NUXT_PUBLIC_APP_VERSION
+            value: custom-version
+
+  - it: probes hit /
+    template: templates/deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.httpGet.path
+          value: /
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.httpGet.path
+          value: /
+
+  - it: no secret env vars by default (marketing site)
+    template: templates/deployment.yaml
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          any: true
+          content:
+            valueFrom:
+              secretKeyRef: {}
+
+  - it: extraEnv values appear as plain env vars
+    template: templates/deployment.yaml
+    set:
+      extraEnv:
+        FOO: bar
+        BAZ: qux
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: FOO
+            value: "bar"
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: BAZ
+            value: "qux"
+
+  - it: Service exposes port 3000
+    template: templates/service.yaml
+    asserts:
+      - isKind:
+          of: Service
+      - equal:
+          path: spec.ports[0].port
+          value: 3000

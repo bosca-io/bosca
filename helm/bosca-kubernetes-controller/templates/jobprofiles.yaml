@@ -1,0 +1,18 @@
+{{- range $profile := .Values.jobProfiles }}
+{{- if or (not (hasKey $profile "enabled")) $profile.enabled }}
+---
+apiVersion: kubernetes.bosca.io/v1alpha1
+kind: JobProfile
+metadata:
+  name: {{ required "jobProfiles[].name is required" $profile.name | quote }}
+  namespace: {{ $profile.namespace | default $.Release.Namespace | quote }}
+  labels:
+    {{- include "bosca-common.labels" $ | nindent 4 }}
+  {{- with $profile.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- required (printf "jobProfiles[%s].spec is required" $profile.name) $profile.spec | toYaml | nindent 2 }}
+{{- end }}
+{{- end }}

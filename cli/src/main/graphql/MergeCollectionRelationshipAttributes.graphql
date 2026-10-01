@@ -1,0 +1,7 @@
+mutation MergeCollectionRelationshipAttributes($collectionId: UUID!, $metadataId: UUID!, $relationship: String!, $attributes: JSON!) {
+    content {
+        collection {
+            mergeMetadataRelationshipAttributes(collectionId: $collectionId, metadataId: $metadataId, relationship: $relationship, attributes: $attributes)
+        }
+    }
+}

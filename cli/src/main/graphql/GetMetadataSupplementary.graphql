@@ -1,0 +1,9 @@
+query GetMetadataSupplementary($id: UUID!) {
+    content {
+        metadata(id: $id) {
+            supplementary {
+                ...MetadataSupplementary
+            }
+        }
+    }
+}

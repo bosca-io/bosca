@@ -1,0 +1,89 @@
+"Direction in which a federated channel link relays messages between peers"
+enum FederationSyncDirection {
+    "Messages flow in both directions between the local and remote channel"
+    BIDIRECTIONAL
+    "Only inbound messages from the peer are accepted into the local channel"
+    INBOUND
+    "Only outbound messages from the local channel are sent to the peer"
+    OUTBOUND
+}
+
+"A remote Bosca instance that participates in federated chat. Peers communicate over NATS leaf nodes for transport and a REST API for handshake/control."
+type FederationPeer {
+    "Unique identifier for this peer"
+    id: UUID!
+    "Human-readable name for this peer"
+    name: String!
+    "NATS connection URL used by the leaf-node bridge for message transport"
+    natsUrl: String!
+    "Base URL of the peer's federation REST API used for control-plane operations"
+    apiUrl: String!
+    "Whether this peer is currently active"
+    active: Boolean!
+    "Timestamp when this peer was registered"
+    createdAt: DateTime
+    "Channel-level federation links to this peer originating from local channels"
+    federatedChannels: [FederatedChannel!]!
+}
+
+"Links a local chat channel to a remote channel on a federated peer, defining the direction of message relay"
+type FederatedChannel {
+    "ID of the local Bosca chat channel"
+    localChannelId: UUID!
+    "ID of the federation peer this link targets"
+    peerId: UUID!
+    "ID of the remote channel on the peer side"
+    remoteChannelId: UUID!
+    "Direction of message relay for this link"
+    syncDirection: FederationSyncDirection!
+    "The peer this link targets"
+    peer: FederationPeer
+}
+
+"Input for registering a new federation peer"
+input RegisterFederationPeerInput {
+    "Human-readable name for the peer"
+    name: String!
+    "NATS connection URL used by the leaf-node bridge"
+    natsUrl: String!
+    "Base URL of the peer's federation REST API"
+    apiUrl: String!
+    "Shared secret used to authenticate handshake and control-plane requests. Stored encrypted via the configuration service."
+    sharedSecret: String!
+}
+
+"Input for federating a local channel with a remote channel on a peer"
+input FederateChannelInput {
+    "ID of the local Bosca chat channel to federate"
+    localChannelId: UUID!
+    "ID of the federation peer to link with"
+    peerId: UUID!
+    "ID of the remote channel on the peer side"
+    remoteChannelId: UUID!
+    "Sync direction for this link. Defaults to bidirectional when omitted."
+    syncDirection: FederationSyncDirection
+}
+
+"Root query type for federation administration"
+type Federation {
+    "All active federation peers known to this instance"
+    peers: [FederationPeer!]!
+    "A specific peer by id"
+    peer(id: UUID!): FederationPeer
+    "Federated channel links originating from a local channel"
+    channelLinks(localChannelId: UUID!): [FederatedChannel!]!
+}
+
+"Mutation operations for managing federation peers and channel links"
+type FederationMutation {
+    "Register a new federation peer with its connection details and shared secret"
+    registerPeer(input: RegisterFederationPeerInput!): FederationPeer!
+    "Deactivate a federation peer, halting message synchronization"
+    deactivatePeer(id: UUID!): Boolean!
+    "Link a local channel with a remote channel on a peer for synchronization"
+    federateChannel(input: FederateChannelInput!): Boolean!
+    "Remove an existing federation link for a local channel"
+    unfederateChannel(localChannelId: UUID!, peerId: UUID!): Boolean!
+    "Set or rotate the shared secret used to authenticate handshake requests with a peer"
+    setSharedSecret(id: UUID!, secret: String): Boolean!
+}

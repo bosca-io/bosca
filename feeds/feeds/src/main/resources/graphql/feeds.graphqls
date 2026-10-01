@@ -1,0 +1,131 @@
+extend type Query {
+    "The feeds domain query namespace."
+    feeds: Feeds!
+}
+
+"The feeds query namespace — feed source reads (admin surface)."
+type Feeds {
+    "A feed source by its content Source id."
+    source(id: UUID!): FeedSource
+    "All feed sources, paged."
+    sources(offset: Int! = 0, limit: Int! = 25): [FeedSource!]!
+    "Ingested content items for a feed source, newest-first. Admin read surface (the subscriber/personalized serving surface is a later phase)."
+    items(sourceId: UUID!, offset: Int! = 0, limit: Int! = 25): [Metadata!]!
+    "The authenticated caller's own (user-owned) feed sources, newest-first."
+    mySources(offset: Int! = 0, limit: Int! = 25): [FeedSource!]!
+    "The feed sources the authenticated caller is subscribed to, newest-subscription-first."
+    mySubscriptions(offset: Int! = 0, limit: Int! = 25): [FeedSource!]!
+    "The authenticated caller's assembled feed (\"Following\"): items from their subscribed + owned sources, newest-first."
+    myFeed(offset: Int! = 0, limit: Int! = 25): [Metadata!]!
+    "The authenticated caller's personalized feed (\"For you\"): the trained model's ranked recommendations, care-gated by the recommendations domain."
+    forYou(
+        offset: Int! = 0
+        limit: Int! = 25
+        "The recommendation candidate context to select. Omit to use `default`."
+        contextType: String
+    ): [Metadata!]!
+    "Item-context recommendations for a given item: the recommendations domain's blend of behavioral co-engagement and content similarity, re-ranked for the caller."
+    recommended(
+        metadataId: UUID!
+        limit: Int! = 10
+        "The recommendation candidate context to select. Omit to use `default`."
+        contextType: String
+    ): [Metadata!]!
+}
+
+extend type Mutation {
+    "The feeds domain mutation namespace."
+    feeds: FeedsMutation!
+}
+
+"The feeds mutation namespace, grouped per entity collection."
+type FeedsMutation {
+    "Feed source creates + the per-source instance namespace."
+    sources: FeedSourcesMutation!
+    "Self-service feed sources owned by the authenticated caller."
+    mySources: FeedUserSourcesMutation!
+    "The authenticated caller's feed-source subscriptions."
+    mySubscriptions: FeedSubscriptionsMutation!
+}
+
+"Feed source creates and the per-source instance accessor. Admin (managed sources)."
+type FeedSourcesMutation {
+    "Register a feed source: a content Source + its FeedConfiguration + optional auth secret."
+    add(input: FeedSourceInput!): FeedSource!
+    "Operations on an existing feed source."
+    source(id: UUID!): FeedSourceMutation!
+}
+
+"Operations scoped to one feed source. Admin."
+type FeedSourceMutation {
+    "Edit the source's configuration (and optionally rotate its auth secret)."
+    edit(input: FeedSourceInput!): FeedSource!
+    "Enable scheduled fetching for the source."
+    enable: FeedSource!
+    "Disable scheduled fetching for the source."
+    disable: FeedSource!
+    "Fetch the source's feed immediately, bypassing its schedule. False if the source is missing."
+    fetch: Boolean!
+    "Soft-delete the source and remove its auth secret."
+    delete: Boolean!
+}
+
+"Self-service feed source registration + the per-source instance accessor for the authenticated caller."
+type FeedUserSourcesMutation {
+    "Register a feed source owned by the caller (ownership is forced to the caller's profile)."
+    add(input: FeedSourceInput!): FeedSource!
+    "Operate on one of the caller's own sources."
+    source(id: UUID!): FeedUserSourceMutation!
+}
+
+"Operations on one of the caller's own feed sources (ownership-gated)."
+type FeedUserSourceMutation {
+    "Edit the source; ownership remains the caller."
+    edit(input: FeedSourceInput!): FeedSource!
+    "Enable scheduled fetching for the source."
+    enable: FeedSource!
+    "Disable scheduled fetching for the source."
+    disable: FeedSource!
+    "Delete the source."
+    delete: Boolean!
+}
+
+"The authenticated caller's feed-source subscriptions."
+type FeedSubscriptionsMutation {
+    "Subscribe the caller to a feed source; returns the subscribed source. Idempotent."
+    subscribe(sourceId: UUID!): FeedSource!
+    "Unsubscribe the caller from a feed source; false if not subscribed."
+    unsubscribe(sourceId: UUID!): Boolean!
+}
+
+"A configured feed source: the content Source identity + its (secret-free) FeedConfiguration + operational fields."
+type FeedSource {
+    "The content Source id."
+    id: UUID!
+    "Display name (from the content Source)."
+    name: String!
+    "Description (from the content Source)."
+    description: String!
+    "Whether scheduled fetching is enabled."
+    enabled: Boolean!
+    "Normalized canonical URL — the cross-source uniqueness key."
+    url: String!
+    "The owning profile for a user-owned source; null for Bosca-managed."
+    ownerProfileId: UUID
+    "The secret-free FeedConfiguration (type, endpoint, cronInterval, ownership, enabled, url, auth descriptor) as JSON."
+    configuration: JSON!
+    created: DateTime!
+    modified: DateTime!
+}
+
+"Input to create or edit a feed source."
+input FeedSourceInput {
+    "Display name for the content Source."
+    name: String!
+    "Description for the content Source."
+    description: String!
+    "Secret-free FeedConfiguration as JSON; the auth block holds only the descriptor (kind + non-secret fields)."
+    configuration: JSON!
+    "Write-only outbound auth secret; stored in ConfigurationService, never returned."
+    authSecret: String
+}

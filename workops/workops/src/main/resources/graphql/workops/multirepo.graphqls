@@ -1,0 +1,473 @@
+"""
+V24 — Multi-repo support: dependency graph, artifact tracking,
+CI/CD pipeline visibility, environment management, release gates,
+compatibility testing, and release notes.
+"""
+
+# ── Enums (real SDL enums, matching the Kotlin models) ──
+
+enum WorkOpsDependencyType { BUILD, RUNTIME, CONTRACT }
+enum WorkOpsDependencyStatus { CURRENT, OUTDATED, INCOMPATIBLE }
+enum WorkOpsArtifactType { MAVEN, NPM, DOCKER, HELM, HELM_VALUES, GRAALVM_NATIVE, IOS_FRAMEWORK, ANDROID_AAR, WASM, OTHER }
+enum WorkOpsPublicationStatus { PENDING, PUBLISHED, FAILED, YANKED }
+enum WorkOpsBreakingChangeLevel { NONE, DEPRECATION, MINOR_BREAKING, MAJOR_BREAKING }
+enum WorkOpsPipelineStatus { PENDING, RUNNING, PASSED, FAILED, CANCELLED, SKIPPED }
+enum WorkOpsPipelineTriggerType { PUSH, PR, TAG, MANUAL, WEBHOOK }
+enum WorkOpsEnvironmentDeploymentStatus { PENDING, DEPLOYING, DEPLOYED, FAILED, ROLLED_BACK }
+enum WorkOpsHealthCheckStatus { UNKNOWN, HEALTHY, DEGRADED, UNHEALTHY }
+enum WorkOpsDeployTargetKind { HELM, HELM_VALUES, GOOGLE_PLAY, APP_STORE }
+"The external distribution channel an environment deploys to; targetRef names the specific channel."
+enum WorkOpsEnvironmentTargetType { GENERIC, PLAY_TRACK, TESTFLIGHT, APP_STORE }
+enum WorkOpsCompatibilityStatus { PASSED, FAILED, SKIPPED, PENDING }
+enum WorkOpsBuildBlockerType { INCOMPATIBLE_DEPENDENCY, COMPILE_CHECK_FAILED, COMPILE_CHECK_PENDING, PROVIDER_ARTIFACTS_MISSING }
+enum WorkOpsEnvironmentDriftType { VERSION_MISMATCH, NOT_DEPLOYED }
+
+# ── Dependency Declarations ────────────────────────────────────────────
+
+type WorkOpsDependencyDeclaration {
+    id: UUID!
+    consumerProjectId: UUID!
+    consumerVersionId: UUID
+    providerProjectId: UUID!
+    providerVersionConstraint: String!
+    resolvedProviderVersionId: UUID
+    dependencyType: WorkOpsDependencyType!
+    artifactCoordinates: String
+    status: WorkOpsDependencyStatus!
+    version: Long!
+}
+
+input CreateWorkOpsDependencyDeclarationInput {
+    consumerProjectId: UUID!
+    consumerVersionId: UUID
+    providerProjectId: UUID!
+    providerVersionConstraint: String!
+    resolvedProviderVersionId: UUID
+    dependencyType: WorkOpsDependencyType!
+    artifactCoordinates: String
+}
+
+# ── Artifact Publications ──────────────────────────────────────────────
+
+type WorkOpsArtifactPublication {
+    id: UUID!
+    versionId: UUID!
+    projectId: UUID!
+    artifactType: WorkOpsArtifactType!
+    coordinates: String!
+    repositoryUrl: String
+    publishedAt: DateTime
+    publishedByPrincipalId: UUID
+    checksumSha256: String
+    status: WorkOpsPublicationStatus!
+    externalUrl: String
+    "Registry namespace the artifact was published to (e.g. bosca-helm)."
+    namespace: String
+    "Environments this artifact serves, by name; empty = every environment."
+    environments: [String!]!
+    version: Long!
+}
+
+input RegisterWorkOpsArtifactInput {
+    versionId: UUID!
+    projectId: UUID!
+    artifactType: WorkOpsArtifactType!
+    coordinates: String!
+    repositoryUrl: String
+    checksumSha256: String
+    externalUrl: String
+}
+
+# ── API Surface Reports ────────────────────────────────────────────────
+
+type WorkOpsApiSurfaceReport {
+    id: UUID!
+    projectId: UUID!
+    versionId: UUID!
+    previousVersionId: UUID!
+    artifactPublicationId: UUID
+    breakingChangeLevel: WorkOpsBreakingChangeLevel!
+    changes: JSON!
+    analyzedAt: DateTime!
+    analyzerTool: String!
+    reportUrl: String
+    version: Long!
+}
+
+input RegisterWorkOpsApiSurfaceReportInput {
+    projectId: UUID!
+    versionId: UUID!
+    previousVersionId: UUID!
+    artifactPublicationId: UUID
+    breakingChangeLevel: WorkOpsBreakingChangeLevel!
+    changes: JSON!
+    analyzerTool: String!
+    reportUrl: String
+}
+
+# ── Pipeline Runs ──────────────────────────────────────────────────────
+
+type WorkOpsPipelineRun {
+    id: UUID!
+    projectId: UUID!
+    versionId: UUID
+    pipelineId: String!
+    pipelineName: String!
+    triggerType: WorkOpsPipelineTriggerType!
+    triggerRef: String
+    status: WorkOpsPipelineStatus!
+    startedAt: DateTime!
+    completedAt: DateTime
+    externalUrl: String
+    stages: [WorkOpsPipelineStageRun!]!
+    version: Long!
+}
+
+type WorkOpsPipelineStageRun {
+    id: UUID!
+    pipelineRunId: UUID!
+    stageName: String!
+    status: WorkOpsPipelineStatus!
+    startedAt: DateTime
+    completedAt: DateTime
+    externalUrl: String
+}
+
+input CreateWorkOpsPipelineRunInput {
+    projectId: UUID!
+    versionId: UUID
+    pipelineId: String!
+    pipelineName: String!
+    triggerType: WorkOpsPipelineTriggerType!
+    triggerRef: String
+    externalUrl: String
+}
+
+# ── Environments ───────────────────────────────────────────────────────
+
+"The starter .bosca/deploy.yaml committed by createProjectDeployConfig."
+type WorkOpsDeployConfigFile {
+    repositoryId: UUID!
+    branch: String!
+    path: String!
+    commitSha: String!
+    "The generated file content, for display."
+    content: String!
+}
+
+"A global, user-managed lifecycle stage (development / staging / production / preview / …). Pipelines reference a type by name; each program's environments instantiate one."
+type WorkOpsEnvironmentType {
+    id: UUID!
+    "Globally unique — the portable identifier pipelines reference."
+    name: String!
+    description: String
+    displayOrder: Int!
+    version: Long!
+}
+
+type WorkOpsEnvironment {
+    id: UUID!
+    programId: UUID!
+    "Program-unique stable identifier the release-pipeline YAML links to; immutable after create."
+    key: String!
+    name: String!
+    description: String
+    displayOrder: Int!
+    "Ids of the environments this one can be promoted from (many-to-many)."
+    promotionSourceIds: [UUID!]!
+    requiresApproval: Boolean!
+    autoPromote: Boolean!
+    "The global environment type this environment instantiates."
+    typeId: UUID!
+    "The resolved environment type."
+    type: WorkOpsEnvironmentType!
+    "External distribution channel this environment deploys to."
+    targetType: WorkOpsEnvironmentTargetType!
+    "The specific channel within targetType (e.g. a Play track name), or null."
+    targetRef: String
+    "Whether this is an on-demand preview environment (per-branch/PR)."
+    ephemeral: Boolean!
+    version: Long!
+    "Explicit environment grants, visible to program managers. Parent-program grants remain inherited."
+    permissions: [EntityPermission!]!
+}
+
+type WorkOpsEnvironmentDeployment {
+    id: UUID!
+    environmentId: UUID!
+    projectId: UUID!
+    "Stable deploy-adapter identity; current state is independent per target."
+    targetKind: WorkOpsDeployTargetKind!
+    versionId: UUID!
+    releaseId: UUID
+    artifactPublicationId: UUID
+    appBuildNumberAllocationId: UUID
+    status: WorkOpsEnvironmentDeploymentStatus!
+    deployedAt: DateTime
+    deployedByPrincipalId: UUID
+    healthCheckStatus: WorkOpsHealthCheckStatus!
+    healthCheckUrl: String
+    lastHealthCheckAt: DateTime
+    previousDeploymentId: UUID
+    version: Long!
+    "The deployed project, resolved (name/key) so callers needn't render a raw UUID."
+    project: WorkOpsProject
+    "The deployed version, resolved (name)."
+    deployedVersion: WorkOpsVersion
+}
+
+input CreateWorkOpsEnvironmentInput {
+    programId: UUID!
+    "Program-unique stable identifier the release-pipeline YAML links to; immutable after create."
+    key: String!
+    name: String!
+    description: String
+    displayOrder: Int
+    "Environments this one can be promoted from (many-to-many)."
+    promotionSourceIds: [UUID!]
+    requiresApproval: Boolean
+    autoPromote: Boolean
+    "The global environment type this environment instantiates."
+    typeId: UUID!
+    targetType: WorkOpsEnvironmentTargetType
+    targetRef: String
+    ephemeral: Boolean
+}
+
+input UpdateWorkOpsEnvironmentInput {
+    name: String!
+    description: String
+    displayOrder: Int
+    "Environments this one can be promoted from (many-to-many); replaces the existing set."
+    promotionSourceIds: [UUID!]
+    requiresApproval: Boolean
+    autoPromote: Boolean
+    "The global environment type this environment instantiates."
+    typeId: UUID!
+    targetType: WorkOpsEnvironmentTargetType
+    targetRef: String
+    ephemeral: Boolean
+}
+
+input WorkOpsDeployInput {
+    environmentId: UUID!
+    projectId: UUID!
+    targetKind: WorkOpsDeployTargetKind = HELM
+    versionId: UUID!
+    releaseId: UUID
+    artifactPublicationId: UUID
+    appBuildNumberAllocationId: UUID
+    healthCheckUrl: String
+}
+
+# ── Compatibility Test Results ─────────────────────────────────────────
+
+type WorkOpsCompatibilityTestResult {
+    id: UUID!
+    consumerProjectId: UUID!
+    consumerVersionId: UUID!
+    providerProjectId: UUID!
+    providerVersionId: UUID!
+    testSuite: String!
+    status: WorkOpsCompatibilityStatus!
+    breakingChangesDetected: Boolean!
+    pipelineRunId: UUID
+    resultUrl: String
+    testedAt: DateTime!
+    version: Long!
+}
+
+input RecordWorkOpsCompatibilityResultInput {
+    consumerProjectId: UUID!
+    consumerVersionId: UUID!
+    providerProjectId: UUID!
+    providerVersionId: UUID!
+    testSuite: String!
+    status: WorkOpsCompatibilityStatus!
+    breakingChangesDetected: Boolean
+    pipelineRunId: UUID
+    resultUrl: String
+}
+
+# ── Release Notes ──────────────────────────────────────────────────────
+
+type WorkOpsReleaseNotes {
+    id: UUID!
+    releaseId: UUID!
+    generatedAt: DateTime!
+    manuallyEdited: Boolean!
+    sections: JSON!
+    version: Long!
+}
+
+type WorkOpsVersionReleaseNotes {
+    id: UUID!
+    versionId: UUID!
+    sourceLocale: String!
+    generatedAt: DateTime
+    manuallyEdited: Boolean!
+    variants: JSON!
+    workOpsVersion: WorkOpsVersion!
+}
+
+# ── Build Readiness ────────────────────────────────────────────────────
+
+type WorkOpsBuildReadiness {
+    ready: Boolean!
+    blockers: [WorkOpsBuildBlocker!]!
+}
+
+type WorkOpsBuildBlocker {
+    blockerType: WorkOpsBuildBlockerType!
+    providerProjectId: UUID!
+    providerVersionId: UUID
+    description: String!
+    apiSurfaceReportId: UUID
+    compatibilityTestId: UUID
+}
+
+# ── Environment Drift ──────────────────────────────────────────────────
+
+type WorkOpsEnvironmentDrift {
+    projectId: UUID!
+    deployedVersionId: UUID
+    expectedVersionId: UUID!
+    driftType: WorkOpsEnvironmentDriftType!
+    "The project, resolved (name/key)."
+    project: WorkOpsProject
+    "The version currently deployed in the environment, resolved (name); null when nothing is deployed."
+    deployedVersion: WorkOpsVersion
+    "The version this release would ship, resolved (name)."
+    expectedVersion: WorkOpsVersion
+}
+
+# ── Store Telemetry ───────────────────────────────────────────────────
+
+type WorkOpsReleaseStoreTelemetry {
+    "Live vendor state, fetched on demand and never stored in WorkOps."
+    states: [WorkOpsReleaseStoreState!]!
+    "Historical observations emitted by scheduled pipelines into analytics."
+    observations: [WorkOpsReleaseStoreObservation!]!
+}
+
+type WorkOpsReleaseStoreState {
+    projectId: UUID!
+    versionId: UUID!
+    environmentId: UUID!
+    environmentKey: String!
+    store: String!
+    applicationId: String!
+    appVersion: String!
+    buildNumber: String
+    track: String
+    rolloutPercentage: Float
+    releaseState: String
+    reviewState: String
+    betaReviewState: String
+    buildProcessingState: String
+    phasedReleaseState: String
+    testFlightGroups: [String!]!
+    testFlightCrashFeedback: [WorkOpsReleaseStoreCrashFeedback!]!
+}
+
+type WorkOpsReleaseStoreCrashFeedback {
+    id: String!
+    comment: String
+    email: String
+    deviceModel: String
+    osVersion: String
+    createdAt: String
+}
+
+type WorkOpsReleaseStoreObservation {
+    store: String!
+    applicationId: String!
+    appVersion: String!
+    telemetryType: String!
+    observedAt: DateTime!
+    payload: JSON!
+}
+
+# ── Query & Mutation Roots ─────────────────────────────────────────────
+
+type WorkOpsMultiRepoQuery {
+    dependencies(projectId: UUID!): [WorkOpsDependencyDeclaration!]!
+    consumers(projectId: UUID!): [WorkOpsDependencyDeclaration!]!
+    dependency(id: UUID!): WorkOpsDependencyDeclaration
+
+    artifacts(versionId: UUID!): [WorkOpsArtifactPublication!]!
+    artifact(id: UUID!): WorkOpsArtifactPublication
+
+    apiSurfaceReports(versionId: UUID!): [WorkOpsApiSurfaceReport!]!
+
+    pipelineRuns(projectId: UUID!): [WorkOpsPipelineRun!]!
+    pipelineRun(id: UUID!): WorkOpsPipelineRun
+
+    environments(programId: UUID!): [WorkOpsEnvironment!]!
+    "The global environment type catalog — what pipelines reference and environments instantiate."
+    environmentTypes: [WorkOpsEnvironmentType!]!
+    environmentState(environmentId: UUID!): [WorkOpsEnvironmentDeployment!]!
+    environmentDrift(environmentId: UUID!, releaseId: UUID!): [WorkOpsEnvironmentDrift!]!
+    "The release's projects that can ship to this environment's channel — store channels take only their platform artifact; generic environments take everything else."
+    environmentCompatibleProjects(environmentId: UUID!, releaseId: UUID!): [UUID!]!
+
+    compatibilityResults(consumerProjectId: UUID!, consumerVersionId: UUID!): [WorkOpsCompatibilityTestResult!]!
+
+    releaseNotes(releaseId: UUID!): WorkOpsReleaseNotes
+    "Localized, store-ready notes owned by each Version bundled in the Release."
+    versionReleaseNotes(releaseId: UUID!): [WorkOpsVersionReleaseNotes!]!
+    "Live store state plus release-scoped vitals/review history from analytics."
+    releaseStoreTelemetry(releaseId: UUID!): WorkOpsReleaseStoreTelemetry!
+
+    buildReadiness(projectId: UUID!): WorkOpsBuildReadiness!
+}
+
+type WorkOpsMultiRepoMutation {
+    declareDependency(input: CreateWorkOpsDependencyDeclarationInput!): WorkOpsDependencyDeclaration!
+    updateDependencyStatus(id: UUID!, status: String!, expectedVersion: Long!): WorkOpsDependencyDeclaration!
+    updateResolvedVersion(id: UUID!, versionId: UUID, status: String!, expectedVersion: Long!): WorkOpsDependencyDeclaration!
+    removeDependency(id: UUID!): Boolean!
+
+    registerArtifact(input: RegisterWorkOpsArtifactInput!): WorkOpsArtifactPublication!
+    markArtifactPublished(id: UUID!, expectedVersion: Long!): WorkOpsArtifactPublication!
+    markArtifactFailed(id: UUID!, expectedVersion: Long!): WorkOpsArtifactPublication!
+    yankArtifact(id: UUID!, expectedVersion: Long!): WorkOpsArtifactPublication!
+
+    registerApiSurfaceReport(input: RegisterWorkOpsApiSurfaceReportInput!): WorkOpsApiSurfaceReport!
+
+    createPipelineRun(input: CreateWorkOpsPipelineRunInput!): WorkOpsPipelineRun!
+    completePipelineRun(id: UUID!, status: String!, expectedVersion: Long!): WorkOpsPipelineRun!
+    addPipelineStage(pipelineRunId: UUID!, stageName: String!, externalUrl: String): WorkOpsPipelineStageRun!
+    completePipelineStage(stageId: UUID!, status: String!): WorkOpsPipelineStageRun!
+
+    createEnvironmentType(name: String!, description: String, displayOrder: Int): WorkOpsEnvironmentType!
+    updateEnvironmentType(id: UUID!, name: String!, description: String, displayOrder: Int, expectedVersion: Long!): WorkOpsEnvironmentType!
+    "Fails while any environment still instantiates the type."
+    deleteEnvironmentType(id: UUID!): Boolean!
+
+    "Generates a starter .bosca/deploy.yaml (one stanza per program environment, target from each environment's target type) and commits it to the repository's main branch. Never overwrites an existing file."
+    createProjectDeployConfig(projectId: UUID!, repositoryId: UUID!, authorName: String!, authorEmail: String!): WorkOpsDeployConfigFile!
+
+    createEnvironment(input: CreateWorkOpsEnvironmentInput!): WorkOpsEnvironment!
+    updateEnvironment(id: UUID!, input: UpdateWorkOpsEnvironmentInput!, expectedVersion: Long!): WorkOpsEnvironment!
+    deleteEnvironment(id: UUID!): Boolean!
+    "Grants a group an action on the environment itself (approve/deploy gating)."
+    addEnvironmentPermission(id: UUID!, groupId: UUID!, action: PermissionAction!): Boolean!
+    removeEnvironmentPermission(id: UUID!, groupId: UUID!, action: PermissionAction!): Boolean!
+    deploy(input: WorkOpsDeployInput!): WorkOpsEnvironmentDeployment!
+    markDeployed(deploymentId: UUID!, expectedVersion: Long!): WorkOpsEnvironmentDeployment!
+    updateHealthCheck(deploymentId: UUID!, status: String!, expectedVersion: Long!): WorkOpsEnvironmentDeployment!
+
+    recordCompatibilityResult(input: RecordWorkOpsCompatibilityResultInput!): WorkOpsCompatibilityTestResult!
+
+    setDeploymentOrder(releaseId: UUID!, projectId: UUID!, versionId: UUID!, order: Int!): WorkOpsReleaseProjectVersion!
+    markProjectVersionDeploying(releaseId: UUID!, projectId: UUID!, versionId: UUID!): WorkOpsReleaseProjectVersion!
+    markProjectVersionDeployed(releaseId: UUID!, projectId: UUID!, versionId: UUID!): WorkOpsReleaseProjectVersion!
+    markProjectVersionRolledBack(releaseId: UUID!, projectId: UUID!, versionId: UUID!, rollbackVersionId: UUID!): WorkOpsReleaseProjectVersion!
+
+    generateReleaseNotes(releaseId: UUID!, sections: JSON!): WorkOpsReleaseNotes!
+    autoGenerateReleaseNotes(releaseId: UUID!): WorkOpsReleaseNotes!
+    editReleaseNotes(releaseId: UUID!, sections: JSON!, expectedVersion: Long!): WorkOpsReleaseNotes!
+    autoGenerateVersionReleaseNotes(releaseId: UUID!): [WorkOpsVersionReleaseNotes!]!
+    editVersionReleaseNotes(releaseId: UUID!, versionId: UUID!, variants: JSON!): WorkOpsVersionReleaseNotes!
+}

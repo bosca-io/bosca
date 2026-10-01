@@ -1,0 +1,65 @@
+query SearchWorkOpsTasks($source: String!, $offset: Long! = 0, $limit: Int! = 50) {
+    workOps {
+        savedFilters {
+            searchTasks(source: $source, offset: $offset, limit: $limit) {
+                rows {
+                    ...WorkOpsTaskSummaryFragment
+                }
+                freeTextTerms
+            }
+        }
+    }
+}
+
+query ValidateWorkOpsBql($source: String!) {
+    workOps {
+        savedFilters {
+            validateBql(source: $source) {
+                errors {
+                    message
+                    start
+                    end
+                    hint
+                }
+            }
+        }
+    }
+}
+
+query GetWorkOpsSavedFilters($offset: Long! = 0, $limit: Int! = 50) {
+    workOps {
+        savedFilters {
+            mine(offset: $offset, limit: $limit) {
+                id
+                ownerProfileId
+                name
+                description
+                bqlSource
+                createdAt
+                modifiedAt
+                version
+            }
+        }
+    }
+}
+
+mutation CreateWorkOpsSavedFilter($input: WorkOpsSavedFilterInput!) {
+    workOps {
+        savedFilters {
+            create(input: $input) {
+                id
+                name
+                bqlSource
+                version
+            }
+        }
+    }
+}
+
+mutation DeleteWorkOpsSavedFilter($id: UUID!) {
+    workOps {
+        savedFilters {
+            delete(id: $id)
+        }
+    }
+}

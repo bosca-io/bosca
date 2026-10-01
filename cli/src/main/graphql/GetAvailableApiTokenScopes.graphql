@@ -1,0 +1,10 @@
+query GetAvailableApiTokenScopes {
+    security {
+        apiTokens {
+            availableScopes {
+                name
+                description
+            }
+        }
+    }
+}

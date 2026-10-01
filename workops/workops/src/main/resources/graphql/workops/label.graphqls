@@ -1,0 +1,58 @@
+# Work Ops — WorkOpsLabel (R9)
+#
+# Phase 5 ships the multi-scope WorkOpsLabel surface. Names are
+# normalized to lowercase and validated against the kebab-case
+# regex; scope-parent consistency (PORTFOLIO requires
+# portfolioId, etc.) is enforced both in the service layer and
+# at the database via a check constraint.
+
+"""
+The reach of a label in the hierarchy (R9). WorkOpsLabels at higher scope
+are visible to tasks in the parent chain — a `PORTFOLIO` label can
+be attached to any task in any project of any program in that
+portfolio.
+"""
+enum WorkOpsLabelScope {
+    GLOBAL
+    PORTFOLIO
+    PROGRAM
+    PROJECT
+}
+
+"""
+A free-form tag attachable to tasks. Names are stored lowercased
+and kebab-case-validated at the service boundary.
+"""
+type WorkOpsLabel {
+    id: UUID!
+    name: String!
+    colorHex: String
+    scope: WorkOpsLabelScope!
+    portfolioId: UUID
+    programId: UUID
+    projectId: UUID
+    version: Long!
+}
+
+input CreateWorkOpsLabelInput {
+    name: String!
+    colorHex: String
+    scope: WorkOpsLabelScope! = GLOBAL
+    portfolioId: UUID
+    programId: UUID
+    projectId: UUID
+}
+
+type WorkOpsLabels {
+    label(id: UUID!): WorkOpsLabel
+    global: [WorkOpsLabel!]!
+    byPortfolio(portfolioId: UUID!): [WorkOpsLabel!]!
+    byProgram(programId: UUID!): [WorkOpsLabel!]!
+    byProject(projectId: UUID!): [WorkOpsLabel!]!
+}
+
+type WorkOpsLabelsMutation {
+    create(input: CreateWorkOpsLabelInput!): WorkOpsLabel!
+    update(id: UUID!, name: String!, colorHex: String, expectedVersion: Long!): WorkOpsLabel!
+    delete(id: UUID!): Boolean!
+}

@@ -1,0 +1,7 @@
+mutation AddModel($model: ModelInput!) {
+    models {
+        add(model: $model) {
+            ...Model
+        }
+    }
+}

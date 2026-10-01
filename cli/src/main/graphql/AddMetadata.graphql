@@ -1,0 +1,9 @@
+mutation AddMetadata($metadata: MetadataInput!) {
+    content {
+        metadata {
+            add(metadata: $metadata) {
+                id
+            }
+        }
+    }
+}

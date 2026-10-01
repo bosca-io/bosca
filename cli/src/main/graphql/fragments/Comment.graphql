@@ -1,0 +1,12 @@
+fragment Comment on Comment {
+    id
+    content
+    created
+    modified
+    profile {
+        ...Profile
+    }
+    status
+    attributes
+    systemAttributes
+}

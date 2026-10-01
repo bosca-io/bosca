@@ -1,0 +1,44 @@
+name: bosca-core-dev
+
+services:
+  postgres:
+    # pgvector image (a superset of the official postgres image) so the V175 metadata-embeddings migration
+    # can `CREATE EXTENSION vector` locally, where `bosca` is a superuser.
+    image: pgvector/pgvector:pg18
+    restart: always
+    command: -c 'max_connections=400'
+    ports:
+      - '5433:5432'
+    volumes:
+      - bosca-core-postgres:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_PASSWORD=bosca
+      - POSTGRES_USER=bosca
+      - POSTGRES_DB=bosca
+    healthcheck:
+      test: [ "CMD", "pg_isready", "-U", "bosca" ]
+      interval: 10s
+      retries: 5
+      start_period: 10s
+
+  dragonfly:
+    image: 'docker.dragonflydb.io/dragonflydb/dragonfly'
+    ulimits:
+      memlock: -1
+    environment:
+      DFLY_cluster_mode: emulated
+      DFLY_lock_on_hashtags: true
+      DFLY_default_lua_flags: allow-undeclared-keys
+    ports:
+      - "6380:6379"
+    volumes:
+      - bosca-core-dragonflydata:/data
+
+  nats:
+    image: nats
+    ports:
+      - "4222:4222"
+
+volumes:
+  bosca-core-postgres:
+  bosca-core-dragonflydata:

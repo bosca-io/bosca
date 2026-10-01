@@ -1,0 +1,47 @@
+{{- if and .Values.gateway.enabled .Values.gateway.canonicalRedirects }}
+{{- /*
+Host-level canonical 301s (www / alias hosts → apex), one HTTPRoute per
+source host so each route can carry its own RequestRedirect hostname.
+Driven by `gateway.canonicalRedirects` (map of alias host → canonical
+host). Without these, alias hosts serve duplicate 200 content and
+search engines are free to pick their own canonical.
+
+Each route attaches to BOTH listeners: port 443 serves
+https://alias → https://apex, and port 80 serves http://alias →
+https://apex in a single hop. httproute-redirect.yaml excludes these
+hosts from its port-80 catch-all for that reason — two routes claiming
+the same host+path on a listener resolve by creation timestamp, and the
+older catch-all would silently shadow this one.
+
+The alias hosts stay listed in each subchart's `gateway.hostnames` so
+gateway.yaml keeps their HTTPS listeners + certs; the content
+HTTPRoutes filter them out instead (see httproute-bosca-io.yaml).
+*/ -}}
+{{- $gatewayName := .Values.gateway.name | default "bosca-gateway" -}}
+{{- range $from, $to := .Values.gateway.canonicalRedirects }}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ printf "canonical-redirect-%s" ($from | replace "." "-") | trunc 63 | trimSuffix "-" | quote }}
+  labels:
+    app.kubernetes.io/part-of: bosca
+spec:
+  parentRefs:
+    - name: {{ $gatewayName | quote }}
+      sectionName: http
+      port: 80
+    - name: {{ $gatewayName | quote }}
+      sectionName: {{ printf "https-%s" (regexReplaceAll "[^a-z0-9]" $from "-") | trunc 63 | trimSuffix "-" }}
+      port: 443
+  hostnames:
+    - {{ $from | quote }}
+  rules:
+    - filters:
+        - type: RequestRedirect
+          requestRedirect:
+            scheme: https
+            hostname: {{ $to | quote }}
+            statusCode: 301
+{{- end }}
+{{- end }}

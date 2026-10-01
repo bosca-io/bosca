@@ -1,0 +1,8 @@
+fragment Ordering on Ordering {
+  path
+  field
+  path
+  type
+  location
+  order
+}

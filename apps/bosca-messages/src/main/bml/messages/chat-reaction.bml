@@ -1,0 +1,13 @@
+<message key="chat-reaction">
+  <script server provides="m">
+    import bosca.messages.ChatReactionNotification
+    message.payload(ChatReactionNotification.serializer())
+  </script>
+  <script server provides="reaction">bosca.messages.chatReactionContent(message, m)</script>
+  <script server provides="pushTitle">t("chat-reaction.push.title", "{reactorName} reacted to your message", "reactorName" to m.reactorName)</script>
+  <push>
+    <title>{ pushTitle }</title>
+    <body>{ reaction.emoji }</body>
+    <action id="open-chat" default t="chat-reaction.push.action.open">Open chat</action>
+  </push>
+</message>

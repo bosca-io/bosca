@@ -1,0 +1,25 @@
+"Root query type for the collaboration namespace, grouping bridge and federation administration so they don't clutter the top-level Query."
+type Collaboration {
+    "Access bridge administration queries (bindings, identity mappings)"
+    bridge: Bridge!
+    "Access federation administration queries (peers, channel links)"
+    federation: Federation!
+}
+
+"Root mutation type for the collaboration namespace, mirroring [Collaboration] for write operations."
+type CollaborationMutation {
+    "Access bridge administration mutations"
+    bridge: BridgeMutation!
+    "Access federation administration mutations"
+    federation: FederationMutation!
+}
+
+extend type Query {
+    "Bridge and federation administration grouped under a single namespace."
+    collaboration: Collaboration!
+}
+
+extend type Mutation {
+    "Bridge and federation administration mutations grouped under a single namespace."
+    collaboration: CollaborationMutation!
+}

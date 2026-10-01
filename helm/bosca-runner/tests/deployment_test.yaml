@@ -1,0 +1,133 @@
+suite: bosca-runner statefulset
+values:
+  - ../values.yaml
+set:
+  global:
+    domain: example.com
+  appConfig:
+    domain: example.com
+    databaseUrl: "jdbc:postgresql://postgres-bosca-rw:5432/bosca"
+    natsHost: nats
+    meilisearchHost: meilisearch
+tests:
+  - it: renders a StatefulSet for each worker
+    template: templates/statefulset.yaml
+    asserts:
+      - isKind:
+          of: StatefulSet
+      - matchRegex:
+          path: metadata.name
+          pattern: "-default$"
+
+  - it: creates multiple statefulsets for multiple workers
+    template: templates/statefulset.yaml
+    set:
+      workers:
+        default:
+          replicas: 2
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: 250m
+              memory: 512Mi
+        heavy:
+          replicas: 1
+          resources:
+            requests:
+              cpu: "2"
+              memory: 4Gi
+            limits:
+              cpu: "2"
+              memory: 4Gi
+    asserts:
+      - hasDocuments:
+          count: 2
+
+  - it: applies the worker resource profile
+    template: templates/statefulset.yaml
+    set:
+      workers:
+        default:
+          replicas: 1
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].resources.requests.cpu
+          value: 250m
+      - equal:
+          path: spec.template.spec.containers[0].resources.limits.memory
+          value: 1Gi
+
+  - it: sets terminationGracePeriodSeconds
+    template: templates/statefulset.yaml
+    set:
+      workers:
+        default:
+          replicas: 1
+          terminationGracePeriodSeconds: 600
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: 250m
+              memory: 512Mi
+    asserts:
+      - equal:
+          path: spec.template.spec.terminationGracePeriodSeconds
+          value: 600
+
+  - it: passes config arg
+    template: templates/statefulset.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].args[0]
+          value: "-config=/app/config/application.yaml"
+
+  - it: injects WELCOME_EMAIL_URL when configured
+    template: templates/statefulset.yaml
+    set:
+      appConfig.welcomeEmailUrl: https://onboarding.example/start
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: WELCOME_EMAIL_URL
+            value: https://onboarding.example/start
+
+  - it: wires GOOGLE_GENAI_ACCOUNT from the Google service-account Secret
+    template: templates/statefulset.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: GOOGLE_GENAI_ACCOUNT
+            valueFrom:
+              secretKeyRef:
+                name: google-account
+                key: account
+
+  - it: mounts app-config volume
+    template: templates/statefulset.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: app-config
+            mountPath: /app/config
+            readOnly: true
+
+  - it: includes component label
+    template: templates/statefulset.yaml
+    asserts:
+      - equal:
+          path: spec.template.metadata.labels["app.kubernetes.io/component"]
+          value: runner-default

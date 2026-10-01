@@ -1,0 +1,7 @@
+query GetAllMetadata($offset: Int, $limit: Int) {
+    content {
+        findMetadata(query: { attributes: [], offset: $offset, limit: $limit }) {
+            ...Metadata
+        }
+    }
+}

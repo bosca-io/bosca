@@ -1,0 +1,7 @@
+query FindCollections($query: FindQueryInput!) {
+    content {
+        findCollections(query: $query) {
+            ...Collection
+        }
+    }
+}

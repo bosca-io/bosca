@@ -1,0 +1,71 @@
+@file:Suppress("UNCHECKED_CAST", "UNUSED_PARAMETER", "USELESS_ELVIS", "OPT_IN_USAGE", "USELESS_CAST")
+
+package com.example
+
+import bosca.db.DatabaseDispatcher
+import bosca.db.connection
+import bosca.db.mapper.DefaultMappers
+import bosca.di.ProviderRegistry.`get`
+import bosca.di.`annotation`.Generated
+import bosca.serialization.JsonConverter.toJsonElement
+import bosca.serialization.UUID
+import com.example.Entity
+import kotlin.Int
+import kotlin.Suppress
+import kotlin.reflect.KClass
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.flow.toSet
+import kotlinx.coroutines.reactive.asFlow
+import kotlinx.coroutines.reactive.awaitFirstOrNull
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.Json
+
+@Generated
+public class TestRepositoryImpl : TestRepository {
+  private val json: Json by lazy { runBlocking { get<Json>() } }
+
+  private val mappers: DefaultMappers by lazy { DefaultMappers(json) }
+
+  override suspend fun findById(id: Int): Entity = withContext(DatabaseDispatcher) {
+     val connection = connection()
+     connection.useStatement("SELECT id, name, uuid, created, score, active, email FROM entities WHERE id = ?") { stmt ->
+         
+     mappers.int.bind(Int::class, emptyList<KClass<*>>(), stmt, 1, id)
+
+         stmt.executeQuery().use { row ->
+                                  // Entity
+             if (row.next()) {
+     val id = mappers.int.map(Int::class, emptyList<KClass<*>>(), row, "id") ?: error("id is required")
+
+     val name = mappers.string.map(String::class, emptyList<KClass<*>>(), row, "name") ?: error("name is required")
+
+     val uuid = mappers.uuid.map(UUID::class, emptyList<KClass<*>>(), row, "uuid") ?: error("uuid is required")
+
+     val created = mappers.offsetDateTime.map(bosca.serialization.OffsetDateTime::class, emptyList<KClass<*>>(), row, "created") ?: error("created is required")
+
+     val score = mappers.double.map(Double::class, emptyList<KClass<*>>(), row, "score") ?: error("score is required")
+
+     val active = mappers.boolean.map(Boolean::class, emptyList<KClass<*>>(), row, "active") ?: error("active is required")
+
+     val email = mappers.string.map(String::class, emptyList<KClass<*>>(), row, "email")
+
+                 return@useStatement Entity(
+                     id, 
+                     name, 
+                     uuid, 
+                     created, 
+                     score, 
+                     active, 
+                     email
+                 )
+   
+             }
+             error("returned null")
+         }
+     }
+  }
+}

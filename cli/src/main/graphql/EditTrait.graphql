@@ -1,0 +1,7 @@
+mutation EditTrait($input: TraitInput!) {
+    traits {
+        edit(trait: $input) {
+            ...Trait
+        }
+    }
+}

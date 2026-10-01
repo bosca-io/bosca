@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ printf "%s-config" (include "bosca-common.fullname" .) }}
+  labels:
+    {{- include "bosca-common.labels" . | nindent 4 }}
+data:
+  # serve.sh generates the TF Serving model config at runtime, listing only recommender models with an
+  # artifact and loading the exact newest-plus-selected versions published by the loader manifest.
+  # This is required: tf-serving will NOT start its servers while a configured model has zero versions, and
+  # the personalized model is empty until there are enough interactions to train it. Shipped from the chart
+  # so it stays identical to the compose stacks' copy.
+  serve.sh: |
+{{ .Files.Get "files/serve.sh" | indent 4 }}

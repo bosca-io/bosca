@@ -1,0 +1,7 @@
+mutation AddState($state: WorkflowStateInput!) {
+    states {
+        add(state: $state) {
+            ...WorkflowState
+        }
+    }
+}

@@ -1,0 +1,28 @@
+{# The home page. Self-contained (no external data) so it builds without a GraphQL endpoint. #}
+<page route="/">
+  <script server provides="features">
+    listOf("Server-rendered HTML", "Islands", "GraphQL data", "Email + plain text")
+  </script>
+
+  <html lang="en">
+    <head>
+      <meta charset="utf-8"/>
+      <meta name="viewport" content="width=device-width, initial-scale=1"/>
+      <title>BML sample</title>
+    </head>
+    <body>
+      <main>
+        <section class="hero">
+          <h1>Welcome to BML</h1>
+          <p>A server-rendered, island-capable markup language for Bosca.</p>
+        </section>
+
+        <ul class="features">
+          <for feature in features>
+            <li>{ feature }</li>
+          </for>
+        </ul>
+      </main>
+    </body>
+  </html>
+</page>

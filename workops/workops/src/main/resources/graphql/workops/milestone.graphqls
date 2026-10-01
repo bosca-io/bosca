@@ -1,0 +1,43 @@
+# Work Ops — WorkOpsMilestone (R9)
+#
+# Phase 5 ships the program-scoped WorkOpsMilestone surface. WorkOpsMilestones
+# live at the program level — they are cross-project commitments,
+# not per-project markers.
+
+enum WorkOpsMilestoneState { OPEN, CLOSED }
+
+"""
+A program-level cross-project commitment. WorkOpsTasks attach to a
+milestone via `WorkOpsTask.milestoneId?` (column added in this phase's
+migration). Phase 9's roadmap renders milestones as Gantt markers
+across the program timeline.
+"""
+type WorkOpsMilestone {
+    id: UUID!
+    programId: UUID!
+    program: WorkOpsProgram!
+    name: String!
+    description: String
+    targetDate: DateTime
+    state: WorkOpsMilestoneState!
+    closedAt: DateTime
+    version: Long!
+}
+
+input CreateWorkOpsMilestoneInput {
+    programId: UUID!
+    name: String!
+    description: String
+    targetDate: DateTime
+}
+
+type WorkOpsMilestones {
+    milestone(id: UUID!): WorkOpsMilestone
+    byProgram(programId: UUID!): [WorkOpsMilestone!]!
+}
+
+type WorkOpsMilestonesMutation {
+    create(input: CreateWorkOpsMilestoneInput!): WorkOpsMilestone!
+    "Advance the milestone state to CLOSED and stamp closedAt."
+    close(id: UUID!, expectedVersion: Long!): WorkOpsMilestone!
+}

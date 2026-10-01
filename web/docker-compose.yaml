@@ -1,0 +1,306 @@
+name: bosca
+
+services:
+  # ── Infrastructure ──────────────────────────────────────────────
+
+  nats:
+    image: nats
+    ports:
+      - "8222:8222"
+      - "6222:6222"
+      - "4222:4222"
+    volumes:
+      - ./services/nats/nats.config:/etc/nats/nats.config
+    command: ["-c", "/etc/nats/nats.config"]
+    networks:
+      - boscanet
+
+  meilisearch:
+    image: getmeili/meilisearch:v1.39.0
+    restart: always
+    ports:
+      - "7701:7700"
+    environment:
+      MEILI_MASTER_KEY: p8JcB_HuMHRxN7uVXfrG2wU06b5k7oTvaAAYo6nsi9M
+      MEILI_EXPERIMENTAL_DUMPLESS_UPGRADE: true
+    volumes:
+      - bosca-meilisearch:/meili_data
+    networks:
+      - boscanet
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7700/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  postgres:
+    # pgvector image (a superset of the official postgres image) so the recommender's V175 migration can
+    # `CREATE EXTENSION vector` locally, where `bosca` is a superuser. Prod (CloudNativePG) enables the
+    # extension via the operator (helm/bosca-infra Database.extensions), not this image.
+    image: pgvector/pgvector:pg18
+    restart: always
+    command: -c 'max_connections=400'
+    ports:
+      - "5433:5432"
+    volumes:
+      - bosca-postgres:/var/lib/postgresql/data
+    environment:
+      POSTGRES_PASSWORD: bosca
+      POSTGRES_USER: bosca
+      POSTGRES_DB: bosca
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "bosca"]
+      interval: 10s
+      retries: 5
+      start_period: 10s
+    networks:
+      - boscanet
+
+  postgres-warehouse:
+    image: postgres:18.1-alpine
+    restart: always
+    command: -c 'max_connections=400'
+    ports:
+      - "5434:5432"
+    volumes:
+      - bosca-postgres-warehouse:/var/lib/postgresql/data
+    environment:
+      POSTGRES_PASSWORD: bosca-warehouse
+      POSTGRES_USER: bosca-warehouse
+      POSTGRES_DB: bosca-warehouse
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "bosca-warehouse"]
+      interval: 10s
+      retries: 5
+      start_period: 10s
+    networks:
+      - boscanet
+
+  s3proxy:
+    platform: linux/amd64
+    image: andrewgaul/s3proxy:3.0.0
+    ports:
+      - "8000:8000"
+    environment:
+      S3PROXY_AUTHORIZATION: aws-v2-or-v4
+      S3PROXY_IDENTITY: bosca-s3
+      S3PROXY_CREDENTIAL: bosca-s3
+      S3PROXY_ENDPOINT: http://0.0.0.0:8000
+      JCLOUDS_PROVIDER: filesystem-nio2
+      S3PROXY_IGNORE_UNKNOWN_HEADERS: true
+      JCLOUDS_FILESYSTEM_NIO2_BASEDIR: /tmp/s3proxy
+    volumes:
+      - ./services/s3proxy:/tmp/s3proxy
+    networks:
+      - boscanet
+
+  mc:
+    image: minio/mc:latest
+    depends_on:
+      - s3proxy
+    entrypoint: >
+      /bin/sh -c "
+      until (mc alias set s3proxy http://s3proxy:8000 bosca-s3 bosca-s3) do echo '...waiting...' && sleep 1; done;
+      mc mb -p s3proxy/warehouse;
+      mc mb -p s3proxy/storage;
+      tail -f /dev/null
+      "
+    networks:
+      - boscanet
+
+  trino:
+    platform: linux/amd64
+    image: trinodb/trino:479
+    ports:
+      - "8089:8089"
+    depends_on:
+      - s3proxy
+    volumes:
+      - ./services/trino:/etc/trino
+    networks:
+      - boscanet
+
+  jaeger:
+    image: cr.jaegertracing.io/jaegertracing/jaeger:2.13.0
+    restart: always
+    ports:
+      - "16686:16686"
+      - "4317:4317"
+      - "4318:4318"
+      - "5778:5778"
+      - "9411:9411"
+    networks:
+      - boscanet
+
+  dragonfly:
+    image: docker.dragonflydb.io/dragonflydb/dragonfly
+    ulimits:
+      memlock: -1
+    environment:
+      DFLY_cluster_mode: emulated
+      DFLY_lock_on_hashtags: true
+      DFLY_default_lua_flags: allow-undeclared-keys
+    ports:
+      - "6380:6379"
+    volumes:
+      - bosca-dragonflydata:/data
+    networks:
+      - boscanet
+
+  tf-serving:
+    platform: linux/amd64
+    image: tensorflow/serving:latest
+    restart: always
+    ports:
+      - "8501:8501"
+    volumes:
+      - bosca-tf-serving-models:/models
+      - ./services/tf-serving/serve.sh:/serve.sh:ro
+    # serve.sh generates a model config listing only the recommender models that currently have a version,
+    # and regenerates it as models appear (tf-serving hot-reloads). Required because tf-serving will NOT
+    # start while a configured model has zero versions, and the personalized model is empty until trained.
+    # See serve.sh for the full rationale.
+    entrypoint: ["/bin/bash", "/serve.sh"]
+    networks:
+      - boscanet
+
+  # ── Bosca Application Services ──────────────────────────────────
+
+  bosca-server:
+    platform: linux/amd64
+    image: ghcr.io/bosca-io/bosca/bosca-server:4.8.16
+    restart: always
+    ports:
+      - "8080:8080"
+    environment:
+      JWT_DOMAIN: bosca-server
+      JWT_ADMIN_DOMAIN: bosca-server
+      JWT_AUDIENCE: Bosca
+      JWT_REALM: Bosca
+      JWT_ISSUER: Bosca
+      JWT_SECRET: c534b2595b38f5d9cb33f8cd05996c95
+      JWT_EXPIRATION_TIME: 3600
+      SECURITY_ENCRYPTION_KEY: changeme
+      DATABASE_URL: jdbc:postgresql://postgres:5432/bosca
+      DATABASE_USER: bosca
+      DATABASE_PASSWORD: bosca
+      TRINO_DATABASE_URL: jdbc:trino://trino:8089
+      TRINO_DATABASE_USER: admin
+      TRINO_DATABASE_PASSWORD: ""
+      NATS_HOST: nats:4222
+      REDIS_HOST: dragonfly
+      REDIS_PORT: 6379
+      MEILISEARCH_URL: http://meilisearch:7700
+      MEILISEARCH_API_KEY: p8JcB_HuMHRxN7uVXfrG2wU06b5k7oTvaAAYo6nsi9M
+      APPLICATION_SUFFIX: ""
+      GOOGLE_CLIENT_ID: "${GOOGLE_CLIENT_ID:-}"
+      GOOGLE_CLIENT_SECRET: "${GOOGLE_CLIENT_SECRET:-}"
+      GOOGLE_TTS_ACCOUNT: ""
+      OPENAI_API_KEY: changeme
+      OAUTH2_GOOGLE_REDIRECT: http://localhost:8080/oauth2/google/callback
+      OAUTH2_GOOGLE_ADMIN_REDIRECT: http://localhost:8080/oauth2/google/callback
+      OAUTH2_FACEBOOK_REDIRECT: http://localhost:8080/oauth2/facebook/callback
+      OAUTH2_FACEBOOK_ADMIN_REDIRECT: http://localhost:8080/oauth2/facebook/callback
+      FACEBOOK_CLIENT_ID: ""
+      FACEBOOK_CLIENT_SECRET: ""
+      OAUTH2_ALLOWED_REDIRECT: http://localhost:8080
+      ANALYTICS_SERVER_URL: http://analytics-collector:8081
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+      STORAGE_URL_UPLOAD_PREFIX: http://localhost:8080
+      STORAGE_URL_PREFIX: http://localhost:8080
+      STORAGE_ENDPOINT: http://s3proxy:8000
+      STORAGE_FORCE_PATH_STYLE: true
+      STORAGE_REGION: us-east-1
+      STORAGE_ACCESS_KEY_ID: bosca-s3
+      STORAGE_ACCESS_KEY_SECRET: bosca-s3
+      WORKOPS_ENABLED: true
+      CHAT_ENABLED: true
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_started
+      meilisearch:
+        condition: service_healthy
+    networks:
+      - boscanet
+
+  imageprocessor:
+    platform: linux/amd64
+    image: ghcr.io/bosca-io/bosca/imageprocessor:4.8.16
+    restart: always
+    ports:
+      - "8003:8003"
+    networks:
+      - boscanet
+
+  analytics-collector:
+    platform: linux/amd64
+    image: ghcr.io/bosca-io/bosca/analytics-collector:4.8.17
+    restart: always
+    ports:
+      - "8081:8081"
+    environment:
+      JWT_DOMAIN: bosca-server
+      JWT_ADMIN_DOMAIN: bosca-server
+      JWT_AUDIENCE: Bosca
+      JWT_REALM: Bosca
+      JWT_ISSUER: Bosca
+      JWT_SECRET: c534b2595b38f5d9cb33f8cd05996c95
+      JWT_EXPIRATION_TIME: 3600
+      DATABASE_URL: jdbc:postgresql://postgres:5432/bosca
+      DATABASE_USER: bosca
+      DATABASE_PASSWORD: bosca
+      TRINO_DATABASE_URL: jdbc:trino://trino:8089
+      TRINO_DATABASE_USER: admin
+      TRINO_DATABASE_PASSWORD: ""
+      NATS_HOST: nats:4222
+      REDIS_HOST: dragonfly
+      REDIS_PORT: 6379
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_started
+    networks:
+      - boscanet
+
+  kubernetes-controller:
+    platform: linux/amd64
+    image: ghcr.io/bosca-io/bosca/kubernetes-controller:4.8.17
+    restart: always
+    ports:
+      - "8082:8082"
+    environment:
+      JWT_DOMAIN: bosca-server
+      JWT_ADMIN_DOMAIN: bosca-server
+      JWT_AUDIENCE: Bosca
+      JWT_REALM: Bosca
+      JWT_ISSUER: Bosca
+      JWT_SECRET: c534b2595b38f5d9cb33f8cd05996c95
+      JWT_EXPIRATION_TIME: 3600
+      DATABASE_URL: jdbc:postgresql://postgres:5432/bosca
+      DATABASE_USER: bosca
+      DATABASE_PASSWORD: bosca
+      NATS_HOST: nats:4222
+      REDIS_HOST: dragonfly
+      REDIS_PORT: 6379
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_started
+    networks:
+      - boscanet
+
+networks:
+  boscanet:
+
+volumes:
+  bosca-tf-serving-models:
+  bosca-postgres:
+  bosca-postgres-warehouse:
+  bosca-meilisearch:
+  bosca-dragonflydata:

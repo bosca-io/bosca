@@ -1,0 +1,736 @@
+"Overall database statistics from pg_stat_database for the connected database."
+type PgDatabaseStats {
+    "The name of the database."
+    databaseName: String!
+    "Number of backends currently connected to this database."
+    numBackends: Int!
+    "Number of transactions committed in this database."
+    xactCommit: Long!
+    "Number of transactions rolled back in this database."
+    xactRollback: Long!
+    "Number of disk blocks read in this database."
+    blksRead: Long!
+    "Number of times disk blocks were found in the buffer cache."
+    blksHit: Long!
+    "Number of rows returned by queries in this database."
+    tupReturned: Long!
+    "Number of rows fetched by queries in this database."
+    tupFetched: Long!
+    "Number of rows inserted by queries in this database."
+    tupInserted: Long!
+    "Number of rows updated by queries in this database."
+    tupUpdated: Long!
+    "Number of rows deleted by queries in this database."
+    tupDeleted: Long!
+    "Number of queries canceled due to conflicts in this database."
+    conflicts: Long!
+    "Number of temporary files created by queries in this database."
+    tempFiles: Long!
+    "Total amount of data written to temporary files in bytes."
+    tempBytes: Long!
+    "Number of deadlocks detected in this database."
+    deadlocks: Long!
+    "Buffer cache hit ratio as a percentage (0-100)."
+    cacheHitRatio: Float!
+    "Total size of the database in bytes."
+    databaseSize: Long!
+    "Time at which database statistics were last reset."
+    statsReset: String
+}
+
+"A currently running query from pg_stat_activity."
+type PgActiveQuery {
+    "The process ID of the backend."
+    pid: Int!
+    "The name of the database this backend is connected to."
+    databaseName: String
+    "The name of the user logged into this backend."
+    userName: String
+    "The application name connected to this backend."
+    applicationName: String
+    "The IP address of the client connected to this backend."
+    clientAddr: String
+    "The current state of the backend (active, idle, idle in transaction, etc.)."
+    state: String
+    "The text of the currently or most recently executing query."
+    query: String
+    "Time when the currently active query was started."
+    queryStart: String
+    "Time when the current state was entered."
+    stateChange: String
+    "Time when the current transaction was started."
+    xactStart: String
+    "Duration in seconds that the current query has been running."
+    queryDurationSeconds: Float
+    "Whether this backend is currently waiting on a lock."
+    waitEventType: String
+    "The specific wait event the backend is waiting for."
+    waitEvent: String
+    "Time when the server process was started."
+    backendStart: String
+    "The type of backend (client backend, autovacuum worker, etc.)."
+    backendType: String
+}
+
+"A slow query captured from pg_stat_statements (requires pg_stat_statements extension)."
+type PgSlowQuery {
+    "The query text with parameters replaced by placeholders."
+    query: String!
+    "Total number of times this query has been executed."
+    calls: Long!
+    "Total time spent executing this query in milliseconds."
+    totalTimeMs: Float!
+    "Mean execution time per call in milliseconds."
+    meanTimeMs: Float!
+    "Minimum execution time in milliseconds."
+    minTimeMs: Float!
+    "Maximum execution time in milliseconds."
+    maxTimeMs: Float!
+    "Standard deviation of execution time in milliseconds."
+    stddevTimeMs: Float!
+    "Total number of rows retrieved or affected by this query."
+    rows: Long!
+    "Number of shared buffer cache hits by this query."
+    sharedBlksHit: Long!
+    "Number of shared buffer cache reads by this query."
+    sharedBlksRead: Long!
+    "Cache hit ratio for this query as a percentage (0-100)."
+    hitRatio: Float!
+}
+
+"Table-level statistics from pg_stat_user_tables."
+type PgTableStats {
+    "The schema containing this table."
+    schemaName: String!
+    "The name of the table."
+    tableName: String!
+    "Number of sequential scans initiated on this table."
+    seqScan: Long!
+    "Number of live rows fetched by sequential scans."
+    seqTupRead: Long!
+    "Number of index scans initiated on this table."
+    idxScan: Long!
+    "Number of live rows fetched by index scans."
+    idxTupFetch: Long!
+    "Number of rows inserted."
+    nTupIns: Long!
+    "Number of rows updated (includes HOT updates)."
+    nTupUpd: Long!
+    "Number of rows deleted."
+    nTupDel: Long!
+    "Number of rows HOT updated (no separate index entry needed)."
+    nTupHotUpd: Long!
+    "Estimated number of live rows."
+    nLiveTup: Long!
+    "Estimated number of dead rows."
+    nDeadTup: Long!
+    "Last time this table was manually vacuumed."
+    lastVacuum: String
+    "Last time this table was vacuumed by autovacuum."
+    lastAutovacuum: String
+    "Last time this table was manually analyzed."
+    lastAnalyze: String
+    "Last time this table was analyzed by autovacuum."
+    lastAutoanalyze: String
+    "Number of times this table has been manually vacuumed."
+    vacuumCount: Long!
+    "Number of times this table has been vacuumed by autovacuum."
+    autovacuumCount: Long!
+    "Number of times this table has been manually analyzed."
+    analyzeCount: Long!
+    "Number of times this table has been analyzed by autovacuum."
+    autoanalyzeCount: Long!
+    "Total size of the table including indexes and TOAST in bytes."
+    totalSize: Long!
+    "Size of the table data alone in bytes."
+    tableSize: Long!
+    "Size of indexes on this table in bytes."
+    indexSize: Long!
+    "Ratio of dead tuples to live tuples as a percentage."
+    bloatRatio: Float!
+}
+
+"Index-level statistics from pg_stat_user_indexes."
+type PgIndexStats {
+    "The schema containing the index."
+    schemaName: String!
+    "The name of the table this index belongs to."
+    tableName: String!
+    "The name of the index."
+    indexName: String!
+    "Number of index scans initiated on this index."
+    idxScan: Long!
+    "Number of index entries returned by scans on this index."
+    idxTupRead: Long!
+    "Number of live table rows fetched by simple index scans using this index."
+    idxTupFetch: Long!
+    "Size of the index in bytes."
+    indexSize: Long!
+    "The index definition (CREATE INDEX statement)."
+    indexDef: String
+}
+
+"A candidate table or index that may benefit from an index, based on sequential scan analysis."
+type PgIndexSuggestion {
+    "The schema containing the table."
+    schemaName: String!
+    "The table that may benefit from an index."
+    tableName: String!
+    "Number of sequential scans on this table."
+    seqScan: Long!
+    "Number of rows read via sequential scans."
+    seqTupRead: Long!
+    "Number of index scans on this table."
+    idxScan: Long!
+    "Total size of the table in bytes."
+    tableSize: Long!
+    "A human-readable description of why an index may help."
+    reason: String!
+}
+
+"Lock information from pg_locks joined with pg_stat_activity."
+type PgLockInfo {
+    "The process ID holding or waiting for the lock."
+    pid: Int!
+    "The type of lockable object (relation, transactionid, tuple, etc.)."
+    lockType: String!
+    "The name of the database in which the locked object exists."
+    databaseName: String
+    "The name of the locked relation, if applicable."
+    relationName: String
+    "The lock mode held or desired (AccessShareLock, RowExclusiveLock, etc.)."
+    mode: String!
+    "Whether the lock has been granted (true) or is being waited for (false)."
+    granted: Boolean!
+    "The query being executed by the process holding or waiting for the lock."
+    query: String
+    "The current state of the backend holding the lock."
+    state: String
+    "How long this lock has been held or waited for, in seconds."
+    durationSeconds: Float
+}
+
+"Replication slot information from pg_replication_slots."
+type PgReplicationSlot {
+    "The name of the replication slot."
+    slotName: String!
+    "The type of the slot: physical or logical."
+    slotType: String!
+    "Whether the slot is currently active."
+    active: Boolean!
+    "The name of the database this slot is associated with."
+    databaseName: String
+    "The WAL position this slot has been confirmed flushed up to."
+    confirmedFlushLsn: String
+    "The amount of WAL retained by this slot in bytes."
+    retainedWalBytes: Long
+}
+
+"Connection pool statistics for the application's database connection pools."
+type PgConnectionPoolStats {
+    "The name of the connection pool."
+    poolName: String!
+    "The maximum number of connections allowed in this pool."
+    maxConnections: Int!
+    "The number of currently active (checked out) connections."
+    activeConnections: Int!
+    "The number of connections that have been created."
+    createdConnections: Int!
+    "Whether there are connections available in the pool."
+    hasAvailableConnections: Boolean!
+}
+
+"PostgreSQL server configuration settings from pg_settings."
+type PgSetting {
+    "The name of the configuration parameter."
+    name: String!
+    "The current value of the parameter."
+    setting: String!
+    "The unit of the parameter value, if applicable."
+    unit: String
+    "The category of the parameter."
+    category: String!
+    "A short description of the parameter."
+    shortDesc: String!
+    "The context in which the parameter can be changed (postmaster, sighup, superuser, user)."
+    context: String!
+    "The data type of the parameter (bool, integer, real, string, enum)."
+    vartype: String!
+    "The source of the current value (default, configuration file, etc.)."
+    source: String!
+    "The minimum allowed value, if applicable."
+    minVal: String
+    "The maximum allowed value, if applicable."
+    maxVal: String
+    "The list of allowed values for enum parameters."
+    enumVals: [String!]
+    "Whether the value requires a server restart to take effect."
+    pendingRestart: Boolean!
+}
+
+"Database vacuum and maintenance progress information."
+type PgVacuumProgress {
+    "The process ID of the vacuum worker."
+    pid: Int!
+    "The name of the database being vacuumed."
+    databaseName: String
+    "The schema of the table being vacuumed."
+    schemaName: String
+    "The name of the table being vacuumed."
+    tableName: String
+    "The current phase of the vacuum operation."
+    phase: String!
+    "The total number of heap blocks in the table."
+    heapBlksTotal: Long!
+    "The number of heap blocks scanned so far."
+    heapBlksScanned: Long!
+    "The number of heap blocks vacuumed so far."
+    heapBlksVacuumed: Long!
+    "The number of dead tuples that can be removed."
+    numDeadTuples: Long!
+}
+
+"Table I/O statistics from pg_statio_user_tables."
+type PgTableIOStats {
+    "The schema containing this table."
+    schemaName: String!
+    "The name of the table."
+    tableName: String!
+    "Number of disk blocks read from this table."
+    heapBlksRead: Long!
+    "Number of buffer cache hits for this table."
+    heapBlksHit: Long!
+    "Number of disk blocks read from all indexes on this table."
+    idxBlksRead: Long!
+    "Number of buffer cache hits for indexes on this table."
+    idxBlksHit: Long!
+    "Number of disk blocks read from this table's TOAST table."
+    toastBlksRead: Long!
+    "Number of buffer cache hits for this table's TOAST table."
+    toastBlksHit: Long!
+    "Cache hit ratio for this table as a percentage (0-100)."
+    cacheHitRatio: Float!
+}
+
+"Write-Ahead Log generation and I/O statistics from pg_stat_wal for monitoring WAL throughput and tuning."
+type PgWalStats {
+    "Total number of WAL records generated."
+    walRecords: Long!
+    "Total number of WAL full page images generated."
+    walFpi: Long!
+    "Total amount of WAL generated in bytes."
+    walBytes: Long!
+    "Number of times WAL data was written to disk because WAL buffers became full."
+    walBuffersFull: Long!
+    "Total number of times WAL buffers were written out to disk via XLogWrite request."
+    walWrite: Long!
+    "Total number of times WAL files were synced to disk via issue_xlog_fsync request."
+    walSync: Long!
+    "Total time spent writing WAL buffers to disk in milliseconds."
+    walWriteTime: Float!
+    "Total time spent syncing WAL files to disk in milliseconds."
+    walSyncTime: Float!
+    "Time at which WAL statistics were last reset."
+    statsReset: String
+}
+
+"Background writer and checkpoint statistics from pg_stat_bgwriter for monitoring checkpoint behavior and buffer management."
+type PgCheckpointStats {
+    "Number of scheduled checkpoints that have been performed."
+    checkpointsTimedCount: Long!
+    "Number of requested checkpoints that have been performed."
+    checkpointsRequestedCount: Long!
+    "Number of buffers written during checkpoints."
+    buffersCheckpoint: Long!
+    "Number of buffers written by the background writer."
+    buffersClean: Long!
+    "Number of times the background writer stopped a cleaning scan because it had written too many buffers."
+    maxwrittenClean: Long!
+    "Number of buffers written directly by a backend."
+    buffersBackend: Long!
+    "Number of times a backend had to execute its own fsync call."
+    buffersBackendFsync: Long!
+    "Number of buffers allocated."
+    buffersAlloc: Long!
+    "Time at which these statistics were last reset."
+    statsReset: String
+}
+
+"A blocking relationship between two backends where one process holds a lock preventing another from proceeding."
+type PgBlockingChain {
+    "The process ID of the blocked backend."
+    blockedPid: Int!
+    "The user name of the blocked backend."
+    blockedUser: String
+    "The query being executed by the blocked backend."
+    blockedQuery: String
+    "The current state of the blocked backend."
+    blockedState: String
+    "How long the blocked backend has been waiting in seconds."
+    blockedDurationSeconds: Float
+    "The process ID of the blocking backend."
+    blockingPid: Int!
+    "The user name of the blocking backend."
+    blockingUser: String
+    "The query being executed by the blocking backend."
+    blockingQuery: String
+    "The current state of the blocking backend."
+    blockingState: String
+}
+
+"A long-running transaction, particularly idle-in-transaction sessions that hold locks and prevent autovacuum."
+type PgLongTransaction {
+    "The process ID of the backend."
+    pid: Int!
+    "The name of the database this backend is connected to."
+    databaseName: String
+    "The name of the user logged into this backend."
+    userName: String
+    "The application name connected to this backend."
+    applicationName: String
+    "The current state of the backend (active, idle, idle in transaction, etc.)."
+    state: String
+    "Time when the current transaction was started."
+    xactStartTime: String
+    "Duration in seconds that the current transaction has been open."
+    xactDurationSeconds: Float
+    "The text of the most recently executed query in this transaction."
+    lastQuery: String
+    "The type of event the backend is currently waiting for."
+    waitEventType: String
+    "The specific wait event the backend is waiting for."
+    waitEvent: String
+}
+
+"Sequence utilization information showing how close a sequence is to its maximum value."
+type PgSequenceUsage {
+    "The schema containing the sequence."
+    schemaName: String!
+    "The name of the sequence."
+    sequenceName: String!
+    "The data type of the sequence (smallint, integer, bigint)."
+    dataType: String!
+    "The current (last issued) value of the sequence."
+    currentValue: Long!
+    "The maximum value the sequence can reach before exhaustion."
+    maxValue: Long!
+    "The percentage of the sequence range that has been consumed (0-100)."
+    percentUsed: Float!
+}
+
+"Size information for a database object (table, index, or materialized view)."
+type PgObjectSize {
+    "The schema containing the object."
+    schemaName: String!
+    "The name of the object."
+    objectName: String!
+    "The type of object (table, index, materialized view)."
+    objectType: String!
+    "Total size of the object including indexes and TOAST data in bytes."
+    totalSize: Long!
+    "Size of the table data alone in bytes (only for tables)."
+    tableSize: Long
+    "Size of indexes on this table in bytes (only for tables)."
+    indexSize: Long
+}
+
+"Metadata about an installed PostgreSQL extension."
+type PgExtension {
+    "The name of the extension."
+    name: String!
+    "The currently installed version of the extension."
+    installedVersion: String!
+    "The default version available for installation."
+    defaultVersion: String
+    "A brief description of what the extension provides."
+    description: String
+}
+
+"Connection pool utilization from PgBouncer's SHOW POOLS command per database/user pair."
+type PgBouncerPoolStats {
+    "The database name this pool serves."
+    database: String!
+    "The user name this pool authenticates as."
+    user: String!
+    "Number of active client connections using a server connection."
+    clActive: Int!
+    "Number of client connections waiting for a server connection."
+    clWaiting: Int!
+    "Number of client connections that have sent a cancel request."
+    clCancelReq: Int!
+    "Number of active client cancel requests being processed."
+    clActiveCancelReq: Int!
+    "Number of server connections actively processing a client request."
+    svActive: Int!
+    "Number of server connections processing a cancel request."
+    svActiveCancel: Int!
+    "Number of server connections being canceled."
+    svBeingCanceled: Int!
+    "Number of server connections idle and ready for use."
+    svIdle: Int!
+    "Number of server connections used but not idle for more than server_check_delay."
+    svUsed: Int!
+    "Number of server connections currently running a reset or check query."
+    svTested: Int!
+    "Number of server connections currently logging in to PostgreSQL."
+    svLogin: Int!
+    "Maximum wait time in seconds for a client in this pool."
+    maxwait: Long!
+    "Maximum wait time in microseconds for a client in this pool."
+    maxwaitUs: Long!
+    "The pool mode for this pool (session, transaction, or statement)."
+    poolMode: String!
+}
+
+"Aggregated throughput and latency statistics from PgBouncer's SHOW STATS command."
+type PgBouncerDatabaseStats {
+    "The database name."
+    database: String!
+    "Total number of SQL transactions pooled by PgBouncer."
+    totalXactCount: Long!
+    "Total number of SQL queries pooled by PgBouncer."
+    totalQueryCount: Long!
+    "Total volume of network traffic received from clients in bytes."
+    totalReceived: Long!
+    "Total volume of network traffic sent to clients in bytes."
+    totalSent: Long!
+    "Total time spent by PgBouncer when connected to PostgreSQL in transactions in microseconds."
+    totalXactTime: Long!
+    "Total time spent by PgBouncer when actively querying PostgreSQL in microseconds."
+    totalQueryTime: Long!
+    "Time spent by clients waiting for a server connection in microseconds."
+    totalWaitTime: Long!
+    "Average number of transactions per second in the last stats period."
+    avgXactCount: Long!
+    "Average number of queries per second in the last stats period."
+    avgQueryCount: Long!
+    "Average received bytes per second."
+    avgRecv: Long!
+    "Average sent bytes per second."
+    avgSent: Long!
+    "Average transaction duration in microseconds."
+    avgXactTime: Long!
+    "Average query duration in microseconds."
+    avgQueryTime: Long!
+    "Average time a client spent waiting for a server in microseconds."
+    avgWaitTime: Long!
+}
+
+"Database routing configuration from PgBouncer's SHOW DATABASES command."
+type PgBouncerDatabase {
+    "The logical database name exposed by PgBouncer."
+    name: String!
+    "The physical PostgreSQL host this database routes to."
+    host: String
+    "The port of the physical PostgreSQL host."
+    port: Int!
+    "The actual PostgreSQL database name connected to."
+    database: String!
+    "The user PgBouncer forces connections as, if configured."
+    forceUser: String
+    "The default pool size for this database."
+    poolSize: Int!
+    "The minimum pool size maintained for this database."
+    minPoolSize: Int!
+    "The number of reserve connections for this database."
+    reservePool: Int!
+    "The pool mode for this database (session, transaction, or statement)."
+    poolMode: String
+    "The maximum number of connections allowed for this database."
+    maxConnections: Int!
+    "The number of connections currently established."
+    currentConnections: Int!
+    "Whether this database is currently paused."
+    paused: Boolean!
+    "Whether this database is currently disabled."
+    disabled: Boolean!
+}
+
+"Composite view of PgBouncer status combining pool, stats, and database routing information."
+type PgBouncerInfo {
+    "Whether PgBouncer is reachable and responding to admin commands."
+    available: Boolean!
+    "The PgBouncer version string."
+    version: String
+    "Connection pool utilization per database/user pair."
+    pools: [PgBouncerPoolStats!]!
+    "Aggregated throughput and latency statistics per database."
+    stats: [PgBouncerDatabaseStats!]!
+    "Database routing configuration showing logical-to-physical mappings."
+    databases: [PgBouncerDatabase!]!
+}
+
+"Streaming replication state for a connected standby from pg_stat_replication."
+type PgReplicationStatus {
+    "The process ID of the WAL sender process."
+    pid: Int!
+    "The user name of the replication connection."
+    userName: String
+    "The application name of the connected standby."
+    applicationName: String
+    "The IP address of the connected standby."
+    clientAddr: String
+    "The current replication state (startup, catchup, streaming, backup, stopping)."
+    state: String
+    "The last WAL position sent on this connection."
+    sentLsn: String
+    "The last WAL position written to disk by this standby."
+    writeLsn: String
+    "The last WAL position flushed to disk by this standby."
+    flushLsn: String
+    "The last WAL position replayed (applied) by this standby."
+    replayLsn: String
+    "Replay lag in seconds behind the primary."
+    replayLagSeconds: Float
+    "Write lag in seconds behind the primary."
+    writeLagSeconds: Float
+    "Flush lag in seconds behind the primary."
+    flushLagSeconds: Float
+    "Synchronous replication state (async, sync, potential, quorum)."
+    syncState: String
+    "Priority of this standby for synchronous replication."
+    syncPriority: Int
+}
+
+"Query operations for introspecting the PostgreSQL database's operational state."
+type PostgresAdmin {
+    "Retrieve overall database statistics including transaction counts, I/O, and cache performance."
+    databaseStats: PgDatabaseStats!
+    "Retrieve currently active queries running on the database."
+    activeQueries(
+        "Minimum duration in seconds to filter queries by (default: show all)."
+        minDurationSeconds: Float
+    ): [PgActiveQuery!]!
+    "Retrieve the slowest queries by total execution time (requires pg_stat_statements extension)."
+    slowQueries(
+        "Maximum number of slow queries to return (default 20)."
+        limit: Int
+        "Order by total time or mean time (default: total)."
+        orderBy: String
+    ): [PgSlowQuery!]!
+    "Retrieve per-table statistics including row counts, scan types, and maintenance history."
+    tableStats(
+        "Filter to a specific schema (default: all non-system schemas)."
+        schemaName: String
+    ): [PgTableStats!]!
+    "Retrieve per-index statistics including scan counts and sizes."
+    indexStats(
+        "Filter to a specific schema (default: all non-system schemas)."
+        schemaName: String
+    ): [PgIndexStats!]!
+    "Retrieve unused or redundant indexes that may be candidates for removal."
+    unusedIndexes(
+        "Minimum table size in bytes to consider (default: 0)."
+        minTableSize: Long
+    ): [PgIndexStats!]!
+    "Identify tables that could benefit from additional indexes based on sequential scan patterns."
+    indexSuggestions(
+        "Minimum number of sequential scans to consider (default: 50)."
+        minSeqScans: Long
+    ): [PgIndexSuggestion!]!
+    "Retrieve current lock information including blocked and blocking queries."
+    locks: [PgLockInfo!]!
+    "Retrieve replication slot information."
+    replicationSlots: [PgReplicationSlot!]!
+    "Retrieve application connection pool statistics."
+    connectionPoolStats: [PgConnectionPoolStats!]!
+    "Retrieve important PostgreSQL server configuration settings."
+    settings(
+        "Filter settings by category or name pattern."
+        filter: String
+    ): [PgSetting!]!
+    "Retrieve currently running vacuum operations and their progress."
+    vacuumProgress: [PgVacuumProgress!]!
+    "Retrieve per-table I/O statistics showing disk reads vs cache hits."
+    tableIOStats(
+        "Filter to a specific schema (default: all non-system schemas)."
+        schemaName: String
+    ): [PgTableIOStats!]!
+    "Retrieve tables with the highest bloat ratios (dead tuples relative to live tuples)."
+    bloatedTables(
+        "Minimum bloat ratio percentage to include (default: 10)."
+        minBloatPercent: Float
+    ): [PgTableStats!]!
+    "Retrieve the PostgreSQL server version string."
+    serverVersion: String!
+    "Retrieve the server uptime as a human-readable string."
+    uptime: String!
+    "Retrieve Write-Ahead Log statistics for monitoring WAL generation throughput and buffer efficiency."
+    walStats: PgWalStats!
+    "Retrieve background writer and checkpoint statistics for monitoring I/O behavior."
+    checkpointStats: PgCheckpointStats!
+    "Retrieve blocking query chains showing which backends are blocking other backends."
+    blockingChains: [PgBlockingChain!]!
+    "Retrieve long-running transactions, particularly idle-in-transaction sessions holding locks."
+    longRunningTransactions(
+        "Minimum transaction duration in seconds to include (default: 60)."
+        minDurationSeconds: Float
+    ): [PgLongTransaction!]!
+    "Retrieve sequence utilization information to detect sequences approaching exhaustion."
+    sequenceUsage(
+        "Minimum percentage used to include (default: 0, show all)."
+        minPercentUsed: Float
+    ): [PgSequenceUsage!]!
+    "Retrieve the largest database objects ranked by total size for storage analysis."
+    databaseSizeBreakdown(
+        "Maximum number of objects to return (default: 50)."
+        limit: Int
+    ): [PgObjectSize!]!
+    "Retrieve all installed PostgreSQL extensions with version information."
+    installedExtensions: [PgExtension!]!
+    "Retrieve PgBouncer connection pooler status. Returns available=false when PgBouncer is not in the connection path."
+    pgBouncerInfo: PgBouncerInfo!
+    "Retrieve streaming replication status for all connected standby servers."
+    replicationStatus: [PgReplicationStatus!]!
+    "Whether this PostgreSQL server is running as a standby replica."
+    isInRecovery: Boolean!
+}
+
+"Mutation operations for PostgreSQL database administration."
+type PostgresAdminMutation {
+    "Cancel a running query by backend process ID. Returns true if the cancel signal was sent."
+    cancelQuery(
+        "The process ID of the backend to cancel."
+        pid: Int!
+    ): Boolean!
+    "Terminate a backend process by process ID. Returns true if the terminate signal was sent."
+    terminateBackend(
+        "The process ID of the backend to terminate."
+        pid: Int!
+    ): Boolean!
+    "Run ANALYZE on a specific table to update query planner statistics."
+    analyzeTable(
+        "The schema containing the table."
+        schemaName: String!
+        "The name of the table to analyze."
+        tableName: String!
+    ): Boolean!
+    "Reset the pg_stat_statements statistics counters (requires pg_stat_statements extension)."
+    resetStatStatements: Boolean!
+    "Run VACUUM on a specific table to reclaim storage from dead tuples."
+    vacuumTable(
+        "The schema containing the table."
+        schemaName: String!
+        "The name of the table to vacuum."
+        tableName: String!
+        "Whether to perform a VACUUM FULL (rewrites entire table, requires exclusive lock). Default: false."
+        full: Boolean
+    ): Boolean!
+    "Rebuild an index to reclaim bloated space and restore optimal performance."
+    reindex(
+        "The schema containing the index."
+        schemaName: String!
+        "The name of the index to rebuild."
+        indexName: String!
+    ): Boolean!
+}
+
+extend type Query {
+    "Access PostgreSQL database monitoring and introspection operations for viewing database health, performance, and configuration."
+    postgresAdmin: PostgresAdmin!
+}
+
+extend type Mutation {
+    "Access PostgreSQL admin mutation operations for canceling queries, terminating backends, and running maintenance."
+    postgresAdmin: PostgresAdminMutation!
+}

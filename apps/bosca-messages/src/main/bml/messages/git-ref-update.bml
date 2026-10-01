@@ -1,0 +1,53 @@
+{# Git ref activity — branch and tag creation, updates, and deletion. The default pipeline sends
+   it to the repository owner; operators can change recipients or disable noisy ref classes. #}
+<message key="git-ref-update">
+  <script server provides="m">
+    import bosca.messages.GitRefUpdateNotification
+    message.payload(GitRefUpdateNotification.serializer())
+  </script>
+  <script server provides="assets">message.assetsUrl ?: error("BmlMessageContext.assetsUrl is required — emails cannot reference relative asset URLs")</script>
+  <script server provides="kindLabel">if (m.kind == "TAG") t("git-ref.kind.tag", "Tag") else t("git-ref.kind.branch", "Branch")</script>
+  <script server provides="actionLabel">
+    when (m.action) {
+      "CREATED" -> t("git-ref.action.created", "created")
+      "DELETED" -> t("git-ref.action.deleted", "deleted")
+      else -> t("git-ref.action.updated", "updated")
+    }
+  </script>
+  <script server provides="subject">t("git-ref.subject", "{kind} {ref} {action} in {repository}", "kind" to kindLabel, "ref" to m.refName, "action" to actionLabel, "repository" to m.repositoryName)</script>
+  <script server provides="headline">t("git-ref.headline", "{kind} {action}", "kind" to kindLabel, "action" to actionLabel)</script>
+  <script server provides="eyebrow">t("git-ref.eyebrow", "Git · Repository activity")</script>
+  <script server provides="cta">t("git-ref.cta", "View repository")</script>
+  <script server provides="reason">t("git-ref.reason", "You're receiving this because you own this repository on {appName}.", "appName" to m.appName)</script>
+  <script server provides="beforeShort">m.beforeSha?.take(10).orEmpty()</script>
+  <script server provides="afterShort">m.afterSha?.take(10).orEmpty()</script>
+  <email>
+    <subject>{ subject }</subject>
+    <bosca-shell :brand="m.appName" :logo="m.logoUrl" :logoOnly="m.logoOnly" title="{ m.appName } · Git Activity" :preheader="subject" :assets="assets" :unsubscribe="message.unsubscribeUrl" :preferences="message.preferencesUrl" :reason="reason" :primaryColor="m.primaryColor">
+
+      <bosca-heading :eyebrow="eyebrow" :headline="headline" :name="message.recipientName" :primaryColor="m.primaryColor" :accentColor="m.accentColor">
+        <span t="git-ref.lede">There is new activity in { m.repositoryName }.</span>
+      </bosca-heading>
+
+      <panel :accentColor="m.accentColor">
+        <p class="em-metalabel" style="margin:0;font-family:'Geist Mono',ui-monospace,Menlo,Consolas,monospace;font-size:10px;letter-spacing:0.18em;font-weight:500;text-transform:uppercase;color:{ m.accentColor };">{ m.repositoryName }&nbsp;&nbsp;·&nbsp;&nbsp;{ kindLabel }</p>
+        <p style="margin:8px 0 0;font-family:'Geist Mono',ui-monospace,Menlo,Consolas,monospace;font-weight:600;font-size:16px;line-height:1.4;color:{ m.primaryColor };word-break:break-word;">{ m.refName }</p>
+        <if beforeShort.isNotBlank() || afterShort.isNotBlank()>
+          <p style="margin:7px 0 0;font-family:'Geist Mono',ui-monospace,Menlo,Consolas,monospace;font-size:11px;line-height:1.5;color:#5a6072;"><if beforeShort.isNotBlank()>{ beforeShort }</if><if beforeShort.isNotBlank() && afterShort.isNotBlank()> → </if><if afterShort.isNotBlank()>{ afterShort }</if></p>
+        </if>
+        <if m.commitMessages.isNotEmpty()>
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:16px 0 0;border-top:1px solid #e5e8ee;">
+            <for message in m.commitMessages>
+              <tr><td style="padding:9px 0;border-bottom:1px solid #e5e8ee;font-family:'Geist',-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:13px;line-height:1.5;color:#34394a;">{ message }</td></tr>
+            </for>
+          </table>
+        </if>
+        <if m.taskKeys.isNotEmpty()>
+          <p style="margin:12px 0 0;font-family:'Geist Mono',ui-monospace,Menlo,Consolas,monospace;font-size:11px;line-height:1.5;color:#5a6072;">{ m.taskKeys.joinToString(" · ") }</p>
+        </if>
+        <cta-button wide :href="m.repositoryUrl" :label="cta" :primaryColor="m.primaryColor"/>
+      </panel>
+
+    </bosca-shell>
+  </email>
+</message>

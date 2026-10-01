@@ -1,0 +1,85 @@
+{{- if .Values.autoRegister.enabled }}
+{{- $serverUrl := .Values.autoRegister.serverUrl }}
+{{- if not $serverUrl }}
+{{- $serverUrl = printf "http://bosca-server.%s.svc.cluster.local:8080" .Release.Namespace }}
+{{- end }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "bosca-common.fullname" . }}-register-cluster
+  labels:
+    {{- include "bosca-common.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": {{ .Values.autoRegister.hookWeight | quote }}
+    # `before-hook-creation` (not `hook-succeeded`) so a failed Job's pod
+    # sticks around for log inspection; the next install/upgrade replaces it.
+    "helm.sh/hook-delete-policy": before-hook-creation
+spec:
+  ttlSecondsAfterFinished: {{ .Values.autoRegister.ttlSecondsAfterFinished }}
+  backoffLimit: 2
+  activeDeadlineSeconds: {{ mul (int .Values.autoRegister.retries) (int .Values.autoRegister.retryDelaySeconds) | add 120 }}
+  template:
+    metadata:
+      labels:
+        {{- include "bosca-common.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: register-cluster
+    spec:
+      serviceAccountName: {{ include "bosca-common.serviceAccountName" . }}
+      restartPolicy: OnFailure
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: register
+          image: {{ include "bosca-common.image" (merge (dict "tag" .Values.autoRegister.image.tag) .Values.autoRegister.image) }}
+          imagePullPolicy: {{ include "bosca-common.imagePullPolicy" .Values.autoRegister.image }}
+          command: ["/bin/sh", "/scripts/register.sh"]
+          env:
+            - name: SERVER_URL
+              value: {{ $serverUrl | quote }}
+            - name: CLUSTER_NAME
+              value: {{ .Values.autoRegister.name | quote }}
+            - name: CLUSTER_PROVIDER
+              value: {{ .Values.autoRegister.provider | quote }}
+            - name: CLUSTER_REGION
+              value: {{ .Values.autoRegister.region | quote }}
+            - name: CLUSTER_ENVIRONMENT
+              value: {{ .Values.autoRegister.environment | quote }}
+            - name: ADMIN_IDENTIFIER
+              value: {{ .Values.autoRegister.adminSecret.identifier | quote }}
+            - name: RETRIES
+              value: {{ .Values.autoRegister.retries | quote }}
+            - name: RETRY_DELAY
+              value: {{ .Values.autoRegister.retryDelaySeconds | quote }}
+          volumeMounts:
+            - name: script
+              mountPath: /scripts
+              readOnly: true
+            - name: admin-password
+              mountPath: /etc/bosca-bootstrap
+              readOnly: true
+            - name: sa-token
+              mountPath: /etc/bosca-sa-token
+              readOnly: true
+          resources:
+            {{- toYaml .Values.autoRegister.resources | nindent 12 }}
+      volumes:
+        - name: script
+          configMap:
+            name: {{ include "bosca-common.fullname" . }}-register-cluster
+            defaultMode: 0755
+        - name: admin-password
+          secret:
+            secretName: {{ .Values.autoRegister.adminSecret.name }}
+            items:
+              - key: {{ .Values.autoRegister.adminSecret.key }}
+                path: admin_password
+        # Long-lived SA token populated by kube-controller-manager. See
+        # templates/secret-sa-token.yaml for why we don't use the pod's
+        # own projected token at /var/run/secrets/kubernetes.io/...
+        - name: sa-token
+          secret:
+            secretName: {{ include "bosca-common.fullname" . }}-sa-token
+{{- end }}

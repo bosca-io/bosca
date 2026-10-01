@@ -1,0 +1,107 @@
+# Work Ops — BQL search and saved filters (R10)
+#
+# Per R10 the dashboard surface itself lives in `core-analytics`
+# (workops contributes data sources, not parallel dashboards) —
+# what ships here is the BQL search + saved-filter entry points
+# those dashboards consume. Phase 18 (R32) layers the analytics-
+# query data sources on top.
+
+"""
+A parser / validator failure carrying the byte-offset window of the
+offending source span. The Excellence Bar non-negotiable requires
+LLM-readable parser errors; the [start] / [end] bounds let an LLM
+pick the exact characters to fix on retry.
+"""
+type WorkOpsBqlError {
+    message: String!
+    "Byte offset of the first character of the offending span (inclusive)."
+    start: Int!
+    "Byte offset just past the last character of the offending span."
+    end: Int!
+    "One-line 'did you mean' suggestion when the fix is unambiguous."
+    hint: String
+}
+
+"""
+Result of `validateBql` — empty `errors` means the query parses and
+validates against the field catalog cleanly.
+"""
+type WorkOpsBqlValidationResult {
+    errors: [WorkOpsBqlError!]!
+}
+
+"""
+A task search hit + the free-text fragments the planner peeled off.
+Phase 6 includes those fragments so Phase 23 can light up the
+Meilisearch leg without re-parsing the query.
+"""
+type WorkOpsTaskSearchResult {
+    rows: [WorkOpsTask!]!
+    "Free-text fragments extracted from `~` operators against TEXT fields."
+    freeTextTerms: [String!]!
+}
+
+"""
+A spec search hit + the free-text fragments the planner peeled off.
+Mirrors WorkOpsTaskSearchResult for consistency.
+"""
+type WorkOpsSpecSearchResult {
+    rows: [WorkOpsSpec!]!
+    "Free-text fragments extracted from `~` operators against TEXT fields."
+    freeTextTerms: [String!]!
+}
+
+"""
+A saved BQL query stored under the owner's profile (R10). Phase 6
+ships owner-only saving; richer visibility flavors land alongside
+the Phase 7 permission scheme.
+"""
+type WorkOpsSavedFilter {
+    id: UUID!
+    ownerProfileId: UUID!
+    name: String!
+    description: String
+    bqlSource: String!
+    parsedAst: JSON!
+    createdAt: DateTime!
+    modifiedAt: DateTime!
+    version: Long!
+}
+
+input WorkOpsSavedFilterInput {
+    name: String!
+    description: String
+    bqlSource: String!
+}
+
+type WorkOpsSavedFilters {
+    "Saved filters owned by the calling profile (Phase 6 ships owner-only listing)."
+    mine(offset: Long! = 0, limit: Int! = 50): [WorkOpsSavedFilter!]!
+    savedFilter(id: UUID!): WorkOpsSavedFilter
+
+    """
+    Validate a BQL source string against the parser + field catalog
+    without running SQL. Empty errors list = the query is safe to run.
+    """
+    validateBql(source: String!): WorkOpsBqlValidationResult!
+
+    """
+    Search tasks by BQL. Phase 6 executes the structural part directly
+    against Postgres; the free-text fragments come back so Phase 23
+    can fan the same query into Meilisearch.
+    """
+    searchTasks(source: String!, offset: Long! = 0, limit: Int! = 50): WorkOpsTaskSearchResult!
+
+    """
+    Search specs by BQL. Uses the spec field catalog (key, status,
+    owner, project, labels, created, modified) and the same planner
+    pipeline as searchTasks.
+    """
+    searchSpecs(source: String!, offset: Long! = 0, limit: Int! = 50): WorkOpsSpecSearchResult!
+}
+
+type WorkOpsSavedFiltersMutation {
+    create(input: WorkOpsSavedFilterInput!): WorkOpsSavedFilter!
+    update(id: UUID!, input: WorkOpsSavedFilterInput!, expectedVersion: Long!): WorkOpsSavedFilter!
+    delete(id: UUID!): Boolean!
+}

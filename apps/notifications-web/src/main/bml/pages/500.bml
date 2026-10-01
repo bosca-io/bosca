@@ -1,0 +1,26 @@
+{# Server error: a page loader failed upstream. BmlServer discards the failed render and answers
+   with this page under a real 500 status (the failure is logged with its route), so the URL is
+   still the failed page's own — "Try again" is a plain reload. Also routable directly. #}
+<page route="/500">
+  <script server provides="branding">
+    bosca.notifications.web.branding()
+  </script>
+
+  <site-layout title="Something went wrong" :brand="branding.name" :logo="branding.logoUrl" :footer="branding.footerText">
+    <main class="wrap">
+      <div class="card">
+        <h1>Something went wrong</h1>
+        <p class="sub">We couldn't load this page. It's not you — try again in a moment.</p>
+        <div class="actions">
+          <button class="primary" type="button" onclick="location.reload()">Try again</button>
+        </div>
+      </div>
+    </main>
+
+    <style>
+      .actions {
+        margin-top: 18px;
+      }
+    </style>
+  </site-layout>
+</page>

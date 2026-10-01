@@ -1,0 +1,9 @@
+"A JWT access token issued after successful authentication, used to authorize subsequent API requests"
+type Token {
+    "Unix timestamp (seconds since epoch) when this token expires and can no longer be used for authentication"
+    expiresAt: Int!
+    "Unix timestamp (seconds since epoch) when this token was issued"
+    issuedAt: Int!
+    "The encoded JWT token string to include in the Authorization header as a Bearer token"
+    token: String!
+}

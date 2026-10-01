@@ -1,0 +1,196 @@
+suite: bosca-runner application.yaml configmap
+templates:
+  - templates/configmap-appconfig.yaml
+values:
+  - ../values.yaml
+set:
+  global:
+    domain: example.com
+  appConfig:
+    domain: example.com
+    databaseUrl: "jdbc:postgresql://postgres-bosca-rw:5432/bosca"
+    natsHost: nats
+    meilisearchHost: meilisearch
+release:
+  namespace: bosca
+tests:
+  - it: renders a ConfigMap
+    asserts:
+      - isKind:
+          of: ConfigMap
+
+  - it: disables response compression by default
+    asserts:
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: "compression-enabled: false"
+
+  - it: can enable response compression
+    set:
+      appConfig.compressionEnabled: true
+    asserts:
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: "compression-enabled: true"
+
+  - it: includes runner-specific config (scheduler, runners list)
+    asserts:
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: "scheduler:"
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: "indexQueueRunner"
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: "contentQueueRunner"
+
+  - it: enables the ecommerce and feeds queue runners
+    asserts:
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: "ecomQueueRunner"
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: "feedsQueueRunner"
+
+  - it: disables ecommerce by default
+    asserts:
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: "ecommerce:\\s*\\n\\s*enabled: false"
+
+  - it: enables ecommerce when ecommerceEnabled is set
+    set:
+      appConfig.ecommerceEnabled: true
+    asserts:
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: "ecommerce:\\s*\\n\\s*enabled: true"
+
+  - it: uses NATS for cache/queue (not Redis)
+    asserts:
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: "cache:\\s*\\n\\s*type: nats"
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: "jobQueue:\\s*\\n\\s*factory: nats"
+
+  - it: defaults experiment aggregation to the Bosca warehouse events table
+    asserts:
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: 'experimentation:\s*\n\s*eventsTable: "warehouse.bosca.events"'
+
+  - it: renders a deployment-specific warehouse events table
+    set:
+      appConfig.experimentationEventsTable: warehouse.passion.events
+    asserts:
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: 'experimentation:\s*\n\s*eventsTable: "warehouse.passion.events"'
+
+  - it: contains NATS monitoring URL with namespace
+    asserts:
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: 'monitoringUrl: "\$NATS_MONITORING_URL:http://nats.bosca.svc.cluster.local:8222"'
+
+  - it: wires the welcome URL to WELCOME_EMAIL_URL
+    asserts:
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: 'welcome-url: "\$WELCOME_EMAIL_URL:"'
+
+  - it: renders an explicit security alert destination
+    set:
+      appConfig.securityAlertUrl: https://profiles.example/security?tab=logins
+    asserts:
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: 'security-alert-url: "https://profiles.example/security\?tab=logins"'
+
+  - it: renders an explicit social notification origin
+    set:
+      appConfig.socialNotificationsUrl: https://social.example
+    asserts:
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: 'social:\s*\n\s*notifications:\s*\n\s*url: "https://social.example"'
+
+  - it: renders an explicit profile notification origin
+    set:
+      appConfig.profileNotificationsUrl: https://profiles.example
+    asserts:
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: 'profile-url: "https://profiles.example"'
+
+  - it: wires Google GenAI to the service-account environment variable
+    asserts:
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: 'genai:\s*\n\s*vertexai:\s*\n\s*enabled: false\s*\n\s*account: \$\{GOOGLE_GENAI_ACCOUNT:\}'
+
+  - it: enables analyticsProcessor and wires the Iceberg writer
+    asserts:
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: "analyticsProcessor:\\s*\\n\\s*enabled: true"
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: "iceberg:\\s*\\n\\s*catalog: \"bosca\""
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: "username: \\$ICEBERG_DATABASE_USER"
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: "password: \\$ICEBERG_DATABASE_PASSWORD"
+
+  - it: enables git-sync listeners by default (the runner owns pull listening)
+    asserts:
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: "sync:\\s*\\n\\s*listeners: true"
+
+  - it: honors an explicit gitSync.listeners false override
+    set:
+      appConfig.gitSync.listeners: false
+    asserts:
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: "sync:\\s*\\n\\s*listeners: false"
+
+  - it: renders the opt-in Kubernetes CI profile allowlist
+    set:
+      appConfig.kubernetesJobProfiles:
+        - android
+        - gpu
+    asserts:
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: "kubernetesJobProfiles:\\s*\\n\\s*- android\\s*\\n\\s*- gpu"
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: "kubernetes:\\s*\\n\\s*enabled: true"
+
+  - it: inherits and enables the umbrella Kubernetes CI profile allowlist
+    set:
+      global.ciKubernetesJobProfiles:
+        - android
+    asserts:
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: "kubernetesJobProfiles:\\s*\\n\\s*- android"
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: "kubernetes:\\s*\\n\\s*enabled: true"
+
+  - it: can enable generic Kubernetes dispatch without CI profiles
+    set:
+      appConfig.kubernetesEnabled: true
+    asserts:
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: "kubernetes:\\s*\\n\\s*enabled: true"

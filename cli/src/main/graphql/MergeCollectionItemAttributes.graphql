@@ -1,0 +1,7 @@
+mutation MergeCollectionItemAttributes($id: UUID!, $itemId: UUID!, $attributes: JSON!) {
+    content {
+        collection {
+            mergeCollectionItemAttributes(id: $id, itemId: $itemId, attributes: $attributes)
+        }
+    }
+}

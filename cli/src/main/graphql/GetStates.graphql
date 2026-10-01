@@ -1,0 +1,7 @@
+query GetStates {
+    states {
+        all {
+            ...WorkflowState
+        }
+    }
+}

@@ -1,0 +1,17 @@
+# =============================================================================
+# kubernetes-controller native image (GraalVM 25)
+#
+# The native binary is pre-built by CI using Gradle nativeCompile.
+#
+# Build context is the repository root.
+# =============================================================================
+FROM debian:bookworm-slim
+
+ARG ARTIFACT_SHA
+RUN mkdir /app
+WORKDIR /app
+COPY artifacts/${ARTIFACT_SHA}/kubernetes-controller-native/bosca-kubernetes-controller /app/bosca-kubernetes-controller
+RUN chmod +x ./bosca-kubernetes-controller
+
+EXPOSE 8082
+ENTRYPOINT ["./bosca-kubernetes-controller"]

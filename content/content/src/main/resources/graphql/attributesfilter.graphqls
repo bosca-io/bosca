@@ -1,0 +1,7 @@
+"Filter for selecting specific attribute keys from a JSON attributes object, with support for nested filtering"
+input AttributesFilterInput {
+    "List of top-level attribute keys to include in the result"
+    attributes: [String!]!
+    "Optional nested filter to apply to child attributes within the selected keys"
+    childAttributes: AttributesFilterInput
+}

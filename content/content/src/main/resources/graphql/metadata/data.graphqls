@@ -1,0 +1,71 @@
+"The structural format of a data metadata item, determining how the data is stored and presented"
+enum DataType {
+    "Key-value attribute pairs, suitable for structured metadata like tags, properties, or configuration"
+    ATTRIBUTES
+    "Tabular data with rows and columns, suitable for spreadsheet-like content"
+    TABLE
+}
+
+"Structured data content associated with a metadata item, representing either key-value attributes or tabular data"
+type Data {
+    "The structural format of this data (attributes or table)"
+    type: DataType!
+    "The template that defines the schema and structure of this data, if one is assigned"
+    template: Metadata
+}
+
+"Real-time collaboration state for data content, used for concurrent editing support"
+type DataCollaboration {
+    "Binary collaboration document content encoded as an array of byte values (e.g. Yjs or CRDT state)"
+    content: [Int!]!
+    "Timestamp when the collaboration state was first created"
+    created: DateTime!
+    "Timestamp when the collaboration state was last modified"
+    modified: DateTime!
+}
+
+"A template that defines the schema and default values for data metadata items"
+type DataTemplate {
+    "The structural format for data items using this template"
+    type: DataType!
+    "The metadata item that represents this template"
+    metadata: Metadata
+    "Attribute definitions that specify the fields available in data items using this template"
+    attributes: [TemplateAttribute!]!
+    "Default attribute values applied when creating new data items from this template"
+    defaultAttributes: JSON
+}
+
+"Query type for listing all available data templates"
+type DataTemplates {
+    "All data templates available in the system"
+    all: [DataTemplate!]!
+}
+
+"Input for creating or updating a data template, defining its attribute schema and defaults"
+input DataTemplateInput {
+    "Attribute definitions specifying the fields available in data items using this template"
+    attributes: [TemplateAttributeInput!]!
+    "Default attribute values applied when creating new data items from this template"
+    defaultAttributes: JSON
+    "ID of the metadata item that represents this template"
+    templateMetadataId: UUID
+    "Version of the template metadata item"
+    templateMetadataVersion: Int
+    "The structural format for data items using this template"
+    type: DataType
+}
+
+"Mutation operations for managing a data template's attributes, defaults, and structural type"
+type DataTemplateMutation {
+    "Add a new attribute definition to the data template at the specified sort position"
+    addAttribute(attribute: TemplateAttributeInput!, sort: Int!): Metadata!
+    "Delete an attribute definition from the data template by key"
+    deleteAttribute(key: String!): Metadata
+    "Replace all attribute definitions on the data template"
+    setAttributes(attributes: [TemplateAttributeInput!]!): Metadata
+    "Set the default attribute values applied to new data items using this template"
+    setDefaultAttributes(attributes: JSON!): Metadata!
+    "Set the structural format type for data items using this template"
+    setType(type: DataType!): Metadata!
+}

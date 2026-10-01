@@ -1,0 +1,55 @@
+suite: bosca-server HTTPRoute
+templates:
+  - templates/httproute.yaml
+values:
+  - ../values.yaml
+set:
+  global:
+    domain: example.com
+tests:
+  - it: does not render when gateway disabled
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: renders HTTPRoute when gateway enabled
+    set:
+      gateway:
+        enabled: true
+        gatewayName: bosca-gateway
+        hostnames:
+          - example.com
+          - api.example.com
+    asserts:
+      - isKind:
+          of: HTTPRoute
+      - equal:
+          path: spec.parentRefs[0].name
+          value: bosca-gateway
+      - equal:
+          path: spec.hostnames[0]
+          value: example.com
+      - lengthEqual:
+          path: spec.rules
+          count: 1
+      - notExists:
+          path: spec.rules[0].matches
+      - equal:
+          path: spec.rules[0].backendRefs[0].port
+          value: 8080
+
+  - it: uses h2c when HTTP2 is enabled
+    set:
+      gateway:
+        enabled: true
+        gatewayName: bosca-gateway
+        hostnames:
+          - example.com
+      appConfig.http2Enabled: true
+    asserts:
+      - lengthEqual:
+          path: spec.rules
+          count: 1
+      - equal:
+          path: spec.rules[0].backendRefs[0].port
+          value: 8081

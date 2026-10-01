@@ -1,0 +1,53 @@
+schema {
+    query: Query
+}
+
+scalar Long
+scalar UUID
+
+type Query {
+    chat: Chat!
+}
+
+type Chat {
+    channel(id: UUID!): ChatChannel
+}
+
+type ChatChannel {
+    messages(before: Long, after: Long, limit: Int): [ChatMessage!]!
+}
+
+type ChatMessage {
+    sequence: Long!
+    content: [MessageContent!]!
+    reactions: [MessageReaction!]!
+    deleted: Boolean!
+}
+
+type MessageReaction {
+    id: UUID!
+    emoji: String!
+}
+
+type MessageContent {
+    type: MessageContentType!
+    content: String!
+}
+
+enum MessageContentType {
+    TEXT
+    HTML
+    IMAGE
+    VIDEO
+    AUDIO
+    FILE
+    PRAYER
+    ACTIVITY
+    METADATA
+    COLLECTION
+    LOCALIZATION
+    CALENDAR_EVENT
+    FEATURE_FLAG
+    EXPERIMENT
+    MENTION
+}

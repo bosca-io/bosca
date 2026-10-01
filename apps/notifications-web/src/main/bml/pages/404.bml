@@ -1,0 +1,17 @@
+{# Not found: where stale or mistyped links land. The server answers unmatched loader flags
+   (ctx.notFound) with this page under a real 404 status. #}
+<page route="/404">
+  <script server provides="branding">
+    bosca.notifications.web.branding()
+  </script>
+
+  <site-layout title="Not found" :brand="branding.name" :logo="branding.logoUrl" :footer="branding.footerText">
+    <main class="wrap">
+      <div class="card">
+        <h1>Page not found</h1>
+        <p class="sub">This page doesn't exist. If you followed a link from an email, open a
+        newer email from us and use its "Manage preferences" or "Unsubscribe" link.</p>
+      </div>
+    </main>
+  </site-layout>
+</page>
