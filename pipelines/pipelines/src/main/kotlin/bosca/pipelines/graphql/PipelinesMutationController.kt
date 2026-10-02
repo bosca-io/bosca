@@ -27,10 +27,6 @@ import bosca.pipelines.service.PipelineSecretService
 import bosca.pipelines.service.PipelineService
 import bosca.pipelines.service.PipelineShapeService
 import bosca.pipelines.service.requireCompleted
-import bosca.pipelines.trigger.PipelineScheduledRunExecutor
-import bosca.pipelines.trigger.PipelineScheduledRunJob
-import bosca.scheduler.model.ScheduledJobInput
-import bosca.scheduler.service.SchedulerService
 import bosca.security.model.PermissionAction
 import bosca.security.model.PermissionInput
 import bosca.security.service.AuthenticationContext
@@ -93,51 +89,10 @@ class PipelinesMutationController(
     private val gitSyncService: ObjectProvider<PipelineGitSyncService>,
     private val runService: PipelineRunService,
     private val secretService: PipelineSecretService,
-    private val schedulerService: ObjectProvider<SchedulerService>,
     private val shapeService: PipelineShapeService,
 ) : GraphQLController<PipelinesMutation> {
 
     private val log = LoggerFactory.getLogger(PipelinesMutationController::class.java)
-
-    /**
-     * Mirror a pipeline's cron [Pipeline.schedule] into a SchedulerService ScheduledJob:
-     * create when first scheduled, update the cron on change, delete when cleared. Matched to the
-     * pipeline by the [PipelineScheduledRunJob] id in the job's parameters. Best-effort — a scheduler
-     * hiccup is logged, not allowed to fail the save (mirrors the Git push-after-save).
-     */
-    private suspend fun syncSchedule(pipeline: Pipeline) {
-        if (!schedulerService.exists) return
-        try {
-            val scheduler = schedulerService.get()
-            val json = provide<Json>()
-            val existing = scheduler.getJobs(limit = SCHEDULE_SCAN_LIMIT).firstOrNull { job ->
-                job.jobName == PipelineScheduledRunExecutor.NAME &&
-                    runCatching { json.decodeFromJsonElement(PipelineScheduledRunJob.serializer(), job.jobParameters).pipelineId }
-                        .getOrNull() == pipeline.id
-            }
-            val cron = pipeline.schedule?.trim()?.takeIf { it.isNotEmpty() }
-            if (cron == null) {
-                existing?.let { scheduler.deleteJob(it.id) }
-                return
-            }
-            val input = ScheduledJobInput(
-                name = "Pipeline schedule: ${pipeline.name}",
-                description = "Scheduled run of pipeline ${pipeline.id}",
-                jobName = PipelineScheduledRunExecutor.NAME,
-                jobParameters = json.encodeToJsonElement(PipelineScheduledRunJob.serializer(), PipelineScheduledRunJob(pipeline.id)),
-                cronExpression = cron,
-                enabled = true,
-                allowConcurrent = false,
-                catchUp = false,
-                maxCatchUp = 1,
-            )
-            if (existing == null) scheduler.createJob(input, UUID.NIL) else scheduler.updateJob(existing.id, input)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            log.error("Failed to sync schedule for pipeline {}", pipeline.id, e)
-        }
-    }
 
     /**
      * Authorizes [run]/[dryRun]: public pipelines are open to anyone; otherwise the caller needs
@@ -190,7 +145,6 @@ class PipelinesMutationController(
             maxConcurrentRuns = input.maxConcurrentRuns,
             maxRunsPerMinute = input.maxRunsPerMinute,
         )
-        syncSchedule(saved)
         if (saved.gitRepositoryId != null) {
             pushAfterSave(saved.id, authorName, authorEmail)
         }
@@ -221,18 +175,7 @@ class PipelinesMutationController(
     @Field
     suspend fun delete(authentication: AuthenticationContext, id: UUID): Boolean {
         groups.verifyHasAdminGroup(authentication)
-        // Read for schedule teardown, but never let a broken graph — one that no longer decodes, so
-        // `get` throws — block the delete. Deleting such a pipeline is the whole point of surfacing it.
-        val existing = try {
-            service.get(id)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            null
-        }
         service.delete(id)
-        // Tear down any scheduled job for the deleted pipeline (sync with a null schedule = remove).
-        existing?.let { syncSchedule(it.copy(schedule = null)) }
         return true
     }
 
@@ -477,8 +420,5 @@ class PipelinesMutationController(
     private companion object {
         /** Run-history `eventName` for runs started by hand via the run mutation. */
         const val MANUAL_RUN = "manual"
-
-        /** Upper bound on scheduled jobs scanned to find a pipeline's existing schedule entry. */
-        const val SCHEDULE_SCAN_LIMIT = 1000
     }
 }

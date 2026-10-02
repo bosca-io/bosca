@@ -16,7 +16,6 @@ import bosca.pipelines.service.PipelineExecutor
 import bosca.pipelines.service.PipelineRunService
 import bosca.pipelines.service.PipelineSecretService
 import bosca.pipelines.service.PipelineService
-import bosca.scheduler.service.SchedulerService
 import bosca.security.service.AuthenticationContext
 import bosca.security.service.GroupEvaluator
 import bosca.serialization.UUID
@@ -49,7 +48,7 @@ import kotlin.uuid.ExperimentalUuidApi
  * paging arms in [PipelinesController], and for [PipelinesMutationController] the `Mutation.pipelines`
  * namespace object, the synthetic default-argument constructors of [PipelineInput] /
  * [PipelineBackfillEntryInput] (constructed from a partial subset of optional args), the
- * null-schedule sync arm, the `e.toString()` fallback when a thrown error carries no message, and the
+ * `e.toString()` fallback when a thrown error carries no message, and the
  * default-parameter overload of `signal`. Lives in its own file so the existing controller tests are
  * left untouched.
  */
@@ -101,20 +100,13 @@ class PipelinesControllerExtraTest {
     private val gitSync = mockk<PipelineGitSyncService>(relaxed = true)
     private val runService = mockk<PipelineRunService>(relaxed = true)
     private val secretService = mockk<PipelineSecretService>(relaxed = true)
-    private val scheduler = mockk<SchedulerService>(relaxed = true)
 
     private var gitExists = true
-    private var schedulerExists = true
 
     private val gitProvider = object : ObjectProvider<PipelineGitSyncService> {
         override val type = PipelineGitSyncService::class
         override val exists get() = gitExists
         override suspend fun get() = gitSync
-    }
-    private val schedulerProvider = object : ObjectProvider<SchedulerService> {
-        override val type = SchedulerService::class
-        override val exists get() = schedulerExists
-        override suspend fun get() = scheduler
     }
 
     private val mutationController = PipelinesMutationController(
@@ -125,7 +117,6 @@ class PipelinesControllerExtraTest {
         gitSyncService = gitProvider,
         runService = runService,
         secretService = secretService,
-        schedulerService = schedulerProvider,
         shapeService = mockk(relaxed = true),
     )
 
@@ -259,29 +250,6 @@ class PipelinesControllerExtraTest {
         assertNull(PipelineInput(id = gid, name = "P", acceptedInputType = "JSON", description = "d", triggered = true, key = "k", api = true, public = true, schedule = "c", maxConcurrentRuns = 1, version = 3, graph = g).maxRunsPerMinute)
         // omit version only
         assertNull(PipelineInput(id = gid, name = "P", acceptedInputType = "JSON", description = "d", triggered = true, key = "k", api = true, public = true, schedule = "c", maxConcurrentRuns = 1, maxRunsPerMinute = 2, graph = g).version)
-    }
-
-    // --- syncSchedule: null-schedule arm with the scheduler enabled ------------------------------
-
-    @Test
-    fun `save with a null schedule and the scheduler enabled tears down any existing job`() = runTest {
-        // schedulerExists true + pipeline.schedule null -> cron == null arm: scan, then delete the
-        // existing matching job (the schedule?.trim() safe-call left arm where schedule is null).
-        schedulerExists = true
-        val saved = pipeline(schedule = null, gitRepositoryId = null)
-        coEvery {
-            service.save(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any())
-        } returns saved
-        coEvery { scheduler.getJobs(any(), any(), any()) } returns emptyList()
-
-        mutationController.save(
-            auth,
-            PipelineInput(name = "P", acceptedInputType = "JSON", schedule = null, graph = JsonObject(emptyMap())),
-        )
-
-        coVerify(exactly = 1) { scheduler.getJobs(any(), any(), any()) }
-        coVerify(exactly = 0) { scheduler.createJob(any(), any()) }
-        coVerify(exactly = 0) { scheduler.updateJob(any(), any()) }
     }
 
     // --- run: e.toString() fallback when the thrown error has no message --------------------------

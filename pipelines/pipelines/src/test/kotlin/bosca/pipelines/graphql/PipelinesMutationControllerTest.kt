@@ -27,10 +27,6 @@ import bosca.pipelines.service.PipelineRunService
 import bosca.pipelines.service.PipelineSecretService
 import bosca.pipelines.service.PipelineService
 import bosca.pipelines.service.PipelineShapeService
-import bosca.pipelines.trigger.PipelineScheduledRunExecutor
-import bosca.scheduler.model.ScheduledJob
-import bosca.scheduler.model.ScheduledJobInput
-import bosca.scheduler.service.SchedulerService
 import bosca.security.model.PermissionAction
 import bosca.security.model.PermissionInput
 import bosca.security.service.AuthenticationContext
@@ -49,7 +45,6 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
-import java.time.OffsetDateTime
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -64,11 +59,11 @@ import kotlin.uuid.ExperimentalUuidApi
 /**
  * Branch coverage for [PipelinesMutationController] — the authoring / Git-sync / run-control
  * mutations behind `Mutation.pipelines`. Every guard (admin gate, public-vs-grant execute
- * authorization), every best-effort try/catch (schedule sync, Git push), and every model-mapping arm
+ * authorization), every best-effort try/catch (Git push after save), and every model-mapping arm
  * is exercised with both arms taken.
  *
  * Service calls are constructor-injected mockk; the two `provide<T>()` consumers (`provide<Json>()`
- * in dryRun/run/syncSchedule) are satisfied by registering a Json provider in [setUp].
+ * in dryRun/run) are satisfied by registering a Json provider in [setUp].
  */
 class PipelinesMutationControllerTest {
 
@@ -82,21 +77,14 @@ class PipelinesMutationControllerTest {
     private val runService = mockk<PipelineRunService>(relaxed = true)
     private val secretService = mockk<PipelineSecretService>(relaxed = true)
     private val shapeService = mockk<PipelineShapeService>(relaxed = true)
-    private val scheduler = mockk<SchedulerService>(relaxed = true)
 
     /** Backing flags so an [ObjectProvider] can report `exists` independently of `get()`. */
     private var gitExists = true
-    private var schedulerExists = true
 
     private val gitProvider = object : ObjectProvider<PipelineGitSyncService> {
         override val type = PipelineGitSyncService::class
         override val exists get() = gitExists
         override suspend fun get() = gitSync
-    }
-    private val schedulerProvider = object : ObjectProvider<SchedulerService> {
-        override val type = SchedulerService::class
-        override val exists get() = schedulerExists
-        override suspend fun get() = scheduler
     }
 
     private val controller = PipelinesMutationController(
@@ -107,7 +95,6 @@ class PipelinesMutationControllerTest {
         gitSyncService = gitProvider,
         runService = runService,
         secretService = secretService,
-        schedulerService = schedulerProvider,
         shapeService = shapeService,
     )
 
@@ -187,7 +174,6 @@ class PipelinesMutationControllerTest {
 
     @Test
     fun `save coalesces all nullable input fields to their defaults`() = runTest {
-        schedulerExists = false
         val saved = pipeline(gitRepositoryId = null)
         coEvery {
             service.save(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any())
@@ -217,7 +203,6 @@ class PipelinesMutationControllerTest {
 
     @Test
     fun `save passes through all present input fields`() = runTest {
-        schedulerExists = false
         val id = UUID.random()
         val saved = pipeline(id = id, gitRepositoryId = null)
         coEvery {
@@ -262,7 +247,6 @@ class PipelinesMutationControllerTest {
 
     @Test
     fun `save with a git-linked pipeline and author pushes to git`() = runTest {
-        schedulerExists = false
         gitExists = true
         val saved = pipeline(gitRepositoryId = UUID.random())
         coEvery {
@@ -277,7 +261,6 @@ class PipelinesMutationControllerTest {
 
     @Test
     fun `save with no git repository id never pushes`() = runTest {
-        schedulerExists = false
         val saved = pipeline(gitRepositoryId = null)
         coEvery {
             service.save(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any())
@@ -294,7 +277,6 @@ class PipelinesMutationControllerTest {
 
     @Test
     fun `pushAfterSave is skipped when git sync is unavailable`() = runTest {
-        schedulerExists = false
         gitExists = false
         val saved = pipeline(gitRepositoryId = UUID.random())
         coEvery {
@@ -307,7 +289,6 @@ class PipelinesMutationControllerTest {
 
     @Test
     fun `pushAfterSave is skipped when author name is null`() = runTest {
-        schedulerExists = false
         gitExists = true
         val saved = pipeline(gitRepositoryId = UUID.random())
         coEvery {
@@ -320,7 +301,6 @@ class PipelinesMutationControllerTest {
 
     @Test
     fun `pushAfterSave is skipped when author email is null`() = runTest {
-        schedulerExists = false
         gitExists = true
         val saved = pipeline(gitRepositoryId = UUID.random())
         coEvery {
@@ -333,7 +313,6 @@ class PipelinesMutationControllerTest {
 
     @Test
     fun `pushAfterSave logs a non-Ok sync result but the save still succeeds`() = runTest {
-        schedulerExists = false
         gitExists = true
         val saved = pipeline(gitRepositoryId = UUID.random())
         coEvery {
@@ -348,7 +327,6 @@ class PipelinesMutationControllerTest {
 
     @Test
     fun `pushAfterSave swallows a push exception but the save still succeeds`() = runTest {
-        schedulerExists = false
         gitExists = true
         val saved = pipeline(gitRepositoryId = UUID.random())
         coEvery {
@@ -362,7 +340,6 @@ class PipelinesMutationControllerTest {
 
     @Test
     fun `pushAfterSave rethrows cancellation`() = runTest {
-        schedulerExists = false
         gitExists = true
         val saved = pipeline(gitRepositoryId = UUID.random())
         coEvery {
@@ -373,153 +350,6 @@ class PipelinesMutationControllerTest {
         assertFailsWith<CancellationException> {
             controller.save(auth, input(), authorName = "Ada", authorEmail = "ada@x.io")
         }
-    }
-
-    // ---------------------------------------------------------------------------------------------
-    // syncSchedule (via save / delete)
-    // ---------------------------------------------------------------------------------------------
-
-    @Test
-    fun `syncSchedule is a no-op when the scheduler is unavailable`() = runTest {
-        schedulerExists = false
-        val saved = pipeline(schedule = "0 0 * * *", gitRepositoryId = null)
-        coEvery {
-            service.save(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any())
-        } returns saved
-
-        controller.save(auth, input(schedule = "0 0 * * *"))
-        coVerify(exactly = 0) { scheduler.getJobs(any(), any(), any()) }
-    }
-
-    @Test
-    fun `syncSchedule creates a new job when none exists and a cron is set`() = runTest {
-        schedulerExists = true
-        val saved = pipeline(name = "Nightly", schedule = "0 0 * * *", gitRepositoryId = null)
-        coEvery {
-            service.save(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any())
-        } returns saved
-        coEvery { scheduler.getJobs(any(), any(), any()) } returns emptyList()
-
-        controller.save(auth, input(name = "Nightly", schedule = "0 0 * * *"))
-
-        val captured = slot<ScheduledJobInput>()
-        coVerify(exactly = 1) { scheduler.createJob(capture(captured), UUID.NIL) }
-        assertEquals(PipelineScheduledRunExecutor.NAME, captured.captured.jobName)
-        assertEquals("0 0 * * *", captured.captured.cronExpression)
-        assertEquals("Pipeline schedule: Nightly", captured.captured.name)
-        coVerify(exactly = 0) { scheduler.updateJob(any(), any()) }
-    }
-
-    @Test
-    fun `syncSchedule updates the existing job when one already matches the pipeline`() = runTest {
-        schedulerExists = true
-        val pipelineId = UUID.random()
-        val saved = pipeline(id = pipelineId, schedule = "5 4 * * *", gitRepositoryId = null)
-        coEvery {
-            service.save(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any())
-        } returns saved
-        val jobId = UUID.random()
-        coEvery { scheduler.getJobs(any(), any(), any()) } returns listOf(existingScheduledJob(jobId, pipelineId))
-
-        controller.save(auth, input(schedule = "5 4 * * *"))
-
-        coVerify(exactly = 1) { scheduler.updateJob(jobId, any()) }
-        coVerify(exactly = 0) { scheduler.createJob(any(), any()) }
-    }
-
-    @Test
-    fun `syncSchedule deletes the existing job when the cron is cleared`() = runTest {
-        schedulerExists = true
-        val pipelineId = UUID.random()
-        val saved = pipeline(id = pipelineId, schedule = null, gitRepositoryId = null)
-        coEvery {
-            service.save(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any())
-        } returns saved
-        val jobId = UUID.random()
-        coEvery { scheduler.getJobs(any(), any(), any()) } returns listOf(existingScheduledJob(jobId, pipelineId))
-
-        controller.save(auth, input(schedule = null))
-
-        coVerify(exactly = 1) { scheduler.deleteJob(jobId) }
-        coVerify(exactly = 0) { scheduler.createJob(any(), any()) }
-        coVerify(exactly = 0) { scheduler.updateJob(any(), any()) }
-    }
-
-    @Test
-    fun `syncSchedule with a blank cron and no existing job deletes nothing`() = runTest {
-        schedulerExists = true
-        val saved = pipeline(schedule = "   ", gitRepositoryId = null)
-        coEvery {
-            service.save(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any())
-        } returns saved
-        coEvery { scheduler.getJobs(any(), any(), any()) } returns emptyList()
-
-        controller.save(auth, input(schedule = "   "))
-
-        coVerify(exactly = 0) { scheduler.deleteJob(any()) }
-        coVerify(exactly = 0) { scheduler.createJob(any(), any()) }
-        coVerify(exactly = 0) { scheduler.updateJob(any(), any()) }
-    }
-
-    @Test
-    fun `syncSchedule ignores a scheduled job whose parameters do not decode`() = runTest {
-        schedulerExists = true
-        val pipelineId = UUID.random()
-        val saved = pipeline(id = pipelineId, schedule = "0 0 * * *", gitRepositoryId = null)
-        coEvery {
-            service.save(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any())
-        } returns saved
-        // A matching-name job whose parameters are garbage: runCatching decode -> null != pipelineId, no match.
-        val garbage = existingScheduledJob(UUID.random(), pipelineId).copy(jobParameters = buildJsonObject { put("nope", "x") })
-        coEvery { scheduler.getJobs(any(), any(), any()) } returns listOf(garbage)
-
-        controller.save(auth, input(schedule = "0 0 * * *"))
-
-        // No match found -> create a fresh job rather than update the un-decodable one.
-        coVerify(exactly = 1) { scheduler.createJob(any(), UUID.NIL) }
-        coVerify(exactly = 0) { scheduler.updateJob(any(), any()) }
-    }
-
-    @Test
-    fun `syncSchedule ignores a job with a different job name`() = runTest {
-        schedulerExists = true
-        val pipelineId = UUID.random()
-        val saved = pipeline(id = pipelineId, schedule = "0 0 * * *", gitRepositoryId = null)
-        coEvery {
-            service.save(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any())
-        } returns saved
-        val otherJob = existingScheduledJob(UUID.random(), pipelineId).copy(jobName = "some-other-job")
-        coEvery { scheduler.getJobs(any(), any(), any()) } returns listOf(otherJob)
-
-        controller.save(auth, input(schedule = "0 0 * * *"))
-
-        coVerify(exactly = 1) { scheduler.createJob(any(), UUID.NIL) }
-        coVerify(exactly = 0) { scheduler.updateJob(any(), any()) }
-    }
-
-    @Test
-    fun `syncSchedule swallows a scheduler exception so the save still succeeds`() = runTest {
-        schedulerExists = true
-        val saved = pipeline(schedule = "0 0 * * *", gitRepositoryId = null)
-        coEvery {
-            service.save(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any())
-        } returns saved
-        coEvery { scheduler.getJobs(any(), any(), any()) } throws RuntimeException("scheduler down")
-
-        val result = controller.save(auth, input(schedule = "0 0 * * *"))
-        assertSame(saved, result)
-    }
-
-    @Test
-    fun `syncSchedule rethrows cancellation`() = runTest {
-        schedulerExists = true
-        val saved = pipeline(schedule = "0 0 * * *", gitRepositoryId = null)
-        coEvery {
-            service.save(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any())
-        } returns saved
-        coEvery { scheduler.getJobs(any(), any(), any()) } throws CancellationException("cancel")
-
-        assertFailsWith<CancellationException> { controller.save(auth, input(schedule = "0 0 * * *")) }
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -599,39 +429,11 @@ class PipelinesMutationControllerTest {
     }
 
     @Test
-    fun `delete removes the pipeline and tears down its schedule when it existed`() = runTest {
-        schedulerExists = true
+    fun `delete removes the pipeline`() = runTest {
         val id = UUID.random()
-        coEvery { service.get(id) } returns pipeline(id = id, schedule = "0 0 * * *")
-        coEvery { scheduler.getJobs(any(), any(), any()) } returns emptyList()
-
         assertTrue(controller.delete(auth, id))
         coVerify(exactly = 1) { service.delete(id) }
-        // The teardown sync runs with a null schedule -> no create/update, just a getJobs scan.
-        coVerify(exactly = 1) { scheduler.getJobs(any(), any(), any()) }
-        coVerify(exactly = 0) { scheduler.createJob(any(), any()) }
-    }
-
-    @Test
-    fun `delete on a missing pipeline does not sync a schedule`() = runTest {
-        schedulerExists = true
-        val id = UUID.random()
-        coEvery { service.get(id) } returns null
-
-        assertTrue(controller.delete(auth, id))
-        coVerify(exactly = 1) { service.delete(id) }
-        coVerify(exactly = 0) { scheduler.getJobs(any(), any(), any()) }
-    }
-
-    @Test
-    fun `delete still removes a pipeline whose broken graph cannot be read`() = runTest {
-        val id = UUID.random()
-        coEvery { service.get(id) } throws IllegalArgumentException("unknown node type")
-
-        assertTrue(controller.delete(auth, id))
-
-        coVerify(exactly = 1) { service.delete(id) }
-        coVerify(exactly = 0) { scheduler.getJobs(any(), any(), any()) }
+        coVerify(exactly = 0) { service.get(any()) }
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -1068,17 +870,6 @@ class PipelinesMutationControllerTest {
     // ---------------------------------------------------------------------------------------------
     // helpers
     // ---------------------------------------------------------------------------------------------
-
-    private fun existingScheduledJob(jobId: UUID, pipelineId: UUID): ScheduledJob = ScheduledJob(
-        id = jobId,
-        name = "Pipeline schedule",
-        jobName = PipelineScheduledRunExecutor.NAME,
-        jobParameters = buildJsonObject { put("pipelineId", pipelineId.toString()) },
-        cronExpression = "0 0 * * *",
-        createdAt = OffsetDateTime.now(),
-        updatedAt = OffsetDateTime.now(),
-        createdBy = UUID.NIL,
-    )
 
     private fun schemaPipeline(id: UUID): Pipeline {
         // An InputNode declaring JSON input with a schema requiring a property the empty payload lacks.

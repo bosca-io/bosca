@@ -68,6 +68,8 @@ interface PipelineService : PermissionService<Pipeline, UUID> {
      * Creates (when [id] is `UUID.NIL`) or updates a pipeline. [graph] is the node/edge graph as a
      * [JsonElement] (validated against the node registry before storing). Updates are optimistic-locked
      * by [version]. Exposing the pipeline as a REST endpoint ([api]) requires a non-blank [key].
+     * A non-blank [schedule] cron creates or updates the scheduled job that runs the pipeline; a
+     * null or blank one removes it. Scheduler failures are logged and do not fail the save.
      */
     suspend fun save(
         id: UUID,
@@ -86,6 +88,7 @@ interface PipelineService : PermissionService<Pipeline, UUID> {
         maxRunsPerMinute: Int? = null,
     ): Pipeline
 
+    /** Soft-deletes the pipeline and removes its scheduled job, if any. */
     suspend fun delete(id: UUID)
 
     /** The pipeline's node/edge graph as a [JsonElement] (drives the editor). */

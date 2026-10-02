@@ -94,6 +94,5 @@ class PipelineRunControlsTest {
         PipelinesMutationController(
             mockk(relaxed = true), groups, mockk(relaxed = true), mockk(relaxed = true),
             mockk(relaxed = true), runService, mockk(relaxed = true), mockk(relaxed = true),
-            mockk(relaxed = true),
         )
 }

@@ -42,6 +42,11 @@ import bosca.security.model.EntityPermission
 import bosca.security.model.PermissionAction
 import bosca.pubsub.PubSubService
 import bosca.pubsub.Message
+import bosca.scheduler.model.ScheduledJob
+import bosca.scheduler.model.ScheduledJobInput
+import bosca.scheduler.service.SchedulerService
+import bosca.pipelines.trigger.PipelineScheduledRunExecutor
+import bosca.pipelines.trigger.PipelineScheduledRunJob
 import bosca.security.service.SecurityService
 import bosca.serialization.OffsetDateTimeSerializer
 import bosca.serialization.UUID
@@ -280,8 +285,10 @@ class PipelineServiceImplGraphTest {
         executor: PipelineExecutor = mockk(relaxed = true),
         securityService: SecurityService = mockk(relaxed = true),
         pubSubProvider: ObjectProvider<PubSubService> = mockk(relaxed = true),
+        schedulerProvider: ObjectProvider<SchedulerService> = mockk(relaxed = true),
     ) = PipelineServiceImpl(
         repository, permissionRepository, executor, securityService, PipelinesRuntimeConfiguration(), pubSubProvider,
+        schedulerProvider,
     )
 
     /** A valid persisted graph element for building [PipelineRecord]s the service can decode. */
@@ -1219,5 +1226,119 @@ class PipelineServiceImplGraphTest {
         // `(... ?.get("type") as? JsonPrimitive)?.content ?: return null` takes the return-null arm —
         // it never reaches the (registered) descriptor lookup, so the result is null.
         assertNull(service().descriptorFor(InputNode(id = "in", acceptedType = "JSON")))
+    }
+
+    // --- schedule sync (save / delete) ------------------------------------------------------------
+
+    private val scheduler = mockk<SchedulerService>(relaxed = true)
+
+    private fun schedulerProvider(exists: Boolean = true) = mockk<ObjectProvider<SchedulerService>> {
+        every { this@mockk.exists } returns exists
+        coEvery { get() } returns scheduler
+    }
+
+    private fun scheduledJob(pipelineId: UUID, jobName: String = PipelineScheduledRunExecutor.NAME) = ScheduledJob(
+        id = UUID.random(),
+        name = "Pipeline schedule: p",
+        jobName = jobName,
+        jobParameters = baseJson.encodeToJsonElement(PipelineScheduledRunJob.serializer(), PipelineScheduledRunJob(pipelineId)),
+        cronExpression = "0 8 * * *",
+        createdAt = java.time.OffsetDateTime.now(),
+        updatedAt = java.time.OffsetDateTime.now(),
+        createdBy = UUID.NIL,
+    )
+
+    private suspend fun saveScheduled(id: UUID, schedule: String?, provider: ObjectProvider<SchedulerService> = schedulerProvider()): Pipeline {
+        val repo = mockk<PipelineRepository>()
+        coEvery { repo.update(any()) } answers { firstArg<PipelineRecord>().copy(id = id) }
+        return service(repository = repo, schedulerProvider = provider).save(
+            id = id, name = "p", description = "", acceptedInputType = "JSON", triggered = false,
+            version = 1, graph = graphElement(), schedule = schedule,
+        )
+    }
+
+    @Test
+    fun `save does not touch the scheduler when none is available`() = runTest {
+        saveScheduled(UUID.random(), "0 9 * * *", schedulerProvider(exists = false))
+        coVerify(exactly = 0) { scheduler.getJobs(any(), any(), any()) }
+    }
+
+    @Test
+    fun `saving a newly scheduled pipeline creates a job that runs it on the cron`() = runTest {
+        val id = UUID.random()
+        coEvery { scheduler.getJobs(any(), any(), any()) } returns emptyList()
+        saveScheduled(id, " 0 9 * * * ")
+        val input = slot<ScheduledJobInput>()
+        coVerify(exactly = 1) { scheduler.createJob(capture(input), UUID.NIL) }
+        assertEquals(PipelineScheduledRunExecutor.NAME, input.captured.jobName)
+        assertEquals("0 9 * * *", input.captured.cronExpression)
+        assertEquals("Pipeline schedule: p", input.captured.name)
+        assertEquals(id, baseJson.decodeFromJsonElement(PipelineScheduledRunJob.serializer(), input.captured.jobParameters).pipelineId)
+        coVerify(exactly = 0) { scheduler.updateJob(any(), any()) }
+    }
+
+    @Test
+    fun `saving a changed schedule updates the pipeline's existing job`() = runTest {
+        val id = UUID.random()
+        val job = scheduledJob(id)
+        coEvery { scheduler.getJobs(any(), any(), any()) } returns listOf(scheduledJob(UUID.random()), job)
+        saveScheduled(id, "0 10 * * *")
+        coVerify(exactly = 1) { scheduler.updateJob(job.id, match { it.cronExpression == "0 10 * * *" }) }
+        coVerify(exactly = 0) { scheduler.createJob(any(), any()) }
+    }
+
+    @Test
+    fun `clearing the schedule deletes the pipeline's job`() = runTest {
+        val id = UUID.random()
+        val job = scheduledJob(id)
+        coEvery { scheduler.getJobs(any(), any(), any()) } returns listOf(job)
+        saveScheduled(id, null)
+        coVerify(exactly = 1) { scheduler.deleteJob(job.id) }
+        coVerify(exactly = 0) { scheduler.createJob(any(), any()) }
+        coVerify(exactly = 0) { scheduler.updateJob(any(), any()) }
+    }
+
+    @Test
+    fun `a blank schedule with no existing job changes nothing`() = runTest {
+        coEvery { scheduler.getJobs(any(), any(), any()) } returns emptyList()
+        saveScheduled(UUID.random(), "   ")
+        coVerify(exactly = 0) { scheduler.deleteJob(any()) }
+        coVerify(exactly = 0) { scheduler.createJob(any(), any()) }
+        coVerify(exactly = 0) { scheduler.updateJob(any(), any()) }
+    }
+
+    @Test
+    fun `jobs with another name or undecodable parameters are not treated as the pipeline's schedule`() = runTest {
+        val id = UUID.random()
+        val garbage = scheduledJob(id).copy(jobParameters = buildJsonObject { put("nope", "x") })
+        coEvery { scheduler.getJobs(any(), any(), any()) } returns listOf(garbage, scheduledJob(id, jobName = "some-other-job"))
+        saveScheduled(id, "0 0 * * *")
+        coVerify(exactly = 1) { scheduler.createJob(any(), UUID.NIL) }
+        coVerify(exactly = 0) { scheduler.updateJob(any(), any()) }
+    }
+
+    @Test
+    fun `a scheduler failure is logged and does not fail the save`() = runTest {
+        val id = UUID.random()
+        coEvery { scheduler.getJobs(any(), any(), any()) } throws RuntimeException("scheduler down")
+        assertEquals(id, saveScheduled(id, "0 0 * * *").id)
+    }
+
+    @Test
+    fun `schedule sync rethrows cancellation`() = runTest {
+        coEvery { scheduler.getJobs(any(), any(), any()) } throws kotlinx.coroutines.CancellationException("cancel")
+        assertFailsWith<kotlinx.coroutines.CancellationException> { saveScheduled(UUID.random(), "0 0 * * *") }
+    }
+
+    @Test
+    fun `delete removes the pipeline's scheduled job without reading its graph`() = runTest {
+        val id = UUID.random()
+        val job = scheduledJob(id)
+        coEvery { scheduler.getJobs(any(), any(), any()) } returns listOf(scheduledJob(UUID.random()), job)
+        val repo = mockk<PipelineRepository>(relaxed = true)
+        service(repository = repo, schedulerProvider = schedulerProvider()).delete(id)
+        coVerify(exactly = 1) { repo.softDelete(id) }
+        coVerify(exactly = 1) { scheduler.deleteJob(job.id) }
+        coVerify(exactly = 0) { repo.getById(any()) }
     }
 }

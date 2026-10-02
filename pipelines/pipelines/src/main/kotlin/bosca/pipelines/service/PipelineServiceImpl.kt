@@ -24,7 +24,11 @@ import bosca.pipelines.node.SlotConnectionValidator
 import bosca.pipelines.repository.PipelinePermissionRepository
 import bosca.pipelines.repository.PipelineRecord
 import bosca.pipelines.repository.PipelineRepository
+import bosca.pipelines.trigger.PipelineScheduledRunExecutor
+import bosca.pipelines.trigger.PipelineScheduledRunJob
 import bosca.pubsub.PubSubService
+import bosca.scheduler.model.ScheduledJobInput
+import bosca.scheduler.service.SchedulerService
 import bosca.security.model.EntityPermission
 import bosca.security.model.PermissionAction
 import bosca.security.service.SecurityService
@@ -63,6 +67,7 @@ class PipelineServiceImpl(
     private val securityService: SecurityService,
     private val runtimeConfiguration: PipelinesRuntimeConfiguration,
     private val pubSubProvider: ObjectProvider<PubSubService>,
+    private val schedulerService: ObjectProvider<SchedulerService>,
 ) : PipelineService {
 
     private val log = org.slf4j.LoggerFactory.getLogger(PipelineServiceImpl::class.java)
@@ -290,6 +295,7 @@ class PipelineServiceImpl(
         triggeredTypesCache = null
         triggeredForCache.clear()
         publishTriggersChanged(saved.id)
+        syncSchedule(saved.id, saved.name, saved.schedule)
         return toPipeline(saved)
     }
 
@@ -320,6 +326,47 @@ class PipelineServiceImpl(
         triggeredTypesCache = null
         triggeredForCache.clear()
         publishTriggersChanged(id)
+        syncSchedule(id, null, null)
+    }
+
+    /**
+     * Mirror a pipeline's cron schedule into a SchedulerService ScheduledJob: create when first
+     * scheduled, update the cron on change, delete when cleared. Matched to the pipeline by the
+     * [PipelineScheduledRunJob] id in the job's parameters. Best-effort — a scheduler hiccup is
+     * logged, not allowed to fail the save or delete.
+     */
+    private suspend fun syncSchedule(pipelineId: UUID, name: String?, schedule: String?) {
+        if (!schedulerService.exists) return
+        try {
+            val scheduler = schedulerService.get()
+            val json = provide<Json>()
+            val existing = scheduler.getJobs(limit = SCHEDULE_SCAN_LIMIT).firstOrNull { job ->
+                job.jobName == PipelineScheduledRunExecutor.NAME &&
+                    runCatching { json.decodeFromJsonElement(PipelineScheduledRunJob.serializer(), job.jobParameters).pipelineId }
+                        .getOrNull() == pipelineId
+            }
+            val cron = schedule?.trim()?.takeIf { it.isNotEmpty() }
+            if (cron == null) {
+                existing?.let { scheduler.deleteJob(it.id) }
+                return
+            }
+            val input = ScheduledJobInput(
+                name = "Pipeline schedule: $name",
+                description = "Scheduled run of pipeline $pipelineId",
+                jobName = PipelineScheduledRunExecutor.NAME,
+                jobParameters = json.encodeToJsonElement(PipelineScheduledRunJob.serializer(), PipelineScheduledRunJob(pipelineId)),
+                cronExpression = cron,
+                enabled = true,
+                allowConcurrent = false,
+                catchUp = false,
+                maxCatchUp = 1,
+            )
+            if (existing == null) scheduler.createJob(input, UUID.NIL) else scheduler.updateJob(existing.id, input)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            log.error("Failed to sync schedule for pipeline {}", pipelineId, e)
+        }
     }
 
     override suspend fun run(pipeline: Pipeline, input: PipelineValue): PipelineValue? {
@@ -393,5 +440,8 @@ class PipelineServiceImpl(
         // Durable backstop for the triggered caches. Pub/sub handles timely cross-instance
         // invalidation; this only bounds staleness if a pub/sub message is ever missed.
         private const val TRIGGER_CACHE_TTL_MS = 300_000L
+
+        /** Upper bound on scheduled jobs scanned to find a pipeline's existing schedule entry. */
+        private const val SCHEDULE_SCAN_LIMIT = 1000
     }
 }
