@@ -2,7 +2,7 @@
 
 This spec covers bidirectional synchronization between Bosca Git and GitHub, authorization to use Bosca build infrastructure, and remote publication owned by Bosca Artifacts. Developers can work in either paired repository. CI/CD remains on Bosca infrastructure.
 
-Status: implementation in progress. Native Git CI build authorization, trigger retry handling, repository pairing and GitHub user mappings, verified GitHub delivery intake, and event dispatch to configured pipelines are implemented. Repository synchronization and remote artifact publication remain proposed work. Existing Git hosting, pipeline execution, permissions, and artifact storage are foundations to reuse.
+Status: implementation in progress. Native Git CI build authorization, trigger retry handling, repository pairing and GitHub user mappings, verified GitHub delivery intake, event dispatch to configured pipelines, and bidirectional branch/tag synchronization are implemented. Pull request mirroring and remote artifact publication remain to be implemented. Existing Git hosting, pipeline execution, permissions, and artifact storage are foundations to reuse.
 
 ## Implementation progress
 
@@ -12,12 +12,17 @@ Status: implementation in progress. Native Git CI build authorization, trigger r
 - [x] Native CI reserves each durable trigger job/pipeline occurrence in PostgreSQL. Reservation, run, jobs, and initial commit statuses share a transaction; redelivery skips committed work, and rolled-back attempts can retry.
 - [x] Administrator-controlled repository pairing and GitHub user mappings, raw-byte HMAC-SHA256 verification, and PostgreSQL delivery deduplication. Intake preserves originating principal attribution; unknown and bot users remain unattributed. Fork-origin pull request deliveries and unsupported event types are recorded as ignored.
 - [x] Event dispatch to existing triggered pipelines. Eligible deliveries dispatch `GitHubDelivery` events carrying the webhook ID, original receipt time and principal attribution. Redelivery dispatches the stored occurrence again. Unknown and bot users remain unattributed in the event data. The pipeline engine uses its established execution identity and job-history hooks.
-- [ ] Shared synchronization nodes and the two directional pipelines, including ref and pull request state, echo detection, conflicts, and reconciliation.
+- [x] Branch/tag synchronization nodes and directional event pipelines, preserving original objects and principal attribution, with persisted common refs, echo detection, conflict handling, and hourly reconciliation through existing pipeline jobs.
+- [x] Typed GitHub pull request API operations for current-state reads, paged listing, creation, metadata/lifecycle updates, and draft transitions, with local HTTP contract tests. Every operation verifies the paired repository's immutable ID before accessing the counterpart.
+- [ ] Pull request counterpart mappings and bidirectional lifecycle synchronization, including merge propagation, conflict handling, and reconciliation.
 - [ ] Artifacts-owned destination publication, verification, retries, and remote retention.
 - [x] Verified event-to-pipeline integration tests with PostgreSQL migrations, generated event dispatch and catalog, pipeline matching and run jobs, the real executor, transaction rollback, redelivery and originating-user data.
-- [ ] Synchronization node integration tests and isolated provider API checks.
+- [x] Ref synchronization integration tests with real PostgreSQL DFS refs/packs and Git transports: cancellation and ledger rollback, write-lock/commit boundaries, concurrent intake and reconciliation, late verified attribution, and native echo deduplication.
+- [ ] Pull request synchronization integration tests and isolated provider API checks.
+- [x] Git server native-image compilation with GraalVM 25 on macOS arm64, using `--no-configuration-cache`.
+- [ ] Native runtime validation of synchronization.
 
-The native CI occurrence reservation identifies a durable queue job. GitHub intake preserves one occurrence under the `X-GitHub-Delivery` identifier; a repeated identifier with a different repository, event, or payload digest is rejected. Pairing uses the immutable GitHub repository ID, and credentials are references to the existing encrypted Pipeline secret store. Apply Git migration `V44__github_intake.sql`. The administrator-configured inbound pipeline has `triggered = true` and input type `bosca.git.model.GitHubDelivery`; standard pipeline execution applies. Synchronization nodes must handle duplicate processing through the Git integration's state and preserve the originating principal through mirrored changes. Those nodes, pull request operation mapping and the retention choices below remain to be implemented or settled.
+The native CI occurrence reservation identifies a durable queue job. GitHub intake preserves one occurrence under the `X-GitHub-Delivery` identifier; a repeated identifier with a different repository, event, or payload digest is rejected. Pairing uses the immutable GitHub repository ID, and credentials are references to the existing encrypted Pipeline secret store. Apply Git migrations `V44__github_intake.sql` and `V45__github_ref_synchronization.sql`. The GitHub package installs ordinary inbound and outbound ref pipelines, plus hourly ref reconciliation. The inbound pipeline has `triggered = true` and input type `bosca.git.model.GitHubDelivery`; standard pipeline execution applies. Ref synchronization records completed push deliveries and retains their originating principal. Anonymous recovery can later attribute CI to a verified push only while that exact imported ref write remains current. Pull request operation mapping and the retention choices below remain to be implemented or settled.
 
 ## Two synchronization pipelines
 
