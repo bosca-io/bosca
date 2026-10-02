@@ -15,6 +15,11 @@ import bosca.content.state.graphql.WorkflowStates
 import bosca.content.timeevent.model.TimeEventType
 import bosca.content.timeevent.service.TimeEventService
 import bosca.content.transition.graphql.Transitions
+import bosca.di.ProviderRegistry
+import bosca.di.annotation.InternalDI
+import bosca.di.provides
+import bosca.git.graphql.Git
+import bosca.git.graphql.GitHub
 import bosca.graphql.persistedqueries.PersistedQueries
 import bosca.installer.graphql.Packages
 import bosca.languages.graphql.Languages
@@ -27,15 +32,25 @@ import bosca.security.graphql.Security
 import bosca.storage.graphql.StorageSystems
 import io.mockk.coEvery
 import io.mockk.mockk
+import io.opentelemetry.api.GlobalOpenTelemetry
+import io.opentelemetry.api.trace.Tracer
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
+import kotlin.test.AfterTest
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
+@OptIn(InternalDI::class)
 class QueryControllerTest {
 
     private val timeEventService = mockk<TimeEventService>()
     private val controller = QueryController(timeEventService)
+
+    @AfterTest
+    fun teardown() {
+        ProviderRegistry.clear()
+    }
 
     @Test
     fun `timeEventTypes delegates to service`() = runTest {
@@ -68,6 +83,7 @@ class QueryControllerTest {
 
     @Test
     fun `field methods return correct singleton objects`() {
+        provides<Tracer> { GlobalOpenTelemetry.getTracer("QueryControllerTest") }
         assertEquals(Server, controller.server())
         assertEquals(Content, controller.content())
         assertEquals(Security, controller.security())
@@ -92,5 +108,8 @@ class QueryControllerTest {
         assertEquals(McpServers, controller.mcpServers())
         assertEquals(Scripts, controller.scripts())
         assertEquals(Backups, controller.backups())
+        assertEquals(Git, controller.git())
+        assertEquals(GitHub, controller.github())
+        assertNotNull(QueryControllerDispatcher(controller).type.fieldResolvers["github"])
     }
 }

@@ -54,5 +54,6 @@ class GitMigration : Migration {
         "V41__pipeline_trigger_occurrences.sql",
         "V42__repository_execute_from_edit.sql",
         "V43__pipeline_catalog_archival.sql",
+        "V44__github_intake.sql",
     )
 }

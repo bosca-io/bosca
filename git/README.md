@@ -62,6 +62,16 @@ Deploy the updated GraphQL schema before the updated Studio: its build controls 
 
 The server compiles to a GraalVM native image for sub-100ms startup and low memory footprint, with a JVM fallback via Shadow JAR.
 
+## GitHub pairing and delivery intake
+
+Apply the registered Git migration `V44__github_intake.sql` before using intake. Administrators configure `savePair`, `mapUser`, and `unmapUser` under the `github` GraphQL mutation namespace. The `github` query namespace exposes `pair`, `users`, and `deliveries`. Repository pairing uses GitHub's immutable numeric repository ID; user mappings use immutable human user IDs and Bosca principal IDs. These mappings grant no permissions. Pairing and delivery history queries are administrator-only because accepted payloads can contain private repository content.
+
+Credentials remain in the encrypted Pipeline secret store, managed through Pipelines → Secrets. A pair stores the webhook and token secret names. Pairing defaults to disabled; enabling it requires both secrets to exist. Configure the repository webhook to send JSON to `/api/webhooks/github/<Bosca repository UUID>` with the matching webhook secret.
+
+Intake verifies `X-Hub-Signature-256` against the exact raw body bytes and checks the signed repository ID. `X-GitHub-Delivery` reserves one persisted occurrence, including across redelivery; changing the body, event, or repository under that identifier returns a conflict. Accepted push and paired-repository pull request deliveries retain the original user mapping. Unknown and bot users remain unattributed, and fork-origin pull requests and other event types are recorded as ignored.
+
+This intake endpoint currently stores delivery history. It does not yet invoke synchronization workflows, change repository refs or pull requests, or start builds.
+
 ## Dependencies
 
 - Bosca Framework libraries (auth, DI, navigation, storage, GraphQL)

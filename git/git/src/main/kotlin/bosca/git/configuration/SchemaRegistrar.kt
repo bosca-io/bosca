@@ -13,4 +13,7 @@ interface SchemaRegistrar {
 
     @Schema("git.graphqls")
     val git: String
+
+    @Schema("github.graphqls")
+    val github: String
 }

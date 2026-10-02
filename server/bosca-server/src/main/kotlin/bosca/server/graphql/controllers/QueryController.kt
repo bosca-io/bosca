@@ -47,6 +47,7 @@ import bosca.experimentation.graphql.FeatureFlags
 import bosca.artifacts.admin.graphql.ArtifactsAdmin
 import bosca.forms.graphql.FormSchemas
 import bosca.git.graphql.Git
+import bosca.git.graphql.GitHub
 import bosca.segmentation.graphql.Segments
 import bosca.segmentation.graphql.Campaigns
 import bosca.storage.graphql.StorageSystems
@@ -205,6 +206,9 @@ class QueryController(
 
     @Field
     fun git(): Git = Git
+
+    @Field
+    fun github(): GitHub = GitHub
 
     @Field
     fun communications(): bosca.communications.graphql.CommunicationsQueries = bosca.communications.graphql.CommunicationsQueries

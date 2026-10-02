@@ -22,6 +22,7 @@ dependencies {
     implementation(project(":bosca-core:core"))
     implementation(project(":git:core-git"))
     implementation(project(":git:core-git-ci"))
+    implementation(project(":pipelines:core-pipelines"))
     implementation(project(":bosca-core:core-security"))
     implementation(project(":social:core-profile"))
     implementation(project(":social:profile"))

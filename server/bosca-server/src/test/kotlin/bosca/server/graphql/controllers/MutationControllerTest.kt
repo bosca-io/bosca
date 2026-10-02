@@ -19,6 +19,9 @@ import bosca.content.transition.graphql.TransitionsMutation
 import bosca.di.ObjectProvider
 import bosca.di.ProviderRegistry
 import bosca.di.annotation.InternalDI
+import bosca.di.provides
+import bosca.git.graphql.GitHubMutation
+import bosca.git.graphql.GitMutation
 import bosca.graphql.GraphQLService
 import bosca.graphql.MutationRoot
 import bosca.graphql.persistedqueries.PersistedQueriesMutation
@@ -36,12 +39,15 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import io.opentelemetry.api.GlobalOpenTelemetry
+import io.opentelemetry.api.trace.Tracer
 import kotlinx.coroutines.test.runTest
 import kotlin.reflect.KClass
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 @OptIn(InternalDI::class)
@@ -167,6 +173,7 @@ class MutationControllerTest {
 
     @Test
     fun `field methods return correct singleton objects`() {
+        provides<Tracer> { GlobalOpenTelemetry.getTracer("MutationControllerTest") }
         assertEquals(SecurityMutation, controller.security())
         assertEquals(StorageSystemsMutation, controller.storageSystems())
         assertEquals(ProfilesMutation, controller.profiles())
@@ -189,5 +196,8 @@ class MutationControllerTest {
         assertEquals(PackagesMutation, controller.packages())
         assertEquals(TimeEventMutation, controller.timeEvents())
         assertEquals(BackupsMutation, controller.backups())
+        assertEquals(GitMutation, controller.git())
+        assertEquals(GitHubMutation, controller.github())
+        assertNotNull(MutationControllerDispatcher(controller).type.fieldResolvers["github"])
     }
 }

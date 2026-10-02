@@ -53,6 +53,7 @@ import bosca.experimentation.graphql.ExperimentsMutation
 import bosca.experimentation.graphql.FeatureFlagsMutation
 import bosca.artifacts.admin.graphql.ArtifactsAdminMutation
 import bosca.git.graphql.GitMutation
+import bosca.git.graphql.GitHubMutation
 import bosca.segmentation.graphql.SegmentsMutation
 import bosca.segmentation.graphql.CampaignsMutation
 import bosca.security.service.GroupEvaluator
@@ -243,6 +244,9 @@ class MutationController(
 
     @Field
     fun git(): GitMutation = GitMutation
+
+    @Field
+    fun github(): GitHubMutation = GitHubMutation
 
     @Field
     fun communications(): bosca.communications.graphql.CommunicationsMutations = bosca.communications.graphql.CommunicationsMutations

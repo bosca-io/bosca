@@ -802,6 +802,13 @@ class EndToEndGitCliTest {
             provides<TeamCityWebhookRoute>(singleton = true) {
                 TeamCityWebhookRoute(mockk(relaxed = true), repositoryService, permissionEvaluator)
             }
+            provides<bosca.git.transport.GitHubWebhookRoute>(singleton = true) {
+                val intakeRepository = mockk<bosca.git.repository.GitHubSyncRepository>()
+                coEvery { intakeRepository.findPair(any()) } returns null
+                bosca.git.transport.GitHubWebhookRoute(bosca.git.service.GitHubSyncServiceImpl(
+                    intakeRepository, repositoryService, mockk(), securityService,
+                ))
+            }
         }
 
         /**

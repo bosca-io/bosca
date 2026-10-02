@@ -2,7 +2,7 @@
 
 This spec covers bidirectional synchronization between Bosca Git and GitHub, authorization to use Bosca build infrastructure, and remote publication owned by Bosca Artifacts. Developers can work in either paired repository. CI/CD remains on Bosca infrastructure.
 
-Status: implementation in progress. Native Git CI build authorization and trigger retry handling are implemented. Repository synchronization and remote artifact publication remain proposed work. Existing Git hosting, pipeline execution, permissions, and artifact storage are foundations to reuse.
+Status: implementation in progress. Native Git CI build authorization, trigger retry handling, repository pairing and GitHub user mappings, and verified GitHub delivery intake are implemented. Delivery-to-workflow handoff, repository synchronization, and remote artifact publication remain proposed work. Existing Git hosting, pipeline execution, permissions, and artifact storage are foundations to reuse.
 
 ## Implementation progress
 
@@ -10,12 +10,13 @@ Status: implementation in progress. Native Git CI build authorization and trigge
 - [x] Manual CI starts, reruns, build-anyway actions, and build approvals require repository `EXECUTE`; WorkOps release starts and promotions require repository write and execution grants.
 - [x] Studio release and Git pipeline build controls expose the execution requirement.
 - [x] Native CI reserves each durable trigger job/pipeline occurrence in PostgreSQL. Reservation, run, jobs, and initial commit statuses share a transaction; redelivery skips committed work, and rolled-back attempts can retry.
-- [ ] Repository and actor pairing, verified GitHub delivery intake, and delivery deduplication.
+- [x] Administrator-controlled repository pairing and GitHub user mappings, raw-byte HMAC-SHA256 verification, and PostgreSQL delivery deduplication. Intake preserves originating principal attribution; unknown and bot users remain unattributed. Fork-origin pull request deliveries and unsupported event types are recorded as ignored.
+- [ ] Durable delivery-to-pipeline handoff and synchronization processing. Intake currently persists deliveries without changing refs, pull requests, or starting builds.
 - [ ] Shared synchronization nodes and the two directional pipelines, including ref and pull request state, echo detection, conflicts, and reconciliation.
 - [ ] Artifacts-owned destination publication, verification, retries, and remote retention.
 - [ ] Event-to-synchronization-pipeline integration tests and isolated provider checks.
 
-The native CI occurrence reservation identifies a durable queue job. GitHub delivery deduplication must preserve one occurrence when intake receives the same delivery again. Pull request operation mapping and the retention choices below remain to be settled before their corresponding implementations.
+The native CI occurrence reservation identifies a durable queue job. GitHub intake preserves one occurrence under the `X-GitHub-Delivery` identifier; a repeated identifier with a different repository, event, or payload digest is rejected. Pairing uses the immutable GitHub repository ID, and credentials are references to the existing encrypted Pipeline secret store. Apply the registered Git migration `V44__github_intake.sql` before serving intake. Pull request operation mapping and the retention choices below remain to be settled before their corresponding implementations.
 
 ## Two synchronization pipelines
 
@@ -39,12 +40,12 @@ Both use the existing Bosca Pipeline node graph and durable job execution in the
 ### GitHub to Bosca Git
 
 1. A verified GitHub webhook starts the inbound pipeline.
-2. Nodes resolve the configured repository pair, the corresponding pull request, and the originating actor.
+2. Nodes resolve the configured repository pair, the corresponding pull request, and the originating user.
 3. The pipeline compares the change with the last synchronized state.
 4. Nodes transfer the relevant refs or apply pull request changes through Bosca's owning services.
 5. The pipeline records the result. Any resulting build must satisfy the initiating person's execution permission.
 
-Webhook authenticity and permission to start a build are separate checks. An authentic delivery does not make its originating actor trusted to build. The integration must preserve that actor through mirrored changes rather than allowing the synchronization service's credentials to authorize a build implicitly.
+Webhook authenticity and permission to start a build are separate checks. An authentic delivery does not make its originating user trusted to build. The integration must preserve that user through mirrored changes rather than allowing the synchronization service's credentials to authorize a build implicitly.
 
 ## Shared nodes and synchronization state
 
@@ -72,7 +73,7 @@ Merging must propagate the resulting history without independently generating a 
 
 Only identities authorized to execute builds may cause Bosca servers to build code. Trusted people are responsible for choosing safe work to execute.
 
-The GitHub integration must map the originating GitHub actor to a Bosca identity and evaluate build execution permission through Bosca's existing group-based permission system. Unknown or unauthorized actors cannot start builds. Public repository access, forking, and opening a pull request confer no build permission.
+The GitHub integration must map the originating GitHub user to a Bosca identity and evaluate build execution permission through Bosca's existing group-based permission system. Unknown or unauthorized users cannot start builds. Public repository access, forking, and opening a pull request confer no build permission.
 
 Apply this rule to automatic triggers, manual starts, reruns, and replayed deliveries. Mirrored ref updates must not bypass it by appearing to originate from a privileged integration identity. Scheduled work uses an explicitly authorized execution identity.
 
@@ -120,9 +121,9 @@ These are source-level observations, not a claim of new runtime validation or a 
 - A Bosca branch or pull request event produces the corresponding GitHub change through the outbound pipeline.
 - A verified GitHub event produces the corresponding Bosca change through the inbound pipeline.
 - Repeated deliveries, pipeline retries, and reflected events do not duplicate changes or builds.
-- GitHub forks and unknown or unauthorized actors cannot consume Bosca build infrastructure through the integration.
+- GitHub forks and unknown or unauthorized users cannot consume Bosca build infrastructure through the integration.
 - A trusted person can start a build for code imported into an authorized branch; Bosca-hosted fork behavior is preserved.
-- The original actor remains attributable through synchronization, and integration credentials do not grant that actor build permission.
+- The original user remains attributable through synchronization, and integration credentials do not grant that user build permission.
 - An outage can be followed by reconciliation using the same node operations; divergent changes are reported without discarding either side.
 - Remote publication preserves artifact content, retries without rebuilding, and records each destination's result.
 - Remote retention removes eligible older versions without deleting the internal copy or causing republication.
