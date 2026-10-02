@@ -36,9 +36,11 @@ class GitHubSyncAuthorizationTest {
             assertFails { query.pair(authentication, repositoryId) }
             assertFails { query.users(authentication, null, null) }
             assertFails { query.deliveries(authentication, repositoryId, null, null) }
+            assertFails { query.refStates(authentication, repositoryId, null, null) }
             assertFails { mutation.savePair(authentication, input) }
             assertFails { mutation.mapUser(authentication, 7, principalId) }
             assertFails { mutation.unmapUser(authentication, 7) }
+            assertFails { mutation.reconcileRefs(authentication, repositoryId) }
         }
         coVerify(exactly = 0) { service.findPair(any()) }
         coVerify(exactly = 0) { service.mapUser(any(), any()) }
@@ -55,17 +57,24 @@ class GitHubSyncAuthorizationTest {
         coEvery { service.unmapUser(7) } returns Unit
         coEvery { service.findUsers(any(), any()) } returns listOf(user)
         coEvery { service.findDeliveries(any(), any(), any()) } returns emptyList()
+        coEvery { service.findRefStates(any(), any(), any()) } returns emptyList()
+        coEvery { service.reconcileRefs(any()) } returns emptyList()
         assertEquals(pair, query.pair(authentication, repositoryId))
         assertEquals(pair, mutation.savePair(authentication, input))
         assertEquals(user, mutation.mapUser(authentication, 7, principalId))
         assertTrue(mutation.unmapUser(authentication, 7))
+        assertTrue(mutation.reconcileRefs(authentication, repositoryId).isEmpty())
         assertEquals(listOf(user), query.users(authentication, null, null))
         query.users(authentication, 10, 1000)
         query.deliveries(authentication, repositoryId, null, null)
         query.deliveries(authentication, repositoryId, 5, 0)
+        query.refStates(authentication, repositoryId, null, null)
+        query.refStates(authentication, repositoryId, 5, 1000)
         coVerify { service.findUsers(0, 25) }
         coVerify { service.findUsers(10, 100) }
         coVerify { service.findDeliveries(repositoryId, 0, 25) }
         coVerify { service.findDeliveries(repositoryId, 5, 1) }
+        coVerify { service.findRefStates(repositoryId, 0, 25) }
+        coVerify { service.findRefStates(repositoryId, 5, 100) }
     }
 }

@@ -125,4 +125,16 @@ interface RepositoryWriteService : Service {
     suspend fun deleteBranch(repositoryId: UUID, branch: String)
 
     suspend fun readFile(repositoryId: UUID, ref: String, path: String): String?
+
+    /**
+     * Transfers original Git objects and reconciles one branch/tag under the repository write lock.
+     * A stale occurrence cannot overwrite a newer source. Independent target edits produce a
+     * conflict; deletion and force updates require an unchanged synchronized target. An unresolved
+     * initial conflict cannot recreate an independently deleted target. Remote writes
+     * use an expected-old lease. Inbound writes notify the ordinary push path with [input]'s principal.
+     */
+    suspend fun synchronizeRef(input: RefSynchronizationInput): RefSynchronizationResult
+
+    /** Reads both repositories' branch/tag refs for reconciliation; it does not change refs or emit events. */
+    suspend fun compareRefs(repositoryId: UUID, remoteUrl: String, token: String): List<RefComparison>
 }

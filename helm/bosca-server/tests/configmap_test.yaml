@@ -147,6 +147,12 @@ tests:
           path: data["application.yaml"]
           pattern: 'packages: .*"default-social-notification-pipelines"'
 
+  - it: enables GitHub ref synchronization pipelines
+    asserts:
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: 'packages: .*"github"'
+
   - it: preserves env var references for secrets
     asserts:
       - matchRegex:

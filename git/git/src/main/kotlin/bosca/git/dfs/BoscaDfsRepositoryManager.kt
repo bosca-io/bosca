@@ -1,5 +1,6 @@
 package bosca.git.dfs
 
+import bosca.db.ConnectionManager
 import bosca.git.repository.DfsPackRepository
 import bosca.git.repository.DfsRefRepository
 import bosca.serialization.UUID
@@ -33,8 +34,16 @@ open class BoscaDfsRepositoryManager(
      * `git/{repositoryId}/packs/` and refs from the `git.dfs_refs` table.
      */
     open fun open(repositoryId: UUID): DfsRepository {
+        return open(repositoryId, null)
+    }
+
+    /**
+     * Opens refs on the caller's connection so ref changes can commit with domain state and events.
+     * Pack storage retains its ordinary independent lifecycle; the caller owns the connection.
+     */
+    open fun open(repositoryId: UUID, refConnectionManager: ConnectionManager?): DfsRepository {
         val storageAdapter = ObjectStorageDfsStorageAdapter(objectStorage, packRepository)
-        val refAdapter = PostgresDfsRefAdapter(refRepository)
+        val refAdapter = PostgresDfsRefAdapter(refRepository, refConnectionManager)
 
         return BoscaDfsRepositoryBuilder().apply {
             this.repositoryId = repositoryId

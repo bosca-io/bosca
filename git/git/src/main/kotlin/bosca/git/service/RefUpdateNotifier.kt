@@ -41,4 +41,17 @@ interface RefUpdateNotifier {
         updates: List<RefChange>,
         pusherPrincipalId: UUID? = null,
     )
+
+    /**
+     * Queues CI for a verified push that attributes an already imported ref, without repeating ref
+     * side effects. Uses the same tag peeling and skip-CI rules as [notifyRefsUpdated]. Failures
+     * propagate so the caller can roll back attribution and retry; enqueueing defers until commit.
+     * A null principal queues an anonymous trigger that cannot authorize a build.
+     */
+    suspend fun enqueuePipelineTriggers(
+        repository: Repository,
+        repositoryId: UUID,
+        updates: List<RefChange>,
+        pusherPrincipalId: UUID?,
+    )
 }

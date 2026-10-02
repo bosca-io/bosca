@@ -74,7 +74,15 @@ Each eligible delivery dispatches a `GitHubDelivery` event through the standard 
 
 Event dispatch uses the existing pipeline jobs, execution identity, history, trigger configuration and admission limits. Synchronization nodes consume the delivery data and must preserve its originating principal when calling Git services so build authorization checks the initiating person. Those nodes must track completed synchronization operations so redelivery does not repeat them.
 
-The synchronization node graphs are still pending implementation. Intake and handoff alone do not transfer refs, mirror pull requests or publish artifacts.
+Apply `V45__github_ref_synchronization.sql` for branch/tag synchronization state. The GitHub package installs two event-triggered graphs: **GitHub: Import Refs** consumes verified push deliveries, and **GitHub: Export Refs** consumes ordinary `RefUpdateEvent` events. Their nodes use the existing durable pipeline backing jobs. Reinstalling preserves graphs already carrying those keys.
+
+Transfers preserve the original commits and annotated tag objects. Inbound changes use the ordinary ref notifier with the delivery's persisted originating principal. Completed push deliveries are recorded, so redelivery does not import again or trigger additional builds. Echoes whose refs already agree are no-ops; stale occurrences cannot replace a newer source ref. Fast-forwards converge. Force updates and deletions require an unchanged common target, or the matching old value on initial synchronization. Independent edits, including update-versus-delete races, retain both sides and appear in the administrator-only `github.refStates` query.
+
+Inbound ref changes, synchronization state and notification registration share a PostgreSQL transaction. An interrupted import rolls back the ref and can retry with its original principal. The repository write lock remains held through commit.
+
+**GitHub: Reconcile Refs** runs hourly through the existing pipeline scheduler and calls the same ref operations to recover missed changes. Verified, unprocessed pushes are redispatched as ordinary events; reconciliation defers their refs to the import pipeline so their original attribution is retained. Each ref commits before releasing its write lock, allowing native pushes between transfers. A failed pair does not prevent the remaining pairs from reconciling; the run reports accumulated failures afterward. Administrators can also call `github.reconcileRefs(repositoryId: ...)`. Changes recovered without a verified delivery have no originating principal and therefore do not authorize builds. If a verified push arrives later and the imported ref write is still current, its stored principal triggers CI once without repeating ref notifications. A subsequent native write prevents this attribution, including when it restores the same SHA. Reconciliation preserves unresolved initial deletion conflicts and never independently merges divergent histories.
+
+Pull request mirroring and remote artifact publication are still pending. The ref importer skips pull request deliveries; those remain in verified delivery history for the pull request workflow.
 
 ## Dependencies
 

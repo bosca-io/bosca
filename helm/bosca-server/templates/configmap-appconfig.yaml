@@ -304,7 +304,7 @@ data:
       proxy:
         sharedToken: ${GATEWAY_PROXY_SHARED_TOKEN:}
 
-    {{- $packages := concat (list "core" "security-initial" "profiles" "languages" "search-index" "root-collection-installer" "bible" "community-ai" "ai" "kit" "docs" "maintenance" "default-git-email-pipelines" "default-transactional-email-pipelines" "default-social-notification-pipelines") (.Values.appConfig.extraPackages | default (list)) | uniq }}
+    {{- $packages := concat (list "core" "security-initial" "profiles" "languages" "search-index" "root-collection-installer" "bible" "community-ai" "ai" "kit" "docs" "maintenance" "default-git-email-pipelines" "github" "default-transactional-email-pipelines" "default-social-notification-pipelines") (.Values.appConfig.extraPackages | default (list)) | uniq }}
     packages: {{ $packages | toJson }}
 
     runners:

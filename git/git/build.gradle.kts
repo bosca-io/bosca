@@ -33,6 +33,8 @@ dependencies {
 
     implementation(libs.jgit)
     implementation(libs.caffeine)
+    implementation(platform(libs.okhttp.bom))
+    implementation(libs.okhttp)
 
     "ksp"(project(":bosca-core:core-ksp"))
     "ksp"(project(":services-di:service-ksp"))
@@ -45,10 +47,13 @@ dependencies {
     testImplementation(project(":bosca-core:security"))
     testImplementation(project(":bosca-core:storage"))
     testImplementation(project(":pipelines:pipelines"))
+    testImplementation(project(":bosca-core:core-scheduler"))
     testImplementation(project(":bosca-core:core-events"))
     testImplementation(libs.testcontainers)
     testImplementation(project(":bosca-core:test-support"))
     testImplementation(libs.testcontainers.postgresql)
+    testImplementation(platform(libs.okhttp.bom))
+    testImplementation(libs.okhttp.mockwebserver)
 }
 
 ksp {

@@ -68,7 +68,13 @@ class RefUpdateNotifierImpl(
         }
 
         enqueueSearchIndex(repositoryId, updates)
-        enqueuePipelineTrigger(repository, repositoryId, updates, pusherPrincipalId)
+        try {
+            enqueuePipelineTriggers(repository, repositoryId, updates, pusherPrincipalId)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            log.warn("Failed to enqueue pipeline trigger for repository {}", repositoryId, e)
+        }
     }
 
     private suspend fun updateDiskSize(repositoryId: UUID) {
@@ -315,48 +321,36 @@ class RefUpdateNotifierImpl(
         }
     }
 
-    private suspend fun enqueuePipelineTrigger(
+    override suspend fun enqueuePipelineTriggers(
         repository: Repository,
         repositoryId: UUID,
         updates: List<RefChange>,
         pusherPrincipalId: UUID?,
     ) {
-        try {
-            val json = provide<Json>()
-            val enqueuer = provide<JobConfigurationEnqueuer>("pipeline-trigger")
+        val json = provide<Json>()
+        val enqueuer = provide<JobConfigurationEnqueuer>("pipeline-trigger")
 
-            for (update in updates) {
-                if (update.newId == ObjectId.zeroId()) continue
-                if (!update.refName.startsWith("refs/heads/") && !update.refName.startsWith("refs/tags/")) continue
+        for (update in updates) {
+            if (update.newId == ObjectId.zeroId()) continue
+            if (!update.refName.startsWith("refs/heads/") && !update.refName.startsWith("refs/tags/")) continue
 
-                // An ANNOTATED tag's ref points at the tag OBJECT, not the commit. Everything
-                // downstream (the run's commitSha, commit statuses, run correlation) means the
-                // commit — peel before enqueuing.
-                val commitId = peelToCommit(repository, update.newId)
-
-                // `[skip ci]` suppresses the trigger on every ref kind — read from the pushed object's
-                // OWN message: a branch push checks its commit, an annotated tag checks the tag message.
-                // (Deliberately NOT the peeled commit for tags: a release tag pointing at a `[skip ci]`
-                // pin commit must still build — the pin commit's marker only silences the branch push.)
-                if (hasSkipCiMarker(repository, update.newId)) {
-                    log.info("Skipping pipeline trigger for {} on {} — [skip ci]", update.refName, repositoryId)
-                    continue
-                }
-
-                enqueuer.enqueue(json.encodeToJsonElement(
-                    PipelineTriggerJob(
-                        repositoryId = repositoryId,
-                        ref = update.refName,
-                        beforeSha = update.oldId.name(),
-                        afterSha = commitId.name(),
-                        pusherPrincipalId = pusherPrincipalId,
-                    )
-                ))
+            // An annotated tag points at the tag object; CI records the peeled commit.
+            val commitId = peelToCommit(repository, update.newId)
+            // A tag's own message controls skipping, even when its commit contains a skip marker.
+            if (hasSkipCiMarker(repository, update.newId)) {
+                log.info("Skipping pipeline trigger for {} on {} — [skip ci]", update.refName, repositoryId)
+                continue
             }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            log.warn("Failed to enqueue pipeline trigger for repository {}", repositoryId, e)
+
+            enqueuer.enqueue(json.encodeToJsonElement(
+                PipelineTriggerJob(
+                    repositoryId = repositoryId,
+                    ref = update.refName,
+                    beforeSha = update.oldId.name(),
+                    afterSha = commitId.name(),
+                    pusherPrincipalId = pusherPrincipalId,
+                )
+            ))
         }
     }
 

@@ -7,6 +7,11 @@ import bosca.db.afterCommit
 import bosca.events.catalog.CoreGitEventCatalogRegistrarProvider
 import bosca.events.catalog.EventCatalogRegistrar
 import bosca.git.model.GitHubDelivery
+import bosca.git.model.GitHubSyncResult
+import bosca.git.model.GitHubRefState
+import bosca.git.model.RefUpdateEvent
+import bosca.git.model.GitRefKind
+import bosca.git.model.GitRefUpdateAction
 import bosca.pipelines.PipelineContext
 import bosca.pipelines.PipelineExecutorImpl
 import bosca.pipelines.configuration.PipelinesRuntimeConfiguration
@@ -71,6 +76,7 @@ import bosca.security.service.SecurityService
 import bosca.serialization.UUID
 import bosca.test.resources.SharedPostgreSQLContainer
 import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.mockk
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.runBlocking
@@ -105,7 +111,11 @@ class GitHubSyncServiceIntegrationTest {
     private val secrets = mockk<PipelineSecretService>()
     private val security = mockk<SecurityService>()
     private val pipelines = mockk<bosca.pipelines.service.PipelineService>()
-    private val service = GitHubSyncServiceImpl(repository, hostedService, secrets, security)
+    private val writes = mockk<RepositoryWriteService>()
+    private val github = mockk<bosca.git.github.GitHubClient>()
+    private val locks = mockk<bosca.lock.DistributedLockFactory>()
+    private val lock = mockk<bosca.lock.DistributedLock>()
+    private val service = GitHubSyncServiceImpl(repository, hostedService, secrets, security, writes, github, locks)
     private val input = GitHubRepositoryPairInput(repositoryId, 123, "bosca-io", "source", "github-webhook", "github-token", true)
     private val secret = "test-secret-✓"
     private val json = Json { serializersModule = SerializersModule {
@@ -117,20 +127,312 @@ class GitHubSyncServiceIntegrationTest {
     fun setup() {
         ProviderRegistry.clear()
         provides<ConnectionPool>(singleton = true) { pool }
+        provides<bosca.lock.DistributedLockFactory>(singleton = true) { locks }
+        coEvery { locks.create(any()) } returns lock
+        coEvery { lock.acquire(any(), any(), any()) } returns true
+        coEvery { lock.renew(any()) } returns true
+        coEvery { lock.release() } returns true
         BoscaApplication(ApplicationConfig.load("bosca:\n  server:\n    development: false\n".byteInputStream()))
         coEvery { hostedService.findById(repositoryId) } returns hosted
         coEvery { secrets.resolve("github-webhook") } returns secret
         coEvery { secrets.resolve("github-token") } returns "token"
         coEvery { security.getPrincipalById(principalId) } returns Principal(id = principalId)
+        coEvery { github.repositoryUrl(any(), "token") } returns "https://github.com/bosca-io/source.git"
         withDb {
             connection().useStatement("drop schema if exists git cascade; create schema git; create table git.repositories(id uuid primary key)") { it.execute() }
+            val hosting = javaClass.getResource("/db/migrations/V1__git_server.sql")?.readText() ?: error("Missing hosting migration")
+            connection().useStatement("create table git.dfs_refs" + hosting.substringAfter("create table git.dfs_refs")
+                .substringBefore("create table git.dfs_packs")) { it.execute() }
             val migration = javaClass.getResource("/db/migrations/V44__github_intake.sql")?.readText() ?: error("Missing migration")
             connection().useStatement(migration) { it.execute() }
+            val refMigration = javaClass.getResource("/db/migrations/V45__github_ref_synchronization.sql")?.readText()
+                ?: error("Missing ref migration")
+            connection().useStatement(refMigration) { it.execute() }
             connection().useStatement("insert into git.repositories(id) values ('$repositoryId')") { it.execute() }
         }
     }
 
     @AfterTest fun cleanup() = ProviderRegistry.clear()
+
+    private val ref = "refs/heads/main"
+    private val sha = "1".repeat(40)
+    private val nextSha = "2".repeat(40)
+    private fun pushPayload(before: String = "0".repeat(40), after: String = sha) =
+        payload(extra = ",\"ref\":\"$ref\",\"before\":\"$before\",\"after\":\"$after\"")
+
+    private fun refEvent(before: String? = null, after: String? = sha) = RefUpdateEvent(
+        repositoryId, "Source", ref, "main", GitRefKind.BRANCH, GitRefUpdateAction.UPDATED, before, after,
+    )
+
+    @Test fun `push synchronization persists a common baseline and redelivery cannot repeat the write`() = withDb {
+        service.savePair(input); service.mapUser(7, principalId)
+        val delivery = receive(pushPayload())
+        coEvery { writes.synchronizeRef(any()) } returns RefSynchronizationResult(GitHubSyncResult.APPLIED, sha, sha)
+        assertEquals(GitHubSyncResult.APPLIED, service.synchronizePush(delivery.copy(principalId = UUID.random())))
+        assertEquals(GitHubSyncResult.APPLIED, service.synchronizePush(delivery))
+        coVerify(exactly = 1) { writes.synchronizeRef(match {
+            it.direction == RefSynchronizationDirection.INBOUND && it.principalId == principalId &&
+                it.beforeSha == null && it.afterSha == sha && !it.hasSynchronized
+        }) }
+        val state = service.findRefStates(repositoryId, 0, 25).single()
+        assertTrue(state.synchronized); assertFalse(state.conflict)
+        assertEquals(sha, state.sha); assertEquals(sha, state.boscaSha); assertEquals(sha, state.githubSha)
+        assertTrue(service.findRefStates(repositoryId, 1, 25).isEmpty())
+        assertFailsWith<IllegalArgumentException> { service.findRefStates(repositoryId, -1, 25) }
+        assertFailsWith<IllegalArgumentException> { service.findRefStates(repositoryId, 0, 0) }
+    }
+
+    @Test fun `conflicts preserve the common baseline until refs actually converge`() = withDb {
+        service.savePair(input)
+        repository.saveRefState(GitHubRefState(repositoryId, ref, sha, synchronized = true, boscaSha = sha, githubSha = sha))
+        coEvery { writes.synchronizeRef(any()) } returns RefSynchronizationResult(GitHubSyncResult.CONFLICT, nextSha, "3".repeat(40))
+        assertEquals(GitHubSyncResult.CONFLICT, service.synchronizeRef(refEvent(sha, nextSha)))
+        coVerify { writes.synchronizeRef(match { it.hasSynchronized && it.synchronizedSha == sha && it.direction == RefSynchronizationDirection.OUTBOUND }) }
+        assertEquals(sha, repository.findRefState(repositoryId, ref)?.sha)
+        assertTrue(assertNotNull(repository.findRefState(repositoryId, ref)).conflict)
+        coEvery { writes.synchronizeRef(any()) } returns RefSynchronizationResult(GitHubSyncResult.STALE, nextSha, "4".repeat(40))
+        assertEquals(GitHubSyncResult.STALE, service.synchronizeRef(refEvent(sha, nextSha)))
+        assertTrue(assertNotNull(repository.findRefState(repositoryId, ref)).conflict)
+        coEvery { writes.synchronizeRef(any()) } returns RefSynchronizationResult(GitHubSyncResult.UNCHANGED, nextSha, nextSha)
+        assertEquals(GitHubSyncResult.UNCHANGED, service.synchronizeRef(refEvent(sha, nextSha)))
+        assertFalse(assertNotNull(repository.findRefState(repositoryId, ref)).conflict)
+        assertEquals(nextSha, repository.findRefState(repositoryId, ref)?.sha)
+        coEvery { writes.synchronizeRef(any()) } returns RefSynchronizationResult(GitHubSyncResult.APPLIED, null, null)
+        assertEquals(GitHubSyncResult.APPLIED, service.synchronizeRef(refEvent(nextSha, null)))
+        val deleted = assertNotNull(repository.findRefState(repositoryId, ref))
+        assertTrue(deleted.synchronized); assertNull(deleted.sha)
+    }
+
+    @Test fun `an initial conflict or stale event does not invent a common baseline`() = withDb {
+        service.savePair(input)
+        for (status in listOf(GitHubSyncResult.CONFLICT, GitHubSyncResult.STALE)) {
+            coEvery { writes.synchronizeRef(any()) } returns RefSynchronizationResult(status, sha, nextSha)
+            assertEquals(status, service.synchronizeRef(refEvent()))
+            assertFalse(assertNotNull(repository.findRefState(repositoryId, ref)).synchronized)
+        }
+        coVerify(exactly = 2) { writes.synchronizeRef(match { !it.hasSynchronized }) }
+    }
+
+    @Test fun `failed writes and cancellation retain retryable deliveries without advancing state`() = withDb {
+        service.savePair(input)
+        val delivery = receive(pushPayload())
+        for (failure in listOf(IllegalStateException("unavailable"), kotlinx.coroutines.CancellationException("cancelled"))) {
+            coEvery { writes.synchronizeRef(any()) } throws failure
+            val caught = assertFails { service.synchronizePush(delivery) }
+            assertEquals<Class<*>>(failure.javaClass, caught.javaClass)
+            assertEquals(failure.message, caught.message)
+            assertTrue(generateSequence(caught) { it.cause }.any { it === failure })
+            assertNull(repository.findPushResult(delivery.deliveryId))
+            assertNull(repository.findRefState(repositoryId, ref))
+        }
+        coEvery { writes.synchronizeRef(any()) } returns RefSynchronizationResult(GitHubSyncResult.APPLIED, sha, sha)
+        assertEquals(GitHubSyncResult.APPLIED, service.synchronizePush(delivery))
+    }
+
+    @Test fun `only persisted eligible pushes from an active hosted pair may synchronize`() = withDb {
+        assertEquals(GitHubSyncResult.IGNORED, service.synchronizeRef(refEvent()))
+        service.savePair(input)
+        val delivery = receive(pushPayload())
+        assertFailsWith<NoSuchElementException> { service.synchronizePush(delivery.copy(deliveryId = UUID.random().toString())) }
+        assertEquals(GitHubSyncResult.IGNORED, service.synchronizePush(receive(event = "ping")))
+        assertEquals(GitHubSyncResult.IGNORED, service.synchronizePush(receive(
+            payload(extra = ",\"pull_request\":{\"head\":{\"repo\":{\"id\":123}}}"), "pull_request")))
+        val other = repository.createDelivery(delivery.copy(deliveryId = UUID.random().toString()))
+            ?: error("Missing delivery")
+        // A different persisted occurrence cannot be smuggled through a caller-provided repository ID.
+        val otherId = UUID.random()
+        connection().useStatement("insert into git.repositories(id) values ('$otherId')") { it.execute() }
+        repository.createPair(bosca.git.model.GitHubRepositoryPair(otherId, 999, "owner", "other", "w", "t", enabled = true))
+        coEvery { hostedService.findById(otherId) } returns hosted.copy(id = otherId)
+        assertFailsWith<IllegalArgumentException> { service.synchronizePush(other.copy(repositoryId = otherId)) }
+        for (unavailable in listOf<Repository?>(null, hosted.copy(archived = true), hosted.copy(deleted = true))) {
+            coEvery { hostedService.findById(repositoryId) } returns unavailable
+            assertEquals(GitHubSyncResult.IGNORED, service.synchronizePush(delivery))
+        }
+        coEvery { hostedService.findById(repositoryId) } returns hosted
+        service.savePair(input.copy(enabled = false))
+        assertEquals(GitHubSyncResult.IGNORED, service.synchronizePush(delivery))
+        coVerify(exactly = 0) { writes.synchronizeRef(any()) }
+    }
+
+    @Test fun `missing transport credentials or a mismatched remote cannot complete a push`() = withDb {
+        service.savePair(input)
+        val delivery = receive(pushPayload(after = "0".repeat(40)))
+        coEvery { secrets.resolve("github-token") } returns ""
+        assertFailsWith<GitHubWebhookUnavailableException> { service.synchronizePush(delivery) }
+        coEvery { secrets.resolve("github-token") } returns "token"
+        coEvery { github.repositoryUrl(any(), any()) } throws IllegalStateException("Repository mismatch")
+        assertFailsWith<IllegalStateException> { service.synchronizePush(delivery) }
+        assertNull(repository.findPushResult(delivery.deliveryId))
+        coEvery { github.repositoryUrl(any(), any()) } returns "https://github.com/bosca-io/source.git"
+        coEvery { writes.synchronizeRef(any()) } returns RefSynchronizationResult(GitHubSyncResult.UNCHANGED, null, null)
+        assertEquals(GitHubSyncResult.UNCHANGED, service.synchronizePush(delivery))
+        coVerify { writes.synchronizeRef(match { it.afterSha == null && it.principalId == null }) }
+    }
+
+    @Test fun `reconciliation recovers missed creations updates and deletions with the same operations and no build identity`() = withDb {
+        service.savePair(input)
+        val inbound = "refs/heads/inbound"
+        val ahead = "refs/heads/ahead"
+        val deleted = "refs/tags/deleted"
+        val stale = "refs/heads/stale"
+        repository.saveRefState(GitHubRefState(repositoryId, ahead, sha, synchronized = true))
+        repository.saveRefState(GitHubRefState(repositoryId, deleted, sha, synchronized = true))
+        coEvery { writes.compareRefs(repositoryId, any(), "token") } returns listOf(
+            RefComparison(ref, sha, null), RefComparison(inbound, null, sha),
+            RefComparison(ahead, nextSha, "3".repeat(40)), RefComparison(stale, sha, nextSha),
+        )
+        coEvery { writes.synchronizeRef(any()) } answers {
+            val request = firstArg<RefSynchronizationInput>()
+            when {
+                request.ref == stale -> RefSynchronizationResult(GitHubSyncResult.STALE, sha, nextSha)
+                request.ref == ahead && request.direction == RefSynchronizationDirection.INBOUND ->
+                    RefSynchronizationResult(GitHubSyncResult.CONFLICT, nextSha, "3".repeat(40))
+                else -> RefSynchronizationResult(GitHubSyncResult.APPLIED, request.afterSha, request.afterSha)
+            }
+        }
+        val recovered = service.reconcileRefs()
+        assertEquals(setOf(ref, inbound, ahead, deleted), recovered.map { it.ref }.toSet())
+        coVerify { writes.synchronizeRef(match { it.ref == ref && it.direction == RefSynchronizationDirection.OUTBOUND && !it.hasSynchronized }) }
+        coVerify { writes.synchronizeRef(match { it.ref == inbound && it.direction == RefSynchronizationDirection.INBOUND }) }
+        coVerify { writes.synchronizeRef(match { it.ref == deleted && it.afterSha == null && it.hasSynchronized }) }
+        coVerify(exactly = 6) { writes.synchronizeRef(match { it.principalId == null }) }
+        assertFalse(recovered.any { it.conflict })
+        assertEquals(nextSha, recovered.single { it.ref == ahead }.sha)
+        assertTrue(recovered.single { it.ref == deleted }.synchronized)
+    }
+
+    @Test fun `reconciliation preserves independently changed tags and exports only unchanged remote baselines`() = withDb {
+        service.savePair(input)
+        val tag = "refs/tags/v1"
+        repository.saveRefState(GitHubRefState(repositoryId, tag, sha, synchronized = true))
+        repository.saveRefState(GitHubRefState(repositoryId, ref, sha, synchronized = true))
+        coEvery { writes.compareRefs(repositoryId, any(), any()) } returns listOf(
+            RefComparison(tag, nextSha, "3".repeat(40)), RefComparison(ref, nextSha, sha),
+        )
+        coEvery { writes.synchronizeRef(any()) } answers {
+            val request = firstArg<RefSynchronizationInput>()
+            if (request.ref == tag) RefSynchronizationResult(GitHubSyncResult.CONFLICT, nextSha, "3".repeat(40))
+            else RefSynchronizationResult(GitHubSyncResult.APPLIED, nextSha, nextSha)
+        }
+        assertTrue(service.reconcileRefs(repositoryId).single { it.ref == tag }.conflict)
+        coVerify(exactly = 1) { writes.synchronizeRef(match { it.ref == tag }) }
+        coVerify { writes.synchronizeRef(match { it.ref == ref && it.direction == RefSynchronizationDirection.OUTBOUND }) }
+        coEvery { secrets.resolve("github-token") } returns null
+        assertFailsWith<GitHubWebhookUnavailableException> { service.reconcileRefs(repositoryId) }
+        coEvery { secrets.resolve("github-token") } returns "token"
+        service.savePair(input.copy(enabled = false))
+        assertTrue(service.reconcileRefs().isEmpty())
+        assertTrue(service.reconcileRefs(repositoryId).isEmpty())
+        assertTrue(service.reconcileRefs(UUID.random()).isEmpty())
+    }
+
+    @Test fun `reconciliation skips refs both repositories still hold at the common value`() = withDb {
+        service.savePair(input)
+        val tag = "refs/tags/v1"
+        val conflicted = "refs/heads/conflicted"
+        repository.saveRefState(GitHubRefState(repositoryId, ref, sha, synchronized = true, boscaSha = sha, githubSha = sha))
+        repository.saveRefState(GitHubRefState(repositoryId, tag, sha, synchronized = true, boscaSha = sha, githubSha = sha))
+        repository.saveRefState(GitHubRefState(repositoryId, conflicted, sha, synchronized = true, conflict = true))
+        coEvery { writes.compareRefs(repositoryId, any(), any()) } returns listOf(
+            RefComparison(ref, sha, sha), RefComparison(tag, sha, sha), RefComparison(conflicted, sha, sha),
+        )
+        coEvery { writes.synchronizeRef(any()) } returns RefSynchronizationResult(GitHubSyncResult.UNCHANGED, sha, sha)
+        val reconciled = service.reconcileRefs(repositoryId)
+        assertEquals(listOf(conflicted, ref, tag), reconciled.map { it.ref })
+        assertTrue(reconciled.all { it.sha == sha && it.synchronized })
+        // An unresolved conflict is re-checked even when both sides now agree, so the flag can clear.
+        coVerify(exactly = 1) { writes.synchronizeRef(any()) }
+        coVerify(exactly = 1) { writes.synchronizeRef(match { it.ref == conflicted }) }
+        assertFalse(assertNotNull(repository.findRefState(repositoryId, conflicted)).conflict)
+    }
+
+    @Test fun `pending push queries exclude completed ignored non-push and other repository deliveries`() = withDb {
+        service.savePair(input)
+        val pending = receive(pushPayload())
+        val completed = receive(pushPayload())
+        repository.savePushResult(completed.deliveryId, "APPLIED")
+        repository.createDelivery(pending.copy(deliveryId = UUID.random().toString(), ignored = true))
+        receive(pushPayload(), event = "ping")
+        val otherId = UUID.random()
+        connection().useStatement("insert into git.repositories(id) values ('$otherId')") { it.execute() }
+        repository.createPair(bosca.git.model.GitHubRepositoryPair(otherId, 456, "owner", "other", "w", "t"))
+        repository.createDelivery(pending.copy(deliveryId = UUID.random().toString(), repositoryId = otherId))
+        assertEquals(listOf(ref), repository.findPendingPushRefs(repositoryId))
+        assertEquals(listOf(pending), repository.findPendingPushDeliveries(repositoryId, ref))
+        assertTrue(repository.findPendingPushDeliveries(repositoryId, "refs/heads/other").isEmpty())
+    }
+
+    @Test fun `reconciliation redispatches pending deleted refs absent from both repositories and ref state`() = withDb {
+        val fixture = installTriggeredPipeline()
+        service.savePair(input); service.mapUser(7, principalId)
+        val delivery = receive(pushPayload(before = sha, after = "0".repeat(40)))
+        coEvery { writes.compareRefs(repositoryId, any(), any()) } returns emptyList()
+        assertTrue(service.reconcileRefs(repositoryId).isEmpty())
+        assertNull(repository.findPushResult(delivery.deliveryId))
+        assertEquals(2, fixture.jobs.size)
+        fixture.dispatchAll(); fixture.driveAll()
+        assertEquals(2, DeliveryProbe.observed.size)
+        assertTrue(DeliveryProbe.observed.all { it.delivery == delivery && it.delivery.principalId == principalId })
+        coVerify(exactly = 0) { writes.synchronizeRef(any()) }
+    }
+
+    @Test fun `reconciling all pairs continues past a failing pair and then fails loudly`() = withDb {
+        val otherId = UUID.parse("ffffffff-ffff-ffff-ffff-ffffffffffff")
+        connection().useStatement("insert into git.repositories(id) values ('$otherId')") { it.execute() }
+        coEvery { hostedService.findById(otherId) } returns hosted.copy(id = otherId, slug = "other")
+        service.savePair(input)
+        service.savePair(input.copy(repositoryId = otherId, githubRepositoryId = 456, name = "other"))
+        coEvery { writes.compareRefs(repositoryId, any(), any()) } throws IllegalStateException("GitHub unavailable")
+        coEvery { writes.compareRefs(otherId, any(), any()) } returns listOf(RefComparison(ref, null, sha))
+        coEvery { writes.synchronizeRef(any()) } returns RefSynchronizationResult(GitHubSyncResult.APPLIED, sha, sha)
+        val failure = assertFailsWith<IllegalStateException> { service.reconcileRefs() }
+        assertTrue(failure.message.orEmpty().contains(repositoryId.toString()))
+        assertFalse(failure.message.orEmpty().contains(otherId.toString()))
+        assertEquals("GitHub unavailable", failure.cause?.message)
+        assertEquals(sha, assertNotNull(repository.findRefState(otherId, ref)).sha)
+        assertNull(repository.findRefState(repositoryId, ref))
+        // A single selected pair still fails directly with its own error.
+        assertEquals("GitHub unavailable", assertFailsWith<IllegalStateException> { service.reconcileRefs(repositoryId) }.message)
+    }
+
+    @Test fun `unpaired refs skip the write lock and paired lock contention remains retryable`() = withDb {
+        coEvery { lock.acquire(any(), any(), any()) } returns false
+        assertEquals(GitHubSyncResult.IGNORED, service.synchronizeRef(refEvent()))
+        coVerify(exactly = 0) { locks.create(any()) }
+        service.savePair(input)
+        assertFailsWith<RepositoryWriteBusyException> { service.synchronizeRef(refEvent()) }
+        coVerify(exactly = 0) { writes.synchronizeRef(any()) }
+    }
+
+    @Test fun `reconciliation rejects a pair configuration changed after comparing refs`() = withDb {
+        service.savePair(input)
+        coEvery { writes.compareRefs(repositoryId, any(), any()) } coAnswers {
+            service.savePair(input.copy(owner = "renamed-owner"))
+            listOf(RefComparison(ref, null, sha))
+        }
+        val failure = assertFailsWith<IllegalStateException> { service.reconcileRefs(repositoryId) }
+        assertEquals("GitHub repository pair changed during reconciliation", failure.message)
+        coVerify(exactly = 0) { writes.synchronizeRef(any()) }
+    }
+
+    @Test fun `all-pair reconciliation preserves cancellation and reports each ordinary failure`() = withDb {
+        val otherId = UUID.parse("ffffffff-ffff-ffff-ffff-ffffffffffff")
+        connection().useStatement("insert into git.repositories(id) values ('$otherId')") { it.execute() }
+        coEvery { hostedService.findById(otherId) } returns hosted.copy(id = otherId, slug = "other")
+        service.savePair(input)
+        service.savePair(input.copy(repositoryId = otherId, githubRepositoryId = 456, name = "other"))
+        coEvery { writes.compareRefs(repositoryId, any(), any()) } throws kotlinx.coroutines.CancellationException("cancel reconciliation")
+        assertFailsWith<kotlinx.coroutines.CancellationException> { service.reconcileRefs() }
+        coVerify(exactly = 0) { writes.compareRefs(otherId, any(), any()) }
+        coEvery { writes.compareRefs(repositoryId, any(), any()) } throws IllegalStateException("first failure")
+        coEvery { writes.compareRefs(otherId, any(), any()) } throws IllegalArgumentException("second failure")
+        val failure = assertFailsWith<IllegalStateException> { service.reconcileRefs() }
+        assertEquals("first failure", failure.cause?.message)
+        assertEquals("second failure", failure.suppressed.single().message)
+        assertTrue(failure.message.orEmpty().contains(repositoryId.toString()))
+        assertTrue(failure.message.orEmpty().contains(otherId.toString()))
+    }
 
     private fun payload(userId: Long = 7, type: String = "User", remoteId: Long = 123, extra: String = "") =
         """{"repository":{"id":$remoteId,"full_name":"bosca-io/source"},"sender":{"id":$userId,"type":"$type"},"message":"✓ café"$extra}"""
@@ -299,6 +601,8 @@ class GitHubSyncServiceIntegrationTest {
         provides<RepositoryService>(singleton = true) { hostedService }
         provides<PipelineSecretService>(singleton = true) { secrets }
         provides<SecurityService>(singleton = true) { security }
+        provides<RepositoryWriteService>(singleton = true) { writes }
+        provides<bosca.git.github.GitHubClient>(singleton = true) { github }
         val wired = GitHubSyncServiceImplProvider().get()
         val pair = wired.savePair(input)
         assertEquals(pair, wired.findPair(repositoryId))
@@ -343,6 +647,7 @@ class GitHubSyncServiceIntegrationTest {
                     GitHubRepositoryPairControllerDispatcher(GitHubRepositoryPairController()),
                     GitHubUserControllerDispatcher(GitHubUserController()),
                     GitHubDeliveryControllerDispatcher(GitHubDeliveryController()),
+                    GitHubRefStateControllerDispatcher(GitHubRefStateController()),
                 ).associateBy { it.type.typeName }
             }
             override suspend fun initialize(builder: RuntimeWiringBuilder) {
@@ -366,14 +671,19 @@ class GitHubSyncServiceIntegrationTest {
         assertFalse("errors" in mapped, mapped.toString())
         val user = service.findUsers(0, 25).single()
         val accepted = receive()
+        repository.saveRefState(GitHubRefState(repositoryId, ref, sha, synchronized = true, boscaSha = sha, githubSha = nextSha, conflict = true))
         val query = """{ github {
             pair(repositoryId: "$repositoryId") { repositoryId githubRepositoryId owner name webhookSecretName tokenSecretName enabled version created modified }
             users { githubUserId principalId created modified }
             deliveries(repositoryId: "$repositoryId") { deliveryId repositoryId event payload githubUserId principalId ignored created }
+            refStates(repositoryId: "$repositoryId") { repositoryId ref sha synchronized boscaSha githubSha conflict modified }
         } }"""
         val result = graphQL.execute(admin, GraphQLRequest(query = query)).jsonObject
         assertFalse("errors" in result, result.toString())
         val data = result.getValue("data").jsonObject.getValue("github").jsonObject
+        val refData = data.getValue("refStates").jsonArray.single().jsonObject
+        assertEquals(sha, refData.getValue("sha").jsonPrimitive.content)
+        assertEquals("true", refData.getValue("conflict").jsonPrimitive.content)
         assertEquals(principalId.toString(), data.getValue("users").jsonArray.single().jsonObject.getValue("principalId").jsonPrimitive.content)
         val delivery = data.getValue("deliveries").jsonArray.single().jsonObject
         assertEquals(accepted.payload, delivery.getValue("payload"))
@@ -430,6 +740,7 @@ class GitHubSyncServiceIntegrationTest {
         val runService: bosca.pipelines.service.PipelineRunService,
         val runRepository: PipelineRunRepositoryImpl,
         val json: Json,
+        val resultStore: PipelineRunResultStore,
     ) {
         val jobs = linkedMapOf<UUID, Job>()
         private val completedJobs = mutableSetOf<UUID>()
@@ -463,13 +774,35 @@ class GitHubSyncServiceIntegrationTest {
             }
         }
 
+        suspend fun executeBackingJobs(security: SecurityService) {
+            for (queued in jobs.values.filter { job -> job.getId() !in completedJobs && events.any {
+                it.jobId == job.getId() && it.executor == bosca.pipelines.trigger.ExecuteNodeInJobExecutor::class.qualifiedName
+            } }) {
+                val definition = json.decodeFromJsonElement(bosca.pipelines.trigger.ExecuteNodeInJob.serializer(), queued.getDefinition())
+                val job = spyk(queued)
+                every { job.isLocked } returns true
+                withContext(queue.asCoroutineContext(job)) {
+                    bosca.pipelines.trigger.ExecuteNodeInJobExecutor(runService, pipelineService, resultStore, security,
+                        PipelinesRuntimeConfiguration()).execute()
+                }
+                val run = assertNotNull(runRepository.getById(definition.runId))
+                val parent = spyk(jobs.getValue(requireNotNull(run.runJobId)))
+                every { parent.isLocked } returns true
+                withContext(queue.asCoroutineContext(parent)) {
+                    bosca.pipelines.trigger.PipelineRunDriveListenerImpl(json).onChildStatusChanged(
+                        parent, queued, bosca.sharedqueue.jobs.JobStatus.COMPLETE, null)
+                }
+                completedJobs += queued.getId()
+            }
+        }
+
         suspend fun runs(delivery: GitHubDelivery) = DeliveryProbe.observed
             .filter { it.delivery.deliveryId == delivery.deliveryId }
             .map { requireNotNull(runRepository.getById(requireNotNull(it.runId))) }
     }
 
     /** Exercises generated event dispatch, both production pipeline jobs and JDBC run mapping. */
-    private suspend fun installTriggeredPipeline(): EventFixture {
+    private suspend fun installTriggeredPipeline(sync: Boolean = false): EventFixture {
         connection().useStatement("""
             drop schema if exists pipelines cascade;
             create table if not exists groups (id uuid primary key);
@@ -487,6 +820,7 @@ class GitHubSyncServiceIntegrationTest {
         val graphJson = Json(json) {
             serializersModule = SerializersModule {
                 include(json.serializersModule)
+                include(bosca.pipelines.node.GitPipelineNodeSerializersProvider().module)
                 polymorphic(PipelineNode::class) {
                     subclass(InputNode::class, InputNode.serializer())
                     subclass(OutputNode::class, OutputNode.serializer())
@@ -497,6 +831,10 @@ class GitHubSyncServiceIntegrationTest {
         ProviderRegistry.clear()
         provides<ConnectionPool>(singleton = true) { pool }
         provides<Json>(singleton = true) { graphJson }
+        provides<bosca.pipelines.node.PipelineNodeSerializers>(name = "Git", singleton = true) {
+            bosca.pipelines.node.GitPipelineNodeSerializersProvider()
+        }
+        provides<bosca.pipelines.service.NodeSuspensionService> { bosca.pipelines.service.NodeSuspensionServiceImpl() }
         provides<EventCatalogRegistrar>(name = "CoreGit", singleton = true) { CoreGitEventCatalogRegistrarProvider() }
         coEvery { security.getPrincipalGroups(any<UUID>()) } returns emptyList()
         coEvery { security.getPrincipalByIdentifier(any()) } returns Principal(id = servicePrincipalId)
@@ -511,7 +849,8 @@ class GitHubSyncServiceIntegrationTest {
         val graph = Pipeline(
             id = UUID.NIL,
             name = "Inbound GitHub", key = "configured-by-administrator", triggered = true, acceptedInputType = eventName,
-            nodes = listOf(InputNode("input", acceptedType = eventName), DeliveryProbe("probe"), OutputNode("output")),
+            nodes = listOf(InputNode("input", acceptedType = eventName),
+                if (sync) bosca.git.pipeline.GitHubPushNode("probe") else DeliveryProbe("probe"), OutputNode("output")),
             edges = listOf(
                 PipelineEdge(id = "in", source = "input", target = "probe"),
                 PipelineEdge(id = "out", source = "probe", target = "output"),
@@ -522,10 +861,17 @@ class GitHubSyncServiceIntegrationTest {
             graph = pipelines.graphAsJsonElement(graph),
         ))
         val runRepository = PipelineRunRepositoryImpl()
+        val pending = mutableMapOf<Pair<UUID, String>, bosca.pipelines.service.PipelineRunNodeResult>()
+        val resultStore = mockk<PipelineRunResultStore>()
+        coEvery { resultStore.put(any(), any(), any(), any()) } answers {
+            pending[firstArg<UUID>() to secondArg<String>()] = bosca.pipelines.service.PipelineRunNodeResult(arg(2), arg(3))
+        }
+        coEvery { resultStore.get(any(), any()) } answers { pending[firstArg<UUID>() to secondArg<String>()] }
+        coEvery { resultStore.remove(any(), any()) } answers { pending.remove(firstArg<UUID>() to secondArg<String>()) }
         val runService = PipelineRunServiceImpl(
             runRepository = runRepository,
             runLogRepository = PipelineRunLogRepositoryImpl(),
-            resultStore = mockk<PipelineRunResultStore>(relaxed = true),
+            resultStore = resultStore,
             nodeExecutionRepository = NodeExecutionRepositoryImpl(),
             iterationRepository = PipelineRunIterationRepositoryImpl(),
             rollbackRepository = RollbackRepositoryImpl(),
@@ -535,7 +881,12 @@ class GitHubSyncServiceIntegrationTest {
             config = PipelinesRuntimeConfiguration(),
             pubSub = mockk(relaxed = true),
         )
-        val fixture = EventFixture(mutableListOf(graph.copy(id = record.id)), pipelines, runService, runRepository, graphJson)
+        provides<bosca.pipelines.service.PipelineRunService> { runService }
+        val fixture = EventFixture(mutableListOf(graph.copy(id = record.id)), pipelines, runService, runRepository, graphJson, resultStore)
+        coEvery { pipelines.descriptorFor(any()) } answers {
+            val key = if (firstArg<PipelineNode>() is bosca.git.pipeline.GitHubPushNode) "githubPush" else ""
+            bosca.pipelines.node.GitPipelineNodeSerializersProvider().descriptors.find { it.key == key }
+        }
         coEvery { pipelines.triggeredEventTypes() } answers { if (fixture.pipelines.isEmpty()) emptySet() else setOf(eventName) }
         coEvery { pipelines.triggeredFor(eventName) } answers { fixture.pipelines.toList() }
         coEvery { pipelines.get(any()) } answers { fixture.pipelines.find { it.id == firstArg<UUID>() } }
@@ -558,6 +909,111 @@ class GitHubSyncServiceIntegrationTest {
         provides<JobQueue>(name = bosca.pipelines.configuration.PipelinesJobQueueNames.jobQueue, singleton = true) { fixture.queue }
         DeliveryProbe.observed.clear()
         return fixture
+    }
+
+    @Test fun `verified push runs through the generated node backing job real transport and resume without repeating imports`() = withDb {
+        val fixture = installTriggeredPipeline(sync = true)
+        val directory = java.nio.file.Files.createTempDirectory("bosca-github-pipeline-").toFile()
+        val remote = org.eclipse.jgit.api.Git.init().setBare(true).setDirectory(directory).call().repository
+        val local = org.eclipse.jgit.internal.storage.dfs.InMemoryRepository.Builder()
+            .setRepositoryDescription(org.eclipse.jgit.internal.storage.dfs.DfsRepositoryDescription("pipeline"))
+            .setFS(org.eclipse.jgit.util.FS.DETECTED).build()
+        try {
+            val manager = mockk<bosca.git.dfs.BoscaDfsRepositoryManager>()
+            every { manager.open(repositoryId) } answers { local.incrementOpen(); local }
+            every { manager.open(repositoryId, any()) } answers { local.incrementOpen(); local }
+            val notifier = mockk<RefUpdateNotifier>(relaxed = true)
+            val locks = mockk<bosca.lock.DistributedLockFactory>()
+            val lock = mockk<bosca.lock.DistributedLock>()
+            coEvery { locks.create(any()) } returns lock
+            coEvery { lock.acquire(any(), any(), any()) } returns true
+            coEvery { lock.renew(any()) } returns true
+            coEvery { lock.release() } returns true
+            val actualWrites = RepositoryWriteServiceImpl(manager, notifier, locks)
+            val actualSync = GitHubSyncServiceImpl(repository, hostedService, secrets, security, actualWrites, github, locks)
+            provides<GitHubSyncService> { actualSync }
+            coEvery { github.repositoryUrl(any(), any()) } returns directory.toURI().toString()
+            val commit = remote.newObjectInserter().use { inserter ->
+                val builder = org.eclipse.jgit.lib.CommitBuilder()
+                builder.setTreeId(inserter.insert(org.eclipse.jgit.lib.TreeFormatter()))
+                builder.author = org.eclipse.jgit.lib.PersonIdent("Original Author", "author@example.com")
+                builder.committer = builder.author; builder.message = "Original commit"
+                inserter.insert(builder).also { inserter.flush() }
+            }
+            remote.updateRef(ref).apply { setNewObjectId(commit) }.update()
+            service.savePair(input); service.mapUser(7, principalId)
+            val delivery = receive(pushPayload(after = commit.name()))
+            assertTrue(actualSync.reconcileRefs(repositoryId).isEmpty())
+            assertNull(local.resolve(ref))
+            assertNull(repository.findPushResult(delivery.deliveryId))
+            fixture.dispatchAll(); fixture.driveAll()
+            val active = fixture.runRepository.listActive(0, 25)
+            assertEquals(2, active.size)
+            assertTrue(active.all { it.status == PipelineRunStatus.SUSPENDED })
+            fixture.executeBackingJobs(security)
+            assertEquals(commit, local.resolve(ref))
+            assertTrue(fixture.runRepository.listActive(0, 25).isEmpty())
+            assertEquals("APPLIED", repository.findPushResult(delivery.deliveryId))
+            assertEquals(commit.name(), service.findRefStates(repositoryId, 0, 25).single().sha)
+            assertEquals(delivery, receive(pushPayload(after = commit.name()), id = delivery.deliveryId))
+            fixture.dispatchAll(); fixture.driveAll(); fixture.executeBackingJobs(security)
+            coVerify(exactly = 1) { notifier.notifyRefsUpdated(any(), repositoryId, any(), principalId) }
+            assertTrue(fixture.events.any { it.executor == bosca.pipelines.trigger.ExecuteNodeInJobExecutor::class.qualifiedName })
+        } finally {
+            local.close(); remote.close(); directory.deleteRecursively()
+        }
+    }
+
+    @Test fun `GitHub package installs through the real pipeline service JDBC repository and generated node catalog`() = withDb {
+        installTriggeredPipeline()
+        provides<CacheManager> { mockk(relaxed = true) }
+        provides<RequestCacheSerializer> { mockk(relaxed = true) }
+        provides<bosca.pipelines.node.PipelineNodeSerializers>(name = "CorePipelines", singleton = true) {
+            bosca.pipelines.node.CorePipelinesPipelineNodeSerializersProvider()
+        }
+        val pubSub = mockk<bosca.di.ObjectProvider<bosca.pubsub.PubSubService>>()
+        every { pubSub.exists } returns false
+        val scheduler = mockk<bosca.scheduler.service.SchedulerService>(relaxed = true)
+        coEvery { scheduler.getJobs(any(), any(), any()) } returns emptyList()
+        val schedulerProvider = mockk<bosca.di.ObjectProvider<bosca.scheduler.service.SchedulerService>>()
+        every { schedulerProvider.exists } returns true
+        coEvery { schedulerProvider.get() } returns scheduler
+        val actual = bosca.pipelines.service.PipelineServiceImpl(
+            PipelineRepositoryImpl(), PipelinePermissionRepositoryImpl(), PipelineExecutorImpl(), security,
+            PipelinesRuntimeConfiguration(), pubSub, schedulerProvider,
+        )
+        try {
+            val registry = bosca.git.installer.GitHubPackageInstallerRegistry()
+            val installation = registry.installation()
+            val installer = registry.installer(actual)
+            installer.install(installation, installation.versions.single())
+            val imported = assertNotNull(actual.getByKey("github-import-refs"))
+            val exported = assertNotNull(actual.getByKey("github-export-refs"))
+            val reconciled = assertNotNull(actual.getByKey("github-reconcile-refs"))
+            assertIs<bosca.git.pipeline.GitHubPushNode>(imported.nodes[1])
+            assertIs<bosca.git.pipeline.GitHubRefNode>(exported.nodes[1])
+            assertIs<bosca.git.pipeline.GitHubReconcileRefsNode>(reconciled.nodes[1])
+            assertTrue(imported.triggered); assertTrue(exported.triggered); assertFalse(reconciled.triggered)
+            assertEquals("0 * * * *", reconciled.schedule)
+            coVerify(exactly = 1) { scheduler.createJob(match {
+                it.jobName == bosca.pipelines.trigger.PipelineScheduledRunExecutor.NAME && it.cronExpression == "0 * * * *" && it.enabled == true &&
+                    json.decodeFromJsonElement(bosca.pipelines.trigger.PipelineScheduledRunJob.serializer(), it.jobParameters).pipelineId == reconciled.id
+            }, UUID.NIL) }
+            for (pipeline in listOf(imported, exported, reconciled)) {
+                assertNull(actual.validateGraph(actual.graphAsJsonElement(pipeline)))
+            }
+            val edited = actual.save(imported.id, "Operator's graph", imported.description, imported.acceptedInputType,
+                false, imported.version, actual.graphAsJsonElement(imported), key = imported.key)
+            installer.install(installation, installation.versions.single())
+            val retained = assertNotNull(actual.getByKey(imported.key))
+            assertEquals(edited.name, retained.name)
+            assertEquals(edited.version, retained.version)
+            assertFalse(retained.triggered)
+            assertEquals(actual.graphAsJsonElement(edited), actual.graphAsJsonElement(retained))
+            coVerify(exactly = 1) { scheduler.createJob(any(), any()) }
+        } finally {
+            actual.shutdown()
+        }
     }
 
     @Test fun `verified delivery reaches existing pipeline jobs with its original user data`() = withDb {

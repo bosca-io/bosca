@@ -1,6 +1,13 @@
 package bosca.git.service
 
 import bosca.git.model.GitHubUser
+import bosca.lock.DistributedLockFactory
+import bosca.db.withConnectionManager
+import bosca.git.github.GitHubClient
+import bosca.git.model.GitHubPush
+import bosca.git.model.GitHubRefState
+import bosca.git.model.GitHubSyncResult
+import bosca.git.model.RefUpdateEvent
 import bosca.git.model.GitHubDelivery
 import bosca.git.model.dispatch
 import bosca.git.model.GitHubDeliveryConflictException
@@ -15,6 +22,7 @@ import bosca.pipelines.service.PipelineSecretService
 import bosca.security.service.SecurityService
 import bosca.serialization.UUID
 import bosca.service.annotation.ServiceImplementation
+import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.SerializationException
 import java.nio.ByteBuffer
@@ -23,6 +31,7 @@ import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
+import org.slf4j.LoggerFactory
 
 @ServiceImplementation
 class GitHubSyncServiceImpl(
@@ -30,7 +39,12 @@ class GitHubSyncServiceImpl(
     private val repositoryService: RepositoryService,
     private val secrets: PipelineSecretService,
     private val securityService: SecurityService,
+    private val writes: RepositoryWriteService,
+    private val github: GitHubClient,
+    private val locks: DistributedLockFactory,
 ) : GitHubSyncService {
+    private val log = LoggerFactory.getLogger(GitHubSyncServiceImpl::class.java)
+
     override suspend fun findPair(repositoryId: UUID): GitHubRepositoryPair? = repository.findPair(repositoryId)
 
     override suspend fun savePair(input: GitHubRepositoryPairInput): GitHubRepositoryPair {
@@ -126,6 +140,154 @@ class GitHubSyncServiceImpl(
         validatePage(offset, limit)
         return repository.findDeliveries(repositoryId, offset, limit)
     }
+
+    override suspend fun synchronizePush(delivery: GitHubDelivery): GitHubSyncResult = withPair(delivery.repositoryId, GitHubSyncResult.IGNORED) { pair ->
+        // Use persisted signed input, including its original user mapping, rather than caller-supplied attribution.
+        val verified = repository.findDelivery(delivery.deliveryId)
+            ?: throw NoSuchElementException("Verified GitHub delivery not found")
+        require(verified.repositoryId == pair.repositoryId) { "Delivery belongs to another repository" }
+        if (verified.ignored || verified.event != "push") return@withPair GitHubSyncResult.IGNORED
+        repository.findPushResult(verified.deliveryId)?.let { return@withPair GitHubSyncResult.valueOf(it) }
+        val push = json.decodeFromJsonElement(GitHubPush.serializer(), verified.payload)
+        val token = token(pair)
+        val url = github.repositoryUrl(pair, token)
+        val result = synchronize(pair, push.ref, push.before.nonZeroSha(), push.after.nonZeroSha(),
+            RefSynchronizationDirection.INBOUND, verified.principalId, url, token, verifiedPush = true)
+        repository.savePushResult(verified.deliveryId, result.name)
+        result
+    }
+
+    override suspend fun synchronizeRef(event: RefUpdateEvent): GitHubSyncResult = withPair(event.repositoryId, GitHubSyncResult.IGNORED) { pair ->
+        val token = token(pair)
+        val url = github.repositoryUrl(pair, token)
+        synchronize(pair, event.ref, event.beforeSha, event.afterSha, RefSynchronizationDirection.OUTBOUND, null, url, token)
+    }
+
+    override suspend fun findRefStates(repositoryId: UUID, offset: Long, limit: Int): List<GitHubRefState> {
+        validatePage(offset, limit)
+        return repository.findRefStates(repositoryId, offset, limit)
+    }
+
+    override suspend fun reconcileRefs(repositoryId: UUID?): List<GitHubRefState> {
+        if (repositoryId != null) return reconcilePair(repositoryId)
+        // Each pair commits or rolls back on its own, so one failing pair cannot block the others.
+        val reconciled = mutableListOf<GitHubRefState>()
+        val failures = mutableListOf<Pair<UUID, Exception>>()
+        for (pair in repository.findEnabledPairs()) {
+            try {
+                reconciled += reconcilePair(pair.repositoryId)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                log.error("GitHub ref reconciliation failed for repository {}", pair.repositoryId, e)
+                failures += pair.repositoryId to e
+            }
+        }
+        if (failures.isNotEmpty()) {
+            throw IllegalStateException(
+                "GitHub ref reconciliation failed for ${failures.size} repositories: ${failures.joinToString { it.first.toString() }}",
+                failures.first().second,
+            ).apply { failures.drop(1).forEach { addSuppressed(it.second) } }
+        }
+        return reconciled
+    }
+
+    private suspend fun reconcilePair(repositoryId: UUID): List<GitHubRefState> = withConnectionManager {
+        val pair = availablePair(repository.findPair(repositoryId)) ?: return@withConnectionManager emptyList()
+        val token = token(pair)
+        val url = github.repositoryUrl(pair, token)
+        val current = writes.compareRefs(repositoryId, url, token).associateBy { it.ref }
+        val baselines = repository.findAllRefStates(repositoryId).associateBy { it.ref }
+        val reconciled = mutableListOf<GitHubRefState>()
+        val pendingRefs = repository.findPendingPushRefs(repositoryId)
+        for (ref in (current.keys + baselines.keys + pendingRefs).sorted()) {
+            reconciled += withPair(repositoryId, emptyList<GitHubRefState>()) { lockedPair ->
+                check(lockedPair.version == pair.version) { "GitHub repository pair changed during reconciliation" }
+                val pending = repository.findPendingPushDeliveries(repositoryId, ref)
+                if (pending.isNotEmpty()) {
+                    // The normal import pipeline owns these verified occurrences and their attribution.
+                    pending.forEach { it.dispatch() }
+                    return@withPair listOfNotNull(repository.findRefState(repositoryId, ref))
+                }
+                val local = current[ref]?.localSha
+                val remote = current[ref]?.remoteSha
+                val baseline = repository.findRefState(repositoryId, ref)
+                // Both sides still hold the recorded common value: nothing to transfer or record.
+                if (baseline != null && baseline.synchronized && !baseline.conflict && local == baseline.sha && remote == baseline.sha) {
+                    return@withPair listOf(baseline)
+                }
+                val outbound = if (baseline?.synchronized == true) remote == baseline.sha && local != remote
+                    else remote == null && local != null
+                val direction = if (outbound) RefSynchronizationDirection.OUTBOUND else RefSynchronizationDirection.INBOUND
+                var result = synchronize(lockedPair, ref, baseline?.sha, if (outbound) local else remote, direction, null, url, token)
+                // Either history may contain the other when both tips changed since the last common ref.
+                if (result == GitHubSyncResult.CONFLICT && local != null && remote != null && ref.startsWith("refs/heads/")) {
+                    result = synchronize(lockedPair, ref, baseline?.sha, local, RefSynchronizationDirection.OUTBOUND, null, url, token)
+                }
+                if (result == GitHubSyncResult.STALE) emptyList() else listOfNotNull(repository.findRefState(repositoryId, ref))
+            }
+        }
+        reconciled
+    }
+
+    /** Rechecks the pair under the write lock and commits each operation before that lock is released. */
+    private suspend fun <T : Any> withPair(
+        repositoryId: UUID, unavailable: T, block: suspend (GitHubRepositoryPair) -> T,
+    ): T = withConnectionManager {
+        if (availablePair(repository.findPair(repositoryId)) == null) return@withConnectionManager unavailable
+        withRefSynchronizationTransaction(repositoryId, locks) {
+            val pair = availablePair(repository.lockPair(repositoryId)) ?: return@withRefSynchronizationTransaction unavailable
+            block(pair)
+        }
+    }
+
+    private suspend fun availablePair(candidate: GitHubRepositoryPair?): GitHubRepositoryPair? {
+        val pair = candidate?.takeIf { it.enabled } ?: return null
+        val hosted = repositoryService.findById(pair.repositoryId)?.takeUnless { it.deleted || it.archived } ?: return null
+        return pair.takeIf { it.repositoryId == hosted.id }
+    }
+
+    private suspend fun synchronize(
+        pair: GitHubRepositoryPair, ref: String, before: String?, after: String?,
+        direction: RefSynchronizationDirection, principalId: UUID?, remoteUrl: String, token: String,
+        verifiedPush: Boolean = false,
+    ): GitHubSyncResult {
+        val state = repository.findRefState(pair.repositoryId, ref)
+        val unattributedBefore = if (verifiedPush && principalId != null && after != null) {
+            repository.findUnattributedBeforeSha(pair.repositoryId, ref, after)
+        } else null
+        val outcome = writes.synchronizeRef(RefSynchronizationInput(
+            repositoryId = pair.repositoryId, remoteUrl = remoteUrl,
+            token = token, ref = ref, beforeSha = before, afterSha = after, synchronizedSha = state?.sha,
+            hasSynchronized = state?.synchronized == true, direction = direction, principalId = principalId,
+            hasConflict = state?.conflict == true,
+            unattributedBeforeSha = unattributedBefore,
+        ))
+        val converged = outcome.result == GitHubSyncResult.APPLIED || outcome.result == GitHubSyncResult.UNCHANGED
+        val anonymousImport = outcome.result == GitHubSyncResult.APPLIED &&
+            direction == RefSynchronizationDirection.INBOUND && !verifiedPush && outcome.boscaSha != null
+        val retainAttribution = outcome.result != GitHubSyncResult.APPLIED &&
+            !(verifiedPush && outcome.result == GitHubSyncResult.UNCHANGED) && state?.sha == outcome.boscaSha
+        repository.saveRefState(GitHubRefState(
+            repositoryId = pair.repositoryId, ref = ref,
+            sha = if (converged) outcome.boscaSha else state?.sha,
+            synchronized = converged || state?.synchronized == true,
+            boscaSha = outcome.boscaSha, githubSha = outcome.remoteSha,
+            conflict = if (converged) false else outcome.result == GitHubSyncResult.CONFLICT || state?.conflict == true,
+            unattributedBeforeSha = when {
+                anonymousImport -> outcome.beforeSha ?: "0000000000000000000000000000000000000000"
+                retainAttribution -> state?.unattributedBeforeSha
+                else -> null
+            },
+            unattributedRefModified = if (retainAttribution) state?.unattributedRefModified else null,
+        ))
+        return outcome.result
+    }
+
+    private suspend fun token(pair: GitHubRepositoryPair): String =
+        secrets.resolve(pair.tokenSecretName)?.takeIf { it.isNotBlank() } ?: throw GitHubWebhookUnavailableException()
+
+    private fun String.nonZeroSha(): String? = takeUnless { it == "0000000000000000000000000000000000000000" }
 
     private fun validatePage(offset: Long, limit: Int) {
         require(offset >= 0 && limit in 1..100) { "Invalid pagination" }

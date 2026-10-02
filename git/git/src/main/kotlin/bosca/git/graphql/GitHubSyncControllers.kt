@@ -4,6 +4,7 @@ import bosca.git.model.GitHubUser
 import bosca.git.model.GitHubDelivery
 import bosca.git.model.GitHubRepositoryPair
 import bosca.git.model.GitHubRepositoryPairInput
+import bosca.git.model.GitHubRefState
 import bosca.git.service.GitHubSyncService
 import bosca.graphql.GraphQLController
 import bosca.graphql.annotations.Field
@@ -37,10 +38,22 @@ class GitHubSyncQuery(private val service: GitHubSyncService, private val groups
         groups.verifyHasAdminGroup(authentication)
         return service.findDeliveries(repositoryId, offset ?: 0, limit?.coerceIn(1, 100) ?: 25)
     }
+
+    @Field
+    suspend fun refStates(authentication: AuthenticationContext, repositoryId: UUID, offset: Long?, limit: Int?): List<GitHubRefState> {
+        groups.verifyHasAdminGroup(authentication)
+        return service.findRefStates(repositoryId, offset ?: 0, limit?.coerceIn(1, 100) ?: 25)
+    }
 }
 
 @TypeController(type = "GitHubMutation")
 class GitHubSyncMutation(private val service: GitHubSyncService, private val groups: GroupEvaluator) : GraphQLController<GitHubMutation> {
+    @Field
+    suspend fun reconcileRefs(authentication: AuthenticationContext, repositoryId: UUID): List<GitHubRefState> {
+        groups.verifyHasAdminGroup(authentication)
+        return service.reconcileRefs(repositoryId)
+    }
+
     @Field
     suspend fun savePair(authentication: AuthenticationContext, input: GitHubRepositoryPairInput): GitHubRepositoryPair {
         groups.verifyHasAdminGroup(authentication)

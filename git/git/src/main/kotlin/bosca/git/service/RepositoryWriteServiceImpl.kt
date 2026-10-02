@@ -25,6 +25,12 @@ class RepositoryWriteServiceImpl(
     private val lockFactory: DistributedLockFactory,
 ) : RepositoryWriteService {
 
+    override suspend fun synchronizeRef(input: RefSynchronizationInput): RefSynchronizationResult =
+        synchronizeRef(input, dfsManager, refUpdateNotifier, lockFactory)
+
+    override suspend fun compareRefs(repositoryId: UUID, remoteUrl: String, token: String): List<RefComparison> =
+        compareRefs(repositoryId, remoteUrl, token, dfsManager)
+
     // Both mutations below insert objects and advance a ref, so they must hold
     // the per-repository write lock like a push: a concurrent GC computing
     // reachability without it could drop the just-written objects (see

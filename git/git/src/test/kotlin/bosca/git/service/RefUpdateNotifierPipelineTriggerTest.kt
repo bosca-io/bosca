@@ -11,6 +11,7 @@ import bosca.git.repository.TaskCommitReferenceRepository
 import bosca.sharedqueue.jobs.JobConfigurationEnqueuer
 import bosca.serialization.UUID
 import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.mockk
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
@@ -27,6 +28,8 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlinx.coroutines.CancellationException
 
 /**
  * [RefUpdateNotifierImpl] → CI trigger: an ANNOTATED tag's ref points at the tag OBJECT, but the
@@ -37,6 +40,7 @@ import kotlin.test.assertEquals
 class RefUpdateNotifierPipelineTriggerTest {
 
     private val enqueuer = mockk<JobConfigurationEnqueuer>()
+    private val repositoryRepository = mockk<GitRepositoryRepository>(relaxed = true)
     private val json = Json {
         ignoreUnknownKeys = true
         serializersModule = kotlinx.serialization.modules.SerializersModule {
@@ -44,7 +48,7 @@ class RefUpdateNotifierPipelineTriggerTest {
         }
     }
     private val notifier = RefUpdateNotifierImpl(
-        repositoryRepository = mockk<GitRepositoryRepository>(relaxed = true),
+        repositoryRepository = repositoryRepository,
         packRepository = mockk<DfsPackRepository>(relaxed = true),
         webhookService = mockk(relaxed = true),
         taskCommitRefRepository = mockk<TaskCommitReferenceRepository>(relaxed = true),
@@ -190,5 +194,63 @@ class RefUpdateNotifierPipelineTriggerTest {
             .single { it.ref == "refs/heads/main" }
         assertEquals(commitId.name(), job.afterSha)
         assertEquals(initiatingPrincipalId, job.pusherPrincipalId)
+    }
+
+    @Test
+    fun `attributing an imported ref uses ordinary CI rules without repeating ref side effects`() = runTest {
+        InMemoryRepository(DfsRepositoryDescription("attribution")).use { repo ->
+            val (commitId, tagId) = repo.newObjectInserter().use { inserter ->
+                val commit = CommitBuilder().apply {
+                    setTreeId(inserter.insert(TreeFormatter()))
+                    author = PersonIdent("t", "t@t"); committer = author
+                    message = "Pin versions [skip ci]"
+                }
+                val commitId = inserter.insert(commit)
+                val tagId = inserter.insert(TagBuilder().apply {
+                    tag = "v3"; setObjectId(commitId, Constants.OBJ_COMMIT)
+                    tagger = PersonIdent("t", "t@t"); message = "Release v3"
+                })
+                inserter.flush()
+                commitId to tagId
+            }
+            val enqueued = mutableListOf<JsonElement>()
+            coEvery { enqueuer.enqueue(capture(enqueued), any()) } returns mockk(relaxed = true)
+            val principalId = UUID.random()
+            notifier.enqueuePipelineTriggers(repo, UUID.random(), listOf(
+                RefChange("refs/tags/v3", ObjectId.zeroId(), tagId),
+                RefChange("refs/heads/main", ObjectId.zeroId(), commitId),
+                RefChange("refs/heads/deleted", commitId, ObjectId.zeroId()),
+                RefChange("refs/other/internal", ObjectId.zeroId(), commitId),
+            ), principalId)
+            val job = enqueued.map { json.decodeFromJsonElement(PipelineTriggerJob.serializer(), it) }.single()
+            assertEquals("refs/tags/v3", job.ref)
+            assertEquals(commitId.name(), job.afterSha)
+            assertEquals(ObjectId.zeroId().name(), job.beforeSha)
+            assertEquals(principalId, job.pusherPrincipalId)
+            coVerify(exactly = 0) { repositoryRepository.updateDiskSize(any(), any()) }
+            coVerify(exactly = 0) { repositoryRepository.findById(any()) }
+        }
+    }
+
+    @Test
+    fun `attributed CI queue failures and cancellation propagate for transactional retry`() = runTest {
+        InMemoryRepository(DfsRepositoryDescription("attribution-failure")).use { repo ->
+            val commitId = repo.newObjectInserter().use { inserter ->
+                val commit = CommitBuilder().apply {
+                    setTreeId(inserter.insert(TreeFormatter()))
+                    author = PersonIdent("t", "t@t"); committer = author; message = "Build"
+                }
+                inserter.insert(commit).also { inserter.flush() }
+            }
+            val updates = listOf(RefChange("refs/heads/main", ObjectId.zeroId(), commitId))
+            coEvery { enqueuer.enqueue(any(), any()) } throws IllegalStateException("queue unavailable")
+            assertEquals("queue unavailable", assertFailsWith<IllegalStateException> {
+                notifier.enqueuePipelineTriggers(repo, UUID.random(), updates, UUID.random())
+            }.message)
+            coEvery { enqueuer.enqueue(any(), any()) } throws CancellationException("cancelled")
+            assertFailsWith<CancellationException> {
+                notifier.enqueuePipelineTriggers(repo, UUID.random(), updates, UUID.random())
+            }
+        }
     }
 }

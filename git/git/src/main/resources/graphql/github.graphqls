@@ -6,6 +6,8 @@ type GitHub {
     users(offset: Long = 0, limit: Int = 25): [GitHubUser!]!
     "Verified delivery intake history, restricted to administrators."
     deliveries(repositoryId: UUID!, offset: Long = 0, limit: Int = 25): [GitHubDelivery!]!
+    "Common branch/tag values and concurrent edits requiring reconciliation."
+    refStates(repositoryId: UUID!, offset: Long = 0, limit: Int = 25): [GitHubRefState!]!
 }
 
 "Mutations for GitHub repository pairing and user mappings."
@@ -16,6 +18,8 @@ type GitHubMutation {
     mapUser(githubUserId: Long!, principalId: UUID!): GitHubUser!
     "Remove a user mapping without rewriting previous delivery attribution."
     unmapUser(githubUserId: Long!): Boolean!
+    "Reconcile branches and tags using current refs; recovered writes are unattributed."
+    reconcileRefs(repositoryId: UUID!): [GitHubRefState!]!
 }
 
 extend type Query {
@@ -71,4 +75,15 @@ type GitHubDelivery {
     principalId: UUID
     ignored: Boolean!
     created: DateTime!
+}
+
+type GitHubRefState {
+    repositoryId: UUID!
+    ref: String!
+    sha: String
+    synchronized: Boolean!
+    boscaSha: String
+    githubSha: String
+    conflict: Boolean!
+    modified: DateTime!
 }

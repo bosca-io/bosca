@@ -4,6 +4,7 @@ import bosca.db.migrations.Migration
 import bosca.di.annotation.Provider
 import bosca.di.annotation.Providers
 import bosca.git.dfs.BoscaDfsRepositoryManager
+import bosca.git.github.GitHubClient
 import bosca.git.repository.DfsPackRepository
 import bosca.git.repository.DfsRefRepository
 import bosca.git.security.RepositoryPermissionEvaluator
@@ -32,6 +33,9 @@ object JobQueueNames {
 
 @Providers
 class Configuration {
+
+    @Provider(singleton = true)
+    fun githubClient() = GitHubClient()
 
     @Provider(name = "git-migrations")
     fun migration(): Migration = GitMigration()
