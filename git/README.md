@@ -70,7 +70,11 @@ Credentials remain in the encrypted Pipeline secret store, managed through Pipel
 
 Intake verifies `X-Hub-Signature-256` against the exact raw body bytes and checks the signed repository ID. `X-GitHub-Delivery` reserves one persisted occurrence, including across redelivery; changing the body, event, or repository under that identifier returns a conflict. Accepted push and paired-repository pull request deliveries retain the original user mapping. Unknown and bot users remain unattributed, and fork-origin pull requests and other event types are recorded as ignored.
 
-This intake endpoint currently stores delivery history. It does not yet invoke synchronization workflows, change repository refs or pull requests, or start builds.
+Each eligible delivery dispatches a `GitHubDelivery` event through the standard event system. Configure an inbound pipeline with `triggered = true` and input type `bosca.git.model.GitHubDelivery`; matching uses the event type and does not require a particular pipeline key. The event carries the delivery ID, originating principal and original receipt time. Redelivery dispatches the stored occurrence again, preserving that data. Unknown and bot senders have no originating principal.
+
+Event dispatch uses the existing pipeline jobs, execution identity, history, trigger configuration and admission limits. Synchronization nodes consume the delivery data and must preserve its originating principal when calling Git services so build authorization checks the initiating person. Those nodes must track completed synchronization operations so redelivery does not repeat them.
+
+The synchronization node graphs are still pending implementation. Intake and handoff alone do not transfer refs, mirror pull requests or publish artifacts.
 
 ## Dependencies
 

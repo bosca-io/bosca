@@ -44,6 +44,8 @@ dependencies {
     // The git-CLI end-to-end suite runs the production BoscaAuthMiddleware against real Basic-auth traffic.
     testImplementation(project(":bosca-core:security"))
     testImplementation(project(":bosca-core:storage"))
+    testImplementation(project(":pipelines:pipelines"))
+    testImplementation(project(":bosca-core:core-events"))
     testImplementation(libs.testcontainers)
     testImplementation(project(":bosca-core:test-support"))
     testImplementation(libs.testcontainers.postgresql)

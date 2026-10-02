@@ -13,7 +13,7 @@ import bosca.security.service.AuthenticationContext
 import bosca.serialization.UUID
 import bosca.server.HttpStatusCode
 import bosca.server.ServerCall
-import kotlinx.serialization.SerializationException
+import kotlinx.coroutines.CancellationException
 
 /** GitHub authenticates through the raw body's HMAC, independently of Bosca session authentication. */
 @RouteController("/api/webhooks/github/{repositoryId}", method = RouteMethod.POST, authentication = RouteAuthentication.NONE)
@@ -31,12 +31,14 @@ class GitHubWebhookRoute(private val service: GitHubSyncService) : Route<Unit>()
             return call.respond(HttpStatusCode.Forbidden)
         } catch (_: GitHubDeliveryConflictException) {
             return call.respond(HttpStatusCode.Conflict)
-        } catch (_: SerializationException) {
-            return call.respond(HttpStatusCode.BadRequest)
         } catch (_: GitHubWebhookInputException) {
             return call.respond(HttpStatusCode.BadRequest)
         } catch (_: GitHubWebhookUnavailableException) {
             return call.respond(HttpStatusCode.ServiceUnavailable)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            throw RuntimeException("GitHub delivery processing failed", e)
         }
         call.respond(HttpStatusCode.Accepted)
     }

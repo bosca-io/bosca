@@ -1,6 +1,8 @@
 package bosca.git.model
 
 import bosca.db.annotation.ColumnName
+import bosca.events.Event
+import bosca.events.annotation.JobEvent
 import bosca.serialization.OffsetDateTime
 import bosca.serialization.UUID
 import kotlinx.serialization.Contextual
@@ -9,6 +11,7 @@ import kotlinx.serialization.json.JsonElement
 
 /** Verified intake, retained independently of pipeline execution for retry and reconciliation. */
 @Serializable
+@JobEvent(jobs = [])
 data class GitHubDelivery(
     @ColumnName("delivery_id") val deliveryId: String,
     @Contextual @ColumnName("repository_id") val repositoryId: UUID,
@@ -19,7 +22,9 @@ data class GitHubDelivery(
     @Contextual @ColumnName("principal_id") val principalId: UUID? = null,
     val ignored: Boolean = false,
     @Contextual val created: OffsetDateTime = OffsetDateTime.now(),
-)
+) : Event {
+    override fun identityKey(): Any = deliveryId
+}
 
 /** Intake-only fields are decoded from the signed JSON, never from request query parameters. */
 @Serializable
@@ -48,7 +53,7 @@ class GitHubDeliveryConflictException : IllegalArgumentException("GitHub deliver
 class GitHubWebhookRejectedException : IllegalArgumentException("GitHub webhook rejected")
 
 /** The delivery has malformed headers or encoding, independently of integration configuration. */
-class GitHubWebhookInputException(message: String) : IllegalArgumentException(message)
+class GitHubWebhookInputException(message: String, cause: Throwable? = null) : IllegalArgumentException(message, cause)
 
 /** A required server-side credential is unavailable; intake must not acknowledge the delivery. */
 class GitHubWebhookUnavailableException : RuntimeException("GitHub webhook configuration is unavailable")

@@ -3,6 +3,35 @@
 package bosca.git.service
 
 import bosca.db.ConnectionConfig
+import bosca.db.afterCommit
+import bosca.events.catalog.CoreGitEventCatalogRegistrarProvider
+import bosca.events.catalog.EventCatalogRegistrar
+import bosca.git.model.GitHubDelivery
+import bosca.pipelines.PipelineContext
+import bosca.pipelines.PipelineExecutorImpl
+import bosca.pipelines.configuration.PipelinesRuntimeConfiguration
+import bosca.pipelines.model.Pipeline
+import bosca.pipelines.model.PipelineEdge
+import bosca.pipelines.model.PipelineGraph
+import bosca.pipelines.model.PipelineRunStatus
+import bosca.pipelines.node.ActionNode
+import bosca.pipelines.node.InputNode
+import bosca.pipelines.node.NodeInputs
+import bosca.pipelines.node.NodePosition
+import bosca.pipelines.node.OutputNode
+import bosca.pipelines.node.PipelineNode
+import bosca.pipelines.node.PipelineValue
+import bosca.pipelines.repository.*
+import bosca.pipelines.service.PipelineRunResultStore
+import bosca.pipelines.service.PipelineRunServiceImpl
+import bosca.sharedqueue.jobs.Job
+import bosca.sharedqueue.jobs.JobQueue
+import bosca.sharedqueue.jobs.asCoroutineContext
+import io.mockk.every
+import io.mockk.spyk
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.modules.polymorphic
 import bosca.db.ConnectionFactoryImpl
 import bosca.db.ConnectionPool
 import bosca.db.asCoroutineContext
@@ -32,6 +61,7 @@ import io.opentelemetry.api.trace.Tracer
 import bosca.git.model.GitHubDeliveryConflictException
 import bosca.git.model.GitHubRepositoryPairInput
 import bosca.git.model.GitHubWebhookRejectedException
+import bosca.git.model.GitHubWebhookInputException
 import bosca.git.model.GitHubWebhookUnavailableException
 import bosca.git.model.Repository
 import bosca.git.repository.GitHubSyncRepositoryImpl
@@ -45,7 +75,6 @@ import io.mockk.mockk
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -69,11 +98,13 @@ class GitHubSyncServiceIntegrationTest {
 
     private val repositoryId = UUID.random()
     private val principalId = UUID.random()
+    private val servicePrincipalId = UUID.random()
     private val repository = GitHubSyncRepositoryImpl()
     private val hosted = Repository(id = repositoryId, slug = "source", name = "Source", ownerId = UUID.random())
     private val hostedService = mockk<RepositoryService>()
     private val secrets = mockk<PipelineSecretService>()
     private val security = mockk<SecurityService>()
+    private val pipelines = mockk<bosca.pipelines.service.PipelineService>()
     private val service = GitHubSyncServiceImpl(repository, hostedService, secrets, security)
     private val input = GitHubRepositoryPairInput(repositoryId, 123, "bosca-io", "source", "github-webhook", "github-token", true)
     private val secret = "test-secret-✓"
@@ -188,7 +219,7 @@ class GitHubSyncServiceIntegrationTest {
         assertFailsWith<GitHubWebhookRejectedException> { receive(payload(remoteId = 999)) }
         assertFailsWith<IllegalArgumentException> { service.onDelivery(repositoryId, "bad", "push", null, byteArrayOf()) }
         assertFailsWith<IllegalArgumentException> { service.onDelivery(repositoryId, UUID.random().toString(), "bad event", null, byteArrayOf()) }
-        assertFailsWith<SerializationException> { receive("invalid JSON") }
+        assertFailsWith<GitHubWebhookInputException> { receive("invalid JSON") }
         val bytes = byteArrayOf(0xc3.toByte(), 0x28)
         val mac = javax.crypto.Mac.getInstance("HmacSHA256").apply {
             init(javax.crypto.spec.SecretKeySpec(secret.toByteArray(), "HmacSHA256"))
@@ -361,6 +392,304 @@ class GitHubSyncServiceIntegrationTest {
         assertEquals(pair, json.decodeFromString(bosca.git.model.GitHubRepositoryPair.serializer(), json.encodeToString(bosca.git.model.GitHubRepositoryPair.serializer(), pair)))
         assertEquals(user, json.decodeFromString(bosca.git.model.GitHubUser.serializer(), json.encodeToString(bosca.git.model.GitHubUser.serializer(), user)))
         assertEquals(accepted, json.decodeFromString(bosca.git.model.GitHubDelivery.serializer(), json.encodeToString(bosca.git.model.GitHubDelivery.serializer(), accepted)))
+    }
+
+    @Serializable
+    @SerialName("githubDeliveryProbe")
+    class DeliveryProbe(
+        override val id: String,
+        override val name: String = "",
+        override val description: String = "",
+        override val position: NodePosition = NodePosition(),
+    ) : ActionNode() {
+        override suspend fun execute(context: PipelineContext, inputs: NodeInputs): PipelineValue? {
+            val delivery = context.json.decodeFromJsonElement(
+                GitHubDelivery.serializer(), requireNotNull(inputs.first).encode(context.json),
+            )
+            observed += Observation(
+                delivery, context.authentication.principal()?.id, context.runId, context.runJobId,
+            )
+            return inputs.first
+        }
+
+        companion object {
+            val observed = mutableListOf<Observation>()
+        }
+    }
+
+    data class Observation(
+        val delivery: GitHubDelivery,
+        val principalId: UUID?,
+        val runId: UUID?,
+        val jobId: UUID?,
+    )
+
+    private class EventFixture(
+        val pipelines: MutableList<Pipeline>,
+        val pipelineService: bosca.pipelines.service.PipelineService,
+        val runService: bosca.pipelines.service.PipelineRunService,
+        val runRepository: PipelineRunRepositoryImpl,
+        val json: Json,
+    ) {
+        val jobs = linkedMapOf<UUID, Job>()
+        private val completedJobs = mutableSetOf<UUID>()
+        val events = mutableListOf<bosca.sharedqueue.jobs.enqueue.JobEnqueueEvent>()
+        lateinit var queue: JobQueue
+        var failPublication = false
+
+        suspend fun dispatchAll() {
+            for (queued in jobs.values.filter { job -> job.getId() !in completedJobs && events.any {
+                it.jobId == job.getId() && it.executor == bosca.pipelines.trigger.PipelineDispatchJobExecutor::class.qualifiedName
+            } }) {
+                val job = spyk(queued)
+                every { job.isLocked } returns true
+                withContext(queue.asCoroutineContext(job)) {
+                    bosca.pipelines.trigger.PipelineDispatchJobExecutor(pipelineService).execute()
+                }
+                completedJobs += queued.getId()
+            }
+        }
+
+        suspend fun driveAll() {
+            for (queued in jobs.values.filter { job -> job.getId() !in completedJobs && events.any {
+                it.jobId == job.getId() && it.executor == bosca.pipelines.trigger.PipelineRunJobExecutor::class.qualifiedName
+            } }) {
+                val job = spyk(queued)
+                every { job.isLocked } returns true
+                withContext(queue.asCoroutineContext(job)) {
+                    bosca.pipelines.trigger.PipelineRunJobExecutor(pipelineService, runService, json).execute()
+                }
+                completedJobs += queued.getId()
+            }
+        }
+
+        suspend fun runs(delivery: GitHubDelivery) = DeliveryProbe.observed
+            .filter { it.delivery.deliveryId == delivery.deliveryId }
+            .map { requireNotNull(runRepository.getById(requireNotNull(it.runId))) }
+    }
+
+    /** Exercises generated event dispatch, both production pipeline jobs and JDBC run mapping. */
+    private suspend fun installTriggeredPipeline(): EventFixture {
+        connection().useStatement("""
+            drop schema if exists pipelines cascade;
+            create table if not exists groups (id uuid primary key);
+            do $$ begin
+                if not exists (select 1 from pg_type where typname = 'permission_action') then
+                    create type permission_action as enum ('view', 'edit', 'manage', 'delete', 'execute');
+                end if;
+            end $$;
+        """.trimIndent()) { it.execute() }
+        for (resource in PipelinesMigration().resources) {
+            val sql = PipelinesMigration::class.java.getResource("/db/migrations/$resource")?.readText()
+                ?: error("Missing pipeline migration: $resource")
+            connection().useStatement(sql) { it.execute() }
+        }
+        val graphJson = Json(json) {
+            serializersModule = SerializersModule {
+                include(json.serializersModule)
+                polymorphic(PipelineNode::class) {
+                    subclass(InputNode::class, InputNode.serializer())
+                    subclass(OutputNode::class, OutputNode.serializer())
+                    subclass(DeliveryProbe::class, DeliveryProbe.serializer())
+                }
+            }
+        }
+        ProviderRegistry.clear()
+        provides<ConnectionPool>(singleton = true) { pool }
+        provides<Json>(singleton = true) { graphJson }
+        provides<EventCatalogRegistrar>(name = "CoreGit", singleton = true) { CoreGitEventCatalogRegistrarProvider() }
+        coEvery { security.getPrincipalGroups(any<UUID>()) } returns emptyList()
+        coEvery { security.getPrincipalByIdentifier(any()) } returns Principal(id = servicePrincipalId)
+        coEvery { pipelines.graphAsJsonElement(any()) } answers {
+            val p = firstArg<Pipeline>()
+            graphJson.encodeToJsonElement(PipelineGraph.serializer(), PipelineGraph(p.nodes, p.edges))
+        }
+        coEvery { pipelines.decodeGraph(any()) } answers {
+            graphJson.decodeFromJsonElement(PipelineGraph.serializer(), firstArg())
+        }
+        val eventName = GitHubDelivery.serializer().descriptor.serialName
+        val graph = Pipeline(
+            id = UUID.NIL,
+            name = "Inbound GitHub", key = "configured-by-administrator", triggered = true, acceptedInputType = eventName,
+            nodes = listOf(InputNode("input", acceptedType = eventName), DeliveryProbe("probe"), OutputNode("output")),
+            edges = listOf(
+                PipelineEdge(id = "in", source = "input", target = "probe"),
+                PipelineEdge(id = "out", source = "probe", target = "output"),
+            ),
+        )
+        val record = PipelineRepositoryImpl().add(PipelineRecord(
+            name = graph.name, key = graph.key, acceptedInputType = eventName, triggered = true,
+            graph = pipelines.graphAsJsonElement(graph),
+        ))
+        val runRepository = PipelineRunRepositoryImpl()
+        val runService = PipelineRunServiceImpl(
+            runRepository = runRepository,
+            runLogRepository = PipelineRunLogRepositoryImpl(),
+            resultStore = mockk<PipelineRunResultStore>(relaxed = true),
+            nodeExecutionRepository = NodeExecutionRepositoryImpl(),
+            iterationRepository = PipelineRunIterationRepositoryImpl(),
+            rollbackRepository = RollbackRepositoryImpl(),
+            pipelineService = pipelines,
+            executor = PipelineExecutorImpl(),
+            securityService = security,
+            config = PipelinesRuntimeConfiguration(),
+            pubSub = mockk(relaxed = true),
+        )
+        val fixture = EventFixture(mutableListOf(graph.copy(id = record.id)), pipelines, runService, runRepository, graphJson)
+        coEvery { pipelines.triggeredEventTypes() } answers { if (fixture.pipelines.isEmpty()) emptySet() else setOf(eventName) }
+        coEvery { pipelines.triggeredFor(eventName) } answers { fixture.pipelines.toList() }
+        coEvery { pipelines.get(any()) } answers { fixture.pipelines.find { it.id == firstArg<UUID>() } }
+        provides<bosca.pipelines.PipelineEventDispatcher>(singleton = true) {
+            bosca.pipelines.trigger.PipelineEventDispatcherImpl(pipelines, graphJson)
+        }
+        val delegate = mockk<JobQueue>(relaxed = true)
+        coEvery { delegate.enqueue(any()) } coAnswers {
+            val job = firstArg<Job>()
+            if (job.getId() == UUID.NIL) job.setPersistentId(UUID.random())
+            afterCommit {
+                check(!fixture.failPublication) { "Queue unavailable" }
+                fixture.jobs[job.getId()] = job
+            }
+            job.getId()
+        }
+        val channel = mockk<bosca.sharedqueue.jobs.enqueue.JobEnqueueEventChannel>()
+        coEvery { channel.emit(any()) } answers { fixture.events += firstArg<bosca.sharedqueue.jobs.enqueue.JobEnqueueEvent>() }
+        fixture.queue = bosca.sharedqueue.jobs.enqueue.EventEmittingJobQueue(delegate, "pipelines", channel)
+        provides<JobQueue>(name = bosca.pipelines.configuration.PipelinesJobQueueNames.jobQueue, singleton = true) { fixture.queue }
+        DeliveryProbe.observed.clear()
+        return fixture
+    }
+
+    @Test fun `verified delivery reaches existing pipeline jobs with its original user data`() = withDb {
+        val fixture = installTriggeredPipeline()
+        service.savePair(input)
+        service.mapUser(7, principalId)
+        val delivery = receive()
+        assertTrue(fixture.runs(delivery).isEmpty())
+        fixture.dispatchAll()
+        fixture.driveAll()
+        val run = fixture.runs(delivery).single()
+        assertEquals(PipelineRunStatus.OK, run.status)
+        assertNull(run.principalId)
+        assertEquals(delivery, DeliveryProbe.observed.single().delivery)
+        assertEquals(servicePrincipalId, DeliveryProbe.observed.single().principalId)
+        assertEquals(run.runJobId, DeliveryProbe.observed.single().jobId)
+        assertTrue(fixture.events.any { it.executor == bosca.pipelines.trigger.PipelineDispatchJobExecutor::class.qualifiedName })
+        assertTrue(fixture.events.any { it.executor == bosca.pipelines.trigger.PipelineRunJobExecutor::class.qualifiedName })
+
+        service.unmapUser(7)
+        assertEquals(delivery, receive(id = delivery.deliveryId.uppercase()))
+        fixture.dispatchAll()
+        fixture.driveAll()
+        assertEquals(2, DeliveryProbe.observed.size)
+        assertTrue(DeliveryProbe.observed.all { it.delivery == delivery && it.principalId == servicePrincipalId })
+    }
+
+    @Test fun `delivery IDs use existing event scope deduplication`() = withDb {
+        val fixture = installTriggeredPipeline()
+        service.savePair(input)
+        val id = UUID.random().toString()
+        val delivery = bosca.events.withEventManager {
+            bosca.events.deferredEvents {
+                receive(id = id)
+                receive(id = id)
+                assertTrue(fixture.jobs.isEmpty())
+                assertNotNull(repository.findDelivery(id))
+            }
+        }
+        assertEquals(1, fixture.jobs.size)
+        fixture.dispatchAll()
+        fixture.driveAll()
+        assertEquals(delivery, DeliveryProbe.observed.single().delivery)
+    }
+
+    @Test fun `one event starts every configured matching pipeline`() = withDb {
+        val fixture = installTriggeredPipeline()
+        val original = fixture.pipelines.single()
+        val second = PipelineRepositoryImpl().add(PipelineRecord(
+            name = "Second inbound pipeline", key = "another-key", acceptedInputType = original.acceptedInputType,
+            graph = pipelines.graphAsJsonElement(original), triggered = true,
+        ))
+        fixture.pipelines += original.copy(id = second.id, key = second.key)
+        service.savePair(input)
+        val delivery = receive()
+        fixture.dispatchAll()
+        fixture.driveAll()
+        val runs = fixture.runs(delivery)
+        assertEquals(fixture.pipelines.map { it.id }.toSet(), runs.map { it.pipelineId }.toSet())
+        assertTrue(runs.all { it.status == PipelineRunStatus.OK })
+        assertEquals(2, DeliveryProbe.observed.size)
+    }
+
+    @Test fun `failed event publication can be retried under the original delivery ID`() = withDb {
+        val fixture = installTriggeredPipeline()
+        service.savePair(input)
+        val id = UUID.random().toString()
+        fixture.failPublication = true
+        assertFailsWith<IllegalStateException> { receive(id = id) }
+        val delivery = assertNotNull(repository.findDelivery(id))
+        assertTrue(fixture.runs(delivery).isEmpty())
+        fixture.failPublication = false
+        assertEquals(delivery, receive(id = id))
+        fixture.dispatchAll()
+        fixture.driveAll()
+        assertEquals(PipelineRunStatus.OK, fixture.runs(delivery).single().status)
+        assertEquals(delivery, DeliveryProbe.observed.single().delivery)
+    }
+
+    @Test fun `rolled back intake publishes no event job or pipeline run`() = withDb {
+        val fixture = installTriggeredPipeline()
+        service.savePair(input)
+        val id = UUID.random().toString()
+        assertFailsWith<IllegalStateException> {
+            transaction {
+                receive(id = id)
+                assertTrue(fixture.jobs.isEmpty())
+                error("rollback")
+            }
+        }
+        assertNull(repository.findDelivery(id))
+        assertTrue(fixture.jobs.isEmpty())
+        val retried = receive(id = id)
+        fixture.dispatchAll()
+        fixture.driveAll()
+        assertEquals(PipelineRunStatus.OK, fixture.runs(retried).single().status)
+    }
+
+    @Test fun `ignored and fork deliveries dispatch no pipeline events`() = withDb {
+        val fixture = installTriggeredPipeline()
+        service.savePair(input)
+        assertTrue(receive(event = "ping").ignored)
+        assertTrue(receive(payload(extra = ",\"pull_request\":{\"head\":{\"repo\":{\"id\":999}}}"), "pull_request").ignored)
+        assertTrue(fixture.jobs.isEmpty())
+        assertTrue(fixture.events.isEmpty())
+    }
+
+    @Test fun `unmapped and bot senders remain unattributed in the pipeline input`() = withDb {
+        val fixture = installTriggeredPipeline()
+        service.savePair(input)
+        service.mapUser(7, principalId)
+        for (body in listOf(payload(userId = 8), payload(type = "Bot"))) {
+            val delivery = receive(body)
+            fixture.dispatchAll()
+            fixture.driveAll()
+            assertEquals(PipelineRunStatus.OK, fixture.runs(delivery).single().status)
+            val observed = DeliveryProbe.observed.last()
+            assertEquals(delivery, observed.delivery)
+            assertNull(observed.delivery.principalId)
+            assertEquals(servicePrincipalId, observed.principalId)
+        }
+    }
+
+    @Test fun `deliveries use the existing triggered pipeline gate`() = withDb {
+        val fixture = installTriggeredPipeline()
+        fixture.pipelines.clear()
+        service.savePair(input)
+        val delivery = receive()
+        assertFalse(delivery.ignored)
+        assertTrue(fixture.jobs.isEmpty())
+        assertTrue(fixture.events.isEmpty())
+        assertTrue(fixture.runs(delivery).isEmpty())
     }
 
     private fun withDb(block: suspend () -> Unit) = runBlocking {

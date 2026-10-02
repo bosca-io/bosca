@@ -55,7 +55,7 @@ class GitHubWebhookRouteTest {
         for ((exception, expected) in listOf(
             GitHubWebhookRejectedException() to HttpStatusCode.Forbidden,
             GitHubDeliveryConflictException() to HttpStatusCode.Conflict,
-            SerializationException("bad JSON") to HttpStatusCode.BadRequest,
+            GitHubWebhookInputException("bad JSON") to HttpStatusCode.BadRequest,
             GitHubWebhookInputException("bad delivery header") to HttpStatusCode.BadRequest,
             GitHubWebhookUnavailableException() to HttpStatusCode.ServiceUnavailable,
         )) {
@@ -74,10 +74,15 @@ class GitHubWebhookRouteTest {
     }
 
     @Test fun `infrastructure failures produce server errors without acknowledging delivery`() = runTest {
-        coEvery { service.onDelivery(any(), any(), any(), any(), any()) } throws RuntimeException("database down")
-        val (call, response) = recordedCall(pathParameters = mapOf("repositoryId" to repositoryId.toString()), headers = headers)
-        runRoute(route, call)
-        assertEquals(HttpStatusCode.InternalServerError, response.status)
+        for (failure in listOf(
+            RuntimeException("database down"), SerializationException("invalid stored graph"),
+            IllegalArgumentException("invalid pipeline configuration"), IllegalStateException("queue unavailable"),
+        )) {
+            coEvery { service.onDelivery(any(), any(), any(), any(), any()) } throws failure
+            val (call, response) = recordedCall(pathParameters = mapOf("repositoryId" to repositoryId.toString()), headers = headers)
+            runRoute(route, call)
+            assertEquals(HttpStatusCode.InternalServerError, response.status)
+        }
     }
 
     @Test fun `cancellation propagates without acknowledging delivery`() = runTest {

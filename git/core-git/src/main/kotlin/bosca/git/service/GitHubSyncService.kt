@@ -7,7 +7,7 @@ import bosca.git.model.GitHubRepositoryPairInput
 import bosca.serialization.UUID
 import bosca.service.Service
 
-/** Owns repository pairing, user attribution, and verified delivery intake, not workflow execution. */
+/** Owns repository pairing, user attribution, verified intake and event dispatch. */
 interface GitHubSyncService : Service {
     /** The repository's pair, including disabled configuration. */
     suspend fun findPair(repositoryId: UUID): GitHubRepositoryPair?
@@ -28,6 +28,7 @@ interface GitHubSyncService : Service {
      * Verifies HMAC-SHA256 over [body] before decoding and persists one occurrence per delivery ID.
      * Redelivery returns that occurrence; a different payload/event/repository under the same ID fails.
      * Unknown users remain unattributed and fork-origin pull request deliveries are marked ignored.
+     * Eligible deliveries dispatch their typed event; redelivery retains the original ID and attribution.
      */
     suspend fun onDelivery(
         repositoryId: UUID,

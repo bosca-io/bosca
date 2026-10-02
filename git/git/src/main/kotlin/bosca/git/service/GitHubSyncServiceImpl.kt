@@ -2,6 +2,7 @@ package bosca.git.service
 
 import bosca.git.model.GitHubUser
 import bosca.git.model.GitHubDelivery
+import bosca.git.model.dispatch
 import bosca.git.model.GitHubDeliveryConflictException
 import bosca.git.model.GitHubRepositoryPair
 import bosca.git.model.GitHubRepositoryPairInput
@@ -15,6 +16,7 @@ import bosca.security.service.SecurityService
 import bosca.serialization.UUID
 import bosca.service.annotation.ServiceImplementation
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.SerializationException
 import java.nio.ByteBuffer
 import java.nio.charset.CodingErrorAction
 import java.nio.charset.StandardCharsets
@@ -94,8 +96,12 @@ class GitHubSyncServiceImpl(
         } catch (_: java.nio.charset.CharacterCodingException) {
             throw GitHubWebhookInputException("GitHub payload is not UTF-8")
         }
-        val payload = json.parseToJsonElement(text)
-        val envelope = json.decodeFromJsonElement(GitHubWebhookPayload.serializer(), payload)
+        val (payload, envelope) = try {
+            val payload = json.parseToJsonElement(text)
+            payload to json.decodeFromJsonElement(GitHubWebhookPayload.serializer(), payload)
+        } catch (e: SerializationException) {
+            throw GitHubWebhookInputException("Invalid GitHub payload", e)
+        }
         if (envelope.repository.id != pair.githubRepositoryId) throw GitHubWebhookRejectedException()
         val user = envelope.sender?.takeIf { it.id > 0 && it.type == "User" }
         val fork = event.startsWith("pull_request") &&
@@ -107,12 +113,13 @@ class GitHubSyncServiceImpl(
             principalId = user?.let { repository.findUser(it.id)?.principalId },
             ignored = event !in SUPPORTED_EVENTS || fork,
         )
-        repository.createDelivery(delivery)?.let { return it }
-        val existing = repository.findDelivery(delivery.deliveryId) ?: error("Conflicting delivery was not found")
-        if (existing.repositoryId != repositoryId || existing.event != event || existing.payloadDigest != delivery.payloadDigest) {
+        val accepted = repository.createDelivery(delivery)
+            ?: repository.findDelivery(delivery.deliveryId) ?: error("Conflicting delivery was not found")
+        if (accepted.repositoryId != repositoryId || accepted.event != event || accepted.payloadDigest != delivery.payloadDigest) {
             throw GitHubDeliveryConflictException()
         }
-        return existing
+        if (!accepted.ignored) accepted.dispatch()
+        return accepted
     }
 
     override suspend fun findDeliveries(repositoryId: UUID, offset: Long, limit: Int): List<GitHubDelivery> {
