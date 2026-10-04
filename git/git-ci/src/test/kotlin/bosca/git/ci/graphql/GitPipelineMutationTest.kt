@@ -430,6 +430,35 @@ class GitPipelineMutationTest {
     }
 
     @Test
+    fun `triggerPipeline forwards inputs without allowing run parameter overrides`() = runTest {
+        val pipeline = testPipeline()
+        val definition = testDefinition()
+        coEvery { pipelineService.findById(pipelineId) } returns pipeline
+        coEvery { browseService.resolveRef(repoId, "main") } returns "sha"
+        coEvery { pipelineService.parseDefinition(repoId, "sha", pipeline.filePath) } returns definition
+        coEvery { runService.createRun(any(), any(), any(), any(), any(), any(), any(), any()) } returns testRun()
+        val inputs = Json.parseToJsonElement("""{"image":"bosca-server","version":"7.4.0","enabled":false,"count":2}""")
+        mutation.triggerPipeline(authentication, pipelineId, "main", inputs)
+        coVerify {
+            runService.createRun(pipelineId, repoId, definition, "sha", "main", PipelineTriggerType.MANUAL, any(),
+                mapOf("inputs.image" to "bosca-server", "inputs.version" to "7.4.0", "inputs.enabled" to "false", "inputs.count" to "2"))
+        }
+    }
+
+    @Test
+    fun `triggerPipeline rejects malformed input payloads before dispatch`() = runTest {
+        coEvery { pipelineService.findById(pipelineId) } returns testPipeline()
+        coEvery { browseService.resolveRef(repoId, "main") } returns "sha"
+        coEvery { pipelineService.parseDefinition(any(), any(), any()) } returns testDefinition()
+        for (payload in listOf("[]", "true", "{\"image\":{}}", "{\"image\":null}")) {
+            assertFailsWith<IllegalArgumentException> {
+                mutation.triggerPipeline(authentication, pipelineId, "main", Json.parseToJsonElement(payload))
+            }
+        }
+        coVerify(exactly = 0) { runService.createRun(any(), any(), any(), any(), any(), any(), any(), any()) }
+    }
+
+    @Test
     fun `triggerPipeline throws when the ref does not resolve`() = runTest {
         coEvery { pipelineService.findById(pipelineId) } returns testPipeline()
         coEvery { browseService.resolveRef(repoId, "refs/heads/nope") } returns null

@@ -10,6 +10,9 @@ import bosca.git.model.PipelineRun
 import bosca.git.model.PipelineRunStatus
 import bosca.git.model.PipelineSecret
 import bosca.git.model.PipelineTriggerType
+import bosca.git.model.PipelineDefinition
+import bosca.git.model.PipelineTrigger
+import bosca.git.model.TriggerInput
 import bosca.git.model.Repository
 import bosca.git.model.Visibility
 import bosca.git.security.RepositoryPermissionEvaluator
@@ -32,6 +35,9 @@ import io.mockk.every
 import io.mockk.mockk
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -63,7 +69,7 @@ class GitPipelineQueryTest {
         coEvery { repositoryService.findById(repoId) } returns testRepo()
         query = GitPipelineQuery(
             pipelineService, runService, jobService, agentService,
-            secretService, logService, repositoryService, permissionEvaluator
+            secretService, logService, repositoryService, permissionEvaluator, Json,
         )
     }
 
@@ -88,6 +94,38 @@ class GitPipelineQueryTest {
         assertFailsWith<NoSuchElementException> {
             query.pipelines(authentication, UUID.random())
         }
+    }
+
+    @Test
+    fun `pipelineInputs reads manual declarations at the selected ref after VIEW authorization`() = runTest {
+        val pipeline = Pipeline(id = UUID.random(), repositoryId = repoId, filePath = "image.yaml", name = "Image", configHash = "hash")
+        coEvery { pipelineService.findById(pipeline.id) } returns pipeline
+        coEvery { pipelineService.parseDefinition(repoId, "refs/tags/7.4.0", pipeline.filePath) } returns PipelineDefinition(
+            name = "Image",
+            triggers = listOf(
+                PipelineTrigger(PipelineTriggerType.MANUAL, inputs = mapOf("image" to TriggerInput(type = "choice", options = listOf("bosca-server")))),
+                PipelineTrigger(PipelineTriggerType.RELEASE, inputs = mapOf("releaseOnly" to TriggerInput())),
+            ),
+            jobs = emptyMap(),
+        )
+        val result = query.pipelineInputs(authentication, pipeline.id, "refs/tags/7.4.0").jsonObject
+        assertEquals(setOf("image"), result.keys)
+        assertEquals("choice", result.getValue("image").jsonObject.getValue("type").jsonPrimitive.content)
+        coVerify { permissionEvaluator.verifyAllowed(authentication, any<Repository>(), PermissionAction.VIEW) }
+
+        coEvery { permissionEvaluator.verifyAllowed(authentication, any<Repository>(), PermissionAction.VIEW) } throws SecurityException("Forbidden")
+        assertFailsWith<SecurityException> { query.pipelineInputs(authentication, pipeline.id, "main") }
+        coVerify(exactly = 0) { pipelineService.parseDefinition(repoId, "main", pipeline.filePath) }
+    }
+
+    @Test
+    fun `pipelineInputs rejects a ref that does not support manual runs`() = runTest {
+        val pipeline = Pipeline(id = UUID.random(), repositoryId = repoId, filePath = "image.yaml", name = "Image", configHash = "hash")
+        coEvery { pipelineService.findById(pipeline.id) } returns pipeline
+        coEvery { pipelineService.parseDefinition(repoId, "old-tag", pipeline.filePath) } returns PipelineDefinition(
+            name = "Image", triggers = listOf(PipelineTrigger(PipelineTriggerType.RELEASE)), jobs = emptyMap(),
+        )
+        assertFailsWith<IllegalStateException> { query.pipelineInputs(authentication, pipeline.id, "old-tag") }
     }
 
     @Test

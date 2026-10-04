@@ -1,0 +1,70 @@
+name: Bosca Tag Image Release
+# Publish the platform images from the tagged workspace, independently of Maven publication.
+on:
+  tag:
+    patterns: ["*"]
+
+concurrency:
+  group: tag-image-release
+  cancel-in-progress: false
+
+env:
+  GRADLE_OPTS: "-Xmx4g -XX:+UseG1GC"
+
+jobs:
+  publish-images:
+    runner: linux
+    timeout: 120m
+    matrix:
+      image: [bosca-server, bosca-runner, bosca-studio, git-server, artifacts-server]
+    secrets: [GITHUB_USERNAME, GITHUB_TOKEN]
+    steps:
+      - name: Checkout
+        uses: checkout
+      - name: Setup Registry
+        uses: setup-registry
+        with:
+          repository: bosca-maven
+      - name: Setup Java
+        uses: setup-java
+        with:
+          distribution: graal
+          stream: 25i1
+          version: "25.0.3"
+      - name: Setup Rust
+        uses: setup-rust
+        with:
+          toolchain: stable
+      - name: Setup Node
+        uses: setup-node
+        with:
+          version: "22"
+      - name: Setup pnpm
+        uses: setup-pnpm
+        with:
+          version: "10"
+      - name: Log in to the GitHub Container Registry
+        run: printf '%s' "$GITHUB_TOKEN" | docker login ghcr.io --username "$GITHUB_USERNAME" --password-stdin
+        env:
+          GITHUB_USERNAME: ${{ secrets.GITHUB_USERNAME }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push image
+        run: scripts/release/build-image.sh "$IMAGE" "$VERSION"
+        env:
+          IMAGE: ${{ matrix.image }}
+          VERSION: ${{ version }}
+      - name: Log out of the GitHub Container Registry
+        if: always()
+        run: docker logout ghcr.io
+      - name: Notify Success
+        uses: notify
+        if: success()
+        with:
+          channel: slack
+          message: "Image ${{ matrix.image }}:${{ version }} published to ghcr.io/bosca-io/bosca"
+      - name: Notify Failure
+        uses: notify
+        if: failure()
+        with:
+          channel: slack
+          message: "Image ${{ matrix.image }}:${{ version }} release FAILED — check pipeline logs"

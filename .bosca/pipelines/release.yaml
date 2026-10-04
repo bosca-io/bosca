@@ -56,6 +56,37 @@ jobs:
     runner: macos
 #    runner: linux
     timeout: 45m
+    artifacts:
+      - type: maven
+        namespace: bosca-maven
+        coordinate: "io.bosca:core:${{ version }}"
+      - type: maven
+        namespace: bosca-maven
+        coordinate: "io.bosca:bml-annotations:${{ version }}"
+      - type: maven
+        namespace: bosca-maven
+        coordinate: "io.bosca:core-bml:${{ version }}"
+      - type: maven
+        namespace: bosca-maven
+        coordinate: "io.bosca:bml:${{ version }}"
+      - type: maven
+        namespace: bosca-maven
+        coordinate: "io.bosca:bml-compiler:${{ version }}"
+      - type: maven
+        namespace: bosca-maven
+        coordinate: "io.bosca:bml-server:${{ version }}"
+      - type: maven
+        namespace: bosca-maven
+        coordinate: "io.bosca:bml-message-host:${{ version }}"
+      - type: maven
+        namespace: bosca-maven
+        coordinate: "io.bosca:bml-message-client:${{ version }}"
+      - type: maven
+        namespace: bosca-maven
+        coordinate: "io.bosca:bml-gradle:${{ version }}"
+      - type: maven
+        namespace: bosca-maven
+        coordinate: "io.bosca.bml:io.bosca.bml.gradle.plugin:${{ version }}"
     steps:
       - name: Checkout
         uses: checkout
@@ -74,17 +105,19 @@ jobs:
         uses: setup-rust
         with:
           toolchain: stable
+      - name: Setup Node
+        uses: setup-node
+        with:
+          version: "22"
+      - name: Install BML Bundler Dependencies
+        run: cd bml/bml-runtime && npm ci --no-audit --no-fund
       - name: Extract Version
         run: |
           RELEASE_VERSION="${PUBLISH_VERSION#refs/tags/}"
           echo "PUBLISH_VERSION=${RELEASE_VERSION}" >> "$BOSCA_ENV"
         env:
           PUBLISH_VERSION: ${{ ref }}
-      - name: Publish BML Gradle Plugins
-        run: ./gradlew --no-daemon :bml:bml-gradle:publish
-      - name: Publish GraphQL Gradle Plugins
-        run: ./gradlew --no-daemon :bosca-graphql:bosca-graphql-gradle:publish
-      - name: Publish JVM Modules Except Firebase Scrypt
+      - name: Publish Workspace Libraries and Gradle Plugins Except Firebase Scrypt
         run: ./gradlew --no-daemon publishExceptFirebaseScrypt
 
   publish-firebase-scrypt:
@@ -115,71 +148,22 @@ jobs:
       - name: Publish Firebase Scrypt
         run: ./gradlew --no-daemon :firebase-scrypt:firebase-scrypt:publish
 
-  update-versions:
-    runner: macos
-#    runner: linux
-    timeout: 15m
-    needs:
-      - publish-jvm
-      - publish-firebase-scrypt
-      - test-jvm
-    artifacts:
-      - type: maven
-        namespace: bosca-maven
-        coordinate: "io.bosca:core:${{ version }}"
-    steps:
-      - name: Checkout
-        uses: checkout
-      - name: Setup Registry
-        uses: setup-registry
-        with:
-          repository: bosca-maven
-      - name: Setup Java
-        uses: setup-java
-        with:
-          version: "25"
-          distribution: zulu
-      - name: Setup Node
-        # updateBoscaVersions also re-resolves the @bosca/* npm dependencies of the
-        # npm-managed apps (such as notifications-web) against the Bosca npm registry, so it
-        # needs npm on the runner. setup-registry supplies credentials; each
-        # app's .npmrc selects the registry for @bosca packages.
-        uses: setup-node
-        with:
-          version: "22"
-      - name: Extract Version
-        run: |
-          RELEASE_VERSION="${PUBLISH_VERSION#refs/tags/}"
-          echo "RELEASE_VERSION=${RELEASE_VERSION}" >> "$BOSCA_ENV"
-        env:
-          PUBLISH_VERSION: ${{ ref }}
-      - name: Update Version Catalogs
-        run: ./gradlew --no-daemon updateBoscaVersions
-        env:
-          RELEASE_VERSION: ${{ env.RELEASE_VERSION }}
-      - name: Commit Version Updates
-        uses: git-update-workspace-refs
-        with:
-          message: "Release ${{ env.RELEASE_VERSION }} — update dependency versions"
-      - name: Push Workspace
-        uses: git-push
-
   notify:
     runner: macos
 #    runner: linux
     timeout: 5m
-    needs: [update-versions]
+    needs: [publish-jvm, publish-firebase-scrypt, test-jvm]
     if: always()
     steps:
       - name: Notify Success
         uses: notify
-        if: needs.update-versions.result == 'success'
+        if: needs.publish-jvm.result == 'success' && needs.publish-firebase-scrypt.result == 'success' && needs.test-jvm.result == 'success'
         with:
           channel: slack
-          message: "Release ${{ ref }} published successfully — all JVM packages deployed, version catalogs updated"
+          message: "Release ${{ ref }} published successfully — all JVM packages deployed and tests passed"
       - name: Notify Failure
         uses: notify
-        if: needs.update-versions.result == 'failure'
+        if: needs.publish-jvm.result != 'success' || needs.publish-firebase-scrypt.result != 'success' || needs.test-jvm.result != 'success'
         with:
           channel: slack
           message: "Release ${{ ref }} FAILED — check pipeline logs"

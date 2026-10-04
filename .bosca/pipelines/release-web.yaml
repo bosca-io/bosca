@@ -57,21 +57,57 @@ jobs:
         # Publishes to the npm registry of the Artifacts server configured by Setup Registry.
         run: cd web && pnpm --filter './packages/*' publish --no-git-checks --registry "${BOSCA_REGISTRY_URL%/}/npm/"
 
+  publish-bml-runtime:
+    runner: linux
+    timeout: 15m
+    artifacts:
+      - type: npm
+        namespace: "@bosca"
+        coordinate: "bml:${{ version }}"
+    steps:
+      - name: Checkout
+        uses: checkout
+      - name: Setup Registry
+        uses: setup-registry
+        with:
+          repository: bosca-maven
+      - name: Setup Node
+        uses: setup-node
+        with:
+          version: "22"
+      - name: Install BML Runtime Dependencies
+        working-directory: bml/bml-runtime
+        run: npm ci --no-audit --no-fund
+      - name: Set BML Runtime Version
+        working-directory: bml/bml-runtime
+        run: npm version "$RELEASE_VERSION" --no-git-tag-version --allow-same-version
+        env:
+          RELEASE_VERSION: ${{ version }}
+      - name: Test BML Runtime
+        working-directory: bml/bml-runtime
+        run: npm test
+      - name: Build BML Runtime
+        working-directory: bml/bml-runtime
+        run: npm run build
+      - name: Publish BML Runtime
+        working-directory: bml/bml-runtime
+        run: npm publish --registry "${BOSCA_REGISTRY_URL%/}/npm/"
+
   notify:
     runner: linux
     timeout: 5m
-    needs: [publish-web]
+    needs: [publish-web, publish-bml-runtime]
     if: always()
     steps:
       - name: Notify Success
         uses: notify
-        if: needs.publish-web.result == 'success'
+        if: needs.publish-web.result == 'success' && needs.publish-bml-runtime.result == 'success'
         with:
           channel: slack
-          message: "Web ${{ ref }} published successfully — all web packages deployed"
+          message: "Web ${{ ref }} published successfully — web packages and BML browser runtime deployed"
       - name: Notify Failure
         uses: notify
-        if: needs.publish-web.result == 'failure'
+        if: needs.publish-web.result != 'success' || needs.publish-bml-runtime.result != 'success'
         with:
           channel: slack
           message: "Web ${{ ref }} release FAILED — check pipeline logs"

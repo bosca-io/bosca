@@ -165,7 +165,14 @@ class PipelineYamlParser {
                 "push" -> triggers.add(parseBranchPathTrigger(PipelineTriggerType.PUSH, value))
                 "pull_request" -> triggers.add(parseBranchPathTrigger(PipelineTriggerType.PULL_REQUEST, value))
                 "tag" -> triggers.add(parseTagTrigger(value))
-                "manual" -> if (value == true) triggers.add(PipelineTrigger(type = PipelineTriggerType.MANUAL))
+                "manual" -> if (value == true || value is Map<*, *>) {
+                    triggers.add(
+                        PipelineTrigger(
+                            type = PipelineTriggerType.MANUAL,
+                            inputs = parseTriggerInputs((value as? Map<*, *>)?.get("inputs")),
+                        )
+                    )
+                }
                 "schedule" -> {
                     val scheduleMap = value as? Map<*, *>
                     val cron = scheduleMap?.get("cron") as? String

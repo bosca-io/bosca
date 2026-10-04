@@ -25,6 +25,19 @@ val localModules = subprojects
     .mapValues { (_, projects) -> projects.single().path }
 
 allprojects {
+    configurations.configureEach {
+        resolutionStrategy.dependencySubstitution {
+            localModules.forEach { (moduleName, projectPath) ->
+                substitute(module("io.bosca:$moduleName")).using(project(projectPath))
+            }
+        }
+    }
+    plugins.withId("io.bosca.bml") {
+        extensions.configure<bosca.bml.gradle.BmlExtension> {
+            clientBundler.convention(rootProject.layout.projectDirectory.file("bml/bml-runtime/tools/bundle.mjs"))
+            clientRuntime.convention(rootProject.layout.projectDirectory.file("bml/bml-runtime/src/index.ts"))
+        }
+    }
     plugins.withId("maven-publish") {
         extensions.configure<PublishingExtension> {
             val registryUrl = providers.gradleProperty("boscaRegistryUrl").orNull
@@ -60,57 +73,14 @@ tasks.register("testResourcesDown") {
     dependsOn(":bosca-core:test-support:testResourcesDown")
 }
 
-tasks.register("updateBoscaVersions") {
-    description = "Update the shared Bosca catalog version and npm manifests"
-    doLast {
-        // Strip a leading "v": publishes strip it too (PUBLISH_VERSION.removePrefix("v")), so a
-        // v-prefixed catalog entry can never resolve against the registry. The unresolvable
-        // "v6.0.0" literals baked into the tag-6.0.2 POMs were exactly this failure.
-        val version = (System.getenv("RELEASE_VERSION")
-            ?: throw GradleException("RELEASE_VERSION environment variable is required")).removePrefix("v")
-        val catalog = rootDir.resolve("gradle/libs.versions.toml")
-        val original = catalog.readText()
-        val versionPattern = Regex("""(?m)^(bosca\s*=\s*")[^"]+(")$""")
-        check(versionPattern.containsMatchIn(original)) { "Missing bosca version in gradle/libs.versions.toml" }
-        val updated = versionPattern.replace(original) { match ->
-            "${match.groupValues[1]}$version${match.groupValues[2]}"
-        }
-        if (updated != original) {
-            catalog.writeText(updated)
-            println("Updated: gradle/libs.versions.toml")
-        }
-
-        // npm-managed apps (package.json + package-lock.json at the module root; the pnpm
-        // monorepos version their own packages) pin @bosca/* client packages from the Bosca
-        // npm registry. Those packages ship from different release streams (web packages
-        // release with the workspace tag, @bosca/bml from the bml repo), so the registry —
-        // not RELEASE_VERSION — is the source of truth: `npm update --save` re-resolves each
-        // dependency to its latest published in-range version and rewrites both manifests.
-        // Auth comes from each app's committed .npmrc. Retries cover the release-web publish
-        // job still running when this task fires (separate pipeline, no cross-pipeline needs).
-        val moduleDirs = rootDir.listFiles().orEmpty().toList() + rootDir.resolve("apps").listFiles().orEmpty().toList()
-        moduleDirs.filter { it.isDirectory && it.resolve("package-lock.json").exists() }.forEach { dir ->
-            val packageJson = dir.resolve("package.json")
-            if (!packageJson.exists()) return@forEach
-            val parsed = groovy.json.JsonSlurper().parse(packageJson)
-            val dependencies = (parsed as? Map<*, *>)?.get("dependencies") as? Map<*, *> ?: return@forEach
-            val boscaPackages = dependencies.keys.filterIsInstance<String>().filter { it.startsWith("@bosca/") }
-            if (boscaPackages.isEmpty()) return@forEach
-            val command = listOf("npm", "update", "--save", "--package-lock-only", "--no-audit", "--no-fund") + boscaPackages
-            val maxAttempts = 5
-            for (attempt in 1..maxAttempts) {
-                val process = ProcessBuilder(command).directory(dir).redirectErrorStream(true).start()
-                val output = process.inputStream.bufferedReader().readText()
-                if (process.waitFor() == 0) {
-                    println("Updated: ${dir.name}/package.json (${boscaPackages.joinToString(", ")})")
-                    break
-                }
-                if (attempt == maxAttempts) {
-                    throw GradleException("npm update failed in ${dir.name} after $maxAttempts attempts:\n$output")
-                }
-                println("npm update failed in ${dir.name} (attempt $attempt/$maxAttempts), retrying in 30s...\n$output")
-                Thread.sleep(30_000)
-            }
-        }
-    }
+tasks.register("publishExceptFirebaseScrypt") {
+    group = "publishing"
+    description = "Publish workspace libraries and Gradle plugins except Firebase Scrypt"
+    dependsOn(provider {
+        subprojects
+            .filter { it.path != ":firebase-scrypt" && !it.path.startsWith(":firebase-scrypt:") }
+            // BmlServer is also an embedded library used by BML applications.
+            .filter { !it.plugins.hasPlugin("application") || it.path == ":bml:bml-server" }
+            .mapNotNull { it.tasks.findByName("publish") }
+    })
 }

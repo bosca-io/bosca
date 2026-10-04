@@ -29,7 +29,6 @@ Always run Gradle commands from the workspace root. Do not publish to Maven Loca
 ./gradlew :server:bosca-runner:run       # Run the background job processor
 ./gradlew :server:bosca-server:nativeCompile # Build the server GraalVM native image
 ./gradlew :cli:nativeCompile             # Build the native bosca CLI
-./gradlew updateBoscaVersions            # Requires RELEASE_VERSION; updates Bosca dependency versions
 ```
 
 Task paths use `:<component>:<subproject>:<task>`. Use an explicit subproject path for filtered tests so task options such as `--tests` reach the correct task.
@@ -89,6 +88,7 @@ Foundation and composition components include:
 Domain components cover content, search, social, communications, AI, work operations, experimentation, BX, BML, calendar, scripting, pipelines, ecommerce, feeds, Git hosting, backup, artifacts, analytics, administration support, integrations, Kubernetes, gateway, shared queues, and Firebase Scrypt.
 
 Application projects such as `cli`, `apps/notifications-web`, and `apps/bosca-messages` produce binaries or applications and are excluded from the workspace's aggregate Maven publication task.
+`bml-server` also serves as an embedded library for BML applications and is included in Maven publication despite its application entry point.
 
 ### Core and implementation split
 

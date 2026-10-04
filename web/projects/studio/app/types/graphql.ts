@@ -10628,6 +10628,8 @@ export type Git = {
   permissions: Array<Permission>;
   /** List registered build agents. System admins see all agents; agent credentials see only themselves and their direct children. */
   pipelineAgents: Array<GitPipelineAgent>;
+  /** Manual input declarations keyed by name, read from the pipeline definition at the selected ref. Requires VIEW permission. */
+  pipelineInputs: Scalars['JSON']['output'];
   /** Get log output for a pipeline step. With tail: true, returns the last `limit` lines (offset is ignored). With beforeLine, returns the last `limit` lines whose line number is below it (offset and tail are ignored) — use this to page backwards, since stored line numbers can have gaps. */
   pipelineLogs: Array<GitPipelineLogLine>;
   /** Get a specific pipeline run. */
@@ -10775,6 +10777,13 @@ export type Git_PermissionsArgs = {
 /** Queries for the git repository system. */
 export type Git_PipelineAgentsArgs = {
   status?: InputMaybe<GitAgentStatus>;
+};
+
+
+/** Queries for the git repository system. */
+export type Git_PipelineInputsArgs = {
+  pipelineId: Scalars['UUID']['input'];
+  ref: Scalars['String']['input'];
 };
 
 
@@ -11410,7 +11419,7 @@ export type GitMutation = {
   syncSourceRefs: Scalars['Int']['output'];
   /** Transfer a repository to a new owner. */
   transferRepository: GitRepository;
-  /** Manually trigger a pipeline run. Requires EDIT permission. */
+  /** Manually trigger a pipeline run with its declared inputs. Requires EXECUTE permission. */
   triggerPipeline: GitPipelineRun;
   /** Remove an assignee from a pull request. */
   unassignPullRequest: GitPullRequest;
@@ -11999,6 +12008,7 @@ export type GitMutation_TransferRepositoryArgs = {
 
 /** Mutations for the git repository system. */
 export type GitMutation_TriggerPipelineArgs = {
+  inputs?: InputMaybe<Scalars['JSON']['input']>;
   pipelineId: Scalars['UUID']['input'];
   ref: Scalars['String']['input'];
 };

@@ -56,6 +56,12 @@ interface RepoWithPipelines {
   id: string; name: string; canExecute: boolean
   pipelines: Pipeline[]
 }
+interface PipelineInput {
+  type: 'string' | 'boolean' | 'number' | 'choice'
+  default?: string | null
+  description?: string | null
+  options?: string[]
+}
 
 const repos = ref<RepoWithPipelines[]>([])
 const isLoading = ref(false)
@@ -174,6 +180,46 @@ const refOptions = ref<{ value: string; label: string }[]>([])
 const refsLoading = ref(false)
 const runError = ref('')
 const runStarting = ref(false)
+const runInputs = ref<Record<string, PipelineInput>>({})
+const inputValues = ref<Record<string, string>>({})
+const inputsLoading = ref(false)
+const inputsError = ref('')
+const missingInputs = computed(() => Object.entries(runInputs.value)
+  .some(([name, input]) => input.default == null && !(inputValues.value[name] ?? '').trim()))
+const canStartRun = computed(() => !!runRef.value && !runStarting.value && !refsLoading.value
+  && !inputsLoading.value && !inputsError.value && !missingInputs.value
+  && repos.value.some(repo => repo.id === runTarget.value?.repoId && repo.canExecute))
+
+let inputsToken = 0
+watch(() => [runTarget.value?.pipeline.id, runRef.value] as const, async ([pipelineId, selectedRef]) => {
+  const token = ++inputsToken
+  runInputs.value = {}
+  inputValues.value = {}
+  inputsError.value = ''
+  inputsLoading.value = !!pipelineId && !!selectedRef
+  if (!pipelineId || !selectedRef) return
+  try {
+    const result = await query<{ git: { pipelineInputs: Record<string, PipelineInput> } }>(gql`
+      query PipelineRunInputs($pipelineId: UUID!, $ref: String!) {
+        git { pipelineInputs(pipelineId: $pipelineId, ref: $ref) }
+      }
+    `, { pipelineId, ref: selectedRef })
+    if (token !== inputsToken) return
+    runInputs.value = result.git.pipelineInputs
+    Object.entries(runInputs.value).forEach(([name, input]) => {
+      inputValues.value[name] = input.default ?? ''
+    })
+  } catch (e) {
+    if (token !== inputsToken) return
+    inputsError.value = e instanceof Error ? e.message : 'Failed to load pipeline inputs.'
+  }
+  if (token === inputsToken) inputsLoading.value = false
+}, { flush: 'sync' })
+
+function inputOptions(input: PipelineInput) {
+  const options = input.type === 'boolean' ? ['true', 'false'] : input.options ?? []
+  return options.map(value => ({ value, label: value }))
+}
 
 async function openRunModal(repo: RepoWithPipelines, p: Pipeline) {
   if (!repo.canExecute) return
@@ -207,15 +253,19 @@ async function openRunModal(repo: RepoWithPipelines, p: Pipeline) {
 
 async function startRun() {
   const target = runTarget.value
-  if (!target || !runRef.value || !repos.value.find(repo => repo.id === target.repoId)?.canExecute) return
+  if (!target || !canStartRun.value) return
   runStarting.value = true
   runError.value = ''
   try {
     const result = await query<{ git: { triggerPipeline: { id: string } } }>(gql`
-      mutation TriggerPipeline($pipelineId: UUID!, $ref: String!) {
-        git { triggerPipeline(pipelineId: $pipelineId, ref: $ref) { id } }
+      mutation TriggerPipeline($pipelineId: UUID!, $ref: String!, $inputs: JSON) {
+        git { triggerPipeline(pipelineId: $pipelineId, ref: $ref, inputs: $inputs) { id } }
       }
-    `, { pipelineId: target.pipeline.id, ref: runRef.value })
+    `, {
+      pipelineId: target.pipeline.id,
+      ref: runRef.value,
+      inputs: Object.fromEntries(Object.entries(inputValues.value).filter(([, value]) => value !== '')),
+    })
     const runId = result.git?.triggerPipeline?.id
     runTarget.value = null
     if (runId) router.push(`/git/pipelines/${runId}`)
@@ -328,6 +378,26 @@ async function startRun() {
         <p class="run-hint">
           The pipeline definition is read from the selected ref and the run executes at that ref.
         </p>
+        <p v-if="inputsLoading" class="run-hint">Loading pipeline inputs…</p>
+        <template v-for="(input, name) in runInputs" :key="name">
+          <Select
+            v-if="input.type === 'choice' || input.type === 'boolean'"
+            v-model="inputValues[name]"
+            :options="inputOptions(input)"
+            :label="name"
+            :placeholder="`Select ${name}…`"
+            :accent="accent"
+          />
+          <Input
+            v-else
+            v-model="inputValues[name]"
+            :type="input.type === 'number' ? 'number' : 'text'"
+            :label="name"
+            :accent="accent"
+          />
+          <p v-if="input.description" class="run-hint">{{ input.description }}</p>
+        </template>
+        <p v-if="inputsError" class="form-error">{{ inputsError }}</p>
         <p v-if="runError" class="form-error">{{ runError }}</p>
       </div>
       <template #footer>
@@ -335,7 +405,7 @@ async function startRun() {
         <Button
           primary
           :accent="accent"
-          :disabled="runStarting || refsLoading || !runRef"
+          :disabled="!canStartRun"
           @click="startRun"
         >
           {{ runStarting ? 'Starting…' : 'Run' }}

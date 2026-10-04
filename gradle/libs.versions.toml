@@ -17,7 +17,6 @@ auth0-jwks-rsa = "0.23.0"
 auth0-jwt = "4.5.1"
 aws = "2.42.27"
 bcpkix-jdk18on = "1.86"
-bosca = "7.3.4"
 caffeine = "3.2.3"
 cdk8s = "2.70.54"
 cdk8s-plus30 = "2.4.10"
@@ -281,8 +280,6 @@ webauthn4j-core = { module = "com.webauthn4j:webauthn4j-core", version.ref = "we
 android-application = { id = "com.android.application", version.ref = "android-gradle-plugin" }
 androidx-room3 = { id = "androidx.room3", version.ref = "room3" }
 apollo-kotlin = { id = "com.apollographql.apollo", version.ref = "apollo" }
-bosca-bml = { id = "io.bosca.bml", version.ref = "bosca" }
-bosca-graphql = { id = "io.bosca.graphql", version.ref = "bosca" }
 compose-hot-reload = { id = "org.jetbrains.compose.hot-reload", version.ref = "compose-hot-reload" }
 google-services = { id = "com.google.gms.google-services", version.ref = "google-services" }
 graalvm = { id = "org.graalvm.buildtools.native", version.ref = "graalvm-buildtools" }

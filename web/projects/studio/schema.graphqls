@@ -7946,6 +7946,10 @@ type Git {
   """
   pipelineAgents(status: GitAgentStatus): [GitPipelineAgent!]!
   """
+  Manual input declarations keyed by name, read from the pipeline definition at the selected ref. Requires VIEW permission.
+  """
+  pipelineInputs(pipelineId: UUID!, ref: String!): JSON!
+  """
   Get log output for a pipeline step. With tail: true, returns the last `limit` lines (offset is ignored). With beforeLine, returns the last `limit` lines whose line number is below it (offset and tail are ignored) — use this to page backwards, since stored line numbers can have gaps.
   """
   pipelineLogs(beforeLine: Int, limit: Int, offset: Int, stepId: UUID!, tail: Boolean): [GitPipelineLogLine!]!
@@ -8526,8 +8530,10 @@ type GitMutation {
   syncSourceRefs(repositoryId: UUID!): Int!
   """Transfer a repository to a new owner."""
   transferRepository(id: UUID!, newOwnerId: UUID!): GitRepository!
-  """Manually trigger a pipeline run. Requires EDIT permission."""
-  triggerPipeline(pipelineId: UUID!, ref: String!): GitPipelineRun!
+  """
+  Manually trigger a pipeline run with its declared inputs. Requires EXECUTE permission.
+  """
+  triggerPipeline(inputs: JSON, pipelineId: UUID!, ref: String!): GitPipelineRun!
   """Remove an assignee from a pull request."""
   unassignPullRequest(id: UUID!, profileId: UUID!): GitPullRequest!
   """Update a build agent's name and labels. Requires MANAGE permission."""
@@ -14720,13 +14726,9 @@ input PipelineInput {
   id: UUID
   """Stable URL handle for the REST endpoint; required when api is true."""
   key: String
-  """
-  Max durable runs in flight at once; null/≤0 = unlimited.
-  """
+  """Max durable runs in flight at once; null/≤0 = unlimited."""
   maxConcurrentRuns: Int
-  """
-  Max durable runs started per rolling minute; null/≤0 = unlimited.
-  """
+  """Max durable runs started per rolling minute; null/≤0 = unlimited."""
   maxRunsPerMinute: Int
   name: String!
   """Make the REST endpoint callable without an EXECUTE grant."""
@@ -15065,9 +15067,7 @@ type PipelineRunState {
   itemIndex: Int
   """Last state change — for a suspended run, how long it has been waiting."""
   modifiedAt: DateTime!
-  """
-  The per-node execution timeline for this run, in execution order.
-  """
+  """The per-node execution timeline for this run, in execution order."""
   nodes: [PipelineNodeExecution!]!
   pipelineId: UUID!
   status: PipelineRunStatus!
@@ -15254,9 +15254,7 @@ type Pipelines {
   run(runId: UUID!): PipelineRunState
   """Run history for a pipeline, newest first."""
   runs(limit: Int = 50, offset: Int = 0, pipelineId: UUID!): [PipelineHistoryRun!]!
-  """
-  Node secrets' metadata (names + timestamps; never values).
-  """
+  """Node secrets' metadata (names + timestamps; never values)."""
   secrets: [PipelineSecret!]!
   """
   Reusable named object shapes — first-class types an Input/Output can reference (as "shape:<name>").
@@ -19925,9 +19923,7 @@ type Subscription {
   onReaction(channelId: UUID!): MessageReactionEvent!
   """Subscribe to real-time typing indicator events in a specific channel"""
   onUserTyping(channelId: UUID!): UserTypingEvent!
-  """
-  Live run + per-node status changes for a durable run. Admin-gated.
-  """
+  """Live run + per-node status changes for a durable run. Admin-gated."""
   pipelineRun(runId: UUID!): PipelineRunUpdate!
   pipelineStepLogs(repositoryId: UUID!, stepId: UUID!): GitPipelineLogLine!
   """

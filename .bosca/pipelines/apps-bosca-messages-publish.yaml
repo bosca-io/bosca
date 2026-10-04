@@ -1,10 +1,10 @@
-# Author-and-go publish: every push to main rebuilds the compiled message
+# Every workspace tag or manual run rebuilds the compiled message
 # jar and publishes it to the raw artifacts registry as
 #   (type=raw, namespace=bml-message, coordinate=bosca-messages:<version>).
 # Creating the version makes the registry announce it on `bosca.artifacts.version.published`,
 # which bml-message-server subscribes to for hot reload — no deploy, no restart.
 #
-# The version is minted per publish (push-triggered, no tags): a UTC-timestamp prefix keeps
+# The version is minted per publish: a UTC-timestamp prefix keeps
 # versions lexicographically monotonic for latest-version resolution, and the short commit
 # SHA ties each artifact back to its commit. Because the version is computed in-step, the
 # declarative `artifacts:` block (resolved at run creation) can't express it — the publish
@@ -14,9 +14,6 @@ name: Publish Message Templates
 on:
   tag:
     patterns: ["*"]
-    paths:
-      - "apps/bosca-messages/**"
-      - ".bosca/pipelines/apps-bosca-messages-publish.yaml"
   manual: true
 
 concurrency:
@@ -35,14 +32,22 @@ jobs:
         uses: checkout
 
       - name: Setup Java
-        working-directory: apps/bosca-messages
         uses: setup-java
         with:
           version: "25"
           distribution: zulu
 
+      - name: Setup Rust
+        uses: setup-rust
+        with:
+          toolchain: stable
+
+      - name: Setup Node
+        uses: setup-node
+        with:
+          version: "22"
+
       - name: Setup Registry
-        working-directory: apps/bosca-messages
         # Configures boscaRegistry* so Gradle can resolve io.bosca:* dependencies, and
         # exports BOSCA_REGISTRY_URL / BOSCA_REGISTRY_TOKEN for the raw publish below
         # (the agent token needs raw push permission on the bml-message namespace; the
@@ -51,8 +56,11 @@ jobs:
         with:
           repository: bosca-maven
 
+      - name: Install BML Bundler Dependencies
+        working-directory: bml/bml-runtime
+        run: npm ci --no-audit --no-fund
+
       - name: Resolve version
-        working-directory: apps/bosca-messages
         # Builtins like COMMIT_SHA exist only in ${{ }} interpolation, not the shell process
         # env — bridge it through the step env so the bash substring below has a value.
         run: |
@@ -61,11 +69,9 @@ jobs:
           COMMIT_SHA: ${{ env.COMMIT_SHA }}
 
       - name: Build and test
-        working-directory: apps/bosca-messages
-        run: cd ../../ && ./gradlew --no-daemon :bosca-messages:build
+        run: ./gradlew --no-daemon :bosca-messages:build
 
       - name: Publish message jar
-        working-directory: apps/bosca-messages
         # The agent-side registry-upload action PUTs to the agent's configured registry with
         # the agent token (raw push on the bml-message namespace; namespace and repository
         # auto-create on first push). Creating the version makes the registry announce
@@ -76,4 +82,4 @@ jobs:
           name: bosca-messages
           version: ${{ env.RELEASE_VERSION }}
           files:
-            - build/libs/bosca-messages.jar
+            - apps/bosca-messages/build/libs/bosca-messages.jar

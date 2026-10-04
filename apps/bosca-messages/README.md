@@ -109,10 +109,10 @@ arrive fully formed in the payload. Push destinations arrive as producer-owned a
 select them by stable ID and provide the localized labels. Chat message and reaction content stays
 out of the persisted payload and is retrieved through authenticated GraphQL only while rendering.
 
-## Publish (author-and-go)
+## Publish
 
 The root [message-template pipeline](../../.bosca/pipelines/apps-bosca-messages-publish.yaml)
-runs on pushes to `main` that change this app, builds, tests, and publishes
+runs on workspace tags or manually, builds, tests, and publishes
 `build/libs/bosca-messages.jar` to the artifacts registry as
 `(type=raw, namespace=bml-message, coordinate=bosca-messages, version=<utc-timestamp>-<sha>)`.
 The registry's publish event hot-reloads `bml-message-server`; register/pin the project for

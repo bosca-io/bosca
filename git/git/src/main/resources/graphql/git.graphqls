@@ -1073,6 +1073,8 @@ type GitCreateTagResult {
 extend type Git {
     "List pipelines for a repository."
     pipelines(repositoryId: UUID!): [GitPipeline!]!
+    "Manual input declarations keyed by name, read from the pipeline definition at the selected ref. Requires VIEW permission."
+    pipelineInputs(pipelineId: UUID!, ref: String!): JSON!
     "Every pipeline across all repositories — the author-time picker for release relays."
     allPipelines: [GitPipeline!]!
     "The artifacts a pipeline's definition declares it produces (parsed at the repo's default branch), for the Use Artifact picker. Coordinates are the raw `${{ }}` templates."
@@ -1106,8 +1108,8 @@ type GitArtifactDefinition {
 # ─── CI/CD Pipeline Mutations ────────────────────────────────────────
 
 extend type GitMutation {
-    "Manually trigger a pipeline run. Requires EDIT permission."
-    triggerPipeline(pipelineId: UUID!, ref: String!): GitPipelineRun!
+    "Manually trigger a pipeline run with its declared inputs. Requires EXECUTE permission."
+    triggerPipeline(pipelineId: UUID!, ref: String!, inputs: JSON): GitPipelineRun!
     "Assigns a principal to a schedule. Self/admin assignments activate immediately; another person's assignment waits for confirmation. Requires MANAGE permission."
     assignPipelineSchedule(scheduleId: UUID!, principalId: UUID!): ScheduledJob!
     "Confirms a pending schedule assignment. The assigned principal or an administrator may confirm."

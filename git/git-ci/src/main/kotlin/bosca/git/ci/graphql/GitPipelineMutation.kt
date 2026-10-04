@@ -16,6 +16,11 @@ import bosca.git.model.PipelineScheduleJob
 import bosca.git.model.PipelineSecret
 import bosca.git.model.PipelineTriggerType
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 import bosca.git.security.RepositoryPermissionEvaluator
 import bosca.git.service.CommitStatusService
 import bosca.git.service.PipelineAgentService
@@ -75,7 +80,12 @@ class GitPipelineMutation(
     }
 
     @Field
-    suspend fun triggerPipeline(authentication: AuthenticationContext, pipelineId: UUID, ref: String): PipelineRun {
+    suspend fun triggerPipeline(
+        authentication: AuthenticationContext,
+        pipelineId: UUID,
+        ref: String,
+        inputs: JsonElement? = null,
+    ): PipelineRun {
         val pipeline = pipelineService.findById(pipelineId)
             ?: throw NoSuchElementException("Pipeline not found: $pipelineId")
         val repository = repositoryService.findById(pipeline.repositoryId)
@@ -94,6 +104,15 @@ class GitPipelineMutation(
 
         val principalId = authentication.principal()?.id
             ?: throw SecurityException("Authentication required")
+        val parameters = when (inputs) {
+            null, JsonNull -> emptyMap()
+            is JsonObject -> inputs.entries.associate { (name, value) ->
+                val content = (value as? JsonPrimitive)?.contentOrNull
+                    ?: throw IllegalArgumentException("Input '$name' must be a string, boolean, or number")
+                "inputs.$name" to content
+            }
+            else -> throw IllegalArgumentException("Pipeline inputs must be an object")
+        }
         return runService.createRun(
             pipelineId = pipelineId,
             repositoryId = pipeline.repositoryId,
@@ -101,7 +120,8 @@ class GitPipelineMutation(
             commitSha = commitSha,
             ref = ref,
             triggerType = PipelineTriggerType.MANUAL,
-            triggeredBy = principalId
+            triggeredBy = principalId,
+            parameters = parameters,
         )
     }
 

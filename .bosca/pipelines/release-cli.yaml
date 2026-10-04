@@ -6,10 +6,12 @@ name: Bosca CLI Release
 # Secrets: GITHUB_TOKEN (a token that can create releases on bosca-io/bosca) and
 # MACOS_KEYCHAIN_PASSWORD (see cli/MACOS_SIGNING.md).
 on:
-  release:
-    inputs:
+  manual:
+    inputs: &cli-release-inputs
       version:
         description: CLI version to publish, for example 6.31.0 (tagged cli-v<version>)
+  release:
+    inputs: *cli-release-inputs
 
 concurrency:
   group: cli-release

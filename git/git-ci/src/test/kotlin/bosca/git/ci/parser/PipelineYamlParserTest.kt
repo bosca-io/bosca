@@ -620,6 +620,33 @@ class PipelineYamlParserTest {
     // ── Release/promotion triggers + inputs ─────────────────────────────────────────
 
     @Test
+    fun `manual trigger accepts input declarations and retains boolean enablement`() {
+        val yaml = """
+            name: Manual Build
+            on:
+              manual:
+                inputs:
+                  image:
+                    type: choice
+                    options: [bosca-server, bosca-runner]
+                  version:
+                    description: Version to publish
+            jobs:
+              build:
+                steps:
+                  - name: Build
+                    run: echo build
+        """.trimIndent()
+        val trigger = parser.parse(yaml, "build.yaml").triggers.single()
+        assertEquals(PipelineTriggerType.MANUAL, trigger.type)
+        assertEquals(listOf("bosca-server", "bosca-runner"), trigger.inputs.getValue("image").options)
+        assertEquals("string", trigger.inputs.getValue("version").type)
+        assertEquals("Version to publish", trigger.inputs.getValue("version").description)
+        assertEquals(emptyMap(), parser.parse(yaml.replace(Regex("(?s)manual:.*?jobs:"), "manual: true\njobs:"), "build.yaml").triggers.single().inputs)
+        assertTrue(parser.parse(yaml.replace(Regex("(?s)manual:.*?jobs:"), "manual: false\njobs:"), "build.yaml").triggers.isEmpty())
+    }
+
+    @Test
     fun `parse release and promotion triggers with environments and inputs`() {
         val yaml = """
             name: Platform Release

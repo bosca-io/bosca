@@ -6,8 +6,8 @@ name: Bosca Image Release
 # Secrets: GITHUB_USERNAME and GITHUB_TOKEN (a token that can write packages to the
 # bosca-io organization).
 on:
-  release:
-    inputs:
+  manual:
+    inputs: &image-release-inputs
       image:
         type: choice
         description: Image to publish
@@ -30,6 +30,8 @@ on:
           - recommendation-model-loader
       version:
         description: Version tag to publish, for example 6.31.0
+  release:
+    inputs: *image-release-inputs
 
 concurrency:
   group: image-release-${{ inputs.image }}
