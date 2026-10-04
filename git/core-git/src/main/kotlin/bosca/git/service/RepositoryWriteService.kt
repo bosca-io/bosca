@@ -132,6 +132,8 @@ interface RepositoryWriteService : Service {
      * conflict; deletion and force updates require an unchanged synchronized target. An unresolved
      * initial conflict cannot recreate an independently deleted target. Remote writes
      * use an expected-old lease. Inbound writes notify the ordinary push path with [input]'s principal.
+     * Callers authorize that principal and supply the destination's current protection rule; the
+     * actual update is checked under the write lock. PR merge imports may defer build attribution.
      */
     suspend fun synchronizeRef(input: RefSynchronizationInput): RefSynchronizationResult
 

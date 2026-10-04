@@ -69,15 +69,51 @@ class RefSynchronizationTest {
         after: ObjectId?, before: ObjectId? = null, baseline: ObjectId? = before,
         known: Boolean = baseline != null, direction: RefSynchronizationDirection = RefSynchronizationDirection.INBOUND,
         name: String = ref, principal: UUID? = principalId, conflict: Boolean = false,
+        protection: bosca.git.model.BranchProtectionRule? = null, pullRequestMerge: Boolean = false, triggerBuild: Boolean = true,
     ) = service.synchronizeRef(RefSynchronizationInput(
         repositoryId, directory.toURI().toString(), "test-token", name,
         before?.name(), after?.name(), baseline?.name(), known, direction, principal, conflict,
+        protection = protection, pullRequestMerge = pullRequestMerge, triggerBuild = triggerBuild,
     ))
 
     private suspend fun common(): ObjectId {
         val base = commit(remote); set(remote, base)
         assertEquals(GitHubSyncResult.APPLIED, sync(base).result)
         return base
+    }
+
+    @Test fun `protection permits authorized force deletion and paired merges but never direct required PR pushes`() = runBlocking {
+        val base = common()
+        val rule = bosca.git.model.BranchProtectionRule(repositoryId = repositoryId, pattern = "main", allowForcePush = true,
+            allowDeletion = true, restrictPushAccess = listOf(principalId))
+        val forced = commit(remote); set(remote, forced)
+        assertEquals(GitHubSyncResult.APPLIED, sync(forced, base, protection = rule).result)
+        set(remote, null)
+        assertEquals(GitHubSyncResult.APPLIED, sync(null, forced, protection = rule).result)
+        val required = rule.copy(requirePullRequest = true)
+        set(remote, base)
+        assertFailsWith<bosca.security.service.SecurityException> { sync(base, protection = required) }
+        assertEquals(GitHubSyncResult.APPLIED, sync(base, protection = required, pullRequestMerge = true, triggerBuild = false).result)
+        coVerify { notifier.notifyRefsUpdated(any(), repositoryId, any(), null) }
+    }
+
+    @Test fun `linear history rejects every newly introduced merge commit but permits a linear update`() = runBlocking {
+        val base = common()
+        val left = commit(remote, base)
+        val right = commit(remote, base)
+        val merge = remote.newObjectInserter().use { inserter ->
+            val builder = CommitBuilder().apply {
+                setTreeId(inserter.insert(TreeFormatter())); setParentIds(left, right)
+                author = PersonIdent("Author", "author@example.com"); committer = author; message = "Merge"
+            }
+            inserter.insert(builder).also { inserter.flush() }
+        }
+        val tip = commit(remote, merge); set(remote, tip)
+        val rule = bosca.git.model.BranchProtectionRule(repositoryId = repositoryId, pattern = "main", requireLinearHistory = true)
+        assertFailsWith<bosca.security.service.SecurityException> { sync(tip, base, protection = rule, pullRequestMerge = true) }
+        assertEquals(base, local.resolve(ref))
+        set(remote, left)
+        assertEquals(GitHubSyncResult.APPLIED, sync(left, base, protection = rule).result)
     }
 
     @Test fun `inbound create and fast forward retain objects and principal and echoes do not notify`() = runBlocking {

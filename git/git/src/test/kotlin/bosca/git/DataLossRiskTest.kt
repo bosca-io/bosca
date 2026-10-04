@@ -270,6 +270,7 @@ class DataLossRiskTest {
 
         val dfsManager = mockk<BoscaDfsRepositoryManager>()
         every { dfsManager.open(any()) } returns inMemoryRepo
+        every { dfsManager.open(any(), any()) } returns inMemoryRepo
 
         val prId = UUID.random()
         val pr = PullRequest(
@@ -278,6 +279,7 @@ class DataLossRiskTest {
             status = PullRequestStatus.OPEN
         )
         coEvery { prRepository.findById(prId) } returns pr
+        coEvery { prRepository.lockById(prId) } returns pr
         coEvery { branchProtectionService.findMatchingRule(any(), any()) } returns null
         coEvery { prRepository.updateMergeState(any()) } answers { firstArg() }
 

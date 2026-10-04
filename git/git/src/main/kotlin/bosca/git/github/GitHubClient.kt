@@ -8,6 +8,7 @@ import bosca.serialization.OffsetDateTimeSerializer
 import bosca.server.http.await
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.modules.SerializersModule
 import kotlinx.serialization.modules.contextual
 import okhttp3.OkHttpClient
@@ -61,11 +62,16 @@ class GitHubClient(
         ))
     }
 
-    /** Updates metadata and open/closed state without invoking GitHub's merge operation. */
+    /**
+     * Patches only supplied metadata and open/closed fields, without invoking GitHub's merge operation.
+     * Omitted fields are preserved. GitHub provides no conditional-write protection for this operation.
+     */
     suspend fun updatePullRequest(
         pair: GitHubRepositoryPair, token: String, number: Int, input: GitHubUpdatePullRequestInput,
     ): GitHubPullRequest {
-        require(number > 0 && input.state in setOf("open", "closed")) { "Invalid GitHub pull request update" }
+        require(number > 0 && (input.state == null || input.state in setOf("open", "closed"))) { "Invalid GitHub pull request update" }
+        require(input.title != null || input.body != null || input.base != null || input.state != null) { "A GitHub pull request update needs a changed field" }
+        input.body?.let { require(it == JsonNull || it.isString) { "GitHub pull request body must be a string or null" } }
         verifyRepository(pair, token)
         val body = json.encodeToString(GitHubUpdatePullRequestInput.serializer(), input).toRequestBody(JSON_MEDIA_TYPE)
         return json.decodeFromString(GitHubPullRequest.serializer(), execute(
@@ -108,6 +114,7 @@ class GitHubClient(
         .header("X-GitHub-Api-Version", "2026-03-10")
 
     private suspend fun execute(request: Request, operation: String): String = client.newCall(request).await().use { response ->
+        if (response.code == 422) throw GitHubRequestRejectedException("GitHub $operation failed: HTTP 422")
         check(response.isSuccessful) { "GitHub $operation failed: HTTP ${response.code}" }
         response.body.string()
     }
@@ -121,6 +128,9 @@ class GitHubClient(
         private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
     }
 }
+
+/** GitHub refused the request (HTTP 422), including validation and abuse-limit responses. */
+class GitHubRequestRejectedException(message: String) : IllegalStateException(message)
 
 @Serializable
 internal data class GitHubRepository(val id: Long)

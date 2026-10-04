@@ -60,6 +60,7 @@ class PullRequestDependencyRepositoryIntegrationTest {
                 it.execute()
             }
             runMigration("V3__pull_requests.sql")
+            connection().useStatement("alter table git.pull_requests add column version bigint not null default 0") { it.execute() }
             runMigration("V37__pull_request_dependencies.sql")
             connection().useStatement(
                 """

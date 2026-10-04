@@ -1,5 +1,8 @@
 package bosca.git.service
 
+import bosca.git.model.PullRequestEvent
+import bosca.git.model.GitHubPullRequestState
+
 import bosca.git.model.GitHubUser
 import bosca.git.model.GitHubDelivery
 import bosca.git.model.GitHubRepositoryPair
@@ -12,6 +15,18 @@ import bosca.service.Service
 
 /** Owns repository pairing, user attribution, verified intake and ref synchronization state. */
 interface GitHubSyncService : Service {
+    /** Imports only signed current PR state whose originating principal retains Bosca write permission and merge protections. */
+    suspend fun synchronizePullRequest(delivery: GitHubDelivery): GitHubSyncResult
+
+    /** Exports the current native pull request, independently of the event's older snapshot. */
+    suspend fun synchronizePullRequest(event: PullRequestEvent): GitHubSyncResult
+
+    /** Counterpart mappings and unresolved problems, using the usual offset pagination. */
+    suspend fun findPullRequestStates(repositoryId: UUID, offset: Long, limit: Int): List<GitHubPullRequestState>
+
+    /** Recovers PR lifecycle changes using verified originating attribution; null selects all enabled pairs. Each PR owns its transaction. */
+    suspend fun reconcilePullRequests(repositoryId: UUID? = null): List<GitHubPullRequestState>
+
     /** The repository's pair, including disabled configuration. */
     suspend fun findPair(repositoryId: UUID): GitHubRepositoryPair?
 
@@ -46,6 +61,7 @@ interface GitHubSyncService : Service {
 
     /**
      * Applies a verified push once, retaining its original principal and surfacing concurrent edits.
+     * The principal must retain current repository EDIT permission; destination branch protections apply.
      * Owns its transaction: ref changes, state and notification registration commit together,
      * independently of any caller transaction. A rolled-back import can retry its notifications.
      */
@@ -64,7 +80,7 @@ interface GitHubSyncService : Service {
      * Reconciles missed branch/tag changes with the same operations as event-driven nodes.
      * Null selects all enabled pairs. Verified pending pushes are redispatched through the event
      * system and their refs are deferred to the import pipeline, preserving original attribution.
-     * Unattributed recovered changes cannot authorize builds. Unresolved initial deletion conflicts
+     * Inbound changes without verified user authority are observed but never imported. Unresolved initial deletion conflicts
      * cannot recreate a ref; agreement or a safe fast-forward can still resolve them.
      * Each ref owns its transaction and commits before releasing its write lock; completed refs
      * survive a failure on a later ref. Cancellation stops reconciliation immediately.

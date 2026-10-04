@@ -7,6 +7,8 @@ import bosca.serialization.UUID
 import bosca.serialization.OffsetDateTime
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import mockwebserver3.MockResponse
@@ -112,13 +114,42 @@ class GitHubClientTest {
             server.start()
             for (state in listOf("open", "closed")) {
                 verifyPair(server); server.enqueue(MockResponse.Builder().body(pr).build())
-                client(server).updatePullRequest(pair, "token", 7, GitHubUpdatePullRequestInput("New title", null, "release", state))
+                client(server).updatePullRequest(pair, "token", 7, GitHubUpdatePullRequestInput("New title", JsonNull, "release", state))
                 server.takeRequest()
                 val request = server.takeRequest()
                 assertEquals("PATCH", request.method); assertEquals("/repos/owner/repo/pulls/7", request.url.encodedPath)
                 assertEquals(Json.parseToJsonElement("""{"title":"New title","body":null,"base":"release","state":"$state"}"""),
                     Json.parseToJsonElement(assertNotNull(request.body).utf8()))
             }
+        }
+    }
+
+    @Test fun `patches only supplied fields including explicit null and empty descriptions`() = runBlocking {
+        MockWebServer().use { server ->
+            server.start()
+            val changes = listOf(
+                GitHubUpdatePullRequestInput(title = "Title") to """{"title":"Title"}""",
+                GitHubUpdatePullRequestInput(body = JsonNull) to """{"body":null}""",
+                GitHubUpdatePullRequestInput(body = JsonPrimitive("")) to """{"body":""}""",
+                GitHubUpdatePullRequestInput(body = JsonPrimitive("Description")) to """{"body":"Description"}""",
+                GitHubUpdatePullRequestInput(base = "release") to """{"base":"release"}""",
+                GitHubUpdatePullRequestInput(state = "closed") to """{"state":"closed"}""",
+            )
+            for ((input, expected) in changes) {
+                verifyPair(server); server.enqueue(MockResponse.Builder().body(pr).build())
+                client(server).updatePullRequest(pair, "token", 7, input)
+                server.takeRequest()
+                assertEquals(Json.parseToJsonElement(expected), Json.parseToJsonElement(assertNotNull(server.takeRequest().body).utf8()))
+            }
+        }
+    }
+
+    @Test fun `empty and non-string patches fail before making an HTTP request`() = runBlocking {
+        MockWebServer().use { server ->
+            server.start()
+            assertFailsWith<IllegalArgumentException> { client(server).updatePullRequest(pair, "token", 7, GitHubUpdatePullRequestInput()) }
+            assertFailsWith<IllegalArgumentException> { client(server).updatePullRequest(pair, "token", 7, GitHubUpdatePullRequestInput(body = JsonPrimitive(42))) }
+            assertEquals(0, server.requestCount)
         }
     }
 
@@ -205,7 +236,7 @@ class GitHubClientTest {
             )
             for (operation in operations) {
                 verifyPair(server); server.enqueue(MockResponse.Builder().code(422).body("secret-token").build())
-                val failure = assertFailsWith<IllegalStateException> { operation() }
+                val failure = assertFailsWith<GitHubRequestRejectedException> { operation() }
                 assertTrue(failure.message.orEmpty().contains("422")); assertFalse(failure.message.orEmpty().contains("secret-token"))
             }
         }

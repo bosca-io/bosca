@@ -56,5 +56,6 @@ class GitMigration : Migration {
         "V43__pipeline_catalog_archival.sql",
         "V44__github_intake.sql",
         "V45__github_ref_synchronization.sql",
+        "V46__github_pull_request_synchronization.sql",
     )
 }

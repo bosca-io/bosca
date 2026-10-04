@@ -74,6 +74,11 @@ class PullRequestServiceTest {
     fun setup() {
         ProviderRegistry.clear()
         provides<PubSubService>(singleton = true) { pubSub }
+        val connectionPool = mockk<bosca.db.ConnectionPool>()
+        coEvery { connectionPool.connection() } answers { mockk<bosca.db.ConnectionManager>(relaxed = true) }
+        provides<bosca.db.ConnectionPool>(singleton = true) { connectionPool }
+        coEvery { prRepository.lockById(any()) } coAnswers { prRepository.findById(firstArg()) }
+        io.mockk.every { dfsManager.open(any(), any()) } answers { dfsManager.open(firstArg()) }
         coEvery { profileService.getAllByIds(any()) } answers {
             firstArg<List<UUID>>().map { id -> Profile(
                 id = id,
@@ -105,6 +110,63 @@ class PullRequestServiceTest {
 
     @AfterTest
     fun teardown() = ProviderRegistry.clear()
+
+    @Test fun `merge rechecks the locked PR version before advancing its target`() = runTest {
+        val pr = testPr()
+        coEvery { prRepository.findById(prId) } returns pr
+        coEvery { branchProtectionService.findMatchingRule(repositoryId, "main") } returns null
+        coEvery { prRepository.lockById(prId) } returns pr.copy(version = 1)
+        assertFailsWith<IllegalStateException> { service.merge(prId, MergeStrategy.FAST_FORWARD, authorId, "Author", "author@example.com") }
+        coVerify(exactly = 0) { dfsManager.open(any(), any()) }
+        coEvery { prRepository.lockById(prId) } returns null
+        assertFailsWith<NoSuchElementException> { service.merge(prId, MergeStrategy.FAST_FORWARD, authorId, "Author", "author@example.com") }
+    }
+
+    @Test fun `counterpart metadata uses a version comparison and preserves completed merge identity`() = runTest {
+        val snapshot = bosca.git.model.GitHubPullRequestSnapshot("New title", null, "feature", "main", PullRequestStatus.OPEN)
+        val current = testPr().copy(version = 3)
+        coEvery { prRepository.findById(prId) } returns current
+        kotlin.test.assertNull(service.synchronize(prId, 2, snapshot))
+        coEvery { prRepository.synchronize(any()) } returns null
+        kotlin.test.assertNull(service.synchronize(prId, 3, snapshot))
+        coEvery { prRepository.synchronize(any()) } answers { firstArg<PullRequest>().copy(version = 4) }
+        assertEquals(4L, service.synchronize(prId, 3, snapshot)?.version)
+        assertFailsWith<IllegalArgumentException> { service.synchronize(prId, 3, snapshot.copy(status = PullRequestStatus.MERGED)) }
+        assertFailsWith<IllegalArgumentException> { service.synchronize(prId, 3, snapshot.copy(status = PullRequestStatus.MERGED, mergeSha = "")) }
+        val at = java.time.OffsetDateTime.now()
+        assertFailsWith<IllegalArgumentException> { service.synchronize(prId, 3, snapshot.copy(status = PullRequestStatus.MERGED, mergeSha = "a")) }
+        val merged = current.copy(status = PullRequestStatus.MERGED, mergeSha = "a", mergedAt = at, mergedBy = authorId)
+        coEvery { prRepository.findById(prId) } returns merged
+        assertFailsWith<IllegalArgumentException> { service.synchronize(prId, 3, snapshot) }
+        assertFailsWith<IllegalArgumentException> { service.synchronize(prId, 3, snapshot.copy(status = PullRequestStatus.MERGED, mergeSha = "b"), at) }
+        val updated = service.synchronize(prId, 3, snapshot.copy(status = PullRequestStatus.MERGED, mergeSha = "a"), at.plusDays(1), UUID.random())
+        assertEquals(at, updated?.mergedAt); assertEquals(authorId, updated?.mergedBy)
+        coEvery { prRepository.findById(prId) } returns null
+        assertFailsWith<NoSuchElementException> { service.synchronize(prId, 3, snapshot) }
+    }
+
+    @Test fun `counterpart synchronization attributes only a merge to the observed merger`() = runTest {
+        val mergerId = UUID.random()
+        coEvery { profileService.getAllByIds(listOf(mergerId)) } returns listOf(
+            Profile(id = mergerId, type = ProfileType.GENERIC, name = "Merger", visibility = ProfileVisibility.USER),
+        )
+        val snapshot = bosca.git.model.GitHubPullRequestSnapshot("Title", null, "feature", "main", PullRequestStatus.MERGED, "a")
+        val at = java.time.OffsetDateTime.now()
+        coEvery { prRepository.findById(prId) } returns testPr().copy(version = 3)
+        coEvery { prRepository.synchronize(any()) } answers { firstArg<PullRequest>().copy(version = firstArg<PullRequest>().version + 1) }
+        service.synchronize(prId, 3, snapshot, at, mergerId)
+        coEvery { prRepository.findById(prId) } returns testPr().copy(version = 4, status = PullRequestStatus.MERGED,
+            mergeSha = "a", mergedAt = at, mergedBy = mergerId)
+        service.synchronize(prId, 4, snapshot.copy(title = "Edited on GitHub"), at, mergerId)
+        coVerify(exactly = 1) {
+            pubSub.publish("bosca.git.pull_request", any<kotlinx.serialization.SerializationStrategy<PullRequestEvent>>(),
+                match<PullRequestEvent> { it.action == PullRequestEventAction.MERGED && it.actorId == mergerId && it.actorName == "Merger" })
+        }
+        coVerify(exactly = 1) {
+            pubSub.publish("bosca.git.pull_request", any<kotlinx.serialization.SerializationStrategy<PullRequestEvent>>(),
+                match<PullRequestEvent> { it.action == PullRequestEventAction.UPDATED && it.actorId == null && it.actorName == null })
+        }
+    }
 
     private fun testPr(
         status: PullRequestStatus = PullRequestStatus.OPEN,
@@ -217,7 +279,7 @@ class PullRequestServiceTest {
     @Test
     fun `close transitions OPEN to CLOSED`() = runTest {
         coEvery { prRepository.findById(prId) } returns testPr(status = PullRequestStatus.OPEN)
-        coEvery { prRepository.updateStatus(prId, PullRequestStatus.CLOSED) } returns testPr(status = PullRequestStatus.CLOSED)
+        coEvery { prRepository.updateStatus(prId, PullRequestStatus.CLOSED, 0) } returns testPr(status = PullRequestStatus.CLOSED)
 
         val closed = service.close(prId)
         assertEquals(PullRequestStatus.CLOSED, closed.status)
@@ -232,7 +294,7 @@ class PullRequestServiceTest {
     @Test
     fun `reopen transitions CLOSED to OPEN`() = runTest {
         coEvery { prRepository.findById(prId) } returns testPr(status = PullRequestStatus.CLOSED)
-        coEvery { prRepository.updateStatus(prId, PullRequestStatus.OPEN) } returns testPr(status = PullRequestStatus.OPEN)
+        coEvery { prRepository.updateStatus(prId, PullRequestStatus.OPEN, 0) } returns testPr(status = PullRequestStatus.OPEN)
 
         val reopened = service.reopen(prId)
         assertEquals(PullRequestStatus.OPEN, reopened.status)
@@ -247,7 +309,7 @@ class PullRequestServiceTest {
     @Test
     fun `markReady transitions DRAFT to OPEN`() = runTest {
         coEvery { prRepository.findById(prId) } returns testPr(status = PullRequestStatus.DRAFT)
-        coEvery { prRepository.updateStatus(prId, PullRequestStatus.OPEN) } returns testPr(status = PullRequestStatus.OPEN)
+        coEvery { prRepository.updateStatus(prId, PullRequestStatus.OPEN, 0) } returns testPr(status = PullRequestStatus.OPEN)
 
         val ready = service.markReady(prId)
         assertEquals(PullRequestStatus.OPEN, ready.status)
@@ -1125,7 +1187,7 @@ class PullRequestServiceTest {
 
     @Test
     fun `status persistence failures surface as IllegalStateException`() = runTest {
-        coEvery { prRepository.updateStatus(prId, any()) } returns null
+        coEvery { prRepository.updateStatus(prId, any(), any()) } returns null
 
         coEvery { prRepository.findById(prId) } returns testPr(status = PullRequestStatus.OPEN)
         try { service.close(prId); kotlin.test.fail() } catch (_: IllegalStateException) {}
@@ -1173,7 +1235,7 @@ class PullRequestServiceTest {
         assertEquals("new desc", updated.description)
 
         coEvery { prRepository.findById(prId) } returns testPr(status = PullRequestStatus.DRAFT)
-        coEvery { prRepository.updateStatus(prId, PullRequestStatus.CLOSED) } returns testPr(status = PullRequestStatus.CLOSED)
+        coEvery { prRepository.updateStatus(prId, PullRequestStatus.CLOSED, 0) } returns testPr(status = PullRequestStatus.CLOSED)
         assertEquals(PullRequestStatus.CLOSED, service.close(prId).status)
     }
 

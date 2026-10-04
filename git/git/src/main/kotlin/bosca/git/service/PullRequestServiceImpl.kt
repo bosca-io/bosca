@@ -1,5 +1,8 @@
 package bosca.git.service
 
+import bosca.git.model.GitHubPullRequestSnapshot
+import bosca.db.connection
+
 import bosca.git.dfs.BoscaDfsRepositoryManager
 import bosca.git.dfs.GitWorkDispatcher
 import bosca.git.model.BranchProtectionRule
@@ -36,6 +39,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withContext
 import org.eclipse.jgit.lib.ObjectId
 import org.eclipse.jgit.lib.PersonIdent
+import org.eclipse.jgit.lib.RefUpdate
 import org.slf4j.LoggerFactory
 import java.time.OffsetDateTime
 
@@ -61,6 +65,44 @@ class PullRequestServiceImpl(
 ) : PullRequestService {
 
     private val log = LoggerFactory.getLogger(PullRequestServiceImpl::class.java)
+
+    override suspend fun synchronize(
+        id: UUID, expectedVersion: Long, snapshot: GitHubPullRequestSnapshot,
+        mergedAt: OffsetDateTime?, mergedById: UUID?,
+    ): PullRequest? {
+        val current = prRepository.findById(id) ?: throw NoSuchElementException("Pull request not found: $id")
+        if (current.version != expectedVersion) return null
+        require(
+            current.status != PullRequestStatus.MERGED ||
+                    (snapshot.status == PullRequestStatus.MERGED && snapshot.mergeSha == current.mergeSha)
+        ) {
+            "A completed merge cannot be reverted or rewritten"
+        }
+        require(snapshot.status != PullRequestStatus.MERGED || (!snapshot.mergeSha.isNullOrBlank() && mergedAt != null)) {
+            "A completed merge requires its original commit and timestamp"
+        }
+        val updated = prRepository.synchronize(
+            current.copy(
+                title = snapshot.title, description = snapshot.description,
+                sourceBranch = snapshot.sourceBranch, targetBranch = snapshot.targetBranch, status = snapshot.status,
+                mergeSha = snapshot.mergeSha,
+                mergedAt = if (snapshot.status == PullRequestStatus.MERGED) current.mergedAt ?: mergedAt else null,
+                mergedBy = if (snapshot.status == PullRequestStatus.MERGED) current.mergedBy ?: mergedById else null,
+            )
+        ) ?: return null
+        extractAndStoreTaskKeys(updated)
+        val action = when {
+            current.status == updated.status -> PullRequestEventAction.UPDATED
+            updated.status == PullRequestStatus.MERGED -> PullRequestEventAction.MERGED
+            updated.status == PullRequestStatus.CLOSED -> PullRequestEventAction.CLOSED
+            current.status == PullRequestStatus.DRAFT && updated.status == PullRequestStatus.OPEN -> PullRequestEventAction.READY_FOR_REVIEW
+            current.status == PullRequestStatus.CLOSED -> PullRequestEventAction.REOPENED
+            else -> PullRequestEventAction.UPDATED
+        }
+        // Only the merge itself identifies who acted. Other observed metadata changes are unattributed.
+        dispatchActivity(updated, action, actorId = mergedById.takeIf { action == PullRequestEventAction.MERGED })
+        return updated
+    }
 
     override suspend fun create(input: CreatePullRequestInput, authorId: UUID): PullRequest {
         val number = repoRepository.incrementPrNumber(input.repositoryId)
@@ -203,56 +245,60 @@ class PullRequestServiceImpl(
         // the per-repository write lock like a push: a concurrent GC computing
         // reachability without it could drop the just-written merge commit (see
         // RepositoryWriteLock).
-        val result = lockFactory.withRepositoryWriteLock(pr.repositoryId, RepositoryWriteLock.API_WRITE_WAIT_MILLIS) { lockHandle ->
-            // JGit's merge, object inserts, and ref update are synchronous: keep them off request threads.
-            withContext(GitWorkDispatcher) {
-                val dfsRepo = dfsManager.open(pr.repositoryId)
-                lockHandle.fence(dfsRepo)
-                dfsRepo.use { repo ->
-                    val sourceRef = repo.refDatabase.findRef("refs/heads/${pr.sourceBranch}")
-                        ?: throw IllegalStateException("Source branch '${pr.sourceBranch}' not found")
-                    val targetRef = repo.refDatabase.findRef("refs/heads/${pr.targetBranch}")
-                        ?: throw IllegalStateException("Target branch '${pr.targetBranch}' not found")
+        return withRefSynchronizationTransaction(pr.repositoryId, lockFactory) {
+            val current = prRepository.lockById(id) ?: throw NoSuchElementException("Pull request not found: $id")
+            check(current.version == pr.version) { "Pull request changed before merge; retry with its current state" }
+            val merged = withRefSynchronizationLock(pr.repositoryId, lockFactory) { lockHandle ->
+                // JGit's merge, object inserts, and ref update are synchronous: keep them off request threads.
+                withContext(GitWorkDispatcher) {
+                    val dfsRepo = dfsManager.open(pr.repositoryId, connection())
+                    lockHandle.fence(dfsRepo)
+                    dfsRepo.use { repo ->
+                        val sourceRef = repo.refDatabase.findRef("refs/heads/${pr.sourceBranch}")
+                            ?: throw IllegalStateException("Source branch '${pr.sourceBranch}' not found")
+                        val targetRef = repo.refDatabase.findRef("refs/heads/${pr.targetBranch}")
+                            ?: throw IllegalStateException("Target branch '${pr.targetBranch}' not found")
 
-                    val message = when (strategy) {
-                        MergeStrategy.SQUASH -> "${pr.title} (#${pr.number})"
-                        else -> "Merge pull request #${pr.number} from ${pr.sourceBranch}"
-                    }
+                        val message = when (strategy) {
+                            MergeStrategy.SQUASH -> "${pr.title} (#${pr.number})"
+                            else -> "Merge pull request #${pr.number} from ${pr.sourceBranch}"
+                        }
 
-                    val author = PersonIdent(mergerName, mergerEmail)
-                    val mergeResult = MergeExecutor.merge(
-                        repo, sourceRef.objectId, targetRef.objectId, strategy, message, author
-                    )
-
-                    if (!mergeResult.success) {
-                        throw IllegalStateException(
-                            "Merge failed: conflicts in ${mergeResult.conflictingFiles.joinToString(", ")}"
+                        val author = PersonIdent(mergerName, mergerEmail)
+                        val mergeResult = MergeExecutor.merge(
+                            repo, sourceRef.objectId, targetRef.objectId, strategy, message, author
                         )
+
+                        if (!mergeResult.success) {
+                            throw IllegalStateException(
+                                "Merge failed: conflicts in ${mergeResult.conflictingFiles.joinToString(", ")}"
+                            )
+                        }
+
+                        val merged = prRepository.updateMergeState(
+                            pr.copy(
+                                status = PullRequestStatus.MERGED, mergeStrategy = strategy, mergedBy = mergedById,
+                                mergedAt = OffsetDateTime.now(), mergeSha = mergeResult.mergeSha,
+                            )
+                        ) ?: throw IllegalStateException("Failed to update PR merge state")
+                        val refUpdate = repo.refDatabase.newUpdate("refs/heads/${pr.targetBranch}", false)
+                        refUpdate.setNewObjectId(ObjectId.fromString(mergeResult.mergeSha))
+                        refUpdate.setExpectedOldObjectId(targetRef.objectId)
+                        check(
+                            refUpdate.update() in setOf(
+                                RefUpdate.Result.NEW, RefUpdate.Result.FAST_FORWARD, RefUpdate.Result.NO_CHANGE,
+                                RefUpdate.Result.FORCED
+                            )
+                        ) { "Target branch changed during merge" }
+
+                        merged
                     }
-
-                    val refUpdate = repo.refDatabase.newUpdate("refs/heads/${pr.targetBranch}", false)
-                    refUpdate.setNewObjectId(ObjectId.fromString(mergeResult.mergeSha))
-                    refUpdate.setExpectedOldObjectId(targetRef.objectId)
-                    refUpdate.update()
-
-                    mergeResult
                 }
             }
-        } ?: throw RepositoryWriteBusyException(pr.repositoryId)
-
-        val merged = prRepository.updateMergeState(
-            pr.copy(
-                status = PullRequestStatus.MERGED,
-                mergeStrategy = strategy,
-                mergedBy = mergedById,
-                mergedAt = OffsetDateTime.now(),
-                mergeSha = result.mergeSha
-            )
-        ) ?: throw IllegalStateException("Failed to update PR merge state")
-
-        log.info("Merged PR #{} on repository {} via {}", pr.number, pr.repositoryId, strategy)
-        dispatchActivity(merged, PullRequestEventAction.MERGED, actorId = mergedById)
-        return merged
+            log.info("Merged PR #{} on repository {} via {}", pr.number, pr.repositoryId, strategy)
+            dispatchActivity(merged, PullRequestEventAction.MERGED, actorId = mergedById)
+            merged
+        }
     }
 
     override suspend fun mergeWithDependencies(
@@ -320,7 +366,7 @@ class PullRequestServiceImpl(
         require(pr.status == PullRequestStatus.OPEN || pr.status == PullRequestStatus.DRAFT) {
             "Can only close OPEN or DRAFT pull requests"
         }
-        val closed = prRepository.updateStatus(id, PullRequestStatus.CLOSED)
+        val closed = prRepository.updateStatus(id, PullRequestStatus.CLOSED, pr.version)
             ?: throw IllegalStateException("Failed to close PR")
         dispatchActivity(closed, PullRequestEventAction.CLOSED)
         return closed
@@ -330,7 +376,7 @@ class PullRequestServiceImpl(
         val pr = prRepository.findById(id)
             ?: throw NoSuchElementException("Pull request not found: $id")
         require(pr.status == PullRequestStatus.CLOSED) { "Can only reopen CLOSED pull requests" }
-        val reopened = prRepository.updateStatus(id, PullRequestStatus.OPEN)
+        val reopened = prRepository.updateStatus(id, PullRequestStatus.OPEN, pr.version)
             ?: throw IllegalStateException("Failed to reopen PR")
         dispatchActivity(reopened, PullRequestEventAction.REOPENED)
         return reopened
@@ -340,7 +386,7 @@ class PullRequestServiceImpl(
         val pr = prRepository.findById(id)
             ?: throw NoSuchElementException("Pull request not found: $id")
         require(pr.status == PullRequestStatus.DRAFT) { "Can only mark DRAFT pull requests as ready" }
-        val ready = prRepository.updateStatus(id, PullRequestStatus.OPEN)
+        val ready = prRepository.updateStatus(id, PullRequestStatus.OPEN, pr.version)
             ?: throw IllegalStateException("Failed to mark PR ready")
         dispatchActivity(ready, PullRequestEventAction.READY_FOR_REVIEW)
         return ready
@@ -539,6 +585,21 @@ class PullRequestServiceImpl(
         } catch (e: Exception) {
             log.warn("Could not resolve Git notification recipient {} to a profile", id, e)
             null
+        }
+    }
+
+    override suspend fun verifyMergeAllowed(id: UUID, expectedVersion: Long, sourceSha: String) {
+        val pr = prRepository.lockById(id) ?: throw NoSuchElementException("Pull request not found: $id")
+        check(pr.version == expectedVersion) { "Pull request changed before merge; retry with its current state" }
+        require(pr.status == PullRequestStatus.OPEN) { "Can only merge OPEN pull requests" }
+        require(dependencyRepository.findDependencies(id).all { it.status == PullRequestStatus.MERGED }) { "Pull request has unresolved dependencies" }
+        val head = withContext(GitWorkDispatcher) {
+            dfsManager.open(pr.repositoryId).use { it.resolve("refs/heads/${pr.sourceBranch}")?.name() }
+        }
+        require(head == sourceSha) { "The GitHub merge source differs from the reviewed Bosca branch" }
+        branchProtectionService.findMatchingRule(pr.repositoryId, pr.targetBranch)?.let { rule ->
+            require(!rule.requireCodeOwnerReview) { "Code-owner approval cannot be verified for an imported merge" }
+            enforceProtectionForMerge(pr, rule)
         }
     }
 

@@ -1,6 +1,7 @@
 package bosca.git.service
 
 import bosca.git.model.GitHubSyncResult
+import bosca.git.model.BranchProtectionRule
 import bosca.serialization.UUID
 
 enum class RefSynchronizationDirection { INBOUND, OUTBOUND }
@@ -21,6 +22,12 @@ class RefSynchronizationInput(
     val hasConflict: Boolean = false,
     /** The actual old ref value of an anonymous import that this verified push may attribute. */
     val unattributedBeforeSha: String? = null,
+    /** The destination's current branch rule, evaluated against the actual ref update under its write lock. */
+    val protection: BranchProtectionRule? = null,
+    /** Only a paired PR whose Bosca merge checks passed may satisfy a required-PR rule. */
+    val pullRequestMerge: Boolean = false,
+    /** PR merge imports preserve attribution but defer CI authorization to their verified push occurrence. */
+    val triggerBuild: Boolean = true,
 )
 
 data class RefSynchronizationResult(

@@ -1,5 +1,8 @@
 package bosca.git.service
 
+import bosca.git.model.GitHubPullRequestSnapshot
+import bosca.serialization.OffsetDateTime
+
 import bosca.git.model.CreatePullRequestInput
 import bosca.git.model.MergeResult
 import bosca.git.model.MergeStrategy
@@ -18,6 +21,20 @@ import bosca.service.Service
  * submission, and status transitions.
  */
 interface PullRequestService : Service {
+
+    /**
+     * Applies observed counterpart metadata only if [expectedVersion] is still current.
+     * A completed merge records existing history; this operation never creates commits or updates refs.
+     * Returns null on a concurrent edit. MERGED is terminal and cannot be reverted or rewritten.
+     * [mergedById] is recorded as the merger and attributes only the resulting MERGED activity.
+     */
+    suspend fun synchronize(
+        id: UUID,
+        expectedVersion: Long,
+        snapshot: GitHubPullRequestSnapshot,
+        mergedAt: OffsetDateTime? = null,
+        mergedById: UUID? = null,
+    ): PullRequest?
 
     /**
      * Creates a new pull request with an auto-incrementing number within the repository.
@@ -92,6 +109,9 @@ interface PullRequestService : Service {
      * Merges a pull request using the given strategy. Enforces branch protection
      * rules (required approvals, status checks) before performing the merge.
      * Updates the target branch ref on success.
+     * Owns its transaction independently of the caller. Locks and rechecks the PR version
+     * before writing; merge metadata, the target ref, and event registration commit together.
+     * Holds the repository write lock through commit. Cancellation rolls back the ref and PR.
      */
     suspend fun merge(
         id: UUID,
@@ -100,6 +120,13 @@ interface PullRequestService : Service {
         mergerName: String,
         mergerEmail: String
     ): PullRequest
+
+    /**
+     * Verifies the current PR version, open state, dependencies, source SHA, reviews and status checks
+     * before importing an already completed merge. Does not create history or update a ref.
+     * The caller holds the repository write lock and transaction through the subsequent import.
+     */
+    suspend fun verifyMergeAllowed(id: UUID, expectedVersion: Long, sourceSha: String)
 
     /**
      * Preflights and merges all unresolved dependencies before [id]. Already-merged

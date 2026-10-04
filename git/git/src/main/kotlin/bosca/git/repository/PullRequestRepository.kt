@@ -26,6 +26,9 @@ interface PullRequestRepository {
     @Query("select * from git.pull_requests where id = :id")
     suspend fun findById(id: UUID): PullRequest?
 
+    @Query("select * from git.pull_requests where id = :id for update")
+    suspend fun lockById(id: UUID): PullRequest?
+
     @Query("select * from git.pull_requests where repository_id = :repositoryId and number = :number")
     suspend fun findByNumber(repositoryId: UUID, number: Int): PullRequest?
 
@@ -72,8 +75,8 @@ interface PullRequestRepository {
 
     @Query("""
         update git.pull_requests
-        set title = :title, description = :description, updated = now()
-        where id = :id
+        set title = :title, description = :description, updated = now(), version = version + 1
+        where id = :id and version = :version
         returning *
     """)
     suspend fun update(pr: PullRequest): PullRequest?
@@ -81,16 +84,26 @@ interface PullRequestRepository {
     @Query("""
         update git.pull_requests
         set status = :status::git.pull_request_status, merge_strategy = :mergeStrategy::git.merge_strategy,
-            merged_by = :mergedBy, merged_at = :mergedAt, merge_sha = :mergeSha, updated = now()
-        where id = :id
+            merged_by = :mergedBy, merged_at = :mergedAt, merge_sha = :mergeSha, updated = now(), version = version + 1
+        where id = :id and version = :version
         returning *
     """)
     suspend fun updateMergeState(pr: PullRequest): PullRequest?
 
     @Query("""
-        update git.pull_requests set status = :status::git.pull_request_status, updated = now() where id = :id returning *
+        update git.pull_requests set status = :status::git.pull_request_status, updated = now(), version = version + 1
+        where id = :id and version = :version returning *
     """)
-    suspend fun updateStatus(id: UUID, status: PullRequestStatus): PullRequest?
+    suspend fun updateStatus(id: UUID, status: PullRequestStatus, version: Long): PullRequest?
+
+    @Query("""
+        update git.pull_requests set title = :title, description = :description,
+            source_branch = :sourceBranch, target_branch = :targetBranch, status = :status::git.pull_request_status,
+            merge_sha = :mergeSha, merged_at = :mergedAt, merged_by = :mergedBy,
+            updated = now(), version = version + 1
+        where id = :id and version = :version returning *
+    """)
+    suspend fun synchronize(pr: PullRequest): PullRequest?
 
     @Query("""
         select * from git.pull_requests

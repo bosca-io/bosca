@@ -6,6 +6,7 @@ import bosca.git.dfs.GitWorkDispatcher
 import bosca.git.model.GitHubSyncResult
 import bosca.lock.DistributedLockFactory
 import bosca.serialization.UUID
+import bosca.security.service.SecurityException
 import kotlinx.coroutines.withContext
 import org.eclipse.jgit.lib.NullProgressMonitor
 import org.eclipse.jgit.lib.ObjectId
@@ -93,6 +94,21 @@ internal suspend fun synchronizeRef(
                 val safe = if (source == null) unchangedTarget else creation || unchangedTarget || fastForward
                 if (!safe) return@withRefSynchronizationLock result(GitHubSyncResult.CONFLICT)
 
+                if (inbound) input.protection?.let { rule ->
+                    val branch = input.ref.removePrefix("refs/heads/")
+                    fun reject(reason: String): Nothing = throw SecurityException("Branch '$branch' is protected: $reason")
+                    if (source == null && !rule.allowDeletion) reject("deletion is not allowed")
+                    if (source != null && target != null && !fastForward && !rule.allowForcePush) reject("force pushes are not allowed")
+                    if (rule.requirePullRequest && !input.pullRequestMerge) reject("changes must be made through a pull request")
+                    if (rule.restrictPushAccess.isNotEmpty() && input.principalId !in rule.restrictPushAccess) reject("you are not in the push access list")
+                    if (source != null && rule.requireLinearHistory) {
+                        RevWalk(repo).use { walk ->
+                            walk.markStart(walk.parseCommit(source))
+                            target?.let { walk.markUninteresting(walk.parseCommit(it)) }
+                            if (walk.any { it.parentCount > 1 }) reject("linear history is required")
+                        }
+                    }
+                }
                 lock.ensureHeld()
                 if (inbound) {
                     val update = repo.updateRef(input.ref)
@@ -108,7 +124,7 @@ internal suspend fun synchronizeRef(
                     }
                     notifier.notifyRefsUpdated(repo, input.repositoryId, listOf(RefChange(
                         input.ref, target ?: ObjectId.zeroId(), source ?: ObjectId.zeroId(),
-                    )), input.principalId)
+                    )), input.principalId.takeIf { input.triggerBuild })
                 } else {
                     val update = RemoteRefUpdate(repo, source?.name(), input.ref, true, null, target ?: ObjectId.zeroId())
                     val pushed = transport.push(NullProgressMonitor.INSTANCE, listOf(update))

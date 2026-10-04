@@ -1,5 +1,7 @@
 package bosca.git.graphql
 
+import bosca.git.model.GitHubPullRequestState
+
 import bosca.git.model.GitHubUser
 import bosca.git.model.GitHubDelivery
 import bosca.git.model.GitHubRepositoryPair
@@ -21,6 +23,11 @@ object GitHubMutation
 /** Pairing and identity mappings are privileged configuration, independently of repository access. */
 @TypeController(type = "GitHub")
 class GitHubSyncQuery(private val service: GitHubSyncService, private val groups: GroupEvaluator) : GraphQLController<GitHub> {
+    @Field
+    suspend fun pullRequestStates(authentication: AuthenticationContext, repositoryId: UUID, offset: Long?, limit: Int?): List<GitHubPullRequestState> {
+        groups.verifyHasAdminGroup(authentication)
+        return service.findPullRequestStates(repositoryId, offset ?: 0, limit?.coerceIn(1, 100) ?: 25)
+    }
     @Field
     suspend fun pair(authentication: AuthenticationContext, repositoryId: UUID): GitHubRepositoryPair? {
         groups.verifyHasAdminGroup(authentication)
@@ -48,6 +55,11 @@ class GitHubSyncQuery(private val service: GitHubSyncService, private val groups
 
 @TypeController(type = "GitHubMutation")
 class GitHubSyncMutation(private val service: GitHubSyncService, private val groups: GroupEvaluator) : GraphQLController<GitHubMutation> {
+    @Field
+    suspend fun reconcilePullRequests(authentication: AuthenticationContext, repositoryId: UUID): List<GitHubPullRequestState> {
+        groups.verifyHasAdminGroup(authentication)
+        return service.reconcilePullRequests(repositoryId)
+    }
     @Field
     suspend fun reconcileRefs(authentication: AuthenticationContext, repositoryId: UUID): List<GitHubRefState> {
         groups.verifyHasAdminGroup(authentication)

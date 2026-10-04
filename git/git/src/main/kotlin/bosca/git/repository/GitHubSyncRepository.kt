@@ -1,5 +1,7 @@
 package bosca.git.repository
 
+import bosca.git.model.GitHubPullRequestState
+
 import bosca.db.annotation.Query
 import bosca.db.annotation.Repository
 import bosca.git.model.GitHubUser
@@ -10,6 +12,29 @@ import bosca.serialization.UUID
 
 @Repository
 interface GitHubSyncRepository {
+    @Query("select * from git.github_pull_request_states where repository_id = :repositoryId and id = :id")
+    suspend fun findPullRequestStateById(repositoryId: UUID, id: UUID): GitHubPullRequestState?
+
+    @Query("select * from git.github_pull_request_states where repository_id = :repositoryId and pull_request_id = :pullRequestId")
+    suspend fun findPullRequestState(repositoryId: UUID, pullRequestId: UUID): GitHubPullRequestState?
+
+    @Query("select * from git.github_pull_request_states where repository_id = :repositoryId and github_number = :number")
+    suspend fun findPullRequestState(repositoryId: UUID, number: Int): GitHubPullRequestState?
+
+    @Query("select * from git.github_pull_request_states where repository_id = :repositoryId order by id limit :limit offset :offset")
+    suspend fun findPullRequestStates(repositoryId: UUID, offset: Long, limit: Int): List<GitHubPullRequestState>
+
+    @Query("""
+        insert into git.github_pull_request_states(id, repository_id, pull_request_id, github_id, github_number, imported, snapshot, pending, bosca, github, problem)
+        values (:id, :repositoryId, :pullRequestId, :githubId, :githubNumber, :imported, :snapshot, :pending, :boscaSnapshot, :githubSnapshot, :problem)
+        on conflict(id) do update set pull_request_id = excluded.pull_request_id,
+            github_id = excluded.github_id, github_number = excluded.github_number,
+            snapshot = excluded.snapshot, pending = excluded.pending,
+            bosca = excluded.bosca, github = excluded.github, problem = excluded.problem, modified = now()
+        returning *
+    """)
+    suspend fun savePullRequestState(state: GitHubPullRequestState): GitHubPullRequestState
+
     @Query("select * from git.github_repository_pairs where repository_id = :repositoryId")
     suspend fun findPair(repositoryId: UUID): GitHubRepositoryPair?
 
@@ -106,6 +131,22 @@ interface GitHubSyncRepository {
 
     @Query("select * from git.github_deliveries where delivery_id = :deliveryId")
     suspend fun findDelivery(deliveryId: String): GitHubDelivery?
+
+    /** The latest signed PR observation supplies attribution for reconciliation, never the integration identity. */
+    @Query("""
+        select * from git.github_deliveries where repository_id = :repositoryId and event = 'pull_request'
+            and not ignored and payload->>'number' = cast(:number as text)
+        order by created desc, delivery_id desc limit 1
+    """)
+    suspend fun findPullRequestDelivery(repositoryId: UUID, number: Int): GitHubDelivery?
+
+    /** Recovers ref authorization only from a verified push of the exact current source value. */
+    @Query("""
+        select * from git.github_deliveries where repository_id = :repositoryId and event = 'push'
+            and not ignored and payload->>'ref' = :ref and payload->>'after' = :sha
+        order by created desc, delivery_id desc limit 1
+    """)
+    suspend fun findPushDelivery(repositoryId: UUID, ref: String, sha: String): GitHubDelivery?
 
     /** Refs with verified push deliveries that have not completed synchronization. */
     @Query("""

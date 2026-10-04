@@ -24,15 +24,17 @@ interface ReviewRepository {
     """)
     suspend fun create(review: Review): Review
 
+    /** Active approving reviews; dismissed approvals never satisfy a merge requirement. */
     @Query("""
         select * from git.reviews
-        where pull_request_id = :pullRequestId and status = 'approved'
+        where pull_request_id = :pullRequestId and status = 'approved' and dismissed_at is null
     """)
     suspend fun findApprovedByPullRequest(pullRequestId: UUID): List<Review>
 
+    /** The latest unresolved change request; dismissed reviews no longer block a merge. */
     @Query("""
         select * from git.reviews
-        where pull_request_id = :pullRequestId and status = 'changes_requested'
+        where pull_request_id = :pullRequestId and status = 'changes_requested' and dismissed_at is null
         order by created desc limit 1
     """)
     suspend fun findLatestChangesRequested(pullRequestId: UUID): Review?

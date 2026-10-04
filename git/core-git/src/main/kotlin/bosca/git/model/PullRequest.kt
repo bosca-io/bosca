@@ -29,5 +29,6 @@ data class PullRequest(
     @Contextual @ColumnName("merged_at") val mergedAt: OffsetDateTime? = null,
     @ColumnName("merge_sha") val mergeSha: String? = null,
     @Contextual val created: OffsetDateTime = OffsetDateTime.now(),
-    @Contextual val updated: OffsetDateTime = OffsetDateTime.now()
+    @Contextual val updated: OffsetDateTime = OffsetDateTime.now(),
+    val version: Long = 0,
 )

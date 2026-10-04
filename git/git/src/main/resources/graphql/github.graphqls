@@ -8,6 +8,8 @@ type GitHub {
     deliveries(repositoryId: UUID!, offset: Long = 0, limit: Int = 25): [GitHubDelivery!]!
     "Common branch/tag values and concurrent edits requiring reconciliation."
     refStates(repositoryId: UUID!, offset: Long = 0, limit: Int = 25): [GitHubRefState!]!
+    "Counterpart mappings and unresolved PR synchronization problems, restricted to administrators."
+    pullRequestStates(repositoryId: UUID!, offset: Long = 0, limit: Int = 25): [GitHubPullRequestState!]!
 }
 
 "Mutations for GitHub repository pairing and user mappings."
@@ -20,6 +22,8 @@ type GitHubMutation {
     unmapUser(githubUserId: Long!): Boolean!
     "Reconcile branches and tags using current refs; recovered writes are unattributed."
     reconcileRefs(repositoryId: UUID!): [GitHubRefState!]!
+    "Reconcile current pull requests without creating new merge commits."
+    reconcilePullRequests(repositoryId: UUID!): [GitHubPullRequestState!]!
 }
 
 extend type Query {
@@ -30,6 +34,28 @@ extend type Query {
 extend type Mutation {
     "GitHub synchronization mutations."
     github: GitHubMutation!
+}
+
+"Administrator-controlled pairing; GitHub repository IDs survive renames."
+type GitHubPullRequestState {
+    repositoryId: UUID!
+    pullRequestId: UUID
+    githubId: Long
+    githubNumber: Int
+    snapshot: GitHubPullRequestSnapshot
+    bosca: GitHubPullRequestSnapshot
+    github: GitHubPullRequestSnapshot
+    problem: String
+    modified: DateTime!
+}
+
+type GitHubPullRequestSnapshot {
+    title: String!
+    description: String
+    sourceBranch: String!
+    targetBranch: String!
+    status: GitPullRequestStatus!
+    mergeSha: String
 }
 
 "Administrator-controlled pairing; GitHub repository IDs survive renames."

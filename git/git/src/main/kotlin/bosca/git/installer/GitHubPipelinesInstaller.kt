@@ -13,19 +13,22 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
-/** Seeds ordinary event-triggered ref graphs without replacing operator-edited pipelines. */
+/** Seeds ordinary synchronization graphs without replacing operator-edited pipelines. */
 class GitHubPipelinesInstaller(private val pipelines: PipelineService) : PackageInstaller {
-    override val version = "1.0.0"
+    override val version = "1.1.0"
 
     override suspend fun install(installation: PackageInstallation, version: PackageInstallationVersion) {
         seed("github-import-refs", "GitHub: Import Refs", "bosca.git.model.GitHubDelivery", "githubPush", "delivery")
         seed("github-export-refs", "GitHub: Export Refs", "bosca.git.model.RefUpdateEvent", "githubRef", "event")
         seed("github-reconcile-refs", "GitHub: Reconcile Refs", InputNode.JSON_TYPE, "githubReconcileRefs", "request", schedule = "0 * * * *")
+        seed("github-import-pull-requests", "GitHub: Import Pull Requests", "bosca.git.model.GitHubDelivery", "githubImportPullRequest", "delivery")
+        seed("github-export-pull-requests", "GitHub: Export Pull Requests", "bosca.git.model.PullRequestEvent", "githubExportPullRequest", "event")
+        seed("github-reconcile-pull-requests", "GitHub: Reconcile Pull Requests", InputNode.JSON_TYPE, "githubReconcilePullRequests", "request", schedule = "0 * * * *")
     }
 
     private suspend fun seed(key: String, name: String, inputType: String, nodeType: String, inputPort: String, schedule: String? = null) {
         if (pipelines.getByKey(key) != null) return
-        pipelines.save(id = UUID.NIL, name = name, description = "Synchronize paired repository branches and tags.",
+        pipelines.save(id = UUID.NIL, name = name, description = "Synchronize paired repositories through the GitHub service.",
             key = key, acceptedInputType = inputType, triggered = schedule == null, schedule = schedule, version = 0,
             graph = buildJsonObject {
                 put("nodes", JsonArray(listOf(
@@ -59,6 +62,6 @@ class GitHubPackageInstallerRegistry {
     @Provider(name = "github")
     fun installation(): PackageInstallation = PackageInstallation(
         key = "github", name = "GitHub",
-        versions = listOf(PackageInstallationVersion(version = "1.0.0", installerNames = listOf("github-pipelines"))),
+        versions = listOf(PackageInstallationVersion(version = "1.1.0", installerNames = listOf("github-pipelines"))),
     )
 }

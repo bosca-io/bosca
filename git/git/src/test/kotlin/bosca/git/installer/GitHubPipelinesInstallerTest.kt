@@ -33,10 +33,10 @@ class GitHubPipelinesInstallerTest {
         val installation = registry.installation()
         val version = installation.versions.single()
         val installer = registry.installer(pipelines)
-        assertEquals("1.0.0", version.version); assertEquals(version.version, installer.version)
+        assertEquals("1.1.0", version.version); assertEquals(version.version, installer.version)
         assertEquals(listOf("github-pipelines"), version.installerNames)
         installer.install(installation, version)
-        assertEquals(setOf("github-import-refs", "github-export-refs", "github-reconcile-refs"), saved.keys)
+        assertEquals(setOf("github-import-refs", "github-export-refs", "github-reconcile-refs", "github-import-pull-requests", "github-export-pull-requests", "github-reconcile-pull-requests"), saved.keys)
         val json = Json { serializersModule = SerializersModule {
             include(GitPipelineNodeSerializersProvider().module)
             polymorphic(PipelineNode::class) {
@@ -58,13 +58,16 @@ class GitHubPipelinesInstallerTest {
                 is OutputNode -> "output"
                 is GitHubPushNode -> "githubPush"
                 is GitHubRefNode -> "githubRef"
-                else -> "githubReconcileRefs"
+                is GitHubReconcileRefsNode -> "githubReconcileRefs"
+                is bosca.git.pipeline.GitHubImportPullRequestNode -> "githubImportPullRequest"
+                is bosca.git.pipeline.GitHubExportPullRequestNode -> "githubExportPullRequest"
+                else -> "githubReconcilePullRequests"
             } }
             val declared = graph.nodes.filterIsInstance<HasDeclaredOutput>().associateBy { (it as PipelineNode).id }
             assertTrue(SlotConnectionValidator.validate(keys, graph.edges, descriptors, declared).isEmpty())
         }
         installer.install(installation, version)
-        coVerify(exactly = 3) { pipelines.save(id = any(), name = any(), description = any(), acceptedInputType = any(), triggered = any(), version = any(), graph = any(), key = any(), schedule = any()) }
+        coVerify(exactly = 6) { pipelines.save(id = any(), name = any(), description = any(), acceptedInputType = any(), triggered = any(), version = any(), graph = any(), key = any(), schedule = any()) }
         coVerify { pipelines.save(id = UUID.NIL, name = "GitHub: Import Refs", description = any(), acceptedInputType = "bosca.git.model.GitHubDelivery", triggered = true, version = 0, graph = any(), key = "github-import-refs") }
         coVerify { pipelines.save(id = UUID.NIL, name = "GitHub: Reconcile Refs", description = any(), acceptedInputType = InputNode.JSON_TYPE, triggered = false, version = 0, graph = any(), key = "github-reconcile-refs", schedule = "0 * * * *") }
     }

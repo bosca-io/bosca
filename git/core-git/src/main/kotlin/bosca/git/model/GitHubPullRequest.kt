@@ -2,8 +2,11 @@ package bosca.git.model
 
 import bosca.serialization.OffsetDateTime
 import kotlinx.serialization.Contextual
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonPrimitive
 
 /** GitHub's current pull request, including the original author and unpeeled branch tips. */
 @Serializable
@@ -20,6 +23,7 @@ data class GitHubPullRequest(
     @Contextual @SerialName("merged_at") val mergedAt: OffsetDateTime? = null,
     @Contextual @SerialName("updated_at") val modified: OffsetDateTime,
     val user: GitHubPullRequestUser,
+    @SerialName("merged_by") val mergedBy: GitHubPullRequestUser? = null,
     val head: GitHubPullRequestBranch,
     val base: GitHubPullRequestBranch,
 )
@@ -29,6 +33,10 @@ data class GitHubPullRequestUser(val id: Long, val login: String, val type: Stri
 
 @Serializable
 data class GitHubPullRequestBranch(val ref: String, val sha: String, val repo: GitHubWebhookRepository? = null)
+
+/** The signed PR state binds the originating user's authority to that exact provider observation. */
+@Serializable
+data class GitHubPullRequestDelivery(val number: Int, @SerialName("pull_request") val pullRequest: GitHubPullRequest? = null)
 
 /** GitHub creates a counterpart under the token's identity; original authorship belongs in its body. */
 @Serializable
@@ -40,11 +48,15 @@ data class GitHubCreatePullRequestInput(
     val draft: Boolean,
 )
 
-/** GitHub permits title, body, base branch, and open/closed lifecycle updates through REST. */
+/**
+ * Changes selected PR fields through REST. Null omits a field; [kotlinx.serialization.json.JsonNull]
+ * explicitly clears [body]. GitHub does not support conditional PR updates, so callers send only changes.
+ */
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 data class GitHubUpdatePullRequestInput(
-    val title: String,
-    val body: String?,
-    val base: String,
-    val state: String,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val title: String? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val body: JsonPrimitive? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val base: String? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val state: String? = null,
 )
