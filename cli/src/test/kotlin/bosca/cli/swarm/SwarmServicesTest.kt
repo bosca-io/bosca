@@ -108,6 +108,20 @@ class SwarmServicesTest {
     }
 
     @Test
+    fun `server memory limits can be increased independently for each site`() {
+        val largerSite = site.copy(serverMemory = "1536M")
+        val configured = config.copy(sites = listOf(largerSite, config.sites[1]))
+        configured.validate()
+        assertEquals(mapOf("memory" to "1536M"), limits(services(siteStack(configured, largerSite)).getValue("server")))
+        assertEquals(mapOf("memory" to "768M"), limits(services(siteStack(configured, configured.sites[1])).getValue("server")))
+        listOf("", "0", "-1G", "1G\n", "invalid").forEach { memory ->
+            assertFailsWith<IllegalArgumentException> {
+                config.copy(sites = listOf(site.copy(serverMemory = memory))).validate()
+            }
+        }
+    }
+
+    @Test
     fun `every service rotates its logs and stateless application services roll start-first`() {
         allServices(config).forEach { (name, service) ->
             assertEquals(

@@ -391,9 +391,9 @@ internal fun siteStack(config: SwarmConfig, site: SwarmSite): Map<String, Any> {
             "healthcheck" to healthcheck(bashHttpCheck(port, "/api/v1/live"), startPeriod),
         ))
     val services = mapOf(
-        // Memory limits follow the production Helm values; the runner has none there either.
+        // Default memory limits follow the production Helm values; the runner has none there either.
         "server" to bosca("server", env + mapOf("GIT_SYNC_LISTENERS" to "false", "SCHEDULER_ENABLED" to "true"),
-            8080, "150s", Limits("768M")),
+            8080, "150s", Limits(site.serverMemory)),
         // The runner binds its port only after migrations and package installs finish.
         "runner" to bosca("runner", env + mapOf("BOSCA_SERVER_PORT" to "8080", "GIT_SYNC_LISTENERS" to "true", "SCHEDULER_ENABLED" to "false",
             "ANALYTICS_PROCESSOR_ENABLED" to "true"), 8080, "300s", null),

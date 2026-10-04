@@ -96,6 +96,8 @@ data class SwarmConfig(
     val profilesWeb: SwarmProfilesWeb = SwarmProfilesWeb(),
     /** Notification preference site settings. */
     val notificationsWeb: SwarmNotificationsWeb = SwarmNotificationsWeb(),
+    /** Bosca server memory limit in Docker units, for example `768M` or `1536M`. */
+    val serverMemory: String = "768M",
 )
 
 /** Per-site host, auth cookie domain, and optional branding for profiles-web. */
@@ -295,6 +297,9 @@ internal fun SwarmConfig.validate(deploy: Boolean = false) {
         require(site.hosts.all.all(domainPattern::matches)) { "Invalid domain for ${site.id}" }
         require(site.redisDatabase in 1..15) { "Redis database must be between 1 and 15 for ${site.id}" }
         require(site.rootPort in 1..65535) { "Invalid rootPort for ${site.id}" }
+        require(site.serverMemory.matches(Regex("[1-9][0-9]*[bkmg]?", RegexOption.IGNORE_CASE))) {
+            "serverMemory for ${site.id} must be a positive byte count with an optional B, K, M, or G suffix"
+        }
         require(site.mailerType in setOf("sendgrid", "mailgun")) {
             "mailerType for ${site.id} must be sendgrid or mailgun"
         }
