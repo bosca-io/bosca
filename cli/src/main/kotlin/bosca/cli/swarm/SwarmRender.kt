@@ -478,7 +478,14 @@ private fun pathPrefix(vararg prefixes: String) = prefixes.joinToString(" ") { "
  * tracking paths alongside existing notification links. The artifacts registry owns its host.
  * `route` keeps match order explicit.
  */
-internal fun caddyfile(config: SwarmConfig) = config.sites.joinToString("\n\n", postfix = "\n") { site ->
+internal fun caddyfile(config: SwarmConfig) = config.sites.joinToString("\n\n", prefix = """{
+    servers {
+        protocols h1 h2
+        enable_full_duplex
+    }
+}
+
+""", postfix = "\n") { site ->
     val name = site.id
     val hosts = site.hosts
     val serverHosts = if (site.rootImage.isBlank()) hosts.server else hosts.server.drop(1)

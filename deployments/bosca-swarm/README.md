@@ -68,6 +68,8 @@ PgBouncer keeps prepared statements across pooled transactions. After a migratio
 
 ## Hostnames
 
+Caddy accepts HTTP/1.1 and HTTP/2 over HTTPS and enables full-duplex HTTP/1.1 requests, so a client can continue sending a request body while receiving its response. HTTP/2 supports concurrent reads and writes directly. The overlay connections to application services use HTTP/1.1; WebSocket upgrades and streaming responses pass through the proxy.
+
 Each site's hostnames and routes mirror the Kubernetes Gateway HTTPRoutes, with `<domain>` as the site's base domain:
 
 | Hostname | Service |

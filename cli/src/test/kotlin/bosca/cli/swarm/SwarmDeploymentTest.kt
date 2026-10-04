@@ -429,6 +429,27 @@ class SwarmDeploymentTest {
     }
 
     @Test
+    fun `caddy enables HTTP1 and HTTP2 with full duplex once for every site`() {
+        val config = SwarmConfig().withSecrets()
+        val caddy = caddyfile(config)
+        val globalOptions = """{
+    servers {
+        protocols h1 h2
+        enable_full_duplex
+    }
+}
+
+"""
+        assertTrue(caddy.startsWith(globalOptions), caddy)
+        assertEquals(1, Regex("protocols h1 h2").findAll(caddy).count())
+        assertEquals(1, Regex("enable_full_duplex").findAll(caddy).count())
+        config.sites.forEach { site ->
+            assertTrue(caddy.contains("api.${site.domain}"))
+            assertTrue(caddy.contains("studio.${site.domain} {"))
+        }
+    }
+
+    @Test
     fun `caddy routes each hostname like the Kubernetes HTTPRoutes`() {
         val config = SwarmConfig().withSecrets()
         val caddy = caddyfile(config)
