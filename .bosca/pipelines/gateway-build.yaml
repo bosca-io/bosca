@@ -6,13 +6,11 @@ name: Bosca Gateway
 #
 # Images are published by release-image.yaml.
 on:
-  push:
-    branches: [main]
+  tag:
+    patterns: ["*"]
     paths:
       - "gateway/proxy/**"
       - ".bosca/pipelines/gateway-build.yaml"
-  pull_request:
-    branches: [main]
   manual: true
 
 concurrency:

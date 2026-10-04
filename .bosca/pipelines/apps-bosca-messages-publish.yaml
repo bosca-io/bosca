@@ -12,8 +12,8 @@
 name: Publish Message Templates
 
 on:
-  push:
-    branches: [main]
+  tag:
+    patterns: ["*"]
     paths:
       - "apps/bosca-messages/**"
       - ".bosca/pipelines/apps-bosca-messages-publish.yaml"
