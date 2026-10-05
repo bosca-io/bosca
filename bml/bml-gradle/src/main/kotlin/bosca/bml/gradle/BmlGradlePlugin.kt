@@ -1,6 +1,7 @@
 package bosca.bml.gradle
 
 import org.gradle.api.Project
+import org.gradle.api.GradleException
 import org.gradle.api.provider.Provider
 import org.gradle.api.tasks.Exec
 import org.gradle.api.tasks.JavaExec
@@ -184,6 +185,7 @@ class BmlGradlePlugin : KotlinCompilerPluginSupportPlugin {
         // `@bosca/bml` imports resolve to the same installed package.
         val packagedBundler = target.file("node_modules/@bosca/bml/tools/bundle.mjs")
         val clientManifest = target.file("package.json")
+        val npmConfiguration = target.file(".npmrc")
         // `bmlInstallClientDependencies`: sites whose `<script client>` imports packages (e.g. the
         // Bosca auth library) declare them in a project-root package.json; the plugin installs
         // node_modules before bundling so bare imports resolve. A no-op without a package.json.
@@ -193,12 +195,33 @@ class BmlGradlePlugin : KotlinCompilerPluginSupportPlugin {
             task.workingDir = target.projectDir
             task.inputs.files(target.file("package.json"), target.file("package-lock.json"))
                 .withPropertyName("clientManifest").optional()
+            task.inputs.file(npmConfiguration).withPropertyName("npmConfiguration").optional()
             task.outputs.dir(target.file("node_modules")).withPropertyName("nodeModules")
             // Through a login shell so node-version managers (nvm & co) are on PATH — Gradle
             // daemons don't reliably inherit the interactive shell's npm.
             task.executable = "sh"
             task.args("-lc", "npm install --no-audit --no-fund")
             task.onlyIf { clientManifest.isFile }
+            task.doFirst { executing ->
+                if (npmConfiguration.isFile) {
+                    val environment = (executing as Exec).environment
+                    val configuration = npmConfiguration.readLines()
+                        .filterNot { it.trimStart().startsWith('#') || it.trimStart().startsWith(';') }
+                        .joinToString("\n")
+                    val missing = Regex("""(?<!\\)\$\{([A-Za-z_][A-Za-z0-9_]*)}""")
+                        .findAll(configuration)
+                        .map { it.groupValues[1] }
+                        .distinct()
+                        .filter { environment[it]?.toString().isNullOrBlank() }
+                        .toList()
+                    if (missing.isNotEmpty()) {
+                        throw GradleException(
+                            "BML npm configuration is missing environment variables: ${missing.joinToString()}. " +
+                                "Set them before running bmlInstallClientDependencies.",
+                        )
+                    }
+                }
+            }
         }
         target.tasks.register("bmlBundleClient", Exec::class.java) { task ->
             task.group = "bml"

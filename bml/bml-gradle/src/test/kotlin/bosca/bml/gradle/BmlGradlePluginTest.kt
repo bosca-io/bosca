@@ -1,6 +1,7 @@
 package bosca.bml.gradle
 
 import org.gradle.api.plugins.JavaApplication
+import org.gradle.api.GradleException
 import org.gradle.api.tasks.JavaExec
 import org.gradle.api.tasks.Exec
 import org.gradle.testfixtures.ProjectBuilder
@@ -8,9 +9,62 @@ import java.io.File
 import java.io.ByteArrayOutputStream
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class BmlGradlePluginTest {
+
+    @Test
+    fun `client dependency installation rejects unresolved npm configuration before starting npm`() {
+        val projectDir = kotlin.io.path.createTempDirectory("bml-npm-configuration").toFile()
+        try {
+            val project = ProjectBuilder.builder().withProjectDir(projectDir).build()
+            project.pluginManager.apply("org.jetbrains.kotlin.jvm")
+            project.pluginManager.apply(BmlGradlePlugin::class.java)
+            File(projectDir, "package.json").writeText("{}")
+            File(projectDir, ".npmrc").writeText("@bosca:registry=https://${'$'}{BOSCA_NPM_REGISTRY}/")
+            val started = File(projectDir, "npm-started")
+            val task = project.tasks.named("bmlInstallClientDependencies", Exec::class.java).get()
+            task.executable = "/bin/sh"
+            task.setArgs(listOf("-c", "printf started > npm-started"))
+            task.setEnvironment(emptyMap<String, String>())
+
+            val error = assertFailsWith<GradleException> { task.actions.forEach { it.execute(task) } }
+            assertTrue(error.message.orEmpty().contains("BOSCA_NPM_REGISTRY"))
+            assertFalse(started.exists(), "npm must not contact an unresolved placeholder host")
+
+            task.setEnvironment(mapOf("BOSCA_NPM_REGISTRY" to "artifacts.example.test/npm"))
+            task.actions.forEach { it.execute(task) }
+            assertEquals("started", started.readText())
+        } finally {
+            projectDir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `npm configuration comments optional variables and escaped literals require no environment values`() {
+        val projectDir = kotlin.io.path.createTempDirectory("bml-npm-optional-configuration").toFile()
+        try {
+            val project = ProjectBuilder.builder().withProjectDir(projectDir).build()
+            project.pluginManager.apply("org.jetbrains.kotlin.jvm")
+            project.pluginManager.apply(BmlGradlePlugin::class.java)
+            File(projectDir, ".npmrc").writeText("""
+                # ${'$'}{COMMENT}
+                ; ${'$'}{ANOTHER_COMMENT}
+                optional=${'$'}{OPTIONAL?}
+                literal=\${'$'}{LITERAL}
+            """.trimIndent())
+            val task = project.tasks.named("bmlInstallClientDependencies", Exec::class.java).get()
+            task.executable = "/bin/sh"
+            task.setArgs(listOf("-c", "printf started > npm-started"))
+            task.setEnvironment(emptyMap<String, String>())
+            task.actions.forEach { it.execute(task) }
+            assertEquals("started", File(projectDir, "npm-started").readText())
+        } finally {
+            projectDir.deleteRecursively()
+        }
+    }
 
     @Test
     fun `bundler runs the configured executable and preserves paths with spaces`() {

@@ -8,7 +8,15 @@ into notification email footers land on:
 - `/unsubscribe?token=…` — one-click unsubscribe from all optional email
 
 Set `BOSCA_NPM_REGISTRY` to the registry that serves `@bosca` packages, as host and path (for example
-`artifacts.example.com/npm`), and `NPM_TOKEN` to a token for it. The checked-in `.npmrc` reads both variables.
+`artifacts.example.com/npm`). The checked-in `.npmrc` selects this registry and inherits authentication
+from `$HOME/.npmrc`. CI's `setup-registry` action exports the registry address and writes the agent's
+Bosca token to that user configuration. For local builds, select the registry and configure its token
+before running Gradle or npm:
+
+```bash
+export BOSCA_NPM_REGISTRY=artifacts.example.com/npm
+npm config set "//${BOSCA_NPM_REGISTRY}/:_authToken" '<Bosca API token>' --location=user
+```
 
 Both pages are fully anonymous: the unsubscribe token minted per send is the
 credential, carried in the link's query string. There is no auth SDK or authored client script;

@@ -96,7 +96,6 @@ use_bosca_npm_registry() {
   local host="${BOSCA_REGISTRY_URL#http://}"
   host="${host#https://}"
   export BOSCA_NPM_REGISTRY="${BOSCA_NPM_REGISTRY:-${host%/}/npm}"
-  export NPM_TOKEN="${NPM_TOKEN:-${BOSCA_REGISTRY_TOKEN:-}}"
 }
 
 build_web_packages() {

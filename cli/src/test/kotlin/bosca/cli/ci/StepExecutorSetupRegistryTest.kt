@@ -1,8 +1,11 @@
 package bosca.cli.ci
 
 import kotlinx.coroutines.test.runTest
+import mockwebserver3.MockResponse
+import mockwebserver3.MockWebServer
 import java.io.File
 import java.nio.file.Files
+import java.util.concurrent.TimeUnit
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -48,10 +51,75 @@ class StepExecutorSetupRegistryTest {
                 assertEquals("login $dockerHost --username api_token --password-stdin", login.readText().trim())
                 assertTrue(File(home, ".gradle/gradle.properties").readText().contains("/maven/bosca-maven"))
                 assertEquals(token, readSharedEnvFile(envFile)["BOSCA_REGISTRY_TOKEN"])
+                assertEquals("$host/npm", readSharedEnvFile(envFile)["BOSCA_NPM_REGISTRY"])
+                assertFalse("NPM_TOKEN" in readSharedEnvFile(envFile))
                 assertFalse(logs.lines.any { it.contains(token) }, "registry credentials must not appear in logs")
             } finally {
                 root.deleteRecursively()
             }
+        }
+    }
+
+    @Test
+    fun `BML projects authenticate npm requests with the user configuration without NPM_TOKEN`() = runTest {
+        val server = MockWebServer().apply { start() }
+        val root = Files.createTempDirectory("setup-registry-npm-test").toFile()
+        try {
+            val home = File(root, "home").apply { mkdirs() }
+            val bin = File(root, "bin").apply { mkdirs() }
+            File(bin, "docker").apply {
+                writeText("#!/bin/sh\ncat > /dev/null\n")
+                assertTrue(setExecutable(true))
+            }
+            val token = "test-registry-token"
+            val registry = server.url("/").toString().trimEnd('/')
+            val environment = mapOf(
+                "HOME" to home.absolutePath,
+                "PATH" to "${bin.absolutePath}:${System.getenv("PATH")}",
+                "npm_config_cache" to File(home, ".npm").absolutePath,
+                "NPM_CONFIG_CACHE" to File(home, ".npm").absolutePath,
+                "npm_config_update_notifier" to "false",
+                "NPM_CONFIG_UPDATE_NOTIFIER" to "false",
+            )
+            val envFile = File(root, ".bosca_env").apply { createNewFile() }
+            val logs = TestLogBuffer(setOf(token))
+            fun executor(directory: File, env: Map<String, String>) = StepExecutor(
+                workDir = directory, serverUrl = "", agentToken = token, registryUrl = registry,
+                commitSha = "abc", ref = "refs/tags/1.0.0", repositoryId = "r", env = env,
+                secrets = emptyMap(), logBuffer = logs, sharedEnvFile = envFile,
+            )
+            assertTrue(executor(root, environment).execute(
+                StepDefinition(name = "Setup Registry", uses = "setup-registry"), ExpressionContext(),
+            ).success)
+            val sharedEnvironment = readSharedEnvFile(envFile)
+            assertFalse("NPM_TOKEN" in sharedEnvironment)
+
+            for (project in listOf("notifications-web", "profiles-web")) {
+                val directory = File(root, project).apply { mkdirs() }
+                File("../apps/$project/.npmrc").copyTo(File(directory, ".npmrc"))
+                File(directory, "package.json").writeText("{\"name\":\"$project\",\"private\":true}")
+                server.enqueue(MockResponse.Builder().code(200).body("{}").build())
+                val result = executor(directory, environment + sharedEnvironment).execute(
+                    StepDefinition(name = "Read npm registry", run = """
+                        unset NPM_TOKEN NPM_CONFIG_USERCONFIG npm_config_userconfig
+                        npm config get @bosca:registry > registry-url
+                        npm ping --registry '$registry/npm/' --cache "${'$'}HOME/.npm" --fetch-retries=0 --fetch-timeout=5000 --loglevel=error
+                    """.trimIndent()),
+                    ExpressionContext(),
+                )
+                assertTrue(result.success, "npm authentication failed for $project: ${logs.lines}")
+                assertEquals(
+                    "https://${sharedEnvironment.getValue("BOSCA_NPM_REGISTRY")}/",
+                    File(directory, "registry-url").readText().trim(),
+                )
+                val request = server.takeRequest(5, TimeUnit.SECONDS)
+                assertEquals("Bearer $token", request?.headers?.get("Authorization"))
+                assertEquals("/npm/-/ping", request?.target?.substringBefore('?'))
+            }
+            assertFalse(logs.lines.any { it.contains(token) }, "registry credentials must not appear in logs")
+        } finally {
+            server.close()
+            root.deleteRecursively()
         }
     }
 }
