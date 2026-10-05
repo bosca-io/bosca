@@ -1,4 +1,4 @@
-name: Bosca Web Release
+name: "Release: Web Packages"
 on:
   tag:
     patterns: ["*"]

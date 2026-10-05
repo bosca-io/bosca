@@ -1,4 +1,4 @@
-name: Bosca Gateway
+name: "Gateway"
 # Validation pipeline for PRs and main pushes — runs the same
 # fmt/clippy/test pass the release pipeline does, but does NOT push
 # an image. Cheap enough to run on every push thanks to the cached

@@ -1,4 +1,4 @@
-name: Bosca Server Image Release
+name: "Release: Server"
 # Start from an existing Git tag; its version identifies the published image.
 on:
   manual: true

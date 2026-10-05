@@ -9,7 +9,7 @@
 # SHA ties each artifact back to its commit. Because the version is computed in-step, the
 # declarative `artifacts:` block (resolved at run creation) can't express it — the publish
 # step verifies the upload itself instead.
-name: Publish Message Templates
+name: "Release: Message Templates"
 
 on:
   tag:

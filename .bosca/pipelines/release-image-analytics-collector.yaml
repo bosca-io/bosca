@@ -1,4 +1,4 @@
-name: Analytics Collector Image Release
+name: "Release: Analytics Collector"
 # Start from an existing Git tag; its version identifies the published image.
 on:
   manual: true

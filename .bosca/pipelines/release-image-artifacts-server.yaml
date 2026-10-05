@@ -1,4 +1,4 @@
-name: Bosca Artifacts Image Release
+name: "Release: Artifacts"
 # Start from an existing Git tag; its version identifies the published image.
 on:
   manual: true

@@ -1,4 +1,4 @@
-name: Image Processor Image Release
+name: "Release: Image Processor"
 # Start from an existing Git tag; its version identifies the published image.
 on:
   manual: true

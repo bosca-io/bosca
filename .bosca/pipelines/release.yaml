@@ -1,4 +1,4 @@
-name: Bosca Release
+name: "Release: Libraries"
 on:
   tag:
     patterns: ["*"]

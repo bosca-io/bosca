@@ -1,4 +1,4 @@
-name: Notifications Web Image Release
+name: "Release: Notifications Web"
 # Start from an existing Git tag; its version identifies the published image.
 on:
   manual: true

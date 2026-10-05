@@ -1,4 +1,4 @@
-name: BML Message Server Image Release
+name: "Release: BML Message Server"
 # Start from an existing Git tag; its version identifies the published image.
 on:
   manual: true

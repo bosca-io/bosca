@@ -1,4 +1,4 @@
-name: Bosca CLI Release
+name: "Release: CLI"
 # Builds the native `bosca` CLI and publishes both packages and checksums to Bosca Artifacts.
 #
 # Secrets: MACOS_KEYCHAIN_PASSWORD (see cli/MACOS_SIGNING.md) is required for signing.
