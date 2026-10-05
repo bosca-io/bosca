@@ -235,7 +235,9 @@ Run from the workspace root:
 ## Container image
 
 The CLI Dockerfile packages a Linux `amd64` CI agent image. CI publishes it to
-Bosca Artifacts as `<registry>/bosca/bosca-cli:<version>`:
+Bosca Artifacts as `<registry>/bosca/bosca-cli:<version>`. Start its
+[image release pipeline](../.bosca/pipelines/release-image-bosca-cli.yaml) manually from an
+existing Git tag; the selected tag supplies the image version:
 
 ```bash
 docker run --rm <registry>/bosca/bosca-cli:<version> --version

@@ -90,12 +90,15 @@ stage_native() {
   cp "$project_dir/build/native/nativeCompile/$binary" "$destination/"
 }
 
-# Points the checked-in .npmrc of the BML sites at the Artifacts server's npm registry.
+# Selects the Artifacts server for @bosca packages in npm's user configuration.
 use_bosca_npm_registry() {
   : "${BOSCA_REGISTRY_URL:?Set BOSCA_REGISTRY_URL to the Artifacts server that serves @bosca npm packages}"
-  local host="${BOSCA_REGISTRY_URL#http://}"
-  host="${host#https://}"
-  export BOSCA_NPM_REGISTRY="${BOSCA_NPM_REGISTRY:-${host%/}/npm}"
+  local registry="${BOSCA_REGISTRY_URL%/}"
+  case "$registry" in
+    http://*|https://*) ;;
+    *) registry="https://$registry" ;;
+  esac
+  npm config set @bosca:registry "$registry/npm/" --location=user
 }
 
 build_web_packages() {

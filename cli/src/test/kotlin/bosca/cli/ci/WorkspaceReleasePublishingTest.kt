@@ -20,6 +20,28 @@ class WorkspaceReleasePublishingTest {
     private val version = "7.4.0"
 
     @Test
+    fun `dedicated image releases accept existing tag refs and reject branches before setup`() = runTest {
+        val files = File(workspace, ".bosca/pipelines").listFiles { file ->
+            file.name.startsWith("release-image-") && file.extension == "yaml"
+        }.orEmpty()
+        assertTrue(files.isNotEmpty())
+        val root = fixture()
+        try {
+            for (file in files) {
+                val definition = parser.parse(file.readText())
+                val validate = definition.jobs.getValue("publish-image").steps.first()
+                assertEquals("Validate release tag", validate.name)
+                for (ref in listOf("refs/tags/7.4.0", "refs/tags/v7.4.0", "refs/heads/main", "refs/tags/", "commit-sha")) {
+                    val result = executor(root).execute(validate, ExpressionContext(ref = ref))
+                    assertEquals(ref.startsWith("refs/tags/") && ref.length > "refs/tags/".length, result.success, "${file.name}: $ref")
+                }
+            }
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
     fun `CLI packages and verified checksums publish to Bosca without GitHub credentials`() = runTest {
         val server = MockWebServer().apply { start() }
         val root = fixture()
@@ -99,9 +121,9 @@ class WorkspaceReleasePublishingTest {
                     "BOSCA_IMAGE_REGISTRY" to "", "PUSH" to "true",
                 )
                 val executor = executor(root, environment = environment, secrets = secrets)
-                val steps = pipeline("release-image.yaml").jobs.getValue("publish-image").steps
+                val steps = pipeline("release-image-bosca-gateway.yaml").jobs.getValue("publish-image").steps
                 val context = ExpressionContext(
-                    secrets = secrets, extra = mapOf("inputs.image" to "bosca-gateway", "inputs.version" to version),
+                    ref = "refs/tags/v$version", secrets = secrets, extra = mapOf("inputs.version" to version),
                 )
                 assertTrue(executor.execute(steps.first { it.name == "Build and push image" }, context).success)
                 val source = "artifacts.example.test/bosca/bosca-gateway:$version"

@@ -922,6 +922,7 @@ class StepExecutor(
             appendLine()
             appendLine("# npm registry auth")
             appendLine("cat > \"\$HOME/.npmrc\" << 'NPMRC'")
+            appendLine("@bosca:registry=${registryBaseUrl(registry)}/npm/")
             appendLine("//${registryHost(registry, false)}/npm/:_authToken=${agentToken}")
             appendLine("NPMRC")
             appendLine("chmod 600 \"\$HOME/.npmrc\"")
@@ -938,7 +939,6 @@ class StepExecutor(
             appendLine("# Export env vars for tools that prefer them")
             appendLine("echo \"BOSCA_REGISTRY_URL=$registry\" >> \"\$BOSCA_ENV\"")
             appendLine("echo \"BOSCA_REGISTRY_TOKEN=$agentToken\" >> \"\$BOSCA_ENV\"")
-            appendLine("echo \"BOSCA_NPM_REGISTRY=${registryHost(registry, false)}/npm\" >> \"\$BOSCA_ENV\"")
         }
 
         return executeShellCommand(cmd, emptyMap())

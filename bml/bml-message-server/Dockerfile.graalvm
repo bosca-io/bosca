@@ -2,7 +2,7 @@
 # bml-message-server native image (GraalVM 25i — Crema runtime class loading)
 #
 # The native binary is pre-built using Gradle nativeCompile with the
-# 25i toolchain. Published by .bosca/pipelines/release-image.yaml.
+# 25i toolchain. Published by .bosca/pipelines/release-image-bml-message-server.yaml.
 # The image also carries the latest known-good bosca-messages jar for cold-start fallback.
 #
 # Build context is the repository root.

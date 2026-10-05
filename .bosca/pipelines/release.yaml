@@ -39,6 +39,15 @@ jobs:
         uses: setup-rust
         with:
           toolchain: stable
+      - name: Configure npm Registry
+        run: |
+          registry="${BOSCA_REGISTRY_URL:?setup-registry must configure Bosca Artifacts before npm}"
+          registry="${registry%/}"
+          case "$registry" in
+            http://*|https://*) ;;
+            *) registry="https://$registry" ;;
+          esac
+          npm config set @bosca:registry "$registry/npm/" --location=user
       - name: Start Shared Test Resources
         run: ./gradlew --no-daemon testResourcesUp
       - name: Install BML Bundler Dependencies
@@ -109,6 +118,15 @@ jobs:
         uses: setup-node
         with:
           version: "22"
+      - name: Configure npm Registry
+        run: |
+          registry="${BOSCA_REGISTRY_URL:?setup-registry must configure Bosca Artifacts before npm}"
+          registry="${registry%/}"
+          case "$registry" in
+            http://*|https://*) ;;
+            *) registry="https://$registry" ;;
+          esac
+          npm config set @bosca:registry "$registry/npm/" --location=user
       - name: Install BML Bundler Dependencies
         run: cd bml/bml-runtime && npm ci --no-audit --no-fund
       - name: Extract Version

@@ -7,7 +7,7 @@
 #   ./gradlew :notifications-web:nativeCompile :notifications-web:bmlBundleClient
 #
 # Build context is apps/notifications-web. Published by
-# .bosca/pipelines/release-image.yaml (scripts/release/build-image.sh).
+# .bosca/pipelines/release-image-notifications-web.yaml (scripts/release/build-image.sh).
 # =============================================================================
 FROM debian:bookworm-slim
 

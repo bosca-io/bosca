@@ -27,24 +27,14 @@ class WorkspacePipelinesTest {
     }
 
     @Test
-    fun `image release prompts for the image and version`() {
-        val definition = parse("release-image.yaml")
-        assertEquals(setOf(PipelineTriggerType.MANUAL, PipelineTriggerType.RELEASE), definition.triggers.map { it.type }.toSet())
-        val trigger = definition.triggers.first { it.type == PipelineTriggerType.MANUAL }
-        assertEquals(trigger.inputs, definition.triggers.first { it.type == PipelineTriggerType.RELEASE }.inputs)
-        val image = trigger.inputs.getValue("image")
-        assertEquals("choice", image.type)
-        assertNull(image.default, "the image must be chosen for every run")
-        assertTrue("bosca-server" in image.options && "bosca-cli" in image.options)
-        assertNull(trigger.inputs.getValue("version").default, "the version must be entered for every run")
-        assertTrue(definition.jobs.getValue("publish-image").secrets.isEmpty())
-        val artifact = definition.jobs.getValue("publish-image").artifacts.single()
-        assertEquals("docker", artifact.type)
-        assertEquals("bosca", artifact.namespace)
-        assertEquals("bosca-server:7.4.0", PipelineExpressionParser().interpolate(
-            artifact.coordinate,
-            ExpressionContext(extra = mapOf("inputs.image" to "bosca-server", "inputs.version" to "7.4.0")),
-        ))
+    fun `each supported image has exactly one dedicated release pipeline`() {
+        val script = File("../../scripts/release/build-image.sh").readText()
+        val targets = assertNotNull(Regex("IMAGES=\\((.*?)\\)", RegexOption.DOT_MATCHES_ALL).find(script))
+            .groupValues[1].trim().split(Regex("\\s+")).toSet()
+        val files = pipelines.listFiles { file -> file.name.startsWith("release-image-") && file.extension == "yaml" }.orEmpty()
+        assertEquals(targets.map { "release-image-$it.yaml" }.toSet(), files.map { it.name }.toSet())
+        assertFalse(File(pipelines, "release-image.yaml").exists())
+        assertFalse(File(pipelines, "release-tag-images.yaml").exists())
     }
 
     @Test
@@ -110,56 +100,53 @@ class WorkspacePipelinesTest {
 
     @Test
     fun `release pipelines leave external artifact forwarding to the artifacts server`() {
-        for (name in listOf("release-cli.yaml", "release-image.yaml", "release-tag-images.yaml", "release-web.yaml", "release.yaml")) {
-            val source = File(pipelines, name).readText()
+        for (file in pipelines.listFiles { file -> file.extension == "yaml" }.orEmpty()) {
+            val source = file.readText()
             for (reference in listOf("GITHUB_TOKEN", "GITHUB_USERNAME", "ghcr.io", "api.github.com", "publish-cli.sh")) {
-                assertFalse(source.contains(reference), "$name must not publish directly to GitHub: $reference")
+                assertFalse(source.contains(reference), "${file.name} must not publish directly to GitHub: $reference")
             }
         }
     }
 
     @Test
-    fun `platform images publish directly from tags without upstream gates`() {
-        val definition = parse("release-tag-images.yaml")
-        assertEquals(PipelineTriggerType.TAG, definition.triggers.single().type)
-        val images = mapOf(
-            "publish-server" to "bosca-server", "publish-runner" to "bosca-runner",
-            "publish-studio" to "bosca-studio", "publish-git" to "git-server",
-            "publish-artifacts" to "artifacts-server",
-        )
-        assertEquals(images.keys + "notify", definition.jobs.keys)
-        for ((name, image) in images) {
-            val job = definition.jobs.getValue(name)
-            assertEquals(listOf(image), job.matrix?.get("image"))
+    fun `image releases run manually from selected tags with independent jobs and versions`() {
+        val files = pipelines.listFiles { file -> file.name.startsWith("release-image-") && file.extension == "yaml" }.orEmpty()
+        assertTrue(files.isNotEmpty())
+        val expressions = PipelineExpressionParser()
+        for (file in files) {
+            val image = file.name.removePrefix("release-image-").removeSuffix(".yaml")
+            val definition = parse(file.name)
+            assertEquals(setOf(PipelineTriggerType.MANUAL, PipelineTriggerType.RELEASE), definition.triggers.map { it.type }.toSet())
+            assertTrue(definition.triggers.all { it.inputs.isEmpty() })
+            assertEquals(setOf("publish-image", "notify"), definition.jobs.keys)
+            val job = definition.jobs.getValue("publish-image")
+            assertNull(job.matrix)
             assertTrue(job.needs.isEmpty() && job.requires.isEmpty() && job.pipelineRequires.isEmpty())
             assertTrue(job.steps.any { it.uses == "setup-registry" })
             assertTrue(job.secrets.isEmpty())
             val build = job.steps.first { it.name == "Build and push image" }
-            val context = ExpressionContext(ref = "refs/tags/v7.4.0", event = "tag", matrix = mapOf("image" to image))
-            val expressions = PipelineExpressionParser()
-            assertEquals(image, expressions.interpolate(build.env.getValue("IMAGE"), context))
-            assertEquals("7.4.0", expressions.interpolate(build.env.getValue("VERSION"), context))
             val artifact = job.artifacts.single()
             assertEquals("docker", artifact.type)
             assertEquals("bosca", artifact.namespace)
-            // Artifacts resolve at run creation, before a job's matrix is expanded.
-            assertEquals("$image:7.4.0", expressions.interpolate(
-                artifact.coordinate, ExpressionContext(ref = "refs/tags/v7.4.0", event = "tag"),
-            ))
-        }
-        val notify = definition.jobs.getValue("notify")
-        assertEquals(images.keys, notify.needs.toSet())
-        assertEquals("always()", notify.condition)
-        val expressions = PipelineExpressionParser()
-        val success = assertNotNull(notify.steps.first { it.name == "Notify Success" }.condition)
-        val failure = assertNotNull(notify.steps.first { it.name == "Notify Failure" }.condition)
-        val results = notify.needs.associate { "needs.$it.result" to "success" }
-        assertTrue(expressions.evaluateBoolean(success, ExpressionContext(extra = results)))
-        assertFalse(expressions.evaluateBoolean(failure, ExpressionContext(extra = results)))
-        for (dependency in notify.needs) {
-            val context = ExpressionContext(extra = results + ("needs.$dependency.result" to "failure"))
-            assertFalse(expressions.evaluateBoolean(success, context))
-            assertTrue(expressions.evaluateBoolean(failure, context))
+            assertEquals("Validate release tag", job.steps.first().name)
+            for (event in listOf("manual", "release")) {
+                for (tag in listOf("7.4.0", "v7.4.0")) {
+                    val context = ExpressionContext(ref = "refs/tags/$tag", event = event)
+                    assertEquals(image, expressions.interpolate(build.env.getValue("IMAGE"), context))
+                    assertEquals("7.4.0", expressions.interpolate(build.env.getValue("VERSION"), context))
+                    assertEquals("$image:7.4.0", expressions.interpolate(artifact.coordinate, context))
+                }
+            }
+            val notify = definition.jobs.getValue("notify")
+            assertEquals(listOf("publish-image"), notify.needs)
+            assertEquals("always()", notify.condition)
+            val success = assertNotNull(notify.steps.first { it.name == "Notify Success" }.condition)
+            val failure = assertNotNull(notify.steps.first { it.name == "Notify Failure" }.condition)
+            for (status in listOf("success", "failure", "cancelled", "skipped")) {
+                val context = ExpressionContext(extra = mapOf("needs.publish-image.result" to status))
+                assertEquals(status == "success", expressions.evaluateBoolean(success, context))
+                assertEquals(status != "success", expressions.evaluateBoolean(failure, context))
+            }
         }
     }
 

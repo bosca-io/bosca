@@ -127,7 +127,7 @@ Before implementation, settle the value of N, stable versus prerelease treatment
 - [Pipeline API execution](../pipelines/pipelines/src/main/kotlin/bosca/pipelines/routes/ExecutePipeline.kt) already accepts pipeline input. Its current JSON endpoint is not a GitHub webhook verifier; verified delivery intake and context propagation are integration work.
 - [Scheduled CI execution](../git/git-ci/src/main/kotlin/bosca/git/ci/jobs/PipelineScheduleExecutor.kt) already validates an assigned execution identity and repository execution permission.
 - [CI secret resolution](../git/git-ci/src/main/kotlin/bosca/git/ci/service/PipelineSecretServiceImpl.kt) already implements secret storage, environment scope, and initiating-principal checks for declared, scoped, or explicitly permissioned secrets.
-- [Bosca Artifacts](../artifacts/README.md) already provides storage and registry protocols. Existing [CLI](../.bosca/pipelines/release-cli.yaml) and [image](../.bosca/pipelines/release-image.yaml) pipelines configure GitHub publication through release scripts.
+- [Bosca Artifacts](../artifacts/README.md) already provides storage and registry protocols. Existing [CLI](../.bosca/pipelines/release-cli.yaml) and [server image](../.bosca/pipelines/release-image-bosca-server.yaml) pipelines publish to Bosca Artifacts; external forwarding belongs to the artifacts server.
 
 These are source-level observations, not a claim of new runtime validation or a backlog to rebuild the existing systems.
 

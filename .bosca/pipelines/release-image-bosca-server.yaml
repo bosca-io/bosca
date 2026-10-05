@@ -1,0 +1,78 @@
+name: Bosca Server Image Release
+# Start from an existing Git tag; its version identifies the published image.
+on:
+  manual: true
+  release: true
+
+concurrency:
+  group: image-release-bosca-server
+  cancel-in-progress: false
+
+env:
+  GRADLE_OPTS: "-Xmx4g -XX:+UseG1GC"
+
+jobs:
+  publish-image:
+    runner: linux
+    timeout: 120m
+    artifacts:
+      - type: docker
+        namespace: bosca
+        coordinate: "bosca-server:${{ version }}"
+    steps:
+      - name: Validate release tag
+        run: |
+          case "$RELEASE_REF" in
+            refs/tags/?*) ;;
+            *) echo "Select an existing Git tag for this image release." >&2; exit 1 ;;
+          esac
+        env:
+          RELEASE_REF: ${{ ref }}
+      - name: Checkout
+        uses: checkout
+      - name: Setup Registry
+        uses: setup-registry
+        with:
+          repository: bosca-maven
+      - name: Setup Java
+        uses: setup-java
+        with:
+          distribution: graal
+          stream: 25i1
+          version: "25.0.3"
+      - name: Setup Rust
+        uses: setup-rust
+        with:
+          toolchain: stable
+      - name: Setup Node
+        uses: setup-node
+        with:
+          version: "22"
+      - name: Setup pnpm
+        uses: setup-pnpm
+        with:
+          version: "10"
+      - name: Build and push image
+        run: scripts/release/build-image.sh "$IMAGE" "$VERSION"
+        env:
+          IMAGE: bosca-server
+          VERSION: ${{ version }}
+
+  notify:
+    runner: linux
+    timeout: 5m
+    needs: [publish-image]
+    if: always()
+    steps:
+      - name: Notify Success
+        uses: notify
+        if: needs.publish-image.result == 'success'
+        with:
+          channel: slack
+          message: "Image bosca/bosca-server:${{ version }} published to Bosca Artifacts"
+      - name: Notify Failure
+        uses: notify
+        if: needs.publish-image.result != 'success'
+        with:
+          channel: slack
+          message: "Image bosca/bosca-server:${{ version }} release FAILED — check pipeline logs"

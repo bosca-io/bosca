@@ -34,15 +34,13 @@ configured; leave it unset for host-only local development.
 The default brand is Bosca. Each deployment routes its own profiles host (for example
 `profiles.example.com`) to this service with its own values and assets.
 
-The checked-in `.npmrc` selects `BOSCA_NPM_REGISTRY` (the registry serving `@bosca` packages, as host
-and path, for example `artifacts.example.com/npm`) and inherits authentication from `$HOME/.npmrc`.
-CI's `setup-registry` action exports the registry address and writes the agent's Bosca token to that
-user configuration. For local builds, select the registry and configure its token before running
-Gradle or npm:
+Package installs inherit the `@bosca` registry and authentication from npm's user configuration
+(`$HOME/.npmrc` by default). CI configures both automatically. For local builds, configure the
+registry that serves `@bosca` packages and its token before running Gradle or npm:
 
 ```bash
-export BOSCA_NPM_REGISTRY=artifacts.example.com/npm
-npm config set "//${BOSCA_NPM_REGISTRY}/:_authToken" '<Bosca API token>' --location=user
+npm config set @bosca:registry 'https://artifacts.example.com/npm/' --location=user
+npm config set '//artifacts.example.com/npm/:_authToken' '<Bosca API token>' --location=user
 ```
 
 From the workspace root:

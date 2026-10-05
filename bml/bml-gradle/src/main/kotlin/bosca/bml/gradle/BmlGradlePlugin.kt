@@ -1,7 +1,6 @@
 package bosca.bml.gradle
 
 import org.gradle.api.Project
-import org.gradle.api.GradleException
 import org.gradle.api.provider.Provider
 import org.gradle.api.tasks.Exec
 import org.gradle.api.tasks.JavaExec
@@ -202,26 +201,6 @@ class BmlGradlePlugin : KotlinCompilerPluginSupportPlugin {
             task.executable = "sh"
             task.args("-lc", "npm install --no-audit --no-fund")
             task.onlyIf { clientManifest.isFile }
-            task.doFirst { executing ->
-                if (npmConfiguration.isFile) {
-                    val environment = (executing as Exec).environment
-                    val configuration = npmConfiguration.readLines()
-                        .filterNot { it.trimStart().startsWith('#') || it.trimStart().startsWith(';') }
-                        .joinToString("\n")
-                    val missing = Regex("""(?<!\\)\$\{([A-Za-z_][A-Za-z0-9_]*)}""")
-                        .findAll(configuration)
-                        .map { it.groupValues[1] }
-                        .distinct()
-                        .filter { environment[it]?.toString().isNullOrBlank() }
-                        .toList()
-                    if (missing.isNotEmpty()) {
-                        throw GradleException(
-                            "BML npm configuration is missing environment variables: ${missing.joinToString()}. " +
-                                "Set them before running bmlInstallClientDependencies.",
-                        )
-                    }
-                }
-            }
         }
         target.tasks.register("bmlBundleClient", Exec::class.java) { task ->
             task.group = "bml"

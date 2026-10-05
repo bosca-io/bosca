@@ -45,7 +45,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-/** Exercises the workspace YAML, SDL, generated dispatchers, input validation, and job creation together. */
+/** Exercises typed YAML inputs, SDL, generated dispatchers, input validation, and job creation together. */
 class GitManualPipelineGraphQLIntegrationTest {
 
     @AfterTest
@@ -64,8 +64,27 @@ class GitManualPipelineGraphQLIntegrationTest {
         val repositoryId = UUID.random()
         val pipelineId = UUID.random()
         val principalId = UUID.random()
-        val pipeline = Pipeline(id = pipelineId, repositoryId = repositoryId, filePath = ".bosca/pipelines/release-image.yaml", name = "Image", configHash = "hash")
-        val definition = PipelineYamlParser().parse(File("../../.bosca/pipelines/release-image.yaml").readText(), pipeline.filePath)
+        val pipeline = Pipeline(id = pipelineId, repositoryId = repositoryId, filePath = ".bosca/pipelines/manual-input-test.yaml", name = "Image", configHash = "hash")
+        val definition = PipelineYamlParser().parse("""
+            name: Typed manual inputs
+            on:
+              manual:
+                inputs:
+                  image:
+                    type: choice
+                    options: [bosca-server, bosca-runner]
+                  version:
+                    type: string
+            jobs:
+              publish-image:
+                runner: linux
+                steps:
+                  - name: Build and push image
+                    run: scripts/release/build-image.sh "${'$'}IMAGE" "${'$'}VERSION"
+                    env:
+                      IMAGE: ${'$'}{{ inputs.image }}
+                      VERSION: ${'$'}{{ inputs.version }}
+        """.trimIndent(), pipeline.filePath)
         val pipelines = mockk<PipelineService>()
         val repositories = mockk<RepositoryService>()
         val browse = mockk<RepositoryBrowseService>()
