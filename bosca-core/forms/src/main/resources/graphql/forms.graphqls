@@ -1,0 +1,202 @@
+"Maps a single form field to a profile attribute type for anonymous submission profile creation"
+type FormSchemaProfileMappingAttribute {
+    "The profile attribute type identifier (e.g. 'bosca.profiles.email')"
+    typeId: String!
+    "The form field property name whose value populates this attribute"
+    field: String!
+    "The key within the profile attribute's JSON value object (e.g. 'email')"
+    attributeKey: String!
+}
+
+"Defines how submitted form field values are mapped to profile attributes when an anonymous user submits a public form"
+type FormSchemaProfileMapping {
+    "The form field property name that provides the profile display name"
+    nameField: String!
+    "The visibility level assigned to the created profile and its attributes"
+    visibility: ProfileVisibility!
+    "Attribute mappings from form fields to profile attribute types"
+    attributes: [FormSchemaProfileMappingAttribute!]!
+}
+
+"Input for a single form-field-to-profile-attribute mapping"
+input FormSchemaProfileMappingAttributeInput {
+    "The profile attribute type identifier (e.g. 'bosca.profiles.email')"
+    typeId: String!
+    "The form field property name whose value populates this attribute"
+    field: String!
+    "The key within the profile attribute's JSON value object (e.g. 'email')"
+    attributeKey: String!
+}
+
+"Input for configuring how anonymous form submissions create profiles from form data"
+input FormSchemaProfileMappingInput {
+    "The form field property name that provides the profile display name"
+    nameField: String!
+    "The visibility level assigned to the created profile and its attributes"
+    visibility: ProfileVisibility!
+    "Attribute mappings from form fields to profile attribute types"
+    attributes: [FormSchemaProfileMappingAttributeInput!]!
+}
+
+"The processing lifecycle status of a form submission"
+enum FormSubmissionStatus {
+    "Submission received and awaiting processing"
+    PENDING
+    "Submission has been fully processed through the configured pipeline"
+    PROCESSED
+    "Submission was rejected via validation or manual review"
+    REJECTED
+    "Submission was flagged as spam"
+    SPAM
+    "Submission has been archived"
+    ARCHIVED
+}
+
+"A submitted form entry linked to a profile, containing the attribute values collected from the form"
+type FormSubmission {
+    "Unique identifier for this submission"
+    id: UUID!
+    "The form schema this submission was made against"
+    formSchema: FormSchema!
+    "The profile associated with this submission"
+    profile: Profile!
+    "The submitted attribute values as key-value pairs matching the schema's property definitions"
+    attributes: JSON!
+    "The current processing status of this submission"
+    status: FormSubmissionStatus!
+    "Timestamp when the submission was received"
+    created: DateTime!
+    "Timestamp when the submission was last modified"
+    modified: DateTime!
+}
+
+"Input for submitting a form, including the form schema, attribute values, and optional profile for anonymous submissions. Exactly one of formSchemaId or formSchemaKey must be provided."
+input FormSubmissionInput {
+    "The form schema UUID to submit against — mutually exclusive with formSchemaKey"
+    formSchemaId: UUID
+    "The form schema key to submit against — mutually exclusive with formSchemaId"
+    formSchemaKey: String
+    "The submitted attribute values as key-value pairs"
+    attributes: JSON!
+    "Optional profile input for anonymous submissions — required when not authenticated"
+    profile: ProfileInput
+}
+
+type SubmittedForm {
+    id: UUID!
+    type: FormSchemaType!
+}
+
+"Mutation operations for form submissions"
+type FormsMutation {
+    "Submit a form with attribute values, optionally including a new profile for anonymous submissions"
+    submit(input: FormSubmissionInput!): SubmittedForm!
+    "Update the processing status of a form submission"
+    setSubmissionStatus(id: UUID!, status: FormSubmissionStatus!): FormSubmission!
+    "Delete a form submission by its identifier"
+    deleteSubmission(id: UUID!): Boolean!
+}
+
+"Categorizes a form schema by its intended usage pattern"
+enum FormSchemaType {
+    "Forms that collect submissions from users (contact forms, signups, surveys)"
+    SUBMISSION
+    "Forms used within the admin for structured data editing (profile attributes, settings)"
+    INTERNAL
+    "Forms that create Work Ops tasks on submission — configuration carries project and field mappings"
+    WORK_OPS
+}
+
+"A reusable form definition backed by JSON Schema for data validation and a companion UI Schema for layout and control configuration"
+type FormSchema {
+    "Unique identifier"
+    id: UUID!
+    "The intended usage pattern for this form schema"
+    type: FormSchemaType!
+    "Unique string key for component-level lookup (e.g. 'org-profile', 'newsletter-signup')"
+    key: String!
+    "Human-readable name for the form"
+    name: String!
+    "Description of the form's purpose"
+    description: String!
+    "JSON Schema (draft 2020-12) defining data types and validation rules"
+    schema: JSON!
+    "Bosca UI Schema defining layout tree, control types, and display elements"
+    uiSchema: JSON!
+    "Schema version, auto-incremented on each save"
+    version: Int!
+    "Whether this form schema is publicly accessible without authentication"
+    public: Boolean!
+    "Whether this form schema is in a published state"
+    published: Boolean!
+    "Operational configuration for notification recipients, email subjects, and other settings"
+    configuration: JSON
+    "Profile mapping that defines how form field values create a profile for anonymous submissions"
+    profileMapping: FormSchemaProfileMapping
+    "Permission grants controlling access to this form schema"
+    permissions: [EntityPermission!]!
+    "Submissions received for this form schema"
+    submissions(limit: Int!, offset: Long!): [FormSubmission!]!
+    "When the form schema was created"
+    created: DateTime!
+    "When the form schema was last modified"
+    modified: DateTime!
+}
+
+"Queries for retrieving form schema definitions"
+type FormSchemas {
+    "All form schemas in the system"
+    all: [FormSchema!]!
+    "All form schemas of a specific type"
+    byType(type: FormSchemaType!): [FormSchema!]!
+    "Look up a form schema by its unique key"
+    byKey(key: String!): FormSchema
+    "Look up a form schema by its unique identifier"
+    byId(id: UUID!): FormSchema
+}
+
+"Input for creating or updating a form schema (upserts by key)"
+input FormSchemaInput {
+    "The intended usage pattern for this form schema"
+    type: FormSchemaType
+    "Unique string key"
+    key: String!
+    "Human-readable name"
+    name: String!
+    "Description of the form's purpose"
+    description: String
+    "JSON Schema defining data types and validation"
+    schema: JSON!
+    "UI Schema defining layout and controls"
+    uiSchema: JSON!
+    "Operational configuration for notification recipients, email subjects, and other settings"
+    configuration: JSON
+    "Profile mapping that defines how form field values create a profile for anonymous submissions"
+    profileMapping: FormSchemaProfileMappingInput
+    "Whether this form schema is publicly accessible without authentication"
+    public: Boolean
+}
+
+"Mutation operations for managing form schema definitions"
+type FormSchemasMutation {
+    "Create or update a form schema (upserts by key)"
+    save(input: FormSchemaInput!): FormSchema!
+    "Set the published state of a form schema, controlling public availability"
+    setPublished(id: UUID!, published: Boolean!): FormSchema!
+    "Delete a form schema by its identifier"
+    delete(id: UUID!): Boolean!
+    "Grant a permission on a form schema to a security group"
+    addPermission(permission: PermissionInput!): Permission!
+    "Revoke a permission on a form schema from a security group"
+    deletePermission(permission: PermissionInput!): Permission!
+}
+
+extend type Query {
+    "Access form schema definitions for building and rendering dynamic forms"
+    formSchemas: FormSchemas!
+}
+
+extend type Mutation {
+    "Access form schema mutation operations for creating, updating, and deleting form definitions"
+    formSchemasMutation: FormSchemasMutation!
+}

@@ -1,0 +1,159 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "bosca-common.fullname" . }}
+  labels:
+    {{- include "bosca-common.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  revisionHistoryLimit: {{ .Values.revisionHistoryLimit | default 1 }}
+  {{- with .Values.strategy }}
+  strategy:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "bosca-common.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "bosca-common.selectorLabels" . | nindent 8 }}
+      annotations:
+        checksum/appconfig: {{ include (print $.Template.BasePath "/configmap-appconfig.yaml") . | sha256sum }}
+    spec:
+      serviceAccountName: {{ include "bosca-common.serviceAccountName" . }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- include "bosca-common.podSecurityContext" . | nindent 8 }}
+      containers:
+        - name: {{ .Chart.Name }}
+          image: {{ include "bosca-common.boscaImage" (dict "image" (merge (dict "tag" (default .Chart.AppVersion .Values.image.tag)) .Values.image) "global" .Values.global) }}
+          imagePullPolicy: {{ include "bosca-common.imagePullPolicy" .Values.image }}
+          args: ["-config=/app/config/application.yaml"]
+          ports:
+            - name: http
+              containerPort: 8091
+              protocol: TCP
+            - name: management
+              containerPort: {{ $.Values.managementPort }}
+              protocol: TCP
+          envFrom:
+            {{- range .Values.envFromConfigMaps }}
+            - configMapRef:
+                name: {{ . }}
+            {{- end }}
+          env:
+            - name: JAVA_OPTS
+              value: "-XX:MaxRAMPercentage=75.0"
+            - name: HOST_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.hostIP
+            - name: K8S_POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: K8S_POD_UID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.uid
+            {{- with .Values.secrets.database.secretName }}
+            - name: DATABASE_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ . }}
+                  key: {{ $.Values.secrets.database.usernameKey }}
+            - name: DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ . }}
+                  key: {{ $.Values.secrets.database.passwordKey }}
+            {{- end }}
+            {{- with .Values.secrets.nats.secretName }}
+            - name: NATS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ . }}
+                  key: {{ $.Values.secrets.nats.key }}
+            {{- end }}
+            {{- with .Values.secrets.jwt.secretName }}
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ . }}
+                  key: {{ $.Values.secrets.jwt.key }}
+            {{- end }}
+            {{- with .Values.secrets.meilisearch.secretName }}
+            - name: MEILISEARCH_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ . }}
+                  key: {{ $.Values.secrets.meilisearch.key }}
+            {{- end }}
+            {{- with .Values.secrets.s3.secretName }}
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ . }}
+                  key: {{ $.Values.secrets.s3.accessKeyIdKey }}
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ . }}
+                  key: {{ $.Values.secrets.s3.secretAccessKeyKey }}
+            {{- end }}
+            {{- with .Values.secrets.url.secretName }}
+            - name: URL_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ . }}
+                  key: {{ $.Values.secrets.url.key }}
+            {{- end }}
+            {{- with .Values.secrets.pipeline.secretName }}
+            - name: PIPELINE_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ . }}
+                  key: {{ $.Values.secrets.pipeline.key }}
+            {{- end }}
+          volumeMounts:
+            - name: app-config
+              mountPath: /app/config
+              readOnly: true
+          # Liveness only restarts a wedged process: it hits the cheap /api/v1/live endpoint
+          # (no DB/cache/pool access) so a load spike or slow database can't trigger a restart
+          # storm. NOTE: /api/v1/live exists only in images rebuilt from this workspace's
+          # bosca-core — ship this chart change together with a rebuilt git-server image.
+          livenessProbe:
+            httpGet:
+              path: /api/v1/live
+              port: management
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          readinessProbe:
+            httpGet:
+              path: /api/v1/ready
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+        - name: app-config
+          configMap:
+            name: {{ include "bosca-common.fullname" . }}-config
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

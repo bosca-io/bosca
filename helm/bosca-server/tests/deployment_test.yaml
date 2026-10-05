@@ -1,0 +1,164 @@
+suite: bosca-server deployment
+values:
+  - ../values.yaml
+set:
+  global:
+    domain: example.com
+  appConfig:
+    domain: example.com
+    databaseUrl: "jdbc:postgresql://postgres-bosca-rw:5432/bosca"
+    natsHost: nats
+    meilisearchHost: meilisearch
+tests:
+  - it: renders a Deployment
+    template: templates/deployment.yaml
+    asserts:
+      - isKind:
+          of: Deployment
+      - equal:
+          path: metadata.name
+          value: RELEASE-NAME-bosca-server
+
+  - it: uses correct image and tag from appVersion
+    template: templates/deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: "ghcr.io/bosca-io/bosca/bosca-server:5.0.21"
+
+  - it: pulls from a chart-level image registry override
+    template: templates/deployment.yaml
+    set:
+      image.registry: registry.example.com/mirror/
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: "registry.example.com/mirror/bosca-server:5.0.21"
+
+  - it: pulls every Bosca image from global.imageRegistry when it is set
+    template: templates/deployment.yaml
+    set:
+      global.imageRegistry: mirror.example.com/bosca
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: "mirror.example.com/bosca/bosca-server:5.0.21"
+
+  - it: fails clearly when no image registry is configured
+    template: templates/deployment.yaml
+    set:
+      image.registry: ""
+    asserts:
+      - failedTemplate:
+          errorMessage: "Set image.registry (or global.imageRegistry) to the registry that hosts Bosca images"
+
+  - it: passes config arg
+    template: templates/deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].args[0]
+          value: "-config=/app/config/application.yaml"
+
+  - it: exposes port 8080
+    template: templates/deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].ports[0].containerPort
+          value: 8080
+
+  - it: mounts app-config volume
+    template: templates/deployment.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: app-config
+            mountPath: /app/config
+            readOnly: true
+
+  - it: includes imagePullSecrets
+    template: templates/deployment.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.imagePullSecrets
+          content:
+            name: docker-registry
+
+  - it: injects JAVA_OPTS
+    template: templates/deployment.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: JAVA_OPTS
+            value: "-XX:MaxRAMPercentage=65.0"
+
+  - it: injects WELCOME_EMAIL_URL when configured
+    template: templates/deployment.yaml
+    set:
+      appConfig.welcomeEmailUrl: https://onboarding.example/start
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: WELCOME_EMAIL_URL
+            value: https://onboarding.example/start
+
+  - it: wires GOOGLE_GENAI_ACCOUNT from the Google service-account Secret
+    template: templates/deployment.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: GOOGLE_GENAI_ACCOUNT
+            valueFrom:
+              secretKeyRef:
+                name: google-account
+                key: account
+
+  - it: references envFrom configmaps
+    template: templates/deployment.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].envFrom
+          content:
+            configMapRef:
+              name: server-v3-env
+      - contains:
+          path: spec.template.spec.containers[0].envFrom
+          content:
+            configMapRef:
+              name: otel-env
+
+  - it: does not render replicas when autoscaling enabled
+    template: templates/deployment.yaml
+    set:
+      autoscaling:
+        enabled: true
+    asserts:
+      - isNull:
+          path: spec.replicas
+
+  - it: wires GATEWAY_PROXY_SHARED_TOKEN from gatewayProxy Secret
+    template: templates/deployment.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: GATEWAY_PROXY_SHARED_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: bosca-gateway
+                key: bosca-api-token
+
+  - it: wires KUBERNETES_CONTROLLER_URL to the in-cluster Service FQDN
+    template: templates/deployment.yaml
+    release:
+      name: bosca
+      namespace: bosca
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: KUBERNETES_CONTROLLER_URL
+            value: http://bosca-bosca-kubernetes-controller.bosca.svc.cluster.local:8082

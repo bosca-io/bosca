@@ -1,0 +1,26 @@
+{{- /*
+Headless Service per worker. Required by the runner StatefulSet so each
+pod gets stable DNS at <pod>-<ordinal>.<service>.<ns>.svc.cluster.local.
+No external traffic — the port is published for metrics scrape parity
+with the deployment-era setup. ClusterIP: None makes this headless so
+DNS resolves directly to pod IPs.
+*/ -}}
+{{- range $name, $worker := .Values.workers }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "bosca-common.fullname" $ }}-{{ $name }}
+  labels:
+    {{- include "bosca-common.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: runner-{{ $name }}
+spec:
+  clusterIP: None
+  selector:
+    {{- include "bosca-common.selectorLabels" $ | nindent 4 }}
+    app.kubernetes.io/component: runner-{{ $name }}
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+{{- end }}

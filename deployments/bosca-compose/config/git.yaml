@@ -1,0 +1,78 @@
+packages: [git-search-index]
+
+bosca:
+  server:
+    port: 8091
+    development: false
+
+database:
+  postgres:
+    url: jdbc:postgresql://postgres:5432/bosca
+    user: bosca
+    password: $DATABASE_PASSWORD
+    maxConnections: 10
+
+cache:
+  type: nats
+jobQueue:
+  factory: nats
+pubsub:
+  type: nats
+distributedLock:
+  type: nats
+counter:
+  type: nats
+nats:
+  url: nats://nats:4222
+  token: $NATS_TOKEN
+  maxConnections: 2
+
+jwt:
+  domain: $BOSCA_DOMAIN
+  admin-domain: $BOSCA_DOMAIN
+  audience: Bosca
+  realm: Bosca
+  issuer: $BOSCA_DOMAIN
+  secret: $JWT_SECRET
+  expiration-time: 2592000
+  cookie-secure: ${JWT_COOKIE_SECURE:false}
+
+security:
+  encryption:
+    key: $SECURITY_ENCRYPTION_KEY
+
+app:
+  url: $APP_URL
+git:
+  url: $GIT_URL
+pipeline:
+  secretKey: $PIPELINE_SECRET_KEY
+
+meilisearch:
+  url: http://meilisearch:7700
+  apiKey: $MEILISEARCH_API_KEY
+
+content:
+  images:
+    resizer:
+      url: http://127.0.0.1:8003
+      sizes: []
+  storage:
+    type: fs
+    basePath: /storage
+    urlPrefix: $APP_URL
+    urlUploadPrefix: $APP_URL
+  urlSigner:
+    secretKey: $STORAGE_URL_SIGNER_SECRET_KEY
+
+analyticsServer:
+  appId: bosca-git-server
+  url: $APP_URL
+analyticsProcessor:
+  enabled: false
+embedding:
+  enabled: false
+scheduler:
+  enabled: false
+runners:
+  enabled: []

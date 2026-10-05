@@ -1,0 +1,7 @@
+mutation EditStorageSystem($id: UUID!, $input: StorageSystemInput!) {
+    storageSystems {
+        edit(id: $id, storageSystem: $input) {
+            ...StorageSystem
+        }
+    }
+}

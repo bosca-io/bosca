@@ -1,0 +1,87 @@
+"An AI prompt template with system and user prompt components, used for AI-powered content workflows"
+type Prompt {
+    "Description of what this prompt does"
+    description: String!
+    "Unique identifier for this prompt"
+    id: UUID!
+    "Unique key for referencing this prompt (e.g. 'summarize', 'translate')"
+    key: String!
+    "The expected input content type (e.g. 'text/plain', 'application/json')"
+    inputType: String!
+    "Display name of the prompt"
+    name: String!
+    "The expected output content type"
+    outputType: String!
+    "Optional JSON schema for structured output validation"
+    schema: JSON
+    "The system-level instruction for the AI model"
+    systemPrompt: String!
+    "The user-level prompt template, may contain placeholders for dynamic content"
+    userPrompt: String!
+    "If set, the AGENT_PROJECT Git repository this prompt is linked to."
+    gitRepositoryId: UUID
+    "If set, the path in the Git repository where this prompt's `.md` file lives."
+    gitPath: String
+    "Last sync error message, if the most recent pull/push failed. `null` when sync succeeded."
+    lastSyncError: String
+}
+
+"Input for creating or updating a prompt template"
+input PromptInput {
+    "Description of what this prompt does"
+    description: String!
+    "Unique key for referencing this prompt"
+    key: String!
+    "The expected input content type"
+    inputType: String!
+    "Display name of the prompt"
+    name: String!
+    "The expected output content type"
+    outputType: String!
+    "Optional JSON schema for structured output validation"
+    schema: JSON
+    "The system-level instruction for the AI model"
+    systemPrompt: String!
+    "The user-level prompt template"
+    userPrompt: String!
+}
+
+"Query operations for browsing prompt templates"
+type Prompts {
+    "List all registered prompts"
+    all: [Prompt!]!
+    "Get a specific prompt by ID"
+    prompt(id: UUID!): Prompt
+}
+
+"Mutation operations for managing prompt templates"
+type PromptsMutation {
+    "Create a new prompt template"
+    add(prompt: PromptInput!): Prompt
+    "Delete a prompt by ID"
+    delete(id: UUID!): Boolean!
+    """
+    Update an existing prompt template. If the prompt is linked to an AGENT_PROJECT
+    repository and both `authorName` and `authorEmail` are provided, the new state
+    is also pushed to Git as a commit attributed to the editor. The push is
+    best-effort — failures are logged and recorded as `lastSyncError` on the row.
+    """
+    edit(
+        id: UUID!,
+        prompt: PromptInput!,
+        "Commit author name for the Git push (only used when the prompt is Git-linked)."
+        authorName: String,
+        "Commit author email for the Git push (only used when the prompt is Git-linked)."
+        authorEmail: String,
+    ): Prompt
+}
+
+extend type Query {
+    "Access prompt template queries"
+    prompts: Prompts!
+}
+
+extend type Mutation {
+    "Access prompt template mutations"
+    prompts: PromptsMutation!
+}

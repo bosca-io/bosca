@@ -1,0 +1,506 @@
+# Work Ops — WorkOpsTask (R2, R3, R9, R17)
+#
+# Phase 2 lands the core WorkOpsTask type plus the lookup tables (WorkOpsTaskType,
+# WorkOpsTaskTypeScheme, WorkOpsPriority, WorkOpsResolution) that the WorkOpsTask references.
+# WorkOpsStatus lives in workflow.graphqls because it belongs to R4.
+# Phase 3+ extends WorkOpsTask with workflow transitions, links, comments,
+# attachments, and the rest.
+
+"""
+Where in the parent / child hierarchy a task type sits. The numeric
+ordering is significant: parents must be at a strictly higher level
+than children (R7).
+"""
+enum WorkOpsTaskHierarchyLevel {
+    SUBTASK
+    STANDARD
+    EPIC
+    INITIATIVE
+}
+
+"""
+Configurable type label for a task — Bug, Story, WorkOpsTask, Epic, Sub-task,
+plus organization-specific extensions (R3).
+"""
+type WorkOpsTaskType {
+    id: UUID!
+    name: String!
+    description: String
+    iconKey: String!
+    colorHex: String!
+    hierarchyLevel: WorkOpsTaskHierarchyLevel!
+    version: Long!
+}
+
+"""
+The set of task types a project may use plus a default for new tasks
+(R3). Phase 2 seeds the canonical "Default WorkOpsTask Type Scheme".
+"""
+type WorkOpsTaskTypeScheme {
+    id: UUID!
+    name: String!
+    description: String
+    "Ordered list of permitted task type ids."
+    taskTypeIds: [UUID!]!
+    "Type assigned when createTask omits taskTypeId."
+    defaultTaskTypeId: UUID!
+    "Convenience resolver — the default type row."
+    defaultTaskType: WorkOpsTaskType!
+    "Convenience resolver — every type in `taskTypeIds`."
+    taskTypes: [WorkOpsTaskType!]!
+    version: Long!
+}
+
+"Urgency / importance label attached to a task (R2)."
+type WorkOpsPriority {
+    id: UUID!
+    name: String!
+    description: String
+    iconKey: String!
+    colorHex: String!
+    "Lower values sort first; the seeded scale runs Lowest (0) → Critical (5)."
+    displayOrder: Int!
+    version: Long!
+}
+
+"How a task was closed when it reached an end state (R9)."
+type WorkOpsResolution {
+    id: UUID!
+    name: String!
+    description: String
+    displayOrder: Int!
+    version: Long!
+}
+
+"""
+A unit of work. Phase 2 ships the core lifecycle; Phase 3+ extends
+with workflow transitions, links, comments, custom fields, etc.
+"""
+type WorkOpsTask {
+    id: UUID!
+    "Auto-incrementing handle of the form `{PROJECT_KEY}-{N}`."
+    key: String!
+    project: WorkOpsProject!
+    taskType: WorkOpsTaskType!
+    status: WorkOpsStatus!
+    priority: WorkOpsPriority!
+    summary: String!
+    descriptionMarkdown: String
+    descriptionHtml: String
+    reporterProfileId: UUID!
+    "Resolved reporter profile."
+    reporter: Profile!
+    assigneeProfileId: UUID
+    "Resolved assignee profile, if assigned."
+    assignee: Profile
+    "Phase 3+ enforces hierarchy semantics; in Phase 2 this is just a stored reference."
+    parentTask: WorkOpsTask
+    "Phase 3+ enforces epic semantics; in Phase 2 this is just a stored reference."
+    epicTask: WorkOpsTask
+    sprintId: UUID
+    milestoneId: UUID
+    milestone: WorkOpsMilestone
+    affectsVersionIds: [UUID!]!
+    fixVersionIds: [UUID!]!
+    componentIds: [UUID!]!
+    labelIds: [UUID!]!
+    originalEstimateSeconds: Long
+    remainingEstimateSeconds: Long
+    timeSpentSeconds: Long!
+    dueDate: DateTime
+    startDate: DateTime
+    resolution: WorkOpsResolution
+    resolutionAt: DateTime
+    slaDueAt: DateTime
+    "Optional metadata document for rich content editing."
+    metadataId: UUID
+    contentItemId: UUID
+    collectionId: UUID
+    "Rollup: total original-estimate seconds across epic children."
+    epicTotalEstimateSeconds: Long!
+    "Rollup: total remaining-estimate seconds across epic children."
+    epicTotalRemainingSeconds: Long!
+    "Rollup: total time-spent seconds across epic children."
+    epicTotalSpentSeconds: Long!
+    "Rollup: count of direct children in this epic."
+    epicChildCount: Int!
+    "Rollup: count of direct children in a done-category status."
+    epicChildDoneCount: Int!
+    watcherProfileIds: [UUID!]!
+    voteCount: Int!
+    deletedAt: DateTime
+    createdAt: DateTime!
+    modifiedAt: DateTime!
+    createdByPrincipalId: UUID!
+    modifiedByPrincipalId: UUID!
+    "Optimistic-locking version. Required on every update."
+    version: Long!
+    """
+    Append-only audit history (R17). Returns the chronologically newest
+    entries first. Each entry is one logical change carrying one or
+    more WorkOpsFieldChange records.
+    """
+    history(offset: Long! = 0, limit: Int! = 50): [WorkOpsTaskHistoryEntry!]!
+
+    """
+    Transitions reachable from the task's current state in its
+    project's workflow (R4). The `currentOnly` flag toggles between
+    "what can I do right now" and "every transition the workflow
+    defines" — UIs render the latter as the workflow inspector.
+    """
+    transitions(currentOnly: Boolean! = true): [WorkOpsWorkflowTransition!]!
+
+    """
+    Inbound + outbound link rows where this task is the source or
+    target. The link type and the other endpoint resolve through
+    DataLoaders on the [WorkOpsTaskLink] type.
+    """
+    links: [WorkOpsTaskLink!]!
+
+    """
+    Threaded comments on this task (R6). Replies are not included
+    in the top-level page; fetch them via [WorkOpsTaskComment.replies] or
+    `workOpsTaskComments.repliesFor`.
+    """
+    comments(offset: Long! = 0, limit: Long! = 50): [WorkOpsTaskComment!]!
+
+    """
+    Custom-field values for this task with hidden fields filtered
+    out per the project's TaskFieldConfigurationScheme (R5). A
+    manager-level read is `task.customFieldValuesRaw`.
+    """
+    customFields: JSON!
+
+    "Raw custom-field values bypassing the hidden filter — manager only."
+    customFieldValuesRaw: JSON!
+    "Per-entity permission rows. Requires MANAGE."
+    permissions: [EntityPermission!]!
+    """
+    Projects beyond the primary that this task spans. The primary
+    project is always available via `project`; these are additional
+    projects the task affects.
+    """
+    affectedProjects: [WorkOpsProject!]!
+    "The requirement that auto-created this task, if any."
+    requirement: WorkOpsRequirement
+}
+
+input CreateWorkOpsTaskInput {
+    projectId: UUID!
+    "Defaults to the project's default task type when omitted."
+    taskTypeId: UUID
+    "Defaults to the seeded `To Do` status. Phase 3 routes this through the workflow engine."
+    statusId: UUID
+    "Defaults to the seeded `Medium` priority."
+    priorityId: UUID
+    summary: String!
+    descriptionMarkdown: String
+    assigneeProfileId: UUID
+    "Place the new task directly into a sprint."
+    sprintId: UUID
+    dueDate: DateTime
+    startDate: DateTime
+    """
+    Per-task custom-field answers (R5). The map runs through the
+    project's TaskFieldConfigurationScheme — required fields raise,
+    defaults are substituted, hidden fields filter on read.
+    """
+    customFields: JSON
+    "Parent task UUID for subtask hierarchy."
+    parentTaskId: UUID
+    "Additional projects that this task spans beyond its primary project."
+    affectedProjectIds: [UUID!]
+}
+
+"""
+Update input. Required `expectedVersion` is the optimistic-lock token —
+mismatch surfaces as `OPTIMISTIC_LOCK_FAILED`.
+"""
+input UpdateWorkOpsTaskInput {
+    summary: String
+    descriptionMarkdown: String
+    taskTypeId: UUID
+    assigneeProfileId: UUID
+    "Set to true to clear the assignee. Takes precedence over assigneeProfileId."
+    clearAssignee: Boolean
+    priorityId: UUID
+    "Assign the task to a sprint."
+    sprintId: UUID
+    "Set to true to remove the task from its sprint. Takes precedence over sprintId."
+    clearSprintId: Boolean
+    dueDate: DateTime
+    "Set to true to clear the due date. Takes precedence over dueDate."
+    clearDueDate: Boolean
+    startDate: DateTime
+    "Set to true to clear the start date. Takes precedence over startDate."
+    clearStartDate: Boolean
+    originalEstimateSeconds: Long
+    "Set to true to clear the original estimate. Takes precedence over originalEstimateSeconds."
+    clearOriginalEstimate: Boolean
+    remainingEstimateSeconds: Long
+    "Set to true to clear the remaining estimate. Takes precedence over remainingEstimateSeconds."
+    clearRemainingEstimate: Boolean
+    "Parent task UUID for subtask hierarchy."
+    parentTaskId: UUID
+    "Set to true to remove the parent task. Takes precedence over parentTaskId."
+    clearParentTask: Boolean
+    expectedVersion: Long!
+}
+
+# --- WorkOpsTask links (R7) ---
+
+"""
+Coarse classification driving link-graph rules. `BLOCKS` is the only
+category subject to cycle detection; other categories permit cycles
+(a `RELATES_TO` ring among related tasks is legitimate).
+"""
+enum WorkOpsLinkCategory {
+    BLOCKS
+    DUPLICATES
+    RELATES_TO
+    CLONES
+    CAUSES
+    CUSTOM
+}
+
+"""
+A directed link from `sourceTask` to `targetTask` of a given
+[WorkOpsTaskLinkType] (R7). The unique constraint
+`(source, target, link_type)` makes `linkTasks` idempotent.
+"""
+type WorkOpsTaskLink {
+    id: UUID!
+    linkType: WorkOpsTaskLinkType!
+    sourceTask: WorkOpsTask
+    targetTask: WorkOpsTask
+    createdAt: DateTime!
+    createdByPrincipalId: UUID!
+}
+
+"Defines a kind of link an admin can attach between two tasks."
+type WorkOpsTaskLinkType {
+    id: UUID!
+    name: String!
+    "Rendered on the target task's UI (e.g. \"is blocked by\")."
+    inwardLabel: String!
+    "Alias for inwardLabel."
+    inwardName: String!
+    "Rendered on the source task's UI (e.g. \"blocks\")."
+    outwardLabel: String!
+    "Alias for outwardLabel."
+    outwardName: String!
+    category: WorkOpsLinkCategory!
+    version: Long!
+}
+
+input WorkOpsTaskLinkInput {
+    linkTypeId: UUID!
+    sourceTaskId: UUID!
+    targetTaskId: UUID!
+}
+
+type WorkOpsTaskLinks {
+    "Read every seeded link type (R7)."
+    linkTypes: [WorkOpsTaskLinkType!]!
+    "Inbound + outbound links touching the given task."
+    forTask(taskId: UUID!): [WorkOpsTaskLink!]!
+}
+
+type WorkOpsTaskLinksMutation {
+    "Create a link. Idempotent: re-linking the same triple returns the existing row."
+    link(input: WorkOpsTaskLinkInput!): WorkOpsTaskLink!
+    "Remove a link by id."
+    unlink(linkId: UUID!): Boolean!
+}
+
+# --- WorkOpsTask comments (R6) ---
+
+"""
+One comment on a task. Mirrors the metadata-comment shape — reuses
+CommentStatus and ProfileVisibility from the public schema's
+content / profile graphqls files.
+"""
+type WorkOpsTaskComment {
+    id: Long!
+    parentId: Long
+    taskId: UUID!
+    profileId: UUID!
+    "Resolved profile for the comment author."
+    profile: Profile
+    impersonatorId: UUID
+    visibility: ProfileVisibility!
+    created: DateTime!
+    modified: DateTime!
+    status: CommentStatus!
+    content: String!
+    likes: Int!
+    deleted: Boolean!
+    "Threaded replies (R6); newest first."
+    replies(offset: Long! = 0, limit: Long! = 50): [WorkOpsTaskComment!]!
+}
+
+input WorkOpsTaskCommentInput {
+    parentId: Long
+    visibility: ProfileVisibility! = USER
+    content: String!
+    attributes: JSON
+    systemAttributes: JSON
+}
+
+type WorkOpsTaskComments {
+    "Visibility filtering: anonymous viewers see only public+approved; the author sees their own pending comments; managers see all non-blocked."
+    forTask(taskId: UUID!, offset: Long! = 0, limit: Long! = 50): [WorkOpsTaskComment!]!
+    countForTask(taskId: UUID!): Long!
+    repliesFor(taskId: UUID!, parentId: Long!, offset: Long! = 0, limit: Long! = 50): [WorkOpsTaskComment!]!
+    comment(taskId: UUID!, commentId: Long!): WorkOpsTaskComment
+}
+
+type WorkOpsTaskCommentsMutation {
+    "Add a comment (or reply when parentId is set)."
+    add(taskId: UUID!, input: WorkOpsTaskCommentInput!): WorkOpsTaskComment!
+    "Like a comment; returns the new likes count, -1 on missing comment."
+    like(taskId: UUID!, commentId: Long!): Int!
+    "Unlike a comment; returns the new likes count, -1 on missing comment."
+    unlike(taskId: UUID!, commentId: Long!): Int!
+    "Moderator action: flip a comment's status."
+    setStatus(taskId: UUID!, commentId: Long!, status: CommentStatus!): Boolean!
+    "Soft-delete a comment regardless of author (admin path)."
+    delete(taskId: UUID!, commentId: Long!): Boolean!
+}
+
+type WorkOpsTasks {
+    "Fetch a task by id."
+    task(id: UUID!): WorkOpsTask
+    "Fetch a task by its public {PROJECT_KEY}-{N} handle."
+    taskByKey(key: String!): WorkOpsTask
+    "Paginated list of tasks in a project (newest-modified first)."
+    byProject(projectId: UUID!, offset: Long! = 0, limit: Int! = 50): [WorkOpsTask!]!
+    "Tasks that list the given project as an affected project, regardless of their primary project."
+    byAffectedProject(projectId: UUID!, offset: Long! = 0, limit: Int! = 50): [WorkOpsTask!]!
+    "Read all task types (R3 — admin reference data)."
+    taskTypes: [WorkOpsTaskType!]!
+    "Read all task type schemes (R3)."
+    taskTypeSchemes: [WorkOpsTaskTypeScheme!]!
+    "Read all priorities (R2 reference data)."
+    priorities: [WorkOpsPriority!]!
+    "Read all resolutions (R9 reference data)."
+    resolutions: [WorkOpsResolution!]!
+}
+
+input CreateWorkOpsTaskTypeInput {
+    name: String!
+    description: String
+    iconKey: String!
+    colorHex: String!
+    hierarchyLevel: WorkOpsTaskHierarchyLevel!
+}
+
+input UpdateWorkOpsTaskTypeInput {
+    name: String!
+    description: String
+    iconKey: String!
+    colorHex: String!
+    hierarchyLevel: WorkOpsTaskHierarchyLevel!
+    expectedVersion: Long!
+}
+
+"Admin CRUD for task types (R3 reference data)."
+type WorkOpsTaskTypesMutation {
+    create(input: CreateWorkOpsTaskTypeInput!): WorkOpsTaskType!
+    update(id: UUID!, input: UpdateWorkOpsTaskTypeInput!): WorkOpsTaskType!
+    delete(id: UUID!): Boolean!
+}
+
+input CreateWorkOpsPriorityInput {
+    name: String!
+    description: String
+    iconKey: String!
+    colorHex: String!
+    displayOrder: Int!
+}
+
+input UpdateWorkOpsPriorityInput {
+    name: String!
+    description: String
+    iconKey: String!
+    colorHex: String!
+    displayOrder: Int!
+    expectedVersion: Long!
+}
+
+"Admin CRUD for priorities (R2 reference data)."
+type WorkOpsPrioritiesMutation {
+    create(input: CreateWorkOpsPriorityInput!): WorkOpsPriority!
+    update(id: UUID!, input: UpdateWorkOpsPriorityInput!): WorkOpsPriority!
+    delete(id: UUID!): Boolean!
+}
+
+input CreateWorkOpsResolutionInput {
+    name: String!
+    description: String
+    displayOrder: Int!
+}
+
+input UpdateWorkOpsResolutionInput {
+    name: String!
+    description: String
+    displayOrder: Int!
+    expectedVersion: Long!
+}
+
+"Admin CRUD for resolutions (R9 reference data)."
+type WorkOpsResolutionsMutation {
+    create(input: CreateWorkOpsResolutionInput!): WorkOpsResolution!
+    update(id: UUID!, input: UpdateWorkOpsResolutionInput!): WorkOpsResolution!
+    delete(id: UUID!): Boolean!
+}
+
+input CreateWorkOpsTaskLinkTypeInput {
+    name: String!
+    inwardLabel: String!
+    outwardLabel: String!
+    category: WorkOpsLinkCategory!
+}
+
+input UpdateWorkOpsTaskLinkTypeInput {
+    name: String!
+    inwardLabel: String!
+    outwardLabel: String!
+    category: WorkOpsLinkCategory!
+    expectedVersion: Long!
+}
+
+"Admin CRUD for task link types (R7 reference data)."
+type WorkOpsTaskLinkTypesMutation {
+    create(input: CreateWorkOpsTaskLinkTypeInput!): WorkOpsTaskLinkType!
+    update(id: UUID!, input: UpdateWorkOpsTaskLinkTypeInput!): WorkOpsTaskLinkType!
+    delete(id: UUID!): Boolean!
+}
+
+type WorkOpsTasksMutation {
+    create(input: CreateWorkOpsTaskInput!): WorkOpsTask!
+    update(id: UUID!, input: UpdateWorkOpsTaskInput!): WorkOpsTask!
+    softDelete(id: UUID!, expectedVersion: Long!): WorkOpsTask!
+    restore(id: UUID!, expectedVersion: Long!): WorkOpsTask!
+    """
+    The single permitted path for a status change (R4). Resolves the
+    project's effective workflow, evaluates the transition's
+    conditions and validators, applies post-functions and the status
+    flip atomically, and writes one history entry covering the bundle.
+    """
+    transition(
+        id: UUID!,
+        transitionId: UUID!,
+        expectedVersion: Long!,
+        resolutionId: UUID,
+        comment: String
+    ): WorkOpsTask!
+    "Create a metadata document for this task. Fails if one already exists."
+    createDocument(id: UUID!, expectedVersion: Long!): WorkOpsTask!
+    addPermission(id: UUID!, groupId: UUID!, action: PermissionAction!): Boolean!
+    removePermission(id: UUID!, groupId: UUID!, action: PermissionAction!): Boolean!
+    "Associate an additional project with this task."
+    addAffectedProject(id: UUID!, projectId: UUID!): Boolean!
+    "Remove an affected project association from this task."
+    removeAffectedProject(id: UUID!, projectId: UUID!): Boolean!
+}

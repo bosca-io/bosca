@@ -1,0 +1,90 @@
+"A supported language for content localization, identified by an IETF BCP 47 language tag."
+type Language {
+    "The IETF BCP 47 language tag (e.g. 'en', 'fr', 'es-MX', 'zh-Hans')."
+    tag: String!
+    "The English name of the language (e.g. 'English', 'French', 'Spanish')."
+    name: String!
+    "The name of the language in its own language (e.g. 'English', 'Francais', 'Espanol')."
+    localName: String!
+    "Optional custom attributes stored as JSON for this language (e.g. direction, script, regional settings)."
+    attributes: JSON
+}
+
+"Query operations for retrieving the list of supported languages for content localization."
+type Languages {
+    "Retrieve all supported languages available for content localization."
+    all: [Language!]!
+    "Retrieve all configured language-tag translation contexts."
+    resolutionContexts: [LanguageResolutionContext!]!
+    "Resolve a possibly blank or aliased tag using the most-specific context mapping and then its fallback."
+    resolve(contextKey: String!, languageTag: String): LanguageTagResolution!
+}
+
+"A named use case that translates Bosca language tags into a content domain's language-tag vocabulary."
+type LanguageResolutionContext {
+    id: UUID!
+    key: String!
+    name: String!
+    description: String!
+    fallbackLanguageTag: String!
+    mappings: [LanguageTagMapping!]!
+}
+
+"One deterministic mapping from a Bosca language tag to a content-domain language tag."
+type LanguageTagMapping {
+    contextId: UUID!
+    sourceLanguageTag: String!
+    resolvedLanguageTag: String!
+}
+
+"The result of resolving a requested language tag."
+type LanguageTagResolution {
+    requestedLanguageTag: String
+    normalizedLanguageTag: String
+    resolvedLanguageTag: String!
+    usedFallback: Boolean!
+}
+
+"Input for creating or editing a language."
+input LanguageInput {
+    "IETF BCP 47 language tag (e.g. 'en', 'fr', 'es-MX')."
+    tag: String!
+    "English name of the language."
+    name: String!
+    "Name of the language in its own language."
+    localName: String!
+    "Optional custom attributes."
+    attributes: JSON
+}
+
+input LanguageResolutionContextInput {
+    key: String!
+    name: String!
+    description: String! = ""
+    fallbackLanguageTag: String!
+}
+
+input LanguageTagMappingInput {
+    sourceLanguageTag: String!
+    resolvedLanguageTag: String!
+}
+
+"Mutation operations for managing the supported languages list."
+type LanguagesMutation {
+    "Register a new language."
+    add(input: LanguageInput!): Language!
+    "Update an existing language's name, local name, or attributes."
+    edit(input: LanguageInput!): Language!
+    "Remove a language by its tag."
+    delete(tag: String!): Boolean!
+    addResolutionContext(input: LanguageResolutionContextInput!): LanguageResolutionContext!
+    editResolutionContext(id: UUID!, input: LanguageResolutionContextInput!): LanguageResolutionContext!
+    deleteResolutionContext(id: UUID!): Boolean!
+    setLanguageTagMapping(contextId: UUID!, input: LanguageTagMappingInput!): LanguageTagMapping!
+    deleteLanguageTagMapping(contextId: UUID!, sourceLanguageTag: String!): Boolean!
+}
+
+extend type Mutation {
+    "Entry point for language mutations."
+    languages: LanguagesMutation!
+}

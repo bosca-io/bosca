@@ -1,0 +1,378 @@
+# ═══════════════════════════════════════════════════════════════════
+# BOSCA SERVICES — Application layer (umbrella chart)
+#
+# Minimum required configuration:
+#   global.domain: your-domain.com
+#
+# Install order:
+#   1. kubectl apply -f secrets.yaml -n bosca          # K8s Secrets, NOT helm-managed
+#   2. helm install bosca-infra helm/bosca-infra       # provisions Postgres/NATS/...
+#   3. helm install bosca       helm/bosca-services    # this chart (the apps)
+# ═══════════════════════════════════════════════════════════════════
+
+# ═══════════════════════════════════════════════════════════════════
+# SECRET INVENTORY
+#
+# K8s Secrets referenced by this umbrella's subcharts are pre-created
+# via plain `kubectl apply -f secrets.yaml` (NOT helm-managed). The
+# subchart-level `secrets:` overrides below ALL set `create: false`
+# because no helm release in this stack owns Secret resources — that
+# prevents helm release storage from ever containing secret values.
+#
+# ─── Shared (in secrets.yaml) ───
+#
+#   Secret name              | Keys                          | Consumed by
+#   -------------------------|-------------------------------|----------------------------------------------
+#   initialization           | admin_password                | bosca-server
+#   nats                     | token                         | server, runner, collector, k8s-controller,
+#                            |                               | artifacts, git
+#   jwt                      | secret                        | server, runner, collector, k8s-controller,
+#                            |                               | artifacts, git
+#   url                      | secret                        | server, runner, artifacts, git
+#   cfg                      | secret                        | server, runner, k8s-controller
+#   meilisearch-master-key * | MEILI_MASTER_KEY              | server, runner, git   (* owned by upstream meilisearch subchart of bosca-infra)
+#   s3                       | ACCESS_KEY_ID,                | server, runner, collector, artifacts, git
+#                            | ACCESS_SECRET_KEY             |
+#   postgres-backups         | ACCESS_KEY_ID,                | bosca-infra (CNPG barman backup)
+#                            | ACCESS_SECRET_KEY             |
+#   openai-token             | token                         | server, runner
+#   hubspot                  | token                         | server, runner
+#   gemini-api-key           | key                           | server, runner
+#   google                   | client_id, client_secret      | server, runner
+#   google-account           | account                       | server, runner
+#   facebook                 | app_id, app_secret            | server, runner
+#   scrypt-key               | key, salt, mem_cost, rounds   | server, runner, artifacts
+#   pipeline                 | secret_key                    | git
+#   recommendation-ml        | bosca_token,                  | recommendation-trainer (data), tf-serving loader
+#                            | artifacts_push_token,         | (artifacts_push_token = trainer model push;
+#                            | artifacts_pull_token          |  artifacts_pull_token = trainer lineage read + loader pull)
+#
+# ─── Per-role Postgres credentials (also in secrets.yaml) ───
+#
+#   Secret name                                   | Consumed by
+#   ----------------------------------------------|----------------------------
+#   pg-creds-bosca-server                         | bosca-server, bosca-collector
+#   pg-creds-bosca-runner                         | bosca-runner
+#   pg-creds-bosca-kubernetes-controller          | bosca-kubernetes-controller
+#   pg-creds-bosca-artifacts-server               | bosca-artifacts-server
+#   pg-creds-bosca-git-server                     | bosca-git-server
+#   pg-creds-bosca-warehouse                      | bosca-collector (iceberg catalog)
+#
+# ─── Gateway↔server shared bearer (in secrets.yaml) ───
+#
+#   Secret name              | Keys                          | Consumed by
+#   -------------------------|-------------------------------|----------------------------------------------
+#   bosca-gateway            | bosca-api-token               | bosca-gateway (Rust proxy presents it),
+#                            |                               | bosca-server  (validates it on
+#                            |                               | /api/v1/gateway/config)
+#
+# The Rust proxy polls bosca-server with this bearer; bosca-server's
+# GetGatewayConfig route does a constant-time compare against
+# `gateway.proxy.sharedToken` from application.yaml, which is bound to
+# the GATEWAY_PROXY_SHARED_TOKEN env var injected from this Secret.
+#
+# To rotate any Secret: edit secrets.yaml, `kubectl apply -f secrets.yaml`,
+# then `kubectl rollout restart deployment/<consumer>` to pick up the new value.
+# ═══════════════════════════════════════════════════════════════════
+
+global:
+  domain: ""
+  # Registry (and path) for every Bosca image, overriding each chart's image.registry
+  # (ghcr.io/bosca-io/bosca). Set it to pull from a mirror.
+  imageRegistry: ""
+  # Runner labels routed exclusively through the Kubernetes Job dispatcher.
+  # Each name must have a matching JobProfile in the controller chart.
+  ciKubernetesJobProfiles: []
+
+# ═══════════════════════════════════════════════════════════════════
+# SUBCHART CONFIGURATION
+#
+# Every subchart's `secrets:` block is overridden to create:false here —
+# Secrets are pre-applied via `kubectl apply -f secrets.yaml` (not helm).
+# Subchart standalone defaults (create:true) only apply when installing
+# a subchart directly, not via this umbrella.
+# ═══════════════════════════════════════════════════════════════════
+
+# ─── bosca-server ───────────────────────────────────────────────────
+# Owns no Secrets in umbrella context. Consumes from secrets.yaml:
+#   initialization, pg-creds-bosca-server (database), nats, jwt, url, cfg,
+#   meilisearch-master-key, s3, openai-token, hubspot,
+#   gemini-api-key, google, google-account, facebook, scrypt-key,
+#   bosca-gateway (gatewayProxy — shared with bosca-gateway chart)
+bosca-server:
+  enabled: true
+  replicaCount: 3
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 80
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 2
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: "4"
+      memory: 4Gi
+  appConfig:
+    # Keep Gateway-to-server traffic on HTTP/1.1 unless the selected Gateway
+    # implementation supports backend protocol selection and the deployment opts in.
+    http2Enabled: false
+  secrets:
+    initialization:
+      create: false
+    database:
+      create: false
+    nats:
+      create: false
+    jwt:
+      create: false
+    url:
+      create: false
+    cfg:
+      create: false
+    meilisearch:
+      create: false
+    s3:
+      create: false
+    openai:
+      create: false
+    hubspot:
+      create: false
+    gemini:
+      create: false
+    google:
+      create: false
+    googleAccount:
+      create: false
+    facebook:
+      create: false
+    scrypt:
+      create: false
+    gatewayProxy:
+      create: false
+
+# ─── bosca-runner ───────────────────────────────────────────────────
+# Owns no Secrets in umbrella context. Consumes from secrets.yaml:
+#   pg-creds-bosca-runner (database) + the same shared set as bosca-server (minus initialization).
+bosca-runner:
+  enabled: true
+  appConfig:
+    # The recommendation scheduler dispatches the trainer JobProfile through
+    # the generic kubernetes-jobs queue even when no CI runner profiles exist.
+    kubernetesEnabled: true
+  workers:
+    default:
+      replicas: 2
+      resourceProfile: medium
+      terminationGracePeriodSeconds: 300
+  secrets:
+    database:
+      create: false
+    nats:
+      create: false
+    jwt:
+      create: false
+    url:
+      create: false
+    cfg:
+      create: false
+    meilisearch:
+      create: false
+    s3:
+      create: false
+    openai:
+      create: false
+    hubspot:
+      create: false
+    gemini:
+      create: false
+    google:
+      create: false
+    googleAccount:
+      create: false
+    facebook:
+      create: false
+    scrypt:
+      create: false
+
+# ─── bosca-studio ───────────────────────────────────────────────────
+# No secret-bound env vars. Consumes only imagePullSecret (cluster-managed).
+bosca-studio:
+  enabled: true
+  replicaCount: 2
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 80
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 1
+
+# ─── bosca-kubernetes-controller ────────────────────────────────────
+# Consumes from secrets.yaml: pg-creds-bosca-kubernetes-controller, nats, jwt, cfg.
+bosca-kubernetes-controller:
+  enabled: true
+  secrets:
+    database:
+      create: false
+    nats:
+      create: false
+    jwt:
+      create: false
+    cfg:
+      create: false
+
+# ─── bosca-artifacts-server ─────────────────────────────────────────
+# Consumes from secrets.yaml: pg-creds-bosca-artifacts-server, nats, jwt, url, s3, scrypt-key.
+bosca-artifacts-server:
+  enabled: false
+  secrets:
+    database:
+      create: false
+    nats:
+      create: false
+    jwt:
+      create: false
+    url:
+      create: false
+    s3:
+      create: false
+    scrypt:
+      create: false
+
+# ─── bosca-git-server ───────────────────────────────────────────────
+# Consumes from secrets.yaml: pg-creds-bosca-git-server, nats, jwt, url, s3, meilisearch-master-key, pipeline.
+bosca-git-server:
+  enabled: false
+  secrets:
+    database:
+      create: false
+    nats:
+      create: false
+    jwt:
+      create: false
+    url:
+      create: false
+    s3:
+      create: false
+    meilisearch:
+      create: false
+    pipeline:
+      create: false
+
+# ─── bosca-collector ────────────────────────────────────────────────
+# Consumes from secrets.yaml: pg-creds-bosca-server, pg-creds-bosca-warehouse (iceberg), nats, jwt, s3.
+bosca-collector:
+  enabled: true
+  secrets:
+    database:
+      create: false
+    iceberg:
+      create: false
+    nats:
+      create: false
+    jwt:
+      create: false
+    s3:
+      create: false
+
+# ─── bml-message-server ───────────────────────────────────────────────
+# The BML Message Server. Enable per deployment with the public email
+# host + secrets:
+#   bml-message-server:
+#     enabled: true
+#     appConfig:
+#       publicUrl: https://email.<domain>
+#     gateway:
+#       hostnames: [email.<domain>]   # public surface: /assets, /c, /o ONLY
+# Consumes from secrets.yaml: nats. Its own secrets (registry token, tracking
+# secret, analytics api key) are chart-created unless overridden.
+bml-message-server:
+  enabled: false
+  secrets:
+    nats:
+      create: false
+
+# ─── bosca-gateway ──────────────────────────────────────────────────
+# Has its own chart-internal Secret (<release>-bosca-gateway). Not managed
+# by secrets.yaml.
+bosca-gateway:
+  enabled: false
+
+# ─── bosca-io ───────────────────────────────────────────────────────
+bosca-io:
+  enabled: false
+
+# ─── notifications-web (BML SSR notification preferences / unsubscribe site) ───
+notifications-web:
+  enabled: false
+
+# ─── profiles-web (BML SSR self-service account site) ──────────────────
+profiles-web:
+  enabled: false
+
+# ─── imageprocessor ─────────────────────────────────────────────────
+# Internal-only HTTP image transform service. bosca-server and
+# bosca-runner reach it at http://imageprocessor.<ns>.svc.cluster.local:8003
+# (no Gateway/Ingress). Enabled by default — both consumers hardcode this
+# DNS in their appconfig and will fail image-resize work without it.
+imageprocessor:
+  enabled: true
+
+# ─── Recommendation ML stack (tf-serving + loader sidecar / trainer JobProfile) ───
+# TFRS model serving, training, and delivery for recommendations. The model
+# loader runs as a sidecar inside the tf-serving pod and shares its model volume
+# (an emptyDir by default), so NO ReadWriteMany storage class is required.
+tf-serving:
+  enabled: true
+  # loader:
+  #   image:
+  #     tag: ""           # override the loader sidecar image to a specific ML release
+  # persistence:
+  #   enabled: true       # back the model volume with a node-local RWO PVC to skip
+  #   storageClass: ""    # re-downloading the model on every pod restart
+
+recommendation-trainer:
+  enabled: true
+
+# HuggingFace Text Embeddings Inference (EmbeddingGemma) — computes per-content semantic embeddings for
+# the recommender's content tower. Opt-in (unlike tf-serving/trainer): it pulls a Gemma-license-gated
+# model and requires a pre-created `text-embeddings-inference` Secret holding an HF token, so it stays
+# off unless a deployment explicitly provides that and turns on the app's `embedding.enabled` flag.
+text-embeddings-inference:
+  enabled: false
+
+# ─── Gateway (shared) ───────────────────────────────────────────────
+# A single Gateway resource aggregates HTTPS listeners (one per
+# hostname) from every subchart's `<subchart>.gateway.hostnames` list.
+# cert-manager auto-issues per-listener TLS via the annotation below.
+#
+# Two layers of HTTPRoutes attach to this Gateway:
+#   1. Per-subchart catch-all HTTPRoutes on port 443 (defined in
+#      each subchart's templates/httproute.yaml).
+#   2. Umbrella-level HTTPRoutes here in bosca-services/templates/
+#      that mirror the legacy bosca CLI routing — HTTP→HTTPS redirect
+#      on port 80 plus path-based splits sending /graphql, /api/v1,
+#      /api/v1/events... to bosca-server / bosca-collector even on
+#      hostnames whose `/` belongs to bosca-studio or bosca-io.
+#      Those umbrella routes render whenever the relevant
+#      subcharts are enabled — no flags to flip.
+gateway:
+  enabled: true
+  name: bosca-gateway
+  className: cilium
+  certManager:
+    clusterIssuer: letsencrypt-prod
+  extraHostnames: []
+  # Alias host → canonical host 301s (e.g. www.example.com: example.com).
+  # Each entry renders a dedicated HTTPRoute (ports 80 + 443) that
+  # RequestRedirects to the canonical host, and the alias is dropped from
+  # the content HTTPRoutes so the redirect route wins. Keep the alias in
+  # the owning subchart's `gateway.hostnames` — that list still drives the
+  # Gateway listener + TLS cert the redirect terminates on.
+  canonicalRedirects: {}

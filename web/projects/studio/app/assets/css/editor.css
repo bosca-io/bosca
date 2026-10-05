@@ -1,0 +1,185 @@
+/* TipTap editor content styles — replaces Tailwind prose classes.
+   Applied globally so ProseMirror's rendered DOM picks them up. */
+
+.ProseMirror {
+  outline: none;
+  min-height: 100%;
+  font-size: 16px;
+  color: var(--fg-1);
+  line-height: 1.6;
+}
+
+.ProseMirror > h1:first-child {
+  margin: 0 0 18px;
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--fg-0);
+  letter-spacing: -0.01em;
+}
+
+.ProseMirror h2 {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--fg-0);
+  margin: 24px 0 8px;
+}
+
+.ProseMirror h3 {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--fg-0);
+  margin: 20px 0 6px;
+}
+
+.ProseMirror p {
+  margin: 0 0 10px;
+}
+
+.ProseMirror ul,
+.ProseMirror ol {
+  padding-left: 18px;
+  margin: 0 0 10px;
+}
+
+.ProseMirror li {
+  margin-bottom: 4px;
+}
+
+.ProseMirror blockquote {
+  border-left: 3px solid var(--line-2);
+  padding-left: 14px;
+  margin: 12px 0;
+  color: var(--fg-2);
+  font-style: italic;
+}
+
+.ProseMirror code {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  background: var(--bg-3);
+  padding: 1px 5px;
+  border-radius: 4px;
+  color: var(--fg-1);
+  border: 1px solid var(--line);
+}
+
+.ProseMirror pre {
+  background: var(--bg-3);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin: 12px 0;
+  overflow-x: auto;
+}
+
+.ProseMirror pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.ProseMirror a {
+  color: var(--brand-2);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.ProseMirror a:hover {
+  color: var(--brand-1);
+}
+
+.ProseMirror hr {
+  border: none;
+  border-top: 1px solid var(--line);
+  margin: 20px 0;
+}
+
+.ProseMirror img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+  margin: 8px 0;
+}
+
+/* Tables */
+.ProseMirror table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 12px 0;
+  font-size: 13px;
+}
+
+.ProseMirror th,
+.ProseMirror td {
+  border: 1px solid var(--line);
+  padding: 8px 12px;
+  text-align: left;
+}
+
+.ProseMirror th {
+  background: var(--bg-2);
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--fg-3);
+}
+
+.ProseMirror td {
+  color: var(--fg-1);
+}
+
+/* Placeholder */
+
+.ProseMirror h2.is-empty {
+  display: none;
+}
+
+/*.ProseMirror .is-empty:last-child::before {*/
+/*  content: attr(data-placeholder);*/
+/*  color: var(--fg-3);*/
+/*  font-size: 100%;*/
+/*  pointer-events: none;*/
+/*  float: left;*/
+/*  height: 0;*/
+/*}*/
+
+.ProseMirror p.is-editor-empty:first-child::before,
+.ProseMirror .is-empty:last-child::before {
+  content: attr(data-placeholder);
+  color: var(--fg-3);
+  pointer-events: none;
+  float: left;
+  height: 0;
+}
+
+/* Collaboration cursors */
+.collaboration-cursor__caret {
+  border-left: 2px solid;
+  margin-left: -1px;
+  margin-right: -1px;
+  pointer-events: none;
+  position: relative;
+  word-break: normal;
+}
+
+.collaboration-cursor__label {
+  position: absolute;
+  top: -1.5em;
+  left: -1px;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 4px;
+  white-space: nowrap;
+  pointer-events: none;
+  user-select: none;
+  color: #fff;
+}
+
+/* Selection highlight */
+.ProseMirror ::selection {
+  background: color-mix(in oklch, var(--brand-2) 30%, transparent);
+}

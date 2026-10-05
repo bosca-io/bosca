@@ -1,0 +1,15 @@
+query GetSlug($slug: String!) {
+    content {
+        slug(slug: $slug) {
+            ... on Metadata {
+                ...Metadata
+            }
+            ... on Collection {
+                ...Collection
+            }
+            ... on Profile {
+                ...ProfileIdName
+            }
+        }
+    }
+}

@@ -1,0 +1,13 @@
+<component tag="profile-avatar">
+  <prop name="name" type="String" required/>
+  <prop name="initials" type="String" required/>
+  <prop name="src" type="String" default=""/>
+
+  <span class="profile-avatar" aria-hidden="true">
+    <if src.isNotBlank()>
+      <img :src="src" alt="" loading="lazy"/>
+    <else>
+      <span>{ initials }</span>
+    </if>
+  </span>
+</component>

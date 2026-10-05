@@ -1,0 +1,7 @@
+mutation SetMetadataMarkdown($id: UUID!, $version: Int!, $title: String!, $markdown: String!, $collaborationSync: CollaborationSyncMode) {
+    content {
+        metadata {
+            setMetadataMarkdown(id: $id, version: $version, title: $title, markdown: $markdown, collaborationSync: $collaborationSync)
+        }
+    }
+}

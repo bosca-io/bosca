@@ -1,0 +1,5 @@
+"Server information and health status"
+type Server {
+    "Current server time, useful for clock synchronization and health checks"
+    now: DateTime!
+}

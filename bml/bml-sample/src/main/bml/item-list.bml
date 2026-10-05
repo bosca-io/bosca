@@ -1,0 +1,16 @@
+<component tag="item-list">
+  <prop name="items" type="List<String>" required/>
+  <prop name="title" type="String" default="Items"/>
+  <style scoped>
+    .item-list { font-family: system-ui, sans-serif; }
+    .item-list h2 { font-size: 1rem; color: #333; }
+  </style>
+  <section class="item-list">
+    <h2>{ title } ({ items.size })</h2>
+    <ul>
+      <for it in items>
+        <li>{ it }</li>
+      </for>
+    </ul>
+  </section>
+</component>

@@ -1,0 +1,12 @@
+mutation CreateApiToken($input: ApiTokenInput!) {
+    security {
+        apiTokens {
+            create(input: $input) {
+                apiToken {
+                    ...ApiTokenFragment
+                }
+                rawToken
+            }
+        }
+    }
+}

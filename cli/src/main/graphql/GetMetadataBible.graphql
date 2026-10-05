@@ -1,0 +1,13 @@
+query GetBibleMetadata($id: UUID!, $version: Int) {
+    content {
+        metadata(id: $id, version: $version) {
+          ...Metadata
+          bible {
+            ...Bible
+            books {
+              ...BibleBookWithChapters
+            }
+          }
+        }
+    }
+}

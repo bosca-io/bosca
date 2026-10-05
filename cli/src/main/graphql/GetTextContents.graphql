@@ -1,0 +1,9 @@
+query GetTextContents($id: UUID!) {
+    content {
+        metadata(id: $id) {
+            content {
+                text
+            }
+        }
+    }
+}

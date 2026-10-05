@@ -1,0 +1,1 @@
+alter table template_attribute_tools drop constraint template_attribute_tools_name_key;

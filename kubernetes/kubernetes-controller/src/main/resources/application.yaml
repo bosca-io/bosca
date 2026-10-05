@@ -1,0 +1,49 @@
+bosca:
+  server:
+    host: 0.0.0.0
+    port: 8082
+
+database:
+  postgres:
+    url: "$DATABASE_URL:jdbc:postgresql://localhost:5433/bosca"
+    user: "$DATABASE_USER:bosca"
+    password: "$DATABASE_PASSWORD:bosca"
+
+nats:
+  url: "$NATS_HOST:localhost:4222"
+  token: "$NATS_TOKEN:OAVKZTG7ST62YCPUJYJ6LBQDMKLAUD4NRBPZ4GXUXNUJW2ATCFKKYGHV"
+
+pubsub:
+  type: "$PUBSUB_TYPE:nats"
+
+distributedLock:
+  type: "$DISTRIBUTED_LOCK_TYPE:nats"
+
+jobQueue:
+  factory: "$JOB_QUEUE_FACTORY:nats"
+
+redis:
+  host: "$REDIS_HOST:localhost"
+  port: ${REDIS_PORT:6380}
+
+jwt:
+  domain: "$JWT_DOMAIN:localhost"
+  admin-domain: "$JWT_ADMIN_DOMAIN:localhost"
+  audience: "$JWT_AUDIENCE:Bosca"
+  realm: "$JWT_REALM:Bosca"
+  issuer: "$JWT_ISSUER:Bosca"
+  secret: "$JWT_SECRET:c534b2595b38f5d9cb33f8cd05996c95"
+  expiration-time: ${JWT_EXPIRATION_TIME:2592000}
+
+security:
+  encryption:
+    key: "$SECURITY_ENCRYPTION_KEY:changeme"
+
+kubernetes:
+  # WebSocket endpoint for streams (pod logs, events, helm release status).
+  # SSE fallback path is `/stream/sse/*` and is registered alongside.
+  streamPath: /stream
+
+analyticsServer:
+  appId: "$ANALYTICS_APP_ID:kubernetes-controller"
+  url: "$ANALYTICS_SERVER_URL:http://localhost:8081"

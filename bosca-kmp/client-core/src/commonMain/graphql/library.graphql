@@ -1,0 +1,158 @@
+fragment LibraryCollectionFields on Collection {
+    id
+    name
+    slug
+    itemAttributes
+    attributes
+    itemsCount
+    metadataRelationships {
+        relationship
+        metadata {
+            id
+            slug
+        }
+    }
+}
+
+fragment LibraryMetadataFields on Metadata {
+    id
+    name
+    slug
+    itemAttributes
+    relationships(filter: ["image.featured", "image.featured.square"]) {
+        relationship
+        metadata {
+            id
+            slug
+        }
+    }
+}
+
+query ContentLibraryRoot($slug: String!) {
+    content {
+        slug(slug: $slug) {
+            ... on Collection {
+                id
+                name
+                description
+            }
+        }
+    }
+}
+
+query CollectionItems($id: UUID!, $limit: Int!, $offset: Long!) {
+    content {
+        collections {
+            collection(id: $id) {
+                attributes
+                items(limit: $limit, offset: $offset) {
+                    ...LibraryCollectionFields
+                    ...LibraryMetadataFields
+                }
+                itemsCount
+            }
+        }
+    }
+}
+
+query GuideProgressCount {
+    profiles {
+        current {
+            guides {
+                progressions {
+                    count
+                }
+            }
+        }
+    }
+}
+
+query GuideProgressAll($limit: Int!, $offset: Long!) {
+    profiles {
+        current {
+            guides {
+                progressions {
+                    all(limit: $limit, offset: $offset) {
+                        metadata {
+                            id
+                            name
+                            slug
+                            guide {
+                                stepCount
+                            }
+                            relationships(filter: ["image.featured"]) {
+                                metadata {
+                                    slug
+                                }
+                            }
+                        }
+                        percentage
+                        completedStepIds
+                        started
+                        modified
+                    }
+                }
+            }
+        }
+    }
+}
+
+query MarksCount {
+    profiles {
+        current {
+            marks {
+                count
+            }
+        }
+    }
+}
+
+query MarksAll($limit: Int!, $offset: Long!) {
+    profiles {
+        current {
+            marks {
+                all(limit: $limit, offset: $offset) {
+                    id
+                    metadata {
+                        id
+                        name
+                        slug
+                        relationships(filter: ["image.featured"]) {
+                            metadata {
+                                slug
+                            }
+                        }
+                    }
+                    collection {
+                        id
+                        name
+                        slug
+                        metadataRelationships {
+                            relationship
+                            metadata {
+                                slug
+                            }
+                        }
+                    }
+                    created
+                }
+            }
+        }
+    }
+}
+
+mutation AddMark($metadataId: UUID, $version: Int, $collectionId: UUID) {
+    profiles {
+        profile {
+            addMark(metadataId: $metadataId, version: $version, collectionId: $collectionId)
+        }
+    }
+}
+
+mutation DeleteMark($id: Long!) {
+    profiles {
+        profile {
+            deleteMark(id: $id)
+        }
+    }
+}

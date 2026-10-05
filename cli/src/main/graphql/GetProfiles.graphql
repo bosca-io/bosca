@@ -1,0 +1,10 @@
+query GetProfiles($offset: Long!, $limit: Int!) {
+    profiles {
+        all(limit: $limit, offset: $offset) {
+            ...Profile
+            principal {
+                ...Principal
+            }
+        }
+    }
+}

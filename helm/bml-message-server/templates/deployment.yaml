@@ -1,0 +1,170 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "bosca-common.fullname" . }}
+  labels:
+    {{- include "bosca-common.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  revisionHistoryLimit: {{ .Values.revisionHistoryLimit | default 1 }}
+  selector:
+    matchLabels:
+      {{- include "bosca-common.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "bosca-common.selectorLabels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "bosca-common.serviceAccountName" . }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- include "bosca-common.podSecurityContext" . | nindent 8 }}
+      containers:
+        - name: {{ .Chart.Name }}
+          image: {{ include "bosca-common.boscaImage" (dict "image" (merge (dict "tag" (default .Chart.AppVersion .Values.image.tag)) .Values.image) "global" .Values.global) }}
+          imagePullPolicy: {{ include "bosca-common.imagePullPolicy" .Values.image }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.port }}
+              protocol: TCP
+            - name: management
+              containerPort: {{ $.Values.managementPort }}
+              protocol: TCP
+          envFrom:
+            {{- range .Values.envFromConfigMaps }}
+            - configMapRef:
+                name: {{ . }}
+            {{- end }}
+          env:
+            - name: PORT
+              value: {{ .Values.service.port | quote }}
+            - name: MANAGEMENT_PORT
+              value: {{ .Values.managementPort | quote }}
+            - name: BML_MESSAGE_ARTIFACTS_URL
+              value: {{ .Values.appConfig.artifactsUrl | quote }}
+            {{- with .Values.appConfig.projects }}
+            - name: BML_MESSAGE_PROJECTS
+              value: {{ . | quote }}
+            {{- end }}
+            - name: BML_MESSAGE_PUBLIC_URL
+              value: {{ required "appConfig.publicUrl is required (asset + tracking URLs are minted from it)" .Values.appConfig.publicUrl | quote }}
+            - name: BML_MESSAGE_CACHE_DIR
+              value: {{ .Values.appConfig.cacheDir | quote }}
+            - name: BML_MESSAGE_POLL_SECONDS
+              value: {{ .Values.appConfig.pollSeconds | quote }}
+            - name: BML_MESSAGE_RENDER_TIMEOUT_MS
+              value: {{ .Values.appConfig.renderTimeoutMs | quote }}
+            {{- with .Values.appConfig.natsUrl }}
+            - name: NATS_URL
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.appConfig.analyticsUrl }}
+            - name: BML_MESSAGE_ANALYTICS_URL
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.appConfig.analyticsAppId }}
+            - name: BML_MESSAGE_ANALYTICS_APP_ID
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.secrets.artifacts.secretName }}
+            - name: BML_MESSAGE_ARTIFACTS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ . }}
+                  key: {{ $.Values.secrets.artifacts.key }}
+            {{- end }}
+            {{- with .Values.secrets.tracking.secretName }}
+            - name: BML_MESSAGE_TRACKING_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ . }}
+                  key: {{ $.Values.secrets.tracking.key }}
+                  optional: true
+            {{- end }}
+            {{- with .Values.secrets.nats.secretName }}
+            - name: NATS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ . }}
+                  key: {{ $.Values.secrets.nats.key }}
+            {{- end }}
+            {{- with .Values.secrets.analytics.secretName }}
+            - name: BML_MESSAGE_ANALYTICS_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ . }}
+                  key: {{ $.Values.secrets.analytics.key }}
+                  optional: true
+            {{- end }}
+            - name: BML_GRAPHQL_ENDPOINT
+              value: {{ required "appConfig.graphqlEndpoint is required (all message renders use the Bosca GraphQL API)" .Values.appConfig.graphqlEndpoint | quote }}
+            {{- with .Values.appConfig.localizationProject }}
+            # Localized rendering: binding a Bosca localization project renders
+            # each send in the recipient's bosca.profiles.locale. Unset = unlocalized.
+            - name: BML_MESSAGE_LOCALIZATION_PROJECT
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.appConfig.localizationStates }}
+            - name: BML_MESSAGE_LOCALIZATION_STATES
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.appConfig.localizationTtlSeconds }}
+            - name: BML_MESSAGE_LOCALIZATION_TTL_SECONDS
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.secrets.localization.secretName }}
+            - name: BML_MESSAGE_LOCALIZATION_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ . }}
+                  key: {{ $.Values.secrets.localization.key }}
+                  optional: true
+            {{- end }}
+          volumeMounts:
+            - name: message-cache
+              mountPath: {{ .Values.appConfig.cacheDir }}
+          # The HTTP port binds only AFTER warmup (every seed project's jar is fetched,
+          # validated, and hosted before Netty starts), so the startup probe carries the
+          # cold-start wait — without it, a slow registry would put the pod in a liveness
+          # restart loop before it ever binds.
+          startupProbe:
+            httpGet:
+              path: /api/v1/live
+              port: management
+            periodSeconds: 5
+            failureThreshold: 60
+          # Liveness only restarts a wedged process: /api/v1/live touches no dependency.
+          livenessProbe:
+            httpGet:
+              path: /api/v1/live
+              port: management
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          readinessProbe:
+            httpGet:
+              path: /api/v1/ready
+              port: http
+            periodSeconds: 5
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+        # Jar cache: immutable per (project, version) and re-fetchable from the registry,
+        # so an emptyDir is enough — a replaced pod just re-warms.
+        - name: message-cache
+          emptyDir: {}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

@@ -1,0 +1,5 @@
+mutation CancelMetadataTransition($metadataId: UUID!, $version: Int!) {
+    transitions {
+        cancelTransition(metadataId: $metadataId, metadataVersion: $version)
+    }
+}

@@ -1,0 +1,75 @@
+"""
+Single entry point for all Work Ops queries. Subsystems hang off
+this type rather than polluting the root Query with 15+ fields.
+"""
+type WorkOps {
+    portfolios: WorkOpsPortfolios!
+    programs: WorkOpsPrograms!
+    projects: WorkOpsProjects!
+    tasks: WorkOpsTasks!
+    statuses: WorkOpsStatuses!
+    workflows: WorkOpsWorkflows!
+    links: WorkOpsTaskLinks!
+    boards: WorkOpsBoards!
+    sprints: WorkOpsSprints!
+    versions: WorkOpsVersions!
+    components: WorkOpsComponents!
+    labels: WorkOpsLabels!
+    milestones: WorkOpsMilestones!
+    taskComments: WorkOpsTaskComments!
+    savedFilters: WorkOpsSavedFilters!
+    automation: WorkOpsAutomationQuery!
+    sla: WorkOpsSlaQuery!
+    notifications: WorkOpsNotificationsQuery!
+    attachments: WorkOpsAttachmentQuery!
+    worklogs: WorkOpsWorklogQuery!
+    crossProject: WorkOpsCrossProjectQuery!
+    multiRepo: WorkOpsMultiRepoQuery!
+    specs: WorkOpsSpecs!
+    requirements: WorkOpsRequirements!
+    specComments: WorkOpsSpecComments!
+    requirementComments: WorkOpsRequirementComments!
+}
+
+"""
+Single entry point for all Work Ops mutations.
+"""
+type WorkOpsMutations {
+    portfolios: WorkOpsPortfoliosMutation!
+    programs: WorkOpsProgramsMutation!
+    projects: WorkOpsProjectsMutation!
+    tasks: WorkOpsTasksMutation!
+    links: WorkOpsTaskLinksMutation!
+    boards: WorkOpsBoardsMutation!
+    sprints: WorkOpsSprintsMutation!
+    versions: WorkOpsVersionsMutation!
+    components: WorkOpsComponentsMutation!
+    labels: WorkOpsLabelsMutation!
+    milestones: WorkOpsMilestonesMutation!
+    taskComments: WorkOpsTaskCommentsMutation!
+    savedFilters: WorkOpsSavedFiltersMutation!
+    automation: WorkOpsAutomationMutation!
+    sla: WorkOpsSlaMutation!
+    notifications: WorkOpsNotificationsMutation!
+    attachments: WorkOpsAttachmentMutation!
+    worklogs: WorkOpsWorklogMutation!
+    crossProject: WorkOpsCrossProjectMutation!
+    multiRepo: WorkOpsMultiRepoMutation!
+    taskTypes: WorkOpsTaskTypesMutation!
+    priorities: WorkOpsPrioritiesMutation!
+    resolutions: WorkOpsResolutionsMutation!
+    statuses: WorkOpsStatusesMutation!
+    linkTypes: WorkOpsTaskLinkTypesMutation!
+    specs: WorkOpsSpecsMutation!
+    requirements: WorkOpsRequirementsMutation!
+    specComments: WorkOpsSpecCommentsMutation!
+    requirementComments: WorkOpsRequirementCommentsMutation!
+}
+
+extend type Query {
+    workOps: WorkOps!
+}
+
+extend type Mutation {
+    workOps: WorkOpsMutations!
+}

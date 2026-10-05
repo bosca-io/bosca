@@ -1,0 +1,38 @@
+{
+  "setup": {
+    "linux": [
+      "for tool in git java node corepack npm cargo uv; do command -v \"$tool\" >/dev/null 2>&1 || { echo \"Missing required tool: $tool\" >&2; exit 1; }; done",
+      "case \"$(java -version 2>&1 | head -n 1)\" in *\\\"25.*) ;; *) echo \"Java 25 is required by the Bosca composite build\" >&2; exit 1 ;; esac",
+      "git submodule update --init --recursive --jobs 8",
+      "sdk_dir=\"${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$HOME/Android/Sdk}}\"; test -d \"$sdk_dir\" || { echo \"Android SDK not found; set ANDROID_HOME or ANDROID_SDK_ROOT\" >&2; exit 1; }; for project in . services-di bosca-yks bosca-kmp apps/client-core-ui; do printf 'sdk.dir=%s\\n' \"$sdk_dir\" > \"$project/local.properties\"; done",
+      "./gradlew help --no-daemon",
+      "corepack pnpm --dir web install --frozen-lockfile",
+      "corepack pnpm --dir bml install --frozen-lockfile",
+      "npm --prefix apps/notifications-web ci",
+      "npm --prefix apps/profiles-web ci",
+      "npm --prefix bosca-yks/yks/fixtures ci",
+      "uv sync --frozen --project experimentation/ml/recommendation-model-loader",
+      "uv sync --frozen --project experimentation/ml/recommendation-trainer",
+      "cargo fetch --locked --manifest-path file-server/Cargo.toml",
+      "cargo fetch --locked --manifest-path firebase-scrypt/firebase-scrypt/src/main/rust/Cargo.toml",
+      "cargo fetch --locked --manifest-path gateway/proxy/Cargo.toml"
+    ],
+    "macos": [
+      "for tool in git java node corepack npm cargo uv; do command -v \"$tool\" >/dev/null 2>&1 || { echo \"Missing required tool: $tool\" >&2; exit 1; }; done",
+      "case \"$(java -version 2>&1 | head -n 1)\" in *\\\"25.*) ;; *) echo \"Java 25 is required by the Bosca composite build\" >&2; exit 1 ;; esac",
+      "git submodule update --init --recursive --jobs 8",
+      "sdk_dir=\"${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$HOME/Library/Android/sdk}}\"; test -d \"$sdk_dir\" || { echo \"Android SDK not found; set ANDROID_HOME or ANDROID_SDK_ROOT\" >&2; exit 1; }; for project in . services-di bosca-yks bosca-kmp apps/client-core-ui; do printf 'sdk.dir=%s\\n' \"$sdk_dir\" > \"$project/local.properties\"; done",
+      "./gradlew help --no-daemon",
+      "corepack pnpm --dir web install --frozen-lockfile",
+      "corepack pnpm --dir bml install --frozen-lockfile",
+      "npm --prefix apps/notifications-web ci",
+      "npm --prefix apps/profiles-web ci",
+      "npm --prefix bosca-yks/yks/fixtures ci",
+      "uv sync --frozen --project experimentation/ml/recommendation-model-loader",
+      "uv sync --frozen --project experimentation/ml/recommendation-trainer",
+      "cargo fetch --locked --manifest-path file-server/Cargo.toml",
+      "cargo fetch --locked --manifest-path firebase-scrypt/firebase-scrypt/src/main/rust/Cargo.toml",
+      "cargo fetch --locked --manifest-path gateway/proxy/Cargo.toml"
+    ]
+  }
+}

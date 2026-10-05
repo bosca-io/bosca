@@ -1,0 +1,14 @@
+query ChatNotificationReaction($channelId: UUID!, $after: Long!) {
+    chat {
+        channel(id: $channelId) {
+            messages(after: $after, limit: 1) {
+                sequence
+                deleted
+                reactions {
+                    id
+                    emoji
+                }
+            }
+        }
+    }
+}

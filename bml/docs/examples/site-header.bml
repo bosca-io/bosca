@@ -1,0 +1,9 @@
+{# Component: reusable site chrome. Pages still own their full document skeleton. #}
+<component tag="site-header">
+  <prop name="home" type="String" default="/"/>
+
+  <header class="site-header">
+    <a :href="home"><slot/></a>
+    <span class="copyright">&copy; Bosca</span>
+  </header>
+</component>

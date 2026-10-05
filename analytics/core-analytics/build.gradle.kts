@@ -1,0 +1,38 @@
+plugins {
+    id("org.jetbrains.kotlin.jvm")
+    alias(libs.plugins.kotlin.ksp)
+    alias(libs.plugins.kotlin.plugin.serialization)
+    alias(libs.plugins.kover)
+}
+
+java {
+    toolchain {
+        languageVersion.set(JavaLanguageVersion.of(25))
+    }
+}
+
+dependencies {
+    api(project(":analytics:analytics-models"))
+    implementation(project(":bosca-core:core"))
+    implementation(project(":bosca-core:core-security"))
+
+    testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.kotlin.test.junit)
+
+    "ksp"(project(":bosca-core:core-ksp"))
+    "ksp"(project(":services-di:service-ksp"))
+    "ksp"(project(":services-di:di-ksp"))
+}
+
+kotlin {
+    compilerOptions {
+        freeCompilerArgs.add("-opt-in=kotlin.uuid.ExperimentalUuidApi")
+        freeCompilerArgs.add("-opt-in=kotlinx.serialization.ExperimentalSerializationApi")
+        freeCompilerArgs.add("-opt-in=kotlinx.coroutines.ExperimentalCoroutinesApi")
+        
+    }
+}
+
+ksp {
+    arg("ProviderRegistrarPrefix", "CoreAnalytics")
+}

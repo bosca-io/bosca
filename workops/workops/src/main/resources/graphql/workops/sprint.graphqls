@@ -1,0 +1,87 @@
+# Work Ops — WorkOpsSprint (R8)
+#
+# Phase 5 ships the read + write surface. The sprint engine enforces
+# single-active-per-board and the close-with-destinations rule via the
+# typed errors `SPRINT_ALREADY_ACTIVE` and `SPRINT_CLOSE_UNFINISHED`.
+
+"""
+Lifecycle of a WorkOpsSprint. At most one sprint per board may sit in
+ACTIVE at any time (R8) — enforced both at the database layer (a
+partial unique index on `board_id where state = 'active'`) and at
+the service layer (so the typed `SprintAlreadyActiveException`
+surfaces before the SQL would).
+"""
+enum WorkOpsSprintState {
+    FUTURE
+    ACTIVE
+    CLOSED
+}
+
+"""
+One iteration of work bound to a board. Closing a sprint with
+unfinished tasks requires a destination per task — no work is
+silently orphaned.
+"""
+type WorkOpsSprint {
+    id: UUID!
+    boardId: UUID!
+    board: WorkOpsBoard!
+    name: String!
+    goal: String
+    state: WorkOpsSprintState!
+    startDate: DateTime
+    endDate: DateTime
+    completeDate: DateTime
+    "Snapshot of the tasks committed at sprint start."
+    committedTaskIds: [UUID!]!
+    "WorkOpsTasks added after start; used for scope-creep reporting."
+    addedDuringSprintTaskIds: [UUID!]!
+    velocityPoints: Float
+    createdAt: DateTime!
+    modifiedAt: DateTime!
+    version: Long!
+}
+
+input CreateWorkOpsSprintInput {
+    boardId: UUID!
+    name: String!
+    goal: String
+}
+
+input StartWorkOpsSprintInput {
+    sprintId: UUID!
+    expectedVersion: Long!
+    startDate: DateTime
+    endDate: DateTime
+    committedTaskIds: [UUID!]! = []
+}
+
+"""
+Closing a sprint disposes of every still-open task. The
+`destinations` map keys each (committed + added) task id to a
+target sprint id (or null to drop to backlog). Missing entries
+raise `SPRINT_CLOSE_UNFINISHED` with the missing ids enumerated.
+"""
+input WorkOpsCloseSprintDestination {
+    taskId: UUID!
+    "Target sprint id; null sends the task back to the project's backlog."
+    targetSprintId: UUID
+}
+
+input CloseWorkOpsSprintInput {
+    sprintId: UUID!
+    expectedVersion: Long!
+    destinations: [WorkOpsCloseSprintDestination!]! = []
+    velocityPoints: Float
+}
+
+type WorkOpsSprints {
+    sprint(id: UUID!): WorkOpsSprint
+    byBoard(boardId: UUID!, offset: Long! = 0, limit: Int! = 50): [WorkOpsSprint!]!
+}
+
+type WorkOpsSprintsMutation {
+    create(input: CreateWorkOpsSprintInput!): WorkOpsSprint!
+    start(input: StartWorkOpsSprintInput!): WorkOpsSprint!
+    close(input: CloseWorkOpsSprintInput!): WorkOpsSprint!
+}

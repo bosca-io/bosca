@@ -1,0 +1,25 @@
+suite: TF Serving readiness
+templates:
+  - deployment.yaml
+  # deployment.yaml checksums configmap.yaml via `include`; helm-unittest needs
+  # both in the suite to resolve the cross-template reference.
+  - configmap.yaml
+tests:
+  - it: permits context-only and empty-volume bootstrap without a legacy model
+    template: deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.tcpSocket.port
+          value: http
+      - notExists:
+          path: spec.template.spec.containers[0].readinessProbe.httpGet
+
+  - it: pulls the model loader from the Bosca image registry
+    template: deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[1].name
+          value: loader
+      - equal:
+          path: spec.template.spec.containers[1].image
+          value: ghcr.io/bosca-io/bosca/recommendation-model-loader:5.12.15

@@ -1,0 +1,20 @@
+fragment KitChatSessionSummaryFragment on ChatSession {
+    id
+    agentKey
+    title
+    processing
+    status
+    created
+    modified
+}
+
+fragment KitChatSessionFragment on ChatSession {
+    ...KitChatSessionSummaryFragment
+    messages {
+        id
+        sessionId
+        author
+        created
+        event
+    }
+}

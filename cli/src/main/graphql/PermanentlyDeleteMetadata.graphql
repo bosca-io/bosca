@@ -1,0 +1,7 @@
+mutation PermanentlyDeleteMetadata($id: UUID!) {
+    content {
+        metadata {
+            permanentlyDelete(metadataId: $id)
+        }
+    }
+}

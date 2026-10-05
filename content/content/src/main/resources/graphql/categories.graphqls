@@ -1,0 +1,29 @@
+"Query operations for browsing content categories"
+type Categories {
+    "List all available categories"
+    all: [Category!]!
+}
+
+"A category for organizing and classifying content items"
+type Category {
+    "Unique identifier for this category"
+    id: UUID!
+    "Display name of the category"
+    name: String!
+}
+
+"Input for creating or updating a category"
+input CategoryInput {
+    "Display name for the category"
+    name: String!
+}
+
+"Mutation operations for managing content categories"
+type CategoryMutation {
+    "Create a new category"
+    add(category: CategoryInput!): Category!
+    "Update an existing category"
+    edit(id: UUID!, category: CategoryInput!): Category!
+    "Delete a category by ID"
+    delete(id: UUID!): Boolean!
+}

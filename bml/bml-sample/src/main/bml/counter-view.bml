@@ -1,0 +1,7 @@
+<component tag="counter-view">
+  <prop name="count" type="Int" default="0"/>
+  <style scoped>
+    .count { font-variant-numeric: tabular-nums; color: #14438c; font-weight: 600; }
+  </style>
+  <strong class="count">Count: { count }</strong>
+</component>

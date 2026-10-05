@@ -1,0 +1,30 @@
+suite: bosca-collector autoscaling
+templates:
+  - templates/hpa.yaml
+values:
+  - ../values.yaml
+tests:
+  - it: does not render when autoscaling is disabled
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: renders configured CPU autoscaling
+    set:
+      autoscaling:
+        enabled: true
+        minReplicas: 1
+        maxReplicas: 10
+        targetCPUUtilizationPercentage: 70
+    asserts:
+      - isKind:
+          of: HorizontalPodAutoscaler
+      - equal:
+          path: spec.minReplicas
+          value: 1
+      - equal:
+          path: spec.maxReplicas
+          value: 10
+      - equal:
+          path: spec.metrics[0].resource.target.averageUtilization
+          value: 70

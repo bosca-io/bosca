@@ -1,0 +1,9 @@
+query GetGroups($offset: Long!, $limit: Int!) {
+    security {
+        groups {
+            all(offset: $offset, limit: $limit) {
+                ...Group
+            }
+        }
+    }
+}

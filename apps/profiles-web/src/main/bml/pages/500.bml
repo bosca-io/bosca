@@ -1,0 +1,6 @@
+<page route="/500">
+  <script server provides="branding">bosca.profiles.web.branding()</script>
+  <site-layout title="Something went wrong" :brand="branding.name" :logo="branding.logoUrl" :footer="branding.footerHtml" :signedIn="false">
+    <main class="login-shell"><section class="login-card"><p class="eyebrow">Account unavailable</p><h1>We couldn't load this page</h1><p class="card-copy">Try again in a moment. If your session expired, sign in again.</p><a class="card-link" href="/login" data-sign-out-before-navigation>Return to sign in</a></section></main>
+  </site-layout>
+</page>

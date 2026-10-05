@@ -1,0 +1,201 @@
+{{- if .Values.postgres.enabled }}
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: postgres-bosca
+  labels:
+    {{- include "bosca-common.labels" . | nindent 4 }}
+spec:
+  instances: {{ .Values.postgres.instances | default 3 }}
+
+  # Superuser secret is only enabled while a one-time migration is in flight
+  # (postgres.migration.enabled). CNPG best practice is to leave it off in
+  # production — flip the flag, helm upgrade, run the migration, flip back.
+  enableSuperuserAccess: {{ .Values.postgres.migration.enabled | default false }}
+
+  imageName: {{ .Values.postgres.imageName | default "ghcr.io/cloudnative-pg/postgresql:17" }}
+
+  storage:
+    size: {{ .Values.postgres.storage.size | default "50Gi" }}
+    {{- with .Values.postgres.storage.storageClass }}
+    storageClass: {{ . }}
+    {{- end }}
+
+  resources:
+    requests:
+      cpu: {{ .Values.postgres.resources.requests.cpu | default "500m" | quote }}
+      memory: {{ .Values.postgres.resources.requests.memory | default "1Gi" | quote }}
+    limits:
+      cpu: {{ .Values.postgres.resources.limits.cpu | default "2" | quote }}
+      memory: {{ .Values.postgres.resources.limits.memory | default "4Gi" | quote }}
+
+  postgresql:
+    {{- /* Merge auto-computed memory params with explicit user overrides.
+           Helm `mergeOverwrite` lets user values in .Values.postgres.parameters
+           take precedence over defaults from pgAutoParams. */ -}}
+    {{- $autoParams := include "bosca-common.pgAutoParams" (dict "memoryGi" .Values.postgres.memoryGi "maxConnections" .Values.postgres.parameters.max_connections) | fromYaml }}
+    {{- $params := mergeOverwrite $autoParams (.Values.postgres.parameters | default dict) }}
+    parameters:
+      {{- toYaml $params | nindent 6 }}
+    pg_hba:
+      {{- toYaml .Values.postgres.pg_hba | nindent 6 }}
+
+  {{- /* Bootstrap selection is sticky on whether replica.source.destinationPath
+         is configured — NOT on replica.enabled. Rationale: CNPG treats the
+         bootstrap section as immutable after cluster creation, so a "promotion"
+         (replica.enabled: false) must not change what bootstrap declares.
+         Switching this on replica.enabled produced scary helm diffs on promotion
+         and would silently corrupt a DR-rebuild by replacing recovery with initdb.
+
+         To promote a replica → primary: keep replica.source.destinationPath set,
+         flip replica.enabled to false, helm upgrade. The recovery bootstrap stays
+         in the spec (harmless — immutable post-creation), the replica block
+         disappears, and managed.roles takes over local role management. */ -}}
+  {{- if .Values.postgres.replica.source.destinationPath }}
+  bootstrap:
+    recovery:
+      source: {{ .Values.postgres.replica.sourceName | quote }}
+
+  externalClusters:
+    - name: {{ .Values.postgres.replica.sourceName | quote }}
+      barmanObjectStore:
+        destinationPath: {{ .Values.postgres.replica.source.destinationPath | quote }}
+        endpointURL: {{ .Values.postgres.replica.source.endpointURL | quote }}
+        s3Credentials:
+          accessKeyId:
+            name: {{ .Values.postgres.replica.source.s3CredentialsSecret | quote }}
+            key: {{ .Values.postgres.replica.source.accessKeyIdKey | quote }}
+          secretAccessKey:
+            name: {{ .Values.postgres.replica.source.s3CredentialsSecret | quote }}
+            key: {{ .Values.postgres.replica.source.secretAccessKeyKey | quote }}
+          region:
+            name: {{ .Values.postgres.replica.source.s3CredentialsSecret | quote }}
+            key: {{ .Values.postgres.replica.source.regionKey | default "REGION" | quote }}
+        wal:
+          compression: gzip
+  {{- else }}
+  bootstrap:
+    initdb:
+      database: {{ .Values.postgres.database | default "bosca" }}
+      owner: {{ .Values.postgres.owner | default "bosca" }}
+      postInitApplicationSQL:
+        {{- $owner := .Values.postgres.owner | default "bosca" }}
+        {{- $db := .Values.postgres.database | default "bosca" }}
+        {{- range .Values.postgres.roles }}
+        - CREATE ROLE "{{ .name }}" LOGIN
+        {{- end }}
+        {{- range .Values.postgres.schemas }}
+        - CREATE SCHEMA IF NOT EXISTS {{ . }} AUTHORIZATION {{ $owner }}
+        {{- end }}
+        {{- /* No role-grant statements here — they used to ALTER ROLE … SET
+               role = bosca, which conflicts with the databases:[].owner: list
+               (Flyway runs as the app role and tables get owned by it, not by
+               bosca, so the auto SET-role made apps lose access to their own
+               tables). All role grants now live in the post-install/post-upgrade
+               Job (templates/postgres-grants-job.yaml) so they reconcile on
+               every helm release, not just on initial bootstrap. */ -}}
+  {{- end }}
+
+  {{- /* Active replication only when replica.enabled is true. Promotion is just
+         "remove this block" — CNPG sees the change and stops WAL replay, the
+         cluster accepts writes, and managed.roles (below) takes over locally. */ -}}
+  {{- if .Values.postgres.replica.enabled }}
+  replica:
+    enabled: true
+    source: {{ .Values.postgres.replica.sourceName | quote }}
+  {{- end }}
+
+  {{- /* managed.roles is only meaningful for a primary. In replica mode CNPG
+         skips it (the cluster is read-only and roles come from WAL replay).
+         Suppressing it while replica.enabled keeps the spec quiet. */ -}}
+  {{- if not .Values.postgres.replica.enabled }}
+  managed:
+    roles:
+      {{- range .Values.postgres.roles }}
+      - name: {{ .name }}
+        ensure: present
+        login: true
+        inherit: true
+        {{- if eq (.access | default "readwrite") "readwrite" }}
+        inRoles:
+          - {{ $.Values.postgres.owner | default "bosca" }}
+        {{- end }}
+        passwordSecret:
+          name: {{ .secretName }}
+      {{- end }}
+  {{- end }}
+
+  monitoring:
+    enablePodMonitor: {{ .Values.postgres.monitoring.enabled | default false }}
+
+  {{- if .Values.postgres.backup.barmanObjectStore.destinationPath }}
+  backup:
+    {{- toYaml .Values.postgres.backup | nindent 4 }}
+  {{- end }}
+
+  {{- with .Values.postgres.affinity }}
+  affinity:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+{{- end }}
+{{- if .Values.postgres.enabled }}
+{{- range .Values.postgres.databases }}
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Database
+metadata:
+  name: {{ .name }}
+  labels:
+    {{- include "bosca-common.labels" $ | nindent 4 }}
+spec:
+  name: {{ .name }}
+  owner: {{ .owner }}
+  cluster:
+    name: postgres-bosca
+  {{- with .extensions }}
+  # Reconciled by the CNPG operator (a superuser), so the extension exists on both fresh and existing
+  # clusters — the non-superuser app role never needs CREATE EXTENSION.
+  extensions:
+    {{- range . }}
+    - name: {{ . }}
+      ensure: present
+    {{- end }}
+  {{- end }}
+{{- end }}
+{{- end }}
+{{- if and .Values.postgres.enabled .Values.postgres.pooler.enabled }}
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Pooler
+metadata:
+  name: postgres-bosca-pooler
+  labels:
+    {{- include "bosca-common.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-weight: "10"
+spec:
+  cluster:
+    name: postgres-bosca
+  instances: {{ .Values.postgres.pooler.instances | default 2 }}
+  type: rw
+  pgbouncer:
+    poolMode: {{ .Values.postgres.pooler.poolMode | default "session" }}
+    parameters:
+      max_client_conn: "{{ .Values.postgres.pooler.maxClientConn | default 1000 }}"
+      default_pool_size: "{{ .Values.postgres.pooler.defaultPoolSize | default 25 }}"
+{{- end }}
+{{- if and .Values.postgres.enabled .Values.postgres.scheduledBackup.enabled .Values.postgres.backup.barmanObjectStore.destinationPath }}
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: postgres-bosca-backup
+  labels:
+    {{- include "bosca-common.labels" . | nindent 4 }}
+spec:
+  schedule: {{ .Values.postgres.scheduledBackup.schedule | default "0 0 2 * * *" | quote }}
+  backupOwnerReference: self
+  cluster:
+    name: postgres-bosca
+{{- end }}

@@ -1,0 +1,187 @@
+name: "Release: Libraries"
+on:
+  tag:
+    patterns: ["*"]
+
+concurrency:
+  group: workspace-release
+  cancel-in-progress: false
+
+env:
+  GRADLE_OPTS: "-Xmx4g -XX:+UseG1GC"
+
+jobs:
+  test-jvm:
+    runner: macos
+#    runner: linux
+    timeout: 45m
+    steps:
+      - name: Checkout
+        uses: checkout
+      - name: Setup Registry
+        uses: setup-registry
+        with:
+          repository: bosca-maven
+      - name: Setup Java
+        uses: setup-java
+        with:
+          version: "25"
+          distribution: zulu
+      - name: Setup Node
+        # The BML sites bundle their client scripts with
+        # node/esbuild during processResources, which `test` reaches via classes.
+        uses: setup-node
+        with:
+          version: "22"
+      - name: Setup Rust
+        # The root test task configures firebase-scrypt, whose Gradle project
+        # invokes Cargo to compile the UniFFI native library.
+        uses: setup-rust
+        with:
+          toolchain: stable
+      - name: Configure npm Registry
+        run: |
+          registry="${BOSCA_REGISTRY_URL:?setup-registry must configure Bosca Artifacts before npm}"
+          registry="${registry%/}"
+          case "$registry" in
+            http://*|https://*) ;;
+            *) registry="https://$registry" ;;
+          esac
+          npm config set @bosca:registry "$registry/npm/" --location=user
+      - name: Start Shared Test Resources
+        run: ./gradlew --no-daemon testResourcesUp
+      - name: Install BML Bundler Dependencies
+        # The BML client bundlers do a bare `import "esbuild"` resolved from the
+        # bml-runtime checkout's node_modules, which is git-ignored — without
+        # this, the client bundle tasks fail with ERR_MODULE_NOT_FOUND.
+        run: cd bml/bml-runtime && npm ci --no-audit --no-fund
+      - name: Run JVM Tests
+        run: ./gradlew --no-daemon test
+      - name: Stop Shared Test Resources
+        run: ./gradlew --no-daemon testResourcesDown
+        if: always()
+
+  publish-jvm:
+    runner: macos
+#    runner: linux
+    timeout: 45m
+    artifacts:
+      - type: maven
+        namespace: bosca-maven
+        coordinate: "io.bosca:core:${{ version }}"
+      - type: maven
+        namespace: bosca-maven
+        coordinate: "io.bosca:bml-annotations:${{ version }}"
+      - type: maven
+        namespace: bosca-maven
+        coordinate: "io.bosca:core-bml:${{ version }}"
+      - type: maven
+        namespace: bosca-maven
+        coordinate: "io.bosca:bml:${{ version }}"
+      - type: maven
+        namespace: bosca-maven
+        coordinate: "io.bosca:bml-compiler:${{ version }}"
+      - type: maven
+        namespace: bosca-maven
+        coordinate: "io.bosca:bml-server:${{ version }}"
+      - type: maven
+        namespace: bosca-maven
+        coordinate: "io.bosca:bml-message-host:${{ version }}"
+      - type: maven
+        namespace: bosca-maven
+        coordinate: "io.bosca:bml-message-client:${{ version }}"
+      - type: maven
+        namespace: bosca-maven
+        coordinate: "io.bosca:bml-gradle:${{ version }}"
+      - type: maven
+        namespace: bosca-maven
+        coordinate: "io.bosca.bml:io.bosca.bml.gradle.plugin:${{ version }}"
+    steps:
+      - name: Checkout
+        uses: checkout
+      - name: Setup Registry
+        uses: setup-registry
+        with:
+          repository: bosca-maven
+      - name: Setup Java
+        uses: setup-java
+        with:
+          version: "25"
+          distribution: zulu
+      - name: Setup Rust
+        # Publication dependency resolution configures firebase-scrypt even
+        # when its publication tasks are excluded.
+        uses: setup-rust
+        with:
+          toolchain: stable
+      - name: Setup Node
+        uses: setup-node
+        with:
+          version: "22"
+      - name: Configure npm Registry
+        run: |
+          registry="${BOSCA_REGISTRY_URL:?setup-registry must configure Bosca Artifacts before npm}"
+          registry="${registry%/}"
+          case "$registry" in
+            http://*|https://*) ;;
+            *) registry="https://$registry" ;;
+          esac
+          npm config set @bosca:registry "$registry/npm/" --location=user
+      - name: Install BML Bundler Dependencies
+        run: cd bml/bml-runtime && npm ci --no-audit --no-fund
+      - name: Extract Version
+        run: |
+          RELEASE_VERSION="${PUBLISH_VERSION#refs/tags/}"
+          echo "PUBLISH_VERSION=${RELEASE_VERSION}" >> "$BOSCA_ENV"
+        env:
+          PUBLISH_VERSION: ${{ ref }}
+      - name: Publish Workspace Libraries and Gradle Plugins Except Firebase Scrypt
+        run: ./gradlew --no-daemon publishExceptFirebaseScrypt
+
+  publish-firebase-scrypt:
+    runner: linux
+    timeout: 15m
+    steps:
+      - name: Checkout
+        uses: checkout
+      - name: Setup Registry
+        uses: setup-registry
+        with:
+          repository: bosca-maven
+      - name: Setup Java
+        uses: setup-java
+        with:
+          version: "25"
+          distribution: zulu
+      - name: Setup Rust
+        uses: setup-rust
+        with:
+          toolchain: stable
+      - name: Extract Version
+        run: |
+          RELEASE_VERSION="${PUBLISH_VERSION#refs/tags/}"
+          echo "PUBLISH_VERSION=${RELEASE_VERSION}" >> "$BOSCA_ENV"
+        env:
+          PUBLISH_VERSION: ${{ ref }}
+      - name: Publish Firebase Scrypt
+        run: ./gradlew --no-daemon :firebase-scrypt:firebase-scrypt:publish
+
+  notify:
+    runner: macos
+#    runner: linux
+    timeout: 5m
+    needs: [publish-jvm, publish-firebase-scrypt, test-jvm]
+    if: always()
+    steps:
+      - name: Notify Success
+        uses: notify
+        if: needs.publish-jvm.result == 'success' && needs.publish-firebase-scrypt.result == 'success' && needs.test-jvm.result == 'success'
+        with:
+          channel: slack
+          message: "Release ${{ ref }} published successfully — all JVM packages deployed and tests passed"
+      - name: Notify Failure
+        uses: notify
+        if: needs.publish-jvm.result != 'success' || needs.publish-firebase-scrypt.result != 'success' || needs.test-jvm.result != 'success'
+        with:
+          channel: slack
+          message: "Release ${{ ref }} FAILED — check pipeline logs"

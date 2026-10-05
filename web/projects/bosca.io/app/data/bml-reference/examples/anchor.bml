@@ -1,0 +1,16 @@
+{# Component: override the built-in `a` tag.
+   Exercises: overriding an overrideable built-in, the `html:` native escape hatch
+   (so emitting an anchor does not recurse into this override), and a server `provides`.
+   Protected tags (page/island/for/…) cannot be overridden this way. #}
+<component tag="a">
+  <prop name="href" type="String" required/>
+  <prop name="external" type="Boolean" default="false"/>
+
+  <script server provides="rel">
+    if (external) "noopener noreferrer" else null
+  </script>
+
+  <html:a :href="href" :rel="rel" data-tracked="true">
+    <slot/>
+  </html:a>
+</component>

@@ -1,0 +1,157 @@
+"""Billing account classification; BUSINESS accounts may branch billing logic."""
+enum AccountType { CONSUMER BUSINESS }
+
+"""Address role: where the bill goes vs. where the goods go."""
+enum AddressType { BILLING SHIPPING }
+
+extend type Ecom {
+    "A customer by id."
+    customer(id: UUID!): Customer
+    "A page of a company's customers, newest first. Admin (PII)."
+    customers(companyId: UUID!, offset: Int! = 0, limit: Int! = 50): [Customer!]!
+    "The caller's customer record in a company, resolved principal -> profile -> customer."
+    myCustomer(companyId: UUID!): Customer
+    "A billing account by id."
+    account(id: UUID!): Account
+    "A page of a company's billing accounts, newest first. Admin."
+    accounts(companyId: UUID!, offset: Int! = 0, limit: Int! = 50): [Account!]!
+}
+
+extend type EcomMutation {
+    "Customer creates and per-customer operations."
+    customers: CustomersMutation!
+    "Billing-account creates and per-account operations."
+    accounts: AccountsMutation!
+}
+
+extend type CompanyCredit {
+    "The account this credit is bound to, if restricted to one."
+    account: Account
+}
+
+"""
+A shopper within a company, backed by a profile. Auth resolves principal -> profile -> customer;
+principal ids are never stored here. A customer can belong to several billing accounts.
+"""
+type Customer {
+    id: UUID!
+    company: Company!
+    "The backing profile in the profiles domain."
+    profile: Profile!
+    "The account used by default for new carts/orders."
+    defaultAccount: Account
+    "All accounts this customer belongs to."
+    accounts: [Account!]!
+    "Module-specific extension data."
+    extras: CustomerExtras!
+    created: DateTime!
+    modified: DateTime!
+}
+
+"""
+The billing entity: carts, payments, subscriptions, and credit hang off an account, not a customer.
+Several customers may share one account (household, business team).
+"""
+type Account {
+    id: UUID!
+    company: Company!
+    type: AccountType!
+    "Stored credit balance, spendable as ACCOUNT_CREDIT payments. Changes are audited."
+    credit: Money!
+    "Customers attached to this account."
+    customers: [Customer!]!
+    "Saved billing/shipping addresses."
+    addresses: [AccountAddress!]!
+    "Module-specific extension data."
+    extras: AccountExtras!
+    created: DateTime!
+    modified: DateTime!
+}
+
+"""A saved address on an account."""
+type AccountAddress {
+    id: UUID!
+    type: AddressType!
+    "Preferred address for its type — used to prefill carts."
+    preferred: Boolean!
+    address1: String!
+    address2: String
+    city: String!
+    state: String!
+    "ISO 3166-1 alpha-2 country code."
+    country: String!
+    zip: String!
+    phone: String!
+    note: String
+}
+
+"""Customer creates and per-customer operations."""
+type CustomersMutation {
+    "Create a customer in a company, linked to a profile (the caller's by default)."
+    add(input: CustomerInput!): Customer!
+    "Operations on an existing customer."
+    customer(id: UUID!): CustomerMutation!
+}
+
+"""Mutations scoped to one customer."""
+type CustomerMutation {
+    "Replace the customer's extras blob."
+    edit(extras: JSON!): Customer!
+    "Set which of the customer's accounts is the default for new carts/orders."
+    setDefaultAccount(accountId: UUID!): Customer!
+    "Soft-delete the customer."
+    delete: Boolean!
+}
+
+"""Billing-account creates and per-account operations."""
+type AccountsMutation {
+    "Create a billing account in a company, optionally attaching customers."
+    add(input: AccountInput!): Account!
+    "Operations on an existing account."
+    account(id: UUID!): AccountMutation!
+}
+
+"""Mutations scoped to one billing account."""
+type AccountMutation {
+    "Edit the account."
+    edit(input: AccountInput!): Account!
+    "Soft-delete the account."
+    delete: Boolean!
+    "Add a billing or shipping address to the account."
+    addAddress(input: AccountAddressInput!): AccountAddress!
+    "Add credit to the account balance (audited, row-locked). Admin."
+    addCredit(amount: Money!, note: String = null): Account!
+}
+
+"""Creates a customer in a company."""
+input CustomerInput {
+    companyId: UUID!
+    "The backing profile; defaults to the caller's profile."
+    profileId: UUID = null
+    extras: JSON = null
+}
+
+"""Creates or edits a billing account."""
+input AccountInput {
+    companyId: UUID!
+    type: AccountType!
+    "Customers to attach to the account."
+    customerIds: [UUID!]! = []
+    extras: JSON = null
+}
+
+"""A saved address on an account."""
+input AccountAddressInput {
+    type: AddressType!
+    "Make this the preferred address for its type."
+    preferred: Boolean! = false
+    address1: String!
+    address2: String = null
+    city: String!
+    state: String!
+    "ISO 3166-1 alpha-2 country code."
+    country: String!
+    zip: String!
+    phone: String!
+    note: String = null
+}

@@ -1,0 +1,295 @@
+query ListAnalyticsQueries {
+    analytics {
+        queries {
+            all {
+                ...AnalyticsQuerySummaryFragment
+            }
+        }
+    }
+}
+
+query GetAnalyticsQueryById($id: UUID!) {
+    analytics {
+        queries {
+            queryById(id: $id) {
+                ...AnalyticsQueryFragment
+            }
+        }
+    }
+}
+
+query GetAnalyticsQueryByKey($key: String!) {
+    analytics {
+        queries {
+            queryByKey(key: $key) {
+                ...AnalyticsQueryFragment
+            }
+        }
+    }
+}
+
+query ExecuteAnalyticsQuery($queryId: UUID!, $parameters: [AnalyticsQueryExecutionParameterInput!]!) {
+    analytics {
+        queries {
+            execute(queryId: $queryId, parameters: $parameters) {
+                records
+                cached
+                refreshedAt
+            }
+        }
+    }
+}
+
+query ExecuteAnalyticsQueryByKey($key: String!, $parameters: [AnalyticsQueryExecutionParameterInput!]!) {
+    analytics {
+        queries {
+            executeByKey(key: $key, parameters: $parameters) {
+                records
+                cached
+                refreshedAt
+            }
+        }
+    }
+}
+
+mutation AddAnalyticsQuery($query: AnalyticsQueryInput!) {
+    analytics {
+        queries {
+            add(query: $query) {
+                ...AnalyticsQueryFragment
+            }
+        }
+    }
+}
+
+mutation EditAnalyticsQuery($query: AnalyticsQueryInput!) {
+    analytics {
+        queries {
+            edit(query: $query) {
+                ...AnalyticsQueryFragment
+            }
+        }
+    }
+}
+
+mutation DeleteAnalyticsQuery($id: UUID!) {
+    analytics {
+        queries {
+            delete(id: $id)
+        }
+    }
+}
+
+mutation RefreshAnalyticsQuery($queryId: UUID!) {
+    analytics {
+        queries {
+            refresh(queryId: $queryId)
+        }
+    }
+}
+
+mutation AddAnalyticsQueryPermission($permission: PermissionInput!) {
+    analytics {
+        queries {
+            addPermission(permission: $permission) {
+                action
+                groupId
+            }
+        }
+    }
+}
+
+mutation DeleteAnalyticsQueryPermission($permission: PermissionInput!) {
+    analytics {
+        queries {
+            deletePermission(permission: $permission) {
+                action
+                groupId
+            }
+        }
+    }
+}
+
+query ListAnalyticsVisualizations {
+    analytics {
+        visualizations {
+            all {
+                ...AnalyticsVisualizationSummaryFragment
+            }
+        }
+    }
+}
+
+query GetAnalyticsVisualizationById($id: UUID!) {
+    analytics {
+        visualizations {
+            byId(id: $id) {
+                ...AnalyticsVisualizationFragment
+            }
+        }
+    }
+}
+
+query GetAnalyticsVisualizationByKey($key: String!) {
+    analytics {
+        visualizations {
+            byKey(key: $key) {
+                ...AnalyticsVisualizationFragment
+            }
+        }
+    }
+}
+
+mutation AddAnalyticsVisualization($visualization: AnalyticsVisualizationInput!) {
+    analytics {
+        visualizations {
+            add(visualization: $visualization) {
+                ...AnalyticsVisualizationFragment
+            }
+        }
+    }
+}
+
+mutation EditAnalyticsVisualization($visualization: AnalyticsVisualizationInput!) {
+    analytics {
+        visualizations {
+            edit(visualization: $visualization) {
+                ...AnalyticsVisualizationFragment
+            }
+        }
+    }
+}
+
+mutation DeleteAnalyticsVisualization($id: UUID!) {
+    analytics {
+        visualizations {
+            delete(id: $id)
+        }
+    }
+}
+
+mutation AddAnalyticsVisualizationPermission($permission: PermissionInput!) {
+    analytics {
+        visualizations {
+            addPermission(permission: $permission) {
+                action
+                groupId
+            }
+        }
+    }
+}
+
+mutation DeleteAnalyticsVisualizationPermission($permission: PermissionInput!) {
+    analytics {
+        visualizations {
+            deletePermission(permission: $permission) {
+                action
+                groupId
+            }
+        }
+    }
+}
+
+query ListAnalyticsDashboards {
+    analytics {
+        dashboards {
+            all {
+                ...AnalyticsDashboardSummaryFragment
+            }
+        }
+    }
+}
+
+query GetAnalyticsDashboardById($id: UUID!) {
+    analytics {
+        dashboards {
+            byId(id: $id) {
+                ...AnalyticsDashboardFragment
+            }
+        }
+    }
+}
+
+query GetAnalyticsDashboardByKey($key: String!) {
+    analytics {
+        dashboards {
+            byKey(key: $key) {
+                ...AnalyticsDashboardFragment
+            }
+        }
+    }
+}
+
+mutation AddAnalyticsDashboard($dashboard: AnalyticsDashboardInput!) {
+    analytics {
+        dashboards {
+            add(dashboard: $dashboard) {
+                ...AnalyticsDashboardFragment
+            }
+        }
+    }
+}
+
+mutation EditAnalyticsDashboard($dashboard: AnalyticsDashboardInput!) {
+    analytics {
+        dashboards {
+            edit(dashboard: $dashboard) {
+                ...AnalyticsDashboardFragment
+            }
+        }
+    }
+}
+
+mutation DeleteAnalyticsDashboard($id: UUID!) {
+    analytics {
+        dashboards {
+            delete(id: $id)
+        }
+    }
+}
+
+mutation AddAnalyticsDashboardPermission($permission: PermissionInput!) {
+    analytics {
+        dashboards {
+            addPermission(permission: $permission) {
+                action
+                groupId
+            }
+        }
+    }
+}
+
+mutation DeleteAnalyticsDashboardPermission($permission: PermissionInput!) {
+    analytics {
+        dashboards {
+            deletePermission(permission: $permission) {
+                action
+                groupId
+            }
+        }
+    }
+}
+
+mutation AddAnalyticsDashboardVisualization(
+    $dashboardId: UUID!,
+    $visualizationId: UUID!,
+    $configuration: JSON
+) {
+    analytics {
+        dashboards {
+            addVisualization(
+                dashboardId: $dashboardId,
+                visualizationId: $visualizationId,
+                configuration: $configuration
+            )
+        }
+    }
+}
+
+mutation RemoveAnalyticsDashboardVisualization($id: UUID!) {
+    analytics {
+        dashboards {
+            removeVisualization(id: $id)
+        }
+    }
+}

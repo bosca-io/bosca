@@ -1,0 +1,6 @@
+<page route="/404">
+  <script server provides="branding">bosca.profiles.web.branding()</script>
+  <site-layout title="Page not found" :brand="branding.name" :logo="branding.logoUrl" :footer="branding.footerHtml" :signedIn="false">
+    <main class="login-shell"><section class="login-card"><p class="eyebrow">404</p><h1>Page not found</h1><p class="card-copy">The account page you requested does not exist.</p><a class="card-link" href="/">Go to account overview</a></section></main>
+  </site-layout>
+</page>

@@ -1,0 +1,1 @@
+alter type permission_action add value 'execute' after 'list';

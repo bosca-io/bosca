@@ -1,0 +1,19 @@
+<component tag="profile-attribute-display">
+  <prop name="attribute" type="bosca.profiles.web.ProfileAttributeRow" required/>
+
+  <if attribute.hasField>
+    <div class="attribute-value">
+      <span class="attribute-value-label">{ attribute.field.label }</span>
+      <if attribute.field.boolean>
+        <span><if attribute.field.checked>Yes<else>No</if></span>
+      <else>
+        <span>{ attribute.field.value }</span>
+      </if>
+      <if attribute.field.description.isNotBlank()>
+        <span class="field-help">{ attribute.field.description }</span>
+      </if>
+    </div>
+  <else>
+    <pre class="json-value">{ attribute.value }</pre>
+  </if>
+</component>

@@ -1,0 +1,64 @@
+"Links a metadata item to a LocalizationProject as a source document to be translated"
+type LocalizationProjectDocument {
+    "Unique identifier"
+    id: UUID!
+    "The project this document belongs to"
+    projectId: UUID!
+    "The source metadata item containing the authoritative content"
+    metadataId: UUID!
+    "Free-form JSON attributes"
+    attributes: JSON
+    "Timestamp when this link was created"
+    created: DateTime!
+    "Timestamp when this link was last modified"
+    modified: DateTime!
+
+    "All per-language translated versions of this document"
+    translations: [LocalizationDocumentTranslation!]!
+    "The translated content for a specific language, or null when missing"
+    translation(languageTag: String!): LocalizationDocumentTranslation
+}
+
+"Translated content of a project document for a specific language"
+type LocalizationDocumentTranslation {
+    "Unique identifier"
+    id: UUID!
+    "The document this translation belongs to"
+    documentId: UUID!
+    "BCP-47 language tag"
+    languageTag: String!
+    "Translated JSONB content, mirroring the source document schema"
+    content: JSON!
+    "Current workflow state"
+    state: TranslationState!
+    "Provenance of this translation"
+    origin: TranslationOrigin!
+    "Optional origin detail"
+    originDetail: String
+    "Reviewer principal ID"
+    reviewedBy: UUID
+    "Most recent review timestamp"
+    reviewedAt: DateTime
+    "Creator principal ID"
+    createdBy: UUID
+    "Created timestamp"
+    created: DateTime!
+    "Last-modified timestamp"
+    modified: DateTime!
+}
+
+"Input for linking a metadata item to a project for translation"
+input LocalizationProjectDocumentInput {
+    projectId: UUID!
+    metadataId: UUID!
+    attributes: JSON
+}
+
+"Input for upserting the translated content of a project document"
+input LocalizationDocumentTranslationInput {
+    documentId: UUID!
+    languageTag: String!
+    content: JSON!
+    origin: TranslationOrigin
+    originDetail: String
+}

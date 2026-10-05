@@ -1,0 +1,100 @@
+{{- if .Values.s3proxy.enabled }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: s3proxy
+  labels:
+    {{- include "bosca-common.labels" . | nindent 4 }}
+    app: s3proxy
+spec:
+  serviceName: s3proxy
+  replicas: 1
+  selector:
+    matchLabels:
+      app: s3proxy
+  template:
+    metadata:
+      labels:
+        app: s3proxy
+    spec:
+      containers:
+        - name: s3proxy
+          image: {{ .Values.s3proxy.image | default "andrewgaul/s3proxy:3.0.0" }}
+          ports:
+            - name: http
+              containerPort: 8000
+          env:
+            - name: S3PROXY_AUTHORIZATION
+              value: aws-v2-or-v4
+            - name: S3PROXY_IDENTITY
+              value: {{ .Values.s3proxy.accessKeyId | default "bosca-s3" | quote }}
+            - name: S3PROXY_CREDENTIAL
+              value: {{ .Values.s3proxy.secretAccessKey | default "bosca-s3" | quote }}
+            - name: S3PROXY_ENDPOINT
+              value: "http://0.0.0.0:8000"
+            - name: JCLOUDS_PROVIDER
+              value: filesystem-nio2
+            - name: S3PROXY_IGNORE_UNKNOWN_HEADERS
+              value: "true"
+            - name: JCLOUDS_FILESYSTEM_NIO2_BASEDIR
+              value: /data
+          volumeMounts:
+            - name: data
+              mountPath: /data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        {{- with .Values.s3proxy.storageClass }}
+        storageClassName: {{ . }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.s3proxy.storage | default "10Gi" }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: s3proxy
+  labels:
+    {{- include "bosca-common.labels" . | nindent 4 }}
+    app: s3proxy
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8000
+      targetPort: http
+      name: http
+  selector:
+    app: s3proxy
+---
+# Create default buckets after S3Proxy is ready
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: s3proxy-init-buckets
+  labels:
+    {{- include "bosca-common.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: post-install
+    helm.sh/hook-weight: "5"
+    helm.sh/hook-delete-policy: hook-succeeded
+spec:
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: init
+          image: minio/mc:latest
+          command:
+            - sh
+            - -c
+            - |
+              until mc alias set s3proxy http://s3proxy:8000 {{ .Values.s3proxy.accessKeyId | default "bosca-s3" }} {{ .Values.s3proxy.secretAccessKey | default "bosca-s3" }}; do
+                echo "Waiting for S3Proxy..."
+                sleep 2
+              done
+              mc mb -p s3proxy/storage || true
+              mc mb -p s3proxy/warehouse || true
+{{- end }}

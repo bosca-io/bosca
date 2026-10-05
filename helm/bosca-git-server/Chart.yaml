@@ -1,0 +1,10 @@
+apiVersion: v2
+name: bosca-git-server
+description: Bosca native git hosting server with DFS (PostgreSQL + S3) backend
+type: application
+version: 0.1.0
+appVersion: "5.0.21"
+dependencies:
+  - name: bosca-common
+    version: ">=0.1.0"
+    repository: "file://../bosca-common"

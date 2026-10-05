@@ -1,0 +1,62 @@
+query GetCurrentProfile {
+    profiles {
+        current {
+            id
+            name
+            visibility
+            attributes {
+                id
+                typeId
+                attributes
+                confidence
+                priority
+                source
+                visibility
+            }
+        }
+    }
+}
+
+mutation EditProfile($id: UUID!, $profile: ProfileInput!) {
+    profiles {
+        edit(id: $id, profile: $profile) {
+            id
+            name
+        }
+    }
+}
+
+mutation AddProfileAttributes($id: UUID!, $attributes: [ProfileAttributeInput!]!) {
+    profiles {
+        addAttributes(id: $id, attributes: $attributes)
+    }
+}
+
+mutation DeleteProfileAttribute($attributeId: UUID!, $id: UUID!) {
+    profiles {
+        deleteAttribute(attributeId: $attributeId, id: $id)
+    }
+}
+
+query GetProfileRelationships($profileId: UUID!) {
+    profiles {
+        relationships(profileId: $profileId) {
+            profileId1
+            profileId2
+            type
+            attributes
+        }
+    }
+}
+
+mutation AddProfileRelationship($profileId1: UUID!, $profileId2: UUID!, $type: String!, $attributes: JSON) {
+    profiles {
+        addRelationship(profileId1: $profileId1, profileId2: $profileId2, type: $type, attributes: $attributes)
+    }
+}
+
+mutation RemoveProfileRelationship($profileId1: UUID!, $profileId2: UUID!, $type: String!) {
+    profiles {
+        removeRelationship(profileId1: $profileId1, profileId2: $profileId2, type: $type)
+    }
+}

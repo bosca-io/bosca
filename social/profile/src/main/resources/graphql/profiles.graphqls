@@ -1,0 +1,706 @@
+"Controls who can discover and view a profile or organization. Visibility levels range from private (USER) to platform-wide (SYSTEM)."
+enum ProfileVisibility {
+    "Visible only to the profile owner's direct friends/connections."
+    FRIENDS
+    "Visible to the profile owner's friends and their friends (two degrees of separation)."
+    FRIENDS_OF_FRIENDS
+    "Visible to all authenticated users of the platform."
+    PUBLIC
+    "Visible system-wide, including to internal platform services and administrative processes."
+    SYSTEM
+    "Visible only to the profile owner themselves. The most restrictive visibility level."
+    USER
+}
+
+"The classification of a profile, determining its purpose and behavior within the platform."
+enum ProfileType {
+    "A standard user profile with full capabilities."
+    GENERIC
+    "A profile that represents an organization rather than an individual user."
+    ORGANIZATION
+    "A child profile created under a parent profile, typically used for managed or dependent accounts."
+    CHILD
+}
+
+"Input for creating or updating a profile attribute, which stores typed key-value data associated with a profile."
+input ProfileAttributeInput {
+    "The UUID of an existing attribute to update. Null when creating a new attribute."
+    id: UUID
+    "The UUID of a metadata item linked to this attribute, providing additional context or content."
+    metadataId: UUID
+    "The UUID of a supplementary metadata item associated with this attribute."
+    metadataSupplementary: UUID
+    "The attribute value stored as JSON. The structure depends on the attribute type."
+    attributes: JSON
+    "A confidence score (0-100) indicating how reliable or accurate this attribute value is."
+    confidence: Int!
+    "The date and time when this attribute expires and should no longer be considered valid."
+    expiration: DateTime
+    "The priority of this attribute relative to other attributes of the same type. Higher values take precedence."
+    priority: Int!
+    "The source system or process that provided this attribute value (e.g. 'user-input', 'ai-inference', 'import')."
+    source: String!
+    "The identifier of the attribute type that defines the schema and semantics of this attribute."
+    typeId: String!
+    "The visibility level that controls who can see this attribute."
+    visibility: ProfileVisibility!
+}
+
+"Input for creating or updating a profile attribute type definition, which defines the schema for a category of profile attributes."
+input ProfileAttributeTypeInput {
+    "The unique string identifier for this attribute type (e.g. 'interests', 'demographics')."
+    id: String!
+    "The human-readable display name of this attribute type."
+    name: String!
+    "A description of what this attribute type represents and how it should be used."
+    description: String!
+    "The default visibility level for attributes of this type."
+    visibility: ProfileVisibility!
+    "Whether this attribute type is protected from modification by regular users. Protected types can only be managed by administrators."
+    protected: Boolean!
+    "The UUID of a form schema to link to this attribute type, providing structured form rendering for data entry."
+    formSchemaId: UUID
+}
+
+"Input for creating or updating a user profile with a name, URL slug, attributes, and visibility setting."
+input ProfileInput {
+    "A URL-friendly slug identifier for the profile. Used in URLs and as a human-readable identifier."
+    slug: String
+    "The display name of the profile."
+    name: String!
+    "The list of profile attributes to set on the profile."
+    attributes: [ProfileAttributeInput!]!
+    "The visibility level that controls who can discover and view this profile."
+    visibility: ProfileVisibility!
+    "Whether this profile may appear in profile search. If omitted while editing, the current setting is preserved."
+    searchable: Boolean
+}
+
+"Third-party integration extension data associated with a profile, containing external system context and synchronization state."
+type ThirdPartyExtension {
+    "The third-party integration context stored as JSON, containing data from external systems."
+    context: JSON
+}
+
+"Mutation operations for synchronizing profile data with third-party external systems."
+type ThirdPartyExtensionMutation {
+    "Synchronize a specific profile's data with connected third-party systems. Returns true if synchronization was initiated successfully."
+    sync(
+        "The UUID of the profile to synchronize."
+        profileId: UUID!
+    ): Boolean!
+    "Synchronize all profiles' data with connected third-party systems. Returns true if synchronization was initiated successfully."
+    syncAll: Boolean!
+}
+
+"A user profile containing identity information, attributes, bookmarks, content marks, guide progress, ratings, and organization memberships."
+type Profile {
+    "The unique identifier of the profile."
+    id: UUID!
+    "The type classification of this profile (GENERIC, ORGANIZATION, or CHILD)."
+    type: ProfileType!
+    "The timestamp when this profile was created."
+    created: DateTime!
+    "The timestamp when this profile was last modified."
+    modified: DateTime!
+    "The list of typed attributes associated with this profile, such as interests, demographics, or preferences."
+    attributes: [ProfileAttribute!]!
+    "The bookmarks saved by this profile, referencing collections or metadata items."
+    bookmarks: ProfileBookmarks!
+    "The personal collection associated with this profile, if one has been created."
+    collection: Collection
+    "The guide progress and history for this profile, tracking completion of guided content."
+    guides: ProfileGuides!
+    "The marks (highlights and annotations) created by this profile on content items."
+    marks: ProfileMarks!
+    "The display name of the profile."
+    name: String!
+    "The principal (authenticated user identity) associated with this profile. Null if the profile is not linked to a principal."
+    principal: Principal
+    "The ratings given by this profile to content items."
+    ratings: ProfileRatings!
+    "A URL-friendly slug identifier for the profile."
+    slug: String
+    "The visibility level that controls who can discover and view this profile."
+    visibility: ProfileVisibility!
+    "Whether this profile may appear in profile search. Visibility rules still apply."
+    searchable: Boolean!
+    "The list of organizations this profile is a member of."
+    organizations: [Organization!]!
+    "Relationships originating from this profile, optionally filtered and paginated."
+    relationships(
+        "The relationship type to filter by (e.g. 'friend', 'follower'). If null, returns all relationship types."
+        type: String
+        "The maximum number of relationships to return. If null, returns all remaining relationships."
+        limit: Int
+        "The zero-based relationship offset. If null, starts at the first relationship."
+        offset: Long
+    ): [ProfileRelationship!]!
+    "Pending relationship requests sent to this profile. Only callers who manage this profile may view them."
+    incomingRelationshipRequests(type: String, limit: Int, offset: Long): [ProfileRelationshipRequest!]!
+    "Pending relationship requests sent by this profile. Only callers who manage this profile may view them."
+    outgoingRelationshipRequests(type: String, limit: Int, offset: Long): [ProfileRelationshipRequest!]!
+    "The list of metadata comment IDs that this profile has liked."
+    metadataCommentLikeIds: [Long!]!
+    "Whether this is the primary profile for the associated principal. A principal can have multiple profiles but only one primary."
+    isPrimary: Boolean!
+    "The timestamp of the last login by the principal associated with this profile."
+    lastLogin: DateTime
+    "When this profile was soft-deleted by an administrator, or null if active. A soft-deleted profile is excluded from the search index on its next reindex."
+    deletedAt: DateTime
+    "Third-party integration extension data for this profile."
+    thirdparty: ThirdPartyExtension
+}
+
+"A typed attribute associated with a profile, storing structured data such as interests, demographics, or preferences with confidence scoring and visibility controls."
+type ProfileAttribute {
+    "The unique identifier of this profile attribute instance."
+    id: UUID!
+    "The identifier of the attribute type that defines the schema and semantics of this attribute."
+    typeId: String!
+    "The resolved attribute type definition containing the name, description, and configuration of this attribute's type."
+    type: ProfileAttributeType!
+    "The source system or process that provided this attribute value (e.g. 'user-input', 'ai-inference', 'import')."
+    source: String!
+    "The priority of this attribute relative to other attributes of the same type. Higher values take precedence."
+    priority: Int!
+    "The attribute value stored as JSON. The structure depends on the attribute type."
+    attributes: JSON
+    "A confidence score (0-100) indicating how reliable or accurate this attribute value is."
+    confidence: Int!
+    "The metadata item linked to this attribute, if any. Provides additional context or content."
+    metadata: Metadata
+    "The date and time when this attribute was created."
+    created: DateTime!
+    "The date and time when this attribute expires and should no longer be considered valid."
+    expires: DateTime
+    "The visibility level that controls who can see this attribute."
+    visibility: ProfileVisibility!
+    "Whether control of this attribute's value (e.g. an email address) has been proven. Server-set only."
+    verified: Boolean!
+    "How control was proven once verified (e.g. 'email', 'google'), or null if not yet verified."
+    verificationSource: String
+}
+
+"A type definition for profile attributes, defining the schema, name, and access controls for a category of profile attributes."
+type ProfileAttributeType {
+    "The unique string identifier for this attribute type (e.g. 'interests', 'demographics')."
+    id: String!
+    "The human-readable display name of this attribute type."
+    name: String!
+    "A description of what this attribute type represents and how it should be used."
+    description: String!
+    "The default visibility level for attributes of this type."
+    visibility: ProfileVisibility!
+    "Whether this attribute type is protected from modification by regular users. Protected types can only be managed by administrators."
+    protected: Boolean!
+    "The UUID of the form schema linked to this attribute type, used to render a structured form for data entry."
+    formSchemaId: UUID
+    "The resolved form schema linked to this attribute type, providing JSON Schema validation and UI Schema for rendering."
+    formSchema: FormSchema
+}
+
+"Container for querying all available profile attribute type definitions."
+type ProfileAttributeTypes {
+    "Retrieve all registered profile attribute type definitions."
+    all: [ProfileAttributeType!]!
+}
+
+"A bookmark saved by a profile, referencing a collection or metadata item for quick access."
+type ProfileBookmark {
+    "The unique integer identifier of this bookmark."
+    id: Int!
+    "Custom attributes stored as JSON associated with this bookmark (e.g. notes, tags)."
+    attributes: JSON
+    "The bookmarked collection, if this bookmark references a collection."
+    collection: Collection
+    "The timestamp when this bookmark was created."
+    created: DateTime!
+    "The bookmarked metadata item, if this bookmark references a metadata item."
+    metadata: Metadata
+}
+
+"Container for querying a profile's bookmarks, supporting lookup by content reference and paginated listing."
+type ProfileBookmarks {
+    "Retrieve a specific bookmark by the referenced collection or metadata item."
+    bookmark(
+        "The UUID of the bookmarked collection to look up."
+        collectionId: UUID
+        "The UUID of the bookmarked metadata item to look up."
+        metadataId: UUID
+        "The version of the bookmarked metadata item."
+        metadataVersion: Int
+    ): ProfileBookmark
+    "Retrieve a paginated list of all bookmarks for this profile."
+    bookmarks(
+        "The maximum number of bookmarks to return."
+        limit: Int
+        "The zero-based offset for pagination."
+        offset: Long
+    ): [ProfileBookmark!]!
+    "The total number of bookmarks for this profile."
+    count: Int!
+}
+
+"Container for querying a profile's guide completion history, including past completions and per-guide history."
+type ProfileGuideHistories {
+    "Retrieve a paginated list of all guide completion history entries for this profile."
+    all(
+        "The maximum number of history entries to return."
+        limit: Int!
+        "The zero-based offset for pagination."
+        offset: Long!
+    ): [ProfileGuideHistory!]!
+    "The total number of guide completion history entries for this profile."
+    count: Int!
+    "Retrieve the completion history for a specific guide by its identifier and version."
+    history(
+        "The string identifier of the guide to retrieve history for."
+        id: String!
+        "The maximum number of history entries to return."
+        limit: Int!
+        "The zero-based offset for pagination."
+        offset: Long!
+        "The version of the guide to retrieve history for."
+        version: Int!
+    ): [ProfileGuideHistory!]!
+    "The total number of completion history entries for a specific guide and version."
+    historyCount(
+        "The string identifier of the guide."
+        id: String!
+        "The version of the guide."
+        version: Int!
+    ): Int!
+}
+
+"A record of a profile's completion of a guide, including the completion timestamp and any associated attributes."
+type ProfileGuideHistory {
+    "Custom attributes stored as JSON associated with this guide completion (e.g. score, answers)."
+    attributes: JSON!
+    "The timestamp when the guide was completed. Null if the guide was started but not yet completed."
+    completed: DateTime
+    "The metadata item representing the guide that was completed."
+    metadata: Metadata!
+}
+
+"The current progress of a profile through a guided content experience, tracking completed steps and overall percentage."
+type ProfileGuideProgress {
+    "Custom attributes stored as JSON associated with the current progress (e.g. answers, state data)."
+    attributes: JSON!
+    "The list of step IDs that the profile has completed in this guide."
+    completedStepIds: [Long!]!
+    "The guide structure for the exact version this progression started."
+    guide: Guide
+    "All marks the profile has placed on any of the guide's step metadata items, enabling bulk retrieval of per-step annotations (e.g. video watch progress) in a single query."
+    marks: [ProfileMark!]!
+    "The metadata item representing the guide being progressed through."
+    metadata: Metadata
+    "The timestamp when the progress was last updated."
+    modified: DateTime!
+    "The ID of the next step the profile should complete. Null if all steps are completed."
+    nextStepId: Long
+    "The completion percentage of the guide (0.0 to 100.0)."
+    percentage: Float!
+    "The timestamp when the profile started this guide."
+    started: DateTime!
+    "The guide version this progression started."
+    version: Int!
+}
+
+"Container for querying a profile's active guide progressions, supporting listing and per-guide lookup."
+type ProfileGuideProgressions {
+    "Retrieve a paginated list of all active guide progressions for this profile."
+    all(
+        "Limit progressions to one guide metadata item while retaining all matching versions."
+        metadataId: UUID
+        "The maximum number of progressions to return."
+        limit: Int!
+        "The zero-based offset for pagination."
+        offset: Long!
+    ): [ProfileGuideProgress!]!
+    "The total number of active guide progressions for this profile."
+    count(
+        "Limit the count to one guide metadata item while retaining all matching versions."
+        metadataId: UUID
+    ): Long!
+    "Retrieve the current progress for a specific guide by its metadata UUID and version."
+    progress(
+        "The UUID of the guide's metadata item."
+        id: UUID!
+        "The version of the guide."
+        version: Int!
+    ): ProfileGuideProgress
+}
+
+"Container for accessing a profile's guide-related data, including completion history and active progressions."
+type ProfileGuides {
+    "The guide completion history for this profile."
+    history: ProfileGuideHistories!
+    "The active guide progressions for this profile."
+    progressions: ProfileGuideProgressions!
+}
+
+"A mark (highlight or annotation) created by a profile on a content item, used to save notable passages or add notes."
+type ProfileMark {
+    "The unique integer identifier of this mark."
+    id: Int!
+    "Custom attributes stored as JSON associated with this mark (e.g. highlighted text, notes, color)."
+    attributes: JSON
+    "The collection containing the marked content, if applicable."
+    collection: Collection
+    "The timestamp when this mark was created."
+    created: DateTime!
+    "The metadata item that was marked, if applicable."
+    metadata: Metadata
+}
+
+"Container for querying a profile's marks (highlights and annotations) on content items, supporting filtering and pagination."
+type ProfileMarks {
+    "The total number of marks created by this profile."
+    count: Long!
+    "Retrieve a paginated list of all marks for this profile."
+    all(
+        "The maximum number of marks to return."
+        limit: Int
+        "The zero-based offset for pagination."
+        offset: Long
+    ): [ProfileMark!]!
+    "Retrieve marks filtered by a specific collection or metadata item, with pagination."
+    mark(
+        "The UUID of the collection to filter marks by."
+        collectionId: UUID
+        "The UUID of the metadata item to filter marks by."
+        metadataId: UUID
+        "The version of the metadata item to filter marks by."
+        metadataVersion: Int
+        "The maximum number of marks to return."
+        limit: Int!
+        "The zero-based offset for pagination."
+        offset: Long!
+    ): [ProfileMark!]!
+    "The total number of marks for a specific collection or metadata item."
+    markCount(
+        "The UUID of the collection to count marks for."
+        collectionId: UUID
+        "The UUID of the metadata item to count marks for."
+        metadataId: UUID
+        "The version of the metadata item to count marks for."
+        metadataVersion: Int
+    ): Long!
+}
+
+"Mutation operations for managing a specific profile's bookmarks, marks, guide progress, ratings, and third-party integrations."
+type ProfileMutation {
+    "Mutation operations for synchronizing with third-party external systems."
+    thirdparty: ThirdPartyExtensionMutation
+    "Add a bookmark to save a reference to a collection or metadata item. Returns true if the bookmark was created successfully."
+    addBookmark(
+        "Custom attributes stored as JSON to associate with the bookmark."
+        attributes: JSON
+        "The UUID of the collection to bookmark."
+        collectionId: UUID
+        "The UUID of the metadata item to bookmark."
+        metadataId: UUID
+        "The version of the metadata item to bookmark."
+        version: Int
+        "The UUID of the profile to add the bookmark to. If null, uses the current user's profile."
+        profileId: UUID
+    ): Boolean!
+    "Add a mark (highlight or annotation) on a collection or metadata item. Returns true if the mark was created successfully."
+    addMark(
+        "Custom attributes stored as JSON to associate with the mark (e.g. highlighted text, notes)."
+        attributes: JSON
+        "The UUID of the collection to mark."
+        collectionId: UUID
+        "The UUID of the metadata item to mark."
+        metadataId: UUID
+        "The version of the metadata item to mark."
+        version: Int
+        "The UUID of the profile to add the mark to. If null, uses the current user's profile."
+        profileId: UUID
+    ): Boolean!
+    "Record progress on a guide step. Returns the updated guide progress, or null if the step could not be recorded."
+    addProgress(
+        "Custom attributes stored as JSON to associate with this progress update (e.g. answers, state data)."
+        attributes: JSON!
+        "The UUID of the guide's metadata item."
+        metadataId: UUID!
+        "The version of the guide's metadata item."
+        metadataVersion: Int!
+        "The ID of the step that was completed."
+        stepId: Long!
+        "The UUID of the profile to record progress for. If null, uses the current user's profile."
+        profileId: UUID
+    ): ProfileGuideProgress
+    "Remove the current user's progress from a guide, allowing them to withdraw from a guide they previously started. Returns true if the progress was successfully deleted."
+    deleteProgress(
+        "The UUID of the guide's metadata item."
+        metadataId: UUID!
+        "The version of the guide's metadata item."
+        metadataVersion: Int!
+        "The UUID of the profile to remove progress for. If null, uses the current user's profile."
+        profileId: UUID
+    ): Boolean!
+    "Add a rating to a collection or metadata item. Returns true if the rating was recorded successfully."
+    addRating(
+        "The rating value to assign (typically 1-5)."
+        rating: Int!
+        "The UUID of the collection to rate."
+        collectionId: UUID
+        "The UUID of the metadata item to rate."
+        metadataId: UUID
+        "The version of the metadata item to rate."
+        version: Int
+        "The UUID of the profile to add the rating for. If null, uses the current user's profile."
+        profileId: UUID
+    ): Boolean!
+    "Delete a profile attribute by its UUID. Returns true if the attribute was successfully deleted."
+    deleteAttribute(
+        "The UUID of the profile attribute to delete."
+        attributeId: UUID!
+    ): Boolean!
+    "Begin (or re-send) verification of a profile attribute (e.g. email) through the generic verification framework: mints a one-time token and delivers the attribute type's challenge to the value being proven. A no-op when the attribute is missing, valueless, or already verified. Returns true once the request has been accepted (delivery is asynchronous)."
+    requestAttributeVerification(
+        "The attribute type to verify, e.g. \"bosca.profiles.email\"."
+        typeId: String!
+        "The UUID of the profile whose attribute should be verified. If null, uses the current user's profile."
+        profileId: UUID
+    ): Boolean!
+    "Delete a bookmark by the referenced collection or metadata item. Returns true if the bookmark was successfully deleted."
+    deleteBookmark(
+        "The UUID of the bookmarked collection."
+        collectionId: UUID
+        "The UUID of the bookmarked metadata item."
+        metadataId: UUID
+        "The version of the bookmarked metadata item."
+        version: Int
+        "The UUID of the profile to delete the bookmark from. If null, uses the current user's profile."
+        profileId: UUID
+    ): Boolean!
+    "Delete a mark by its unique integer ID. Returns true if the mark was successfully deleted."
+    deleteMark(
+        "The unique integer ID of the mark to delete."
+        id: Long!
+    ): Boolean!
+}
+
+"A rating given by a profile to a content item."
+type ProfileRating {
+    "The unique integer identifier of this rating."
+    id: Int!
+    "The rating value (typically 1-5)."
+    rating: Int!
+    "The timestamp when this rating was created."
+    created: DateTime!
+}
+
+"A directional relationship from a profile to another profile, representing a connection or association of a specific type (e.g. 'friend', 'follower', 'mentor')."
+type ProfileRelationship {
+    "The profile this relationship links to."
+    profile: Profile!
+    "The type of relationship (e.g. 'friend', 'follower', 'mentor')."
+    type: String!
+    "Custom attributes stored as JSON associated with this relationship."
+    attributes: JSON
+}
+
+"A request to establish a directional relationship. Approval creates the actual relationship."
+type ProfileRelationshipRequest {
+    id: UUID!
+    requester: Profile!
+    target: Profile!
+    type: String!
+    attributes: JSON
+    status: ProfileRelationshipRequestStatus!
+    created: DateTime!
+    modified: DateTime!
+}
+
+enum ProfileRelationshipRequestStatus {
+    PENDING
+    APPROVED
+    DECLINED
+    CANCELLED
+}
+
+"Container for querying a profile's ratings on content items, supporting per-item lookup and paginated listing."
+type ProfileRatings {
+    "Retrieve a specific rating for a collection or metadata item."
+    rating(
+        "The UUID of the rated collection."
+        collectionId: UUID
+        "The UUID of the rated metadata item."
+        metadataId: UUID
+        "The version of the rated metadata item."
+        metadataVersion: Int,
+        "The UUID of the profile that made the rating. If null, uses the current user's profile."
+        profileId: UUID
+    ): ProfileRating
+    "Retrieve a paginated list of all ratings for this profile."
+    ratings(
+        "The maximum number of ratings to return."
+        limit: Int
+        "The zero-based offset for pagination."
+        offset: Long
+        "The UUID of the profile to retrieve ratings for. If null, uses the current user's profile."
+        profileId: UUID
+    ): [ProfileRating!]!
+    "The total number of ratings for this profile."
+    count: Long!
+}
+
+"Query operations for retrieving profiles and attribute types."
+type Profiles {
+    "Retrieve a paginated list of all profiles the current user has access to."
+    all(
+        "The maximum number of profiles to return."
+        limit: Int!
+        "The zero-based offset for pagination."
+        offset: Long!
+    ): [Profile!]!
+    "Access the registry of profile attribute type definitions."
+    attributeTypes: ProfileAttributeTypes!
+    "Retrieve the profiles associated with the currently authenticated user. Returns null if no user is authenticated."
+    current: [Profile!]
+    "Retrieve a single profile by its unique identifier. Returns null if the profile does not exist or is not accessible."
+    profile(
+        "The UUID of the profile to retrieve."
+        id: UUID!
+    ): Profile
+    "Retrieve a paginated list of profiles whose linked principal is a member of the named security group. Used by the collaboration UI to surface every reachable mention target for a group such as 'messaging'."
+    byGroup(
+        "The unique name of the security group to filter profiles by (e.g. 'messaging')."
+        name: String!
+        "The maximum number of profiles to return."
+        limit: Int!
+        "The zero-based offset for pagination."
+        offset: Long!
+    ): [Profile!]!
+    "Search for profiles by a specific attribute type and value."
+    findProfiles(
+        "The attribute type ID to search within."
+        typeId: String!
+        "The attribute key or path to match against."
+        attribute: String!
+        "The attribute value to match. If null, matches any value for the given attribute."
+        value: String
+        "The zero-based offset for pagination."
+        offset: Long
+        "The maximum number of profiles to return."
+        limit: Int
+    ): [Profile!]!
+}
+
+"Mutation operations for managing profiles, attribute types, collections, and relationships at the administrative level."
+type ProfilesMutation {
+    "Create a new profile. By default, the profile is linked to the currently authenticated user. Set linkToPrincipal to false to create a standalone profile."
+    add(
+        "The profile configuration including name, attributes, and visibility."
+        profile: ProfileInput!
+        "When false, the profile is created without linking to any principal. Defaults to true."
+        linkToPrincipal: Boolean
+    ): Profile
+    "Create a new child profile under the currently authenticated user's primary profile."
+    addChild(
+        "The child profile configuration including name, attributes, and visibility."
+        profile: ProfileInput!
+    ): Profile
+    "Register a new profile attribute type definition. Returns true if the type was successfully created."
+    addAttributeType(
+        "The attribute type definition to register."
+        attribute: ProfileAttributeTypeInput!
+    ): Boolean!
+    "Add one or more attributes to a specific profile. Attributes of a protected type may only be set by administrators; a non-administrator write that includes one fails the whole call. Returns true if the attributes were successfully added."
+    addAttributes(
+        "The list of attribute values to add to the profile."
+        attributes: [ProfileAttributeInput!]!
+        "The UUID of the profile to add attributes to."
+        id: UUID!
+    ): Boolean!
+    "Create a personal collection for a profile. Returns the newly created collection."
+    addCollection(
+        "The UUID of the profile to create a collection for."
+        profileId: UUID!
+    ): Collection
+    "Create an approved relationship directly. This operation is restricted to administrators and system services."
+    addRelationship(
+        "The UUID of the profile the relationship originates from."
+        sourceProfileId: UUID!
+        "The UUID of the profile the relationship links to."
+        targetProfileId: UUID!
+        "The type of relationship to create (e.g. 'friend', 'follower', 'mentor')."
+        type: String!
+        "Custom attributes stored as JSON to associate with the relationship."
+        attributes: JSON
+    ): Boolean!
+    "Request a relationship from a profile the caller manages to a visible target profile."
+    requestRelationship(requesterProfileId: UUID!, targetProfileId: UUID!, type: String!, attributes: JSON): ProfileRelationshipRequest!
+    "Approve an incoming pending relationship request and create its relationship."
+    approveRelationshipRequest(requestId: UUID!): ProfileRelationshipRequest!
+    "Decline an incoming pending relationship request."
+    declineRelationshipRequest(requestId: UUID!): ProfileRelationshipRequest!
+    "Cancel an outgoing pending relationship request."
+    cancelRelationshipRequest(requestId: UUID!): ProfileRelationshipRequest!
+    "Delete a specific attribute from a profile. Returns true if the attribute was successfully deleted."
+    deleteAttribute(
+        "The UUID of the attribute to delete."
+        attributeId: UUID!
+        "The UUID of the profile to delete the attribute from. If null, uses the current user's profile."
+        id: UUID
+    ): Boolean!
+    "Delete a profile attribute type definition. Returns true if the type was successfully deleted."
+    deleteAttributeType(
+        "The string identifier of the attribute type to delete."
+        attributeId: String!
+    ): Boolean!
+    "Update an existing profile's name, attributes, and visibility settings."
+    edit(
+        "The UUID of the profile to edit. If null, edits the current user's primary profile."
+        id: UUID
+        "The updated profile configuration."
+        profile: ProfileInput!
+    ): Profile
+    "Update an existing profile attribute type definition. Returns true if the type was successfully updated."
+    editAttributeType(
+        "The updated attribute type definition."
+        attribute: ProfileAttributeTypeInput!
+    ): Boolean!
+    "Remove a relationship between two profiles. Returns true if the relationship was successfully removed."
+    removeRelationship(
+        "The UUID of the profile the relationship originates from."
+        sourceProfileId: UUID!
+        "The UUID of the profile the relationship links to."
+        targetProfileId: UUID!
+        "The type of relationship to remove."
+        type: String!
+    ): Boolean!
+    "Link a security principal to a profile, establishing ownership. Admin-only operation."
+    setPrincipal(
+        "The UUID of the profile to link."
+        id: UUID!
+        "The UUID of the security principal to assign as owner."
+        principalId: UUID!
+    ): Profile
+    "Remove the association between a profile and its owning principal. If the profile is the principal's primary profile, that reference is also cleared. Admin-only operation."
+    clearPrincipal(
+        "The UUID of the profile to unlink from its principal."
+        id: UUID!
+    ): Profile
+    "Mark a profile deleted — the reversible staging step before permanent deletion. The profile is excluded from the search index on its next reindex. Admin-only operation."
+    markDeleted(
+        "The UUID of the profile to mark deleted."
+        id: UUID!
+    ): Profile!
+    "Reverse markDeleted, restoring the profile. Admin-only operation."
+    restore(
+        "The UUID of the profile to restore."
+        id: UUID!
+    ): Profile!
+    "Permanently delete a profile. The profile MUST already be soft-deleted via markDeleted; this two-stage requirement guards against accidental one-click destruction. Admin-only operation."
+    delete(
+        "The UUID of the profile to permanently delete."
+        id: UUID!
+    ): Boolean!
+    "Access mutation operations scoped to the current user's profile (bookmarks, marks, progress, ratings)."
+    profile: ProfileMutation!
+}

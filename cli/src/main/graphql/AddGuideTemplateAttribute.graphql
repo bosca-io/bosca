@@ -1,0 +1,11 @@
+mutation AddGuideTemplateAttribute($metadataId: UUID!, $metadataVersion: Int!, $attribute: TemplateAttributeInput!, $sort: Int!) {
+    content {
+        metadata {
+            guideTemplate(metadataId: $metadataId, metadataVersion: $metadataVersion) {
+                addAttribute(attribute: $attribute, sort: $sort) {
+                    ...Metadata
+                }
+            }
+        }
+    }
+}

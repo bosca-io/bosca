@@ -1,0 +1,331 @@
+"""Display-time properties of a calendar that hangs off a parent Metadata
+record (contentType `bosca/v-calendar`). Permissions on the calendar and its
+events are inherited from the parent metadata, so visibility and edit access
+fall out of the existing metadata permission model."""
+type Calendar {
+    "The owning metadata record. The metadata's name is used as the calendar name."
+    metadata: Metadata!
+    "The metadata's UUID. Convenience access without traversing into metadata."
+    metadataId: UUID!
+    "The metadata version this calendar is bound to."
+    version: Int!
+    "Hex color used to render this calendar's events."
+    color: String!
+    "Optional description shown in the admin UI."
+    description: String!
+    "When this calendar row was created."
+    created: DateTime!
+    "When this calendar row was last modified."
+    modified: DateTime!
+    """Concrete event occurrences on this calendar that overlap the half-open
+     range [from, to). Recurring masters are expanded according to RFC 5545,
+     with EXDATEs and overrides applied."""
+    events(
+        "Inclusive lower bound."
+        from: DateTime!
+        "Exclusive upper bound."
+        to: DateTime!
+    ): [EventOccurrence!]!
+}
+
+"""A stored event row. Recurring masters expose their recurrence rule via [rrule];
+overrides expose their target via [originalEventId] and [recurrenceId]."""
+type CalendarEvent {
+    "The unique identifier of the stored row."
+    id: UUID!
+    "The owning calendar."
+    calendar: Calendar!
+    "The event title."
+    title: String!
+    "Long-form description; empty string when not set."
+    description: String!
+    "Optional location text; empty string when not set."
+    location: String!
+    "Whether the event spans full days."
+    allDay: Boolean!
+    "Inclusive start of the event (template start for recurring masters)."
+    startsAt: DateTime!
+    "Exclusive end of the event (template end for recurring masters)."
+    endsAt: DateTime!
+    "Bare RRULE body (without the `RRULE:` prefix). Null on single events and overrides."
+    rrule: String
+    "ISO-8601 timestamps excluded from the master's expansion. Null/empty on non-masters."
+    exdates: [DateTime!]!
+    "If this row is an override of a recurring master, the master's id."
+    originalEventId: UUID
+    "If this row is an override, the original start time of the occurrence being replaced."
+    recurrenceId: DateTime
+    "When the event was created."
+    created: DateTime!
+    "When the event was last modified."
+    modified: DateTime!
+    "Principals participating in this event."
+    participants: [EventParticipant!]!
+    "Metadata and collection items linked to this event."
+    attachments: [EventAttachment!]!
+}
+
+"A profile's participation in a calendar event."
+type EventParticipant {
+    "The event this participant belongs to."
+    eventId: UUID!
+    "The participating profile."
+    profileId: UUID!
+    "Participant role (organizer, attendee, etc.)."
+    role: String!
+    "RSVP status (needs-action, accepted, declined, tentative)."
+    status: String!
+    "When this participant was added."
+    created: DateTime!
+}
+
+"Input for adding or updating a participant on a calendar event."
+input EventParticipantInput {
+    "The event to add the participant to."
+    eventId: UUID!
+    "The profile to add."
+    profileId: UUID!
+    "Participant role."
+    role: String
+    "RSVP status."
+    status: String
+}
+
+"A link between a calendar event and a metadata item or collection."
+type EventAttachment {
+    "Unique identifier of this attachment link."
+    id: UUID!
+    "The event this attachment belongs to."
+    eventId: UUID!
+    "The linked metadata item, if this is a metadata attachment."
+    metadataId: UUID
+    "The linked collection, if this is a collection attachment."
+    collectionId: UUID
+    "The relationship label (e.g. attachment, agenda, minutes)."
+    relationship: String!
+    "When this attachment was linked."
+    created: DateTime!
+}
+
+"Input for linking a metadata item or collection to a calendar event."
+input EventAttachmentInput {
+    "The event to attach to."
+    eventId: UUID!
+    "The metadata item to link. Mutually exclusive with collectionId."
+    metadataId: UUID
+    "The collection to link. Mutually exclusive with metadataId."
+    collectionId: UUID
+    "The relationship label."
+    relationship: String
+}
+
+"""A concrete instance of an event in a date range, ready to render. Combines
+the underlying [event] row with the resolved start/end for this specific
+occurrence."""
+type EventOccurrence {
+    "The stored row this occurrence came from (master, single, or override)."
+    event: CalendarEvent!
+    "Actual start of this instance."
+    startsAt: DateTime!
+    "Actual end of this instance."
+    endsAt: DateTime!
+    "Master-defined start time this instance corresponds to. Null on non-recurring singles."
+    recurrenceId: DateTime
+    "True when the underlying row is a recurring master (or an override of one)."
+    isRecurring: Boolean!
+    "True when this row is an override and not a passive expansion of the master."
+    isException: Boolean!
+}
+
+"Origin of a synthesized event projected from another module."
+enum SyntheticEventSource {
+    "A scheduled or active campaign from the segmentation module."
+    CAMPAIGN
+    "An upcoming scheduler job execution."
+    SCHEDULED_JOB
+    "A metadata item with a deferred workflow transition (scheduled publish or advertise)."
+    SCHEDULED_PUBLISH
+}
+
+"""A read-only event projected from another module. These do not live in the
+calendar table and are intended for admin-only timeline views."""
+type SyntheticEvent {
+    "Identifier of the source row (for example a campaign UUID or a scheduled-job UUID)."
+    id: UUID!
+    "Where this event was projected from."
+    source: SyntheticEventSource!
+    "Display title sourced from the underlying record's name."
+    title: String!
+    "Optional human-readable detail (channel, description, etc.)."
+    description: String!
+    "Inclusive start of the event."
+    startsAt: DateTime!
+    "Exclusive end of the event."
+    endsAt: DateTime!
+    "True when the underlying job or action has finished executing."
+    completed: Boolean!
+}
+
+"Identifies a specific calendar by its parent metadata id and version."
+input CalendarRef {
+    "The UUID of the parent metadata."
+    metadataId: UUID!
+    "The metadata version."
+    version: Int!
+}
+
+"Input for editing the display properties of an existing calendar."
+input CalendarInput {
+    "Hex color used to render the calendar's events."
+    color: String!
+    "Optional description; empty string clears it."
+    description: String
+}
+
+"Input for creating or updating a stored event row (single event or recurring master)."
+input CalendarEventInput {
+    "The UUID of the parent metadata."
+    metadataId: UUID!
+    "The metadata version."
+    version: Int!
+    "The event title."
+    title: String!
+    "Optional long-form description."
+    description: String
+    "Optional location text."
+    location: String
+    "Whether the event spans full days; ignores the time-of-day in starts/ends."
+    allDay: Boolean
+    "Inclusive start (template start when [rrule] is set)."
+    startsAt: DateTime!
+    "Exclusive end (template end when [rrule] is set)."
+    endsAt: DateTime!
+    """Bare RRULE body, e.g. `FREQ=WEEKLY;BYDAY=MO`. Null creates or updates a
+     non-recurring event; setting it on an existing single promotes it to a
+     recurring master."""
+    rrule: String
+}
+
+"Input for editing or creating an override on a single occurrence of a recurring master."
+input OccurrenceInput {
+    "The replacement title."
+    title: String!
+    "Optional long-form description."
+    description: String
+    "Optional location text."
+    location: String
+    "Whether the occurrence spans full days."
+    allDay: Boolean
+    "Replacement start (may differ from the original recurrence id)."
+    startsAt: DateTime!
+    "Replacement end."
+    endsAt: DateTime!
+}
+
+extend type Metadata {
+    """The calendar attached to this metadata, if its content type is `bosca/v-calendar`.
+    Returns null when no calendar row exists or the caller lacks VIEW permission."""
+    calendar: Calendar
+}
+
+"Query operations for calendars and events."
+type Calendars {
+    "Every calendar whose parent metadata the caller can VIEW."
+    all: [Calendar!]!
+
+    "Look up the calendar attached to a specific metadata version."
+    calendar(ref: CalendarRef!): Calendar
+
+    """Aggregate occurrences across multiple calendars in a single round trip.
+     Calendars whose parent metadata the caller cannot VIEW are silently skipped."""
+    occurrences(
+        "Inclusive lower bound."
+        from: DateTime!
+        "Exclusive upper bound."
+        to: DateTime!
+        "Calendars to include in the query."
+        calendars: [CalendarRef!]!
+    ): [EventOccurrence!]!
+
+    "Look up a single stored event by id; null when not found or not visible to the caller."
+    event(id: UUID!): CalendarEvent
+
+    "Admin-only: scheduled and active campaigns projected as a read-only timeline."
+    scheduledContentEvents(from: DateTime!, to: DateTime!): [SyntheticEvent!]!
+
+    "Admin-only: upcoming scheduler job executions projected as a read-only timeline."
+    scheduledJobEvents(from: DateTime!, to: DateTime!): [SyntheticEvent!]!
+
+    "Admin-only: metadata items with deferred workflow transitions (scheduled publishes)."
+    scheduledPublishEvents(from: DateTime!, to: DateTime!): [SyntheticEvent!]!
+}
+
+"""Mutation operations for calendars and events. Recurring-event scope is
+surfaced as distinct mutations rather than a flag, so the API is explicit
+about whether you're touching one occurrence, the tail of a series, or the
+whole series."""
+type CalendarsMutation {
+    "Create the calendar row for an existing metadata. Idempotent. Requires EDIT."
+    addCalendar(ref: CalendarRef!, calendar: CalendarInput!): Calendar!
+
+    "Update the color or description of an existing calendar. Requires EDIT."
+    editCalendar(ref: CalendarRef!, calendar: CalendarInput!): Calendar!
+
+    "Create a new event. Set `event.rrule` to make it a recurring master."
+    addEvent(event: CalendarEventInput!): CalendarEvent!
+
+    "Update a master or single event (applies to every occurrence of a master)."
+    editEvent(id: UUID!, event: CalendarEventInput!): CalendarEvent!
+
+    "Delete a stored event row. Cascades to overrides if [id] is a master."
+    deleteEvent(id: UUID!): Boolean!
+
+    """Edit a single occurrence of a recurring master. Creates or updates an
+     override row at [recurrenceId]; subsequent reads return the override
+     instead of the master's expansion at that time."""
+    editOccurrence(
+        masterId: UUID!
+        recurrenceId: DateTime!
+        occurrence: OccurrenceInput!
+    ): CalendarEvent!
+
+    """Cancel a single occurrence: deletes any override at [recurrenceId] and
+     adds the time to the master's EXDATE list."""
+    cancelOccurrence(masterId: UUID!, recurrenceId: DateTime!): Boolean!
+
+    """Split a recurring series at [recurrenceId]. The original master gets an
+     UNTIL bound just before [recurrenceId]; a new master is created at
+     [recurrenceId] using [event] for its properties (rrule defaults to the
+     original if omitted). Used by 'this and following' edits."""
+    splitSeriesAt(
+        masterId: UUID!
+        recurrenceId: DateTime!
+        event: CalendarEventInput!
+    ): CalendarEvent!
+
+    """End a recurring series at [recurrenceId] without a successor master,
+     trimming any overrides or EXDATEs in the deleted tail."""
+    endSeriesAt(masterId: UUID!, recurrenceId: DateTime!): CalendarEvent!
+
+    "Add or update a participant on a calendar event."
+    addParticipant(input: EventParticipantInput!): EventParticipant!
+
+    "Remove a participant from a calendar event."
+    removeParticipant(eventId: UUID!, profileId: UUID!): Boolean!
+
+    "Link a metadata item or collection to a calendar event."
+    addAttachment(input: EventAttachmentInput!): EventAttachment!
+
+    "Remove an attachment link from a calendar event."
+    removeAttachment(id: UUID!): Boolean!
+}
+
+extend type Query {
+    "Access calendar query operations."
+    calendars: Calendars!
+}
+
+extend type Mutation {
+    "Access calendar mutation operations."
+    calendars: CalendarsMutation!
+}

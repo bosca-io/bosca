@@ -1,0 +1,11 @@
+query GetSupplementaryTextContents($id: UUID!, $key: String!) {
+    content {
+        metadata(id: $id) {
+            supplementary(key: $key) {
+                content {
+                    text
+                }
+            }
+        }
+    }
+}

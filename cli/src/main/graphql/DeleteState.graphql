@@ -1,0 +1,5 @@
+mutation DeleteState($id: String!) {
+    states {
+        delete(id: $id)
+    }
+}

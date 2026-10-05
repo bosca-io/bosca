@@ -1,0 +1,42 @@
+<component tag="profile-visibility-field">
+  <prop name="visibility" type="bosca.profiles.web.graphql.ProfileVisibility" required/>
+
+  <if visibility == bosca.profiles.web.graphql.ProfileVisibility.SYSTEM>
+    <input name="visibility" type="hidden" value="SYSTEM"/>
+  <else>
+    <details class="visibility-menu">
+      <summary class="icon-trigger visibility-trigger" aria-label="Change visibility" title="Visibility">
+        <svg class="control-icon" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/>
+          <circle cx="12" cy="12" r="2.75"/>
+        </svg>
+        <span class="visibility-current" data-visibility-label>
+          <if visibility == bosca.profiles.web.graphql.ProfileVisibility.USER>
+            User
+          <else>
+            <if visibility == bosca.profiles.web.graphql.ProfileVisibility.FRIENDS>
+              Friends
+            <else>
+              <if visibility == bosca.profiles.web.graphql.ProfileVisibility.FRIENDS_OF_FRIENDS>
+                Friends of Friends
+              <else>
+                Public
+              </if>
+            </if>
+          </if>
+        </span>
+      </summary>
+      <div class="visibility-popover">
+        <label class="field visibility-popover-panel">
+          <span>Visibility</span>
+          <select name="visibility">
+            <option value="USER" :selected="visibility == bosca.profiles.web.graphql.ProfileVisibility.USER">User</option>
+            <option value="FRIENDS" :selected="visibility == bosca.profiles.web.graphql.ProfileVisibility.FRIENDS">Friends</option>
+            <option value="FRIENDS_OF_FRIENDS" :selected="visibility == bosca.profiles.web.graphql.ProfileVisibility.FRIENDS_OF_FRIENDS">Friends of Friends</option>
+            <option value="PUBLIC" :selected="visibility == bosca.profiles.web.graphql.ProfileVisibility.PUBLIC">Public</option>
+          </select>
+        </label>
+      </div>
+    </details>
+  </if>
+</component>

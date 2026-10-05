@@ -1,0 +1,7 @@
+query GetPrompts {
+    prompts {
+        all {
+            ...Prompt
+        }
+    }
+}

@@ -1,0 +1,1796 @@
+{
+  "metadata": {
+    "yjsVersion": "13.6.30",
+    "generatedAt": "2026-05-16T20:41:40.643Z",
+    "formatVersion": 2,
+    "totalFixtures": 126
+  },
+  "single_doc_v1": {
+    "array_ints": {
+      "clientID": 1,
+      "update": "01010100080103617272037d017d027d0300",
+      "stateVector": "010103",
+      "expected": {
+        "arr": [
+          1,
+          2,
+          3
+        ]
+      },
+      "roundTrip": true
+    },
+    "map_strings": {
+      "clientID": 2,
+      "update": "010202002801036d6170046b65793101770676616c7565312801036d6170046b65793201770676616c75653200",
+      "stateVector": "010202",
+      "expected": {
+        "map": {
+          "key1": "value1",
+          "key2": "value2"
+        }
+      },
+      "roundTrip": true
+    },
+    "text_simple": {
+      "clientID": 3,
+      "update": "01010300040104746578740b48656c6c6f20576f726c6400",
+      "stateVector": "01030b",
+      "expected": {
+        "text": "Hello World"
+      },
+      "roundTrip": true
+    },
+    "array_mixed_types": {
+      "clientID": 4,
+      "update": "01010400080103617272057d2a770568656c6c6f78797e00",
+      "stateVector": "010405",
+      "expected": {
+        "arr": [
+          42,
+          "hello",
+          true,
+          false,
+          null
+        ]
+      },
+      "roundTrip": true
+    },
+    "nested_map_array": {
+      "clientID": 9,
+      "update": "01020900270104726f6f74046c6973740008000900037d017d027d0300",
+      "stateVector": "010904",
+      "expected": {
+        "root": {
+          "list": [
+            1,
+            2,
+            3
+          ]
+        }
+      },
+      "roundTrip": true
+    },
+    "empty_doc": {
+      "clientID": 10,
+      "update": "0000",
+      "stateVector": "00",
+      "expected": {},
+      "roundTrip": true
+    },
+    "array_large": {
+      "clientID": 20,
+      "update": "01011400080103617272647d007d017d027d037d047d057d067d077d087d097d0a7d0b7d0c7d0d7d0e7d0f7d107d117d127d137d147d157d167d177d187d197d1a7d1b7d1c7d1d7d1e7d1f7d207d217d227d237d247d257d267d277d287d297d2a7d2b7d2c7d2d7d2e7d2f7d307d317d327d337d347d357d367d377d387d397d3a7d3b7d3c7d3d7d3e7d3f7d80017d81017d82017d83017d84017d85017d86017d87017d88017d89017d8a017d8b017d8c017d8d017d8e017d8f017d90017d91017d92017d93017d94017d95017d96017d97017d98017d99017d9a017d9b017d9c017d9d017d9e017d9f017da0017da1017da2017da30100",
+      "stateVector": "011464",
+      "expected": {
+        "arr": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21,
+          22,
+          23,
+          24,
+          25,
+          26,
+          27,
+          28,
+          29,
+          30,
+          31,
+          32,
+          33,
+          34,
+          35,
+          36,
+          37,
+          38,
+          39,
+          40,
+          41,
+          42,
+          43,
+          44,
+          45,
+          46,
+          47,
+          48,
+          49,
+          50,
+          51,
+          52,
+          53,
+          54,
+          55,
+          56,
+          57,
+          58,
+          59,
+          60,
+          61,
+          62,
+          63,
+          64,
+          65,
+          66,
+          67,
+          68,
+          69,
+          70,
+          71,
+          72,
+          73,
+          74,
+          75,
+          76,
+          77,
+          78,
+          79,
+          80,
+          81,
+          82,
+          83,
+          84,
+          85,
+          86,
+          87,
+          88,
+          89,
+          90,
+          91,
+          92,
+          93,
+          94,
+          95,
+          96,
+          97,
+          98,
+          99
+        ]
+      },
+      "roundTrip": true
+    },
+    "map_large": {
+      "clientID": 21,
+      "update": "013215002801036d6170036b303001770276302801036d6170036b303101770276312801036d6170036b303201770276322801036d6170036b303301770276332801036d6170036b303401770276342801036d6170036b303501770276352801036d6170036b303601770276362801036d6170036b303701770276372801036d6170036b303801770276382801036d6170036b303901770276392801036d6170036b31300177037631302801036d6170036b31310177037631312801036d6170036b31320177037631322801036d6170036b31330177037631332801036d6170036b31340177037631342801036d6170036b31350177037631352801036d6170036b31360177037631362801036d6170036b31370177037631372801036d6170036b31380177037631382801036d6170036b31390177037631392801036d6170036b32300177037632302801036d6170036b32310177037632312801036d6170036b32320177037632322801036d6170036b32330177037632332801036d6170036b32340177037632342801036d6170036b32350177037632352801036d6170036b32360177037632362801036d6170036b32370177037632372801036d6170036b32380177037632382801036d6170036b32390177037632392801036d6170036b33300177037633302801036d6170036b33310177037633312801036d6170036b33320177037633322801036d6170036b33330177037633332801036d6170036b33340177037633342801036d6170036b33350177037633352801036d6170036b33360177037633362801036d6170036b33370177037633372801036d6170036b33380177037633382801036d6170036b33390177037633392801036d6170036b34300177037634302801036d6170036b34310177037634312801036d6170036b34320177037634322801036d6170036b34330177037634332801036d6170036b34340177037634342801036d6170036b34350177037634352801036d6170036b34360177037634362801036d6170036b34370177037634372801036d6170036b34380177037634382801036d6170036b343901770376343900",
+      "stateVector": "011532",
+      "expected": {
+        "map": {
+          "k00": "v0",
+          "k01": "v1",
+          "k02": "v2",
+          "k03": "v3",
+          "k04": "v4",
+          "k05": "v5",
+          "k06": "v6",
+          "k07": "v7",
+          "k08": "v8",
+          "k09": "v9",
+          "k10": "v10",
+          "k11": "v11",
+          "k12": "v12",
+          "k13": "v13",
+          "k14": "v14",
+          "k15": "v15",
+          "k16": "v16",
+          "k17": "v17",
+          "k18": "v18",
+          "k19": "v19",
+          "k20": "v20",
+          "k21": "v21",
+          "k22": "v22",
+          "k23": "v23",
+          "k24": "v24",
+          "k25": "v25",
+          "k26": "v26",
+          "k27": "v27",
+          "k28": "v28",
+          "k29": "v29",
+          "k30": "v30",
+          "k31": "v31",
+          "k32": "v32",
+          "k33": "v33",
+          "k34": "v34",
+          "k35": "v35",
+          "k36": "v36",
+          "k37": "v37",
+          "k38": "v38",
+          "k39": "v39",
+          "k40": "v40",
+          "k41": "v41",
+          "k42": "v42",
+          "k43": "v43",
+          "k44": "v44",
+          "k45": "v45",
+          "k46": "v46",
+          "k47": "v47",
+          "k48": "v48",
+          "k49": "v49"
+        }
+      },
+      "roundTrip": true
+    },
+    "text_long": {
+      "clientID": 22,
+      "update": "0101160004010474657874e8074141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414100",
+      "stateVector": "0116e807",
+      "expected": {
+        "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+      },
+      "roundTrip": true
+    },
+    "text_unicode_emoji": {
+      "clientID": 23,
+      "update": "01011700040104746578741448656c6c6f20f09f8c8df09f8e8920576f726c6400",
+      "stateVector": "011710",
+      "expected": {
+        "text": "Hello 🌍🎉 World"
+      },
+      "roundTrip": true
+    },
+    "text_unicode_cjk": {
+      "clientID": 24,
+      "update": "01011800040104746578741be4bda0e5a5bde4b896e7958ce38193e38293e381abe381a1e381af00",
+      "stateVector": "011809",
+      "expected": {
+        "text": "你好世界こんにちは"
+      },
+      "roundTrip": true
+    },
+    "text_unicode_arabic": {
+      "clientID": 25,
+      "update": "010119000401047465787419d985d8b1d8add8a8d8a720d8a8d8a7d984d8b9d8a7d984d98500",
+      "stateVector": "01190d",
+      "expected": {
+        "text": "مرحبا بالعالم"
+      },
+      "roundTrip": true
+    },
+    "nested_3_levels": {
+      "clientID": 26,
+      "update": "01031a00270104726f6f74036d69640127001a0005696e6e65720008001a01037d017d027d0300",
+      "stateVector": "011a05",
+      "expected": {
+        "root": {
+          "mid": {
+            "inner": [
+              1,
+              2,
+              3
+            ]
+          }
+        }
+      },
+      "roundTrip": true
+    },
+    "array_floats": {
+      "clientID": 27,
+      "update": "01011b00080103617272057c3fc000007bc00599999999999a7d007b400921f9f01b866e7bbf50624dd2f1a9fc00",
+      "stateVector": "011b05",
+      "expected": {
+        "arr": [
+          1.5,
+          -2.7,
+          0,
+          3.14159,
+          -0.001
+        ]
+      },
+      "roundTrip": true
+    },
+    "array_large_ints": {
+      "clientID": 28,
+      "update": "01011c00080103617272057d007d417dbfffffff0f7ccf0000007d80897a00",
+      "stateVector": "011c05",
+      "expected": {
+        "arr": [
+          0,
+          -1,
+          2147483647,
+          -2147483648,
+          1000000
+        ]
+      },
+      "roundTrip": true
+    },
+    "multi_types_same_doc": {
+      "clientID": 30,
+      "update": "01031e00080103617272027d017d022801036d6170036b657901770376616c040104746578740568656c6c6f00",
+      "stateVector": "011e08",
+      "expected": {
+        "arr": [
+          1,
+          2
+        ],
+        "map": {
+          "key": "val"
+        },
+        "text": "hello"
+      },
+      "roundTrip": true
+    },
+    "map_nested_types": {
+      "clientID": 33,
+      "update": "010421002701036d6170046c6973740008002100027701617701622701036d6170066e657374656401280021030178017d2a00",
+      "stateVector": "012105",
+      "expected": {
+        "map": {
+          "list": [
+            "a",
+            "b"
+          ],
+          "nested": {
+            "x": 42
+          }
+        }
+      },
+      "roundTrip": true
+    },
+    "array_single_item": {
+      "clientID": 34,
+      "update": "01012200080103617272017d2a00",
+      "stateVector": "012201",
+      "expected": {
+        "arr": [
+          42
+        ]
+      },
+      "roundTrip": true
+    },
+    "map_single_entry": {
+      "clientID": 35,
+      "update": "010123002801036d6170046f6e6c79017705656e74727900",
+      "stateVector": "012301",
+      "expected": {
+        "map": {
+          "only": "entry"
+        }
+      },
+      "roundTrip": true
+    },
+    "text_single_char": {
+      "clientID": 36,
+      "update": "0101240004010474657874015800",
+      "stateVector": "012401",
+      "expected": {
+        "text": "X"
+      },
+      "roundTrip": true
+    },
+    "array_nested_arrays": {
+      "clientID": 37,
+      "update": "01042500070103617272008725000008002500027d017d0208002501027d037d0400",
+      "stateVector": "012506",
+      "expected": {
+        "arr": [
+          [
+            1,
+            2
+          ],
+          [
+            3,
+            4
+          ]
+        ]
+      },
+      "roundTrip": true
+    },
+    "map_boolean_null_values": {
+      "clientID": 38,
+      "update": "010526002801036d6170017401782801036d6170016601792801036d6170016e017e2801036d6170047a65726f017d002801036d617005656d70747901770000",
+      "stateVector": "012605",
+      "expected": {
+        "map": {
+          "t": true,
+          "f": false,
+          "n": null,
+          "zero": 0,
+          "empty": ""
+        }
+      },
+      "roundTrip": true
+    },
+    "text_multiline": {
+      "clientID": 39,
+      "update": "0101270004010474657874116c696e65310a6c696e65320a6c696e653300",
+      "stateVector": "012711",
+      "expected": {
+        "text": "line1\nline2\nline3"
+      },
+      "roundTrip": true
+    },
+    "xml_simple_element": {
+      "clientID": 50,
+      "update": "01033200070107636f6e74656e7403097061726167726170680700320006040032010b48656c6c6f20576f726c6400",
+      "stateVector": "01320d",
+      "expected": {
+        "content": "<paragraph>Hello World</paragraph>"
+      },
+      "roundTrip": true
+    },
+    "xml_element_with_attrs": {
+      "clientID": 51,
+      "update": "01043300070107636f6e74656e7403097061726167726170680700330006040033010548656c6c6f2800330005636c617373017705696e74726f00",
+      "stateVector": "013308",
+      "expected": {
+        "content": "<paragraph class=\"intro\">Hello</paragraph>"
+      },
+      "roundTrip": true
+    },
+    "xml_nested_elements": {
+      "clientID": 52,
+      "update": "01073400070107636f6e74656e74030364697607003400030768656164696e67070034010604003402055469746c65873401030970617261677261706807003408060400340909426f6479207465787400",
+      "stateVector": "013413",
+      "expected": {
+        "content": "<div><heading>Title</heading><paragraph>Body text</paragraph></div>"
+      },
+      "roundTrip": true
+    },
+    "xml_formatted_text": {
+      "clientID": 53,
+      "update": "01073500070107636f6e74656e7403097061726167726170680700350006040035010648656c6c6f2086350704626f6c64047472756584350804626f6c6486350c04626f6c64046e756c6cc4350c350d0620776f726c6400",
+      "stateVector": "013514",
+      "expected": {
+        "content": "<paragraph>Hello <bold>bold world</bold></paragraph>"
+      },
+      "roundTrip": true
+    },
+    "xml_hook": {
+      "clientID": 54,
+      "update": "01023600070107636f6e74656e7405096d792d7769646765742800360006636f6e66696701770576616c756500",
+      "stateVector": "013602",
+      "expected": {
+        "content": "[object Object]"
+      },
+      "roundTrip": true
+    },
+    "xml_multiple_paragraphs": {
+      "clientID": 55,
+      "update": "01093700070107636f6e74656e7403097061726167726170680700370006040037010f4669727374207061726167726170688737000309706172616772617068070037110604003712105365636f6e642070617261677261706887371103097061726167726170680700372306040037240f54686972642070617261677261706800",
+      "stateVector": "013734",
+      "expected": {
+        "content": "<paragraph>First paragraph</paragraph><paragraph>Second paragraph</paragraph><paragraph>Third paragraph</paragraph>"
+      },
+      "roundTrip": true
+    },
+    "xml_with_maps_and_arrays": {
+      "clientID": 56,
+      "update": "01053800070107636f6e74656e7403097061726167726170680700380006040038010d446f63756d656e7420746578742801046d657461057469746c650177064d7920446f63080104746167730277047461673177047461673200",
+      "stateVector": "013812",
+      "expected": {
+        "content": "<paragraph>Document text</paragraph>",
+        "meta": {
+          "title": "My Doc"
+        },
+        "tags": [
+          "tag1",
+          "tag2"
+        ]
+      },
+      "roundTrip": true
+    }
+  },
+  "single_doc_v2": {
+    "array_ints": {
+      "clientID": 1,
+      "updateV2": "000001010000010805036172720301010001030101007d017d027d0300",
+      "stateVector": "010103",
+      "expected": {
+        "arr": [
+          1,
+          2,
+          3
+        ]
+      },
+      "roundTrip": true
+    },
+    "map_strings": {
+      "clientID": 2,
+      "updateV2": "0000010200000128130e6d61706b6579316d61706b65793203040304010100024100010200770676616c756531770676616c75653200",
+      "stateVector": "010202",
+      "expected": {
+        "map": {
+          "key1": "value1",
+          "key2": "value2"
+        }
+      },
+      "roundTrip": true
+    },
+    "text_simple": {
+      "clientID": 3,
+      "updateV2": "0000010300000104120f7465787448656c6c6f20576f726c64040b0101000001010000",
+      "stateVector": "01030b",
+      "expected": {
+        "text": "Hello World"
+      },
+      "roundTrip": true
+    },
+    "array_mixed_types": {
+      "clientID": 4,
+      "updateV2": "000001040000010805036172720301010001050101007d2a770568656c6c6f78797e00",
+      "stateVector": "010405",
+      "expected": {
+        "arr": [
+          42,
+          "hello",
+          true,
+          false,
+          null
+        ]
+      },
+      "roundTrip": true
+    },
+    "nested_map_array": {
+      "clientID": 9,
+      "updateV2": "0000024900010000032700080b08726f6f746c697374440003010000010001030102007d017d027d0300",
+      "stateVector": "010904",
+      "expected": {
+        "root": {
+          "list": [
+            1,
+            2,
+            3
+          ]
+        }
+      },
+      "roundTrip": true
+    },
+    "empty_doc": {
+      "clientID": 10,
+      "updateV2": "00000000000001000000000000",
+      "stateVector": "00",
+      "expected": {},
+      "roundTrip": true
+    },
+    "array_large": {
+      "clientID": 20,
+      "updateV2": "000001140000010805036172720301010002a4010101007d007d017d027d037d047d057d067d077d087d097d0a7d0b7d0c7d0d7d0e7d0f7d107d117d127d137d147d157d167d177d187d197d1a7d1b7d1c7d1d7d1e7d1f7d207d217d227d237d247d257d267d277d287d297d2a7d2b7d2c7d2d7d2e7d2f7d307d317d327d337d347d357d367d377d387d397d3a7d3b7d3c7d3d7d3e7d3f7d80017d81017d82017d83017d84017d85017d86017d87017d88017d89017d8a017d8b017d8c017d8d017d8e017d8f017d90017d91017d92017d93017d94017d95017d96017d97017d98017d99017d9a017d9b017d9c017d9d017d9e017d9f017da0017da1017da2017da30100",
+      "stateVector": "011464",
+      "expected": {
+        "arr": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21,
+          22,
+          23,
+          24,
+          25,
+          26,
+          27,
+          28,
+          29,
+          30,
+          31,
+          32,
+          33,
+          34,
+          35,
+          36,
+          37,
+          38,
+          39,
+          40,
+          41,
+          42,
+          43,
+          44,
+          45,
+          46,
+          47,
+          48,
+          49,
+          50,
+          51,
+          52,
+          53,
+          54,
+          55,
+          56,
+          57,
+          58,
+          59,
+          60,
+          61,
+          62,
+          63,
+          64,
+          65,
+          66,
+          67,
+          68,
+          69,
+          70,
+          71,
+          72,
+          73,
+          74,
+          75,
+          76,
+          77,
+          78,
+          79,
+          80,
+          81,
+          82,
+          83,
+          84,
+          85,
+          86,
+          87,
+          88,
+          89,
+          90,
+          91,
+          92,
+          93,
+          94,
+          95,
+          96,
+          97,
+          98,
+          99
+        ]
+      },
+      "roundTrip": true
+    },
+    "map_large": {
+      "clientID": 21,
+      "updateV2": "0000011500000128b002ac026d61706b30306d61706b30316d61706b30326d61706b30336d61706b30346d61706b30356d61706b30366d61706b30376d61706b30386d61706b30396d61706b31306d61706b31316d61706b31326d61706b31336d61706b31346d61706b31356d61706b31366d61706b31376d61706b31386d61706b31396d61706b32306d61706b32316d61706b32326d61706b32336d61706b32346d61706b32356d61706b32366d61706b32376d61706b32386d61706b32396d61706b33306d61706b33316d61706b33326d61706b33336d61706b33346d61706b33356d61706b33366d61706b33376d61706b33386d61706b33396d61706b34306d61706b34316d61706b34326d61706b34336d61706b34346d61706b34356d61706b34366d61706b34376d61706b34386d61706b3439436201010002413001320077027630770276317702763277027633770276347702763577027636770276377702763877027639770376313077037631317703763132770376313377037631347703763135770376313677037631377703763138770376313977037632307703763231770376323277037632337703763234770376323577037632367703763237770376323877037632397703763330770376333177037633327703763333770376333477037633357703763336770376333777037633387703763339770376343077037634317703763432770376343377037634347703763435770376343677037634377703763438770376343900",
+      "stateVector": "011532",
+      "expected": {
+        "map": {
+          "k00": "v0",
+          "k01": "v1",
+          "k02": "v2",
+          "k03": "v3",
+          "k04": "v4",
+          "k05": "v5",
+          "k06": "v6",
+          "k07": "v7",
+          "k08": "v8",
+          "k09": "v9",
+          "k10": "v10",
+          "k11": "v11",
+          "k12": "v12",
+          "k13": "v13",
+          "k14": "v14",
+          "k15": "v15",
+          "k16": "v16",
+          "k17": "v17",
+          "k18": "v18",
+          "k19": "v19",
+          "k20": "v20",
+          "k21": "v21",
+          "k22": "v22",
+          "k23": "v23",
+          "k24": "v24",
+          "k25": "v25",
+          "k26": "v26",
+          "k27": "v27",
+          "k28": "v28",
+          "k29": "v29",
+          "k30": "v30",
+          "k31": "v31",
+          "k32": "v32",
+          "k33": "v33",
+          "k34": "v34",
+          "k35": "v35",
+          "k36": "v36",
+          "k37": "v37",
+          "k38": "v38",
+          "k39": "v39",
+          "k40": "v40",
+          "k41": "v41",
+          "k42": "v42",
+          "k43": "v43",
+          "k44": "v44",
+          "k45": "v45",
+          "k46": "v46",
+          "k47": "v47",
+          "k48": "v48",
+          "k49": "v49"
+        }
+      },
+      "roundTrip": true
+    },
+    "text_long": {
+      "clientID": 22,
+      "updateV2": "0000011600000104f107ec07746578744141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414141414104a80f0101000001010000",
+      "stateVector": "0116e807",
+      "expected": {
+        "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+      },
+      "roundTrip": true
+    },
+    "text_unicode_emoji": {
+      "clientID": 23,
+      "updateV2": "00000117000001041b187465787448656c6c6f20f09f8c8df09f8e8920576f726c6404100101000001010000",
+      "stateVector": "011710",
+      "expected": {
+        "text": "Hello 🌍🎉 World"
+      },
+      "roundTrip": true
+    },
+    "text_unicode_cjk": {
+      "clientID": 24,
+      "updateV2": "0000011800000104221f74657874e4bda0e5a5bde4b896e7958ce38193e38293e381abe381a1e381af04090101000001010000",
+      "stateVector": "011809",
+      "expected": {
+        "text": "你好世界こんにちは"
+      },
+      "roundTrip": true
+    },
+    "text_unicode_arabic": {
+      "clientID": 25,
+      "updateV2": "0000011900000104201d74657874d985d8b1d8add8a8d8a720d8a8d8a7d984d8b9d8a7d984d985040d0101000001010000",
+      "stateVector": "01190d",
+      "expected": {
+        "text": "مرحبا بالعالم"
+      },
+      "roundTrip": true
+    },
+    "nested_3_levels": {
+      "clientID": 26,
+      "updateV2": "0000025a010200020003270108100c726f6f746d6964696e6e65720403050301000002010001030103007d017d027d0300",
+      "stateVector": "011a05",
+      "expected": {
+        "root": {
+          "mid": {
+            "inner": [
+              1,
+              2,
+              3
+            ]
+          }
+        }
+      },
+      "roundTrip": true
+    },
+    "array_floats": {
+      "clientID": 27,
+      "updateV2": "0000011b0000010805036172720301010001050101007c3fc000007bc00599999999999a7d007b400921f9f01b866e7bbf50624dd2f1a9fc00",
+      "stateVector": "011b05",
+      "expected": {
+        "arr": [
+          1.5,
+          -2.7,
+          0,
+          3.14159,
+          -0.001
+        ]
+      },
+      "roundTrip": true
+    },
+    "array_large_ints": {
+      "clientID": 28,
+      "updateV2": "0000011c0000010805036172720301010001050101007d007d417dbfffffff0f7ccf0000007d80897a00",
+      "stateVector": "011c05",
+      "expected": {
+        "arr": [
+          0,
+          -1,
+          2147483647,
+          -2147483648,
+          1000000
+        ]
+      },
+      "roundTrip": true
+    },
+    "multi_types_same_doc": {
+      "clientID": 30,
+      "updateV2": "0000011e000005080028000417126172726d61706b65797465787468656c6c6f430104050101000202010103007d017d02770376616c00",
+      "stateVector": "011e08",
+      "expected": {
+        "arr": [
+          1,
+          2
+        ],
+        "map": {
+          "key": "val"
+        },
+        "text": "hello"
+      },
+      "roundTrip": true
+    },
+    "map_nested_types": {
+      "clientID": 33,
+      "updateV2": "000002610102000600072700080027002817116d61706c6973746d61706e657374656478030403060107010000000100000200010202010104007701617701627d2a00",
+      "stateVector": "012105",
+      "expected": {
+        "map": {
+          "list": [
+            "a",
+            "b"
+          ],
+          "nested": {
+            "x": 42
+          }
+        }
+      },
+      "roundTrip": true
+    },
+    "array_single_item": {
+      "clientID": 34,
+      "updateV2": "000001220000010805036172720301010001010101007d2a00",
+      "stateVector": "012201",
+      "expected": {
+        "arr": [
+          42
+        ]
+      },
+      "roundTrip": true
+    },
+    "map_single_entry": {
+      "clientID": 35,
+      "updateV2": "00000123000001280a076d61706f6e6c79030401010001010101007705656e74727900",
+      "stateVector": "012301",
+      "expected": {
+        "map": {
+          "only": "entry"
+        }
+      },
+      "roundTrip": true
+    },
+    "text_single_char": {
+      "clientID": 36,
+      "updateV2": "00000124000001040805746578745804010101000001010000",
+      "stateVector": "012401",
+      "expected": {
+        "text": "X"
+      },
+      "roundTrip": true
+    },
+    "array_nested_arrays": {
+      "clientID": 37,
+      "updateV2": "00000265020301000200050700870008050361727203030100000240000242000104007d017d027d037d0400",
+      "stateVector": "012506",
+      "expected": {
+        "arr": [
+          [
+            1,
+            2
+          ],
+          [
+            3,
+            4
+          ]
+        ]
+      },
+      "roundTrip": true
+    },
+    "map_boolean_null_values": {
+      "clientID": 38,
+      "updateV2": "0000012600000128261b6d6170746d6170666d61706e6d61707a65726f6d6170656d7074790301030103010304030501010002410301050078797e7d00770000",
+      "stateVector": "012605",
+      "expected": {
+        "map": {
+          "t": true,
+          "f": false,
+          "n": null,
+          "zero": 0,
+          "empty": ""
+        }
+      },
+      "roundTrip": true
+    },
+    "text_multiline": {
+      "clientID": 39,
+      "updateV2": "00000127000001041815746578746c696e65310a6c696e65320a6c696e653304110101000001010000",
+      "stateVector": "012711",
+      "expected": {
+        "text": "line1\nline2\nline3"
+      },
+      "roundTrip": true
+    },
+    "xml_simple_element": {
+      "clientID": 50,
+      "updateV2": "00010002720102000200030701041f1b636f6e74656e7470617261677261706848656c6c6f20576f726c6407090b030100000203060001030000",
+      "stateVector": "01320d",
+      "expected": {
+        "content": "<paragraph>Hello World</paragraph>"
+      },
+      "roundTrip": true
+    },
+    "xml_element_with_attrs": {
+      "clientID": 51,
+      "updateV2": "00010002730203000242000507010400281f1a636f6e74656e7470617261677261706848656c6c6f636c617373070945000301000002030601010104007705696e74726f00",
+      "stateVector": "013308",
+      "expected": {
+        "content": "<paragraph class=\"intro\">Hello</paragraph>"
+      },
+      "roundTrip": true
+    },
+    "xml_nested_elements": {
+      "clientID": 52,
+      "updateV2": "000300030002740506000300420e0200090702040087000700042f28636f6e74656e7464697668656164696e675469746c65706172616772617068426f64792074657874070307054900030100000543000603060001070000",
+      "stateVector": "013413",
+      "expected": {
+        "content": "<div><heading>Title</heading><paragraph>Body text</paragraph></div>"
+      },
+      "roundTrip": true
+    },
+    "xml_formatted_text": {
+      "clientID": 53,
+      "updateV2": "00030003000275060600020c020800011a0b07010400860084008600c42f28636f6e74656e7470617261677261706848656c6c6f20626f6c64626f6c64626f6c6420776f726c640709064401060301000002030600010700787e00",
+      "stateVector": "013514",
+      "expected": {
+        "content": "<paragraph>Hello <bold>bold world</bold></paragraph>"
+      },
+      "roundTrip": true
+    },
+    "xml_hook": {
+      "clientID": 54,
+      "updateV2": "000100027600010000030700281a16636f6e74656e746d792d776964676574636f6e6669670709060301000001050101010200770576616c756500",
+      "stateVector": "013602",
+      "expected": {
+        "content": "[object Object]"
+      },
+      "roundTrip": true
+    },
+    "xml_multiple_paragraphs": {
+      "clientID": 55,
+      "updateV2": "0003000300027707080002422202422402000f0701040087000700040087000700045850636f6e74656e747061726167726170684669727374207061726167726170687061726167726170685365636f6e642070617261677261706870617261677261706854686972642070617261677261706807090f0910090f03010000060306030603060001090000",
+      "stateVector": "013734",
+      "expected": {
+        "content": "<paragraph>First paragraph</paragraph><paragraph>Second paragraph</paragraph><paragraph>Third paragraph</paragraph>"
+      },
+      "roundTrip": true
+    },
+    "xml_with_maps_and_arrays": {
+      "clientID": 56,
+      "updateV2": "000100027801020002000707010400280008312a636f6e74656e74706172616772617068446f63756d656e7420746578746d6574617469746c657461677307090d04050405010000010102030602010201050077064d7920446f6377047461673177047461673200",
+      "stateVector": "013812",
+      "expected": {
+        "content": "<paragraph>Document text</paragraph>",
+        "meta": {
+          "title": "My Doc"
+        },
+        "tags": [
+          "tag1",
+          "tag2"
+        ]
+      },
+      "roundTrip": true
+    }
+  },
+  "delete_ops_v1": {
+    "array_with_delete": {
+      "clientID": 5,
+      "update": "010305000801036172720177016181050002880502027701647701650105010102",
+      "stateVector": "010505",
+      "expected": {
+        "arr": [
+          "a",
+          "d",
+          "e"
+        ]
+      }
+    },
+    "map_with_delete": {
+      "clientID": 6,
+      "update": "010306002801036d61700161017d012101036d61700162012801036d61700163017d030106010101",
+      "stateVector": "010603",
+      "expected": {
+        "map": {
+          "a": 1,
+          "c": 3
+        }
+      }
+    },
+    "text_editing": {
+      "clientID": 8,
+      "update": "01040800040104746578740548656c6c6f8108040184080505576f726c64c408050806022c200108010501",
+      "stateVector": "01080d",
+      "expected": {
+        "text": "Hello, World"
+      }
+    },
+    "map_overwrite": {
+      "clientID": 12,
+      "update": "01020c002101036d6170036b657901a80c0001770676616c756532010c010001",
+      "stateVector": "010c02",
+      "expected": {
+        "map": {
+          "key": "value2"
+        }
+      }
+    },
+    "text_delete_middle": {
+      "clientID": 40,
+      "update": "01032800040104746578740548656c6c6f8128040184280505576f726c640128010501",
+      "stateVector": "01280b",
+      "expected": {
+        "text": "HelloWorld"
+      }
+    },
+    "text_delete_start": {
+      "clientID": 41,
+      "update": "01022900010104746578740684290505576f726c640129010006",
+      "stateVector": "01290b",
+      "expected": {
+        "text": "World"
+      }
+    },
+    "text_delete_end": {
+      "clientID": 42,
+      "update": "01022a00040104746578740548656c6c6f812a0406012a010506",
+      "stateVector": "012a0b",
+      "expected": {
+        "text": "Hello"
+      }
+    },
+    "array_delete_all": {
+      "clientID": 43,
+      "update": "01012b0001010361727205012b010005",
+      "stateVector": "012b05",
+      "expected": {
+        "arr": []
+      }
+    },
+    "array_delete_then_readd": {
+      "clientID": 44,
+      "update": "01022c0001010361727203882c02037d047d057d06012c010003",
+      "stateVector": "012c06",
+      "expected": {
+        "arr": [
+          4,
+          5,
+          6
+        ]
+      }
+    },
+    "map_overwrite_chain": {
+      "clientID": 45,
+      "update": "01022d002101036d6170036b657903a82d020177027634012d010003",
+      "stateVector": "012d04",
+      "expected": {
+        "map": {
+          "key": "v4"
+        }
+      }
+    },
+    "array_delete_first": {
+      "clientID": 46,
+      "update": "01022e0001010361727201882e0002770162770163012e010001",
+      "stateVector": "012e03",
+      "expected": {
+        "arr": [
+          "b",
+          "c"
+        ]
+      }
+    },
+    "array_delete_last": {
+      "clientID": 47,
+      "update": "01022f0008010361727202770161770162812f0101012f010201",
+      "stateVector": "012f03",
+      "expected": {
+        "arr": [
+          "a",
+          "b"
+        ]
+      }
+    }
+  },
+  "delete_ops_v2": {
+    "array_with_delete": {
+      "clientID": 5,
+      "updateV2": "000002450102000400050800810088050361727203010100030142000103007701617701647701650105010101",
+      "stateVector": "010505",
+      "expected": {
+        "arr": [
+          "a",
+          "d",
+          "e"
+        ]
+      }
+    },
+    "map_with_delete": {
+      "clientID": 6,
+      "updateV2": "000001060000052800210028130c6d6170616d6170626d6170630301030103010101000241010103007d017d030106010100",
+      "stateVector": "010603",
+      "expected": {
+        "map": {
+          "a": 1,
+          "c": 3
+        }
+      }
+    },
+    "text_editing": {
+      "clientID": 8,
+      "updateV2": "000002480303080200010c07040081008400c415107465787448656c6c6f576f726c642c200445000201010001010104000108010500",
+      "stateVector": "01080d",
+      "expected": {
+        "text": "Hello, World"
+      }
+    },
+    "map_overwrite": {
+      "clientID": 12,
+      "updateV2": "0000024c00010000032100a809066d61706b65794300010100024100010200770676616c756532010c010000",
+      "stateVector": "010c02",
+      "expected": {
+        "map": {
+          "key": "value2"
+        }
+      }
+    },
+    "text_delete_middle": {
+      "clientID": 40,
+      "updateV2": "000002680102080200050400810084120e7465787448656c6c6f576f726c6404450001010001010103000128010500",
+      "stateVector": "01280b",
+      "expected": {
+        "text": "HelloWorld"
+      }
+    },
+    "text_delete_start": {
+      "clientID": 41,
+      "updateV2": "0000026900010a00030100840c0974657874576f726c64040501010001060102000129010005",
+      "stateVector": "01290b",
+      "expected": {
+        "text": "World"
+      }
+    },
+    "text_delete_end": {
+      "clientID": 42,
+      "updateV2": "0000026a00010800030400810c097465787448656c6c6f04050101000106010200012a010505",
+      "stateVector": "012a0b",
+      "expected": {
+        "text": "Hello"
+      }
+    },
+    "array_delete_all": {
+      "clientID": 43,
+      "updateV2": "0000012b000001010503617272030101000105010100012b010004",
+      "stateVector": "012b05",
+      "expected": {
+        "arr": []
+      }
+    },
+    "array_delete_then_readd": {
+      "clientID": 44,
+      "updateV2": "0000026c00010400030100880503617272030101000243000102007d047d057d06012c010002",
+      "stateVector": "012c06",
+      "expected": {
+        "arr": [
+          4,
+          5,
+          6
+        ]
+      }
+    },
+    "map_overwrite_chain": {
+      "clientID": 45,
+      "updateV2": "0000026d00010400032100a809066d61706b6579430001010002030101020077027634012d010002",
+      "stateVector": "012d04",
+      "expected": {
+        "map": {
+          "key": "v4"
+        }
+      }
+    },
+    "array_delete_first": {
+      "clientID": 46,
+      "updateV2": "0000026e0001000003010088050361727203010100020102010200770162770163012e010000",
+      "stateVector": "012e03",
+      "expected": {
+        "arr": [
+          "b",
+          "c"
+        ]
+      }
+    },
+    "array_delete_last": {
+      "clientID": 47,
+      "updateV2": "0000026f0001020003080081050361727203010100020201010200770161770162012f010200",
+      "stateVector": "012f03",
+      "expected": {
+        "arr": [
+          "a",
+          "b"
+        ]
+      }
+    }
+  },
+  "sync_v1": {
+    "two_client_array_concurrent": {
+      "clientA": 100,
+      "clientB": 200,
+      "sv1Before": "016402",
+      "sv2Before": "01c80102",
+      "update1to2": "010164000801036172720277016177016200",
+      "update2to1": "0101c801000801036172720277016377016400",
+      "mergedUpdate": "0201c80100080103617272027701637701640164000801036172720277016177016200",
+      "mergedStateVector": "02c801026402",
+      "expected": {
+        "arr": [
+          "a",
+          "b",
+          "c",
+          "d"
+        ]
+      }
+    },
+    "two_client_map_different_keys": {
+      "clientA": 101,
+      "clientB": 201,
+      "sv1Before": "016501",
+      "sv2Before": "01c90101",
+      "update1to2": "010165002801036d61700178017d0100",
+      "update2to1": "0101c901002801036d61700179017d0200",
+      "mergedUpdate": "0201c901002801036d61700179017d020165002801036d61700178017d0100",
+      "mergedStateVector": "02c901016501",
+      "expected": {
+        "map": {
+          "x": 1,
+          "y": 2
+        }
+      }
+    },
+    "two_client_map_same_key": {
+      "clientA": 102,
+      "clientB": 202,
+      "sv1Before": "016601",
+      "sv2Before": "01ca0101",
+      "update1to2": "010166002801036d6170036b657901770666726f6d2d4100",
+      "update2to1": "0101ca01002801036d6170036b657901770666726f6d2d4200",
+      "mergedUpdate": "0201ca01002801036d6170036b657901770666726f6d2d420166002101036d6170036b6579010166010001",
+      "mergedStateVector": "02ca01016601",
+      "expected": {
+        "map": {
+          "key": "from-B"
+        }
+      }
+    },
+    "two_client_text_same_position": {
+      "clientA": 103,
+      "clientB": 203,
+      "sv1Before": "016703",
+      "sv2Before": "01cb0103",
+      "update1to2": "01016700040104746578740341414100",
+      "update2to1": "0101cb0100040104746578740342424200",
+      "mergedUpdate": "0201cb01000401047465787403424242016700040104746578740341414100",
+      "mergedStateVector": "02cb01036703",
+      "expected": {
+        "text": "AAABBB"
+      }
+    },
+    "two_client_mixed_types": {
+      "clientA": 104,
+      "clientB": 204,
+      "sv1Before": "016803",
+      "sv2Before": "01cc0103",
+      "update1to2": "01026800080103617272027d017d022801036d6170016101770666726f6d2d4100",
+      "update2to1": "0102cc0100080103617272027d037d042801036d6170016201770666726f6d2d4200",
+      "mergedUpdate": "0202cc0100080103617272027d037d042801036d6170016201770666726f6d2d42026800080103617272027d017d022801036d6170016101770666726f6d2d4100",
+      "mergedStateVector": "02cc01036803",
+      "expected": {
+        "arr": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "map": {
+          "a": "from-A",
+          "b": "from-B"
+        }
+      }
+    },
+    "two_client_array_interleave": {
+      "clientA": 105,
+      "clientB": 205,
+      "sv1Before": "016903",
+      "sv2Before": "01cd0103",
+      "update1to2": "010169000801036172720377026131770261327702613300",
+      "update2to1": "0101cd01000801036172720377026231770262327702623300",
+      "mergedUpdate": "0201cd0100080103617272037702623177026232770262330169000801036172720377026131770261327702613300",
+      "mergedStateVector": "02cd01036903",
+      "expected": {
+        "arr": [
+          "a1",
+          "a2",
+          "a3",
+          "b1",
+          "b2",
+          "b3"
+        ]
+      }
+    },
+    "two_client_text_different_positions": {
+      "clientA": 106,
+      "clientB": 206,
+      "sv1Before": "016a05",
+      "sv2Before": "01ce0105",
+      "update1to2": "01016a00040104746578740548656c6c6f00",
+      "update2to1": "0101ce01000401047465787405576f726c6400",
+      "mergedUpdate": "0201ce01000401047465787405576f726c64016a00040104746578740548656c6c6f00",
+      "mergedStateVector": "02ce01056a05",
+      "expected": {
+        "text": "HelloWorld"
+      }
+    },
+    "two_client_map_overwrite_conflict": {
+      "clientA": 107,
+      "clientB": 207,
+      "sv1Before": "016b02",
+      "sv2Before": "01cf0102",
+      "update1to2": "01026b002101036d61700673686172656401a86b00017708412d7365636f6e64016b010001",
+      "update2to1": "0102cf01002101036d61700673686172656401a8cf0100017708422d7365636f6e6401cf01010001",
+      "mergedUpdate": "0202cf01002101036d61700673686172656401a8cf0100017708422d7365636f6e64016b002101036d6170067368617265640202cf010100016b010002",
+      "mergedStateVector": "02cf01026b02",
+      "expected": {
+        "map": {
+          "shared": "B-second"
+        }
+      }
+    },
+    "three_client_chain": {
+      "clientA": 110,
+      "clientB": 120,
+      "clientC": 130,
+      "mergedUpdate": "03018201002801016d0163017d030178002801016d0162017d02016e002801016d0161017d0100",
+      "mergedStateVector": "0382010178016e01",
+      "expected": {
+        "m": {
+          "a": 1,
+          "b": 2,
+          "c": 3
+        }
+      }
+    },
+    "incremental_two_rounds": {
+      "clientA": 140,
+      "clientB": 150,
+      "sv2Round1": "00",
+      "update1to2Round1": "01018c0100080103617272027d017d0200",
+      "sv1Round2": "018c0102",
+      "update2to1Round2": "0101960100888c0101027d037d0400",
+      "mergedUpdate": "0201960100888c0101027d037d04018c0100080103617272027d017d0200",
+      "mergedStateVector": "029601028c0102",
+      "expected": {
+        "arr": [
+          1,
+          2,
+          3,
+          4
+        ]
+      }
+    }
+  },
+  "sync_v2": {
+    "two_client_array_concurrent": {
+      "clientA": 100,
+      "clientB": 200,
+      "sv1Before": "016402",
+      "sv2Before": "01c80102",
+      "update1to2V2": "000002a40100000108050361727203010100010201010077016177016200",
+      "update2to1V2": "000002880300000108050361727203010100010201010077016377016400",
+      "mergedUpdateV2": "0000048803a4010000010809066172726172724300010100024200020100770163770164010077016177016200",
+      "mergedStateVector": "02c801026402",
+      "expected": {
+        "arr": [
+          "a",
+          "b",
+          "c",
+          "d"
+        ]
+      }
+    },
+    "two_client_map_different_keys": {
+      "clientA": 101,
+      "clientB": 201,
+      "sv1Before": "016501",
+      "sv2Before": "01c90101",
+      "update1to2V2": "000002a5010000012807046d617078030101010001010101007d0100",
+      "update2to1V2": "00000289030000012807046d617079030101010001010101007d0200",
+      "mergedUpdateV2": "0000048903a501000001280d086d6170796d617078030103010101000241000201007d0201007d0100",
+      "mergedStateVector": "02c901016501",
+      "expected": {
+        "map": {
+          "x": 1,
+          "y": 2
+        }
+      }
+    },
+    "two_client_map_same_key": {
+      "clientA": 102,
+      "clientB": 202,
+      "sv1Before": "016601",
+      "sv2Before": "01ca0101",
+      "update1to2V2": "000002a6010000012809066d61706b657943000101000101010100770666726f6d2d4100",
+      "update2to1V2": "0000028a030000012809066d61706b657943000101000101010100770666726f6d2d4200",
+      "mergedUpdateV2": "0000048a03a6010000032800210f0c6d61706b65796d61706b65794302010100024100020100770666726f6d2d4201000166010000",
+      "mergedStateVector": "02ca01016601",
+      "expected": {
+        "map": {
+          "key": "from-B"
+        }
+      }
+    },
+    "two_client_text_same_position": {
+      "clientA": 103,
+      "clientB": 203,
+      "sv1Before": "016703",
+      "sv2Before": "01cb0103",
+      "update1to2V2": "000002a701000001040a077465787441414104030101000001010000",
+      "update2to1V2": "0000028b03000001040a077465787442424204030101000001010000",
+      "mergedUpdateV2": "0000048b03a70100000104130e74657874424242746578744141410403040301010000020100010000",
+      "mergedStateVector": "02cb01036703",
+      "expected": {
+        "text": "AAABBB"
+      }
+    },
+    "two_client_mixed_types": {
+      "clientA": 104,
+      "clientB": 204,
+      "sv1Before": "016803",
+      "sv2Before": "01cc0103",
+      "update1to2V2": "000002a8010000030800280b076172726d6170614300010101000202010102007d017d02770666726f6d2d4100",
+      "update2to1V2": "0000028c030000030800280b076172726d6170624300010101000202010102007d037d04770666726f6d2d4200",
+      "mergedUpdateV2": "0000048c03a80100000708002800080028150e6172726d6170626172726d61706143000143000101010004020102010202007d037d04770666726f6d2d4202007d017d02770666726f6d2d4100",
+      "mergedStateVector": "02cc01036803",
+      "expected": {
+        "arr": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "map": {
+          "a": "from-A",
+          "b": "from-B"
+        }
+      }
+    },
+    "two_client_array_interleave": {
+      "clientA": 105,
+      "clientB": 205,
+      "sv1Before": "016903",
+      "sv2Before": "01cd0103",
+      "update1to2V2": "000002a90100000108050361727203010100010301010077026131770261327702613300",
+      "update2to1V2": "0000028d0300000108050361727203010100010301010077026231770262327702623300",
+      "mergedUpdateV2": "0000048d03a9010000010809066172726172724300010100024300020100770262317702623277026233010077026131770261327702613300",
+      "mergedStateVector": "02cd01036903",
+      "expected": {
+        "arr": [
+          "a1",
+          "a2",
+          "a3",
+          "b1",
+          "b2",
+          "b3"
+        ]
+      }
+    },
+    "two_client_text_different_positions": {
+      "clientA": 106,
+      "clientB": 206,
+      "sv1Before": "016a05",
+      "sv2Before": "01ce0105",
+      "update1to2V2": "000002aa01000001040c097465787448656c6c6f04050101000001010000",
+      "update2to1V2": "0000028e03000001040c0974657874576f726c6404050101000001010000",
+      "mergedUpdateV2": "0000048e03aa0100000104171274657874576f726c647465787448656c6c6f0405040501010000020100010000",
+      "mergedStateVector": "02ce01056a05",
+      "expected": {
+        "text": "HelloWorld"
+      }
+    },
+    "two_client_map_overwrite_conflict": {
+      "clientA": 107,
+      "clientB": 207,
+      "sv1Before": "016b02",
+      "sv2Before": "01cf0102",
+      "update1to2V2": "000003eb0100010000032100a80c096d617073686172656403060101000241000102007708412d7365636f6e64016b010000",
+      "update2to1V2": "000003cf0300010000032100a80c096d617073686172656403060101000241000102007708422d7365636f6e6401cf01010000",
+      "mergedUpdateV2": "000005cf0300ab01010000052100a8002117126d61707368617265646d617073686172656403060306010100034100020202007708422d7365636f6e64010002cf010100006b010001",
+      "mergedStateVector": "02cf01026b02",
+      "expected": {
+        "map": {
+          "shared": "B-second"
+        }
+      }
+    }
+  },
+  "gc_origin": {
+    "nested_array_origin_gc": {
+      "clientA": 500,
+      "clientB": 600,
+      "fullUpdateA": "0102f4030001010361727201000301f403010004",
+      "updateBpending": "0101d80400c8f40301f403020277015877015900",
+      "expected": {},
+      "description": "B inserts into nested array whose parent A deletes. Origin resolves to GC struct."
+    },
+    "nested_text_origin_gc": {
+      "clientA": 501,
+      "clientB": 601,
+      "fullUpdateA": "0103f503002101036d617003646f63010005a8f503000177087265706c6163656401f503010006",
+      "updateBpending": "0101d9040084f503050620776f726c6400",
+      "expected": {},
+      "description": "B appends to nested YText that A replaces via map.set. Origin resolves to GC."
+    },
+    "nested_array_right_origin_gc": {
+      "clientA": 502,
+      "clientB": 602,
+      "fullUpdateA": "0102f6030001010361727201000301f603010004",
+      "updateBpending": "0101da040048f603010177015a00",
+      "expected": {},
+      "description": "B inserts at pos 0 of nested array. rightOrigin resolves to GC struct."
+    },
+    "nested_array_both_origins_gc": {
+      "clientA": 503,
+      "clientB": 603,
+      "fullUpdateA": "0102f7030001010361727201000501f703010006",
+      "updateBpending": "0101db0400c8f70302f70303017da30100",
+      "expected": {},
+      "description": "B inserts in middle of nested array. Both origin and rightOrigin are GC."
+    }
+  },
+  "snapshots": {
+    "snapshot_array": {
+      "clientID": 301,
+      "fullUpdateBefore": "0101ad0200080103617272037d017d027d0300",
+      "fullUpdateAfter": "0103ad0200080103617272017d0188ad0200017d0288ad0201017d0301ad02010101",
+      "snapshotV1": "0001ad0203",
+      "snapshotV2": "0001ad0203",
+      "restoredExpected": {
+        "arr": [
+          1,
+          2,
+          3
+        ]
+      },
+      "stateVectorAtSnapshot": {
+        "301": 3
+      }
+    },
+    "snapshot_text": {
+      "clientID": 302,
+      "fullUpdateBefore": "0101ae0200040104746578740b48656c6c6f20576f726c6400",
+      "fullUpdateAfter": "0102ae0200040104746578740548656c6c6f84ae02040620576f726c6401ae02010506",
+      "snapshotV1": "0001ae020b",
+      "snapshotV2": "0001ae020b",
+      "restoredExpected": {
+        "text": "Hello World"
+      },
+      "stateVectorAtSnapshot": {
+        "302": 11
+      }
+    },
+    "snapshot_map": {
+      "clientID": 303,
+      "fullUpdateBefore": "0103af02002801036d61700161017d012801036d61700162017d022801036d61700163017d0300",
+      "fullUpdateAfter": "0103af02002801036d61700161017d012801036d61700162017d022801036d61700163017d0301af02010101",
+      "snapshotV1": "0001af0203",
+      "snapshotV2": "0001af0203",
+      "restoredExpected": {
+        "map": {
+          "a": 1,
+          "b": 2,
+          "c": 3
+        }
+      },
+      "stateVectorAtSnapshot": {
+        "303": 3
+      }
+    },
+    "snapshot_multi_type": {
+      "clientID": 304,
+      "fullUpdateBefore": "0103b00200080103617272027d017d022801036d6170036b657901770376616c0401047465787402686900",
+      "fullUpdateAfter": "0105b00200080103617272017d0188b00200017d022801036d6170036b657901770376616c04010474657874016884b00203016901b0020200010202",
+      "snapshotV1": "0001b00205",
+      "snapshotV2": "0001b00205",
+      "restoredExpected": {
+        "arr": [
+          1,
+          2
+        ],
+        "map": {
+          "key": "val"
+        },
+        "text": "hi"
+      },
+      "stateVectorAtSnapshot": {
+        "304": 5
+      }
+    }
+  },
+  "relative_positions": {
+    "rpos_text_middle": {
+      "clientID": 401,
+      "fullUpdateBefore": "0101910300040104746578740b48656c6c6f20576f726c6400",
+      "fullUpdateAfter": "0102910300040104746578740b48656c6c6f20576f726c64449103000358585800",
+      "encodedRpos": "0091030500",
+      "indexBefore": 5,
+      "assoc": 0,
+      "resolvedIndexAfter": 8
+    },
+    "rpos_text_start": {
+      "clientID": 402,
+      "fullUpdateBefore": "0101920300040104746578740548656c6c6f00",
+      "fullUpdateAfter": "0102920300040104746578740548656c6c6f449203000359595900",
+      "encodedRpos": "01047465787441",
+      "indexBefore": 0,
+      "assoc": -1,
+      "resolvedIndexAfter": 0
+    },
+    "rpos_array_middle": {
+      "clientID": 403,
+      "fullUpdateBefore": "01019303000801036172720577016177016277016377016477016500",
+      "fullUpdateAfter": "010293030008010361727205770161770162770163770164770165489303000177017800",
+      "encodedRpos": "0093030300",
+      "indexBefore": 3,
+      "assoc": 0,
+      "resolvedIndexAfter": 4
+    },
+    "rpos_text_end": {
+      "clientID": 404,
+      "fullUpdateBefore": "0101940300040104746578740548656c6c6f00",
+      "fullUpdateAfter": "0101940300040104746578740b48656c6c6f20576f726c6400",
+      "encodedRpos": "0094030441",
+      "indexBefore": 5,
+      "assoc": -1,
+      "resolvedIndexAfter": 5
+    },
+    "rpos_after_delete": {
+      "clientID": 405,
+      "fullUpdateBefore": "01019503000401047465787405414243444500",
+      "fullUpdateAfter": "010295030001010474657874028495030103434445019503010002",
+      "encodedRpos": "0095030300",
+      "indexBefore": 3,
+      "assoc": 0,
+      "resolvedIndexAfter": 1
+    }
+  },
+  "state_vectors": {
+    "multi_client": {
+      "stateVector": "02d80401f40301",
+      "expectedMap": {
+        "500": 1,
+        "600": 2
+      }
+    },
+    "empty": {
+      "stateVector": "00",
+      "expectedMap": {}
+    },
+    "single_client": {
+      "stateVector": "01a00605",
+      "expectedMap": {
+        "800": 5
+      }
+    },
+    "many_clients": {
+      "stateVector": "06f80a01940a01b00901cc0801e80701840701",
+      "expectedMap": {
+        "900": 1,
+        "1000": 1,
+        "1100": 1,
+        "1200": 1,
+        "1300": 1,
+        "1400": 1
+      }
+    }
+  },
+  "protocol_messages": {
+    "sync_step1": {
+      "clientID": 1000,
+      "message": "00000401e80703",
+      "stateVector": "01e80703",
+      "description": "SyncStep1: messageSync(0) + syncStep1(0) + varByteArray(stateVector)"
+    },
+    "sync_step2": {
+      "clientID": 1001,
+      "message": "0001180101e907002801036d6170036b657901770576616c756500",
+      "update": "0101e907002801036d6170036b657901770576616c756500",
+      "description": "SyncStep2: messageSync(0) + syncStep2(1) + varByteArray(update)"
+    },
+    "update": {
+      "clientID": 1002,
+      "message": "0002130101ea0700040104746578740548656c6c6f00",
+      "update": "0101ea0700040104746578740548656c6c6f00",
+      "description": "Update: messageSync(0) + update(2) + varByteArray(update)"
+    },
+    "awareness": {
+      "clientID": 1003,
+      "clock": 1,
+      "state": {
+        "user": {
+          "name": "Alice",
+          "color": "#ff0000"
+        },
+        "cursor": {
+          "index": 5
+        }
+      },
+      "awarenessUpdate": "01eb0701407b2275736572223a7b226e616d65223a22416c696365222c22636f6c6f72223a2223666630303030227d2c22637572736f72223a7b22696e646578223a357d7d",
+      "message": "014501eb0701407b2275736572223a7b226e616d65223a22416c696365222c22636f6c6f72223a2223666630303030227d2c22637572736f72223a7b22696e646578223a357d7d",
+      "description": "Awareness: messageAwareness(1) + varByteArray(awarenessUpdate)"
+    },
+    "awareness_null": {
+      "clientID": 1004,
+      "clock": 5,
+      "state": null,
+      "awarenessUpdate": "01ec0705046e756c6c",
+      "message": "010901ec0705046e756c6c",
+      "description": "Awareness null state (disconnect)"
+    },
+    "query_awareness": {
+      "message": "03",
+      "description": "QueryAwareness: messageQueryAwareness(3)"
+    },
+    "full_handshake": {
+      "clientA": 1010,
+      "clientB": 1020,
+      "step1_A_to_B": "00000401f20702",
+      "step2_B_to_A": "0001160101fc07002801036d6170036b657901770376616c00",
+      "step1_B_to_A": "00000401fc0701",
+      "step2_A_to_B": "0001110101f20700080103617272027d017d0200",
+      "expected": {
+        "arr": [
+          1,
+          2
+        ],
+        "map": {
+          "key": "val"
+        }
+      },
+      "description": "Full SyncStep1/SyncStep2 handshake between two docs"
+    }
+  }
+}

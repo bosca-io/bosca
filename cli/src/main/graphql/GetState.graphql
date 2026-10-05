@@ -1,0 +1,7 @@
+query GetState($id: String!) {
+    states {
+        state(id: $id) {
+            ...WorkflowState
+        }
+    }
+}

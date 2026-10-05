@@ -1,0 +1,39 @@
+query GetWorkOpsComponentsByProject($projectId: UUID!) {
+    workOps {
+        components {
+            byProject(projectId: $projectId) {
+                id
+                projectId
+                name
+                description
+                defaultAssigneeProfileId
+                leadProfileId
+                assigneeMode
+                version
+            }
+        }
+    }
+}
+
+mutation CreateWorkOpsComponent($input: CreateWorkOpsComponentInput!) {
+    workOps {
+        components {
+            create(input: $input) {
+                id
+                projectId
+                name
+                description
+                assigneeMode
+                version
+            }
+        }
+    }
+}
+
+mutation DeleteWorkOpsComponent($id: UUID!) {
+    workOps {
+        components {
+            delete(id: $id)
+        }
+    }
+}

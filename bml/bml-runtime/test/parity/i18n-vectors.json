@@ -1,0 +1,73 @@
+{
+  "comment": "Shared Kotlin/TS parity vectors. Each catalog is the MERGED per-locale view the client receives; cases run against bosca.bml.i18n (JUnit) AND @bosca/bml i18n.ts (vitest). Do not change one implementation without the other.",
+  "defaultLocale": "en",
+  "catalogs": {
+    "en": {
+      "messages": {
+        "home.title": "Welcome to Acme",
+        "greeting": "Hello, {name}!",
+        "braces": "if (a) { b } stays",
+        "plain.counted": "About {count} things"
+      },
+      "plurals": {
+        "cart.items": { "ONE": "You have one item", "OTHER": "You have {count} items" },
+        "only.other": { "OTHER": "{count} generic" }
+      }
+    },
+    "pl": {
+      "messages": {},
+      "plurals": {
+        "cart.items": {
+          "ONE": "Masz {count} przedmiot",
+          "FEW": "Masz {count} przedmioty",
+          "MANY": "Masz {count} przedmiotów"
+        }
+      }
+    },
+    "ru": {
+      "messages": {},
+      "plurals": {
+        "cart.items": { "ONE": "{count} товар", "FEW": "{count} товара", "MANY": "{count} товаров" }
+      }
+    },
+    "es": {
+      "messages": {},
+      "plurals": {
+        "cart.items": { "ONE": "un artículo", "MANY": "{count} millones", "OTHER": "{count} artículos" }
+      }
+    },
+    "tl": {
+      "messages": {},
+      "plurals": {
+        "cart.items": { "ONE": "isa/ilan: {count}", "OTHER": "marami: {count}" }
+      }
+    }
+  },
+  "cases": [
+    { "locale": "en", "key": "home.title", "expected": "Welcome to Acme" },
+    { "locale": "en", "key": "greeting", "args": { "name": "Ada" }, "expected": "Hello, Ada!" },
+    { "locale": "en", "key": "greeting", "expected": "Hello, {name}!" },
+    { "locale": "en", "key": "greeting", "args": { "name": null }, "expected": "Hello, !" },
+    { "locale": "en", "key": "nav.missing", "expected": "nav.missing" },
+    { "locale": "en", "key": "nav.missing", "count": 3, "expected": "nav.missing" },
+    { "locale": "en", "key": "braces", "args": { "a": 1 }, "expected": "if (a) { b } stays" },
+    { "locale": "en", "key": "cart.items", "count": 1, "expected": "You have one item" },
+    { "locale": "en", "key": "cart.items", "count": 5, "expected": "You have 5 items" },
+    { "locale": "en", "key": "only.other", "count": 1, "expected": "1 generic" },
+    { "locale": "en", "key": "plain.counted", "count": 7, "expected": "About 7 things" },
+    { "locale": "pl", "key": "cart.items", "count": 1, "expected": "Masz 1 przedmiot" },
+    { "locale": "pl", "key": "cart.items", "count": 3, "expected": "Masz 3 przedmioty" },
+    { "locale": "pl", "key": "cart.items", "count": 5, "expected": "Masz 5 przedmiotów" },
+    { "locale": "pl", "key": "cart.items", "count": 12, "expected": "Masz 12 przedmiotów" },
+    { "locale": "pl", "key": "cart.items", "count": 22, "expected": "Masz 22 przedmioty" },
+    { "locale": "ru", "key": "cart.items", "count": 21, "expected": "21 товар" },
+    { "locale": "ru", "key": "cart.items", "count": 11, "expected": "11 товаров" },
+    { "locale": "ru", "key": "cart.items", "count": 2, "expected": "2 товара" },
+    { "locale": "es", "key": "cart.items", "count": 1, "expected": "un artículo" },
+    { "locale": "es", "key": "cart.items", "count": 2, "expected": "2 artículos" },
+    { "locale": "es", "key": "cart.items", "count": 1000000, "expected": "1000000 millones" },
+    { "locale": "tl", "key": "cart.items", "count": 0, "expected": "isa/ilan: 0" },
+    { "locale": "tl", "key": "cart.items", "count": 4, "expected": "marami: 4" },
+    { "locale": "tl", "key": "cart.items", "count": 21, "expected": "isa/ilan: 21" }
+  ]
+}

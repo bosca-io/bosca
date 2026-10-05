@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1a1a2e;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#16213e;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <!-- GraphQL logo-inspired hexagon -->
+  <polygon points="600,100 740,180 740,340 600,420 460,340 460,180" fill="none" stroke="#e535ab" stroke-width="3"/>
+  <!-- Vertices -->
+  <circle cx="600" cy="100" r="12" fill="#e535ab"/>
+  <circle cx="740" cy="180" r="12" fill="#e535ab"/>
+  <circle cx="740" cy="340" r="12" fill="#e535ab"/>
+  <circle cx="600" cy="420" r="12" fill="#e535ab"/>
+  <circle cx="460" cy="340" r="12" fill="#e535ab"/>
+  <circle cx="460" cy="180" r="12" fill="#e535ab"/>
+  <!-- Cross connections -->
+  <line x1="600" y1="100" x2="740" y2="340" stroke="#e535ab" stroke-width="1.5" opacity="0.4"/>
+  <line x1="600" y1="100" x2="460" y2="340" stroke="#e535ab" stroke-width="1.5" opacity="0.4"/>
+  <line x1="740" y1="180" x2="460" y2="340" stroke="#e535ab" stroke-width="1.5" opacity="0.4"/>
+  <line x1="740" y1="180" x2="600" y2="420" stroke="#e535ab" stroke-width="1.5" opacity="0.4"/>
+  <line x1="460" y1="180" x2="740" y2="340" stroke="#e535ab" stroke-width="1.5" opacity="0.4"/>
+  <line x1="460" y1="180" x2="600" y2="420" stroke="#e535ab" stroke-width="1.5" opacity="0.4"/>
+  <!-- Center dot -->
+  <circle cx="600" cy="260" r="6" fill="#e535ab"/>
+  <!-- Code snippet decoration -->
+  <text x="180" y="200" fill="#e535ab" font-family="monospace" font-size="14" opacity="0.5">query {</text>
+  <text x="195" y="220" fill="#e535ab" font-family="monospace" font-size="14" opacity="0.4">post(id: 1) {</text>
+  <text x="210" y="240" fill="#e535ab" font-family="monospace" font-size="14" opacity="0.3">title</text>
+  <text x="210" y="260" fill="#e535ab" font-family="monospace" font-size="14" opacity="0.3">author { name }</text>
+  <text x="195" y="280" fill="#e535ab" font-family="monospace" font-size="14" opacity="0.4">}</text>
+  <text x="180" y="300" fill="#e535ab" font-family="monospace" font-size="14" opacity="0.5">}</text>
+  <!-- Title -->
+  <text x="600" y="560" text-anchor="middle" fill="#ffffff" font-family="sans-serif" font-size="28" font-weight="bold">GraphQL Tutorial</text>
+</svg>

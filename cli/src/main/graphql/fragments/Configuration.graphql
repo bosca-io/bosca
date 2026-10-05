@@ -1,0 +1,12 @@
+fragment Configuration on Configuration {
+    key
+    public
+    description
+    value
+    permissions {
+        action
+        group {
+            ...Group
+        }
+    }
+}

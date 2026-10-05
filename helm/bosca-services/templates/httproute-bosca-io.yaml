@@ -1,0 +1,82 @@
+{{- /*
+bosca.io site HTTPRoute mirroring the bosca CLI's `bosca-io-<domain>` route.
+
+Three consolidated rules:
+  1. /api/v1/events,installation   → bosca-collector
+  2. /graphql,/graphqlws,/oauth2,/api/v1,/files,/content → bosca-server
+  3. /                             → bosca-io (catch-all)
+*/ -}}
+{{- $boscaIo := index .Values "bosca-io" -}}
+{{- $collector := index .Values "bosca-collector" -}}
+{{- $server := index .Values "bosca-server" -}}
+{{- $serverHttp2Enabled := dig "appConfig" "http2Enabled" false $server -}}
+{{- $serverHttp2Port := dig "service" "http2Port" 8081 $server -}}
+{{- if and
+    .Values.gateway.enabled
+    $boscaIo.enabled
+    $boscaIo.gateway.enabled
+    $boscaIo.gateway.hostnames
+    $server.enabled
+}}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ printf "bosca-io-%s" (.Values.global.domain | replace "." "-") | quote }}
+  labels:
+    app.kubernetes.io/part-of: bosca
+spec:
+  parentRefs:
+    - name: {{ .Values.gateway.name | default "bosca-gateway" | quote }}
+      port: 443
+  hostnames:
+{{- /* Hosts that 301 to a canonical host are served by
+       httproute-canonical-redirect.yaml, not this content route. */}}
+{{- $redirects := .Values.gateway.canonicalRedirects | default dict }}
+{{- range $h := $boscaIo.gateway.hostnames }}
+{{- if not (hasKey $redirects $h) }}
+    - {{ $h | quote }}
+{{- end }}
+{{- end }}
+  rules:
+{{- if $collector.enabled }}
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /api/v1/events
+        - path:
+            type: PathPrefix
+            value: /api/v1/installation
+      backendRefs:
+        - name: {{ printf "%s-bosca-collector" $.Release.Name | quote }}
+          port: {{ $collector.service.port | default 8080 }}
+{{- end }}
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /graphql
+        - path:
+            type: PathPrefix
+            value: /oauth2
+        - path:
+            type: PathPrefix
+            value: /api/v1
+        - path:
+            type: PathPrefix
+            value: /files
+        - path:
+            type: PathPrefix
+            value: /content
+        - path:
+            type: PathPrefix
+            value: /graphqlws
+      backendRefs:
+        - name: {{ printf "%s-bosca-server" $.Release.Name | quote }}
+          port: {{ ternary $serverHttp2Port ($server.service.port | default 8080) $serverHttp2Enabled }}
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: {{ printf "%s-bosca-io" $.Release.Name | quote }}
+          port: {{ $boscaIo.service.port | default 3000 }}
+{{- end }}

@@ -1,0 +1,17 @@
+{
+  "type": "doc",
+  "content": [
+    {
+      "type": "codeBlock",
+      "attrs": {
+        "language": "kotlin"
+      },
+      "content": [
+        {
+          "type": "text",
+          "text": "fun main() {}"
+        }
+      ]
+    }
+  ]
+}

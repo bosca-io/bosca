@@ -1,0 +1,59 @@
+"Tracks the status, result, and metadata of a backup operation."
+type Backup {
+    "Unique identifier for this backup operation."
+    id: UUID!
+    "Current status of the backup: pending, running, completed, or failed."
+    status: String!
+    "Object storage path of the completed backup archive, null until the backup finishes."
+    path: String
+    "Error message if the backup failed, null on success."
+    error: String
+    "Whether binary files from object storage are included in this backup."
+    includeFiles: Boolean!
+    "Metadata item identifier for downloading the backup archive through the standard content API."
+    metadataId: UUID
+    "Timestamp when the backup was initiated."
+    created: DateTime!
+    "Timestamp of the most recent status update."
+    modified: DateTime!
+}
+
+"Determines how the restore process handles pre-existing records that conflict with data in the backup archive."
+enum ConflictStrategy {
+    "Skip records that already exist, leaving the current data untouched."
+    SKIP
+    "Overwrite existing records with data from the backup archive."
+    OVERWRITE
+    "Abort the entire restore if any conflicts are detected."
+    FAIL
+}
+
+"Query operations for listing and inspecting backup records."
+type Backups {
+    "List all backups ordered by creation date descending, with pagination."
+    list(offset: Int! = 0, limit: Int! = 20): [Backup!]!
+    "Get a specific backup by its identifier."
+    backup(id: UUID!): Backup
+}
+
+"Mutation operations for creating backups and restoring from them."
+type BackupsMutation {
+    "Initiate a new backup of all system data. Returns the backup tracking record immediately; the actual backup runs asynchronously."
+    create(includeFiles: Boolean! = true): Backup!
+    "Register an already-uploaded metadata item as an imported backup archive."
+    importBackup(metadataId: UUID!): Backup!
+    "Initiate a restore from a previously completed backup archive. The restore runs asynchronously."
+    restore(backupId: UUID!, conflictStrategy: ConflictStrategy! = SKIP): Boolean!
+    "Delete a backup tracking record and optionally its archive."
+    delete(id: UUID!): Boolean!
+}
+
+extend type Query {
+    "Access backup query operations for listing and inspecting backup records."
+    backups: Backups!
+}
+
+extend type Mutation {
+    "Access backup mutation operations for creating backups and restoring from them."
+    backups: BackupsMutation!
+}

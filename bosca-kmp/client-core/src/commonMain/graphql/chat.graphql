@@ -1,0 +1,138 @@
+fragment ChatMessageFragment on ChatMessage {
+    sequence
+    timestamp
+    senderId
+    clientId
+    sender {
+        id
+        name
+    }
+    content {
+        type
+        content
+        attributes
+    }
+    attributes
+    parentSequence
+    reactions {
+        emoji
+        profileId
+    }
+}
+
+fragment ChatChannelFragment on ChatChannel {
+    id
+    name
+    type
+    attributes
+}
+
+query GetChannels($groupId: UUID!) {
+    community {
+        group(id: $groupId) {
+            id
+            channels {
+                ...ChatChannelFragment
+            }
+        }
+    }
+}
+
+query GetChannelMessages($channelId: UUID!, $before: Long, $after: Long, $limit: Int) {
+    chat {
+        channel(id: $channelId) {
+            id
+            messages(before: $before, after: $after, limit: $limit) {
+                ...ChatMessageFragment
+            }
+        }
+    }
+}
+
+mutation SendMessage($channelId: UUID!, $clientId: UUID!, $content: [MessageContentInput!]!, $attributes: JSON) {
+    chat {
+        sendMessage(channelId: $channelId, clientId: $clientId, content: $content, attributes: $attributes)
+    }
+}
+
+mutation JoinChannel($channelId: UUID!) {
+    chat {
+        joinChannel(channelId: $channelId)
+    }
+}
+
+mutation LeaveChannel($channelId: UUID!) {
+    chat {
+        leaveChannel(channelId: $channelId)
+    }
+}
+
+mutation UpdateLastRead($channelId: UUID!, $sequence: Long!) {
+    chat {
+        updateLastRead(channelId: $channelId, sequence: $sequence)
+    }
+}
+
+mutation SendTyping($channelId: UUID!, $isTyping: Boolean!) {
+    chat {
+        sendTyping(channelId: $channelId, isTyping: $isTyping)
+    }
+}
+
+mutation CreateChannel($groupId: UUID!, $name: String!, $type: ChatChannelType!, $attributes: JSON) {
+    community {
+        createChannel(groupId: $groupId, name: $name, type: $type, attributes: $attributes) {
+            ...ChatChannelFragment
+        }
+    }
+}
+
+mutation AddReaction($channelId: UUID!, $emoji: String!, $sequence: Long!) {
+    chat {
+        addReaction(channelId: $channelId, emoji: $emoji, sequence: $sequence)
+    }
+}
+
+mutation RemoveReaction($channelId: UUID!, $emoji: String!, $sequence: Long!) {
+    chat {
+        removeReaction(channelId: $channelId, emoji: $emoji, sequence: $sequence)
+    }
+}
+
+subscription OnNewMessage($channelId: UUID!) {
+    chatMessage(channelId: $channelId) {
+        channelId
+        message {
+            ...ChatMessageFragment
+        }
+    }
+}
+
+subscription OnUserTyping($channelId: UUID!) {
+    onUserTyping(channelId: $channelId) {
+        channelId
+        profileId
+        isTyping
+    }
+}
+
+subscription OnPresenceUpdate($channelId: UUID!) {
+    onPresenceUpdate(channelId: $channelId) {
+        profileId
+        status
+    }
+}
+
+query GetChannelMembers($channelId: UUID!) {
+    chat {
+        channel(id: $channelId) {
+            id
+            members {
+                channelId
+                profileId
+                lastReadSequence
+                attributes
+            }
+        }
+    }
+}

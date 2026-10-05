@@ -1,0 +1,10 @@
+apiVersion: v2
+name: bosca-artifacts-server
+description: Bosca artifact storage server (Docker/OCI, Maven, npm, Helm registries)
+type: application
+version: 0.1.0
+appVersion: "5.0.21"
+dependencies:
+  - name: bosca-common
+    version: ">=0.1.0"
+    repository: "file://../bosca-common"

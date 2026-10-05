@@ -1,0 +1,11 @@
+{
+  "name": "notifications-web-client",
+  "private": true,
+  "description": "Client-script dependencies for the notifications-web BML site, resolved from the Bosca npm registry (see .npmrc). @bosca/bml ships the esbuild bundler the io.bosca.bml plugin falls back to in a standalone clone.",
+  "dependencies": {
+    "@bosca/bml": "6.17.3"
+  },
+  "overrides": {
+    "esbuild": "^0.28.2"
+  }
+}

@@ -1,0 +1,63 @@
+suite: bosca-infra PostgreSQL migration job
+templates:
+  - templates/postgres-migration-job.yaml
+values:
+  - ../values.yaml
+set:
+  global:
+    domain: example.com
+  postgres:
+    migration:
+      enabled: true
+tests:
+  - it: does not render when migration disabled
+    set:
+      postgres:
+        migration:
+          enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: renders the migration ConfigMap and Job
+    asserts:
+      - hasDocuments:
+          count: 2
+      - documentIndex: 0
+        isKind:
+          of: ConfigMap
+      - documentIndex: 1
+        isKind:
+          of: Job
+
+  - it: grants readonly across every app schema, not just public
+    documentIndex: 0
+    asserts:
+      - matchRegex:
+          path: data["migration.sql"]
+          pattern: SELECT schema_name FROM information_schema\.schemata
+      - matchRegex:
+          path: data["migration.sql"]
+          pattern: GRANT USAGE ON SCHEMA %I TO "bosca-readonly"
+      - matchRegex:
+          path: data["migration.sql"]
+          pattern: GRANT SELECT ON ALL TABLES IN SCHEMA %I TO "bosca-readonly"
+
+  - it: sets default privileges for each object-creating readwrite role
+    documentIndex: 0
+    asserts:
+      # Flyway objects are created by the connecting readwrite roles, so each
+      # must appear as default-privileges grantor — not only the db owner.
+      - matchRegex:
+          path: data["migration.sql"]
+          pattern: ALTER DEFAULT PRIVILEGES FOR ROLE "bosca-server" GRANT SELECT ON TABLES TO "bosca-readonly"
+      - matchRegex:
+          path: data["migration.sql"]
+          pattern: ALTER DEFAULT PRIVILEGES FOR ROLE "bosca-runner" GRANT SELECT ON TABLES TO "bosca-readonly"
+      - matchRegex:
+          path: data["migration.sql"]
+          pattern: ALTER DEFAULT PRIVILEGES FOR ROLE "bosca-server" GRANT USAGE ON SCHEMAS TO "bosca-readonly"
+      # Database-wide (no IN SCHEMA clause), so future schemas are covered.
+      - notMatchRegex:
+          path: data["migration.sql"]
+          pattern: ALTER DEFAULT PRIVILEGES FOR ROLE "[^"]+" IN SCHEMA

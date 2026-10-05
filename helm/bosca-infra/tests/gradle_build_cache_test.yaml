@@ -1,0 +1,100 @@
+suite: bosca-infra Gradle Build Cache Node
+templates:
+  - templates/gradle-build-cache.yaml
+values:
+  - ../values.yaml
+set:
+  global:
+    domain: example.com
+tests:
+  - it: does not render when disabled
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: renders an internal service and persistent cache node when enabled
+    set:
+      gradleBuildCache:
+        enabled: true
+    asserts:
+      - hasDocuments:
+          count: 3
+      - documentIndex: 0
+        isKind:
+          of: Service
+      - documentIndex: 0
+        equal:
+          path: spec.ports[0].port
+          value: 5071
+      - documentIndex: 0
+        equal:
+          path: spec.type
+          value: ClusterIP
+      - documentIndex: 0
+        notExists:
+          path: spec.externalIPs
+      - documentIndex: 0
+        notExists:
+          path: spec.externalName
+      - documentIndex: 1
+        isKind:
+          of: StatefulSet
+      - documentIndex: 1
+        equal:
+          path: spec.template.spec.containers[0].image
+          value: gradle/build-cache-node:21.2
+      - documentIndex: 1
+        equal:
+          path: spec.template.spec.containers[0].env[1].value
+          value: 10Gi
+      - documentIndex: 1
+        equal:
+          path: spec.template.spec.volumes[0].secret.secretName
+          value: gradle-build-cache
+      - documentIndex: 1
+        equal:
+          path: spec.volumeClaimTemplates[0].spec.accessModes[0]
+          value: ReadWriteOnce
+      - documentIndex: 1
+        equal:
+          path: spec.volumeClaimTemplates[0].spec.storageClassName
+          value: openebs-hostpath
+      - documentIndex: 2
+        isKind:
+          of: ConfigMap
+      - documentIndex: 2
+        equal:
+          path: metadata.name
+          value: gradle-build-cache-init
+      - documentIndex: 2
+        matchRegex:
+          path: data["remote-build-cache.init.gradle"]
+          pattern: beforeSettings
+      - documentIndex: 2
+        matchRegex:
+          path: data["remote-build-cache.init.gradle"]
+          pattern: buildCacheEnabled = true
+
+  - it: honors cache storage and secret overrides
+    set:
+      gradleBuildCache:
+        enabled: true
+        config:
+          existingSecret: custom-gradle-cache
+        storage:
+          size: 25Gi
+          storageClass: fast-rwo
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].env[1].value
+          value: 25Gi
+      - equal:
+          path: spec.template.spec.volumes[0].secret.secretName
+          value: custom-gradle-cache
+      - equal:
+          path: spec.volumeClaimTemplates[0].spec.resources.requests.storage
+          value: 25Gi
+      - equal:
+          path: spec.volumeClaimTemplates[0].spec.storageClassName
+          value: fast-rwo

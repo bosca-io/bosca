@@ -1,0 +1,7 @@
+mutation SetContents($id: UUID!, $contentType: String, $file: Upload!) {
+    content {
+        metadata {
+            setMetadataContents(id: $id, contentType: $contentType, file: $file)
+        }
+    }
+}

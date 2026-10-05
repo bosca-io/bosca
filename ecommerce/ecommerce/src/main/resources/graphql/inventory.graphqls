@@ -1,0 +1,96 @@
+extend type Ecom {
+    "Inventory rows for a product across fulfillment centers. Admin."
+    inventory(productId: UUID!): [Inventory!]!
+    "A fulfillment center by id. Admin."
+    fulfillmentCenter(id: UUID!): FulfillmentCenter
+    "A company's fulfillment centers. Admin."
+    fulfillmentCenters(companyId: UUID!): [FulfillmentCenter!]!
+}
+
+extend type Product {
+    "Inventory across fulfillment centers. Admin."
+    inventory: [Inventory!]!
+}
+
+extend type EcomMutation {
+    "Fulfillment-center and inventory administration. Admin."
+    fulfillment: FulfillmentMutation!
+}
+
+"""
+Stock of one product at one fulfillment center. Reservation state machine:
+available → inCart (held by a cart) → pending (paid) → shipped (quantity decrements).
+"""
+type Inventory {
+    id: UUID!
+    product: Product!
+    fulfillmentCenter: FulfillmentCenter!
+    sku: String!
+    "Total units on hand."
+    quantity: Int!
+    "Units paid for and awaiting shipment."
+    pending: Int!
+    "Units currently held by open carts."
+    inCart: Int!
+    "Sellable right now: quantity − pending − inCart."
+    available: Int!
+}
+
+"""A warehouse that holds inventory and hands off to a shipping provider."""
+type FulfillmentCenter {
+    id: UUID!
+    company: Company!
+    name: String!
+    "DI key of the inventory-sync connector ('manual' = no external sync)."
+    connectorKey: String!
+    shippingProvider: ShippingProvider
+    address1: String!
+    address2: String
+    city: String!
+    state: String!
+    country: String!
+    zip: String!
+}
+
+"""Fulfillment-center and inventory administration. Admin."""
+type FulfillmentMutation {
+    "Create a fulfillment center."
+    addCenter(input: FulfillmentCenterInput!): FulfillmentCenter!
+    "Edit a fulfillment center (name, connector, shipping provider, address)."
+    editCenter(id: UUID!, input: FulfillmentCenterInput!): FulfillmentCenter!
+    "Create an inventory row for a product at a fulfillment center."
+    addInventory(input: InventoryInput!): Inventory!
+    "Operations on an existing inventory row."
+    inventory(id: UUID!): InventoryMutation!
+}
+
+"""Operations on one inventory row. Admin."""
+type InventoryMutation {
+    "Set the on-hand quantity (cannot drop below pending)."
+    adjust(quantity: Int!): Inventory!
+    "Ship pending units: both pending and on-hand quantity decrement (cannot exceed pending)."
+    ship(quantity: Int!): Inventory!
+}
+
+"""Creates a fulfillment center."""
+input FulfillmentCenterInput {
+    companyId: UUID!
+    name: String!
+    "DI key of the inventory-sync connector ('manual' = no external sync)."
+    connectorKey: String!
+    shippingProviderId: UUID!
+    address1: String!
+    address2: String
+    city: String!
+    state: String!
+    country: String!
+    zip: String!
+}
+
+"""Creates an inventory row for a product at a fulfillment center."""
+input InventoryInput {
+    productId: UUID!
+    fulfillmentCenterId: UUID!
+    sku: String!
+    quantity: Int!
+}

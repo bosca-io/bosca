@@ -1,0 +1,18 @@
+fragment GitPullRequestFragment on GitPullRequest {
+    id
+    number
+    title
+    description
+    status
+    sourceBranch
+    targetBranch
+    authorId
+    repositoryId
+    mergeable
+    conflictingFiles
+    mergeSha
+    mergeStrategy
+    mergedAt
+    created
+    updated
+}

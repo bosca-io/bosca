@@ -1,0 +1,59 @@
+query GetWorkOpsPrograms {
+    workOps {
+        programs {
+            all {
+                ...WorkOpsProgramFragment
+            }
+        }
+    }
+}
+
+query GetWorkOpsProgram($id: UUID!) {
+    workOps {
+        programs {
+            program(id: $id) {
+                ...WorkOpsProgramFragment
+            }
+        }
+    }
+}
+
+query GetWorkOpsProgramsByPortfolio($portfolioId: UUID!, $offset: Long! = 0, $limit: Int! = 50) {
+    workOps {
+        programs {
+            byPortfolio(portfolioId: $portfolioId, offset: $offset, limit: $limit) {
+                ...WorkOpsProgramFragment
+            }
+        }
+    }
+}
+
+mutation CreateWorkOpsProgram($input: WorkOpsProgramInput!) {
+    workOps {
+        programs {
+            create(input: $input) {
+                ...WorkOpsProgramFragment
+            }
+        }
+    }
+}
+
+mutation UpdateWorkOpsProgram($id: UUID!, $input: WorkOpsProgramInput!, $expectedVersion: Long!) {
+    workOps {
+        programs {
+            update(id: $id, input: $input, expectedVersion: $expectedVersion) {
+                ...WorkOpsProgramFragment
+            }
+        }
+    }
+}
+
+mutation ArchiveWorkOpsProgram($id: UUID!, $expectedVersion: Long!) {
+    workOps {
+        programs {
+            archive(id: $id, expectedVersion: $expectedVersion) {
+                ...WorkOpsProgramFragment
+            }
+        }
+    }
+}

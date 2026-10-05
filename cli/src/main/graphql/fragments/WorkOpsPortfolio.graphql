@@ -1,0 +1,11 @@
+fragment WorkOpsPortfolioFragment on WorkOpsPortfolio {
+    id
+    key
+    name
+    description
+    ownerProfileId
+    archivedAt
+    createdAt
+    modifiedAt
+    version
+}

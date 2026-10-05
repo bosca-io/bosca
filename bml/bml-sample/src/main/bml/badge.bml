@@ -1,0 +1,10 @@
+<component tag="badge">
+  <prop name="label" type="String" required/>
+  <prop name="tone" type="String" default="info"/>
+  <style scoped>
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 12px; }
+    .badge-info { background: #e0ecff; color: #14438c; }
+    .badge-hot { background: #ffe0e0; color: #b00020; }
+  </style>
+  <span class="badge badge-{ tone }">{ label }</span>
+</component>

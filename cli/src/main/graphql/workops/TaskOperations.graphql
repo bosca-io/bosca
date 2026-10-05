@@ -1,0 +1,200 @@
+query GetWorkOpsTask($id: UUID!) {
+    workOps {
+        tasks {
+            task(id: $id) {
+                ...WorkOpsTaskFragment
+            }
+        }
+    }
+}
+
+query GetWorkOpsTaskByKey($key: String!) {
+    workOps {
+        tasks {
+            taskByKey(key: $key) {
+                ...WorkOpsTaskFragment
+            }
+        }
+    }
+}
+
+query GetWorkOpsTasksByProject($projectId: UUID!, $offset: Long! = 0, $limit: Int! = 50) {
+    workOps {
+        tasks {
+            byProject(projectId: $projectId, offset: $offset, limit: $limit) {
+                ...WorkOpsTaskSummaryFragment
+            }
+        }
+    }
+}
+
+query GetWorkOpsTaskTypes {
+    workOps {
+        tasks {
+            taskTypes {
+                id
+                name
+                description
+                iconKey
+                colorHex
+                hierarchyLevel
+                version
+            }
+        }
+    }
+}
+
+query GetWorkOpsPriorities {
+    workOps {
+        tasks {
+            priorities {
+                id
+                name
+                description
+                iconKey
+                colorHex
+                displayOrder
+                version
+            }
+        }
+    }
+}
+
+query GetWorkOpsResolutions {
+    workOps {
+        tasks {
+            resolutions {
+                id
+                name
+                description
+                displayOrder
+                version
+            }
+        }
+    }
+}
+
+query GetWorkOpsTaskTransitions($taskId: UUID!, $currentOnly: Boolean! = true) {
+    workOps {
+        tasks {
+            task(id: $taskId) {
+                id
+                key
+                version
+                transitions(currentOnly: $currentOnly) {
+                    id
+                    name
+                    description
+                    toState {
+                        id
+                        status {
+                            id
+                            name
+                            category
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+query GetWorkOpsTaskHistory($taskId: UUID!, $offset: Long! = 0, $limit: Int! = 50) {
+    workOps {
+        tasks {
+            task(id: $taskId) {
+                id
+                key
+                history(offset: $offset, limit: $limit) {
+                    id
+                    taskId
+                    changedAt
+                    changedByPrincipalId
+                    changedByProfileId
+                    changes {
+                        fieldKey
+                        fieldName
+                        fromValue
+                        toValue
+                    }
+                }
+            }
+        }
+    }
+}
+
+mutation CreateWorkOpsTask($input: CreateWorkOpsTaskInput!) {
+    workOps {
+        tasks {
+            create(input: $input) {
+                ...WorkOpsTaskFragment
+            }
+        }
+    }
+}
+
+mutation UpdateWorkOpsTask($id: UUID!, $input: UpdateWorkOpsTaskInput!) {
+    workOps {
+        tasks {
+            update(id: $id, input: $input) {
+                ...WorkOpsTaskFragment
+            }
+        }
+    }
+}
+
+mutation TransitionWorkOpsTask($id: UUID!, $transitionId: UUID!, $expectedVersion: Long!, $resolutionId: UUID, $comment: String) {
+    workOps {
+        tasks {
+            transition(id: $id, transitionId: $transitionId, expectedVersion: $expectedVersion, resolutionId: $resolutionId, comment: $comment) {
+                ...WorkOpsTaskFragment
+            }
+        }
+    }
+}
+
+mutation SoftDeleteWorkOpsTask($id: UUID!, $expectedVersion: Long!) {
+    workOps {
+        tasks {
+            softDelete(id: $id, expectedVersion: $expectedVersion) {
+                ...WorkOpsTaskFragment
+            }
+        }
+    }
+}
+
+mutation RestoreWorkOpsTask($id: UUID!, $expectedVersion: Long!) {
+    workOps {
+        tasks {
+            restore(id: $id, expectedVersion: $expectedVersion) {
+                ...WorkOpsTaskFragment
+            }
+        }
+    }
+}
+
+mutation AddWorkOpsTaskAffectedProject($id: UUID!, $projectId: UUID!) {
+    workOps {
+        tasks {
+            addAffectedProject(id: $id, projectId: $projectId)
+        }
+    }
+}
+
+mutation RemoveWorkOpsTaskAffectedProject($id: UUID!, $projectId: UUID!) {
+    workOps {
+        tasks {
+            removeAffectedProject(id: $id, projectId: $projectId)
+        }
+    }
+}
+
+query GetWorkOpsTasksByAffectedProject($projectId: UUID!, $offset: Long! = 0, $limit: Int! = 50) {
+    workOps {
+        tasks {
+            byAffectedProject(projectId: $projectId, offset: $offset, limit: $limit) {
+                ...WorkOpsTaskSummaryFragment
+            }
+        }
+    }
+}

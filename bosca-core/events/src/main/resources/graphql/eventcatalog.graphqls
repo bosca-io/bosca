@@ -1,0 +1,42 @@
+"A filterable field on an event payload, used to build trigger filters and automation conditions."
+type EventField {
+    "The field name as it appears in the serialized event payload."
+    name: String!
+    "A coarse, UI-friendly type label (e.g. 'String', 'Long', 'Boolean'); a trailing '?' marks a nullable field."
+    type: String!
+}
+
+"A catalogued platform event (@JobEvent) that triggers and automation rules can react to."
+type EventDescriptor {
+    "Fully-qualified event identifier (package.SimpleName); the key stored on trigger bindings and automation rules."
+    fqdn: String!
+    "Human-friendly event name for pickers; falls back to the event's simple class name."
+    displayName: String!
+    "Short explanation of when the event fires."
+    description: String!
+    "The pub/sub channel the event publishes to, or null if it does not publish."
+    pubsubChannel: String
+    "Simple names of the jobs enqueued when the event is dispatched."
+    jobNames: [String!]!
+    "The filterable fields on the event payload."
+    fields: [EventField!]!
+}
+
+"Read access to the platform Event Catalog — every @JobEvent available to triggers and automation rules."
+type EventCatalog {
+    "All catalogued events across loaded modules, ordered by fqdn."
+    events: [EventDescriptor!]!
+    "The descriptor for a specific event fqdn, or null if not catalogued."
+    event(fqdn: String!): EventDescriptor
+}
+
+"Event-related query operations."
+type Events {
+    "The platform Event Catalog of @JobEvents available to triggers and automation rules."
+    catalog: EventCatalog!
+}
+
+extend type Query {
+    "Access event-related queries, including the platform Event Catalog."
+    events: Events!
+}

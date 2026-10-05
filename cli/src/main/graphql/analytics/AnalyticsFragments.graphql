@@ -1,0 +1,94 @@
+fragment AnalyticsQuerySummaryFragment on AnalyticsQuery {
+    id
+    key
+    name
+    description
+    refreshIntervalSeconds
+    parameters {
+        parameter
+        name
+        description
+        type
+        arrayType
+        defaultValue
+        required
+        sort
+    }
+    columns {
+        name
+        typeName
+        nullable
+    }
+}
+
+fragment AnalyticsQueryFragment on AnalyticsQuery {
+    ...AnalyticsQuerySummaryFragment
+    query
+    configuration
+    permissions {
+        action
+        groupId
+        group {
+            id
+            name
+        }
+    }
+}
+
+fragment AnalyticsVisualizationSummaryFragment on AnalyticsVisualization {
+    id
+    key
+    name
+    description
+    queryId
+    type
+}
+
+fragment AnalyticsVisualizationFragment on AnalyticsVisualization {
+    ...AnalyticsVisualizationSummaryFragment
+    configuration
+    permissions {
+        action
+        groupId
+        group {
+            id
+            name
+        }
+    }
+}
+
+fragment AnalyticsDashboardSummaryFragment on AnalyticsDashboard {
+    id
+    key
+    name
+    description
+}
+
+fragment AnalyticsDashboardFragment on AnalyticsDashboard {
+    ...AnalyticsDashboardSummaryFragment
+    configuration
+    parameters {
+        parameter
+        name
+        description
+        type
+        arrayType
+        defaultValue
+        required
+    }
+    permissions {
+        action
+        groupId
+        group {
+            id
+            name
+        }
+    }
+    visualizations {
+        id
+        configuration
+        visualization {
+            ...AnalyticsVisualizationFragment
+        }
+    }
+}

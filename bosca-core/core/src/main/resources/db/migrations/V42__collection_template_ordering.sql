@@ -1,0 +1,1 @@
+alter table collection_templates add column ordering jsonb;

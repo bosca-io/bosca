@@ -1,0 +1,79 @@
+extend type Ecom {
+    "A sellable catalog entry by id."
+    catalogProduct(id: UUID!): CatalogProduct
+    """
+    The primary storefront read path: a catalog's sellable entries, optionally filtered by product
+    type. activeOnly limits to entries whose availability window (starts <= now < ends) is open.
+    """
+    catalogProducts(
+        catalogId: UUID!
+        type: ProductType = null
+        activeOnly: Boolean! = true
+        offset: Int! = 0
+        limit: Int! = 25
+    ): [CatalogProduct!]!
+}
+
+extend type EcomMutation {
+    "Catalog-entry creates and per-entry operations. Admin."
+    catalogProducts: CatalogProductsMutation!
+}
+
+extend type Catalog {
+    "The catalog's sellable entries (same filters as Ecom.catalogProducts)."
+    products(type: ProductType = null, activeOnly: Boolean! = true, offset: Int! = 0, limit: Int! = 25): [CatalogProduct!]!
+}
+
+"""
+A sellable entry: a product placed in a catalog at a price, within an availability window. This is
+what carts reference and what storefronts list.
+"""
+type CatalogProduct {
+    id: UUID!
+    catalog: Catalog!
+    product: Product!
+    "The product's backing content document, at the product's pinned version (convenience for product { metadata })."
+    metadata: Metadata!
+    type: ProductType!
+    "The retail price for this catalog (for SUBSCRIPTION entries: the signup/first-period charge). Changes are audited; carts snapshot it at add-time."
+    price: Money!
+    taxable: Boolean!
+    "Start of the availability window."
+    starts: DateTime!
+    "End of the availability window."
+    ends: DateTime!
+    "Promotion codes pre-associated with this entry."
+    promotions: [String!]!
+    "Polymorphic extension data (sealed CatalogProductExtras, e.g. quantity limits)."
+    extras: CatalogProductExtras!
+}
+
+"""Catalog-entry creates and per-entry operations. Admin."""
+type CatalogProductsMutation {
+    "Place a product in a catalog as a sellable, priced entry."
+    add(input: CatalogProductInput!): CatalogProduct!
+    "Operations on an existing catalog entry."
+    catalogProduct(id: UUID!): CatalogProductMutation!
+}
+
+"""Mutations scoped to one catalog entry. Admin."""
+type CatalogProductMutation {
+    "Edit price, availability window, taxable/weight, or extras. Price changes are audited."
+    edit(input: CatalogProductInput!): CatalogProduct!
+    "Soft-delete the catalog entry."
+    delete: Boolean!
+}
+
+"""Places a product in a catalog as a sellable entry, or edits one."""
+input CatalogProductInput {
+    catalogId: UUID!
+    productId: UUID!
+    "The retail price (for SUBSCRIPTION entries: the signup/first-period charge)."
+    price: Money!
+    taxable: Boolean! = true
+    "Availability window start; defaults to now."
+    starts: DateTime = null
+    "Availability window end; defaults to the module's far-future default."
+    ends: DateTime = null
+    extras: JSON = null
+}

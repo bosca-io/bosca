@@ -1,0 +1,193 @@
+"""
+R26 — program-scoped WorkOpsRelease bundles. Phase 16 introduces both
+the bundle row and the `release_component_version` join.
+"""
+type WorkOpsRelease {
+    id: UUID!
+    programId: UUID!
+    name: String!
+    description: String
+    releaseDate: DateTime
+    releasedAt: DateTime
+    ownerProfileId: UUID
+    version: Long!
+    "The release's live view of which artifact/version is deployed in which environment (stamped by the relay's Deploy/Promote nodes)."
+    environmentDeployments: [WorkOpsEnvironmentDeployment!]!
+}
+
+type WorkOpsReleaseProjectVersion {
+    releaseId: UUID!
+    projectId: UUID!
+    versionId: UUID!
+    deploymentOrder: Int
+    deploymentStatus: String!
+    deployedAt: DateTime
+    deployedByPrincipalId: UUID
+    rollbackVersionId: UUID
+    "The resolved project (name/key) — so clients render a name, not the projectId UUID."
+    project: WorkOpsProject
+    "The resolved version (name) — so clients render a name, not the versionId UUID."
+    version: WorkOpsVersion
+}
+
+"""One native git-ci RELEASE or PROMOTION run correlated to a specific WorkOps release."""
+type WorkOpsReleaseDeclaredArtifact {
+    projectId: UUID!
+    type: WorkOpsArtifactType!
+    namespace: String!
+    coordinate: String!
+    environments: [String!]!
+}
+
+type WorkOpsReleaseRun {
+    runId: UUID!
+    "Run status: QUEUED, RUNNING, SUCCESS, FAILURE, CANCELLED, or SKIPPED."
+    status: String!
+    startedAt: DateTime!
+    "When the run reached a terminal status, or null while in-flight."
+    finishedAt: DateTime
+    "Wall-clock duration in ms once finished, or null while in-flight."
+    durationMs: Int
+}
+
+type WorkOpsReleasePipelineInput {
+    name: String!
+    type: String!
+    defaultValue: String
+    description: String
+    options: [String!]!
+    required: Boolean!
+}
+
+type WorkOpsReleasePipelinePlanStep {
+    name: String!
+    "Built-in action name, or run for a repository-owned shell step."
+    action: String!
+}
+
+type WorkOpsReleasePipelinePlanJob {
+    key: String!
+    environment: String
+    approvalRequired: Boolean!
+    needs: [String!]!
+    requirements: [String!]!
+    steps: [WorkOpsReleasePipelinePlanStep!]!
+    "Topological column: zero has no selected dependencies; larger values run later."
+    depth: Int!
+}
+
+"The exact native git-ci job plan selected from repository YAML without creating a run."
+type WorkOpsReleasePipelinePlan {
+    pipelineId: UUID!
+    pipelineName: String!
+    repositoryId: UUID!
+    repositorySlug: String!
+    "RELEASE or PROMOTION."
+    triggerType: String!
+    environment: String
+    promotesFrom: String
+    inputs: [WorkOpsReleasePipelineInput!]!
+    jobs: [WorkOpsReleasePipelinePlanJob!]!
+}
+
+type WorkOpsReleaseRepositoryAccess {
+    repositoryId: UUID!
+    canEdit: Boolean!
+    canExecute: Boolean!
+}
+
+type WorkOpsReleaseEnvironmentAccess {
+    key: String!
+    canExecute: Boolean!
+}
+
+"Exact action capabilities used to disable release controls before a forbidden request is sent."
+type WorkOpsReleaseActionAccess {
+    canManage: Boolean!
+    repositories: [WorkOpsReleaseRepositoryAccess!]!
+    environments: [WorkOpsReleaseEnvironmentAccess!]!
+}
+
+type WorkOpsTaskAffectedProject {
+    taskId: UUID!
+    projectId: UUID!
+    addedAt: DateTime!
+}
+
+input CreateWorkOpsReleaseInput {
+    programId: UUID!
+    name: String!
+    description: String
+    releaseDate: DateTime
+    ownerProfileId: UUID
+}
+
+input UpdateWorkOpsReleaseInput {
+    name: String!
+    description: String
+    releaseDate: DateTime
+}
+
+input PromoteWorkOpsReleaseInput {
+    environment: String!
+    allowDowngrade: Boolean! = false
+    "Values for the promotion trigger's declared inputs, keyed without the inputs. prefix."
+    inputs: JSON
+}
+
+input StartWorkOpsPatchReleaseInput {
+    "The affected projects from the source release to include in the roll-forward patch."
+    projectIds: [UUID!]!
+}
+
+input MoveWorkOpsTaskInput {
+    targetProjectId: UUID!
+    """
+    Map<sourceStatusId, targetStatusId>. Encoded as JSON because
+    GraphQL doesn't natively support map shapes.
+    """
+    statusMapping: JSON!
+    fieldMapping: JSON
+}
+
+type WorkOpsCrossProjectQuery {
+    releases(programId: UUID!): [WorkOpsRelease!]!
+    release(id: UUID!): WorkOpsRelease
+    versionsForRelease(releaseId: UUID!): [WorkOpsReleaseProjectVersion!]!
+    "The artifact types the release's projects declare in CI — relay channels whose type no project declares will never fire, so UIs hide their plan steps."
+    releaseChannelArtifactTypes(releaseId: UUID!): [String!]!
+    "Every artifact the release's projects declare in CI, coordinates resolved to each project's version — what this release WILL publish, before any build runs."
+    releaseDeclaredArtifacts(releaseId: UUID!): [WorkOpsReleaseDeclaredArtifact!]!
+    "The launch-blocking dependency violations for the release right now (empty = ready to start) — the same list launchRelease refuses on."
+    releaseReadiness(releaseId: UUID!): [String!]!
+    """The native git-ci RELEASE and PROMOTION runs correlated by their release.id parameter."""
+    releaseRuns(releaseId: UUID!): [WorkOpsReleaseRun!]!
+    """Exact dependency-ordered RELEASE and PROMOTION plans selected from attached repository YAML by git-ci."""
+    releasePlans(releaseId: UUID!): [WorkOpsReleasePipelinePlan!]!
+    releaseActionAccess(releaseId: UUID!): WorkOpsReleaseActionAccess
+    affectedProjects(taskId: UUID!): [WorkOpsTaskAffectedProject!]!
+}
+
+type WorkOpsCrossProjectMutation {
+    createRelease(input: CreateWorkOpsReleaseInput!): WorkOpsRelease!
+    """Edit a release's details (name, description, planned date), optimistic-locked."""
+    updateRelease(id: UUID!, input: UpdateWorkOpsReleaseInput!, expectedVersion: Long!): WorkOpsRelease!
+    """Soft-delete a release (recoverable — its row and bundle are retained, just hidden)."""
+    deleteRelease(id: UUID!): Boolean!
+    bundleVersion(releaseId: UUID!, projectId: UUID!, versionId: UUID!): Boolean!
+    unbundleVersion(releaseId: UUID!, versionId: UUID!): Boolean!
+    markReleased(releaseId: UUID!, expectedVersion: Long!): WorkOpsRelease!
+    """Start a release by creating native RELEASE runs from the bundled projects' pipeline YAML."""
+    launchRelease(releaseId: UUID!, inputs: JSON): Boolean!
+    """Promote a release through its pipeline-declared environment chain."""
+    promoteRelease(releaseId: UUID!, input: PromoteWorkOpsReleaseInput!): Boolean!
+    """Create a roll-forward patch release containing only the affected projects."""
+    startPatchRelease(releaseId: UUID!, input: StartWorkOpsPatchReleaseInput!): WorkOpsRelease!
+    "Rolls a release ATTEMPT back so the same versions can be re-released: deletes the relay's git tags and the versions' artifact publications, and resets deployment statuses. Refused while a run is live or after the release is marked released. Store uploads are not withdrawn."
+    rollbackReleaseArtifacts(releaseId: UUID!): Boolean!
+    "Roll back every current target in an environment that belongs to this release; revision 0 means previous."
+    rollbackReleaseEnvironment(releaseId: UUID!, environmentKey: String!, toRevision: Int! = 0): [String!]!
+    addAffectedProject(taskId: UUID!, projectId: UUID!): Boolean!
+    removeAffectedProject(taskId: UUID!, projectId: UUID!): Boolean!
+    moveTaskToProject(taskId: UUID!, input: MoveWorkOpsTaskInput!): UUID!
+}

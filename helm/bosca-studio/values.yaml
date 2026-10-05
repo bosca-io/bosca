@@ -1,0 +1,95 @@
+replicaCount: 1
+
+# Rolling update strategy. `maxUnavailable: 0` guarantees no capacity dip
+# during rollouts. Bump `maxSurge` higher for faster, more aggressive
+# rollouts at the cost of brief extra pod-hours during the rollout window.
+strategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxSurge: 25%
+    maxUnavailable: 0
+
+image:
+  registry: ghcr.io/bosca-io/bosca
+  repository: bosca-studio
+  tag: ""
+  pullPolicy: IfNotPresent
+
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+commonAnnotations: {}
+
+podSecurityContext: {}
+securityContext: {}
+
+service:
+  type: ClusterIP
+  port: 3000
+
+gateway:
+  enabled: true
+  gatewayName: bosca-gateway
+  gatewayNamespace: ""
+  hostnames: []
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 80
+
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+
+# administrator-env ConfigMap values (Nuxt runtime config).
+appConfig:
+  domain: ""
+  redisHost: ""
+  redisPort: "6380"
+  posthogPublicKey: ""
+  # Studio's git-clone-URL composer (web/projects/studio/app/pages/git/
+  # repositories/[id].vue). Defaults to the subdomain layout used by
+  # bosca-git-server: origin `https://git.<domain>` with empty path
+  # prefix. Set gitBaseUrl to `/git` if running git-server co-hosted
+  # with bosca-server behind a path prefix.
+  gitServerUrl: ""
+  gitBaseUrl: "/"
+  # Base URL of the artifact registry, served from a separate domain. Studio
+  # composes absolute download links for artifact blobs (web/projects/studio/
+  # app/pages/artifacts/repositories/[id].vue) that the browser follows directly,
+  # so this must be the public host. Defaults to `https://artifacts.<domain>`.
+  artifactsUrl: ""
+  # Absolute URLs of the deployment's terms and privacy documents. Sign-up links
+  # each one that is set and requires agreement; leave both empty for no consent step.
+  termsUrl: ""
+  privacyUrl: ""
+
+envFromConfigMaps:
+  - otel-env
+
+imagePullSecrets:
+  - name: docker-registry
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+global:
+  # Registry (and path) for every Bosca image; when set, it overrides image.registry.
+  imageRegistry: ""
+  domain: ""

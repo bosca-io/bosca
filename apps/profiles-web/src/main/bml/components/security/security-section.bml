@@ -1,0 +1,14 @@
+<component tag="security-section">
+  <prop name="title" type="String" required/>
+  <prop name="description" type="String" required/>
+
+  <section class="card section-card">
+    <div class="section-heading">
+      <div>
+        <h2>{ title }</h2>
+        <p class="card-copy">{ description }</p>
+      </div>
+    </div>
+    <slot/>
+  </section>
+</component>

@@ -1,0 +1,11 @@
+mutation SetGuideTemplateDefaultAttributes($metadataId: UUID!, $metadataVersion: Int!, $attributes: JSON!) {
+    content {
+        metadata {
+            guideTemplate(metadataId: $metadataId, metadataVersion: $metadataVersion) {
+                setDefaultAttributes(attributes: $attributes) {
+                    ...Metadata
+                }
+            }
+        }
+    }
+}

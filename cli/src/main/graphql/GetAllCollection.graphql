@@ -1,0 +1,7 @@
+query GetAllCollection($offset: Int, $limit: Int) {
+    content {
+        findCollections(query: { attributes: [], offset: $offset, limit: $limit }) {
+            ...Collection
+        }
+    }
+}

@@ -1,0 +1,1180 @@
+key,language,text
+"already.have.account","en","Already have an account?"
+"already.have.account","es","¿Ya tienes una cuenta?"
+"already.have.account","es-419","¿Ya tienes una cuenta?"
+"already.have.account","fr","Vous avez déjà un compte?"
+"already.have.account","hi","क्या आपके पास पहले से खाता है?"
+"already.have.account","ko","이미 계정이 있으신가요?"
+"already.have.account","nl","Heb je al een account?"
+"already.have.account","pl","Masz już konto?"
+"already.have.account","pt-BR","Já tem uma conta?"
+"already.have.account","ru","Уже есть аккаунт?"
+"already.have.account","sw","Tayari una akaunti?"
+"already.have.account","te","మీ దగ్గర ఇంతకు ముందు లెక్క ఉంది?"
+"already.have.account","tl","Mayroon ka na bang account?"
+"bible","en","Bible"
+"bible","es","Biblia"
+"bible","es-419","Biblia"
+"bible","fr","Bible"
+"bible","hi","बाइबिल"
+"bible","ko","성경"
+"bible","nl","Bijbel"
+"bible","pl","Biblia"
+"bible","pt-BR","Bíblia"
+"bible","ru","Библия"
+"bible","sw","Bibiliya"
+"bible","te","బైబిల్"
+"bible","tl","Bibliya"
+"bibles","en","Bibles"
+"bibles","es","Biblias"
+"bibles","es-419","Biblias"
+"bibles","fr","Bibles"
+"bibles","hi","बाइबलें"
+"bibles","ko","성경들"
+"bibles","nl","Bijbels"
+"bibles","pl","Biblie"
+"bibles","pt-BR","Bíblias"
+"bibles","ru","Библии"
+"bibles","sw","Bibiliya"
+"bibles","te","బైబిల్స్"
+"bibles","tl","Mga Bibliya"
+"cancel","en","Cancel"
+"cancel","es","Cancelar"
+"cancel","es-419","Cancelar"
+"cancel","fr","Annuler"
+"cancel","hi","रद्द करें"
+"cancel","ko","취소"
+"cancel","nl","Annuleren"
+"cancel","pl","Anuluj"
+"cancel","pt-BR","Cancelar"
+"cancel","ru","Отменить"
+"cancel","sw","Ghairi"
+"cancel","te","రద్దు చేయండి"
+"cancel","tl","Kanselahin"
+"continue","en","Continue"
+"continue","es","Continuar"
+"continue","es-419","Continuar"
+"continue","fr","Continuer"
+"continue","hi","जारी रखें"
+"continue","ko","계속"
+"continue","nl","Doorgaan"
+"continue","pl","Kontynuuj"
+"continue","pt-BR","Continuar"
+"continue","ru","Продолжить"
+"continue","sw","Endelea"
+"continue","te","కొనసాగించండి"
+"continue","tl","Magpatuloy"
+"dashboard","en","Dashboard"
+"dashboard","es","Panel de Control"
+"dashboard","es-419","Tablero"
+"dashboard","fr","Tableau de bord"
+"dashboard","hi","डैशबोर्ड"
+"dashboard","ko","대시보드"
+"dashboard","nl","Dashboard"
+"dashboard","pl","Panel sterowania"
+"dashboard","pt-BR","Painel"
+"dashboard","ru","Панель управления"
+"dashboard","sw","Dashibodi"
+"dashboard","te","డాష్బోర్డ్"
+"dashboard","tl","Dashboard"
+"edit","en","Edit"
+"edit","es","Editar"
+"edit","es-419","Editar"
+"edit","fr","Éditer"
+"edit","hi","संपादित करें"
+"edit","ko","편집"
+"edit","nl","Bewerken"
+"edit","pl","Edytuj"
+"edit","pt-BR","Editar"
+"edit","ru","Изменить"
+"edit","sw","Hariri"
+"edit","te","ఎడిట్ చేయండి"
+"edit","tl","I-edit"
+"email","en","Email"
+"email","es","Correo Electrónico"
+"email","es-419","Correo electrónico"
+"email","fr","Email"
+"email","hi","ईमेल"
+"email","ko","이메일"
+"email","nl","E-mail"
+"email","pl","Email"
+"email","pt-BR","Email"
+"email","ru","Электронная почта"
+"email","sw","Barua pepe"
+"email","te","ఇమెయిల్"
+"email","tl","Email"
+"email.forgotpassword","en","Account Recovery"
+"email.forgotpassword","es","Recuperación de Cuenta"
+"email.forgotpassword","es-419","Recuperación de Cuenta"
+"email.forgotpassword","fr","Récupération de compte"
+"email.forgotpassword","hi","खाता पुनर्प्राप्ति"
+"email.forgotpassword","ko","계정 복구"
+"email.forgotpassword","nl","Account Herstellen"
+"email.forgotpassword","pl","Odzyskiwanie Konta"
+"email.forgotpassword","pt-BR","Recuperação de Conta"
+"email.forgotpassword","ru","Восстановление аккаунта"
+"email.forgotpassword","sw","Urejeshaji wa Akaunti"
+"email.forgotpassword","te","ఖాతాను రికవరీ చేయండి"
+"email.forgotpassword","tl","Pagbawi ng Account"
+"email.forgotpassword.html","en","Hi {0},<br><br>We received a request to reset your password. To complete the process and access your account, please verify your email address by clicking the button below.<br><br>Best regards, The {2} Team<br><br><br><small>If you did make this request, you can safely ignore this email.</small><br>"
+"email.forgotpassword.html","es","Hola {0},<br><br>Hemos recibido una solicitud para restablecer tu contraseña. Para completar el proceso y acceder a tu cuenta, por favor verifica tu correo electrónico haciendo clic en el botón de abajo.<br><br>Atentamente, El Equipo de {2}<br><br><br><small>Si no realizaste esta solicitud, puedes ignorar este correo electrónico de forma segura.</small><br>"
+"email.forgotpassword.html","es-419","Hola {0},<br><br>Recibimos una solicitud para restablecer tu contraseña. Para completar el proceso y acceder a tu cuenta, por favor verifica tu dirección de correo electrónico haciendo clic en el botón abajo.<br><br>Saludos cordiales, El Equipo de {2}<br><br><br><small>Si hiciste esta solicitud, puedes ignorar este correo electrónico de forma segura.</small><br>"
+"email.forgotpassword.html","fr","Salut {0},<br><br>Nous avons reçu une demande pour réinitialiser votre mot de passe. Pour terminer le processus et accéder à votre compte, veuillez vérifier votre adresse email en cliquant sur le bouton ci-dessous.<br><br>Cordialement, L''équipe {2}<br><br><br><small>Si vous n''avez pas fait cette demande, vous pouvez ignorer cet email en toute sécurité.</small><br>"
+"email.forgotpassword.html","hi","प्रिय {0},<br><br>हमें आपका पासवर्ड रीसेट करने के लिए अनुरोध प्राप्त हुआ है। प्रक्रिया को पूरा करने और अपने खाते की एक्सेस करने के लिए, कृपया नीचे दिए गए बटन पर क्लिक करके अपना ईमेल पता सत्यापित करें।<br><br>सादर, {2} टीम<br><br><br><small>यदि आपने यह अनुरोध किया है, तो आप इस ईमेल को सुरक्षित रूप से नजरअंदाज कर सकते हैं।</small><br>"
+"email.forgotpassword.html","ko","안녕하세요 {0},<br><br>비밀번호를 재설정하려는 요청을 받았습니다. 프로세스를 완료하고 계정에 액세스하려면 아래 버튼을 클릭하여 이메일 주소를 확인하세요.<br><br>최고의 안부 인사, {2} 팀<br><br><br><작은>이 요청을 한 경우 이 이메일을 무시하셔도 됩니다.</small><br>"
+"email.forgotpassword.html","nl","Hallo {0},<br><br>We hebben een verzoek ontvangen om je wachtwoord te resetten. Om het proces te voltooien en toegang te krijgen tot je account, verifieer je je e-mailadres door op de knop hieronder te klikken.<br><br>Met vriendelijke groet, Het {2} Team<br><br><br><small>Als je dit verzoek niet hebt gedaan, kun je deze e-mail veilig negeren.</small><br>"
+"email.forgotpassword.html","pl","Cześć {0},<br><br>Otrzymaliśmy prośbę o zresetowanie hasła. Aby zakończyć proces i uzyskać dostęp do konta, proszę zweryfikować swój adres email, klikając przycisk poniżej.<br><br>Z poważaniem, Zespół {2}<br><br><br><small>Jeśli nie zażądałeś(aś) tego, możesz bezpiecznie zignorować ten email.</small><br>"
+"email.forgotpassword.html","pt-BR","Olá {0},<br><br>Recebemos uma solicitação para redefinir sua senha. Para completar o processo e acessar sua conta, por favor verifique seu endereço de e-mail clicando no botão abaixo.<br><br>Atenciosamente, a equipe {2}<br><br><br><small>Se você fez essa solicitação, pode ignorar este e-mail com segurança.</small><br>"
+"email.forgotpassword.html","ru","Привет, {0},<br><br>Мы получили запрос на сброс вашего пароля. Чтобы завершить процесс и получить доступ к своему аккаунту, пожалуйста, подтвердите ваш email, нажав кнопку ниже.<br><br>С уважением, команда {2}<br><br><br><small>Если вы не делали этого запроса, просто игнорируйте это письмо.</small><br>"
+"email.forgotpassword.html","sw","Habari {0},<br><br>Tumepokea ombi la kuweka upya nywila yako. Kamilisha mchakato na ufikia akaunti yako, tafadhali thibitisha anwani ya barua pepe yako kwa kubofya kitufe hapa chini.<br><br>Wako kwa dhati, Timu ya {2}<br><br><br><small>Kama ulitoa ombi hili, unaweza kupuuza barua pepe hii kwa usalama.</small><br>"
+"email.forgotpassword.html","te","హాయ్ {0},<br><br> మీ పాస్‌వర్డ్‌ను రీసెట్ చేయడం కోసం అభ్యర్థన అందుకుంది. ఈ ప్రక్రియను పూర్తిచెయ్యటానికి మరియు మీ ఖాతాకు యాక్స్ చేయడానికి, దిగువ బటన్‌ను క్లిక్ చేసి మీ ఇమెయిల్ చిరునామా గుర్తించండి.<br><br>ధన్యవాదాలు, {2} బృందం<br><br><br><small>మీరు ఈ అభ్యర్థన చెయ్యకపోతే, దీనిని నిర్లక్ష్యం చేయవచ్చు.</small><br>"
+"email.forgotpassword.html","tl","Hi {0},<br><br>Nakakuha kami ng kahilingan upang i-reset ang iyong password. Upang makumpleto ang proseso at ma-access ang iyong account, paki-verify ang iyong email address sa pamamagitan ng pag-click sa button sa ibaba. <br><br> Pinakamabuting pagbati, Ang {2} Koponan <br><br><br><small>Kung ikaw ay gumawa ng kahilingang ito, maaari mong ligtas na ipagsawalang-bahala ang email na ito.</small><br>"
+"email.forgotpassword.subject","en","Password Recovery"
+"email.forgotpassword.subject","es","Recuperación de Contraseña"
+"email.forgotpassword.subject","es-419","Recuperación de Contraseña"
+"email.forgotpassword.subject","fr","Récupération de mot de passe"
+"email.forgotpassword.subject","hi","पासवर्ड पुनर्प्राप्ति"
+"email.forgotpassword.subject","ko","비밀번호 복구"
+"email.forgotpassword.subject","nl","Wachtwoordherstel"
+"email.forgotpassword.subject","pl","Odzyskiwanie Hasła"
+"email.forgotpassword.subject","pt-BR","Recuperação de Senha"
+"email.forgotpassword.subject","ru","Восстановление пароля"
+"email.forgotpassword.subject","sw","Urejesho wa Nywila"
+"email.forgotpassword.subject","te","పాస్‌వర్డ్ రికవరీ"
+"email.forgotpassword.subject","tl","Pagbawi ng Password"
+"email.forgotpassword.text","en","Hi {0},
+
+We received a request to reset your password.
+
+To complete the process and access your account, please verify your email address by clicking the link below.
+
+{2}
+
+Best regards, The {3} Team
+
+
+If you did not sign up for this account, you can safely ignore this email."
+"email.forgotpassword.text","es","Hola {0},
+
+Hemos recibido una solicitud para restablecer tu contraseña.
+
+Para completar el proceso y acceder a tu cuenta, por favor verifica tu correo electrónico haciendo clic en el enlace de abajo.
+
+{2}
+
+Atentamente, El Equipo de {3}
+
+
+Si no realizaste esta solicitud, puedes ignorar este correo electrónico de forma segura."
+"email.forgotpassword.text","es-419","Hola {0},
+
+Recibimos una solicitud para restablecer tu contraseña.
+
+Para completar el proceso y acceder a tu cuenta, por favor verifica tu dirección de correo electrónico haciendo clic en el enlace de abajo.
+
+{2}
+
+Saludos cordiales, El Equipo de {3}
+
+
+Si no te registraste para esta cuenta, puedes ignorar este correo electrónico de forma segura."
+"email.forgotpassword.text","fr","Salut {0},
+
+Nous avons reçu une demande pour réinitialiser votre mot de passe.
+
+Pour terminer le processus et accéder à votre compte, veuillez vérifier votre adresse email en cliquant sur le lien ci-dessous.
+
+{2}
+
+Cordialement, L''équipe {3}
+
+
+Si vous n''avez pas fait cette demande, vous pouvez ignorer cet email en toute sécurité."
+"email.forgotpassword.text","hi","प्रिय {0},
+
+हमें आपका पासवर्ड रीसेट करने के लिए अनुरोध प्राप्त हुआ है।
+
+प्रक्रिया को पूरा करने और अपने खाते की एक्सेस करने के लिए, कृपया नीचे दिए गए लिंक पर क्लिक करके अपना ईमेल पता सत्यापित करें।
+
+{2}
+
+सादर, {3} टीम
+
+
+यदि आपने इस खाते के लिए साइन अप नहीं किया है, तो आप इस ईमेल को सुरक्षित रूप से नजरअंदाज कर सकते हैं।"
+"email.forgotpassword.text","ko","안녕하세요 {0},
+
+비밀번호를 재설정하려는 요청을 받았습니다.
+
+프로세스를 완료하고 계정에 액세스하려면 아래 링크를 클릭하여 이메일 주소를 확인하세요.
+
+{2}
+
+최고의 안부 인사, {3} 팀
+
+
+이 요청을 한 경우 이 이메일을 무시하셔도 됩니다."
+"email.forgotpassword.text","nl","Hallo {0},
+
+We hebben een verzoek ontvangen om je wachtwoord te resetten.
+
+Om het proces te voltooien en toegang te krijgen tot je account, verifieer je je e-mailadres door op de onderstaande link te klikken.
+
+{2}
+
+Met vriendelijke groet, Het {3} Team
+
+
+Als je dit verzoek niet hebt gedaan, kun je deze e-mail veilig negeren."
+"email.forgotpassword.text","pl","Cześć {0},
+
+Otrzymaliśmy prośbę o zresetowanie hasła.
+
+Aby zakończyć proces i uzyskać dostęp do konta, proszę zweryfikować swój adres email, klikając link poniżej.
+
+{2}
+
+Z poważaniem, Zespół {3}
+
+
+Jeśli nie zażądałeś(aś) tego, możesz bezpiecznie zignorować ten email."
+"email.forgotpassword.text","pt-BR","Olá {0},
+
+Recebemos uma solicitação para redefinir sua senha.
+
+Para completar o processo e acessar sua conta, por favor verifique seu endereço de e-mail clicando no link abaixo.
+
+{2}
+
+Atenciosamente, a equipe {3}
+
+
+Se você não se cadastrou nesta conta, pode ignorar este e-mail com segurança."
+"email.forgotpassword.text","ru","Привет, {0},
+
+Мы получили запрос на сброс вашего пароля.
+
+Чтобы завершить процесс и получить доступ к своему аккаунту, пожалуйста, подтвердите ваш email, перейдя по ссылке ниже.
+
+{2}
+
+С уважением, команда {3}
+
+
+Если вы не делали этого запроса, просто игнорируйте это письмо."
+"email.forgotpassword.text","sw","Habari {0},
+
+Tumepokea ombi la kuweka upya nywila yako.
+
+Kamilisha mchakato na ufikia akaunti yako, tafadhali thibitisha anwani ya barua pepe yako kwa kubofya kiungo kilicho hapa chini.
+
+{2}
+
+Wako kwa dhati, Timu ya {3}
+
+
+Kama hukutoa ombi hili, unaweza kupuuza barua pepe hii kwa usalama."
+"email.forgotpassword.text","te","హాయ్ {0},
+
+మీ పాస్‌వర్డ్‌ను రీసెట్ చేయడం కోసం అభ్యర్థన అందుకుంది.
+
+ప్రక్రియను పూర్తిచెయ్యటానికి మరియు మీ ఖాతాకు యాక్సెస్ చేయడానికి, దిగువ లింక్‌పై క్లిక్ చేయండి.
+
+{2}
+
+ధన్యవాదాలు, {3} బృందం
+
+
+మీ చందాపై ఎల్లలను అమలుచేయకపోతే, దీనిని నిర్లక్ష్యం చేయవచ్చు."
+"email.forgotpassword.text","tl","Hi {0},
+
+Nakakuha kami ng kahilingan upang i-reset ang iyong password. 
+
+Upang makumpleto ang proseso at ma-access ang iyong account, paki-verify ang iyong email address sa pamamagitan ng pag-click sa link sa ibaba.
+
+{2}
+
+Pinakamabuting pagbati, Ang {3} Koponan 
+
+
+Kung hindi ka nag-signup para sa account na ito, maaari mong ligtas na ipagsawalang-bahala ang email na ito."
+"email.verification","en","Welcome to Bosca!"
+"email.verification.subject","en","Please verify your email address"
+"email.verification.subject","es","Por favor, verifica tu dirección de correo electrónico"
+"email.verification.subject","es-419","Por favor verifica tu dirección de correo electrónico"
+"email.verification.subject","fr","Veuillez vérifier votre adresse email"
+"email.verification.subject","hi","कृपया अपना ईमेल पता सत्यापित करें"
+"email.verification.subject","ko","이메일 주소를 확인해 주세요"
+"email.verification.subject","nl","Verifieer alstublieft uw e-mailadres"
+"email.verification.subject","pl","Proszę zweryfikować swój adres email"
+"email.verification.subject","pt-BR","Por favor, verifique seu endereço de e-mail"
+"email.verification.subject","ru","Пожалуйста, подтвердите ваш электронный адрес"
+"email.verification.subject","sw","Tafadhali thibitisha anwani yako ya barua pepe"
+"email.verification.subject","te","దయచేసి మీ ఇమెయిల్ చిరునామా ధృవీకరించండి"
+"email.verification.subject","tl","Paki-verify ang iyong email address"
+"email.verification.welcome.html","en","Hi {0},<br><br>Thanks for creating an account with {1}. To complete your signup and access your account, please verify your email address by clicking the button below.<br><br>Best regards, The {2} Team<br><br><br><small>If you did not sign up for this account, you can safely ignore this email.</small><br>"
+"email.verification.welcome.html","es","Hola {0},<br><br>Gracias por crear una cuenta con {1}. Para completar tu registro y acceder a tu cuenta, por favor verifica tu correo electrónico haciendo clic en el botón de abajo.<br><br>Atentamente, El Equipo de {2}<br><br><br><small>Si no te registraste para esta cuenta, puedes ignorar este correo electrónico de forma segura.</small><br>"
+"email.verification.welcome.html","es-419","Hola {0},<br><br>Gracias por crear una cuenta con {1}. Para completar tu registro y acceder a tu cuenta, por favor verifica tu dirección de correo electrónico haciendo clic en el botón abajo.<br><br>Saludos cordiales, El Equipo de {2}<br><br><br><small>Si no te registraste para esta cuenta, puedes ignorar este correo electrónico de forma segura.</small><br>"
+"email.verification.welcome.html","fr","Salut {0},<br><br>Merci d''avoir créé un compte avec {1}. Pour compléter votre inscription et accéder à votre compte, veuillez vérifier votre adresse email en cliquant sur le bouton ci-dessous.<br><br>Cordialement, L''équipe {2}<br><br><br><small>Si vous n''avez pas créé ce compte, vous pouvez ignorer cet email en toute sécurité.</small><br>"
+"email.verification.welcome.html","hi","प्रिय {0},<br><br>{1} के साथ खाता बनाने के लिए धन्यवाद। अपना पंजीकरण पूरा करने और अपने खाते की एक्सेस करने के लिए, कृपया नीचे दिए गए बटन पर क्लिक करके अपना ईमेल पता सत्यापित करें।<br><br>सादर, {2} टीम<br><br><br><small>यदि आपने इस खाते के लिए साइन अप नहीं किया है, तो आप इस ईमेल को सुरक्षित रूप से नजरअंदाज कर सकते हैं।</small><br>"
+"email.verification.welcome.html","ko","안녕하세요 {0},<br><br> {1} 계정을 생성해 주셔서 감사합니다. 등록을 완료하고 계정에 액세스하려면 아래 버튼을 클릭하여 이메일 주소를 확인하세요.<br><br>최고의 안부 인사, {2} 팀<br><br><br><작은>이 계정을 등록하지 않은 경우 이 이메일을 무시하셔도 됩니다.</small><br>"
+"email.verification.welcome.html","nl","Hallo {0},<br><br>Bedankt voor het aanmaken van een account bij {1}. Om je aanmelding te voltooien en toegang te krijgen tot je account, kun je je e-mailadres verifiëren door op de knop hieronder te klikken.<br><br>Met vriendelijke groet, Het {2} Team<br><br><br><small>Als je je niet hebt aangemeld voor dit account, kun je deze e-mail veilig negeren.</small><br>"
+"email.verification.welcome.html","pl","Cześć {0},<br><br>Dziękujemy za utworzenie konta z {1}. Aby zakończyć rejestrację i uzyskać dostęp do konta, proszę zweryfikować swój adres email, klikając przycisk poniżej.<br><br>Z poważaniem, Zespół {2}<br><br><br><small>Jeśli nie rejestrowałeś(aś) się na to konto, możesz bezpiecznie zignorować ten email.</small><br>"
+"email.verification.welcome.html","pt-BR","Olá {0},<br><br>Obrigado por criar uma conta com {1}. Para completar seu cadastro e acessar sua conta, por favor verifique seu endereço de e-mail clicando no botão abaixo.<br><br>Atenciosamente, a equipe {2}<br><br><br><small>Se você não se cadastrou nessa conta, pode ignorar este e-mail com segurança.</small><br>"
+"email.verification.welcome.html","ru","Привет, {0},<br><br>Спасибо за создание аккаунта на {1}. Для завершения регистрации и доступа к аккаунту, пожалуйста, подтвердите ваш электронный адрес, нажав кнопку ниже.<br><br>С уважением, команда {2}<br><br><br><small>Если вы не регистрировали этот аккаунт, просто игнорируйте это письмо.</small><br>"
+"email.verification.welcome.html","sw","Habari {0},<br><br>Asante kwa kuunda akaunti na {1}. Kamilisha usajili wako na ufikia akaunti yako, tafadhali thibitisha anwani ya barua pepe yako kwa kubofya kitufe hapa chini.<br><br>Wako kwa dhati, Timu ya {2}<br><br><br><small>Kama hukujisajili kwa akaunti hii, unaweza kupuuza barua pepe hii kwa usalama.</small><br>"
+"email.verification.welcome.html","te","హాయ్ {0},<br><br> {1} తో ఖాతాను సృష్టించినందుకు ధన్యవాదాలు. మీ సైన్‌అప్‌ను పూర్తిచేసి మీ ఖాతాకు యాక్సెస్ పొందడానికి, దిగువన ఉన్న బటన్‌పై క్లిక్ చేయండి.<br><br>ధన్యవాదాలు, {2} బృందం<br><br><br><small>మీరు ఈ ఖాతాకు సైన్ అప్ చేయకపోతే, దీనిని నిర్లక్ష్యం చేయవచ్చు.</small><br>"
+"email.verification.welcome.html","tl","Hi {0},<br><br> Salamat sa paglikha ng account sa {1}. Upang makumpleto ang iyong pag-signup at ma-access ang iyong account, paki-verify ang iyong email address sa pamamagitan ng pag-click sa ibabang button.<br><br> Pinakamabuting pagbati, Ang {2} Koponan <br><br><br><small>Kung hindi ka nag-signup para sa account na ito, maaari mong ligtas na ipagsawalang-bahala ang email na ito.</small><br>"
+"email.verification.welcome.text","en","Hi {0},
+
+Thanks for creating an account with {1}.
+
+To complete your signup and access your account, please verify your email address by following the link below.
+
+{2}
+
+Best regards, The {3} Team
+
+
+If you did not sign up for this account, you can safely ignore this email."
+"email.verification.welcome.text","es","Hola {0},
+
+Gracias por crear una cuenta con {1}.
+
+Para completar tu registro y acceder a tu cuenta, por favor verifica tu correo electrónico siguiendo el enlace de abajo.
+
+{2}
+
+Atentamente, El Equipo de {3}
+
+
+Si no te registraste para esta cuenta, puedes ignorar este correo electrónico de forma segura."
+"email.verification.welcome.text","es-419","Hola {0},
+
+Gracias por crear una cuenta con {1}.
+
+Para completar tu registro y acceder a tu cuenta, por favor verifica tu dirección de correo electrónico siguiendo el enlace de abajo.
+
+{2}
+
+Saludos cordiales, El Equipo de {3}
+
+
+Si no te registraste para esta cuenta, puedes ignorar este correo electrónico de forma segura."
+"email.verification.welcome.text","fr","Salut {0},
+
+Merci d''avoir créé un compte avec {1}.
+
+Pour compléter votre inscription et accéder à votre compte, veuillez vérifier votre adresse email en suivant le lien ci-dessous.
+
+{2}
+
+Cordialement, L''équipe {3}
+
+
+Si vous n''avez pas créé ce compte, vous pouvez ignorer cet email en toute sécurité."
+"email.verification.welcome.text","hi","प्रिय {0},
+
+{1} के साथ खाता बनाने के लिए धन्यवाद।
+
+अपना पंजीकरण पूरा करने और अपने खाते की एक्सेस करने के लिए, कृपया नीचे दिए गए लिंक पर क्लिक करके अपना ईमेल पता सत्यापित करें।
+
+{2}
+
+सादर, {3} टीम
+
+
+यदि आपने इस खाते के लिए साइन अप नहीं किया है, तो आप इस ईमेल को सुरक्षित रूप से नजरअंदाज कर सकते हैं।"
+"email.verification.welcome.text","ko","안녕하세요 {0},
+
+{1} 계정을 생성해 주셔서 감사합니다.
+
+등록을 완료하고 계정에 액세스하려면 아래 링크를 클릭하여 이메일 주소를 확인하세요.
+
+{2}
+
+최고의 안부 인사, {3} 팀
+
+
+이 계정을 등록하지 않은 경우 이 이메일을 무시하셔도 됩니다."
+"email.verification.welcome.text","nl","Hallo {0},
+
+Bedankt voor het aanmaken van een account bij {1}.
+
+Om je aanmelding te voltooien en toegang te krijgen tot je account, verifieer je je e-mailadres door de onderstaande link te volgen.
+
+{2}
+
+Met vriendelijke groet, Het {3} Team
+
+
+Als je je niet hebt aangemeld voor dit account, kun je deze e-mail veilig negeren."
+"email.verification.welcome.text","pl","Cześć {0},
+
+Dziękujemy za utworzenie konta z {1}.
+
+Aby dokończyć rejestrację i uzyskać dostęp do konta, proszę zweryfikować swój adres email, postępując zgodnie z linkiem poniżej.
+
+{2}
+
+Z poważaniem, Zespół {3}
+
+
+Jeśli nie rejestrowałeś(aś) się na to konto, możesz bezpiecznie zignorować ten email."
+"email.verification.welcome.text","pt-BR","Olá {0},
+
+Obrigado por criar uma conta com {1}.
+
+Para completar seu cadastro e acessar sua conta, por favor verifique seu endereço de e-mail seguindo o link abaixo.
+
+{2}
+
+Atenciosamente, a equipe {3}
+
+
+Se você não se cadastrou nesta conta, pode ignorar este e-mail com segurança."
+"email.verification.welcome.text","ru","Привет, {0},
+
+Спасибо за создание аккаунта на {1}.
+
+Для завершения регистрации и доступа к аккаунту, пожалуйста, подтвердите ваш электронный адрес, перейдя по ссылке ниже.
+
+{2}
+
+С уважением, команда {3}
+
+
+Если вы не регистрировали этот аккаунт, просто игнорируйте это письмо."
+"email.verification.welcome.text","sw","Habari {0},
+
+Asante kwa kuunda akaunti na {1}.
+
+Kamilisha usajili wako na ufikia akaunti yako, tafadhali thibitisha anwani ya barua pepe yako kwa kufuata kiungo kilicho hapa chini.
+
+{2}
+
+Wako kwa dhati, Timu ya {3}
+
+
+Kama hukujisajili kwa akaunti hii, unaweza kupuuza barua pepe hii kwa usalama."
+"email.verification.welcome.text","te","హాయ్ {0},
+
+{1} తో ఖాతాను సృష్టించినందుకు ధన్యవాదాలు.
+
+సైన్‌అప్‌ను పూర్తిచేసి మీ ఖాతాకు యాక్సెస్ పొందడానికి, దిగువ లింక్‌ను అనుసరించి మీ ఇమెయిల్ చిరునామాను ధృవీకరించండి.
+
+{2}
+
+ధన్యవాదాలు, {3} బృందం
+
+
+మీరు ఈ ఖాతాకు సైన్ అప్ చేయకపోతే, దీనిని నిర్లక్ష్యం చేయవచ్చు."
+"email.verification.welcome.text","tl","Hi {0},
+
+Salamat sa paglikha ng account sa {1}. 
+
+Upang makumpleto ang iyong pag-signup at ma-access ang iyong account, paki-verify ang iyong email address sa pamamagitan ng pagsunod sa link sa ibaba.
+
+{2}
+
+Pinakamabuting pagbati, Ang {3} Koponan 
+
+
+Kung hindi ka nag-signup para sa account na ito, maaari mong ligtas na ipagsawalang-bahala ang email na ito."
+"email.verify","en","Verify Email"
+"email.verify","es","Verificar Correo Electrónico"
+"email.verify","es-419","Verificar Correo Electrónico"
+"email.verify","fr","Vérifier l'email"
+"email.verify","hi","ईमेल सत्यापित करें"
+"email.verify","ko","이메일 확인"
+"email.verify","nl","E-mail Verifiëren"
+"email.verify","pl","Zweryfikuj Email"
+"email.verify","pt-BR","Verificar Email"
+"email.verify","ru","Подтверждение email"
+"email.verify","sw","Thibitisha Barua Pepe"
+"email.verify","te","ఇమెయిల్ ధృవీకరించు"
+"email.verify","tl","I-verify ang Email"
+"forgot.failed","en","Forgot password failed"
+"forgot.failed","es","Falló el intento de recuperación de contraseña"
+"forgot.failed","es-419","Olvido de contraseña fallido"
+"forgot.failed","fr","La récupération du mot de passe a échoué"
+"forgot.failed","hi","पासवर्ड भूलने में विफल"
+"forgot.failed","ko","비밀번호를 잊으셨나요 실패"
+"forgot.failed","nl","Wachtwoord vergeten mislukte"
+"forgot.failed","pl","Nie udało się odzyskać hasła"
+"forgot.failed","pt-BR","Falha ao recuperar senha"
+"forgot.failed","ru","Сброс пароля не удался"
+"forgot.failed","sw","Usahau nywila umeshindwa"
+"forgot.failed","te","మర్చిపోయిన పాస్‌వర్డ్ విఫలం"
+"forgot.failed","tl","Nabigo ang nakalimutang password"
+"forgot.failed.message","en","An error occurred while resetting your password. Please verify you entered the correct email and try again."
+"forgot.failed.message","es","Se produjo un error al restablecer tu contraseña. Por favor, verifica que hayas ingresado el correo electrónico correcto e inténtalo de nuevo."
+"forgot.failed.message","es-419","Ocurrió un error al restablecer su contraseña. Verifique que haya ingresado el correo electrónico correcto e intente nuevamente."
+"forgot.failed.message","fr","Une erreur s'est produite lors de la réinitialisation de votre mot de passe. Veuillez vérifier que vous avez saisi le bon email et réessayez."
+"forgot.failed.message","hi","आपका पासवर्ड रीसेट करते समय एक त्रुटि हुई। कृपया सुनिश्चित करें कि आपने सही ईमेल दर्ज किया है और पुनः प्रयास करें।"
+"forgot.failed.message","ko","비밀번호를 재설정하는 동안 오류가 발생했습니다. 올바른 이메일을 입력했는지 확인하고 다시 시도하십시오."
+"forgot.failed.message","nl","Er is een fout opgetreden bij het resetten van je wachtwoord. Controleer of je het juiste e-mailadres hebt ingevoerd en probeer het opnieuw."
+"forgot.failed.message","pl","Wystąpił błąd podczas resetowania hasła. Proszę upewnić się, że wprowadzony adres email jest poprawny, i spróbować ponownie."
+"forgot.failed.message","pt-BR","Ocorreu um erro ao redefinir a sua senha. Por favor, verifique se você digitou o e-mail correto e tente novamente."
+"forgot.failed.message","ru","Произошла ошибка при сбросе пароля. Пожалуйста, проверьте правильно введенный email и попробуйте снова."
+"forgot.failed.message","sw","Kuna hitilafu ilitokea wakati wa kuweka upya nywila yako. Tafadhali hakikisha umeingiza barua pepe sahihi na jaribu tena."
+"forgot.failed.message","te","మీ పాస్‌వర్డ్ రీసెట్ సమయంలో లోపం చోటు చేసుకుంది. దయచేసి మీరు సరైన ఇమెయిల్ నమోదు చేశారా చూసుకుని మళ్ళీ ప్రయత్నించండి."
+"forgot.failed.message","tl","Nagkaroon ng error habang nire-reset ang iyong password. Paki-tiyakin na tama ang email at subukang muli."
+"forgot.password","en","Forgot Password"
+"forgot.password","es","¿Olvidaste tu contraseña?"
+"forgot.password","es-419","Olvidó la Contraseña"
+"forgot.password","fr","Mot de passe oublié"
+"forgot.password","hi","पासवर्ड भूल गए"
+"forgot.password","ko","비밀번호를 잊으셨나요"
+"forgot.password","nl","Wachtwoord Vergeten"
+"forgot.password","pl","Zapomniałeś Hasła"
+"forgot.password","pt-BR","Esqueceu a Senha"
+"forgot.password","ru","Забыли пароль"
+"forgot.password","sw","Umesahau Nywila"
+"forgot.password","te","పాస్‌వర్డ్ మర్చిపోయారని"
+"forgot.password","tl","Nakalimutan ang Password"
+"forgotpassword","en","Forgot Password"
+"forgotpassword","es","¿Olvidaste tu contraseña?"
+"forgotpassword","es-419","Olvidó la Contraseña"
+"forgotpassword","fr","Mot de passe oublié"
+"forgotpassword","hi","पासवर्ड भूल गए"
+"forgotpassword","ko","비밀번호를 잊으셨나요"
+"forgotpassword","nl","Wachtwoord Vergeten"
+"forgotpassword","pl","Zapomniałeś Hasła"
+"forgotpassword","pt-BR","Esqueceu a Senha"
+"forgotpassword","ru","Забыли пароль"
+"forgotpassword","sw","Umesahau Nywila"
+"forgotpassword","te","పాస్‌వర్డ్ మర్చిపోయారని"
+"forgotpassword","tl","Nakalimutan ang Password"
+"github","en","GitHub"
+"github","es","GitHub"
+"github","es-419","GitHub"
+"github","fr","GitHub"
+"github","hi","गिटहब"
+"github","ko","깃허브"
+"github","nl","GitHub"
+"github","pl","GitHub"
+"github","pt-BR","GitHub"
+"github","ru","GitHub"
+"github","sw","GitHub"
+"github","te","గిథబ్"
+"github","tl","GitHub"
+"google","en","Google"
+"google","es","Google"
+"google","es-419","Google"
+"google","fr","Google"
+"google","hi","गूगल"
+"google","ko","구글"
+"google","nl","Google"
+"google","pl","Google"
+"google","pt-BR","Google"
+"google","ru","Google"
+"google","sw","Google"
+"google","te","గూగుల్"
+"google","tl","Google"
+"invalid.permissions","en","Invalid Permissions"
+"invalid.permissions","es","Permisos Inválidos"
+"invalid.permissions","es-419","Permisos Inválidos"
+"invalid.permissions","fr","Permissions Invalides"
+"invalid.permissions","hi","अमान्य अनुमतियाँ"
+"invalid.permissions","ko","잘못된 권한"
+"invalid.permissions","nl","Ongeldige Rechten"
+"invalid.permissions","pl","Nieprawidłowe uprawnienia"
+"invalid.permissions","pt-BR","Permissões Inválidas"
+"invalid.permissions","ru","Недействительные разрешения"
+"invalid.permissions","sw","Ruhusa Batili"
+"invalid.permissions","te","చెల్లనిని అనుమతులు"
+"invalid.permissions","tl","Hindi Wastong Permiso"
+"invalid.permissions.message","en","You do not have the required permissions to access this page.
+<br>Please login with an account that has the required permissions."
+"invalid.permissions.message","es","No tienes los permisos necesarios para acceder a esta página.
+<br>Por favor inicia sesión con una cuenta que tenga los permisos requeridos."
+"invalid.permissions.message","es-419","No tienes los permisos requeridos para acceder a esta página.
+<br>Por favor inicia sesión con una cuenta que tenga los permisos necesarios."
+"invalid.permissions.message","fr","Vous n'avez pas les permissions requises pour accéder à cette page.<br>Veuillez vous connecter avec un compte qui a les permissions nécessaires."
+"invalid.permissions.message","hi","आपके पास इस पृष्ठ की एक्सेस करने के लिए आवश्यक अनुमतियाँ नहीं हैं।
+<br>कृपया उस खाते से लॉगिन करें जिसमें आवश्यक अनुमतियाँ हैं।"
+"invalid.permissions.message","ko","이 페이지에 액세스할 수 있는 권한이 없습니다.
+<br>필요한 권한이 있는 계정으로 로그인하세요."
+"invalid.permissions.message","nl","Je hebt niet de vereiste rechten om deze pagina te openen.
+<br>Log in met een account dat de benodigde rechten heeft."
+"invalid.permissions.message","pl","Nie masz wymaganych uprawnień do dostępu do tej strony.
+<br>Zaloguj się na konto, które ma wymagane uprawnienia."
+"invalid.permissions.message","pt-BR","Você não tem as permissões necessárias para acessar esta página.
+<br>Por favor, entre com uma conta que tenha as permissões necessárias."
+"invalid.permissions.message","ru","У вас нет необходимых разрешений для доступа к этой странице.
+<br>Пожалуйста, войдите с аккаунтом, имеющим необходимые разрешения."
+"invalid.permissions.message","sw","Huna ruhusa zinazohitajika kufikia ukurasa huu.
+<br>Tafadhali ingia na akaunti yenye ruhusa zinazohitajika."
+"invalid.permissions.message","te","ఈ పేజీ కి వెళ్ళడానికి మీరికి చేతనములను తగ్గించిన వివరాలను లాగిన్ చేస్తున్నాయి.
+<br>చొవి నడవాలని బణకూడా కఖతించింది లాగిన్."
+"invalid.permissions.message","tl","Wala kang kinakailangang permiso upang ma-access ang pahinang ito. 
+<br> Mangyaring mag-log in gamit ang account na may kinakailangang permiso."
+"login","en","Login"
+"login","es","Iniciar sesión"
+"login","es-419","Iniciar sesión"
+"login","fr","Connexion"
+"login","hi","लॉगिन करें"
+"login","ko","로그인"
+"login","nl","Inloggen"
+"login","pl","Zaloguj się"
+"login","pt-BR","Entrar"
+"login","ru","Войти"
+"login","sw","Ingia"
+"login","te","లాగిన్"
+"login","tl","Mag-log in"
+"name","en","Name"
+"name","es","Nombre"
+"name","es-419","Nombre"
+"name","fr","Nom"
+"name","hi","नाम"
+"name","ko","이름"
+"name","nl","Naam"
+"name","pl","Imię"
+"name","pt-BR","Nome"
+"name","ru","Имя"
+"name","sw","Jina"
+"name","te","పేరు"
+"name","tl","Pangalan"
+"no.organizations","en","No Organizations"
+"no.organizations","es","Sin Organizaciones"
+"no.organizations","es-419","No hay Organizaciones"
+"no.organizations","fr","Aucune organisation"
+"no.organizations","hi","कोई संगठन नहीं"
+"no.organizations","ko","조직이 없습니다"
+"no.organizations","nl","Geen Organisaties"
+"no.organizations","pl","Brak Organizacji"
+"no.organizations","pt-BR","Sem Organizações"
+"no.organizations","ru","Нет организаций"
+"no.organizations","sw","Hakuna Mashirika"
+"no.organizations","te","సంస్థలు లేవు"
+"no.organizations","tl","Walang Mga Organisasyon"
+"not.a.member","en","Not a member?"
+"not.a.member","es","¿No eres miembro?"
+"not.a.member","es-419","¿No eres miembro?"
+"not.a.member","fr","Pas encore membre?"
+"not.a.member","hi","क्या आप सदस्य नहीं हैं?"
+"not.a.member","ko","회원이 아니신가요?"
+"not.a.member","nl","Geen lid?"
+"not.a.member","pl","Nie jesteś członkiem?"
+"not.a.member","pt-BR","Não é membro?"
+"not.a.member","ru","Не являетесь участником?"
+"not.a.member","sw","Si mwanachama?"
+"not.a.member","te","సభ్యుడిగా లేరా?"
+"not.a.member","tl","Hindi miyembro?"
+"not.verified","en","Your account is not verified. Please verify your account by clicking the link in the verification email that was sent to you."
+"not.verified","es","Tu cuenta no está verificada. Por favor verifica tu cuenta haciendo clic en el enlace del correo de verificación que te fue enviado."
+"not.verified","es-419","Tu cuenta no está verificada. Por favor verifica tu cuenta haciendo clic en el enlace del correo de verificación que se te envió."
+"not.verified","fr","Votre compte n'est pas vérifié. Veuillez vérifier votre compte en cliquant sur le lien dans l'email de vérification qui vous a été envoyé."
+"not.verified","hi","आपका खाता सत्यापित नहीं है। कृपया सत्यापन ईमेल में दिए गए लिंक पर क्लिक करके अपने खाते की पुष्टि करें।"
+"not.verified","ko","계정이 인증되지 않았습니다. 계정 인증 이메일에 있는 링크를 클릭하여 계정을 인증하십시오."
+"not.verified","nl","Je account is niet geverifieerd. Verifieer je account door op de link in de verificatiemail te klikken die naar je is verzonden."
+"not.verified","pl","Twoje konto nie jest zweryfikowane. Proszę zweryfikować swoje konto, klikając link w wysłanym emailu weryfikacyjnym."
+"not.verified","pt-BR","Sua conta não está verificada. Por favor, verifique sua conta clicando no link no e-mail de verificação que foi enviado."
+"not.verified","ru","Ваш аккаунт не подтвержден. Пожалуйста, подтвердите его, нажав на ссылку в подтверждающем письме, которое вам было отправлено."
+"not.verified","sw","Akaunti yako haijathibitishwa. Tafadhali thibitisha akaunti yako kwa kubofya kiungo katika barua pepe ya uthibitisho iliyotumwa kwako."
+"not.verified","te","మీ ఖాతా ధృవీకరించబడలేదు. దయచేసి ధృవీకరణ ఇమెయిల్‌లోని లింక్‌పై క్లిక్ చేసి మీ ఖాతాను ధృవీకరించండి."
+"not.verified","tl","Hindi napatunayan ang iyong account. Paki-verify ang iyong account sa pamamagitan ng pag-click sa link sa email ng pagpapatunay na ipinadala sa iyo."
+"or","en","or"
+"or","es","o"
+"or","es-419","o"
+"or","fr","ou"
+"or","hi","या"
+"or","ko","또는"
+"or","nl","of"
+"or","pl","lub"
+"or","pt-BR","ou"
+"or","ru","или"
+"or","sw","au"
+"or","te","లేదా"
+"or","tl","o"
+"or.continue.with","en","Or Continue With"
+"or.continue.with","es","O continuar con"
+"or.continue.with","es-419","O Continuar Con"
+"or.continue.with","fr","Ou continuer avec"
+"or.continue.with","hi","या इसके साथ जारी रखें"
+"or.continue.with","ko","또는 계속하기"
+"or.continue.with","nl","Of Ga Verder Met"
+"or.continue.with","pl","Lub Kontynuuj Przez"
+"or.continue.with","pt-BR","Ou Continue Com"
+"or.continue.with","ru","Или продолжить"
+"or.continue.with","sw","Au Endelea na"
+"or.continue.with","te","లేదా కొనసాగించు"
+"or.continue.with","tl","O Magpatuloy Sa"
+"organization","en","Organization"
+"organization","es","Organización"
+"organization","es-419","Organización"
+"organization","fr","Organisation"
+"organization","hi","संगठन"
+"organization","ko","조직"
+"organization","nl","Organisatie"
+"organization","pl","Organizacja"
+"organization","pt-BR","Organização"
+"organization","ru","Организация"
+"organization","sw","Shirika"
+"organization","te","సంస్థ"
+"organization","tl","Organisasyon"
+"organizations","en","Organizations"
+"organizations","es","Organizaciones"
+"organizations","es-419","Organizaciones"
+"organizations","fr","Organisations"
+"organizations","hi","संगठन"
+"organizations","ko","조직들"
+"organizations","nl","Organisaties"
+"organizations","pl","Organizacje"
+"organizations","pt-BR","Organizações"
+"organizations","ru","Организации"
+"organizations","sw","Mashirika"
+"organizations","te","సంస్థలు"
+"organizations","tl","Mga Organisasyon"
+"organizations.list","en","A list of all the organizations"
+"organizations.list","es","Una lista de todas las organizaciones"
+"organizations.list","es-419","Una lista de todas las organizaciones"
+"organizations.list","fr","Liste de toutes les organisations"
+"organizations.list","hi","सभी संगठनों की सूची"
+"organizations.list","ko","모든 조직의 목록"
+"organizations.list","nl","Een lijst van alle organisaties"
+"organizations.list","pl","Lista wszystkich organizacji"
+"organizations.list","pt-BR","Uma lista de todas as organizações"
+"organizations.list","ru","Список всех организаций"
+"organizations.list","sw","Orodha ya mashirika yote"
+"organizations.list","te","అన్ని సంస్థల జాబితా"
+"organizations.list","tl","Isang listahan ng lahat ng mga organisasyon"
+"password","en","Password"
+"password","es","Contraseña"
+"password","es-419","Contraseña"
+"password","fr","Mot de passe"
+"password","hi","पासवर्ड"
+"password","ko","비밀번호"
+"password","nl","Wachtwoord"
+"password","pl","Hasło"
+"password","pt-BR","Senha"
+"password","ru","Пароль"
+"password","sw","Nywila"
+"password","te","పాస్‌వర్డ్"
+"password","tl","Password"
+"profiles","en","Profiles"
+"profiles","es","Perfiles"
+"profiles","es-419","Perfiles"
+"profiles","fr","Profils"
+"profiles","hi","प्रोफाइल"
+"profiles","ko","프로필들"
+"profiles","nl","Profielen"
+"profiles","pl","Profile"
+"profiles","pt-BR","Perfis"
+"profiles","ru","Профили"
+"profiles","sw","Profaili"
+"profiles","te","ప్రొఫైళ్ళు"
+"profiles","tl","Mga Profile"
+"profiles.list","en","A list of all the profiles"
+"profiles.list","es","Una lista de todos los perfiles"
+"profiles.list","es-419","Una lista de todos los perfiles"
+"profiles.list","fr","Liste de tous les profils"
+"profiles.list","hi","सभी प्रोफाइल की सूची"
+"profiles.list","ko","모든 프로필의 목록"
+"profiles.list","nl","Een lijst van alle profielen"
+"profiles.list","pl","Lista wszystkich profili"
+"profiles.list","pt-BR","Uma lista de todos os perfis"
+"profiles.list","ru","Список всех профилей"
+"profiles.list","sw","Orodha ya profaili zote"
+"profiles.list","te","అన్ని ప్రొఫైల్స్ జాబితా"
+"profiles.list","tl","Isang listahan ng lahat ng mga profile"
+"recovery.started","en","Account recovery started"
+"recovery.started","es","Recuperación de cuenta iniciada"
+"recovery.started","es-419","Inicio de recuperación de cuenta"
+"recovery.started","fr","Récupération de compte commencée"
+"recovery.started","hi","खाता पुनर्प्राप्ति शुरू हुई"
+"recovery.started","ko","계정 복구 시작됨"
+"recovery.started","nl","Herstel van account gestart"
+"recovery.started","pl","Rozpoczęto odzyskiwanie konta"
+"recovery.started","pt-BR","Recuperação de conta iniciada"
+"recovery.started","ru","Начато восстановление аккаунта"
+"recovery.started","sw","Urejeshaji Akaunti umeanza"
+"recovery.started","te","ఖాతా మొదలు పెట్టును"
+"recovery.started","tl","Nagsimula ang pagbawi ng account"
+"recovery.started.message","en","An email has been sent with further instructions."
+"recovery.started.message","es","Se ha enviado un correo electrónico con más instrucciones."
+"recovery.started.message","es-419","Se ha enviado un correo electrónico con más instrucciones."
+"recovery.started.message","fr","Un email a été envoyé avec d'autres instructions."
+"recovery.started.message","hi","आगे के निर्देशों के साथ एक ईमेल भेजा गया है।"
+"recovery.started.message","ko","추가 지침이 포함된 이메일이 발송되었습니다."
+"recovery.started.message","nl","Er is een e-mail verzonden met verdere instructies."
+"recovery.started.message","pl","Email został wysłany z dalszymi instrukcjami."
+"recovery.started.message","pt-BR","Um email foi enviado com mais instruções."
+"recovery.started.message","ru","На ваш email отправлено письмо с дальнейшими инструкциями."
+"recovery.started.message","sw","Barua pepe imetumwa na maelekezo zaidi."
+"recovery.started.message","te","క్రొత్త సూచనలతో ఇమెయిల్ పంపబడినది."
+"recovery.started.message","tl","Isang email ang naipadala na may kasamang karagdagang mga tagubilin."
+"recovery.success","en","Password reset successful"
+"recovery.success","es","Restablecimiento de contraseña exitoso"
+"recovery.success","es-419","Restablecimiento de contraseña exitoso"
+"recovery.success","fr","Réinitialisation du mot de passe réussie"
+"recovery.success","hi","पासवर्ड रीसेट सफल"
+"recovery.success","ko","비밀번호 재설정 성공"
+"recovery.success","nl","Wachtwoord succesvol hersteld"
+"recovery.success","pl","Reset hasła zakończony sukcesem"
+"recovery.success","pt-BR","Redefinição de senha bem-sucedida"
+"recovery.success","ru","Сброс пароля прошел успешно"
+"recovery.success","sw","Uwekaji upya wa nywila umefanikiwa"
+"recovery.success","te","పాస్‌వర్డ్ రీసెట్ విజయవంతం"
+"recovery.success","tl","Matagumpay na ang pag-reset ng password"
+"recovery.success.message","en","Your password has been reset successfully.  You may now sign in with your new password."
+"recovery.success.message","es","Tu contraseña ha sido restablecida exitosamente. Ahora puedes iniciar sesión con tu nueva contraseña."
+"recovery.success.message","es-419","Su contraseña ha sido restablecida exitosamente. Ahora puede iniciar sesión con su nueva contraseña."
+"recovery.success.message","fr","Votre mot de passe a été réinitialisé avec succès. Vous pouvez maintenant vous connecter avec votre nouveau mot de passe."
+"recovery.success.message","hi","आपका पासवर्ड सफलतापूर्वक रीसेट कर दिया गया है। अब आप अपने नए पासवर्ड के साथ साइन इन कर सकते हैं।"
+"recovery.success.message","ko","비밀번호가 성공적으로 재설정되었습니다. 이제 새 비밀번호로 로그인하실 수 있습니다."
+"recovery.success.message","nl","Je wachtwoord is succesvol hersteld. Je kunt nu inloggen met je nieuwe wachtwoord."
+"recovery.success.message","pl","Twoje hasło zostało pomyślnie zresetowane. Możesz teraz zalogować się za pomocą nowego hasła."
+"recovery.success.message","pt-BR","Sua senha foi redefinida com sucesso. Agora você pode acessar sua conta com a nova senha."
+"recovery.success.message","ru","Ваш пароль был успешно сброшен. Теперь вы можете войти с новым паролем."
+"recovery.success.message","sw","Nywila yako imewekwa upya kwa mafanikio. Sasa unaweza kuingia na nywila yako mpya."
+"recovery.success.message","te","మీ పాస్‌వర్డ్ విజయవంతంగా రీసెట్ చేయబడింది. ఇప్పుడు మీ నూతన పాస్‌వర్డ్‌తో సైన్ ఇన్ చేయవచ్చు."
+"recovery.success.message","tl","Matagumpay na na-reset ang iyong password. Maaari ka na ngayong mag-sign in gamit ang iyong bagong password."
+"reset.password","en","Reset Password"
+"reset.password","es","Restablecer Contraseña"
+"reset.password","es-419","Restablecer Contraseña"
+"reset.password","fr","Réinitialiser le mot de passe"
+"reset.password","hi","पासवर्ड रीसेट करें"
+"reset.password","ko","비밀번호 재설정"
+"reset.password","nl","Wachtwoord Resetten"
+"reset.password","pl","Zresetuj Hasło"
+"reset.password","pt-BR","Redefinir Senha"
+"reset.password","ru","Сброс пароля"
+"reset.password","sw","Weka upya Nywila"
+"reset.password","te","పాస్‌వర్డ్ రీసెట్ చేయండి"
+"reset.password","tl","I-reset ang Password"
+"search","en","Search"
+"search","es","Buscar"
+"search","es-419","Buscar"
+"search","fr","Rechercher"
+"search","hi","खोजें"
+"search","ko","검색"
+"search","nl","Zoeken"
+"search","pl","Szukaj"
+"search","pt-BR","Buscar"
+"search","ru","Поиск"
+"search","sw","Tafuta"
+"search","te","శోధించు"
+"search","tl","Maghanap"
+"signin","en","Sign In"
+"signin","es","Entrar"
+"signin","es-419","Iniciar Sesión"
+"signin","fr","Se Connecter"
+"signin","hi","साइन इन करें"
+"signin","ko","로그인"
+"signin","nl","Aanmelden"
+"signin","pl","Zaloguj się"
+"signin","pt-BR","Acessar"
+"signin","ru","Авторизоваться"
+"signin","sw","Jiandikishe"
+"signin","te","సైన్ ఇన్"
+"signin","tl","Mag-sign In"
+"signin.failed","en","Sign in failed"
+"signin.failed","es","Error al iniciar sesión"
+"signin.failed","es-419","Inicio de sesión fallido"
+"signin.failed","fr","Échec de la connexion"
+"signin.failed","hi","साइन इन असफल"
+"signin.failed","ko","로그인 실패"
+"signin.failed","nl","Aanmelden mislukt"
+"signin.failed","pl","Logowanie nieudane"
+"signin.failed","pt-BR","Falha ao acessar"
+"signin.failed","ru","Ошибка входа"
+"signin.failed","sw","Kuingia kumeshindwa"
+"signin.failed","te","సైన్ ఇన్ విఫలమైంది"
+"signin.failed","tl","Nabigo ang pag-sign in"
+"signin.failed.message","en","You have entered an invalid username or password.
+<br>Please try again."
+"signin.failed.message","es","Has ingresado un nombre de usuario o contraseña inválidos.
+<br>Por favor, intenta de nuevo."
+"signin.failed.message","es-419","Has ingresado un nombre de usuario o contraseña incorrecto.
+<br>Por favor intenta otra vez."
+"signin.failed.message","fr","Vous avez saisi un nom d'utilisateur ou un mot de passe invalide.<br>Veuillez réessayer."
+"signin.failed.message","hi","आपने एक अमान्य उपयोगकर्ता नाम या पासवर्ड दर्ज किया है।
+<br>कृपया पुनः प्रयास करें।"
+"signin.failed.message","ko","잘못된 사용자 이름이나 비밀번호를 입력하셨습니다.
+<br>다시 시도해 주세요."
+"signin.failed.message","nl","Je hebt een ongeldige gebruikersnaam of wachtwoord ingevoerd.
+<br>Probeer het opnieuw."
+"signin.failed.message","pl","Wprowadzono nieprawidłową nazwę użytkownika lub hasło.
+<br>Spróbuj ponownie."
+"signin.failed.message","pt-BR","Você inseriu um nome de usuário ou senha inválido.
+<br>Por favor, tente novamente."
+"signin.failed.message","ru","Вы ввели неверное имя пользователя или пароль.
+<br>Пожалуйста, попробуйте снова."
+"signin.failed.message","sw","Umeingiza jina la mtumiaji au nywila isiyo sahihi.
+<br>Tafadhali jaribu tena."
+"signin.failed.message","te","మీరు చెల్లని యూజర్ పేరు లేదా పాస్‌వర్డ్ ఇచ్చారు.
+<br>మరల ప్రయత్నించండి."
+"signin.failed.message","tl","Nakapaglagay ka ng maling username o password. 
+<br> Mangyaring subukan muli."
+"signin.to.your.account","en","Sign in to your account"
+"signin.to.your.account","es","Inicia sesión en tu cuenta"
+"signin.to.your.account","es-419","Inicia sesión en tu cuenta"
+"signin.to.your.account","fr","Connectez-vous à votre compte"
+"signin.to.your.account","hi","अपने खाते में साइन इन करें"
+"signin.to.your.account","ko","계정에 로그인하십시오"
+"signin.to.your.account","nl","Meld je aan bij je account"
+"signin.to.your.account","pl","Zaloguj się na swoje konto"
+"signin.to.your.account","pt-BR","Acesse sua conta"
+"signin.to.your.account","ru","Войдите в свой аккаунт"
+"signin.to.your.account","sw","Ingia kwenye akaunti yako"
+"signin.to.your.account","te","మీ ఖాతాకు సైన్ ఇన్ చేయండి"
+"signin.to.your.account","tl","Mag-sign in sa iyong account"
+"signup","en","Sign Up"
+"signup","es","Regístrate"
+"signup","es-419","Regístrate"
+"signup","fr","S'inscrire"
+"signup","hi","पंजीकरण करें"
+"signup","ko","회원가입"
+"signup","nl","Aanmelden"
+"signup","pl","Zarejestruj się"
+"signup","pt-BR","Cadastre-se"
+"signup","ru","Регистрация"
+"signup","sw","Jiunge"
+"signup","te","నమోదు చేస్తారా"
+"signup","tl","Mag-sign Up"
+"signup.duplicate","en","An account already exists with this email address.
+<br> Please try logging in instead."
+"signup.duplicate","es","Ya existe una cuenta con esta dirección de correo electrónico.
+<br> Por favor, intenta iniciar sesión en su lugar."
+"signup.duplicate","es-419","Ya existe una cuenta con esta dirección de correo electrónico.
+<br> Por favor intenta iniciar sesión en su lugar."
+"signup.duplicate","fr","Un compte existe déjà avec cet email.<br> Veuillez essayer de vous connecter à la place."
+"signup.duplicate","hi","इस ईमेल पते के साथ पहले से एक खाता मौजूद है।
+<br> कृपया लॉग इन करने का प्रयास करें।"
+"signup.duplicate","ko","이 이메일 주소로 이미 계정이 있습니다. <br> 대신 로그인해보세요."
+"signup.duplicate","nl","Er bestaat al een account met dit e-mailadres.
+<br> Probeer in plaats daarvan in te loggen."
+"signup.duplicate","pl","Konto już istnieje na ten adres email.
+<br> Prosimy o zalogowanie się zamiast tego."
+"signup.duplicate","pt-BR","Já existe uma conta com este endereço de e-mail.
+<br> Por favor, tente fazer login."
+"signup.duplicate","ru","Аккаунт с этим email уже существует.
+<br> Пожалуйста, попробуйте войти."
+"signup.duplicate","sw","Akaunti tayari ipo na anwani hii ya barua pepe.
+<br> Tafadhali jaribu kuingia badala yake."
+"signup.duplicate","te","మీరు ఎప్పటికప్పుడు ఇమెయిల్ చిరునామాతో ఖాతా ఉంది.
+<br> దయచేసి లాగిన్ ప్రయత్నం చేయండి."
+"signup.duplicate","tl","Mayroon nang account na nakarehistro gamit ang email address na ito.
+<br> Mangyaring subukan na mag-log in na lamang."
+"signup.error","en","Sign up failed"
+"signup.error","es","El registro falló"
+"signup.error","es-419","Registro fallido"
+"signup.error","fr","Échec de l'inscription"
+"signup.error","hi","पंजीकरण असफल"
+"signup.error","ko","등록 실패"
+"signup.error","nl","Aanmelding mislukt"
+"signup.error","pl","Rejestracja nieudana"
+"signup.error","pt-BR","Falha no Cadastro"
+"signup.error","ru","Ошибка регистрации"
+"signup.error","sw","Usajili umeshindwa"
+"signup.error","te","సైన్ అప్ విఫలమైంద."
+"signup.error","tl","Nabigo ang pag-signup"
+"signup.failed","en","Sign up failed, please try again later."
+"signup.failed","es","El registro falló, por favor intenta de nuevo más tarde."
+"signup.failed","es-419","El registro falló, por favor intenta nuevamente más tarde."
+"signup.failed","fr","Échec de l'inscription, veuillez réessayer plus tard."
+"signup.failed","hi","पंजीकरण असफल रहा, कृपया बाद में पुन: प्रयास करें।"
+"signup.failed","ko","가입 실패, 나중에 다시 시도해 주세요."
+"signup.failed","nl","Aanmelding mislukt, probeer het later opnieuw."
+"signup.failed","pl","Rejestracja nieudana, spróbuj ponownie później."
+"signup.failed","pt-BR","Falha no Cadastro, por favor tente novamente mais tarde."
+"signup.failed","ru","Ошибка регистрации, пожалуйста, попробуйте позже."
+"signup.failed","sw","Usajili umeshindwa, tafadhali jaribu tena baadaye."
+"signup.failed","te","సైన్ అప్ విఫలమైంద, దయచేసి మరల ప్రయత్నించండి."
+"signup.failed","tl","Nabigo ang pag-signup, mangyaring subukan muli mamaya."
+"signup.for.an.account","en","Sign up for an account"
+"signup.for.an.account","es","Regístrate para obtener una cuenta"
+"signup.for.an.account","es-419","Registrarse para una cuenta"
+"signup.for.an.account","fr","Inscrivez-vous pour un compte"
+"signup.for.an.account","hi","एक खाता बनाएँ"
+"signup.for.an.account","ko","계정 등록"
+"signup.for.an.account","nl","Meld je aan voor een account"
+"signup.for.an.account","pl","Zarejestruj się"
+"signup.for.an.account","pt-BR","Cadastre-se para uma conta"
+"signup.for.an.account","ru","Зарегистрироваться"
+"signup.for.an.account","sw","Jiandikishe kwa akaunti"
+"signup.for.an.account","te","చిరునామా కోసం సైన్ అప్ చేయండి"
+"signup.for.an.account","tl","Mag-sign up para sa isang account"
+"signup.successful","en","Sign up successful"
+"signup.successful","es","Registro exitoso"
+"signup.successful","es-419","Registro exitoso"
+"signup.successful","fr","Inscription réussie"
+"signup.successful","hi","पंजीकरण सफल"
+"signup.successful","ko","등록 성공"
+"signup.successful","nl","Aanmelding succesvol"
+"signup.successful","pl","Rejestracja udana"
+"signup.successful","pt-BR","Cadastro bem-sucedido"
+"signup.successful","ru","Регистрация прошла успешно"
+"signup.successful","sw","Usajili umefanikiwa"
+"signup.successful","te","సైన్ అప్ విజయవంతంగా"
+"signup.successful","tl","Matagumpay ang pag-signup"
+"signup.successful.message","en","Thank you for signing up, you will receive an email shortly to verify your account. Once you verify your account, you will be able to sign in."
+"signup.successful.message","es","Gracias por registrarte, recibirás un correo electrónico en breve para verificar tu cuenta. Una vez que verifiques tu cuenta, podrás iniciar sesión."
+"signup.successful.message","es-419","Gracias por registrarte, pronto recibirás un correo electrónico para verificar tu cuenta. Una vez que verifiques tu cuenta, podrás iniciar sesión."
+"signup.successful.message","fr","Merci pour votre inscription, vous recevrez bientôt un email pour vérifier votre compte. Une fois votre compte vérifié, vous pourrez vous connecter."
+"signup.successful.message","hi","पंजीकरण के लिए धन्यवाद, आप थोड़ी देर में अपने खाते को सत्यापित करने के लिए एक ईमेल प्राप्त करेंगे। एक बार जब आप अपने खाते की पुष्टि कर लें, तो आप साइन इन कर सकते हैं।"
+"signup.successful.message","ko","가입해 주셔서 감사합니다. 계정을 확인할 수 있는 이메일을 곧 받게 됩니다. 계정을 확인하면 로그인할 수 있게 됩니다."
+"signup.successful.message","nl","Bedankt voor je aanmelding, je ontvangt binnenkort een e-mail om je account te verifiëren. Zodra je je account hebt geverifieerd, kun je je aanmelden."
+"signup.successful.message","pl","Dziękujemy za rejestrację, wkrótce otrzymasz email z potwierdzeniem. Po zweryfikowaniu konta będziesz mógł się zalogować."
+"signup.successful.message","pt-BR","Obrigado por se cadastrar, você receberá um e-mail em breve para verificar sua conta. Após verificar sua conta, você poderá acessar."
+"signup.successful.message","ru","Спасибо за регистрацию, вскоре вы получите письмо для подтверждения вашего аккаунта. После подтверждения вы сможете войти на сайт."
+"signup.successful.message","sw","Asante kwa kujisajili, utapokea barua pepe muda si mrefu ili kuthibitisha akaunti yako. Pindi utakapothibitisha akaunti yako, utaweza kuingia."
+"signup.successful.message","te","మీరు సైన్ అప్ చేసినందుకు ధన్యవాదాలు, మీ ఖాతాను ధృవీకరించడానికి త్వరలో ఇమెయిల్ అందుకుంటారు. ఒకసారి మీరు ధృవీకరించిన తర్వాత, మీరు సైన్ ఇన్ చేయవచ్చు."
+"signup.successful.message","tl","Salamat sa pag-signup, makakatanggap ka ng email sa ilang sandali upang i-verify ang iyong account. Kapag na-verify mo na ang iyong account, maaari ka nang mag-sign in."
+"site.name","en","Bosca"
+"status","en","Status"
+"status","es","Estado"
+"status","es-419","Estatus"
+"status","fr","Statut"
+"status","hi","स्टेटस"
+"status","ko","상태"
+"status","nl","Status"
+"status","pl","Status"
+"status","pt-BR","Status"
+"status","ru","Статус"
+"status","sw","Hali"
+"status","te","స్థితి"
+"status","tl","Katayuan"
+"unverified","en","Unverified"
+"unverified","es","No verificado"
+"unverified","es-419","No Verificado"
+"unverified","fr","Non vérifié"
+"unverified","hi","असत्यापित"
+"unverified","ko","미인증"
+"unverified","nl","Niet geverifieerd"
+"unverified","pl","Niezwerifikowany"
+"unverified","pt-BR","Não verificado"
+"unverified","ru","Неподтверждён"
+"unverified","sw","Haijathibitishwa"
+"unverified","te","ధృవీకరించబడలేదు"
+"unverified","tl","Hindi na-verify"
+"username","en","Username"
+"username","es","Nombre de usuario"
+"username","es-419","Nombre de usuario"
+"username","fr","Nom d'utilisateur"
+"username","hi","उपयोगकर्ता नाम"
+"username","ko","사용자 이름"
+"username","nl","Gebruikersnaam"
+"username","pl","Nazwa użytkownika"
+"username","pt-BR","Nome de usuário"
+"username","ru","Имя пользователя"
+"username","sw","Jina la mtumiaji"
+"username","te","యూజర్ నేమ్"
+"username","tl","Username"
+"verification.failed","en","Verification failed"
+"verification.failed","es","La verificación falló"
+"verification.failed","es-419","Verificación fallida"
+"verification.failed","fr","Échec de la vérification"
+"verification.failed","hi","सत्यापन विफल"
+"verification.failed","ko","검증 실패"
+"verification.failed","nl","Verificatie mislukt"
+"verification.failed","pl","Weryfikacja nie powiodła się"
+"verification.failed","pt-BR","Verificação falhou"
+"verification.failed","ru","Ошибка верификации"
+"verification.failed","sw","Uthibitishaji umeshindikana"
+"verification.failed","te","ధృవీకరణ విఫలమైంది"
+"verification.failed","tl","Nabigo ang Pagpapatunay"
+"verification.failed.message","en","This verification link is invalid or has already been used.
+<br>Please try signing up again or contact support if you continue to have issues."
+"verification.failed.message","es","Este enlace de verificación no es válido o ya ha sido usado.<br>Por favor, intenta registrarte nuevamente o contacta al soporte si continúas teniendo problemas."
+"verification.failed.message","es-419","Este enlace de verificación es inválido o ya ha sido utilizado.<br>Por favor, intenta registrarte de nuevo o contacta soporte si continúas teniendo problemas."
+"verification.failed.message","fr","Ce lien de vérification est invalide ou a déjà été utilisé.
+<br>Veuillez essayer de vous inscrire à nouveau ou contacter le support si le problème persiste."
+"verification.failed.message","hi","यह सत्यापन लिंक अमान्य है या पहले ही उपयोग किया जा चुका है।
+<br>कृपया फिर से साइन अप करने का प्रयास करें या यदि आपको समस्याएँ जारी रहती हैं, तो सहायता से संपर्क करें।"
+"verification.failed.message","ko","이 확인 링크는 유효하지 않거나 이미 사용되었습니다.
+<br>계속 문제가 발생할 경우 다시 가입을 시도하시거나 지원팀에 문의하십시오."
+"verification.failed.message","nl","Deze verificatielink is ongeldig of is al gebruikt.
+<br>Probeer alstublieft opnieuw aan te melden of neem contact op met de ondersteuning als u problemen blijft ondervinden."
+"verification.failed.message","pl","Ten link do weryfikacji jest nieprawidłowy lub został już użyty.
+<br>Spróbuj ponownie zarejestrować się, lub skontaktuj się z pomocą techniczną, jeśli nadal masz problemy."
+"verification.failed.message","pt-BR","Este link de verificação é inválido ou já foi usado.
+<br>Por favor, tente se inscrever novamente ou entre em contato com o suporte se continuar tendo problemas."
+"verification.failed.message","ru","Эта ссылка для подтверждения недействительна или уже использована.
+<br>Пожалуйста, попробуйте зарегистрироваться снова или свяжитесь с поддержкой, если проблема сохраняется."
+"verification.failed.message","sw","Kiungo hiki cha uthibitishaji si sahihi au tayari kimetumika.
+<br>Tafadhali jaribu kujisajili tena au wasiliana na usaidizi ikiwa unaendelea kuwa na matatizo."
+"verification.failed.message","te","ఈ ధృవీకరణ లింక్ చెల్లదు లేదా ఇప్పటికే ఉపయోగించబడింది.
+<br>సైన్ అప్ చేయడానికి మళ్ళీ ప్రయత్నించండి లేదా మీరు సమస్యలు ఎదుర్కొన్నట్లయితే మద్దతు సంప్రదించండి."
+"verification.failed.message","tl","Ang link ng pagpapatunay na ito ay hindi wasto o nagamit na.
+<br>Pakisubukang magrehistro muli o kontakin ang suporta kung patuloy kang may isyu."
+"verification.token","en","Verification Token"
+"verification.token","es","Token de verificación"
+"verification.token","es-419","Token de verificación"
+"verification.token","fr","Jeton de vérification"
+"verification.token","hi","प्रमाणीकरण टोकन"
+"verification.token","ko","인증 토큰"
+"verification.token","nl","Verificatietoken"
+"verification.token","pl","Token weryfikacyjny"
+"verification.token","pt-BR","Token de Verificação"
+"verification.token","ru","Код подтверждения"
+"verification.token","sw","Tokeni ya Uthibitisho"
+"verification.token","te","సరిచూడండి టోకెన్"
+"verification.token","tl","Token ng Pagpapatunay"
+"verified","en","Verified"
+"verified","es","Verificado"
+"verified","es-419","Verificado"
+"verified","fr","Vérifié"
+"verified","hi","सत्यापित"
+"verified","ko","인증됨"
+"verified","nl","Geverifieerd"
+"verified","pl","Zweryfikowany"
+"verified","pt-BR","Verificado"
+"verified","ru","Подтверждён"
+"verified","sw","Imethibitishwa"
+"verified","te","ధృవీకృత"
+"verified","tl","Napatunayan"
+"verify.email","en","Verify Email"
+"verify.email","es","Verificar Correo Electrónico"
+"verify.email","es-419","Verificar Correo Electrónico"
+"verify.email","fr","Vérifier l'email"
+"verify.email","hi","ईमेल सत्यापित करें"
+"verify.email","ko","이메일 확인"
+"verify.email","nl","E-mail Verifiëren"
+"verify.email","pl","Zweryfikuj Email"
+"verify.email","pt-BR","Verificar Email"
+"verify.email","ru","Подтвердить email"
+"verify.email","sw","Thibitisha Barua Pepe"
+"verify.email","te","ఇమెయిల్ ధృవీకరించండి"
+"verify.email","tl","I-verify ang Email"
+"verify.successful","en","Your account is verified"
+"verify.successful","es","Tu cuenta está verificada"
+"verify.successful","es-419","Tu cuenta está verificada"
+"verify.successful","fr","Votre compte est vérifié"
+"verify.successful","hi","आपका खाता सत्यापित हो गया है"
+"verify.successful","ko","계정 인증"
+"verify.successful","nl","Je account is geverifieerd"
+"verify.successful","pl","Twoje konto jest zweryfikowane"
+"verify.successful","pt-BR","Sua conta está verificada"
+"verify.successful","ru","Ваш аккаунт подтвержден"
+"verify.successful","sw","Akaunti yako imethibitishwa"
+"verify.successful","te","మీ ఖాతా ధృవీకరించబడింది"
+"verify.successful","tl","Napatunayan ang iyong account"
+"verify.successful.message","en","Thank you for verifying your account, you may now continue."
+"verify.successful.message","es","Gracias por verificar tu cuenta, ahora puedes continuar."
+"verify.successful.message","es-419","Gracias por verificar tu cuenta, ahora puedes continuar."
+"verify.successful.message","fr","Merci d'avoir vérifié votre compte, vous pouvez maintenant continuer."
+"verify.successful.message","hi","अपने खाते की पुष्टि करने के लिए धन्यवाद, आप अब जारी रख सकते हैं।"
+"verify.successful.message","ko","계정을 인증해 주셔서 감사합니다, 이제 계속하실 수 있습니다."
+"verify.successful.message","nl","Bedankt voor het verifiëren van je account, je kunt nu verder gaan."
+"verify.successful.message","pl","Dziękujemy za weryfikację konta, możesz teraz kontynuować."
+"verify.successful.message","pt-BR","Obrigado por verificar sua conta, agora você pode continuar."
+"verify.successful.message","ru","Спасибо за подтверждение вашего аккаунта, теперь вы можете продолжить."
+"verify.successful.message","sw","Asante kwa kuthibitisha akaunti yako, unaweza sasa kuendelea."
+"verify.successful.message","te","మీ ఖాతాను ధృవీకరించినందుకు ధన్యవాదాలు, మీరు ఇప్పుడు కొనసాగవచ్చు."
+"verify.successful.message","tl","Salamat sa pag-verify ng iyong account, maaari ka nang magpatuloy."
+"verify.token","en","Verify Token"
+"verify.token","es","Verificar Token"
+"verify.token","es-419","Verificar Token"
+"verify.token","fr","Vérifier le jeton"
+"verify.token","hi","टोकन सत्यापित करें"
+"verify.token","ko","토큰 확인"
+"verify.token","nl","Verifieer Token"
+"verify.token","pl","Zweryfikuj Token"
+"verify.token","pt-BR","Verificar Token"
+"verify.token","ru","Подтвердить код"
+"verify.token","sw","Thibitisha Tokeni"
+"verify.token","te","టోకెన్ ధృవీకరణ చేయండి"
+"verify.token","tl","I-verify ang Token"

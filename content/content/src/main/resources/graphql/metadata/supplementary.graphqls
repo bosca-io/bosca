@@ -1,0 +1,11 @@
+"A resolved identifier object for a supplementary content item, containing the IDs needed to locate and access the supplementary within its parent metadata item"
+type SupplementaryIdObject {
+    "ID of the parent metadata item that owns this supplementary content"
+    contentId: UUID!
+    "Unique identifier for this supplementary item"
+    id: UUID!
+    "Key that identifies this supplementary within its parent (e.g. 'thumbnail', 'transcript', 'mp3')"
+    key: String!
+    "Storage plan ID associated with this supplementary content, null if using the default plan"
+    planId: UUID
+}

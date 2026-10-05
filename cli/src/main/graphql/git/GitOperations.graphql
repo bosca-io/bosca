@@ -1,0 +1,56 @@
+query GetGitRepositories(
+    $contentType: GitRepositoryContentType,
+    $includeArchived: Boolean,
+    $ownerId: UUID
+) {
+    git {
+        repositories(contentType: $contentType, includeArchived: $includeArchived, ownerId: $ownerId) {
+            ...GitRepositoryFragment
+        }
+    }
+}
+
+query GetGitRepository($owner: String!, $repo: String!) {
+    git {
+        repository(owner: $owner, repo: $repo) {
+            ...GitRepositoryFragment
+        }
+    }
+}
+
+query GetGitPullRequests(
+    $repositoryId: UUID!,
+    $status: GitPullRequestStatus,
+    $limit: Int,
+    $offset: Long
+) {
+    git {
+        pullRequests(repositoryId: $repositoryId, status: $status, limit: $limit, offset: $offset) {
+            ...GitPullRequestFragment
+        }
+    }
+}
+
+query GetGitPullRequest($repositoryId: UUID!, $number: Int!) {
+    git {
+        pullRequest(repositoryId: $repositoryId, number: $number) {
+            ...GitPullRequestFragment
+        }
+    }
+}
+
+mutation CreateGitPullRequest($input: CreateGitPullRequestInput!) {
+    git {
+        createPullRequest(input: $input) {
+            ...GitPullRequestFragment
+        }
+    }
+}
+
+mutation MergeGitPullRequest($id: UUID!, $strategy: GitMergeStrategy!) {
+    git {
+        mergePullRequest(id: $id, strategy: $strategy) {
+            ...GitPullRequestFragment
+        }
+    }
+}

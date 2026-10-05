@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1e3a5f;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#0d1b2a;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <!-- Service nodes -->
+  <circle cx="300" cy="250" r="50" fill="none" stroke="#4fc3f7" stroke-width="2"/>
+  <circle cx="600" cy="150" r="50" fill="none" stroke="#4fc3f7" stroke-width="2"/>
+  <circle cx="900" cy="250" r="50" fill="none" stroke="#4fc3f7" stroke-width="2"/>
+  <circle cx="450" cy="420" r="50" fill="none" stroke="#4fc3f7" stroke-width="2"/>
+  <circle cx="750" cy="420" r="50" fill="none" stroke="#4fc3f7" stroke-width="2"/>
+  <!-- Connections -->
+  <line x1="340" y1="225" x2="560" y2="170" stroke="#4fc3f7" stroke-width="1" opacity="0.5"/>
+  <line x1="640" y1="170" x2="860" y2="225" stroke="#4fc3f7" stroke-width="1" opacity="0.5"/>
+  <line x1="320" y1="295" x2="430" y2="380" stroke="#4fc3f7" stroke-width="1" opacity="0.5"/>
+  <line x1="880" y1="295" x2="770" y2="380" stroke="#4fc3f7" stroke-width="1" opacity="0.5"/>
+  <line x1="500" y1="420" x2="700" y2="420" stroke="#4fc3f7" stroke-width="1" opacity="0.5"/>
+  <line x1="580" y1="195" x2="470" y2="380" stroke="#4fc3f7" stroke-width="1" opacity="0.5"/>
+  <line x1="620" y1="195" x2="730" y2="380" stroke="#4fc3f7" stroke-width="1" opacity="0.5"/>
+  <!-- Inner dots -->
+  <circle cx="300" cy="250" r="8" fill="#4fc3f7"/>
+  <circle cx="600" cy="150" r="8" fill="#4fc3f7"/>
+  <circle cx="900" cy="250" r="8" fill="#4fc3f7"/>
+  <circle cx="450" cy="420" r="8" fill="#4fc3f7"/>
+  <circle cx="750" cy="420" r="8" fill="#4fc3f7"/>
+  <!-- Title -->
+  <text x="600" y="570" text-anchor="middle" fill="#ffffff" font-family="sans-serif" font-size="28" font-weight="bold">Microservices Architecture</text>
+</svg>

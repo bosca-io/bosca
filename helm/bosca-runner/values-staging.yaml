@@ -1,0 +1,7 @@
+workers:
+  default:
+    replicas: 2
+    queues: "default"
+    concurrency: 4
+    resourceProfile: medium
+    terminationGracePeriodSeconds: 300

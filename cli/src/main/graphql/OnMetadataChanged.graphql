@@ -1,0 +1,7 @@
+subscription OnMetadataChanged {
+    metadata {
+        id
+        type
+        version
+    }
+}

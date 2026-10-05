@@ -1,0 +1,7 @@
+query GetCollectionParents($id: UUID) {
+    content {
+        collection(id: $id) {
+            ...CollectionParents
+        }
+    }
+}

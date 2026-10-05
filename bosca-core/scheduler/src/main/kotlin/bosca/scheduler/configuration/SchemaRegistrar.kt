@@ -1,0 +1,11 @@
+package bosca.scheduler.configuration
+
+import bosca.graphql.annotations.Schema
+import bosca.graphql.annotations.Schemas
+
+@Schemas
+interface SchemaRegistrar {
+
+    @Schema("scheduler/scheduler.graphqls")
+    val scheduler: String
+}

@@ -1,0 +1,15 @@
+CREATE CAST (varchar AS permission_action) WITH INOUT AS IMPLICIT;
+CREATE CAST (varchar AS principal_credential_type) WITH INOUT AS IMPLICIT;
+CREATE CAST (varchar AS activity_parameter_type) WITH INOUT AS IMPLICIT;
+CREATE CAST (varchar AS attribute_location) WITH INOUT AS IMPLICIT;
+CREATE CAST (varchar AS attribute_type) WITH INOUT AS IMPLICIT;
+CREATE CAST (varchar AS attribute_ui_type) WITH INOUT AS IMPLICIT;
+CREATE CAST (varchar AS collection_type) WITH INOUT AS IMPLICIT;
+CREATE CAST (varchar AS document_template_container_type) WITH INOUT AS IMPLICIT;
+CREATE CAST (varchar AS group_type) WITH INOUT AS IMPLICIT;
+CREATE CAST (varchar AS guide_type) WITH INOUT AS IMPLICIT;
+CREATE CAST (varchar AS metadata_type) WITH INOUT AS IMPLICIT;
+CREATE CAST (varchar AS profile_visibility) WITH INOUT AS IMPLICIT;
+CREATE CAST (varchar AS storage_system_type) WITH INOUT AS IMPLICIT;
+CREATE CAST (varchar AS workflow_state_type) WITH INOUT AS IMPLICIT;
+CREATE CAST (varchar AS comment_status) WITH INOUT AS IMPLICIT;

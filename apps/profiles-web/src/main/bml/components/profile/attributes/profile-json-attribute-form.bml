@@ -1,0 +1,33 @@
+<component tag="profile-json-attribute-form">
+  <prop name="attribute" type="bosca.profiles.web.ProfileAttributeRow" required/>
+
+  <div
+    class="attribute-form"
+    data-attribute-editor
+    data-attribute-json
+    :data-attribute-id="attribute.id"
+    :data-attribute-type-id="attribute.typeId"
+  >
+    <div class="attribute-editor">
+      <label class="field">
+        <span>Value</span>
+        <textarea name="value" rows="5" spellcheck="false">{ attribute.value }</textarea>
+      </label>
+      <div class="attribute-toolbar">
+        <profile-visibility-field :visibility="attribute.visibility"/>
+        <details class="attribute-menu">
+          <summary class="icon-trigger" aria-label="Attribute actions" title="Actions">
+            <svg class="control-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="5" cy="12" r="1.5"/>
+              <circle cx="12" cy="12" r="1.5"/>
+              <circle cx="19" cy="12" r="1.5"/>
+            </svg>
+          </summary>
+          <div class="attribute-menu-popover">
+            <slot/>
+          </div>
+        </details>
+      </div>
+    </div>
+  </div>
+</component>

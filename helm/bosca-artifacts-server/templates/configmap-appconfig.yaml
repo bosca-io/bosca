@@ -1,0 +1,90 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "bosca-common.fullname" . }}-config
+  labels:
+    {{- include "bosca-common.labels" . | nindent 4 }}
+data:
+  application.yaml: |
+    bosca:
+      server:
+        management-port: {{ $.Values.managementPort }}
+        port: 8084
+        development: false
+
+    cors:
+      allowAnyHost: true
+      allowCredentials: true
+      anyMethod: true
+      maxAgeSeconds: 86400
+      allowedHeaders:
+        - X-BA-Session-ID
+        - Content-Type
+        - Content-Length
+        - Content-Range
+        - Content-Disposition
+        - Authorization
+        - Cookie
+
+    {{- with .Values.appConfig.sentryDsn }}
+    sentry:
+      dsn: {{ . | quote }}
+    {{- end }}
+
+    jwt:
+      domain: {{ .Values.appConfig.domain | quote }}
+      admin-domain: admin.{{ .Values.appConfig.domain }}
+      audience: {{ .Values.appConfig.domain | quote }}
+      realm: {{ .Values.appConfig.realm | default .Values.appConfig.domain | quote }}
+      issuer: {{ .Values.appConfig.domain | quote }}
+      secret: $JWT_SECRET
+      expiration-time: 5184000
+
+    security:
+      scrypt:
+        base64SaltSeparator: ${SCRYPT_SALT_SEPARATOR:}
+        base64SignerKey: ${SCRYPT_SIGNER_KEY:}
+        memCost: ${SCRYPT_MEM_COST:4}
+        rounds: ${SCRYPT_ROUNDS:8}
+
+    content:
+      storage:
+        type: s3
+        bucket: $AWS_BUCKET
+        endpoint: $AWS_ENDPOINT
+        region: $AWS_REGION
+        urlPrefix: https://{{ .Values.appConfig.domain }}
+        urlUploadPrefix: https://upload.{{ .Values.appConfig.domain }}
+        forcePathStyle: true
+      urlSigner:
+        secretKey: $URL_SECRET_KEY
+
+    database:
+      postgres:
+        url: {{ .Values.appConfig.databaseUrl | quote }}
+        user: $DATABASE_USER
+        password: $DATABASE_PASSWORD
+        maxConnections: {{ .Values.appConfig.databaseMaxConnections | default 100 }}
+
+    nats:
+      url: nats://{{ .Values.appConfig.natsHost }}.{{ .Release.Namespace }}.svc.cluster.local:4222
+      token: $NATS_TOKEN
+
+    cache:
+      type: nats
+
+    jobQueue:
+      factory: nats
+
+    pubsub:
+      type: nats
+
+    distributedLock:
+      type: nats
+
+    counter:
+      type: nats
+
+    analyticsServer:
+      appId: bosca-artifacts-server
+      url: http://{{ .Release.Name }}-bosca-collector.{{ .Release.Namespace }}.svc.cluster.local:8080

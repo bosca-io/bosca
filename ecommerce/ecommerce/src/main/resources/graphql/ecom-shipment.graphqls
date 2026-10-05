@@ -1,0 +1,80 @@
+"""
+A shipment's single lifecycle: we set AWAITING then SHIPPED; the carrier advances IN_TRANSIT →
+OUT_FOR_DELIVERY → DELIVERED via tracking. RETURNED/FAILURE are carrier terminal off-ramps; CANCELLED
+is an admin override.
+"""
+enum ShipmentStatus { UNABLE_TO_PACKAGE AWAITING SHIPPED IN_TRANSIT OUT_FOR_DELIVERY DELIVERED RETURNED FAILURE CANCELLED }
+
+extend type Ecom {
+    "Orders (paid carts) for a store, newest first. Admin."
+    orders(storeId: UUID!, offset: Int! = 0, limit: Int! = 50): [Cart!]!
+    "The shipments fulfilling an order (cart). Admin."
+    shipments(cartId: UUID!): [EcomShipment!]!
+    "A store's shipments, newest first — the fulfillment monitoring view. status null = all states. Admin."
+    shipmentsByStore(storeId: UUID!, status: ShipmentStatus, offset: Int! = 0, limit: Int! = 50): [EcomShipment!]!
+    "A single shipment by id. Admin."
+    shipment(id: UUID!): EcomShipment
+}
+
+extend type FulfillmentMutation {
+    "Operations on an existing shipment."
+    shipment(id: UUID!): ShipmentMutation!
+}
+
+"""
+A per-fulfillment-center physical-fulfillment unit of a paid order (the cart is the order). Created
+when the order is paid (its physical lines split per center) and shipped by an operator or a connector.
+"""
+type EcomShipment {
+    id: UUID!
+    "The order (cart) this shipment fulfills."
+    cartId: UUID!
+    storeId: UUID!
+    companyId: UUID!
+    "The fulfillment center this shipment dispatches from."
+    fulfillmentCenterId: UUID!
+    fulfillmentCenter: FulfillmentCenter!
+    status: ShipmentStatus!
+    "The boxes this shipment carries — each a packed container + its SKUs."
+    parcels: [EcomShipmentParcel!]!
+    "Items that fit no container (status UNABLE_TO_PACKAGE) — resolve by adding a fitting container, then re-pack."
+    unpacked: [EcomShipmentLine!]!
+    "Carrier the shipment went out with, once shipped."
+    carrier: String
+    "Carrier tracking number, once shipped."
+    tracking: String
+    "URL to the carrier label, when a real carrier produced one."
+    labelUrl: String
+    "The carrier's own latest status wording (raw), set by tracking updates."
+    carrierStatus: String
+    "When the shipment was dispatched."
+    shipped: DateTime
+    "When the carrier reported delivery, if it has."
+    delivered: DateTime
+    created: DateTime!
+    modified: DateTime!
+}
+
+"""One packed box within a shipment: its container (box type) and the SKUs inside it."""
+type EcomShipmentParcel {
+    "The container (box type) this parcel was packed into; null = a loose box."
+    containerId: UUID
+    lines: [EcomShipmentLine!]!
+}
+
+"""One SKU + quantity within a parcel."""
+type EcomShipmentLine {
+    catalogProductId: UUID!
+    sku: String!
+    quantity: Int!
+}
+
+"""Operations on one shipment. Admin."""
+type ShipmentMutation {
+    "Mark the shipment shipped: draw down its inventory, set carrier/tracking, and advance the order toward COMPLETE."
+    ship(carrier: String, tracking: String): EcomShipment!
+    "Poll the carrier for the latest tracking reading and apply it (advances status, never backwards)."
+    refreshTracking: EcomShipment!
+    "Re-run the packer with the company's current containers and rebuild this awaiting shipment's parcels."
+    repack: EcomShipment!
+}

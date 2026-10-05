@@ -1,0 +1,46 @@
+{# 02 Verify Email — the email-verification challenge (the BML successor to the legacy
+   `email-verification` template). One action: verify. The expiry line renders only when the
+   payload carries wording, the didn't-request note is always present, and the raw link is
+   offered as a paste fallback for clients that mangle buttons. Localized. #}
+<message key="verify-email">
+  <script server provides="m">
+    import bosca.messages.VerifyEmail
+    message.payload(VerifyEmail.serializer())
+  </script>
+  <script server provides="assets">message.assetsUrl ?: error("BmlMessageContext.assetsUrl is required — emails cannot reference relative asset URLs")</script>
+  <script server provides="subject">t("verify-message.subject", "Verify your email address")</script>
+  <script server provides="eyebrow">t("verify-message.eyebrow", "Account")</script>
+  <script server provides="headline">t("verify-message.headline", "Verify your email address")</script>
+  <script server provides="cta">t("verify-message.cta", "Verify email address")</script>
+  <script server provides="preheader">t("verify-message.preheader", "Confirm this address to finish setting up your {appName} account.", "appName" to m.appName)</script>
+  <script server provides="reason">t("verify-message.reason", "You're receiving this because this email address was used to create an account on {appName}.", "appName" to m.appName)</script>
+  <email>
+    <subject>{ subject }</subject>
+    <bosca-shell :brand="m.appName" :logo="m.logoUrl" :logoOnly="m.logoOnly" title="{ m.appName } · Verify Email" :preheader="preheader" :assets="assets" :unsubscribe="message.unsubscribeUrl" :preferences="message.preferencesUrl" :reason="reason" :primaryColor="m.primaryColor">
+
+      <bosca-heading :eyebrow="eyebrow" :headline="headline" :name="message.recipientName" :primaryColor="m.primaryColor" :accentColor="m.accentColor">
+        <span t="verify-message.lede">Confirm this email address to finish setting up your { m.appName } account.</span>
+      </bosca-heading>
+
+      <cta-button :href="m.verifyUrl" :label="cta" :primaryColor="m.primaryColor"/>
+
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+        <if m.expiresIn.isNotBlank()>
+          <tr>
+            <td t="shared.expires" style="padding:22px 0 0;font-family:'Geist',-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:13px;line-height:1.6;color:#5a6072;">This link expires in { m.expiresIn }.</td>
+          </tr>
+        </if>
+        <tr>
+          <td t="verify-message.ignore" style="padding:8px 0 0;font-family:'Geist',-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:13px;line-height:1.6;color:#898fa1;">If you didn't create an account on { m.appName }, you can safely ignore this message.</td>
+        </tr>
+        <tr>
+          <td style="padding:24px 0 0;border-top:0;">
+            <p t="shared.paste-label" style="margin:0 0 5px;font-family:'Geist Mono',ui-monospace,Menlo,Consolas,monospace;font-size:10px;letter-spacing:0.18em;font-weight:500;text-transform:uppercase;color:#898fa1;">Or paste this link into your browser</p>
+            <a :href="m.verifyUrl" style="font-family:'Geist Mono',ui-monospace,Menlo,Consolas,monospace;font-size:12px;line-height:1.6;color:{ m.accentColor };word-break:break-all;">{ m.verifyUrl }</a>
+          </td>
+        </tr>
+      </table>
+
+    </bosca-shell>
+  </email>
+</message>

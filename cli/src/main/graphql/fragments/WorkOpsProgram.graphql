@@ -1,0 +1,13 @@
+fragment WorkOpsProgramFragment on WorkOpsProgram {
+    id
+    key
+    name
+    description
+    ownerProfileId
+    startDate
+    targetDate
+    archivedAt
+    createdAt
+    modifiedAt
+    version
+}

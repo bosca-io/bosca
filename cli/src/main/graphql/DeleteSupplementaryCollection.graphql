@@ -1,0 +1,7 @@
+mutation DeleteSupplementaryCollection($id: UUID!) {
+    content {
+        collection {
+            deleteSupplementary(id: $id)
+        }
+    }
+}

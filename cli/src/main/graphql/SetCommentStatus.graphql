@@ -1,0 +1,12 @@
+mutation SetCommentStatus($metadataId: UUID!, $metadataVersion: Int!, $commentId: Long!, $status: CommentStatus!) {
+    content {
+        metadata {
+            setCommentStatus(
+                metadataId: $metadataId
+                metadataVersion: $metadataVersion
+                commentId: $commentId
+                status: $status
+            )
+        }
+    }
+}

@@ -1,0 +1,61 @@
+suite: bosca-infra PostgreSQL resources
+templates:
+  - templates/postgres-cluster.yaml
+values:
+  - ../values.yaml
+set:
+  global:
+    domain: example.com
+tests:
+  - it: renders CNPG Cluster with correct instances
+    template: templates/postgres-cluster.yaml
+    documentIndex: 0
+    asserts:
+      - isKind:
+          of: Cluster
+      - equal:
+          path: metadata.name
+          value: postgres-bosca
+      - equal:
+          path: spec.instances
+          value: 3
+
+  - it: creates managed roles for each service
+    template: templates/postgres-cluster.yaml
+    documentIndex: 0
+    asserts:
+      - lengthEqual:
+          path: spec.managed.roles
+          count: 7
+
+  - it: renders Database resources
+    template: templates/postgres-cluster.yaml
+    documentIndex: 1
+    asserts:
+      - isKind:
+          of: Database
+      - equal:
+          path: spec.name
+          value: bosca
+      - equal:
+          path: spec.owner
+          value: bosca
+
+  - it: renders Pooler with PgBouncer
+    template: templates/postgres-cluster.yaml
+    documentIndex: 3
+    asserts:
+      - isKind:
+          of: Pooler
+      - equal:
+          path: spec.pgbouncer.poolMode
+          value: session
+
+  - it: does not render when postgres disabled
+    template: templates/postgres-cluster.yaml
+    set:
+      postgres:
+        enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0

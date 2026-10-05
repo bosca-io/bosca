@@ -1,0 +1,38 @@
+"How an AnalyticsCounter aggregates its per-bucket samples over a window. Intrinsic to the counter — the caller does not choose it."
+enum AnalyticsCounterType {
+    "A level that rises and falls; the window value is the peak bucket (e.g. active sessions)."
+    GAUGE
+    "A monotonic tally; the window value is the sum of the window's buckets (e.g. API response codes)."
+    COUNTER
+}
+
+"A single point in a counter's time series: the value accumulated in one bucket, stamped at the bucket's start (UTC). Empty buckets report 0 so the series is dense and directly graphable."
+type AnalyticsCounterValue {
+    "Start of the bucket this value covers (UTC)."
+    time: DateTime!
+    "The counter's value for this bucket."
+    value: Long!
+}
+
+"A distributed counter (active sessions, API response-code rates, …) read as a typed window aggregate or a per-bucket time series."
+type AnalyticsCounter {
+    "The counter identifier — the key prefix before the trailing time bucket (e.g. `sessions.mobile`, `http.bosca.5xx`)."
+    id: ID!
+    "How the counter aggregates over its window: GAUGE reads the peak bucket, COUNTER sums the buckets."
+    type: AnalyticsCounterType!
+    "Aggregate over the last `window` buckets — GAUGE returns the max, COUNTER the sum. Omit `window` to use the counter's default lookback."
+    value(window: Int): Long!
+    "Per-bucket time series over the last `window` buckets (oldest → newest, zero-filled), for graphing. Omit `window` to use the counter's default lookback."
+    values(window: Int): [AnalyticsCounterValue!]!
+}
+
+"Read access to the platform's distributed counters (session and API health telemetry)."
+type AnalyticsCounters {
+    "Look up a counter by id, resolving its type from the built-in counter registry. Errors if the id matches no known counter family."
+    byId(id: ID!): AnalyticsCounter!
+}
+
+extend type Analytics {
+    "Access distributed counter telemetry (active sessions, API response-code rates)."
+    counters: AnalyticsCounters!
+}

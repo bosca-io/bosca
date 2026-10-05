@@ -1,0 +1,24 @@
+fragment ProfileIdName on Profile {
+    id
+    name
+}
+
+fragment Profile on Profile {
+    id
+    principal {
+        id
+        verified
+    }
+    slug
+    name
+    visibility
+    attributes {
+        id
+        typeId
+        visibility
+        attributes
+    }
+    collection {
+        ...Collection
+    }
+}

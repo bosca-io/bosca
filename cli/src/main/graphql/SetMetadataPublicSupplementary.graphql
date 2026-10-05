@@ -1,0 +1,9 @@
+mutation SetMetadataPublicSupplementary($id: UUID!, $public: Boolean!) {
+    content {
+        metadata {
+            setPublicSupplementary(id: $id, public: $public) {
+                id
+            }
+        }
+    }
+}

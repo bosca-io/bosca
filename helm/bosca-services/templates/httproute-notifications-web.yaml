@@ -1,0 +1,39 @@
+{{- /*
+Notifications site HTTPRoute (email preferences / unsubscribe).
+
+The site shares the messages.<domain> host with bml-message-server: that chart's route
+claims /assets, /c, and /o (email bundle assets + engagement tracking), and this
+catch-all takes everything else — Gateway API precedence gives the longest matching
+path prefix the win, so those specific rules stay with the message server. bml-server
+proxies /graphql same-origin itself, so no separate API rule is needed.
+*/ -}}
+{{- $notificationsWeb := index .Values "notifications-web" -}}
+{{- if and
+    .Values.gateway.enabled
+    $notificationsWeb.enabled
+    $notificationsWeb.gateway.enabled
+    $notificationsWeb.gateway.hostnames
+}}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ printf "notifications-web-%s" (.Values.global.domain | replace "." "-") | quote }}
+  labels:
+    app.kubernetes.io/part-of: bosca
+spec:
+  parentRefs:
+    - name: {{ .Values.gateway.name | default "bosca-gateway" | quote }}
+      port: 443
+  hostnames:
+{{- range $h := $notificationsWeb.gateway.hostnames }}
+    - {{ $h | quote }}
+{{- end }}
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: {{ printf "%s-notifications-web" $.Release.Name | quote }}
+          port: {{ $notificationsWeb.service.port | default 9094 }}
+{{- end }}

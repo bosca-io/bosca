@@ -1,0 +1,19 @@
+<page route="/dashboard" title="Dashboard">
+  {# The first example of BML's data story: a <script server> fetches from the Bosca GraphQL API via the
+     in-scope client `ctx.gql` (never null — with no endpoint configured, executing it fails fast instead)
+     and binds the result into the page. `import` lines inside a server script are hoisted to the generated
+     file's top, so the kotlinx JSON helpers resolve. The catch + `?: "no data"` fallback keeps the sample
+     building/running even when no GraphQL endpoint is configured. #}
+  <script server provides="title">
+    import kotlinx.serialization.json.jsonObject
+    import kotlinx.serialization.json.jsonPrimitive
+    val data = try { ctx.gql.execute("query { page { title } }") } catch (e: IllegalStateException) { null }
+    data?.jsonObject?.get("page")?.jsonObject?.get("title")?.jsonPrimitive?.content ?: "no data"
+  </script>
+  <html>
+    <head><title>Dashboard</title></head>
+    <body>
+      <h1>{ title }</h1>
+    </body>
+  </html>
+</page>

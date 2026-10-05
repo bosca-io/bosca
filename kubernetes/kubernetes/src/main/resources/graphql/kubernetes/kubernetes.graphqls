@@ -1,0 +1,1211 @@
+# Top-level entry point for kubernetes queries — namespaces all kubernetes domain reads under a single root field.
+extend type Query {
+    "Access kubernetes resources across registered clusters."
+    kubernetes: KubernetesQueries!
+}
+
+# Top-level entry point for kubernetes mutations — apply manifests, scale workloads, manage helm releases, register clusters.
+extend type Mutation {
+    "Mutate kubernetes resources across registered clusters."
+    kubernetes: KubernetesMutations!
+}
+
+# Kubernetes subscriptions live flat under `Subscription` (graphql-java's
+# SubscriptionExecutionStrategy requires the root subscription field's
+# fetcher to return a Publisher/Flow, so nested subscription roots
+# aren't supported the same way nested Query/Mutation roots are).
+extend type Subscription {
+    "Stream container log lines for a specific pod/container. `follow=true` keeps the connection open as new lines arrive."
+    k8sPodLogs(cluster: UUID!, namespace: String!, pod: String!, container: String, tailLines: Int, follow: Boolean): LogLine!
+    "Stream new kubernetes events as the controller observes them."
+    k8sEvents(cluster: UUID!, namespace: String): Event!
+    "Stream workload status changes (ready replicas, restart counts, etc.)."
+    k8sWorkloadStatus(cluster: UUID!, namespace: String!, kind: WorkloadKind!, name: String!): Workload!
+    "Stream helm release progress during install / upgrade / rollback."
+    k8sHelmReleaseStatus(cluster: UUID!, namespace: String!, name: String!): HelmRelease!
+    "Stream periodic CPU + memory samples for a single pod. `intervalSec` clamped to 1–60s; defaults to 5s."
+    k8sPodMetricsStream(cluster: UUID!, namespace: String!, pod: String!, intervalSec: Int): PodMetricsSample!
+    "Stream periodic CPU + memory samples for a single node, including allocatable-relative utilisation %."
+    k8sNodeMetricsStream(cluster: UUID!, node: String!, intervalSec: Int): NodeMetricsSample!
+    "Stream periodic cluster-wide aggregate metrics: total CPU/memory, % against allocatable, node and pod counts."
+    k8sClusterMetricsStream(cluster: UUID!, intervalSec: Int): ClusterMetricsSample!
+    "Stream a snapshot of every pod's live CPU + memory in a cluster (optionally namespace-filtered). Each tick is a complete set keyed by pod UID."
+    k8sPodsMetricsListStream(cluster: UUID!, namespace: String, intervalSec: Int): PodsMetricsListSample!
+    "Stream a snapshot of every node's live CPU + memory in a cluster, including allocatable-relative percentages."
+    k8sNodesMetricsListStream(cluster: UUID!, intervalSec: Int): NodesMetricsListSample!
+    "Stream per-workload CPU + memory + restart aggregates. Each pod's usage credits its direct owner and the top-level Deployment/CronJob it belongs to."
+    k8sWorkloadsMetricsListStream(cluster: UUID!, namespace: String, intervalSec: Int): WorkloadsMetricsListSample!
+    "Stream a snapshot of every workload's status (built from the workload objects, so scaled-to-zero / failed workloads still appear). `intervalSec` clamped to 1–60s; defaults to 5s."
+    k8sWorkloadsStatusListStream(cluster: UUID!, namespace: String, intervalSec: Int): WorkloadsStatusListSample!
+    "Stream a merged log tail across every pod owned by a workload. Each LogLine carries the source pod name so the studio can colour-by-pod. CronJob is not supported (operators drill into a specific child Job's pods instead)."
+    k8sWorkloadLogs(cluster: UUID!, namespace: String!, kind: WorkloadKind!, name: String!, tailLines: Int, follow: Boolean): LogLine!
+    "Stream lightweight change notifications (kind/namespace/name/action) for a set of resource kinds. Kind tokens cover the built-in kinds plus the HelmRelease pseudo-kind and dynamically-resolved CRD kinds (optionally group-qualified, e.g. `postgresql.cnpg.io/Cluster`). Drives auto-refresh of studio list views."
+    k8sResourcesWatch(cluster: UUID!, kinds: [String!]!, namespace: String): ResourceChangeEvent!
+}
+
+"A metadata-only change notification for a watched resource, streamed via `k8sResourcesWatch`. The studio re-runs its list query on receipt rather than reconciling deltas."
+type ResourceChangeEvent {
+    "The kind token the subscription was opened with."
+    kind: String!
+    "Namespace of the changed resource; null for cluster-scoped kinds."
+    namespace: String
+    name: String!
+    "ADDED / MODIFIED / DELETED, mirroring the kubernetes watch action."
+    action: String!
+    "ISO-8601 UTC timestamp the controller observed the change."
+    timestamp: String!
+}
+
+"Single point-in-time CPU + memory sample for a pod, streamed via `k8sPodMetricsStream`."
+type PodMetricsSample {
+    namespace: String!
+    pod: String!
+    "Aggregate CPU usage across containers, in millicores."
+    cpuMillicores: Long!
+    "Aggregate memory usage across containers, in bytes."
+    memoryBytes: Long!
+    "ISO-8601 UTC timestamp the controller observed the sample."
+    timestamp: String!
+}
+
+"Single point-in-time CPU + memory sample for a node, streamed via `k8sNodeMetricsStream`."
+type NodeMetricsSample {
+    node: String!
+    "Raw CPU usage, millicores."
+    cpuMillicores: Long!
+    "Raw memory usage, bytes."
+    memoryBytes: Long!
+    "CPU utilisation against `status.allocatable.cpu`, 0–100."
+    cpuPercent: Int!
+    "Memory utilisation against `status.allocatable.memory`, 0–100."
+    memoryPercent: Int!
+    timestamp: String!
+}
+
+"Single point-in-time cluster-wide aggregate sample, streamed via `k8sClusterMetricsStream`."
+type ClusterMetricsSample {
+    "Sum of every pod's CPU usage, millicores."
+    totalCpuMillicores: Long!
+    "Sum of every pod's memory usage, bytes."
+    totalMemoryBytes: Long!
+    "Cluster-wide CPU utilisation against allocatable, 0–100."
+    cpuPercent: Int!
+    "Cluster-wide memory utilisation against allocatable, 0–100."
+    memoryPercent: Int!
+    "Number of nodes contributing to this sample."
+    nodeCount: Int!
+    "Number of pods contributing to this sample."
+    podCount: Int!
+    timestamp: String!
+}
+
+"One pod's live CPU + memory inside a list-scope snapshot. `id` matches the pod UID returned by the `pods` query."
+type PodMetricsListItem {
+    id: String!
+    namespace: String!
+    name: String!
+    cpuMillicores: Long!
+    memoryBytes: Long!
+}
+
+"Full snapshot of every pod's CPU + memory in a cluster, streamed via `k8sPodsMetricsListStream`."
+type PodsMetricsListSample {
+    items: [PodMetricsListItem!]!
+    timestamp: String!
+}
+
+"One node's live CPU + memory inside a list-scope snapshot. Both raw and allocatable-relative percent are exposed, plus the node's live readiness status and role so overviews can track node health changes over the same socket."
+type NodeMetricsListItem {
+    name: String!
+    cpuMillicores: Long!
+    memoryBytes: Long!
+    cpuPercent: Int!
+    memoryPercent: Int!
+    "Derived condition text: `Ready` / `NotReady` / a pressure type / `Unknown`. Matches the on-demand `nodes` query."
+    status: String!
+    "`control-plane` / `worker`. Matches the on-demand `nodes` query."
+    role: String!
+}
+
+"Full snapshot of every node's CPU + memory, streamed via `k8sNodesMetricsListStream`."
+type NodesMetricsListSample {
+    items: [NodeMetricsListItem!]!
+    timestamp: String!
+}
+
+"One workload's aggregated live CPU + memory + restart counts inside a list-scope snapshot. Aggregation walks ReplicaSet → Deployment and Job → CronJob, so Deployment / CronJob rows sum every owned pod."
+type WorkloadMetricsListItem {
+    "Workload UID — matches `Workload.id` from the on-demand `workloads` query."
+    id: String!
+    "Aggregate CPU usage, fractional cores."
+    cpuCores: Float!
+    "Aggregate memory usage, GiB."
+    memoryGiB: Float!
+    "Sum of container restart counts across all owned pods."
+    restarts: Int!
+}
+
+"Full snapshot of every workload's live aggregates, streamed via `k8sWorkloadsMetricsListStream`."
+type WorkloadsMetricsListSample {
+    items: [WorkloadMetricsListItem!]!
+    timestamp: String!
+}
+
+"One workload's live status inside a list-scope snapshot — the lean counterpart to WorkloadMetricsListItem, built from the workload objects themselves so scaled-to-zero / failed workloads still appear."
+type WorkloadStatusListItem {
+    "Workload UID — matches `Workload.id` from the on-demand `workloads` query."
+    id: String!
+    "Coarse status badge."
+    status: WorkloadStatus!
+}
+
+"Full snapshot of every workload's status, streamed via `k8sWorkloadsStatusListStream`."
+type WorkloadsStatusListSample {
+    items: [WorkloadStatusListItem!]!
+    timestamp: String!
+}
+
+# =====================================================================
+# Clusters
+# =====================================================================
+
+"A kubernetes cluster registered with Bosca."
+type Cluster {
+    "Unique identifier for this cluster registration."
+    id: UUID!
+    "Human-readable cluster name (e.g. `prod-us-east-1`)."
+    name: String!
+    "Cluster provider (e.g. `EKS`, `GKE`, `kind`, `bare-metal`)."
+    provider: String!
+    "Provider region or zone string (e.g. `us-east-1`, `local`)."
+    region: String!
+    "Environment classification used for grouping in the studio."
+    environment: ClusterEnvironment!
+    "Last observed kubernetes server version (`v1.30.4` format)."
+    version: String!
+    "Current cluster health summary, updated by the controller as it watches the cluster."
+    health: ClusterHealth!
+    "Last observed node count."
+    nodes: Int!
+    "Last observed pod count."
+    pods: Int!
+    "When the cluster was registered with Bosca (UTC)."
+    registeredAt: DateTime!
+    "When the controller last successfully refreshed cluster state. Null if it has never been reached."
+    lastSeenAt: DateTime
+    "Optimistic-locking row version, bumped on every mutation. Pass the value last observed to `updateCluster.expectedVersion` to detect concurrent edits."
+    optimisticVersion: Long!
+}
+
+"Cluster lifecycle environment."
+enum ClusterEnvironment {
+    "Production clusters — destructive operations require additional confirmation."
+    PRODUCTION
+    "Pre-production clusters used for staging or QA."
+    STAGING
+    "Development or feature-test clusters."
+    DEVELOPMENT
+}
+
+"Coarse health summary for a registered cluster."
+enum ClusterHealth {
+    "All components reachable and healthy."
+    OK
+    "Some components degraded but cluster is usable."
+    WARN
+    "Cluster is unreachable or critically degraded."
+    ERROR
+}
+
+"Input for registering a new kubernetes cluster with Bosca."
+input RegisterClusterInput {
+    "Display name for the cluster registration."
+    name: String!
+    "Provider label (e.g. `EKS`, `GKE`)."
+    provider: String!
+    "Region or zone string."
+    region: String!
+    "Environment classification."
+    environment: ClusterEnvironment!
+    "Full kubeconfig YAML granting Bosca controller access. Stored encrypted; never echoed back."
+    kubeconfig: String!
+}
+
+"Input for updating a registered cluster's metadata. Kubeconfig is rotated via a separate mutation."
+input UpdateClusterInput {
+    "New display name, or null to keep the current one."
+    name: String
+    "New environment classification, or null to keep current."
+    environment: ClusterEnvironment
+}
+
+# =====================================================================
+# Common types
+# =====================================================================
+
+"Common page wrapper for paginated list queries."
+type IntPage {
+    "Total items matching the query, ignoring offset/limit."
+    total: Int!
+    "Page of items."
+    items: [String!]!
+}
+
+# =====================================================================
+# Workloads
+# =====================================================================
+
+"Kubernetes workload controller kinds Bosca surfaces."
+enum WorkloadKind {
+    DEPLOYMENT
+    STATEFUL_SET
+    DAEMON_SET
+    REPLICA_SET
+    JOB
+    CRON_JOB
+}
+
+"Coarse workload status derived from the controller's observation of replica readiness and pod state."
+enum WorkloadStatus {
+    "All replicas ready."
+    OK
+    "Replicas not ready yet but progressing — pods are being scheduled, pulled, or created, with no failure evidence."
+    PENDING
+    "Replicas degraded but workload is partially serving."
+    WARN
+    "Workload is failing — container errors, failed pods, or no ready replicas without any sign of progress."
+    ERROR
+}
+
+"A kubernetes workload (Deployment / StatefulSet / DaemonSet / etc.) in a given cluster."
+type Workload {
+    "Stable identifier within Bosca (UID-derived). Stable across renames is not guaranteed."
+    id: ID!
+    "Workload kind."
+    kind: WorkloadKind!
+    "Workload name as it appears in kubectl."
+    name: String!
+    "Namespace the workload lives in."
+    namespace: String!
+    "Number of ready replicas."
+    ready: Int!
+    "Number of desired replicas."
+    desired: Int!
+    "Coarse status badge."
+    status: WorkloadStatus!
+    "Primary container image."
+    image: String!
+    "Age string sourced from `metadata.creationTimestamp`."
+    age: String!
+    "CPU usage across pods (cores)."
+    cpu: Float!
+    "Memory usage across pods (GiB)."
+    memory: Float!
+    "Total pod restart count summed across replicas."
+    restarts: Int!
+    "Update strategy (`RollingUpdate`, `Recreate`, `OnDelete`, etc.)."
+    strategy: String!
+    "Workload labels as a JSON map."
+    labels: JSON
+}
+
+"Paginated list of workloads."
+type WorkloadPage {
+    total: Int!
+    items: [Workload!]!
+}
+
+"Page of pods with totals — used by the Pods list."
+type PodPage {
+    total: Int!
+    items: [Pod!]!
+}
+
+# =====================================================================
+# Pods
+# =====================================================================
+
+"A pod running in a registered cluster."
+type Pod {
+    id: ID!
+    "Pod name."
+    name: String!
+    "Namespace the pod lives in."
+    namespace: String!
+    "Node the pod is scheduled on."
+    node: String!
+    "Pod phase string (`Running`, `Pending`, `CrashLoopBackOff`, …) — left untranslated."
+    status: String!
+    "Ready-container ratio string (`1/1`)."
+    ready: String!
+    "Pod restart count summed across containers."
+    restarts: Int!
+    "Age string from creation timestamp."
+    age: String!
+    "CPU usage in millicores."
+    cpu: Int!
+    "Memory usage in MiB."
+    memory: Int!
+    "Workload that owns this pod, if any."
+    workload: Workload
+    "Pod IP address (when assigned)."
+    podIP: String
+    "Host IP of the node."
+    hostIP: String
+    "Primary container image — `spec.containers[0].image`. Empty when the pod has no containers."
+    image: String!
+    "Owner reference kind (`ReplicaSet`, `StatefulSet`, `DaemonSet`, `Job`). Null for bare pods."
+    workloadKind: String
+    "Owner reference name. For Deployment-owned pods this is the ReplicaSet name; the Deployment itself is two levels up."
+    workloadName: String
+}
+
+# =====================================================================
+# Nodes
+# =====================================================================
+
+"A node in a registered cluster."
+type Node {
+    "Node name."
+    name: String!
+    "Node role (e.g. `control-plane`, `worker`)."
+    role: String!
+    "Underlying instance type (e.g. `m6i.2xlarge`)."
+    instance: String!
+    "Availability zone."
+    zone: String!
+    "Last observed node status (`Ready`, `DiskPressure`, `NotReady`, …)."
+    status: String!
+    "CPU utilisation percentage (0–100)."
+    cpu: Int!
+    "Memory utilisation percentage (0–100)."
+    memory: Int!
+    "Number of pods scheduled to this node."
+    pods: Int!
+    "Age string from creation timestamp."
+    age: String!
+    "kubelet version string."
+    version: String!
+    "Active taints, formatted as `key=value:effect`."
+    taints: [String!]!
+    "Node labels."
+    labels: JSON
+}
+
+# =====================================================================
+# Events
+# =====================================================================
+
+"Coarse event level surfaced for filtering."
+enum EventLevel {
+    INFO
+    WARN
+    ERROR
+}
+
+"A kubernetes event (`v1.Event` / `events.k8s.io/v1.Event`)."
+type Event {
+    id: ID!
+    "Severity bucket."
+    level: EventLevel!
+    "Human-friendly relative timestamp (e.g. `2m ago`)."
+    when: String!
+    "ISO-8601 absolute timestamp."
+    timestamp: DateTime!
+    "Namespace the involved object lives in."
+    namespace: String!
+    "Involved-object reference formatted as `Kind/name`."
+    involvedObject: String!
+    "Event message text."
+    message: String!
+    "Event reason code."
+    reason: String!
+}
+
+# =====================================================================
+# Config & secrets
+# =====================================================================
+
+"Configuration resource kind."
+enum ConfigKind {
+    CONFIG_MAP
+    SECRET
+}
+
+"A ConfigMap or Secret in a cluster."
+type ConfigResource {
+    id: ID!
+    kind: ConfigKind!
+    name: String!
+    namespace: String!
+    "Map keys (values are not returned in lists; fetch detail to read values)."
+    keys: [String!]!
+    "Approximate serialized size (`2.4kB` format)."
+    size: String!
+    "Age string."
+    age: String!
+    "Secret type string (`Opaque`, `kubernetes.io/tls`, …). Null for ConfigMaps."
+    secretType: String
+    "External operator managing this resource (e.g. `external-secrets`, `cert-manager`)."
+    managedBy: String
+}
+
+"A single key/value entry inside a ConfigMap or Secret."
+type ConfigResourceEntry {
+    "Key name."
+    key: String!
+    "Value content. ConfigMap values are returned as-is; Secret values are always masked — the controller never returns a Secret's cleartext."
+    value: String!
+}
+
+# =====================================================================
+# Networking
+# =====================================================================
+
+"A kubernetes Service."
+type Service {
+    id: ID!
+    name: String!
+    namespace: String!
+    "Service type (`ClusterIP`, `LoadBalancer`, `NodePort`, `ExternalName`)."
+    type: String!
+    "Cluster IP, or `None (headless)` for headless services."
+    clusterIP: String!
+    "External IP / hostname for load balancers; `—` otherwise."
+    externalIP: String!
+    "Port mappings in `external→internal/proto` format."
+    ports: [String!]!
+    "Selector expression as a single string."
+    selector: String!
+    age: String!
+    "Number of endpoint slices targeting this service."
+    endpoints: Int!
+}
+
+"A legacy Ingress resource (`networking.k8s.io/v1.Ingress`)."
+type Ingress {
+    id: ID!
+    name: String!
+    namespace: String!
+    "Ingress class name (e.g. `nginx`, `alb`)."
+    ingressClass: String!
+    "Hosts served by this Ingress."
+    hosts: [String!]!
+    "Path patterns matched."
+    paths: [String!]!
+    "Backend service references."
+    backends: [String!]!
+    "Whether TLS termination is configured."
+    tls: Boolean!
+    age: String!
+}
+
+"A NetworkPolicy."
+type NetworkPolicy {
+    id: ID!
+    name: String!
+    namespace: String!
+    "Pod selector expression."
+    podSelector: String!
+    "Ingress summary string (`deny-all`, `from=...`, …)."
+    ingress: String!
+    "Egress summary string."
+    egress: String!
+    age: String!
+}
+
+# Gateway API ---------------------------------------------------------
+
+"A GatewayClass — the controller that owns a Gateway."
+type K8sGatewayClass {
+    "Class name."
+    name: String!
+    "Controller string (e.g. `istio.io/gateway-controller`)."
+    controller: String!
+    "Whether the class has been accepted by its controller."
+    accepted: Boolean!
+    age: String!
+}
+
+"A Gateway API Gateway."
+type K8sGateway {
+    id: ID!
+    name: String!
+    namespace: String!
+    "Class name (`gateway.networking.k8s.io/v1.GatewayClassName`)."
+    gatewayClass: String!
+    "Programmed listener addresses (LB hostname, virtual IP, etc.)."
+    addresses: [String!]!
+    "Number of active listeners."
+    listeners: Int!
+    "Number of routes currently bound to this gateway."
+    routes: Int!
+    "Aggregate status: `OK` (programmed), `WARN` (degraded), `ERROR` (failed)."
+    status: WorkloadStatus!
+    age: String!
+}
+
+"A Gateway API HTTPRoute. Sibling types (GRPCRoute, TLSRoute, TCPRoute, UDPRoute) follow the same shape; we surface HTTPRoute first."
+type K8sHTTPRoute {
+    id: ID!
+    name: String!
+    namespace: String!
+    "Parent gateway names this route attaches to."
+    parents: [String!]!
+    "Host header values accepted by this route."
+    hosts: [String!]!
+    "Path patterns."
+    paths: [String!]!
+    "Backend references (`service:port` format)."
+    backends: [String!]!
+    "Total matcher rules across the route."
+    rules: Int!
+    age: String!
+    status: WorkloadStatus!
+}
+
+# =====================================================================
+# Storage
+# =====================================================================
+
+"A StorageClass."
+type StorageClass {
+    name: String!
+    "CSI provisioner."
+    provisioner: String!
+    "Reclaim policy (`Delete`, `Retain`)."
+    reclaim: String!
+    "Volume binding mode."
+    binding: String!
+    "Whether this is the cluster's default StorageClass."
+    isDefault: Boolean!
+    age: String!
+    "Free-form provisioner parameters."
+    parameters: String!
+}
+
+"A PersistentVolumeClaim."
+type PersistentVolumeClaim {
+    id: ID!
+    name: String!
+    namespace: String!
+    "Status string (`Bound`, `Pending`, `Resizing`, `Released`)."
+    status: String!
+    "Bound PersistentVolume name, if any."
+    volume: String!
+    "Requested capacity (`100Gi`, or `100Gi → 500Gi` for in-flight resizes)."
+    capacity: String!
+    "Access mode (`RWO`, `RWX`, `ROX`)."
+    accessMode: String!
+    storageClass: String!
+    age: String!
+    "Disk-used percentage (0–100), sourced from PV metrics. Null when not collected."
+    usedPercent: Int
+    "Owning workload reference."
+    workload: String
+}
+
+# =====================================================================
+# Autoscaling & disruption budgets
+# =====================================================================
+
+"A HorizontalPodAutoscaler (autoscaling/v2)."
+type HorizontalPodAutoscaler {
+    id: ID!
+    name: String!
+    namespace: String!
+    "Kind of the scaled object (`Deployment`, `StatefulSet`, …)."
+    targetKind: String!
+    "Name of the scaled object."
+    targetName: String!
+    "Lower replica bound. The API server defaults this to 1."
+    minReplicas: Int!
+    "Upper replica bound."
+    maxReplicas: Int!
+    "Replicas the target currently runs."
+    currentReplicas: Int!
+    "Replicas the autoscaler currently wants."
+    desiredReplicas: Int!
+    "Flattened metric rules with current / target display values."
+    metrics: [HpaMetric!]!
+    "False when the autoscaler cannot fetch or apply a scale (from `status.conditions`)."
+    ableToScale: Boolean!
+    "False when metrics are unavailable and scaling is suspended."
+    scalingActive: Boolean!
+    "True when the desired scale is clamped by the min/max bounds."
+    scalingLimited: Boolean!
+    "Relative time of the last scale operation (`5m ago`). Null when the HPA has never scaled."
+    lastScaleTime: String
+    age: String!
+}
+
+"One metric rule on an HPA, flattened to display strings."
+type HpaMetric {
+    "Rule label — `cpu`, `memory (app)`, `requests-per-second on Service/web`."
+    label: String!
+    "Latest observed value (`63%`, `512Mi`). Null until the metrics pipeline reports a sample."
+    current: String
+    "Configured target (`80%`, `1Gi`)."
+    target: String!
+}
+
+"A PodDisruptionBudget (policy/v1)."
+type PodDisruptionBudget {
+    id: ID!
+    name: String!
+    namespace: String!
+    "Minimum available pods — integer or percentage form (`2`, `50%`). Exactly one of minAvailable / maxUnavailable is set."
+    minAvailable: String
+    "Maximum unavailable pods — integer or percentage form."
+    maxUnavailable: String
+    "Healthy pods currently matched by the selector."
+    currentHealthy: Int!
+    "Healthy pods the budget requires."
+    desiredHealthy: Int!
+    "Voluntary disruptions currently permitted. 0 means evictions are blocked."
+    disruptionsAllowed: Int!
+    "Total pods the selector matches."
+    expectedPods: Int!
+    "Pod selector in `kubectl` label-selector syntax."
+    selector: String!
+    age: String!
+}
+
+# =====================================================================
+# Namespaces, Jobs, Custom Resources
+# =====================================================================
+
+"A namespace in a registered cluster."
+type Namespace {
+    name: String!
+    "Coarse status (`Active`, `Terminating`, `Degraded` when label-based health flags fire)."
+    status: String!
+    "Number of workloads in the namespace."
+    workloads: Int!
+    "Number of pods in the namespace."
+    pods: Int!
+    "Number of services in the namespace."
+    services: Int!
+    age: String!
+    labels: JSON
+}
+
+"An installed CRD-providing operator (presented separately from the raw `apiextensions.k8s.io/CustomResourceDefinition`)."
+type Operator {
+    id: ID!
+    name: String!
+    "Operator version string."
+    version: String!
+    "API group it owns."
+    group: String!
+    "Namespace where the operator controller runs."
+    namespace: String!
+    status: WorkloadStatus!
+    "Total instances of any kind this operator owns."
+    instances: Int!
+    "Kinds this operator provides (e.g. `Cluster`, `Backup`, `Pooler`)."
+    kinds: [String!]!
+    "Operator description (chart description, README first line, etc.)."
+    description: String!
+}
+
+"An instance of any CRD-defined kind."
+type CustomResource {
+    id: ID!
+    kind: String!
+    "API group (e.g. `postgresql.cnpg.io`)."
+    group: String!
+    "API version (e.g. `v1`, `v1beta1`)."
+    version: String!
+    namespace: String!
+    name: String!
+    age: String!
+    status: WorkloadStatus!
+    "Free-form summary string for the list view."
+    detail: String!
+}
+
+# =====================================================================
+# RBAC
+# =====================================================================
+
+"A Role or ClusterRole."
+type Role {
+    id: ID!
+    "`Role` or `ClusterRole`."
+    kind: String!
+    name: String!
+    "Whether the role is built-in (system:*, cluster-admin, view, edit, …)."
+    builtin: Boolean!
+    "Number of bindings referencing this role."
+    bindings: Int!
+    "Number of policy rules in the role."
+    rules: Int!
+    age: String!
+    "Namespace for namespaced Roles. Null for ClusterRoles."
+    namespace: String
+    "Free-form description sourced from annotations / Bosca metadata."
+    description: String!
+}
+
+"A subject referenced by a RoleBinding or ClusterRoleBinding."
+type RoleSubject {
+    "`User`, `Group`, or `ServiceAccount`."
+    kind: String!
+    name: String!
+    "Namespace for ServiceAccount subjects."
+    namespace: String
+}
+
+"A RoleBinding or ClusterRoleBinding."
+type RoleBinding {
+    id: ID!
+    "`RoleBinding` or `ClusterRoleBinding`."
+    kind: String!
+    name: String!
+    "Referenced role name."
+    role: String!
+    subjects: [RoleSubject!]!
+    "Namespace for namespaced bindings."
+    namespace: String
+    age: String!
+}
+
+"A ServiceAccount."
+type ServiceAccount {
+    id: ID!
+    name: String!
+    namespace: String!
+    "Number of pods using this SA."
+    pods: Int!
+    "Number of secrets mounted via this SA."
+    secrets: Int!
+    "Number of role bindings referencing this SA."
+    bindings: Int!
+    age: String!
+    "IAM role association (IRSA / Workload Identity), if any."
+    iamRole: String
+}
+
+# =====================================================================
+# Operator-aware (dedicated UIs)
+# =====================================================================
+
+"cert-manager `Certificate`."
+type CertificateResource {
+    id: ID!
+    name: String!
+    namespace: String!
+    "Subject DNS names."
+    dns: [String!]!
+    "Issuer reference."
+    issuer: String!
+    "Status (`Ready`, `Renewing`, `Failed`)."
+    status: String!
+    "Time the cert reached Ready (relative)."
+    readySince: String!
+    "Days until expiry."
+    expiresInDays: Int!
+    "Days until next renewal attempt; -1 when not scheduled."
+    renewsInDays: Int!
+    "Name of the secret storing the issued cert."
+    secretName: String!
+    "Last issuance error message, if any."
+    error: String
+}
+
+"cert-manager `Issuer` or `ClusterIssuer`."
+type IssuerResource {
+    id: ID!
+    "`Issuer` or `ClusterIssuer`."
+    kind: String!
+    name: String!
+    "Issuer type (`ACME`, `CA`, `Vault`, `SelfSigned`)."
+    type: String!
+    "Server URL for ACME / Vault issuers."
+    server: String!
+    status: String!
+    age: String!
+    "Number of certificates currently issued by this issuer."
+    certs: Int!
+    "Namespace for namespaced `Issuer`. Null for `ClusterIssuer`."
+    namespace: String
+}
+
+"CloudNativePG `Cluster`."
+type CnpgCluster {
+    name: String!
+    namespace: String!
+    "Number of postgres instances (primary + replicas)."
+    instances: Int!
+    "Name of the current primary instance."
+    primary: String!
+    "Major postgres version string (`16.4`)."
+    postgresVersion: String!
+    "Container image."
+    image: String!
+    "Long-form status text."
+    status: String!
+    "Coarse status."
+    statusKind: WorkloadStatus!
+    age: String!
+    "Backup cron schedule expression."
+    backupSchedule: String!
+    "Time of the last successful backup, formatted relatively."
+    lastBackup: String!
+}
+
+"One CNPG instance (a postgres pod managed by the operator)."
+type CnpgInstance {
+    name: String!
+    "`primary`, `replica`, or empty when the role label is absent."
+    role: String!
+    "`Ready` when every container is ready, else the pod phase or stuck reason."
+    status: String!
+    ready: Boolean!
+    "Node the instance is scheduled on."
+    node: String!
+    "Availability zone of the node, or empty when the node has no zone label."
+    zone: String!
+    "Bound PVC capacity (e.g. `100Gi`), or empty when no matching PVC is found."
+    pvcSize: String!
+    restarts: Int!
+    age: String!
+}
+
+"One CNPG `Backup` CRD instance. Size is omitted — CNPG does not expose backup size on the Backup resource."
+type CnpgBackup {
+    name: String!
+    "Backup method: `barmanObjectStore`, `volumeSnapshot`, `plugin`, or empty."
+    method: String!
+    "Raw `status.phase` (e.g. `completed`, `running`, `failed`)."
+    phase: String!
+    statusKind: WorkloadStatus!
+    "`status.startedAt` formatted relatively, or empty."
+    started: String!
+    "`status.stoppedAt` formatted relatively, or empty when still running."
+    completed: String!
+    "Elapsed start→stop (e.g. `12m`), or empty when unknown."
+    duration: String!
+}
+
+"A single `spec.postgresql.parameters` entry."
+type CnpgParameter {
+    key: String!
+    value: String!
+}
+
+"Full detail for one CNPG cluster: summary plus topology, backups, parameters, and storage/backup spec."
+type CnpgClusterDetail {
+    cluster: CnpgCluster!
+    "`spec.storage.size` (e.g. `100Gi`), or empty."
+    storageSize: String!
+    "`spec.storage.storageClass`, or empty when the cluster uses the default class."
+    storageClass: String!
+    "`spec.backup.barmanObjectStore.destinationPath`, or empty when backups aren't configured."
+    backupDestinationPath: String!
+    "`spec.backup.retentionPolicy` (e.g. `30d`), or empty."
+    backupRetention: String!
+    instances: [CnpgInstance!]!
+    backups: [CnpgBackup!]!
+    parameters: [CnpgParameter!]!
+}
+
+# =====================================================================
+# Helm
+# =====================================================================
+
+"A configured Helm chart repository."
+type HelmRepo {
+    name: String!
+    "Repository URL. Supports `https://` and `oci://` schemes."
+    url: String!
+    "Transport type (`http`, `oci`)."
+    type: String!
+    "Number of charts indexed under this repo."
+    charts: Int!
+    "Relative time string for the last index refresh."
+    lastUpdate: String!
+}
+
+"A chart entry in a configured repository's index."
+type HelmChart {
+    id: ID!
+    name: String!
+    repo: String!
+    "Latest chart version available."
+    version: String!
+    "Underlying app version."
+    appVersion: String!
+    "Chart description from `Chart.yaml`."
+    description: String!
+    "Chart icon URL, if any."
+    icon: String
+}
+
+"A specific version of a chart."
+type HelmChartVersion {
+    version: String!
+    appVersion: String!
+    "Time the version was released."
+    released: String!
+    "Whether this version is the current latest in the repo index."
+    current: Boolean!
+}
+
+"Default values and optional values schema for a chart version."
+type HelmChartValues {
+    "Default `values.yaml` content."
+    defaultValues: String!
+    "JSON Schema for the chart's `values.yaml` (RFC `values.schema.json`). Null if the chart doesn't ship a schema."
+    schema: JSON
+}
+
+"Helm release lifecycle state."
+enum HelmStatus {
+    DEPLOYED
+    PENDING
+    FAILED
+    SUPERSEDED
+    UNINSTALLED
+}
+
+"An installed Helm release."
+type HelmRelease {
+    id: ID!
+    name: String!
+    namespace: String!
+    chart: String!
+    chartVersion: String!
+    appVersion: String!
+    revision: Int!
+    status: HelmStatus!
+    "Relative time of last update."
+    updated: String!
+    "Relative time the release was first installed."
+    installed: String!
+    repo: String!
+    repoUrl: String!
+    description: String!
+}
+
+"A historical revision of a Helm release."
+type HelmRevision {
+    revision: Int!
+    updated: String!
+    status: HelmStatus!
+    chart: String!
+    appVersion: String!
+    "Description of what changed in this revision."
+    description: String!
+}
+
+"Result of a manifest apply operation."
+type ApplyResult {
+    "Whether the apply succeeded. False on validation failure or partial application."
+    succeeded: Boolean!
+    "Resources successfully applied (`Kind/name`)."
+    applied: [String!]!
+    "Resources that failed to apply, with their error messages."
+    failed: [ApplyFailure!]!
+    "Server-side dry-run output if `dryRun` was requested."
+    dryRun: String
+}
+
+"Detail for an apply that failed for a single resource."
+type ApplyFailure {
+    "`Kind/namespace/name`."
+    resource: String!
+    "Error message."
+    error: String!
+}
+
+"Inputs for a Helm install."
+input HelmInstallInput {
+    "Target cluster ID."
+    cluster: UUID!
+    "Release name."
+    name: String!
+    "Target namespace."
+    namespace: String!
+    "Whether to create the namespace if it doesn't exist."
+    createNamespace: Boolean!
+    "Repository name."
+    repo: String!
+    "Chart name."
+    chart: String!
+    "Chart version to install."
+    version: String!
+    "Caller-provided values overrides as a YAML string."
+    values: String
+    "If true, perform a server-side dry-run only — no resources are written."
+    dryRun: Boolean
+}
+
+"Inputs for a Helm upgrade."
+input HelmUpgradeInput {
+    cluster: UUID!
+    name: String!
+    namespace: String!
+    "Repository name of the chart being upgraded. Studio prefills this from the current release's metadata."
+    repo: String!
+    "Chart name being upgraded. Studio prefills this from the current release's metadata."
+    chart: String!
+    "New chart version to upgrade to. Use the same version as the current release to re-apply values."
+    version: String!
+    values: String
+    dryRun: Boolean
+    "Whether to reset values to the chart defaults before applying overrides."
+    resetValues: Boolean
+}
+
+# =====================================================================
+# A single streamed log line.
+# =====================================================================
+
+"A single streamed log line from a pod container."
+type LogLine {
+    "Source pod."
+    pod: String!
+    "Source container."
+    container: String!
+    "Timestamp string from the kubelet."
+    timestamp: String!
+    "Coarse log level. Best-effort parsing from common log formats; falls back to `INFO`."
+    level: EventLevel!
+    "Log message text."
+    message: String!
+}
+
+# =====================================================================
+# Root query / mutation / subscription bodies
+# =====================================================================
+
+"All read operations live under `query { kubernetes { ... } }`."
+type KubernetesQueries {
+    "List all registered clusters."
+    clusters: [Cluster!]!
+    "Fetch a single registered cluster."
+    cluster(id: UUID!): Cluster
+
+    "List workloads in a cluster, optionally filtered by namespace and kind."
+    workloads(cluster: UUID!, namespace: String, kind: WorkloadKind): [Workload!]!
+    "Page through pods in a cluster, with namespace/workload/search filters."
+    pods(cluster: UUID!, namespace: String, workloadId: ID, search: String, limit: Int, offset: Int): PodPage!
+    "List nodes in a cluster."
+    nodes(cluster: UUID!): [Node!]!
+    "Recent events, ordered newest first."
+    events(cluster: UUID!, namespace: String, level: EventLevel, limit: Int): [Event!]!
+
+    "List ConfigMaps and Secrets, optionally filtered by kind/namespace."
+    configResources(cluster: UUID!, namespace: String, kind: ConfigKind): [ConfigResource!]!
+    "Fetch the key/value entries of a single ConfigMap or Secret. Secret values are masked — the controller never returns their cleartext."
+    configEntries(cluster: UUID!, namespace: String!, kind: ConfigKind!, name: String!): [ConfigResourceEntry!]!
+
+    "List Services."
+    services(cluster: UUID!, namespace: String): [Service!]!
+    "List Ingresses."
+    ingresses(cluster: UUID!, namespace: String): [Ingress!]!
+    "List NetworkPolicies."
+    networkPolicies(cluster: UUID!, namespace: String): [NetworkPolicy!]!
+
+    "List installed GatewayClasses."
+    gatewayClasses(cluster: UUID!): [K8sGatewayClass!]!
+    "List Gateways."
+    gateways(cluster: UUID!, namespace: String): [K8sGateway!]!
+    "List HTTPRoutes."
+    httpRoutes(cluster: UUID!, namespace: String): [K8sHTTPRoute!]!
+
+    "List StorageClasses (cluster-scoped)."
+    storageClasses(cluster: UUID!): [StorageClass!]!
+    "List PersistentVolumeClaims."
+    pvcs(cluster: UUID!, namespace: String): [PersistentVolumeClaim!]!
+
+    "List HorizontalPodAutoscalers."
+    horizontalPodAutoscalers(cluster: UUID!, namespace: String): [HorizontalPodAutoscaler!]!
+    "List PodDisruptionBudgets."
+    podDisruptionBudgets(cluster: UUID!, namespace: String): [PodDisruptionBudget!]!
+
+    "List namespaces with workload/pod/service counts."
+    namespaces(cluster: UUID!): [Namespace!]!
+
+    "List installed CRD-providing operators."
+    operators(cluster: UUID!): [Operator!]!
+    "List instances of any CRD-defined kind across all operators."
+    customResources(cluster: UUID!, group: String, namespace: String): [CustomResource!]!
+
+    "RBAC reads."
+    roles(cluster: UUID!, kind: String): [Role!]!
+    roleBindings(cluster: UUID!, kind: String): [RoleBinding!]!
+    serviceAccounts(cluster: UUID!, namespace: String): [ServiceAccount!]!
+
+    "cert-manager."
+    certManagerCertificates(cluster: UUID!, namespace: String): [CertificateResource!]!
+    certManagerIssuers(cluster: UUID!, namespace: String): [IssuerResource!]!
+
+    "CloudNativePG."
+    cnpgClusters(cluster: UUID!, namespace: String): [CnpgCluster!]!
+    "Full CloudNativePG cluster detail: instances, backups, parameters, storage. Null when the named cluster is absent."
+    cnpgCluster(cluster: UUID!, namespace: String!, name: String!): CnpgClusterDetail
+
+    "Helm — chart catalog reads."
+    helmRepos: [HelmRepo!]!
+    helmCharts(repo: String, search: String): [HelmChart!]!
+    helmChartVersions(repo: String!, chart: String!): [HelmChartVersion!]!
+    helmChartValues(repo: String!, chart: String!, version: String!): HelmChartValues!
+
+    "Helm — release reads."
+    helmReleases(cluster: UUID!, namespace: String): [HelmRelease!]!
+    helmReleaseHistory(cluster: UUID!, namespace: String!, name: String!): [HelmRevision!]!
+    "Merged effective values YAML for a release — chart defaults + caller overrides — at the given revision (current by default)."
+    helmReleaseValues(cluster: UUID!, namespace: String!, name: String!, revision: Int): String!
+    "Rendered manifest YAML for a release at the given revision (current by default)."
+    helmReleaseManifest(cluster: UUID!, namespace: String!, name: String!, revision: Int): String!
+    "Unified-diff between two revisions of the same release."
+    helmReleaseDiff(cluster: UUID!, namespace: String!, name: String!, fromRevision: Int!, toRevision: Int!): String!
+
+    "Fetch the YAML manifest for any single resource."
+    yaml(cluster: UUID!, namespace: String, kind: String!, group: String, name: String!): String!
+}
+
+"All write operations live under `mutation { kubernetes { ... } }`."
+type KubernetesMutations {
+    "Register a new cluster with Bosca. Returns the registered cluster record."
+    registerCluster(input: RegisterClusterInput!): Cluster!
+    "Update metadata of a registered cluster. `expectedVersion` must match the cluster's current `optimisticVersion` or the call fails with an optimistic-lock error."
+    updateCluster(id: UUID!, input: UpdateClusterInput!, expectedVersion: Long!): Cluster!
+    "Rotate the stored kubeconfig for a cluster."
+    rotateKubeconfig(id: UUID!, kubeconfig: String!): Cluster!
+    "Deregister a cluster from Bosca — does not modify the cluster itself."
+    removeCluster(id: UUID!): Boolean!
+
+    "Apply a YAML manifest to a cluster. When `dryRun=true` the server-side dry-run output is returned without writes."
+    applyManifest(cluster: UUID!, manifest: String!, dryRun: Boolean): ApplyResult!
+    "Scale a Deployment / StatefulSet / ReplicaSet."
+    scaleWorkload(cluster: UUID!, namespace: String!, kind: WorkloadKind!, name: String!, replicas: Int!): Workload!
+    "Trigger a rolling restart of a workload."
+    restartWorkload(cluster: UUID!, namespace: String!, kind: WorkloadKind!, name: String!): Boolean!
+    "Update an HPA's replica bounds. Metric rules and behavior policies go through the YAML editor."
+    updateHpaLimits(cluster: UUID!, namespace: String!, name: String!, minReplicas: Int!, maxReplicas: Int!): HorizontalPodAutoscaler!
+    "Delete any resource by reference."
+    deleteResource(cluster: UUID!, namespace: String, kind: String!, group: String, name: String!): Boolean!
+    "Create a new namespace."
+    createNamespace(cluster: UUID!, name: String!, labels: JSON): Namespace!
+
+    "Helm install. Pair with the `helmReleaseStatus` subscription to watch progress."
+    helmInstall(input: HelmInstallInput!): HelmRelease!
+    "Helm upgrade. Subscription mirrors progress."
+    helmUpgrade(input: HelmUpgradeInput!): HelmRelease!
+    "Roll a release back to a previous revision."
+    helmRollback(cluster: UUID!, namespace: String!, name: String!, toRevision: Int!): HelmRelease!
+    "Uninstall a release."
+    helmUninstall(cluster: UUID!, namespace: String!, name: String!, keepHistory: Boolean): Boolean!
+
+    "Add a Helm repo."
+    helmRepoAdd(name: String!, url: String!, username: String, password: String): HelmRepo!
+    "Refresh the index for all configured Helm repos."
+    helmRepoUpdate: [HelmRepo!]!
+    "Remove a Helm repo."
+    helmRepoRemove(name: String!): Boolean!
+}
+

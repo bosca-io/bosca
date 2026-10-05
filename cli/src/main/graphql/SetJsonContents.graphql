@@ -1,0 +1,7 @@
+mutation SetJsonContents($id: UUID!, $contentType: String, $content: JSON!) {
+    content {
+        metadata {
+            setMetadataJsonContents(id: $id, contentType: $contentType, content: $content)
+        }
+    }
+}

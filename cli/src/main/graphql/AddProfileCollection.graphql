@@ -1,0 +1,7 @@
+mutation AddProfileCollection($profileId: UUID!) {
+    profiles {
+        addCollection(profileId: $profileId) {
+            id
+        }
+    }
+}

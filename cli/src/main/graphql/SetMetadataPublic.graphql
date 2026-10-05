@@ -1,0 +1,9 @@
+mutation SetMetadataPublic($id: UUID!, $public: Boolean!) {
+    content {
+        metadata {
+            setPublic(id: $id, public: $public) {
+                id
+            }
+        }
+    }
+}

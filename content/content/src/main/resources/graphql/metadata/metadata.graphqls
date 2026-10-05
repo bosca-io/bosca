@@ -1,0 +1,715 @@
+"The classification of a metadata item, indicating whether it is a primary item or a language/content variant"
+enum MetadataType {
+    "A standard metadata item that serves as the primary version of the content"
+    STANDARD
+    "A variant of another metadata item, typically a language-specific translation or alternate version"
+    VARIANT
+}
+
+"A metadata item is the fundamental content unit in Bosca, representing a single piece of content such as a document, image, audio file, data record, or guide. It holds all associated attributes, workflow state, permissions, relationships, and content references."
+type Metadata {
+    "Unique identifier for this metadata item"
+    id: UUID!
+    "Version number of this metadata item"
+    version: Int!
+    "Custom attributes associated with this metadata item, optionally filtered by an attributes filter"
+    attributes(filter: AttributesFilterInput): JSON
+    "Bible content associated with this metadata item, optionally filtered by variant name"
+    bible(variant: String): Bible
+    "Bible variants stored for this metadata version. Disabled variants require edit access and includeDisabled: true."
+    bibles(includeDisabled: Boolean): [Bible!]!
+    "Collection template definition if this metadata item serves as a collection template"
+    collectionTemplate: CollectionTemplate
+    "The binary or file content associated with this metadata item"
+    content: MetadataContent
+    "Timestamp when this metadata item was created"
+    created: DateTime!
+    "Whether this metadata item has been soft-deleted"
+    deleted: Boolean!
+    "Structured document content associated with this metadata item"
+    document: Document
+    "Real-time collaboration state for the document content"
+    documentCollaboration: DocumentCollaboration
+    "Document template definition if this metadata item serves as a document template"
+    documentTemplate: DocumentTemplate
+    "Structured data content associated with this metadata item"
+    data: Data
+    "Real-time collaboration state for the data content"
+    dataCollaboration: DataCollaboration
+    "Data template definition if this metadata item serves as a data template"
+    dataTemplate: DataTemplate
+    "Entity tag for cache validation. Set addHeader to true to include as an HTTP response header."
+    etag(addHeader: Boolean!): String
+    "Guide content associated with this metadata item (multi-step structured content)"
+    guide: Guide
+    "Guide template definition if this metadata item serves as a guide template"
+    guideTemplate: GuideTemplate
+    "Attributes set on this item within the context of its parent collection"
+    itemAttributes: JSON
+    "Freeform labels for tagging and categorizing this metadata item"
+    labels: [String!]!
+    "BCP 47 language tag indicating the primary language of this content (e.g. 'en', 'es-MX')"
+    languageTag: String!
+    "Whether this metadata item is locked from modification"
+    locked: Boolean!
+    "Timestamp when this metadata item was last modified"
+    modified: DateTime!
+    "Display name of this metadata item"
+    name: String!
+    "Paginated list of parent collections that contain this metadata item"
+    parentCollections(limit: Int!, offset: Long!): [Collection!]!
+    "ID of the parent metadata item if this is a variant"
+    parentId: String
+    "Language and content variants of this metadata item"
+    variants: [Metadata!]!
+    "Access permissions defined on this metadata item"
+    permissions: [Permission!]!
+    "Profiles associated with this metadata item and their relationship types"
+    profiles: [MetadataProfile!]!
+    "Whether this metadata item is publicly accessible"
+    public: Boolean!
+    "Whether the binary/file content of this metadata item is publicly accessible"
+    publicContent: Boolean!
+    "Whether supplementary files attached to this metadata item are publicly accessible"
+    publicSupplementary: Boolean!
+    "Timestamp when this metadata item became ready for publishing, null if not yet ready"
+    ready: DateTime
+    "Relationships to other metadata items, optionally filtered by relationship type and direction"
+    relationships(filter: [String!], inverse: Boolean): [MetadataRelationship!]!
+    "URL-friendly slug for this metadata item, used in human-readable URLs"
+    slug: String
+    "External source information if this metadata item was imported from another system"
+    source: MetadataSource
+    "Supplementary content attached to this metadata item (files, assets, processed outputs), optionally filtered by key or plan ID"
+    supplementary(key: String, planId: String): [MetadataSupplementary!]!
+    "System-managed attributes (not user-editable, used internally by workflows and processing)"
+    systemAttributes: JSON
+    "IDs of traits assigned to this metadata item"
+    traitIds: [String!]!
+    "Traits assigned to this metadata item, defining behaviors and workflows"
+    traits: [Trait!]!
+    "IDs of categories assigned to this metadata item"
+    categoryIds: [String!]!
+    "Categories assigned to this metadata item for organizational taxonomy"
+    categories: [Category!]!
+    "Comments on this metadata item, with threaded replies, likes, and moderation. Pass `pinned: true` to return only pinned comments."
+    comments(limit: Int!, offset: Int!, pinned: Boolean): Comments!
+    "Whether this metadata has comments awaiting a moderation decision (moderators only; false for others)."
+    hasUnmoderatedComments: Boolean!
+    "When the most recent comment on this metadata was posted, or null when it has none."
+    lastCommentAt: DateTime
+    "The classification type of this metadata item (standard or variant)"
+    type: MetadataType!
+    "Timestamp when content was uploaded, null if no content has been uploaded yet"
+    uploaded: DateTime
+    "Current workflow state information for this metadata item"
+    workflow: MetadataWorkflow!
+    "Whether variant collections should be automatically synchronized when the parent changes"
+    syncVariantCollections: Boolean!
+    "Whether variant relationships should be automatically synchronized when the parent changes"
+    syncVariantRelationships: Boolean!
+    "Whether this metadata item should be indexed for search"
+    searchable: Boolean!
+    "Whether this metadata item may be returned as a recommendation"
+    recommendable: Boolean!
+    "Whether end users may post comments on this metadata item (moderators can always comment)."
+    commentsEnabled: Boolean!
+    "Whether end users may post threaded replies to comments on this metadata item (only meaningful when commentsEnabled is true)."
+    commentRepliesEnabled: Boolean!
+    "AI-powered operations and analysis for this metadata item"
+    ai: MetadataAI
+}
+
+"AI-powered operations for a metadata item, providing content analysis, generation, and insights"
+type MetadataAI {
+    "Generate an AI-powered description of the content, optionally using the provided document"
+    description(document: DocumentInput): String
+    "Identify relevant topic collections for this content using AI analysis"
+    topics(document: DocumentInput): [Collection!]
+    "Estimate the reading time in minutes for the content"
+    readingTimeInMinutes(document: DocumentInput): Int!
+    "Generate AI-derived content of the specified type (e.g. summary, outline, keywords)"
+    content(document: DocumentInput, type: String!): JSON!
+}
+
+"The binary or file content associated with a metadata item, including its type, size, and access URLs"
+type MetadataContent {
+    "The content parsed as JSON (if the content type supports JSON parsing)"
+    json: JSON
+    "Content length in bytes"
+    length: Long
+    "The content as plain text (if the content type supports text extraction)"
+    text: String
+    "MIME content type (e.g. 'image/png', 'application/pdf', 'text/html')"
+    type: String!
+    "Pre-signed URLs for uploading and downloading the content"
+    urls: MetadataContentUrls
+}
+
+"Pre-signed URLs for accessing metadata content"
+type MetadataContentUrls {
+    "Pre-signed URL for downloading the content"
+    download: SignedUrl
+    "Pre-signed URL for uploading new content"
+    upload: SignedUrl
+}
+
+"Input for associating a metadata item with a parent collection, including relationship attributes"
+input MetadataParentCollectionInput {
+    "ID of the parent collection"
+    id: UUID!
+    "Attributes to set on the parent-child relationship"
+    attributes: JSON!
+}
+
+"Mutation operations for AI-powered content generation on metadata items"
+type MetadataAIMutation {
+    "Generate an MP3 audio file from a document using AI text-to-speech. Returns the created supplementary metadata item."
+    generateMp3FromDocument(id: UUID!, version: Int!, modelKey: String!, promptKey: String, relationship: String, configuration: JSON): Metadata
+    "Generate an image from a document using AI image generation. Returns the created supplementary metadata item."
+    generateImageFromDocument(id: UUID!, version: Int!, modelKey: String!, promptKey: String!, relationship: String, configuration: JSON): Metadata
+}
+
+"Mutation operations for managing metadata items, their content, relationships, permissions, templates, and workflow states"
+type MetadataMutation {
+    "Access comment operations for metadata items."
+    comments: CommentsMutation!
+    "Access AI-powered mutation operations for metadata items"
+    ai: MetadataAIMutation!
+
+    "Create a new metadata item, optionally placing it in a collection with attributes and marking it as ready"
+    add(metadata: MetadataInput!, collectionItemAttributes: JSON, setReady: Boolean): Metadata!
+    "Create a language variant of an existing metadata item"
+    addLanguageVariant(id: UUID!, version: Int!, languageTag: String!, setReady: Boolean): Metadata!
+    "Assign a category to a metadata item"
+    addCategory(metadataId: UUID!, categoryId: UUID!): Boolean!
+    "Create a new document metadata item from a template within a parent collection"
+    addDocument(parentCollectionId: UUID!, templateId: UUID!, templateVersion: Int!, setReady: Boolean): Metadata
+    "Create a new data metadata item from a template, optionally within a parent collection"
+    addData(parentCollectionId: UUID, templateId: UUID!, templateVersion: Int!, setReady: Boolean): Metadata
+    "Create a new guide metadata item from a template, optionally within a parent collection"
+    addGuide(parentCollectionId: UUID, templateId: UUID!, templateVersion: Int!, setReady: Boolean): Metadata
+    "Add a step to a guide from a template step definition"
+    addGuideStep(metadataId: UUID!, metadataVersion: Int!, sort: Int!, templateStepId: Long!): GuideStep!
+    "Add a module to a guide step from a template module definition"
+    addGuideStepModule(metadataId: UUID!, metadataVersion: Int!, sort: Int!, stepId: Long!, templateModuleId: Long!): GuideStepModule!
+    "Add an access permission to a metadata item"
+    addPermission(permission: PermissionInput!): Permission!
+    "Create a relationship between two metadata items"
+    addRelationship(relationship: MetadataRelationshipInput!): MetadataRelationship!
+    "Add supplementary content to a metadata item (files, assets, processed outputs)"
+    addSupplementary(supplementary: MetadataSupplementaryInput!): MetadataSupplementary!
+    "Assign a trait to a metadata item, enabling its associated behaviors and workflows"
+    addTrait(metadataId: UUID!, traitId: String!): Boolean!
+    "Soft-delete a metadata item (can be restored or permanently deleted later)"
+    delete(metadataId: UUID!): Boolean!
+    "Soft-delete multiple metadata items in a single operation"
+    deleteAll(metadataIds: [UUID!]!): Int!
+    "Clear the document collaboration state (e.g. Yjs CRDT data) for a metadata item at a specific version"
+    clearDocumentCollaboration(metadataId: UUID!, metadataVersion: Int!): Boolean!
+    "Clear the data collaboration state (e.g. Yjs CRDT data) for a metadata item at a specific version"
+    clearDataCollaboration(metadataId: UUID!, metadataVersion: Int!): Boolean!
+    "Remove a category assignment from a metadata item"
+    deleteCategory(categoryId: UUID!, metadataId: UUID!): Boolean!
+    "Delete the binary/file content associated with a metadata item"
+    deleteContent(metadataId: UUID!): Boolean!
+    "Delete the guide content from a metadata item"
+    deleteGuide(metadataId: UUID!, metadataVersion: Int!): Boolean!
+    "Delete a step from a guide"
+    deleteGuideStep(metadataId: UUID!, metadataVersion: Int!, stepId: Long!): Boolean!
+    "Delete a module from a guide step"
+    deleteGuideStepModule(metadataId: UUID!, metadataVersion: Int!, stepId: Long!, moduleId: Long!): Boolean!
+    "Remove an access permission from a metadata item"
+    deletePermission(permission: PermissionInput!): Permission!
+    "Delete a relationship between two metadata items"
+    deleteRelationship(id1: UUID!, id2: UUID!, relationship: String!): Boolean!
+    "Delete a supplementary content item"
+    deleteSupplementary(id: UUID!): Boolean!
+    "Remove a trait assignment from a metadata item"
+    deleteTrait(metadataId: UUID!, traitId: String!): Boolean!
+    "Detach a supplementary item from its metadata without deleting the content"
+    detachSupplementary(id: UUID!): Boolean!
+    "Update an existing metadata item with new values"
+    edit(id: UUID!, metadata: MetadataInput!): Metadata!
+    "Create a metadata item and import its content by downloading from an external URL. The download runs asynchronously as a background job with progress events on the import progress channel."
+    importUrl(metadata: MetadataInput!, url: String!, collectionItemAttributes: JSON, headers: JSON, ready: Boolean): Metadata!
+    "Assign a template to a metadata item, defining its structure and behavior"
+    setTemplate(id: UUID!, version: Int!, templateId: UUID!, templateVersion: Int!): Metadata!
+    "Set or clear the parent metadata item ID (used for variant relationships)"
+    setParentId(id: UUID!, parentId: UUID): Metadata!
+    "Update the display name of a metadata item"
+    setMetadataName(id: UUID!, name: String!): Metadata!
+    "Update an existing relationship between metadata items"
+    editRelationship(relationship: MetadataRelationshipInput!): Boolean!
+    "Merge attributes into a metadata item's existing attributes (existing keys are preserved unless overwritten)"
+    mergeMetadataAttributes(attributes: JSON!, id: UUID!): Boolean!
+    "Merge attributes into a metadata relationship (existing keys are preserved unless overwritten)"
+    mergeMetadataRelationshipAttributes(attributes: JSON!, metadata1Id: UUID!, metadata2Id: UUID!, relationship: String!): Boolean!
+    "Permanently delete a metadata item (cannot be undone)"
+    permanentlyDelete(metadataId: UUID!): Boolean!
+    "Replace all category assignments on a metadata item"
+    setCategories(categoryIds: [UUID!]!, metadataId: UUID!): Boolean!
+    "Set the start date for a calendar-based guide"
+    setGuideStartDate(date: DateTime!, metadataId: UUID!, metadataVersion: Int!): Metadata
+    "Lock or unlock a metadata item from modifications"
+    setLocked(id: UUID!, locked: Boolean!, version: Int!): Metadata!
+    "Replace all custom attributes on a metadata item"
+    setMetadataAttributes(attributes: JSON!, id: UUID!): Boolean!
+    "Set or update the Bible content associated with a metadata item"
+    setMetadataBible(bible: BibleInput!, id: UUID!, version: Int!): Boolean!
+    "Enable or disable a Bible variant. The default variant cannot be disabled."
+    setMetadataBibleVariantEnabled(id: UUID!, version: Int!, variant: String!, enabled: Boolean!): Boolean!
+    "Select the enabled default Bible variant for a metadata item version."
+    setMetadataBibleDefaultVariant(id: UUID!, version: Int!, variant: String!): Boolean!
+    "Upload file content for a metadata item using a multipart file upload"
+    setMetadataContents(contentType: String, file: Upload!, id: UUID!): Boolean!
+    "Set or update the structured document content of a metadata item"
+    setMetadataDocument(document: DocumentInput!, id: UUID!, version: Int!, collaborationSync: CollaborationSyncMode): Boolean!
+    "Set the document content of a metadata item from a markdown string. The markdown is parsed into a TipTap document server-side."
+    setMetadataMarkdown(id: UUID!, version: Int!, title: String!, markdown: String!, collaborationSync: CollaborationSyncMode): Boolean!
+    "Set content for a metadata item using a JSON payload"
+    setMetadataJsonContents(content: JSON!, contentType: String, id: UUID!): Boolean!
+    "Mark a metadata item as not ready (reverses setMetadataReady)"
+    setMetadataNotReady(id: UUID!): Boolean!
+    "Mark a metadata item as ready for publishing and workflow processing"
+    setMetadataReady(id: UUID!): Boolean!
+    "Mark multiple metadata items as ready in a single operation, skipping items the caller lacks permission to edit"
+    setMetadataReadyAll(metadataIds: [UUID!]!): Int!
+    "Set or update the URL-friendly slug for a metadata item. Returns the final slug value."
+    setMetadataSlug(id: UUID!, slug: String!): String!
+    "Enable or disable automatic synchronization of variant collections when the parent changes"
+    setMetadataSyncVariantCollections(id: UUID!, syncVariants: Boolean!): Boolean!
+    "Enable or disable automatic synchronization of variant relationships when the parent changes"
+    setMetadataSyncVariantRelationships(id: UUID!, syncVariants: Boolean!): Boolean!
+    "Enable or disable search indexing for a metadata item"
+    setMetadataSearchable(id: UUID!, searchable: Boolean!): Boolean!
+    "Enable or disable recommendation eligibility for a metadata item"
+    setMetadataRecommendable(id: UUID!, recommendable: Boolean!): Boolean!
+    "Enable or disable end-user comments on a metadata item. Disabling comments also disables replies."
+    setMetadataCommentsEnabled(id: UUID!, enabled: Boolean!): Boolean!
+    "Enable or disable end-user threaded replies on a metadata item (requires comments to be enabled)."
+    setMetadataCommentRepliesEnabled(id: UUID!, enabled: Boolean!): Boolean!
+    "Replace all system-managed attributes on a metadata item"
+    setMetadataSystemAttributes(attributes: JSON!, id: UUID!): Boolean!
+    "Set content for a metadata item using a plain text payload"
+    setMetadataTextContents(content: String!, contentType: String, id: UUID!): Boolean!
+    "Mark a metadata item's content as uploaded with its content type and size. Optionally mark it as ready."
+    setMetadataUploaded(contentType: String, id: UUID!, len: Int!, ready: Boolean): Boolean!
+    "Replace all parent collection associations for a metadata item"
+    setMetadataParentCollections(id: UUID!, collections: [MetadataParentCollectionInput!]!): Boolean!
+    "Replace all relationships for a metadata item with the provided set"
+    setMetadataRelationships(id: UUID!, relationships: [MetadataRelationshipInput!]!): Boolean
+    "Set whether a metadata item is publicly accessible"
+    setPublic(id: UUID!, public: Boolean!): Metadata!
+    "Set public, public content, and public supplementary flags for multiple metadata items in a single operation, skipping items the caller lacks permission to edit"
+    setPublicAll(metadataIds: [UUID!]!, public: Boolean!, publicContent: Boolean!, publicSupplementary: Boolean!, searchable: Boolean!, recommendable: Boolean): Int!
+    "Set recommendation eligibility for multiple metadata items, skipping items the caller lacks permission to edit"
+    setRecommendableAll(metadataIds: [UUID!]!, recommendable: Boolean!): Int!
+    "Set whether the binary/file content is publicly accessible"
+    setPublicContent(id: UUID!, public: Boolean!): Metadata!
+    "Set whether supplementary files are publicly accessible"
+    setPublicSupplementary(id: UUID!, public: Boolean!): Metadata!
+    "Upload file content for a supplementary item using a multipart file upload"
+    setSupplementaryContents(contentType: String!, file: Upload!, supplementaryId: UUID!): Boolean!
+    "Set text content for a supplementary item"
+    setSupplementaryTextContents(content: String!, contentType: String!, supplementaryId: UUID!): Boolean!
+    "Mark a supplementary item's content as uploaded with its content type and size"
+    setSupplementaryUploaded(contentType: String!, len: Int!, supplementaryId: UUID!): Boolean!
+    "Transition a metadata item to a new workflow state"
+    setWorkflowState(state: MetadataWorkflowState!): Boolean!
+    "Mark a workflow state transition as complete with a status message"
+    setWorkflowStateComplete(state: MetadataWorkflowCompleteState!): Boolean!
+    "Access guide mutation operations for a specific metadata item and version"
+    guide(metadataId: UUID!, metadataVersion: Int!): GuideMutation!
+    "Access guide template mutation operations for a specific metadata item and version"
+    guideTemplate(metadataId: UUID!, metadataVersion: Int!): GuideTemplateMutation!
+    "Access document template mutation operations for a specific metadata item and version"
+    documentTemplate(metadataId: UUID!, metadataVersion: Int!): DocumentTemplateMutation!
+    "Access data template mutation operations for a specific metadata item and version"
+    dataTemplate(metadataId: UUID!, metadataVersion: Int!): DataTemplateMutation!
+    "Access collection template mutation operations for a specific metadata item and version"
+    collectionTemplate(metadataId: UUID!, metadataVersion: Int!): CollectionTemplateMutation!
+
+    "Reprocess Bible content for a metadata item, regenerating derived data. If no ID is provided, reprocesses all Bible content."
+    reprocessBible(metadataId: UUID, metadataVersion: Int): Boolean!
+}
+
+"An association between a metadata item and a user profile, defining the role or relationship"
+type MetadataProfile {
+    "The associated user profile"
+    profile: Profile
+    "The type of relationship between the profile and metadata item (e.g. 'author', 'editor', 'reviewer')"
+    relationship: String!
+}
+
+"A directional relationship between two metadata items, with an optional set of custom attributes"
+type MetadataRelationship {
+    "Unique identifier of the related metadata item"
+    id: UUID!
+    "Custom attributes on this relationship"
+    attributes: JSON
+    "The related metadata item"
+    metadata: Metadata!
+    "The type of relationship (e.g. 'thumbnail', 'related', 'translation', 'audio')"
+    relationship: String!
+}
+
+"Controls how the collaboration CRDT row is synchronized when document content is set programmatically"
+enum CollaborationSyncMode {
+    "No collaboration sync — the CRDT row is left unchanged"
+    NONE
+    "Reset the CRDT row to match the new document content"
+    RESET
+    "Merge the new document content into the existing CRDT state"
+    MERGE
+}
+
+"Tracks the lifecycle of content sourced from an external URL"
+enum SourceStatus {
+    "Import has been queued but not yet started"
+    PENDING
+    "Content is being downloaded from the source URL"
+    IMPORTING
+    "Content has been downloaded and stored locally"
+    IMPORTED
+    "Download from the source URL failed"
+    FAILED
+    "Content remains at the source URL and is fetched on demand"
+    EXTERNAL
+}
+
+"External source information for a metadata item that was imported from another system"
+type MetadataSource {
+    "ID of the source system in Bosca"
+    id: UUID
+    "Identifier of the item within the external source system"
+    identifier: String
+    "URL of the item in the external source system"
+    url: String
+    "Current status of the source content lifecycle"
+    status: SourceStatus
+    "The source system definition"
+    source: Source
+}
+
+"A supplementary content item attached to a metadata item, such as a thumbnail, transcript, processed output, or any additional file"
+type MetadataSupplementary {
+    "Unique identifier for this supplementary item"
+    id: UUID!
+    "Unique key within the metadata item (e.g. 'thumbnail', 'transcript', 'mp3')"
+    key: String!
+    "Display name of the supplementary item"
+    name: String!
+    "Timestamp when this supplementary item was created"
+    created: DateTime!
+    "External source information if this supplementary was imported"
+    source: MetadataSupplementarySource
+    "Timestamp when this supplementary item was last modified"
+    modified: DateTime!
+    "Timestamp when content was uploaded, null if not yet uploaded"
+    uploaded: DateTime
+    "Storage plan ID for content storage"
+    planId: UUID
+    "ID of the parent metadata item this supplementary belongs to"
+    metadataId: UUID!
+    "Custom attributes associated with this supplementary item"
+    attributes: JSON
+    "Content details including type, size, and access URLs"
+    content: MetadataSupplementaryContent!
+}
+
+"Content details for a metadata supplementary item, including its type, size, and access URLs"
+type MetadataSupplementaryContent {
+    "The content parsed as JSON (if the content type supports JSON parsing)"
+    json: JSON!
+    "Content length in bytes"
+    length: Int
+    "The content as plain text (if the content type supports text extraction)"
+    text: String!
+    "MIME content type (e.g. 'image/png', 'audio/mpeg', 'text/plain')"
+    type: String!
+    "Pre-signed URLs for uploading and downloading the supplementary content"
+    urls: MetadataSupplementaryContentUrls!
+}
+
+"Pre-signed URLs for accessing metadata supplementary content"
+type MetadataSupplementaryContentUrls {
+    "Pre-signed URL for downloading the supplementary content"
+    download: SignedUrl!
+    "Pre-signed URL for uploading new supplementary content"
+    upload: SignedUrl!
+}
+
+"Source information for an imported supplementary content item"
+type MetadataSupplementarySource {
+    "ID of the source system in Bosca"
+    id: UUID!
+    "Identifier of the item within the external source system"
+    identifier: String
+}
+
+"Mutation operations for managing a document template's attributes, containers, configuration, and content"
+type DocumentTemplateMutation {
+    "Add a new attribute definition to the document template at the specified sort position"
+    addAttribute(attribute: TemplateAttributeInput!, sort: Int!): Metadata
+    "Add a new container to the document template at the specified sort position"
+    addContainer(container: DocumentTemplateContainerInput!, sort: Int!): Metadata
+    "Delete an attribute definition from the document template by key"
+    deleteAttribute(key: String!): Metadata
+    "Delete a container from the document template by container ID"
+    deleteContainer(containerId: String!): Metadata
+    "Replace all attribute definitions on the document template"
+    setAttributes(attributes: [TemplateAttributeInput!]!): Metadata
+    "Set the template-specific configuration"
+    setConfiguration(configuration: JSON!): Metadata
+    "Replace all containers on the document template"
+    setContainers(containers: [DocumentTemplateContainerInput!]!): Metadata
+    "Set the JSON schema used to validate document content"
+    setSchema(schema: JSON!): Metadata
+    "Set the default document content structure"
+    setContent(content: JSON!): Metadata
+    "Set the default attribute values applied to new documents using this template"
+    setDefaultAttributes(attributes: JSON!): Metadata
+}
+
+"Input for defining a single filter within a collection template"
+input CollectionTemplateFilterInput {
+    "The filter expression or query string"
+    filter: String!
+    "Display name for this filter"
+    name: String!
+}
+
+"Input for defining the set of filters on a collection template"
+input CollectionTemplateFiltersInput {
+    "List of filter definitions"
+    filters: [CollectionTemplateFilterInput!]!
+}
+
+"Input for creating or updating a collection template definition"
+input CollectionTemplateInput {
+    "Attribute definitions for collections using this template"
+    attributes: [TemplateAttributeInput!]!
+    "Template-specific configuration"
+    configuration: JSON
+    "Default attribute values applied to new collections using this template"
+    defaultAttributes: JSON
+    "Content type and attribute filters for this template"
+    filters: CollectionTemplateFiltersInput
+    "Default sort ordering for child items"
+    ordering: [OrderingInput!]
+}
+
+"A single filter defined on a collection template, used to filter child items by content type or attributes"
+type CollectionTemplateFilter {
+    "The filter expression or query string"
+    filter: String!
+    "Display name for this filter"
+    name: String!
+}
+
+"The set of filters defined on a collection template"
+type CollectionTemplateFilters {
+    "List of filter definitions"
+    filters: [CollectionTemplateFilter!]!
+}
+
+"Mutation operations for managing a collection template's attributes, configuration, filters, and ordering"
+type CollectionTemplateMutation {
+    "Add a new attribute definition to the collection template at the specified sort position"
+    addAttribute(attribute: TemplateAttributeInput!, sort: Int!): Metadata
+    "Delete an attribute definition from the collection template by key"
+    deleteAttribute(key: String!): Metadata
+    "Replace all attribute definitions on the collection template"
+    setAttributes(attributes: [TemplateAttributeInput!]!): Metadata
+    "Set the template-specific configuration"
+    setConfiguration(configuration: JSON!): Metadata
+    "Set the default attribute values applied to new collections using this template"
+    setDefaultAttributes(attributes: JSON!): Metadata
+    "Replace all filter definitions on the collection template"
+    setFilters(filters: CollectionTemplateFiltersInput!): Metadata
+    "Set the default sort ordering for child items in collections using this template"
+    setOrdering(ordering: [OrderingInput!]!): Metadata
+}
+
+"Current workflow state information for a metadata item, including pending operations and processing status"
+type MetadataWorkflow {
+    "ID of the workflow to run when this metadata item is deleted"
+    deleteWorkflow: String
+    "Description of what is currently pending, if anything (e.g. a workflow step awaiting completion)"
+    pending: String
+    "Number of currently running workflow steps"
+    running: Int!
+    "Current workflow state ID (e.g. 'draft', 'processing', 'published')"
+    state: String!
+    "Timestamp when the current state became valid"
+    stateValid: DateTime
+    "Currently active (incomplete) jobs for this metadata item, including pending, running, and scheduled jobs"
+    activeJobs: [ContentJobHistory!]!
+}
+
+"A single job execution record associated with a content item (metadata or collection)"
+type ContentJobHistory {
+    "The name identifying the type of job that was executed"
+    jobName: String!
+    "A human-friendly label derived from the job name, suitable for display in admin UIs"
+    displayName: String!
+    "The unique identifier of this specific job execution"
+    jobId: UUID!
+    "A status message describing the current or final state of the job execution"
+    status: String!
+    "The timestamp when this job execution was created"
+    created: DateTime!
+    "The timestamp when this job execution completed, or null if still in progress"
+    complete: DateTime
+    "Whether the job completed successfully"
+    success: Boolean!
+    "The timestamp until which this job's execution was delayed, or null if not delayed"
+    delayedUntil: DateTime
+}
+
+"Input for creating a child metadata item within a parent, including inline metadata definition and relationship attributes"
+input MetadataChildInput {
+    "Attributes to set on the parent-child relationship within the collection"
+    attributes: JSON
+    "The metadata item definition to create as a child"
+    metadata: MetadataInput!
+}
+
+"Input for creating or updating a metadata item, including all content types, templates, and configuration"
+input MetadataInput {
+    "Custom attributes to set on the metadata item"
+    attributes: JSON
+    "IDs of categories to assign to the metadata item"
+    categoryIds: [UUID!]
+    "Collection template definition if this metadata item should serve as a collection template"
+    collectionTemplate: CollectionTemplateInput
+    "Size of the content in bytes (used for pre-signed upload URL generation)"
+    contentLength: Long
+    "MIME content type of the metadata item (e.g. 'image/png', 'application/pdf', 'text/html')"
+    contentType: String!
+    "Data template definition if this metadata item should serve as a data template"
+    dataTemplate: DataTemplateInput
+    "Structured document content to associate with this metadata item"
+    document: DocumentInput
+    "Document template definition if this metadata item should serve as a document template"
+    documentTemplate: DocumentTemplateInput
+    "Guide content to associate with this metadata item"
+    guide: GuideInput
+    "Guide template definition if this metadata item should serve as a guide template"
+    guideTemplate: GuideTemplateInput
+    "Freeform labels for tagging and categorizing"
+    labels: [String!]
+    "BCP 47 language tag indicating the primary language of this content (e.g. 'en', 'es-MX')"
+    languageTag: String!
+    "Whether this metadata item should be locked from modification"
+    locked: Boolean
+    "The classification type of this metadata item (standard or variant)"
+    metadataType: MetadataType
+    "Display name of the metadata item"
+    name: String!
+    "ID of the parent collection to place this metadata item in"
+    parentCollectionId: UUID
+    "ID of the parent metadata item if this is a variant"
+    parentId: UUID
+    "Profile associations to set on this metadata item"
+    profiles: [MetadataProfileInput!]
+    "URL-friendly slug for human-readable URLs"
+    slug: String
+    "External source information if this metadata item is imported from another system"
+    source: MetadataSourceInput
+    "Initial workflow state configuration"
+    state: MetadataWorkflowInput
+    "IDs of traits to assign to this metadata item"
+    traitIds: [String!]
+    "Version number (used when updating an existing metadata item)"
+    version: Int
+    "Whether variant collections should be automatically synchronized when this item changes"
+    syncVariantCollections: Boolean
+    "Whether variant relationships should be automatically synchronized when this item changes"
+    syncVariantRelationships: Boolean
+    "Whether this metadata item should be indexed for search"
+    searchable: Boolean
+    "Whether this metadata item may be returned as a recommendation"
+    recommendable: Boolean
+}
+
+"Input for associating a user profile with a metadata item"
+input MetadataProfileInput {
+    "ID of the user profile to associate"
+    profileId: UUID!
+    "The type of relationship (e.g. 'author', 'editor', 'reviewer')"
+    relationship: String!
+}
+
+"Input for creating or updating a relationship between two metadata items"
+input MetadataRelationshipInput {
+    "ID of the first metadata item in the relationship"
+    id1: UUID!
+    "ID of the second metadata item in the relationship"
+    id2: UUID!
+    "Custom attributes to set on the relationship"
+    attributes: JSON
+    "The type of relationship (e.g. 'thumbnail', 'related', 'translation', 'audio')"
+    relationship: String
+}
+
+"Input for specifying the external source of a metadata item during creation or update"
+input MetadataSourceInput {
+    "ID of the source system in Bosca"
+    id: String
+    "Identifier of the item within the external source system"
+    identifier: String
+    "URL of the item in the external source system"
+    sourceUrl: String
+}
+
+"Input for adding supplementary content to a metadata item"
+input MetadataSupplementaryInput {
+    "ID of the parent metadata item this supplementary belongs to"
+    metadataId: UUID!
+    "Unique key within the metadata item (e.g. 'thumbnail', 'transcript', 'mp3')"
+    key: String!
+    "Display name of the supplementary item"
+    name: String!
+    "Custom attributes to set on the supplementary item"
+    attributes: JSON
+    "Storage plan ID for content storage"
+    planId: UUID!
+    "Size of the content in bytes (used for pre-signed upload URL generation)"
+    contentLength: Int
+    "MIME content type of the supplementary content"
+    contentType: String!
+    "Optional source system ID if imported from an external source"
+    sourceId: String
+    "Optional identifier from the external source system"
+    sourceIdentifier: String
+}
+
+"Input for marking a metadata workflow state transition as complete"
+input MetadataWorkflowCompleteState {
+    "ID of the metadata item whose workflow transition is completing"
+    metadataId: UUID!
+    "Completion status message (e.g. 'success', 'failed')"
+    status: String!
+}
+
+"Input for setting the initial workflow state of a metadata item"
+input MetadataWorkflowInput {
+    "ID of the workflow to run when this metadata item is deleted"
+    deleteWorkflowId: String
+    "Initial workflow state ID (e.g. 'draft', 'pending')"
+    state: String!
+}
+
+"Input for transitioning a metadata item to a new workflow state"
+input MetadataWorkflowState {
+    "ID of the metadata item to transition"
+    metadataId: UUID!
+    "If true, transition immediately without waiting for the current workflow to complete"
+    immediate: Boolean!
+    "Target workflow state ID to transition to"
+    stateId: String!
+    "Status message for the transition (e.g. 'approved', 'rejected')"
+    status: String!
+}

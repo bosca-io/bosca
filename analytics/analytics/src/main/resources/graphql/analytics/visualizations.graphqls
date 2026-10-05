@@ -1,0 +1,101 @@
+"The chart or display type used to render an analytics visualization"
+enum AnalyticsVisualizationType {
+    "A single numeric value display (e.g. KPI card, counter)"
+    NUMBER
+    "A bar chart with vertical or horizontal bars"
+    BAR
+    "A line chart showing data trends over a continuous axis"
+    LINE
+    "A pie chart showing proportional segments of a whole"
+    PIE
+    "A doughnut chart — a pie chart with a hollow center"
+    DOUGHNUT
+    "A bubble chart plotting data points as circles with variable size"
+    BUBBLE
+    "A scatter plot showing individual data points on two axes"
+    SCATTER
+    "A tabular data grid displaying rows and columns"
+    TABLE
+    "A text label display for static or dynamic text content"
+    LABEL
+    "A date picker control used as an interactive filter input on dashboards"
+    DATEPICKER
+    "A geographic map visualization using TopoJSON boundary data"
+    TOPO_JSON_MAP
+    "A geographic point/marker map plotting one point per row at its latitude/longitude, optionally colored by a series column"
+    GEO_POINT_MAP
+    "A live, streaming point map fed by the liveSessions subscription (by configured appId) rather than a query; has no queryId"
+    LIVE_SESSIONS_MAP
+}
+
+"A reusable visualization definition that specifies how to render analytics query results"
+type AnalyticsVisualization {
+    "Unique identifier for this visualization"
+    id: UUID!
+    "Unique string key used to reference this visualization programmatically"
+    key: String!
+    "Human-readable display name for this visualization"
+    name: String!
+    "Human-readable description of what this visualization shows"
+    description: String!
+    "The ID of the analytics query whose results this visualization renders; null for non-data visualizations like DATEPICKER or LABEL"
+    queryId: UUID
+    "The chart or display type used to render this visualization"
+    type: AnalyticsVisualizationType!
+    "Optional JSON configuration for chart options, styling, axis labels, color schemes, and other rendering settings"
+    configuration: JSON
+    "Access control permissions assigned to this visualization"
+    permissions: [Permission!]!
+}
+
+"Input for creating or updating an analytics visualization definition"
+input AnalyticsVisualizationInput {
+    "Existing visualization ID for updates; omit or null when creating a new visualization"
+    id: UUID
+    "Unique string key used to reference this visualization programmatically"
+    key: String!
+    "Human-readable display name for this visualization"
+    name: String!
+    "Human-readable description of what this visualization shows"
+    description: String!
+    "The ID of the analytics query whose results this visualization renders; null for non-data visualizations"
+    queryId: UUID
+    "The chart or display type used to render this visualization"
+    type: AnalyticsVisualizationType!
+    "Optional JSON configuration for chart options, styling, axis labels, color schemes, and other rendering settings"
+    configuration: JSON
+}
+
+"Query operations for retrieving analytics visualization definitions"
+type AnalyticsVisualizations {
+    "Retrieve all analytics visualization definitions"
+    all: [AnalyticsVisualization!]!
+    "Retrieve a single visualization by its unique ID"
+    byId(id: UUID!): AnalyticsVisualization!
+    "Look up a visualization by its unique string key; returns null if not found"
+    byKey(key: String!): AnalyticsVisualization
+}
+
+"Mutation operations for managing analytics visualization definitions"
+type AnalyticsVisualizationsMutation {
+    "Create a new analytics visualization definition"
+    add(visualization: AnalyticsVisualizationInput!): AnalyticsVisualization!
+    "Update an existing analytics visualization definition"
+    edit(visualization: AnalyticsVisualizationInput!): AnalyticsVisualization!
+    "Delete an analytics visualization definition by its unique ID"
+    delete(id: UUID!): Boolean!
+    "Grant a permission on a visualization"
+    addPermission(permission: PermissionInput!): Permission!
+    "Revoke a permission from a visualization"
+    deletePermission(permission: PermissionInput!): Permission!
+}
+
+extend type Analytics {
+    "Access analytics visualization queries"
+    visualizations: AnalyticsVisualizations!
+}
+
+extend type AnalyticsMutation {
+    "Access analytics visualization mutations"
+    visualizations: AnalyticsVisualizationsMutation!
+}

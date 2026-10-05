@@ -1,0 +1,64 @@
+# Work Ops — WorkOpsProgram (R1)
+#
+# Phase 2 ships the read + write surface for WorkOpsPrograms (the middle tier
+# of the delivery hierarchy). Cross-program features — milestones (R9),
+# program-scope releases (R30), program-scope boards (R8) — land in
+# their owning phases and extend this type incrementally.
+
+"""
+Middle tier of the delivery hierarchy. A program belongs to exactly
+one WorkOpsPortfolio and groups related projects under one delivery owner.
+"""
+type WorkOpsProgram {
+    id: UUID!
+    "WorkOpsPortfolio-scoped uppercase code (2–10 chars)."
+    key: String!
+    name: String!
+    description: String
+    "Profile id of the program owner."
+    ownerProfileId: UUID!
+    "Resolved owner profile."
+    owner: Profile
+    "Resolved WorkOpsPortfolio parent."
+    portfolio: WorkOpsPortfolio!
+    "Optional planned program start. Surfaces on the roadmap (R18)."
+    startDate: DateTime
+    "Optional planned program end."
+    targetDate: DateTime
+    archivedAt: DateTime
+    createdAt: DateTime!
+    modifiedAt: DateTime!
+    version: Long!
+    "Projects belonging to this program."
+    projects(offset: Long! = 0, limit: Int! = 50): [WorkOpsProject!]!
+    "Per-entity permission rows. Requires MANAGE."
+    permissions: [EntityPermission!]!
+}
+
+input WorkOpsProgramInput {
+    portfolioId: UUID!
+    key: String!
+    name: String!
+    description: String
+    ownerProfileId: UUID!
+    startDate: DateTime
+    targetDate: DateTime
+}
+
+type WorkOpsPrograms {
+    "Every program, ordered by key."
+    all: [WorkOpsProgram!]!
+    "Fetch a program by id."
+    program(id: UUID!): WorkOpsProgram
+    "Paginated list of every program in a portfolio."
+    byPortfolio(portfolioId: UUID!, offset: Long! = 0, limit: Int! = 50): [WorkOpsProgram!]!
+}
+
+type WorkOpsProgramsMutation {
+    create(input: WorkOpsProgramInput!): WorkOpsProgram!
+    update(id: UUID!, input: WorkOpsProgramInput!, expectedVersion: Long!): WorkOpsProgram!
+    archive(id: UUID!, expectedVersion: Long!): WorkOpsProgram!
+    unarchive(id: UUID!, expectedVersion: Long!): WorkOpsProgram!
+    addPermission(id: UUID!, groupId: UUID!, action: PermissionAction!): Boolean!
+    removePermission(id: UUID!, groupId: UUID!, action: PermissionAction!): Boolean!
+}

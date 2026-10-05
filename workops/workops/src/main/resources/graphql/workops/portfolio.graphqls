@@ -1,0 +1,62 @@
+# Work Ops — WorkOpsPortfolio (R1)
+#
+# Phase 2 ships the read + write surface for WorkOpsPortfolios — the top of
+# the WorkOpsPortfolio → WorkOpsProgram → WorkOpsProject hierarchy. Mutations are gated by
+# admin-group membership in this phase; Phase 7 (R11) layers
+# permission schemes on top.
+
+"""
+Top of Work Ops's three-level delivery hierarchy. A portfolio bundles
+related programs and is the natural rollup boundary for OKRs (R19)
+and capacity (R20).
+"""
+type WorkOpsPortfolio {
+    "Stable id for API and DataLoader use."
+    id: UUID!
+    "Short uppercase code (2–10 chars), unique cluster-wide."
+    key: String!
+    name: String!
+    description: String
+    "Profile id of the delivery leader who owns this portfolio."
+    ownerProfileId: UUID!
+    "Resolved owner profile."
+    owner: Profile
+    "When set, the portfolio is read-only at the service layer."
+    archivedAt: DateTime
+    createdAt: DateTime!
+    modifiedAt: DateTime!
+    "Optimistic-locking version. Required on every update."
+    version: Long!
+    "Programs belonging to this portfolio."
+    programs(offset: Long! = 0, limit: Int! = 50): [WorkOpsProgram!]!
+    "Per-entity permission rows. Requires MANAGE."
+    permissions: [EntityPermission!]!
+}
+
+"Input shape for createPortfolio / updatePortfolio."
+input WorkOpsPortfolioInput {
+    key: String!
+    name: String!
+    description: String
+    ownerProfileId: UUID!
+}
+
+"Query namespace for WorkOpsPortfolios."
+type WorkOpsPortfolios {
+    "Fetch a portfolio by id."
+    portfolio(id: UUID!): WorkOpsPortfolio
+    "Fetch a portfolio by key — useful from CLIs and admin URLs."
+    portfolioByKey(key: String!): WorkOpsPortfolio
+    "Paginated list of every portfolio."
+    all(offset: Long! = 0, limit: Int! = 50): [WorkOpsPortfolio!]!
+}
+
+"Mutation namespace for WorkOpsPortfolios."
+type WorkOpsPortfoliosMutation {
+    create(input: WorkOpsPortfolioInput!): WorkOpsPortfolio!
+    update(id: UUID!, input: WorkOpsPortfolioInput!, expectedVersion: Long!): WorkOpsPortfolio!
+    archive(id: UUID!, expectedVersion: Long!): WorkOpsPortfolio!
+    unarchive(id: UUID!, expectedVersion: Long!): WorkOpsPortfolio!
+    addPermission(id: UUID!, groupId: UUID!, action: PermissionAction!): Boolean!
+    removePermission(id: UUID!, groupId: UUID!, action: PermissionAction!): Boolean!
+}

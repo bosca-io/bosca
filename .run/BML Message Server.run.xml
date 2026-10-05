@@ -1,0 +1,22 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="BML Message Server" type="JetRunConfigurationType">
+    <envs>
+      <env name="BML_MESSAGE_ANALYTICS_URL" value="http://localhost:8081" />
+      <!-- Configure BML_MESSAGE_ARTIFACTS_TOKEN locally. -->
+      <env name="BML_MESSAGE_ARTIFACTS_URL" value="http://localhost:8084" />
+      <env name="BML_MESSAGE_CACHE_DIR" value="bml/bml-message-server/build/message-cache" />
+      <env name="BML_MESSAGE_POLL_SECONDS" value="15" />
+      <env name="BML_MESSAGE_TRACKING_SECRET" value="local-dev-tracking-secret" />
+      <env name="NATS_TOKEN" value="OAVKZTG7ST62YCPUJYJ6LBQDMKLAUD4NRBPZ4GXUXNUJW2ATCFKKYGHV" />
+      <env name="NATS_URL" value="nats://localhost:4222" />
+      <env name="BML_GRAPHQL_ENDPOINT" value="http://localhost:8080" />
+    </envs>
+    <option name="MAIN_CLASS_NAME" value="bosca.bml.message.server.MainKt" />
+    <module name="bml.bml-message-server.main" />
+    <shortenClasspath name="NONE" />
+    <option name="VM_PARAMETERS" value="-Xmx3096M --add-opens java.base/jdk.internal.misc=ALL-UNNAMED --add-opens java.base/java.nio=ALL-UNNAMED --add-opens java.base/sun.nio.ch=ALL-UNNAMED --sun-misc-unsafe-memory-access=allow --enable-native-access=ALL-UNNAMED" />
+    <method v="2">
+      <option name="Make" enabled="true" />
+    </method>
+  </configuration>
+</component>

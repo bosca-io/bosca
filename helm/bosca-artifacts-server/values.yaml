@@ -1,0 +1,129 @@
+replicaCount: 1
+
+# Rolling update strategy. `maxUnavailable: 0` guarantees no capacity dip
+# during rollouts. Bump `maxSurge` higher for faster, more aggressive
+# rollouts at the cost of brief extra pod-hours during the rollout window.
+strategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxSurge: 25%
+    maxUnavailable: 0
+
+image:
+  registry: ghcr.io/bosca-io/bosca
+  repository: artifacts-server
+  tag: ""
+  pullPolicy: IfNotPresent
+
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+commonAnnotations: {}
+
+podSecurityContext: {}
+securityContext: {}
+
+service:
+  type: ClusterIP
+  port: 8084
+
+gateway:
+  enabled: true
+  gatewayName: bosca-gateway
+  gatewayNamespace: ""
+  hostnames: []
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: "1"
+    memory: 512Mi
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 80
+
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+
+appConfig:
+  domain: ""
+  realm: ""
+  databaseUrl: ""
+  databaseMaxConnections: 100
+  natsHost: nats
+  sentryDsn: ""
+
+envFromConfigMaps:
+  - server-v3-env
+  - otel-env
+
+# Secrets — see templates/secret.yaml. Set create:false to consume an existing Secret.
+secrets:
+  database:
+    create: true
+    secretName: pg-creds-bosca-artifacts-server
+    usernameKey: username
+    passwordKey: password
+    username: ""
+    password: ""
+  nats:
+    create: true
+    secretName: nats
+    key: token
+    value: ""
+  jwt:
+    create: true
+    secretName: jwt
+    key: secret
+    value: ""
+  url:
+    create: true
+    secretName: url
+    key: secret
+    value: ""
+  s3:
+    create: true
+    secretName: s3
+    accessKeyIdKey: ACCESS_KEY_ID
+    secretAccessKeyKey: ACCESS_SECRET_KEY
+    accessKeyId: ""
+    secretAccessKey: ""
+  scrypt:
+    create: true
+    secretName: scrypt-key
+    keyKey: key
+    saltKey: salt
+    memCostKey: mem_cost
+    roundsKey: rounds
+    key: ""
+    salt: ""
+    memCost: ""
+    rounds: ""
+
+imagePullSecrets:
+  - name: docker-registry
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+global:
+  # Registry (and path) for every Bosca image; when set, it overrides image.registry.
+  imageRegistry: ""
+  domain: ""
+
+# Port of the management listener (bosca.server.management-port). It serves GET /api/v1/live on its own event loop,
+# so liveness keeps answering while request event loops are busy. Every /api/v1/live probe targets it; readiness
+# stays on `http` because it checks dependencies.
+managementPort: 9090

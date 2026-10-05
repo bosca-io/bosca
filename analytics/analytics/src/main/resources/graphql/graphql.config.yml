@@ -1,0 +1,4 @@
+schema: .
+include:
+  - '**/*.graphqls'
+documents: '**/*.graphqls'

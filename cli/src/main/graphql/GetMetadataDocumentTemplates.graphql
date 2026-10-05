@@ -1,0 +1,9 @@
+query GetMetadataDocumentTemplates {
+    content {
+        documentTemplates {
+            all {
+                ...DocumentTemplate
+            }
+        }
+    }
+}

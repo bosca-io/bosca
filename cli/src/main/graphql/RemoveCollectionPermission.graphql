@@ -1,0 +1,10 @@
+mutation RemoveCollectionPermission($permission: PermissionInput!) {
+    content {
+        collection {
+            deletePermission(permission: $permission) {
+                groupId
+                action
+            }
+        }
+    }
+}

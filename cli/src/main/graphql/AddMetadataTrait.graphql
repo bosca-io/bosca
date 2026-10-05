@@ -1,0 +1,7 @@
+mutation AddMetadataTrait($metadataId: UUID!, $traitId: String!) {
+    content {
+        metadata {
+            addTrait(metadataId: $metadataId, traitId: $traitId)
+        }
+    }
+}

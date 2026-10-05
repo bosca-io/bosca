@@ -1,0 +1,14 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="Image Processor" type="js.build_tools.npm">
+    <package-json value="$PROJECT_DIR$/web/projects/imageprocessor/package.json" />
+    <command value="run" />
+    <scripts>
+      <script value="dev" />
+    </scripts>
+    <node-interpreter value="project" />
+    <envs>
+      <env name="SUPPORTED_URLS" value="http://,https://" />
+    </envs>
+    <method v="2" />
+  </configuration>
+</component>

@@ -1,0 +1,82 @@
+# The polymorphic configuration/extras unions, shared across the ecom types. Each is the GraphQL
+# projection of a sealed Kotlin hierarchy stored as jsonb; member type names are the Kotlin class
+# simple names and each carries a `type` discriminator. On INPUT these are supplied as the `JSON`
+# scalar — an object with a matching `type` (e.g. `{ "type": "clothing", "sizes": ["S","M"] }`) —
+# which the controller dispatcher decodes into the sealed type, so `JSON` inputs are validated
+# against these same shapes.
+
+# --- ProductConfiguration ---
+
+"""Type-specific product behavior."""
+union ProductConfiguration = StandardProductConfiguration | ClothingProductConfiguration | SubscriptionProductConfiguration
+
+"""A plain product with no type-specific configuration."""
+type StandardProductConfiguration { type: String! }
+
+"""A product offered in a set of sizes."""
+type ClothingProductConfiguration { type: String! sizes: [String!]! }
+
+"""A SUBSCRIPTION product bound to a plan group; checkout creates a recurring purchase."""
+type SubscriptionProductConfiguration { type: String! planGroupId: UUID! }
+
+# --- CartItemConfiguration ---
+
+"""Line-type-specific configuration on a cart line."""
+union CartItemConfiguration = EmptyCartItemConfiguration | SizeCartItemConfiguration | ShippingCartConfiguration | SubscriptionCartItemConfiguration
+
+"""No line configuration."""
+type EmptyCartItemConfiguration { type: String! }
+
+"""A selected variant (e.g. clothing size) on a product line."""
+type SizeCartItemConfiguration { type: String! size: String! }
+
+"""The offered shipping rates and the customer's selection, on a SHIPPING line."""
+type ShippingCartConfiguration { type: String! selected: ShippingRate options: [ShippingRate!]! }
+
+"""The concrete plan chosen within the product's plan group, on a SUBSCRIPTION line."""
+type SubscriptionCartItemConfiguration { type: String! planId: UUID! }
+
+# --- CatalogProductExtras ---
+
+"""Per-catalog-entry extension data."""
+union CatalogProductExtras = EmptyCatalogProductExtras | QuantityRequirements
+
+"""No extension data."""
+type EmptyCatalogProductExtras { type: String! }
+
+"""Per-order quantity bounds for a catalog entry."""
+type QuantityRequirements { type: String! min: Int max: Int }
+
+# --- ManufacturerExtras / AccountExtras / CustomerExtras (Empty-only for now) ---
+
+"""Manufacturer extension data (the marketplace later contributes vendor-linkage variants)."""
+union ManufacturerExtras = EmptyManufacturerExtras
+type EmptyManufacturerExtras { type: String! }
+
+"""Billing-account extension data."""
+union AccountExtras = EmptyAccountExtras
+type EmptyAccountExtras { type: String! }
+
+"""Customer extension data."""
+union CustomerExtras = EmptyCustomerExtras
+type EmptyCustomerExtras { type: String! }
+
+# --- ProviderConfiguration ---
+
+"""Payment/shipping provider settings (admin-gated; may hold gateway secrets)."""
+union ProviderConfiguration = EmptyProviderConfiguration | KeyValueProviderConfiguration
+
+"""No configured settings."""
+type EmptyProviderConfiguration { type: String! }
+
+"""A generic gateway settings bag of string entries."""
+type KeyValueProviderConfiguration { type: String! values: [ProviderConfigurationValue!]! }
+
+"""One entry in a KeyValueProviderConfiguration."""
+type ProviderConfigurationValue { key: String! value: String! }
+
+# --- PlanConfiguration ---
+
+"""Subscription-plan-specific behavior."""
+union PlanConfiguration = StandardPlanConfiguration
+type StandardPlanConfiguration { type: String! }

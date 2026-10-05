@@ -1,0 +1,37 @@
+"Mutation operations for managing persisted GraphQL queries, which allow clients to send a hash instead of the full query text"
+type PersistedQueriesMutation {
+    "Register a new persisted query for an application"
+    add(application: String!, query: String!, sha256: String!): Boolean!
+    "Register multiple persisted queries for an application in bulk"
+    addAll(application: String!, queries: [PersistedQueryInput!]!): Boolean!
+    "Remove a persisted query by its SHA-256 hash"
+    delete(application: String!, sha256: String!): Boolean!
+    "Remove all persisted queries for all applications"
+    deleteAll: Boolean!
+}
+
+"Query operations for retrieving persisted GraphQL queries"
+type PersistedQueries {
+    "List all registered persisted queries"
+    all: [PersistedQuery!]!
+    "Look up a persisted query by its SHA-256 hash"
+    query(sha256: String!): PersistedQuery
+}
+
+"A persisted GraphQL query, identified by its SHA-256 hash for efficient client-server communication"
+type PersistedQuery {
+    "The application this query belongs to"
+    application: String!
+    "The full GraphQL query text"
+    query: String!
+    "SHA-256 hash of the query, used as a unique identifier"
+    sha256: String!
+}
+
+"Input for registering a persisted query"
+input PersistedQueryInput {
+    "The full GraphQL query text"
+    query: String!
+    "SHA-256 hash of the query"
+    sha256: String!
+}

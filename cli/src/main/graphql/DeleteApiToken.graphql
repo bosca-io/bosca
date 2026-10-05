@@ -1,0 +1,7 @@
+mutation DeleteApiToken($id: Long!) {
+    security {
+        apiTokens {
+            delete(id: $id)
+        }
+    }
+}

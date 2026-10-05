@@ -1,0 +1,9 @@
+query GetMetadataRelationships($id: UUID!) {
+    content {
+        metadata(id: $id) {
+            relationships {
+                ...MetadataRelationship
+            }
+        }
+    }
+}

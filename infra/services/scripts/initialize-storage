@@ -1,0 +1,54 @@
+#!/bin/sh
+
+set -e
+
+echo "Setting up bucket..."
+
+mc config host add boscaminio http://minio:9010 67fO5gFs6BuksBrh6rMp eV4rlwomvXsM19CXorOTb5uYaFLeNXsPLKx5Uxdm
+mc mb boscaminio/bosca
+mc policy download boscaminio/bosca
+
+echo "Setting up search index..."
+
+curl \
+  -X PATCH 'http://meilisearch:7700/experimental-features/' \
+  -H "Authorization: Bearer p8JcB_HuMHRxN7uVXfrG2wU06b5k7oTvaAAYo6nsi9M" \
+  -H 'Content-Type: application/json'  \
+  --data-binary '{
+    "vectorStore": true
+  }'
+
+curl \
+  -X POST 'http://meilisearch:7700/keys' \
+  -H 'Authorization: Bearer p8JcB_HuMHRxN7uVXfrG2wU06b5k7oTvaAAYo6nsi9M' \
+  -H 'Content-Type: application/json' \
+  --data-binary '{
+    "description": "Manage",
+    "actions": ["*"],
+    "indexes": ["*"],
+    "expiresAt": null
+  }'
+
+curl \
+  -X POST 'http://meilisearch:7700/keys' \
+  -H 'Authorization: Bearer p8JcB_HuMHRxN7uVXfrG2wU06b5k7oTvaAAYo6nsi9M' \
+  -H 'Content-Type: application/json' \
+  --data-binary '{
+    "description": "Search",
+    "actions": ["search"],
+    "indexes": ["*"],
+    "expiresAt": null
+  }'
+
+curl \
+  -X GET 'http://meilisearch:7700/keys' \
+  -H 'Authorization: Bearer p8JcB_HuMHRxN7uVXfrG2wU06b5k7oTvaAAYo6nsi9M' \
+  -H 'Accept: application/json' | jq
+
+echo "Pull llm..."
+
+curl http://ollama:11434/api/pull -d "{
+  \"name\": \"all-minilm\"
+}"
+
+echo "...Done"

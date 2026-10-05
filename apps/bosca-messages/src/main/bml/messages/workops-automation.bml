@@ -1,0 +1,27 @@
+{# A profile-addressed email authored by a WorkOps automation rule. #}
+<message key="workops-automation">
+  <script server provides="m">
+    import bosca.messages.WorkOpsAutomationEmail
+    message.payload(WorkOpsAutomationEmail.serializer())
+  </script>
+  <script server provides="assets">message.assetsUrl ?: error("BmlMessageContext.assetsUrl is required — emails cannot reference relative asset URLs")</script>
+  <script server provides="subject">m.subject</script>
+  <script server provides="eyebrow">t("workops-automation.eyebrow", "WorkOps automation")</script>
+  <script server provides="headline">m.subject</script>
+  <script server provides="preheader">m.body.take(140)</script>
+  <script server provides="reason">t("workops-automation.reason", "You're receiving this because a WorkOps automation rule selected your verified profile.")</script>
+  <email>
+    <subject>{ subject }</subject>
+    <bosca-shell :brand="m.appName" :logo="m.logoUrl" :logoOnly="m.logoOnly" title="{ m.appName } · WorkOps Automation" :preheader="preheader" :assets="assets" :unsubscribe="message.unsubscribeUrl" :preferences="message.preferencesUrl" :reason="reason" :primaryColor="m.primaryColor">
+
+      <bosca-heading :eyebrow="eyebrow" :headline="headline" :name="message.recipientName" :primaryColor="m.primaryColor" :accentColor="m.accentColor">
+        <span t="workops-automation.lede">A WorkOps automation rule sent you this message.</span>
+      </bosca-heading>
+
+      <panel :accentColor="m.accentColor">
+        <p style="margin:0;font-family:'Geist',-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:14px;line-height:1.65;color:#34394a;white-space:pre-wrap;">{ m.body }</p>
+      </panel>
+
+    </bosca-shell>
+  </email>
+</message>

@@ -1,0 +1,7 @@
+mutation SetMetadataSupplementaryTextContents($supplementaryId: UUID!, $contentType: String!, $content: String!) {
+    content {
+        metadata {
+            setSupplementaryTextContents(supplementaryId: $supplementaryId, contentType: $contentType, content: $content)
+        }
+    }
+}

@@ -1,0 +1,43 @@
+# Pagination convention across this module's list fields (offset/limit, defaults differ by kind):
+#   - limit = 25  for catalog / merchandising lists (products, catalog products, manufacturers,
+#                 companies, credits) — buyer-facing browse surfaces where a tighter page is the norm.
+#   - limit = 50  for operational / admin lists (carts, orders, customers, accounts, payments,
+#                 subscriptions, shipments, returns, promotions) — back-office surfaces that scan more.
+# offset always defaults to 0. (These are `#` comments — not GraphQL descriptions — so they stay out of
+# the introspected, user-facing schema docs.)
+
+"""
+A monetary amount with fixed scale-4 decimal precision, serialized as a decimal string
+(e.g. "19.9900"). Mirrors the module's Kotlin Money value type.
+"""
+scalar Money
+
+"""
+The ecommerce query namespace. All commerce reads live here — nothing is added to the global Query
+root. Each domain area contributes its read fields to this type.
+"""
+type Ecom {
+    "A company (seller/tenant) by id."
+    company(id: UUID!): Company
+    "All companies, paged. Admin surface."
+    companies(offset: Int! = 0, limit: Int! = 25): [Company!]!
+}
+
+extend type Query {
+    "The ecommerce domain query namespace."
+    ecom: Ecom!
+}
+
+"""
+The ecommerce mutation namespace, grouped per entity collection. Each collection namespace holds its
+creates plus an id-scoped instance namespace (e.g. companies { add }, companies { company(id) { … } }).
+"""
+type EcomMutation {
+    "Company creates and per-company operations."
+    companies: CompaniesMutation!
+}
+
+extend type Mutation {
+    "The ecommerce domain mutation namespace."
+    ecom: EcomMutation!
+}

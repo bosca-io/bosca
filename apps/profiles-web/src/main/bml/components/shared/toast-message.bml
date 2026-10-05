@@ -1,0 +1,14 @@
+<component tag="toast-message">
+  <prop name="message" type="String?" required/>
+  <prop name="failed" type="Boolean" required/>
+  <prop name="id" type="Long" required/>
+  <prop name="actionHref" type="String" default=""/>
+  <prop name="actionLabel" type="String" default=""/>
+  <prop name="actionSignOut" type="Boolean" default="false"/>
+
+  <if failed>
+    <p data-toast data-toast-tone="error" :data-toast-id="id" :data-toast-action-href="actionHref" :data-toast-action-label="actionLabel" :data-toast-action-sign-out="actionSignOut" hidden>{ message }</p>
+  <else>
+    <p data-toast data-toast-tone="success" :data-toast-id="id" :data-toast-action-href="actionHref" :data-toast-action-label="actionLabel" :data-toast-action-sign-out="actionSignOut" hidden>{ message }</p>
+  </if>
+</component>

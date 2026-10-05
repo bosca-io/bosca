@@ -1,0 +1,203 @@
+"The navigation and progress tracking mode for a guide, determining how users move through the steps"
+enum GuideType {
+    "Calendar-based guide where steps are assigned to specific dates (e.g. Advent calendar, reading plan)"
+    CALENDAR
+    "Calendar-based guide with completion progress tracking per step"
+    CALENDAR_PROGRESS
+    "Linear sequential guide where steps are completed in order (e.g. course, tutorial)"
+    LINEAR
+    "Linear sequential guide with completion progress tracking per step"
+    LINEAR_PROGRESS
+}
+
+"A multi-step content experience associated with a metadata item, such as a devotional plan, course, tutorial, or reading plan. Steps are navigated according to the guide type."
+type Guide {
+    "Computed recurrence dates for calendar-based guides, derived from the rrule and start date"
+    recurrences: [DateTime!]
+    "iCalendar RRULE string defining the recurrence pattern for calendar-based guides (e.g. 'FREQ=DAILY;COUNT=30')"
+    rrule: String
+    "Look up a specific step by date (for calendar guides) or by step ID"
+    step(date: DateTime, stepId: Long): GuideStep
+    "Look up a step by its zero-based offset position in the step list"
+    stepByOffset(offset: Int!): GuideStep
+    "Total number of steps in this guide"
+    stepCount: Int!
+    "Paginated list of steps in this guide"
+    steps(limit: Int, offset: Int): [GuideStep!]!
+    "The template that defines the structure and recurrence pattern for this guide, if one is assigned"
+    template: Metadata
+    "The navigation and progress tracking mode for this guide"
+    type: GuideType!
+}
+
+"A single step within a guide, representing one unit of content (e.g. a day in a devotional, a lesson in a course)"
+type GuideStep {
+    "The assigned date for this step in calendar-based guides, null for linear guides"
+    date: DateTime
+    "Unique identifier for this step within the guide"
+    id: Int!
+    "The metadata item containing the content for this step"
+    metadata: Metadata
+    "Content modules within this step, providing sub-sections of content (e.g. scripture reading, reflection, prayer)"
+    modules: [GuideStepModule!]!
+}
+
+"A content module within a guide step, representing a sub-section such as a scripture passage, reflection prompt, or media element"
+type GuideStepModule {
+    "Unique identifier for this module within the step"
+    id: Int!
+    "The metadata item containing the content for this module"
+    metadata: Metadata
+}
+
+"Mutation operations for managing a guide's settings, steps, and modules, including reordering"
+type GuideMutation {
+    "Set the navigation and progress tracking mode for this guide"
+    setType(guideType: GuideType!): Boolean!
+    "Set the iCalendar RRULE string defining the recurrence pattern for this calendar-based guide"
+    setRrule(rrule: String!): Boolean!
+    "Reorder steps within the guide by providing the desired step ID sequence"
+    reorderSteps(stepIds: [Long!]!): Boolean!
+    "Reorder modules within a guide step by providing the desired module ID sequence"
+    reorderModules(stepId: Long!, moduleIds: [Long!]!): Boolean!
+}
+
+"A template that defines the structure, recurrence pattern, and default configuration for guide metadata items"
+type GuideTemplate {
+    "The metadata item that represents this template"
+    metadata: Metadata
+    "Attribute definitions specifying the fields available on guides using this template"
+    attributes: [TemplateAttribute!]!
+    "Template-specific configuration (e.g. display settings, feature flags)"
+    configuration: JSON
+    "Default attribute values applied when creating new guides from this template"
+    defaultAttributes: JSON
+    "iCalendar RRULE string defining the default recurrence pattern for guides using this template"
+    rrule: String
+    "Template step definitions that define the structure of each step in guides using this template"
+    steps: [GuideTemplateStep!]!
+    "The navigation and progress tracking mode for guides using this template"
+    type: GuideType!
+}
+
+"Mutation operations for managing a guide template's steps, modules, attributes, and configuration"
+type GuideTemplateMutation {
+    "Add a new attribute definition to the guide template at the specified sort position"
+    addAttribute(attribute: TemplateAttributeInput!, sort: Int!): Metadata
+    "Add a content module to a template step, linking it to an existing metadata item"
+    addModule(moduleMetadataId: UUID!, moduleMetadataVersion: Int!, stepId: Long!): Boolean!
+    "Add a new step to the guide template, linking it to an existing metadata item"
+    addStep(stepMetadataId: UUID!, stepMetadataVersion: Int): Boolean!
+    "Delete an attribute definition from the guide template by key"
+    deleteAttribute(key: String!): Metadata
+    "Remove a module from a template step"
+    removeModule(moduleId: Long!, stepId: Long!): Boolean!
+    "Remove a step from the guide template"
+    removeStep(stepId: Long!): Boolean!
+    "Reorder modules within a template step by providing the desired module ID sequence"
+    reorderModules(moduleIds: [Long!]!, stepId: Long!): Boolean!
+    "Reorder steps within the guide template by providing the desired step ID sequence"
+    reorderSteps(stepIds: [Long!]!): Boolean!
+    "Replace all attribute definitions on the guide template"
+    setAttributes(attributes: [TemplateAttributeInput!]!): Metadata
+    "Set the template-specific configuration"
+    setConfiguration(configuration: JSON!): Metadata
+    "Set the default attribute values applied to new guides using this template"
+    setDefaultAttributes(attributes: JSON!): Metadata
+    "Set the iCalendar RRULE string defining the recurrence pattern for guides using this template"
+    setRrule(rrule: String!): Metadata
+    "Set the navigation and progress tracking mode for guides using this template"
+    setType(guideType: GuideType!): Metadata
+}
+
+"A step definition within a guide template, specifying the metadata item and modules that form each step"
+type GuideTemplateStep {
+    "Unique identifier for this template step"
+    id: Int!
+    "The metadata item that defines the content structure for this step"
+    metadata: Metadata
+    "Module definitions within this template step"
+    modules: [GuideTemplateStepModule!]!
+}
+
+"A module definition within a guide template step, specifying the metadata item for a content sub-section"
+type GuideTemplateStepModule {
+    "Unique identifier for this template module within the step"
+    id: Int!
+    "The metadata item that defines the content structure for this module"
+    metadata: Metadata
+}
+
+"Query type for listing all available guide templates"
+type GuideTemplates {
+    "All guide templates available in the system"
+    all: [GuideTemplate!]!
+}
+
+"Input for creating or updating a guide metadata item with its type, recurrence, and steps"
+input GuideInput {
+    "The navigation and progress tracking mode for this guide"
+    guideType: GuideType!
+    "iCalendar RRULE string defining the recurrence pattern for calendar-based guides"
+    rrule: String
+    "Steps to include in this guide"
+    steps: [GuideStepInput!]!
+    "ID of the template metadata item to use for this guide"
+    templateMetadataId: UUID
+    "Version of the template metadata item"
+    templateMetadataVersion: Int
+}
+
+"Input for creating a step within a guide, either inline or by referencing an existing metadata item"
+input GuideStepInput {
+    "Inline metadata definition for creating a new content item for this step"
+    metadata: MetadataInput
+    "Modules to include in this step"
+    modules: [GuideStepModuleInput!]!
+    "ID of an existing metadata item to use as the step content"
+    stepMetadataId: UUID
+    "Version of the referenced step metadata item"
+    stepMetadataVersion: Int
+}
+
+"Input for creating a module within a guide step, either inline or by referencing an existing metadata item"
+input GuideStepModuleInput {
+    "Inline metadata definition for creating a new content item for this module"
+    metadata: MetadataInput
+    "ID of an existing metadata item to use as the module content"
+    moduleMetadataId: UUID
+    "Version of the referenced module metadata item"
+    moduleMetadataVersion: Int
+}
+
+"Input for creating or updating a guide template, defining its recurrence, steps, and type"
+input GuideTemplateInput {
+    "Template-specific configuration (e.g. display settings, feature flags)"
+    configuration: JSON
+    "Default attribute values applied when creating new guides from this template"
+    defaultAttributes: JSON
+    "iCalendar RRULE string defining the default recurrence pattern"
+    rrule: String!
+    "Template step definitions specifying the structure of each step"
+    steps: [GuideTemplateStepInput!]!
+    "The navigation and progress tracking mode for guides using this template"
+    type: GuideType!
+}
+
+"Input for defining a step within a guide template, referencing a metadata item as the step content source"
+input GuideTemplateStepInput {
+    "Module definitions for this template step"
+    modules: [GuideTemplateStepModuleInput!]!
+    "ID of the metadata item that defines the content structure for this step"
+    templateMetadataId: UUID!
+    "Version of the template step metadata item"
+    templateMetadataVersion: Int!
+}
+
+"Input for defining a module within a guide template step, referencing a metadata item as the module content source"
+input GuideTemplateStepModuleInput {
+    "ID of the metadata item that defines the content structure for this module"
+    templateMetadataId: UUID!
+    "Version of the template module metadata item"
+    templateMetadataVersion: Int!
+}

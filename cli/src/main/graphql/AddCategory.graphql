@@ -1,0 +1,9 @@
+mutation AddCategory($input: CategoryInput!) {
+    content {
+        category {
+            add(category: $input) {
+                ...Category
+            }
+        }
+    }
+}

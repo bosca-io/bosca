@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Dark-scheme defaults for the BML highlighter keys (applies to Darcula and every scheme derived
+     from it). These carry the explicit colors that used to be hardcoded in BmlSyntaxHighlighter:
+     the MARKUP_TAG / MARKUP_ATTRIBUTE fallback keys render near the default text color in some dark
+     themes, which made BML structure look like plain text. FONT_TYPE 1 = bold. -->
+<list>
+    <option name="BML_ANGLE">
+        <value>
+            <option name="FOREGROUND" value="808080"/>
+        </value>
+    </option>
+    <option name="BML_TAG_NAME">
+        <value>
+            <option name="FOREGROUND" value="E8BF6A"/>
+        </value>
+    </option>
+    <option name="BML_TAG_KEYWORD">
+        <value>
+            <option name="FOREGROUND" value="CF8E6D"/>
+            <option name="FONT_TYPE" value="1"/>
+        </value>
+    </option>
+    <option name="BML_ATTR_NAME">
+        <value>
+            <option name="FOREGROUND" value="9CDCFE"/>
+        </value>
+    </option>
+    <option name="BML_ATTR_DIRECTIVE">
+        <value>
+            <option name="FOREGROUND" value="C586C0"/>
+            <option name="FONT_TYPE" value="1"/>
+        </value>
+    </option>
+</list>

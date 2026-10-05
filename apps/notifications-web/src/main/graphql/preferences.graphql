@@ -1,0 +1,35 @@
+# The token-scoped read behind both pages: the notification-type catalog plus the recipient's
+# preferences across every channel (email + push). `tokenNotificationPreferences` is null for an
+# unknown/expired token — the pages render their invalid-link notice from that.
+query TokenPreferences($token: String!) {
+    communications {
+        notificationTypes {
+            key
+            name
+            description
+            optional
+            system
+            displayOrder
+        }
+        tokenNotificationPreferences(token: $token) {
+            channel
+            type
+            optedOut
+        }
+    }
+}
+
+# Live-island writes: the per-type/per-channel toggle and unsubscribe-all run these server-side
+# from `@click` model methods. The channel defaults to EMAIL server-side when absent; this site
+# always passes it explicitly.
+mutation UpdateTokenPreference($token: String!, $type: String!, $optedOut: Boolean!, $channel: DeliveryChannel) {
+    communications {
+        updateTokenNotificationPreference(token: $token, type: $type, optedOut: $optedOut, channel: $channel)
+    }
+}
+
+mutation UnsubscribeAll($token: String!) {
+    communications {
+        unsubscribe(token: $token)
+    }
+}

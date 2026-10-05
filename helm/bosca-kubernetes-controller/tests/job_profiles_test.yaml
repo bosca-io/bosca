@@ -1,0 +1,70 @@
+suite: bosca-kubernetes-controller Kubernetes Job profiles
+templates:
+  - templates/jobprofiles.yaml
+values:
+  - ../values.yaml
+set:
+  global:
+    domain: example.com
+tests:
+  - it: renders no profiles by default
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: renders native scheduling and accelerator resources
+    set:
+      jobProfiles:
+        - name: recommendations-gpu
+          namespace: training
+          spec:
+            maxParallelism: 2
+            podTemplate:
+              spec:
+                nodeSelector:
+                  accelerator: nvidia-l40s
+                tolerations:
+                  - key: dedicated
+                    operator: Equal
+                    value: model-training
+                    effect: NoSchedule
+                containers:
+                  - name: worker
+                    image: example/trainer:test
+                    resources:
+                      limits:
+                        nvidia.com/gpu: "1"
+    asserts:
+      - isKind:
+          of: JobProfile
+      - equal:
+          path: metadata.namespace
+          value: training
+      - equal:
+          path: spec.maxParallelism
+          value: 2
+      - equal:
+          path: spec.podTemplate.spec.nodeSelector.accelerator
+          value: nvidia-l40s
+      - equal:
+          path: spec.podTemplate.spec.tolerations[0].value
+          value: model-training
+      - equal:
+          path: spec.podTemplate.spec.containers[0].resources.limits
+          value:
+            nvidia.com/gpu: "1"
+
+  - it: skips explicitly disabled profiles
+    set:
+      jobProfiles:
+        - name: disabled
+          enabled: false
+          spec:
+            podTemplate:
+              spec:
+                containers:
+                  - name: worker
+                    image: example/worker:test
+    asserts:
+      - hasDocuments:
+          count: 0

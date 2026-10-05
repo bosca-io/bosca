@@ -1,0 +1,287 @@
+image:
+  registry: ghcr.io/bosca-io/bosca
+  repository: bosca-runner
+  tag: ""
+  pullPolicy: IfNotPresent
+
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+commonAnnotations: {}
+
+podSecurityContext: {}
+securityContext: {}
+
+# Workers each declare their own `resources:` (requests + limits). The
+# 2Gi memory floor is required: JAVA_OPTS in the StatefulSet sets
+# MaxRAMPercentage=75, so any limit below 2Gi squeezes the heap under
+# ~1.5Gi and trips OOM on index / content-extraction workloads. Keep
+# requests == limits for Guaranteed QoS (no preemption under pressure).
+workers:
+  default:
+    replicas: 1
+    terminationGracePeriodSeconds: 300
+    resources:
+      requests:
+        cpu: "1"
+        memory: 2Gi
+      limits:
+        cpu: "1"
+        memory: 2Gi
+
+appConfig:
+  domain: ""
+  realm: ""
+  # Runner HTTP traffic is limited to health endpoints, so compression defaults off.
+  compressionEnabled: false
+  # Loads the generic Kubernetes dispatch service for non-CI producers such as
+  # training and embedding jobs. A non-empty profile allowlist also enables it.
+  kubernetesEnabled: false
+  # CI runner labels dispatched through the shared `kubernetes-jobs` queue.
+  # Each value must match a JobProfile name. Empty preserves polling agents.
+  kubernetesJobProfiles: []
+  # Cluster-internal base URL of bml-message-server (BML email template rendering).
+  # Empty keeps the application default (http://bml-message-server:9093); umbrella
+  # deployments must set the release-prefixed service name, e.g.
+  # http://bosca-bml-message-server:9093.
+  bmlMessageServerUrl: ""
+  runners:
+    - indexQueueRunner
+    - messagesJobQueueRunner
+    - contentQueueRunner
+    - profileQueueRunner
+    - communityRunner
+    - commonQueueRunner
+    - analyticsQueueRunner
+    - backupQueueRunner
+    - segmentationQueueRunner
+    - scriptingQueueRunner
+    - experimentationQueueRunner
+    - formsJobQueueRunner
+    - gitQueueRunner
+    - muxQueueRunner
+    - pipelinesQueueRunner
+    - workopsQueueRunner
+    - feedsQueueRunner
+    - recommendationsQueueRunner
+    # ecomQueueRunner is filtered out at runtime unless ecommerce is enabled
+    # (appConfig.ecommerceEnabled / ECOMMERCE_ENABLED), so it is safe to list here.
+    - ecomQueueRunner
+  autoVerify: false
+  # Enables the ecommerce module (catalogs, carts, payments, subscriptions,
+  # fulfillment, the ecom queue runner and scheduled jobs). Defaults off; set to
+  # true to pull in the ecom schema, providers, GraphQL surface, and migrations.
+  ecommerceEnabled: false
+  databaseUrl: ""
+  databaseMaxConnections: 500
+  # Fully qualified Trino events table used by experiment result aggregation.
+  experimentationEventsTable: warehouse.bosca.events
+  natsHost: nats
+  meilisearchHost: meilisearch
+  # Email provider implementation: sendgrid or mailgun. Credentials live in encrypted
+  # platform configuration under the provider's key.
+  mailerType: sendgrid
+  mailerFromName: "Support"
+  # Empty = noreply@<domain>.
+  mailerFromEmail: ""
+  # Public unsubscribe / manage-preferences pages minted tokens are appended to (?token=...).
+  # Empty = default to https://studio.<domain>/unsubscribe in the configmap.
+  mailerUnsubscribeUrl: ""
+  mailerPreferencesUrl: ""
+  localizationSuffix: ""
+  # Public origin of the Studio web app (auth email links derive from this).
+  # Empty = default to https://admin.<domain> in the configmap.
+  appUrl: ""
+  # Absolute account-security page linked from security-alert emails.
+  # Empty falls back to appUrl.
+  securityAlertUrl: ""
+  # Public origin used for chat notification deep links.
+  # Empty falls back to appUrl.
+  socialNotificationsUrl: ""
+  # Public origin used for friend-request notification deep links.
+  # Empty defaults to https://profiles.<domain>.
+  profileNotificationsUrl: ""
+  # Public onboarding URL used by the welcome email call to action.
+  # Empty falls back to <appUrl>/welcome in the application.
+  welcomeEmailUrl: ""
+  # Hosts an auth email link may route back to (multi-host). Empty = just https://admin.<domain>.
+  appAllowedOrigins: []
+  indexExcludeTypes: []
+  indexExcludeContentTypePrefix: []
+  oauth2Redirects: []
+  # Additional Google OAuth2 client IDs whose id_token `aud` claim is accepted
+  # alongside the primary GOOGLE_CLIENT_ID. Use when native/mobile apps sign in
+  # with their own Google client IDs but share this backend. Client IDs are
+  # public identifiers (not secrets), so they live here rather than in a Secret.
+  # Empty = only the primary client ID is accepted.
+  googleSupportedClientIds: []
+  # Override any part of the rendered `content:` block in application.yaml.
+  # Defaults live in templates/configmap-appconfig.yaml; anything you set here
+  # is deep-merged on top (lists like images.resizer.sizes are replaced, not
+  # appended). Leave empty to use the chart defaults. Example:
+  #   content:
+  #     storage:
+  #       bucket: my-bucket
+  #       region: us-west-2
+  content: {}
+  iceberg:
+    catalog: bosca
+    fileIO: "org.apache.iceberg.aws.s3.S3FileIO"
+    # Local staging directory IcebergEventRepository uses to buffer Parquet
+    # files between 60s commits to the Iceberg table. /tmp/iceberg works on
+    # any container filesystem; mount a writable volume here if you need
+    # the staging buffer to survive pod restarts.
+    localPath: "/tmp/iceberg"
+    namespace: bosca
+    table: events
+    warehouseLocation: "s3://warehouse/warehouse"
+    databaseUrl: ""
+    # Warehouse-bucket S3 endpoint. Distinct from the content-bucket
+    # AWS_* env vars in server-v3-env: this cluster often has the
+    # warehouse on a different region/bucket from the content store.
+    s3:
+      bucket: ""
+      region: "us-east-1"
+      endpoint: ""
+      pathStyleAccess: true
+
+envFromConfigMaps:
+  - server-v3-env
+  - otel-env
+
+# Secrets — see templates/secret.yaml. Set create:false to consume an existing Secret.
+secrets:
+  database:
+    create: true
+    secretName: pg-creds-bosca-runner
+    usernameKey: username
+    passwordKey: password
+    username: ""
+    password: ""
+  nats:
+    create: true
+    secretName: nats
+    key: token
+    value: ""
+  jwt:
+    create: true
+    secretName: jwt
+    key: secret
+    value: ""
+  cfg:
+    create: true
+    secretName: cfg
+    key: secret
+    value: ""
+  meilisearch:
+    create: true
+    secretName: meilisearch-master-key
+    key: MEILI_MASTER_KEY
+    value: ""
+  s3:
+    create: true
+    secretName: s3
+    accessKeyIdKey: ACCESS_KEY_ID
+    secretAccessKeyKey: ACCESS_SECRET_KEY
+    accessKeyId: ""
+    secretAccessKey: ""
+  url:
+    create: true
+    secretName: url
+    key: secret
+    value: ""
+  openai:
+    create: true
+    secretName: openai-token
+    key: token
+    value: ""
+  hubspot:
+    create: true
+    secretName: hubspot
+    key: token
+    value: ""
+  google:
+    create: true
+    secretName: google
+    clientIdKey: client_id
+    clientSecretKey: client_secret
+    clientId: ""
+    clientSecret: ""
+  googleAccount:
+    create: true
+    secretName: google-account
+    key: account
+    value: ""
+  gemini:
+    create: true
+    secretName: gemini-api-key
+    key: key
+    value: ""
+  facebook:
+    create: true
+    secretName: facebook
+    appIdKey: app_id
+    appSecretKey: app_secret
+    appId: ""
+    appSecret: ""
+  # bosca-infra provisions pg-creds-bosca-warehouse via the CNPG roles
+  # list (bosca-infra/values.yaml). Default to consuming it (create:false).
+  iceberg:
+    create: false
+    secretName: pg-creds-bosca-warehouse
+    usernameKey: username
+    passwordKey: password
+    username: ""
+    password: ""
+  # Warehouse-bucket S3 credentials. Separate from `secrets.s3` (which
+  # holds content-bucket creds) so the warehouse can live on a different
+  # bucket/region/account without bleeding credentials between paths.
+  icebergS3:
+    create: false
+    secretName: ""
+    accessKeyIdKey: ACCESS_KEY_ID
+    secretAccessKeyKey: ACCESS_SECRET_KEY
+    accessKeyId: ""
+    secretAccessKey: ""
+  scrypt:
+    create: true
+    secretName: scrypt-key
+    keyKey: key
+    saltKey: salt
+    memCostKey: mem_cost
+    roundsKey: rounds
+    key: ""
+    salt: ""
+    memCost: ""
+    rounds: ""
+
+imagePullSecrets:
+  - name: docker-registry
+
+keda:
+  enabled: false
+  pollingInterval: 30
+  cooldownPeriod: 300
+  minReplicaCount: 0
+  maxReplicaCount: 10
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+global:
+  # Registry (and path) for every Bosca image; when set, it overrides image.registry.
+  imageRegistry: ""
+  domain: ""
+  # Shared by bosca-server and bosca-runner in umbrella deployments.
+  ciKubernetesJobProfiles: []
+
+# Port of the management listener (bosca.server.management-port). It serves GET /api/v1/live on its own event loop,
+# so liveness keeps answering while request event loops are busy. Every /api/v1/live probe targets it; readiness
+# stays on `http` because it checks dependencies.
+managementPort: 9090

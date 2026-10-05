@@ -1,0 +1,9 @@
+query GetMetadataGuideTemplate($id: UUID!, $version: Int!) {
+    content {
+        metadata(id: $id, version: $version) {
+            guideTemplate {
+                ...GuideTemplate
+            }
+        }
+    }
+}

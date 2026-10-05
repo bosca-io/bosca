@@ -1,0 +1,28 @@
+<message key="channel-invitation">
+  <script server provides="m">
+    import bosca.messages.ChannelInvitationNotification
+    message.payload(ChannelInvitationNotification.serializer())
+  </script>
+  <script server provides="assets">message.assetsUrl ?: error("BmlMessageContext.assetsUrl is required — emails cannot reference relative asset URLs")</script>
+  <script server provides="subject">t("channel-invitation.subject", "{inviterName} invited you to {channelName}", "inviterName" to m.inviterName, "channelName" to m.channelName)</script>
+  <script server provides="emailTitle">t("channel-invitation.message.title", "{appName} · Channel invitation", "appName" to m.appName)</script>
+  <script server provides="eyebrow">t("channel-invitation.eyebrow", "Chat")</script>
+  <script server provides="headline">t("channel-invitation.headline", "Channel invitation")</script>
+  <script server provides="cta">t("channel-invitation.cta", "View invitation")</script>
+  <script server provides="preheader">subject</script>
+  <script server provides="reason">t("social.reason", "You're receiving this because your social notification preferences include email for this activity.")</script>
+  <push>
+    <title t="channel-invitation.push.title">Channel invitation</title>
+    <body t="channel-invitation.push.body">{ m.inviterName } invited you to { m.channelName }</body>
+    <action id="view-invitation" default t="channel-invitation.push.action.view">View invitation</action>
+  </push>
+  <email>
+    <subject>{ subject }</subject>
+    <bosca-shell :brand="m.appName" :logo="m.logoUrl" :logoOnly="m.logoOnly" :title="emailTitle" :preheader="preheader" :assets="assets" :unsubscribe="message.unsubscribeUrl" :preferences="message.preferencesUrl" :reason="reason" :primaryColor="m.primaryColor">
+      <bosca-heading :eyebrow="eyebrow" :headline="headline" :name="message.recipientName" :primaryColor="m.primaryColor" :accentColor="m.accentColor">
+        <span t="channel-invitation.lede">{ m.inviterName } invited you to join { m.channelName }.</span>
+      </bosca-heading>
+      <cta-button :href="m.actionUrl" :label="cta" :primaryColor="m.primaryColor"/>
+    </bosca-shell>
+  </email>
+</message>

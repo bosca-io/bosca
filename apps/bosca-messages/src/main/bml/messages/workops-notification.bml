@@ -1,0 +1,39 @@
+{# WorkOps task, specification, requirement, workflow, and comment activity. #}
+<message key="workops-notification">
+  <script server provides="m">
+    import bosca.messages.WorkOpsNotification
+    message.payload(WorkOpsNotification.serializer())
+  </script>
+  <script server provides="assets">message.assetsUrl ?: error("BmlMessageContext.assetsUrl is required — emails cannot reference relative asset URLs")</script>
+  <script server provides="eventLabel">m.event.lowercase().replace('_', ' ').replaceFirstChar { it.uppercase() }</script>
+  <script server provides="entityLabel">m.entityType.lowercase().replaceFirstChar { it.uppercase() }</script>
+  <script server provides="subject">t("workops.subject", "{entityKey}: {title}", "entityKey" to m.entityKey, "title" to m.title)</script>
+  <script server provides="eyebrow">t("workops.eyebrow", "WorkOps · {projectName}", "projectName" to m.projectName)</script>
+  <script server provides="headline">eventLabel</script>
+  <script server provides="cta">t("workops.cta", "View in WorkOps")</script>
+  <script server provides="preheader">t("workops.preheader", "{event}: {entityKey} in {projectName}", "event" to eventLabel, "entityKey" to m.entityKey, "projectName" to m.projectName)</script>
+  <script server provides="reason">t("workops.reason", "You're receiving this because your WorkOps notification preferences include email for this activity.")</script>
+  <email>
+    <subject>{ subject }</subject>
+    <bosca-shell :brand="m.appName" :logo="m.logoUrl" :logoOnly="m.logoOnly" title="{ m.appName } · WorkOps Activity" :preheader="preheader" :assets="assets" :unsubscribe="message.unsubscribeUrl" :preferences="message.preferencesUrl" :reason="reason" :primaryColor="m.primaryColor">
+
+      <bosca-heading :eyebrow="eyebrow" :headline="headline" :name="message.recipientName" :primaryColor="m.primaryColor" :accentColor="m.accentColor">
+        <if m.actorName != null && m.actorName.isNotBlank()>
+          <span>{ m.actorName } made an update in { m.projectName }.</span>
+        <else>
+          <span>There is new activity in { m.projectName }.</span>
+        </if>
+      </bosca-heading>
+
+      <panel :accentColor="m.accentColor">
+        <p class="em-metalabel" style="margin:0;font-family:'Geist Mono',ui-monospace,Menlo,Consolas,monospace;font-size:10px;letter-spacing:0.18em;font-weight:500;text-transform:uppercase;color:{ m.accentColor };">{ entityLabel }&nbsp;&nbsp;·&nbsp;&nbsp;{ m.entityKey }</p>
+        <p style="margin:8px 0 0;font-family:'Geist',-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-weight:600;font-size:17px;line-height:1.35;letter-spacing:-0.01em;color:{ m.primaryColor };">{ m.title }</p>
+        <if m.body.isNotBlank()>
+          <p style="margin:14px 0 0;padding:12px 14px;border-left:3px solid #d8dde7;background:#f6f7f9;font-family:'Geist',-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:13px;line-height:1.6;color:#34394a;white-space:pre-wrap;">{ m.body }</p>
+        </if>
+        <cta-button wide :href="m.actionUrl" :label="cta" :primaryColor="m.primaryColor"/>
+      </panel>
+
+    </bosca-shell>
+  </email>
+</message>

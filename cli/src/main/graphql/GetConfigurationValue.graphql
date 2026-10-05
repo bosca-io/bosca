@@ -1,0 +1,9 @@
+query GetConfigurationValue($key: String!) {
+    configurations {
+        configuration(key: $key) {
+            id
+            key
+            value
+        }
+    }
+}

@@ -1,0 +1,52 @@
+{# 04 Security Alert — a notable security event on the account (new sign-in, password changed).
+   The accented panel carries the event: headline, display time, then the optional context rows
+   (device, location, IP — whatever the payload provides) and a full-width review CTA. The lede
+   sets the calm default ("if this was you, no action is needed"); the note under the panel is
+   the escalation path. Localized; the event text and detail rows are payload data
+   and render as sent. #}
+<message key="security-alert">
+  <script server provides="m">
+    import bosca.messages.SecurityAlert
+    message.payload(SecurityAlert.serializer())
+  </script>
+  <script server provides="assets">message.assetsUrl ?: error("BmlMessageContext.assetsUrl is required — emails cannot reference relative asset URLs")</script>
+  <script server provides="subject">t("security-alert.subject", "Security alert for your {appName} account", "appName" to m.appName)</script>
+  <script server provides="eyebrow">t("security-alert.eyebrow", "Security")</script>
+  <script server provides="headline">t("security-alert.headline", "Security alert")</script>
+  <script server provides="cta">t("security-alert.cta", "Review account security")</script>
+  <script server provides="preheader">t("security-alert.preheader", "{event} — if this was you, no action is needed.", "event" to m.event)</script>
+  <script server provides="reason">t("security-alert.reason", "You're receiving this because security alerts are always sent for your {appName} account.", "appName" to m.appName)</script>
+  <email>
+    <subject>{ subject }</subject>
+    <bosca-shell :brand="m.appName" :logo="m.logoUrl" :logoOnly="m.logoOnly" title="{ m.appName } · Security Alert" :preheader="preheader" :assets="assets" :unsubscribe="message.unsubscribeUrl" :preferences="message.preferencesUrl" :reason="reason" :primaryColor="m.primaryColor">
+
+      <bosca-heading :eyebrow="eyebrow" :headline="headline" :name="message.recipientName" :primaryColor="m.primaryColor" :accentColor="m.accentColor">
+        <span t="security-alert.lede">There was recent security activity on your { m.appName } account. If this was you, no action is needed.</span>
+      </bosca-heading>
+
+      <panel accent :accentColor="m.accentColor">
+        <p t="security-alert.event-label" class="em-metalabel" style="margin:0;font-family:'Geist Mono',ui-monospace,Menlo,Consolas,monospace;font-size:10px;letter-spacing:0.2em;font-weight:500;text-transform:uppercase;color:{ m.accentColor };">Security event</p>
+        <p style="margin:8px 0 0;font-family:'Geist',-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-weight:600;font-size:17px;line-height:1.35;letter-spacing:-0.01em;color:{ m.primaryColor };">{ m.event }</p>
+        <p style="margin:4px 0 0;font-family:'Geist',-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:12px;letter-spacing:0.2px;color:#5a6072;">{ m.time }</p>
+        <if m.details.isNotEmpty()>
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:16px 0 0;border-top:1px solid #e5e8ee;">
+            <for d in m.details>
+              <tr>
+                <td width="110" valign="top" style="padding:10px 12px 10px 0;border-bottom:1px solid #e5e8ee;font-family:'Geist Mono',ui-monospace,Menlo,Consolas,monospace;font-size:10px;letter-spacing:0.14em;font-weight:500;text-transform:uppercase;color:#5a6072;">{ d.label }</td>
+                <td valign="top" style="padding:10px 0;border-bottom:1px solid #e5e8ee;font-family:'Geist',-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:14px;line-height:1.5;color:{ m.primaryColor };word-break:break-word;">{ d.value }</td>
+              </tr>
+            </for>
+          </table>
+        </if>
+        <cta-button wide :href="m.reviewUrl" :label="cta" :primaryColor="m.primaryColor"/>
+      </panel>
+
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+        <tr>
+          <td t="security-alert.escalation" style="padding:18px 0 0;font-family:'Geist',-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:13px;line-height:1.6;color:#5a6072;">If you don't recognize this activity, review your account security and change your password right away.</td>
+        </tr>
+      </table>
+
+    </bosca-shell>
+  </email>
+</message>

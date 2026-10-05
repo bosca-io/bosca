@@ -1,0 +1,57 @@
+"An AI/ML model configuration registered in the system for use with prompts and AI workflows"
+type Model {
+    "Unique identifier for this model"
+    id: UUID!
+    "Unique key for referencing this model (e.g. 'gpt-4', 'claude-3')"
+    key: String!
+    "The type/provider of the model (e.g. 'openai', 'anthropic', 'ollama')"
+    type: String!
+    "Display name of the model"
+    name: String!
+    "Description of the model and its capabilities"
+    description: String!
+    "Model-specific configuration (API endpoints, parameters, etc.)"
+    configuration: JSON!
+}
+
+"Input for creating or updating a model configuration"
+input ModelInput {
+    "Unique key for referencing this model"
+    key: String!
+    "The type/provider of the model"
+    type: String!
+    "Display name of the model"
+    name: String!
+    "Description of the model and its capabilities"
+    description: String!
+    "Model-specific configuration"
+    configuration: JSON!
+}
+
+"Query operations for browsing registered AI models"
+type Models {
+    "List all registered models"
+    all: [Model!]!
+    "Get a specific model by ID"
+    model(id: UUID!): Model
+}
+
+"Mutation operations for managing AI model configurations"
+type ModelsMutation {
+    "Register a new model"
+    add(model: ModelInput!): Model
+    "Delete a model by ID"
+    delete(id: UUID!): Boolean!
+    "Update an existing model configuration"
+    edit(id: UUID!, model: ModelInput!): Model
+}
+
+extend type Query {
+    "Access AI model queries"
+    models: Models!
+}
+
+extend type Mutation {
+    "Access AI model mutations"
+    models: ModelsMutation!
+}

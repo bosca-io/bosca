@@ -1,0 +1,41 @@
+"A single content health issue identified by the health check, representing a metadata or collection item that requires attention"
+type ContentHealthCheckItem {
+    "Unique identifier of the affected content item"
+    id: UUID!
+    "Display name of the affected content item"
+    name: String!
+    "Current workflow state of the item (e.g. 'draft', 'pending', 'published')"
+    workflowState: String!
+}
+
+"A summary count for a specific category of content health issue"
+type ContentHealthCheckCount {
+    "Total number of items affected by this health issue category"
+    count: Int!
+}
+
+"Mutation operations for resolving content health check issues"
+type ContentHealthCheckMutation {
+    "Set public and public_content flags on all related metadata for a published item that currently lack public visibility"
+    resolveUnpublishedRelationships(id: UUID!): Boolean!
+}
+
+"Comprehensive content health check results identifying issues across the content management system that may require editorial attention. All list fields support optional offset/limit pagination (default limit: 100)."
+type ContentHealthCheck {
+    "Metadata items in a published state whose relationships reference unpublished metadata items"
+    publishedWithUnpublishedRelationships(offset: Int, limit: Int): [ContentHealthCheckItem!]!
+    "Metadata items with a future scheduled publish date that have not yet transitioned to published state"
+    scheduledButNotPublished(offset: Int, limit: Int): [ContentHealthCheckItem!]!
+    "Metadata items in a pending workflow state that have not been marked as ready for publishing"
+    pendingNotReady(offset: Int, limit: Int): [ContentHealthCheckItem!]!
+    "Published guide metadata items that contain steps referencing unpublished metadata"
+    guidesWithUnpublishedSteps(offset: Int, limit: Int): [ContentHealthCheckItem!]!
+    "Published collection items that contain unpublished child metadata"
+    publishedCollectionsWithUnpublishedMetadata(offset: Int, limit: Int): [ContentHealthCheckItem!]!
+    "Metadata items with jobs that failed during workflow processing"
+    failedJobItems(offset: Int, limit: Int): [ContentHealthCheckItem!]!
+    "Metadata items that have been soft-deleted and may require permanent deletion or restoration"
+    deletedItems: ContentHealthCheckCount!
+    "Metadata items with no content uploaded (uploaded timestamp is null) and not in draft state"
+    missingContent(offset: Int, limit: Int): [ContentHealthCheckItem!]!
+}

@@ -1,0 +1,93 @@
+extend type Ecom {
+    "A catalog by id."
+    catalog(id: UUID!): Catalog
+    "A catalog by its per-company business key."
+    catalogByKey(companyId: UUID!, key: String!): Catalog
+    "Catalogs belonging to a company."
+    catalogs(companyId: UUID!): [Catalog!]!
+    "A manufacturer by id."
+    manufacturer(id: UUID!): Manufacturer
+    "Manufacturers belonging to a company, paged."
+    manufacturers(companyId: UUID!, offset: Int! = 0, limit: Int! = 25): [Manufacturer!]!
+}
+
+extend type EcomMutation {
+    "Catalog creates and per-catalog operations. Admin."
+    catalogs: CatalogsMutation!
+    "Manufacturer creates. Admin."
+    manufacturers: ManufacturersMutation!
+}
+
+"""
+A priceable grouping of products. A store sells exactly one catalog; the same product can appear in
+many catalogs at different prices via CatalogProduct.
+"""
+type Catalog {
+    id: UUID!
+    company: Company!
+    "Business key, unique per company."
+    key: String!
+    name: String!
+    "ISO-4217 currency this catalog (price book) is priced in; stores selling it inherit it."
+    currency: String!
+    created: DateTime!
+    modified: DateTime!
+}
+
+"""A product's maker/brand. The marketplace later extends extras with vendor linkage."""
+type Manufacturer {
+    id: UUID!
+    company: Company!
+    name: String!
+    "Polymorphic extension data (sealed ManufacturerExtras)."
+    extras: ManufacturerExtras!
+    created: DateTime!
+    modified: DateTime!
+}
+
+"""Catalog creates and per-catalog operations. Admin."""
+type CatalogsMutation {
+    "Create a catalog (a priceable grouping of products) in a company."
+    add(input: CatalogInput!): Catalog!
+    "Operations on an existing catalog."
+    catalog(id: UUID!): CatalogMutation!
+}
+
+"""Mutations scoped to one catalog. Admin."""
+type CatalogMutation {
+    "Edit the catalog's key/name."
+    edit(input: CatalogInput!): Catalog!
+}
+
+"""Manufacturer creates. Admin."""
+type ManufacturersMutation {
+    "Create a manufacturer in a company."
+    add(input: ManufacturerInput!): Manufacturer!
+    "Operations on an existing manufacturer."
+    manufacturer(id: UUID!): ManufacturerMutation!
+}
+
+"""Mutations scoped to one manufacturer. Admin."""
+type ManufacturerMutation {
+    "Edit the manufacturer's name and extras."
+    edit(input: ManufacturerInput!): Manufacturer!
+    "Soft-delete the manufacturer."
+    delete: Boolean!
+}
+
+"""Creates or edits a catalog."""
+input CatalogInput {
+    companyId: UUID!
+    "Business key, unique per company."
+    key: String!
+    name: String!
+    "ISO-4217 currency this catalog is priced in. Defaults to USD."
+    currency: String! = "USD"
+}
+
+"""Creates a manufacturer."""
+input ManufacturerInput {
+    companyId: UUID!
+    name: String!
+    extras: JSON = null
+}

@@ -1,0 +1,14 @@
+query FindBibleReference($id: UUID!, $reference: String!) {
+    content {
+        metadata(id: $id) {
+            bible {
+                find(human: $reference) {
+                    reference {
+                        usfm
+                        human
+                    }
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,21 @@
+fragment WorkOpsBoardFragment on WorkOpsBoard {
+    id
+    projectId
+    programId
+    name
+    type
+    filterId
+    subFilterId
+    swimlaneStrategy
+    createdAt
+    modifiedAt
+    version
+    columns {
+        id
+        boardId
+        name
+        displayOrder
+        statusIds
+        wipLimit
+    }
+}

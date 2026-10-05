@@ -1,0 +1,45 @@
+# Work Ops — WorkOpsVersion / WorkOpsRelease (R9)
+#
+# Phase 5 ships the project-scoped WorkOpsVersion surface. WorkOpsTasks reference
+# versions via the `affectsVersionIds` and `fixVersionIds` columns
+# already on `workops.task` from V2. WorkOpsVersions cannot be deleted
+# while tasks reference them — admins archive instead.
+
+"""
+A project release / version. Sequence number drives the per-project
+sort order; the service mints the next available value on create.
+"""
+type WorkOpsVersion {
+    id: UUID!
+    projectId: UUID!
+    project: WorkOpsProject!
+    name: String!
+    description: String
+    startDate: DateTime
+    releaseDate: DateTime
+    released: Boolean!
+    archived: Boolean!
+    sequenceNumber: Int!
+    version: Long!
+}
+
+input CreateWorkOpsVersionInput {
+    projectId: UUID!
+    name: String!
+    description: String
+    startDate: DateTime
+    releaseDate: DateTime
+}
+
+type WorkOpsVersions {
+    version(id: UUID!): WorkOpsVersion
+    byProject(projectId: UUID!): [WorkOpsVersion!]!
+}
+
+type WorkOpsVersionsMutation {
+    create(input: CreateWorkOpsVersionInput!): WorkOpsVersion!
+    "Mark released + stamp release date if absent."
+    release(id: UUID!, expectedVersion: Long!): WorkOpsVersion!
+    "Rejected with `VERSION_IN_USE` while any task still references this version."
+    delete(id: UUID!): Boolean!
+}

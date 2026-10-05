@@ -1,0 +1,255 @@
+"A Bible translation or version available in the system, containing books, chapters, and verses with rendering metadata for scripture display"
+type Bible {
+    "Unique identifier for this Bible within the external Bible API or system"
+    systemId: String!
+    "Variant identifier distinguishing different editions or formats of the same Bible (e.g. 'reader', 'study')"
+    variant: String!
+    "Whether this is the default variant when multiple variants exist for the same Bible translation"
+    defaultVariant: Boolean!
+    "Whether this variant is available to ordinary metadata viewers"
+    enabled: Boolean!
+    "Variants stored for the same metadata version. Disabled variants require edit access and includeDisabled: true."
+    variants(includeDisabled: Boolean): [Bible!]!
+    "Display name of the Bible translation in English (e.g. 'English Standard Version')"
+    name: String!
+    "Display name of the Bible translation in its native language"
+    nameLocal: String!
+    "Short abbreviation of the Bible translation in English (e.g. 'ESV', 'NIV')"
+    abbreviation: String!
+    "Short abbreviation of the Bible translation in its native language"
+    abbreviationLocal: String!
+    "All books contained in this Bible translation"
+    books: [BibleBook!]!
+    "Human-readable description of this Bible translation"
+    description: String!
+    "Languages available for this Bible translation"
+    languages: [BibleLanguage!]!
+    "JSON object defining the rendering styles for scripture display (e.g. verse numbers, red letter, poetry indentation)"
+    styles: JSON!
+    "Look up a specific chapter by its USFM reference (e.g. 'GEN.1' for Genesis chapter 1)"
+    chapter(usfm: String!): BibleChapter
+    "Look up a specific book by its USFM reference (e.g. 'GEN' for Genesis)"
+    book(usfm: String!): BibleBook
+    "Search for scripture by a human-readable reference string (e.g. 'Genesis 1:1' or 'John 3:16-18'). Returns matching books, chapters, and verse ranges."
+    find(human: String!): [FindBibleResult!]!
+}
+
+"A book within a Bible translation, such as Genesis or Matthew"
+type BibleBook {
+    "Standard abbreviation for the book (e.g. 'Gen', 'Matt')"
+    abbreviation: String!
+    "All chapters contained in this book"
+    chapters: [BibleChapter!]!
+    "Full name of the book (e.g. 'The Book of Genesis')"
+    nameLong: String!
+    "Short name of the book (e.g. 'Genesis')"
+    nameShort: String!
+    "USFM reference identifying this book"
+    reference: BibleReference!
+}
+
+"A chapter within a Bible book, containing the rendered component tree and verse references"
+type BibleChapter {
+    "JSON component tree representing the rendered chapter content, including verses, paragraphs, poetry, and styling"
+    component: JSON!
+    "USFM reference identifying this chapter (e.g. 'GEN.1')"
+    reference: BibleReference!
+    "References to all verses contained in this chapter"
+    verses: [BibleReference!]!
+}
+
+"A language associated with a Bible translation, including script and directionality information for rendering"
+type BibleLanguage {
+    "ISO 639 language code (e.g. 'eng', 'spa', 'heb')"
+    iso: String!
+    "Language name in English (e.g. 'English', 'Spanish')"
+    name: String!
+    "Language name in its native form (e.g. 'Espanol')"
+    nameLocal: String!
+    "Name of the writing script (e.g. 'Latin', 'Hebrew', 'Arabic')"
+    script: String!
+    "ISO 15924 script code (e.g. 'Latn', 'Hebr', 'Arab')"
+    scriptCode: String!
+    "Text direction of the script: 'LTR' for left-to-right or 'RTL' for right-to-left"
+    scriptDirection: String!
+}
+
+"A reference to a specific location in a Bible, providing both human-readable and machine-readable formats"
+type BibleReference {
+    "Full human-readable reference string (e.g. 'Genesis 1:1')"
+    human: String!
+    "Short human-readable reference string (e.g. 'Gen 1:1')"
+    humanShort: String!
+    "USFM (Unified Standard Format Markers) reference identifier (e.g. 'GEN.1.1')"
+    usfm: String!
+}
+
+"A result from searching the Bible by a human-readable reference string, containing the matched book, chapter, and verse range"
+type FindBibleResult {
+    "The matched Bible book"
+    book: BibleBook!
+    "The matched chapter, if the reference specifies a chapter"
+    chapter: BibleChapter
+    "JSON component tree for the matched verse range, if the reference specifies verses"
+    component: JSON
+    "The resolved USFM reference for this result"
+    reference: BibleReference!
+}
+
+"Input marking the end boundary of a verse range within a scripture component"
+input VerseEndInput {
+    "USFM reference identifying the ending verse"
+    reference: ReferenceInput!
+}
+
+"Input marking the start boundary of a verse range within a scripture component"
+input VerseStartInput {
+    "USFM reference identifying the starting verse"
+    reference: ReferenceInput!
+}
+
+"Input specifying text indentation with a numeric size and CSS unit"
+input TextIndentInput {
+    "Numeric indentation size"
+    size: Float!
+    "CSS unit for the indentation (e.g. 'em', 'px', 'rem')"
+    unit: String!
+}
+
+"Input for a text component within a scripture rendering, containing the text content and optional styling"
+input TextInput {
+    "Optional style to apply to this text component"
+    style: StyleInput
+    "The text content to render"
+    text: String!
+}
+
+"Input for creating or importing a complete Bible translation, including all books, chapters, languages, and styles"
+input BibleInput {
+    "Short abbreviation in English (e.g. 'ESV', 'NIV')"
+    abbreviation: String!
+    "Short abbreviation in the native language"
+    abbreviationLocal: String!
+    "All books to include in this Bible"
+    books: [BookInput!]!
+    "Whether this should be the default variant for this translation"
+    defaultVariant: Boolean!
+    "Human-readable description of the Bible translation"
+    description: String!
+    "Languages available for this Bible translation"
+    languages: [BibleLanguageInput!]!
+    "Display name in English"
+    name: String!
+    "Display name in the native language"
+    nameLocal: String!
+    "Rendering styles for scripture display"
+    styles: [StyleInput!]!
+    "Unique identifier within the external Bible API or system"
+    systemId: String!
+    "Variant identifier for this edition or format"
+    variant: String!
+}
+
+"Input for specifying a language associated with a Bible translation"
+input BibleLanguageInput {
+    "ISO 639 language code (e.g. 'eng', 'spa')"
+    iso: String!
+    "Language name in English"
+    name: String!
+    "Language name in its native form"
+    nameLocal: String!
+    "Name of the writing script (e.g. 'Latin', 'Hebrew')"
+    script: String!
+    "ISO 15924 script code (e.g. 'Latn', 'Hebr')"
+    scriptCode: String!
+    "Text direction: 'LTR' or 'RTL'"
+    scriptDirection: String!
+}
+
+"Input for creating a book within a Bible, including its chapters and reference"
+input BookInput {
+    "Standard abbreviation for the book (e.g. 'Gen', 'Matt')"
+    abbreviation: String!
+    "Chapters contained in this book"
+    chapters: [ChapterInput!]!
+    "Full name of the book (e.g. 'The Book of Genesis')"
+    nameLong: String!
+    "Short name of the book (e.g. 'Genesis')"
+    nameShort: String!
+    "USFM reference identifying this book"
+    reference: ReferenceInput!
+}
+
+"Input for creating a chapter within a Bible book"
+input ChapterInput {
+    "JSON component tree representing the rendered chapter content"
+    component: JSON!
+    "USFM reference identifying this chapter"
+    reference: ReferenceInput!
+}
+
+"Input for a line break component within a scripture rendering, with optional styling"
+input BreakInput {
+    "Optional style to apply to this break"
+    style: StyleInput
+}
+
+"Input for a container component that groups child components in a scripture rendering layout"
+input ComponentContainerInput {
+    "Child components nested within this container"
+    components: [ComponentInput!]!
+    "Optional style to apply to this container"
+    style: StyleInput
+    "The layout type of this container (e.g. PARAGRAPH, SPAN, DIV)"
+    type: ContainerType!
+}
+
+"Input for a single component in the scripture rendering tree. Exactly one of the component type fields should be set."
+input ComponentInput {
+    "A line break component"
+    break: BreakInput
+    "A container grouping child components"
+    container: ComponentContainerInput
+    "A verse end boundary marker"
+    end: VerseEndInput
+    "A verse start boundary marker"
+    start: VerseStartInput
+    "A text content component"
+    text: TextInput
+}
+
+"Input for a USFM reference, used to identify books, chapters, and verses"
+input ReferenceInput {
+    "USFM reference string (e.g. 'GEN', 'GEN.1', 'GEN.1.1')"
+    usfm: String!
+}
+
+"Layout type for a container component in the scripture rendering tree"
+enum ContainerType {
+    "A vertical column layout"
+    COLUMN
+    "A generic block-level division"
+    DIV
+    "A paragraph block, typically used for prose scripture text"
+    PARAGRAPH
+    "A horizontal row layout"
+    ROW
+    "An inline span, used for inline elements like verse numbers or red-letter text"
+    SPAN
+    "A tabular layout for structured content"
+    TABLE
+}
+
+"Input for defining a rendering style applied to scripture components, controlling text appearance and layout"
+input StyleInput {
+    "Text alignment (e.g. 'left', 'center', 'right', 'justify')"
+    align: String
+    "CSS font weight (e.g. 'bold', 'normal', '700')"
+    fontWeight: String
+    "Unique identifier for this style, used to reference it from components"
+    id: String!
+    "Whether this style is applied to a verse reference element (e.g. verse number)"
+    reference: Boolean!
+    "Text indentation specification for poetry or block quotes"
+    textIndent: TextIndentInput
+}

@@ -1,0 +1,7 @@
+mutation SetBible($id: UUID!, $version: Int!, $bible: BibleInput!) {
+    content {
+        metadata {
+            setMetadataBible(id: $id, version: $version, bible: $bible)
+        }
+    }
+}

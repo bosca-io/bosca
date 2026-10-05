@@ -1,0 +1,57 @@
+{# One-click unsubscribe (/unsubscribe?token=…): confirms, then stops all optional email for the
+   recipient the token identifies. Push and per-type control live on /preferences — one link away,
+   same token. The confirm button is a @click island action; the island re-renders into the done
+   state. #}
+<page route="/unsubscribe">
+  <script server provides="branding">
+    bosca.notifications.web.branding()
+  </script>
+  <script server provides="page">
+    bosca.notifications.web.unsubscribe()
+  </script>
+  <script server provides="unsub">
+    bosca.notifications.web.UnsubscribeModel(page.token, page.invalid)
+  </script>
+
+  <site-layout title="Unsubscribe" :brand="branding.name" :logo="branding.logoUrl" :footer="branding.footerText">
+    <main class="wrap">
+      <div class="card">
+        <h1>Unsubscribe</h1>
+        <if page.invalid>
+          <p class="status error">This link is invalid or has expired. Open a newer email from
+          us and use its "Unsubscribe" link.</p>
+        <else>
+          <island name="unsubscribe">
+            <if unsub.done>
+              <p class="status ok">You're unsubscribed from all optional email.</p>
+              <p class="sub">Changed your mind, or want to keep some of it? You can turn
+              individual notifications back on anytime with the link below.</p>
+            <else>
+              <p class="sub">Stop all optional email from { unsub.brand }? Essential account and
+              security messages are still delivered.</p>
+              <if unsub.failed>
+                <p class="status error">We couldn't unsubscribe you — please try again.</p>
+              </if>
+              <div class="actions">
+                <button class="primary" type="button" @click="unsub.confirm()">Unsubscribe from all optional email</button>
+              </div>
+            </if>
+          </island>
+          <p class="alt"><a href="/preferences?token={ page.token }">Manage individual preferences instead</a></p>
+        </if>
+      </div>
+    </main>
+
+    {# This page's styles — the confirm action and the alternative link. #}
+    <style>
+      .actions {
+        margin-top: 18px;
+      }
+
+      .alt {
+        margin: 18px 0 0;
+        font-size: 14px;
+      }
+    </style>
+  </site-layout>
+</page>

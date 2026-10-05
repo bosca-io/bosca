@@ -1,0 +1,10 @@
+mutation AddMetadataPermission($permission: PermissionInput!) {
+    content {
+        metadata {
+            addPermission(permission: $permission) {
+                groupId
+                action
+            }
+        }
+    }
+}

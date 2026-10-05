@@ -1,0 +1,28 @@
+<component tag="profile-attribute-input">
+  <prop name="field" type="bosca.profiles.web.ProfileAttributeFieldRow" required/>
+
+  <if field.boolean>
+    <label class="check attribute-control">
+      <input name="value" type="checkbox" :checked="field.checked"/>
+      <span>{ field.label }</span>
+    </label>
+  <else>
+    <label class="field attribute-control">
+      <span>{ field.label }</span>
+      <if field.select>
+        <select name="value" :required="field.required">
+          <for option in field.options>
+            <option :value="option" :selected="option == field.value">{ option }</option>
+          </for>
+        </select>
+      <else>
+        <if field.textarea>
+          <textarea name="value" :rows="field.rows" :placeholder="field.placeholder" :required="field.required">{ field.value }</textarea>
+        <else>
+          <input name="value" :type="field.inputType" :value="field.value" :placeholder="field.placeholder" :required="field.required"/>
+        </if>
+      </if>
+      <if field.description.isNotBlank()><span class="field-help">{ field.description }</span></if>
+    </label>
+  </if>
+</component>

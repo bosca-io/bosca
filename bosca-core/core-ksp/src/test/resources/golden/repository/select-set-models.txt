@@ -1,0 +1,54 @@
+@file:Suppress("UNCHECKED_CAST", "UNUSED_PARAMETER", "USELESS_ELVIS", "OPT_IN_USAGE", "USELESS_CAST")
+
+package com.example
+
+import bosca.db.DatabaseDispatcher
+import bosca.db.connection
+import bosca.db.mapper.DefaultMappers
+import bosca.di.ProviderRegistry.`get`
+import bosca.di.`annotation`.Generated
+import bosca.serialization.JsonConverter.toJsonElement
+import bosca.serialization.UUID
+import com.example.User
+import kotlin.OptIn
+import kotlin.Suppress
+import kotlin.collections.Set
+import kotlin.reflect.KClass
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.flow.toSet
+import kotlinx.coroutines.reactive.asFlow
+import kotlinx.coroutines.reactive.awaitFirstOrNull
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.Json
+
+@Generated
+public class TestRepositoryImpl : TestRepository {
+  private val json: Json by lazy { runBlocking { get<Json>() } }
+
+  private val mappers: DefaultMappers by lazy { DefaultMappers(json) }
+
+  @OptIn(ExperimentalCoroutinesApi::class)
+  override suspend fun findAll(): Set<User> = withContext(DatabaseDispatcher) {
+     val connection = connection()
+     connection.useStatement("SELECT id FROM users") { stmt ->
+         
+                                  
+         stmt.executeQuery().use { row ->
+             val results = mutableSetOf<User>()
+             while (row.next()) {
+     val id = mappers.int.map(Int::class, emptyList<KClass<*>>(), row, "id") ?: error("id is required")
+
+                 results.add(User(
+                     id
+                 ))
+   
+             }
+             return@useStatement results
+         }
+     }
+  }
+}

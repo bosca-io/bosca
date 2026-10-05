@@ -1,0 +1,134 @@
+suite: recommendation-trainer JobProfile
+templates:
+  - templates/jobprofile.yaml
+values:
+  - ../values.yaml
+tests:
+  - it: renders an ephemeral serialized training workload
+    asserts:
+      - isKind:
+          of: JobProfile
+      - equal:
+          path: metadata.name
+          value: recommendation-trainer
+      - equal:
+          path: spec.maxParallelism
+          value: 1
+      - equal:
+          path: spec.workerContainerName
+          value: worker
+      - equal:
+          path: spec.job.backoffLimit
+          value: 0
+      - equal:
+          path: spec.job.activeDeadlineSeconds
+          value: 21600
+      - equal:
+          path: spec.podTemplate.spec.automountServiceAccountToken
+          value: false
+      - equal:
+          path: spec.podTemplate.spec.restartPolicy
+          value: Never
+      - equal:
+          path: spec.podTemplate.spec.containers[0].name
+          value: worker
+      - equal:
+          path: spec.podTemplate.spec.containers[0].image
+          value: ghcr.io/bosca-io/bosca/recommendation-trainer:5.16.4
+      - equal:
+          path: spec.podTemplate.spec.containers[0].args[0]
+          value: train
+      - equal:
+          path: spec.podTemplate.spec.containers[0].args[1]
+          value: --bosca-url
+      - equal:
+          path: spec.podTemplate.spec.containers[0].args[2]
+          value: $(BOSCA_URL)
+      - equal:
+          path: spec.podTemplate.spec.containers[0].args[3]
+          value: --bosca-token
+      - equal:
+          path: spec.podTemplate.spec.containers[0].args[4]
+          value: $(BOSCA_API_TOKEN)
+      - equal:
+          path: spec.podTemplate.spec.containers[0].env[0].name
+          value: BOSCA_URL
+      - equal:
+          path: spec.podTemplate.spec.containers[0].env[1].valueFrom.secretKeyRef.name
+          value: recommendation-ml
+      - equal:
+          path: spec.podTemplate.spec.containers[0].env[5].name
+          value: ARTIFACTS_PULL_API_TOKEN
+      - equal:
+          path: spec.podTemplate.spec.containers[0].env[5].valueFrom.secretKeyRef.key
+          value: artifacts_pull_token
+      - equal:
+          path: spec.podTemplate.spec.containers[0].volumeMounts[0].mountPath
+          value: /models
+      - equal:
+          path: spec.podTemplate.spec.volumes[0].emptyDir
+          value: {}
+
+  - it: supports profile lifecycle resource and scheduling overrides
+    set:
+      profile:
+        name: recommendation-training-gpu
+        maxParallelism: 2
+        job:
+          backoffLimit: 1
+          ttlSecondsAfterFinished: 7200
+          activeDeadlineSeconds: 43200
+          startupFailureGraceSeconds: 900
+      resources:
+        requests:
+          cpu: "4"
+          memory: 16Gi
+        limits:
+          nvidia.com/gpu: "1"
+      nodeSelector:
+        accelerator: nvidia
+      tolerations:
+        - key: dedicated
+          operator: Equal
+          value: model-training
+          effect: NoSchedule
+      extraArgs:
+        - --epochs
+        - "30"
+    asserts:
+      - equal:
+          path: metadata.name
+          value: recommendation-training-gpu
+      - equal:
+          path: spec.maxParallelism
+          value: 2
+      - equal:
+          path: spec.job.backoffLimit
+          value: 1
+      - equal:
+          path: spec.job.activeDeadlineSeconds
+          value: 43200
+      - equal:
+          path: spec.podTemplate.spec.containers[0].resources.limits["nvidia.com/gpu"]
+          value: "1"
+      - equal:
+          path: spec.podTemplate.spec.containers[0].args[5]
+          value: --epochs
+      - equal:
+          path: spec.podTemplate.spec.containers[0].args[6]
+          value: "30"
+      - equal:
+          path: spec.podTemplate.spec.nodeSelector.accelerator
+          value: nvidia
+      - equal:
+          path: spec.podTemplate.spec.tolerations[0].value
+          value: model-training
+
+  - it: can disable registry pull credentials for a public development namespace
+    set:
+      secrets:
+        artifactsPullToken:
+          enabled: false
+    asserts:
+      - notExists:
+          path: spec.podTemplate.spec.containers[0].env[5]

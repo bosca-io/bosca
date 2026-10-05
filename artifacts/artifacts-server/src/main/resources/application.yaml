@@ -1,0 +1,111 @@
+bosca:
+  server:
+    port: ${BOSCA_SERVER_PORT:8084}
+    development: ${BOSCA_DEVELOPMENT:false}
+
+cors:
+  allowAnyHost: "$CORS_ALLOW_ANY_HOST:true"
+  allowCredentials: "$CORS_ALLOW_CREDENTIALS:true"
+  anyMethod: "$CORS_ANY_METHOD:true"
+  maxAgeSeconds: "$CORS_MAX_AGE_SECONDS:86400"
+  allowedHeaders:
+    - X-BA-Session-ID
+    - Content-Type
+    - Content-Length
+    - Content-Range
+    - Content-Disposition
+    - Authorization
+    - Cookie
+
+content:
+  storage:
+    type: "$STORAGE_TYPE:s3"
+    bucket: "$STORAGE_BUCKET:storage"
+    urlUploadPrefix: "$STORAGE_URL_UPLOAD_PREFIX:http://localhost:8080"
+    forcePathStyle: ${STORAGE_FORCE_PATH_STYLE:true}
+    region: "$STORAGE_REGION:us-east-1"
+    urlPrefix: "$STORAGE_URL_PREFIX:http://localhost:8080"
+    endpoint: "$STORAGE_ENDPOINT:http://localhost:8000"
+    accessKeyId: "$STORAGE_ACCESS_KEY_ID:bosca-s3"
+    accessKeySecret: "$STORAGE_ACCESS_KEY_SECRET:bosca-s3"
+  urlSigner:
+    secretKey: "$STORAGE_URL_SIGNER_SECRET_KEY:10df7d451e8365cd6a8d43d408a25c82"
+
+jwt:
+  domain: "$JWT_DOMAIN:localhost"
+  admin-domain: "$JWT_ADMIN_DOMAIN:localhost"
+  audience: "$JWT_AUDIENCE:Bosca"
+  realm: "$JWT_REALM:Bosca"
+  issuer: "$JWT_ISSUER:Bosca"
+  secret: "$JWT_SECRET:c534b2595b38f5d9cb33f8cd05996c95"
+  expiration-time: ${JWT_EXPIRATION_TIME:2592000}
+
+database:
+  migrations:
+    - core-migrations
+    - scheduler-migrations
+  postgres:
+    url: "$DATABASE_URL:jdbc:postgresql://localhost:5433/bosca"
+    user: "$DATABASE_USER:bosca"
+    password: "$DATABASE_PASSWORD:bosca"
+
+redis:
+  host: "$REDIS_HOST:localhost"
+  port: ${REDIS_PORT:6380}
+  database: ${REDIS_DATABASE:0}
+  namespace: "$REDIS_NAMESPACE:"
+
+nats:
+  url: "$NATS_HOST:localhost:4222"
+  token: "$NATS_TOKEN:OAVKZTG7ST62YCPUJYJ6LBQDMKLAUD4NRBPZ4GXUXNUJW2ATCFKKYGHV"
+  username: "$NATS_USERNAME:"
+  password: "$NATS_PASSWORD:"
+
+natsMonitoring:
+  monitoringUrl: "$NATS_MONITORING_URL:http://localhost:8222"
+
+cache:
+  type: "$CACHE_TYPE:nats"
+
+jobQueue:
+  factory: "$JOB_QUEUE_FACTORY:nats"
+
+pubsub:
+  type: "$PUBSUB_TYPE:nats"
+
+distributedLock:
+  type: "$DISTRIBUTED_LOCK_TYPE:nats"
+
+analyticsServer:
+  appId: "$ANALYTICS_APP_ID:artifacts-server"
+  url: "$ANALYTICS_SERVER_URL:http://localhost:8081"
+
+oauth2:
+  providers:
+    - type: google
+      clientId: ${GOOGLE_CLIENT_ID:}
+      clientSecret: ${GOOGLE_CLIENT_SECRET:}
+      callback: "$OAUTH2_GOOGLE_REDIRECT:http://localhost:8080/oauth2/google/callback"
+      adminCallback: "$OAUTH2_GOOGLE_ADMIN_REDIRECT:http://localhost:8080/oauth2/google/callback"
+      authorizeUrl: https://accounts.google.com/o/oauth2/auth
+      accessTokenUrl: https://accounts.google.com/o/oauth2/token
+      userInfoUrl: https://www.googleapis.com/oauth2/v1/userinfo
+      scopes:
+        - https://www.googleapis.com/auth/userinfo.profile
+        - https://www.googleapis.com/auth/userinfo.email
+      enabled: true
+    - type: facebook
+      clientId: ${FACEBOOK_CLIENT_ID:}
+      clientSecret: ${FACEBOOK_CLIENT_SECRET:}
+      callback: "$OAUTH2_FACEBOOK_REDIRECT:http://localhost:8080/oauth2/facebook/callback"
+      adminCallback: "$OAUTH2_FACEBOOK_ADMIN_REDIRECT:http://localhost:8080/oauth2/facebook/callback"
+      authorizeUrl: https://www.facebook.com/v19.0/dialog/oauth
+      accessTokenUrl: https://graph.facebook.com/v19.0/oauth/access_token
+      userInfoUrl: https://graph.facebook.com/me
+      scopes:
+        - public_profile
+        - email
+      enabled: false
+  redirects:
+    - "$OAUTH2_ALLOWED_REDIRECT:http://localhost:8080"
+    - "http://localhost:3000"

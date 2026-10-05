@@ -1,0 +1,20 @@
+<page route="/profile" requireAuth>
+  <script server provides="branding">bosca.profiles.web.branding()</script>
+  <script server provides="profile">bosca.profiles.web.profileEditor()</script>
+
+  <site-layout title="Profile" :brand="branding.name" :logo="branding.logoUrl" :footer="branding.footerHtml">
+    <main class="shell">
+      <header class="page-head">
+        <div>
+          <p class="eyebrow">Profile</p>
+          <h1>How you appear</h1>
+          <p class="lede">Control the name people see and decide who can discover this profile.</p>
+        </div>
+      </header>
+      <div class="stack">
+        <profile-details :initial="profile"/>
+        <profile-attributes :initial="profile"/>
+      </div>
+    </main>
+  </site-layout>
+</page>

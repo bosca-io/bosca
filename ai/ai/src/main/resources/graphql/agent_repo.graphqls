@@ -1,0 +1,70 @@
+"The file-backed entity types in an AGENT_PROJECT repository."
+enum AgentEntityType {
+    "An AI agent definition (agents/<key>.md)."
+    AGENT
+    "An agent tool definition (tools/<key>.md)."
+    AGENT_TOOL
+    "An MCP server registration (mcp-servers/<key>.md)."
+    MCP_SERVER
+    "A prompt definition (prompts/<key>.md)."
+    PROMPT
+    "An agent resource definition (resources/<key>.md)."
+    AGENT_RESOURCE
+}
+
+"Entry in a backfill request: which DB row to serialize and where to write it in the repo."
+input AgentRepoBackfillEntry {
+    "The type of entity to backfill."
+    entityType: AgentEntityType!
+    "The unique identifier of the DB row to serialize."
+    entityId: UUID!
+    "The target path in the repository (e.g. agents/research-assistant.md)."
+    gitPath: String!
+}
+
+"A single validation error attributed to a file path in an AGENT_PROJECT repo."
+type AgentRepoValidationError {
+    "The repository-relative path of the file that failed validation."
+    path: String!
+    "Human-readable validation error message."
+    message: String!
+}
+
+"Result of an AGENT_PROJECT bulk-export (backfill) operation."
+type AgentRepoBackfillResult {
+    "Whether the backfill succeeded."
+    ok: Boolean!
+    "The last commit SHA produced, if any."
+    commitSha: String
+    "Validation errors, if any. Non-empty only when the operation failed validation."
+    validationErrors: [AgentRepoValidationError!]
+    "Other error message, if any. Set when the operation failed for non-validation reasons."
+    errorMessage: String
+}
+
+"Mutation operations for AGENT_PROJECT Git repository management."
+type AgentRepoMutation {
+    """
+    Bulk-export the specified DB rows to the given AGENT_PROJECT Git repository. Each
+    entry is linked to its target gitPath and then pushed; the operation commits one
+    file per entry. Validates each file before committing — on validation failure, no
+    files are committed for the failing entry, but other entries proceed.
+
+    Requires `agent.manager` group or admin.
+    """
+    backfill(
+        "The target AGENT_PROJECT repository."
+        repositoryId: UUID!
+        "The entities to serialize and commit."
+        entries: [AgentRepoBackfillEntry!]!
+        "Commit author name (shown in Git history)."
+        authorName: String!
+        "Commit author email (shown in Git history)."
+        authorEmail: String!
+    ): AgentRepoBackfillResult!
+}
+
+extend type Mutation {
+    "Access mutation operations for AGENT_PROJECT repository management."
+    agentRepo: AgentRepoMutation!
+}

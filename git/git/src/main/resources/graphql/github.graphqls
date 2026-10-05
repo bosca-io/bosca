@@ -1,0 +1,115 @@
+"Queries for GitHub synchronization configuration and delivery history."
+type GitHub {
+    "Administrator-only repository synchronization configuration."
+    pair(repositoryId: UUID!): GitHubRepositoryPair
+    "Administrator-verified identity mappings."
+    users(offset: Long = 0, limit: Int = 25): [GitHubUser!]!
+    "Verified delivery intake history, restricted to administrators."
+    deliveries(repositoryId: UUID!, offset: Long = 0, limit: Int = 25): [GitHubDelivery!]!
+    "Common branch/tag values and concurrent edits requiring reconciliation."
+    refStates(repositoryId: UUID!, offset: Long = 0, limit: Int = 25): [GitHubRefState!]!
+    "Counterpart mappings and unresolved PR synchronization problems, restricted to administrators."
+    pullRequestStates(repositoryId: UUID!, offset: Long = 0, limit: Int = 25): [GitHubPullRequestState!]!
+}
+
+"Mutations for GitHub repository pairing and user mappings."
+type GitHubMutation {
+    "Administrator-only pairing configuration; stores secret references, never credentials."
+    savePair(input: GitHubRepositoryPairInput!): GitHubRepositoryPair!
+    "Map an immutable GitHub human user ID to a Bosca principal without granting permissions."
+    mapUser(githubUserId: Long!, principalId: UUID!): GitHubUser!
+    "Remove a user mapping without rewriting previous delivery attribution."
+    unmapUser(githubUserId: Long!): Boolean!
+    "Reconcile branches and tags using current refs; recovered writes are unattributed."
+    reconcileRefs(repositoryId: UUID!): [GitHubRefState!]!
+    "Reconcile current pull requests without creating new merge commits."
+    reconcilePullRequests(repositoryId: UUID!): [GitHubPullRequestState!]!
+}
+
+extend type Query {
+    "GitHub synchronization operations."
+    github: GitHub!
+}
+
+extend type Mutation {
+    "GitHub synchronization mutations."
+    github: GitHubMutation!
+}
+
+"Administrator-controlled pairing; GitHub repository IDs survive renames."
+type GitHubPullRequestState {
+    repositoryId: UUID!
+    pullRequestId: UUID
+    githubId: Long
+    githubNumber: Int
+    snapshot: GitHubPullRequestSnapshot
+    bosca: GitHubPullRequestSnapshot
+    github: GitHubPullRequestSnapshot
+    problem: String
+    modified: DateTime!
+}
+
+type GitHubPullRequestSnapshot {
+    title: String!
+    description: String
+    sourceBranch: String!
+    targetBranch: String!
+    status: GitPullRequestStatus!
+    mergeSha: String
+}
+
+"Administrator-controlled pairing; GitHub repository IDs survive renames."
+type GitHubRepositoryPair {
+    repositoryId: UUID!
+    githubRepositoryId: Long!
+    owner: String!
+    name: String!
+    webhookSecretName: String!
+    tokenSecretName: String!
+    enabled: Boolean!
+    version: Long!
+    created: DateTime!
+    modified: DateTime!
+}
+
+input GitHubRepositoryPairInput {
+    repositoryId: UUID!
+    githubRepositoryId: Long!
+    owner: String!
+    name: String!
+    webhookSecretName: String!
+    tokenSecretName: String!
+    enabled: Boolean! = false
+    version: Long! = 0
+}
+
+"An administrator-verified human user mapping; permissions remain group-based."
+type GitHubUser {
+    githubUserId: Long!
+    principalId: UUID!
+    created: DateTime!
+    modified: DateTime!
+}
+
+"An authentic delivery retained for workflow processing and reconciliation."
+type GitHubDelivery {
+    deliveryId: String!
+    repositoryId: UUID!
+    event: String!
+    payload: JSON!
+    githubUserId: Long
+    principalId: UUID
+    ignored: Boolean!
+    created: DateTime!
+}
+
+type GitHubRefState {
+    repositoryId: UUID!
+    ref: String!
+    sha: String
+    synchronized: Boolean!
+    boscaSha: String
+    githubSha: String
+    conflict: Boolean!
+    modified: DateTime!
+}

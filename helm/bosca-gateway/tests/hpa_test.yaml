@@ -1,0 +1,44 @@
+suite: bosca-gateway HPA template
+templates:
+  - templates/hpa.yaml
+tests:
+  - it: renders an HPA by default (autoscaling.enabled defaults to true)
+    asserts:
+      - isKind:
+          of: HorizontalPodAutoscaler
+      - equal:
+          path: spec.minReplicas
+          value: 2
+      - equal:
+          path: spec.maxReplicas
+          value: 10
+
+  - it: targets CPU utilization at the configured threshold
+    set:
+      autoscaling:
+        targetCPUUtilization: 75
+    asserts:
+      - equal:
+          path: spec.metrics[0].resource.target.averageUtilization
+          value: 75
+
+  - it: does not render an HPA when autoscaling is disabled
+    set:
+      autoscaling:
+        enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: scales between configured replica bounds
+    set:
+      autoscaling:
+        minReplicas: 3
+        maxReplicas: 25
+    asserts:
+      - equal:
+          path: spec.minReplicas
+          value: 3
+      - equal:
+          path: spec.maxReplicas
+          value: 25

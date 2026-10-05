@@ -1,0 +1,46 @@
+suite: bosca-studio deployment
+values:
+  - ../values.yaml
+set:
+  global:
+    domain: example.com
+  appConfig:
+    domain: example.com
+tests:
+  - it: renders a Deployment
+    template: templates/deployment.yaml
+    asserts:
+      - isKind:
+          of: Deployment
+
+  - it: uses bosca-studio image on port 3000
+    template: templates/deployment.yaml
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[0].image
+          pattern: ".*bosca-studio:.*"
+      - equal:
+          path: spec.template.spec.containers[0].ports[0].containerPort
+          value: 3000
+
+  - it: does not pass config arg (no application.yaml)
+    template: templates/deployment.yaml
+    asserts:
+      - isNull:
+          path: spec.template.spec.containers[0].args
+
+  - it: sets OTEL_SERVICE_NAME
+    template: templates/deployment.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OTEL_SERVICE_NAME
+            value: "Bosca Studio"
+
+  - it: references studio-env and otel-env configmaps
+    template: templates/deployment.yaml
+    asserts:
+      - lengthEqual:
+          path: spec.template.spec.containers[0].envFrom
+          count: 2

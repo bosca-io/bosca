@@ -1,0 +1,50 @@
+suite: bosca-services Bosca HTTP2 routing
+templates:
+  - templates/httproute-bosca-io.yaml
+values:
+  - ../values.yaml
+release:
+  name: test
+  namespace: bosca
+set:
+  global:
+    domain: example.com
+  bosca-collector:
+    enabled: false
+  bosca-server:
+    enabled: true
+  bosca-io:
+    enabled: true
+    gateway:
+      enabled: true
+      hostnames:
+        - example.com
+tests:
+  - it: sends GraphQL WebSockets and other API traffic over HTTP1 by default
+    asserts:
+      - equal:
+          path: spec.rules[0].matches[0].path.value
+          value: /graphql
+      - equal:
+          path: spec.rules[0].backendRefs[0].port
+          value: 8080
+      - contains:
+          path: spec.rules[0].matches
+          content:
+            path:
+              type: PathPrefix
+              value: /graphqlws
+
+  - it: sends API traffic over h2c when HTTP2 is enabled
+    set:
+      bosca-server.appConfig.http2Enabled: true
+    asserts:
+      - equal:
+          path: spec.rules[0].backendRefs[0].port
+          value: 8081
+      - contains:
+          path: spec.rules[0].matches
+          content:
+            path:
+              type: PathPrefix
+              value: /graphqlws

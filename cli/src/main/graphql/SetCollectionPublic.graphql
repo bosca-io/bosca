@@ -1,0 +1,9 @@
+mutation SetCollectionPublic($id: UUID!, $public: Boolean!) {
+    content {
+        collection {
+            setPublic(id: $id, public: $public) {
+                id
+            }
+        }
+    }
+}

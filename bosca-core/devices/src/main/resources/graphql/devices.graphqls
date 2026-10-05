@@ -1,0 +1,126 @@
+"The operating system or runtime environment of a registered device."
+enum PlatformType {
+    "Apple iOS mobile device."
+    IOS
+    "Android mobile device."
+    ANDROID
+    "Web browser."
+    WEB
+    "Desktop application."
+    DESKTOP
+}
+
+"The service that issued and accepts a push token."
+enum PushProvider {
+    "Firebase Cloud Messaging."
+    FCM
+    "Apple Push Notification service."
+    APNS
+}
+
+"Input for registering a new device."
+input DeviceInput {
+    "The platform type of the device."
+    platform: PlatformType!
+    "The installation identifier issued by the Analytics installation endpoint."
+    installationId: String!
+}
+
+"A registered client installation, optionally associated with the currently signed-in principal."
+type Device {
+    "The unique identifier of the device."
+    id: UUID!
+    "The platform type of the device."
+    platform: PlatformType!
+    "When the device was first registered."
+    created: DateTime!
+    "When the device registration was last modified."
+    modified: DateTime!
+    "When the device last checked in with the server."
+    lastCheckIn: DateTime!
+    "The Analytics-issued installation identifier, or null only for legacy records."
+    installationId: String
+    "Push notification tokens registered on this device."
+    pushTokens: [PushToken!]!
+}
+
+"A push notification token registered on a device."
+type PushToken {
+    "The service that issued this token."
+    provider: PushProvider!
+    "The raw device token string used by the push notification service."
+    token: String!
+    "When this push token was registered."
+    created: DateTime!
+}
+
+"Query operations for retrieving device registrations."
+type Devices {
+    "Retrieve a single device by its identifier."
+    getById(
+        "The UUID of the device to retrieve."
+        id: UUID!
+    ): Device
+    "Retrieve all devices for a principal. Defaults to the authenticated principal."
+    devices(
+        "The UUID of the principal whose devices to retrieve. Defaults to the current user."
+        principalId: UUID
+    ): [Device!]!
+}
+
+"Mutation operations for managing device registrations and push tokens."
+type DevicesMutation {
+    "Register a new device for the authenticated principal."
+    register(
+        "The device specification."
+        device: DeviceInput!
+    ): Device!
+    "Record a check-in for a device, updating its last activity timestamp."
+    checkIn(
+        "The UUID of the device to check in."
+        id: UUID!
+    ): Device!
+    "Record activity for an Analytics installation, including while it is signed out."
+    checkInInstallation(
+        "The Analytics-issued installation identifier."
+        installationId: String!
+    ): Boolean!
+    "Clear the authenticated principal association without deleting the device or its push tokens."
+    clearPrincipal(
+        "The UUID of the device whose principal association should be cleared."
+        id: UUID!
+    ): Boolean!
+    "Register a push notification token on a device."
+    addPushToken(
+        "The UUID of the device."
+        id: UUID!
+        "The service that issued the token. Defaults to FCM for older clients."
+        provider: PushProvider! = FCM
+        "The push token string from the device's notification service."
+        token: String!
+    ): Boolean!
+    "Remove a push notification token from a device."
+    removePushToken(
+        "The UUID of the device."
+        id: UUID!
+        "The service that issued the token. Defaults to FCM for older clients."
+        provider: PushProvider! = FCM
+        "The push token string to remove."
+        token: String!
+    ): Boolean!
+    "Delete a device and all of its associated push tokens."
+    delete(
+        "The UUID of the device to delete."
+        id: UUID!
+    ): Boolean!
+}
+
+extend type Query {
+    "Access device registration and push token management operations."
+    devices: Devices!
+}
+
+extend type Mutation {
+    "Access device mutation operations for registration, check-in, push token management, and deletion."
+    devices: DevicesMutation!
+}

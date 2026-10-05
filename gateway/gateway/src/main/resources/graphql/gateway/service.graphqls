@@ -1,0 +1,52 @@
+enum GatewayHealthStatus {
+    UP
+    DOWN
+    UNKNOWN
+}
+
+type Gateway {
+    id: UUID!
+    name: String!
+    url: String!
+    healthCheckPath: String
+    healthCheckIntervalSecs: Int!
+    connectTimeoutSecs: Int!
+    requestTimeoutSecs: Int!
+    poolMaxIdle: Int!
+    poolIdleTimeoutSecs: Int!
+    enabled: Boolean!
+    healthStatus: GatewayHealthStatus!
+    healthStatusChangedAt: DateTime!
+    healthStatusReason: String
+    createdAt: DateTime!
+    modifiedAt: DateTime!
+    version: Long!
+    permissions: [EntityPermission!]!
+    routes: [GatewayRoute!]!
+}
+
+input GatewayInput {
+    name: String!
+    url: String!
+    healthCheckPath: String
+    healthCheckIntervalSecs: Int = 30
+    connectTimeoutSecs: Int = 5
+    requestTimeoutSecs: Int = 300
+    poolMaxIdle: Int = 10
+    poolIdleTimeoutSecs: Int = 90
+}
+
+type GatewayServices {
+    all: [Gateway!]!
+    gateway(id: UUID!): Gateway
+    gatewayByName(name: String!): Gateway
+}
+
+type GatewayServicesMutation {
+    create(input: GatewayInput!): Gateway!
+    update(id: UUID!, input: GatewayInput!, expectedVersion: Long!): Gateway!
+    delete(id: UUID!, expectedVersion: Long!): Gateway!
+    toggleEnabled(id: UUID!, enabled: Boolean!, expectedVersion: Long!): Gateway!
+    addPermission(id: UUID!, groupId: UUID!, action: PermissionAction!): Boolean!
+    removePermission(id: UUID!, groupId: UUID!, action: PermissionAction!): Boolean!
+}

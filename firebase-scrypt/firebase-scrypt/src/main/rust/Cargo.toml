@@ -1,0 +1,12 @@
+[package]
+name = "firebase_scrypt_util"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+uniffi = "0.29.5"
+firebase-scrypt = "0.2.1"
+
+[lib]
+crate-type = ["cdylib"]
+path = "src/lib.rs"

@@ -1,0 +1,34 @@
+package bosca.jobs
+
+import bosca.serialization.UUID
+import kotlin.test.Test
+import kotlin.test.assertEquals
+
+class BibleProcessJobTest {
+
+    @Test
+    fun `field preservation`() {
+        val id = UUID.random()
+        val job = BibleProcessJob(id = id, version = 2)
+        assertEquals(id, job.id)
+        assertEquals(2, job.version)
+    }
+
+    @Test
+    fun `data class equality`() {
+        val id = UUID.random()
+        val a = BibleProcessJob(id = id, version = 1)
+        val b = BibleProcessJob(id = id, version = 1)
+        assertEquals(a, b)
+        assertEquals(a.hashCode(), b.hashCode())
+    }
+
+    @Test
+    fun `copy changes version`() {
+        val id = UUID.random()
+        val job = BibleProcessJob(id = id, version = 1)
+        val modified = job.copy(version = 5)
+        assertEquals(5, modified.version)
+        assertEquals(id, modified.id)
+    }
+}

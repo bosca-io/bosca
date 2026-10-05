@@ -1,0 +1,116 @@
+<component tag="profile-attributes">
+  <prop name="initial" type="bosca.profiles.web.ProfileEditorModel" required/>
+  <script server provides="profile">
+    bosca.profiles.web.ProfileEditorModel(
+      initial.id,
+      initial.name,
+      initial.slug,
+      initial.visibility,
+      initial.searchable,
+      initial.created,
+      initial.modified,
+      initial.attributes,
+      initial.attributeTypes,
+    )
+  </script>
+
+  <island name="profile-attributes" :key="initial.id">
+    <section class="card section-card">
+      <div class="section-heading profile-attributes-heading">
+        <div>
+          <h2>Profile attributes</h2>
+          <p class="card-copy">Structured details rendered from the form attached to each attribute type.</p>
+        </div>
+        <button class="icon-trigger" type="button" data-open-attribute-modal aria-label="Add an attribute" title="Add an attribute">
+          <svg class="control-icon plus-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 5v14M5 12h14"/>
+          </svg>
+        </button>
+      </div>
+
+      <if profile.attributes.isEmpty()>
+        <p class="empty compact">No profile attributes have been added.</p>
+      <else>
+        <form class="profile-attributes-form" data-profile-attributes-form @submit="profile.saveAttributes(form.attributes, ctx)">
+          <input name="attributes" type="hidden" value="[]"/>
+          <div class="attribute-list">
+            <for attribute in profile.attributes>
+              <profile-attribute-card :attribute="attribute">
+                <if attribute.protected>
+                  <profile-attribute-display :attribute="attribute"/>
+                <else>
+                  <if attribute.hasField>
+                    <profile-attribute-form :attribute="attribute">
+                      <button class="menu-action danger-text" type="button" data-remove-attribute data-open-remove-attribute-dialog>Remove attribute</button>
+                    </profile-attribute-form>
+                  <else>
+                    <profile-json-attribute-form :attribute="attribute">
+                      <button class="menu-action danger-text" type="button" data-remove-attribute data-open-remove-attribute-dialog>Remove attribute</button>
+                    </profile-json-attribute-form>
+                  </if>
+                  <dialog class="profile-modal confirmation-modal" data-remove-attribute-dialog aria-label="Remove profile attribute">
+                    <div class="modal-heading">
+                      <div>
+                        <p class="eyebrow">Profile attribute</p>
+                        <h2>Remove attribute?</h2>
+                      </div>
+                      <button class="icon-trigger" type="button" data-close-remove-attribute-dialog aria-label="Close" title="Close">
+                        <svg class="control-icon" viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="m6 6 12 12M18 6 6 18"/>
+                        </svg>
+                      </button>
+                    </div>
+                    <div class="modal-body confirmation-body">
+                      <p>Remove <strong>{ attribute.typeName }</strong> from this profile?</p>
+                      <div class="modal-actions">
+                        <button type="button" data-close-remove-attribute-dialog>Cancel</button>
+                        <button class="danger" type="button" data-confirm-remove-attribute @click="profile.deleteAttribute(attribute.id, ctx)">Remove attribute</button>
+                      </div>
+                    </div>
+                  </dialog>
+                </if>
+              </profile-attribute-card>
+            </for>
+          </div>
+          <div class="attributes-save-bar">
+            <span class="attributes-save-dirty">Unsaved changes</span>
+            <button class="primary" type="submit" data-attributes-save disabled>Save</button>
+          </div>
+        </form>
+      </if>
+
+      <dialog class="profile-modal attribute-modal" data-attribute-modal :data-has-selected-attribute-type="profile.hasSelectedAttributeType">
+        <div class="modal-heading">
+          <div>
+            <p class="eyebrow">Profile attribute</p>
+            <h2>Add an attribute</h2>
+          </div>
+          <button class="icon-trigger" type="button" data-close-attribute-modal aria-label="Close" title="Close">
+            <svg class="control-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="m6 6 12 12M18 6 6 18"/>
+            </svg>
+          </button>
+        </div>
+        <div class="modal-body">
+          <form class="attribute-type-picker">
+          <profile-attribute-type-select
+            :types="profile.addableAttributeTypes"
+            :selectedTypeId="profile.selectedTypeId"
+            @change="profile.chooseAttributeType(form.typeId)"
+          />
+          </form>
+          <if profile.hasSelectedAttributeType>
+            <if profile.selectedAttributeType.field.boolean>
+              <profile-add-attribute-form :type="profile.selectedAttributeType" @submit="profile.addBooleanAttribute(form.typeId, form.value, form.visibility, ctx)"/>
+            <else>
+              <profile-add-attribute-form :type="profile.selectedAttributeType" @submit="profile.addTextAttribute(form.typeId, form.value, form.visibility, ctx)"/>
+            </if>
+          <else>
+            <p class="empty compact">Choose an attribute type to see its field.</p>
+          </if>
+        </div>
+      </dialog>
+      <if profile.message != null><toast-message :message="profile.message" :failed="profile.failed" :id="profile.messageId"/></if>
+    </section>
+  </island>
+</component>
