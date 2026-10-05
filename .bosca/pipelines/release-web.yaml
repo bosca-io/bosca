@@ -34,10 +34,9 @@ jobs:
           restore-keys: '["pnpm-release-"]'
       - name: Extract Version
         run: |
-          RELEASE_VERSION="${PUBLISH_VERSION#refs/tags/}"
-          echo "RELEASE_VERSION=${RELEASE_VERSION}" >> "$BOSCA_ENV"
+          echo "RELEASE_VERSION=${PUBLISH_VERSION}" >> "$BOSCA_ENV"
         env:
-          PUBLISH_VERSION: ${{ ref }}
+          PUBLISH_VERSION: ${{ version }}
       - name: Install Dependencies
         run: cd web && pnpm install --frozen-lockfile
       - name: Set Package Versions
@@ -51,11 +50,16 @@ jobs:
           RELEASE_VERSION: ${{ env.RELEASE_VERSION }}
       - name: Build Packages
         run: cd web && pnpm --filter './packages/*' build
+      - name: Install Test Browser
+        run: cd web && pnpm --filter @bosca/auth-client-browser exec playwright install --with-deps chromium
       - name: Run Web Tests
         run: cd web && pnpm --filter './packages/*' run test:ci
       - name: Publish Packages
         # Publishes to the npm registry of the Artifacts server configured by Setup Registry.
-        run: cd web && pnpm --filter './packages/*' publish --no-git-checks --registry "${BOSCA_REGISTRY_URL%/}/npm/"
+        run: |
+          registry="${BOSCA_REGISTRY_URL%/}/npm/"
+          npm config set "//${registry#*://}:_authToken" "$BOSCA_REGISTRY_TOKEN"
+          cd web && pnpm --filter './packages/*' publish --no-git-checks --registry "$registry"
 
   publish-bml-runtime:
     runner: linux
@@ -91,7 +95,10 @@ jobs:
         run: npm run build
       - name: Publish BML Runtime
         working-directory: bml/bml-runtime
-        run: npm publish --registry "${BOSCA_REGISTRY_URL%/}/npm/"
+        run: |
+          registry="${BOSCA_REGISTRY_URL%/}/npm/"
+          npm config set "//${registry#*://}:_authToken" "$BOSCA_REGISTRY_TOKEN"
+          npm publish --registry "$registry"
 
   notify:
     runner: linux

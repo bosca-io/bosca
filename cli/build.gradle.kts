@@ -91,6 +91,13 @@ dependencies {
     testImplementation(libs.okhttp.mockwebserver) // WebSocket loopback for the subscription transport test
 }
 
+tasks.test {
+    inputs.files(rootProject.fileTree(".bosca/pipelines") { include("*.yaml") })
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+    inputs.files(rootProject.fileTree("scripts/release") { include("*.sh") })
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+}
+
 // ---------------------------------------------------------------------------
 // Bosca-native GraphQL client codegen.
 //

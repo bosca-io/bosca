@@ -1,5 +1,5 @@
 name: Bosca Tag Image Release
-# Publish bosca/<image>:<tag> to Bosca Artifacts and mirror it to GHCR.
+# Publish bosca/<image>:<tag> to Bosca Artifacts.
 # Each producer declares its own artifact: coordinates resolve before matrix expansion.
 on:
   tag:
@@ -18,7 +18,6 @@ jobs:
     timeout: 120m
     matrix:
       image: [bosca-server]
-    secrets: [GITHUB_USERNAME, GITHUB_TOKEN]
     artifacts:
       - type: docker
         namespace: bosca
@@ -48,20 +47,11 @@ jobs:
         uses: setup-pnpm
         with:
           version: "10"
-      - name: Log in to the GitHub Container Registry
-        run: printf '%s' "$GITHUB_TOKEN" | docker login ghcr.io --username "$GITHUB_USERNAME" --password-stdin
-        env:
-          GITHUB_USERNAME: ${{ secrets.GITHUB_USERNAME }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Build and push image
         run: scripts/release/build-image.sh "$IMAGE" "$VERSION"
         env:
           IMAGE: ${{ matrix.image }}
           VERSION: ${{ version }}
-          BOSCA_IMAGE_MIRROR_REGISTRY: ghcr.io/bosca-io/bosca
-      - name: Log out of the GitHub Container Registry
-        if: always()
-        run: docker logout ghcr.io
 
   publish-runner:
     <<: *image-release-job
@@ -110,7 +100,7 @@ jobs:
         if: needs.publish-server.result == 'success' && needs.publish-runner.result == 'success' && needs.publish-studio.result == 'success' && needs.publish-git.result == 'success' && needs.publish-artifacts.result == 'success'
         with:
           channel: slack
-          message: "Platform images bosca/*:${{ version }} published to Bosca Artifacts and GHCR"
+          message: "Platform images bosca/*:${{ version }} published to Bosca Artifacts"
       - name: Notify Failure
         uses: notify
         if: needs.publish-server.result != 'success' || needs.publish-runner.result != 'success' || needs.publish-studio.result != 'success' || needs.publish-git.result != 'success' || needs.publish-artifacts.result != 'success'

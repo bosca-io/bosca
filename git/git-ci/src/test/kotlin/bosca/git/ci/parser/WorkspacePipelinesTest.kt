@@ -37,7 +37,14 @@ class WorkspacePipelinesTest {
         assertNull(image.default, "the image must be chosen for every run")
         assertTrue("bosca-server" in image.options && "bosca-cli" in image.options)
         assertNull(trigger.inputs.getValue("version").default, "the version must be entered for every run")
-        assertEquals(listOf("GITHUB_USERNAME", "GITHUB_TOKEN"), definition.jobs.getValue("publish-image").secrets)
+        assertTrue(definition.jobs.getValue("publish-image").secrets.isEmpty())
+        val artifact = definition.jobs.getValue("publish-image").artifacts.single()
+        assertEquals("docker", artifact.type)
+        assertEquals("bosca", artifact.namespace)
+        assertEquals("bosca-server:7.4.0", PipelineExpressionParser().interpolate(
+            artifact.coordinate,
+            ExpressionContext(extra = mapOf("inputs.image" to "bosca-server", "inputs.version" to "7.4.0")),
+        ))
     }
 
     @Test
@@ -72,7 +79,7 @@ class WorkspacePipelinesTest {
     }
 
     @Test
-    fun `CLI release prompts for the version and publishes after both platforms build`() {
+    fun `CLI release publishes both platforms and checksums to Bosca`() {
         val definition = parse("release-cli.yaml")
         assertEquals(setOf(PipelineTriggerType.MANUAL, PipelineTriggerType.RELEASE), definition.triggers.map { it.type }.toSet())
         val trigger = definition.triggers.first { it.type == PipelineTriggerType.MANUAL }
@@ -80,24 +87,99 @@ class WorkspacePipelinesTest {
         assertNull(trigger.inputs.getValue("version").default, "the version must be entered for every run")
         val publish = definition.jobs.getValue("publish")
         assertEquals(listOf("linux-x86_64", "macos-arm64"), publish.needs)
-        assertEquals(listOf("GITHUB_TOKEN"), publish.secrets)
+        assertTrue(definition.secrets.isEmpty())
+        assertTrue(publish.secrets.isEmpty())
+        val artifact = publish.artifacts.single()
+        assertEquals("raw", artifact.type)
+        assertEquals("bosca", artifact.namespace)
+        assertEquals("bosca-cli:7.4.0", PipelineExpressionParser().interpolate(
+            artifact.coordinate, ExpressionContext(extra = mapOf("inputs.version" to "7.4.0")),
+        ))
+        val boscaIndex = publish.steps.indexOfFirst { it.uses == "registry-upload" }
+        assertEquals(publish.steps.lastIndex, boscaIndex)
+        assertTrue(publish.steps.indexOfFirst { it.name == "Generate checksums" } in 0 until boscaIndex)
+        val bosca = publish.steps[boscaIndex]
+        assertNull(bosca.condition, "Bosca publication is always required")
+        assertEquals("bosca", bosca.with["namespace"])
+        assertEquals("bosca-cli", bosca.with["name"])
+        assertTrue(bosca.with.getValue("files").contains("linux-x86_64.tar.gz"))
+        assertTrue(bosca.with.getValue("files").contains("macos-arm64.pkg"))
+        assertTrue(bosca.with.getValue("files").contains("SHA256SUMS"))
         assertEquals("macos", definition.jobs.getValue("macos-arm64").runner)
+    }
+
+    @Test
+    fun `release pipelines leave external artifact forwarding to the artifacts server`() {
+        for (name in listOf("release-cli.yaml", "release-image.yaml", "release-tag-images.yaml", "release-web.yaml", "release.yaml")) {
+            val source = File(pipelines, name).readText()
+            for (reference in listOf("GITHUB_TOKEN", "GITHUB_USERNAME", "ghcr.io", "api.github.com", "publish-cli.sh")) {
+                assertFalse(source.contains(reference), "$name must not publish directly to GitHub: $reference")
+            }
+        }
     }
 
     @Test
     fun `platform images publish directly from tags without upstream gates`() {
         val definition = parse("release-tag-images.yaml")
         assertEquals(PipelineTriggerType.TAG, definition.triggers.single().type)
-        val job = definition.jobs.getValue("publish-images")
-        val images = listOf("bosca-server", "bosca-runner", "bosca-studio", "git-server", "artifacts-server")
-        assertEquals(images, job.matrix?.get("image"))
-        assertTrue(job.needs.isEmpty() && job.requires.isEmpty() && job.pipelineRequires.isEmpty())
-        val build = job.steps.first { it.name == "Build and push image" }
-        for (image in images) {
+        val images = mapOf(
+            "publish-server" to "bosca-server", "publish-runner" to "bosca-runner",
+            "publish-studio" to "bosca-studio", "publish-git" to "git-server",
+            "publish-artifacts" to "artifacts-server",
+        )
+        assertEquals(images.keys + "notify", definition.jobs.keys)
+        for ((name, image) in images) {
+            val job = definition.jobs.getValue(name)
+            assertEquals(listOf(image), job.matrix?.get("image"))
+            assertTrue(job.needs.isEmpty() && job.requires.isEmpty() && job.pipelineRequires.isEmpty())
+            assertTrue(job.steps.any { it.uses == "setup-registry" })
+            assertTrue(job.secrets.isEmpty())
+            val build = job.steps.first { it.name == "Build and push image" }
             val context = ExpressionContext(ref = "refs/tags/v7.4.0", event = "tag", matrix = mapOf("image" to image))
             val expressions = PipelineExpressionParser()
             assertEquals(image, expressions.interpolate(build.env.getValue("IMAGE"), context))
             assertEquals("7.4.0", expressions.interpolate(build.env.getValue("VERSION"), context))
+            val artifact = job.artifacts.single()
+            assertEquals("docker", artifact.type)
+            assertEquals("bosca", artifact.namespace)
+            // Artifacts resolve at run creation, before a job's matrix is expanded.
+            assertEquals("$image:7.4.0", expressions.interpolate(
+                artifact.coordinate, ExpressionContext(ref = "refs/tags/v7.4.0", event = "tag"),
+            ))
+        }
+        val notify = definition.jobs.getValue("notify")
+        assertEquals(images.keys, notify.needs.toSet())
+        assertEquals("always()", notify.condition)
+        val expressions = PipelineExpressionParser()
+        val success = assertNotNull(notify.steps.first { it.name == "Notify Success" }.condition)
+        val failure = assertNotNull(notify.steps.first { it.name == "Notify Failure" }.condition)
+        val results = notify.needs.associate { "needs.$it.result" to "success" }
+        assertTrue(expressions.evaluateBoolean(success, ExpressionContext(extra = results)))
+        assertFalse(expressions.evaluateBoolean(failure, ExpressionContext(extra = results)))
+        for (dependency in notify.needs) {
+            val context = ExpressionContext(extra = results + ("needs.$dependency.result" to "failure"))
+            assertFalse(expressions.evaluateBoolean(success, context))
+            assertTrue(expressions.evaluateBoolean(failure, context))
+        }
+    }
+
+    @Test
+    fun `web release installs Chromium before browser tests and authenticates each npm publisher`() {
+        val jobs = parse("release-web.yaml").jobs
+        val web = jobs.getValue("publish-web")
+        val install = web.steps.indexOfFirst { it.name == "Install Test Browser" }
+        val test = web.steps.indexOfFirst { it.name == "Run Web Tests" }
+        assertTrue(install in 0 until test)
+        assertTrue(web.steps[install].run.orEmpty().contains("playwright install --with-deps chromium"))
+        assertEquals("7.4.0", PipelineExpressionParser().interpolate(
+            web.steps.first { it.name == "Extract Version" }.env.getValue("PUBLISH_VERSION"),
+            ExpressionContext(ref = "refs/tags/v7.4.0", event = "tag"),
+        ))
+        for (job in listOf(web, jobs.getValue("publish-bml-runtime"))) {
+            val publish = job.steps.last().run.orEmpty()
+            assertTrue(publish.contains("npm config set"))
+            assertTrue(publish.contains("BOSCA_REGISTRY_TOKEN"))
+            assertTrue(publish.contains("/npm/"))
         }
     }
 

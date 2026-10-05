@@ -1,10 +1,7 @@
 name: Bosca Image Release
-# Publishes one image to Bosca Artifacts' bosca namespace and GHCR.
+# Publishes one image to Bosca Artifacts' bosca namespace.
 # Images version independently, so each run publishes the image and version entered
 # when the run is started. The build steps live in scripts/release/build-image.sh.
-#
-# Secrets: GITHUB_USERNAME and GITHUB_TOKEN (a token that can write packages to the
-# bosca-io organization).
 on:
   manual:
     inputs: &image-release-inputs
@@ -45,7 +42,6 @@ jobs:
     # Native images are linux/amd64, so this runner must be Linux x86_64.
     runner: linux
     timeout: 120m
-    secrets: [GITHUB_USERNAME, GITHUB_TOKEN]
     artifacts:
       - type: docker
         namespace: bosca
@@ -79,20 +75,11 @@ jobs:
         uses: setup-pnpm
         with:
           version: "10"
-      - name: Log in to the GitHub Container Registry
-        run: printf '%s' "$GITHUB_TOKEN" | docker login ghcr.io --username "$GITHUB_USERNAME" --password-stdin
-        env:
-          GITHUB_USERNAME: ${{ secrets.GITHUB_USERNAME }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Build and push image
         run: scripts/release/build-image.sh "$IMAGE" "$VERSION"
         env:
           IMAGE: ${{ inputs.image }}
           VERSION: ${{ inputs.version }}
-          BOSCA_IMAGE_MIRROR_REGISTRY: ghcr.io/bosca-io/bosca
-      - name: Log out of the GitHub Container Registry
-        if: always()
-        run: docker logout ghcr.io
 
   notify:
     runner: linux
@@ -105,7 +92,7 @@ jobs:
         if: needs.publish-image.result == 'success'
         with:
           channel: slack
-          message: "Image bosca/${{ inputs.image }}:${{ inputs.version }} published to Bosca Artifacts and GHCR"
+          message: "Image bosca/${{ inputs.image }}:${{ inputs.version }} published to Bosca Artifacts"
       - name: Notify Failure
         uses: notify
         if: needs.publish-image.result == 'failure'

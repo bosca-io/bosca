@@ -234,19 +234,19 @@ Run from the workspace root:
 
 ## Container image
 
-The CLI Dockerfile packages a Linux `amd64` CI agent image. Published images
-are available from the GitHub Container Registry:
+The CLI Dockerfile packages a Linux `amd64` CI agent image. CI publishes it to
+Bosca Artifacts as `<registry>/bosca/bosca-cli:<version>`:
 
 ```bash
-docker run --rm ghcr.io/bosca-io/bosca/bosca-cli:<version> --version
-docker run --rm ghcr.io/bosca-io/bosca/bosca-cli:<version> ci agent start
+docker run --rm <registry>/bosca/bosca-cli:<version> --version
+docker run --rm <registry>/bosca/bosca-cli:<version> ci agent start
 ```
 
 `ci agent start` is the default command, so the second invocation can be
 shortened to:
 
 ```bash
-docker run --rm ghcr.io/bosca-io/bosca/bosca-cli:<version>
+docker run --rm <registry>/bosca/bosca-cli:<version>
 ```
 
 The image runs as the `bosca` user (UID/GID `10001`) and includes Zulu JDK 17
@@ -302,8 +302,10 @@ it:
   `.pkg` installer that works fully offline (installs to `/usr/local/bin`).
 
 The [CLI release pipeline](../.bosca/pipelines/release-cli.yaml) builds the Linux
-tarball and the signed, notarized macOS installer and publishes them to the GitHub
-release `cli-v<version>`.
+tarball and the signed, notarized macOS installer and publishes both packages and
+`SHA256SUMS` to Bosca Artifacts at
+`<registry>/raw/bosca/bosca-cli/<version>/<filename>`.
+CI publishes to Bosca Artifacts; external forwarding belongs to the artifacts server.
 One-time certificate, credential, and CI-agent setup is documented in
 [MACOS_SIGNING.md](MACOS_SIGNING.md).
 

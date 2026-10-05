@@ -9,10 +9,8 @@
 #
 # Environment:
 #   BOSCA_IMAGE_REGISTRY  Registry and namespace images are pushed to. Defaults to
-#                         <BOSCA_REGISTRY_URL host>/bosca when configured,
-#                         otherwise ghcr.io/bosca-io/bosca.
-#   BOSCA_IMAGE_MIRROR_REGISTRY  Optional additional registry and path to publish
-#                         the built image to (CI uses ghcr.io/bosca-io/bosca).
+#                         <BOSCA_REGISTRY_URL host>/bosca when configured.
+#                         Local builds without a registry use the bosca namespace.
 #   PUSH                  Set to "false" to build the image without pushing it.
 #   BOSCA_REGISTRY_URL,   Bosca Artifacts server and token. bml-message-server bundles
 #   BOSCA_REGISTRY_TOKEN  the latest bosca-messages project from it, and
@@ -58,7 +56,11 @@ if [[ -n "${BOSCA_REGISTRY_URL:-}" ]]; then
   fi
   REGISTRY="${BOSCA_IMAGE_REGISTRY:-$registry_host/bosca}"
 else
-  REGISTRY="${BOSCA_IMAGE_REGISTRY:-ghcr.io/bosca-io/bosca}"
+  if [[ "${PUSH:-true}" != false && -z "${BOSCA_IMAGE_REGISTRY:-}" ]]; then
+    echo "Set BOSCA_REGISTRY_URL or BOSCA_IMAGE_REGISTRY before publishing an image." >&2
+    exit 1
+  fi
+  REGISTRY="${BOSCA_IMAGE_REGISTRY:-bosca}"
 fi
 REGISTRY="${REGISTRY%/}"
 TAG="$REGISTRY/$IMAGE:$VERSION"
@@ -183,13 +185,5 @@ esac
 
 if [[ "${PUSH:-true}" != false ]]; then
   docker push "$TAG"
-  if [[ -n "${BOSCA_IMAGE_MIRROR_REGISTRY:-}" ]]; then
-    mirror_tag="${BOSCA_IMAGE_MIRROR_REGISTRY%/}/$IMAGE:$VERSION"
-    if [[ "$mirror_tag" != "$TAG" ]]; then
-      docker tag "$TAG" "$mirror_tag"
-      docker push "$mirror_tag"
-      echo "Published $mirror_tag"
-    fi
-  fi
 fi
 echo "Built $TAG"

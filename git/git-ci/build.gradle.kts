@@ -51,3 +51,9 @@ dependencies {
 ksp {
     arg("ProviderRegistrarPrefix", "GitCi")
 }
+
+tasks.test {
+    // WorkspacePipelinesTest parses the release definitions directly from the workspace.
+    inputs.files(rootProject.fileTree(".bosca/pipelines") { include("*.yaml") })
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+}

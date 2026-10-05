@@ -922,7 +922,7 @@ class StepExecutor(
             appendLine()
             appendLine("# npm registry auth")
             appendLine("cat > \"\$HOME/.npmrc\" << 'NPMRC'")
-            appendLine("//${registryHost(registry, false)}/:_authToken=${agentToken}")
+            appendLine("//${registryHost(registry, false)}/npm/:_authToken=${agentToken}")
             appendLine("NPMRC")
             appendLine("chmod 600 \"\$HOME/.npmrc\"")
             appendLine()

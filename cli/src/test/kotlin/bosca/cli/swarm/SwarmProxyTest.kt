@@ -8,6 +8,7 @@ import okhttp3.Request
 import okhttp3.RequestBody
 import okio.BufferedSink
 import org.junit.Assume.assumeTrue
+import org.rnorth.ducttape.unreliables.Unreliables
 import org.testcontainers.DockerClientFactory
 import org.testcontainers.Testcontainers
 import org.testcontainers.containers.GenericContainer
@@ -69,6 +70,11 @@ class SwarmProxyTest {
                 caddy.start()
                 val uri = URI("https://localhost:${caddy.getMappedPort(443)}/duplex")
                 try {
+                    // Caddy issues the test certificate asynchronously after opening its port.
+                    // Probe with the same explicit localhost SNI used by the streaming client.
+                    Unreliables.retryUntilSuccess(60, TimeUnit.SECONDS) {
+                        testTlsSocket(uri).use { it.startHandshake() }
+                    }
                     assertHttp1Duplex(uri)
                     assertHttp2Duplex(uri)
                 } catch (failure: Throwable) {
@@ -95,14 +101,18 @@ class SwarmProxyTest {
         init(null, arrayOf<TrustManager>(testTrust), null)
     }
 
-    private fun assertHttp1Duplex(uri: URI) {
-        (testSslContext().socketFactory.createSocket(uri.host, uri.port) as SSLSocket).use { socket ->
-            socket.soTimeout = 10_000
-            socket.sslParameters = socket.sslParameters.apply {
+    private fun testTlsSocket(uri: URI): SSLSocket =
+        (testSslContext().socketFactory.createSocket(uri.host, uri.port) as SSLSocket).apply {
+            soTimeout = 10_000
+            sslParameters = sslParameters.apply {
                 endpointIdentificationAlgorithm = "HTTPS"
                 applicationProtocols = arrayOf("http/1.1")
                 serverNames = listOf(SNIHostName(uri.host))
             }
+        }
+
+    private fun assertHttp1Duplex(uri: URI) {
+        testTlsSocket(uri).use { socket ->
             socket.startHandshake()
             val output = socket.outputStream
             val input = DataInputStream(socket.inputStream)
