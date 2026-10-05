@@ -7946,9 +7946,9 @@ type Git {
   """
   pipelineAgents(status: GitAgentStatus): [GitPipelineAgent!]!
   """
-  Manual input declarations keyed by name, read from the pipeline definition at the selected ref. Requires VIEW permission.
+  Manual input declarations read from the pipeline definition at the selected ref. Requires VIEW permission.
   """
-  pipelineInputs(pipelineId: UUID!, ref: String!): JSON!
+  pipelineInputs(pipelineId: UUID!, ref: String!): [GitPipelineInputDefinition!]!
   """
   Get log output for a pipeline step. With tail: true, returns the last `limit` lines (offset is ignored). With beforeLine, returns the last `limit` lines whose line number is below it (offset and tail are ignored) — use this to page backwards, since stored line numbers can have gaps.
   """
@@ -8533,7 +8533,7 @@ type GitMutation {
   """
   Manually trigger a pipeline run with its declared inputs. Requires EXECUTE permission.
   """
-  triggerPipeline(inputs: JSON, pipelineId: UUID!, ref: String!): GitPipelineRun!
+  triggerPipeline(inputs: [GitPipelineInputValueInput!], pipelineId: UUID!, ref: String!): GitPipelineRun!
   """Remove an assignee from a pull request."""
   unassignPullRequest(id: UUID!, profileId: UUID!): GitPullRequest!
   """Update a build agent's name and labels. Requires MANAGE permission."""
@@ -8649,6 +8649,35 @@ type GitPipelineArtifact {
   repositoryId: UUID!
   runNumber: Int!
   sizeBytes: Long!
+}
+
+"""A named input accepted by the pipeline's manual trigger."""
+type GitPipelineInputDefinition {
+  """Default text applied when the input is omitted."""
+  defaultValue: String
+  description: String
+  name: String!
+  options: [String!]!
+  required: Boolean!
+  type: GitPipelineInputType!
+}
+
+enum GitPipelineInputType {
+  BOOLEAN
+  CHOICE
+  NUMBER
+  STRING
+}
+
+"""
+A named input value, validated against the declaration at the run's commit.
+"""
+input GitPipelineInputValueInput {
+  name: String!
+  """
+  Text representation of the declared string, boolean, number, or choice value.
+  """
+  value: String!
 }
 
 """A job within a pipeline run."""

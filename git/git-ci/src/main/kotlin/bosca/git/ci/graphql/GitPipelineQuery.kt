@@ -4,11 +4,11 @@ import bosca.git.model.AgentStatus
 import bosca.git.model.ArtifactDefinition
 import bosca.git.model.Pipeline
 import bosca.git.model.PipelineAgent
+import bosca.git.model.PipelineInputDefinition
 import bosca.git.model.PipelineRun
 import bosca.git.model.PipelineRunStatus
 import bosca.git.model.PipelineSecret
 import bosca.git.model.PipelineTriggerType
-import bosca.git.model.TriggerInput
 import bosca.git.security.RepositoryPermissionEvaluator
 import bosca.git.service.PipelineAgentService
 import bosca.git.service.PipelineJobService
@@ -25,10 +25,6 @@ import bosca.security.model.PermissionAction
 import bosca.security.service.AuthenticationContext
 import bosca.security.service.ScopedAuthenticatedPrincipal
 import bosca.serialization.UUID
-import kotlinx.serialization.builtins.MapSerializer
-import kotlinx.serialization.builtins.serializer
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonElement
 
 @TypeController(type = "Git")
 class GitPipelineQuery(
@@ -40,7 +36,6 @@ class GitPipelineQuery(
     private val logService: PipelineLogService,
     private val repositoryService: RepositoryService,
     private val permissionEvaluator: RepositoryPermissionEvaluator,
-    private val json: Json,
 ) : GraphQLController<bosca.git.graphql.Git> {
 
     @Field
@@ -63,7 +58,7 @@ class GitPipelineQuery(
         authentication: AuthenticationContext?,
         pipelineId: UUID,
         ref: String,
-    ): JsonElement {
+    ): List<PipelineInputDefinition> {
         val pipeline = pipelineService.findById(pipelineId)
             ?: throw NoSuchElementException("Pipeline not found: $pipelineId")
         val repository = repositoryService.findById(pipeline.repositoryId)
@@ -73,7 +68,7 @@ class GitPipelineQuery(
             ?: throw IllegalStateException("Failed to parse pipeline: ${pipeline.filePath}")
         val trigger = definition.triggers.firstOrNull { it.type == PipelineTriggerType.MANUAL }
             ?: throw IllegalStateException("'${definition.name}' does not declare a manual trigger at $ref")
-        return json.encodeToJsonElement(MapSerializer(String.serializer(), TriggerInput.serializer()), trigger.inputs)
+        return trigger.inputs.map { (name, declaration) -> PipelineInputDefinition(name, declaration) }
     }
 
     @Field

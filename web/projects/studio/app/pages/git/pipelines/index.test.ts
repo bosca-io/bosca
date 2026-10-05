@@ -2,14 +2,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { print, type DocumentNode } from 'graphql'
 import PipelineListPage from './index.vue'
+import { GitPipelineInputType, type GitPipelineInputDefinition } from '~/types/graphql'
 
 const query = vi.fn()
 const push = vi.fn()
 let canExecute = true
-let inputs = {
-  image: { type: 'choice', options: ['bosca-server', 'bosca-runner'], description: 'Image to publish' },
-  version: { type: 'string', description: 'Version to publish' },
-} as Record<string, { type: string; options?: string[]; default?: string; description?: string }>
+let inputs: GitPipelineInputDefinition[] = []
+
+function declaration(name: string, type: GitPipelineInputType, fields: Partial<GitPipelineInputDefinition> = {}): GitPipelineInputDefinition {
+  return { name, type, options: [], defaultValue: null, description: null, required: fields.defaultValue == null, ...fields }
+}
 
 vi.mock('@bosca/auth-client-browser', () => ({ useAuth: () => ({ profile: ref(null) }) }))
 vi.stubGlobal('useRouter', () => ({ push }))
@@ -57,10 +59,10 @@ describe('manual pipeline runs', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     canExecute = true
-    inputs = {
-      image: { type: 'choice', options: ['bosca-server', 'bosca-runner'], description: 'Image to publish' },
-      version: { type: 'string', description: 'Version to publish' },
-    }
+    inputs = [
+      declaration('image', GitPipelineInputType.Choice, { options: ['bosca-server', 'bosca-runner'], description: 'Image to publish' }),
+      declaration('version', GitPipelineInputType.String, { description: 'Version to publish' }),
+    ]
     query.mockImplementation(async (document: DocumentNode) => {
       const operation = print(document)
       if (operation.includes('ReposForPipelines')) {
@@ -89,28 +91,31 @@ describe('manual pipeline runs', () => {
     await run.trigger('click')
     await flushPromises()
     expect(runCalls()[0]?.[1]).toEqual({
-      pipelineId: 'image-release', ref: 'refs/tags/7.4.0', inputs: { image: 'bosca-server', version: '7.4.1' },
+      pipelineId: 'image-release', ref: 'refs/tags/7.4.0', inputs: [{ name: 'image', value: 'bosca-server' }, { name: 'version', value: '7.4.1' }],
     })
     expect(push).toHaveBeenCalledWith('/git/pipelines/run-1')
     wrapper.unmount()
   })
 
   it('applies declared defaults and keeps pipelines without inputs runnable', async () => {
-    inputs = { enabled: { type: 'boolean', default: 'false' }, count: { type: 'number', default: '2' } }
+    inputs = [
+      declaration('enabled', GitPipelineInputType.Boolean, { defaultValue: 'false' }),
+      declaration('count', GitPipelineInputType.Number, { defaultValue: '2' }),
+    ]
     const wrapper = await openRun()
     expect((wrapper.get('select[data-label="enabled"]').element as HTMLSelectElement).value).toBe('false')
     expect((wrapper.get('input[data-label="count"]').element as HTMLInputElement).value).toBe('2')
     await wrapper.get('.run-modal footer button:last-child').trigger('click')
     await flushPromises()
-    expect(runCalls()[0]?.[1].inputs).toEqual({ enabled: 'false', count: '2' })
+    expect(runCalls()[0]?.[1].inputs).toEqual([{ name: 'enabled', value: 'false' }, { name: 'count', value: '2' }])
     wrapper.unmount()
 
-    inputs = {}
+    inputs = []
     const plain = await openRun()
     expect(plain.get('.run-modal footer button:last-child').attributes('disabled')).toBeUndefined()
     await plain.get('.run-modal footer button:last-child').trigger('click')
     await flushPromises()
-    expect(runCalls()[1]?.[1].inputs).toEqual({})
+    expect(runCalls()[1]?.[1].inputs).toEqual([])
     plain.unmount()
   })
 
@@ -152,7 +157,7 @@ describe('manual pipeline runs', () => {
     expect(wrapper.get('.run-modal footer button:last-child').attributes('disabled')).toBeDefined()
     await wrapper.get('select[data-label="Ref"]').setValue('refs/heads/main')
     await flushPromises()
-    resolveOld?.({ git: { pipelineInputs: { oldInput: { type: 'string' } } } })
+    resolveOld?.({ git: { pipelineInputs: [declaration('oldInput', GitPipelineInputType.String)] } })
     await flushPromises()
     expect(wrapper.find('input[data-label="oldInput"]').exists()).toBe(false)
     await wrapper.get('select[data-label="image"]').setValue('bosca-runner')
@@ -160,7 +165,7 @@ describe('manual pipeline runs', () => {
     await wrapper.get('.run-modal footer button:last-child').trigger('click')
     await flushPromises()
     expect(runCalls()[0]?.[1]).toEqual({
-      pipelineId: 'image-release', ref: 'refs/heads/main', inputs: { image: 'bosca-runner', version: '7.4.2' },
+      pipelineId: 'image-release', ref: 'refs/heads/main', inputs: [{ name: 'image', value: 'bosca-runner' }, { name: 'version', value: '7.4.2' }],
     })
     wrapper.unmount()
   })

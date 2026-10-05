@@ -10,17 +10,13 @@ import bosca.git.model.CommitStatusState
 import bosca.git.model.OrchestratorConfig
 import bosca.git.model.PipelineAgent
 import bosca.git.model.PipelineJob
+import bosca.git.model.PipelineInputValue
 import bosca.git.model.PipelineRun
 import bosca.git.model.PipelineRunStatus
 import bosca.git.model.PipelineScheduleJob
 import bosca.git.model.PipelineSecret
 import bosca.git.model.PipelineTriggerType
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.JsonNull
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.contentOrNull
 import bosca.git.security.RepositoryPermissionEvaluator
 import bosca.git.service.CommitStatusService
 import bosca.git.service.PipelineAgentService
@@ -79,12 +75,13 @@ class GitPipelineMutation(
         )
     }
 
+    /** Starts a manual run with named input values validated against its pinned definition. */
     @Field
     suspend fun triggerPipeline(
         authentication: AuthenticationContext,
         pipelineId: UUID,
         ref: String,
-        inputs: JsonElement? = null,
+        inputs: List<PipelineInputValue>? = null,
     ): PipelineRun {
         val pipeline = pipelineService.findById(pipelineId)
             ?: throw NoSuchElementException("Pipeline not found: $pipelineId")
@@ -104,15 +101,12 @@ class GitPipelineMutation(
 
         val principalId = authentication.principal()?.id
             ?: throw SecurityException("Authentication required")
-        val parameters = when (inputs) {
-            null, JsonNull -> emptyMap()
-            is JsonObject -> inputs.entries.associate { (name, value) ->
-                val content = (value as? JsonPrimitive)?.contentOrNull
-                    ?: throw IllegalArgumentException("Input '$name' must be a string, boolean, or number")
-                "inputs.$name" to content
-            }
-            else -> throw IllegalArgumentException("Pipeline inputs must be an object")
+        val submitted = inputs.orEmpty()
+        require(submitted.all { it.name.isNotBlank() }) { "Pipeline input names must not be blank" }
+        require(submitted.map { it.name }.distinct().size == submitted.size) {
+            "Pipeline input names must be unique"
         }
+        val parameters = submitted.associate { "inputs.${it.name}" to it.value }
         return runService.createRun(
             pipelineId = pipelineId,
             repositoryId = pipeline.repositoryId,

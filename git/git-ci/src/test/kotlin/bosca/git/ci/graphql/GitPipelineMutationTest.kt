@@ -17,6 +17,7 @@ import bosca.git.model.PipelineSecret
 import bosca.git.model.PipelineStep
 import bosca.git.model.PipelineTrigger
 import bosca.git.ci.toJsonElement
+import bosca.git.model.PipelineInputValue
 import bosca.git.model.PipelineTriggerType
 import bosca.git.model.Repository
 import bosca.git.model.StepDefinition
@@ -437,7 +438,10 @@ class GitPipelineMutationTest {
         coEvery { browseService.resolveRef(repoId, "main") } returns "sha"
         coEvery { pipelineService.parseDefinition(repoId, "sha", pipeline.filePath) } returns definition
         coEvery { runService.createRun(any(), any(), any(), any(), any(), any(), any(), any()) } returns testRun()
-        val inputs = Json.parseToJsonElement("""{"image":"bosca-server","version":"7.4.0","enabled":false,"count":2}""")
+        val inputs = listOf(
+            PipelineInputValue("image", "bosca-server"), PipelineInputValue("version", "7.4.0"),
+            PipelineInputValue("enabled", "false"), PipelineInputValue("count", "2"),
+        )
         mutation.triggerPipeline(authentication, pipelineId, "main", inputs)
         coVerify {
             runService.createRun(pipelineId, repoId, definition, "sha", "main", PipelineTriggerType.MANUAL, any(),
@@ -446,13 +450,16 @@ class GitPipelineMutationTest {
     }
 
     @Test
-    fun `triggerPipeline rejects malformed input payloads before dispatch`() = runTest {
+    fun `triggerPipeline rejects blank and duplicate input names before dispatch`() = runTest {
         coEvery { pipelineService.findById(pipelineId) } returns testPipeline()
         coEvery { browseService.resolveRef(repoId, "main") } returns "sha"
         coEvery { pipelineService.parseDefinition(any(), any(), any()) } returns testDefinition()
-        for (payload in listOf("[]", "true", "{\"image\":{}}", "{\"image\":null}")) {
+        for (inputs in listOf(
+            listOf(PipelineInputValue(" ", "bosca-server")),
+            listOf(PipelineInputValue("image", "bosca-server"), PipelineInputValue("image", "bosca-runner")),
+        )) {
             assertFailsWith<IllegalArgumentException> {
-                mutation.triggerPipeline(authentication, pipelineId, "main", Json.parseToJsonElement(payload))
+                mutation.triggerPipeline(authentication, pipelineId, "main", inputs)
             }
         }
         coVerify(exactly = 0) { runService.createRun(any(), any(), any(), any(), any(), any(), any(), any()) }

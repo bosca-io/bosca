@@ -36,7 +36,9 @@ import io.opentelemetry.api.GlobalOpenTelemetry
 import io.opentelemetry.api.trace.Tracer
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import java.io.File
 import kotlin.test.AfterTest
 import kotlin.test.Test
@@ -81,7 +83,7 @@ class GitManualPipelineGraphQLIntegrationTest {
         val authentication = mockk<AuthenticationContext>()
         every { authentication.principal() } returns mockk { every { id } returns principalId }
         val query = GitPipelineQuery(pipelines, runs, jobs, mockk(relaxed = true), mockk(relaxed = true),
-            mockk(relaxed = true), repositories, permissionEvaluator, Json)
+            mockk(relaxed = true), repositories, permissionEvaluator)
         val mutation = GitPipelineMutation(pipelines, runs, jobs, mockk(relaxed = true), mockk(relaxed = true),
             mockk(relaxed = true), mockk(relaxed = true), repositories, browse, mockk(relaxed = true),
             permissionEvaluator, mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true))
@@ -89,48 +91,71 @@ class GitManualPipelineGraphQLIntegrationTest {
         val mutationField = GitPipelineMutationDispatcher(mutation).type.fieldResolvers.getValue("triggerPipeline")
         val runIdField = GitPipelineRunControllerDispatcher(GitPipelineRunController(jobs, mockk(relaxed = true)))
             .type.fieldResolvers.getValue("id")
-        val sdl = File("../git/src/main/resources/graphql/git.graphqls").readLines()
-        val inputFieldSdl = sdl.first { it.trimStart().startsWith("pipelineInputs(") }
-        val triggerFieldSdl = sdl.first { it.trimStart().startsWith("triggerPipeline(") }
+        val inputFields = GitPipelineInputControllerDispatcher(GitPipelineInputController()).type.fieldResolvers
+        val sdl = File("../git/src/main/resources/graphql/git.graphqls").readText()
+        val inputFieldSdl = sdl.lineSequence().first { it.trimStart().startsWith("pipelineInputs(") }
+        val triggerFieldSdl = sdl.lineSequence().first { it.trimStart().startsWith("triggerPipeline(") }
+        val inputTypesSdl = listOf("GitPipelineInputType", "GitPipelineInputDefinition", "GitPipelineInputValueInput")
+            .joinToString("\n") { name ->
+                Regex("(?:type|input|enum) $name \\{[^}]*}").find(sdl)?.value ?: error("Missing $name in SDL")
+            }
         val executable = ExecutableSchema.fromSdl(
             """
                 scalar UUID
-                scalar JSON
                 type Query { git: Git! }
                 type Mutation { git: GitMutation! }
                 type Git { $inputFieldSdl }
                 type GitMutation { $triggerFieldSdl }
                 type GitPipelineRun { id: UUID! }
+                $inputTypesSdl
             """.trimIndent(),
             runtimeWiring {
                 scalar("UUID", ExtendedScalars.Uuid)
-                scalar("JSON", ExtendedScalars.Json)
                 type("Query") { field("git") { bosca.git.graphql.Git } }
                 type("Mutation") { field("git") { GitMutation } }
                 type("Git") { field("pipelineInputs", queryField) }
                 type("GitMutation") { field("triggerPipeline", mutationField) }
                 type("GitPipelineRun") { field("id", runIdField) }
+                type("GitPipelineInputDefinition") { inputFields.forEach { (name, resolver) -> field(name, resolver) } }
             },
         )
         val graphql = GraphQL(executable)
         val context = GraphQLContext(mapOf("authenticationContext" to authentication))
         val variables = mapOf("pipelineId" to pipelineId.toString(), "ref" to "refs/heads/main")
         val declarations = graphql.execute(GraphQLRequest(
-            query = "query(\$pipelineId: UUID!, \$ref: String!) { git { pipelineInputs(pipelineId: \$pipelineId, ref: \$ref) } }",
+            query = "query(\$pipelineId: UUID!, \$ref: String!) { git { pipelineInputs(pipelineId: \$pipelineId, ref: \$ref) { name type defaultValue description options required } } }",
             variables = variables, context = context,
         ))
         assertTrue(declarations.errors.isEmpty(), declarations.errors.toString())
-        assertEquals(setOf("image", "version"), declarations.data?.jsonObject?.getValue("git")?.jsonObject?.getValue("pipelineInputs")?.jsonObject?.keys)
+        val inputs = declarations.data?.jsonObject?.getValue("git")?.jsonObject?.getValue("pipelineInputs")?.jsonArray
+        assertEquals(listOf("image", "version"), inputs?.map { it.jsonObject.getValue("name").jsonPrimitive.content })
+        assertEquals(listOf("CHOICE", "STRING"), inputs?.map { it.jsonObject.getValue("type").jsonPrimitive.content })
+        assertTrue(inputs.orEmpty().all { it.jsonObject.getValue("required").jsonPrimitive.content == "true" })
+        assertTrue(inputs?.first()?.jsonObject?.getValue("options")?.jsonArray.orEmpty()
+            .any { it.jsonPrimitive.content == "bosca-server" })
 
-        val request = "mutation(\$pipelineId: UUID!, \$ref: String!, \$inputs: JSON) { git { triggerPipeline(pipelineId: \$pipelineId, ref: \$ref, inputs: \$inputs) { id } } }"
-        for (inputs in listOf(mapOf("version" to "7.4.0"), mapOf("image" to "unknown", "version" to "7.4.0"))) {
-            val rejected = graphql.execute(GraphQLRequest(request, variables = variables + ("inputs" to inputs), context = context))
+        val request = "mutation(\$pipelineId: UUID!, \$ref: String!, \$inputs: [GitPipelineInputValueInput!]) { git { triggerPipeline(pipelineId: \$pipelineId, ref: \$ref, inputs: \$inputs) { id } } }"
+        val version = mapOf("name" to "version", "value" to "7.4.0")
+        val image = mapOf("name" to "image", "value" to "bosca-server")
+        for (submitted in listOf(
+            listOf(version),
+            listOf(mapOf("name" to "image", "value" to "unknown"), version),
+            listOf(image, image, version),
+            listOf(image, version, mapOf("name" to "undeclared", "value" to "value")),
+            listOf(mapOf("name" to "image"), version),
+            listOf(mapOf("name" to "image", "value" to null), version),
+            listOf(mapOf("name" to "image", "value" to mapOf("nested" to "value")), version),
+            listOf(image + ("unexpected" to "field"), version),
+            listOf(null, version),
+            mapOf("image" to "bosca-server", "version" to "7.4.0"),
+        )) {
+            val rejected = graphql.execute(GraphQLRequest(request, variables = variables + ("inputs" to submitted), context = context))
             assertTrue(rejected.errors.isNotEmpty())
         }
         coVerify(exactly = 0) { runRepository.create(any()) }
 
         val result = graphql.execute(GraphQLRequest(request,
-            variables = variables + ("inputs" to mapOf("image" to "bosca-server", "version" to "7.4.0")), context = context))
+            variables = variables + ("inputs" to listOf(image, version)), context = context))
         assertTrue(result.errors.isEmpty(), result.errors.toString())
         coVerify {
             runRepository.create(match { it.commitSha == "commit-sha" && it.triggeredBy == principalId })

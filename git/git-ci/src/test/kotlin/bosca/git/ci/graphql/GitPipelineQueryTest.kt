@@ -6,6 +6,8 @@ import bosca.git.model.AgentStatus
 import bosca.git.model.Pipeline
 import bosca.git.model.PipelineAgent
 import bosca.git.model.PipelineJob
+import bosca.git.model.PipelineInputDefinition
+import bosca.git.model.PipelineInputType
 import bosca.git.model.PipelineRun
 import bosca.git.model.PipelineRunStatus
 import bosca.git.model.PipelineSecret
@@ -35,9 +37,6 @@ import io.mockk.every
 import io.mockk.mockk
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.test.runTest
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -69,7 +68,7 @@ class GitPipelineQueryTest {
         coEvery { repositoryService.findById(repoId) } returns testRepo()
         query = GitPipelineQuery(
             pipelineService, runService, jobService, agentService,
-            secretService, logService, repositoryService, permissionEvaluator, Json,
+            secretService, logService, repositoryService, permissionEvaluator,
         )
     }
 
@@ -108,9 +107,14 @@ class GitPipelineQueryTest {
             ),
             jobs = emptyMap(),
         )
-        val result = query.pipelineInputs(authentication, pipeline.id, "refs/tags/7.4.0").jsonObject
-        assertEquals(setOf("image"), result.keys)
-        assertEquals("choice", result.getValue("image").jsonObject.getValue("type").jsonPrimitive.content)
+        val result = query.pipelineInputs(authentication, pipeline.id, "refs/tags/7.4.0")
+        assertEquals(listOf(PipelineInputDefinition("image", TriggerInput(type = "choice", options = listOf("bosca-server")))), result)
+        val controller = GitPipelineInputController()
+        assertEquals("image", controller.name(result.single()))
+        assertEquals(PipelineInputType.CHOICE, controller.type(result.single()))
+        assertEquals(listOf("bosca-server"), controller.options(result.single()))
+        assertNull(controller.defaultValue(result.single()))
+        assertTrue(controller.required(result.single()))
         coVerify { permissionEvaluator.verifyAllowed(authentication, any<Repository>(), PermissionAction.VIEW) }
 
         coEvery { permissionEvaluator.verifyAllowed(authentication, any<Repository>(), PermissionAction.VIEW) } throws SecurityException("Forbidden")

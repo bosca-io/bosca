@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import gql from 'graphql-tag'
 import { useAuth } from '@bosca/auth-client-browser'
+import { GitPipelineInputType, type GitPipelineInputDefinition, type GitPipelineInputValueInput } from '~/types/graphql'
 
 const { accent } = useCurrentSubsystem()
 const { query } = useGraphQL()
@@ -55,12 +56,6 @@ interface Pipeline {
 interface RepoWithPipelines {
   id: string; name: string; canExecute: boolean
   pipelines: Pipeline[]
-}
-interface PipelineInput {
-  type: 'string' | 'boolean' | 'number' | 'choice'
-  default?: string | null
-  description?: string | null
-  options?: string[]
 }
 
 const repos = ref<RepoWithPipelines[]>([])
@@ -180,12 +175,12 @@ const refOptions = ref<{ value: string; label: string }[]>([])
 const refsLoading = ref(false)
 const runError = ref('')
 const runStarting = ref(false)
-const runInputs = ref<Record<string, PipelineInput>>({})
+const runInputs = ref<GitPipelineInputDefinition[]>([])
 const inputValues = ref<Record<string, string>>({})
 const inputsLoading = ref(false)
 const inputsError = ref('')
-const missingInputs = computed(() => Object.entries(runInputs.value)
-  .some(([name, input]) => input.default == null && !(inputValues.value[name] ?? '').trim()))
+const missingInputs = computed(() => runInputs.value
+  .some(input => input.required && !(inputValues.value[input.name] ?? '').trim()))
 const canStartRun = computed(() => !!runRef.value && !runStarting.value && !refsLoading.value
   && !inputsLoading.value && !inputsError.value && !missingInputs.value
   && repos.value.some(repo => repo.id === runTarget.value?.repoId && repo.canExecute))
@@ -193,21 +188,25 @@ const canStartRun = computed(() => !!runRef.value && !runStarting.value && !refs
 let inputsToken = 0
 watch(() => [runTarget.value?.pipeline.id, runRef.value] as const, async ([pipelineId, selectedRef]) => {
   const token = ++inputsToken
-  runInputs.value = {}
+  runInputs.value = []
   inputValues.value = {}
   inputsError.value = ''
   inputsLoading.value = !!pipelineId && !!selectedRef
   if (!pipelineId || !selectedRef) return
   try {
-    const result = await query<{ git: { pipelineInputs: Record<string, PipelineInput> } }>(gql`
+    const result = await query<{ git: { pipelineInputs: GitPipelineInputDefinition[] } }>(gql`
       query PipelineRunInputs($pipelineId: UUID!, $ref: String!) {
-        git { pipelineInputs(pipelineId: $pipelineId, ref: $ref) }
+        git {
+          pipelineInputs(pipelineId: $pipelineId, ref: $ref) {
+            name type defaultValue description options required
+          }
+        }
       }
     `, { pipelineId, ref: selectedRef })
     if (token !== inputsToken) return
     runInputs.value = result.git.pipelineInputs
-    Object.entries(runInputs.value).forEach(([name, input]) => {
-      inputValues.value[name] = input.default ?? ''
+    runInputs.value.forEach(input => {
+      inputValues.value[input.name] = input.defaultValue ?? ''
     })
   } catch (e) {
     if (token !== inputsToken) return
@@ -216,8 +215,8 @@ watch(() => [runTarget.value?.pipeline.id, runRef.value] as const, async ([pipel
   if (token === inputsToken) inputsLoading.value = false
 }, { flush: 'sync' })
 
-function inputOptions(input: PipelineInput) {
-  const options = input.type === 'boolean' ? ['true', 'false'] : input.options ?? []
+function inputOptions(input: GitPipelineInputDefinition) {
+  const options = input.type === GitPipelineInputType.Boolean ? ['true', 'false'] : input.options
   return options.map(value => ({ value, label: value }))
 }
 
@@ -257,14 +256,17 @@ async function startRun() {
   runStarting.value = true
   runError.value = ''
   try {
+    const inputs: GitPipelineInputValueInput[] = Object.entries(inputValues.value)
+      .filter(([, value]) => value !== '')
+      .map(([name, value]) => ({ name, value }))
     const result = await query<{ git: { triggerPipeline: { id: string } } }>(gql`
-      mutation TriggerPipeline($pipelineId: UUID!, $ref: String!, $inputs: JSON) {
+      mutation TriggerPipeline($pipelineId: UUID!, $ref: String!, $inputs: [GitPipelineInputValueInput!]) {
         git { triggerPipeline(pipelineId: $pipelineId, ref: $ref, inputs: $inputs) { id } }
       }
     `, {
       pipelineId: target.pipeline.id,
       ref: runRef.value,
-      inputs: Object.fromEntries(Object.entries(inputValues.value).filter(([, value]) => value !== '')),
+      inputs,
     })
     const runId = result.git?.triggerPipeline?.id
     runTarget.value = null
@@ -379,20 +381,20 @@ async function startRun() {
           The pipeline definition is read from the selected ref and the run executes at that ref.
         </p>
         <p v-if="inputsLoading" class="run-hint">Loading pipeline inputs…</p>
-        <template v-for="(input, name) in runInputs" :key="name">
+        <template v-for="input in runInputs" :key="input.name">
           <Select
-            v-if="input.type === 'choice' || input.type === 'boolean'"
-            v-model="inputValues[name]"
+            v-if="input.type === GitPipelineInputType.Choice || input.type === GitPipelineInputType.Boolean"
+            v-model="inputValues[input.name]"
             :options="inputOptions(input)"
-            :label="name"
-            :placeholder="`Select ${name}…`"
+            :label="input.name"
+            :placeholder="`Select ${input.name}…`"
             :accent="accent"
           />
           <Input
             v-else
-            v-model="inputValues[name]"
-            :type="input.type === 'number' ? 'number' : 'text'"
-            :label="name"
+            v-model="inputValues[input.name]"
+            :type="input.type === GitPipelineInputType.Number ? 'number' : 'text'"
+            :label="input.name"
             :accent="accent"
           />
           <p v-if="input.description" class="run-hint">{{ input.description }}</p>

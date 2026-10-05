@@ -10628,8 +10628,8 @@ export type Git = {
   permissions: Array<Permission>;
   /** List registered build agents. System admins see all agents; agent credentials see only themselves and their direct children. */
   pipelineAgents: Array<GitPipelineAgent>;
-  /** Manual input declarations keyed by name, read from the pipeline definition at the selected ref. Requires VIEW permission. */
-  pipelineInputs: Scalars['JSON']['output'];
+  /** Manual input declarations read from the pipeline definition at the selected ref. Requires VIEW permission. */
+  pipelineInputs: Array<GitPipelineInputDefinition>;
   /** Get log output for a pipeline step. With tail: true, returns the last `limit` lines (offset is ignored). With beforeLine, returns the last `limit` lines whose line number is below it (offset and tail are ignored) — use this to page backwards, since stored line numbers can have gaps. */
   pipelineLogs: Array<GitPipelineLogLine>;
   /** Get a specific pipeline run. */
@@ -12008,7 +12008,7 @@ export type GitMutation_TransferRepositoryArgs = {
 
 /** Mutations for the git repository system. */
 export type GitMutation_TriggerPipelineArgs = {
-  inputs?: InputMaybe<Scalars['JSON']['input']>;
+  inputs?: InputMaybe<Array<GitPipelineInputValueInput>>;
   pipelineId: Scalars['UUID']['input'];
   ref: Scalars['String']['input'];
 };
@@ -12174,6 +12174,32 @@ export type GitPipelineArtifact = {
   repositoryId: Scalars['UUID']['output'];
   runNumber: Scalars['Int']['output'];
   sizeBytes: Scalars['Long']['output'];
+};
+
+/** A named input accepted by the pipeline's manual trigger. */
+export type GitPipelineInputDefinition = {
+  __typename?: 'GitPipelineInputDefinition';
+  /** Default text applied when the input is omitted. */
+  defaultValue?: Maybe<Scalars['String']['output']>;
+  description?: Maybe<Scalars['String']['output']>;
+  name: Scalars['String']['output'];
+  options: Array<Scalars['String']['output']>;
+  required: Scalars['Boolean']['output'];
+  type: GitPipelineInputType;
+};
+
+export enum GitPipelineInputType {
+  Boolean = 'BOOLEAN',
+  Choice = 'CHOICE',
+  Number = 'NUMBER',
+  String = 'STRING'
+}
+
+/** A named input value, validated against the declaration at the run's commit. */
+export type GitPipelineInputValueInput = {
+  name: Scalars['String']['input'];
+  /** Text representation of the declared string, boolean, number, or choice value. */
+  value: Scalars['String']['input'];
 };
 
 /** A job within a pipeline run. */

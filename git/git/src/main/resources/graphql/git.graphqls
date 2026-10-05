@@ -1073,8 +1073,8 @@ type GitCreateTagResult {
 extend type Git {
     "List pipelines for a repository."
     pipelines(repositoryId: UUID!): [GitPipeline!]!
-    "Manual input declarations keyed by name, read from the pipeline definition at the selected ref. Requires VIEW permission."
-    pipelineInputs(pipelineId: UUID!, ref: String!): JSON!
+    "Manual input declarations read from the pipeline definition at the selected ref. Requires VIEW permission."
+    pipelineInputs(pipelineId: UUID!, ref: String!): [GitPipelineInputDefinition!]!
     "Every pipeline across all repositories — the author-time picker for release relays."
     allPipelines: [GitPipeline!]!
     "The artifacts a pipeline's definition declares it produces (parsed at the repo's default branch), for the Use Artifact picker. Coordinates are the raw `${{ }}` templates."
@@ -1105,11 +1105,36 @@ type GitArtifactDefinition {
     coordinate: String!
 }
 
+enum GitPipelineInputType {
+    STRING
+    BOOLEAN
+    NUMBER
+    CHOICE
+}
+
+"A named input accepted by the pipeline's manual trigger."
+type GitPipelineInputDefinition {
+    name: String!
+    type: GitPipelineInputType!
+    "Default text applied when the input is omitted."
+    defaultValue: String
+    description: String
+    options: [String!]!
+    required: Boolean!
+}
+
+"A named input value, validated against the declaration at the run's commit."
+input GitPipelineInputValueInput {
+    name: String!
+    "Text representation of the declared string, boolean, number, or choice value."
+    value: String!
+}
+
 # ─── CI/CD Pipeline Mutations ────────────────────────────────────────
 
 extend type GitMutation {
     "Manually trigger a pipeline run with its declared inputs. Requires EXECUTE permission."
-    triggerPipeline(pipelineId: UUID!, ref: String!, inputs: JSON): GitPipelineRun!
+    triggerPipeline(pipelineId: UUID!, ref: String!, inputs: [GitPipelineInputValueInput!]): GitPipelineRun!
     "Assigns a principal to a schedule. Self/admin assignments activate immediately; another person's assignment waits for confirmation. Requires MANAGE permission."
     assignPipelineSchedule(scheduleId: UUID!, principalId: UUID!): ScheduledJob!
     "Confirms a pending schedule assignment. The assigned principal or an administrator may confirm."
