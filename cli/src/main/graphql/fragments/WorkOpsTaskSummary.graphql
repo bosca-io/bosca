@@ -1,0 +1,23 @@
+fragment WorkOpsTaskSummaryFragment on WorkOpsTask {
+    id
+    key
+    summary
+    assigneeProfileId
+    dueDate
+    createdAt
+    modifiedAt
+    version
+    taskType {
+        id
+        name
+    }
+    status {
+        id
+        name
+        category
+    }
+    priority {
+        id
+        name
+    }
+}

@@ -1,0 +1,7 @@
+mutation SetMetadataTextContents($id: UUID!, $contentType: String, $content: String!) {
+    content {
+        metadata {
+            setMetadataTextContents(id: $id, contentType: $contentType, content: $content)
+        }
+    }
+}

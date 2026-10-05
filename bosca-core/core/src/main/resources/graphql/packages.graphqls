@@ -1,0 +1,65 @@
+"A package available for installation, containing versioned installers for setting up default content, models, and configurations"
+type PackageInstallation {
+    "Unique key identifying this package (e.g. 'com.bosca.default')"
+    key: String!
+    "Human-readable name of the package"
+    name: String!
+    "Available versions of this package"
+    versions: [PackageInstallationVersion!]!
+}
+
+"A specific version of a package, listing its installers and which ones have already been installed"
+type PackageInstallationVersion {
+    "Semantic version string (e.g. '1.0.0')"
+    version: String!
+    "All installers available in this version"
+    installers: [InstalledPackage!]!
+    "Installers from this version that have already been run"
+    installed: [InstalledPackage!]!
+}
+
+"An individual installer within a package version"
+type InstalledPackage {
+    "Version of the installer"
+    version: String!
+    "Name of the installer (e.g. 'default-models', 'default-prompts')"
+    name: String!
+}
+
+"Record of a past package installation event"
+type PackageInstallationHistory {
+    "Unique ID of this installation record"
+    id: UUID!
+    "Package key that was installed"
+    key: String!
+    "Version that was installed"
+    version: String!
+    "Timestamp when the installation occurred"
+    created: DateTime!
+}
+
+"Query operations for browsing and inspecting available packages"
+type Packages {
+    "List all available packages with their versions and installation status"
+    all: [PackageInstallation!]!
+    "History of all package installations"
+    history: [PackageInstallationHistory!]!
+}
+
+"Mutation operations for installing packages and their individual installers"
+type PackagesMutation {
+    "Install all installers for a specific package version"
+    install(key: String!, version: String!): Boolean!
+    "Install a single named installer from a package version"
+    installInstaller(key: String!, version: String!, installerName: String!, installerVersion: String!): Boolean!
+}
+
+extend type Query {
+    "Access package management queries"
+    packages: Packages!
+}
+
+extend type Mutation {
+    "Access package management mutations"
+    packages: PackagesMutation!
+}

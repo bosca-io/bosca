@@ -1,0 +1,29 @@
+suite: bml-message-server deployment
+templates:
+  - templates/deployment.yaml
+values:
+  - ../values.yaml
+set:
+  global:
+    domain: example.com
+  appConfig:
+    publicUrl: https://messages.example.com
+release:
+  name: test
+  namespace: bosca
+tests:
+  - it: always configures the graphql endpoint without localization
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: BML_GRAPHQL_ENDPOINT
+            value: http://bosca-bosca-server:8080/graphql
+
+  - it: rejects an empty graphql endpoint
+    set:
+      appConfig:
+        graphqlEndpoint: ""
+    asserts:
+      - failedTemplate:
+          errorMessage: appConfig.graphqlEndpoint is required (all message renders use the Bosca GraphQL API)

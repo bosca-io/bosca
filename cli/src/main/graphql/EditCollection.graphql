@@ -1,0 +1,9 @@
+mutation EditCollection($id: UUID!, $input: CollectionInput!) {
+    content {
+        collection {
+            edit(id: $id, collection: $input) {
+                id
+            }
+        }
+    }
+}

@@ -1,0 +1,10 @@
+{
+  "name": "@bosca/bml-workspace",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Bosca Markup Language — pnpm workspace root (registers the @bosca/bml runtime).",
+  "scripts": {
+    "test": "pnpm --filter @bosca/bml test",
+    "build": "pnpm --filter @bosca/bml build"
+  }
+}

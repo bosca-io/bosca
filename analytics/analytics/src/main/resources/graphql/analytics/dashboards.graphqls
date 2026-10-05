@@ -1,0 +1,111 @@
+"A placed instance of a visualization within a dashboard, with optional per-instance configuration overrides"
+type AnalyticsVisualizationInstance {
+    "Unique identifier for this visualization instance within the dashboard"
+    id: UUID!
+    "The visualization definition that this instance renders"
+    visualization: AnalyticsVisualization!
+    "Optional JSON configuration overriding or extending the visualization's default configuration for this dashboard placement"
+    configuration: JSON
+}
+
+"A parameter definition for an analytics dashboard, controlling user-facing filter inputs"
+type AnalyticsDashboardParameter {
+    "Unique parameter identifier used to bind this parameter to visualization queries"
+    parameter: String!
+    "Human-readable display name for this dashboard parameter"
+    name: String!
+    "Human-readable description of what this parameter controls"
+    description: String!
+    "The data type of this parameter's value"
+    type: QueryParameterType!
+    "When type is ARRAY, specifies the data type of elements within the array"
+    arrayType: QueryParameterType
+    "Default value used when the user does not provide an explicit value"
+    defaultValue: JSON
+    "Whether the user must supply this parameter before the dashboard can render"
+    required: Boolean
+}
+
+"A dashboard that groups multiple analytics visualizations together with shared parameters and access control"
+type AnalyticsDashboard {
+    "Unique identifier for this dashboard"
+    id: UUID!
+    "Unique string key used to reference this dashboard programmatically"
+    key: String!
+    "Human-readable display name for this dashboard"
+    name: String!
+    "Human-readable description of what this dashboard shows"
+    description: String!
+    "Optional JSON configuration for dashboard-level layout, theming, or behavior settings"
+    configuration: JSON
+    "User-facing parameters that act as shared filters across the dashboard's visualizations"
+    parameters: [AnalyticsDashboardParameter!]
+    "Access control permissions assigned to this dashboard"
+    permissions: [Permission!]!
+    "Ordered list of visualization instances displayed on this dashboard"
+    visualizations: [AnalyticsVisualizationInstance!]!
+}
+
+"Input for placing a visualization instance on a dashboard"
+input AnalyticsVisualizationInstanceInput {
+    "The ID of the visualization definition to place on the dashboard"
+    visualizationId: UUID!
+    "Optional JSON configuration overriding or extending the visualization's default configuration for this placement"
+    configuration: JSON
+}
+
+"Input for creating or updating an analytics dashboard"
+input AnalyticsDashboardInput {
+    "Existing dashboard ID for updates; omit or null when creating a new dashboard"
+    id: UUID
+    "Unique string key used to reference this dashboard programmatically"
+    key: String!
+    "Human-readable display name for this dashboard"
+    name: String!
+    "Human-readable description of what this dashboard shows"
+    description: String!
+    "Optional JSON configuration for dashboard-level layout, theming, or behavior settings"
+    configuration: JSON
+    "User-facing parameter definitions for shared filters"
+    parameters: [AnalyticsQueryParameterInput!]
+    "Ordered list of visualization instances to display on this dashboard"
+    visualizations: [AnalyticsVisualizationInstanceInput!]!
+}
+
+"Query operations for retrieving analytics dashboards"
+type AnalyticsDashboards {
+    "Retrieve all analytics dashboards the current user has access to"
+    all: [AnalyticsDashboard!]!
+    "Retrieve a single dashboard by its unique ID"
+    byId(id: UUID!): AnalyticsDashboard!
+    "Look up a dashboard by its unique string key; returns null if not found"
+    byKey(key: String!): AnalyticsDashboard
+}
+
+"Mutation operations for managing analytics dashboards and their contents"
+type AnalyticsDashboardsMutation {
+    "Create a new analytics dashboard"
+    add(dashboard: AnalyticsDashboardInput!): AnalyticsDashboard!
+    "Update an existing analytics dashboard"
+    edit(dashboard: AnalyticsDashboardInput!): AnalyticsDashboard!
+    "Delete an analytics dashboard by its unique ID"
+    delete(id: UUID!): Boolean!
+    "Grant a permission on a dashboard"
+    addPermission(permission: PermissionInput!): Permission!
+    "Revoke a permission from a dashboard"
+    deletePermission(permission: PermissionInput!): Permission!
+    "Add a visualization instance to a dashboard, returning the new instance's ID"
+    addVisualization(dashboardId: UUID!, visualizationId: UUID!, configuration: JSON): UUID!
+    "Remove a visualization instance from a dashboard by its instance ID"
+    removeVisualization(id: UUID!): Boolean!
+}
+
+extend type Analytics {
+    "Access analytics dashboard queries"
+    dashboards: AnalyticsDashboards!
+}
+
+extend type AnalyticsMutation {
+    "Access analytics dashboard mutations"
+    dashboards: AnalyticsDashboardsMutation!
+}

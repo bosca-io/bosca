@@ -1,0 +1,43 @@
+name: bosca-git-dev
+
+services:
+  postgres:
+    # pgvector image (a superset of the official postgres image) so the V175 metadata-embeddings migration
+    # can `CREATE EXTENSION vector` locally, where `bosca` is a superuser.
+    image: pgvector/pgvector:pg18
+    restart: always
+    command: -c 'max_connections=400'
+    ports:
+      - '5433:5432'
+    volumes:
+      - bosca-git-postgres:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_PASSWORD=bosca
+      - POSTGRES_USER=bosca
+      - POSTGRES_DB=bosca
+    healthcheck:
+      test: [ "CMD", "pg_isready", "-U", "bosca" ]
+      interval: 10s
+      retries: 5
+      start_period: 10s
+
+  nats:
+    image: nats
+    ports:
+      - "4222:4222"
+
+  s3proxy:
+    image: andrewgaul/s3proxy:3.0.0
+    ports:
+      - "8000:8000"
+    environment:
+      S3PROXY_AUTHORIZATION: aws-v2-or-v4
+      S3PROXY_IDENTITY: bosca-s3
+      S3PROXY_CREDENTIAL: bosca-s3
+      S3PROXY_ENDPOINT: http://0.0.0.0:8000
+      JCLOUDS_PROVIDER: filesystem-nio2
+      S3PROXY_IGNORE_UNKNOWN_HEADERS: true
+      JCLOUDS_FILESYSTEM_NIO2_BASEDIR: /tmp/s3proxy
+
+volumes:
+  bosca-git-postgres:

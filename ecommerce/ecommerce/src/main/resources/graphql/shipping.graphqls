@@ -1,0 +1,20 @@
+extend type Ecom {
+    "Shipping rate options for a cart (owner or admin). Quotes the company's shipping providers."
+    shippingRates(cartId: UUID!): [ShippingRate!]!
+}
+
+extend type CartMutation {
+    "Select a quoted shipping rate (by its token) and set it as the cart's shipping line."
+    setShipping(token: String!): Cart!
+}
+
+"""A quoted shipping rate option."""
+type ShippingRate {
+    carrier: String!
+    serviceLevel: String!
+    "Carrier's delivery-time description, if provided."
+    durationTerms: String
+    "Opaque token identifying this rate; pass to setShipping to select it."
+    token: String!
+    amount: Money!
+}

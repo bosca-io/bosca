@@ -1,0 +1,49 @@
+"A trait defines a set of behaviors and workflows that can be assigned to metadata items based on their content type"
+type Trait {
+    "MIME content types this trait applies to (e.g. 'image/png', 'application/pdf')"
+    contentTypes: [String!]!
+    "ID of the workflow to run when items with this trait are deleted"
+    deleteWorkflowId: String
+    "Human-readable description of this trait"
+    description: String!
+    "Unique string identifier for this trait"
+    id: String!
+    "Display name of this trait"
+    name: String!
+    "IDs of workflows that should be executed for items with this trait"
+    workflowIds: [String!]!
+}
+
+"Query operations for browsing traits"
+type Traits {
+    "List all defined traits"
+    all: [Trait!]!
+    "Get a specific trait by ID"
+    trait(id: String!): Trait
+}
+
+"Mutation operations for managing traits"
+type TraitsMutation {
+    "Create a new trait"
+    add(trait: TraitInput!): Trait
+    "Update an existing trait"
+    edit(trait: TraitInput!): Trait
+    "Delete a trait by ID"
+    delete(id: String!): Boolean!
+}
+
+"Input for creating or updating a trait"
+input TraitInput {
+    "MIME content types this trait applies to"
+    contentTypes: [String!]!
+    "ID of the workflow to run when items with this trait are deleted"
+    deleteWorkflowId: String
+    "Human-readable description of this trait"
+    description: String!
+    "Unique string identifier for this trait"
+    id: String!
+    "Display name of this trait"
+    name: String!
+    "IDs of workflows that should be executed for items with this trait"
+    workflowIds: [String!]!
+}

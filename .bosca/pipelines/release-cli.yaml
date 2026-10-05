@@ -1,0 +1,180 @@
+name: "Release: CLI"
+# Builds the native `bosca` CLI from an existing Git tag and publishes packages and checksums to Bosca Artifacts.
+#
+# Build configuration: CLI_GRADLE_PROPERTIES supplies base64-encoded Gradle properties for both platforms.
+# Signing secret: MACOS_KEYCHAIN_PASSWORD (see cli/MACOS_SIGNING.md).
+on:
+  manual: true
+  release: true
+
+concurrency:
+  group: cli-release
+  cancel-in-progress: false
+
+env:
+  GRADLE_OPTS: "-Xmx4g -XX:+UseG1GC"
+
+jobs:
+  linux-x86_64:
+    runner: linux
+    timeout: 60m
+    secrets: [CLI_GRADLE_PROPERTIES]
+    steps:
+      - name: Validate release tag
+        run: |
+          case "$RELEASE_REF" in
+            refs/tags/?*) ;;
+            *) echo "Select an existing Git tag for this CLI release." >&2; exit 1 ;;
+          esac
+        env:
+          RELEASE_REF: ${{ ref }}
+      - name: Checkout
+        uses: checkout
+      - name: Configure Gradle
+        run: |
+          : "${CLI_GRADLE_PROPERTIES:?CLI_GRADLE_PROPERTIES must contain the base64-encoded CLI Gradle configuration}"
+          printf '\n' >> gradle.properties
+          printf '%s' "$CLI_GRADLE_PROPERTIES" | base64 -d >> gradle.properties
+          printf '\n' >> gradle.properties
+        env:
+          CLI_GRADLE_PROPERTIES: ${{ secrets.CLI_GRADLE_PROPERTIES }}
+      - name: Setup Java
+        uses: setup-java
+        with:
+          distribution: graal
+          stream: 25i1
+          version: "25.0.3"
+      - name: Setup Rust
+        # Configuring the build compiles firebase-scrypt's native library with Cargo.
+        uses: setup-rust
+        with:
+          toolchain: stable
+      - name: Build native binary
+        run: ./gradlew --no-daemon --no-configuration-cache :cli:nativeCompile
+        env:
+          RELEASE_VERSION: ${{ version }}
+      - name: Package
+        run: |
+          mkdir -p dist
+          tar -czf "dist/bosca-${RELEASE_VERSION}-linux-x86_64.tar.gz" -C cli/build/native/nativeCompile bosca
+        env:
+          RELEASE_VERSION: ${{ version }}
+      - name: Upload package
+        uses: upload-artifact
+        with:
+          name: cli-linux-x86_64
+          paths:
+            - dist
+
+  macos-arm64:
+    runner: macos
+    timeout: 90m
+    secrets: [CLI_GRADLE_PROPERTIES, MACOS_KEYCHAIN_PASSWORD]
+    steps:
+      - name: Validate release tag
+        run: |
+          case "$RELEASE_REF" in
+            refs/tags/?*) ;;
+            *) echo "Select an existing Git tag for this CLI release." >&2; exit 1 ;;
+          esac
+        env:
+          RELEASE_REF: ${{ ref }}
+      - name: Checkout
+        uses: checkout
+      - name: Configure Gradle
+        run: |
+          : "${CLI_GRADLE_PROPERTIES:?CLI_GRADLE_PROPERTIES must contain the base64-encoded CLI Gradle configuration}"
+          printf '\n' >> gradle.properties
+          printf '%s' "$CLI_GRADLE_PROPERTIES" | base64 -d >> gradle.properties
+          printf '\n' >> gradle.properties
+        env:
+          CLI_GRADLE_PROPERTIES: ${{ secrets.CLI_GRADLE_PROPERTIES }}
+      - name: Setup Java
+        uses: setup-java
+        with:
+          distribution: graal
+          stream: 25i1
+          version: "25.0.3"
+      - name: Setup Rust
+        uses: setup-rust
+        with:
+          toolchain: stable
+      - name: Unlock signing keychain
+        run: |
+          KEYCHAIN="${SIGNING_KEYCHAIN:-$HOME/Library/Keychains/login.keychain-db}"
+          security set-keychain-settings "$KEYCHAIN"
+          security unlock-keychain -p "$MACOS_KEYCHAIN_PASSWORD" "$KEYCHAIN"
+        env:
+          MACOS_KEYCHAIN_PASSWORD: ${{ secrets.MACOS_KEYCHAIN_PASSWORD }}
+      - name: Build, sign, and notarize installer
+        run: ./gradlew --no-daemon --no-configuration-cache :cli:distNativeMacosPkg
+        env:
+          RELEASE_VERSION: ${{ version }}
+      - name: Package
+        run: |
+          mkdir -p dist
+          cp cli/build/native/nativeCompile/bosca.pkg "dist/bosca-${RELEASE_VERSION}-macos-arm64.pkg"
+        env:
+          RELEASE_VERSION: ${{ version }}
+      - name: Upload package
+        uses: upload-artifact
+        with:
+          name: cli-macos-arm64
+          paths:
+            - dist
+
+  publish:
+    runner: linux
+    timeout: 15m
+    needs: [linux-x86_64, macos-arm64]
+    artifacts:
+      - type: raw
+        namespace: bosca
+        coordinate: "bosca-cli:${{ version }}"
+    steps:
+      - name: Checkout
+        uses: checkout
+      - name: Download Linux package
+        uses: download-artifact
+        with:
+          name: cli-linux-x86_64
+          path: .
+      - name: Download macOS package
+        uses: download-artifact
+        with:
+          name: cli-macos-arm64
+          path: .
+      - name: Generate checksums
+        working-directory: dist
+        run: shasum -a 256 "bosca-${RELEASE_VERSION}-linux-x86_64.tar.gz" "bosca-${RELEASE_VERSION}-macos-arm64.pkg" > SHA256SUMS
+        env:
+          RELEASE_VERSION: ${{ version }}
+      - name: Publish to Bosca Artifacts
+        uses: registry-upload
+        with:
+          namespace: bosca
+          name: bosca-cli
+          version: ${{ version }}
+          files:
+            - dist/bosca-${{ version }}-linux-x86_64.tar.gz
+            - dist/bosca-${{ version }}-macos-arm64.pkg
+            - dist/SHA256SUMS
+
+  notify:
+    runner: linux
+    timeout: 5m
+    needs: [publish]
+    if: always()
+    steps:
+      - name: Notify Success
+        uses: notify
+        if: needs.publish.result == 'success'
+        with:
+          channel: slack
+          message: "Bosca CLI ${{ version }} published to Bosca Artifacts"
+      - name: Notify Failure
+        uses: notify
+        if: needs.publish.result == 'failure'
+        with:
+          channel: slack
+          message: "Bosca CLI ${{ version }} release FAILED — check pipeline logs"

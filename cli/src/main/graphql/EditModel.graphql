@@ -1,0 +1,7 @@
+mutation EditModel($id: UUID!, $input: ModelInput!) {
+    models {
+        edit(id: $id, model: $input) {
+            ...Model
+        }
+    }
+}

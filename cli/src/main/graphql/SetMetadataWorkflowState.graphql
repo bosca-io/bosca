@@ -1,0 +1,7 @@
+mutation SetMetadataWorkflowState($state: MetadataWorkflowState!) {
+    content {
+        metadata {
+            setWorkflowState(state: $state)
+        }
+    }
+}

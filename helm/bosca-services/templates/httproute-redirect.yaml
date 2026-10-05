@@ -1,0 +1,82 @@
+{{- if .Values.gateway.enabled }}
+{{- /*
+HTTP → HTTPS 301 redirect for every hostname the Gateway listens on.
+Attaches to the port-80 listener; subchart HTTPRoutes are scoped to
+port 443 so they never see plaintext traffic.
+
+Hostname list is aggregated from each subchart's gateway.hostnames,
+identical to how gateway.yaml computes its HTTPS listeners.
+
+Gateway API caps HTTPRoute.spec.hostnames at 16, so the aggregated
+list is chunked across N HTTPRoutes. The first chunk keeps the
+canonical name `http-redirect` so existing in-place patches work;
+overflow chunks are named `http-redirect-2`, `http-redirect-3`, ...
+Multiple HTTPRoutes attached to the same listener are merged by the
+gateway controller — there is no ordering significance to the split.
+*/ -}}
+{{- $hostnames := list -}}
+{{- range $chart := list "bosca-server" "bosca-runner" "bosca-studio" "bosca-collector" "bosca-kubernetes-controller" "bosca-artifacts-server" "bosca-git-server" "bosca-gateway" "bosca-io" "notifications-web" "profiles-web" }}
+  {{- $cfg := index $.Values $chart }}
+  {{- if and $cfg (kindIs "map" $cfg) }}
+    {{- with index $cfg "gateway" }}
+      {{- if and .enabled .hostnames }}
+        {{- $hostnames = concat $hostnames .hostnames }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+{{- end }}
+{{- with .Values.gateway.extraHostnames }}
+  {{- $hostnames = concat $hostnames . }}
+{{- end }}
+{{- $hostnames = uniq $hostnames }}
+
+{{- /*
+Hosts with a canonical redirect are excluded here: their port-80 route
+lives in httproute-canonical-redirect.yaml and 301s scheme AND hostname
+in one hop (http://www.x → https://x). Listing them here too would
+create a same-host conflict that resolves by route age.
+*/ -}}
+{{- range $from, $_ := .Values.gateway.canonicalRedirects | default dict }}
+  {{- $hostnames = without $hostnames $from }}
+{{- end }}
+
+{{- /* Chunk the deduped hostname list into groups of at most 16. */ -}}
+{{- $chunkSize := 16 -}}
+{{- $chunks := list -}}
+{{- $current := list -}}
+{{- range $h := $hostnames -}}
+  {{- $current = append $current $h -}}
+  {{- if eq (len $current) $chunkSize -}}
+    {{- $chunks = append $chunks $current -}}
+    {{- $current = list -}}
+  {{- end -}}
+{{- end -}}
+{{- if $current -}}
+  {{- $chunks = append $chunks $current -}}
+{{- end -}}
+
+{{- $gatewayName := .Values.gateway.name | default "bosca-gateway" -}}
+{{- range $idx, $chunk := $chunks }}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ if eq $idx 0 }}http-redirect{{ else }}http-redirect-{{ add $idx 1 }}{{ end }}
+  labels:
+    app.kubernetes.io/part-of: bosca
+spec:
+  parentRefs:
+    - name: {{ $gatewayName | quote }}
+      port: 80
+  hostnames:
+{{- range $h := $chunk }}
+    - {{ $h | quote }}
+{{- end }}
+  rules:
+    - filters:
+        - type: RequestRedirect
+          requestRedirect:
+            scheme: https
+            statusCode: 301
+{{- end }}
+{{- end }}

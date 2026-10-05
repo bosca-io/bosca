@@ -1,0 +1,1 @@
+create index collection_item_cid_index on collection_items (collection_id);

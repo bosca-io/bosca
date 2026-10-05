@@ -1,0 +1,94 @@
+"A single attribute definition within a template, describing a field's schema, data type, UI presentation, and associated automation"
+type TemplateAttribute {
+    "Optional JSON configuration for the attribute, used to customize behavior or provide additional settings"
+    configuration: JSON
+    "Human-readable description of the attribute's purpose, displayed in editors and documentation"
+    description: String!
+    "Unique identifier key for this attribute within the template, used to reference it in metadata and queries"
+    key: String!
+    "Whether this attribute accepts multiple values (true) or a single value (false)"
+    list: Boolean!
+    "Where this attribute is stored — on the item itself or on a relationship between items"
+    location: AttributeLocation!
+    "Display name for the attribute, shown in the UI"
+    name: String!
+    "Optional key referencing a supplementary data source that provides additional context or options for this attribute"
+    supplementaryKey: String
+    "The data type of the attribute value (e.g., STRING, INT, COLLECTION), used for validation and serialization"
+    type: AttributeType!
+    "The UI widget type to use when rendering this attribute in a form or editor (e.g., INPUT, TEXTAREA, IMAGE)"
+    ui: AttributeUiType!
+    "Optional list of workflows associated with this attribute that can be triggered on attribute changes"
+    workflows: [TemplateWorkflow!]
+    "Optional list of tools associated with this attribute that can execute queries and return results"
+    tools: [TemplateTool!]
+}
+
+"A tool definition inline within a template attribute, used to execute a query and extract results for the attribute"
+type TemplateTool {
+    "Optional unique identifier for this tool instance"
+    id: UUID
+    "Display name for the tool"
+    name: String!
+    "Optional human-readable description of what the tool does"
+    description: String
+    "The query string to execute when the tool is invoked (e.g., a GraphQL query or search expression)"
+    query: String!
+    "A path expression used to extract the relevant result from the query response (e.g., a JSON path)"
+    resultPath: String!
+}
+
+"A workflow association within a template attribute, controlling whether the workflow runs automatically on attribute changes"
+type TemplateWorkflow {
+    "Whether this workflow should automatically run when the attribute value changes, without manual triggering"
+    autoRun: Boolean!
+#    workflow: Workflow
+}
+
+"Input for associating a workflow with a template attribute"
+input TemplateWorkflowInput {
+    "Whether the workflow should automatically execute when the attribute value changes"
+    autoRun: Boolean!
+    "The unique identifier of the workflow to associate with this attribute"
+    workflowId: String!
+}
+
+"Input for creating or updating an inline tool within a template attribute"
+input TemplateToolInput {
+    "Optional existing tool ID — if provided, references an existing tool; if null, creates a new inline tool"
+    id: UUID
+    "Display name for the tool"
+    name: String
+    "Optional human-readable description of what the tool does"
+    description: String
+    "The query string to execute when the tool is invoked"
+    query: String
+    "A path expression to extract the relevant result from the query response"
+    resultPath: String
+}
+
+"Input for creating or updating a template attribute definition within a template"
+input TemplateAttributeInput {
+    "Optional JSON configuration for customizing the attribute's behavior or providing additional settings"
+    configuration: JSON
+    "Human-readable description of the attribute's purpose"
+    description: String!
+    "Unique identifier key for this attribute within the template"
+    key: String!
+    "Whether this attribute accepts multiple values (true) or a single value (false)"
+    list: Boolean!
+    "Where this attribute is stored — on the item itself or on a relationship. Defaults to ITEM if not specified"
+    location: AttributeLocation
+    "Display name for the attribute, shown in the UI"
+    name: String!
+    "Optional key referencing a supplementary data source for this attribute"
+    supplementaryKey: String
+    "The data type of the attribute value, used for validation and serialization"
+    type: AttributeType!
+    "The UI widget type to use when rendering this attribute in a form or editor"
+    ui: AttributeUiType!
+    "Optional list of workflow associations for this attribute"
+    workflows: [TemplateWorkflowInput!]
+    "Optional list of inline tool definitions for this attribute"
+    tools: [TemplateToolInput!]
+}

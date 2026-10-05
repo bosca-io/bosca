@@ -1,0 +1,51 @@
+"A single key-value pair for matching against item attributes"
+input FindAttributeInput {
+    "The attribute key to match on"
+    key: String!
+    "The attribute value to match against"
+    value: String!
+}
+
+"A group of attribute conditions that must all match (AND logic within the group)"
+input FindAttributesInput {
+    "List of attribute key-value pairs that must all match"
+    attributes: [FindAttributeInput!]!
+}
+
+"Filters results to a specific content extension type"
+enum ExtensionFilterType {
+    "Only return items with a collection template extension"
+    COLLECTION_TEMPLATE
+    "Only return items with a document extension"
+    DOCUMENT
+    "Only return items with a document template extension"
+    DOCUMENT_TEMPLATE
+    "Only return items with a guide extension"
+    GUIDE
+    "Only return items with a guide template extension"
+    GUIDE_TEMPLATE
+}
+
+"Comprehensive query input for finding content items with filtering, pagination, and ordering"
+input FindQueryInput {
+    "Attribute filter groups — groups are combined with OR logic, conditions within a group use AND logic"
+    attributes: [FindAttributesInput!]
+    "Filter by category IDs"
+    categoryIds: [String!]
+    "Filter by collection type (root, standard, folder, etc.)"
+    collectionType: CollectionType
+    "Filter by MIME content types (e.g. 'image/png', 'application/pdf')"
+    contentTypes: [String!]
+    "Filter by BCP 47 language tags (e.g. 'en', 'es-MX')"
+    languageTags: [String!]
+    "Filter by content extension type"
+    extensionFilter: ExtensionFilterType
+    "Maximum number of results to return"
+    limit: Int
+    "Number of results to skip for pagination"
+    offset: Int
+    "Sort order for results"
+    ordering: [OrderingInput!]
+    "Filter by trait IDs"
+    traitIds: [String!]
+}

@@ -1,0 +1,108 @@
+<idea-plugin>
+    <id>io.bosca.bml</id>
+    <name>Bosca BML</name>
+    <vendor email="dev@bosca.io" url="https://bosca.io">Bosca</vendor>
+
+    <description><![CDATA[
+        Language support for <b>Bosca Markup Language</b> (<code>.bml</code>):
+        <ul>
+          <li>File type, syntax highlighting, and <code>{# … #}</code> commenting.</li>
+          <li>Kotlin language injection into <code>&lt;script server&gt;</code> bodies and
+              <code>{ … }</code> interpolation — full completion and error-checking inside embedded Kotlin.</li>
+          <li>TypeScript injection into <code>&lt;script client&gt;</code> bodies (in IDEs that bundle JavaScript/TypeScript);
+              site globals resolve via the client entry's own <code>declare global</code>, and
+              <code>on&lt;event&gt;="fn(…)"</code> handlers count as used (mirroring the compiler's window publish).</li>
+          <li>CSS injection into <code>&lt;style&gt;</code> bodies, with the site theme's custom properties
+              (<code>src/main/client/*.css</code>) in scope so <code>var(--…)</code> resolves.</li>
+          <li>Reformat (⌥⌘L): tag indentation and attribute spacing, with embedded script/style
+              bodies re-based to one level inside their tag (relative indentation preserved).</li>
+        </ul>
+    ]]></description>
+
+    <depends>com.intellij.modules.platform</depends>
+    <!-- No HARD dependency on the Kotlin plugin: the injector resolves Kotlin/TypeScript by
+         language ID at runtime (Language.findLanguageByID), so the plugin loads in any IDE and
+         simply skips injection for a language that isn't installed. A hard <depends> here would
+         disable the whole plugin (incl. the BML file type + parser) wherever Kotlin is absent. -->
+    <!-- OPTIONAL Kotlin dependency: when the Kotlin plugin IS present, load bml-kotlin.xml (the
+         gotoDeclarationHandler that resolves embedded Kotlin via BmlFragmentResolver) AND link the
+         Kotlin plugin into this plugin's classloader so org.jetbrains.kotlin.psi.* classes resolve
+         at runtime. optional=true keeps the plugin loading (degraded) where Kotlin is absent —
+         Language.findLanguageByID alone is NOT enough: the language can be registered while this
+         plugin's classloader still can't load org.jetbrains.kotlin.* (→ NoClassDefFoundError). -->
+    <depends optional="true" config-file="bml-kotlin.xml">org.jetbrains.kotlin</depends>
+    <!-- OPTIONAL CSS dependency: links the CSS plugin into this plugin's classloader when present, so
+         BmlCssClassRefs (which references com.intellij.psi.css.CssClass) can resolve `class="…"` names to
+         their CSS-class declarations. Gated by Language.findLanguageByID("CSS") so the plugin still loads
+         (without class references) where CSS is absent. -->
+    <depends optional="true" config-file="bml-css.xml">com.intellij.css</depends>
+
+
+    <extensions defaultExtensionNs="com.intellij">
+        <fileType
+            name="BML"
+            language="BML"
+            implementationClass="bosca.bml.ide.BmlFileType"
+            fieldName="INSTANCE"
+            extensions="bml"/>
+        <lang.parserDefinition
+            language="BML"
+            implementationClass="bosca.bml.ide.BmlParserDefinition"/>
+        <lang.syntaxHighlighterFactory
+            language="BML"
+            implementationClass="bosca.bml.ide.BmlSyntaxHighlighterFactory"/>
+        <!-- Dark-scheme colors for the BML_* keys; the keys themselves only declare semantic
+             fallbacks (MARKUP_TAG etc.), which look near-plain-text in some dark themes. -->
+        <additionalTextAttributes
+            scheme="Darcula"
+            file="colorSchemes/BmlDarcula.xml"/>
+        <lang.commenter
+            language="BML"
+            implementationClass="bosca.bml.ide.BmlCommenter"/>
+        <lang.formatter
+            language="BML"
+            implementationClass="bosca.bml.ide.BmlFormattingModelBuilder"/>
+        <!-- After the block pass: each script/style body is reformatted with its REAL language
+             formatter (out-of-band synthetic file) and spliced back at the body's indent. -->
+        <postFormatProcessor
+            implementation="bosca.bml.ide.BmlEmbeddedBodyFormatter"/>
+        <langCodeStyleSettingsProvider
+            implementation="bosca.bml.ide.BmlLanguageCodeStyleSettingsProvider"/>
+        <lang.elementManipulator
+            forClass="bosca.bml.ide.BmlInjectionHost"
+            implementationClass="bosca.bml.ide.BmlHostManipulator"/>
+        <multiHostInjector
+            implementation="bosca.bml.ide.BmlInjector"/>
+        <!-- A .bml can never be *included* in a tsconfig, so TypeScript's config-membership error
+             ("Corresponding file is not included in tsconfig.json") inside BML-injected fragments
+             is noise by construction — drop it there, keep every other diagnostic. -->
+        <daemon.highlightInfoFilter
+            implementation="bosca.bml.ide.BmlInjectedTsHighlightFilter"/>
+        <completion.contributor
+            language="BML"
+            implementationClass="bosca.bml.ide.BmlCompletionContributor"/>
+        <!-- No language attribute: fires for all completion, gated to BML injection hosts inside, so it
+             offers provides/props within the injected Kotlin without depending on the Kotlin plugin. -->
+        <completion.contributor
+            implementationClass="bosca.bml.ide.BmlInjectedCompletionContributor"/>
+    </extensions>
+
+    <!-- K2 compatibility MUST be declared in the MAIN descriptor: the platform's
+         KotlinK2ModeCompatibilityChecker reads `getExtensions()["org.jetbrains.kotlin.supportsKotlinPluginMode"]`
+         from this descriptor BEFORE deciding whether to load the optional `bml-kotlin.xml` — so declaring it
+         only inside that config file is never seen (the IDE then skips the config file with a WARN and the
+         goto handler is silently dropped). It's read as raw extension data keyed by name, so NO hard Kotlin
+         dependency is needed here; when Kotlin is absent the unknown EP is simply ignored. -->
+    <extensions defaultExtensionNs="org.jetbrains.kotlin">
+        <supportsKotlinPluginMode supportsK2="true"/>
+    </extensions>
+
+    <actions>
+        <action id="bosca.bml.ShowInjection"
+                class="bosca.bml.ide.BmlInjectionStatusAction"
+                text="BML: Show Injection at Caret"
+                description="Show the language and fragment BML injects at the caret (diagnostics).">
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+        </action>
+    </actions>
+</idea-plugin>

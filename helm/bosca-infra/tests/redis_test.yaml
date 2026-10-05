@@ -1,0 +1,30 @@
+suite: bosca-infra Redis (Dragonfly)
+templates:
+  - templates/redis.yaml
+values:
+  - ../values.yaml
+set:
+  global:
+    domain: example.com
+tests:
+  - it: renders Dragonfly CR named redis
+    asserts:
+      - isKind:
+          of: Dragonfly
+      - equal:
+          path: metadata.name
+          value: redis
+
+  - it: includes cluster_mode emulated arg
+    asserts:
+      - contains:
+          path: spec.args
+          content: "--cluster_mode=emulated"
+
+  - it: does not render when disabled
+    set:
+      redis:
+        enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0

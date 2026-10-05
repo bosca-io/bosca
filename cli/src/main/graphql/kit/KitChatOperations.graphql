@@ -1,0 +1,35 @@
+query ListKitChatSessions {
+    chatSessions {
+        all {
+            ...KitChatSessionSummaryFragment
+        }
+    }
+}
+
+query GetKitChatSession($id: UUID!) {
+    chatSessions {
+        session(id: $id) {
+            ...KitChatSessionFragment
+        }
+    }
+}
+
+mutation CreateKitChatSession($session: ChatSessionInput!) {
+    chatSessions {
+        create(session: $session) {
+            ...KitChatSessionFragment
+        }
+    }
+}
+
+mutation SendKitChatMessage($sessionId: UUID!, $message: ChatMessageInput!) {
+    chatSessions {
+        send(sessionId: $sessionId, message: $message)
+    }
+}
+
+mutation DeleteKitChatSession($id: UUID!) {
+    chatSessions {
+        delete(id: $id)
+    }
+}

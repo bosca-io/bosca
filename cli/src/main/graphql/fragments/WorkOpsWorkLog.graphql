@@ -1,0 +1,12 @@
+fragment WorkOpsWorkLogFragment on WorkOpsWorkLog {
+    id
+    taskId
+    profileId
+    timeSpentSeconds
+    timeSpentShort
+    startedAt
+    comment
+    visibility
+    createdAt
+    modifiedAt
+}

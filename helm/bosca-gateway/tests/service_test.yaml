@@ -1,0 +1,27 @@
+suite: bosca-gateway Service template
+templates:
+  - templates/service.yaml
+tests:
+  - it: renders a ClusterIP Service exposing port 8443 as `http`
+    asserts:
+      - isKind:
+          of: Service
+      - equal:
+          path: spec.type
+          value: ClusterIP
+      - equal:
+          path: spec.ports[0].name
+          value: http
+      - equal:
+          path: spec.ports[0].port
+          value: 8443
+
+  - it: respects service.type override
+    set:
+      service:
+        type: LoadBalancer
+        port: 8443
+    asserts:
+      - equal:
+          path: spec.type
+          value: LoadBalancer

@@ -1,0 +1,91 @@
+suite: bosca-collector deployment
+templates:
+  - templates/deployment.yaml
+  - templates/serviceaccount.yaml
+  - templates/service.yaml
+  - templates/configmap-appconfig.yaml
+values:
+  - ../values.yaml
+set:
+  global:
+    domain: example.com
+  appConfig:
+    domain: example.com
+    realm: Bosca
+    databaseUrl: jdbc:postgresql://postgres-bosca-rw:5432/bosca
+release:
+  name: test
+  namespace: bosca
+tests:
+  - it: renders a Deployment with the analytics-collector image
+    template: templates/deployment.yaml
+    asserts:
+      - isKind:
+          of: Deployment
+      - matchRegex:
+          path: spec.template.spec.containers[0].image
+          pattern: analytics-collector
+
+  - it: exposes port 8080
+    template: templates/deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].ports[0].containerPort
+          value: 8080
+
+  - it: rolls out without dropping available collector capacity
+    template: templates/deployment.yaml
+    asserts:
+      - equal:
+          path: spec.strategy.type
+          value: RollingUpdate
+      - equal:
+          path: spec.strategy.rollingUpdate.maxSurge
+          value: 25%
+      - equal:
+          path: spec.strategy.rollingUpdate.maxUnavailable
+          value: 0
+
+  - it: references database secret with username and password keys
+    template: templates/deployment.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: DATABASE_USER
+            valueFrom:
+              secretKeyRef:
+                name: pg-creds-bosca-server
+                key: username
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: DATABASE_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: pg-creds-bosca-server
+                key: password
+
+  - it: references iceberg (warehouse) secret separately from primary database
+    template: templates/deployment.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: ICEBERG_DATABASE_USER
+            valueFrom:
+              secretKeyRef:
+                name: pg-creds-bosca-warehouse
+                key: username
+
+  - it: references NATS token from nats Secret
+    template: templates/deployment.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: NATS_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: nats
+                key: token

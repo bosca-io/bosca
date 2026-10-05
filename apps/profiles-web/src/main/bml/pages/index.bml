@@ -1,0 +1,64 @@
+<page route="/" requireAuth>
+  <script server provides="branding">bosca.profiles.web.branding()</script>
+  <script server provides="page">bosca.profiles.web.dashboard()</script>
+
+  <site-layout title="Account overview" :brand="branding.name" :logo="branding.logoUrl" :footer="branding.footerHtml">
+    <main class="shell">
+      <header class="page-head">
+        <div>
+          <p class="eyebrow">Account overview</p>
+          <h1>{ page.name }</h1>
+          <p class="lede">Manage the profile, connections, communication choices, registered devices, and security details attached to your account.</p>
+        </div>
+      </header>
+      <section class="card overview-card">
+        <header class="overview-heading">
+          <h2>Account settings</h2>
+          <p>Choose an area to review or update.</p>
+        </header>
+        <nav class="overview-list" aria-label="Account settings">
+          <a class="overview-item" href="/profile">
+            <span class="overview-item-copy">
+              <strong>Profile</strong>
+              <span>Name, discoverability, visibility, and profile attributes.</span>
+            </span>
+            <span class="overview-item-meta { if (page.verified) "positive" else "" }">{ if (page.verified) "Verified" else "Verification pending" }</span>
+            <svg class="overview-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg>
+          </a>
+          <a class="overview-item" href="/relationships">
+            <span class="overview-item-copy">
+              <strong>Relationships</strong>
+              <span>People and profiles connected to this account.</span>
+            </span>
+            <span class="overview-item-meta">{ page.relationshipCount } active</span>
+            <svg class="overview-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg>
+          </a>
+          <a class="overview-item" href="/communications">
+            <span class="overview-item-copy">
+              <strong>Communications</strong>
+              <span>Email, push notifications, and quiet hours.</span>
+            </span>
+            <span class="overview-item-meta">Email &amp; push</span>
+            <svg class="overview-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg>
+          </a>
+          <a class="overview-item" href="/devices">
+            <span class="overview-item-copy">
+              <strong>Devices</strong>
+              <span>Registered devices and API access tokens.</span>
+            </span>
+            <span class="overview-item-meta">{ page.deviceCount } registered</span>
+            <svg class="overview-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg>
+          </a>
+          <a class="overview-item" href="/security">
+            <span class="overview-item-copy">
+              <strong>Security</strong>
+              <span>Credentials, passkeys, and active sign-ins.</span>
+            </span>
+            <span class="overview-item-meta">Last login <local-date-time :value="page.lastLogin"/></span>
+            <svg class="overview-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg>
+          </a>
+        </nav>
+      </section>
+    </main>
+  </site-layout>
+</page>

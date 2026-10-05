@@ -1,0 +1,59 @@
+suite: profiles-web Gateway routing
+templates:
+  - templates/gateway.yaml
+  - templates/httproute-profiles-web.yaml
+  - templates/httproute-redirect.yaml
+values:
+  - ../values.yaml
+release:
+  name: isolated-profiles
+  namespace: bosca
+set:
+  global:
+    domain: test.local
+  profiles-web:
+    enabled: true
+    gateway:
+      enabled: true
+      hostnames:
+        - profiles.test.local
+tests:
+  - it: adds the profiles hostname to the shared Gateway
+    template: templates/gateway.yaml
+    asserts:
+      - equal:
+          path: spec.listeners[1].name
+          value: https-profiles-test-local
+      - equal:
+          path: spec.listeners[1].hostname
+          value: profiles.test.local
+
+  - it: routes HTTPS profiles traffic to profiles-web
+    template: templates/httproute-profiles-web.yaml
+    asserts:
+      - equal:
+          path: spec.parentRefs[0].port
+          value: 443
+      - equal:
+          path: spec.hostnames[0]
+          value: profiles.test.local
+      - equal:
+          path: spec.rules[0].backendRefs[0]
+          value:
+            name: isolated-profiles-profiles-web
+            port: 9095
+
+  - it: redirects HTTP profiles traffic to HTTPS
+    template: templates/httproute-redirect.yaml
+    asserts:
+      - equal:
+          path: spec.parentRefs[0].port
+          value: 80
+      - equal:
+          path: spec.hostnames[0]
+          value: profiles.test.local
+      - equal:
+          path: spec.rules[0].filters[0].requestRedirect
+          value:
+            scheme: https
+            statusCode: 301

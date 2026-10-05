@@ -1,0 +1,100 @@
+"""How a payment was tendered."""
+enum PaymentType { CASH CHECK CREDIT_CARD ACCOUNT_CREDIT COMPANY_CREDIT }
+
+"""The kind of money movement a payment row records."""
+enum TransactionType { PAYMENT REFUND REFUND_TO_CHECK REFUND_TO_ACCOUNT_CREDIT VOID }
+
+extend type Ecom {
+    "A payment by id. Admin."
+    payment(id: UUID!): Payment
+    "An account's payments (charges/refunds/voids), newest first. Admin."
+    payments(accountId: UUID!, offset: Int! = 0, limit: Int! = 50): [Payment!]!
+}
+
+extend type EcomMutation {
+    "Payment administration (refund/void). Admin."
+    payments: PaymentsMutation!
+}
+
+"""
+A payment record: a charge, a refund (linked to its original via parentId), a void, or a
+refund-to-account-credit. Provider evidence is tokens/ids only — never a card PAN.
+"""
+type Payment {
+    id: UUID!
+    transactionType: TransactionType!
+    type: PaymentType!
+    "The original payment this row refunds, if any."
+    parentId: UUID
+    amount: Money!
+    "ISO-4217 currency this payment moved (the store's; refunds inherit the original's)."
+    currency: String!
+    nonRefundableAmount: Money!
+    refundedAmount: Money!
+    complete: Boolean!
+    confirmed: Boolean!
+    voided: DateTime
+    voidedReason: String
+    refunded: DateTime
+    refundReason: String
+    note: String
+    providerTransactionId: String
+    providerStatus: String
+    created: DateTime!
+    modified: DateTime!
+}
+
+"""Payment administration. Admin."""
+type PaymentsMutation {
+    "Operations on an existing payment."
+    payment(id: UUID!): PaymentMutation!
+}
+
+"""Refund/void operations on one payment. Admin."""
+type PaymentMutation {
+    "Refund (part of) the payment to the original method."
+    refund(amount: Money!, reason: String): Payment!
+    "Refund (part of) the payment to the account's store credit (atomic)."
+    refundToAccountCredit(amount: Money!, reason: String): Payment!
+    "Void an uncaptured payment."
+    void(reason: String): Payment!
+}
+
+"""Card brand (best-effort; the gateway re-derives it from the number)."""
+enum CreditCardType { VISA MASTERCARD DISCOVER AMERICAN_EXPRESS UNKNOWN }
+
+"""
+Raw card details for PAN-processing gateways (e.g. BluePay) when no `token` is supplied. Transient —
+handed to the gateway for the charge and NEVER stored or logged (the Payment row keeps provider
+tokens/ids only). Token gateways (e.g. Stripe) take `token` instead, or tokenize this.
+"""
+input CreditCardInput {
+    name: String!
+    number: String!
+    cvv: String!
+    type: CreditCardType = UNKNOWN
+    expirationMonth: Int!
+    expirationYear: Int!
+}
+
+"""
+Payment supplied at cart submission. The fields used depend on `type`: CREDIT_CARD uses `token` (a
+single-use client token, e.g. Stripe) OR `creditCard` (a raw PAN, e.g. BluePay); CHECK uses
+checkNumber; COMPANY_CREDIT uses companyCreditNumber; ACCOUNT_CREDIT draws the cart account's
+balance; CASH needs none.
+"""
+input SubmitPaymentInput {
+    "Amount this payment covers; omit for the full remaining due. A cart can take several payments (split tender), each ≤ the remaining due."
+    amount: Money = null
+    token: String = null
+    "Raw card for PAN-processing gateways when no token is supplied. Transient — never stored."
+    creditCard: CreditCardInput = null
+    type: PaymentType = CREDIT_CARD
+    "Store a reusable payment method for later renewals."
+    save: Boolean = false
+    email: String = null
+    "Check number, for CHECK payments."
+    checkNumber: String = null
+    "Redeemable company-credit number, for COMPANY_CREDIT payments."
+    companyCreditNumber: String = null
+}

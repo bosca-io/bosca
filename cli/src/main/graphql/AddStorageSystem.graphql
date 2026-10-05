@@ -1,0 +1,7 @@
+mutation AddStorageSystem($system: StorageSystemInput!) {
+    storageSystems {
+        add(storageSystem: $system) {
+            ...StorageSystem
+        }
+    }
+}

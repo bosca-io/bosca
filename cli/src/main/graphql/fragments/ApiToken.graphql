@@ -1,0 +1,14 @@
+fragment ApiTokenFragment on ApiToken {
+    id
+    principalId
+    name
+    description
+    tokenPrefix
+    scopes
+    allowedGroups
+    expiresAt
+    lastUsedAt
+    lastUsedIp
+    revokedAt
+    active
+}

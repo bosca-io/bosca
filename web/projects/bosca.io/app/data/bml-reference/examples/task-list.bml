@@ -1,0 +1,43 @@
+{# A no-client-code live ViewModel example.
+   BML sends actions to TaskListViewModel and re-renders this island after each method call. #}
+<page route="/tasks">
+  <script server provides="tasks" scope="server-session">
+    example.TaskListViewModel()
+  </script>
+
+  <html lang="en">
+    <head><title>Tasks</title></head>
+    <body>
+      <main>
+        <h1>Tasks</h1>
+
+        <island name="task-list">
+          <form @submit="tasks.add(form.title)">
+            <label for="task-title">New task</label>
+            <input id="task-title" name="title" required/>
+            <button type="submit">Add</button>
+          </form>
+
+          <if tasks.items.isEmpty()>
+            <p>No tasks yet.</p>
+          <else>
+            <ul>
+              <for (index, item) in tasks.items>
+                <list-item
+                  :id="item.id"
+                  :label="item.title"
+                  :position="index"
+                >
+                  <button @click="tasks.toggle(item.id)">
+                    <if item.completed>Reopen<else>Complete</if>
+                  </button>
+                  <button @click="tasks.remove(item.id)">Remove</button>
+                </list-item>
+              </for>
+            </ul>
+          </if>
+        </island>
+      </main>
+    </body>
+  </html>
+</page>

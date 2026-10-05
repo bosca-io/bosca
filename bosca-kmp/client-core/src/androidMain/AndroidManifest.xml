@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+
+    <application>
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="bosca_notifications" />
+        <service
+            android:name="bosca.core.notifications.BoscaFirebaseMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+        <provider
+            android:name="bosca.core.notifications.NotificationImageProvider"
+            android:authorities="${applicationId}.bosca.notification.images"
+            android:exported="false"
+            android:grantUriPermissions="true" />
+    </application>
+</manifest>

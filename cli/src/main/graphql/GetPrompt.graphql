@@ -1,0 +1,7 @@
+query GetPrompt($id: UUID!) {
+    prompts {
+        prompt(id: $id) {
+            ...Prompt
+        }
+    }
+}

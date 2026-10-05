@@ -1,0 +1,75 @@
+query GetWorkOpsTaskLinks($taskId: UUID!) {
+    workOps {
+        links {
+            forTask(taskId: $taskId) {
+                id
+                linkType {
+                    id
+                    name
+                    inwardLabel
+                    outwardLabel
+                    category
+                }
+                sourceTask {
+                    id
+                    key
+                    summary
+                }
+                targetTask {
+                    id
+                    key
+                    summary
+                }
+                createdAt
+                createdByPrincipalId
+            }
+        }
+    }
+}
+
+query GetWorkOpsLinkTypes {
+    workOps {
+        links {
+            linkTypes {
+                id
+                name
+                inwardLabel
+                inwardName
+                outwardLabel
+                outwardName
+                category
+                version
+            }
+        }
+    }
+}
+
+mutation LinkWorkOpsTasks($input: WorkOpsTaskLinkInput!) {
+    workOps {
+        links {
+            link(input: $input) {
+                id
+                linkType {
+                    id
+                    name
+                }
+                sourceTask {
+                    id
+                    key
+                }
+                targetTask {
+                    id
+                    key
+                }
+            }
+        }
+    }
+}
+
+mutation UnlinkWorkOpsTasks($linkId: UUID!) {
+    workOps {
+        links {
+            unlink(linkId: $linkId)
+        }
+    }
+}

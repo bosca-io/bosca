@@ -1,0 +1,58 @@
+query GetWorkOpsNotifications($offset: Long! = 0, $limit: Int! = 50) {
+    workOps {
+        notifications {
+            mine(offset: $offset, limit: $limit) {
+                id
+                profileId
+                event
+                taskId
+                projectId
+                actorProfileId
+                body
+                link
+                readAt
+                createdAt
+            }
+        }
+    }
+}
+
+query GetWorkOpsUnreadNotificationCount {
+    workOps {
+        notifications {
+            unreadCount
+        }
+    }
+}
+
+mutation MarkWorkOpsNotificationRead($id: UUID!) {
+    workOps {
+        notifications {
+            markRead(id: $id)
+        }
+    }
+}
+
+mutation MarkAllWorkOpsNotificationsRead {
+    workOps {
+        notifications {
+            markAllRead
+        }
+    }
+}
+
+mutation WatchWorkOpsTask($taskId: UUID!) {
+    workOps {
+        notifications {
+            watch(taskId: $taskId)
+        }
+    }
+}
+
+mutation UnwatchWorkOpsTask($taskId: UUID!) {
+    workOps {
+        notifications {
+            unwatch(taskId: $taskId)
+        }
+    }
+}

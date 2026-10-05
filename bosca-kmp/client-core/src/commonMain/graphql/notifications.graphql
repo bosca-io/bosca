@@ -1,0 +1,9 @@
+query GetNotificationTypes {
+    communications {
+        notificationTypes {
+            key
+            name
+            description
+        }
+    }
+}

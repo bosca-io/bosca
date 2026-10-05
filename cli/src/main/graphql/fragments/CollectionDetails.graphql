@@ -1,0 +1,12 @@
+fragment CollectionDetail on Collection {
+    ...Collection
+    items(offset: 0, limit: 1000) {
+        __typename
+        ... on Collection {
+            ...Collection
+        }
+        ... on Metadata {
+            ...Metadata
+        }
+    }
+}

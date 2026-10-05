@@ -1,0 +1,9 @@
+mutation AddGuide($parentCollectionId: UUID!, $templateId: UUID!, $templateVersion: Int!) {
+    content {
+        metadata {
+            addGuide(parentCollectionId: $parentCollectionId, templateId: $templateId, templateVersion: $templateVersion) {
+                ...Metadata
+            }
+        }
+    }
+}

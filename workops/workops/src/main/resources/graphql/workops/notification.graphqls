@@ -1,0 +1,119 @@
+"""
+R12 — notifications, watchers, preferences, and digest
+subscriptions. The dispatcher writes IN_APP rows directly; the
+remaining channels (EMAIL / WEBHOOK / SLACK) ride
+`workops.notification_outbox`.
+"""
+type WorkOpsNotification {
+    id: UUID!
+    profileId: UUID!
+    event: String!
+    taskId: UUID
+    projectId: UUID
+    actorProfileId: UUID
+    body: String!
+    link: String
+    readAt: DateTime
+    createdAt: DateTime!
+}
+
+type WorkOpsNotificationScheme {
+    id: UUID!
+    name: String!
+    description: String
+    """
+    `Map<NotificationEvent, List<NotificationRecipient>>` keyed by
+    event-enum name. Recipients carry a discriminator `type`.
+    """
+    eventRecipients: JSON!
+    version: Long!
+}
+
+type WorkOpsNotificationPreference {
+    profileId: UUID!
+    """
+    `Map<NotificationEvent, Set<NotificationChannel>>` shape.
+    Empty channel set for an event means "deliver nothing". Missing
+    entries fall back to the default (IN_APP and EMAIL).
+    """
+    eventChannels: JSON!
+    watchAuthored: Boolean!
+    watchCommented: Boolean!
+    dailyDigest: Boolean!
+    dndStartLocal: String
+    dndEndLocal: String
+    mutedTaskIds: [UUID!]!
+    mutedProjectIds: [UUID!]!
+    version: Long!
+}
+
+type WorkOpsNotificationSubscription {
+    savedFilterId: UUID!
+    profileId: UUID!
+    cron: String!
+    timeZone: String!
+    lastRunAt: DateTime
+}
+
+type WorkOpsTaskWatcher {
+    taskId: UUID!
+    profileId: UUID!
+    addedAt: DateTime!
+}
+
+input WorkOpsNotificationPreferenceUpdateInput {
+    """
+    `Map<NotificationEvent, [NotificationChannel]>` JSON shape.
+    """
+    eventChannels: JSON!
+    watchAuthored: Boolean!
+    watchCommented: Boolean!
+    dailyDigest: Boolean!
+    dndStartLocal: String
+    dndEndLocal: String
+    mutedTaskIds: [UUID!]!
+    mutedProjectIds: [UUID!]!
+}
+
+type WorkOpsNotificationsQuery {
+    """
+    The current principal's in-app inbox, newest first. Limit is
+    coerced to [1, 200].
+    """
+    mine(offset: Long!, limit: Int!): [WorkOpsNotification!]!
+    unread(offset: Long!, limit: Int!): [WorkOpsNotification!]!
+    unreadCount: Long!
+
+    """
+    Admin reads. Phase 7 keeps scheme management in the admin group.
+    """
+    schemes: [WorkOpsNotificationScheme!]!
+    scheme(id: UUID!): WorkOpsNotificationScheme
+
+    """
+    The current principal's preferences. Returns null if the
+    profile hasn't customized — in which case the default
+    (IN_APP and EMAIL, watch own) applies.
+    """
+    myPreferences: WorkOpsNotificationPreference
+
+    """
+    Watchers on a task — paged by added_at.
+    """
+    watchers(taskId: UUID!): [WorkOpsTaskWatcher!]!
+
+    """
+    Saved-filter subscriptions the principal has set up.
+    """
+    mySubscriptions: [WorkOpsNotificationSubscription!]!
+}
+
+type WorkOpsNotificationsMutation {
+    markRead(id: UUID!): Boolean!
+    markAllRead: Boolean!
+    updatePreferences(input: WorkOpsNotificationPreferenceUpdateInput!): WorkOpsNotificationPreference!
+    watch(taskId: UUID!): Boolean!
+    unwatch(taskId: UUID!): Boolean!
+    subscribe(savedFilterId: UUID!, cron: String!, timeZone: String!): WorkOpsNotificationSubscription!
+    unsubscribe(savedFilterId: UUID!): Boolean!
+}

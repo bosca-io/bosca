@@ -1,0 +1,55 @@
+suite: bosca-git-server deployment
+values:
+  - ../values.yaml
+set:
+  global:
+    domain: example.com
+  appConfig:
+    domain: example.com
+    databaseUrl: "jdbc:postgresql://postgres-bosca-rw:5432/bosca"
+    natsHost: nats
+    meilisearchHost: meilisearch
+tests:
+  - it: renders a Deployment
+    template: templates/deployment.yaml
+    asserts:
+      - isKind:
+          of: Deployment
+
+  - it: exposes port 8091
+    template: templates/deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].ports[0].containerPort
+          value: 8091
+
+  - it: passes config arg
+    template: templates/deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].args[0]
+          value: "-config=/app/config/application.yaml"
+
+  - it: injects PIPELINE_SECRET_KEY
+    template: templates/deployment.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: PIPELINE_SECRET_KEY
+            valueFrom:
+              secretKeyRef:
+                name: pipeline
+                key: secret_key
+
+  - it: injects MEILISEARCH_API_KEY
+    template: templates/deployment.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: MEILISEARCH_API_KEY
+            valueFrom:
+              secretKeyRef:
+                name: meilisearch-master-key
+                key: MEILI_MASTER_KEY

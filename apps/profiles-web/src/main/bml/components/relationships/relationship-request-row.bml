@@ -1,0 +1,12 @@
+<component tag="relationship-request-row">
+  <prop name="request" type="bosca.profiles.web.RelationshipRequestRow" required/>
+  <prop name="direction" type="String" required/>
+
+  <div class="list-row request-row">
+    <div class="row-main">
+      <div class="row-title">{ request.name }</div>
+      <div class="row-meta"><span class="direction-label { direction }">{ if (direction == "incoming") "Incoming" else "Outgoing" }</span> · { request.typeLabel } · <local-date-time :value="request.created"/></div>
+    </div>
+    <div class="row-actions"><slot/></div>
+  </div>
+</component>

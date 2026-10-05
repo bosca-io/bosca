@@ -1,0 +1,7 @@
+query GetTransition($fromStateId: String!, $toStateId: String!) {
+    transitions {
+        transition(fromStateId: $fromStateId, toStateId: $toStateId) {
+            ...Transition
+        }
+    }
+}

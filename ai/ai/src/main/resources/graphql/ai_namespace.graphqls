@@ -1,0 +1,58 @@
+"Top-level read namespace for the AI domain: agents, tools, MCP servers, models, prompts."
+type Ai {
+    "Agent CRUD + sub-agent / tool join lookups."
+    agents: Agents!
+    "Agent-tool CRUD."
+    agentTools: AgentTools!
+    "Agent-resource CRUD (Bosca-MCP-exposable resources)."
+    agentResources: AgentResources!
+    "MCP namespace: inbound external-server registrations (`servers`) and the outbound Bosca MCP surface (`bosca`)."
+    mcp: AiMcp!
+    "AI model definitions."
+    models: Models!
+    "Prompt template CRUD."
+    prompts: Prompts!
+}
+
+"Top-level write namespace for the AI domain. Also exposes `agentRepo` for AGENT_PROJECT Git management."
+type AiMutation {
+    "Agent CRUD + sub-agent / tool wiring."
+    agents: AgentsMutation!
+    "Agent-tool CRUD."
+    agentTools: AgentToolsMutation!
+    "Agent-resource CRUD (Bosca-MCP-exposable resources)."
+    agentResources: AgentResourcesMutation!
+    "MCP namespace: manage inbound external-server registrations and the outbound Bosca MCP surface."
+    mcp: AiMcpMutation!
+    "AI model CRUD."
+    models: ModelsMutation!
+    "Prompt template CRUD."
+    prompts: PromptsMutation!
+    "AGENT_PROJECT repository operations (link, push, backfill)."
+    agentRepo: AgentRepoMutation!
+}
+
+"""
+The `ai.mcp` namespace. `servers` is inbound — registrations for external MCP servers Bosca
+consumes; `bosca` is outbound — Bosca acting as an MCP server, exposing its own tools/resources.
+"""
+type AiMcp {
+    "Inbound: registrations for external MCP servers Bosca consumes."
+    servers: McpServers!
+}
+
+"The `ai.mcp` mutation namespace."
+type AiMcpMutation {
+    "Inbound: manage registrations for external MCP servers Bosca consumes."
+    servers: McpServersMutation!
+}
+
+extend type Query {
+    "Access AI-domain queries (agents, tools, MCP servers, models, prompts)."
+    ai: Ai!
+}
+
+extend type Mutation {
+    "Access AI-domain mutations (including AGENT_PROJECT Git backfill)."
+    ai: AiMutation!
+}

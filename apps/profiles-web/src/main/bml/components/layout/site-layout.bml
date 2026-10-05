@@ -1,0 +1,64 @@
+<component tag="site-layout">
+  <prop name="title" type="String" required/>
+  <prop name="brand" type="String" default="Bosca"/>
+  <prop name="logo" type="String" default=""/>
+  <prop name="footer" type="String" default="© Bosca"/>
+  <prop name="signedIn" type="Boolean" default="true"/>
+
+  <html lang="en" data-theme="dark">
+    <head>
+      <meta charset="utf-8"/>
+      <meta name="viewport" content="width=device-width, initial-scale=1"/>
+      <meta name="robots" content="noindex,nofollow"/>
+      <title>{ brand } — { title }</title>
+    </head>
+    <body>
+      <header class="site-header">
+        <div class="header-inner">
+          <a class="brand-link" href="/">
+            <if logo.isNotBlank()>
+              <img class="brand-logo" :src="logo" :alt="brand"/>
+            <else>
+              <if brand == "Bosca">
+                <svg class="brand-mark" viewBox="0 0 512 512" aria-hidden="true">
+                  <path d="M256 262L491 138L256 21L21 138L256 262Z" fill="#00c16a"/>
+                  <path d="M491 138L256 262V498L491 372V138Z" fill="#00dc82"/>
+                  <path d="M21 138L256 262V498L21 372V138Z" fill="#00a155"/>
+                </svg>
+              </if>
+              <span class="brand-name">{ brand }</span>
+            </if>
+          </a>
+          <if signedIn>
+            <nav class="top-nav" aria-label="Account">
+              <a href="/" class="{ if (title == "Account overview") "active" else "" }">Overview</a>
+              <a href="/profile" class="{ if (title == "Profile") "active" else "" }">Profile</a>
+              <a href="/relationships" class="{ if (title == "Relationships") "active" else "" }">Relationships</a>
+              <a href="/communications" class="{ if (title == "Communications") "active" else "" }">Communications</a>
+              <a href="/devices" class="{ if (title == "Devices") "active" else "" }">Devices</a>
+              <a href="/security" class="{ if (title == "Security") "active" else "" }">Security</a>
+            </nav>
+            <island name="account-session" client="ts">
+              <button class="sign-out small" type="button" ref="signout">Sign out</button>
+              <script client>
+                const button = ctx.ref<HTMLButtonElement>("signout")
+                if (button) {
+                  ctx.on(button, "click", async () => {
+                    button.disabled = true
+                    try {
+                      await auth.signOut()
+                    } finally {
+                      location.assign("/login")
+                    }
+                  })
+                }
+              </script>
+            </island>
+          </if>
+        </div>
+      </header>
+      <slot/>
+      <footer class="site-footer">{@ footer }</footer>
+    </body>
+  </html>
+</component>

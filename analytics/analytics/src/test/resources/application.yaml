@@ -1,0 +1,29 @@
+ktor:
+  application:
+  deployment:
+    port: 8081
+  development: true
+
+database:
+  postgres:
+    url: "$DATABASE_URL:jdbc:postgresql://localhost:5433/bosca"
+    user: "$DATABASE_USER:bosca"
+    password: "$DATABASE_PASSWORD:bosca"
+
+redis:
+  host: "$REDIS_HOST:localhost"
+  port: ${REDIS_PORT:6380}
+
+duckdb:
+  path: "$DUCKDB_PATH:./analytics.duckdb"
+
+iceberg:
+  catalog: events
+  fileIO: bosca.analytics.repository.iceberg.FileSystemFileIO
+  namespace: events
+  table: events
+  warehouseLocation: out/warehouse
+  database:
+    uri: jdbc:postgresql://localhost:5433/iceberg
+    username: bosca
+    password: bosca

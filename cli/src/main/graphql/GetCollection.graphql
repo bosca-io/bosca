@@ -1,0 +1,7 @@
+query GetCollection($id: UUID) {
+    content {
+        collection(id: $id) {
+            ...Collection
+        }
+    }
+}

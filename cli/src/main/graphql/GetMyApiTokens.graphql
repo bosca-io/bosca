@@ -1,0 +1,9 @@
+query GetMyApiTokens($limit: Int!, $offset: Long!) {
+    security {
+        apiTokens {
+            my(limit: $limit, offset: $offset) {
+                ...ApiTokenFragment
+            }
+        }
+    }
+}

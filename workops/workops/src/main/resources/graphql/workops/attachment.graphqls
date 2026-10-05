@@ -1,0 +1,35 @@
+"""
+R16 — attachments. Uploads round-trip through a presigned URL +
+HMAC confirmation token; the storage object id is opaque to the
+client.
+"""
+type WorkOpsAttachment {
+    id: UUID!
+    taskId: UUID!
+    storageObjectId: UUID
+    filename: String!
+    contentType: String!
+    sizeBytes: Long!
+    thumbnailStorageObjectId: UUID
+    uploadedByProfileId: UUID!
+    uploadedAt: DateTime!
+    description: String
+}
+
+type WorkOpsPresignedUpload {
+    uploadUrl: String!
+    storageObjectId: UUID!
+    confirmationToken: String!
+    expiresAt: DateTime!
+}
+
+type WorkOpsAttachmentQuery {
+    forTask(taskId: UUID!): [WorkOpsAttachment!]!
+    attachment(id: UUID!): WorkOpsAttachment
+}
+
+type WorkOpsAttachmentMutation {
+    requestUpload(taskId: UUID!, filename: String!, contentType: String!, sizeBytes: Long!): WorkOpsPresignedUpload!
+    confirmUpload(token: String!, description: String): WorkOpsAttachment!
+    deleteAttachment(id: UUID!): Boolean!
+}

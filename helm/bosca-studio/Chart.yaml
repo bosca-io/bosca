@@ -1,0 +1,10 @@
+apiVersion: v2
+name: bosca-studio
+description: Bosca Studio admin web application (Nginx-based static serving with runtime config injection)
+type: application
+version: 0.1.0
+appVersion: "5.0.21"
+dependencies:
+  - name: bosca-common
+    version: ">=0.1.0"
+    repository: "file://../bosca-common"

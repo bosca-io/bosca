@@ -1,0 +1,216 @@
+"The registry protocol an artifact repository serves"
+enum ArtifactRegistryType {
+    "Docker / OCI container images"
+    docker
+    "Helm chart packages"
+    helm
+    "Maven / Gradle JVM artifacts"
+    maven
+    "npm JavaScript packages"
+    npm
+    "Raw file artifacts (binaries, archives, etc.)"
+    raw
+    "Machine learning model artifacts (one tar archive per version)"
+    ml
+}
+
+"Administrative queries for artifact registry management"
+type ArtifactsAdmin {
+    "Publication destinations for a repository. Requires admin."
+    publicationDestinations(repositoryId: UUID!): [ArtifactPublicationDestination!]!
+    "Durable publication results for a version. Requires admin."
+    publications(versionId: UUID!, limit: Int, offset: Long): [ArtifactPublication!]!
+    "List all artifact namespaces"
+    namespaces: [ArtifactNamespaceInfo!]!
+    "Get a specific namespace by ID"
+    namespace(id: UUID!): ArtifactNamespaceInfo
+    "List repositories, optionally filtered by type"
+    repositories(namespaceId: UUID, type: ArtifactRegistryType, limit: Int, offset: Long): [ArtifactRepoInfo!]!
+    "Get a specific repository by ID"
+    repository(id: UUID!): ArtifactRepoInfo
+    "List versions for a repository"
+    versions(repositoryId: UUID!): [ArtifactVersionInfo!]!
+    "List tags for a repository"
+    tags(repositoryId: UUID!, limit: Int, last: String): [ArtifactTagInfo!]!
+}
+
+"Administrative mutations for artifact registry management"
+type ArtifactsAdminMutation {
+    "Configure a GitHub release destination referencing a Pipeline secret. Requires admin."
+    createPublicationDestination(input: ArtifactPublicationDestinationInput!): ArtifactPublicationDestination!
+    "Enable, disable or change a destination secret reference. Requires admin."
+    updatePublicationDestination(id: UUID!, version: Long!, enabled: Boolean!, tokenSecretName: String): ArtifactPublicationDestination!
+    "Create a new namespace"
+    createNamespace(name: String!, public: Boolean): ArtifactNamespaceInfo!
+    "Update a namespace's public (anonymous pull) visibility"
+    updateNamespace(id: UUID!, public: Boolean!): ArtifactNamespaceInfo!
+    "Delete a namespace and all its repositories (admin only)"
+    deleteNamespace(id: UUID!): Boolean!
+    "Create a repository within a namespace"
+    createRepository(namespaceId: UUID!, name: String!, type: ArtifactRegistryType!): ArtifactRepoInfo!
+    "Delete a repository and all its versions, tags, and blobs"
+    deleteRepository(id: UUID!): Boolean!
+    "Delete a specific version and its blob associations"
+    deleteVersion(id: UUID!): Boolean!
+    "Delete a tag from a repository"
+    deleteTag(repositoryId: UUID!, name: String!): Boolean!
+    "Set a tag to point at a manifest digest"
+    setTag(repositoryId: UUID!, name: String!, manifestDigest: String!): ArtifactTagInfo!
+    "Grant a permission action to a group on a namespace. Requires admin."
+    addPermission(permission: PermissionInput!): Boolean!
+    "Revoke a permission action from a group on a namespace. Requires admin."
+    removePermission(permission: PermissionInput!): Boolean!
+}
+
+"An artifact namespace that groups repositories for access control"
+type ArtifactNamespaceInfo {
+    "Unique identifier"
+    id: UUID!
+    "Namespace name (e.g. 'library', 'com.acme', '@scope')"
+    name: String!
+    "Whether anonymous pull access is allowed"
+    public: Boolean!
+    "When this namespace was created"
+    created: DateTime
+    "Repositories within this namespace, optionally filtered by type; unpaged when limit is omitted"
+    repositories(type: ArtifactRegistryType, limit: Int, offset: Long): [ArtifactRepoInfo!]!
+    "Number of repositories within this namespace, optionally filtered by type"
+    repositoryCount(type: ArtifactRegistryType): Long!
+    "Permission grants on this namespace. Requires admin."
+    permissions: [Permission!]!
+}
+
+"An artifact repository within a namespace"
+type ArtifactRepoInfo {
+    "Unique identifier"
+    id: UUID!
+    "ID of the owning namespace"
+    namespaceId: UUID!
+    "Repository name"
+    name: String!
+    "Registry protocol type"
+    type: String!
+    "When this repository was created"
+    created: DateTime
+    "When this repository was last modified"
+    modified: DateTime
+    "The owning namespace"
+    namespace: ArtifactNamespaceInfo
+    "Versions in this repository, newest first (defaults to the first 100)"
+    versions(limit: Int, offset: Long): [ArtifactVersionInfo!]!
+    "Number of versions in this repository"
+    versionCount: Long!
+    "Tags in this repository (Docker only), ordered by name (defaults to the first 100)"
+    tags(limit: Int, offset: Long): [ArtifactTagInfo!]!
+    "Number of tags in this repository"
+    tagCount: Long!
+}
+
+"A versioned release of an artifact"
+type ArtifactVersionInfo {
+    "Whether the version's files are fixed for publication"
+    finalized: Boolean!
+    "Unique identifier"
+    id: UUID!
+    "ID of the owning repository"
+    repositoryId: UUID!
+    "Version string (semver, digest, etc.)"
+    version: String!
+    "Protocol-specific metadata (package.json, POM coords, manifest media type, etc.)"
+    metadata: JSON
+    "When this version was created"
+    created: DateTime
+    "Blobs associated with this version"
+    blobs: [ArtifactVersionBlobInfo!]!
+}
+
+"Association between a version and a blob with a specific role"
+type ArtifactVersionBlobInfo {
+    "Content digest (e.g. sha256:abcdef...)"
+    digest: String!
+    "Role of this blob within the version (manifest, layer, tarball, jar, etc.)"
+    role: String!
+    "Original filename, if applicable"
+    filename: String
+    "MIME type of the blob content"
+    mediaType: String
+    "Size of the blob in bytes"
+    size: Long
+}
+
+extend type Query {
+    "Access artifact registry administration for managing namespaces, repositories, versions, and tags."
+    artifactsAdmin: ArtifactsAdmin!
+}
+
+extend type Mutation {
+    "Access artifact registry mutation operations for managing namespaces, versions, and tags."
+    artifactsAdmin: ArtifactsAdminMutation!
+}
+
+"A mutable tag pointing to a specific manifest digest (Docker)"
+type ArtifactTagInfo {
+    "Unique identifier"
+    id: UUID!
+    "ID of the owning repository"
+    repositoryId: UUID!
+    "Tag name (e.g. 'latest', 'v1.0')"
+    name: String!
+    "Digest of the manifest this tag points to"
+    manifestDigest: String!
+    "When this tag was created"
+    created: DateTime
+    "When this tag was last updated"
+    modified: DateTime
+}
+"An immutable GitHub repository target for raw release assets"
+type ArtifactPublicationDestination {
+    id: UUID!
+    repositoryId: UUID!
+    key: String!
+    githubRepositoryId: Long!
+    owner: String!
+    githubRepository: String!
+    tagPrefix: String!
+    tokenSecretName: String!
+    enabled: Boolean!
+    version: Long!
+    created: DateTime
+    modified: DateTime
+}
+
+input ArtifactPublicationDestinationInput {
+    repositoryId: UUID!
+    key: String!
+    githubRepositoryId: Long!
+    owner: String!
+    githubRepository: String!
+    tokenSecretName: String!
+    tagPrefix: String! = ""
+    enabled: Boolean! = false
+}
+
+"A fixed file manifest and independent publication and verification results"
+type ArtifactPublication {
+    id: UUID!
+    destinationId: UUID!
+    versionId: UUID!
+    tagName: String!
+    commitSha: String!
+    prerelease: Boolean!
+    files: [ArtifactPublicationFile!]!
+    releaseId: Long
+    attempts: Int!
+    published: DateTime
+    verified: DateTime
+    error: String
+    created: DateTime
+    modified: DateTime
+}
+
+type ArtifactPublicationFile {
+    filename: String!
+    digest: String!
+    size: Long!
+    mediaType: String!
+}

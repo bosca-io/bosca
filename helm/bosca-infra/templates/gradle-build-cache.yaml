@@ -1,0 +1,129 @@
+{{- if .Values.gradleBuildCache.enabled }}
+{{- $secretName := required "gradleBuildCache.config.existingSecret is required when the Gradle build cache is enabled" .Values.gradleBuildCache.config.existingSecret }}
+{{- $storageClass := .Values.gradleBuildCache.storage.storageClass | default .Values.global.storageClass }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: gradle-build-cache
+  labels:
+    {{- include "bosca-common.labels" . | nindent 4 }}
+    app.kubernetes.io/component: gradle-build-cache
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: {{ .Values.gradleBuildCache.service.port }}
+      targetPort: http
+  selector:
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: gradle-build-cache
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: gradle-build-cache
+  labels:
+    {{- include "bosca-common.labels" . | nindent 4 }}
+    app.kubernetes.io/component: gradle-build-cache
+spec:
+  serviceName: gradle-build-cache
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: gradle-build-cache
+  template:
+    metadata:
+      labels:
+        {{- include "bosca-common.labels" . | nindent 8 }}
+        app.kubernetes.io/component: gradle-build-cache
+    spec:
+      securityContext:
+        {{- toYaml .Values.gradleBuildCache.podSecurityContext | nindent 8 }}
+      initContainers:
+        - name: config-mounter
+          image: busybox:1.37.0
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -ec
+          args:
+            - cp /config-source/config.yaml /writable-config/config.yaml
+          volumeMounts:
+            - name: config-source
+              mountPath: /config-source
+              readOnly: true
+            - name: config
+              mountPath: /writable-config
+      containers:
+        - name: gradle-build-cache
+          image: "{{ .Values.gradleBuildCache.image.repository }}:{{ .Values.gradleBuildCache.image.tag }}"
+          imagePullPolicy: {{ .Values.gradleBuildCache.image.pullPolicy }}
+          args:
+            - start
+          ports:
+            - name: http
+              containerPort: {{ .Values.gradleBuildCache.service.port }}
+          env:
+            - name: PORT
+              value: {{ .Values.gradleBuildCache.service.port | quote }}
+            - name: EXCLUSIVE_VOLUME_SIZE
+              value: {{ .Values.gradleBuildCache.storage.size | quote }}
+          startupProbe:
+            httpGet:
+              path: /ping
+              port: http
+            periodSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            httpGet:
+              path: /ping
+              port: http
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /ping
+              port: http
+            periodSeconds: 30
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.gradleBuildCache.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: config
+              mountPath: /data/conf
+      volumes:
+        - name: config-source
+          secret:
+            secretName: {{ $secretName }}
+            items:
+              - key: {{ .Values.gradleBuildCache.config.configKey }}
+                path: config.yaml
+        - name: config
+          emptyDir: {}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        {{- with $storageClass }}
+        storageClassName: {{ . }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.gradleBuildCache.storage.size }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gradle-build-cache-init
+  labels:
+    {{- include "bosca-common.labels" . | nindent 4 }}
+    app.kubernetes.io/component: gradle-build-cache
+data:
+  remote-build-cache.init.gradle: |
+{{ .Files.Get "files/gradle/remote-build-cache.init.gradle" | indent 4 }}
+{{- end }}

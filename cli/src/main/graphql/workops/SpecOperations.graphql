@@ -1,0 +1,485 @@
+query GetWorkOpsSpec($id: UUID!) {
+    workOps {
+        specs {
+            spec(id: $id) {
+                ...WorkOpsSpecFragment
+            }
+        }
+    }
+}
+
+query GetWorkOpsSpecByKey($key: String!) {
+    workOps {
+        specs {
+            specByKey(key: $key) {
+                ...WorkOpsSpecFragment
+            }
+        }
+    }
+}
+
+query GetWorkOpsSpecsByProject($projectId: UUID!, $offset: Long! = 0, $limit: Int! = 50) {
+    workOps {
+        specs {
+            byProject(projectId: $projectId, offset: $offset, limit: $limit) {
+                ...WorkOpsSpecFragment
+            }
+        }
+    }
+}
+
+query GetWorkOpsSpecsByProgram($programId: UUID!, $offset: Long! = 0, $limit: Int! = 50) {
+    workOps {
+        specs {
+            byProgram(programId: $programId, offset: $offset, limit: $limit) {
+                ...WorkOpsSpecFragment
+            }
+        }
+    }
+}
+
+query GetWorkOpsSpecsByOwner($ownerProfileId: UUID!, $offset: Long! = 0, $limit: Int! = 50) {
+    workOps {
+        specs {
+            byOwner(ownerProfileId: $ownerProfileId, offset: $offset, limit: $limit) {
+                ...WorkOpsSpecFragment
+            }
+        }
+    }
+}
+
+query GetWorkOpsSpecChildren($parentSpecId: UUID!, $offset: Long! = 0, $limit: Int! = 50) {
+    workOps {
+        specs {
+            children(parentSpecId: $parentSpecId, offset: $offset, limit: $limit) {
+                ...WorkOpsSpecFragment
+            }
+        }
+    }
+}
+
+query GetWorkOpsSpecHistory($specId: UUID!, $offset: Long! = 0, $limit: Int! = 50) {
+    workOps {
+        specs {
+            spec(id: $specId) {
+                id
+                key
+                history(offset: $offset, limit: $limit) {
+                    id
+                    specId
+                    changedAt
+                    changedByPrincipalId
+                    changedByProfileId
+                    changes {
+                        fieldKey
+                        fieldName
+                        fromValue
+                        toValue
+                    }
+                }
+            }
+        }
+    }
+}
+
+query GetWorkOpsSpecContexts($specId: UUID!) {
+    workOps {
+        specs {
+            spec(id: $specId) {
+                id
+                key
+                contexts {
+                    id
+                    specId
+                    contextType
+                    targetId
+                    label
+                    attributes
+                    addedByProfileId
+                    createdAt
+                }
+            }
+        }
+    }
+}
+
+mutation CreateWorkOpsSpec($input: CreateWorkOpsSpecInput!) {
+    workOps {
+        specs {
+            create(input: $input) {
+                ...WorkOpsSpecFragment
+            }
+        }
+    }
+}
+
+mutation UpdateWorkOpsSpec($id: UUID!, $input: UpdateWorkOpsSpecInput!) {
+    workOps {
+        specs {
+            update(id: $id, input: $input) {
+                ...WorkOpsSpecFragment
+            }
+        }
+    }
+}
+
+mutation TransitionWorkOpsSpec($id: UUID!, $transitionId: UUID!, $expectedVersion: Long!, $resolutionId: UUID) {
+    workOps {
+        specs {
+            transition(id: $id, transitionId: $transitionId, expectedVersion: $expectedVersion, resolutionId: $resolutionId) {
+                ...WorkOpsSpecFragment
+            }
+        }
+    }
+}
+
+mutation SoftDeleteWorkOpsSpec($id: UUID!, $expectedVersion: Long!) {
+    workOps {
+        specs {
+            softDelete(id: $id, expectedVersion: $expectedVersion) {
+                ...WorkOpsSpecFragment
+            }
+        }
+    }
+}
+
+mutation RestoreWorkOpsSpec($id: UUID!, $expectedVersion: Long!) {
+    workOps {
+        specs {
+            restore(id: $id, expectedVersion: $expectedVersion) {
+                ...WorkOpsSpecFragment
+            }
+        }
+    }
+}
+
+mutation AddWorkOpsSpecContext($specId: UUID!, $input: CreateWorkOpsSpecContextInput!) {
+    workOps {
+        specs {
+            addContext(specId: $specId, input: $input) {
+                id
+                specId
+                contextType
+                targetId
+                label
+                attributes
+                addedByProfileId
+                createdAt
+            }
+        }
+    }
+}
+
+mutation RemoveWorkOpsSpecContext($specId: UUID!, $contextId: UUID!) {
+    workOps {
+        specs {
+            removeContext(specId: $specId, contextId: $contextId)
+        }
+    }
+}
+
+mutation GenerateWorkOpsSpecTasks($specId: UUID!, $metadataVersion: Int!, $source: WorkOpsGenerationSource!, $agentSessionId: UUID) {
+    workOps {
+        specs {
+            generateTasks(specId: $specId, metadataVersion: $metadataVersion, source: $source, agentSessionId: $agentSessionId) {
+                id
+                specId
+                metadataVersion
+                source
+                agentSessionId
+                generatedTaskIds
+                createdAt
+                createdByPrincipalId
+            }
+        }
+    }
+}
+
+mutation PushWorkOpsSpecToGit($specId: UUID!, $content: String!, $authorName: String!, $authorEmail: String!) {
+    workOps {
+        specs {
+            pushToGit(specId: $specId, content: $content, authorName: $authorName, authorEmail: $authorEmail)
+        }
+    }
+}
+
+mutation PullWorkOpsSpecFromGit($specId: UUID!, $commitSha: String!) {
+    workOps {
+        specs {
+            pullFromGit(specId: $specId, commitSha: $commitSha) {
+                ...WorkOpsSpecFragment
+            }
+        }
+    }
+}
+
+query GetWorkOpsSpecComments($specId: UUID!, $offset: Long! = 0, $limit: Long! = 50) {
+    workOps {
+        specComments {
+            forSpec(specId: $specId, offset: $offset, limit: $limit) {
+                id
+                parentId
+                specId
+                profileId
+                visibility
+                created
+                modified
+                status
+                content
+                likes
+                deleted
+            }
+        }
+    }
+}
+
+mutation AddWorkOpsSpecComment($specId: UUID!, $input: WorkOpsSpecCommentInput!) {
+    workOps {
+        specComments {
+            add(specId: $specId, input: $input) {
+                id
+                parentId
+                specId
+                profileId
+                content
+                created
+                visibility
+                status
+            }
+        }
+    }
+}
+
+mutation DeleteWorkOpsSpecComment($specId: UUID!, $commentId: Long!) {
+    workOps {
+        specComments {
+            delete(specId: $specId, commentId: $commentId)
+        }
+    }
+}
+
+query GetWorkOpsRequirement($id: UUID!) {
+    workOps {
+        requirements {
+            requirement(id: $id) {
+                id
+                key
+                metadataId
+                parentType
+                parentId
+                sortOrder
+                labelIds
+                deletedAt
+                createdAt
+                modifiedAt
+                createdByPrincipalId
+                modifiedByPrincipalId
+                version
+                status {
+                    id
+                    name
+                    category
+                }
+                priority {
+                    id
+                    name
+                    displayOrder
+                }
+                assigneeProfileId
+                taskId
+            }
+        }
+    }
+}
+
+query GetWorkOpsRequirementByKey($key: String!) {
+    workOps {
+        requirements {
+            requirementByKey(key: $key) {
+                id
+                key
+                metadataId
+                parentType
+                parentId
+                sortOrder
+                labelIds
+                deletedAt
+                createdAt
+                modifiedAt
+                createdByPrincipalId
+                modifiedByPrincipalId
+                version
+                status {
+                    id
+                    name
+                    category
+                }
+                priority {
+                    id
+                    name
+                    displayOrder
+                }
+                assigneeProfileId
+                taskId
+            }
+        }
+    }
+}
+
+query GetWorkOpsRequirementsBySpec($specId: UUID!, $offset: Long! = 0, $limit: Int! = 50) {
+    workOps {
+        requirements {
+            bySpec(specId: $specId, offset: $offset, limit: $limit) {
+                id
+                key
+                metadataId
+                parentType
+                parentId
+                sortOrder
+                labelIds
+                deletedAt
+                createdAt
+                modifiedAt
+                version
+                status {
+                    id
+                    name
+                    category
+                }
+                priority {
+                    id
+                    name
+                    displayOrder
+                }
+                assigneeProfileId
+                taskId
+            }
+        }
+    }
+}
+
+query GetWorkOpsRequirementsByTask($taskId: UUID!, $offset: Long! = 0, $limit: Int! = 50) {
+    workOps {
+        requirements {
+            byTask(taskId: $taskId, offset: $offset, limit: $limit) {
+                id
+                key
+                metadataId
+                parentType
+                parentId
+                sortOrder
+                labelIds
+                deletedAt
+                createdAt
+                modifiedAt
+                version
+                status {
+                    id
+                    name
+                    category
+                }
+                priority {
+                    id
+                    name
+                    displayOrder
+                }
+                assigneeProfileId
+                taskId
+            }
+        }
+    }
+}
+
+mutation CreateWorkOpsRequirement($input: CreateWorkOpsRequirementInput!) {
+    workOps {
+        requirements {
+            create(input: $input) {
+                id
+                key
+                metadataId
+                parentType
+                parentId
+                sortOrder
+                version
+                status {
+                    id
+                    name
+                    category
+                }
+                priority {
+                    id
+                    name
+                    displayOrder
+                }
+                assigneeProfileId
+                taskId
+            }
+        }
+    }
+}
+
+mutation UpdateWorkOpsRequirement($id: UUID!, $input: UpdateWorkOpsRequirementInput!) {
+    workOps {
+        requirements {
+            update(id: $id, input: $input) {
+                id
+                key
+                metadataId
+                parentType
+                parentId
+                sortOrder
+                version
+                status {
+                    id
+                    name
+                    category
+                }
+                priority {
+                    id
+                    name
+                    displayOrder
+                }
+                assigneeProfileId
+                taskId
+            }
+        }
+    }
+}
+
+mutation SoftDeleteWorkOpsRequirement($id: UUID!, $expectedVersion: Long!) {
+    workOps {
+        requirements {
+            softDelete(id: $id, expectedVersion: $expectedVersion) {
+                id
+                key
+                version
+            }
+        }
+    }
+}
+
+mutation RestoreWorkOpsRequirement($id: UUID!, $expectedVersion: Long!) {
+    workOps {
+        requirements {
+            restore(id: $id, expectedVersion: $expectedVersion) {
+                id
+                key
+                version
+            }
+        }
+    }
+}
+
+mutation MoveWorkOpsRequirement($id: UUID!, $parentType: WorkOpsRequirementParent!, $parentId: UUID!, $expectedVersion: Long!) {
+    workOps {
+        requirements {
+            moveToParent(id: $id, parentType: $parentType, parentId: $parentId, expectedVersion: $expectedVersion) {
+                id
+                key
+                parentType
+                parentId
+                version
+            }
+        }
+    }
+}

@@ -1,0 +1,26 @@
+Bosca Services deployed.
+
+Prerequisite: bosca-infra must be installed first (provides PostgreSQL, NATS, Meilisearch, Redis).
+
+Services:
+{{- if index .Values "bosca-server" "enabled" }}
+  - bosca-server: :8080
+{{- end }}
+{{- if index .Values "bosca-runner" "enabled" }}
+  - bosca-runner: :8080
+{{- end }}
+{{- if index .Values "bosca-studio" "enabled" }}
+  - bosca-studio (administration): :3000
+{{- end }}
+{{- if index .Values "bosca-kubernetes-controller" "enabled" }}
+  - bosca-kubernetes-controller: :8082
+{{- end }}
+{{- if index .Values "bosca-artifacts-server" "enabled" }}
+  - bosca-artifacts-server: :8084
+{{- end }}
+{{- if index .Values "bosca-git-server" "enabled" }}
+  - bosca-git-server: :8091
+{{- end }}
+
+Verify:
+  kubectl get pods -n {{ .Release.Namespace }}

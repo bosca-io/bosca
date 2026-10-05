@@ -1,0 +1,9 @@
+{
+  "resources": [
+    {"pattern": "META-INF/services/.*"},
+    {"pattern": "logback\\.xml"},
+    {"pattern": ".*\\.yaml$"},
+    {"pattern": "bosca/cli/version\\.txt"},
+    {"pattern": "bosca/bml/compiler/bml-compiler\\.properties"}
+  ]
+}

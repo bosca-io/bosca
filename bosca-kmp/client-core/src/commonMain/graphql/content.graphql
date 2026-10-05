@@ -1,0 +1,24 @@
+query SearchContent($query: String!) {
+    search {
+        search(query: { query: $query, storageSystemName: "Public Search Index" }) {
+            documents {
+                metadata {
+                    id
+                    name
+                    attributes
+                    relationships {
+                        id
+                        relationship
+                        attributes
+                        metadata {
+                            slug
+                        }
+                    }
+                    content {
+                        type
+                    }
+                }
+            }
+        }
+    }
+}

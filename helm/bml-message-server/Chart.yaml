@@ -1,0 +1,10 @@
+apiVersion: v2
+name: bml-message-server
+description: BML Message Server — hosts published message-project jars, renders email and push channels over a private API, and serves version-pinned assets plus email engagement tracking
+type: application
+version: 0.1.0
+appVersion: "5.19.0"
+dependencies:
+  - name: bosca-common
+    version: ">=0.1.0"
+    repository: "file://../bosca-common"

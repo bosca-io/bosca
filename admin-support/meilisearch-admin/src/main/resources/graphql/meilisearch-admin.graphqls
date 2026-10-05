@@ -1,0 +1,525 @@
+"Version information from the Meilisearch instance identifying the exact build."
+type MeilisearchVersion {
+    "The Meilisearch server software version."
+    pkgVersion: String!
+    "The date the build was committed."
+    commitDate: String
+    "The short SHA of the commit."
+    commitSha: String
+}
+
+"Health status of a Meilisearch instance."
+type MeilisearchHealth {
+    "Whether the instance is healthy and accepting requests."
+    healthy: Boolean!
+}
+
+"Aggregate statistics across all indexes on a Meilisearch instance."
+type MeilisearchGlobalStats {
+    "Total number of indexes on this instance."
+    numberOfIndexes: Int!
+    "Total size of the database on disk in bytes."
+    databaseSize: Long!
+    "Timestamp of the most recent update across all indexes."
+    lastUpdate: String
+}
+
+"Metadata and entry point for a Meilisearch index."
+type MeilisearchIndex {
+    "The unique identifier of the index."
+    uid: String!
+    "The primary key field used for document deduplication."
+    primaryKey: String
+    "When this index was created."
+    createdAt: String!
+    "When this index was last updated."
+    updatedAt: String!
+    "Per-index statistics including document count and field distribution."
+    stats: MeilisearchIndexStats!
+    "The complete settings of this index."
+    settings: MeilisearchIndexSettings!
+    "Browse documents in this index with optional pagination and field selection."
+    documents(
+        "Zero-based offset for pagination."
+        offset: Int
+        "Maximum number of documents to return."
+        limit: Int
+        "Subset of fields to include in each document."
+        fields: [String!]
+    ): [JSON!]!
+}
+
+"Per-index statistics from Meilisearch."
+type MeilisearchIndexStats {
+    "Total number of documents in this index."
+    numberOfDocuments: Long!
+    "Whether this index is currently processing updates."
+    isIndexing: Boolean!
+    "Distribution of fields across documents, showing how many documents contain each field."
+    fieldDistribution: [MeilisearchFieldDistribution!]!
+}
+
+"Count of documents containing a particular field within an index."
+type MeilisearchFieldDistribution {
+    "The field name."
+    field: String!
+    "The number of documents containing this field."
+    count: Long!
+}
+
+"Complete settings of a Meilisearch index."
+type MeilisearchIndexSettings {
+    "The ranking rules that determine result ordering."
+    rankingRules: [String!]!
+    "The attributes that can be used as search query terms."
+    searchableAttributes: [String!]!
+    "The attributes returned in search results."
+    displayedAttributes: [String!]!
+    "The attributes that can be used for filtering and faceting."
+    filterableAttributes: [String!]!
+    "The attributes that can be used for sorting results."
+    sortableAttributes: [String!]!
+    "Words ignored during search."
+    stopWords: [String!]!
+    "Groups of words considered equivalent during search."
+    synonyms: [MeilisearchSynonym!]!
+    "The distinct attribute used for deduplication."
+    distinctAttribute: String
+    "Typo tolerance configuration."
+    typoTolerance: MeilisearchTypoTolerance
+    "Pagination limits."
+    pagination: MeilisearchPagination
+    "Faceting configuration."
+    faceting: MeilisearchFaceting
+    "Configured embedders for semantic and vector search."
+    embedders: [MeilisearchEmbedderEntry!]!
+    "Proximity precision setting (byWord or byAttribute)."
+    proximityPrecision: String
+    "Search cutoff time in milliseconds."
+    searchCutoffMs: Int
+}
+
+"A synonym mapping between a word and its alternative search terms."
+type MeilisearchSynonym {
+    "The word that triggers synonym expansion."
+    word: String!
+    "The synonyms for this word."
+    synonyms: [String!]!
+}
+
+"Typo tolerance configuration for an index."
+type MeilisearchTypoTolerance {
+    "Whether typo tolerance is enabled."
+    enabled: Boolean!
+    "Minimum word size thresholds for typo correction."
+    minWordSizeForTypos: MeilisearchMinWordSize
+    "Words that should never have typo correction applied."
+    disableOnWords: [String!]
+    "Attributes where typo correction is disabled."
+    disableOnAttributes: [String!]
+}
+
+"Minimum word length thresholds for activating typo correction."
+type MeilisearchMinWordSize {
+    "Minimum word length to allow one typo."
+    oneTypo: Int!
+    "Minimum word length to allow two typos."
+    twoTypos: Int!
+}
+
+"Pagination limits for search results."
+type MeilisearchPagination {
+    "Maximum total number of hits that can be returned."
+    maxTotalHits: Int!
+}
+
+"Faceting configuration for search results."
+type MeilisearchFaceting {
+    "Maximum number of facet values returned per facet."
+    maxValuesPerFacet: Int!
+}
+
+"Configuration for a named embedder enabling semantic and vector search on an index."
+type MeilisearchEmbedderEntry {
+    "The name of this embedder configuration."
+    name: String!
+    "The source type (e.g., openAi, huggingFace, userProvided, rest, ollama)."
+    source: String
+    "The model identifier for this embedder."
+    model: String
+    "The dimensionality of the embedding vectors."
+    dimensions: Int
+    "The template used to generate text for embedding from documents."
+    documentTemplate: String
+    "Maximum bytes for the document template."
+    documentTemplateMaxBytes: Int
+    "The URL of the embedding provider endpoint. Required for rest embedders."
+    url: String
+    "The request body template as JSON, defining how Meilisearch sends data to the provider."
+    request: JSON
+    "The response mapping as JSON, defining where embeddings are located in the provider response."
+    response: JSON
+    "Custom HTTP headers sent with each request to the embedding provider."
+    headers: JSON
+}
+
+"An asynchronous operation tracked by Meilisearch."
+type MeilisearchTask {
+    "The unique identifier of the task."
+    uid: Int!
+    "The type of operation (e.g., indexCreation, documentAdditionOrUpdate, settingsUpdate)."
+    type: String!
+    "The current status (enqueued, processing, succeeded, failed, canceled)."
+    status: String!
+    "The index UID this task operates on, if applicable."
+    indexUid: String
+    "When the task was enqueued."
+    enqueuedAt: String!
+    "When the task started processing."
+    startedAt: String
+    "When the task finished."
+    finishedAt: String
+    "Duration of the task execution."
+    duration: String
+    "Error details if the task failed."
+    error: MeilisearchTaskError
+    "The task UID that canceled this task, if applicable."
+    canceledBy: Int
+}
+
+"Error details from a failed Meilisearch task."
+type MeilisearchTaskError {
+    "The error message."
+    message: String!
+    "The machine-readable error code."
+    code: String!
+    "The error type classification."
+    type: String!
+    "A link to the documentation about this error."
+    link: String
+}
+
+"An API key registered on the Meilisearch instance."
+type MeilisearchKey {
+    "The name of this API key."
+    name: String
+    "The description of this API key."
+    description: String!
+    "The unique identifier of this key."
+    uid: String!
+    "The key value (may be partially masked)."
+    key: String!
+    "The actions this key is authorized to perform."
+    actions: [String!]!
+    "The index UIDs this key has access to (* for all)."
+    indexes: [String!]!
+    "When this key expires, null if it never expires."
+    expiresAt: String
+    "When this key was created."
+    createdAt: String!
+    "When this key was last updated."
+    updatedAt: String!
+}
+
+"A Meilisearch instance in the multi-node topology, assigned to one or more storage systems."
+type MeilisearchNode {
+    "The database identifier of this node."
+    id: UUID!
+    "Human-readable name of this node."
+    name: String!
+    "Description of this node's role or purpose."
+    description: String!
+    "The Meilisearch instance URL for this node."
+    url: String!
+    "Whether this node is currently healthy and reachable."
+    healthy: Boolean!
+    "The search types this node supports, drawn from the StorageSystemType enum."
+    types: [StorageSystemType!]!
+    "The index UIDs hosted on this node."
+    indexes: [String!]!
+    "Server version of this node."
+    version: MeilisearchVersion
+    "Global stats for this node."
+    stats: MeilisearchGlobalStats
+    "The IDs of storage systems this node is assigned to."
+    storageSystemIds: [UUID!]!
+    "Remote instances configured in this node's federation network."
+    networkRemotes: [MeilisearchNetworkRemote!]!
+}
+
+"A remote Meilisearch instance registered in the federation network."
+type MeilisearchNetworkRemote {
+    "The name identifying this remote instance."
+    name: String!
+    "The URL of the remote Meilisearch instance."
+    url: String!
+}
+
+"Query operations for introspecting Meilisearch instance state, indexes, tasks, keys, and nodes."
+type MeilisearchAdmin {
+    "Retrieve server version information."
+    version: MeilisearchVersion!
+    "Check server health status."
+    health: MeilisearchHealth!
+    "Retrieve global statistics across all indexes."
+    stats: MeilisearchGlobalStats!
+    "List all indexes with optional pagination."
+    indexes(
+        "Zero-based offset for pagination."
+        offset: Int
+        "Maximum number of indexes to return."
+        limit: Int
+    ): [MeilisearchIndex!]!
+    "Get details for a specific index by UID."
+    index(
+        "The unique identifier of the index."
+        uid: String!
+    ): MeilisearchIndex
+    "List recent tasks with optional filtering by status, type, and index."
+    tasks(
+        "Maximum number of tasks to return."
+        limit: Int
+        "Task UID to start from for pagination."
+        from: Int
+        "Filter by task statuses."
+        status: [String!]
+        "Filter by task types."
+        type: [String!]
+        "Filter by index UIDs."
+        indexUid: [String!]
+    ): [MeilisearchTask!]!
+    "Get details for a specific task."
+    task(
+        "The task UID."
+        uid: Int!
+    ): MeilisearchTask
+    "List all API keys registered on the instance."
+    keys: [MeilisearchKey!]!
+    "List all Meilisearch nodes in the multi-node topology."
+    nodes: [MeilisearchNode!]!
+    "Get a specific node by database ID."
+    node(
+        "The node's database ID."
+        id: UUID!
+    ): MeilisearchNode
+}
+
+extend type Query {
+    "Access Meilisearch server monitoring and administration operations for managing indexes, settings, tasks, nodes, and federation."
+    meilisearchAdmin: MeilisearchAdmin!
+}
+
+"Mutation operations for managing Meilisearch indexes, settings, embedders, documents, tasks, nodes, replication, and federation."
+type MeilisearchAdminMutation {
+    "Create a new index with the given UID and optional primary key."
+    createIndex(
+        "The unique identifier for the new index."
+        uid: String!
+        "The primary key field for document deduplication."
+        primaryKey: String
+    ): MeilisearchTask!
+    "Delete an index by UID."
+    deleteIndex(
+        "The unique identifier of the index to delete."
+        uid: String!
+    ): MeilisearchTask!
+    "Swap the contents of two indexes atomically."
+    swapIndexes(
+        "Pairs of index UIDs to swap, each pair as a two-element list."
+        indexes: [[String!]!]!
+    ): MeilisearchTask!
+    "Update settings for an index. Only provided fields are changed."
+    updateSettings(
+        "The index UID to update."
+        uid: String!
+        "The settings fields to update."
+        settings: MeilisearchSettingsInput!
+    ): MeilisearchTask!
+    "Reset all settings for an index to their defaults."
+    resetSettings(
+        "The index UID to reset."
+        uid: String!
+    ): MeilisearchTask!
+    "Update embedder configurations for semantic and vector search on a specific index."
+    updateEmbedders(
+        "The index UID to update."
+        uid: String!
+        "The embedder configurations to apply."
+        embedders: [MeilisearchEmbedderInput!]!
+    ): MeilisearchTask!
+    "Remove all embedder configurations from an index, disabling semantic search."
+    resetEmbedders(
+        "The index UID to reset."
+        uid: String!
+    ): MeilisearchTask!
+    "Delete all documents from an index."
+    deleteAllDocuments(
+        "The index UID to clear."
+        uid: String!
+    ): MeilisearchTask!
+    "Delete specific documents by their IDs."
+    deleteDocuments(
+        "The index UID."
+        uid: String!
+        "The document IDs to delete."
+        ids: [String!]!
+    ): MeilisearchTask!
+    "Delete documents matching a filter expression."
+    deleteDocumentsByFilter(
+        "The index UID."
+        uid: String!
+        "The Meilisearch filter expression."
+        filter: String!
+    ): MeilisearchTask!
+    "Cancel tasks matching the given filters."
+    cancelTasks(
+        "Specific task UIDs to cancel."
+        uids: [Int!]
+        "Cancel tasks with these statuses."
+        statuses: [String!]
+        "Cancel tasks of these types."
+        types: [String!]
+        "Cancel tasks operating on these index UIDs."
+        indexUids: [String!]
+    ): MeilisearchTask!
+    "Create a database dump for backup or migration."
+    createDump: MeilisearchTask!
+    "Trigger a snapshot of the current database state."
+    createSnapshot: MeilisearchTask!
+    "Register a new Meilisearch node in the multi-node topology."
+    addNode(
+        "The node configuration to create."
+        input: MeilisearchNodeInput!
+    ): MeilisearchNode!
+    "Update an existing node's configuration."
+    editNode(
+        "The node's database ID."
+        id: UUID!
+        "The fields to update."
+        input: MeilisearchEditNodeInput!
+    ): MeilisearchNode!
+    "Remove a node from the topology."
+    deleteNode(
+        "The node's database ID."
+        id: UUID!
+    ): Boolean!
+    "Assign a node to a storage system, making it serve that storage system's indexes."
+    assignNodeToStorageSystem(
+        "The storage system ID."
+        storageSystemId: UUID!
+        "The node ID to assign."
+        nodeId: UUID!
+    ): Boolean!
+    "Remove a node from a storage system assignment."
+    removeNodeFromStorageSystem(
+        "The storage system ID."
+        storageSystemId: UUID!
+        "The node ID to remove."
+        nodeId: UUID!
+    ): Boolean!
+    "Export data from the primary instance to a specific node for replication."
+    exportToNode(
+        "The target node's database ID."
+        nodeId: UUID!
+        "Specific index UIDs to export, or all if omitted."
+        indexUids: [String!]
+        "Whether to override existing settings on the target."
+        overrideSettings: Boolean
+    ): MeilisearchTask!
+    "Configure the federation network on a specific node, registering remote instances for distributed search."
+    configureNetwork(
+        "The node's database ID."
+        nodeId: UUID!
+        "The remote instances to register."
+        remotes: [MeilisearchNetworkRemoteInput!]!
+    ): Boolean!
+}
+
+extend type Mutation {
+    "Access Meilisearch admin mutation operations for managing indexes, settings, embedders, nodes, replication, and federation."
+    meilisearchAdmin: MeilisearchAdminMutation!
+}
+
+"Input for updating index settings. Only provided fields are changed."
+input MeilisearchSettingsInput {
+    "The ranking rules that determine result ordering."
+    rankingRules: [String!]
+    "The attributes that can be used as search query terms."
+    searchableAttributes: [String!]
+    "The attributes returned in search results."
+    displayedAttributes: [String!]
+    "The attributes that can be used for filtering."
+    filterableAttributes: [String!]
+    "The attributes that can be used for sorting."
+    sortableAttributes: [String!]
+    "Words to ignore during search."
+    stopWords: [String!]
+    "The distinct attribute for deduplication."
+    distinctAttribute: String
+    "Proximity precision (byWord or byAttribute)."
+    proximityPrecision: String
+    "Search cutoff time in milliseconds."
+    searchCutoffMs: Int
+}
+
+"Input for configuring an embedder on an index for semantic and vector search."
+input MeilisearchEmbedderInput {
+    "The name for this embedder configuration."
+    name: String!
+    "The source type (openAi, huggingFace, userProvided, rest, ollama)."
+    source: String!
+    "The model identifier."
+    model: String
+    "The API key for the embedding provider."
+    key: String
+    "The dimensionality of the vectors."
+    dimensions: Int
+    "The template used to generate text for embedding."
+    documentTemplate: String
+    "Maximum bytes for the document template."
+    documentTemplateMaxBytes: Int
+    "The URL of the embedding provider endpoint. Required for rest embedders."
+    url: String
+    "The request body template as JSON, defining how to send data to the provider."
+    request: JSON
+    "The response mapping as JSON, defining where embeddings are in the provider response."
+    response: JSON
+    "Custom HTTP headers as JSON key-value pairs sent with each request."
+    headers: JSON
+}
+
+"Input for creating a new Meilisearch node in the multi-node topology."
+input MeilisearchNodeInput {
+    "Human-readable name for the node."
+    name: String!
+    "Description of the node's role."
+    description: String
+    "The Meilisearch instance URL."
+    url: String!
+    "The API key for authenticating with this node."
+    key: String!
+    "The search types this node supports."
+    types: [StorageSystemType!]!
+}
+
+"Input for updating an existing Meilisearch node's configuration. Only provided fields are changed."
+input MeilisearchEditNodeInput {
+    "Updated name."
+    name: String
+    "Updated description."
+    description: String
+    "Updated URL."
+    url: String
+    "Updated API key."
+    key: String
+    "Updated search types."
+    types: [StorageSystemType!]
+}
+
+"Input for registering a remote Meilisearch instance in the federation network."
+input MeilisearchNetworkRemoteInput {
+    "The name identifying the remote instance."
+    name: String!
+    "The URL of the remote Meilisearch instance."
+    url: String!
+}

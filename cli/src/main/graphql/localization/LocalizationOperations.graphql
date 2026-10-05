@@ -1,0 +1,122 @@
+query GetLocalizationStringByKey($projectId: UUID!, $key: String!) {
+    localization {
+        stringByKey(projectId: $projectId, key: $key) {
+            id
+            key
+        }
+    }
+}
+
+mutation AddLocalizationString($input: LocalizationStringInput!) {
+    localization {
+        addString(input: $input) {
+            id
+            key
+        }
+    }
+}
+
+mutation SetLocalizationTranslation($input: LocalizationTranslationInput!) {
+    localization {
+        setTranslation(input: $input) {
+            id
+        }
+    }
+}
+
+query ExportLocalization($request: ExportRequestInput!) {
+    localization {
+        export(request: $request) {
+            content
+            contentType
+            fileName
+        }
+    }
+}
+
+query GetLocalizationProgress($projectId: UUID!, $languageTag: String!) {
+    localization {
+        project(id: $projectId) {
+            id
+            name
+            progress(languageTag: $languageTag) {
+                totalStrings
+                translatedStrings
+                approvedStrings
+                publishedStrings
+                aiGeneratedStrings
+                humanTranslatedStrings
+                percentage
+            }
+        }
+    }
+}
+
+mutation SyncLocalizationToProvider($projectId: UUID!) {
+    localization {
+        syncToProvider(projectId: $projectId) {
+            stringsAdded
+            stringsUpdated
+            translationsAdded
+            translationsUpdated
+            errors
+        }
+    }
+}
+
+mutation SyncLocalizationFromProvider($projectId: UUID!) {
+    localization {
+        syncFromProvider(projectId: $projectId) {
+            stringsAdded
+            stringsUpdated
+            translationsAdded
+            translationsUpdated
+            errors
+        }
+    }
+}
+
+query GetLocalizationProjectConfig($id: UUID!) {
+    localization {
+        project(id: $id) {
+            sourceLanguage
+            languages {
+                languageTag
+            }
+        }
+    }
+}
+
+query GetLocalizationProjectStrings($id: UUID!, $tag: String!, $offset: Int!, $limit: Int!) {
+    localization {
+        project(id: $id) {
+            strings(offset: $offset, limit: $limit) {
+                id
+                key
+                plural
+                translations {
+                    languageTag
+                    text
+                }
+                pluralTranslations(languageTag: $tag) {
+                    pluralCategory
+                    text
+                }
+            }
+        }
+    }
+}
+
+mutation SetLocalizationPluralTranslation($input: LocalizationPluralTranslationInput!) {
+    localization {
+        setPluralTranslation(input: $input) {
+            id
+        }
+    }
+}
+
+mutation DeleteLocalizationPluralTranslations($stringId: UUID!, $languageTag: String!) {
+    localization {
+        deletePluralTranslations(stringId: $stringId, languageTag: $languageTag)
+    }
+}

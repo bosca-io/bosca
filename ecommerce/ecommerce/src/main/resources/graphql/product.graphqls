@@ -1,0 +1,95 @@
+"""
+What kind of thing a product is, which drives fulfillment behavior: PHYSICAL ships from inventory,
+VIRTUAL/SERVICE need no fulfillment, SHIPPING is the synthetic line item carrying shipping charges,
+PROMOTION is a synthetic discount-bearing item, SUBSCRIPTION creates a recurring purchase at
+checkout (its SubscriptionProductConfiguration binds a plan group).
+"""
+enum ProductType { PHYSICAL VIRTUAL SERVICE SHIPPING PROMOTION SUBSCRIPTION }
+
+extend type Ecom {
+    "A product by id."
+    product(id: UUID!): Product
+    "Products belonging to a company, paged. Admin/catalog-management surface."
+    products(companyId: UUID!, offset: Int! = 0, limit: Int! = 25): [Product!]!
+}
+
+extend type EcomMutation {
+    "Product creates and per-product operations. Admin."
+    products: ProductsMutation!
+}
+
+"""
+The commerce identity of a thing that can be sold. Name, description, and all merchandising content
+live on the linked content Metadata document — this row carries only commerce facts. Pricing lives
+on CatalogProduct entries.
+"""
+type Product {
+    id: UUID!
+    company: Company!
+    manufacturer: Manufacturer!
+    "The manufacturer's SKU, unique per manufacturer."
+    manufacturerSku: String!
+    type: ProductType!
+    "Type-specific behavior configuration (sealed ProductConfiguration)."
+    configuration: ProductConfiguration!
+    "Shipping weight; intrinsic to the product (used by shipping-rate calculation)."
+    weight: Float!
+    "Shipping dimensions (unitless; 0 = unknown). Used by the packer to box for density."
+    width: Float!
+    height: Float!
+    length: Float!
+    """
+    The backing content document, resolved at the PINNED version. The pin advances automatically when
+    a new version of the document is published through the content workflow — drafts never appear here.
+    """
+    metadata: Metadata!
+    "The pinned content version currently live on storefronts (advances on content publish)."
+    metadataVersion: Int!
+    created: DateTime!
+    modified: DateTime!
+}
+
+"""Product creates and per-product operations. Admin."""
+type ProductsMutation {
+    "Create a product and its backing content Metadata document (pinned at version 1)."
+    add(input: ProductInput!): Product!
+    "Operations on an existing product."
+    product(id: UUID!): ProductMutation!
+}
+
+"""
+Mutations scoped to one product. Admin. There is deliberately no publish-content mutation here:
+publishing happens in the content module's own workflow, and the product's pinned metadataVersion
+follows the publish automatically (audited).
+"""
+type ProductMutation {
+    "Edit the product's commerce fields and configuration."
+    edit(input: ProductInput!): Product!
+    "Soft-delete the product and unpublish its content Metadata together."
+    delete: Boolean!
+}
+
+"""
+Creates or edits a product. title/description seed the backing content Metadata document on create;
+afterwards content is edited and published through the content module, and the product's pinned
+version follows the publish automatically.
+"""
+input ProductInput {
+    companyId: UUID!
+    manufacturerId: UUID!
+    "The manufacturer's SKU, unique per manufacturer."
+    manufacturerSku: String!
+    type: ProductType!
+    "Type-specific behavior configuration (sealed ProductConfiguration; SubscriptionProductConfiguration for SUBSCRIPTION products)."
+    configuration: JSON = null
+    "Shipping weight; intrinsic to the product."
+    weight: Float! = 1
+    "Shipping dimensions (unitless; 0 = unknown). Used by the packer to box for density."
+    width: Float! = 0
+    height: Float! = 0
+    length: Float! = 0
+    "Title for the backing content document."
+    title: String!
+    "Initial description for the backing content document."
+    description: String = null
+}

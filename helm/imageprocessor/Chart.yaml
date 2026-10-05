@@ -1,0 +1,10 @@
+apiVersion: v2
+name: imageprocessor
+description: Internal image resize/blurhash/metadata service consumed by bosca-server and bosca-runner
+type: application
+version: 0.1.0
+appVersion: "4.8.16"
+dependencies:
+  - name: bosca-common
+    version: ">=0.1.0"
+    repository: "file://../bosca-common"

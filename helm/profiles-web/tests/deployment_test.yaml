@@ -1,0 +1,71 @@
+suite: profiles-web deployment
+templates:
+  - templates/deployment.yaml
+  - templates/service.yaml
+values:
+  - ../values.yaml
+set:
+  global:
+    domain: example.com
+release:
+  name: test
+  namespace: bosca
+tests:
+  - it: renders a Deployment with the profiles-web image
+    template: templates/deployment.yaml
+    asserts:
+      - isKind:
+          of: Deployment
+      - matchRegex:
+          path: spec.template.spec.containers[0].image
+          pattern: ghcr.io/bosca-io/bosca/profiles-web
+
+  - it: exposes port 9095
+    template: templates/deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].ports[0].containerPort
+          value: 9095
+
+  - it: probes the application root
+    template: templates/deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.httpGet.path
+          value: /
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.httpGet.path
+          value: /
+
+  - it: renders the GraphQL endpoint and branding environment
+    template: templates/deployment.yaml
+    set:
+      extraEnv:
+        BML_GRAPHQL_ENDPOINT: http://bosca-bosca-server:8080/graphql
+        PROFILES_WEB_PUBLIC_URL: https://profiles.example
+        BRAND_NAME: Acme
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: BML_GRAPHQL_ENDPOINT
+            value: http://bosca-bosca-server:8080/graphql
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: PROFILES_WEB_PUBLIC_URL
+            value: https://profiles.example
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: BRAND_NAME
+            value: Acme
+
+  - it: exposes port 9095 through the Service
+    template: templates/service.yaml
+    asserts:
+      - isKind:
+          of: Service
+      - equal:
+          path: spec.ports[0].port
+          value: 9095

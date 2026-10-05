@@ -1,0 +1,39 @@
+extend type EcomMutation {
+    "In-app-purchase redemption. Ecom administrator only."
+    iap: IapMutation!
+}
+
+"In-app-purchase redemption operations. Ecom administrator only."
+type IapMutation {
+    "Verify an app-store receipt and grant/extend the entitlement, once per store transaction."
+    redeem(input: IapRedeemInput!): IapRedemptionResult!
+}
+
+"The app store a purchase receipt comes from."
+enum IapPlatform { ANDROID IOS }
+
+"The outcome of redeeming an in-app-purchase receipt."
+enum IapRedemptionStatus { GRANTED ALREADY_REDEEMED INVALID NOT_FOUND VERIFICATION_UNAVAILABLE }
+
+"A verified in-app purchase to redeem into a subscription entitlement."
+input IapRedeemInput {
+    storeId: UUID!
+    accountId: UUID!
+    planId: UUID!
+    platform: IapPlatform!
+    "The store-issued receipt / purchase token."
+    token: String!
+    "The store product id (required for Google; ignored by Apple)."
+    productId: String = null
+    "The Android app package name (Google only)."
+    packageName: String = null
+}
+
+"The result of redeeming an in-app-purchase receipt."
+type IapRedemptionResult {
+    status: IapRedemptionStatus!
+    "The granted/extended subscription, when present."
+    subscription: EcomSubscription
+    "The store transaction id that was redeemed, when available."
+    transactionId: String
+}

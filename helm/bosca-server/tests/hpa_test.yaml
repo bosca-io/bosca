@@ -1,0 +1,30 @@
+suite: bosca-server HPA
+templates:
+  - templates/hpa.yaml
+values:
+  - ../values.yaml
+set:
+  global:
+    domain: example.com
+tests:
+  - it: does not render when autoscaling disabled
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: renders HPA when autoscaling enabled
+    set:
+      autoscaling:
+        enabled: true
+        minReplicas: 3
+        maxReplicas: 10
+        targetCPUUtilizationPercentage: 70
+    asserts:
+      - isKind:
+          of: HorizontalPodAutoscaler
+      - equal:
+          path: spec.minReplicas
+          value: 3
+      - equal:
+          path: spec.maxReplicas
+          value: 10

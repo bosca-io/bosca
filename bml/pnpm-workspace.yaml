@@ -1,0 +1,4 @@
+# Registers BML's TypeScript packages as a pnpm workspace (mirrors web/pnpm-workspace.yaml).
+# Currently the island runtime @bosca/bml; `pnpm install` here links/installs it.
+packages:
+  - bml-runtime

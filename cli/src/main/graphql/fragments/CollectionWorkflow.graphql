@@ -1,0 +1,5 @@
+fragment CollectionWorkflow on CollectionWorkflow {
+    state
+    stateValid
+    pending
+}

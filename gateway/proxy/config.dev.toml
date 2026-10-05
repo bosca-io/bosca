@@ -1,0 +1,46 @@
+# Default config picked up by debug builds of `bosca-gateway` when no
+# --config flag or GATEWAY_CONFIG env var is supplied. The path is
+# baked into the binary at compile time via CARGO_MANIFEST_DIR so this
+# file works from any working directory (IDE launch, `cargo run` from
+# repo root, etc.).
+#
+# The api_token below must byte-equal `gateway.proxy.sharedToken` in
+# server/bosca-server/src/main/resources/application.yaml. Both default
+# to the same dev string so a fresh checkout works without extra setup;
+# both are overridden in production via env vars
+# (GATEWAY_BOSCA_TOKEN on the proxy, GATEWAY_PROXY_SHARED_TOKEN on the
+# server).
+#
+# This file is committed on purpose — it contains no production secret.
+
+[gateway]
+bind = "0.0.0.0:9999"
+drain_timeout_secs = 30
+studio_url = "http://localhost:3000"
+
+[bosca]
+api_url = "http://localhost:8080"
+api_token = "dev-gateway-proxy-shared-token-not-for-prod"
+# Short poll interval so dev iteration feels responsive — a server
+# restart or config change should be picked up within a few seconds,
+# not the 30s prod default. Prod sets this via its own config file.
+poll_interval_secs = 5
+# /tmp is wiped on reboot, which is fine — the proxy refetches on next
+# poll (and on startup falls back to the live API if the cache is
+# missing, see gateway/proxy/src/sync/mod.rs).
+cache_file = "/tmp/bosca-gateway/config-cache.json"
+
+# Auth providers are optional and only required by routes whose
+# auth_method references them. Add `[auth.oauth2]` or `[auth.jwt]`
+# here when you start exercising those flows; Basic is wired up below
+# because it's the path used for Bosca API tokens
+# (`Authorization: Basic api_token:bsk_*`) which is the simplest dev
+# credential to issue.
+
+[auth.basic]
+# Re-uses Bosca's auth middleware on the server side. Accepts
+# `<user>:<password>` and `api_token:bsk_*`. The proxy caches
+# successful validations for `cache_ttl_secs` so back-to-back requests
+# from the same client don't round-trip through Bosca every time.
+validation_endpoint = "http://localhost:8080/api/v1/gateway/validate"
+cache_ttl_secs = 60

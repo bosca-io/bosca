@@ -1,0 +1,90 @@
+replicaCount: 1
+
+# Rolling update strategy. `maxUnavailable: 0` guarantees no capacity dip
+# during rollouts. Bump `maxSurge` higher for faster, more aggressive
+# rollouts at the cost of brief extra pod-hours during the rollout window.
+strategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxSurge: 25%
+    maxUnavailable: 0
+
+image:
+  registry: ghcr.io/bosca-io/bosca
+  repository: profiles-web
+  tag: ""
+  pullPolicy: IfNotPresent
+
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+commonAnnotations: {}
+
+podSecurityContext: {}
+securityContext: {}
+
+# The GraalVM-native BML SSR application listens on 9095. It proxies
+# /graphql and /oauth2 same-origin to BML_GRAPHQL_ENDPOINT, so the public
+# route is a single catch-all.
+service:
+  type: ClusterIP
+  port: 9095
+
+gateway:
+  enabled: true
+  gatewayName: bosca-gateway
+  gatewayNamespace: ""
+  hostnames: []
+
+# Server-side rendering without JVM warmup or heap overhead.
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 80
+
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+
+# BML_GRAPHQL_ENDPOINT configures SSR data loading plus the same-origin
+# /graphql and /oauth2 proxies. Branding variables configure the site without
+# rebuilding the image. Colors accept CSS hex notation; footer HTML is read
+# verbatim from a mounted file. All variables are optional, e.g.:
+#   extraEnv:
+#     BML_GRAPHQL_ENDPOINT: http://bosca-bosca-server:8080/graphql
+#     PROFILES_WEB_PUBLIC_URL: https://profiles.example.com
+#     PROFILES_WEB_COOKIE_DOMAIN: example.com
+#     BRAND_NAME: Acme
+#     BRAND_LOGO_URL: https://cdn.acme.example/logo.svg
+#     BRAND_PRIMARY_COLOR: "#172554"
+#     BRAND_ACCENT_COLOR: "#0369a1"
+#     BRAND_FOOTER_HTML_FILE: /etc/profiles-web/footer.html
+extraEnv: {}
+
+envFromConfigMaps: []
+
+imagePullSecrets:
+  - name: docker-registry
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+global:
+  # Registry (and path) for every Bosca image; when set, it overrides image.registry.
+  imageRegistry: ""
+  domain: ""

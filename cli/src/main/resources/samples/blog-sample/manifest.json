@@ -1,0 +1,789 @@
+{
+  "name": "Blog Sample Data",
+  "version": "1.0.0",
+  "description": "Sample blog content with document templates, guide templates, collection templates for authors and topics, and example blog posts with images and relationships.",
+
+  "documentTemplates": [
+    {
+      "ref": "template-blog-post",
+      "name": "Blog Post",
+      "contentType": "bosca/v-document-template",
+      "languageTag": "en",
+      "slug": "template-blog-post",
+      "attributes": [
+        {
+          "key": "type",
+          "name": "Type",
+          "description": "The content type classification for this blog post (e.g. article, tutorial, opinion)",
+          "type": "STRING",
+          "ui": "INPUT"
+        },
+        {
+          "key": "description",
+          "name": "Description",
+          "description": "A brief summary or excerpt of the blog post used in listings and search results",
+          "type": "STRING",
+          "ui": "TEXTAREA"
+        },
+        {
+          "key": "author",
+          "name": "Author",
+          "description": "Reference to the author collection associated with this blog post",
+          "type": "COLLECTION",
+          "ui": "COLLECTION"
+        },
+        {
+          "key": "topics",
+          "name": "Topics",
+          "description": "Topic collections this blog post belongs to, used for categorization and discovery",
+          "type": "COLLECTION",
+          "ui": "COLLECTION",
+          "list": true
+        },
+        {
+          "key": "hero_image",
+          "name": "Hero Image",
+          "description": "Primary featured image displayed at the top of the blog post",
+          "type": "METADATA",
+          "ui": "IMAGE",
+          "location": "RELATIONSHIP",
+          "configuration": {
+            "relationship": "image.featured"
+          }
+        },
+        {
+          "key": "published_date",
+          "name": "Published Date",
+          "description": "The date when this blog post was made publicly available",
+          "type": "DATE",
+          "ui": "INPUT"
+        },
+        {
+          "key": "reading_time",
+          "name": "Reading Time",
+          "description": "Estimated number of minutes to read this blog post",
+          "type": "INT",
+          "ui": "INPUT"
+        }
+      ],
+      "containers": [
+        {
+          "id": "main-content",
+          "name": "Main Content",
+          "description": "The primary body content of the blog post with rich text editing support",
+          "type": "STANDARD"
+        }
+      ],
+      "defaultContent": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "heading",
+            "attrs": { "level": 1 },
+            "content": [{ "type": "text", "text": "Blog Post Title" }]
+          },
+          {
+            "type": "paragraph",
+            "content": []
+          }
+        ]
+      },
+      "defaultAttributes": {
+        "type": "article",
+        "reading_time": 5
+      }
+    },
+    {
+      "ref": "template-tutorial-step",
+      "name": "Tutorial Step",
+      "contentType": "bosca/v-document-template",
+      "languageTag": "en",
+      "slug": "template-tutorial-step",
+      "attributes": [
+        {
+          "key": "step_number",
+          "name": "Step Number",
+          "description": "The sequential position of this step within the tutorial",
+          "type": "INT",
+          "ui": "INPUT"
+        },
+        {
+          "key": "objective",
+          "name": "Objective",
+          "description": "What the reader will learn or accomplish by completing this step",
+          "type": "STRING",
+          "ui": "TEXTAREA"
+        },
+        {
+          "key": "estimated_time",
+          "name": "Estimated Time",
+          "description": "Estimated number of minutes to complete this step",
+          "type": "INT",
+          "ui": "INPUT"
+        }
+      ],
+      "containers": [
+        {
+          "id": "step-content",
+          "name": "Step Content",
+          "description": "The instructional content for this tutorial step",
+          "type": "STANDARD"
+        }
+      ],
+      "defaultContent": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "heading",
+            "attrs": { "level": 2 },
+            "content": [{ "type": "text", "text": "Step Title" }]
+          },
+          {
+            "type": "paragraph",
+            "content": [{ "type": "text", "text": "Describe what the reader will do in this step..." }]
+          }
+        ]
+      },
+      "defaultAttributes": {
+        "estimated_time": 10
+      }
+    }
+  ],
+
+  "guideTemplates": [
+    {
+      "ref": "template-tutorial-series",
+      "name": "Tutorial Series",
+      "contentType": "bosca/v-guide-template",
+      "languageTag": "en",
+      "slug": "template-tutorial-series",
+      "type": "LINEAR_PROGRESS",
+      "attributes": [
+        {
+          "key": "difficulty",
+          "name": "Difficulty",
+          "description": "Skill level required for this tutorial series (beginner, intermediate, advanced)",
+          "type": "STRING",
+          "ui": "INPUT"
+        },
+        {
+          "key": "description",
+          "name": "Description",
+          "description": "A summary of what the tutorial series covers and what the reader will build",
+          "type": "STRING",
+          "ui": "TEXTAREA"
+        },
+        {
+          "key": "prerequisites",
+          "name": "Prerequisites",
+          "description": "Knowledge or tools required before starting this tutorial series",
+          "type": "STRING",
+          "ui": "TEXTAREA"
+        },
+        {
+          "key": "hero_image",
+          "name": "Hero Image",
+          "description": "Primary featured image for the tutorial series listing",
+          "type": "METADATA",
+          "ui": "IMAGE",
+          "location": "RELATIONSHIP",
+          "configuration": {
+            "relationship": "image.featured"
+          }
+        }
+      ],
+      "steps": [
+        {
+          "templateRef": "template-tutorial-step"
+        },
+        {
+          "templateRef": "template-tutorial-step"
+        },
+        {
+          "templateRef": "template-tutorial-step"
+        }
+      ],
+      "defaultAttributes": {
+        "difficulty": "beginner"
+      }
+    }
+  ],
+
+  "dataTemplates": [
+    {
+      "ref": "template-blog-settings",
+      "name": "Blog Settings",
+      "contentType": "bosca/v-data-template",
+      "languageTag": "en",
+      "slug": "template-blog-settings",
+      "type": "ATTRIBUTES",
+      "attributes": [
+        {
+          "key": "site_title",
+          "name": "Site Title",
+          "description": "The main title displayed in the blog header and browser tab",
+          "type": "STRING",
+          "ui": "INPUT"
+        },
+        {
+          "key": "site_description",
+          "name": "Site Description",
+          "description": "A tagline or short description used in the blog header and SEO metadata",
+          "type": "STRING",
+          "ui": "TEXTAREA"
+        },
+        {
+          "key": "posts_per_page",
+          "name": "Posts Per Page",
+          "description": "Number of blog posts to display per page in listings",
+          "type": "INT",
+          "ui": "INPUT"
+        },
+        {
+          "key": "logo",
+          "name": "Logo",
+          "description": "The blog logo image displayed in the header",
+          "type": "METADATA",
+          "ui": "IMAGE",
+          "location": "RELATIONSHIP",
+          "configuration": {
+            "relationship": "image.featured"
+          }
+        },
+        {
+          "key": "social_links",
+          "name": "Social Links",
+          "description": "URLs to the blog's social media profiles",
+          "type": "STRING",
+          "ui": "TEXTAREA"
+        }
+      ],
+      "defaultAttributes": {
+        "posts_per_page": 10
+      }
+    }
+  ],
+
+  "collectionTemplates": [
+    {
+      "ref": "template-author",
+      "name": "Author",
+      "contentType": "bosca/v-collection-template",
+      "languageTag": "en",
+      "slug": "template-author",
+      "attributes": [
+        {
+          "key": "type",
+          "name": "Type",
+          "description": "The classification type for this author entry",
+          "type": "STRING",
+          "ui": "INPUT"
+        },
+        {
+          "key": "bio",
+          "name": "Biography",
+          "description": "A short biographical paragraph about the author, displayed on their profile page",
+          "type": "STRING",
+          "ui": "TEXTAREA"
+        },
+        {
+          "key": "avatar",
+          "name": "Avatar",
+          "description": "Profile photo or avatar image representing the author",
+          "type": "METADATA",
+          "ui": "IMAGE",
+          "location": "RELATIONSHIP",
+          "configuration": {
+            "relationship": "image.featured"
+          }
+        },
+        {
+          "key": "email",
+          "name": "Email",
+          "description": "The author's contact email address",
+          "type": "STRING",
+          "ui": "INPUT"
+        },
+        {
+          "key": "website",
+          "name": "Website",
+          "description": "URL to the author's personal website or portfolio",
+          "type": "STRING",
+          "ui": "INPUT"
+        },
+        {
+          "key": "title",
+          "name": "Job Title",
+          "description": "The author's professional title or role",
+          "type": "STRING",
+          "ui": "INPUT"
+        }
+      ],
+      "defaultAttributes": {
+        "type": "author"
+      }
+    },
+    {
+      "ref": "template-topic",
+      "name": "Topic",
+      "contentType": "bosca/v-collection-template",
+      "languageTag": "en",
+      "slug": "template-topic",
+      "attributes": [
+        {
+          "key": "type",
+          "name": "Type",
+          "description": "The classification type for this topic entry",
+          "type": "STRING",
+          "ui": "INPUT"
+        },
+        {
+          "key": "description",
+          "name": "Description",
+          "description": "A brief explanation of what content falls under this topic",
+          "type": "STRING",
+          "ui": "TEXTAREA"
+        },
+        {
+          "key": "icon",
+          "name": "Icon",
+          "description": "An icon or small image representing this topic visually",
+          "type": "METADATA",
+          "ui": "IMAGE",
+          "location": "RELATIONSHIP",
+          "configuration": {
+            "relationship": "image.featured"
+          }
+        },
+        {
+          "key": "color",
+          "name": "Color",
+          "description": "A hex color code used to visually distinguish this topic in the UI",
+          "type": "STRING",
+          "ui": "INPUT"
+        }
+      ],
+      "defaultAttributes": {
+        "type": "topic"
+      }
+    }
+  ],
+
+  "collections": [
+    {
+      "ref": "col-blog",
+      "name": "Blog",
+      "description": "Root collection containing all blog content",
+      "slug": "blog",
+      "collectionType": "FOLDER",
+      "public": true,
+      "publicList": true
+    },
+    {
+      "ref": "col-authors",
+      "name": "Authors",
+      "description": "Collection of all blog authors and their profiles",
+      "slug": "blog-authors",
+      "collectionType": "FOLDER",
+      "parentRef": "col-blog",
+      "public": true,
+      "publicList": true
+    },
+    {
+      "ref": "col-topics",
+      "name": "Topics",
+      "description": "Collection of all blog topic categories",
+      "slug": "blog-topics",
+      "collectionType": "FOLDER",
+      "parentRef": "col-blog",
+      "public": true,
+      "publicList": true
+    },
+    {
+      "ref": "col-posts",
+      "name": "Posts",
+      "description": "Collection of all published blog posts",
+      "slug": "blog-posts",
+      "collectionType": "FOLDER",
+      "parentRef": "col-blog",
+      "public": true,
+      "publicList": true
+    },
+    {
+      "ref": "col-author-jane",
+      "name": "Jane Smith",
+      "description": "Author profile for Jane Smith",
+      "slug": "author-jane-smith",
+      "collectionType": "STANDARD",
+      "templateRef": "template-author",
+      "parentRef": "col-authors",
+      "attributes": {
+        "type": "author",
+        "bio": "Jane Smith is a senior software engineer and technical writer with over 10 years of experience building scalable web applications. She specializes in distributed systems and cloud architecture, and enjoys sharing her knowledge through detailed tutorials and deep-dive articles.",
+        "email": "jane@example.com",
+        "website": "https://jane.example.com",
+        "title": "Senior Software Engineer"
+      },
+      "public": true,
+      "publicList": true
+    },
+    {
+      "ref": "col-author-alex",
+      "name": "Alex Rivera",
+      "description": "Author profile for Alex Rivera",
+      "slug": "author-alex-rivera",
+      "collectionType": "STANDARD",
+      "templateRef": "template-author",
+      "parentRef": "col-authors",
+      "attributes": {
+        "type": "author",
+        "bio": "Alex Rivera is a UX designer and front-end developer passionate about creating accessible and delightful user experiences. With a background in cognitive psychology, Alex brings a unique perspective to design systems and component architecture.",
+        "email": "alex@example.com",
+        "website": "https://alex.example.com",
+        "title": "UX Designer & Developer"
+      },
+      "public": true,
+      "publicList": true
+    },
+    {
+      "ref": "col-topic-engineering",
+      "name": "Engineering",
+      "description": "Technical engineering articles and deep dives",
+      "slug": "topic-engineering",
+      "collectionType": "STANDARD",
+      "templateRef": "template-topic",
+      "parentRef": "col-topics",
+      "attributes": {
+        "type": "topic",
+        "description": "Articles covering software engineering practices, architecture decisions, and technical deep dives into system design.",
+        "color": "#2563EB"
+      },
+      "public": true,
+      "publicList": true
+    },
+    {
+      "ref": "col-topic-design",
+      "name": "Design",
+      "description": "UI/UX design articles and best practices",
+      "slug": "topic-design",
+      "collectionType": "STANDARD",
+      "templateRef": "template-topic",
+      "parentRef": "col-topics",
+      "attributes": {
+        "type": "topic",
+        "description": "Explorations of user experience design, visual design principles, accessibility best practices, and design systems.",
+        "color": "#9333EA"
+      },
+      "public": true,
+      "publicList": true
+    },
+    {
+      "ref": "col-topic-tutorials",
+      "name": "Tutorials",
+      "description": "Step-by-step tutorials and how-to guides",
+      "slug": "topic-tutorials",
+      "collectionType": "STANDARD",
+      "templateRef": "template-topic",
+      "parentRef": "col-topics",
+      "attributes": {
+        "type": "topic",
+        "description": "Hands-on tutorials and step-by-step guides for learning new technologies, frameworks, and development techniques.",
+        "color": "#059669"
+      },
+      "public": true,
+      "publicList": true
+    }
+  ],
+
+  "metadata": [
+    {
+      "ref": "img-hero-microservices",
+      "name": "Microservices Hero Image",
+      "contentType": "image/svg+xml",
+      "languageTag": "en",
+      "slug": "img-hero-microservices",
+      "parentRef": "col-posts",
+      "contentFile": "images/hero-microservices.svg",
+      "public": true,
+      "publicContent": true
+    },
+    {
+      "ref": "img-hero-design-system",
+      "name": "Design System Hero Image",
+      "contentType": "image/svg+xml",
+      "languageTag": "en",
+      "slug": "img-hero-design-system",
+      "parentRef": "col-posts",
+      "contentFile": "images/hero-design-system.svg",
+      "public": true,
+      "publicContent": true
+    },
+    {
+      "ref": "img-hero-graphql",
+      "name": "GraphQL Hero Image",
+      "contentType": "image/svg+xml",
+      "languageTag": "en",
+      "slug": "img-hero-graphql",
+      "parentRef": "col-posts",
+      "contentFile": "images/hero-graphql.svg",
+      "public": true,
+      "publicContent": true
+    },
+    {
+      "ref": "img-avatar-jane",
+      "name": "Jane Smith Avatar",
+      "contentType": "image/svg+xml",
+      "languageTag": "en",
+      "slug": "img-avatar-jane",
+      "parentRef": "col-authors",
+      "contentFile": "images/avatar-jane.svg",
+      "public": true,
+      "publicContent": true
+    },
+    {
+      "ref": "img-avatar-alex",
+      "name": "Alex Rivera Avatar",
+      "contentType": "image/svg+xml",
+      "languageTag": "en",
+      "slug": "img-avatar-alex",
+      "parentRef": "col-authors",
+      "contentFile": "images/avatar-alex.svg",
+      "public": true,
+      "publicContent": true
+    },
+    {
+      "ref": "post-microservices",
+      "name": "Building Scalable Microservices with Kotlin and Ktor",
+      "contentType": "text/html",
+      "languageTag": "en",
+      "slug": "building-scalable-microservices-kotlin-ktor",
+      "documentTemplateRef": "template-blog-post",
+      "parentRef": "col-posts",
+      "attributes": {
+        "type": "article",
+        "description": "A comprehensive guide to designing and building production-ready microservices using Kotlin and the Ktor framework, covering service discovery, resilience patterns, and deployment strategies.",
+        "published_date": "2026-03-15",
+        "reading_time": 12
+      },
+      "document": {
+        "title": "Building Scalable Microservices with Kotlin and Ktor",
+        "content": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "heading",
+              "attrs": { "level": 1 },
+              "content": [{ "type": "text", "text": "Building Scalable Microservices with Kotlin and Ktor" }]
+            },
+            {
+              "type": "paragraph",
+              "content": [{ "type": "text", "text": "Microservices architecture has become the de facto standard for building large-scale distributed systems. In this article, we explore how Kotlin and the Ktor framework provide an excellent foundation for building lightweight, performant microservices that can scale to meet the demands of modern applications." }]
+            },
+            {
+              "type": "heading",
+              "attrs": { "level": 2 },
+              "content": [{ "type": "text", "text": "Why Kotlin for Microservices?" }]
+            },
+            {
+              "type": "paragraph",
+              "content": [{ "type": "text", "text": "Kotlin's coroutine-based concurrency model is a natural fit for microservices. Unlike traditional thread-per-request models, coroutines allow you to handle thousands of concurrent connections with minimal memory overhead. Combined with Ktor's lightweight, non-blocking architecture, you get a framework that starts in milliseconds and uses a fraction of the resources compared to traditional servlet-based frameworks." }]
+            },
+            {
+              "type": "heading",
+              "attrs": { "level": 2 },
+              "content": [{ "type": "text", "text": "Service Discovery and Communication" }]
+            },
+            {
+              "type": "paragraph",
+              "content": [{ "type": "text", "text": "In a microservices architecture, services need to discover and communicate with each other dynamically. We'll look at how to integrate with service discovery mechanisms like Consul or Kubernetes DNS, and how to implement resilient inter-service communication using circuit breakers and retry policies." }]
+            },
+            {
+              "type": "heading",
+              "attrs": { "level": 2 },
+              "content": [{ "type": "text", "text": "Resilience Patterns" }]
+            },
+            {
+              "type": "paragraph",
+              "content": [{ "type": "text", "text": "Production microservices must handle failures gracefully. We cover essential resilience patterns including circuit breakers to prevent cascade failures, bulkhead isolation to limit blast radius, timeout policies to avoid hanging requests, and retry strategies with exponential backoff for transient failures." }]
+            },
+            {
+              "type": "heading",
+              "attrs": { "level": 2 },
+              "content": [{ "type": "text", "text": "Deployment and Observability" }]
+            },
+            {
+              "type": "paragraph",
+              "content": [{ "type": "text", "text": "We conclude with deployment strategies including containerization with Docker, orchestration with Kubernetes, and implementing observability through structured logging, distributed tracing with OpenTelemetry, and metrics collection with Prometheus. These practices ensure your microservices are not just running, but running well." }]
+            }
+          ]
+        }
+      },
+      "public": true,
+      "publicContent": true
+    },
+    {
+      "ref": "post-design-system",
+      "name": "Building an Accessible Design System from Scratch",
+      "contentType": "text/html",
+      "languageTag": "en",
+      "slug": "building-accessible-design-system",
+      "documentTemplateRef": "template-blog-post",
+      "parentRef": "col-posts",
+      "attributes": {
+        "type": "article",
+        "description": "Learn how to create a design system that prioritizes accessibility from day one, with practical examples of color systems, component APIs, and testing strategies.",
+        "published_date": "2026-03-10",
+        "reading_time": 8
+      },
+      "document": {
+        "title": "Building an Accessible Design System from Scratch",
+        "content": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "heading",
+              "attrs": { "level": 1 },
+              "content": [{ "type": "text", "text": "Building an Accessible Design System from Scratch" }]
+            },
+            {
+              "type": "paragraph",
+              "content": [{ "type": "text", "text": "Design systems are the backbone of consistent, scalable user interfaces. But too often, accessibility is treated as an afterthought — bolted on after components are built rather than woven into the foundation. In this guide, we take a different approach: building accessibility into every layer of a design system from the very beginning." }]
+            },
+            {
+              "type": "heading",
+              "attrs": { "level": 2 },
+              "content": [{ "type": "text", "text": "The Accessible Color System" }]
+            },
+            {
+              "type": "paragraph",
+              "content": [{ "type": "text", "text": "Color is one of the most fundamental elements of any design system, and getting it right for accessibility means more than just checking contrast ratios. We build a color palette system that automatically ensures WCAG AA compliance, provides semantic color tokens that work across light and dark themes, and includes utilities for checking contrast programmatically." }]
+            },
+            {
+              "type": "heading",
+              "attrs": { "level": 2 },
+              "content": [{ "type": "text", "text": "Component API Design" }]
+            },
+            {
+              "type": "paragraph",
+              "content": [{ "type": "text", "text": "The way we design component APIs has a profound impact on accessibility outcomes. By making accessible patterns the default and requiring explicit opt-out for less accessible alternatives, we create a system where doing the right thing is easier than doing the wrong thing. We explore patterns for focus management, keyboard navigation, and screen reader announcements." }]
+            },
+            {
+              "type": "heading",
+              "attrs": { "level": 2 },
+              "content": [{ "type": "text", "text": "Testing for Accessibility" }]
+            },
+            {
+              "type": "paragraph",
+              "content": [{ "type": "text", "text": "Automated testing catches many accessibility issues, but not all. We set up a comprehensive testing strategy combining automated axe-core scans in CI, visual regression testing for color contrast, keyboard navigation integration tests, and manual testing protocols with screen readers. This multi-layered approach ensures that accessibility regressions are caught early and often." }]
+            }
+          ]
+        }
+      },
+      "public": true,
+      "publicContent": true
+    },
+    {
+      "ref": "post-graphql-tutorial",
+      "name": "Getting Started with GraphQL: A Practical Tutorial",
+      "contentType": "text/html",
+      "languageTag": "en",
+      "slug": "getting-started-graphql-practical-tutorial",
+      "documentTemplateRef": "template-blog-post",
+      "parentRef": "col-posts",
+      "attributes": {
+        "type": "tutorial",
+        "description": "A hands-on tutorial for building your first GraphQL API, covering schema design, resolvers, queries, mutations, and client-side data fetching.",
+        "published_date": "2026-03-20",
+        "reading_time": 15
+      },
+      "document": {
+        "title": "Getting Started with GraphQL: A Practical Tutorial",
+        "content": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "heading",
+              "attrs": { "level": 1 },
+              "content": [{ "type": "text", "text": "Getting Started with GraphQL: A Practical Tutorial" }]
+            },
+            {
+              "type": "paragraph",
+              "content": [{ "type": "text", "text": "GraphQL has transformed how we think about API design. Instead of juggling multiple REST endpoints, clients can request exactly the data they need in a single query. In this tutorial, we build a complete GraphQL API from scratch, covering everything from schema design to client integration." }]
+            },
+            {
+              "type": "heading",
+              "attrs": { "level": 2 },
+              "content": [{ "type": "text", "text": "Designing Your Schema" }]
+            },
+            {
+              "type": "paragraph",
+              "content": [{ "type": "text", "text": "The schema is the contract between your API and its clients. We start by defining types that model our domain — a blog with posts, authors, and comments. We'll explore best practices for naming conventions, nullability decisions, and when to use interfaces versus unions." }]
+            },
+            {
+              "type": "heading",
+              "attrs": { "level": 2 },
+              "content": [{ "type": "text", "text": "Writing Resolvers" }]
+            },
+            {
+              "type": "paragraph",
+              "content": [{ "type": "text", "text": "Resolvers are the functions that fetch data for each field in your schema. We implement resolvers for our blog types, demonstrating how to handle relationships efficiently using data loaders to avoid the N+1 query problem. We also cover error handling patterns and how to return meaningful error messages to clients." }]
+            },
+            {
+              "type": "heading",
+              "attrs": { "level": 2 },
+              "content": [{ "type": "text", "text": "Queries and Mutations" }]
+            },
+            {
+              "type": "paragraph",
+              "content": [{ "type": "text", "text": "With our schema and resolvers in place, we implement query operations for fetching posts with filtering and pagination, and mutation operations for creating and updating content. We demonstrate input validation, optimistic updates, and how to structure mutation responses for the best client experience." }]
+            },
+            {
+              "type": "heading",
+              "attrs": { "level": 2 },
+              "content": [{ "type": "text", "text": "Client-Side Integration" }]
+            },
+            {
+              "type": "paragraph",
+              "content": [{ "type": "text", "text": "Finally, we connect our API to a client application using Apollo Client. We cover query and mutation hooks, cache management, optimistic UI updates, and real-time subscriptions. By the end, you'll have a fully functional GraphQL stack running end to end." }]
+            }
+          ]
+        }
+      },
+      "public": true,
+      "publicContent": true
+    }
+  ],
+
+  "relationships": [
+    {
+      "fromRef": "post-microservices",
+      "toRef": "img-hero-microservices",
+      "relationship": "image.featured"
+    },
+    {
+      "fromRef": "post-design-system",
+      "toRef": "img-hero-design-system",
+      "relationship": "image.featured"
+    },
+    {
+      "fromRef": "post-graphql-tutorial",
+      "toRef": "img-hero-graphql",
+      "relationship": "image.featured"
+    },
+    {
+      "fromRef": "post-microservices",
+      "toRef": "post-design-system",
+      "relationship": "related"
+    },
+    {
+      "fromRef": "post-design-system",
+      "toRef": "post-graphql-tutorial",
+      "relationship": "related"
+    },
+    {
+      "fromRef": "post-graphql-tutorial",
+      "toRef": "post-microservices",
+      "relationship": "related"
+    }
+  ]
+}

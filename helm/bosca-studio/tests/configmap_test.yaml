@@ -1,0 +1,85 @@
+suite: bosca-studio configmap
+templates:
+  - templates/configmap.yaml
+values:
+  - ../values.yaml
+set:
+  global:
+    domain: example.com
+  appConfig:
+    serverHost: bosca-server
+tests:
+  - it: renders ConfigMap with Nuxt env vars
+    asserts:
+      - isKind:
+          of: ConfigMap
+      - equal:
+          path: data.API_URL
+          value: "http://bosca-server:8080"
+      - equal:
+          path: data.NUXT_GRAPHQL_URL
+          value: "http://bosca-server:8080/graphql"
+      - equal:
+          path: data.NUXT_PUBLIC_APP_VERSION
+          value: "5.0.21"
+
+  - it: exposes the selected image tag as the public application version
+    set:
+      image.tag: "6.12.3"
+    asserts:
+      - equal:
+          path: data.NUXT_PUBLIC_APP_VERSION
+          value: "6.12.3"
+
+  - it: uses domain in public URLs
+    asserts:
+      - equal:
+          path: data.NUXT_PUBLIC_AUTH_DOMAIN
+          value: "example.com"
+      - matchRegex:
+          path: data.NUXT_PUBLIC_API_URL
+          pattern: "studio.example.com"
+      - equal:
+          path: data.NUXT_PUBLIC_WS_URL
+          value: "wss://studio.example.com"
+
+  - it: defaults the artifact registry URL to the artifacts subdomain
+    asserts:
+      - equal:
+          path: data.ARTIFACTS_URL
+          value: "https://artifacts.example.com"
+      - equal:
+          path: data.NUXT_PUBLIC_ARTIFACTS_URL
+          value: "https://artifacts.example.com"
+
+  - it: allows overriding the artifact registry URL
+    set:
+      appConfig:
+        artifactsUrl: "https://registry.internal.example.com"
+    asserts:
+      - equal:
+          path: data.ARTIFACTS_URL
+          value: "https://registry.internal.example.com"
+      - equal:
+          path: data.NUXT_PUBLIC_ARTIFACTS_URL
+          value: "https://registry.internal.example.com"
+
+  - it: omits legal document URLs by default
+    asserts:
+      - notExists:
+          path: data.NUXT_PUBLIC_TERMS_URL
+      - notExists:
+          path: data.NUXT_PUBLIC_PRIVACY_URL
+
+  - it: passes configured legal document URLs to the Nuxt runtime
+    set:
+      appConfig:
+        termsUrl: "https://legal.example.com/terms"
+        privacyUrl: "https://legal.example.com/privacy"
+    asserts:
+      - equal:
+          path: data.NUXT_PUBLIC_TERMS_URL
+          value: "https://legal.example.com/terms"
+      - equal:
+          path: data.NUXT_PUBLIC_PRIVACY_URL
+          value: "https://legal.example.com/privacy"

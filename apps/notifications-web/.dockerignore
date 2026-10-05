@@ -1,0 +1,5 @@
+# Ship only the build outputs the Dockerfile COPYs — not sources or git
+# metadata. Keeps the docker build context small on the CI runner.
+*
+!build/native/nativeCompile/notifications-web
+!build/generated/bml/js-prod

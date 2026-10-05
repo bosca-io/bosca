@@ -1,0 +1,11 @@
+<component tag="relationship-row">
+  <prop name="relationship" type="bosca.profiles.web.RelationshipRow" required/>
+
+  <div class="list-row">
+    <div class="row-main">
+      <div class="row-title">{ relationship.name }</div>
+      <div class="row-meta"><span class="direction-label">Connected</span> · { relationship.typeLabel }</div>
+    </div>
+    <div class="row-actions"><slot/></div>
+  </div>
+</component>

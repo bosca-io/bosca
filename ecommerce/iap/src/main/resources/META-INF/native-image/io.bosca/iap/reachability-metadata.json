@@ -1,0 +1,23 @@
+{
+  "comment": "GoogleReceiptVerifier mints a Play Developer OAuth2 token by RS256-signing a service-account JWT with the JDK's SunRsaSign provider, selected at runtime by algorithm string: Signature.getInstance(\"SHA256withRSA\") and KeyFactory.getInstance(\"RSA\"). GraalVM cannot trace those string-keyed provider lookups statically, so the SPI implementation classes must be reflectively instantiable in the native image. SHA256withRSA is NOT covered by bosca-server's TLS-traced metadata (which only captured SHA224/SHA384withRSA), so this module ships its own metadata and GraalVM merges it wherever the iap module is on the image classpath. Class names verified against the SunRsaSign provider service registry. RSAKeyPairGenerator is intentionally omitted: only the tests generate keys, and tests run on the JVM, not native.",
+  "reflection": [
+    {
+      "type": "sun.security.rsa.RSASignature$SHA256withRSA",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "sun.security.rsa.RSAKeyFactory$Legacy",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    }
+  ]
+}

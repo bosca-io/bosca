@@ -1,0 +1,15 @@
+*.class
+*.jar
+*.war
+*.ear
+*.log
+hs_err_pid*
+
+.gradle/
+build/
+out/
+.idea/
+*.iml
+
+.env
+local.properties

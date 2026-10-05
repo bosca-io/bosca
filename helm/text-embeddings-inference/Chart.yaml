@@ -1,0 +1,13 @@
+apiVersion: v2
+name: text-embeddings-inference
+description: HuggingFace Text Embeddings Inference serving EmbeddingGemma — bosca-runner computes per-content semantic embeddings via its /embed endpoint at index time.
+type: application
+version: 0.1.2
+# Default upstream TEI image tag (image.tag). Must be a version that supports the EmbeddingGemma (Gemma3)
+# embedding architecture — gemma3_text support landed in TEI 1.8.1 (cpu-1.7 fails with "unknown variant
+# `gemma3_text`" on the Candle backend and 404s looking for ONNX files it doesn't ship).
+appVersion: "cpu-1.8.1"
+dependencies:
+  - name: bosca-common
+    version: ">=0.1.0"
+    repository: "file://../bosca-common"

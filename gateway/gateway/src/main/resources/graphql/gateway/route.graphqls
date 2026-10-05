@@ -1,0 +1,54 @@
+enum GatewayAuthMethod {
+    OAUTH2
+    JWT
+    BASIC
+    NONE
+}
+
+type GatewayRoute {
+    id: UUID!
+    gateway: Gateway!
+    gatewayId: UUID!
+    pathPattern: String!
+    """
+    Host patterns this route accepts. Empty = match any host (no host
+    filter applied). Each entry is a literal host or a leading-`*.`
+    wildcard, e.g. `api.bosca.io` or `*.bosca.io`.
+    """
+    hosts: [String!]!
+    authMethod: GatewayAuthMethod!
+    stripPrefix: Boolean!
+    readGroups: [String!]!
+    writeGroups: [String!]!
+    injectHeaders: JSON!
+    sortOrder: Int!
+    enabled: Boolean!
+    createdAt: DateTime!
+    modifiedAt: DateTime!
+    version: Long!
+}
+
+input GatewayRouteInput {
+    gatewayId: UUID!
+    pathPattern: String!
+    hosts: [String!] = []
+    authMethod: GatewayAuthMethod!
+    stripPrefix: Boolean = false
+    readGroups: [String!] = []
+    writeGroups: [String!] = []
+    injectHeaders: JSON
+    sortOrder: Int = 0
+}
+
+type GatewayRoutes {
+    all: [GatewayRoute!]!
+    route(id: UUID!): GatewayRoute
+    byGateway(gatewayId: UUID!): [GatewayRoute!]!
+}
+
+type GatewayRoutesMutation {
+    create(input: GatewayRouteInput!): GatewayRoute!
+    update(id: UUID!, input: GatewayRouteInput!, expectedVersion: Long!): GatewayRoute!
+    delete(id: UUID!, expectedVersion: Long!): GatewayRoute!
+    toggleEnabled(id: UUID!, enabled: Boolean!, expectedVersion: Long!): GatewayRoute!
+}

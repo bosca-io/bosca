@@ -1,0 +1,10 @@
+mutation AddCollectionPermission($permission: PermissionInput!) {
+    content {
+        collection {
+            addPermission(permission: $permission) {
+                groupId
+                action
+            }
+        }
+    }
+}

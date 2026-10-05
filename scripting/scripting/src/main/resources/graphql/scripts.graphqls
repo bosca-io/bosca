@@ -1,0 +1,63 @@
+enum ScriptType {
+    GENERAL
+    TRIGGER
+    TOOL
+    EPHEMERAL
+    API
+}
+
+type Script {
+    id: UUID!
+    key: String!
+    name: String!
+    description: String!
+    type: ScriptType!
+    source: String!
+    version: Int!
+    enabled: Boolean!
+    public: Boolean!
+    inputSchema: JSON
+    outputSchema: JSON
+    configuration: JSON
+    created: DateTime
+    modified: DateTime
+    deletedAt: DateTime
+    permissions: [Permission!]!
+}
+
+type Scripts {
+    all(type: ScriptType, includeDeleted: Boolean): [Script!]!
+    script(id: UUID!): Script
+    scriptByKey(key: String!): Script
+}
+
+type ScriptsMutation {
+    addScript(script: ScriptInput!, sourceRef: SourceRefInput): Script!
+    editScript(id: UUID!, script: ScriptInput!, sourceRef: SourceRefInput): Script!
+    deleteScript(id: UUID!): Boolean!
+    enableScript(id: UUID!): Boolean!
+    disableScript(id: UUID!): Boolean!
+    executeScript(id: UUID!, input: JSON): JSON
+    addPermission(permission: PermissionInput!): Boolean!
+    deletePermission(permission: PermissionInput!): Boolean!
+}
+
+input ScriptInput {
+    key: String!
+    name: String!
+    description: String
+    type: ScriptType!
+    source: String!
+    public: Boolean
+    inputSchema: JSON
+    outputSchema: JSON
+    configuration: JSON
+}
+
+extend type Query {
+    scripts: Scripts!
+}
+
+extend type Mutation {
+    scripts: ScriptsMutation!
+}

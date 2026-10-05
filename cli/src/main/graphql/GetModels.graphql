@@ -1,0 +1,7 @@
+query GetModels {
+    models {
+        all {
+            ...Model
+        }
+    }
+}

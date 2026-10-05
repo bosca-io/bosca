@@ -1,0 +1,200 @@
+bosca:
+  server:
+    port: 8080
+    development: false
+
+cors:
+  allowAnyHost: true
+  allowCredentials: true
+  anyMethod: true
+  allowedHeaders:
+    - Authorization
+    - Content-Type
+    - Content-Length
+    - Content-Range
+    - Content-Disposition
+    - Cookie
+    - X-BA-Session-ID
+    - X-Installation-ID
+    - X-App-ID
+    - X-App-Version
+
+jwt:
+  domain: $BOSCA_DOMAIN
+  admin-domain: $BOSCA_DOMAIN
+  audience: Bosca
+  realm: Bosca
+  issuer: $BOSCA_DOMAIN
+  secret: $JWT_SECRET
+  expiration-time: 2592000
+  cookie-secure: ${JWT_COOKIE_SECURE:false}
+
+security:
+  autoVerify: false
+  encryption:
+    key: $SECURITY_ENCRYPTION_KEY
+  scrypt:
+    base64SaltSeparator: ""
+    base64SignerKey: ""
+    memCost: 4
+    rounds: 8
+
+initialization:
+  password:
+    admin: $INIT_ADMIN_PASSWORD
+    sa: $INIT_SA_PASSWORD
+
+database:
+  migrations: [core-migrations, scheduler-migrations]
+  postgres:
+    url: jdbc:postgresql://postgres:5432/bosca
+    user: bosca
+    password: $DATABASE_PASSWORD
+    maxConnections: 20
+  # GraphQL requires these lazy pool definitions even with analytics processing off.
+  # No Trino service runs here; analytical queries are unavailable.
+  trino-admin:
+    url: jdbc:trino://127.0.0.1:8089
+    user: admin
+    password: ""
+    driverClassName: io.trino.jdbc.TrinoDriver
+    maxConnections: 1
+  trino-readonly:
+    url: jdbc:trino://127.0.0.1:8089
+    user: rouser
+    password: ""
+    driverClassName: io.trino.jdbc.TrinoDriver
+    maxConnections: 1
+
+cache:
+  type: nats
+jobQueue:
+  factory: nats
+  processExpiredJobs: true
+pubsub:
+  type: nats
+distributedLock:
+  type: nats
+counter:
+  type: nats
+nats:
+  url: nats://nats:4222
+  token: $NATS_TOKEN
+  maxConnections: 4
+natsMonitoring:
+  monitoringUrl: http://nats:8222
+
+content:
+  images:
+    resizer:
+      url: http://127.0.0.1:8003
+      sizes: []
+  storage:
+    type: fs
+    basePath: /storage
+    urlPrefix: $APP_URL
+    urlUploadPrefix: $APP_URL
+  urlSigner:
+    secretKey: $STORAGE_URL_SIGNER_SECRET_KEY
+  index:
+    batchSize: 10
+
+meilisearch:
+  url: http://meilisearch:7700
+  apiKey: $MEILISEARCH_API_KEY
+
+app:
+  url: $APP_URL
+  allowed-origins: [$APP_URL]
+oauth2:
+  providers: []
+  redirects: [$APP_URL]
+
+git:
+  url: $GIT_URL
+  sync:
+    listeners: true
+  ci:
+    kubernetesJobProfiles: []
+pipeline:
+  secretKey: $PIPELINE_SECRET_KEY
+
+# Keep Git's WorkOps associations available; no external workers are required.
+workops:
+  enabled: true
+# These schemas must remain enabled in this image: its root resolvers are unconditional.
+chat:
+  enabled: true
+community:
+  enabled: true
+comments:
+  enabled: false
+ecommerce:
+  enabled: false
+kubernetes:
+  enabled: false
+gateway:
+  enabled: true
+embedding:
+  enabled: false
+analyticsProcessor:
+  enabled: false
+analyticsServer:
+  appId: bosca-server
+  url: $APP_URL
+introspection:
+  enabled: false
+mcp:
+  enabled: true
+
+packages:
+  - core
+  - security-initial
+  - profiles
+  - languages
+  - messages-localization
+  - search-index
+  - root-collection-installer
+  - maintenance
+
+# The API composition root already includes these job executors. Running them
+# here avoids the memory cost of a separate bosca-runner process on this host.
+runners:
+  enabled:
+    - commonQueueRunner
+    - gitQueueRunner
+    - indexQueueRunner
+    - contentQueueRunner
+    - profileQueueRunner
+    - workopsQueueRunner
+    - messagesJobQueueRunner
+    - scriptingQueueRunner
+    - pipelinesQueueRunner
+    - formsJobQueueRunner
+    - backupQueueRunner
+    - feedsQueueRunner
+scheduler:
+  enabled: true
+
+# Email pipelines are not seeded. Configure a mail provider before enabling them.
+mailer:
+  type: sendgrid
+  from:
+    name: Bosca
+    email: noreply@localhost
+
+google:
+  genai:
+    vertexai:
+      enabled: false
+# The published composition root requires this client even for non-AI GraphQL.
+# This is an inactive credential; no model service or usable AI key is configured.
+koog:
+  openai:
+    apikey: unconfigured
+timeout: {}
+scripting:
+  executionTimeoutSeconds: 600
+localization:
+  messages:
+    project: Bosca

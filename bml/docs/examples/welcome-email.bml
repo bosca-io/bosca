@@ -1,0 +1,44 @@
+{# Message: a welcome template with an email channel. #}
+<message key="welcome">
+  <script server provides="m">message.payload(WelcomePayload.serializer())</script>
+
+  <email>
+    <subject t="welcome.subject">Welcome, { message.recipientName ?: "friend" }!</subject>
+
+    <style bml-inline>
+      .greeting { font-size: 18px; font-weight: 600; }
+      .muted { color: #667085; }
+    </style>
+
+    <html>
+      <body>
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+          <tr>
+            <td>
+              <p class="greeting">Welcome, { m.firstName }!</p>
+              <div class="intro">{@ m.welcomeHtml }</div>
+
+              <if m.organizations.isEmpty()>
+                <p class="muted">Create your first organization to get started.</p>
+              <else-if m.organizations.size == 1>
+                <p class="muted">You're a member of 1 organization.</p>
+              <else>
+                <p class="muted">You're a member of { m.organizations.size } organizations.</p>
+              </if>
+
+              <if m.organizations.isNotEmpty()>
+                <ul>
+                  <for org in m.organizations>
+                    <li>{ org.name }</li>
+                  </for>
+                </ul>
+              </if>
+
+              <a :href="m.dashboardUrl">Open your dashboard</a>
+            </td>
+          </tr>
+        </table>
+      </body>
+    </html>
+  </email>
+</message>

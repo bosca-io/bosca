@@ -1,0 +1,73 @@
+apiVersion: v2
+name: bosca-services
+description: Bosca application services — requires bosca-infra to be deployed first
+type: application
+version: 0.1.0
+dependencies:
+  - name: bosca-common
+    version: ">=0.1.0"
+    repository: "file://../bosca-common"
+  - name: bosca-server
+    version: ">=0.1.0"
+    repository: "file://../bosca-server"
+    condition: bosca-server.enabled
+  - name: bosca-runner
+    version: ">=0.1.0"
+    repository: "file://../bosca-runner"
+    condition: bosca-runner.enabled
+  - name: bosca-studio
+    version: ">=0.1.0"
+    repository: "file://../bosca-studio"
+    condition: bosca-studio.enabled
+  - name: bosca-kubernetes-controller
+    version: ">=0.1.0"
+    repository: "file://../bosca-kubernetes-controller"
+    condition: bosca-kubernetes-controller.enabled
+  - name: bosca-artifacts-server
+    version: ">=0.1.0"
+    repository: "file://../bosca-artifacts-server"
+    condition: bosca-artifacts-server.enabled
+  - name: bosca-git-server
+    version: ">=0.1.0"
+    repository: "file://../bosca-git-server"
+    condition: bosca-git-server.enabled
+  - name: bosca-collector
+    version: ">=0.1.0"
+    repository: "file://../bosca-collector"
+    condition: bosca-collector.enabled
+  - name: bml-message-server
+    version: ">=0.1.0"
+    repository: "file://../bml-message-server"
+    condition: bml-message-server.enabled
+  - name: bosca-gateway
+    version: ">=0.1.0"
+    repository: "file://../bosca-gateway"
+    condition: bosca-gateway.enabled
+  - name: bosca-io
+    version: ">=0.1.0"
+    repository: "file://../bosca-io"
+    condition: bosca-io.enabled
+  - name: notifications-web
+    version: ">=0.1.0"
+    repository: "file://../notifications-web"
+    condition: notifications-web.enabled
+  - name: profiles-web
+    version: ">=0.1.0"
+    repository: "file://../profiles-web"
+    condition: profiles-web.enabled
+  - name: imageprocessor
+    version: ">=0.1.0"
+    repository: "file://../imageprocessor"
+    condition: imageprocessor.enabled
+  - name: tf-serving
+    version: ">=0.1.0"
+    repository: "file://../tf-serving"
+    condition: tf-serving.enabled
+  - name: recommendation-trainer
+    version: ">=0.1.0"
+    repository: "file://../recommendation-trainer"
+    condition: recommendation-trainer.enabled
+  - name: text-embeddings-inference
+    version: ">=0.1.0"
+    repository: "file://../text-embeddings-inference"
+    condition: text-embeddings-inference.enabled

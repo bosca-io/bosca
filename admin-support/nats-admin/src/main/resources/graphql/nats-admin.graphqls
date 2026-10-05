@@ -1,0 +1,453 @@
+"General information about the NATS server including version, uptime, connection counts, and resource usage."
+type NatsServerInfo {
+    "The unique identifier of the NATS server instance."
+    serverId: String!
+    "The human-readable name of the NATS server."
+    serverName: String!
+    "The NATS server software version."
+    version: String!
+    "The hostname the server is listening on."
+    host: String!
+    "The port the server is listening on for client connections."
+    port: Int!
+    "Maximum number of client connections allowed."
+    maxConnections: Int!
+    "Maximum allowed message payload size in bytes."
+    maxPayload: Int!
+    "Human-readable duration since the server started."
+    uptime: String!
+    "Server process memory usage in bytes."
+    mem: Long!
+    "Server process CPU usage as a percentage."
+    cpu: Float!
+    "The number of currently active client connections."
+    connections: Int!
+    "The total number of client connections since the server started."
+    totalConnections: Long!
+    "The number of active subscriptions across all connections."
+    subscriptions: Long!
+    "The number of slow consumers detected by the server."
+    slowConsumers: Long!
+    "Total number of messages received by the server."
+    inMsgs: Long!
+    "Total number of messages sent by the server."
+    outMsgs: Long!
+    "Total bytes received by the server."
+    inBytes: Long!
+    "Total bytes sent by the server."
+    outBytes: Long!
+    "JetStream configuration and runtime statistics, null if JetStream is disabled."
+    jetstream: JetStreamServerConfig
+}
+
+"JetStream configuration and runtime statistics embedded in server info."
+type JetStreamServerConfig {
+    "JetStream storage limits configuration."
+    config: JetStreamConfig
+    "JetStream runtime resource usage and API statistics."
+    stats: JetStreamStats
+}
+
+"JetStream storage configuration limits."
+type JetStreamConfig {
+    "Maximum memory available for JetStream in bytes."
+    maxMemory: Long!
+    "Maximum disk storage available for JetStream in bytes."
+    maxStorage: Long!
+    "Directory path where JetStream data is stored on disk."
+    storeDir: String!
+}
+
+"JetStream runtime resource usage and API call statistics."
+type JetStreamStats {
+    "Memory currently used by JetStream in bytes."
+    memory: Long!
+    "Disk storage currently used by JetStream in bytes."
+    storage: Long!
+    "Memory reserved for JetStream in bytes."
+    reservedMemory: Long!
+    "Disk storage reserved for JetStream in bytes."
+    reservedStorage: Long!
+    "Number of JetStream-enabled accounts."
+    accounts: Int!
+    "Number of high-availability assets."
+    haAssets: Int!
+    "JetStream API call statistics."
+    api: JetStreamApiStats
+}
+
+"JetStream API call counts and error totals."
+type JetStreamApiStats {
+    "Total number of JetStream API calls."
+    total: Long!
+    "Total number of JetStream API errors."
+    errors: Long!
+}
+
+"Active route connections between servers in a NATS cluster, as reported by the `/routez` monitoring endpoint."
+type NatsRoutes {
+    "The number of active route connections to other cluster members."
+    numRoutes: Int!
+    "The route connections to other servers in the cluster."
+    routes: [NatsRoute!]!
+}
+
+"A single route connection between two servers in a NATS cluster, representing the inter-server communication link."
+type NatsRoute {
+    "The server-assigned route identifier."
+    rid: Long!
+    "The unique identifier of the remote server."
+    remoteId: String!
+    "The human-readable name of the remote server."
+    remoteName: String!
+    "Whether this server initiated the route connection."
+    didSolicit: Boolean!
+    "Whether this route was explicitly configured (as opposed to discovered via gossip)."
+    isConfigured: Boolean!
+    "The IP address of the remote server."
+    ip: String!
+    "The route port of the remote server."
+    port: Int!
+    "Bytes waiting to be sent to the remote server."
+    pendingSize: Long!
+    "Total messages received from the remote server."
+    inMsgs: Long!
+    "Total messages sent to the remote server."
+    outMsgs: Long!
+    "Total bytes received from the remote server."
+    inBytes: Long!
+    "Total bytes sent to the remote server."
+    outBytes: Long!
+    "The number of subscriptions routed to the remote server."
+    subscriptions: Int!
+}
+
+"Details about an active client connection to the NATS server."
+type NatsConnection {
+    "The server-assigned connection identifier."
+    cid: Long!
+    "The kind of connection (e.g. Client, Leafnode, Route)."
+    kind: String
+    "The connection type (e.g. nats, mqtt, websocket)."
+    type: String
+    "The IP address of the connected client."
+    ip: String!
+    "The TCP port of the connected client."
+    port: Int!
+    "When the connection was established."
+    start: String
+    "When the last message was exchanged on this connection."
+    lastActivity: String
+    "The round-trip time to the client."
+    rtt: String
+    "Human-readable duration since the connection was established."
+    uptime: String!
+    "Human-readable duration since the last message was exchanged."
+    idle: String!
+    "Bytes waiting to be sent to the client."
+    pendingBytes: Long!
+    "Total messages received from this client."
+    inMsgs: Long!
+    "Total messages sent to this client."
+    outMsgs: Long!
+    "Total bytes received from this client."
+    inBytes: Long!
+    "Total bytes sent to this client."
+    outBytes: Long!
+    "The number of active subscriptions on this connection."
+    subscriptions: Int!
+    "The optional name provided by the client when connecting."
+    name: String
+    "The programming language of the client library."
+    lang: String
+    "The version of the client library."
+    version: String
+}
+
+"A paginated list of active connections to the NATS server."
+type NatsConnections {
+    "The number of connections in this response."
+    numConnections: Int!
+    "The total number of active connections."
+    total: Int!
+    "The current pagination offset."
+    offset: Int!
+    "The maximum number of connections per page."
+    limit: Int!
+    "The connections in this page of results."
+    connections: [NatsConnection!]!
+}
+
+"Overview statistics for the JetStream persistence layer."
+type JetStreamInfo {
+    "Memory used by JetStream in bytes."
+    memory: Long!
+    "Disk storage used by JetStream in bytes."
+    storage: Long!
+    "Memory reserved for JetStream in bytes."
+    reservedMemory: Long!
+    "Disk storage reserved for JetStream in bytes."
+    reservedStorage: Long!
+    "Number of JetStream-enabled accounts."
+    accounts: Int!
+    "Number of high-availability assets."
+    haAssets: Int!
+    "JetStream API statistics."
+    api: JetStreamApiStats
+    "Total number of streams."
+    streams: Int!
+    "Total number of consumers across all streams."
+    consumers: Int!
+    "Total number of messages stored across all streams."
+    messages: Long!
+    "Total bytes stored across all streams."
+    bytes: Long!
+}
+
+"Details about a JetStream stream including its state, message count, and consumer count."
+type JetStreamStreamDetail {
+    "The name of the stream."
+    name: String!
+    "When this stream was created."
+    created: String
+    "The runtime state of the stream."
+    state: JetStreamStreamState
+    "Cluster membership information."
+    cluster: JetStreamCluster
+}
+
+"Runtime state of a JetStream stream."
+type JetStreamStreamState {
+    "The total number of messages in this stream."
+    messages: Long!
+    "The total bytes stored in this stream."
+    bytes: Long!
+    "The first sequence number in the stream."
+    firstSeq: Long!
+    "The last sequence number in the stream."
+    lastSeq: Long!
+    "The number of consumers attached to this stream."
+    consumerCount: Int!
+    "The number of unique subjects in this stream."
+    numSubjects: Int!
+    "The number of deleted messages in this stream."
+    numDeleted: Int!
+}
+
+"Cluster membership information for a JetStream resource."
+type JetStreamCluster {
+    "The leader node identifier."
+    leader: String
+}
+
+"Details about a JetStream consumer attached to a stream."
+type JetStreamConsumerDetail {
+    "The name of this consumer."
+    name: String!
+    "The name of the stream this consumer is attached to."
+    streamName: String!
+    "When this consumer was created."
+    created: String
+    "The last delivered sequence position."
+    delivered: JetStreamSequenceInfo
+    "The acknowledged floor sequence position."
+    ackFloor: JetStreamSequenceInfo
+    "The number of messages awaiting acknowledgment."
+    numAckPending: Long!
+    "The number of messages that have been redelivered."
+    numRedelivered: Long!
+    "The number of pull requests waiting for messages."
+    numWaiting: Long!
+    "The number of messages pending delivery."
+    numPending: Long!
+    "Cluster membership information."
+    cluster: JetStreamCluster
+}
+
+"Sequence and timestamp position for a consumer's delivery or acknowledgment state."
+type JetStreamSequenceInfo {
+    "The consumer-side sequence number."
+    consumerSeq: Long!
+    "The stream-side sequence number."
+    streamSeq: Long!
+}
+
+"Subscription routing statistics from the NATS server."
+type NatsSubscriptionsInfo {
+    "The total number of active subscriptions."
+    numSubscriptions: Long!
+    "The number of entries in the subscription cache."
+    numCache: Long!
+    "The total number of subscription inserts since server start."
+    numInserts: Long!
+    "The total number of subscription removals since server start."
+    numRemoves: Long!
+    "The total number of subscription match lookups since server start."
+    numMatches: Long!
+    "The subscription cache hit rate as a ratio from 0.0 to 1.0."
+    cacheHitRate: Float!
+    "The maximum message fanout across all subscriptions."
+    maxFanout: Int!
+    "The average message fanout across all subscriptions."
+    avgFanout: Float!
+}
+
+"Metadata about a NATS KeyValue store bucket."
+type NatsKeyValueStore {
+    "The name of the KV bucket."
+    bucket: String!
+    "The number of entries in this bucket."
+    entryCount: Long!
+    "The total bytes stored in this bucket."
+    bytes: Long!
+    "The TTL for entries in milliseconds, 0 if no TTL."
+    ttl: Long!
+    "The maximum bytes allowed in this bucket."
+    maxBytes: Long!
+    "The maximum value size allowed in this bucket."
+    maxValueSize: Long!
+    "The maximum number of history entries per key."
+    history: Long!
+}
+
+"A single entry in a NATS KeyValue store."
+type NatsKeyValueEntry {
+    "The key of this entry."
+    key: String!
+    "The string value of this entry, null if deleted."
+    value: String
+    "The revision number of this entry."
+    revision: Long!
+    "When this entry was created or last updated."
+    created: String!
+    "The operation type (PUT, DELETE, PURGE)."
+    operation: String!
+}
+
+"A message stored in a NATS JetStream stream."
+type NatsStreamMessage {
+    "The NATS subject this message was published to."
+    subject: String!
+    "The sequence number within the stream."
+    sequence: Long!
+    "When this message was stored."
+    timestamp: String!
+    "The message payload as a UTF-8 string."
+    data: String
+    "The message headers."
+    headers: [NatsHeader!]!
+}
+
+"A key-value pair from a NATS message header."
+type NatsHeader {
+    "The header key."
+    key: String!
+    "The header values."
+    values: [String!]!
+}
+
+"Query operations for introspecting the NATS server's operational state."
+type NatsAdmin {
+    "Retrieve general server information including version, uptime, and throughput statistics."
+    serverInfo: NatsServerInfo!
+    "Retrieve active route connections between servers in the NATS cluster."
+    clusterRoutes: NatsRoutes!
+    "Retrieve active client connections with optional pagination and sorting."
+    connections(
+        "Maximum number of connections to return."
+        limit: Int
+        "Zero-based offset for pagination."
+        offset: Int
+        "Field to sort connections by (e.g. 'cid', 'bytes_to', 'msgs_to')."
+        sortBy: String
+    ): NatsConnections!
+    "Retrieve JetStream overview statistics including stream and consumer counts."
+    jetStreamInfo: JetStreamInfo!
+    "Retrieve details for all JetStream streams."
+    jetStreamStreams: [JetStreamStreamDetail!]!
+    "Retrieve all consumers for a specific JetStream stream."
+    jetStreamConsumers(
+        "The name of the stream to query consumers for."
+        streamName: String!
+    ): [JetStreamConsumerDetail!]!
+    "Retrieve subscription routing statistics."
+    subscriptionsInfo: NatsSubscriptionsInfo!
+    "List all KeyValue store buckets, optionally filtered by bucket name."
+    keyValueStores: [NatsKeyValueStore!]!
+    "Browse entries in a KeyValue store bucket with optional key and value filtering."
+    keyValueEntries(
+        "The name of the KV bucket to browse."
+        bucket: String!
+        "Optional glob pattern to filter keys (e.g. 'prefix.*')."
+        keyFilter: String
+        "Optional substring to search for within entry values."
+        valueSearch: String
+    ): [NatsKeyValueEntry!]!
+    "Read messages from a JetStream stream with optional filtering by subject, sequence range, and payload content."
+    streamMessages(
+        "The name of the stream to read from."
+        streamName: String!
+        "Maximum number of messages to return (default 50)."
+        limit: Int
+        "Filter messages by subject (supports NATS wildcards: * for single token, > for remaining)."
+        subjectFilter: String
+        "Read messages starting from this sequence number (inclusive)."
+        fromSeq: Long
+        "Read messages up to this sequence number (inclusive)."
+        toSeq: Long
+        "Search for this substring within message payloads."
+        dataSearch: String
+    ): [NatsStreamMessage!]!
+}
+
+extend type Query {
+    "Access NATS server monitoring and introspection operations for viewing server status, connections, JetStream details, and health."
+    natsAdmin: NatsAdmin!
+}
+
+"Mutation operations for modifying NATS KeyValue store entries and JetStream stream messages."
+type NatsAdminMutation {
+    "Create or update a key-value entry in the specified bucket. Returns the entry with its new revision."
+    putKeyValueEntry(
+        "The name of the KV bucket."
+        bucket: String!
+        "The key to create or update."
+        key: String!
+        "The string value to store."
+        value: String!
+    ): NatsKeyValueEntry!
+    "Delete a key-value entry from the specified bucket."
+    deleteKeyValueEntry(
+        "The name of the KV bucket."
+        bucket: String!
+        "The key to delete."
+        key: String!
+    ): Boolean!
+    "Permanently remove all tombstoned (deleted/purged) entries from a KeyValue store bucket, reclaiming storage."
+    purgeKeyValueDeletes(
+        "The name of the KV bucket to compact."
+        bucket: String!
+    ): Boolean!
+    "Purge all messages from a JetStream stream, preserving configuration and consumers."
+    purgeStream(
+        "The name of the stream to purge."
+        streamName: String!
+    ): Boolean!
+    "Remove all KeyValue tombstone messages (DEL/PURGE markers) from a stream, reclaiming storage while preserving live entries. Returns the number of tombstones removed."
+    purgeStreamDeletes(
+        "The name of the stream to purge tombstones from."
+        streamName: String!
+    ): Int!
+    "Delete a single message from a JetStream stream by sequence number."
+    deleteStreamMessage(
+        "The name of the stream containing the message."
+        streamName: String!
+        "The sequence number of the message to delete."
+        sequence: Long!
+    ): Boolean!
+}
+
+extend type Mutation {
+    "Access NATS admin mutation operations for modifying KeyValue entries and stream messages."
+    natsAdmin: NatsAdminMutation!
+}

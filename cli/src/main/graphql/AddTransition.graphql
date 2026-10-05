@@ -1,0 +1,7 @@
+mutation AddTransition($transition: TransitionInput!) {
+    transitions {
+        add(transition: $transition) {
+            ...Transition
+        }
+    }
+}

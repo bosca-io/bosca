@@ -1,0 +1,43 @@
+# Work Ops — Audit (R17)
+#
+# Phase 2 ships the read shape for `WorkOpsTask.history` (the field is
+# defined on WorkOpsTask in `task.graphqls`); the entry / change types are
+# declared here so they live next to the audit area's other future
+# additions (cross-task auditQuery, retention policies, etc.).
+
+"""
+One field's change captured inside a WorkOpsTaskHistoryEntry. Old / new
+values are opaque JSON elements so any field type round-trips.
+"""
+type WorkOpsFieldChange {
+    """
+    Canonical identifier for the field. Built-in columns use the column
+    name (`status_id`, `summary`, …); Phase 4 custom fields use the
+    `core-forms` field key.
+    """
+    fieldKey: String!
+    "Alias for fieldKey."
+    fieldName: String!
+    "Value before the change. Null = unset; explicit JSON null = was null."
+    fromValue: JSON
+    "Alias for fromValue."
+    oldValue: JSON
+    "Value after the change."
+    toValue: JSON
+    "Alias for toValue."
+    newValue: JSON
+}
+
+"""
+One immutable record of "who changed what when" on a task.
+Multi-field updates produce ONE entry with multiple FieldChanges
+(R17), not one entry per field.
+"""
+type WorkOpsTaskHistoryEntry {
+    id: UUID!
+    taskId: UUID!
+    changedAt: DateTime!
+    changedByPrincipalId: UUID!
+    changedByProfileId: UUID
+    changes: [WorkOpsFieldChange!]!
+}

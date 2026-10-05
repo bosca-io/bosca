@@ -1,0 +1,160 @@
+{{- if and .Values.postgres.enabled .Values.postgres.migration.enabled }}
+{{- /*
+One-time migration Job — runs only when postgres.migration.enabled is true.
+
+CNPG model:
+  - bootstrap.postInitApplicationSQL is the official one-time setup hook
+    but it fires exactly once at cluster creation. Anything added to
+    values.yaml afterward (new roles, schemas added by an app, ownership
+    drift from an adopted cluster) is left to operators.
+  - `managed.roles` reconciles role identity but not object privileges
+    or per-database role defaults like `ALTER ROLE … SET role`.
+  - This Job fills the gap explicitly: it's opt-in, runs as a Helm
+    post-upgrade hook, and uses the CNPG-issued superuser Secret which
+    only exists while migration.enabled is true (see postgres-cluster.yaml
+    for the `enableSuperuserAccess` toggle).
+
+To run:
+  1. Set postgres.migration.enabled: true in values
+  2. helm upgrade bosca-infra ...
+  3. Wait for the Job to finish (`kubectl logs job/postgres-bosca-migration`)
+  4. Set postgres.migration.enabled: false
+  5. helm upgrade bosca-infra ... — superuser Secret drops, Job is GC'd
+*/ -}}
+{{- $db := .Values.postgres.database | default "bosca" -}}
+{{- $dbOwner := .Values.postgres.owner | default "bosca" -}}
+{{- range .Values.postgres.databases -}}
+  {{- if eq .name $db -}}
+    {{- $dbOwner = .owner -}}
+  {{- end -}}
+{{- end -}}
+{{- /* SQL block: user-provided via .Values.postgres.migration.sql, or
+       the bundled default targeting the CLI-→-helm cutover. */ -}}
+{{- $defaultSQL := "" -}}
+{{- $sqlLines := list -}}
+{{- $sqlLines = append $sqlLines "-- Default migration: CLI-era cluster → helm-chart model.\n" -}}
+{{- $sqlLines = append $sqlLines "-- 1. Clear stale ALTER ROLE SET role defaults left by the old bootstrap.\n" -}}
+{{- range .Values.postgres.roles -}}
+  {{- if eq (.access | default "readwrite") "readwrite" -}}
+    {{- $sqlLines = append $sqlLines (printf "ALTER ROLE \"%s\" RESET role;\n" .name) -}}
+  {{- end -}}
+{{- end -}}
+{{- $sqlLines = append $sqlLines "\n-- 2. If a legacy `bosca` role still owns objects, hand them to the\n" -}}
+{{- $sqlLines = append $sqlLines "--    real database owner. Defensive against fresh clusters where\n" -}}
+{{- $sqlLines = append $sqlLines "--    `bosca` was never created.\n" -}}
+{{- $sqlLines = append $sqlLines "DO $$\nBEGIN\n  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'bosca') THEN\n" -}}
+{{- $sqlLines = append $sqlLines (printf "    REASSIGN OWNED BY \"bosca\" TO \"%s\";\n  END IF;\nEND $$;\n" $dbOwner) -}}
+{{- /* Object creators: Flyway migrations run as the connecting readwrite role
+       (bosca-server, bosca-runner, ...), not the database owner, and default
+       privileges only fire for objects created by the role they name — so
+       every readwrite role (plus the owner) must appear as grantor. */ -}}
+{{- $creators := list $dbOwner -}}
+{{- range .Values.postgres.roles -}}
+  {{- if eq (.access | default "readwrite") "readwrite" -}}
+    {{- $creators = append $creators .name -}}
+  {{- end -}}
+{{- end -}}
+{{- $sqlLines = append $sqlLines "\n-- 3. Readonly grants for Trino + dashboards, on EVERY app schema — modules\n" -}}
+{{- $sqlLines = append $sqlLines "--    create their own schemas via Flyway (recommendations, segmentation, ...),\n" -}}
+{{- $sqlLines = append $sqlLines "--    so public-only grants miss objects like recommendations.profile_cohort.\n" -}}
+{{- range .Values.postgres.roles -}}
+  {{- if eq (.access | default "readwrite") "readonly" -}}
+    {{- $ro := .name -}}
+    {{- $sqlLines = append $sqlLines (printf "GRANT CONNECT ON DATABASE \"%s\" TO \"%s\";\n" $db $ro) -}}
+    {{- $sqlLines = append $sqlLines "DO $$\nDECLARE s text;\nBEGIN\n  FOR s IN\n    SELECT schema_name FROM information_schema.schemata\n    WHERE schema_name NOT LIKE 'pg_%' AND schema_name <> 'information_schema'\n  LOOP\n" -}}
+    {{- $sqlLines = append $sqlLines (printf "    EXECUTE format('GRANT USAGE ON SCHEMA %%I TO \"%s\"', s);\n" $ro) -}}
+    {{- $sqlLines = append $sqlLines (printf "    EXECUTE format('GRANT SELECT ON ALL TABLES IN SCHEMA %%I TO \"%s\"', s);\n" $ro) -}}
+    {{- $sqlLines = append $sqlLines (printf "    EXECUTE format('GRANT SELECT ON ALL SEQUENCES IN SCHEMA %%I TO \"%s\"', s);\n" $ro) -}}
+    {{- $sqlLines = append $sqlLines "  END LOOP;\nEND $$;\n" -}}
+    {{- /* Future objects and future schemas, whichever readwrite role creates
+           them. No IN SCHEMA clause: these apply database-wide, so a schema
+           added by a later release is covered without re-running this job. */ -}}
+    {{- range $creators -}}
+      {{- $sqlLines = append $sqlLines (printf "ALTER DEFAULT PRIVILEGES FOR ROLE \"%s\" GRANT SELECT ON TABLES TO \"%s\";\n" . $ro) -}}
+      {{- $sqlLines = append $sqlLines (printf "ALTER DEFAULT PRIVILEGES FOR ROLE \"%s\" GRANT SELECT ON SEQUENCES TO \"%s\";\n" . $ro) -}}
+      {{- $sqlLines = append $sqlLines (printf "ALTER DEFAULT PRIVILEGES FOR ROLE \"%s\" GRANT USAGE ON SCHEMAS TO \"%s\";\n" . $ro) -}}
+    {{- end -}}
+  {{- end -}}
+{{- end -}}
+{{- $defaultSQL = join "" $sqlLines -}}
+{{- $sql := .Values.postgres.migration.sql | default $defaultSQL -}}
+{{- $sqlChecksum := $sql | sha256sum | trunc 8 -}}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-bosca-migration-sql
+  labels:
+    {{- include "bosca-common.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: post-upgrade,post-install
+    helm.sh/hook-weight: "10"
+    helm.sh/hook-delete-policy: before-hook-creation
+data:
+  migration.sql: |
+{{ $sql | indent 4 }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  # Suffix with the SQL checksum so re-running the same migration is a
+  # no-op (Helm sees the same Job name and the hook-delete-policy
+  # garbage-collects the previous run before creating the new one).
+  name: postgres-bosca-migration-{{ $sqlChecksum }}
+  labels:
+    {{- include "bosca-common.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: post-upgrade,post-install
+    helm.sh/hook-weight: "20"
+    helm.sh/hook-delete-policy: before-hook-creation
+spec:
+  ttlSecondsAfterFinished: 600
+  backoffLimit: 6
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/part-of: bosca
+        app.kubernetes.io/component: postgres-migration
+    spec:
+      restartPolicy: OnFailure
+      volumes:
+        - name: sql
+          configMap:
+            name: postgres-bosca-migration-sql
+      containers:
+        - name: psql
+          image: {{ .Values.postgres.imageName | default "ghcr.io/cloudnative-pg/postgresql:17" | quote }}
+          env:
+            - name: PGHOST
+              value: postgres-bosca-rw
+            - name: PGDATABASE
+              value: {{ $db | quote }}
+            - name: PGUSER
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-bosca-superuser
+                  key: username
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-bosca-superuser
+                  key: password
+          volumeMounts:
+            - name: sql
+              mountPath: /migration
+              readOnly: true
+          command:
+            - sh
+            - -ec
+            - |
+              for i in $(seq 1 60); do
+                pg_isready -h "$PGHOST" -U "$PGUSER" -d "$PGDATABASE" -q && break
+                echo "waiting for $PGHOST ($i/60)..."
+                sleep 5
+              done
+              echo "── migration sql ─────────────────────────────────"
+              cat /migration/migration.sql
+              echo "──────────────────────────────────────────────────"
+              psql -v ON_ERROR_STOP=1 -f /migration/migration.sql
+              echo "migration complete (checksum {{ $sqlChecksum }})."
+{{- end }}

@@ -1,0 +1,138 @@
+"""Subscription lifecycle states."""
+enum SubscriptionStatus { PENDING ACTIVE INACTIVE TRIALING CANCELLED PAST_DUE UNPAID EXPIRED DELETED }
+
+"""Whether a plan accepts new subscriptions."""
+enum PlanStatus { ACTIVE INACTIVE DELETED }
+
+"""Billing cadence unit."""
+enum IntervalUnit { SECONDS MINUTES HOURS DAYS MONTHS YEARS }
+
+extend type Ecom {
+    "A subscription plan group by id. Admin."
+    planGroup(id: UUID!): SubscriptionPlanGroup
+    "A store's subscription plan groups. Admin."
+    planGroups(storeId: UUID!): [SubscriptionPlanGroup!]!
+    "A subscription plan by id. Admin."
+    plan(id: UUID!): SubscriptionPlan
+    "Every plan within a plan group. Admin."
+    plans(planGroupId: UUID!): [SubscriptionPlan!]!
+    "A subscription by id. Admin."
+    subscription(id: UUID!): EcomSubscription
+    "An account's subscriptions, newest first. Admin."
+    subscriptions(accountId: UUID!, offset: Int! = 0, limit: Int! = 50): [EcomSubscription!]!
+}
+
+extend type EcomMutation {
+    "Subscription plan group + plan administration. Admin."
+    plans: PlansMutation!
+    "Direct subscribe + per-subscription operations. Admin."
+    subscriptions: SubscriptionsMutation!
+}
+
+"""A family of subscription plans; an account may hold one live subscription per group."""
+type SubscriptionPlanGroup {
+    id: UUID!
+    key: String!
+    name: String!
+    description: String!
+    "Renewal payment attempts before a subscription goes UNPAID."
+    paymentRetries: Int!
+    created: DateTime!
+    modified: DateTime!
+}
+
+"""A subscription plan within a group."""
+type SubscriptionPlan {
+    id: UUID!
+    group: SubscriptionPlanGroup!
+    key: String!
+    name: String!
+    description: String!
+    status: PlanStatus!
+    price: Money!
+    interval: Int!
+    intervalUnit: IntervalUnit!
+    "Plan-specific behavior (polymorphic)."
+    configuration: PlanConfiguration!
+    expires: DateTime
+    created: DateTime!
+    modified: DateTime!
+}
+
+# Named EcomSubscription (not Subscription) — `Subscription` is the GraphQL root subscription
+# operation type, which every module extends; defining an object type of that name collides at
+# full-schema assembly.
+"""A recurring purchase. Price/interval are snapshotted at signup."""
+type EcomSubscription {
+    id: UUID!
+    plan: SubscriptionPlan!
+    status: SubscriptionStatus!
+    price: Money!
+    "ISO-4217 currency of this subscription's price (the store's)."
+    currency: String!
+    interval: Int!
+    intervalUnit: IntervalUnit!
+    "Next billing instant."
+    renews: DateTime!
+    expires: DateTime
+    paymentFailures: Int!
+    renewals: Int!
+    "The originating cart, when subscribed via checkout."
+    cartId: UUID
+    created: DateTime!
+    modified: DateTime!
+}
+
+"""Subscription plan administration. Admin."""
+type PlansMutation {
+    "Create a plan group."
+    addGroup(input: PlanGroupInput!): SubscriptionPlanGroup!
+    "Create a plan within a group."
+    addPlan(input: PlanInput!): SubscriptionPlan!
+}
+
+"""Direct subscribe + per-subscription operations. Admin."""
+type SubscriptionsMutation {
+    "Subscribe an account to a plan directly (admin path)."
+    subscribe(input: SubscribeInput!): EcomSubscription!
+    "Operations on an existing subscription."
+    subscription(id: UUID!): SubscriptionMutation!
+}
+
+"""Mutations on one subscription. Admin."""
+type SubscriptionMutation {
+    "Cancel the subscription."
+    cancel: EcomSubscription!
+    "Schedule a plan change effective at the next renewal; returns the pending successor."
+    changePlan(planId: UUID!): EcomSubscription!
+}
+
+"""Creates a subscription plan group."""
+input PlanGroupInput {
+    storeId: UUID!
+    key: String!
+    name: String!
+    description: String = ""
+    paymentRetries: Int! = 3
+}
+
+"""Creates a subscription plan. configuration is the polymorphic PlanConfiguration as JSON."""
+input PlanInput {
+    planGroupId: UUID!
+    storeId: UUID!
+    key: String!
+    name: String!
+    description: String = ""
+    price: Money!
+    interval: Int!
+    intervalUnit: IntervalUnit!
+    configuration: JSON
+}
+
+"""Subscribes an account to a plan. saved is an optional reusable payment method (JSON)."""
+input SubscribeInput {
+    storeId: UUID!
+    accountId: UUID!
+    planId: UUID!
+    saved: JSON
+}

@@ -1,0 +1,35 @@
+"Defines how results are sorted, including support for sorting by nested attribute paths"
+type Ordering {
+    "The field name to sort by"
+    field: String
+    "Whether this ordering applies to item attributes or relationship attributes"
+    location: AttributeLocation
+    "Sort direction (ascending or descending)"
+    order: Order
+    "JSON path segments for sorting by nested attribute values"
+    path: [String!]
+    "The data type of the field, used for correct comparison"
+    type: AttributeType
+}
+
+"Input for specifying sort order on query results"
+input OrderingInput {
+    "The field name to sort by"
+    field: String
+    "Whether this ordering applies to item attributes or relationship attributes"
+    location: AttributeLocation
+    "Sort direction (ascending or descending)"
+    order: Order
+    "JSON path segments for sorting by nested attribute values"
+    path: [String!]
+    "The data type of the field, used for correct comparison"
+    type: AttributeType
+}
+
+"Sort direction for ordering results"
+enum Order {
+    "Sort from lowest to highest (A-Z, 0-9, oldest first)"
+    ASCENDING
+    "Sort from highest to lowest (Z-A, 9-0, newest first)"
+    DESCENDING
+}

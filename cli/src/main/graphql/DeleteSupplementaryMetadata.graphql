@@ -1,0 +1,7 @@
+mutation DeleteSupplementaryMetadata($id: UUID!) {
+    content {
+        metadata {
+            deleteSupplementary(id: $id)
+        }
+    }
+}

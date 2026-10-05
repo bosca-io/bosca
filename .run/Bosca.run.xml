@@ -1,0 +1,10 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="Bosca" type="CompoundRunConfigurationType">
+    <toRun name="Analytics Collector" type="JetRunConfigurationType" />
+    <toRun name="Bosca Runner" type="JetRunConfigurationType" />
+    <toRun name="Bosca Server" type="JetRunConfigurationType" />
+    <toRun name="Image Processor" type="js.build_tools.npm" />
+    <toRun name="Studio" type="js.build_tools.npm" />
+    <method v="2" />
+  </configuration>
+</component>

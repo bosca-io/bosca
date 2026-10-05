@@ -1,0 +1,92 @@
+replicaCount: 1
+
+# Rolling update strategy. `maxUnavailable: 0` guarantees no capacity dip
+# during rollouts. Bump `maxSurge` higher for faster, more aggressive
+# rollouts at the cost of brief extra pod-hours during the rollout window.
+strategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxSurge: 25%
+    maxUnavailable: 0
+
+image:
+  registry: ghcr.io/bosca-io/bosca
+  repository: notifications-web
+  tag: ""
+  pullPolicy: IfNotPresent
+
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+commonAnnotations: {}
+
+podSecurityContext: {}
+securityContext: {}
+
+# The BML SSR server (GraalVM native) listens on 9094. It proxies /graphql
+# same-origin to BML_GRAPHQL_ENDPOINT itself, and it shares the messages.<domain>
+# host with bml-message-server (which keeps /assets, /c, /o), so the route is a
+# catch-all that loses those prefixes on Gateway API longest-path precedence
+# (see httproute-notifications-web.yaml in bosca-services).
+service:
+  type: ClusterIP
+  port: 9094
+
+gateway:
+  enabled: true
+  gatewayName: bosca-gateway
+  gatewayNamespace: ""
+  hostnames: []
+
+# Server-side rendering, but a native binary — no JVM warmup or heap overhead.
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 80
+
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+
+# BML_GRAPHQL_ENDPOINT tells bml-server where the Bosca GraphQL API lives —
+# SSR page loaders and the same-origin /graphql proxy both use it. In-cluster,
+# point it at the bosca-server service. Branding variables configure the public
+# pages without rebuilding the image. Colors accept CSS hex notation. Footer HTML
+# is read verbatim from a file mounted into the container. All branding variables
+# are optional, e.g.:
+#   extraEnv:
+#     BML_GRAPHQL_ENDPOINT: http://bosca-bosca-server:8080/graphql
+#     BRAND_NAME: Acme
+#     BRAND_LOGO_URL: https://cdn.acme.example/logo.svg
+#     BRAND_PRIMARY_COLOR: "#172554"
+#     BRAND_ACCENT_COLOR: "#0369a1"
+#     BRAND_FOOTER_HTML_FILE: /etc/notifications-web/footer.html
+extraEnv: {}
+
+envFromConfigMaps: []
+
+imagePullSecrets:
+  - name: docker-registry
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+global:
+  # Registry (and path) for every Bosca image; when set, it overrides image.registry.
+  imageRegistry: ""
+  domain: ""

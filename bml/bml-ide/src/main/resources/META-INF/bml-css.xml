@@ -1,0 +1,12 @@
+<idea-plugin>
+    <!-- Loaded only when the CSS plugin (com.intellij.css) is present. Links the CSS plugin into this
+         plugin's classloader so BmlCssClassRefs can use com.intellij.psi.css.CssClass. The class="…" →
+         CSS-class references are attached in BmlInjectionHost.getReferences() (main descriptor, gated on
+         the CSS language). -->
+    <extensions defaultExtensionNs="com.intellij.css">
+        <!-- Tell the CSS unused-selector inspection that `class="…"`/`id="…"` in BML markup uses the
+             selector (the inspection searches the top-level .bml + asks providers per name occurrence).
+             The proper hook — no inspection suppression. -->
+        <classOrIdUsagesProvider implementation="bosca.bml.ide.BmlCssClassUsagesProvider"/>
+    </extensions>
+</idea-plugin>

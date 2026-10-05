@@ -1,0 +1,9 @@
+query GetCategories {
+    content {
+        categories {
+            all {
+                ...Category
+            }
+        }
+    }
+}

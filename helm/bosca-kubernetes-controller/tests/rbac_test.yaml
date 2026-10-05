@@ -1,0 +1,35 @@
+suite: bosca-kubernetes-controller RBAC
+templates:
+  - templates/clusterrole.yaml
+  - templates/clusterrolebinding.yaml
+values:
+  - ../values.yaml
+set:
+  global:
+    domain: example.com
+tests:
+  - it: renders ClusterRole when rbac.create is true
+    template: templates/clusterrole.yaml
+    asserts:
+      - isKind:
+          of: ClusterRole
+      - isNotEmpty:
+          path: rules
+
+  - it: renders ClusterRoleBinding
+    template: templates/clusterrolebinding.yaml
+    asserts:
+      - isKind:
+          of: ClusterRoleBinding
+      - equal:
+          path: subjects[0].kind
+          value: ServiceAccount
+
+  - it: does not render RBAC when disabled
+    template: templates/clusterrole.yaml
+    set:
+      rbac:
+        create: false
+    asserts:
+      - hasDocuments:
+          count: 0

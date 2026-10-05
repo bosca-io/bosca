@@ -1,0 +1,10 @@
+# Keep the build context small and deterministic. Anything not explicitly
+# COPY'd in the Dockerfile is ignored anyway, but excluding the host target/
+# avoids shipping hundreds of MB to the build daemon on every build.
+target/
+.git/
+.gitignore
+Dockerfile
+.dockerignore
+*.md
+config.dev.toml

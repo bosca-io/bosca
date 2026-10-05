@@ -1,0 +1,21 @@
+{# Component: a reusable `card` tag.
+   Exercises: <component tag>, typed <prop> (required / expr default / attr default),
+   a component-scoped <script server>, interpolation in attributes, <if>/<else>, <slot>. #}
+<component tag="card">
+  <prop name="title" type="String" required/>
+  <prop name="href" type="String?" :default="null"/>
+  <prop name="elevation" type="Int" default="1"/>
+
+  <article class="card card-elev-{ elevation }" {...attrs}>
+    <header class="card-head">
+      <if href != null>
+        <a :href="href">{ title }</a>
+      <else>
+        <h3>{ title }</h3>
+      </if>
+    </header>
+    <div class="card-body">
+      <slot/>
+    </div>
+  </article>
+</component>

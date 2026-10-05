@@ -1,0 +1,112 @@
+bosca:
+  server:
+    development: false
+    port: 8080
+
+jwt:
+  domain: [DOMAIN]
+  admin-domain: admin.[DOMAIN]
+  audience: [DOMAIN]
+  realm: [REALM]
+  issuer: [DOMAIN]
+  secret: $JWT_SECRET
+  expiration-time: 5184000
+
+security:
+  autoVerify: [AUTO_VERIFY]
+  encryption:
+    key: $SECURITY_ENCRYPTION_KEY
+  scrypt:
+    base64SaltSeparator: ${SCRYPT_SALT_SEPARATOR:}
+    base64SignerKey: ${SCRYPT_SIGNER_KEY:}
+    memCost: ${SCRYPT_MEM_COST:4}
+    rounds: ${SCRYPT_ROUNDS:8}
+
+iceberg:
+  catalog: $ICEBERG_CATALOG
+  fileIO: org.apache.iceberg.aws.s3.S3FileIO
+  namespace: $ICEBERG_NAMESPACE
+  table: events
+  localPath: /data/iceberg
+  warehouseLocation: [ICEBERG_WAREHOUSE_LOCATION]
+  database:
+    uri: [ICEBERG_DATABASE_URL]
+    username: $ICEBERG_DATABASE_USER
+    password: $ICEBERG_DATABASE_PASSWORD
+  s3:
+    bucket: $ICEBERG_S3_BUCKET
+    endpoint: $ICEBERG_S3_ENDPOINT
+    region: $ICEBERG_S3_REGION
+    pathStyleAccess: true
+    accessKeyId: $ICEBERG_S3_ACCESS_KEY_ID
+    secretAccessKey: $ICEBERG_S3_SECRET_ACCESS_KEY
+
+content:
+  storage:
+    type: s3
+    bucket: $AWS_BUCKET
+    urlPrefix: https://[DOMAIN]
+    urlUploadPrefix: https://upload.[DOMAIN]
+    forcePathStyle: true
+  urlSigner:
+    secretKey: $URL_SECRET_KEY
+
+database:
+  migrations:
+    - core-migrations
+    - scheduler-migrations
+  postgres:
+    url: [DATABASE_URL]
+    user: $DATABASE_USER
+    password: $DATABASE_PASSWORD
+  trino-admin:
+    url: jdbc:trino://trino.[NAMESPACE].svc.cluster.local:8080
+    user: admin
+    password: ""
+    driverClassName: "io.trino.jdbc.TrinoDriver"
+  trino-readonly:
+    url: jdbc:trino://trino.[NAMESPACE].svc.cluster.local:8080
+    user: rouser
+    password: ""
+    driverClassName: "io.trino.jdbc.TrinoDriver"
+
+packages: [analytics-queries]
+
+nats:
+  url: nats://[NATS_HOST].[NAMESPACE].svc.cluster.local:4222
+  token: $NATS_TOKEN
+
+cache:
+  type: nats
+
+jobQueue:
+  factory: nats
+
+pubsub:
+  type: nats
+
+distributedLock:
+  type: nats
+
+scheduler:
+  enabled: true
+
+meilisearch:
+  url: http://[MEILISEARCH_HOST].[NAMESPACE].svc.cluster.local:7700
+  apiKey: $MEILISEARCH_API_KEY
+
+mailer:
+  type: sendgrid
+  from:
+    name: Support
+    email: $MAILER_FROM_EMAIL
+
+hubspot:
+  token: $HUBSPOT_TOKEN
+
+scripting:
+  executionTimeoutSeconds: 600
+
+koog:
+  openai:
+    apikey: $OPENAI_API_KEY

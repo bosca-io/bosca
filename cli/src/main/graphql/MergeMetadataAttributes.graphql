@@ -1,0 +1,7 @@
+mutation MergeMetadataAttributes($id: UUID!, $attributes: JSON!) {
+    content {
+        metadata {
+          mergeMetadataAttributes(id: $id, attributes: $attributes)
+        }
+    }
+}

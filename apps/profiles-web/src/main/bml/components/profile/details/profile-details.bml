@@ -1,0 +1,49 @@
+<component tag="profile-details">
+  <prop name="initial" type="bosca.profiles.web.ProfileEditorModel" required/>
+  <script server provides="profile">
+    bosca.profiles.web.ProfileEditorModel(
+      initial.id,
+      initial.name,
+      initial.slug,
+      initial.visibility,
+      initial.searchable,
+      initial.created,
+      initial.modified,
+      initial.attributes,
+      initial.attributeTypes,
+    )
+  </script>
+
+  <island name="profile-details" :key="initial.id">
+    <section class="card section-card profile-details-card">
+      <div class="section-heading">
+        <div>
+          <h2>Profile details</h2>
+          <p class="card-copy">The basics people see when they encounter this profile.</p>
+        </div>
+      </div>
+      <form class="form-grid profile-details-form" data-profile-details-form @submit="profile.save(form.name, form.visibility, form.searchable, ctx)">
+        <label class="field full">
+          <span>Display name</span>
+          <input name="name" type="text" :value="profile.name" autocomplete="name" required/>
+        </label>
+        <div class="profile-form-footer full">
+          <div class="profile-controls">
+            <profile-visibility-field :visibility="profile.visibility"/>
+            <label class="profile-search-switch">
+              <input class="switch-input" name="searchable" type="checkbox" role="switch" :checked="profile.searchable"/>
+              <span class="switch-control" aria-hidden="true"></span>
+              <span class="switch-label">Show this profile in search when its visibility permits.</span>
+            </label>
+          </div>
+          <div class="profile-save-actions">
+            <span class="profile-save-dirty">Unsaved changes</span>
+            <button class="primary" type="submit" data-profile-save disabled>Save</button>
+          </div>
+        </div>
+      </form>
+      <p class="row-meta">Created <local-date-time :value="profile.created"/> · Last changed <local-date-time :value="profile.modified"/></p>
+      <if profile.message != null><toast-message :message="profile.message" :failed="profile.failed" :id="profile.messageId"/></if>
+    </section>
+  </island>
+</component>

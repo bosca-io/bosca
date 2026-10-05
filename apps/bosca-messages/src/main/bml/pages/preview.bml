@@ -1,0 +1,24 @@
+{# Renders one preview variant RAW: the page's entire output is the compiled email template's
+   own document (subject + email-safe HTML via the BML message pipeline), so what you see is what
+   ships. `?text` swaps in the plain-text alternative (with the subject line on top). #}
+<page route="/preview/{slug}">
+  <script server provides="rendered">
+    import bosca.messages.Samples
+    val r = Samples.render(slug)
+    if (r == null) ctx.notFound = true
+    r
+  </script>
+  <if rendered != null>
+    <if ctx.query.containsKey("text")>
+      {@ "<!doctype html>" }
+      <html lang="en">
+        <head><meta charset="utf-8"/><title>Plain text</title></head>
+        <body style="margin:0;background:#f6f7f9;">
+          <pre style="max-width:72ch;margin:0 auto;padding:40px 24px;font:13px/1.6 ui-monospace,Menlo,monospace;white-space:pre-wrap;color:#2a2e3a;">{ "Subject: " + rendered.subject + "\n\n" + rendered.text }</pre>
+        </body>
+      </html>
+    <else>
+      {@ rendered.html }
+    </if>
+  </if>
+</page>

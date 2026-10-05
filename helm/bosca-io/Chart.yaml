@@ -1,0 +1,10 @@
+apiVersion: v2
+name: bosca-io
+description: bosca.io landing + gated documentation site (Nuxt SSR)
+type: application
+version: 0.1.0
+appVersion: "4.7.23"
+dependencies:
+  - name: bosca-common
+    version: ">=0.1.0"
+    repository: "file://../bosca-common"

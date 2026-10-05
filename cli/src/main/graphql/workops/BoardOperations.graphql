@@ -1,0 +1,72 @@
+query GetWorkOpsBoard($id: UUID!) {
+    workOps {
+        boards {
+            board(id: $id) {
+                ...WorkOpsBoardFragment
+            }
+        }
+    }
+}
+
+query GetWorkOpsBoardsByProject($projectId: UUID!) {
+    workOps {
+        boards {
+            byProject(projectId: $projectId) {
+                ...WorkOpsBoardFragment
+            }
+        }
+    }
+}
+
+query GetWorkOpsBoardsByProgram($programId: UUID!) {
+    workOps {
+        boards {
+            byProgram(programId: $programId) {
+                ...WorkOpsBoardFragment
+            }
+        }
+    }
+}
+
+mutation CreateWorkOpsBoard($input: CreateWorkOpsBoardInput!) {
+    workOps {
+        boards {
+            create(input: $input) {
+                ...WorkOpsBoardFragment
+            }
+        }
+    }
+}
+
+mutation UpdateWorkOpsBoard($id: UUID!, $input: UpdateWorkOpsBoardInput!) {
+    workOps {
+        boards {
+            update(id: $id, input: $input) {
+                ...WorkOpsBoardFragment
+            }
+        }
+    }
+}
+
+mutation DeleteWorkOpsBoard($boardId: UUID!) {
+    workOps {
+        boards {
+            delete(boardId: $boardId)
+        }
+    }
+}
+
+mutation AddWorkOpsBoardColumn($input: CreateWorkOpsBoardColumnInput!) {
+    workOps {
+        boards {
+            addColumn(input: $input) {
+                id
+                boardId
+                name
+                displayOrder
+                statusIds
+                wipLimit
+            }
+        }
+    }
+}

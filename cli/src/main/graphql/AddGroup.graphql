@@ -1,0 +1,9 @@
+mutation AddGroup($name: String!, $description: String!) {
+    security {
+        groups {
+            addGroup(name: $name, description: $description, groupType: SYSTEM) {
+                ...Group
+            }
+        }
+    }
+}

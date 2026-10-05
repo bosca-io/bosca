@@ -1,0 +1,61 @@
+<page route="/communications" requireAuth>
+  <script server provides="branding">bosca.profiles.web.branding()</script>
+  <script server provides="loaded">bosca.profiles.web.communicationsModel()</script>
+  <script server provides="model">
+    bosca.profiles.web.CommunicationsModel(loaded.rows, loaded.timeZone, loaded.start, loaded.end)
+  </script>
+
+  <site-layout title="Communications" :brand="branding.name" :logo="branding.logoUrl" :footer="branding.footerHtml">
+    <main class="shell">
+      <header class="page-head">
+        <div>
+          <p class="eyebrow">Communications</p>
+          <h1>What reaches you</h1>
+          <p class="lede">Choose optional email and push messages. Essential account and security notices remain on.</p>
+        </div>
+      </header>
+      <island name="communication-preferences">
+        <div class="stack">
+          <section class="card">
+            <h2>Notification choices</h2>
+            <p class="card-copy">An enabled switch means you receive that type through the selected channel.</p>
+            <div class="switch-grid">
+              <div class="switch-row head"><span></span><span>Email</span><span>Push</span></div>
+              <for row in model.rows>
+                <div class="switch-row">
+                  <span class="switch-copy"><strong>{ row.name }</strong><span>{ row.description }</span></span>
+                  <if row.optional>
+                    <if row.emailOptedOut>
+                      <button class="toggle" type="button" role="switch" aria-checked="false" aria-label="Email for { row.name }" @click="model.toggleEmail(row.key, ctx)"></button>
+                    <else>
+                      <button class="toggle on" type="button" role="switch" aria-checked="true" aria-label="Email for { row.name }" @click="model.toggleEmail(row.key, ctx)"></button>
+                    </if>
+                    <if row.pushOptedOut>
+                      <button class="toggle" type="button" role="switch" aria-checked="false" aria-label="Push for { row.name }" @click="model.togglePush(row.key, ctx)"></button>
+                    <else>
+                      <button class="toggle on" type="button" role="switch" aria-checked="true" aria-label="Push for { row.name }" @click="model.togglePush(row.key, ctx)"></button>
+                    </if>
+                  <else>
+                    <span class="always">Always on</span>
+                  </if>
+                </div>
+              </for>
+            </div>
+          </section>
+
+          <section class="card">
+            <h2>Push quiet hours</h2>
+            <p class="card-copy">Use an IANA time zone such as America/Chicago. Clear all three fields to remove quiet hours.</p>
+            <form class="form-grid" @submit="model.saveQuietHours(form.timeZone, form.start, form.end, ctx)">
+              <label class="field full"><span>Time zone</span><input name="timeZone" type="text" :value="model.timeZone" placeholder="America/Chicago"/></label>
+              <label class="field"><span>Start</span><input name="start" type="time" :value="model.start"/></label>
+              <label class="field"><span>End</span><input name="end" type="time" :value="model.end"/></label>
+              <div class="actions full"><button class="primary" type="submit">Save quiet hours</button></div>
+            </form>
+          </section>
+          <if model.message != null><toast-message :message="model.message" :failed="model.failed" :id="model.messageId"/></if>
+        </div>
+      </island>
+    </main>
+  </site-layout>
+</page>

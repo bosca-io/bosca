@@ -1,0 +1,5 @@
+mutation EditProfileAttributeType($input: ProfileAttributeTypeInput!) {
+    profiles {
+        editAttributeType(attribute: $input)
+    }
+}

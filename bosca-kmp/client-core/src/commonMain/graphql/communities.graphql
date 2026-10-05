@@ -1,0 +1,123 @@
+query GetMyGroups {
+    profiles {
+        current {
+            community {
+                groups {
+                    id
+                    name
+                    description
+                    visibility
+                    attributes
+                }
+            }
+        }
+    }
+}
+
+query GetProfileGroups($profileId: UUID!) {
+    profiles {
+        profile(id: $profileId) {
+            community {
+                groups {
+                    id
+                    name
+                    description
+                    visibility
+                    attributes
+                }
+            }
+        }
+    }
+}
+
+query SearchCommunities($query: String!) {
+    search {
+        search(query: { query: $query }) {
+            documents {
+                profile {
+                    id
+                    name
+                    attributes {
+                        id
+                        type {
+                           id
+                           name
+                        }
+                        attributes
+                    }
+                }
+            }
+        }
+    }
+}
+
+mutation CreateGroup($name: String!, $description: String!, $type: CommunityGroupType!, $visibility: CommunityVisibility!, $attributes: JSON) {
+    community {
+        createGroup(name: $name, description: $description, type: $type, visibility: $visibility, attributes: $attributes) {
+            id
+            name
+            description
+            visibility
+            attributes
+        }
+    }
+}
+
+query GetCommunityGroupSignupTokens($groupId: UUID!) {
+    community {
+        group(id: $groupId) {
+            id
+            signupTokens {
+                token
+                created
+                expires
+            }
+        }
+    }
+}
+
+mutation AddCommunityGroupSignupToken($groupId: UUID!) {
+    community {
+        addCommunityGroupSignupToken(groupId: $groupId) {
+            token
+            created
+            expires
+        }
+    }
+}
+
+mutation DeleteCommunityGroupSignupToken($groupId: UUID!, $token: String!) {
+    community {
+        deleteCommunityGroupSignupToken(groupId: $groupId, token: $token)
+    }
+}
+
+mutation UpdateCommunityGroup($id: UUID!, $name: String, $description: String, $visibility: CommunityVisibility, $attributes: JSON) {
+    community {
+        updateGroup(id: $id, name: $name, description: $description, visibility: $visibility, attributes: $attributes) {
+            id
+            name
+            description
+            visibility
+            attributes
+        }
+    }
+}
+
+mutation LeaveCommunityGroup($groupId: UUID!, $profileId: UUID!) {
+    community {
+        removeMember(groupId: $groupId, profileId: $profileId)
+    }
+}
+
+mutation JoinCommunity($token: String!) {
+    community {
+        join(token: $token) {
+            id
+            name
+            description
+            visibility
+            attributes
+        }
+    }
+}

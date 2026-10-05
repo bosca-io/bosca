@@ -1,0 +1,11 @@
+Bosca Server has been deployed.
+
+1. Get the application URL:
+{{- if .Values.gateway.enabled }}
+  Exposed via Gateway API HTTPRoute on hostnames: {{ .Values.gateway.hostnames | join ", " }}
+{{- else if contains "ClusterIP" .Values.service.type }}
+  kubectl port-forward svc/{{ include "bosca-common.fullname" . }} {{ .Values.service.port }}:{{ .Values.service.port }}
+{{- end }}
+
+2. Verify health:
+  curl http://localhost:{{ .Values.service.port }}/api/v1/health

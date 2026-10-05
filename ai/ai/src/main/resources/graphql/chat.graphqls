@@ -1,0 +1,172 @@
+"A chat session representing a conversation between a user and an AI agent, containing the full message history"
+type ChatSession {
+    "Unique identifier for this chat session"
+    id: UUID!
+    "The unique identifier of the user (principal) who owns this chat session"
+    principalId: UUID!
+    "The parent chat session when this session represents a nested thread"
+    parentSessionId: UUID
+    "The key identifying which AI agent is used for this chat session"
+    agentKey: String!
+    "The display title for this chat session, shown in session listings"
+    title: String!
+    "Metadata Attachments for this chat session"
+    attachments: [UUID!]!
+    "Collection Attachments for this chat session"
+    collectionAttachments: [UUID!]!
+    "The current processing status of this chat session"
+    status: ChatSessionStatus!
+    "Whether the dispatcher is actively working on this session (encompasses the entire lifecycle from request receipt through streaming to completion)"
+    processing: Boolean!
+    "Timestamp when this chat session was created"
+    created: DateTime!
+    "Timestamp when this chat session was last modified (e.g., new message added or title changed)"
+    modified: DateTime!
+    "The ordered list of messages in this chat session, representing the full conversation history"
+    messages: [ChatHistoryMessage!]!
+}
+
+"A single message within a chat session's conversation history"
+type ChatHistoryMessage {
+    "Unique identifier for this message"
+    id: UUID!
+    "The unique identifier of the chat session this message belongs to"
+    sessionId: UUID!
+    "The author of this message — typically 'user' for human messages or the agent key for AI responses"
+    author: String!
+    "The message content as a JSON event object, containing the message text, role, and any structured data or tool calls"
+    event: JSON
+    "Timestamp when this message was created"
+    created: DateTime!
+}
+
+"Input for creating a new chat session"
+input ChatSessionInput {
+    "The key identifying which AI agent should be used for this chat session"
+    agentKey: String!
+    "Optional display title for the chat session. If not provided, a default title may be generated."
+    title: String
+}
+
+"Query operations for listing and retrieving chat sessions belonging to the authenticated user"
+type ChatSessions {
+    "Retrieve all chat sessions for the authenticated user"
+    all: [ChatSession!]!
+    "Count of active chat sessions for all users"
+    active: Int!
+    "Retrieve a specific chat session by its unique ID"
+    session(
+        "The unique identifier of the chat session to retrieve"
+        id: UUID!
+    ): ChatSession
+}
+
+"A single part of a chat message, representing one content block (e.g., a text segment)"
+input ChatMessagePartInput {
+    "The content type of this message part (e.g., 'text')"
+    type: String!
+    "The text content of this message part"
+    text: String!
+}
+
+"A complete chat message sent by a user to the AI agent"
+input ChatMessageInput {
+    "The role of the message author (e.g., 'user', 'assistant')"
+    role: String!
+    "The ordered list of content parts that make up this message"
+    parts: [ChatMessagePartInput!]!
+}
+
+"The current processing status of a chat session"
+enum ChatSessionStatus {
+    "The AI agent is actively generating a response"
+    STREAMING,
+    "The AI agent has finished generating a response"
+    COMPLETED,
+    "The AI agent encountered an error while generating a response"
+    FAILED
+}
+
+"Mutation operations for managing chat sessions"
+type ChatSessionsMutation {
+    "Create a new chat session with a specified AI agent"
+    create(
+        "The chat session definition to create"
+        session: ChatSessionInput!
+    ): ChatSession!
+    "Update the display title of an existing chat session"
+    updateTitle(
+        "The unique identifier of the chat session to update"
+        id: UUID!
+        "The new title for the chat session"
+        title: String!
+    ): ChatSession!
+    "Attach a metadata item to a chat session, making it available as context for the AI agent"
+    addAttachment(
+        "The unique identifier of the chat session"
+        id: UUID!
+        "The unique identifier of the metadata item to attach"
+        metadataId: UUID!
+    ): ChatSession!
+    "Remove a metadata attachment from a chat session"
+    removeAttachment(
+        "The unique identifier of the chat session"
+        id: UUID!
+        "The unique identifier of the metadata item to detach"
+        metadataId: UUID!
+    ): ChatSession!
+    "Attach a collection to a chat session, making its contents available as context for the AI agent"
+    addCollectionAttachment(
+        "The unique identifier of the chat session"
+        id: UUID!
+        "The unique identifier of the collection to attach"
+        collectionId: UUID!
+    ): ChatSession!
+    "Remove a collection attachment from a chat session"
+    removeCollectionAttachment(
+        "The unique identifier of the chat session"
+        id: UUID!
+        "The unique identifier of the collection to detach"
+        collectionId: UUID!
+    ): ChatSession!
+    "Send a message to the AI agent in a chat session and begin generating a response"
+    send(
+        "The unique identifier of the chat session to send the message to"
+        sessionId: UUID!
+        "The message to send to the AI agent"
+        message: ChatMessageInput!
+    ): Boolean
+    "Delete a chat session and all its messages. Returns true if the session was deleted."
+    delete(
+        "The unique identifier of the chat session to delete"
+        id: UUID!
+    ): Boolean!
+}
+
+extend type Query {
+    "Access query operations for chat sessions belonging to the authenticated user"
+    chatSessions: ChatSessions!
+}
+
+extend type Mutation {
+    "Access mutation operations for managing chat sessions"
+    chatSessions: ChatSessionsMutation!
+}
+
+extend type Subscription {
+    "Subscribe to new messages in a chat session, receiving each message as it is added to the history"
+    aiChatHistory(
+        "The unique identifier of the chat session to subscribe to"
+        sessionId: UUID!
+    ): ChatHistoryMessage!
+    "Subscribe to status changes for a chat session (e.g., streaming started, completed, or failed)"
+    aiChatStatus(
+        "The unique identifier of the chat session to monitor"
+        sessionId: UUID!
+    ): ChatSessionStatus!
+    "Subscribe to processing state changes for a chat session (true when the dispatcher starts working, false when it finishes)"
+    aiChatProcessing(
+        "The unique identifier of the chat session to monitor"
+        sessionId: UUID!
+    ): Boolean!
+}

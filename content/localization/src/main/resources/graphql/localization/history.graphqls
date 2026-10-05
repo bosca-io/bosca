@@ -1,0 +1,25 @@
+"An audit log entry recording a single change to a translation"
+type TranslationHistory {
+    "Unique identifier"
+    id: UUID!
+    "ID of the translation this entry describes"
+    translationId: UUID!
+    "Which table the translation_id refers to (translations | plural_translations | document_translations)"
+    tableName: String!
+    "Previous state (null for the initial entry)"
+    fromState: TranslationState
+    "New state resulting from this change"
+    toState: TranslationState!
+    "Principal ID of the actor, null for system/AI-driven changes"
+    changedBy: UUID
+    "Provenance of the change"
+    origin: TranslationOrigin!
+    "Optional origin detail (AI model name, Crowdin user, etc.)"
+    originDetail: String
+    "Text before this change, or null for the initial entry"
+    previousText: String
+    "Text after this change"
+    newText: String!
+    "Timestamp when this entry was created"
+    created: DateTime!
+}

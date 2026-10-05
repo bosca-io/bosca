@@ -1,0 +1,50 @@
+"Aggregate progression counts for a guide across all metadata versions."
+type GuideProgressStatistics {
+    "Progressions that have not yet completed."
+    activeProgressions: Long!
+    "Distinct profiles with an active progression."
+    activeProfiles: Long!
+    "Progressions retained in history."
+    historicalProgressions: Long!
+    "Historical progressions with a completion timestamp."
+    completions: Long!
+    "Active and historical progressions combined."
+    totalProgressions: Long!
+    "Distinct profiles that have started the guide."
+    uniqueProfiles: Long!
+}
+
+"Administrator-facing progression data for one guide across all versions."
+type GuideProgress {
+    "Aggregate progression counts across every version of the guide."
+    statistics: GuideProgressStatistics!
+    "Profiles with active progress, ordered by most recent activity."
+    activeProfiles(
+        "The maximum number of profiles to return (capped at 100)."
+        limit: Int!
+        "The zero-based offset for pagination."
+        offset: Long!
+    ): [GuideProgressProfile!]!
+}
+
+"A profile and its active progress records for the selected guide."
+type GuideProgressProfile {
+    "The profile progressing through the guide."
+    profile: Profile!
+    "Active progress records for this guide across all versions."
+    progressions: [ProfileGuideProgress!]!
+}
+
+"Global queries for content guides."
+type Guides {
+    "Access progression data for a guide."
+    progress(
+        "The UUID of the guide metadata item."
+        id: UUID!
+    ): GuideProgress!
+}
+
+extend type Content {
+    "Access global guide queries."
+    guides: Guides!
+}

@@ -1,0 +1,50 @@
+{# 01 Welcome — fires when an account is created. One clear "Get started" action, then the
+   optional "What you can do" rows (the section hides when the payload carries no highlights).
+   The CTA link is smart — getStartedUrl points wherever getting started actually begins for
+   this user. Variant: recipientName null -> no greeting line. Localized: element
+   text carries t= keys with the authored English as fallback; subject/props go through t(). #}
+<message key="welcome">
+  <script server provides="m">
+    import bosca.messages.Welcome
+    message.payload(Welcome.serializer())
+  </script>
+  <script server provides="assets">message.assetsUrl ?: error("BmlMessageContext.assetsUrl is required — emails cannot reference relative asset URLs")</script>
+  <script server provides="subject">t("welcome.subject", "Welcome to {appName}", "appName" to m.appName)</script>
+  <script server provides="eyebrow">t("welcome.eyebrow", "Getting started")</script>
+  <script server provides="headline">t("welcome.headline", "Welcome to {appName}", "appName" to m.appName)</script>
+  <script server provides="cta">t("welcome.cta", "Get started")</script>
+  <script server provides="reason">t("welcome.reason", "You're receiving this because an account was created with this email address on {appName}.", "appName" to m.appName)</script>
+  <email>
+    <subject>{ subject }</subject>
+    <bosca-shell :brand="m.appName" :logo="m.logoUrl" :logoOnly="m.logoOnly" title="{ m.appName } · Welcome" :preheader="m.preheader" :assets="assets" :unsubscribe="message.unsubscribeUrl" :preferences="message.preferencesUrl" :reason="reason" :primaryColor="m.primaryColor">
+
+      <bosca-heading :eyebrow="eyebrow" :headline="headline" :name="message.recipientName" :primaryColor="m.primaryColor" :accentColor="m.accentColor">
+        <span t="welcome.lede">Your { m.appName } account is ready. Everything starts from here — sign in and make it yours.</span>
+      </bosca-heading>
+
+      <cta-button :href="m.getStartedUrl" :label="cta" :primaryColor="m.primaryColor"/>
+
+      <if m.highlights.isNotEmpty()>
+        <!-- What you can do: tight highlight rows -->
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+          <tr>
+            <td style="padding:32px 0 10px;">
+              <p t="welcome.highlights-label" style="margin:0;font-family:'Geist Mono',ui-monospace,Menlo,Consolas,monospace;font-size:10px;letter-spacing:0.22em;font-weight:500;text-transform:uppercase;color:{ m.accentColor };">What's inside</p>
+            </td>
+          </tr>
+        </table>
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-top:1px solid #e5e8ee;">
+          <for h in m.highlights>
+            <tr>
+              <td valign="top" style="padding:13px 0;border-bottom:1px solid #e5e8ee;">
+                <span style="display:block;font-family:'Geist',-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:15px;font-weight:600;line-height:1.4;color:{ m.primaryColor };">{ h.title }</span>
+                <span style="display:block;margin-top:2px;font-family:'Geist',-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:13px;line-height:1.55;color:#5a6072;">{ h.description }</span>
+              </td>
+            </tr>
+          </for>
+        </table>
+      </if>
+
+    </bosca-shell>
+  </email>
+</message>

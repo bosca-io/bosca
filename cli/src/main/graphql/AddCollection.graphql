@@ -1,0 +1,9 @@
+mutation AddCollection($collection: CollectionInput!) {
+    content {
+        collection {
+            add(collection: $collection) {
+                id
+            }
+        }
+    }
+}

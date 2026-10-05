@@ -1,0 +1,16 @@
+fragment WorkOpsSprintFragment on WorkOpsSprint {
+    id
+    boardId
+    name
+    goal
+    state
+    startDate
+    endDate
+    completeDate
+    committedTaskIds
+    addedDuringSprintTaskIds
+    velocityPoints
+    createdAt
+    modifiedAt
+    version
+}

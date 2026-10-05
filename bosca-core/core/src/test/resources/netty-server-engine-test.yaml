@@ -1,0 +1,9 @@
+bosca:
+  server:
+    port: 0
+    worker-threads: 1
+    codec-threads: 1
+    max-request-size: 1024
+    idle-timeout-seconds: 1
+    drain-timeout-ms: 0
+    shutdown-timeout-ms: 5000

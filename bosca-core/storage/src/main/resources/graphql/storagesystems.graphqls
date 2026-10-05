@@ -1,0 +1,114 @@
+"The category of a storage system, indicating its primary purpose for content processing and retrieval."
+enum StorageSystemType {
+    "A full-text search index (e.g. Meilisearch) used for keyword and faceted search across content."
+    SEARCH
+    "A supplementary file storage system used for storing additional files associated with content (e.g. thumbnails, attachments)."
+    SUPPLEMENTARY
+    "A vector embedding store used for semantic search and similarity queries powered by AI models."
+    VECTOR
+}
+
+"A storage system configuration that defines an external service for indexing, storing, or embedding content. Storage systems integrate with search engines, file stores, and vector databases."
+type StorageSystem {
+    "The unique identifier of this storage system."
+    id: UUID!
+    "The type category of this storage system (SEARCH, SUPPLEMENTARY, or VECTOR)."
+    type: StorageSystemType!
+    "The human-readable name of this storage system."
+    name: String!
+    "A description of this storage system's purpose and configuration."
+    description: String!
+    "The connection and behavior configuration for this storage system, stored as JSON. Structure depends on the system type."
+    configuration: JSON
+    "The list of AI models associated with this storage system, used for tasks such as generating embeddings or processing content."
+    models: [StorageSystemModel!]!
+}
+
+"An AI model association for a storage system, defining which model is used for content processing and how it is configured."
+type StorageSystemModel {
+    "The model-specific configuration stored as JSON, such as embedding dimensions, tokenizer settings, or processing parameters."
+    configuration: JSON!
+    "The resolved AI model entity. Null if the model has been deleted or is not accessible."
+    model: Model
+    "The UUID of the AI model used by this storage system."
+    modelId: UUID!
+}
+
+"Query operations for retrieving storage system configurations."
+type StorageSystems {
+    "Retrieve all registered storage systems."
+    all: [StorageSystem!]!
+    "Retrieve a single storage system by its unique identifier. Returns null if the system does not exist."
+    storageSystem(
+        "The UUID of the storage system to retrieve."
+        id: UUID!
+    ): StorageSystem
+}
+
+"Mutation operations for managing storage systems and triggering reindexing operations."
+type StorageSystemsMutation {
+    "Create a new storage system with the specified configuration."
+    add(
+        "The storage system configuration to create."
+        storageSystem: StorageSystemInput!
+    ): StorageSystem
+    "Delete a storage system by its unique identifier. Returns true if the deletion was successful."
+    delete(
+        "The UUID of the storage system to delete."
+        id: UUID!
+    ): Boolean!
+    "Update an existing storage system's configuration."
+    edit(
+        "The UUID of the storage system to update."
+        id: UUID!
+        "The updated storage system configuration."
+        storageSystem: StorageSystemInput!
+    ): StorageSystem
+    "Trigger a reindex operation to rebuild search indexes or vector embeddings. Can target specific content types and storage systems."
+    reindex(
+        "The name of the specific storage system to reindex. If null, reindexes all storage systems."
+        storageName: String,
+        "Whether to delete existing index data before reindexing. Useful for a clean rebuild."
+        deleteFirst: Boolean,
+        "Whether to reindex metadata (content items)."
+        metadata: Boolean,
+        "Whether to reindex collections."
+        collections: Boolean,
+        "Whether to reindex profiles."
+        profiles: Boolean,
+        "The number of items to process per batch during reindexing. Controls memory usage and throughput."
+        batchSize: Int
+    ): Boolean
+}
+
+"Input for creating or updating a storage system configuration."
+input StorageSystemInput {
+    "The connection and behavior configuration stored as JSON. Structure depends on the system type."
+    configuration: JSON
+    "A description of this storage system's purpose and configuration."
+    description: String!
+    "The list of AI model associations for this storage system."
+    models: [StorageSystemModelInput!]!
+    "The human-readable name of this storage system."
+    name: String!
+    "The type category of this storage system (SEARCH, SUPPLEMENTARY, or VECTOR)."
+    type: StorageSystemType!
+}
+
+"Input for associating an AI model with a storage system."
+input StorageSystemModelInput {
+    "The model-specific configuration stored as JSON, such as embedding dimensions or processing parameters."
+    configuration: JSON!
+    "The UUID of the AI model to associate with the storage system."
+    modelId: UUID!
+}
+
+extend type Query {
+    "Access storage system query operations for retrieving search, supplementary, and vector storage configurations."
+    storageSystems: StorageSystems!
+}
+
+extend type Mutation {
+    "Access storage system mutation operations for managing search, supplementary, and vector storage configurations."
+    storageSystems: StorageSystemsMutation!
+}

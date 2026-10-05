@@ -1,0 +1,21 @@
+{{- if .Values.redis.enabled }}
+apiVersion: dragonflydb.io/v1alpha1
+kind: Dragonfly
+metadata:
+  name: redis
+  labels:
+    {{- include "bosca-common.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.redis.replicas | default 1 }}
+  args:
+    - "--cluster_mode=emulated"
+    - "--lock_on_hashtags"
+    - "--default_lua_flags=allow-undeclared-keys"
+  resources:
+    requests:
+      cpu: {{ .Values.redis.resources.requests.cpu | default "512m" | quote }}
+      memory: {{ .Values.redis.resources.requests.memory | default "2Gi" | quote }}
+    limits:
+      cpu: {{ .Values.redis.resources.limits.cpu | default "3" | quote }}
+      memory: {{ .Values.redis.resources.limits.memory | default "2Gi" | quote }}
+{{- end }}

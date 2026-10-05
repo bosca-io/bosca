@@ -1,0 +1,9 @@
+mutation AddMetadataRelationship($relationship: MetadataRelationshipInput!) {
+    content {
+        metadata {
+            addRelationship(relationship: $relationship) {
+                id
+            }
+        }
+    }
+}

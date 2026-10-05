@@ -1,0 +1,15 @@
+plugins {
+    id("org.jetbrains.kotlin.jvm")
+}
+
+java {
+    toolchain {
+        languageVersion.set(JavaLanguageVersion.of(25))
+    }
+}
+
+dependencies {
+    implementation(project(":services-di:base-ksp"))
+    implementation(project(":services-di:di"))
+    implementation(project(":services-di:service"))
+}

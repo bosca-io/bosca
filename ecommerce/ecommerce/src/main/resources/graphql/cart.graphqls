@@ -1,0 +1,229 @@
+"""A cart lifecycle flag; a cart/line holds a set of these at once."""
+enum CartStatusFlag {
+    OPEN
+    PENDING
+    PAYMENT_DUE
+    PAYMENT_PENDING
+    PAYMENT_FAILED
+    PAID
+    REFUND_DUE
+    REFUND_PENDING
+    REFUND_FAILED
+    REFUNDED
+    SHIPPING
+    SHIPPED
+    RETURNING
+    RETURNED
+    CANCELLED
+    COMPLETE
+    LOCKED
+    EXPIRED
+    VOID_FAILED
+    PREPARING
+}
+
+extend type Ecom {
+    "A cart by id. Readable only by its owner (customer) or an ecom administrator."
+    cart(id: UUID!): Cart
+    "A store's carts, newest first. Admin."
+    carts(storeId: UUID!, offset: Int! = 0, limit: Int! = 50): [Cart!]!
+    "A store's carts filtered to those with a given status flag set, newest first. Admin."
+    cartsByStatus(storeId: UUID!, status: CartStatusFlag!, offset: Int! = 0, limit: Int! = 50): [Cart!]!
+}
+
+extend type EcomMutation {
+    "Cart creation and per-cart operations."
+    carts: CartsMutation!
+}
+
+"""
+A shopping cart: the selling document carts/payments/subscriptions hang off. Loaded and saved as a
+single row; totals are denormalized and recomputed on every change.
+"""
+type Cart {
+    id: UUID!
+    company: Company!
+    store: Store!
+    account: Account
+    customer: Customer
+    "Lifecycle flags currently set on the cart."
+    status: [CartStatusFlag!]!
+    items: [CartItem!]!
+    "Billing/shipping addresses set on the cart."
+    addresses: [CartAddress!]!
+    "Whether billing mirrors the shipping address (no separate billing address is kept when true)."
+    billingSameAsShipping: Boolean!
+    "Payments recorded against the cart (charges, refunds, voids), oldest first."
+    payments(offset: Int! = 0, limit: Int! = 50): [Payment!]!
+    retailTotal: Money!
+    retailSubtotal: Money!
+    salesTotal: Money!
+    salesSubtotal: Money!
+    shipping: Money!
+    tax: Money!
+    discounts: Money!
+    paid: Money!
+    "Amount paid but not yet confirmed (e.g. a check awaiting clearing)."
+    pendingPaid: Money!
+    "Amount owed back to the buyer when payments exceed the (reduced) sales total."
+    refundDue: Money!
+    "Amount still owed (salesTotal − paid − pending; never below zero)."
+    due: Money!
+    "ISO-4217 currency of this cart's amounts (the store's currency)."
+    currency: String!
+    "Total unit count across lines."
+    quantity: Int!
+    "When the cart is reclaimed by the expiration sweep if left OPEN."
+    expires: DateTime!
+    created: DateTime!
+    modified: DateTime!
+}
+
+"""One line in a cart."""
+type CartItem {
+    id: UUID!
+    catalogProduct: CatalogProduct!
+    type: ProductType!
+    quantity: Int!
+    status: [CartStatusFlag!]!
+    "Catalog price snapshotted at add-time."
+    baseRetailPrice: Money!
+    retailPrice: Money!
+    "Price after discounts (refined by the pricing pipeline)."
+    salesPrice: Money!
+    retailSubtotal: Money!
+    salesSubtotal: Money!
+    discounts: Money!
+    paid: Money!
+    taxes: Tax!
+    expires: DateTime
+    "Parent line id for a dependent line (e.g. a shipping line tied to a product)."
+    parentId: UUID
+    "Line-type-specific configuration (e.g. a chosen subscription plan)."
+    configuration: CartItemConfiguration!
+}
+
+"""A billing or shipping address on a cart (one per type)."""
+type CartAddress {
+    id: UUID!
+    type: AddressType!
+    firstName: String!
+    lastName: String!
+    address1: String!
+    address2: String
+    city: String!
+    state: String!
+    country: String!
+    zip: String!
+    phone: String!
+    email: String
+    note: String
+    "Whether a provider confirmed the address."
+    validated: Boolean!
+}
+
+"""Per-jurisdiction tax breakdown for one line; `taxes` is the line total."""
+type Tax {
+    country: Money!
+    state: Money!
+    city: Money!
+    district: Money!
+    taxes: Money!
+}
+
+"""The outcome of submitting a cart, including any subscriptions created."""
+type CartSubmitResult {
+    cart: Cart!
+    "Payments taken at checkout (empty when paying later)."
+    payments: [Payment!]!
+    "Subscriptions created from SUBSCRIPTION lines."
+    subscriptions: [EcomSubscription!]!
+}
+
+"""Cart creation and the per-cart accessor."""
+type CartsMutation {
+    "Open a cart in a store."
+    create(input: CartInput!): Cart!
+    "Operations on an existing cart."
+    cart(id: UUID!): CartMutation!
+}
+
+"""Operations on one cart. Owner or ecom administrator only."""
+type CartMutation {
+    "Add a line; reserves inventory if the product is stocked."
+    addItem(input: AddCartItemInput!): Cart!
+    "Change a line's quantity, re-reserving inventory to match."
+    updateItem(itemId: UUID!, quantity: Int!): Cart!
+    "Remove a line, releasing its inventory holds."
+    removeItem(itemId: UUID!): Cart!
+    "Set (upsert) the cart's billing or shipping address."
+    setAddress(input: SetCartAddressInput!): CartAddress!
+    "Remove the cart's address of the given type."
+    removeAddress(type: AddressType!): Cart!
+    "Set whether billing mirrors shipping (drops a separate billing address when true)."
+    setBillingSameAsShipping(value: Boolean!): Cart!
+    "Submit the cart for checkout: commit holds, optionally take payment, and advance the lifecycle."
+    submit(payment: SubmitPaymentInput): CartSubmitResult!
+    "Mark a paid order complete (admin override that finalizes fulfillment). Ecom administrator only."
+    complete: Cart!
+    "Mark an order cancelled (a status override; refund money separately). Ecom administrator only."
+    cancel: Cart!
+    "Confirm a CHECK payment has cleared: settles it from pending into paid. Ecom administrator only."
+    confirmCheck(paymentId: UUID!, checkNumber: String): Cart!
+    "Lock or unlock the cart against further edits. Ecom administrator only."
+    setLocked(locked: Boolean!): Cart!
+    "Override a line's unit retail/sales price (post-sale correction). Ecom administrator only."
+    setItemPrice(itemId: UUID!, retailPrice: Money!, salesPrice: Money!): Cart!
+    """
+    Refund one or more (partial) line items on a paid order to a tender: reduces/removes each line,
+    restocks inventory, and refunds the resulting amount against the cart's payments. Ecom
+    administrator only.
+    """
+    refundItems(items: [RefundItemInput!]!, tender: RefundTender! = ORIGINAL, checkNumber: String, reason: String): Cart!
+}
+
+"""Where a refund is returned: the original payment method, account store credit, or a check."""
+enum RefundTender {
+    ORIGINAL
+    ACCOUNT_CREDIT
+    CHECK
+}
+
+"""One line in a batch item refund: refund `quantity` units of cart item `itemId` (partial allowed)."""
+input RefundItemInput {
+    itemId: UUID!
+    quantity: Int!
+}
+
+"""Opens a cart in a store. The buyer is identified by account and/or customer (both optional)."""
+input CartInput {
+    storeId: UUID!
+    accountId: UUID = null
+    customerId: UUID = null
+}
+
+"""Adds a line to a cart."""
+input AddCartItemInput {
+    catalogProductId: UUID!
+    quantity: Int!
+    "Line-type-specific configuration (e.g. a subscription plan selection)."
+    configuration: JSON = null
+    "Parent line id for a dependent line."
+    parentId: UUID = null
+}
+
+"""Sets (upserts) a cart's billing or shipping address."""
+input SetCartAddressInput {
+    type: AddressType!
+    firstName: String!
+    lastName: String!
+    address1: String!
+    address2: String = null
+    city: String!
+    state: String!
+    country: String!
+    zip: String!
+    phone: String!
+    email: String = null
+    note: String = null
+}

@@ -1,0 +1,9 @@
+query GetSource($id: UUID!) {
+    content {
+        sources {
+            source(id: $id) {
+                ...Source
+            }
+        }
+    }
+}

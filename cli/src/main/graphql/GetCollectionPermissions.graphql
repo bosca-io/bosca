@@ -1,0 +1,9 @@
+query GetCollectionPermissions($id: UUID) {
+    content {
+        collection(id: $id) {
+            permissions {
+                ...Permission
+            }
+        }
+    }
+}

@@ -1,0 +1,79 @@
+"""
+R13 — SLA policies, goals, working calendars, and the per-task
+state the tick job mutates. Calendars hold weekly hours and
+holidays as JSON; the evaluator interprets them with the calendar's
+time zone.
+"""
+type WorkOpsWorkingCalendar {
+    id: UUID!
+    name: String!
+    description: String
+    timeZone: String!
+    """
+    `Map<DayOfWeek, [{startLocal, endLocal}]>` — keys are uppercase
+    English day names. `endLocal` of `24:00` means end-of-day.
+    """
+    weeklyHours: JSON!
+    """
+    `[YYYY-MM-DD, ...]` — dates excluded from working hours.
+    """
+    holidays: JSON!
+    version: Long!
+}
+
+type WorkOpsSlaPolicy {
+    id: UUID!
+    name: String!
+    description: String
+    version: Long!
+    goals: [WorkOpsSlaGoal!]!
+}
+
+type WorkOpsSlaGoal {
+    id: UUID!
+    policyId: UUID!
+    name: String!
+    startConditions: String!
+    pauseConditions: String
+    stopConditions: String!
+    targetMinutes: Int!
+    atRiskAtPercent: Int!
+    calendarId: UUID
+    displayOrder: Int!
+}
+
+type WorkOpsSlaGoalState {
+    taskId: UUID!
+    goalId: UUID!
+    startedAt: DateTime!
+    pausedAt: DateTime
+    pausedTotalSeconds: Long!
+    dueAt: DateTime!
+    outcome: String!
+    atRisk: Boolean!
+    breached: Boolean!
+}
+
+input WorkOpsWorkingCalendarInput {
+    name: String!
+    description: String
+    timeZone: String!
+    weeklyHours: JSON!
+    holidays: JSON!
+}
+
+type WorkOpsSlaQuery {
+    workingCalendars: [WorkOpsWorkingCalendar!]!
+    workingCalendar(id: UUID!): WorkOpsWorkingCalendar
+    slaPolicies: [WorkOpsSlaPolicy!]!
+    slaPolicy(id: UUID!): WorkOpsSlaPolicy
+    """
+    Per-task tracker rows. One per (task, goal) pair.
+    """
+    taskSlaStates(taskId: UUID!): [WorkOpsSlaGoalState!]!
+}
+
+type WorkOpsSlaMutation {
+    createWorkingCalendar(input: WorkOpsWorkingCalendarInput!): WorkOpsWorkingCalendar!
+    createSlaPolicy(name: String!, description: String): WorkOpsSlaPolicy!
+}

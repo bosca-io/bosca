@@ -1,0 +1,28 @@
+<message key="relationship-added">
+  <script server provides="m">
+    import bosca.messages.RelationshipAddedNotification
+    message.payload(RelationshipAddedNotification.serializer())
+  </script>
+  <script server provides="assets">message.assetsUrl ?: error("BmlMessageContext.assetsUrl is required — emails cannot reference relative asset URLs")</script>
+  <script server provides="subject">t("relationship-added.subject", "{profileName} was added to your relationships", "profileName" to m.relatedProfileName)</script>
+  <script server provides="emailTitle">t("relationship-added.message.title", "{appName} · Relationship added", "appName" to m.appName)</script>
+  <script server provides="eyebrow">t("relationship-added.eyebrow", "Relationships")</script>
+  <script server provides="headline">t("relationship-added.headline", "Relationship added")</script>
+  <script server provides="cta">t("relationship-added.cta", "View profile")</script>
+  <script server provides="preheader">subject</script>
+  <script server provides="reason">t("social.reason", "You're receiving this because your social notification preferences include email for this activity.")</script>
+  <push>
+    <title t="relationship-added.push.title">Relationship added</title>
+    <body t="relationship-added.push.body">{ m.relatedProfileName } was added to your relationships</body>
+    <action id="view-profile" default t="relationship-added.push.action.view">View profile</action>
+  </push>
+  <email>
+    <subject>{ subject }</subject>
+    <bosca-shell :brand="m.appName" :logo="m.logoUrl" :logoOnly="m.logoOnly" :title="emailTitle" :preheader="preheader" :assets="assets" :unsubscribe="message.unsubscribeUrl" :preferences="message.preferencesUrl" :reason="reason" :primaryColor="m.primaryColor">
+      <bosca-heading :eyebrow="eyebrow" :headline="headline" :name="message.recipientName" :primaryColor="m.primaryColor" :accentColor="m.accentColor">
+        <span t="relationship-added.lede">{ m.relatedProfileName } is now in your relationships.</span>
+      </bosca-heading>
+      <cta-button :href="m.actionUrl" :label="cta" :primaryColor="m.primaryColor"/>
+    </bosca-shell>
+  </email>
+</message>

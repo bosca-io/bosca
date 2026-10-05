@@ -1,0 +1,57 @@
+@file:Suppress("UNCHECKED_CAST", "UNUSED_PARAMETER", "USELESS_ELVIS", "OPT_IN_USAGE")
+
+package com.example.generated
+
+import bosca.di.ProviderRegistry.`get`
+import bosca.di.`annotation`.Generated
+import bosca.ext.anyToJsonElement
+import bosca.graphql.Batch
+import bosca.graphql.BatchContext
+import bosca.graphql.BatchLoaderEnvironment
+import bosca.graphql.PropertyDataFetcher
+import bosca.graphql.SuspendDataFetcher
+import bosca.graphql.dispatcher.Dispatcher
+import bosca.graphql.server.TypeRuntimeWiring
+import bosca.security.service.AuthenticationContext
+import bosca.serialization.OffsetDateTimeSerializer
+import bosca.server.ServerCall
+import com.example.Author
+import com.example.Content
+import com.example.ContentController
+import io.opentelemetry.api.trace.Tracer
+import kotlin.Suppress
+import kotlin.uuid.Uuid
+import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.builtins.serializer
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonNull
+
+@Generated
+public class ContentDispatcher(
+  private val controller: ContentController,
+) : Dispatcher {
+  private val json: Json by lazy { runBlocking { get<Json>() } }
+
+  private val tracer: Tracer by lazy { runBlocking { get<Tracer>() } }
+
+  private val getAuthorsDataFetcher: SuspendDataFetcher<Author?> =
+      bosca.graphql.SuspendDataFetcher<com.example.Author?>("getAuthors", tracer) { environment, authenticationContext ->
+      val call = environment.context.getAs<ServerCall>("call") ?: error("Missing call")
+      val batch = environment.sourceAs<Content>()
+      val dataLoader = environment.dataLoaderRegistry.getOrPutLoader<Uuid, Author>("com.example.ContentControllergetAuthors", environment.arguments) { keys, keyContexts ->
+          bosca.db.withConnectionManager {
+          val batchEnvironment = BatchLoaderEnvironment(keyContexts)
+              val batch = Batch<Uuid, Author>(keys)
+              
+             controller.getAuthors(batch, )
+              batch.getResults()
+          }
+      }
+      dataLoader.load(batch?.id ?: error("missing source"), BatchContext(environment.arguments, batch))
+      }
+
+  override val type: TypeRuntimeWiring = TypeRuntimeWiring.newTypeWiring("Content")
+      .field("getAuthors", getAuthorsDataFetcher)
+      .build()
+}

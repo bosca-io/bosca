@@ -1,0 +1,7 @@
+mutation AddPrompt($prompt: PromptInput!) {
+    prompts {
+        add(prompt: $prompt) {
+            ...Prompt
+        }
+    }
+}

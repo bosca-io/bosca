@@ -1,0 +1,87 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "bosca-gateway.fullname" . }}
+  labels:
+    {{- include "bosca-gateway.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  revisionHistoryLimit: {{ .Values.revisionHistoryLimit | default 1 }}
+  {{- with .Values.strategy }}
+  strategy:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "bosca-gateway.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "bosca-gateway.selectorLabels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "bosca-gateway.serviceAccountName" . }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        fsGroup: 65534
+      containers:
+        - name: gateway
+          {{- $registry := dig "imageRegistry" "" (.Values.global | default dict) | default .Values.image.registry | required "Set image.registry (or global.imageRegistry) to the registry that hosts Bosca images" }}
+          image: "{{ trimSuffix "/" $registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - "--config"
+            - "/etc/gateway/config.toml"
+          ports:
+            - name: http
+              containerPort: 8443
+              protocol: TCP
+          env:
+            - name: GATEWAY_BOSCA_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "bosca-gateway.secretName" . }}
+                  key: bosca-api-token
+            - name: RUST_LOG
+              value: "info"
+          {{- with .Values.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            - name: config
+              mountPath: /etc/gateway
+              readOnly: true
+            - name: cache
+              mountPath: /var/lib/gateway
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sleep", "5"]
+      terminationGracePeriodSeconds: {{ add .Values.gateway.drainTimeoutSecs 10 }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "bosca-gateway.fullname" . }}-config
+        - name: cache
+          emptyDir: {}

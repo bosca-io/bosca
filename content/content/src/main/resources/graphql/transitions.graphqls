@@ -1,0 +1,95 @@
+"A workflow transition defining how content moves from one state to another"
+type Transition {
+    "Human-readable description of this transition"
+    description: String!
+    "The state ID this transition starts from"
+    fromStateId: String!
+    "The state ID this transition goes to"
+    toStateId: String!
+    "Transition-specific configuration"
+    configuration: JSON
+    "Name of the job to run when entering this transition"
+    enterJobName: String
+    "Name of the job to run when exiting this transition"
+    exitJobName: String
+}
+
+"Composite ID for a transition, consisting of its from and to state IDs"
+type TransitionIdObject {
+    "The state ID this transition starts from"
+    fromStateId: String!
+    "The state ID this transition goes to"
+    toStateId: String!
+}
+
+"Query operations for browsing workflow transitions"
+type Transitions {
+    "List all defined transitions"
+    all: [Transition!]!
+    "Get a specific transition by its from and to state IDs"
+    transition(fromStateId: String!, toStateId: String!): Transition
+}
+
+"Mutation operations for managing workflow transitions"
+type TransitionsMutation {
+    "Create a new transition between two workflow states"
+    add(transition: TransitionInput!): Transition
+    "Delete a transition"
+    delete(fromStateId: String!, toStateId: String!): Boolean!
+    "Update an existing transition"
+    edit(transition: TransitionInput!): Transition
+    "Begin a workflow state transition for a content item (collection or metadata)"
+    beginTransition(request: BeginTransitionInput!): Boolean!
+    "Begin workflow state transitions for multiple metadata items in a single operation, skipping items that are already in the target state or that the caller lacks permission to edit"
+    beginTransitions(metadataIds: [UUID!]!, stateId: String!, status: String!): Int!
+    "Cancel an in-progress transition for a content item"
+    cancelTransition(collectionId: UUID, languageTag: String, metadataId: UUID, metadataVersion: Int): Boolean!
+}
+
+"Input for creating or updating a transition"
+input TransitionInput {
+    "Human-readable description of this transition"
+    description: String!
+    "The state ID this transition starts from"
+    fromStateId: String!
+    "The state ID this transition goes to"
+    toStateId: String!
+    "Transition-specific configuration"
+    configuration: JSON
+    "Name of the job to run when entering this transition"
+    enterJobName: String
+    "Name of the job to run when exiting this transition"
+    exitJobName: String
+}
+
+"Input for initiating a workflow state transition on a content item"
+input BeginTransitionInput {
+    "ID of the collection to transition (mutually exclusive with metadataId)"
+    collectionId: UUID
+    "ID of the metadata item to transition (mutually exclusive with collectionId)"
+    metadataId: UUID
+    "Version of the metadata item to transition"
+    version: Int
+    "Whether to restart the transition if it has already been attempted"
+    restart: Boolean
+    "The target state ID to transition to"
+    stateId: String!
+    "Timestamp when this state becomes valid"
+    stateValid: DateTime
+    "Current status string for the transition"
+    status: String!
+    "Optional supplementary ID related to this transition"
+    supplementaryId: String
+    "BCP 47 language tag for language-specific transitions"
+    languageTag: String
+}
+
+extend type Query {
+    "Access workflow transition queries"
+    transitions: Transitions!
+}
+
+extend type Mutation {
+    "Access workflow transition mutations"
+    transitions: TransitionsMutation!
+}

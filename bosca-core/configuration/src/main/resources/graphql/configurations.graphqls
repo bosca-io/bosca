@@ -1,0 +1,62 @@
+"A configuration entry in the application's key-value store. Configurations hold platform settings, feature flags, and other runtime parameters with permission-based access control."
+type Configuration {
+    "A human-readable description of what this configuration controls and how it is used."
+    description: String!
+    "The unique internal identifier of this configuration entry."
+    id: String!
+    "The unique key used to look up this configuration (e.g. 'app.feature.enabled', 'theme.primaryColor')."
+    key: String!
+    "The list of permissions that control which groups can read or modify this configuration."
+    permissions: [ConfigurationPermission!]!
+    "Whether this configuration value is publicly accessible without authentication. Public configurations are available to unauthenticated clients."
+    public: Boolean!
+    "The configuration value stored as JSON. Can hold any JSON-serializable data including strings, numbers, objects, or arrays."
+    value: JSON
+}
+
+"A permission rule that grants a specific action to a security group for accessing a configuration entry."
+type ConfigurationPermission {
+    "The permission action granted to the group (e.g. read, write)."
+    action: PermissionAction!
+    "The security group that is granted this permission."
+    group: Group!
+}
+
+"Query operations for retrieving application configuration entries."
+type Configurations {
+    "Retrieve all configuration entries that the current user has permission to access."
+    all: [Configuration!]!
+    "Retrieve a single configuration entry by its unique key. Returns null if the key does not exist or the user lacks permission."
+    configuration(
+        "The unique key of the configuration to retrieve."
+        key: String!
+    ): Configuration
+}
+
+"Mutation operations for managing application configuration entries."
+type ConfigurationsMutation {
+    "Delete a configuration entry by its key. Returns the key of the deleted configuration, or null if the key was not found."
+    deleteConfiguration(
+        "The unique key of the configuration to delete."
+        key: String!
+    ): String
+    "Create or update a configuration entry. If a configuration with the given key already exists, it is updated; otherwise a new entry is created."
+    setConfiguration(
+        "The configuration data to create or update."
+        configuration: ConfigurationInput!
+    ): Configuration
+}
+
+"Input for creating or updating a configuration entry in the key-value store."
+input ConfigurationInput {
+    "A human-readable description of what this configuration controls and how it is used."
+    description: String!
+    "The unique key for this configuration (e.g. 'app.feature.enabled', 'theme.primaryColor'). Must be unique across all configurations."
+    key: String!
+    "The list of permissions that control which groups can read or modify this configuration."
+    permissions: [PermissionInput!]!
+    "Whether this configuration value should be publicly accessible without authentication."
+    public: Boolean!
+    "The configuration value stored as JSON. Can hold any JSON-serializable data including strings, numbers, objects, or arrays."
+    value: JSON!
+}

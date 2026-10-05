@@ -1,0 +1,157 @@
+suite: bosca-gateway ConfigMap template
+templates:
+  - templates/configmap.yaml
+tests:
+  - it: omits Studio authentication when no origin is configured
+    asserts:
+      - notMatchRegex:
+          path: data["config.toml"]
+          pattern: 'studio_url'
+
+  - it: configures Studio authentication when its origin is provided
+    set:
+      gateway:
+        studioUrl: https://studio.example.com
+    asserts:
+      - matchRegex:
+          path: data["config.toml"]
+          pattern: 'studio_url = "https://studio.example.com"'
+
+  - it: renders a ConfigMap containing TOML
+    asserts:
+      - isKind:
+          of: ConfigMap
+      - matchRegex:
+          path: data["config.toml"]
+          pattern: "\\[gateway\\]"
+
+  - it: references the env-var placeholders for secrets
+    asserts:
+      # The gateway proxy expects ${ENV_VAR} interpolation at runtime,
+      # not the values directly. Leaking the client secret into the
+      # ConfigMap (which is visible to anyone with namespace read
+      # access) would be a security incident.
+      - matchRegex:
+          path: data["config.toml"]
+          pattern: 'api_token\s*=\s*"\$\{GATEWAY_BOSCA_TOKEN\}"'
+
+  - it: never emits any [auth.oauth2] block (OAuth2 lives on bosca-server, not the gateway)
+    asserts:
+      - notMatchRegex:
+          path: data["config.toml"]
+          pattern: "\\[auth\\.oauth2\\]"
+      - notMatchRegex:
+          path: data["config.toml"]
+          pattern: 'GATEWAY_OAUTH2_SECRET'
+
+  - it: includes the JWT block when enabled (default)
+    asserts:
+      - matchRegex:
+          path: data["config.toml"]
+          pattern: "\\[auth\\.jwt\\]"
+
+  - it: omits allow_insecure_jwks_uri by default (safe-by-default; rendered config stays minimal)
+    asserts:
+      - notMatchRegex:
+          path: data["config.toml"]
+          pattern: 'allow_insecure_jwks_uri'
+
+  - it: emits allow_insecure_jwks_uri = true when the escape hatch is enabled
+    set:
+      auth:
+        jwt:
+          allowInsecureJwksUri: true
+    asserts:
+      - matchRegex:
+          path: data["config.toml"]
+          pattern: 'allow_insecure_jwks_uri\s*=\s*true'
+
+  - it: omits the JWT block when auth.jwt.enabled is false
+    set:
+      auth:
+        jwt:
+          enabled: false
+    asserts:
+      - notMatchRegex:
+          path: data["config.toml"]
+          pattern: "\\[auth\\.jwt\\]"
+
+  - it: omits the Basic block by default
+    asserts:
+      - notMatchRegex:
+          path: data["config.toml"]
+          pattern: "\\[auth\\.basic\\]"
+
+  - it: respects custom bind and drain-timeout values
+    set:
+      gateway:
+        bind: "0.0.0.0:9443"
+        drainTimeoutSecs: 60
+    asserts:
+      - matchRegex:
+          path: data["config.toml"]
+          pattern: 'bind\s*=\s*"0\.0\.0\.0:9443"'
+      - matchRegex:
+          path: data["config.toml"]
+          pattern: 'drain_timeout_secs\s*=\s*60'
+
+  - it: respects custom Bosca polling interval
+    set:
+      bosca:
+        pollIntervalSecs: 15
+    asserts:
+      - matchRegex:
+          path: data["config.toml"]
+          pattern: 'poll_interval_secs\s*=\s*15'
+
+  - it: omits trusted_proxies when none are configured
+    asserts:
+      # Default = empty list → key absent from the TOML entirely.
+      # Empty list at config-load is the right semantic ("no upstream
+      # is trusted") but writing `trusted_proxies = []` would also
+      # work; the chart picks the cleaner shape.
+      - notMatchRegex:
+          path: data["config.toml"]
+          pattern: 'trusted_proxies'
+
+  - it: emits trusted_proxies as a TOML array when set
+    set:
+      gateway:
+        trustedProxies:
+          - "10.0.0.0/8"
+          - "172.16.0.0/12"
+    asserts:
+      - matchRegex:
+          path: data["config.toml"]
+          pattern: 'trusted_proxies\s*=\s*\["10\.0\.0\.0/8","172\.16\.0\.0/12"\]'
+
+  - it: omits external_scheme when unset
+    asserts:
+      - notMatchRegex:
+          path: data["config.toml"]
+          pattern: 'external_scheme'
+
+  - it: emits external_scheme when set to https
+    set:
+      gateway:
+        externalScheme: "https"
+    asserts:
+      - matchRegex:
+          path: data["config.toml"]
+          pattern: 'external_scheme\s*=\s*"https"'
+
+  - it: never emits the removed tls_cert or tls_key fields
+    # V0.2 dropped the dead `gateway.tls_cert` / `gateway.tls_key`
+    # schema fields from the Rust proxy — the TLS listener was never
+    # wired up. Make sure no template path can resurrect them.
+    set:
+      gateway:
+        tls:
+          enabled: true
+    asserts:
+      - notMatchRegex:
+          path: data["config.toml"]
+          pattern: 'tls_cert'
+      - notMatchRegex:
+          path: data["config.toml"]
+          pattern: 'tls_key'

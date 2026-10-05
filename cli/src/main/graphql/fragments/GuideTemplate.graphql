@@ -1,0 +1,8 @@
+fragment GuideTemplate on GuideTemplate {
+    rrule
+    type
+    steps {
+        ...GuideTemplateStep
+    }
+}
+

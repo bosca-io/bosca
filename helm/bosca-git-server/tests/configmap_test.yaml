@@ -1,0 +1,26 @@
+suite: bosca-git-server application.yaml configmap
+templates:
+  - templates/configmap-appconfig.yaml
+values:
+  - ../values.yaml
+set:
+  appConfig:
+    domain: example.com
+    databaseUrl: "jdbc:postgresql://postgres-bosca-rw:5432/bosca"
+release:
+  name: test
+  namespace: bosca
+tests:
+  - it: derives the Studio URL from the deployment domain
+    asserts:
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: 'url: "https://studio.example.com"'
+
+  - it: supports an explicit Studio URL
+    set:
+      appConfig.studioUrl: https://studio.custom.example
+    asserts:
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: 'url: "https://studio.custom.example"'

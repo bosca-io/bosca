@@ -1,0 +1,14 @@
+<component tag="profile-attribute-type-select">
+  <prop name="types" type="List<bosca.profiles.web.ProfileAttributeTypeRow>" required/>
+  <prop name="selectedTypeId" type="String" required/>
+
+  <label class="field full">
+    <span>Attribute type</span>
+    <select name="typeId">
+      <option value="__choose">Choose a type</option>
+      <for type in types>
+        <option :value="type.id" :selected="type.id == selectedTypeId">{ type.name }</option>
+      </for>
+    </select>
+  </label>
+</component>

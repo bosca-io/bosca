@@ -1,0 +1,7 @@
+mutation RevokeApiToken($id: Long!) {
+    security {
+        apiTokens {
+            revoke(id: $id)
+        }
+    }
+}

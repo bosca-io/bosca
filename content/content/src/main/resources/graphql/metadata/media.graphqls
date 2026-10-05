@@ -1,0 +1,81 @@
+"Provider-agnostic processed media data for a metadata item, including adaptive-bitrate streaming, download links, thumbnails, media specifications, and auto-generated transcription tracks"
+type Media {
+    "Processing status of the media: preparing, ready, or errored"
+    status: String!
+    "HLS adaptive-bitrate streaming endpoints"
+    hls: MediaHls
+    "Direct file download URL (e.g. MP4 static rendition)"
+    downloadUrl: String
+    "Static thumbnail image URL"
+    thumbnailUrl: String
+    "Short animated preview URL (e.g. animated GIF)"
+    animatedPreviewUrl: String
+    "Total duration of the media in seconds"
+    durationSeconds: Float
+    "Maximum resolution tier (e.g. 1080p, 720p)"
+    maxResolution: String
+    "Display aspect ratio (e.g. 16:9)"
+    aspectRatio: String
+    "Video quality tier the transcoding provider actually used for the current asset (basic, plus, or premium), null while still processing"
+    actualVideoQuality: String
+    "Per-item video quality tier override (basic, plus, or premium), null when using global default"
+    videoQuality: String
+    "Per-item maximum resolution tier override (1080p, 1440p, or 2160p), null when using global default"
+    maxResolutionTier: String
+    "Subtitle and caption transcription tracks derived from the media audio"
+    transcriptions: [Transcription!]!
+}
+
+"HLS (HTTP Live Streaming) endpoints for adaptive-bitrate playback of a media item"
+type MediaHls {
+    "Adaptive-bitrate HLS manifest URL for video playback"
+    url: String!
+    "HLS manifest URL filtered to audio-only renditions"
+    audioOnlyUrl: String
+}
+
+"A single transcription track for media content, representing subtitles or closed-captions in a specific language"
+type Transcription {
+    "Provider-assigned track identifier"
+    id: String!
+    "BCP 47 language code for the track (e.g. en, es)"
+    languageCode: String!
+    "Human-readable display name (e.g. English (auto))"
+    name: String!
+    "Processing status of the track: preparing, ready, or errored"
+    status: String!
+    "Plain-text transcript download URL, available once the track is ready"
+    textUrl: String
+    "WebVTT subtitle file URL, available once the track is ready"
+    vttUrl: String
+}
+
+"Per-item processing options that override global defaults when submitting media for transcoding"
+input MediaProcessingOptionsInput {
+    "Video quality tier override: basic, plus, or premium"
+    videoQuality: String
+    "Maximum resolution tier override: 1080p, 1440p, or 2160p"
+    maxResolutionTier: String
+    "Time offset in seconds for the thumbnail image extracted from the video"
+    thumbnailTimeOffsetSeconds: Float
+}
+
+extend type Metadata {
+    "Processed media data if this content has been transcoded for adaptive-bitrate playback"
+    media: Media
+}
+
+extend type MetadataMutation {
+    "Trigger video processing (e.g. Mux upload) for a metadata item with video content. Optional processing options override global defaults."
+    processMedia(id: UUID!, options: MediaProcessingOptionsInput): Boolean!
+    "Delete processed media for a metadata item, removing it from the external provider"
+    deleteMedia(id: UUID!): Boolean!
+    "Trigger video processing for multiple metadata items in a single operation. Items that do not exist or lack permission are silently skipped. Returns the number of items successfully submitted for processing."
+    processMediaAll(metadataIds: [UUID!]!): Int!
+    "Delete processed media for multiple metadata items in a single operation. Items that do not exist or lack permission are silently skipped. Returns the number of items successfully deleted."
+    deleteMediaAll(metadataIds: [UUID!]!): Int!
+    "Update the thumbnail time offset for a processed media asset. The thumbnail URL is rebuilt using the new offset without re-processing."
+    setMediaThumbnailOffset(id: UUID!, offsetSeconds: Float!): Boolean!
+    "Update video quality and/or resolution tier settings stored for a processed media asset. The new settings take effect on the next re-upload to the provider."
+    updateMediaSettings(id: UUID!, options: MediaProcessingOptionsInput!): Boolean!
+}

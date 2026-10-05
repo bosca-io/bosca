@@ -1,0 +1,119 @@
+<component tag="profile-relationships">
+  <prop name="initial" type="bosca.profiles.web.RelationshipsModel" required/>
+  <script server provides="model">
+    bosca.profiles.web.RelationshipsModel(
+      initial.sourceProfileId,
+      initial.relationships,
+      initial.incoming,
+      initial.outgoing,
+    )
+  </script>
+
+  <island name="profile-relationships" :key="initial.sourceProfileId">
+    <div class="stack">
+      <section class="card section-card relationships-card">
+      <div class="section-heading relationships-heading">
+        <div><h2>Profile relationships</h2><p class="card-copy">Friends and pending requests for your primary profile.</p></div>
+        <button class="icon-trigger" type="button" aria-label="Send a friend request" title="Send a friend request" @click="model.openFriendRequest()">
+          <svg class="control-icon plus-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
+      </div>
+
+      <if model.relationships.isEmpty() && model.incoming.isEmpty() && model.outgoing.isEmpty()>
+        <p class="empty">This profile has no friends or pending requests.</p>
+      <else>
+        <div class="list">
+          <for relationship in model.relationships>
+            <relationship-row :relationship="relationship">
+              <button class="small danger" type="button" @click="model.remove(relationship.profileId, relationship.type, ctx)">Remove</button>
+            </relationship-row>
+          </for>
+          <for request in model.incoming>
+            <relationship-request-row :request="request" direction="incoming">
+              <button class="small primary" type="button" @click="model.approve(request.id, ctx)">Approve</button>
+              <button class="small" type="button" @click="model.decline(request.id, ctx)">Decline</button>
+            </relationship-request-row>
+          </for>
+          <for request in model.outgoing>
+            <relationship-request-row :request="request" direction="outgoing">
+              <button class="small" type="button" @click="model.cancel(request.id, ctx)">Cancel request</button>
+            </relationship-request-row>
+          </for>
+        </div>
+      </if>
+
+      </section>
+
+      <if model.friendRequestOpen>
+        <div class="friend-request-overlay">
+          <button class="friend-request-backdrop" type="button" aria-label="Close friend request" @click="model.closeFriendRequest()"></button>
+          <section class="profile-modal friend-request-modal" role="dialog" aria-modal="true" aria-labelledby="friend-request-title">
+            <div class="modal-heading">
+              <div>
+                <p class="eyebrow">Relationships</p>
+                <h2 id="friend-request-title">Send a friend request</h2>
+              </div>
+              <button class="icon-trigger" type="button" aria-label="Close" title="Close" @click="model.closeFriendRequest()">
+                <svg class="control-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>
+              </button>
+            </div>
+            <div class="modal-body">
+              <form class="friend-search-form">
+                <label class="field">
+                  <span>Find a profile</span>
+                  <input
+                    name="query"
+                    type="search"
+                    placeholder="Search by name or handle"
+                    autocomplete="off"
+                    autofocus
+                    :value="model.friendSearchQuery"
+                    data-bml-preserve="friend-request-search"
+                    @input.debounce.300.coalesce="model.searchFriends(form.query, ctx)"
+                  />
+                </label>
+              </form>
+
+              <if model.selectedFriendId.isNotBlank()>
+                <div class="friend-selected">
+                  <div>
+                    <span class="field-label">Selected profile</span>
+                    <div class="row-title">{ model.selectedFriendName }</div>
+                  </div>
+                  <span class="badge">Selected</span>
+                </div>
+              </if>
+
+              <if model.friendSearchError != null>
+                <p class="status error">{ model.friendSearchError }</p>
+              <else>
+                <if model.friendSearchResults.isNotEmpty()>
+                  <div class="friend-search-results">
+                    <for profile in model.friendSearchResults>
+                      <friend-search-result :profile="profile">
+                        <button class="small" type="button" @click="model.selectFriend(profile.id, profile.name)">Select</button>
+                      </friend-search-result>
+                    </for>
+                  </div>
+                <else>
+                  <if model.friendSearchQuery.length < 2>
+                    <p class="field-help">Enter at least two characters. Existing friends and pending requests are excluded.</p>
+                  <else>
+                    <if model.selectedFriendId.isBlank()><p class="empty compact">No available profiles found.</p></if>
+                  </if>
+                </if>
+              </if>
+
+              <div class="modal-actions">
+                <button type="button" @click="model.closeFriendRequest()">Cancel</button>
+                <button class="primary" type="button" :disabled="!model.canSendFriendRequest" @click="model.sendFriendRequest(ctx)">Send request</button>
+              </div>
+            </div>
+          </section>
+        </div>
+      </if>
+
+      <if model.message != null><toast-message :message="model.message" :failed="model.failed" :id="model.messageId"/></if>
+    </div>
+  </island>
+</component>

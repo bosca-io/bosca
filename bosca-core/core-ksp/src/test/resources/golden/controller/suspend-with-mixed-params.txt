@@ -1,0 +1,49 @@
+@file:Suppress("UNCHECKED_CAST", "UNUSED_PARAMETER", "USELESS_ELVIS", "OPT_IN_USAGE")
+
+package com.example.generated
+
+import bosca.di.ProviderRegistry.`get`
+import bosca.di.`annotation`.Generated
+import bosca.ext.anyToJsonElement
+import bosca.graphql.Batch
+import bosca.graphql.BatchContext
+import bosca.graphql.BatchLoaderEnvironment
+import bosca.graphql.PropertyDataFetcher
+import bosca.graphql.SuspendDataFetcher
+import bosca.graphql.dispatcher.Dispatcher
+import bosca.graphql.server.TypeRuntimeWiring
+import bosca.security.service.AuthenticationContext
+import bosca.serialization.OffsetDateTimeSerializer
+import bosca.server.ServerCall
+import com.example.Content
+import com.example.ContentController
+import io.opentelemetry.api.trace.Tracer
+import kotlin.Int
+import kotlin.String
+import kotlin.Suppress
+import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.builtins.serializer
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonNull
+
+@Generated
+public class ContentDispatcher(
+  private val controller: ContentController,
+) : Dispatcher {
+  private val json: Json by lazy { runBlocking { get<Json>() } }
+
+  private val tracer: Tracer by lazy { runBlocking { get<Tracer>() } }
+
+  private val getFieldDataFetcher: SuspendDataFetcher<String> =
+      bosca.graphql.SuspendDataFetcher<kotlin.String>("getField", tracer) { environment, authenticationContext ->
+      val content = environment.sourceAs<Content>()
+      val id = environment.getArgument<Int>("id")
+      val result = controller.getField(content = content ?: error("content is required"), environment = environment, authenticationContext = authenticationContext, id = id ?: error("id is required"))
+      result
+      }
+
+  override val type: TypeRuntimeWiring = TypeRuntimeWiring.newTypeWiring("Content")
+      .field("getField", getFieldDataFetcher)
+      .build()
+}

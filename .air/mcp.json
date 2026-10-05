@@ -1,0 +1,9 @@
+{
+    "mcpServers": {
+        "bosca": {
+            "type": "stdio",
+            "command": "/usr/local/bin/bosca",
+            "args": ["mcp-server"]
+        }
+    }
+}

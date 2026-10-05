@@ -1,0 +1,21 @@
+{{- if .Values.keda.enabled }}
+{{- range $name, $worker := .Values.workers }}
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: {{ include "bosca-common.fullname" $ }}-{{ $name }}
+  labels:
+    {{- include "bosca-common.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: worker-{{ $name }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: StatefulSet
+    name: {{ include "bosca-common.fullname" $ }}-{{ $name }}
+  pollingInterval: {{ $.Values.keda.pollingInterval }}
+  cooldownPeriod: {{ $.Values.keda.cooldownPeriod }}
+  minReplicaCount: {{ $.Values.keda.minReplicaCount }}
+  maxReplicaCount: {{ $.Values.keda.maxReplicaCount }}
+{{- end }}
+{{- end }}

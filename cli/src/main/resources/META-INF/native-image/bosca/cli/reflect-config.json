@@ -1,0 +1,589 @@
+[
+  {
+    "name": "bosca.cli.BoscaCommand",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "bosca.cli.localization.LocalizationCommand",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "bosca.cli.localization.UploadCommand",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "bosca.cli.localization.DownloadCommand",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "bosca.cli.localization.StatusCommand",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "bosca.cli.localization.SyncCommand",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "bosca.cli.data.DataCommand",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "bosca.cli.data.InstallCommand",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "io.modelcontextprotocol.kotlin.sdk.server.FeatureNotificationService"
+  },
+  {
+    "name": "ai.koog.a2a.transport.jsonrpc.model.JSONRPCErrorResponse",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "ai.koog.a2a.transport.jsonrpc.model.JSONRPCErrorResponse$Companion",
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "ai.koog.a2a.transport.jsonrpc.model.JSONRPCSuccessResponse",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "ai.koog.a2a.transport.jsonrpc.model.JSONRPCSuccessResponse$Companion",
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "ai.koog.a2a.model.Task",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "ai.koog.a2a.model.Task$Companion",
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "ai.koog.a2a.model.Message",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "ai.koog.a2a.model.Message$Companion",
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "ai.koog.a2a.model.TaskStatusUpdateEvent",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "ai.koog.a2a.model.TaskStatusUpdateEvent$Companion",
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "ai.koog.a2a.model.TaskArtifactUpdateEvent",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "ai.koog.a2a.model.TaskArtifactUpdateEvent$Companion",
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "ai.koog.a2a.model.TextPart",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "ai.koog.a2a.model.TextPart$Companion",
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "ai.koog.a2a.model.DataPart",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "ai.koog.a2a.model.DataPart$Companion",
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "ai.koog.a2a.model.FilePart",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "ai.koog.a2a.model.FilePart$Companion",
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "ai.koog.a2a.model.FileWithBytes",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "ai.koog.a2a.model.FileWithBytes$Companion",
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "ai.koog.a2a.model.FileWithUri",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "ai.koog.a2a.model.FileWithUri$Companion",
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "ai.koog.a2a.model.HTTPAuthSecurityScheme",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "ai.koog.a2a.model.HTTPAuthSecurityScheme$Companion",
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "io.modelcontextprotocol.kotlin.sdk.server.FeatureRegistry"
+  },
+  {
+    "name": "io.modelcontextprotocol.kotlin.sdk.server.ServerSession"
+  },
+  {
+    "name": "io.modelcontextprotocol.kotlin.sdk.server.ServerSessionRegistry"
+  },
+  {
+    "name": "io.modelcontextprotocol.kotlin.sdk.server.SessionNotificationJob"
+  },
+  {
+    "name": "io.modelcontextprotocol.kotlin.sdk.shared.Protocol"
+  },
+  {
+    "name": "io.modelcontextprotocol.kotlin.sdk.types.InitializeResult",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.modelcontextprotocol.kotlin.sdk.types.InitializeResult$Companion",
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "io.modelcontextprotocol.kotlin.sdk.types.JSONRPCResponse",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.modelcontextprotocol.kotlin.sdk.types.JSONRPCResponse$Companion",
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "io.modelcontextprotocol.kotlin.sdk.types.JSONRPCError",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.modelcontextprotocol.kotlin.sdk.types.JSONRPCError$Companion",
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "io.modelcontextprotocol.kotlin.sdk.types.ListToolsResult",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.modelcontextprotocol.kotlin.sdk.types.ListToolsResult$Companion",
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "io.modelcontextprotocol.kotlin.sdk.types.CallToolResult",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.modelcontextprotocol.kotlin.sdk.types.CallToolResult$Companion",
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "io.modelcontextprotocol.kotlin.sdk.types.TextContent",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.modelcontextprotocol.kotlin.sdk.types.TextContent$Companion",
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "io.modelcontextprotocol.kotlin.sdk.types.EmptyResult",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.modelcontextprotocol.kotlin.sdk.types.EmptyResult$Companion",
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "io.modelcontextprotocol.kotlin.sdk.types.RequestId$NumberId",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.modelcontextprotocol.kotlin.sdk.types.RequestId$NumberId$Companion",
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "io.modelcontextprotocol.kotlin.sdk.types.RequestId$StringId",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.modelcontextprotocol.kotlin.sdk.types.RequestId$StringId$Companion",
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "io.modelcontextprotocol.kotlin.sdk.types.RPCError",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.modelcontextprotocol.kotlin.sdk.types.RPCError$Companion",
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "io.modelcontextprotocol.kotlin.sdk.types.ServerCapabilities",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.modelcontextprotocol.kotlin.sdk.types.ServerCapabilities$Companion",
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "io.modelcontextprotocol.kotlin.sdk.types.Implementation",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.modelcontextprotocol.kotlin.sdk.types.Implementation$Companion",
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "io.modelcontextprotocol.kotlin.sdk.types.Tool",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.modelcontextprotocol.kotlin.sdk.types.Tool$Companion",
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "io.modelcontextprotocol.kotlin.sdk.types.ToolSchema",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.modelcontextprotocol.kotlin.sdk.types.ToolSchema$Companion",
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "kotlin.jvm.internal.DefaultConstructorMarker"
+  },
+  {
+    "name": "kotlinx.coroutines.CancellableContinuationImpl"
+  },
+  {
+    "name": "kotlinx.coroutines.CancelledContinuation"
+  },
+  {
+    "name": "kotlinx.coroutines.CompletedExceptionally"
+  },
+  {
+    "name": "kotlinx.coroutines.EventLoopImplBase"
+  },
+  {
+    "name": "kotlinx.coroutines.JobSupport"
+  },
+  {
+    "name": "kotlinx.coroutines.JobSupport$Finishing"
+  },
+  {
+    "name": "kotlinx.coroutines.channels.BufferedChannel"
+  },
+  {
+    "name": "kotlinx.coroutines.internal.ConcurrentLinkedListNode"
+  },
+  {
+    "name": "kotlinx.coroutines.internal.DispatchedContinuation"
+  },
+  {
+    "name": "kotlinx.coroutines.internal.LimitedDispatcher"
+  },
+  {
+    "name": "kotlinx.coroutines.internal.LockFreeLinkedListNode"
+  },
+  {
+    "name": "kotlinx.coroutines.internal.LockFreeTaskQueue"
+  },
+  {
+    "name": "kotlinx.coroutines.internal.LockFreeTaskQueueCore"
+  },
+  {
+    "name": "kotlinx.coroutines.internal.Segment"
+  },
+  {
+    "name": "kotlinx.coroutines.scheduling.CoroutineScheduler"
+  },
+  {
+    "name": "kotlinx.coroutines.scheduling.CoroutineScheduler$Worker"
+  },
+  {
+    "name": "kotlinx.coroutines.scheduling.WorkQueue"
+  },
+  {
+    "name": "com.github.ajalt.clikt.core.CliktCommand",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "com.github.ajalt.clikt.core.CoreCliktCommand",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "com.github.ajalt.clikt.core.BaseCliktCommand",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "com.github.ajalt.clikt.core.Context",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "com.github.ajalt.clikt.core.ParameterHolder",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.github.ajalt.clikt.parameters.options.Option",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.github.ajalt.clikt.parameters.options.OptionWithValues",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "com.github.ajalt.clikt.parameters.options.OptionWithValuesImpl",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "com.github.ajalt.clikt.parameters.options.OptionDelegate",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.github.ajalt.clikt.parameters.options.ValueWithDefault",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "com.github.ajalt.clikt.parameters.arguments.Argument",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.github.ajalt.clikt.parameters.arguments.ProcessedArgument",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "com.github.ajalt.clikt.parameters.arguments.ProcessedArgumentImpl",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "com.github.ajalt.clikt.parameters.arguments.ArgumentDelegate",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.github.ajalt.clikt.parameters.groups.OptionGroup",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "com.github.ajalt.clikt.parameters.groups.ParameterGroup",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.github.ajalt.clikt.parameters.groups.ParameterGroupDelegate",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.github.ajalt.clikt.parameters.internal.NullableLateinit",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "com.github.ajalt.clikt.parsers.CommandLineParser",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.github.ajalt.clikt.parsers.CommandParser",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "com.github.ajalt.clikt.output.HelpFormatter",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.github.ajalt.clikt.output.MordantHelpFormatter",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "com.github.ajalt.clikt.output.PlaintextHelpFormatter",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "com.github.ajalt.clikt.output.Localization",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.github.ajalt.clikt.sources.ValueSource",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.github.ajalt.clikt.sources.MapValueSource",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "com.github.ajalt.clikt.sources.PropertiesValueSource",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "com.github.ajalt.mordant.terminal.Terminal",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "com.github.ajalt.mordant.terminal.TerminalInfo",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "com.github.ajalt.mordant.terminal.TerminalInterface",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.github.ajalt.mordant.terminal.TerminalInterfaceProvider",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.github.ajalt.mordant.terminal.StandardTerminalInterface",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "com.github.ajalt.mordant.terminal.TerminalDetection",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "com.github.ajalt.mordant.terminal.terminalinterface.ffm.TerminalInterfaceProviderFfm",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "com.github.ajalt.mordant.terminal.terminalinterface.jna.TerminalInterfaceProviderJna",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "com.github.ajalt.mordant.terminal.terminalinterface.nativeimage.TerminalInterfaceProviderNativeImage",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "com.github.ajalt.mordant.terminal.terminalinterface.nativeimage.TerminalInterfaceProviderNativeImageMacos",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "com.github.ajalt.mordant.terminal.terminalinterface.nativeimage.TerminalInterfaceProviderNativeImageLinux",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "com.github.ajalt.mordant.terminal.terminalinterface.nativeimage.TerminalInterfaceProviderNativeImageWindows",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "com.github.ajalt.mordant.terminal.terminalinterface.nativeimage.TerminalInterfaceNativeImageMacos",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "com.github.ajalt.mordant.terminal.terminalinterface.nativeimage.TerminalInterfaceNativeImageLinux",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "com.github.ajalt.mordant.terminal.terminalinterface.nativeimage.TerminalInterfaceNativeImageWindows",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "java.lang.Boolean",
+    "jniAccessible": true,
+    "methods": [{"name": "getBoolean", "parameterTypes": ["java.lang.String"]}]
+  },
+  {
+    "name": "java.lang.Class",
+    "methods": [{"name": "isRecord", "parameterTypes": []}]
+  },
+  {
+    "name": "sun.security.provider.NativePRNG",
+    "methods": [{"name": "<init>", "parameterTypes": ["java.security.SecureRandomParameters"]}]
+  },
+  {
+    "name": "sun.security.provider.SHA",
+    "methods": [{"name": "<init>", "parameterTypes": []}]
+  },
+  {
+    "name": "kotlin.reflect.jvm.internal.ReflectionFactoryImpl"
+  }
+]

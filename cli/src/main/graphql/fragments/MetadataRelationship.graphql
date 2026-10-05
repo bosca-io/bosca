@@ -1,0 +1,26 @@
+fragment MetadataRelationshipMetadata on Metadata {
+    id
+    version
+    name
+    ready
+    created
+    public
+    publicContent
+    publicSupplementary
+    workflow {
+        state
+        pending
+    }
+    content {
+        type
+        length
+    }
+}
+
+fragment MetadataRelationship on MetadataRelationship {
+    metadata {
+        ...MetadataRelationshipMetadata
+    }
+    relationship
+    attributes
+}

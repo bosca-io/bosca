@@ -1,0 +1,88 @@
+"A document returned from a search query. Each search document may resolve to a collection, metadata item, or profile depending on the type of content that matched."
+type SearchDocument {
+    "The collection that matched the search query, if the result is a collection."
+    collection: Collection
+    "The metadata item that matched the search query, if the result is a content item."
+    metadata: Metadata
+    "The profile that matched the search query, if the result is a user profile."
+    profile: Profile
+}
+
+"A single facet value returned from a search query, representing a filterable category and the number of matching documents."
+type SearchResultFacet {
+    "The number of documents matching this facet value."
+    count: Int!
+    "The field name that this facet belongs to (e.g. 'category', 'author', 'type')."
+    field: String!
+    "The specific value within the facet field (e.g. 'news', 'tutorial')."
+    value: String!
+}
+
+"The result of a search query, containing the matched documents, estimated total hit count, and faceted aggregations."
+type SearchResult {
+    "The list of documents matching the search query, ordered by relevance."
+    documents: [SearchDocument!]!
+    "The estimated total number of documents matching the query across all pages. Useful for pagination."
+    estimatedHits: Int!
+    "The faceted aggregations computed for the search results, allowing users to filter by categories."
+    facets: [SearchResultFacet!]!
+}
+
+"Input for executing a search query across content. Supports full-text search, faceted filtering, sorting, and optional semantic/vector search."
+input SearchQuery {
+    "The name of the embedder to use for semantic search. Required when using vector-based search or a non-zero semanticRatio."
+    embedder: String
+    "The list of field names to compute faceted aggregations for (e.g. ['category', 'author']). Returns counts for each unique value."
+    facets: [String!]
+    "The list of filter expressions to apply to narrow search results (e.g. ['category = news', 'published > 2024-01-01'])."
+    filter: [String!]
+    "The maximum number of search results to return per page."
+    limit: Int
+    "The zero-based offset for paginating through search results."
+    offset: Int
+    "The search query text to match against indexed content."
+    query: String!
+    "The ratio between semantic (vector) and keyword search results, from 0.0 (pure keyword) to 1.0 (pure semantic). Requires an embedder to be specified."
+    semanticRatio: Float
+    "The list of sort expressions to order results by (e.g. ['created:desc', 'name:asc'])."
+    sort: [String!]
+    "The UUID of the storage system to search within. If null, the default search storage system is used."
+    storageSystemId: String
+    "The name of the storage system to search within. Alternative to storageSystemId for lookup by name."
+    storageSystemName: String
+    "A pre-computed vector embedding to use for similarity search. Alternative to text-based semantic search."
+    vector: [Float!]
+    "Whether to include the vector embeddings in the search results. Useful for debugging or downstream processing."
+    retrieveVectors: Boolean
+}
+
+"Administrative operations for previewing how content appears in the search index. Useful for debugging indexing issues."
+type SearchConfiguration {
+    "Preview the search index representation of a metadata item by its UUID. Returns the indexed document as JSON."
+    previewMetadata(
+        "The UUID of the metadata item to preview."
+        id: UUID!
+    ): JSON
+    "Preview the search index representation of a collection by its UUID. Returns the indexed document as JSON."
+    previewCollection(
+        "The UUID of the collection to preview."
+        id: UUID!
+    ): JSON
+    "Preview the search index representation of a profile by its UUID. Returns the indexed document as JSON."
+    previewProfile(
+        "The UUID of the profile to preview."
+        id: UUID!
+    ): JSON
+}
+
+"Entry point for search operations. Provides full-text and semantic search across collections, metadata, and profiles, as well as administrative search configuration tools."
+type Search {
+    "Execute a search query and return matching documents with faceted aggregations."
+    search(
+        "The search query parameters including text, filters, facets, and optional semantic search settings."
+        query: SearchQuery
+    ): SearchResult
+
+    "Access administrative search configuration operations for previewing indexed content."
+    configuration: SearchConfiguration
+}

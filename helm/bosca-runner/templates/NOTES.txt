@@ -1,0 +1,6 @@
+Bosca Worker has been deployed.
+
+Workers configured:
+{{- range $name, $worker := .Values.workers }}
+  - {{ $name }}: {{ $worker.replicas }} replica(s), queues={{ $worker.queues }}, concurrency={{ $worker.concurrency }}
+{{- end }}

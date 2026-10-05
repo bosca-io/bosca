@@ -1,0 +1,12 @@
+{
+  "reflection": [
+    {
+      "type": "bosca.jmx.BoscaServer",
+      "allPublicMethods": true
+    },
+    {
+      "type": "bosca.jmx.BoscaServerMXBean",
+      "allPublicMethods": true
+    }
+  ]
+}

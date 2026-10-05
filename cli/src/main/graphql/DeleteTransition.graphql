@@ -1,0 +1,5 @@
+mutation DeleteTransition($fromStateId: String!, $toStateId: String!) {
+    transitions {
+        delete(fromStateId: $fromStateId, toStateId: $toStateId)
+    }
+}

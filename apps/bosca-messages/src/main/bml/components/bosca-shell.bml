@@ -1,0 +1,98 @@
+{# The Bosca transactional-email shell — a LIGHT product email: gray page (#f6f7f9, the Studio
+   light --bg-0), the logo + wordmark masthead, the white bordered card, and the muted footer
+   BELOW the card (preference links + per-email reason line). Table-based and inline-styled:
+   the author-supplied email-safe markup contract.
+
+   BRANDING IS CONFIGURABLE: `brand` is the masthead wordmark, `logo` is an absolute image URL,
+   `logoOnly` hides the wordmark, and `primaryColor` controls the wordmark. The communications
+   renderer supplies these values from the `bosca.messages.branding` configuration before rendering.
+
+   EMAILS HAVE NO ORIGIN: every asset URL builds from the `assets` prop (an absolute base from
+   BmlMessageContext.assetsUrl — the preview server passes its own origin; production passes the
+   message server's version-pinned public base). The static <style> below carries only URL-free
+   rules; the URL-bearing @font-face block comes from Theme.fontFaces(assets). #}
+<component tag="bosca-shell">
+  <prop name="title" type="String" required/>
+  <prop name="preheader" type="String" required/>
+  <prop name="reason" type="String" required/>
+  <prop name="assets" type="String" required/>
+  <prop name="brand" type="String" default="Bosca"/>
+  <prop name="logo" type="String" default=""/>
+  <prop name="logoOnly" type="Boolean" default="false"/>
+  <prop name="primaryColor" type="String" default="#0e1019"/>
+  <prop name="unsubscribe" type="String" default="#"/>
+  <prop name="preferences" type="String" default="#"/>
+  {@ "<!doctype html>" }
+  <html lang="en">
+    <head>
+      <meta charset="utf-8"/>
+      <meta name="viewport" content="width=device-width, initial-scale=1"/>
+      <meta name="x-apple-disable-message-reformatting"/>
+      <title>{ title }</title>
+      {@ bosca.messages.Theme.fontFaces(assets) }
+      <style>
+        body { margin:0; padding:0; background:#f6f7f9; -webkit-text-size-adjust:100%; }
+        a { text-decoration:none; }
+        /* Mobile is a deliberate layout, not a fluid shrink: one breakpoint, controlled. */
+        @media only screen and (max-width:480px){
+          .em-frame{ padding:12px 12px 28px !important; }
+          .em-card{ padding:26px 22px 30px !important; }
+          .em-h1{ font-size:20px !important; line-height:1.25 !important; }
+          .em-metalabel{ letter-spacing:0.12em !important; }
+        }
+      </style>
+    </head>
+    <body>
+      <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:#f6f7f9;font-size:1px;line-height:1px;">{ preheader }</div>
+
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f6f7f9;">
+        <tr>
+          <td align="center" class="em-frame" style="padding:20px 16px 40px;">
+
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:560px;">
+
+              <!-- masthead: logo + wordmark, on the page (not the card) -->
+              <tr>
+                <td style="padding:16px 4px 14px;vertical-align:middle;">
+                  <if logo.isBlank()>
+                    <img src="{ assets }/bosca-mark.png" width="24" height="24" :alt="brand" style="display:inline-block;vertical-align:middle;border:0;"/>
+                  <else>
+                    <img :src="logo" width="24" height="24" :alt="brand" style="display:inline-block;vertical-align:middle;border:0;"/>
+                  </if>
+                  <if !logoOnly>
+                    <span style="display:inline-block;vertical-align:middle;padding-left:9px;font-family:'Geist',-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:15px;font-weight:600;letter-spacing:0.01em;color:{ primaryColor };">{ brand }</span>
+                  </if>
+                </td>
+              </tr>
+
+              <!-- THE CARD: white, hairline border -->
+              <tr>
+                <td>
+                  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#ffffff;border:1px solid #e5e8ee;border-radius:12px;">
+                    <tr>
+                      <td class="em-card" style="padding:32px 40px 36px;">
+                        <slot/>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+
+              <!-- FOOTER: below the card, on the page -->
+              <tr>
+                <td style="padding:20px 6px 0;">
+                  <p style="margin:0;font-family:'Geist',-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:12px;line-height:1.6;color:#5a6072;">
+                    <a t="shared.footer.preferences" :href="preferences" style="color:#5a6072;text-decoration:underline;">Manage email preferences</a>&nbsp;&nbsp;·&nbsp;&nbsp;<a t="shared.footer.unsubscribe" :href="unsubscribe" style="color:#5a6072;text-decoration:underline;">Unsubscribe</a>
+                  </p>
+                  <p style="margin:10px 0 0;font-family:'Geist',-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:11px;line-height:1.6;color:#898fa1;">{ reason }</p>
+                </td>
+              </tr>
+
+            </table>
+
+          </td>
+        </tr>
+      </table>
+    </body>
+  </html>
+</component>

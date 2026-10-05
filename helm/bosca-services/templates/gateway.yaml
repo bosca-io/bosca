@@ -1,0 +1,61 @@
+{{- if .Values.gateway.enabled }}
+{{- /*
+Aggregate every hostname the bosca-services subcharts route to, so the Gateway
+declares one HTTPS listener (with TLS) per hostname. cert-manager (referenced
+via the gateway annotation) auto-creates a Certificate per listener.
+
+Subcharts contribute hostnames via `<chart>.gateway.hostnames` — we collect
+them here so consumers don't have to list each hostname twice (once on the
+HTTPRoute and once on the Gateway).
+*/}}
+{{- $hostnames := list -}}
+{{- range $chart := list "bosca-server" "bosca-runner" "bosca-studio" "bosca-collector" "bml-message-server" "bosca-kubernetes-controller" "bosca-artifacts-server" "bosca-git-server" "bosca-gateway" "bosca-io" "notifications-web" "profiles-web" }}
+  {{- $cfg := index $.Values $chart }}
+  {{- if and $cfg (kindIs "map" $cfg) }}
+    {{- with index $cfg "gateway" }}
+      {{- if and .enabled .hostnames }}
+        {{- $hostnames = concat $hostnames .hostnames }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+{{- end }}
+{{- $hostnames = uniq $hostnames }}
+{{- /* Allow explicit additions / overrides from values.yaml */ -}}
+{{- with .Values.gateway.extraHostnames }}
+  {{- $hostnames = uniq (concat $hostnames .) }}
+{{- end }}
+
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: {{ .Values.gateway.name | default "bosca-gateway" }}
+  labels:
+    app.kubernetes.io/part-of: bosca
+  {{- with .Values.gateway.certManager.clusterIssuer }}
+  annotations:
+    cert-manager.io/cluster-issuer: {{ . | quote }}
+  {{- end }}
+spec:
+  gatewayClassName: {{ .Values.gateway.className | default "cilium" | quote }}
+  listeners:
+    - name: http
+      port: 80
+      protocol: HTTP
+      allowedRoutes:
+        namespaces:
+          from: Same
+    {{- range $h := $hostnames }}
+    - name: {{ printf "https-%s" (regexReplaceAll "[^a-z0-9]" $h "-") | trunc 63 | trimSuffix "-" }}
+      hostname: {{ $h | quote }}
+      port: 443
+      protocol: HTTPS
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - kind: Secret
+            name: {{ printf "%s-tls" (regexReplaceAll "[^a-z0-9]" $h "-") | trunc 63 | trimSuffix "-" }}
+      allowedRoutes:
+        namespaces:
+          from: Same
+    {{- end }}
+{{- end }}

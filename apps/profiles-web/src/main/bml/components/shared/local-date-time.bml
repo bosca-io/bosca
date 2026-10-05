@@ -1,0 +1,5 @@
+<component tag="local-date-time">
+  <prop name="value" type="String" required/>
+
+  <time :datetime="value" data-local-date-time>{ value }</time>
+</component>

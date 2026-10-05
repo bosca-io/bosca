@@ -1,0 +1,49 @@
+{
+  "reflection": [
+    {
+      "type": "bosca.server.netty.NettyHttpHandler"
+    },
+    {
+      "type": "bosca.server.netty.CompressionOffloadHandler"
+    },
+    {
+      "type": "bosca.server.netty.DrainingHttpHandler"
+    },
+    {
+      "type": "bosca.server.netty.BodylessH2cUpgradeHandler"
+    },
+    {
+      "type": "bosca.server.netty.Http1ExchangeSequencer"
+    },
+    {
+      "type": "bosca.server.netty.Http1ProtocolSelectionHandler"
+    },
+    {
+      "type": "bosca.server.netty.Http2PriorKnowledgeHandler"
+    },
+    {
+      "type": "bosca.server.netty.Http2StreamProtocolSelector"
+    },
+    {
+      "type": "bosca.server.netty.Http2StreamInitializer"
+    },
+    {
+      "type": "bosca.server.netty.Http2WebSocketCloseFrameHandler"
+    },
+    {
+      "type": "bosca.server.netty.Http2WebSocketProtocolViolationHandler"
+    },
+    {
+      "type": "bosca.server.netty.Http2WebSocketStreamHandler"
+    },
+    {
+      "type": "bosca.server.netty.NettyServerEngine$start$1"
+    },
+    {
+      "type": "bosca.server.netty.SelectiveContentCompressor"
+    },
+    {
+      "type": "bosca.server.netty.WebSocketUpgradePreparer"
+    }
+  ]
+}

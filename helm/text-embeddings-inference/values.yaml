@@ -1,0 +1,107 @@
+# Pin the Service/Deployment to the bare name `text-embeddings-inference` so bosca-runner reaches it at a
+# stable http://text-embeddings-inference:<port> (the embeddings service URL it is configured with).
+fullnameOverride: "text-embeddings-inference"
+nameOverride: ""
+
+replicaCount: 1
+
+# One instance handles the batch/index-time embedding load; Recreate avoids two pods racing on the model
+# download during a rollout.
+strategy:
+  type: Recreate
+
+image:
+  # Upstream HuggingFace Text Embeddings Inference. CPU image by default (most nodes have no GPU); for a
+  # high-throughput backfill switch to a GPU tag plus a GPU nodeSelector/tolerations/resources.
+  repository: ghcr.io/huggingface/text-embeddings-inference
+  tag: ""              # defaults to chart appVersion (cpu-1.8.1)
+  pullPolicy: IfNotPresent
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+podSecurityContext: {}
+securityContext: {}
+
+service:
+  type: ClusterIP
+  port: 80            # TEI serves HTTP on :80
+
+# Kubernetes Probe objects rendered directly onto the TEI container. The
+# startup probe prevents liveness/readiness checks from racing the initial
+# model download and CPU warmup. TEI handles health checks on the same runtime
+# as inference, so the steady-state timeouts allow for CPU-bound requests.
+startupProbe:
+  httpGet:
+    path: /health
+    port: http
+  periodSeconds: 5
+  timeoutSeconds: 5
+  failureThreshold: 60
+
+livenessProbe:
+  httpGet:
+    path: /health
+    port: http
+  initialDelaySeconds: 30
+  periodSeconds: 20
+  timeoutSeconds: 15
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet:
+    path: /health
+    port: http
+  initialDelaySeconds: 20
+  periodSeconds: 10
+  timeoutSeconds: 15
+  failureThreshold: 3
+
+# The embedding model TEI serves: EmbeddingGemma (768-dim, multilingual). This is the PUBLIC ONNX export
+# (onnx-community), served by TEI's ORT backend on CPU — no HF token or Gemma-license acceptance required.
+# (The gated google/embeddinggemma-300m safetensors repo also works on cpu-1.8.1 via the Candle backend,
+# but requires secrets.hfToken below.)
+modelId: "onnx-community/embeddinggemma-300m-ONNX"
+
+# Extra args appended after `--model-id <modelId> --port <port>`. EmbeddingGemma activations do not support
+# fp16, so float32 is required; mean pooling matches the model's sentence-transformers pooling config.
+extraArgs:
+  - --dtype
+  - float32
+  - --pooling
+  - mean
+
+# HuggingFace token for pulling a GATED model. NOT needed for the default public ONNX model — enable this
+# only if you switch modelId to the gated google/embeddinggemma-300m safetensors repo, in which case the
+# referenced Secret must be pre-created (umbrella secrets).
+secrets:
+  hfToken:
+    enabled: false
+    name: text-embeddings-inference
+    key: hf_token
+
+extraEnv: {}
+
+# EmbeddingGemma is ~300M params; CPU inference needs headroom for the model plus in-flight batches.
+resources:
+  requests:
+    cpu: "1"
+    memory: 2Gi
+  limits:
+    cpu: "4"
+    memory: 6Gi
+
+envFromConfigMaps:
+  - otel-env
+
+imagePullSecrets:
+  - name: docker-registry
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+global:
+  domain: ""

@@ -1,0 +1,96 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# ═══════════════════════════════════════════════════════════════════════════
+# install-bosca-plugin
+#
+# Build the Bosca IntelliJ plugin (workops/workops-ide) through the workspace
+# build and install it into the local IntelliJ IDEA plugins directory
+# by unzipping build/distributions/workops-ide-<v>.zip (which contains a
+# top-level workops-ide/ folder) into <config>/plugins/, replacing any previous
+# install.
+#
+# The target IDE config dir is auto-detected: the newest IntelliJIdea*/IdeaIC*
+# under ~/Library/Application Support/JetBrains. Restart the IDE afterwards —
+# a descriptor (plugin.xml) change is never picked up by a running instance.
+#
+# For day-to-day plugin development prefer the sandbox instead:
+#   ./gradlew :workops:workops-ide:runIde -Didea.auto.reload.plugins=true
+#
+# Usage:
+#   scripts/install-bosca-plugin                  # build + install into newest IDE
+#   scripts/install-bosca-plugin --no-build       # reuse the existing zip
+#   scripts/install-bosca-plugin --test           # run plugin tests before packaging
+#   scripts/install-bosca-plugin --plugins-dir "~/Library/.../plugins"
+#
+# Flags:
+#   --no-build            skip the Gradle build; install the newest existing zip
+#   --test                also run the workops-ide test suite before packaging
+#   --plugins-dir <dir>   install into this plugins directory (skips detection)
+#   -h, --help            this help
+# ═══════════════════════════════════════════════════════════════════════════
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+IDE_PROJECT="$ROOT/workops/workops-ide"
+DIST_DIR="$IDE_PROJECT/build/distributions"
+JETBRAINS_DIR="$HOME/Library/Application Support/JetBrains"
+
+BUILD=1
+RUN_TESTS=0
+PLUGINS_DIR=""
+
+usage() {
+  sed -n '/^# install-bosca-plugin$/,/^# ═/p' "${BASH_SOURCE[0]}" | sed '$d; s/^# \{0,1\}//'
+  exit "${1:-0}"
+}
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --no-build)    BUILD=0 ;;
+    --test)        RUN_TESTS=1 ;;
+    --plugins-dir)
+      [ $# -ge 2 ] || { echo "--plugins-dir requires a directory" >&2; usage 1; }
+      shift
+      PLUGINS_DIR="${1/#\~/$HOME}"
+      ;;
+    -h|--help)     usage 0 ;;
+    *) echo "Unknown argument: $1" >&2; usage 1 ;;
+  esac
+  shift
+done
+
+# ── locate the IDE plugins directory ────────────────────────────────────────
+if [ -z "$PLUGINS_DIR" ]; then
+  [ -d "$JETBRAINS_DIR" ] || { echo "No JetBrains config dir at: $JETBRAINS_DIR (pass --plugins-dir)" >&2; exit 1; }
+  ide_config="$(ls -d "$JETBRAINS_DIR"/IntelliJIdea* "$JETBRAINS_DIR"/IdeaIC* 2>/dev/null \
+    | grep -Ev -- '-backup$' | sort -V | tail -1 || true)"
+  [ -n "$ide_config" ] || { echo "No IntelliJIdea*/IdeaIC* config dir under $JETBRAINS_DIR (pass --plugins-dir)" >&2; exit 1; }
+  PLUGINS_DIR="$ide_config/plugins"
+fi
+mkdir -p "$PLUGINS_DIR"
+echo "  target: $PLUGINS_DIR"
+
+# ── build the plugin zip ─────────────────────────────────────────────────────
+if [ "$BUILD" = "1" ]; then
+  tasks=(":workops:workops-ide:buildPlugin")
+  [ "$RUN_TESTS" = "1" ] && tasks=(":workops:workops-ide:test" ":workops:workops-ide:buildPlugin")
+  echo "  building: ./gradlew ${tasks[*]}"
+  "$ROOT/gradlew" "${tasks[@]}"
+fi
+
+zip="$(ls -t "$DIST_DIR"/workops-ide-*.zip 2>/dev/null | head -1 || true)"
+[ -n "$zip" ] || { echo "No plugin zip in $DIST_DIR — run without --no-build" >&2; exit 1; }
+echo "  plugin:  $zip"
+
+# ── install: replace plugins/workops-ide with the zip contents ──────────────
+if pgrep -f 'MacOS/idea' >/dev/null 2>&1; then
+  echo "  note: IntelliJ appears to be running — restart it after this to load the plugin"
+fi
+
+rm -rf "$PLUGINS_DIR/workops-ide"
+unzip -q "$zip" -d "$PLUGINS_DIR"
+[ -d "$PLUGINS_DIR/workops-ide/lib" ] || { echo "Install failed: $PLUGINS_DIR/workops-ide/lib missing after unzip" >&2; exit 1; }
+
+echo
+echo "  Installed $(basename "$zip") -> $PLUGINS_DIR/workops-ide"
+echo "  Restart IntelliJ to load (or reload) the Bosca plugin."

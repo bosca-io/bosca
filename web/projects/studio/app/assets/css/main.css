@@ -1,0 +1,173 @@
+/* Studio-specific styles — base tokens and utilities come from @bosca/ui */
+
+/* ── json-editor-vue: theme integration & rounded corners ── */
+.json-editor {
+  border-radius: var(--r-md);
+  overflow: hidden;
+  border: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+}
+
+.json-editor .jse-main {
+  border: none;
+  flex: 1;
+}
+
+[data-theme="dark"] .json-editor,
+.json-editor:not([data-theme]) {
+  --jse-theme: dark;
+  --jse-background-color: var(--bg-1);
+  --jse-text-color: var(--fg-1);
+  --jse-text-color-inverse: var(--fg-3);
+  --jse-main-border: none;
+  --jse-panel-background: var(--bg-2);
+  --jse-panel-border: 1px solid var(--line);
+  --jse-panel-background-border: 1px solid var(--line);
+  --jse-panel-color: var(--fg-1);
+  --jse-panel-button-background-highlight: var(--bg-3);
+  --jse-menu-color: var(--fg-0);
+  --jse-modal-background: var(--bg-2);
+  --jse-context-menu-background: var(--bg-2);
+  --jse-context-menu-background-highlight: var(--bg-3);
+  --jse-context-menu-separator-color: var(--line);
+  --jse-context-menu-color: var(--fg-1);
+  --jse-key-color: #9cdcfe;
+  --jse-value-color: var(--fg-1);
+  --jse-value-color-number: #b5cea8;
+  --jse-value-color-boolean: #569cd6;
+  --jse-value-color-null: #569cd6;
+  --jse-value-color-string: #ce9178;
+  --jse-delimiter-color: var(--fg-3);
+  --jse-selection-background-color: var(--bg-3);
+  --jse-selection-background-inactive-color: var(--bg-2);
+  --jse-hover-background-color: color-mix(in oklch, var(--bg-3) 60%, transparent);
+  --jse-collapsed-items-background-color: var(--bg-2);
+  --jse-tag-background: var(--bg-3);
+  --jse-tag-color: var(--fg-2);
+  --jse-input-background: var(--bg-2);
+  --jse-input-border: 1px solid var(--line);
+  --jse-button-background: var(--bg-3);
+  --jse-button-color: var(--fg-0);
+  --jse-button-secondary-background: var(--bg-2);
+  --jse-button-secondary-color: var(--fg-1);
+  --jse-table-header-background: var(--bg-2);
+  --jse-table-row-odd-background: color-mix(in oklch, var(--bg-2) 50%, transparent);
+}
+
+[data-theme="light"] .json-editor {
+  --jse-theme: light;
+  --jse-background-color: var(--bg-1);
+  --jse-text-color: var(--fg-1);
+  --jse-main-border: none;
+  --jse-panel-background: var(--bg-2);
+  --jse-panel-border: 1px solid var(--line);
+  --jse-panel-background-border: 1px solid var(--line);
+  --jse-selection-background-color: color-mix(in oklch, var(--brand-2) 12%, transparent);
+  --jse-hover-background-color: var(--bg-2);
+  --jse-input-background: var(--bg-0);
+  --jse-input-border: 1px solid var(--line);
+}
+
+html, body { margin: 0; padding: 0; height: 100%; }
+body {
+  background: var(--bg-0);
+  color: var(--fg-0);
+  font-family: var(--font-sans);
+  font-feature-settings: 'cv11', 'ss01';
+  -webkit-font-smoothing: antialiased;
+  letter-spacing: -0.005em;
+  font-size: 14px;
+  overflow: hidden;
+}
+
+#__nuxt { height: 100%; }
+
+/* Glass variant tokens */
+[data-screen-label="B · Sidebar Layout"] {
+  --r-xs: 8px;
+  --r-sm: 12px;
+  --r-md: 16px;
+  --r-lg: 20px;
+  --r-xl: 26px;
+  --capsule-bg: rgba(20, 24, 34, 0.55);
+  --capsule-border: rgba(255, 255, 255, 0.08);
+  --capsule-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.06) inset,
+    0 8px 24px -12px rgba(0, 0, 0, 0.6),
+    0 1px 2px rgba(0, 0, 0, 0.3);
+}
+[data-theme="light"] [data-screen-label="B · Sidebar Layout"] {
+  --capsule-bg: rgba(255, 255, 255, 0.62);
+  --capsule-border: rgba(15, 23, 42, 0.08);
+  --capsule-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.9) inset,
+    0 1px 2px rgba(15, 23, 42, 0.04),
+    0 4px 12px -6px rgba(15, 23, 42, 0.08);
+}
+[data-theme="dark"] [data-screen-label="B · Sidebar Layout"],
+[data-screen-label="B · Sidebar Layout"]:not([data-theme]) {
+  --line: color-mix(in oklch, #3b4258 50%, transparent);
+  --line-2: color-mix(in oklch, #3b4258 70%, transparent);
+}
+[data-theme="light"] [data-screen-label="B · Sidebar Layout"] {
+  --line: rgba(15, 23, 42, 0.07);
+  --line-2: rgba(15, 23, 42, 0.12);
+}
+[data-screen-label="B · Sidebar Layout"] table { border-radius: 16px; overflow: hidden; }
+[data-screen-label="B · Sidebar Layout"] tbody tr:last-child td { border-bottom: 0 !important; }
+
+[data-screen-label="B · Sidebar Layout"] {
+  --bg-0: transparent;
+  --bg-1: rgba(20, 24, 34, 0.72);
+  --bg-2: rgba(28, 32, 44, 0.78);
+}
+[data-theme="light"] [data-screen-label="B · Sidebar Layout"] {
+  --bg-0: transparent;
+  --bg-1: rgba(255, 255, 255, 0.72);
+  --bg-2: rgba(245, 246, 250, 0.78);
+}
+
+/* Map land + country borders for point/live maps. Defined at the [data-theme] (html) level — NOT scoped
+   to [data-screen-label] — so maps rendered inside a modal (teleported to <body>, outside that scope)
+   still get theme-correct colors instead of the dark fallback. Opaque so the ambient background behind
+   a translucent surface can't bleed through and wash the continents out. Mirrors @bosca/ui's base tokens. */
+:root,
+[data-theme="dark"] {
+  --map-land: #242a38;
+  --map-boundary: #39415a;
+}
+[data-theme="light"] {
+  --map-land: #e3e7f0;
+  --map-boundary: #c2c9d6;
+}
+
+/* ── Page transition: cross-fade for opted-in pages (see definePageMeta) ──
+   Used by the Kit AI chat flow so handing a message off from the landing page
+   to a conversation eases between the two layouts instead of hard-cutting. The
+   old page fades out (out-in) before the new one fades+rises in. Easing mirrors
+   the in-thread message animation for a cohesive feel. */
+.page-fade-enter-active {
+  transition: opacity 0.24s ease, transform 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.page-fade-leave-active {
+  transition: opacity 0.14s ease;
+}
+.page-fade-enter-from {
+  opacity: 0;
+  transform: translateY(8px);
+}
+.page-fade-leave-to {
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-fade-enter-active,
+  .page-fade-leave-active {
+    transition: none;
+  }
+  .page-fade-enter-from {
+    opacity: 1;
+    transform: none;
+  }
+}

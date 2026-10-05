@@ -1,0 +1,71 @@
+# Install as /etc/nginx/sites-available/bosca and enable in sites-enabled.
+map $http_upgrade $bosca_connection_upgrade {
+    default upgrade;
+    '' close;
+}
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name @@STUDIO_DOMAIN@@ @@GIT_DOMAIN@@;
+
+    location ^~ /.well-known/acme-challenge/ {
+        root /var/www/letsencrypt;
+        default_type text/plain;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
+    server_name @@STUDIO_DOMAIN@@;
+
+    ssl_certificate /etc/letsencrypt/live/@@CERT_NAME@@/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/@@CERT_NAME@@/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    include /etc/nginx/snippets/bosca-proxy.conf;
+
+    # Bosca always constructs analytics clients. This deployment discards events.
+    location = /api/v1/events {
+        access_log off;
+        return 204;
+    }
+
+    # Email assets are public; rendering and project administration stay internal.
+    location ^~ /bml-messages/assets/ {
+        proxy_pass http://127.0.0.1:@@BML_PORT@@/assets/;
+    }
+
+    location ^~ /bml-messages/ {
+        return 404;
+    }
+
+    location ~ ^/(graphql(?:ws)?|api/v1|content|oauth2|ci|collaboration)(/|$) {
+        proxy_pass http://127.0.0.1:@@API_PORT@@;
+    }
+
+    location / {
+        proxy_pass http://127.0.0.1:@@STUDIO_PORT@@;
+    }
+}
+
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
+    server_name @@GIT_DOMAIN@@;
+
+    ssl_certificate /etc/letsencrypt/live/@@CERT_NAME@@/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/@@CERT_NAME@@/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    include /etc/nginx/snippets/bosca-proxy.conf;
+
+    location / {
+        proxy_pass http://127.0.0.1:@@GIT_PORT@@;
+    }
+}

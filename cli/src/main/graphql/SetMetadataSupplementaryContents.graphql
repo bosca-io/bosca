@@ -1,0 +1,7 @@
+mutation SetMetadataSupplementaryContents($supplementaryId: UUID!, $contentType: String!, $file: Upload!) {
+    content {
+        metadata {
+            setSupplementaryContents(supplementaryId: $supplementaryId, contentType: $contentType, file: $file)
+        }
+    }
+}

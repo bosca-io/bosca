@@ -1,0 +1,23 @@
+<page route="/security" requireAuth>
+  <script server provides="branding">bosca.profiles.web.branding()</script>
+  <script server provides="loaded">bosca.profiles.web.securityModel()</script>
+
+  <site-layout title="Security" :brand="branding.name" :logo="branding.logoUrl" :footer="branding.footerHtml">
+    <main class="shell">
+      <header class="page-head">
+        <div>
+          <p class="eyebrow">Security</p>
+          <h1>Sign-in and security</h1>
+          <p class="lede">Manage your password, connected accounts, passkeys, and sign-in history.</p>
+          <div class="account-status">
+            <span class="badge">{ if (loaded.verified) "Verified" else "Verification pending" }</span>
+            <span>Created <local-date-time :value="loaded.created"/></span>
+            <span>Last login <local-date-time :value="loaded.lastLogin"/></span>
+          </div>
+        </div>
+      </header>
+
+      <account-security :initial="loaded"/>
+    </main>
+  </site-layout>
+</page>

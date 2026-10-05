@@ -1,0 +1,18 @@
+# =============================================================================
+# bosca-server native image (GraalVM 25)
+#
+# The native binary is pre-built by CI using Gradle nativeCompile.
+#
+# Build context is the repository root.
+# =============================================================================
+FROM debian:bookworm-slim
+
+ARG ARTIFACT_SHA
+RUN mkdir /app
+WORKDIR /app
+#COPY bosca-server/build/native/nativeCompile/bosca-server /app/
+COPY artifacts/${ARTIFACT_SHA}/bosca-server-native/bosca-server /app/bosca-server
+RUN chmod +x ./bosca-server
+
+EXPOSE 8080
+ENTRYPOINT ["./bosca-server"]

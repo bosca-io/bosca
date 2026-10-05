@@ -1,0 +1,96 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "bosca-common.fullname" . }}-config
+  labels:
+    {{- include "bosca-common.labels" . | nindent 4 }}
+data:
+  application.yaml: |
+    bosca:
+      server:
+        management-port: {{ $.Values.managementPort }}
+        port: 8080
+        development: false
+
+    cors:
+      allowAnyHost: "$CORS_ALLOW_ANY_HOST:true"
+      allowCredentials: "$CORS_ALLOW_CREDENTIALS:true"
+      anyMethod: "$CORS_ANY_METHOD:true"
+      maxAgeSeconds: "$CORS_MAX_AGE_SECONDS:86400"
+      allowedHeaders:
+        - X-BA-Session-ID
+        - X-App-ID
+        - X-App-Version
+        - X-Installation-ID
+        - Content-Type
+        - Content-Length
+        - Content-Range
+        - Content-Disposition
+        - Authorization
+        - Cookie
+
+    jwt:
+      domain: {{ include "bosca-common.domain" . | quote }}
+      admin-domain: admin.{{ include "bosca-common.domain" . }}
+      audience: {{ include "bosca-common.domain" . | quote }}
+      realm: {{ .Values.appConfig.realm | default (include "bosca-common.domain" .) | quote }}
+      issuer: {{ include "bosca-common.domain" . | quote }}
+      secret: $JWT_SECRET
+      expiration-time: 5184000
+
+    database:
+      postgres:
+        url: {{ .Values.appConfig.databaseUrl | quote }}
+        user: $DATABASE_USER
+        password: $DATABASE_PASSWORD
+        maxConnections: {{ .Values.appConfig.databaseMaxConnections | default 20 }}
+
+    nats:
+      url: nats://{{ .Values.appConfig.natsHost }}.{{ .Release.Namespace }}.svc.cluster.local:4222
+      token: $NATS_TOKEN
+
+    cache:
+      type: nats
+
+    jobQueue:
+      factory: nats
+
+    pubsub:
+      type: nats
+
+    distributedLock:
+      type: nats
+
+    counter:
+      type: nats
+
+    eventRepository:
+      type: nats
+
+    analyticsServer:
+      appId: analytics-collector
+
+    iceberg:
+      catalog: {{ .Values.appConfig.iceberg.catalog | quote }}
+      fileIO: {{ .Values.appConfig.iceberg.fileIO | quote }}
+      namespace: {{ .Values.appConfig.iceberg.namespace | quote }}
+      table: {{ .Values.appConfig.iceberg.table | quote }}
+      warehouseLocation: {{ .Values.appConfig.iceberg.warehouseLocation | quote }}
+      database:
+        uri: {{ .Values.appConfig.iceberg.databaseUrl | quote }}
+        username: $ICEBERG_DATABASE_USER
+        password: $ICEBERG_DATABASE_PASSWORD
+      s3:
+        bucket: $AWS_BUCKET
+        region: $AWS_REGION
+        endpoint: $AWS_ENDPOINT
+        pathStyleAccess: true
+        accessKeyId: $AWS_ACCESS_KEY_ID
+        secretAccessKey: $AWS_SECRET_ACCESS_KEY
+
+    # Must match bosca-server and bosca-runner: whichever process installs the analytics-queries
+    # package first seeds the queries with this table.
+    experimentation:
+      eventsTable: {{ .Values.appConfig.experimentationEventsTable | default "warehouse.bosca.events" | quote }}
+
+    packages: [analytics-queries]

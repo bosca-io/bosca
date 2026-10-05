@@ -1,0 +1,76 @@
+fragment WorkOpsTaskFragment on WorkOpsTask {
+    id
+    key
+    summary
+    descriptionMarkdown
+    reporterProfileId
+    assigneeProfileId
+    sprintId
+    milestoneId
+    labelIds
+    componentIds
+    affectsVersionIds
+    fixVersionIds
+    originalEstimateSeconds
+    remainingEstimateSeconds
+    timeSpentSeconds
+    dueDate
+    startDate
+    resolutionAt
+    slaDueAt
+    contentItemId
+    collectionId
+    epicTotalEstimateSeconds
+    epicTotalRemainingSeconds
+    epicTotalSpentSeconds
+    epicChildCount
+    epicChildDoneCount
+    watcherProfileIds
+    voteCount
+    deletedAt
+    createdAt
+    modifiedAt
+    createdByPrincipalId
+    modifiedByPrincipalId
+    version
+    customFields
+    project {
+        id
+        key
+        name
+    }
+    affectedProjects {
+        id
+        key
+        name
+    }
+    taskType {
+        id
+        name
+        hierarchyLevel
+    }
+    status {
+        id
+        name
+        category
+    }
+    priority {
+        id
+        name
+        displayOrder
+    }
+    resolution {
+        id
+        name
+    }
+    parentTask {
+        id
+        key
+        summary
+    }
+    epicTask {
+        id
+        key
+        summary
+    }
+}

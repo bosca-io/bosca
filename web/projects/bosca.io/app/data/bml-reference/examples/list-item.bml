@@ -1,0 +1,21 @@
+{# Reusable row rendered by lists.bml and task-list.bml. #}
+<component tag="list-item">
+  <prop name="id" type="String" required/>
+  <prop name="label" type="String" required/>
+  <prop name="pinned" type="Boolean" default="false"/>
+  <prop name="position" type="Int" required/>
+
+  <style scoped>
+    .item { display: flex; align-items: center; gap: 0.75rem; }
+    .label { flex: 1; }
+    .badge { font-size: 0.75rem; text-transform: uppercase; }
+  </style>
+
+  <li :data-id="id" class="item item-{ position }">
+    <span class="label">{ label }</span>
+    <if pinned>
+      <span class="badge">pinned</span>
+    </if>
+    <slot/>
+  </li>
+</component>

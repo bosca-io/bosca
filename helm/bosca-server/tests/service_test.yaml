@@ -1,0 +1,28 @@
+suite: bosca-server Service
+templates:
+  - templates/service.yaml
+values:
+  - ../values.yaml
+release:
+  name: test
+  namespace: bosca
+tests:
+  - it: exposes only HTTP1 by default
+    asserts:
+      - lengthEqual:
+          path: spec.ports
+          count: 1
+
+  - it: advertises h2c when HTTP2 is enabled
+    set:
+      appConfig.http2Enabled: true
+    asserts:
+      - equal:
+          path: spec.ports[1].name
+          value: h2c
+      - equal:
+          path: spec.ports[1].port
+          value: 8081
+      - equal:
+          path: spec.ports[1].appProtocol
+          value: kubernetes.io/h2c

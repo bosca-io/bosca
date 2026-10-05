@@ -1,0 +1,9 @@
+mutation SetMetadataLocked($id: UUID!, $version: Int!, $locked: Boolean!) {
+    content {
+        metadata {
+            setLocked(id: $id, version: $version, locked: $locked) {
+              ...Metadata
+            }
+        }
+    }
+}

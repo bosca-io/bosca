@@ -1,0 +1,14 @@
+"An ISO 8601 date-time string (e.g. 2024-01-15T09:30:00Z)"
+scalar DateTime
+
+"Arbitrary JSON object"
+scalar JSON
+
+"64-bit integer, used for values that exceed the 32-bit Int range"
+scalar Long
+
+"File upload scalar for multipart form data"
+scalar Upload
+
+"Universally unique identifier (UUID) string"
+scalar UUID

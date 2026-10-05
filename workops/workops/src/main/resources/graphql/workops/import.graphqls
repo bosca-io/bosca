@@ -1,0 +1,5 @@
+# Work Ops — Bulk operations and Import / Export (R24)
+#
+# Populated in Phase 10 (specs/workops/plan.md §10). Owns
+# `bulkUpdateTasks`, `importTasks` (CSV / Jira XML / GitHub JSON),
+# `commitImport`, and `exportTasks`. Intentionally empty for Phase 1.

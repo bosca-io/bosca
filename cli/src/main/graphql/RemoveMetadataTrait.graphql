@@ -1,0 +1,7 @@
+mutation RemoveMetadataTrait($metadataId: UUID!, $traitId: String!) {
+    content {
+        metadata {
+            deleteTrait(metadataId: $metadataId, traitId: $traitId)
+        }
+    }
+}

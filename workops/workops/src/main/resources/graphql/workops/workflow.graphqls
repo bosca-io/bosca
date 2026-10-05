@@ -1,0 +1,129 @@
+# Work Ops — WorkOpsWorkflow (R4)
+#
+# Phase 3 ships the read shape of WorkOpsWorkflow / WorkOpsWorkflowState /
+# WorkOpsWorkflowTransition (WorkOpsStatus was added in Phase 2). The JSONB-backed
+# Conditions / Validators / PostFunctions trees ride opaque through
+# the GraphQL surface as `JSON` payloads — Phase 7 (admin author UI)
+# adds a typed builder on top.
+
+enum WorkOpsStatusCategory {
+    TODO
+    IN_PROGRESS
+    DONE
+    CANCELLED
+}
+
+type WorkOpsStatus {
+    id: UUID!
+    name: String!
+    description: String
+    category: WorkOpsStatusCategory!
+    colorHex: String!
+    version: Long!
+}
+
+"""
+A reusable state-machine definition. The `default` workflow for a
+project is bound via [WorkOpsWorkflowScheme]; per-task-type overrides let
+two task types in the same project use different state machines.
+"""
+type WorkOpsWorkflow {
+    id: UUID!
+    name: String!
+    description: String
+    initialStateId: UUID
+    states: [WorkOpsWorkflowState!]!
+    transitions: [WorkOpsWorkflowTransition!]!
+    version: Long!
+}
+
+"""
+One reachable state in a [WorkOpsWorkflow]. Phase 8 wires the optional
+`slaPolicyId` against `core-calendar` working calendars.
+"""
+type WorkOpsWorkflowState {
+    id: UUID!
+    workflowId: UUID!
+    statusId: UUID!
+    status: WorkOpsStatus!
+    "Convenience accessor — delegates to the underlying status name."
+    name: String!
+    displayOrder: Int!
+    slaPolicyId: UUID
+}
+
+"""
+One edge in the workflow's state machine. `fromStateIds` is
+`["*"]` for wildcard transitions reachable from every state.
+"""
+type WorkOpsWorkflowTransition {
+    id: UUID!
+    workflowId: UUID!
+    name: String!
+    description: String
+    fromStateIds: [String!]!
+    "Resolved workflow states this transition can originate from (excludes wildcard entries)."
+    fromStates: [WorkOpsWorkflowState!]!
+    "First resolved from-state, or null for wildcard transitions."
+    fromState: WorkOpsWorkflowState
+    toStateId: UUID!
+    "Resolved workflow state the transition moves the task into."
+    toState: WorkOpsWorkflowState!
+    "Opaque JSON list of Conditions; admin tooling decodes."
+    conditions: JSON!
+    "Opaque JSON list of Validators; admin tooling decodes."
+    validators: JSON!
+    "Opaque JSON list of PostFunctions; admin tooling decodes."
+    postFunctions: JSON!
+    screenId: UUID
+}
+
+"""
+The mapping between projects and the workflow that runs their tasks.
+The `perTaskTypeWorkflowIds` JSON object keys task-type UUIDs to
+workflow UUIDs.
+"""
+type WorkOpsWorkflowScheme {
+    id: UUID!
+    name: String!
+    description: String
+    defaultWorkflowId: UUID!
+    perTaskTypeWorkflowIds: JSON!
+    version: Long!
+}
+
+type WorkOpsStatuses {
+    "Read all statuses (Phase 2 reference data; Phase 7 ships full workflow CRUD)."
+    all: [WorkOpsStatus!]!
+    status(id: UUID!): WorkOpsStatus
+}
+
+input CreateWorkOpsStatusInput {
+    name: String!
+    description: String
+    category: WorkOpsStatusCategory!
+    colorHex: String!
+}
+
+input UpdateWorkOpsStatusInput {
+    name: String!
+    description: String
+    category: WorkOpsStatusCategory!
+    colorHex: String!
+    expectedVersion: Long!
+}
+
+"Admin CRUD for statuses (R4 reference data)."
+type WorkOpsStatusesMutation {
+    create(input: CreateWorkOpsStatusInput!): WorkOpsStatus!
+    update(id: UUID!, input: UpdateWorkOpsStatusInput!): WorkOpsStatus!
+    delete(id: UUID!): Boolean!
+}
+
+"Read-only namespace over Phase 3 workflow definitions."
+type WorkOpsWorkflows {
+    all: [WorkOpsWorkflow!]!
+    workflow(id: UUID!): WorkOpsWorkflow
+    schemes: [WorkOpsWorkflowScheme!]!
+    scheme(id: UUID!): WorkOpsWorkflowScheme
+}

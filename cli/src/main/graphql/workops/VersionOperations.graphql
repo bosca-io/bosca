@@ -1,0 +1,55 @@
+query GetWorkOpsVersionsByProject($projectId: UUID!) {
+    workOps {
+        versions {
+            byProject(projectId: $projectId) {
+                id
+                projectId
+                name
+                description
+                startDate
+                releaseDate
+                released
+                archived
+                sequenceNumber
+                version
+            }
+        }
+    }
+}
+
+mutation CreateWorkOpsVersion($input: CreateWorkOpsVersionInput!) {
+    workOps {
+        versions {
+            create(input: $input) {
+                id
+                projectId
+                name
+                description
+                sequenceNumber
+                version
+            }
+        }
+    }
+}
+
+mutation ReleaseWorkOpsVersion($id: UUID!, $expectedVersion: Long!) {
+    workOps {
+        versions {
+            release(id: $id, expectedVersion: $expectedVersion) {
+                id
+                name
+                released
+                releaseDate
+                version
+            }
+        }
+    }
+}
+
+mutation DeleteWorkOpsVersion($id: UUID!) {
+    workOps {
+        versions {
+            delete(id: $id)
+        }
+    }
+}

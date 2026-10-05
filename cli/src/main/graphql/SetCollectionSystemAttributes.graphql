@@ -1,0 +1,7 @@
+mutation SetCollectionSystemAttributes($id: UUID!, $attributes: JSON!) {
+    content {
+        collection {
+            setCollectionSystemAttributes(id: $id, attributes: $attributes)
+        }
+    }
+}

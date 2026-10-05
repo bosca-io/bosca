@@ -1,0 +1,12 @@
+<component tag="profile-add-attribute-form">
+  <prop name="type" type="bosca.profiles.web.ProfileAttributeTypeRow" required/>
+
+  <form class="form-grid add-attribute-form" data-add-attribute-form>
+    <input name="typeId" type="hidden" :value="type.id"/>
+    <div class="full"><profile-attribute-input :field="type.field"/></div>
+    <div class="form-footer full">
+      <profile-visibility-field :visibility="bosca.profiles.web.graphql.ProfileVisibility.PUBLIC"/>
+      <button class="primary" type="submit">Add attribute</button>
+    </div>
+  </form>
+</component>

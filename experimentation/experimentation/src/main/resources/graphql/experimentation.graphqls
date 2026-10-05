@@ -1,0 +1,703 @@
+"Categorizes feature flags by the type of value their variations resolve to."
+enum FlagType {
+    "Variations are boolean true/false."
+    BOOLEAN
+    "Variations are numbers between 0 and 100."
+    PERCENTAGE
+    "Variations are string values."
+    STRING
+    "Variations are arbitrary JSON payloads."
+    JSON
+}
+
+"Lifecycle status of a feature flag, controlling whether it is actively evaluated."
+enum FlagStatus {
+    DRAFT
+    ENABLED
+    DISABLED
+    ARCHIVED
+}
+
+"Lifecycle status of an experiment."
+enum ExperimentStatus {
+    DRAFT
+    RUNNING
+    PAUSED
+    COMPLETED
+    ARCHIVED
+}
+
+"""
+Statistical method used to compute per-variation confidence.
+
+FREQUENTIST (the default) applies chi-squared for UNIQUE_CONVERSION
+goals and Welch's t for EVENT_COUNT, with Bonferroni correction
+across the goal × (variations - 1) family.
+
+BAYESIAN replaces the per-variation confidence with a posterior
+`probabilityBeatsControl` (and an `expectedLoss` regret metric).
+No Bonferroni correction is applied — Bayesian posteriors have no
+family-wise error rate to control. Bayesian verdicts are
+interpretable at any sample size, so peeking at results does not
+inflate false-positive rates.
+"""
+enum AnalysisMethod {
+    FREQUENTIST
+    BAYESIAN
+}
+
+"""
+Configurable prior distributions for Bayesian analysis. Null on
+the parent experiment means "use sane defaults" (uniform Beta(1,1)
+and a flat Normal on event-count means), so operators do not have
+to configure anything to get reasonable Bayesian output.
+"""
+input BayesianPriorInput {
+    "Beta prior alpha. Default 1.0 (uniform)."
+    betaPriorAlpha: Float
+    "Beta prior beta. Default 1.0 (uniform)."
+    betaPriorBeta: Float
+    "Normal prior mean for EVENT_COUNT goals. Null = improper flat prior."
+    normalPriorMean: Float
+    "Normal prior variance for EVENT_COUNT goals. Null = improper flat prior."
+    normalPriorVariance: Float
+}
+
+type BayesianPrior {
+    betaPriorAlpha: Float!
+    betaPriorBeta: Float!
+    normalPriorMean: Float
+    normalPriorVariance: Float
+}
+
+"Categorizes the type of change that occurred to a feature flag."
+enum FlagUpdateAction {
+    UPDATED
+    DELETED
+}
+
+"Input for creating or updating a feature flag."
+input FeatureFlagInput {
+    "Unique key used to reference this flag in code (e.g., 'new-checkout-flow')."
+    key: String!
+    "Display name of the flag."
+    name: String!
+    "Description of the flag's purpose."
+    description: String
+    "The flag's value type — constrains the shape of variation values."
+    type: FlagType!
+    "JSON array of Variation objects: [{key, name, description, value}, ...]"
+    variations: JSON!
+    "The variation key returned when no targeting rule matches."
+    defaultVariationKey: String!
+    "Ordered JSON array of TargetingRule objects evaluated top-to-bottom."
+    targetingRules: JSON
+    "Initial lifecycle status. Defaults to DRAFT if omitted."
+    status: FlagStatus
+}
+
+"Input for creating or updating an experiment."
+input ExperimentInput {
+    "The UUID of the feature flag this experiment observes."
+    featureFlagId: UUID!
+    "Display name of the experiment."
+    name: String!
+    "Description of the experiment."
+    description: String
+    "The hypothesis being tested."
+    hypothesis: String
+    "Stable id of the targeting rule this experiment is attached to. Null means the experiment observes the flag's default-variation path."
+    targetingRuleId: String
+    "Required baseline variation selected from the experiment's involved variations."
+    controlVariationKey: String!
+    "Account principal IDs omitted from all calculations while their assignment remains active. Omit on edit to preserve the current list; send an empty list to clear it."
+    excludedPrincipalIds: [UUID!]
+    "Event filter whose first match makes an assigned subject eligible for outcome analysis. Null disables activation gating."
+    activationFilter: ExperimentActivationFilterInput
+    "UUID of an optional mutual exclusion layer."
+    exclusionLayerId: UUID
+    "When the experiment should start accepting traffic."
+    startDate: DateTime
+    "When the experiment should stop accepting traffic."
+    endDate: DateTime
+    "Target number of total assignments before the experiment is considered complete."
+    targetSampleSize: Long
+    "Rollout policy. When set, a controller job runs after every analysis to advance/halt/hold the rollout."
+    rolloutPolicy: RolloutPolicyInput
+    "Statistical method. Defaults to FREQUENTIST."
+    analysisMethod: AnalysisMethod
+    "Bayesian prior overrides. Null = sane defaults."
+    bayesianPrior: BayesianPriorInput
+}
+
+"Filters the first analytics event that activates an assigned experiment subject."
+input ExperimentActivationFilterInput {
+    eventType: EventType
+    elementType: String
+    elementId: String
+    "Optional exact page path alternative."
+    pagePath: String
+    "Page path prefixes combined as alternatives, for example /articles/, /talks/, and /studies/."
+    pagePathPrefixes: [String!]
+    itemExtraKey: String
+    itemExtraValue: String
+}
+
+"Configured analytics event filter that activates an assigned experiment subject."
+type ExperimentActivationFilter {
+    eventType: EventType
+    elementType: String
+    elementId: String
+    pagePath: String
+    pagePathPrefixes: [String!]!
+    itemExtraKey: String
+    itemExtraValue: String
+}
+
+"""
+Progressive-delivery controller configuration. When attached to an
+experiment, the RolloutPolicyJob reads each fresh analysis report and
+mutates the attached rule's weights — advancing on SHIP, holding on
+KEEP_RUNNING / INCONCLUSIVE, halting on HALT. See specs/experiments-v2/.
+"""
+enum RolloutPolicyMode {
+    "No automated advance. Guardrail HALT still applies when haltOnGuardrail=true."
+    MANUAL
+    "Time-driven step list. Each step waits afterDuration, then applies regardless of verdict (HALT excepted)."
+    SCHEDULED_STEPS
+    "Data-driven step list. Advance one step per SHIP verdict; hold otherwise."
+    ADAPTIVE_STEPS
+    "Data-driven continuous ramp. Each SHIP verdict adds incrementPercent to treatment weight."
+    ADAPTIVE_CONTINUOUS
+}
+
+"One stop on a scheduled or adaptive step list."
+input RolloutStepInput {
+    weightPercent: Int!
+    "ISO-8601 duration (e.g. 'P1D'). Required for SCHEDULED_STEPS mode."
+    afterDuration: String
+}
+
+"Controller configuration attached to an experiment."
+input RolloutPolicyInput {
+    mode: RolloutPolicyMode!
+    "Variation key the controller ramps toward. Must be served by the attached rule's rollout."
+    treatmentVariationKey: String!
+    "Step list for SCHEDULED_STEPS and ADAPTIVE_STEPS."
+    steps: [RolloutStepInput!]
+    "Percentage-point increase per SHIP verdict for ADAPTIVE_CONTINUOUS."
+    incrementPercent: Float
+    "Default 0.95. Minimum confidence / P(beats control) to auto-advance."
+    minConfidence: Float
+    "Default 0.95. Minimum confidence to trip a guardrail HALT."
+    guardrailThreshold: Float
+    "Default 0.5. Minimum negative lift percent for a guardrail regression to trip HALT."
+    guardrailMinRegressionPercent: Float
+    "Default true. When false, HALT verdicts produce held audit events but no flag edit."
+    haltOnGuardrail: Boolean
+}
+
+"One stop on a scheduled or adaptive step list."
+type RolloutStep {
+    weightPercent: Int!
+    afterDuration: String
+}
+
+"Controller configuration attached to an experiment."
+type RolloutPolicy {
+    mode: RolloutPolicyMode!
+    treatmentVariationKey: String!
+    steps: [RolloutStep!]
+    incrementPercent: Float
+    minConfidence: Float!
+    guardrailThreshold: Float!
+    guardrailMinRegressionPercent: Float!
+    haltOnGuardrail: Boolean!
+}
+
+"""
+Audit row for one rollout controller action. Written on every
+controller wake, including held decisions, so operators can trace
+exactly why (or why not) a rollout changed.
+"""
+enum RolloutPolicyAction {
+    ADVANCED
+    HELD
+    HALTED
+    COMPLETED
+}
+
+type RolloutPolicyEvent {
+    id: UUID!
+    experimentId: UUID!
+    action: RolloutPolicyAction!
+    reason: String!
+    "Weights as they were before the controller's write."
+    oldWeights: JSON!
+    "Weights after the controller's write. Equal to oldWeights for HELD events."
+    newWeights: JSON!
+    created: DateTime!
+}
+
+"""
+GraphQL-facing enum for analytics event types. Mirrors the wire-format
+`bosca.analytics.model.EventType` enum (which uses lowercase `@SerialName`
+for the SDK protocol) and gets mapped at the experimentation service
+boundary so the wire-format enum can stay strict while the GraphQL schema
+follows graphql-java's PascalCase enum coercion convention.
+"""
+enum EventType {
+    Session
+    Interaction
+    Impression
+    Completion
+    Installation
+    Assignment
+    Error
+}
+
+"""
+Selects which statistical metric a conversion goal reports.
+
+`UNIQUE_CONVERSION` counts each converting user at most once and analyzes
+the resulting proportion with chi-squared. `EVENT_COUNT` totals matching
+events per user, reports the per-user mean and variance, and analyzes the
+difference with Welch's t-test. `SESSION_DURATION` reports each subject's mean
+session duration in seconds, including observed audio/video progress. Older play events
+estimate remaining media duration, limited by later player events and the aggregation cutoff.
+Sessions end five minutes after their last activity or playback. This also uses
+Welch's t-test. These metrics answer different
+questions and cannot share a single statistical engine.
+"""
+enum GoalMetricType {
+    UNIQUE_CONVERSION
+    EVENT_COUNT
+    SESSION_DURATION
+}
+
+"""
+Role a conversion goal plays in an experiment's verdict logic.
+
+`PRIMARY` goals drive SHIP/DO_NOT_SHIP decisions — they are the metrics
+the experiment is trying to move. `SECONDARY` goals inform the report
+without halting a rollout; a significant regression on a secondary
+downgrades an otherwise-SHIP verdict to INCONCLUSIVE but never to
+DO_NOT_SHIP. `GUARDRAIL` goals are "must not break" safety metrics; a
+significant regression on any guardrail produces HALT, which the rollout
+controller interprets as "revert treatment to 0% and pause the
+experiment". Guardrail HALT dominates every other signal except
+SRM_FAILED.
+"""
+enum ConversionGoalRole {
+    PRIMARY
+    SECONDARY
+    GUARDRAIL
+}
+
+"""
+CUPED covariate configuration. When set on an EVENT_COUNT goal,
+the aggregator runs a second per-user pre-period query matching
+the same filter shape and uses OLS to subtract the part of the
+post-period outcome that the pre-period value already explained.
+Sample sizes typically drop 30-50% on correlated metrics.
+"""
+input CupedCovariateInput {
+    eventType: EventType
+    elementType: String
+    elementId: String
+    pagePath: String
+    "ISO-8601 duration, default 'P14D'."
+    lookbackWindow: String
+}
+
+type CupedCovariate {
+    eventType: EventType
+    elementType: String
+    elementId: String
+    pagePath: String
+    lookbackWindow: String!
+}
+
+"Input for creating a conversion goal for an experiment."
+input ConversionGoalInput {
+    name: String!
+    "Filters by event type. Null = match events of any type."
+    eventType: EventType
+    elementType: String
+    elementId: String
+    "Defaults to UNIQUE_CONVERSION if omitted."
+    metricType: GoalMetricType
+    "Restricts the goal to events emitted on a specific page path. Null = match any page."
+    pagePath: String
+    "Alternative page path prefixes. A match on any exact path or prefix qualifies."
+    pagePathPrefixes: [String!]
+    "Select interactions whose element carries this analytics extra key and at least one content reference."
+    itemExtraKey: String
+    "Optional exact, case-sensitive scalar value for itemExtraKey. Null means key presence."
+    itemExtraValue: String
+    "Defaults to PRIMARY if omitted."
+    role: ConversionGoalRole
+    "Optional CUPED covariate configuration for variance reduction."
+    cupedCovariate: CupedCovariateInput
+}
+
+"Input for creating or updating a mutual exclusion layer."
+input ExclusionLayerInput {
+    name: String!
+    description: String
+}
+
+"A feature flag with a palette of variations and a list of targeting rules."
+type FeatureFlag {
+    id: UUID!
+    key: String!
+    name: String!
+    description: String!
+    type: FlagType!
+    status: FlagStatus!
+    "JSON array of Variation objects defining this flag's value palette."
+    variations: JSON!
+    "The variation key returned when no targeting rule matches."
+    defaultVariationKey: String!
+    "Ordered JSON array of TargetingRule objects."
+    targetingRules: JSON
+    "Per-flag salt mixed into bucket-assignment hashes; regenerate to reshuffle."
+    salt: String!
+    created: DateTime!
+    modified: DateTime!
+    """
+    Returns a page of experiments observing this flag's targeting
+    rules, ordered by creation date descending. Pagination is applied
+    in the database query. The server clamps `limit` to 100.
+    """
+    experiments(offset: Long! = 0, limit: Int! = 50): [Experiment!]!
+    """
+    Current distribution of installations across the flag's variations.
+    A principal may own an installation's assignment, but ownership does
+    not add another row. An assignment changes only when evaluation selects
+    a different variation. Historical assignment transitions are stored in
+    analytics. Variations with no current assignments are absent.
+    """
+    variationAssignments: [VariationAssignmentCount!]!
+}
+
+"""
+Current assignment count for one variation of a feature flag.
+"""
+type VariationAssignmentCount {
+    "The variation users are currently bucketed into."
+    variationKey: String!
+    "How many installations are currently assigned to this variation."
+    assignmentCount: Long!
+}
+
+"An experiment is observation+stats attached to a single targeting rule on a feature flag. The variations being measured are the variations the attached rule's rollout splits across — experiments do not own values."
+type Experiment {
+    id: UUID!
+    featureFlagId: UUID!
+    featureFlag: FeatureFlag
+    name: String!
+    description: String!
+    hypothesis: String!
+    status: ExperimentStatus!
+    "Stable id of the targeting rule this experiment observes. Null means the default-variation path."
+    targetingRuleId: String
+    "Explicit baseline variation used by every statistical comparison."
+    controlVariationKey: String!
+    "Account principal IDs omitted from all experiment calculations."
+    excludedPrincipalIds: [UUID!]!
+    "Event filter whose first match gates the experiment's outcome cohort."
+    activationFilter: ExperimentActivationFilter
+    exclusionLayer: ExclusionLayer
+    """
+    Returns a page of conversion goals attached to the experiment,
+    ordered by creation time. Pagination is applied in the database
+    query. The server clamps `limit` to 100.
+    """
+    conversionGoals(offset: Long! = 0, limit: Int! = 50): [ConversionGoal!]!
+    """
+    Returns a page of aggregated per-(variation, goal) experiment
+    results. Pagination is applied in the database query. The server
+    clamps `limit` to 200 because callers typically want every row
+    but a misbehaving experiment with hundreds of variations should
+    not fan out to an unbounded list.
+    """
+    results(offset: Long! = 0, limit: Int! = 100): [ExperimentResult!]!
+    """
+    Returns the current-definition analysis report first when one exists,
+    followed by historical reports newest first. Pagination is applied in
+    the database query. The server clamps `limit` to 100.
+    """
+    analysisReports(offset: Long! = 0, limit: Int! = 25): [AnalysisReport!]!
+    "Rollout policy attached to this experiment. Null when the experiment runs without progressive-delivery automation."
+    rolloutPolicy: RolloutPolicy
+    """
+    Audit trail of rollout controller decisions for this experiment,
+    newest first. One row per controller wake — advances, holds,
+    halts, completes. Pagination is applied in the database query.
+    The server clamps `limit` to 100.
+    """
+    rolloutPolicyEvents(offset: Long! = 0, limit: Int! = 50): [RolloutPolicyEvent!]!
+    "Statistical method used by the analyzer."
+    analysisMethod: AnalysisMethod!
+    "Configured Bayesian prior, null when defaults apply."
+    bayesianPrior: BayesianPrior
+    startDate: DateTime
+    endDate: DateTime
+    targetSampleSize: Long
+    created: DateTime!
+    modified: DateTime!
+}
+
+"A mutual exclusion layer preventing conflicting experiment enrollment."
+type ExclusionLayer {
+    id: UUID!
+    name: String!
+    description: String!
+    "Experiments attached to this layer, ordered by creation date descending. Defaults to first 100."
+    experiments(offset: Long! = 0, limit: Int! = 100): [Experiment!]!
+    created: DateTime!
+}
+
+"Records the assignment of a user or device to a variation within an experiment."
+type Assignment {
+    id: UUID!
+    experimentId: UUID!
+    "The variation key this user was bucketed into."
+    variationKey: String!
+    principalId: UUID
+    installationId: String
+    assignedAt: DateTime!
+}
+
+"Defines what analytics events count as conversions for an experiment."
+type ConversionGoal {
+    id: UUID!
+    experimentId: UUID!
+    name: String!
+    "Filtered event type, or null when the goal counts events of any type."
+    eventType: EventType
+    elementType: String
+    elementId: String
+    metricType: GoalMetricType!
+    "Page path filter — when set, the goal only counts events with this page.path."
+    pagePath: String
+    "Alternative page path prefixes. A match on any exact path or prefix qualifies."
+    pagePathPrefixes: [String!]!
+    "Analytics extra key used to select item interactions."
+    itemExtraKey: String
+    "Exact scalar extra value, or null for key-presence matching."
+    itemExtraValue: String
+    "Role in verdict logic. Drives how regressions on this goal influence the overall SHIP/HALT decision."
+    role: ConversionGoalRole!
+    "CUPED covariate for variance reduction. Null when no adjustment is configured."
+    cupedCovariate: CupedCovariate
+    created: DateTime!
+}
+
+"Aggregated metrics for a specific variation and conversion goal within an experiment."
+type ExperimentResult {
+    id: UUID!
+    experimentId: UUID!
+    "The variation key these metrics apply to. Resolve against the parent flag's variations to display name/value."
+    variationKey: String!
+    goalId: UUID!
+    goal: ConversionGoal
+    "Raw assignments used for rollout allocation and sample-ratio diagnostics."
+    assignments: Long!
+    "Number of subjects eligible for outcomes after applying the activation filter."
+    impressions: Long!
+    "Independent subject-level observations used by the statistic."
+    observationCount: Long!
+    conversions: Long!
+    conversionRate: Float!
+    "Statistical confidence (0.0 to 1.0) that the difference from control is real."
+    confidenceLevel: Float
+    "Percentage improvement over the control variation."
+    liftOverControl: Float
+    "Per-user mean of matching events for EVENT_COUNT, or derived session seconds for SESSION_DURATION."
+    mean: Float
+    "Unbiased sample variance of matching events per user or derived session seconds. Null for UNIQUE_CONVERSION."
+    variance: Float
+    "Posterior P(this variation > control). Populated only for Bayesian runs on non-control rows."
+    probabilityBeatsControl: Float
+    "Posterior E[max(0, control - this)] — expected regret from picking this variation. Bayesian runs only."
+    expectedLoss: Float
+    "CUPED-adjusted per-user mean. Populated only when the goal has a cupedCovariate configuration."
+    adjustedMean: Float
+    "CUPED-adjusted per-user variance. Strictly smaller than `variance` when the covariate explains any post-period variation."
+    adjustedVariance: Float
+    updatedAt: DateTime!
+}
+
+"""
+An automated analysis report for an experiment.
+
+`summary` and `recommendation` are the deterministic prose written by the
+statistical pipeline (chi-squared / Welch's t / Bonferroni) and are the
+authoritative product surface for the verdict. `details` is the structured
+per-goal/per-variation breakdown the admin UI uses to render tables.
+
+`aiInsights` is an OPTIONAL structured commentary payload written by the
+LLM analyzer on top of the deterministic result. It is strictly additive
+and labeled as AI in the UI: the analysis job never replaces
+summary/recommendation with AI output, and the analyzer rejects any LLM
+response whose internal verdict-acknowledgement guardrail does not match
+the deterministic verdict, so the AI section can never silently
+contradict the deterministic decision. Null when no AI analyzer is wired
+or when the verifier rejected the response.
+"""
+type AnalysisReport {
+    id: UUID!
+    experimentId: UUID!
+    summary: String!
+    recommendation: String!
+    details: JSON!
+    confidence: Float
+    aiInsights: AiInsights
+    created: DateTime!
+}
+
+"""
+Structured LLM commentary attached to an AnalysisReport on top of the
+deterministic verdict. Strictly additive — the deterministic summary and
+recommendation on the parent report remain the authoritative product
+surface, and this payload only appears after the analyzer's
+verdict-acknowledgement check has passed.
+"""
+type AiInsights {
+    "1–3 sentences reconciling the observed result against the operator's hypothesis."
+    hypothesisAssessment: String!
+    "1–3 sentences describing observations spanning multiple conversion goals. When there is only one goal, the analyzer says so briefly."
+    crossGoalPatterns: String!
+    "One or two concrete next experiments to consider, grounded in the observed data."
+    followUpExperiments: [String!]!
+    "Common bucketing/tracking failure modes to investigate first. Populated only when the deterministic verdict is SRM_FAILED."
+    srmRootCauseHints: String
+}
+
+"The resolved value of a feature flag for a specific user/device context."
+type FlagEvaluation {
+    flagKey: String!
+    "The variation key that was selected."
+    variationKey: String!
+    "The variation's resolved value, or null when the flag is unavailable or invalid."
+    value: JSON
+    "The experiment id if a running experiment was attached to the matched rule."
+    experimentId: UUID
+    """
+    True when targeting data or feature evaluation was unavailable. A
+    non-blank variationKey carries the flag's valid declared default; a
+    blank variationKey carries a null value and tells clients to use their
+    authored fallback.
+    """
+    degraded: Boolean!
+}
+
+"Event published when a feature flag is modified."
+type FlagUpdated {
+    flagKey: String!
+    flagId: UUID!
+    action: FlagUpdateAction!
+}
+
+"Query operations for feature flags."
+type FeatureFlags {
+    all(offset: Long!, limit: Int!): [FeatureFlag!]!
+    flag(id: UUID!): FeatureFlag
+    flagByKey(key: String!): FeatureFlag
+    "Evaluate a single flag for the current user/device context."
+    evaluate(
+        flagKey: String!
+        installationId: String!
+        "Typed device snapshot used by DeviceAttribute targeting conditions. Mirrors the analytics SDK's Device class."
+        device: AnalyticsDevice
+    ): FlagEvaluation!
+    "Evaluate all active flags for the current user/device context."
+    evaluateAll(
+        installationId: String!
+        device: AnalyticsDevice
+    ): [FlagEvaluation!]!
+}
+
+"""
+Typed device snapshot used by `evaluate` / `evaluateAll`. See the
+Kotlin `bosca.analytics.model.Device` class and `Device.attributeValue`
+for the canonical field set, alias table, and rules around adding new
+keys. Distinct from the `DeviceInput` declared by the `devices`
+framework module.
+"""
+input AnalyticsDevice {
+    installationId: String
+    manufacturer: String
+    model: String
+    platform: String
+    primaryLocale: String
+    systemName: String
+    timezone: String
+    type: String
+    version: String
+}
+
+"Mutation operations for managing feature flags."
+type FeatureFlagsMutation {
+    add(flag: FeatureFlagInput!): FeatureFlag!
+    edit(id: UUID!, flag: FeatureFlagInput!): FeatureFlag!
+    delete(id: UUID!): Boolean!
+    setStatus(id: UUID!, status: FlagStatus!): FeatureFlag!
+    "Regenerate the per-flag salt to reshuffle bucket assignments."
+    regenerateSalt(id: UUID!): FeatureFlag!
+}
+
+"Query operations for experiments."
+type Experiments {
+    all(offset: Long!, limit: Int!): [Experiment!]!
+    experiment(id: UUID!): Experiment
+    byFlag(flagId: UUID!): [Experiment!]!
+}
+
+"Mutation operations for managing experiments."
+type ExperimentsMutation {
+    add(experiment: ExperimentInput!): Experiment!
+    edit(id: UUID!, experiment: ExperimentInput!): Experiment!
+    delete(id: UUID!): Boolean!
+    setStatus(id: UUID!, status: ExperimentStatus!): Experiment!
+    addConversionGoal(experimentId: UUID!, goal: ConversionGoalInput!): ConversionGoal!
+    "Update an existing conversion goal in place. Preserves the goal id and any aggregated experiment_results rows keyed off it."
+    editConversionGoal(id: UUID!, goal: ConversionGoalInput!): ConversionGoal!
+    deleteConversionGoal(id: UUID!): Boolean!
+    "Aggregate impression and conversion metrics from analytics data."
+    aggregateResults(experimentId: UUID!): Boolean!
+    "Trigger a statistical analysis of experiment results."
+    analyze(experimentId: UUID!): Boolean!
+}
+
+"Query operations for exclusion layers."
+type ExclusionLayers {
+    all: [ExclusionLayer!]!
+    layer(id: UUID!): ExclusionLayer
+}
+
+"Mutation operations for managing exclusion layers."
+type ExclusionLayersMutation {
+    add(layer: ExclusionLayerInput!): ExclusionLayer!
+    edit(id: UUID!, layer: ExclusionLayerInput!): ExclusionLayer!
+    delete(id: UUID!): Boolean!
+}
+
+extend type Query {
+    featureFlags: FeatureFlags!
+    experiments: Experiments!
+    exclusionLayers: ExclusionLayers!
+}
+
+extend type Mutation {
+    featureFlags: FeatureFlagsMutation!
+    experiments: ExperimentsMutation!
+    exclusionLayers: ExclusionLayersMutation!
+}
+
+extend type Subscription {
+    "Subscribe to real-time feature flag update events."
+    flagUpdated: FlagUpdated!
+}

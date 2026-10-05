@@ -1,0 +1,9 @@
+query GetMetadataSupplementaryDownload($supplementaryId: UUID!) {
+    content {
+        metadataSupplementary(supplementaryId: $supplementaryId) {
+            content {
+                ...MetadataSupplementaryContentDownload
+            }
+        }
+    }
+}

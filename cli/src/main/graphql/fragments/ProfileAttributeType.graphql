@@ -1,0 +1,6 @@
+fragment ProfileAttributeType on ProfileAttributeType {
+    id
+    name
+    description
+    visibility
+}

@@ -1,0 +1,9 @@
+query GetMetadataDownload($id: UUID!) {
+    content {
+        metadata(id: $id) {
+            content {
+                ...MetadataContentDownload
+            }
+        }
+    }
+}

@@ -1,0 +1,93 @@
+"Aggregated state for a class of errors that share a fingerprint. One row exists per fingerprint per app and accumulates as error events flow through the analytics pipeline."
+type ErrorGroup {
+    "Stable per-(app, error class, top stack frames) identifier assigned by the server-side fingerprint transform"
+    fingerprint: String!
+    "Application identifier the error originated from"
+    appId: String!
+    "Fully-qualified exception class name (or 'UnknownError' when not provided)"
+    type: String!
+    "Latest representative message captured for this group; refreshed only when a resolved group regresses"
+    message: String!
+    "True when the latest occurrence in the group reported itself as fatal"
+    fatal: Boolean!
+    "Lifecycle status — open is the default, resolved hides until regression, ignored hides permanently"
+    status: ErrorGroupStatus!
+    "Identifier of the operator who currently owns triage of this group, if any"
+    assigneeId: UUID
+    "Earliest occurrence of this fingerprint observed across all batches"
+    firstSeen: DateTime!
+    "Most recent occurrence of this fingerprint observed across all batches"
+    lastSeen: DateTime!
+    "Total number of error events seen for this fingerprint"
+    eventCount: Long!
+    "Client identifier of a representative event for the latest sample (refreshed on regression)"
+    sampleEventId: String
+    "Stack trace captured from the latest representative event"
+    sampleStack: String
+    "Cached AI-generated root-cause analysis, populated on demand via the analyze mutation"
+    aiSummary: String
+    "When the cached AI summary was last refreshed"
+    aiSummaryAt: DateTime
+    "Row creation timestamp"
+    created: DateTime!
+    "Row last-modified timestamp"
+    modified: DateTime!
+}
+
+"Lifecycle state of an ErrorGroup."
+enum ErrorGroupStatus {
+    "Group is currently active and visible in default views"
+    OPEN
+    "Group has been triaged and resolved; will flip back to OPEN if a new occurrence arrives"
+    RESOLVED
+    "Group is muted permanently and excluded from default views and counts"
+    IGNORED
+}
+
+"Filter input for narrowing the error group list view."
+input ErrorGroupFilter {
+    "Restrict to a single application identifier"
+    appId: String
+    "Restrict by lifecycle status"
+    status: ErrorGroupStatus
+    "Restrict to fatal-only or non-fatal-only groups"
+    fatal: Boolean
+    "Substring match against the group type or message (case-insensitive)"
+    search: String
+}
+
+"A page of error groups along with the total matching count."
+type ErrorGroupConnection {
+    "The error groups in the current page"
+    edges: [ErrorGroup!]!
+    "Total number of groups matching the filter (across all pages)"
+    total: Long!
+}
+
+"Query operations for the error tracking subsystem."
+type AnalyticsErrors {
+    "Retrieve a paginated, filtered list of error groups for the admin error tracking UI"
+    groups(filter: ErrorGroupFilter, offset: Long, limit: Int): ErrorGroupConnection!
+    "Retrieve a single error group by its fingerprint, or null if none exists"
+    group(fingerprint: String!): ErrorGroup
+}
+
+"Mutation operations for the error tracking subsystem."
+type AnalyticsErrorsMutation {
+    "Set the lifecycle status of an error group (open, resolved, ignored)"
+    setStatus(fingerprint: String!, status: ErrorGroupStatus!): ErrorGroup!
+    "Assign or unassign the operator responsible for an error group"
+    assign(fingerprint: String!, assigneeId: UUID): ErrorGroup!
+    "Run AI root-cause analysis against an error group and cache the result on the group row"
+    analyze(fingerprint: String!): ErrorGroup!
+}
+
+extend type Analytics {
+    "Access the error tracking subsystem (groups, status, AI analysis)"
+    errors: AnalyticsErrors!
+}
+
+extend type AnalyticsMutation {
+    "Access mutation operations for error tracking"
+    errors: AnalyticsErrorsMutation!
+}

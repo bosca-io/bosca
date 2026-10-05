@@ -1,0 +1,9 @@
+{
+  "resources": {
+    "includes": [
+      { "pattern": "\\Qprofiles.css\\E" },
+      { "pattern": "\\Qprofiles.js\\E" },
+      { "pattern": "\\Qlogback.xml\\E" }
+    ]
+  }
+}

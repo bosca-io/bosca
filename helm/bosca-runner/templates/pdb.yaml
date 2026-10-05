@@ -1,0 +1,18 @@
+{{- range $name, $worker := .Values.workers }}
+{{- if gt (int (default 1 $worker.replicas)) 1 }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "bosca-common.fullname" $ }}-{{ $name }}
+  labels:
+    {{- include "bosca-common.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: worker-{{ $name }}
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      {{- include "bosca-common.selectorLabels" $ | nindent 6 }}
+      app.kubernetes.io/component: worker-{{ $name }}
+{{- end }}
+{{- end }}

@@ -1,0 +1,116 @@
+schema {
+    query: Query
+    mutation: Mutation
+    subscription: Subscription
+}
+
+"The root query type for the Bosca API. All read operations are accessed through the namespaced fields below."
+type Query {
+    "Access content management operations for collections, metadata, workflows, models, and related content entities."
+    content: Content!
+    "Access security operations for managing principals, groups, permissions, and authentication."
+    security: Security!
+    "Access server information and health status."
+    server: Server!
+    "Access full-text and semantic search operations across collections, metadata, and profiles."
+    search: Search!
+    "Access profile query operations for retrieving user profiles, attributes, and relationships."
+    profiles: Profiles!
+    "Access organization query operations for retrieving organizations, memberships, and signup configurations."
+    organizations: Organizations!
+    "Access application configuration key-value store for reading platform settings and feature flags."
+    configurations: Configurations!
+    "Access the list of supported languages for content localization."
+    languages: Languages!
+    "Access persisted query operations for managing pre-registered GraphQL queries."
+    persistedQueries: PersistedQueries!
+}
+
+"The root mutation type for the Bosca API. All write operations are accessed through the namespaced fields below."
+type Mutation {
+    "Clear all server-side caches (local Caffeine cache, Redis/NATS cache). Returns true if the caches were successfully cleared."
+    clearCache: Boolean!
+    "Clear the CDN edge cache, forcing content to be re-fetched from the origin. Returns true if the CDN cache was successfully invalidated."
+    clearCdnCache: Boolean!
+    "Expire all pending jobs in the job queue, marking them for re-processing. Returns true if jobs were successfully expired."
+    expireAllJobs: Boolean!
+    "Force-release all distributed locks held by jobs across all queues, allowing stuck jobs to be re-acquired by workers. Returns true if the operation completed successfully."
+    clearJobLocks: Boolean!
+    "Access content management mutation operations for collections, metadata, workflows, models, and related content entities."
+    content: ContentMutation!
+    "Access form submission mutations for submitting, updating status, and deleting form submissions."
+    forms: FormsMutation!
+    "Access security mutation operations for managing principals, groups, permissions, and authentication."
+    security: SecurityMutation!
+    "Access profile mutation operations for managing user profiles, attributes, collections, and relationships."
+    profiles: ProfilesMutation!
+    "Access organization mutation operations for managing organizations, memberships, domains, and signup configurations."
+    organizations: OrganizationsMutation!
+    "Access configuration mutation operations for managing application settings in the key-value store."
+    configurations: ConfigurationsMutation!
+    "Access persisted query mutation operations for registering and managing pre-registered GraphQL queries."
+    persistedQueries: PersistedQueriesMutation!
+}
+
+extend type Server {
+    "Active feature flags for this server deployment."
+    features: ServerFeatures!
+}
+
+"Server-level feature flags indicating which optional modules are active in this deployment."
+type ServerFeatures {
+    "Whether the chat and collaboration modules are enabled (requires NATS)."
+    chat: Boolean!
+    "Whether the community module is enabled."
+    community: Boolean!
+    "Whether the comments module (metadata comments + moderation) is enabled."
+    comments: Boolean!
+    "Whether the GraphQL introspection endpoint is exposed."
+    introspection: Boolean!
+    "Whether the server is running an in-process analytics event processor."
+    analyticsProcessor: Boolean!
+    "Whether the Work Ops module (task/project/portfolio management) is enabled."
+    workops: Boolean!
+    "Whether the ecommerce module (catalogs, carts, payments, subscriptions) is enabled."
+    ecommerce: Boolean!
+}
+
+"A real-time event emitted when a metadata item is created, updated, or deleted."
+type MetadataEvent {
+    "The type of event that occurred (e.g. 'created', 'updated', 'deleted')."
+    type: String
+    "The UUID of the metadata item that was affected."
+    id: UUID!
+    "The version number of the metadata item after the event."
+    version: Int!
+}
+
+"A real-time event emitted when a collection is created, updated, or deleted."
+type CollectionEvent {
+    "The type of event that occurred (e.g. 'created', 'updated', 'deleted')."
+    type: String
+    "The UUID of the collection that was affected."
+    id: UUID!
+    "The language variant affected by the event, when applicable."
+    languageTag: String
+}
+
+"Real-time progress event emitted during the server-side storage phase of a file upload."
+type UploadProgressEvent {
+    "The UUID of the metadata item being uploaded."
+    metadataId: UUID!
+    "The number of bytes written to storage so far."
+    bytesUploaded: Long!
+    "The total number of bytes to be written."
+    totalBytes: Long!
+}
+
+"The root subscription type for the Bosca API. Provides real-time event streams for content changes via WebSocket connections."
+type Subscription {
+    "Subscribe to real-time events for collection changes (create, update, delete). API tokens require the read-only `collections:view` scope."
+    collection: CollectionEvent!
+    "Subscribe to real-time events for metadata item and content changes (create, update, delete). API tokens require the read-only `content:view` scope."
+    metadata: MetadataEvent!
+    "Subscribe to upload progress events for a specific metadata item during the server-side storage transfer phase. API tokens require the read-only `content:view` scope."
+    uploadProgress(metadataId: UUID!): UploadProgressEvent!
+}

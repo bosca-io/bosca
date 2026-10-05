@@ -1,0 +1,147 @@
+query GetPipelineRun($id: UUID!) {
+    git {
+        pipelineRun(id: $id) {
+            id
+            pipelineId
+            repositoryId
+            commitSha
+            ref
+            triggerType
+            triggeredBy
+            status
+            number
+            concurrencyGroup
+            created
+            started
+            finished
+            durationSeconds
+            jobs {
+                id
+                pipelineRunId
+                name
+                status
+                runnerLabel
+                agentId
+                matrixValues
+                dependsOn
+                started
+                finished
+                steps {
+                    id
+                    pipelineJobId
+                    name
+                    ordinal
+                    status
+                    exitCode
+                    started
+                    finished
+                }
+            }
+        }
+    }
+}
+
+query ListPipelineRuns($repositoryId: UUID!, $offset: Long, $limit: Int) {
+    git {
+        pipelineRuns(repositoryId: $repositoryId, offset: $offset, limit: $limit) {
+            id
+            pipelineId
+            repositoryId
+            commitSha
+            ref
+            triggerType
+            status
+            number
+            created
+            started
+            finished
+            durationSeconds
+        }
+    }
+}
+
+query GetPipelineLogs($stepId: UUID!, $offset: Int, $limit: Int) {
+    git {
+        pipelineLogs(stepId: $stepId, offset: $offset, limit: $limit) {
+            lineNumber
+            timestamp
+            content
+            stream
+        }
+    }
+}
+
+query ListPipelines($repositoryId: UUID!) {
+    git {
+        pipelines(repositoryId: $repositoryId) {
+            id
+            repositoryId
+            filePath
+            name
+            created
+            updated
+        }
+    }
+}
+
+mutation TriggerPipeline($pipelineId: UUID!, $ref: String!) {
+    git {
+        triggerPipeline(pipelineId: $pipelineId, ref: $ref) {
+            id
+            pipelineId
+            repositoryId
+            commitSha
+            ref
+            triggerType
+            status
+            number
+            created
+        }
+    }
+}
+
+mutation CancelPipelineRun($id: UUID!) {
+    git {
+        cancelPipelineRun(id: $id) {
+            id
+            status
+            finished
+        }
+    }
+}
+
+mutation RerunPipeline($runId: UUID!) {
+    git {
+        rerunPipeline(runId: $runId) {
+            id
+            pipelineId
+            repositoryId
+            commitSha
+            ref
+            triggerType
+            status
+            number
+            created
+        }
+    }
+}
+
+mutation CancelPipelineJob($jobId: UUID!) {
+    git {
+        cancelPipelineJob(jobId: $jobId) {
+            id
+            name
+            status
+        }
+    }
+}
+
+mutation RerunPipelineJob($jobId: UUID!) {
+    git {
+        rerunPipelineJob(jobId: $jobId) {
+            id
+            name
+            status
+        }
+    }
+}

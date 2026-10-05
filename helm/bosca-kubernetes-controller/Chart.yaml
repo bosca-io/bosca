@@ -1,0 +1,10 @@
+apiVersion: v2
+name: bosca-kubernetes-controller
+description: Bosca Kubernetes cluster management controller with RBAC and CRD lifecycle management
+type: application
+version: 0.1.0
+appVersion: "5.0.21"
+dependencies:
+  - name: bosca-common
+    version: ">=0.1.0"
+    repository: "file://../bosca-common"

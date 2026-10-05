@@ -1,0 +1,7 @@
+mutation PermanentlyDeleteCollection($id: UUID!) {
+    content {
+        collection {
+            permanentlyDelete(collectionId: $id)
+        }
+    }
+}

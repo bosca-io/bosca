@@ -1,0 +1,4 @@
+/* Empty stand-in for third-party CSS imports that vitest cannot resolve.
+   `vanilla-jsoneditor` is a transitive dependency (via json-editor-vue), so
+   its theme import resolves in Nuxt (ssr.noExternal) but not under vitest's
+   strict node resolution. Aliased in vitest.config.ts. */

@@ -1,0 +1,141 @@
+"Rich text document content associated with a metadata item, structured as a JSON document tree (e.g. ProseMirror/TipTap format)"
+type Document {
+    "Display title of the document"
+    title: String!
+    "JSON document tree representing the rich text content (e.g. ProseMirror/TipTap node structure).  This data is wrapped in a Content element (ex: { \"document\": ... })."
+    content: JSON!
+    "The template that defines the schema, containers, and editing configuration for this document, if one is assigned"
+    template: Metadata
+}
+
+"Real-time collaboration state for document content, used for concurrent editing support"
+type DocumentCollaboration {
+    "Binary collaboration document content encoded as an array of byte values (e.g. Yjs or CRDT state)"
+    content: [Int!]!
+    "Timestamp when the collaboration state was first created"
+    created: DateTime!
+    "Timestamp when the collaboration state was last modified"
+    modified: DateTime!
+}
+
+"A template that defines the schema, containers, tools, and default content for document metadata items"
+type DocumentTemplate {
+    "Attribute definitions specifying the fields available on documents using this template"
+    attributes: [TemplateAttribute!]!
+    "Template-specific configuration (e.g. editor settings, feature flags)"
+    configuration: JSON
+    "Content containers that define the editable regions within the document"
+    containers: [DocumentTemplateContainer!]!
+    "Default JSON document tree content applied when creating new documents from this template"
+    content: JSON!
+    "Default attribute values applied when creating new documents from this template"
+    defaultAttributes: JSON
+    "The metadata item that represents this template"
+    metadata: Metadata
+    "JSON schema used to validate document content structure"
+    schema: JSON
+}
+
+"A named container within a document template that defines an editable content region with its own tools, workflows, and rendering configuration"
+type DocumentTemplateContainer {
+    "Unique identifier for this container within the template"
+    id: String!
+    "Display name of the container (e.g. 'Main Content', 'Sidebar', 'Scripture Reference')"
+    name: String!
+    "Human-readable description of the container's purpose"
+    description: String!
+    "Key linking this container to a supplementary content item, enabling content from external sources"
+    supplementaryKey: String
+    "The content source type for this container"
+    type: DocumentTemplateContainerType!
+    "AI and automation tools available within this container"
+    tools: [TemplateTool!]
+    "Workflows that can be triggered from this container"
+    workflows: [TemplateWorkflow!]!
+    "Custom renderers available for displaying content within this container"
+    renderers: [ContainerRenderer!]
+    "Content type filters restricting what can be placed in this container"
+    filters: [String!]
+}
+
+"Query type for listing all available document templates"
+type DocumentTemplates {
+    "All document templates available in the system"
+    all: [DocumentTemplate!]!
+}
+
+"The content source type for a document template container, determining what kind of content it holds"
+enum DocumentTemplateContainerType {
+    "Container sourcing content from Bible scripture data"
+    BIBLE
+    "Container sourcing content from another metadata item's attributes or content"
+    METADATA
+    "Standard rich text content container"
+    STANDARD
+}
+
+"A custom renderer that can be used to display content within a document template container"
+type ContainerRenderer {
+    "Unique name identifying this renderer (e.g. 'scripture-block', 'media-embed')"
+    name: String!
+    "Optional JSON configuration for the renderer"
+    configuration: JSON
+}
+
+"Input for specifying a custom renderer for a document template container"
+input ContainerRendererInput {
+    "Unique name identifying this renderer"
+    name: String!
+    "Optional JSON configuration for the renderer"
+    configuration: JSON
+}
+
+"Input for creating or updating a document metadata item with rich text content"
+input DocumentInput {
+    "JSON document tree representing the rich text content"
+    content: JSON!
+    "ID of the template metadata item to use for this document"
+    templateMetadataId: UUID
+    "Version of the template metadata item"
+    templateMetadataVersion: Int
+    "Display title of the document"
+    title: String!
+}
+
+"Input for defining a content container within a document template"
+input DocumentTemplateContainerInput {
+    "Unique identifier for this container within the template"
+    id: String!
+    "Display name of the container"
+    name: String!
+    "Human-readable description of the container's purpose"
+    description: String!
+    "The content source type for this container"
+    containerType: DocumentTemplateContainerType
+    "Key linking this container to a supplementary content item"
+    supplementaryKey: String
+    "AI and automation tools available within this container"
+    tools: [TemplateToolInput!]
+    "Workflows that can be triggered from this container"
+    workflows: [TemplateWorkflowInput!]!
+    "Custom renderers available for this container"
+    renderers: [ContainerRendererInput!]
+    "Content type filters restricting what can be placed in this container"
+    filters: [String!]
+}
+
+"Input for creating or updating a document template, defining its schema, containers, and defaults"
+input DocumentTemplateInput {
+    "Attribute definitions specifying the fields available on documents using this template"
+    attributes: [TemplateAttributeInput!]!
+    "Template-specific configuration (e.g. editor settings, feature flags)"
+    configuration: JSON
+    "Content containers defining the editable regions within the document"
+    containers: [DocumentTemplateContainerInput!]
+    "Default JSON document tree content applied when creating new documents"
+    content: JSON!
+    "Default attribute values applied when creating new documents from this template"
+    defaultAttributes: JSON
+    "JSON schema used to validate document content structure"
+    schema: JSON
+}

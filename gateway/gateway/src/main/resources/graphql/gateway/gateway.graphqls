@@ -1,0 +1,24 @@
+type GatewayNamespace {
+    services: GatewayServices!
+    routes: GatewayRoutes!
+    config: GatewayConfig!
+}
+
+type GatewayMutations {
+    services: GatewayServicesMutation!
+    routes: GatewayRoutesMutation!
+}
+
+type GatewayConfig {
+    version: String!
+    services: [Gateway!]!
+    routes: [GatewayRoute!]!
+}
+
+extend type Query {
+    gateway: GatewayNamespace!
+}
+
+extend type Mutation {
+    gateway: GatewayMutations!
+}

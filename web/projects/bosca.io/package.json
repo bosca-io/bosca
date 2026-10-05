@@ -1,0 +1,30 @@
+{
+  "name": "@bosca/bosca-io",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "nuxt build",
+    "dev": "nuxt dev",
+    "preview": "nuxt preview",
+    "nuxt:prepare": "nuxt prepare",
+    "lint": "nuxt prepare && eslint .",
+    "typecheck": "nuxt typecheck"
+  },
+  "dependencies": {
+    "@bosca/analytics-client-browser": "workspace:*",
+    "@bosca/auth-client-browser": "workspace:*",
+    "@bosca/forms": "workspace:*",
+    "@bosca/ui": "workspace:*",
+    "@nuxtjs/mdc": "catalog:",
+    "nuxt": "catalog:",
+    "shiki": "^3.2.1",
+    "vue": "catalog:"
+  },
+  "devDependencies": {
+    "@nuxt/eslint": "catalog:",
+    "eslint": "catalog:",
+    "typescript": "catalog:",
+    "vue-tsc": "catalog:"
+  },
+  "packageManager": "pnpm@10.28.1"
+}

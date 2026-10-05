@@ -1,0 +1,20 @@
+{{- if and .Values.rbac.create .Values.autoRegister.enabled }}
+# Binds the cluster-wide read+patch permissions to the dedicated kubeconfig
+# SA — the SA whose long-lived token is what bosca-server actually uses
+# to call this cluster's API. The deployment/Job pod SA is intentionally
+# NOT a subject here; those pods don't make k8s API calls themselves.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "bosca-common.fullname" . }}
+  labels:
+    {{- include "bosca-common.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "bosca-common.fullname" . }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "bosca-common.fullname" . }}-kubeconfig
+    namespace: {{ .Release.Namespace }}
+{{- end }}

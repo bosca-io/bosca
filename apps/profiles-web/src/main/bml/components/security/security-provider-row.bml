@@ -1,0 +1,15 @@
+<component tag="security-provider-row">
+  <prop name="provider" type="bosca.profiles.web.ThirdPartyProviderRow" required/>
+
+  <div class="provider-card">
+    <div>
+      <div class="row-title">{ provider.name }</div>
+      <div class="row-meta">{ if (provider.connected) "Connected to this account" else "Not connected" }</div>
+    </div>
+    <if provider.connected>
+      <span class="badge">Connected</span>
+    <else>
+      <a class="button small primary" :href="provider.connectUrl">Connect</a>
+    </if>
+  </div>
+</component>

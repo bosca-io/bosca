@@ -1,0 +1,44 @@
+# Named `ecom-audit.graphqls` (not `audit.graphqls`) and the type `EcomAudit` (not `Audit`): schema
+# resources load by classpath path `graphql/<name>` and type names share one global namespace at
+# full-schema assembly, so a generic name risks colliding with another module — same lesson as
+# `commerce-configurations.graphqls` and `EcomSubscription`.
+
+extend type Ecom {
+    """
+    The audit log, newest first. Every filter is optional (omit to match all). The log has no company
+    column — scope by storeId (store-bound entries) and/or entityType/entityId. Admin (snapshots may
+    contain PII).
+    """
+    audit(
+        entityType: String = null
+        entityId: UUID = null
+        storeId: UUID = null
+        action: String = null
+        offset: Int! = 0
+        limit: Int! = 50
+    ): [EcomAudit!]!
+}
+
+"""
+One entry in the append-only `ecom.audit` log: a structured (entityType, entityId, action) record
+with actor attribution and before/after entity snapshots.
+"""
+type EcomAudit {
+    id: UUID!
+    entityType: String!
+    entityId: UUID!
+    action: String!
+    "Acting principal, if attributed."
+    principalId: UUID
+    "Acting profile, if attributed."
+    profileId: UUID
+    "Store scope, for store-bound entries."
+    storeId: UUID
+    "Entity snapshot before the change (null on create)."
+    before: JSON
+    "Entity snapshot after the change (null on delete)."
+    after: JSON
+    "Optional context for action-only entries."
+    details: JSON
+    created: DateTime!
+}

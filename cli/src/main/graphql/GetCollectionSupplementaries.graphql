@@ -1,0 +1,9 @@
+query GetCollectionSupplementaries($id: UUID!) {
+    content {
+        collection(id: $id) {
+            supplementary {
+                ...CollectionSupplementary
+            }
+        }
+    }
+}

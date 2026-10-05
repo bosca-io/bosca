@@ -1,0 +1,17 @@
+FROM golang:1.22.3-bookworm
+
+USER root
+
+RUN apt update && apt install -y curl ca-certificates gpg jq
+RUN mkdir -p /mc/bin
+RUN curl https://dl.min.io/client/mc/release/linux-$(dpkg --print-architecture)/mc --create-dirs -o /mc/bin/mc
+RUN chmod +x /mc/bin/mc
+
+ENV PATH $PATH:/mc/bin
+
+WORKDIR /app
+
+COPY scripts/initialize-storage .
+RUN chmod +x initialize-storage
+
+CMD [ "/app/initialize-storage" ]

@@ -1,0 +1,15 @@
+# Used only before the first certificate is issued.
+server {
+    listen 80;
+    listen [::]:80;
+    server_name @@STUDIO_DOMAIN@@ @@GIT_DOMAIN@@;
+
+    location ^~ /.well-known/acme-challenge/ {
+        root /var/www/letsencrypt;
+        default_type text/plain;
+    }
+
+    location / {
+        return 503;
+    }
+}

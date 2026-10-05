@@ -1,0 +1,39 @@
+<idea-plugin>
+    <id>io.bosca</id>
+    <name>Bosca</name>
+    <vendor email="dev@bosca.io" url="https://bosca.io">Bosca</vendor>
+
+    <description><![CDATA[
+        Bosca developer workflow integration for IntelliJ IDEA. Connect to multiple Bosca servers,
+        map local Git roots to Bosca repositories, and work with WorkOps, pipelines, pull requests,
+        notifications, and code reviews without leaving the IDE.
+    ]]></description>
+
+    <depends>com.intellij.modules.platform</depends>
+    <depends>com.intellij.modules.vcs</depends>
+    <depends>Git4Idea</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <applicationService serviceImplementation="bosca.ide.auth.BoscaCliAuthentication"/>
+        <applicationService serviceImplementation="bosca.ide.server.BoscaServerRegistry"/>
+        <applicationConfigurable
+                id="bosca.servers"
+                displayName="Bosca Servers"
+                instance="bosca.ide.settings.BoscaServerSettingsConfigurable"/>
+        <projectService serviceImplementation="bosca.ide.project.BoscaProjectSettings"/>
+        <projectService serviceImplementation="bosca.ide.server.BoscaConnectionManager"/>
+        <projectService serviceImplementation="bosca.ide.repository.BoscaRepositoryDiscoveryService"/>
+        <projectService serviceImplementation="bosca.ide.pipeline.BoscaPipelineService"/>
+        <projectService serviceImplementation="bosca.ide.workops.BoscaWorkOpsService"/>
+        <projectService serviceImplementation="bosca.ide.review.BoscaPullRequestService"/>
+        <projectService serviceImplementation="bosca.ide.notification.BoscaNotificationService"/>
+        <postStartupActivity implementation="bosca.ide.notification.BoscaNotificationStartupActivity"/>
+        <toolWindow
+                id="Bosca"
+                anchor="right"
+                factoryClass="bosca.ide.ui.BoscaToolWindowFactory"
+                icon="/icons/bosca.svg"/>
+        <notificationGroup id="Bosca Connections" displayType="BALLOON" isLogByDefault="true"/>
+        <extension point="com.intellij.diff.DiffExtension" implementation="bosca.ide.review.BoscaDiffReviewExtension"/>
+    </extensions>
+</idea-plugin>

@@ -1,0 +1,517 @@
+"The organizational type of a collection, determining its behavior and visibility"
+enum CollectionType {
+    "A folder-like container for organizing content hierarchically"
+    FOLDER
+    "A queue that processes items in order"
+    QUEUE
+    "The top-level root collection of the content tree"
+    ROOT
+    "A standard collection for grouping related content"
+    STANDARD
+    "A system-managed collection not directly visible to end users"
+    SYSTEM
+}
+
+"A metadata relationship within a specific language variant of a collection"
+type CollectionLanguageVariantMetadataRelationship {
+    "Custom attributes on this relationship"
+    attributes: JSON
+    "The related metadata item"
+    metadata: Metadata!
+    "The type of relationship (e.g. 'thumbnail', 'banner')"
+    relationship: String
+    "The language tag this relationship belongs to"
+    languageTag: String
+}
+
+"A language-specific variant of a collection, containing localized content and settings"
+type CollectionLanguageVariant {
+    "BCP 47 language tag (e.g. 'en', 'es-MX')"
+    languageTag: String!
+    "Localized name of the collection"
+    name: String!
+    "Localized description of the collection"
+    description: String
+    "Custom attributes for this language variant"
+    attributes: JSON
+    "Whether this variant is publicly accessible"
+    public: Boolean!
+    "Whether the list of child items in this variant is publicly visible"
+    publicList: Boolean!
+    "Whether supplementary files in this variant are publicly accessible"
+    publicSupplementary: Boolean!
+    "Whether this variant should be indexed for search"
+    searchable: Boolean!
+    "Whether this variant may be returned in recommendations for its language"
+    recommendable: Boolean!
+    "Current workflow state of this variant"
+    workflow: CollectionWorkflow!
+    "Timestamp when this variant became ready, null if not yet ready"
+    ready: DateTime
+    "Metadata relationships specific to this language variant"
+    metadataRelationships: [CollectionLanguageVariantMetadataRelationship!]!
+    "URL-friendly slug for this variant"
+    slug: String
+}
+
+"Input for creating or updating a language variant of a collection"
+input CollectionLanguageVariantInput {
+    "The collection ID this variant belongs to"
+    id: UUID!
+    "BCP 47 language tag for the variant"
+    languageTag: String!
+    "Localized name of the collection"
+    name: String!
+    "Localized description"
+    description: String
+    "Custom attributes for this variant"
+    attributes: JSON
+    "Whether this variant is publicly accessible"
+    public: Boolean
+    "Whether the list of child items is publicly visible"
+    publicList: Boolean
+    "Whether supplementary files are publicly accessible"
+    publicSupplementary: Boolean
+    "Whether this variant should be indexed for search"
+    searchable: Boolean
+    "Whether this variant may be returned in recommendations for its language"
+    recommendable: Boolean
+}
+
+"Input for associating a collection with a parent collection"
+input CollectionParentCollectionInput {
+    "ID of the parent collection"
+    id: UUID!
+    "Attributes to set on the parent-child relationship"
+    attributes: JSON!
+}
+
+"Query operations for browsing and searching collections"
+type Collections {
+    "Get the root collection of the content tree"
+    root: Collection
+
+    "Access collection template queries"
+    templates: CollectionTemplates
+
+    "Get a specific collection by ID"
+    collection(id: UUID!): Collection
+
+    "Find collections matching the query criteria"
+    find(query: FindQueryInput!): [Collection!]!
+    "Count collections matching the query criteria"
+    findCount(query: FindQueryInput!): Int!
+    "Find collections by system criteria (bypasses normal permission checks)"
+    findBySystem(query: FindQueryInput!): [Collection!]!
+
+}
+
+"Input for creating a child collection within a parent"
+input CollectionChildInput {
+    "Attributes to set on the parent-child relationship"
+    attributes: JSON
+    "The child collection to create"
+    collection: CollectionInput!
+}
+
+"Input for creating or updating a collection"
+input CollectionInput {
+    "Custom attributes for the collection"
+    attributes: JSON
+    "IDs of categories to assign to the collection"
+    categoryIds: [String!]
+    "The organizational type of the collection"
+    collectionType: CollectionType
+    "Child collections to create inline"
+    collections: [CollectionChildInput!]
+    "Description of the collection"
+    description: String
+    "Whether child items are locked from modification"
+    itemsLocked: Boolean
+    "Freeform labels for tagging the collection"
+    labels: [String!]
+    "Whether the collection itself is locked from modification"
+    locked: Boolean
+    "Child metadata items to create inline"
+    metadata: [MetadataChildInput!]
+    "Display name of the collection"
+    name: String!
+    "Sort ordering for child items"
+    ordering: [OrderingInput!]
+    "ID of the parent collection to place this under"
+    parentCollectionId: String
+    "URL-friendly slug"
+    slug: String
+    "Initial workflow state configuration"
+    state: CollectionWorkflowInput
+    "ID of a metadata item serving as a template for this collection"
+    templateMetadataId: UUID
+    "Version of the template metadata"
+    templateMetadataVersion: Int
+    "IDs of traits to assign to this collection"
+    traitIds: [String!]
+    "Whether this collection should be indexed for search"
+    searchable: Boolean
+    "Whether this collection may be returned as a recommendation"
+    recommendable: Boolean
+}
+
+"Input for managing metadata relationships on a collection"
+input CollectionMetadataRelationshipInput {
+    "Custom attributes on this relationship"
+    attributes: JSON
+    "The collection ID"
+    id: UUID!
+    "BCP 47 language tag for language-specific relationships"
+    languageTag: String
+    "The related metadata item ID"
+    metadataId: UUID!
+    "The type of relationship (e.g. 'thumbnail', 'banner')"
+    relationship: String
+}
+
+"Input for adding supplementary content to a collection"
+input CollectionSupplementaryInput {
+    "Custom attributes for the supplementary item"
+    attributes: JSON
+    "The collection this supplementary belongs to"
+    collectionId: String!
+    "Size of the content in bytes"
+    contentLength: Int
+    "MIME type of the supplementary content"
+    contentType: String!
+    "Unique key identifying this supplementary item within the collection"
+    key: String!
+    "Display name of the supplementary item"
+    name: String!
+    "Storage plan ID for content storage"
+    planId: UUID!
+    "Optional source ID if imported from an external source"
+    sourceId: UUID
+    "Optional identifier from the external source"
+    sourceIdentifier: String
+}
+
+"Input for marking a workflow state transition as complete"
+input CollectionWorkflowCompleteState {
+    "The collection ID"
+    collectionId: UUID!
+    "Completion status message"
+    status: String!
+}
+
+"Input for setting the initial workflow state of a collection"
+input CollectionWorkflowInput {
+    "ID of the workflow to run when the collection is deleted"
+    deleteWorkflowId: String
+    "Initial state ID"
+    state: String!
+}
+
+"Input for transitioning a collection's workflow state"
+input CollectionWorkflowState {
+    "The collection ID"
+    collectionId: UUID!
+    "If true, transition immediately without waiting for workflow completion"
+    immediate: Boolean!
+    "Target state ID"
+    stateId: String!
+    "Status message for the transition"
+    status: String!
+}
+
+"A collection is a hierarchical container for organizing metadata items, other collections, and supplementary content"
+type Collection {
+    "Custom attributes on this collection, optionally filtered"
+    attributes(filter: AttributesFilterInput): JSON
+    "Categories assigned to this collection"
+    categories: [Category!]!
+    "Primary BCP 47 language tag for this collection"
+    languageTag: String!
+    "List of language tags for available language variants"
+    languageVariants: [String!]
+    "Get a specific language variant of this collection"
+    languageVariant(languageTag: String): CollectionLanguageVariant
+    "Paginated list of child collections"
+    collections(limit: Int!, offset: Long!, state: String, languageTag: String): [Collection!]!
+    "Count of child collections"
+    collectionsCount(state: String, languageTag: String): Int!
+    "Timestamp when this collection was created"
+    created: DateTime!
+    "Whether this collection has been soft-deleted"
+    deleted: Boolean!
+    "Description of the collection"
+    description: String
+    "Entity tag for cache validation. Set addHeader to true to include as HTTP response header."
+    etag(addHeader: Boolean!): String
+    "Paginated list of all metadata items within this collection and its sub-collections"
+    expandedMetadata(limit: Int!, offset: Long!, state: String, languageTag: String): [Metadata!]!
+    "Count of all metadata items within this collection and its sub-collections"
+    expandedMetadataCount(state: String, languageTag: String): Int!
+    "Unique identifier for this collection"
+    id: UUID!
+    "Attributes set on child items within this collection"
+    itemAttributes: JSON
+    "Paginated list of all child items (both collections and metadata). A language resolution context matches mapped metadata source tags to languageTag."
+    items(limit: Int!, offset: Long!, state: String, languageTag: String, contentTypes: [String!], languageResolutionContext: String): [CollectionItem!]!
+    "Count of all child items. A language resolution context matches mapped metadata source tags to languageTag."
+    itemsCount(state: String, languageTag: String, contentTypes: [String!], languageResolutionContext: String): Int!
+    "Whether child items are locked from modification"
+    itemsLocked: Boolean!
+    "Freeform labels for tagging"
+    labels: [String!]!
+    "Whether this collection is locked from modification"
+    locked: Boolean!
+    "Paginated list of direct child metadata items"
+    metadata(limit: Int!, offset: Long!, state: String, languageTag: String, contentTypes: [String!]): [Metadata!]!
+    "Count of direct child metadata items"
+    metadataCount(state: String, languageTag: String, contentTypes: [String!]): Int!
+    "Metadata relationships associated with this collection (e.g. thumbnail, banner)"
+    metadataRelationships: [CollectionMetadataRelationship!]!
+    "Timestamp when this collection was last modified"
+    modified: DateTime!
+    "Display name of the collection"
+    name: String!
+    "Sort ordering configuration for child items"
+    ordering: [Ordering!]
+    "Paginated list of parent collections that contain this collection"
+    parentCollections(limit: Int!, offset: Long!, languageTag: String): [Collection!]!
+    "Access permissions defined on this collection"
+    permissions: [Permission!]!
+    "Whether this collection is publicly accessible"
+    public: Boolean!
+    "Whether the child item list is publicly visible"
+    publicList: Boolean!
+    "Whether supplementary files are publicly accessible"
+    publicSupplementary: Boolean!
+    "Timestamp when this collection became ready, null if not yet ready"
+    ready: DateTime
+    "URL-friendly slug for this collection"
+    slug: String
+    "Supplementary content attached to this collection (files, assets, etc.)"
+    supplementary(key: String, planId: UUID): [CollectionSupplementary!]!
+    "System-managed attributes (not user-editable)"
+    systemAttributes: JSON
+    "The template metadata item that defines the structure of this collection"
+    templateMetadata: Metadata
+    "Traits assigned to this collection"
+    traits: [Trait!]!
+    "IDs of traits assigned to this collection"
+    traitIds: [String!]!
+    "The organizational type of this collection"
+    type: CollectionType!
+    "Current workflow state information"
+    workflow: CollectionWorkflow!
+    "Whether this collection is indexed for search"
+    searchable: Boolean!
+    "Whether this collection may be returned as a recommendation"
+    recommendable: Boolean!
+}
+
+"A relationship between a collection and a metadata item"
+type CollectionMetadataRelationship {
+    "Custom attributes on this relationship"
+    attributes: JSON
+    "The related metadata item"
+    metadata: Metadata!
+    "The type of relationship (e.g. 'thumbnail', 'banner')"
+    relationship: String
+}
+
+"Mutation operations for managing collections and their contents"
+type CollectionMutation {
+    "Set the parent collections for a given collection, replacing existing parents"
+    setParentCollections(id: UUID!, collections: [CollectionParentCollectionInput!]!): Boolean
+    "Create a new collection"
+    add(collection: CollectionInput!, collectionItemAttributes: JSON, setReady: Boolean): Collection!
+    "Add a new language variant to an existing collection"
+    addLanguageVariant(variant: CollectionLanguageVariantInput, setReady: Boolean): Collection!
+    "Update an existing language variant"
+    editLanguageVariant(variant: CollectionLanguageVariantInput): Collection!
+    "Remove a language variant from a collection"
+    deleteLanguageVariant(id: UUID!, languageTag: String!): Collection!
+    "Add an existing collection as a child of another collection"
+    addChildCollection(id: UUID!, collectionId: UUID!, attributes: JSON): Collection!
+    "Add an existing metadata item as a child of a collection"
+    addChildMetadata(id: UUID!, metadataId: UUID!, attributes: JSON): Collection!
+    "Create a metadata relationship on a collection"
+    addMetadataRelationship(relationship: CollectionMetadataRelationshipInput!): ContentRelationship!
+    "Add an access permission to a collection"
+    addPermission(permission: PermissionInput!): Permission!
+    "Add supplementary content to a collection"
+    addSupplementary(supplementary: CollectionSupplementaryInput!): CollectionSupplementary!
+    "Soft-delete a collection. Set recursive to true to delete all children."
+    delete(id: UUID!, recursive: Boolean): Boolean!
+    "Soft-delete multiple collections in a single operation, skipping items the caller lacks permission to delete"
+    deleteAll(collectionIds: [UUID!]!): Int!
+    "Set public, public list, public supplementary, and searchable flags for multiple collections in a single operation, skipping items the caller lacks permission to edit"
+    setPublicAll(collectionIds: [UUID!]!, public: Boolean!, publicList: Boolean!, publicSupplementary: Boolean!, searchable: Boolean!, recommendable: Boolean): Int!
+    "Set recommendation eligibility for multiple collections, skipping items the caller lacks permission to edit"
+    setRecommendableAll(collectionIds: [UUID!]!, recommendable: Boolean!): Int!
+    "Set the workflow state for multiple collections in a single operation, skipping items already in the target state or that the caller lacks permission to edit"
+    setWorkflowStateAll(collectionIds: [UUID!]!, stateId: String!, status: String!): Int!
+    "Remove a metadata relationship from a collection"
+    deleteMetadataRelationship(id: UUID!, metadataId: UUID!, relationship: String!, languageTag: String): Boolean!
+    "Remove an access permission from a collection"
+    deletePermission(permission: PermissionInput!): Permission!
+    "Delete a supplementary item"
+    deleteSupplementary(id: UUID!): Boolean!
+    "Update an existing collection"
+    edit(collection: CollectionInput!, id: UUID!): Collection!
+    "Update a metadata relationship"
+    editMetadataRelationship(relationship: CollectionMetadataRelationshipInput!): Boolean!
+    "Replace all metadata relationships for a collection"
+    setMetadataRelationships(id: UUID!, relationships: [CollectionMetadataRelationshipInput!]!, languageTag: String): Boolean!
+    "Merge attributes into a collection's existing attributes (existing keys preserved unless overwritten)"
+    mergeCollectionAttributes(attributes: JSON!, id: UUID!): Boolean!
+    "Merge attributes into a collection-item relationship"
+    mergeCollectionItemAttributes(attributes: JSON!, id: UUID!, itemId: UUID!): Boolean!
+    "Merge attributes into a metadata-item relationship within a collection"
+    mergeMetadataItemAttributes(attributes: JSON!, id: UUID!, itemId: UUID!): Boolean!
+    "Merge attributes into a metadata relationship"
+    mergeMetadataRelationshipAttributes(attributes: JSON!, collectionId: UUID!, metadataId: UUID!, relationship: String!, languageTag: String): Boolean!
+    "Permanently delete a collection (cannot be undone)"
+    permanentlyDelete(collectionId: UUID!): Boolean!
+    "Remove a child collection from a parent"
+    removeChildCollection(collectionId: UUID!, id: UUID!): Collection!
+    "Remove a child metadata item from a collection"
+    removeChildMetadata(id: UUID!, metadataId: UUID!): Collection!
+    "Replace all category assignments on a collection"
+    setCategories(categoryIds: [UUID!]!, id: UUID!): Boolean!
+    "Set attributes on a child item within a collection"
+    setChildItemAttributes(attributes: JSON, childCollectionId: UUID, childMetadataId: UUID, id: UUID!): Collection!
+    "Replace all custom attributes on a collection"
+    setCollectionAttributes(attributes: JSON!, id: UUID!): Boolean!
+    "Set the sort ordering for a collection's child items"
+    setCollectionOrdering(id: UUID!, ordering: [OrderingInput!]): Boolean!
+    "Set whether a collection is indexed for search"
+    setCollectionSearchable(id: UUID!, searchable: Boolean!, languageTag: String): Boolean!
+    "Set whether a collection may be returned as a recommendation"
+    setCollectionRecommendable(id: UUID!, recommendable: Boolean!, languageTag: String): Boolean!
+    "Replace all system attributes on a collection"
+    setCollectionSystemAttributes(attributes: JSON!, id: UUID!): Boolean!
+    "Set or update the URL slug for a collection"
+    setCollectionSlug(id: UUID!, slug: String!, languageTag: String): String!
+    "Lock or unlock a collection from modifications"
+    setLocked(id: UUID!, locked: Boolean!): Collection
+    "Set whether a collection is publicly accessible"
+    setPublic(id: UUID!, public: Boolean!, languageTag: String): Collection!
+    "Set whether a collection's child list is publicly visible"
+    setPublicList(id: UUID!, public: Boolean!, languageTag: String): Collection!
+    "Set whether a collection's supplementary files are publicly accessible"
+    setPublicSupplementary(id: UUID!, public: Boolean!, languageTag: String): Collection!
+    "Mark a collection as not ready"
+    setNotReady(id: UUID!, languageTag: String): Boolean!
+    "Mark a collection as ready"
+    setReady(id: UUID!, languageTag: String): Boolean!
+    "Mark multiple collections as ready in a single operation, skipping items the caller lacks permission to edit"
+    setReadyAll(collectionIds: [UUID!]!): Int!
+    "Upload content for a supplementary item"
+    setSupplementaryContents(contentType: String!, file: Upload!, supplementaryId: UUID!): Boolean!
+    "Set text content for a supplementary item"
+    setSupplementaryTextContents(content: String!, contentType: String!, supplementaryId: UUID!): Boolean!
+    "Mark a supplementary item as uploaded with its content type and size"
+    setSupplementaryUploaded(contentType: String!, len: Int!, supplementaryId: UUID!): Boolean!
+    "Assign a template to a collection"
+    setTemplate(collectionId: UUID!, templateId: UUID!, templateVersion: Int!): Boolean!
+    "Transition a collection to a new workflow state"
+    setWorkflowState(state: CollectionWorkflowState!): Boolean!
+    "Mark a workflow state transition as complete"
+    setWorkflowStateComplete(state: CollectionWorkflowCompleteState!): Boolean!
+    "Synchronize all language variants of a collection"
+    syncVariants(collectionId: UUID!): Boolean!
+}
+
+"Supplementary content attached to a collection (files, assets, processed outputs, etc.)"
+type CollectionSupplementary {
+    "Unique identifier for this supplementary item"
+    id: UUID!
+    "Custom attributes on this supplementary item"
+    attributes: JSON
+    "The collection this supplementary belongs to"
+    collectionId: UUID!
+    "Content details including type, size, and access URLs"
+    content: CollectionSupplementaryContent!
+    "Timestamp when this supplementary was created"
+    created: DateTime!
+    "Unique key within the collection (e.g. 'thumbnail', 'transcript')"
+    key: String!
+    "Timestamp when this supplementary was last modified"
+    modified: DateTime!
+    "Display name of the supplementary item"
+    name: String!
+    "Storage plan ID"
+    planId: UUID
+    "External source information if imported"
+    source: CollectionSupplementarySource
+    "Timestamp when content was uploaded, null if not yet uploaded"
+    uploaded: DateTime
+}
+
+"Content details for a collection supplementary item"
+type CollectionSupplementaryContent {
+    "The content as parsed JSON (if applicable)"
+    json: JSON!
+    "Content length in bytes"
+    length: Int
+    "The content as plain text (if applicable)"
+    text: String!
+    "MIME content type"
+    type: String!
+    "Pre-signed URLs for uploading and downloading the content"
+    urls: CollectionSupplementaryContentUrls!
+}
+
+"Pre-signed URLs for accessing collection supplementary content"
+type CollectionSupplementaryContentUrls {
+    "Pre-signed URL for downloading the content"
+    download: SignedUrl!
+    "Pre-signed URL for uploading new content"
+    upload: SignedUrl!
+}
+
+"Source information for imported supplementary content"
+type CollectionSupplementarySource {
+    "ID of the source system"
+    id: UUID!
+    "Identifier within the source system"
+    identifier: String
+}
+
+"A template that defines the structure and behavior of a collection, including its attributes and default configuration"
+type CollectionTemplate {
+    "Attribute definitions for collections using this template"
+    attributes: [TemplateAttribute!]!
+    "Template-specific configuration"
+    configuration: JSON
+    "Default attribute values applied to new collections using this template"
+    defaultAttributes: JSON
+    "Content type and attribute filters for this template"
+    filters: CollectionTemplateFilters
+    "The metadata item that defines this template"
+    metadata: Metadata
+    "Default ordering for child items"
+    ordering: [Ordering!]
+}
+
+"Query operations for browsing collection templates"
+type CollectionTemplates {
+    "List all available collection templates"
+    all: [CollectionTemplate!]!
+}
+
+"Current workflow state information for a collection"
+type CollectionWorkflow {
+    "ID of the workflow to run when the collection is deleted"
+    deleteWorkflow: String
+    "Description of what is currently pending, if anything"
+    pending: String
+    "Number of currently running workflow steps"
+    running: Int!
+    "Current workflow state ID"
+    state: String!
+    "Timestamp when the current state became valid"
+    stateValid: DateTime
+    "Currently active (incomplete) jobs for this collection, including pending, running, and scheduled jobs"
+    activeJobs: [ContentJobHistory!]!
+}

@@ -1,0 +1,279 @@
+"A tool that can be attached to an AI agent, providing the agent with a specific capability such as search, data retrieval, or content manipulation"
+type AgentTool {
+    "Unique identifier for this tool"
+    id: UUID!
+    "Unique key used to reference this tool programmatically"
+    key: String!
+    "Display name for the tool, shown in the UI and in agent tool listings"
+    name: String!
+    "Human-readable description of what this tool does, used to help the AI agent understand when and how to use it"
+    description: String!
+    "Optional JSON configuration for additional tool settings, parameters, or connection details"
+    configuration: JSON
+    "Optional reference to a script that implements this tool's behavior"
+    scriptId: UUID
+    "Optional reference to an MCP server that provides this tool's capabilities"
+    mcpServerId: UUID
+    "Optional pinned GraphQL operation text this tool executes (graphqlOperation impl variant)."
+    graphqlOperation: String
+    "Optional JSONPath-style mapping of MCP arguments to the operation's GraphQL variables."
+    graphqlInputTransform: String
+    "Optional JSONPath-style mapping of the GraphQL response to the tool's output."
+    graphqlOutputTransform: String
+    "Optional prompt this tool renders (prompt+model impl variant; paired with modelId)."
+    promptId: UUID
+    "Optional model this tool runs the rendered prompt through (prompt+model impl variant; paired with promptId)."
+    modelId: UUID
+    "Optional agent this tool invokes (agent-as-tool impl variant)."
+    agentId: UUID
+    "If set, the AGENT_PROJECT Git repository this tool is linked to."
+    gitRepositoryId: UUID
+    "If set, the path in the Git repository where this tool's `.md` file lives."
+    gitPath: String
+    "Last sync error message, if the most recent pull/push failed. `null` when sync succeeded."
+    lastSyncError: String
+}
+
+"Input for creating or updating an agent tool definition"
+input AgentToolInput {
+    "Unique key used to reference this tool programmatically"
+    key: String!
+    "Display name for the tool"
+    name: String!
+    "Human-readable description of what this tool does, used to help the AI agent understand when and how to use it"
+    description: String!
+    "Optional JSON configuration for additional tool settings, parameters, or connection details"
+    configuration: JSON
+    "Optional reference to a script that implements this tool's behavior"
+    scriptId: UUID
+    "Optional reference to an MCP server that provides this tool's capabilities"
+    mcpServerId: UUID
+    "Optional pinned GraphQL operation text (graphqlOperation impl variant)."
+    graphqlOperation: String
+    "Optional JSONPath-style mapping of MCP arguments to the operation's GraphQL variables."
+    graphqlInputTransform: String
+    "Optional JSONPath-style mapping of the GraphQL response to the tool's output."
+    graphqlOutputTransform: String
+    "Optional prompt id (prompt+model impl variant; paired with modelId)."
+    promptId: UUID
+    "Optional model id (prompt+model impl variant; paired with promptId)."
+    modelId: UUID
+    "Optional agent id (agent-as-tool impl variant)."
+    agentId: UUID
+}
+
+"Query operations for listing and retrieving agent tools"
+type AgentTools {
+    "Retrieve all available agent tools"
+    all: [AgentTool!]!
+    "Retrieve a specific agent tool by its unique ID"
+    tool(
+        "The unique identifier of the tool to retrieve"
+        id: UUID!
+    ): AgentTool
+}
+
+"Mutation operations for managing agent tools"
+type AgentToolsMutation {
+    "Create a new agent tool definition"
+    add(
+        "The tool definition to create"
+        tool: AgentToolInput!
+    ): AgentTool
+    """
+    Update an existing agent tool definition. If the tool is linked to an
+    AGENT_PROJECT repository and both `authorName` and `authorEmail` are provided,
+    the new state is also pushed to Git as a commit attributed to the editor.
+    """
+    edit(
+        "The unique identifier of the tool to update"
+        id: UUID!
+        "The updated tool definition"
+        tool: AgentToolInput!
+        "Commit author name for the Git push (only used when the tool is Git-linked)."
+        authorName: String
+        "Commit author email for the Git push (only used when the tool is Git-linked)."
+        authorEmail: String
+    ): AgentTool
+    "Delete an agent tool by its ID. Returns true if the tool was deleted."
+    delete(
+        "The unique identifier of the tool to delete"
+        id: UUID!
+    ): Boolean!
+}
+
+"An AI agent that combines a model, prompt, tools, and optional sub-agents to perform AI-powered workflows. Agents can be composed hierarchically through sub-agents."
+type Agent {
+    "Unique identifier for this agent"
+    id: UUID!
+    "Unique key used to reference this agent programmatically"
+    key: String!
+    "Display name for the agent"
+    name: String!
+    "Human-readable description of this agent's purpose and capabilities"
+    description: String!
+    "The unique identifier of the AI model this agent uses for inference"
+    modelId: UUID!
+    "The unique identifier of the prompt (system instructions) this agent uses"
+    promptId: UUID!
+    "Optional JSON configuration for additional agent settings such as temperature, max tokens, or custom parameters"
+    configuration: JSON
+    "Ordered list of sub-agents that this agent can delegate tasks to, enabling hierarchical agent composition"
+    subAgents: [Agent!]!
+    "List of tools available to this agent for performing specific capabilities"
+    tools: [AgentTool!]!
+    "If set, the AGENT_PROJECT Git repository this agent is linked to."
+    gitRepositoryId: UUID
+    "If set, the path in the Git repository where this agent's `.md` file lives."
+    gitPath: String
+    "Last sync error message, if the most recent pull/push failed. `null` when sync succeeded."
+    lastSyncError: String
+}
+
+"Input for creating or updating an AI agent definition"
+input AgentInput {
+    "Unique key used to reference this agent programmatically"
+    key: String!
+    "Display name for the agent"
+    name: String!
+    "Human-readable description of this agent's purpose and capabilities"
+    description: String!
+    "The unique identifier of the AI model this agent should use for inference"
+    modelId: UUID!
+    "The unique identifier of the prompt (system instructions) this agent should use"
+    promptId: UUID!
+    "Optional JSON configuration for additional agent settings such as temperature, max tokens, or custom parameters"
+    configuration: JSON
+}
+
+"Query operations for listing and retrieving AI agents"
+type Agents {
+    "Retrieve all available agents"
+    all: [Agent!]!
+    "Retrieve a specific agent by its unique ID"
+    agent(
+        "The unique identifier of the agent to retrieve"
+        id: UUID!
+    ): Agent
+    "Retrieve a specific agent by its unique key"
+    agentByKey(
+        "The unique programmatic key of the agent to retrieve"
+        key: String!
+    ): Agent
+}
+
+"""
+Mutation operations for managing AI agents, including sub-agent and tool associations.
+
+For every mutation that mutates an agent's serialized state (edit, addSubAgent,
+removeSubAgent, setSubAgents, addTool, removeTool, setTools): if the agent is linked
+to an AGENT_PROJECT repository and both `authorName` and `authorEmail` are provided,
+the new state is also pushed to Git as a commit attributed to the editor. The push is
+best-effort — failures are logged and recorded as `lastSyncError` on the row but do
+not roll back the DB write.
+"""
+type AgentsMutation {
+    "Create a new AI agent definition"
+    add(
+        "The agent definition to create"
+        agent: AgentInput!
+    ): Agent
+    "Update an existing AI agent definition. Triggers a Git push if linked + author args provided."
+    edit(
+        "The unique identifier of the agent to update"
+        id: UUID!
+        "The updated agent definition"
+        agent: AgentInput!
+        "Commit author name for the Git push (only used when the agent is Git-linked)."
+        authorName: String
+        "Commit author email for the Git push (only used when the agent is Git-linked)."
+        authorEmail: String
+    ): Agent
+    "Delete an agent by its ID. Returns true if the agent was deleted."
+    delete(
+        "The unique identifier of the agent to delete"
+        id: UUID!
+    ): Boolean!
+    "Add a sub-agent to a parent agent at a specific position. Triggers a Git push if linked + author args provided."
+    addSubAgent(
+        "The unique identifier of the parent agent"
+        agentId: UUID!
+        "The unique identifier of the sub-agent to add"
+        subAgentId: UUID!
+        "The position in the sub-agent execution order (0-based)"
+        ordinal: Int!
+        "Commit author name for the Git push (only used when the agent is Git-linked)."
+        authorName: String
+        "Commit author email for the Git push (only used when the agent is Git-linked)."
+        authorEmail: String
+    ): Boolean!
+    "Remove a sub-agent from a parent agent. Triggers a Git push if linked + author args provided."
+    removeSubAgent(
+        "The unique identifier of the parent agent"
+        agentId: UUID!
+        "The unique identifier of the sub-agent to remove"
+        subAgentId: UUID!
+        "Commit author name for the Git push (only used when the agent is Git-linked)."
+        authorName: String
+        "Commit author email for the Git push (only used when the agent is Git-linked)."
+        authorEmail: String
+    ): Boolean!
+    "Replace the entire list of sub-agents for a parent agent. Triggers a Git push if linked + author args provided."
+    setSubAgents(
+        "The unique identifier of the parent agent"
+        agentId: UUID!
+        "The ordered list of sub-agent IDs to set"
+        subAgentIds: [UUID!]!
+        "Commit author name for the Git push (only used when the agent is Git-linked)."
+        authorName: String
+        "Commit author email for the Git push (only used when the agent is Git-linked)."
+        authorEmail: String
+    ): Boolean!
+    "Add a tool to an agent's available tool set. Triggers a Git push if linked + author args provided."
+    addTool(
+        "The unique identifier of the agent"
+        agentId: UUID!
+        "The unique identifier of the tool to add"
+        toolId: UUID!
+        "Commit author name for the Git push (only used when the agent is Git-linked)."
+        authorName: String
+        "Commit author email for the Git push (only used when the agent is Git-linked)."
+        authorEmail: String
+    ): Boolean!
+    "Remove a tool from an agent's available tool set. Triggers a Git push if linked + author args provided."
+    removeTool(
+        "The unique identifier of the agent"
+        agentId: UUID!
+        "The unique identifier of the tool to remove"
+        toolId: UUID!
+        "Commit author name for the Git push (only used when the agent is Git-linked)."
+        authorName: String
+        "Commit author email for the Git push (only used when the agent is Git-linked)."
+        authorEmail: String
+    ): Boolean!
+    "Replace the entire list of tools for an agent. Triggers a Git push if linked + author args provided."
+    setTools(
+        "The unique identifier of the agent"
+        agentId: UUID!
+        "The list of tool IDs to set as the agent's available tools"
+        toolIds: [UUID!]!
+        "Commit author name for the Git push (only used when the agent is Git-linked)."
+        authorName: String
+        "Commit author email for the Git push (only used when the agent is Git-linked)."
+        authorEmail: String
+    ): Boolean!
+}
+
+extend type Query {
+    "Access query operations for AI agents"
+    agents: Agents!
+    "Access query operations for agent tools"
+    agentTools: AgentTools!
+}
+
+extend type Mutation {
+    "Access mutation operations for managing AI agents"
+    agents: AgentsMutation!
+    "Access mutation operations for managing agent tools"
+    agentTools: AgentToolsMutation!
+}

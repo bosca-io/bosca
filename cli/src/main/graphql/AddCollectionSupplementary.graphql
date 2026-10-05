@@ -1,0 +1,9 @@
+mutation AddCollectionSupplementary($supplementary: CollectionSupplementaryInput!) {
+    content {
+        collection {
+            addSupplementary(supplementary: $supplementary) {
+                ...CollectionSupplementary
+            }
+        }
+    }
+}

@@ -1,0 +1,18 @@
+<message key="prayer-reaction">
+  <script server provides="m">
+    import bosca.messages.PrayerReactionNotification
+    message.payload(PrayerReactionNotification.serializer())
+  </script>
+  <script server provides="body">
+    when (m.reaction) {
+      "PRAYED" -> t("prayer-reaction.prayed.push.body", "{actorName} prayed for your prayer", "actorName" to m.actorName)
+      "LIKED" -> t("prayer-reaction.liked.push.body", "{actorName} liked your prayer", "actorName" to m.actorName)
+      else -> error("Unsupported prayer reaction: ${m.reaction}")
+    }
+  </script>
+  <push>
+    <title t="prayer-reaction.push.title">Prayer activity</title>
+    <body>{ body }</body>
+    <action id="open-prayer" default t="prayer.push.action.open">Open prayer</action>
+  </push>
+</message>

@@ -1,0 +1,51 @@
+import org.gradle.api.GradleException
+import org.gradle.caching.http.HttpBuildCache
+
+def booleanEnvironment = { String name, boolean defaultValue ->
+    def rawValue = System.getenv(name)
+    if (rawValue == null || rawValue.trim().isEmpty()) {
+        return defaultValue
+    }
+
+    def value = rawValue.trim()
+    if (!(value in ["true", "false"])) {
+        throw new GradleException("${name} must be either 'true' or 'false'")
+    }
+    value.toBoolean()
+}
+
+beforeSettings { settings ->
+    def cacheUrl = System.getenv("GRADLE_BUILD_CACHE_URL")?.trim()
+    def cacheEnabled = booleanEnvironment("GRADLE_BUILD_CACHE_ENABLED", true)
+    if (cacheUrl && cacheEnabled) {
+        gradle.startParameter.buildCacheEnabled = true
+
+        def cacheUsername = System.getenv("GRADLE_BUILD_CACHE_USERNAME")?.trim()
+        def cachePassword = System.getenv("GRADLE_BUILD_CACHE_PASSWORD")
+        cacheUsername = cacheUsername ?: null
+        cachePassword = cachePassword ?: null
+
+        if ((cacheUsername == null) != (cachePassword == null)) {
+            throw new GradleException(
+                "GRADLE_BUILD_CACHE_USERNAME and GRADLE_BUILD_CACHE_PASSWORD must be set together"
+            )
+        }
+
+        def cachePush = booleanEnvironment("GRADLE_BUILD_CACHE_PUSH", false)
+        def allowInsecure = booleanEnvironment("GRADLE_BUILD_CACHE_ALLOW_INSECURE", false)
+
+        settings.buildCache {
+            remote(HttpBuildCache) {
+                url = settings.uri(cacheUrl)
+                push = cachePush
+                allowInsecureProtocol = allowInsecure
+                if (cacheUsername != null) {
+                    credentials {
+                        username = cacheUsername
+                        password = cachePassword
+                    }
+                }
+            }
+        }
+    }
+}

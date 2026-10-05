@@ -1,0 +1,1 @@
+alter table prompts add column schema jsonb;

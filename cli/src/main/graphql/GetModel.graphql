@@ -1,0 +1,7 @@
+query GetModel($id: UUID!) {
+    models {
+        model(id: $id) {
+            ...Model
+        }
+    }
+}

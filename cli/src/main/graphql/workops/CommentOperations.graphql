@@ -1,0 +1,44 @@
+query GetWorkOpsTaskComments($taskId: UUID!, $offset: Long! = 0, $limit: Long! = 50) {
+    workOps {
+        taskComments {
+            forTask(taskId: $taskId, offset: $offset, limit: $limit) {
+                id
+                parentId
+                taskId
+                profileId
+                visibility
+                created
+                modified
+                status
+                content
+                likes
+                deleted
+            }
+        }
+    }
+}
+
+mutation AddWorkOpsTaskComment($taskId: UUID!, $input: WorkOpsTaskCommentInput!) {
+    workOps {
+        taskComments {
+            add(taskId: $taskId, input: $input) {
+                id
+                parentId
+                taskId
+                profileId
+                content
+                created
+                visibility
+                status
+            }
+        }
+    }
+}
+
+mutation DeleteWorkOpsTaskComment($taskId: UUID!, $commentId: Long!) {
+    workOps {
+        taskComments {
+            delete(taskId: $taskId, commentId: $commentId)
+        }
+    }
+}

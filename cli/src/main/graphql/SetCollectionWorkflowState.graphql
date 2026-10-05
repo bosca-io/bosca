@@ -1,0 +1,7 @@
+mutation SetCollectionWorkflowState($state: CollectionWorkflowState!) {
+    content {
+        collection {
+            setWorkflowState(state: $state)
+        }
+    }
+}

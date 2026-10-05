@@ -1,0 +1,11 @@
+fragment StorageSystem on StorageSystem {
+    id
+    name
+    type
+    description
+    configuration
+    models {
+        modelId
+        configuration
+    }
+}

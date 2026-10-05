@@ -1,0 +1,15 @@
+{
+  "resources": {
+    "includes": [
+      {"pattern": "application\\.yaml"},
+      {"pattern": "logback\\.xml"},
+      {"pattern": "db/migrations/.*\\.sql"},
+      {"pattern": "graphql/.*\\.graphqls"},
+      {"pattern": "META-INF/services/.*"},
+      {"pattern": "localization/messages\\.csv"},
+      {"pattern": "linux-x86-64/libfirebase_scrypt_util\\.so"},
+      {"pattern": "io/trino/jdbc/\\$internal/joda/time/tz/data/.*"},
+      {"pattern": "driver\\.properties"}
+    ]
+  }
+}

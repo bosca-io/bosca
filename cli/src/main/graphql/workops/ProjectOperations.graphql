@@ -1,0 +1,69 @@
+query GetWorkOpsProjects {
+    workOps {
+        projects {
+            all {
+                ...WorkOpsProjectFragment
+            }
+        }
+    }
+}
+
+query GetWorkOpsProject($id: UUID!) {
+    workOps {
+        projects {
+            project(id: $id) {
+                ...WorkOpsProjectFragment
+            }
+        }
+    }
+}
+
+query GetWorkOpsProjectByKey($key: String!) {
+    workOps {
+        projects {
+            projectByKey(key: $key) {
+                ...WorkOpsProjectFragment
+            }
+        }
+    }
+}
+
+query GetWorkOpsProjectsByProgram($programId: UUID!, $offset: Long! = 0, $limit: Int! = 50) {
+    workOps {
+        projects {
+            byProgram(programId: $programId, offset: $offset, limit: $limit) {
+                ...WorkOpsProjectFragment
+            }
+        }
+    }
+}
+
+mutation CreateWorkOpsProject($input: WorkOpsProjectInput!) {
+    workOps {
+        projects {
+            create(input: $input) {
+                ...WorkOpsProjectFragment
+            }
+        }
+    }
+}
+
+mutation UpdateWorkOpsProject($id: UUID!, $input: WorkOpsProjectInput!, $expectedVersion: Long!) {
+    workOps {
+        projects {
+            update(id: $id, input: $input, expectedVersion: $expectedVersion) {
+                ...WorkOpsProjectFragment
+            }
+        }
+    }
+}
+
+mutation ArchiveWorkOpsProject($id: UUID!, $expectedVersion: Long!) {
+    workOps {
+        projects {
+            archive(id: $id, expectedVersion: $expectedVersion) {
+                ...WorkOpsProjectFragment
+            }
+        }
+    }
+}

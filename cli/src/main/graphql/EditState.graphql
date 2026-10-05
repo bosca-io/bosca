@@ -1,0 +1,7 @@
+mutation EditState($input: WorkflowStateInput!) {
+    states {
+        edit(state: $input) {
+            ...WorkflowState
+        }
+    }
+}

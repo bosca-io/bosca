@@ -1,0 +1,47 @@
+"Where an attribute is applied — on the item itself or on a relationship between items"
+enum AttributeLocation {
+    "Attribute is stored directly on the item (metadata or collection)"
+    ITEM
+    "Attribute is stored on the relationship between a collection and its child items"
+    RELATIONSHIP
+}
+
+"The data type of an attribute value, used for validation and serialization"
+enum AttributeType {
+    "Reference to a collection by ID"
+    COLLECTION
+    "Date value (no time component)"
+    DATE
+    "Date and time value with timezone"
+    DATETIME
+    "Date and time value with timezone"
+    DATE_TIME
+    "Floating-point number"
+    FLOAT
+    "Integer number"
+    INT
+    "Reference to a metadata item by ID"
+    METADATA
+    "Reference to a user profile by ID"
+    PROFILE
+    "Free-form text string"
+    STRING
+}
+
+"The UI widget type to use when rendering an attribute in a form or editor"
+enum AttributeUiType {
+    "Collection picker widget"
+    COLLECTION
+    "File upload widget"
+    FILE
+    "Image upload/preview widget"
+    IMAGE
+    "Single-line text input"
+    INPUT
+    "Metadata item picker widget"
+    METADATA
+    "Profile/user picker widget"
+    PROFILE
+    "Multi-line text area"
+    TEXTAREA
+}

@@ -1,0 +1,121 @@
+"""Whether a promotion applies to carts or to subscription renewals."""
+enum PromotionType { CART SUBSCRIPTION }
+
+"""How often a promotion's per-account limit resets."""
+enum FrequencyLimit { FOREVER DAILY WEEKLY MONTHLY YEARLY }
+
+"""
+A promotion rule (polymorphic). Read via inline fragments; each member also carries its `type`
+discriminator. Subscription rule members join this union alongside the cart rules.
+"""
+union Rule = PercentOffCartRule | AmountOffCartRule | FreeShippingCartRule | BuyOneGetOneRule | PercentOffSubscriptionRule | AmountOffSubscriptionRule
+
+"""Percentage off the cart's discountable amount."""
+type PercentOffCartRule {
+    type: String!
+    percent: Float!
+}
+
+"""A fixed amount off the cart."""
+type AmountOffCartRule {
+    type: String!
+    amount: Money!
+}
+
+"""Zero the cart's shipping line(s)."""
+type FreeShippingCartRule {
+    type: String!
+}
+
+"""Per line, for every (buy + get) units, `getQuantity` are free."""
+type BuyOneGetOneRule {
+    type: String!
+    buyQuantity: Int!
+    getQuantity: Int!
+}
+
+"""Percentage off a subscription renewal."""
+type PercentOffSubscriptionRule {
+    type: String!
+    percent: Float!
+}
+
+"""A fixed amount off a subscription renewal."""
+type AmountOffSubscriptionRule {
+    type: String!
+    amount: Money!
+}
+
+extend type Ecom {
+    "A promotion by id. Admin."
+    promotion(id: UUID!): Promotion
+    "A page of a store's promotions, newest first. Admin."
+    promotions(storeId: UUID!, offset: Int! = 0, limit: Int! = 50): [Promotion!]!
+}
+
+extend type EcomMutation {
+    "Promotion administration. Admin."
+    promotions: PromotionsMutation!
+}
+
+extend type CartMutation {
+    "Apply a promotion code to the cart (requires the cart to have an account)."
+    applyCode(code: String!): Cart!
+    "Remove a previously-applied promotion code from the cart."
+    removeCode(code: String!): Cart!
+}
+
+"""A store promotion, keyed (store, code), active within its window."""
+type Promotion {
+    id: UUID!
+    store: Store!
+    code: String!
+    name: String!
+    type: PromotionType!
+    "The promotion's behavior (polymorphic)."
+    rule: Rule!
+    starts: DateTime!
+    ends: DateTime!
+    "Per-account redemption cap over the frequency window; 0 = unlimited."
+    perAccountLimit: Long!
+    "The window over which the per-account limit is counted."
+    frequencyLimit: FrequencyLimit!
+    created: DateTime!
+    modified: DateTime!
+}
+
+"""Promotion administration. Admin."""
+type PromotionsMutation {
+    "Create a promotion (with an optional redemption cap)."
+    add(input: PromotionInput!): Promotion!
+    "Operations on an existing promotion."
+    promotion(id: UUID!): PromotionMutation!
+}
+
+"""Mutations on one promotion. Admin."""
+type PromotionMutation {
+    "Edit the promotion's definition."
+    edit(input: PromotionInput!): Promotion!
+    "Soft-delete the promotion."
+    delete: Boolean!
+}
+
+"""
+Creates or edits a promotion. `rule` is the polymorphic rule as JSON with a `type` discriminator,
+e.g. { "type": "cartPercentOff", "percent": 10.0 } or { "type": "cartAmountOff", "amount": "5.0000" }.
+"""
+input PromotionInput {
+    storeId: UUID!
+    code: String!
+    name: String!
+    type: PromotionType!
+    rule: JSON!
+    starts: DateTime!
+    ends: DateTime!
+    "Redemption cap; null = unlimited."
+    quantity: Long = null
+    "Per-account redemption cap over the frequency window; 0 = unlimited."
+    perAccountLimit: Long! = 0
+    "The window over which the per-account limit is counted."
+    frequencyLimit: FrequencyLimit! = FOREVER
+}

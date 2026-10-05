@@ -1,0 +1,30 @@
+@import bosca.pages.PageContext.localize
+@import bosca.pages.PageContext.details
+@param profile: bosca.messages.models.ProfileModel
+@param verifyLink: String
+@param logoSvg: String? = null
+@param logoUrl: String? = null
+!{val title = localize(details.title).toString()}
+@template.templates.email(
+content = @`
+    <div class="email-wrapper">
+        <h3 class="email-header">
+            @if(logoSvg != null)
+                <span class="email-logo-wrap">$unsafe{logoSvg}</span>
+            @elseif(logoUrl != null)
+                <img class="email-logo" src="${logoUrl}" alt="${localize(details.siteName)}" width="24" height="24" />
+            @else
+                <svg class="email-logo" width="24" height="24" viewBox="0 0 512 512" fill="none" version="1.1" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M256 262L491 138L256 21L21 138L256 262Z" fill="#00c16a"/>
+                    <path d="M491 138L256 262V498L491 372V138Z" fill="#00dc82"/>
+                    <path d="M21 138L256 262V498L21 372V138Z" fill="#00a155"/>
+                </svg>
+            @endif
+            <span class="email-heading-text">${localize("email.verification")}</span>
+        </h3>
+        <p class="email-body">${localize("email.verification.welcome.html", profile.name, title, title)}</p>
+        <p>
+            <a href="${verifyLink}" target="_blank" class="email-button">${localize("email.verify")}</a>
+        </p>
+    </div>
+`)

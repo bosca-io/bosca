@@ -1,0 +1,359 @@
+"Determines how a segment's audience membership is computed."
+enum SegmentType {
+    "Membership is a manually curated list of profile IDs."
+    STATIC
+    "Membership is computed at evaluation time by executing an analytics query via Trino."
+    DYNAMIC
+    "Implicitly includes all users, including anonymous visitors. No explicit membership required."
+    EVERYONE
+}
+
+"Lifecycle status of a segment, controlling whether it is actively used for audience evaluation."
+enum SegmentStatus {
+    "The segment is being drafted and is not yet active."
+    DRAFT
+    "The segment is active and its audience is being evaluated."
+    ACTIVE
+    "The segment was previously active but has been paused."
+    PAUSED
+    "The segment is archived and no longer in use."
+    ARCHIVED
+}
+
+"The delivery channel used to send campaigns to segment audiences."
+enum NotificationChannel {
+    "An in-app banner displayed to users matching the segment."
+    BANNER
+    "An email blast sent to the segment audience."
+    EMAIL
+    "A push notification delivered to mobile devices of segment members."
+    PUSH
+}
+
+"Tracks the lifecycle of a campaign from draft through delivery."
+enum NotificationStatus {
+    "The campaign is being authored and has not been scheduled."
+    DRAFT
+    "The campaign has been scheduled for future delivery."
+    SCHEDULED
+    "The campaign is currently being dispatched to the audience."
+    SENDING
+    "The campaign has been fully delivered."
+    SENT
+    "The campaign is currently active and being displayed (used for banners)."
+    ACTIVE
+    "The campaign delivery failed."
+    FAILED
+    "The campaign was cancelled before delivery completed."
+    CANCELLED
+}
+
+"Input for creating or updating a segment definition."
+input SegmentInput {
+    "The display name of the segment."
+    name: String!
+    "A description of the segment's purpose and targeting criteria."
+    description: String
+    "How the segment's audience membership is computed."
+    type: SegmentType!
+    "The lifecycle status of the segment."
+    status: SegmentStatus
+    "The UUID of an analytics query whose results define dynamic segment membership. Required for DYNAMIC segments."
+    analyticsQueryId: UUID
+    "Additional configuration stored as JSON for segment evaluation (e.g., query parameters, filters)."
+    configuration: JSON
+    "A cron expression for automatic periodic evaluation of a dynamic segment. Set to null to disable scheduled evaluation."
+    evaluationSchedule: String
+}
+
+"Input for creating or updating a campaign."
+input CampaignInput {
+    "The display name of the campaign."
+    name: String!
+    "The delivery channel for this campaign."
+    channel: NotificationChannel!
+    "Channel-specific content payload as JSON (e.g., email subject/body, banner text, push title/body)."
+    content: JSON
+    "The UUIDs of the segments whose audiences should receive this campaign."
+    segmentIds: [UUID!]!
+    "When the campaign should be delivered. Null for immediate delivery."
+    scheduledAt: DateTime
+    "When the campaign should stop being active. Null means no expiration."
+    endedAt: DateTime
+    "The UI placement slot where this banner should appear (e.g. top, hero, sidebar)."
+    placement: String
+    "Relative probability weight for random selection. Weights of 10, 10, and 80 yield selection probabilities of 10%, 10%, and 80%. Defaults to 0."
+    weight: Int
+}
+
+"A named audience segment used to target groups of profiles for banners, email blasts, and push notifications."
+type Segment {
+    "The unique identifier of the segment."
+    id: UUID!
+    "The display name of the segment."
+    name: String!
+    "A description of the segment's purpose and targeting criteria."
+    description: String!
+    "How the segment's audience membership is computed."
+    type: SegmentType!
+    "The lifecycle status of the segment."
+    status: SegmentStatus!
+    "The UUID of the analytics query used for dynamic segment evaluation."
+    analyticsQueryId: UUID
+    "Additional configuration stored as JSON for segment evaluation."
+    configuration: JSON
+    "The UUID of the scheduler job that drives automatic evaluation. Null when no schedule is set."
+    scheduledJobId: UUID
+    "The cron expression from the linked scheduled job, resolved at query time."
+    evaluationSchedule: String
+    "The timestamp of the last audience evaluation for dynamic segments."
+    lastEvaluated: DateTime
+    "The current number of profiles that are members of this segment."
+    memberCount: Long!
+    "The timestamp when this segment was created."
+    created: DateTime!
+    "The timestamp when this segment was last modified."
+    modified: DateTime!
+    "The profile members of this segment, with pagination."
+    members(
+        "The zero-based offset for pagination."
+        offset: Long!
+        "The maximum number of members to return."
+        limit: Int!
+    ): [SegmentMember!]!
+}
+
+"Associates a profile with a segment, representing audience membership."
+type SegmentMember {
+    "The UUID of the segment."
+    segmentId: UUID!
+    "The UUID of the member profile."
+    profileId: UUID!
+    "The profile associated with this membership."
+    profile: Profile
+    "The timestamp when the profile was added to the segment."
+    addedAt: DateTime!
+}
+
+"Lightweight projection of a banner campaign for weighted random selection. Clients cache this list per placement and perform weighted random selection to pick a banner, then fetch full campaign details separately."
+type BannerWeight {
+    "The unique identifier of the banner campaign."
+    id: UUID!
+    "Relative probability weight for random selection. Not a priority — weights of 10, 10, and 80 yield selection probabilities of 10%, 10%, and 80%."
+    weight: Int!
+}
+
+"A campaign targeted at the audience of one or more segments."
+type Campaign {
+    "The unique identifier of the campaign."
+    id: UUID!
+    "The display name of the campaign."
+    name: String!
+    "The delivery channel for this campaign."
+    channel: NotificationChannel!
+    "The lifecycle status of the campaign."
+    status: NotificationStatus!
+    "Channel-specific content payload as JSON."
+    content: JSON
+    "The UI placement slot where this banner should appear (e.g. top, hero, sidebar). Null means no specific placement."
+    placement: String
+    "Relative probability weight for random selection. Weights of 10, 10, and 80 yield selection probabilities of 10%, 10%, and 80%."
+    weight: Int!
+    "When the campaign is scheduled for delivery."
+    scheduledAt: DateTime
+    "When the campaign should stop being active. Null means no expiration."
+    endedAt: DateTime
+    "When the campaign was sent."
+    sentAt: DateTime
+    "The number of profiles the campaign was delivered to."
+    sentCount: Long!
+    "The timestamp when this campaign was created."
+    created: DateTime!
+    "The timestamp when this campaign was last modified."
+    modified: DateTime!
+    "The segments whose audiences receive this campaign."
+    segments: [Segment!]!
+}
+
+"Query operations for retrieving audience segments."
+type Segments {
+    "Retrieve a paginated list of all segments."
+    all(
+        "The zero-based offset for pagination."
+        offset: Long!
+        "The maximum number of segments to return."
+        limit: Int!
+    ): [Segment!]!
+    "Retrieve a single segment by its identifier."
+    segment(
+        "The UUID of the segment to retrieve."
+        id: UUID!
+    ): Segment
+    "Retrieve all segments that a specific profile belongs to."
+    segmentsByProfile(
+        "The UUID of the profile."
+        profileId: UUID!
+    ): [Segment!]!
+}
+
+"Mutation operations for managing audience segments."
+type SegmentsMutation {
+    "Create a new audience segment."
+    add(
+        "The segment definition."
+        segment: SegmentInput!
+    ): Segment!
+    "Update an existing segment."
+    edit(
+        "The UUID of the segment to update."
+        id: UUID!
+        "The updated segment definition."
+        segment: SegmentInput!
+    ): Segment!
+    "Delete a segment and all associated membership data."
+    delete(
+        "The UUID of the segment to delete."
+        id: UUID!
+    ): Boolean!
+    "Add profiles to a static segment's membership."
+    addMembers(
+        "The UUID of the segment."
+        segmentId: UUID!
+        "The profile UUIDs to add as members."
+        profileIds: [UUID!]!
+    ): Boolean!
+    "Remove profiles from a segment's membership."
+    removeMembers(
+        "The UUID of the segment."
+        segmentId: UUID!
+        "The profile UUIDs to remove."
+        profileIds: [UUID!]!
+    ): Boolean!
+    "Evaluate a dynamic segment by executing its analytics query and refreshing membership."
+    evaluate(
+        "The UUID of the dynamic segment to evaluate."
+        segmentId: UUID!
+    ): Segment!
+    "Execute an analytics query and append the resulting profile IDs to a static segment's membership. Duplicates are silently ignored. The query must return rows containing a profile_id column."
+    populateFromQuery(
+        "The UUID of the static segment to populate."
+        segmentId: UUID!
+        "The UUID of the analytics query to execute. The query must return a profile_id column."
+        analyticsQueryId: UUID!
+    ): Segment!
+    "Execute an analytics query and remove the resulting profile IDs from a static segment's membership. Profile IDs not currently in the segment are silently ignored."
+    removeFromQuery(
+        "The UUID of the static segment to remove members from."
+        segmentId: UUID!
+        "The UUID of the analytics query to execute. The query must return a profile_id column."
+        analyticsQueryId: UUID!
+    ): Segment!
+    "Remove all profiles from a static segment that are also members of another segment. This performs a set subtraction: target segment minus source segment."
+    removeFromSegment(
+        "The UUID of the static segment to remove members from."
+        segmentId: UUID!
+        "The UUID of the segment whose members should be removed from the target segment."
+        removeSegmentId: UUID!
+    ): Segment!
+    "Run a pipeline once for every member of a segment. The segment's audience is fanned out into one durable pipeline run per profile, each receiving a JSON input of the shape { segmentId, profileId }. The runs are started asynchronously by a background job under the caller's identity; returns true once the job has been enqueued."
+    runPipeline(
+        "The UUID of the segment whose members the pipeline should run for."
+        segmentId: UUID!
+        "The UUID of the pipeline to execute for each segment member."
+        pipelineId: UUID!
+    ): Boolean!
+}
+
+"Query operations for retrieving campaigns."
+type Campaigns {
+    "Retrieve a paginated list of all campaigns."
+    all(
+        "The zero-based offset for pagination."
+        offset: Long!
+        "The maximum number of campaigns to return."
+        limit: Int!
+    ): [Campaign!]!
+    "Retrieve a single campaign by its identifier."
+    campaign(
+        "The UUID of the campaign to retrieve."
+        id: UUID!
+    ): Campaign
+    "Retrieve active banner campaigns targeting a specific profile or, when profileId is omitted, only banners targeting EVERYONE segments. Optionally filter by placement."
+    activeBanners(
+        "The UUID of the profile to check for active banners. Omit for anonymous users."
+        profileId: UUID
+        "The placement slot to filter by. Omit to return banners for all placements."
+        placement: String
+    ): [Campaign!]!
+    "Select a single active banner for a specific placement using weighted random selection. Returns banners matching segment membership or EVERYONE segments when profileId is provided; returns only EVERYONE-targeted banners when profileId is omitted."
+    activeBanner(
+        "The UUID of the profile. Omit for anonymous users."
+        profileId: UUID
+        "The placement slot to filter by (e.g. top, hero, sidebar)."
+        placement: String!
+    ): Campaign
+    "Retrieve the IDs and weights of all active banners for a specific placement. Clients can cache this list per placement/profile and perform weighted random selection client-side, then fetch full campaign details via the campaign query."
+    activeBannerWeights(
+        "The UUID of the profile. Omit for anonymous users."
+        profileId: UUID
+        "The placement slot to filter by (e.g. top, hero, sidebar)."
+        placement: String!
+    ): [BannerWeight!]!
+}
+
+"Mutation operations for managing campaigns."
+type CampaignsMutation {
+    "Create a new campaign linked to segments."
+    add(
+        "The campaign specification."
+        campaign: CampaignInput!
+    ): Campaign!
+    "Update an existing draft campaign."
+    edit(
+        "The UUID of the campaign to update."
+        id: UUID!
+        "The updated campaign specification."
+        campaign: CampaignInput!
+    ): Campaign!
+    "Delete a campaign."
+    delete(
+        "The UUID of the campaign to delete."
+        id: UUID!
+    ): Boolean!
+    "Dispatch a campaign to its segment audience."
+    send(
+        "The UUID of the campaign to send."
+        id: UUID!
+    ): Campaign!
+    "Send a test delivery of this campaign to the members of a specific segment without changing the campaign status."
+    sendTest(
+        "The UUID of the campaign to test."
+        id: UUID!
+        "The UUID of the segment whose members will receive the test delivery."
+        segmentId: UUID!
+    ): Boolean!
+    "Cancel a scheduled or active campaign, preventing further delivery."
+    cancel(
+        "The UUID of the campaign to cancel."
+        id: UUID!
+    ): Campaign!
+    "Reactivate a cancelled banner campaign, returning it to active display."
+    reactivate(
+        "The UUID of the campaign to reactivate."
+        id: UUID!
+    ): Campaign!
+}
+
+extend type Query {
+    "Access audience segmentation operations for managing segments and evaluating audiences."
+    segments: Segments!
+    "Access campaign query operations for banners, email blasts, and push notifications."
+    campaigns: Campaigns!
+}
+
+extend type Mutation {
+    "Access audience segmentation mutation operations for managing segments and membership."
+    segments: SegmentsMutation!
+    "Access campaign mutation operations for creating, scheduling, and sending campaigns."
+    campaigns: CampaignsMutation!
+}

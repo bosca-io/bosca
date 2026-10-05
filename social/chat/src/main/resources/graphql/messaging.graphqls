@@ -1,0 +1,303 @@
+"The type of domain object a chat channel can be scoped to"
+enum ChatObjectType {
+    "A content metadata item"
+    METADATA
+    "A content collection"
+    COLLECTION
+    "A localization string or document key"
+    LOCALIZATION_KEY
+    "A calendar event"
+    CALENDAR_EVENT
+    "A feature flag"
+    FEATURE_FLAG
+    "An experiment configuration"
+    EXPERIMENT
+}
+
+"The type of chat channel, defining its participant model and visibility"
+enum ChatChannelType {
+    "A private one-on-one conversation between two users"
+    DIRECT
+    "A group conversation visible only to its members"
+    GROUP
+    "A channel open to all eligible members"
+    PUBLIC
+}
+
+"A chat channel for real-time messaging, supporting direct messages, group conversations, and public discussions"
+type ChatChannel {
+    "Unique identifier for this chat channel"
+    id: UUID!
+    "Display name of the chat channel"
+    name: String!
+    "The type of this channel (direct, group, or public)"
+    type: ChatChannelType!
+    "Custom attributes associated with this channel as a JSON object"
+    attributes: JSON
+    "The type of domain object this channel is scoped to, null for standalone channels"
+    objectType: ChatObjectType
+    "The unique identifier of the domain object this channel is scoped to"
+    objectId: UUID
+
+    "List of all members in this chat channel"
+    members: [ChatChannelMember!]!
+    "Paginated list of messages in this channel, filterable by sequence number range"
+    messages(before: Long, after: Long, limit: Int): [ChatMessage!]!
+}
+
+"A membership record linking a user profile to a chat channel, including their role and read-tracking state"
+type ChatChannelMember {
+    "ID of the chat channel this membership belongs to"
+    channelId: UUID!
+    "ID of the member's user profile"
+    profileId: UUID!
+    "The member's role within this channel (e.g. 'admin', 'member', 'moderator')"
+    role: String!
+    "The full user profile of the member"
+    profile: Profile!
+    "Sequence number of the last message read by this member, null if never read. Sourced from the chat-read-state NATS KV bucket — not the membership row — so unread badges update at NATS speed."
+    lastReadSequence: Long
+    "Custom attributes associated with this channel membership as a JSON object"
+    attributes: JSON
+}
+
+"Lifecycle state of an invitation to join a chat channel"
+enum ChatChannelInvitationStatus {
+    PENDING
+    ACCEPTED
+    DECLINED
+    CANCELLED
+}
+
+"A durable invitation from one profile for another profile to join a chat channel"
+type ChatChannelInvitation {
+    "Unique identifier for the invitation"
+    id: UUID!
+    "The channel the recipient is invited to join"
+    channel: ChatChannel
+    "The profile that sent the invitation"
+    inviter: Profile!
+    "The profile that received the invitation"
+    invitee: Profile!
+    "The role assigned when the invitation is accepted"
+    role: String!
+    "Current invitation lifecycle state"
+    status: ChatChannelInvitationStatus!
+    "When the invitation was created"
+    created: DateTime!
+    "When the invitation was last changed"
+    modified: DateTime!
+}
+
+"The content type of a message attachment or body, indicating how it should be rendered"
+enum MessageContentType {
+    "Plain text content"
+    TEXT
+    "Rich HTML content"
+    HTML
+    "An image attachment"
+    IMAGE
+    "A video attachment"
+    VIDEO
+    "An audio attachment"
+    AUDIO
+    "A file attachment of any type"
+    FILE
+    "A shared prayer request reference"
+    PRAYER
+    "A shared community activity reference"
+    ACTIVITY
+    "A reference to a content metadata item"
+    METADATA
+    "A reference to a content collection"
+    COLLECTION
+    "A reference to a localization string or document"
+    LOCALIZATION
+    "A reference to a calendar event"
+    CALENDAR_EVENT
+    "A reference to a feature flag"
+    FEATURE_FLAG
+    "A reference to an experiment"
+    EXPERIMENT
+    "An @-mention of a user profile"
+    MENTION
+}
+
+"A single content block within a chat message, representing text, media, or a reference"
+type MessageContent {
+    "The type of this content block, indicating how it should be rendered"
+    type: MessageContentType!
+    "The content value: text body, media URL, or reference identifier depending on the type"
+    content: String!
+    "Custom attributes associated with this content block as a JSON object"
+    attributes: JSON
+    "The referenced metadata item, populated when content links to stored media or files"
+    metadata: Metadata
+}
+
+"Input for creating a content block within a chat message"
+input MessageContentInput {
+    "The type of this content block (text, html, image, video, audio, file, etc.)"
+    type: MessageContentType!
+    "The content value: text body, media URL, or reference identifier depending on the type"
+    content: String!
+    "Custom attributes associated with this content block as a JSON object"
+    attributes: JSON
+}
+
+"A single chat message within a channel, containing one or more content blocks, optional threading, and reactions"
+type ChatMessage {
+    "The monotonically increasing sequence number of this message within its channel, used for ordering and pagination"
+    sequence: Long!
+    "Timestamp when this message was sent"
+    timestamp: DateTime!
+    "ID of the user profile that sent this message"
+    senderId: UUID!
+    "Client-generated UUID for deduplication of messages sent from the same device"
+    clientId: UUID
+    "The full user profile of the message sender"
+    sender: Profile
+    "The content blocks that make up this message (text, media, references)"
+    content: [MessageContent!]!
+    "Custom attributes associated with this message as a JSON object"
+    attributes: JSON
+    "Sequence number of the parent message if this is a threaded reply, null for top-level messages"
+    parentSequence: Long
+    "List of emoji reactions on this message"
+    reactions: [MessageReaction!]!
+    "Whether this event is a tombstone for a message that was permanently deleted"
+    deleted: Boolean!
+}
+
+"An emoji reaction left on a chat message by a user"
+type MessageReaction {
+    "Stable identifier for this reaction"
+    id: UUID!
+    "The emoji character or shortcode used for the reaction"
+    emoji: String!
+    "ID of the user profile that left this reaction"
+    profileId: UUID!
+}
+
+"A real-time event payload delivered when a new message is sent or updated in a chat channel"
+type ChatMessageEvent {
+    "ID of the chat channel where the message event occurred"
+    channelId: UUID!
+    "The chat message that was sent or updated"
+    message: ChatMessage!
+}
+
+"A real-time event payload delivered when a user starts or stops typing in a chat channel"
+type UserTypingEvent {
+    "ID of the chat channel where the typing event occurred"
+    channelId: UUID!
+    "ID of the user profile that is typing or stopped typing"
+    profileId: UUID!
+    "The user profile that is typing or stopped typing"
+    profile: Profile!
+    "Whether the user is currently typing (true) or has stopped typing (false)"
+    isTyping: Boolean!
+}
+
+"A real-time event payload delivered when a user's presence status changes"
+type PresenceUpdateEvent {
+    "ID of the user profile whose presence changed"
+    profileId: UUID!
+    "The new presence status (e.g. 'online', 'away', 'offline')"
+    status: String!
+}
+
+"Root query type for chat features"
+type Chat {
+    "Retrieve a single chat channel by its unique identifier"
+    channel(id: UUID!): ChatChannel
+    "Retrieve the chat channel scoped to a specific domain object"
+    objectChannel(objectType: ChatObjectType!, objectId: UUID!): ChatChannel
+}
+
+"Mutation operations for managing chat channels and messages"
+type ChatMutation {
+    "Create a new standalone chat channel"
+    createChannel(name: String!, type: ChatChannelType!, attributes: JSON): ChatChannel!
+    "Create or retrieve a chat channel scoped to a domain object"
+    objectChannel(objectType: ChatObjectType!, objectId: UUID!, name: String!): ChatChannel!
+    "Leave a chat channel"
+    leaveChannel(channelId: UUID!): Boolean!
+    "Change an existing channel member's role to admin or member"
+    setChannelMemberRole(channelId: UUID!, profileId: UUID!, role: String!): Boolean!
+    "Remove another member from a channel as a channel administrator"
+    removeChannelMember(channelId: UUID!, profileId: UUID!): Boolean!
+    "Invite a profile to join a channel"
+    inviteToChannel(channelId: UUID!, inviteeProfileId: UUID!): ChatChannelInvitation!
+    "Accept a pending channel invitation and join its channel"
+    acceptChannelInvitation(invitationId: UUID!): ChatChannelInvitation!
+    "Decline a pending channel invitation"
+    declineChannelInvitation(invitationId: UUID!): ChatChannelInvitation!
+    "Cancel an invitation previously sent by a profile"
+    cancelChannelInvitation(invitationId: UUID!): ChatChannelInvitation!
+    "Create or retrieve a direct message channel with another profile"
+    initiateDM(profileId: UUID!): ChatChannel!
+
+    "Send a message to a chat channel with one or more content blocks. Set parentSequence to reply within an existing thread."
+    sendMessage(channelId: UUID!, clientId: UUID!, content: [MessageContentInput!]!, attributes: JSON, parentSequence: Long): Boolean!
+    "Permanently delete a message sent by the authenticated profile"
+    deleteMessage(channelId: UUID!, sequence: Long!): Boolean!
+    "Update the last-read sequence number for a user in a chat channel"
+    updateLastRead(channelId: UUID!, sequence: Long!): Boolean!
+    "Broadcast a typing indicator event to other members of a chat channel"
+    sendTyping(channelId: UUID!, isTyping: Boolean!): Boolean!
+    "Add an emoji reaction from the authenticated profile to a message identified by channel + sequence. No-op if already present."
+    addReaction(channelId: UUID!, sequence: Long!, emoji: String!): Boolean!
+    "Remove the authenticated profile's emoji reaction from a message identified by channel + sequence."
+    removeReaction(channelId: UUID!, sequence: Long!, emoji: String!): Boolean!
+}
+
+"A real-time event payload delivered when a reaction is added to or removed from a message"
+type MessageReactionEvent {
+    "ID of the channel containing the message"
+    channelId: UUID!
+    "Sequence number of the message within its channel"
+    sequence: Long!
+    "ID of the profile whose reaction changed"
+    profileId: UUID!
+    "Emoji or shortcode that was added or removed"
+    emoji: String!
+    "True when the reaction was added, false when removed"
+    added: Boolean!
+}
+
+extend type Subscription {
+    "Subscribe to real-time chat message events in a specific channel"
+    chatMessage(channelId: UUID!): ChatMessageEvent!
+    "Subscribe to real-time typing indicator events in a specific channel"
+    onUserTyping(channelId: UUID!): UserTypingEvent!
+    "Subscribe to real-time presence update events in a specific channel"
+    onPresenceUpdate(channelId: UUID!): PresenceUpdateEvent!
+    "Subscribe to real-time reaction add/remove events in a specific channel"
+    onReaction(channelId: UUID!): MessageReactionEvent!
+}
+
+"A profile's chat memberships, providing access to their channels"
+type ProfileChat {
+    "List of chat channels the user is a member of"
+    channels: [ChatChannel!]!
+    "Pending invitations addressed to this profile"
+    incomingInvitations(offset: Long, limit: Int): [ChatChannelInvitation!]!
+    "Pending invitations sent by this profile"
+    outgoingInvitations(offset: Long, limit: Int): [ChatChannelInvitation!]!
+}
+
+extend type Profile {
+    "Access the user's chat channel memberships"
+    chat: ProfileChat
+}
+
+extend type Query {
+    "Access chat features including channels and messages"
+    chat: Chat!
+}
+
+extend type Mutation {
+    "Access mutation operations for chat channels and messages"
+    chat: ChatMutation!
+}

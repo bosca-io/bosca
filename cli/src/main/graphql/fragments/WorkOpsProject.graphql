@@ -1,0 +1,14 @@
+fragment WorkOpsProjectFragment on WorkOpsProject {
+    id
+    key
+    name
+    description
+    ownerProfileId
+    defaultTaskTypeSchemeId
+    defaultWorkflowSchemeId
+    taskCreationFormSchemaKey
+    archivedAt
+    createdAt
+    modifiedAt
+    version
+}

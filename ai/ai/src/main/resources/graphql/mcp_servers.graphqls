@@ -1,0 +1,98 @@
+"Transport protocol used to communicate with an MCP server"
+enum McpTransportType { SSE STDIO STREAMABLE_HTTP }
+
+"A registered MCP (Model Context Protocol) server that provides tools to AI agents"
+type McpServerRegistration {
+    "Unique identifier for this MCP server registration"
+    id: UUID!
+    "Unique key used to reference this server programmatically"
+    key: String!
+    "Display name for the MCP server"
+    name: String!
+    "Human-readable description of the server's capabilities"
+    description: String!
+    "Transport protocol used to connect to this server"
+    transportType: McpTransportType!
+    "Optional JSON configuration for connection details and server-specific settings"
+    configuration: JSON
+    "Whether this server is currently active and available for agent use"
+    enabled: Boolean!
+    "If set, the AGENT_PROJECT Git repository this registration is linked to."
+    gitRepositoryId: UUID
+    "If set, the path in the Git repository where this registration's `.md` file lives."
+    gitPath: String
+    "Last sync error message, if the most recent pull/push failed. `null` when sync succeeded."
+    lastSyncError: String
+}
+
+"Input for creating or updating an MCP server registration"
+input McpServerRegistrationInput {
+    "Unique key used to reference this server programmatically"
+    key: String!
+    "Display name for the MCP server"
+    name: String!
+    "Human-readable description of the server's capabilities"
+    description: String!
+    "Transport protocol used to connect to this server"
+    transportType: McpTransportType!
+    "JSON configuration for connection details and server-specific settings"
+    configuration: JSON!
+    "Whether this server should be active and available for agent use"
+    enabled: Boolean
+}
+
+"Query operations for listing and retrieving MCP server registrations"
+type McpServers {
+    "Retrieve all registered MCP servers"
+    all: [McpServerRegistration!]!
+    "Retrieve only enabled MCP servers"
+    enabled: [McpServerRegistration!]!
+    "Retrieve a specific MCP server by its unique ID"
+    server(
+        "The unique identifier of the server to retrieve"
+        id: UUID!
+    ): McpServerRegistration
+    "Retrieve a specific MCP server by its unique key"
+    serverByKey(
+        "The unique programmatic key of the server to retrieve"
+        key: String!
+    ): McpServerRegistration
+}
+
+"Mutation operations for managing MCP server registrations"
+type McpServersMutation {
+    "Register a new MCP server"
+    add(
+        "The server definition to create"
+        server: McpServerRegistrationInput!
+    ): McpServerRegistration!
+    """
+    Update an existing MCP server registration. If the registration is linked to an
+    AGENT_PROJECT repository and both `authorName` and `authorEmail` are provided,
+    the new state is also pushed to Git as a commit attributed to the editor.
+    """
+    edit(
+        "The unique identifier of the server to update"
+        id: UUID!
+        "The updated server definition"
+        server: McpServerRegistrationInput!
+        "Commit author name for the Git push (only used when the registration is Git-linked)."
+        authorName: String
+        "Commit author email for the Git push (only used when the registration is Git-linked)."
+        authorEmail: String
+    ): McpServerRegistration!
+    "Delete an MCP server registration by its ID. Returns true if the server was deleted. Warning: cascades to agent tools referencing this server."
+    delete(
+        "The unique identifier of the server to delete"
+        id: UUID!
+    ): Boolean!
+}
+
+extend type Query {
+    "Access query operations for MCP server registrations"
+    mcpServers: McpServers!
+}
+extend type Mutation {
+    "Access mutation operations for managing MCP server registrations"
+    mcpServers: McpServersMutation!
+}

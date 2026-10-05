@@ -1,0 +1,247 @@
+"The role type assigned to members who join an organization through a signup mechanism (domain auto-join, email invitation, or token-based invite)."
+enum OrganizationSignupGroupType {
+    "Members are added to the administrators group with full management privileges."
+    ADMINISTRATORS
+    "Members are added to the regular users group with standard access."
+    USERS
+    "The group type has not been specified or is not recognized."
+    UNKNOWN
+}
+
+"Input for configuring an email domain associated with an organization, enabling domain-based auto-join and default group assignment."
+input OrganizationDomainInput {
+    "The email domain (e.g. 'example.com') to associate with the organization."
+    domain: String!
+    "Whether users with matching email domains are automatically added to the organization upon signup."
+    autoJoin: Boolean!
+    "The UUID of the default group to assign to users who join via this domain. If null, the group is determined by the type field."
+    defaultGroupId: UUID
+    "The signup group type that determines the role of users who join via this domain."
+    type: OrganizationSignupGroupType
+}
+
+"Input for configuring an email-based signup invitation for a specific user to join an organization."
+input OrganizationSignupEmailInput {
+    "The email address of the user being invited to join the organization."
+    email: String!
+    "The signup group type that determines the role assigned to the invited user upon joining."
+    type: OrganizationSignupGroupType
+}
+
+"Input for creating a token-based invitation link that allows users to join an organization."
+input OrganizationSignupTokenInput {
+    "The signup group type that determines the role assigned to users who join via this token."
+    type: OrganizationSignupGroupType
+}
+
+"A token-based invitation that can be shared to allow users to join an organization. The token string is used in invitation URLs."
+type OrganizationSignupToken {
+    "The security group that users will be added to when they join using this token."
+    group: Group!
+    "The signup group type that determines the role assigned to users joining via this token."
+    type: OrganizationSignupGroupType
+    "The unique token string used in invitation URLs. Null if the token has not yet been generated."
+    token: String
+}
+
+"An email domain associated with an organization, used for domain-based membership rules such as auto-join on signup."
+type OrganizationDomain {
+    "The email domain (e.g. 'example.com') associated with this organization."
+    domain: String!
+    "Whether users with matching email domains are automatically added to the organization upon signup."
+    autoJoin: Boolean!
+    "The security group that users will be added to when they join via this domain."
+    group: Group!
+    "The signup group type that determines the role of users who join via this domain."
+    type: OrganizationSignupGroupType
+}
+
+"An email-based signup invitation for a specific user to join an organization."
+type OrganizationSignupEmail {
+    "The email address of the user invited to join the organization."
+    email: String!
+    "The security group that the invited user will be added to upon joining."
+    group: Group!
+    "The signup group type that determines the role assigned to the invited user."
+    type: OrganizationSignupGroupType
+}
+
+"A permission rule that grants a specific action to a group within an organization, scoped by the organization signup group type."
+type OrganizationPermission {
+    "The signup group type this permission applies to (e.g. ADMINISTRATORS or USERS)."
+    groupType: OrganizationSignupGroupType!
+    "The security group that is granted this permission."
+    group: Group!
+    "The permission action granted to the group (e.g. read, write, manage)."
+    action: PermissionAction!
+}
+
+"Input for creating or updating an organization, including its metadata, visibility, and signup configuration."
+input OrganizationInput {
+    "The UUID of the organization. Null when creating a new organization; required when editing an existing one."
+    id: UUID
+    "A URL-friendly slug identifier for the organization. Used in URLs and as a human-readable identifier."
+    slug: String
+    "The display name of the organization."
+    name: String!
+    "Custom attributes stored as JSON for the organization (e.g. branding, settings)."
+    attributes: JSON!
+    "System-managed attributes stored as JSON. These are typically managed by the platform rather than end users."
+    systemAttributes: JSON!
+    "The visibility level that controls who can discover and view this organization."
+    visibility: ProfileVisibility!
+    "The list of email domains associated with the organization for domain-based signup rules."
+    domains: [OrganizationDomainInput!]!
+    "The list of email-based signup invitations for specific users."
+    signupEmails: [OrganizationSignupEmailInput!]!
+    "The list of token-based invitation configurations for the organization."
+    signupTokens: [OrganizationSignupTokenInput!]!
+}
+
+"An organization that groups users (principals) together. Organizations support domain-based auto-join, email invitations, token-based invites, and permission management."
+type Organization {
+    "The unique identifier of the organization."
+    id: UUID!
+    "The display name of the organization."
+    name: String!
+    "Custom attributes stored as JSON for the organization (e.g. branding, settings)."
+    attributes: JSON!
+    "System-managed attributes stored as JSON. Null if the current user does not have permission to view system attributes."
+    systemAttributes: JSON
+    "The profile associated with this organization, containing extended profile information."
+    profile: Profile!
+    "The visibility level that controls who can discover and view this organization."
+    visibility: ProfileVisibility!
+    "The email domains associated with this organization for domain-based signup. Null if the current user lacks permission to view domains."
+    domains: [OrganizationDomain!]
+    "The email-based signup invitations configured for this organization. Null if the current user lacks permission."
+    signupEmails: [OrganizationSignupEmail!]
+    "The token-based invitations configured for this organization. Null if the current user lacks permission."
+    signupTokens: [OrganizationSignupToken!]
+    "The permission rules configured for this organization. Null if the current user lacks permission."
+    permissions: [OrganizationPermission!]
+    "The list of principals who have manager-level access to this organization."
+    managers: [Principal!]!
+    "A paginated list of principals who are members of this organization."
+    members(
+        "The zero-based offset for pagination."
+        offset: Long!
+        "The maximum number of members to return."
+        limit: Int!
+    ): [Principal!]!
+    "The total number of members in this organization."
+    memberCount: Long!
+    "The timestamp when this organization was created."
+    created: DateTime!
+    "The timestamp when this organization was last modified."
+    modified: DateTime!
+}
+
+"Query operations for retrieving organizations. Supports listing all organizations, looking up by ID, and finding organizations by signup token or email."
+type Organizations {
+    "Retrieve a paginated list of all organizations the current user has access to."
+    all(
+        "The maximum number of organizations to return."
+        limit: Int!
+        "The zero-based offset for pagination."
+        offset: Long!
+    ): [Organization!]!
+    "Retrieve a single organization by its unique identifier."
+    organization(
+        "The UUID of the organization to retrieve."
+        id: UUID!
+    ): Organization!
+    "Find an organization by a signup token. Returns null if no organization matches the token."
+    findByToken(
+        "The signup token string to search for."
+        token: String!
+    ): Organization
+    "Find an organization by a signup email address. Returns null if no organization has an invitation for this email."
+    findByEmail(
+        "The email address to search for in organization signup invitations."
+        email: String!
+    ): Organization
+}
+
+"Mutation operations for managing organizations, including CRUD operations, domain management, signup tokens, email invitations, and membership."
+type OrganizationsMutation {
+    "Create a new organization with the specified settings and an associated profile."
+    add(
+        "The organization configuration including name, attributes, visibility, and signup settings."
+        organization: OrganizationInput!
+        "The profile to create and associate with the new organization."
+        profile: ProfileInput!
+    ): Organization
+    "Update an existing organization's settings and its associated profile."
+    edit(
+        "The updated organization configuration. The id field must be set to identify the organization to edit."
+        organization: OrganizationInput!
+        "The updated profile information for the organization."
+        profile: ProfileInput!
+    ): Organization
+    "Permanently delete an organization by its unique identifier. Returns true if the deletion was successful."
+    delete(
+        "The UUID of the organization to delete."
+        id: UUID!
+    ): Boolean!
+
+    "Add an email domain to an organization for domain-based signup rules."
+    addOrganizationDomain(
+        "The UUID of the organization to add the domain to."
+        id: UUID!
+        "The domain configuration to add."
+        domain: OrganizationDomainInput!
+    ): Organization
+    "Remove an email domain from an organization."
+    removeOrganizationDomain(
+        "The UUID of the organization to remove the domain from."
+        id: UUID!
+        "The domain string to remove (e.g. 'example.com')."
+        domain: String!
+    ): Organization
+
+    "Create a new token-based invitation for an organization. The generated token can be shared to allow users to join."
+    addSignupToken(
+        "The UUID of the organization to create the signup token for."
+        id: UUID!
+        "The token configuration specifying the group type for users who join via this token."
+        token: OrganizationSignupTokenInput!
+    ): Organization
+    "Delete a token-based invitation from an organization, invalidating the token."
+    deleteSignupToken(
+        "The UUID of the organization to delete the signup token from."
+        id: UUID!
+        "The token string to delete."
+        token: String!
+    ): Organization
+
+    "Add an email-based signup invitation to an organization, allowing a specific user to join."
+    addSignupEmailToken(
+        "The UUID of the organization to add the email invitation to."
+        id: UUID!
+        "The email invitation configuration specifying the email address and group type."
+        token: OrganizationSignupEmailInput!
+    ): Organization
+    "Delete an email-based signup invitation from an organization."
+    deleteSignupEmailToken(
+        "The UUID of the organization to delete the email invitation from."
+        id: UUID!
+        "The token string associated with the email invitation to delete."
+        token: String!
+    ): Organization
+
+    "Add a principal as a member of an organization. Returns true if the member was successfully added."
+    addMember(
+        "The UUID of the organization to add the member to."
+        id: UUID!
+        "The UUID of the principal to add as a member."
+        principalId: UUID!
+    ): Boolean!
+    "Remove a principal from an organization's membership. Returns true if the member was successfully removed."
+    removeMember(
+        "The UUID of the organization to remove the member from."
+        id: UUID!
+        "The UUID of the principal to remove from membership."
+        principalId: UUID!
+    ): Boolean!
+}

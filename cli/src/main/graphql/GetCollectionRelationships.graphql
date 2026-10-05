@@ -1,0 +1,9 @@
+query GetCollectionRelationships($id: UUID!) {
+    content {
+        collection(id: $id) {
+            metadataRelationships {
+                ...CollectionRelationship
+            }
+        }
+    }
+}

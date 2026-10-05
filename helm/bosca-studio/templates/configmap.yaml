@@ -1,0 +1,44 @@
+{{- /* Internal cluster DNS for bosca-server. Defaults to the service
+       name produced by the bosca-server subchart under this same release
+       (<release>-bosca-server). Override with appConfig.serverHost when
+       installing this chart standalone or pointing at a different namespace. */ -}}
+{{- $server := .Values.appConfig.serverHost | default (printf "%s-bosca-server" .Release.Name) -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "bosca-common.fullname" . }}-env
+  labels:
+    {{- include "bosca-common.labels" . | nindent 4 }}
+data:
+  REDIS_HOST: {{ .Values.appConfig.redisHost | quote }}
+  REDIS_PORT: {{ .Values.appConfig.redisPort | quote }}
+  API_URL: "http://{{ $server }}:8080"
+  COLLABORATION_URL: "http://{{ $server }}:8080"
+  GRAPHQL_URL: "http://{{ $server }}:8080/graphql"
+  SIGNUP_TOKEN_BASE_URL: "https://studio.{{ include "bosca-common.domain" . }}/content/signup-token/{token}"
+  NUXT_PUBLIC_SIGNUP_TOKEN_BASE_URL: "https://studio.{{ include "bosca-common.domain" . }}/content/signup-token/{token}"
+  NUXT_API_URL: "http://{{ $server }}:8080"
+  NUXT_WS_URL: "ws://{{ $server }}:8080"
+  NUXT_PUBLIC_WS_URL: "wss://studio.{{ include "bosca-common.domain" . }}"
+  NUXT_PUBLIC_API_URL: "https://studio.{{ include "bosca-common.domain" . }}"
+  NUXT_PUBLIC_APP_VERSION: {{ .Values.image.tag | default .Chart.AppVersion | quote }}
+  NUXT_PUBLIC_AUTH_DOMAIN: {{ include "bosca-common.domain" . | quote }}
+  NUXT_GRAPHQL_URL: "http://{{ $server }}:8080/graphql"
+  NUXT_PUBLIC_GRAPHQL_URL: "https://studio.{{ include "bosca-common.domain" . }}/graphql"
+  NUXT_APOLLO_CLIENTS_DEFAULT_HTTP_ENDPOINT: "http://{{ $server }}:8080/graphql"
+  NUXT_PUBLIC_APOLLO_CLIENTS_DEFAULT_HTTP_ENDPOINT: "https://studio.{{ include "bosca-common.domain" . }}/graphql"
+  GIT_SERVER_URL: {{ .Values.appConfig.gitServerUrl | default (printf "https://git.%s" (include "bosca-common.domain" .)) | quote }}
+  GIT_BASE_URL: {{ .Values.appConfig.gitBaseUrl | default "/" | quote }}
+  NUXT_PUBLIC_GIT_SERVER_URL: {{ .Values.appConfig.gitServerUrl | default (printf "https://git.%s" (include "bosca-common.domain" .)) | quote }}
+  NUXT_PUBLIC_GIT_BASE_URL: {{ .Values.appConfig.gitBaseUrl | default "/" | quote }}
+  ARTIFACTS_URL: {{ .Values.appConfig.artifactsUrl | default (printf "https://artifacts.%s" (include "bosca-common.domain" .)) | quote }}
+  NUXT_PUBLIC_ARTIFACTS_URL: {{ .Values.appConfig.artifactsUrl | default (printf "https://artifacts.%s" (include "bosca-common.domain" .)) | quote }}
+  {{- with .Values.appConfig.termsUrl }}
+  NUXT_PUBLIC_TERMS_URL: {{ . | quote }}
+  {{- end }}
+  {{- with .Values.appConfig.privacyUrl }}
+  NUXT_PUBLIC_PRIVACY_URL: {{ . | quote }}
+  {{- end }}
+  {{- with .Values.appConfig.posthogPublicKey }}
+  NUXT_PUBLIC_POSTHOG_PUBLIC_KEY: {{ . | quote }}
+  {{- end }}

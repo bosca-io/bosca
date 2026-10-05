@@ -1,0 +1,52 @@
+/* Bosca UI — design tokens
+   Whitelabel: change --brand-1 / --brand-2 / --brand-accent */
+:root,
+[data-theme="dark"] {
+  --brand-1: #06b6d4;
+  --brand-2: #3b82f6;
+  --brand-accent: #7c5cff;
+  --brand-grad: linear-gradient(135deg, var(--brand-1) 0%, var(--brand-2) 60%, var(--brand-accent) 100%);
+  --brand-grad-soft: linear-gradient(135deg, color-mix(in oklch, var(--brand-1) 18%, transparent), color-mix(in oklch, var(--brand-2) 16%, transparent), color-mix(in oklch, var(--brand-accent) 16%, transparent));
+
+  --bg-0: #0a0c12;
+  --bg-1: #10131c;
+  --bg-2: #161a25;
+  --bg-3: #1d2230;
+  --bg-4: #252b3d;
+  --line: #232839;
+  --line-2: #2e3447;
+  --fg-0: #f3f5fb;
+  --fg-1: #cdd2e2;
+  --fg-2: #969cb1;
+  --fg-3: #6c7388;
+  --fg-4: #454b60;
+
+  --ok: #34d99a;
+  --warn: #ffb547;
+  --err: #ff5470;
+  --info: #5ec5ff;
+
+  --r-xs: 6px;
+  --r-sm: 9px;
+  --r-md: 12px;
+  --r-lg: 16px;
+  --r-xl: 22px;
+
+  --font-sans: 'Geist', 'Inter', -apple-system, system-ui, sans-serif;
+  --font-mono: 'Geist Mono', 'JetBrains Mono', ui-monospace, monospace;
+}
+
+[data-theme="light"] {
+  --bg-0: #f6f7f9;
+  --bg-1: #ffffff;
+  --bg-2: #f9fafb;
+  --bg-3: #f1f3f7;
+  --bg-4: #e7eaf0;
+  --line: #e5e8ee;
+  --line-2: #d2d6e0;
+  --fg-0: #0e1019;
+  --fg-1: #2a2e3a;
+  --fg-2: #5a6072;
+  --fg-3: #898fa1;
+  --fg-4: #b8bdcb;
+}

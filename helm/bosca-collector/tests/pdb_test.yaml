@@ -1,0 +1,22 @@
+suite: bosca-collector disruption budget
+templates:
+  - templates/pdb.yaml
+values:
+  - ../values.yaml
+tests:
+  - it: does not render when the disruption budget is disabled
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: renders maxUnavailable when configured
+    set:
+      podDisruptionBudget:
+        enabled: true
+        maxUnavailable: 1
+    asserts:
+      - isKind:
+          of: PodDisruptionBudget
+      - equal:
+          path: spec.maxUnavailable
+          value: 1

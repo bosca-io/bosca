@@ -1,0 +1,81 @@
+{# The preview index — the design-review landing page listing every email variant with sample
+   data, in the Bosca dark visual system. Each entry renders the REAL compiled email template
+   through its sample context; append ?text to any preview for the plain-text alternative. The
+   Geist faces load from /fonts (the preview server serves public/ at the root). #}
+<page route="/">
+  <script server provides="entries">
+    import bosca.messages.Samples
+    Samples.entries
+  </script>
+  <html lang="en">
+    <head>
+      <meta charset="utf-8"/>
+      <meta name="viewport" content="width=device-width, initial-scale=1"/>
+      <title>Bosca Transactional Emails - Preview</title>
+      <style>
+        @font-face { font-family:'Geist'; font-style:normal; font-weight:100 900; src:url('/fonts/geist-variable.woff2') format('woff2'); }
+        @font-face { font-family:'Geist Mono'; font-style:normal; font-weight:100 900; src:url('/fonts/geist-mono-variable.woff2') format('woff2'); }
+        :root { --bg:#0a0c12; --surface:#10131c; --line:#232839; --fg:#f3f5fb; --muted:#969cb1; --dim:#6c7388; --green:#00dc82; }
+        * { box-sizing:border-box; }
+        body { margin:0; background:
+                 radial-gradient(80% 55% at 12% -5%, rgba(0,220,130,0.14), transparent 60%),
+                 radial-gradient(60% 45% at 95% 8%, rgba(124,92,255,0.10), transparent 65%),
+                 var(--bg);
+               color:var(--fg); min-height:100vh;
+               font-family:'Geist',-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif; }
+        .wrap { max-width:760px; margin:0 auto; padding:56px 24px 80px; }
+        .brand { display:flex; align-items:center; gap:10px; margin:0 0 28px; }
+        .brand span { font-size:15px; font-weight:600; letter-spacing:0.01em; }
+        .eyebrow { font-family:'Geist Mono',ui-monospace,Menlo,monospace; font-size:11px; letter-spacing:0.28em;
+                   text-transform:uppercase; color:var(--green); font-weight:500; margin:0 0 10px; }
+        h1 { font-weight:600; font-size:30px; letter-spacing:-0.02em; margin:0 0 8px; }
+        .sub { color:var(--muted); font-size:14px; line-height:1.6; margin:0 0 36px; max-width:56ch; }
+        ul { list-style:none; margin:0; padding:0; }
+        li a { display:flex; align-items:center; gap:16px; padding:16px 18px;
+             border:1px solid var(--line); border-radius:12px; background:rgba(255,255,255,0.02);
+             text-decoration:none; color:inherit; margin-bottom:10px;
+             transition:border-color .15s, transform .15s, background .15s; }
+        li a:hover { border-color:rgba(0,220,130,0.5); background:rgba(255,255,255,0.04); transform:translateY(-1px); }
+        .num { font-family:'Geist Mono',ui-monospace,Menlo,monospace; font-size:12px; color:var(--green);
+               background:rgba(0,220,130,0.08); border:1px solid rgba(0,220,130,0.2);
+               width:34px; height:34px; border-radius:9px; display:flex; align-items:center;
+               justify-content:center; flex:0 0 auto; }
+        .meta { flex:1; }
+        .meta .t { display:block; font-size:15px; font-weight:500; }
+        .meta .d { display:block; font-size:12.5px; color:var(--muted); margin-top:2px; }
+        .tag { font-family:'Geist Mono',ui-monospace,Menlo,monospace; font-size:10px; letter-spacing:0.14em;
+               text-transform:uppercase; font-weight:500; padding:4px 9px; border-radius:999px;
+               color:var(--green); background:rgba(0,220,130,0.08); border:1px solid rgba(0,220,130,0.2); }
+        footer { margin-top:36px; font-size:12.5px; color:var(--dim); line-height:1.7; }
+        code { font-family:'Geist Mono',ui-monospace,Menlo,monospace; background:var(--surface);
+               border:1px solid var(--line); padding:1px 6px; border-radius:5px; font-size:11.5px; }
+      </style>
+    </head>
+    <body>
+      <div class="wrap">
+        <div class="brand"><img src="/bosca-mark.png" width="24" height="24" alt="Bosca"/><span>Bosca</span></div>
+        <p class="eyebrow">Transactional Emails</p>
+        <h1>Preview</h1>
+        <p class="sub">Design previews with sample data. Each email is a compiled BML message template
+           (<code>src/main/bml/messages</code>) rendered through its shared context; Geist degrades to the
+           system stack in clients that strip webfonts. Append <code>?text</code> to any preview for
+           the plain-text alternative.</p>
+
+        <ul>
+          <for e in entries>
+            <li><a href="/preview/{ e.slug }">
+              <span class="num">{ e.number }</span>
+              <span class="meta"><span class="t">{ e.title }</span>
+                <span class="d">{ e.description }</span></span>
+              <span class="tag">Ready</span>
+            </a></li>
+          </for>
+        </ul>
+
+        <footer>
+          BML message project · <code>./gradlew run</code> on port 4567 · templates in <code>src/main/bml/messages</code>.
+        </footer>
+      </div>
+    </body>
+  </html>
+</page>

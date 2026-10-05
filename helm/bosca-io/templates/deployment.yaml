@@ -1,0 +1,90 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "bosca-common.fullname" . }}
+  labels:
+    {{- include "bosca-common.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  revisionHistoryLimit: {{ .Values.revisionHistoryLimit | default 1 }}
+  {{- with .Values.strategy }}
+  strategy:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "bosca-common.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "bosca-common.selectorLabels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "bosca-common.serviceAccountName" . }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- include "bosca-common.podSecurityContext" . | nindent 8 }}
+      containers:
+        - name: {{ .Chart.Name }}
+          image: {{ include "bosca-common.boscaImage" (dict "image" (merge (dict "tag" (default .Chart.AppVersion .Values.image.tag)) .Values.image) "global" .Values.global) }}
+          imagePullPolicy: {{ include "bosca-common.imagePullPolicy" .Values.image }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.port }}
+              protocol: TCP
+          envFrom:
+            {{- range .Values.envFromConfigMaps }}
+            - configMapRef:
+                name: {{ . }}
+            {{- end }}
+          env:
+            - name: HOST_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.hostIP
+            - name: K8S_POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: K8S_POD_UID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.uid
+            {{- if not (hasKey .Values.extraEnv "NUXT_PUBLIC_APP_VERSION") }}
+            - name: NUXT_PUBLIC_APP_VERSION
+              value: {{ .Values.image.tag | default .Chart.AppVersion | quote }}
+            {{- end }}
+            {{- range $k, $v := .Values.extraEnv }}
+            - name: {{ $k }}
+              value: {{ $v | quote }}
+            {{- end }}
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

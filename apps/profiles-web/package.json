@@ -1,0 +1,15 @@
+{
+  "name": "profiles-web-client",
+  "private": true,
+  "description": "Client dependencies for the Bosca BML profile self-service site.",
+  "dependencies": {
+    "@bosca/auth-client-browser": "6.15.0",
+    "@bosca/bml": "6.15.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2"
+  },
+  "overrides": {
+    "esbuild": "^0.28.2"
+  }
+}

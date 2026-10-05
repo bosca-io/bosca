@@ -1,0 +1,28 @@
+<page route="/" title="Home">
+  <script server provides="greeting">"Hello from BML"</script>
+  <script server provides="fruits">
+    listOf("alpha", "beta", "gamma", greeting)
+  </script>
+  <script server provides="counterModel" scope="client-session">
+    bosca.bml.sample.CounterModel()
+  </script>
+  <html>
+    <head><title>BML Sample</title></head>
+    <body>
+      <!-- a computed Kotlin value (fruits.size as text) passed into a component -->
+      <h1>{ greeting } <badge :label="fruits.size.toString()" tone="hot"/></h1>
+      <!-- a typed Kotlin List value passed into a component, which iterates it -->
+      <item-list :items="fruits" title="Fruits"/>
+      <!-- island: click POSTs state to the server, which re-renders <counter-view> and swaps it in -->
+      <island name="counter">
+        <div data-view>
+            <counter-view :count="counterModel.count"/>
+        </div>
+      </island>
+      <button @click="counterModel.increment">increment</button>
+      <script client>
+        console.log("home page loaded")
+      </script>
+    </body>
+  </html>
+</page>

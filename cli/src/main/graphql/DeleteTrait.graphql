@@ -1,0 +1,5 @@
+mutation DeleteTrait($id: String!) {
+    traits {
+        delete(id: $id)
+    }
+}

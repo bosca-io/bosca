@@ -1,0 +1,594 @@
+{
+  "reflection": [
+    {
+      "type": "bosca.cli.BoscaCommand"
+    },
+    {
+      "type": "bosca.cli.bml.BmlCommand"
+    },
+    {
+      "type": "bosca.cli.bml.BmlInitCommand"
+    },
+    {
+      "type": "bosca.cli.bml.BmlCompileCommand"
+    },
+    {
+      "type": "bosca.cli.bml.BmlDevCommand"
+    },
+    {
+      "type": "bosca.cli.data.DataCommand"
+    },
+    {
+      "type": "bosca.cli.data.InstallCommand"
+    },
+    {
+      "type": "bosca.cli.localization.DownloadCommand"
+    },
+    {
+      "type": "bosca.cli.localization.LocalizationCommand"
+    },
+    {
+      "type": "bosca.cli.localization.StatusCommand"
+    },
+    {
+      "type": "bosca.cli.localization.SyncCommand"
+    },
+    {
+      "type": "bosca.cli.localization.UploadCommand"
+    },
+    {
+      "type": "com.dashjoin.jsonata.Functions",
+      "allDeclaredMethods": true
+    },
+    {
+      "type": "com.github.ajalt.clikt.core.BaseCliktCommand"
+    },
+    {
+      "type": "com.github.ajalt.clikt.core.CliktCommand"
+    },
+    {
+      "type": "com.github.ajalt.clikt.core.Context"
+    },
+    {
+      "type": "com.github.ajalt.clikt.core.CoreCliktCommand"
+    },
+    {
+      "type": "com.github.ajalt.clikt.output.MordantHelpFormatter"
+    },
+    {
+      "type": "com.github.ajalt.clikt.parameters.arguments.ProcessedArgument"
+    },
+    {
+      "type": "com.github.ajalt.clikt.parameters.arguments.ProcessedArgumentImpl"
+    },
+    {
+      "type": "com.github.ajalt.clikt.parameters.internal.NullableLateinit"
+    },
+    {
+      "type": "com.github.ajalt.clikt.parameters.options.OptionWithValues"
+    },
+    {
+      "type": "com.github.ajalt.clikt.parameters.options.OptionWithValuesImpl"
+    },
+    {
+      "type": "com.github.ajalt.clikt.parameters.options.ValueWithDefault"
+    },
+    {
+      "type": "com.github.ajalt.clikt.parsers.CommandLineParser"
+    },
+    {
+      "type": "com.github.ajalt.clikt.parsers.CommandParser"
+    },
+    {
+      "type": "com.github.ajalt.mordant.terminal.StandardTerminalInterface"
+    },
+    {
+      "type": "com.github.ajalt.mordant.terminal.Terminal"
+    },
+    {
+      "type": "com.github.ajalt.mordant.terminal.TerminalDetection"
+    },
+    {
+      "type": "com.github.ajalt.mordant.terminal.TerminalInfo"
+    },
+    {
+      "type": "com.github.ajalt.mordant.terminal.terminalinterface.ffm.TerminalInterfaceProviderFfm"
+    },
+    {
+      "type": "com.github.ajalt.mordant.terminal.terminalinterface.jna.TerminalInterfaceProviderJna"
+    },
+    {
+      "type": "com.github.ajalt.mordant.terminal.terminalinterface.nativeimage.TerminalInterfaceProviderNativeImage"
+    },
+    {
+      "type": "com.agentclientprotocol.model.EmbeddedResourceResource$BlobResourceContents",
+      "fields": [
+        {
+          "name": "Companion"
+        }
+      ]
+    },
+    {
+      "type": "com.agentclientprotocol.model.EmbeddedResourceResource$BlobResourceContents$Companion",
+      "methods": [
+        {
+          "name": "serializer",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "com.agentclientprotocol.model.EmbeddedResourceResource$TextResourceContents",
+      "fields": [
+        {
+          "name": "Companion"
+        }
+      ]
+    },
+    {
+      "type": "com.agentclientprotocol.model.EmbeddedResourceResource$TextResourceContents$Companion",
+      "methods": [
+        {
+          "name": "serializer",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "io.modelcontextprotocol.kotlin.sdk.server.FeatureNotificationService"
+    },
+    {
+      "type": "io.modelcontextprotocol.kotlin.sdk.server.FeatureRegistry"
+    },
+    {
+      "type": "io.modelcontextprotocol.kotlin.sdk.server.ServerSession"
+    },
+    {
+      "type": "io.modelcontextprotocol.kotlin.sdk.server.ServerSessionRegistry"
+    },
+    {
+      "type": "io.modelcontextprotocol.kotlin.sdk.server.SessionNotificationJob"
+    },
+    {
+      "type": "io.modelcontextprotocol.kotlin.sdk.shared.Protocol"
+    },
+    {
+      "type": "io.modelcontextprotocol.kotlin.sdk.types.CallToolResult",
+      "fields": [
+        {
+          "name": "Companion"
+        }
+      ]
+    },
+    {
+      "type": "io.modelcontextprotocol.kotlin.sdk.types.CallToolResult$Companion",
+      "methods": [
+        {
+          "name": "serializer",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "io.modelcontextprotocol.kotlin.sdk.types.EmptyResult",
+      "fields": [
+        {
+          "name": "Companion"
+        }
+      ]
+    },
+    {
+      "type": "io.modelcontextprotocol.kotlin.sdk.types.EmptyResult$Companion",
+      "methods": [
+        {
+          "name": "serializer",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "io.modelcontextprotocol.kotlin.sdk.types.Implementation",
+      "fields": [
+        {
+          "name": "Companion"
+        }
+      ]
+    },
+    {
+      "type": "io.modelcontextprotocol.kotlin.sdk.types.Implementation$Companion",
+      "methods": [
+        {
+          "name": "serializer",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "io.modelcontextprotocol.kotlin.sdk.types.InitializeResult",
+      "fields": [
+        {
+          "name": "Companion"
+        }
+      ]
+    },
+    {
+      "type": "io.modelcontextprotocol.kotlin.sdk.types.InitializeResult$Companion",
+      "methods": [
+        {
+          "name": "serializer",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "io.modelcontextprotocol.kotlin.sdk.types.JSONRPCError",
+      "fields": [
+        {
+          "name": "Companion"
+        }
+      ]
+    },
+    {
+      "type": "io.modelcontextprotocol.kotlin.sdk.types.JSONRPCError$Companion",
+      "methods": [
+        {
+          "name": "serializer",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "io.modelcontextprotocol.kotlin.sdk.types.JSONRPCResponse",
+      "fields": [
+        {
+          "name": "Companion"
+        }
+      ]
+    },
+    {
+      "type": "io.modelcontextprotocol.kotlin.sdk.types.JSONRPCResponse$Companion",
+      "methods": [
+        {
+          "name": "serializer",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "io.modelcontextprotocol.kotlin.sdk.types.ListToolsResult",
+      "fields": [
+        {
+          "name": "Companion"
+        }
+      ]
+    },
+    {
+      "type": "io.modelcontextprotocol.kotlin.sdk.types.ListToolsResult$Companion",
+      "methods": [
+        {
+          "name": "serializer",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "io.modelcontextprotocol.kotlin.sdk.types.RPCError",
+      "fields": [
+        {
+          "name": "Companion"
+        }
+      ]
+    },
+    {
+      "type": "io.modelcontextprotocol.kotlin.sdk.types.RPCError$Companion",
+      "methods": [
+        {
+          "name": "serializer",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "io.modelcontextprotocol.kotlin.sdk.types.RequestId$NumberId",
+      "fields": [
+        {
+          "name": "Companion"
+        }
+      ]
+    },
+    {
+      "type": "io.modelcontextprotocol.kotlin.sdk.types.RequestId$NumberId$Companion",
+      "methods": [
+        {
+          "name": "serializer",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "io.modelcontextprotocol.kotlin.sdk.types.RequestId$StringId",
+      "fields": [
+        {
+          "name": "Companion"
+        }
+      ]
+    },
+    {
+      "type": "io.modelcontextprotocol.kotlin.sdk.types.RequestId$StringId$Companion",
+      "methods": [
+        {
+          "name": "serializer",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "io.modelcontextprotocol.kotlin.sdk.types.ServerCapabilities",
+      "fields": [
+        {
+          "name": "Companion"
+        }
+      ]
+    },
+    {
+      "type": "io.modelcontextprotocol.kotlin.sdk.types.ServerCapabilities$Companion",
+      "methods": [
+        {
+          "name": "serializer",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "io.modelcontextprotocol.kotlin.sdk.types.TextContent",
+      "fields": [
+        {
+          "name": "Companion"
+        }
+      ]
+    },
+    {
+      "type": "io.modelcontextprotocol.kotlin.sdk.types.TextContent$Companion",
+      "methods": [
+        {
+          "name": "serializer",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "io.modelcontextprotocol.kotlin.sdk.types.Tool",
+      "fields": [
+        {
+          "name": "Companion"
+        }
+      ]
+    },
+    {
+      "type": "io.modelcontextprotocol.kotlin.sdk.types.Tool$Companion",
+      "methods": [
+        {
+          "name": "serializer",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "io.modelcontextprotocol.kotlin.sdk.types.ToolSchema",
+      "fields": [
+        {
+          "name": "Companion"
+        }
+      ]
+    },
+    {
+      "type": "io.modelcontextprotocol.kotlin.sdk.types.ToolSchema$Companion",
+      "methods": [
+        {
+          "name": "serializer",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "java.io.Serializable"
+    },
+    {
+      "type": "java.lang.Boolean",
+      "jniAccessible": true,
+      "methods": [
+        {
+          "name": "getBoolean",
+          "parameterTypes": [
+            "java.lang.String"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "java.lang.Class",
+      "methods": [
+        {
+          "name": "isRecord",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "java.lang.ClassValue"
+    },
+    {
+      "type": "java.lang.Iterable"
+    },
+    {
+      "type": "java.lang.Object[]"
+    },
+    {
+      "type": "java.util.AbstractCollection"
+    },
+    {
+      "type": "java.util.AbstractList"
+    },
+    {
+      "type": "java.util.AbstractSet"
+    },
+    {
+      "type": "java.util.Arrays$ArrayList"
+    },
+    {
+      "type": "java.util.Collection"
+    },
+    {
+      "type": "java.util.Collections$EmptySet"
+    },
+    {
+      "type": "java.util.Collections$SingletonList"
+    },
+    {
+      "type": "java.util.HashMap$Values"
+    },
+    {
+      "type": "java.util.List"
+    },
+    {
+      "type": "java.util.RandomAccess"
+    },
+    {
+      "type": "java.util.Set"
+    },
+    {
+      "type": "kotlin.SafePublicationLazyImpl"
+    },
+    {
+      "type": "kotlin.collections.EmptyList"
+    },
+    {
+      "type": "kotlin.jvm.internal.DefaultConstructorMarker"
+    },
+    {
+      "type": "kotlin.jvm.internal.markers.KMappedMarker"
+    },
+    {
+      "type": "kotlin.reflect.jvm.internal.ReflectionFactoryImpl"
+    },
+    {
+      "type": "kotlinx.coroutines.CancellableContinuationImpl"
+    },
+    {
+      "type": "kotlinx.coroutines.CancelledContinuation"
+    },
+    {
+      "type": "kotlinx.coroutines.CompletedExceptionally"
+    },
+    {
+      "type": "kotlinx.coroutines.EventLoopImplBase"
+    },
+    {
+      "type": "kotlinx.coroutines.JobSupport"
+    },
+    {
+      "type": "kotlinx.coroutines.JobSupport$Finishing"
+    },
+    {
+      "type": "kotlinx.coroutines.channels.BufferedChannel"
+    },
+    {
+      "type": "kotlinx.coroutines.internal.ConcurrentLinkedListNode"
+    },
+    {
+      "type": "kotlinx.coroutines.internal.DispatchedContinuation"
+    },
+    {
+      "type": "kotlinx.coroutines.internal.LimitedDispatcher"
+    },
+    {
+      "type": "kotlinx.coroutines.internal.LockFreeLinkedListNode"
+    },
+    {
+      "type": "kotlinx.coroutines.internal.LockFreeTaskQueue"
+    },
+    {
+      "type": "kotlinx.coroutines.internal.LockFreeTaskQueueCore"
+    },
+    {
+      "type": "kotlinx.coroutines.internal.Segment"
+    },
+    {
+      "type": "kotlinx.coroutines.scheduling.CoroutineScheduler"
+    },
+    {
+      "type": "kotlinx.coroutines.scheduling.CoroutineScheduler$Worker"
+    },
+    {
+      "type": "kotlinx.coroutines.scheduling.WorkQueue"
+    },
+    {
+      "type": "net.fortuna.ical4j.model.DefaultZoneRulesProvider"
+    },
+    {
+      "type": "net.fortuna.ical4j.util.MapTimeZoneCache",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "sun.security.provider.NativePRNG",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "java.security.SecureRandomParameters"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "sun.security.provider.SHA",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "sun.text.resources.cldr.FormatData"
+    },
+    {
+      "type": "sun.text.resources.cldr.FormatData_en"
+    },
+    {
+      "type": "sun.text.resources.cldr.FormatData_en_US"
+    },
+    {
+      "type": "sun.util.resources.cldr.CalendarData"
+    }
+  ],
+  "resources": [
+    {
+      "glob": "ical4j.properties"
+    },
+    {
+      "glob": "META-INF/services/com.github.ajalt.mordant.terminal.TerminalInterfaceProvider"
+    },
+    {
+      "glob": "META-INF/services/java.net.spi.URLStreamHandlerProvider"
+    },
+    {
+      "glob": "META-INF/services/org.slf4j.spi.SLF4JServiceProvider"
+    }
+  ],
+  "foreign": {
+    "downcalls": [
+      {
+        "returnType": "jint",
+        "parameterTypes": [
+          "jint"
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,28 @@
+fragment MetadataContent on MetadataContent {
+    type
+    length
+}
+
+fragment MetadataContentDownload on MetadataContent {
+    type
+    length
+    urls {
+        download {
+            url
+            headers {
+                ...SignedUrlHeader
+            }
+        }
+    }
+}
+
+fragment MetadataContentUpload on MetadataContent {
+    urls {
+        upload {
+            url
+            headers {
+                ...SignedUrlHeader
+            }
+        }
+    }
+}

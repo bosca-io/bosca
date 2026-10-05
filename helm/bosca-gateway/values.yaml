@@ -1,0 +1,154 @@
+replicaCount: 2
+
+# Rolling update strategy. `maxUnavailable: 0` guarantees no capacity dip
+# during rollouts (vs the k8s default of 25%, which would allow 2 pods
+# unavailable at 10 replicas). `maxSurge` is the rollout headroom — bump
+# higher for faster, more aggressive rollouts at the cost of brief extra
+# pod-hours during the rollout window.
+strategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxSurge: 25%
+    maxUnavailable: 0
+
+image:
+  registry: ghcr.io/bosca-io/bosca
+  repository: bosca-gateway
+  tag: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets:
+  - name: docker-registry
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+podAnnotations:
+  # /metrics is served on the same listener as the data plane.
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "8443"
+  prometheus.io/path: "/metrics"
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 64Mi
+  limits:
+    cpu: "1"
+    memory: 256Mi
+
+gateway:
+  bind: "0.0.0.0:8443"
+  drainTimeoutSecs: 30
+  # CIDRs of upstream proxies whose `X-Forwarded-*` headers the gateway
+  # should TRUST and propagate. The canonical entry for a Cilium-fronted
+  # deploy is the Cilium pod CIDR — that's the hop that terminates TLS
+  # and stamps the real client's `X-Forwarded-Proto: https` /
+  # `X-Forwarded-Host` / `X-Forwarded-For` onto the request before
+  # forwarding to the gateway pod.
+  #
+  # From any peer NOT in this list, inbound `X-Forwarded-*` headers are
+  # ignored (defending against client spoofing) and the peer IS the
+  # client for audit and `X-Forwarded-*` outbound purposes.
+  trustedProxies: []
+  # Scheme to claim in outbound `X-Forwarded-Proto` (and the
+  # `{{request.scheme}}` template variable) when no trusted-proxy hop
+  # supplied one. Useful when the proxy is bound to plain HTTP inside
+  # the cluster but TLS terminates at an L4 LB that doesn't send
+  # `X-Forwarded-Proto`. Trusted-hop values win for individual requests;
+  # this is the fallback only. Leave unset to default to "http".
+  externalScheme: ""
+  # Public Studio origin used for interactive browser authentication.
+  # Leave empty to disable the Studio handoff.
+  studioUrl: ""
+
+bosca:
+  apiUrl: "http://bosca-server:8080"
+  pollIntervalSecs: 30
+  cacheFile: "/var/lib/gateway/config-cache.json"
+
+# OAuth2 is intentionally NOT a gateway concern — bosca-server owns the
+# OAuth2 IDP integration end-to-end. The gateway validates either a JWT
+# minted by bosca-server (jwt block below) or delegates Basic auth to
+# bosca-server's validation endpoint (basic block below).
+auth:
+  jwt:
+    enabled: true
+    issuer: ""
+    audience: "bosca-gateway"
+    jwksUri: ""
+    jwksCacheTtlSecs: 3600
+    # Escape hatch for in-cluster JWKS endpoints that don't yet serve
+    # TLS (e.g. http://bosca-server:8080/.well-known/jwks.json). The
+    # gateway will refuse to start with a non-https jwks_uri unless this
+    # is true. Engaging it logs a continuous WARN at startup so the
+    # relaxed posture stays visible in production logs.
+    allowInsecureJwksUri: false
+  basic:
+    enabled: false
+    validationEndpoint: ""
+    cacheTtlSecs: 60
+
+secrets:
+  create: true
+  existingSecret: ""
+  boscaApiToken: ""
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilization: 70
+
+podDisruptionBudget:
+  enabled: true
+  # Set exactly one of `minAvailable` or `maxUnavailable`. If `maxUnavailable`
+  # is defined, the template prefers it (useful for deployments whose floor is
+  # 1 pod — `minAvailable: 1` would block node drains at the floor, whereas
+  # `maxUnavailable: 1` always permits one eviction at a time regardless of
+  # current replica count).
+  minAvailable: 1
+
+ingress:
+  enabled: false
+  className: "nginx"
+  annotations: {}
+  hosts:
+    - host: gateway.bosca.io
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+service:
+  type: ClusterIP
+  port: 8443
+
+networkPolicy:
+  enabled: false
+
+livenessProbe:
+  httpGet:
+    path: /healthz
+    port: http
+  initialDelaySeconds: 5
+  periodSeconds: 10
+
+readinessProbe:
+  httpGet:
+    path: /readyz
+    port: http
+  initialDelaySeconds: 5
+  periodSeconds: 5
+
+serviceMonitor:
+  enabled: false
+  interval: 15s
+  scrapeTimeout: 10s
+  labels: {}
+
+global:
+  # Registry (and path) for every Bosca image; when set, it overrides image.registry.
+  imageRegistry: ""

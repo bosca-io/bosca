@@ -1,0 +1,18 @@
+<idea-plugin>
+    <!-- Loaded ONLY when the Kotlin plugin is present (via the optional <depends> in plugin.xml). These
+         extensions reference org.jetbrains.kotlin.* classes (BmlFragmentResolver → KtBlockCodeFragment/
+         KtFile), so they must not be registered — or class-loaded — when Kotlin is absent.
+         NOTE: the <supportsKotlinPluginMode supportsK2="true"/> K2-compat flag is intentionally in the MAIN
+         plugin.xml, not here — the platform reads it from the main descriptor before this file is loaded. -->
+    <extensions defaultExtensionNs="com.intellij">
+        <!-- Cmd-click for embedded Kotlin: K2 won't resolve the language injection, so resolve via a
+             module-anchored code fragment instead (BmlFragmentResolver). -->
+        <gotoDeclarationHandler
+            implementation="bosca.bml.ide.BmlKotlinGotoHandler"/>
+        <!-- Member completion for embedded Kotlin (`item.<caret>` → href/name/…): K2 won't complete the
+             injection in place, so the receiver is typed via the same module-anchored fragment. -->
+        <completion.contributor
+            language="kotlin"
+            implementationClass="bosca.bml.ide.BmlKotlinMemberCompletionContributor"/>
+    </extensions>
+</idea-plugin>

@@ -1,0 +1,3 @@
+package bosca.community.repository
+
+typealias ChatChannelPermissionRepository = bosca.chat.repository.ChatChannelPermissionRepository
