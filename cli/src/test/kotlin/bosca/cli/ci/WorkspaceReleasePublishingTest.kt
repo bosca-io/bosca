@@ -7,6 +7,7 @@ import okhttp3.Credentials
 import java.io.File
 import java.nio.file.Files
 import java.security.MessageDigest
+import java.util.Properties
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -41,6 +42,75 @@ class WorkspaceReleasePublishingTest {
             }
         } finally {
             root.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `CLI build jobs write literal Gradle configuration and override workspace defaults`() = runTest {
+        val configuration = """
+            org.gradle.jvmargs=-Xmx4g
+
+            # macOS signing & notarization — non-secret configuration
+            # Literal shell text: ${'$'}(touch substituted) `touch backticks` "${'$'}HOME"
+            # xcrun notarytool store-credentials bosca-notary \
+            #   --apple-id kyle@sowers.io --team-id 67J24T4AJA
+            bosca.macos.signIdentity=Developer ID Application: Sowers, LLC (67J24T4AJA)
+            bosca.macos.installerSignIdentity=Developer ID Installer: Sowers, LLC (67J24T4AJA)
+            bosca.macos.pkgIdentifier=io.bosca.cli
+            bosca.macos.notaryKeychainProfile=bosca-notary
+            bosca.macos.notaryAppleId=kyle@sowers.io
+            bosca.macos.notaryTeamId=67J24T4AJA
+        """.trimIndent()
+        for (platform in listOf("linux-x86_64", "macos-arm64")) {
+            for (value in listOf(configuration, "$configuration\n")) {
+                val root = fixture()
+                try {
+                    val propertiesFile = File(root, "gradle.properties")
+                    val original = "org.gradle.jvmargs=-Xmx6g\norg.gradle.parallel=true"
+                    propertiesFile.writeText(original)
+                    val logs = TestLogBuffer()
+                    val secrets = mapOf("CLI_GRADLE_PROPERTIES" to value)
+                    val step = pipeline("release-cli.yaml").jobs.getValue(platform).steps.first { it.name == "Configure Gradle" }
+                    val result = executor(root, secrets = secrets, logBuffer = logs).execute(step, ExpressionContext(secrets = secrets))
+                    assertTrue(result.success, platform)
+                    assertEquals("$original\n$value\n", propertiesFile.readText())
+                    val properties = Properties().apply { propertiesFile.reader().use { load(it) } }
+                    assertEquals("-Xmx4g", properties.getProperty("org.gradle.jvmargs"))
+                    assertEquals("true", properties.getProperty("org.gradle.parallel"))
+                    assertEquals("Developer ID Application: Sowers, LLC (67J24T4AJA)", properties.getProperty("bosca.macos.signIdentity"))
+                    assertEquals("Developer ID Installer: Sowers, LLC (67J24T4AJA)", properties.getProperty("bosca.macos.installerSignIdentity"))
+                    assertEquals("bosca-notary", properties.getProperty("bosca.macos.notaryKeychainProfile"))
+                    assertEquals("kyle@sowers.io", properties.getProperty("bosca.macos.notaryAppleId"))
+                    assertEquals("67J24T4AJA", properties.getProperty("bosca.macos.notaryTeamId"))
+                    assertEquals("io.bosca.cli", properties.getProperty("bosca.macos.pkgIdentifier"))
+                    assertFalse(File(root, "substituted").exists())
+                    assertFalse(File(root, "backticks").exists())
+                    assertTrue(logs.lines.isEmpty(), "configuration must not be printed to CI logs")
+                    assertFalse(File(root, "cli/gradle.properties").exists())
+                } finally {
+                    root.deleteRecursively()
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `CLI build jobs reject missing or empty Gradle configuration without modifying the workspace`() = runTest {
+        for (platform in listOf("linux-x86_64", "macos-arm64")) {
+            for (secrets in listOf(emptyMap(), mapOf("CLI_GRADLE_PROPERTIES" to ""))) {
+                val root = fixture()
+                try {
+                    val propertiesFile = File(root, "gradle.properties")
+                    val original = "org.gradle.jvmargs=-Xmx6g\norg.gradle.parallel=true\n"
+                    propertiesFile.writeText(original)
+                    val step = pipeline("release-cli.yaml").jobs.getValue(platform).steps.first { it.name == "Configure Gradle" }
+                    val result = executor(root, secrets = secrets).execute(step, ExpressionContext(secrets = secrets))
+                    assertFalse(result.success, platform)
+                    assertEquals(original, propertiesFile.readText())
+                } finally {
+                    root.deleteRecursively()
+                }
+            }
         }
     }
 
@@ -176,9 +246,10 @@ class WorkspaceReleasePublishingTest {
         registry: String = "",
         environment: Map<String, String> = emptyMap(),
         secrets: Map<String, String> = emptyMap(),
+        logBuffer: TestLogBuffer = TestLogBuffer(setOf("agent-token", "test-github-token")),
     ) = StepExecutor(
         workDir = root, serverUrl = "", agentToken = "agent-token", registryUrl = registry,
         commitSha = "test-commit", ref = "", repositoryId = "r", env = environment, secrets = secrets,
-        logBuffer = TestLogBuffer(setOf("agent-token", "test-github-token")),
+        logBuffer = logBuffer,
     )
 }

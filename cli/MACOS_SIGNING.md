@@ -91,9 +91,11 @@ the only secret; it never gets committed.
 ### 4. Credentials & properties
 
 The repository supplies the `.pkg` bundle identifier and the notary
-keychain-profile name (`bosca-notary`). Configure signing identities and account
-identifiers in your user-level `~/.gradle/gradle.properties` or through the
-environment variables below. Keep account-specific settings out of the repository.
+keychain-profile name (`bosca-notary`). Signing identity names and account
+identifiers are non-secret configuration. Configure them in your user-level
+`~/.gradle/gradle.properties`, the workspace root `gradle.properties`, or through
+the environment variables below. CI supplies these properties through
+`CLI_GRADLE_PROPERTIES` as described in [Continuous integration](#continuous-integration-bosca-pipeline).
 
 1. **The signing certificates must be in a keychain on the build host.** The
    configured identity names only *resolve* if the matching cert + private key
@@ -122,12 +124,12 @@ to an API key.
 ## Continuous integration (Bosca pipeline)
 
 The [CLI release pipeline](../.bosca/pipelines/release-cli.yaml) builds, signs,
-and notarizes the `.pkg` on the `macos` agent and publishes it to the GitHub
-release `cli-v<version>` as `bosca-<version>-macos-arm64.pkg`.
+and notarizes the `.pkg` on the `macos` agent and publishes it to Bosca Artifacts
+as `bosca-<version>-macos-arm64.pkg`.
 
-The certs and the `bosca-notary` profile already live on the persistent `macos`
-agent — the only thing CI has to do that a logged-in workstation gets for free
-is **unlock the keychain**. On a head-less box the login keychain is locked, so
+Install the signing certificates and the `bosca-notary` profile on the persistent
+`macos` agent before running the pipeline. CI must **unlock the keychain**.
+On a head-less box the login keychain is locked, so
 codesign/notarytool would pop the GUI *"enter your password to unlock"* dialog
 (answerable only over VNC). The *Unlock signing keychain* step handles it
 non-interactively:
@@ -137,11 +139,25 @@ security set-keychain-settings "$KEYCHAIN"                          # no auto-lo
 security unlock-keychain -p "$MACOS_KEYCHAIN_PASSWORD" "$KEYCHAIN"  # head-less unlock
 ```
 
-### One secret to set on the pipeline
+### Pipeline configuration
 
 | Secret | What it is |
 |---|---|
+| `CLI_GRADLE_PROPERTIES` | Multiline Gradle configuration, including `org.gradle.jvmargs`, signing identities, bundle identifier, and notary account/profile properties. Both native build jobs require it. |
 | `MACOS_KEYCHAIN_PASSWORD` | the password that unlocks the keychain holding the certs + `bosca-notary` profile (the agent user's **login-keychain password** by default) |
+
+After checkout, each native build job appends `CLI_GRADLE_PROPERTIES` to the
+workspace root `gradle.properties` before running Gradle. This retains workspace
+build settings while allowing the supplied properties to override their defaults.
+Gradle runs from the workspace root, so the configuration belongs there rather
+than in `cli/gradle.properties`. The value is passed through the step environment
+and written literally, preserving newlines, comments, spaces, and backslashes.
+An empty or missing value fails configuration before the build.
+
+Signing identity names, Team IDs, bundle identifiers, and notary profile names
+are non-secret configuration. Keep private keys and the app-specific notary
+password outside `CLI_GRADLE_PROPERTIES`; this pipeline uses the agent's stored
+notary keychain profile.
 
 By default the step unlocks `~/Library/Keychains/login.keychain-db`; set the
 pipeline's `SIGNING_KEYCHAIN` env to unlock a different keychain. Because the

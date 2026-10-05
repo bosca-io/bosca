@@ -1,7 +1,8 @@
 name: "Release: CLI"
 # Builds the native `bosca` CLI from an existing Git tag and publishes packages and checksums to Bosca Artifacts.
 #
-# Secrets: MACOS_KEYCHAIN_PASSWORD (see cli/MACOS_SIGNING.md) is required for signing.
+# Build configuration: CLI_GRADLE_PROPERTIES supplies Gradle properties for both platforms.
+# Signing secret: MACOS_KEYCHAIN_PASSWORD (see cli/MACOS_SIGNING.md).
 on:
   manual: true
   release: true
@@ -17,6 +18,7 @@ jobs:
   linux-x86_64:
     runner: linux
     timeout: 60m
+    secrets: [CLI_GRADLE_PROPERTIES]
     steps:
       - name: Validate release tag
         run: |
@@ -28,6 +30,12 @@ jobs:
           RELEASE_REF: ${{ ref }}
       - name: Checkout
         uses: checkout
+      - name: Configure Gradle
+        run: |
+          : "${CLI_GRADLE_PROPERTIES:?CLI_GRADLE_PROPERTIES must contain the CLI Gradle configuration}"
+          printf '\n%s\n' "$CLI_GRADLE_PROPERTIES" >> gradle.properties
+        env:
+          CLI_GRADLE_PROPERTIES: ${{ secrets.CLI_GRADLE_PROPERTIES }}
       - name: Setup Java
         uses: setup-java
         with:
@@ -59,7 +67,7 @@ jobs:
   macos-arm64:
     runner: macos
     timeout: 90m
-    secrets: [MACOS_KEYCHAIN_PASSWORD]
+    secrets: [CLI_GRADLE_PROPERTIES, MACOS_KEYCHAIN_PASSWORD]
     steps:
       - name: Validate release tag
         run: |
@@ -71,6 +79,12 @@ jobs:
           RELEASE_REF: ${{ ref }}
       - name: Checkout
         uses: checkout
+      - name: Configure Gradle
+        run: |
+          : "${CLI_GRADLE_PROPERTIES:?CLI_GRADLE_PROPERTIES must contain the CLI Gradle configuration}"
+          printf '\n%s\n' "$CLI_GRADLE_PROPERTIES" >> gradle.properties
+        env:
+          CLI_GRADLE_PROPERTIES: ${{ secrets.CLI_GRADLE_PROPERTIES }}
       - name: Setup Java
         uses: setup-java
         with:

@@ -114,6 +114,23 @@ class WorkspacePipelinesTest {
     }
 
     @Test
+    fun `CLI native build jobs configure root Gradle properties after checkout and before building`() {
+        val definition = parse("release-cli.yaml")
+        assertEquals(listOf("CLI_GRADLE_PROPERTIES"), definition.jobs.getValue("linux-x86_64").secrets)
+        assertEquals(listOf("CLI_GRADLE_PROPERTIES", "MACOS_KEYCHAIN_PASSWORD"), definition.jobs.getValue("macos-arm64").secrets)
+        for (platform in listOf("linux-x86_64", "macos-arm64")) {
+            val steps = definition.jobs.getValue(platform).steps
+            val configureIndex = steps.indexOfFirst { it.name == "Configure Gradle" }
+            val checkoutIndex = steps.indexOfFirst { it.uses == "checkout" }
+            val gradleIndex = steps.indexOfFirst { it.run.orEmpty().contains("./gradlew") }
+            assertTrue(configureIndex in (checkoutIndex + 1) until gradleIndex, platform)
+            val configure = steps[configureIndex]
+            assertNull(configure.workingDirectory)
+            assertEquals("\${{ secrets.CLI_GRADLE_PROPERTIES }}", configure.env["CLI_GRADLE_PROPERTIES"])
+        }
+    }
+
+    @Test
     fun `release pipelines leave external artifact forwarding to the artifacts server`() {
         for (file in pipelines.listFiles { file -> file.extension == "yaml" }.orEmpty()) {
             val source = file.readText()
