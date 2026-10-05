@@ -1,7 +1,7 @@
 name: "Release: CLI"
 # Builds the native `bosca` CLI from an existing Git tag and publishes packages and checksums to Bosca Artifacts.
 #
-# Build configuration: CLI_GRADLE_PROPERTIES supplies Gradle properties for both platforms.
+# Build configuration: CLI_GRADLE_PROPERTIES supplies base64-encoded Gradle properties for both platforms.
 # Signing secret: MACOS_KEYCHAIN_PASSWORD (see cli/MACOS_SIGNING.md).
 on:
   manual: true
@@ -32,8 +32,10 @@ jobs:
         uses: checkout
       - name: Configure Gradle
         run: |
-          : "${CLI_GRADLE_PROPERTIES:?CLI_GRADLE_PROPERTIES must contain the CLI Gradle configuration}"
-          printf '\n%s\n' "$CLI_GRADLE_PROPERTIES" >> gradle.properties
+          : "${CLI_GRADLE_PROPERTIES:?CLI_GRADLE_PROPERTIES must contain the base64-encoded CLI Gradle configuration}"
+          printf '\n' >> gradle.properties
+          printf '%s' "$CLI_GRADLE_PROPERTIES" | base64 -d >> gradle.properties
+          printf '\n' >> gradle.properties
         env:
           CLI_GRADLE_PROPERTIES: ${{ secrets.CLI_GRADLE_PROPERTIES }}
       - name: Setup Java
@@ -81,8 +83,10 @@ jobs:
         uses: checkout
       - name: Configure Gradle
         run: |
-          : "${CLI_GRADLE_PROPERTIES:?CLI_GRADLE_PROPERTIES must contain the CLI Gradle configuration}"
-          printf '\n%s\n' "$CLI_GRADLE_PROPERTIES" >> gradle.properties
+          : "${CLI_GRADLE_PROPERTIES:?CLI_GRADLE_PROPERTIES must contain the base64-encoded CLI Gradle configuration}"
+          printf '\n' >> gradle.properties
+          printf '%s' "$CLI_GRADLE_PROPERTIES" | base64 -d >> gradle.properties
+          printf '\n' >> gradle.properties
         env:
           CLI_GRADLE_PROPERTIES: ${{ secrets.CLI_GRADLE_PROPERTIES }}
       - name: Setup Java
