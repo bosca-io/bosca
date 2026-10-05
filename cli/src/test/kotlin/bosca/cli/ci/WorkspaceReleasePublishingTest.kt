@@ -7,6 +7,7 @@ import okhttp3.Credentials
 import java.io.File
 import java.nio.file.Files
 import java.security.MessageDigest
+import java.util.Base64
 import java.util.Properties
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -46,7 +47,7 @@ class WorkspaceReleasePublishingTest {
     }
 
     @Test
-    fun `CLI build jobs write literal Gradle configuration and override workspace defaults`() = runTest {
+    fun `CLI build jobs decode base64 Gradle configuration and override workspace defaults`() = runTest {
         val configuration = """
             org.gradle.jvmargs=-Xmx4g
 
@@ -69,7 +70,7 @@ class WorkspaceReleasePublishingTest {
                     val original = "org.gradle.jvmargs=-Xmx6g\norg.gradle.parallel=true"
                     propertiesFile.writeText(original)
                     val logs = TestLogBuffer()
-                    val secrets = mapOf("CLI_GRADLE_PROPERTIES" to value)
+                    val secrets = mapOf("CLI_GRADLE_PROPERTIES" to Base64.getEncoder().encodeToString(value.toByteArray()))
                     val step = pipeline("release-cli.yaml").jobs.getValue(platform).steps.first { it.name == "Configure Gradle" }
                     val result = executor(root, secrets = secrets, logBuffer = logs).execute(step, ExpressionContext(secrets = secrets))
                     assertTrue(result.success, platform)

@@ -143,10 +143,10 @@ security unlock-keychain -p "$MACOS_KEYCHAIN_PASSWORD" "$KEYCHAIN"  # head-less 
 
 | Secret | What it is |
 |---|---|
-| `CLI_GRADLE_PROPERTIES` | Multiline Gradle configuration, including `org.gradle.jvmargs`, signing identities, bundle identifier, and notary account/profile properties. Both native build jobs require it. |
+| `CLI_GRADLE_PROPERTIES` | Base64-encoded multiline Gradle configuration, including `org.gradle.jvmargs`, signing identities, bundle identifier, and notary account/profile properties. Both native build jobs require it. |
 | `MACOS_KEYCHAIN_PASSWORD` | the password that unlocks the keychain holding the certs + `bosca-notary` profile (the agent user's **login-keychain password** by default) |
 
-After checkout, each native build job appends `CLI_GRADLE_PROPERTIES` to the
+After checkout, each native build job base64-decodes `CLI_GRADLE_PROPERTIES` and appends it to the
 workspace root `gradle.properties` before running Gradle. This retains workspace
 build settings while allowing the supplied properties to override their defaults.
 Gradle runs from the workspace root, so the configuration belongs there rather
