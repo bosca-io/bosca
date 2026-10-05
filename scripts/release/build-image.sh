@@ -8,8 +8,11 @@
 # before pushing.
 #
 # Environment:
-#   BOSCA_IMAGE_REGISTRY  Registry and path images are pushed to
-#                         (default: ghcr.io/bosca-io/bosca).
+#   BOSCA_IMAGE_REGISTRY  Registry and namespace images are pushed to. Defaults to
+#                         <BOSCA_REGISTRY_URL host>/bosca when configured,
+#                         otherwise ghcr.io/bosca-io/bosca.
+#   BOSCA_IMAGE_MIRROR_REGISTRY  Optional additional registry and path to publish
+#                         the built image to (CI uses ghcr.io/bosca-io/bosca).
 #   PUSH                  Set to "false" to build the image without pushing it.
 #   BOSCA_REGISTRY_URL,   Bosca Artifacts server and token. bml-message-server bundles
 #   BOSCA_REGISTRY_TOKEN  the latest bosca-messages project from it, and
@@ -45,7 +48,18 @@ prompt IMAGE "Image to build (${IMAGES[*]})"
 prompt VERSION "Version to publish (for example 6.31.0)"
 [[ " ${IMAGES[*]} " == *" $IMAGE "* ]] || { echo "Unknown image: $IMAGE (expected one of: ${IMAGES[*]})" >&2; exit 1; }
 
-REGISTRY="${BOSCA_IMAGE_REGISTRY:-ghcr.io/bosca-io/bosca}"
+if [[ -n "${BOSCA_REGISTRY_URL:-}" ]]; then
+  registry_host="${BOSCA_REGISTRY_URL#http://}"
+  registry_host="${registry_host#https://}"
+  registry_host="${registry_host%/}"
+  # Match setup-registry's Docker host when the agent's API endpoint is loopback.
+  if [[ "$registry_host" == 127.0.0.1* ]]; then
+    registry_host="host.docker.internal${registry_host#127.0.0.1}"
+  fi
+  REGISTRY="${BOSCA_IMAGE_REGISTRY:-$registry_host/bosca}"
+else
+  REGISTRY="${BOSCA_IMAGE_REGISTRY:-ghcr.io/bosca-io/bosca}"
+fi
 REGISTRY="${REGISTRY%/}"
 TAG="$REGISTRY/$IMAGE:$VERSION"
 # Staging directory name the Dockerfiles read through the ARTIFACT_SHA build argument.
@@ -169,5 +183,13 @@ esac
 
 if [[ "${PUSH:-true}" != false ]]; then
   docker push "$TAG"
+  if [[ -n "${BOSCA_IMAGE_MIRROR_REGISTRY:-}" ]]; then
+    mirror_tag="${BOSCA_IMAGE_MIRROR_REGISTRY%/}/$IMAGE:$VERSION"
+    if [[ "$mirror_tag" != "$TAG" ]]; then
+      docker tag "$TAG" "$mirror_tag"
+      docker push "$mirror_tag"
+      echo "Published $mirror_tag"
+    fi
+  fi
 fi
 echo "Built $TAG"

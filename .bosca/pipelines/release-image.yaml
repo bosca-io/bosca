@@ -1,5 +1,5 @@
 name: Bosca Image Release
-# Builds one Bosca image and pushes it to ghcr.io/bosca-io/bosca/<image>:<version>.
+# Publishes one image to Bosca Artifacts' bosca namespace and GHCR.
 # Images version independently, so each run publishes the image and version entered
 # when the run is started. The build steps live in scripts/release/build-image.sh.
 #
@@ -46,12 +46,16 @@ jobs:
     runner: linux
     timeout: 120m
     secrets: [GITHUB_USERNAME, GITHUB_TOKEN]
+    artifacts:
+      - type: docker
+        namespace: bosca
+        coordinate: "${{ inputs.image }}:${{ inputs.version }}"
     steps:
       - name: Checkout
         uses: checkout
       - name: Setup Registry
-        # Exports BOSCA_REGISTRY_URL / BOSCA_REGISTRY_TOKEN: bml-message-server bundles the
-        # bosca-messages project from it and the BML sites install @bosca npm packages from it.
+        # Logs Docker into Bosca Artifacts and exports its URL for image publication.
+        # BML images also use the exported credentials for their Maven/npm dependencies.
         uses: setup-registry
         with:
           repository: bosca-maven
@@ -85,6 +89,7 @@ jobs:
         env:
           IMAGE: ${{ inputs.image }}
           VERSION: ${{ inputs.version }}
+          BOSCA_IMAGE_MIRROR_REGISTRY: ghcr.io/bosca-io/bosca
       - name: Log out of the GitHub Container Registry
         if: always()
         run: docker logout ghcr.io
@@ -100,7 +105,7 @@ jobs:
         if: needs.publish-image.result == 'success'
         with:
           channel: slack
-          message: "Image ${{ inputs.image }}:${{ inputs.version }} published to ghcr.io/bosca-io/bosca"
+          message: "Image bosca/${{ inputs.image }}:${{ inputs.version }} published to Bosca Artifacts and GHCR"
       - name: Notify Failure
         uses: notify
         if: needs.publish-image.result == 'failure'

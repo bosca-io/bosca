@@ -1,5 +1,6 @@
 name: Bosca Tag Image Release
-# Publish the platform images from the tagged workspace, independently of Maven publication.
+# Publish bosca/<image>:<tag> to Bosca Artifacts and mirror it to GHCR.
+# Each producer declares its own artifact: coordinates resolve before matrix expansion.
 on:
   tag:
     patterns: ["*"]
@@ -12,12 +13,16 @@ env:
   GRADLE_OPTS: "-Xmx4g -XX:+UseG1GC"
 
 jobs:
-  publish-images:
+  publish-server: &image-release-job
     runner: linux
     timeout: 120m
     matrix:
-      image: [bosca-server, bosca-runner, bosca-studio, git-server, artifacts-server]
+      image: [bosca-server]
     secrets: [GITHUB_USERNAME, GITHUB_TOKEN]
+    artifacts:
+      - type: docker
+        namespace: bosca
+        coordinate: "bosca-server:${{ version }}"
     steps:
       - name: Checkout
         uses: checkout
@@ -53,18 +58,62 @@ jobs:
         env:
           IMAGE: ${{ matrix.image }}
           VERSION: ${{ version }}
+          BOSCA_IMAGE_MIRROR_REGISTRY: ghcr.io/bosca-io/bosca
       - name: Log out of the GitHub Container Registry
         if: always()
         run: docker logout ghcr.io
+
+  publish-runner:
+    <<: *image-release-job
+    matrix:
+      image: [bosca-runner]
+    artifacts:
+      - type: docker
+        namespace: bosca
+        coordinate: "bosca-runner:${{ version }}"
+
+  publish-studio:
+    <<: *image-release-job
+    matrix:
+      image: [bosca-studio]
+    artifacts:
+      - type: docker
+        namespace: bosca
+        coordinate: "bosca-studio:${{ version }}"
+
+  publish-git:
+    <<: *image-release-job
+    matrix:
+      image: [git-server]
+    artifacts:
+      - type: docker
+        namespace: bosca
+        coordinate: "git-server:${{ version }}"
+
+  publish-artifacts:
+    <<: *image-release-job
+    matrix:
+      image: [artifacts-server]
+    artifacts:
+      - type: docker
+        namespace: bosca
+        coordinate: "artifacts-server:${{ version }}"
+
+  notify:
+    runner: linux
+    timeout: 5m
+    needs: [publish-server, publish-runner, publish-studio, publish-git, publish-artifacts]
+    if: always()
+    steps:
       - name: Notify Success
         uses: notify
-        if: success()
+        if: needs.publish-server.result == 'success' && needs.publish-runner.result == 'success' && needs.publish-studio.result == 'success' && needs.publish-git.result == 'success' && needs.publish-artifacts.result == 'success'
         with:
           channel: slack
-          message: "Image ${{ matrix.image }}:${{ version }} published to ghcr.io/bosca-io/bosca"
+          message: "Platform images bosca/*:${{ version }} published to Bosca Artifacts and GHCR"
       - name: Notify Failure
         uses: notify
-        if: failure()
+        if: needs.publish-server.result != 'success' || needs.publish-runner.result != 'success' || needs.publish-studio.result != 'success' || needs.publish-git.result != 'success' || needs.publish-artifacts.result != 'success'
         with:
           channel: slack
-          message: "Image ${{ matrix.image }}:${{ version }} release FAILED — check pipeline logs"
+          message: "Platform image release ${{ version }} FAILED — check pipeline logs"
