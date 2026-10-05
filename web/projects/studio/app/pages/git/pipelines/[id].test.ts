@@ -100,7 +100,13 @@ describe('Pipeline Run Page job controls', () => {
     query.mockImplementation(async (document: DocumentNode) => {
       const operation = print(document)
       if (operation.includes('RepoName')) {
-        return { git: { repositoryById: { name: 'Server', canExecute } } }
+        return { git: {
+          repositoryById: { name: 'Server', canExecute },
+          pipelines: [
+            { id: 'another-pipeline', name: 'Deploy' },
+            { id: 'pipeline-1', name: 'Build server' },
+          ],
+        } }
       }
       if (operation.includes('RerunPipelineJob')) {
         return { git: { rerunPipelineJob: { id: 'job-1', status: 'QUEUED' } } }
@@ -116,6 +122,32 @@ describe('Pipeline Run Page job controls', () => {
       }
       throw new Error(`Unexpected operation: ${operation}`)
     })
+  })
+
+  it('shows the matching pipeline name with the run number in the heading and breadcrumb', async () => {
+    const wrapper = mountPage()
+    await flushPromises()
+
+    const header = wrapper.findComponent(stubs.PageHeader)
+    expect(header.props('title')).toBe('Build server · Run #42')
+    expect(header.props('breadcrumb')).toContain('Build server')
+    expect(header.props('breadcrumb').at(-1)).toBe('Run #42')
+    const metadataCall = query.mock.calls.find(([document]) => print(document as DocumentNode).includes('RepoName'))
+    expect(print(metadataCall![0] as DocumentNode)).toContain('pipelines(repositoryId: $id)')
+    expect(metadataCall![1]).toEqual({ id: 'repository-1' })
+    wrapper.unmount()
+  })
+
+  it('keeps the run heading when its pipeline is unavailable', async () => {
+    currentRun.pipelineId = 'missing-pipeline'
+    const wrapper = mountPage()
+    await flushPromises()
+
+    const header = wrapper.findComponent(stubs.PageHeader)
+    expect(header.props('title')).toBe('Run #42')
+    expect(header.props('breadcrumb')).not.toContain('Build server')
+    expect(header.props('breadcrumb')).not.toContain('Deploy')
+    wrapper.unmount()
   })
 
   it('reruns exactly the selected failed job', async () => {

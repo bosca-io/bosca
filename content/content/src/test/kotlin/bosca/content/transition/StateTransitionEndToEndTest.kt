@@ -103,6 +103,7 @@ import bosca.trait.service.TraitService
 import io.mockk.coEvery
 import io.mockk.mockk
 import io.mockk.unmockkAll
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
@@ -122,9 +123,9 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
-import kotlin.time.Clock
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TimeSource
 import kotlin.uuid.toJavaUuid
 
 @OptIn(InternalDI::class)
@@ -147,6 +148,8 @@ class StateTransitionEndToEndTest {
     }
 
     private lateinit var collectionService: CollectionServiceImpl
+    private lateinit var collectionRepository: CollectionRepositoryImpl
+    private lateinit var variantRepository: CollectionLanguageVariantRepositoryImpl
     private lateinit var metadataService: MetadataServiceImpl
     private lateinit var metadataRepository: MetadataRepositoryImpl
     private lateinit var transitioner: Transitioner
@@ -224,7 +227,8 @@ class StateTransitionEndToEndTest {
         RegisterJobsConfiguration()
 
         // Collection service with real repos
-        val collectionRepository = CollectionRepositoryImpl()
+        collectionRepository = CollectionRepositoryImpl()
+        variantRepository = CollectionLanguageVariantRepositoryImpl()
         val collectionJobHistoryService = CollectionJobHistoryServiceImpl(
             CollectionJobHistoryRepositoryImpl(),
             pubSubService
@@ -245,7 +249,7 @@ class StateTransitionEndToEndTest {
             testJson,
             slugService,
             CollectionCollaborationRepositoryImpl(),
-            CollectionLanguageVariantRepositoryImpl(),
+            variantRepository,
             CollectionTemplateRepositoryImpl(),
             CollectionTemplateAttributeRepositoryImpl(),
             MetadataRepositoryImpl(),
@@ -386,42 +390,58 @@ class StateTransitionEndToEndTest {
     }
 
     private suspend fun waitForCollectionState(id: UUID, expectedState: String, timeout: kotlin.time.Duration = 120.seconds) {
-        val deadline = Clock.System.now() + timeout
-        while (Clock.System.now() < deadline) {
-            val collection = withRequest { collectionService.getById(id) }
+        val started = TimeSource.Monotonic.markNow()
+        // Poll committed state without populating the service cache while the job is mutating it.
+        while (started.elapsedNow() < timeout) {
+            val collection = withRequest { collectionRepository.getById(id) }
             if (collection != null && collection.workflowStateId == expectedState && collection.workflowStatePendingId == null) {
                 return
             }
-            delay(200)
+            pollingDelay(200)
         }
-        val current = withRequest { collectionService.getById(id) }
+        val current = withRequest { collectionRepository.getById(id) }
         error("Timed out waiting for collection state '$expectedState'. Current: state=${current?.workflowStateId}, pending=${current?.workflowStatePendingId}")
     }
 
     private suspend fun waitForVariantState(id: UUID, languageTag: String, expectedState: String, timeout: kotlin.time.Duration = 120.seconds) {
-        val deadline = Clock.System.now() + timeout
-        while (Clock.System.now() < deadline) {
-            val variant = withRequest { collectionService.getLanguageVariant(id, languageTag) }
+        val started = TimeSource.Monotonic.markNow()
+        while (started.elapsedNow() < timeout) {
+            val variant = withRequest { variantRepository.getLanguageVariant(id, languageTag) }
             if (variant != null && variant.workflowStateId == expectedState && variant.workflowStatePendingId == null) {
                 return
             }
-            delay(200)
+            pollingDelay(200)
         }
-        val current = withRequest { collectionService.getLanguageVariant(id, languageTag) }
+        val current = withRequest { variantRepository.getLanguageVariant(id, languageTag) }
         error("Timed out waiting for variant state '$expectedState'. Current: state=${current?.workflowStateId}, pending=${current?.workflowStatePendingId}")
     }
 
     private suspend fun waitForMetadataState(id: UUID, version: Int, expectedState: String, timeout: kotlin.time.Duration = 120.seconds) {
-        val deadline = Clock.System.now() + timeout
-        while (Clock.System.now() < deadline) {
-            val metadata = withRequest { metadataService.getById(id, version) }
+        val started = TimeSource.Monotonic.markNow()
+        while (started.elapsedNow() < timeout) {
+            val metadata = withRequest { metadataRepository.getById(id, version) }
             if (metadata != null && metadata.workflowStateId == expectedState && metadata.workflowStatePendingId == null) {
                 return
             }
-            delay(200)
+            pollingDelay(200)
         }
-        val current = withRequest { metadataService.getById(id, version) }
+        val current = withRequest { metadataRepository.getById(id, version) }
         error("Timed out waiting for metadata state '$expectedState'. Current: state=${current?.workflowStateId}, pending=${current?.workflowStatePendingId}")
+    }
+
+    // Database and queue work runs in real time; runTest must not skip the polling interval.
+    private suspend fun pollingDelay(millis: Long) = withContext(Dispatchers.Default) { delay(millis) }
+
+    @Test
+    fun `state polling observes committed collection state despite a stale cache`() = runTest(timeout = 30.seconds) {
+        val created = withRequest {
+            collectionService.add(CollectionInput(name = "Polling Test"), parent = null, parentItemAttributes = null)
+        }
+        withRequest { collectionService.getById(created.id) }
+        rawUpdate("UPDATE collections SET workflow_state_id = 'draft' WHERE id = ?", created.id)
+        assertEquals("pending", withRequest { collectionService.getById(created.id) }?.workflowStateId)
+
+        waitForCollectionState(created.id, "draft", timeout = 1.seconds)
     }
 
     @Test
@@ -623,18 +643,18 @@ class StateTransitionEndToEndTest {
             }
         }
 
-        val deadline = Clock.System.now() + 120.seconds
+        val started = TimeSource.Monotonic.markNow()
         val failed = mutableListOf<Metadata>()
-        while (Clock.System.now() < deadline) {
+        while (started.elapsedNow() < 120.seconds) {
             failed.clear()
             for (item in items) {
-                val current = withRequest { metadataService.getById(item.id, item.version) }
+                val current = withRequest { metadataRepository.getById(item.id, item.version) }
                 if (current == null || current.workflowStateId != "draft" || current.workflowStatePendingId != null) {
                     failed.add(current ?: item)
                 }
             }
             if (failed.isEmpty()) break
-            delay(500)
+            pollingDelay(500)
         }
 
         if (failed.isNotEmpty()) {

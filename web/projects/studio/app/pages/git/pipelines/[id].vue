@@ -80,17 +80,29 @@ const run = computed(() => data.value?.git?.pipelineRun ?? null)
 const isLoading = computed(() => status.value === 'pending')
 
 const repoName = ref('')
+const repositoryPipelines = ref<{ id: string; name: string }[]>([])
+const pipelineName = computed(() => repositoryPipelines.value.find(pipeline => pipeline.id === run.value?.pipelineId)?.name ?? '')
 const repositoryCanExecute = ref(false)
 watch(() => run.value?.repositoryId, async (repositoryId) => {
   repoName.value = ''
+  repositoryPipelines.value = []
   repositoryCanExecute.value = false
   if (!repositoryId) return
   try {
-    const result = await query<{ git: { repositoryById: { name: string; canExecute: boolean } | null } }>(gql`
-      query RepoName($id: UUID!) { git { repositoryById(id: $id) { name canExecute } } }
+    const result = await query<{ git: {
+      repositoryById: { name: string; canExecute: boolean } | null
+      pipelines: { id: string; name: string }[]
+    } }>(gql`
+      query RepoName($id: UUID!) {
+        git {
+          repositoryById(id: $id) { name canExecute }
+          pipelines(repositoryId: $id) { id name }
+        }
+      }
     `, { id: repositoryId })
     if (repositoryId !== run.value?.repositoryId) return
     repoName.value = result.git?.repositoryById?.name ?? ''
+    repositoryPipelines.value = result.git?.pipelines ?? []
     repositoryCanExecute.value = result.git?.repositoryById?.canExecute === true
   } catch { /* ignore */ }
 }, { immediate: true })
@@ -102,6 +114,7 @@ const breadcrumb = computed(() => {
     items.push({ label: repoName.value, to: `/git/repositories/${run.value.repositoryId}` })
     items.push({ label: 'Pipelines', to: `/git/repositories/${run.value.repositoryId}?tab=Pipelines` })
   }
+  if (pipelineName.value) items.push(pipelineName.value)
   items.push(run.value ? `Run #${run.value.number}` : 'Run')
   return buildBreadcrumb(...items)
 })
@@ -439,7 +452,7 @@ const canCancel = computed(() => run.value && (run.value.status === 'RUNNING' ||
       <PageHeader
         :accent="accent"
         :breadcrumb="breadcrumb"
-        :title="run ? `Run #${run.number}` : 'Pipeline Run'"
+        :title="run ? `${pipelineName ? `${pipelineName} · ` : ''}Run #${run.number}` : 'Pipeline Run'"
         :subtitle="run ? `${run.status} · ${formatDuration(run.durationSeconds)}` : ''"
       >
         <template v-if="run" #actions>
