@@ -1,14 +1,10 @@
 name: "Release: CLI"
-# Builds the native `bosca` CLI and publishes both packages and checksums to Bosca Artifacts.
+# Builds the native `bosca` CLI from an existing Git tag and publishes packages and checksums to Bosca Artifacts.
 #
 # Secrets: MACOS_KEYCHAIN_PASSWORD (see cli/MACOS_SIGNING.md) is required for signing.
 on:
-  manual:
-    inputs: &cli-release-inputs
-      version:
-        description: CLI version to publish, for example 6.31.0
-  release:
-    inputs: *cli-release-inputs
+  manual: true
+  release: true
 
 concurrency:
   group: cli-release
@@ -22,6 +18,14 @@ jobs:
     runner: linux
     timeout: 60m
     steps:
+      - name: Validate release tag
+        run: |
+          case "$RELEASE_REF" in
+            refs/tags/?*) ;;
+            *) echo "Select an existing Git tag for this CLI release." >&2; exit 1 ;;
+          esac
+        env:
+          RELEASE_REF: ${{ ref }}
       - name: Checkout
         uses: checkout
       - name: Setup Java
@@ -38,13 +42,13 @@ jobs:
       - name: Build native binary
         run: ./gradlew --no-daemon --no-configuration-cache :cli:nativeCompile
         env:
-          RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_VERSION: ${{ version }}
       - name: Package
         run: |
           mkdir -p dist
           tar -czf "dist/bosca-${RELEASE_VERSION}-linux-x86_64.tar.gz" -C cli/build/native/nativeCompile bosca
         env:
-          RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_VERSION: ${{ version }}
       - name: Upload package
         uses: upload-artifact
         with:
@@ -57,6 +61,14 @@ jobs:
     timeout: 90m
     secrets: [MACOS_KEYCHAIN_PASSWORD]
     steps:
+      - name: Validate release tag
+        run: |
+          case "$RELEASE_REF" in
+            refs/tags/?*) ;;
+            *) echo "Select an existing Git tag for this CLI release." >&2; exit 1 ;;
+          esac
+        env:
+          RELEASE_REF: ${{ ref }}
       - name: Checkout
         uses: checkout
       - name: Setup Java
@@ -79,13 +91,13 @@ jobs:
       - name: Build, sign, and notarize installer
         run: ./gradlew --no-daemon --no-configuration-cache :cli:distNativeMacosPkg
         env:
-          RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_VERSION: ${{ version }}
       - name: Package
         run: |
           mkdir -p dist
           cp cli/build/native/nativeCompile/bosca.pkg "dist/bosca-${RELEASE_VERSION}-macos-arm64.pkg"
         env:
-          RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_VERSION: ${{ version }}
       - name: Upload package
         uses: upload-artifact
         with:
@@ -100,7 +112,7 @@ jobs:
     artifacts:
       - type: raw
         namespace: bosca
-        coordinate: "bosca-cli:${{ inputs.version }}"
+        coordinate: "bosca-cli:${{ version }}"
     steps:
       - name: Checkout
         uses: checkout
@@ -118,16 +130,16 @@ jobs:
         working-directory: dist
         run: shasum -a 256 "bosca-${RELEASE_VERSION}-linux-x86_64.tar.gz" "bosca-${RELEASE_VERSION}-macos-arm64.pkg" > SHA256SUMS
         env:
-          RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_VERSION: ${{ version }}
       - name: Publish to Bosca Artifacts
         uses: registry-upload
         with:
           namespace: bosca
           name: bosca-cli
-          version: ${{ inputs.version }}
+          version: ${{ version }}
           files:
-            - dist/bosca-${{ inputs.version }}-linux-x86_64.tar.gz
-            - dist/bosca-${{ inputs.version }}-macos-arm64.pkg
+            - dist/bosca-${{ version }}-linux-x86_64.tar.gz
+            - dist/bosca-${{ version }}-macos-arm64.pkg
             - dist/SHA256SUMS
 
   notify:
@@ -141,10 +153,10 @@ jobs:
         if: needs.publish.result == 'success'
         with:
           channel: slack
-          message: "Bosca CLI ${{ inputs.version }} published to Bosca Artifacts"
+          message: "Bosca CLI ${{ version }} published to Bosca Artifacts"
       - name: Notify Failure
         uses: notify
         if: needs.publish.result == 'failure'
         with:
           channel: slack
-          message: "Bosca CLI ${{ inputs.version }} release FAILED — check pipeline logs"
+          message: "Bosca CLI ${{ version }} release FAILED — check pipeline logs"

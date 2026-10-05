@@ -72,9 +72,10 @@ class WorkspacePipelinesTest {
     fun `CLI release publishes both platforms and checksums to Bosca`() {
         val definition = parse("release-cli.yaml")
         assertEquals(setOf(PipelineTriggerType.MANUAL, PipelineTriggerType.RELEASE), definition.triggers.map { it.type }.toSet())
-        val trigger = definition.triggers.first { it.type == PipelineTriggerType.MANUAL }
-        assertEquals(trigger.inputs, definition.triggers.first { it.type == PipelineTriggerType.RELEASE }.inputs)
-        assertNull(trigger.inputs.getValue("version").default, "the version must be entered for every run")
+        assertTrue(definition.triggers.all { it.inputs.isEmpty() })
+        val source = File(pipelines, "release-cli.yaml").readText()
+        val yaml = org.yaml.snakeyaml.Yaml().load<Map<Any, Any?>>(source)
+        assertEquals(true, ((yaml["on"] ?: yaml[true]) as Map<*, *>)["manual"])
         val publish = definition.jobs.getValue("publish")
         assertEquals(listOf("linux-x86_64", "macos-arm64"), publish.needs)
         assertTrue(definition.secrets.isEmpty())
@@ -82,9 +83,23 @@ class WorkspacePipelinesTest {
         val artifact = publish.artifacts.single()
         assertEquals("raw", artifact.type)
         assertEquals("bosca", artifact.namespace)
-        assertEquals("bosca-cli:7.4.0", PipelineExpressionParser().interpolate(
-            artifact.coordinate, ExpressionContext(extra = mapOf("inputs.version" to "7.4.0")),
-        ))
+        val expressions = PipelineExpressionParser()
+        for (event in listOf("manual", "release")) {
+            for (tag in listOf("7.4.0", "v7.4.0")) {
+                val context = ExpressionContext(ref = "refs/tags/$tag", event = event)
+                assertEquals("bosca-cli:7.4.0", expressions.interpolate(artifact.coordinate, context))
+                for (platform in listOf("linux-x86_64", "macos-arm64")) {
+                    val job = definition.jobs.getValue(platform)
+                    val guard = job.steps.first()
+                    assertEquals("Validate release tag", guard.name)
+                    assertEquals("refs/tags/$tag", expressions.interpolate(guard.env.getValue("RELEASE_REF"), context))
+                    for (step in job.steps.filter { "RELEASE_VERSION" in it.env }) {
+                        assertEquals("7.4.0", expressions.interpolate(step.env.getValue("RELEASE_VERSION"), context))
+                    }
+                }
+                assertEquals("7.4.0", expressions.interpolate(publish.steps.last().with.getValue("version"), context))
+            }
+        }
         val boscaIndex = publish.steps.indexOfFirst { it.uses == "registry-upload" }
         assertEquals(publish.steps.lastIndex, boscaIndex)
         assertTrue(publish.steps.indexOfFirst { it.name == "Generate checksums" } in 0 until boscaIndex)

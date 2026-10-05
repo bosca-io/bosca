@@ -20,20 +20,23 @@ class WorkspaceReleasePublishingTest {
     private val version = "7.4.0"
 
     @Test
-    fun `dedicated image releases accept existing tag refs and reject branches before setup`() = runTest {
+    fun `CLI and image releases accept existing tag refs and reject branches before setup`() = runTest {
         val files = File(workspace, ".bosca/pipelines").listFiles { file ->
             file.name.startsWith("release-image-") && file.extension == "yaml"
-        }.orEmpty()
+        }.orEmpty().toList() + File(workspace, ".bosca/pipelines/release-cli.yaml")
         assertTrue(files.isNotEmpty())
         val root = fixture()
         try {
             for (file in files) {
                 val definition = parser.parse(file.readText())
-                val validate = definition.jobs.getValue("publish-image").steps.first()
-                assertEquals("Validate release tag", validate.name)
-                for (ref in listOf("refs/tags/7.4.0", "refs/tags/v7.4.0", "refs/heads/main", "refs/tags/", "commit-sha")) {
-                    val result = executor(root).execute(validate, ExpressionContext(ref = ref))
-                    assertEquals(ref.startsWith("refs/tags/") && ref.length > "refs/tags/".length, result.success, "${file.name}: $ref")
+                val jobs = if (file.name == "release-cli.yaml") listOf("linux-x86_64", "macos-arm64") else listOf("publish-image")
+                for (job in jobs) {
+                    val validate = definition.jobs.getValue(job).steps.first()
+                    assertEquals("Validate release tag", validate.name)
+                    for (ref in listOf("refs/tags/7.4.0", "refs/tags/v7.4.0", "refs/heads/main", "refs/tags/", "commit-sha")) {
+                        val result = executor(root).execute(validate, ExpressionContext(ref = ref))
+                        assertEquals(ref.startsWith("refs/tags/") && ref.length > "refs/tags/".length, result.success, "${file.name}/$job: $ref")
+                    }
                 }
             }
         } finally {
@@ -54,7 +57,7 @@ class WorkspaceReleasePublishingTest {
             packages.forEach { (name, body) -> File(dist, name).writeText(body) }
             repeat(3) { server.enqueue(MockResponse.Builder().code(201).build()) }
             val executor = executor(root, registry = server.url("/").toString())
-            val context = ExpressionContext(extra = mapOf("inputs.version" to version))
+            val context = ExpressionContext(ref = "refs/tags/v$version")
             val steps = pipeline("release-cli.yaml").jobs.getValue("publish").steps
             val checksum = steps.first { it.name == "Generate checksums" }
             assertTrue(executor(File(root, assertNotNull(checksum.workingDirectory))).execute(checksum, context).success)
