@@ -25,6 +25,7 @@ import com.auth0.jwt.exceptions.JWTVerificationException
 import com.auth0.jwt.interfaces.Payload
 import io.opentelemetry.api.trace.Tracer
 import io.opentelemetry.extension.kotlin.asContextElement
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withContext
 import java.util.*
 
@@ -81,6 +82,8 @@ class BoscaAuthMiddleware(
                         call.authenticationContext.principal("basic", principal)
                     }
                     return
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: IllegalArgumentException) {
                     log.debug("Basic Verification failed", e)
                     call.respond(HttpStatusCode.Unauthorized, "")
@@ -95,9 +98,7 @@ class BoscaAuthMiddleware(
                     return
                 } catch (e: Exception) {
                     log.warn("Unexpected error during Basic auth validation", e)
-                    errorCapture.capture(e, call, mapOf("auth.provider" to "basic"))
-                    call.respond(HttpStatusCode.Unauthorized, "")
-                    return
+                    throw e
                 }
             }
         }
@@ -125,6 +126,8 @@ class BoscaAuthMiddleware(
                 call.authenticationContext.principal("session", principal)
                 call.sessions.onLoad(session)
                 return
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: JWTVerificationException) {
                 log.debug("Session JWT Verification failed", e)
             } catch (e: Exception) {
@@ -150,6 +153,8 @@ class BoscaAuthMiddleware(
      *
      * API tokens are prefix-routed: a failing `bsk_` token never falls
      * through to JWT parsing, so the caller's intent stays unambiguous.
+     * Invalid API tokens return false; unexpected API-token validation failures
+     * propagate to the transport's error handler without rejecting credentials.
      */
     @OptIn(Internal::class)
     suspend fun authenticateBearerToken(call: ServerCall, token: String): Boolean {
@@ -158,13 +163,14 @@ class BoscaAuthMiddleware(
                 val principal = validateApiToken(token, call.request.clientIp)
                 call.authenticationContext.principal("api_token", principal)
                 true
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: bosca.security.service.SecurityException) {
                 log.debug("API token authentication failed", e)
                 false
             } catch (e: Exception) {
                 log.warn("Unexpected error during API token validation", e)
-                errorCapture.capture(e, call, mapOf("auth.provider" to "api_token"))
-                false
+                throw e
             }
         }
 
@@ -173,6 +179,8 @@ class BoscaAuthMiddleware(
             val principal = validateJwt(decodedJWT)
             call.authenticationContext.principal("bearer", principal)
             true
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: JWTVerificationException) {
             log.debug("JWT Verification failed", e)
             false

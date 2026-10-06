@@ -22,6 +22,7 @@ import bosca.security.service.SecurityService
 import bosca.security.service.authCookieDomain
 import bosca.security.session.Session
 import bosca.server.HttpStatusCode
+import bosca.server.BoscaApplication
 import bosca.server.RequestCookies
 import bosca.server.RequestOrigin
 import bosca.server.ResponseCookies
@@ -30,6 +31,8 @@ import bosca.server.ServerRequest
 import bosca.server.ServerResponse
 import bosca.server.auth.CallAuthenticationContext
 import bosca.server.routing.AuthConfig
+import bosca.server.config.ApplicationConfig
+import bosca.server.netty.NettyServerEngine
 import com.auth0.jwt.exceptions.JWTVerificationException
 import com.auth0.jwt.interfaces.DecodedJWT
 import io.mockk.coEvery
@@ -44,14 +47,26 @@ import io.opentelemetry.api.trace.Span
 import io.opentelemetry.api.trace.SpanBuilder
 import io.opentelemetry.api.trace.Tracer
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
+import java.io.IOException
+import java.net.URI
+import java.net.http.HttpClient
+import java.net.http.HttpRequest
+import java.net.http.HttpResponse
+import java.time.Duration
 import java.util.*
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -231,25 +246,143 @@ class BoscaAuthMiddlewareTest {
     }
 
     @Test
-    fun `unexpected bearer api token failure is captured`() = runTest {
-        val failure = IllegalStateException("database unavailable")
-        val (call, _) = mockCall("Bearer bsk_failure")
+    fun `bearer api token backend failure is propagated without capture or rejecting credentials`() = runTest {
+        val failure = IOException("NATS request timed out")
+        val (call, authContext) = mockCall("Bearer bsk_failure")
         coEvery {
             apiTokenService.authenticate("bsk_failure", "127.0.0.1")
         } throws failure
 
-        middleware.authenticate(call, null)
+        assertEquals(failure.message, assertFailsWith<IOException> {
+            middleware.authenticate(call, AuthConfig(emptyList(), optional = true))
+        }.message)
 
-        val captured = slot<Throwable>()
-        coVerify {
-            errorCapture.capture(
-                capture(captured),
-                call,
-                mapOf("auth.provider" to "api_token"),
-            )
+        coVerify(exactly = 0) { errorCapture.capture(any(), any(), any()) }
+        coVerify(exactly = 0) { call.respond(any<HttpStatusCode>(), any<String>()) }
+        assertNull(authContext.anyPrincipal())
+        coVerify { connectionManager.release() }
+        verify { span.end() }
+    }
+
+    @Test
+    fun `basic api token backend failure is propagated without rejecting credentials`() = runTest {
+        val encoded = Base64.getEncoder().encodeToString("api_token:bsk_failure".toByteArray())
+        val (call, authContext) = mockCall("Basic $encoded")
+        val failure = IOException("NATS request timed out")
+        coEvery { apiTokenService.authenticate("bsk_failure", any()) } throws failure
+
+        assertEquals(failure.message, assertFailsWith<IOException> { middleware.authenticate(call, null) }.message)
+
+        coVerify(exactly = 0) { errorCapture.capture(any(), any(), any()) }
+        coVerify(exactly = 0) { call.respond(any<HttpStatusCode>(), any<String>()) }
+        assertNull(authContext.anyPrincipal())
+        coVerify { connectionManager.release() }
+        verify { span.end() }
+    }
+
+    @Test
+    fun `api token authentication cancellation propagates without capture or response`() = runTest {
+        val encoded = Base64.getEncoder().encodeToString("api_token:bsk_cancelled".toByteArray())
+        val cancellation = CancellationException("request cancelled")
+        coEvery { apiTokenService.authenticate("bsk_cancelled", any()) } throws cancellation
+
+        for (header in listOf("Bearer bsk_cancelled", "Basic $encoded")) {
+            val (call, authContext) = mockCall(header)
+            assertEquals(cancellation.message, assertFailsWith<CancellationException> {
+                middleware.authenticate(call, null)
+            }.message)
+            assertNull(authContext.anyPrincipal())
+            coVerify(exactly = 0) { call.respond(any<HttpStatusCode>(), any<String>()) }
         }
-        assertEquals(failure.message, captured.captured.message)
-        coVerify { call.respond(HttpStatusCode.Unauthorized, "") }
+        coVerify(exactly = 0) { errorCapture.capture(any(), any(), any()) }
+        coVerify(exactly = 2) { connectionManager.release() }
+        verify(exactly = 2) { span.end() }
+    }
+
+    @Test
+    fun `JWT and session authentication cancellation propagates without capture or response`() = runTest {
+        val jwt = mockk<DecodedJWT>()
+        val cancellation = CancellationException("request cancelled")
+        every { securityConfiguration.verifier.verify("signed-jwt") } returns jwt
+        coEvery { securityService.authenticateWithPayload(jwt) } throws cancellation
+        val calls = listOf(
+            mockCall("Bearer signed-jwt"),
+            mockCall(cookieHeader = "_bat=signed-jwt"),
+        )
+
+        for ((call, authContext) in calls) {
+            assertEquals(cancellation.message, assertFailsWith<CancellationException> {
+                middleware.authenticate(call, AuthConfig(emptyList(), optional = true))
+            }.message)
+            assertNull(authContext.anyPrincipal())
+            coVerify(exactly = 0) { call.respond(any<HttpStatusCode>(), any<String>()) }
+        }
+        coVerify(exactly = 0) { errorCapture.capture(any(), any(), any()) }
+        coVerify(exactly = 2) { connectionManager.release() }
+        verify(exactly = 2) { span.end() }
+    }
+
+    @Test
+    fun `HTTP api token backend failures are captured once and return 500 while invalid tokens return 401`() {
+        coEvery { apiTokenService.authenticate("bsk_failure", any()) } throws IOException("NATS request timed out")
+        coEvery { apiTokenService.authenticate("bsk_invalid", any()) } throws
+            bosca.security.service.SecurityException("invalid API token")
+        coEvery { apiTokenService.authenticate("bsk_valid", any()) } returns testScopedPrincipal
+        provides<ErrorCapture> { errorCapture }
+        val application = BoscaApplication(ApplicationConfig.load("""
+            bosca:
+              server:
+                worker-threads: 1
+                codec-threads: 1
+                compression-enabled: false
+                http2-enabled: false
+                drain-timeout-ms: 0
+                shutdown-timeout-ms: 5000
+        """.trimIndent().byteInputStream()))
+        application.installAuth(middleware)
+        val handled = AtomicInteger()
+        var expectedCaptures = 0
+        application.router.authenticate(optional = true) {
+            get("/npm/@bosca/bml") {
+                assertEquals(testScopedPrincipal, call.authenticationContext.principal("api_token"))
+                handled.incrementAndGet()
+                call.respond(HttpStatusCode.OK, "package metadata")
+            }
+        }
+        val engine = NettyServerEngine(application, 0)
+        val server = Thread { engine.start() }.apply { isDaemon = true }
+        server.start()
+        try {
+            val port = runBlocking {
+                withTimeout(5000) {
+                    while (engine.boundPort == null) delay(10)
+                    requireNotNull(engine.boundPort)
+                }
+            }
+            HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build().use { client ->
+                for (basic in listOf(false, true)) {
+                    for ((token, status) in listOf("bsk_failure" to 500, "bsk_invalid" to 401, "bsk_valid" to 200)) {
+                        val authorization = if (basic) {
+                            "Basic " + Base64.getEncoder().encodeToString("api_token:$token".toByteArray())
+                        } else "Bearer $token"
+                        val before = handled.get()
+                        val request = HttpRequest.newBuilder(URI("http://localhost:$port/npm/@bosca/bml"))
+                            .header("Authorization", authorization)
+                            .timeout(Duration.ofSeconds(5))
+                            .build()
+                        val response = client.send(request, HttpResponse.BodyHandlers.ofString())
+                        assertEquals(status, response.statusCode(), authorization)
+                        assertEquals(before + if (status == 200) 1 else 0, handled.get())
+                        assertFalse("NATS" in response.body())
+                        if (status == 500) expectedCaptures++
+                        coVerify(exactly = expectedCaptures) { errorCapture.capture(any(), any(), any()) }
+                    }
+                }
+            }
+        } finally {
+            engine.stopWithoutHalting()
+            server.join(5000)
+        }
     }
 
     @Test
@@ -305,7 +438,7 @@ class BoscaAuthMiddlewareTest {
     }
 
     @Test
-    fun `basic credential security and unexpected failures are rejected and captured`() = runTest {
+    fun `basic credential security failures are rejected and backend failures are propagated`() = runTest {
         val securityFailure = java.lang.SecurityException("denied")
         val unexpectedFailure = IllegalStateException("database unavailable")
         val encoded = Base64.getEncoder().encodeToString("user:password".toByteArray())
@@ -315,19 +448,13 @@ class BoscaAuthMiddlewareTest {
             unexpectedFailure
 
         middleware.authenticate(securityCall, null)
-        middleware.authenticate(unexpectedCall, null)
+        assertEquals(unexpectedFailure.message, assertFailsWith<IllegalStateException> {
+            middleware.authenticate(unexpectedCall, null)
+        }.message)
 
         coVerify { securityCall.respond(HttpStatusCode.Unauthorized, "") }
-        coVerify { unexpectedCall.respond(HttpStatusCode.Unauthorized, "") }
-        val captured = slot<Throwable>()
-        coVerify {
-            errorCapture.capture(
-                capture(captured),
-                unexpectedCall,
-                mapOf("auth.provider" to "basic"),
-            )
-        }
-        assertEquals(unexpectedFailure.message, captured.captured.message)
+        coVerify(exactly = 0) { unexpectedCall.respond(any<HttpStatusCode>(), any<String>()) }
+        coVerify(exactly = 0) { errorCapture.capture(any(), any(), any()) }
     }
 
     @Test
