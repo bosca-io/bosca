@@ -5,6 +5,7 @@ import bosca.core.annotations.Internal
 import bosca.db.ConnectionManagerCallback
 import bosca.db.connectionOrNull
 import bosca.db.withConnectionManager
+import bosca.lock.DistributedLock
 import bosca.lock.DistributedLockFactory
 import bosca.nats.NatsConnectionPool
 import bosca.serialization.OffsetDateTime
@@ -34,6 +35,7 @@ import io.nats.client.api.StreamConfiguration
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -179,24 +181,33 @@ internal class NatsJobQueue(
     }
 
     @OptIn(Internal::class)
-    private suspend fun <T> internalGetJob(id: UUID, lockTimeout: Long, releaseLock: Boolean, wait: Boolean, block: suspend (Job?) -> T): T = withContext(JobsDispatcher) {
-        val lock = newJobLock(distributedLockFactory, id, lockTimeout, wait)
+    private suspend fun <T> internalGetJob(id: UUID, lockTimeout: Long, releaseLock: Boolean, wait: Boolean, block: suspend (Job?) -> T): T {
+        var lock: DistributedLock? = null
+        var handedOff = false
         try {
-            val entry = try {
-                kv().get(id.toString())
-            } catch (e: Exception) {
-                log.error("Failed to get job $id", e)
-                null
+            val result = withContext(JobsDispatcher) {
+                val acquiredLock = newJobLock(distributedLockFactory, id, lockTimeout, wait)
+                lock = acquiredLock
+                val entry = try {
+                    kv().get(id.toString())
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    log.error("Failed to get job $id", e)
+                    null
+                }
+                if (entry == null) error("Job $id not found")
+                val serializedJob = entry.valueAsString?.let { json.decodeFromString(SerializedJob.serializer(), it) }
+                if (serializedJob == null) error("Job $id not found")
+                val job = serializedJob.deserialize()
+                job.lock = acquiredLock
+                block(job)
             }
-            if (entry == null) error("Job $id not found")
-            val serializedJob = entry.valueAsString?.let { json.decodeFromString(SerializedJob.serializer(), it) }
-            if (serializedJob == null) error("Job $id not found")
-            val job = serializedJob.deserialize()
-            job.lock = lock
-            val result = block(job)
-            result
+            // Transfer ownership only after the dispatcher handoff has completed without cancellation.
+            handedOff = !releaseLock
+            return result
         } finally {
-            if (releaseLock) lock.release()
+            if (!handedOff) withContext(NonCancellable) { lock?.release() }
         }
     }
 
@@ -209,6 +220,8 @@ internal class NatsJobQueue(
         val lock = job.lock ?: return@withContext false
         if (!lock.isHeld || !lock.renew(lockRenew)) return@withContext false
         (job.message as? Message)?.inProgress()
+        // The stale-job scanner measures liveness from the persisted modification time.
+        job.modified = OffsetDateTime.now()
         setJob(job)
         true
     }
@@ -521,6 +534,8 @@ internal class NatsJobQueue(
         while (true) {
             val msgs = try {
                 sub().fetch(1, fetchWait)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: IllegalStateException) {
                 if (e.message == "This subscription is inactive") {
                     // TODO: re-establish the subscription
@@ -551,6 +566,8 @@ internal class NatsJobQueue(
 
             val scheduledEntry = try {
                 scheduledKv().get(jobId.toString())
+            } catch (e: CancellationException) {
+                throw e
             } catch (_: Exception) {
                 null
             }
@@ -571,6 +588,8 @@ internal class NatsJobQueue(
             // Check if the job state still exists before trying to lock/dequeue
             val entry = try {
                 kv().get(jobId.toString())
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 log.warn("Failed to read job state for $jobId, acking message", e)
                 msg.ack()
@@ -591,6 +610,8 @@ internal class NatsJobQueue(
                     }
                     it
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: LockAcquisitionException) {
                 log.warn("Failed to acquire lock for job $jobId, nak-ing message", e)
                 msg.nakWithDelay(java.time.Duration.ofSeconds(30))

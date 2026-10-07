@@ -216,6 +216,469 @@ class GitHubRefSynchronizationIntegrationTest {
         }
     }
 
+    @Test fun `manual pull imports existing history and annotated tags without deliveries or mappings and notifies as the caller`() = runBlocking {
+        val base = commit()
+        val next = commit(base); setRemote(next)
+        val tag = remote.newObjectInserter().use { inserter ->
+            val builder = org.eclipse.jgit.lib.TagBuilder().apply {
+                setObjectId(next, org.eclipse.jgit.lib.Constants.OBJ_COMMIT)
+                tag = "v1"; tagger = PersonIdent("Author", "author@example.com"); message = "Release"
+            }
+            inserter.insert(builder).also { inserter.flush() }
+        }
+        setRemote(tag, "refs/tags/v1")
+        withConnectionManager { repository.unmapUser(7) }
+        val pulled = service.pullRefs(repositoryId, principalId)
+        assertEquals(setOf(ref, "refs/tags/v1"), pulled.map { it.ref }.toSet())
+        assertTrue(pulled.all { it.synchronized && !it.conflict && it.boscaSha == it.githubSha })
+        withConnectionManager {
+            assertTrue(repository.findDeliveries(repositoryId, 0, 25).isEmpty())
+            manager.open(repositoryId).use { local ->
+                assertEquals(next, local.resolve(ref))
+                assertEquals(tag, local.resolve("refs/tags/v1"))
+                assertTrue(local.objectDatabase.has(base))
+                assertEquals(next, local.resolve("refs/tags/v1^{}"))
+            }
+            assertNull(repository.findRefState(repositoryId, ref)?.unattributedBeforeSha)
+        }
+        assertEquals(listOf<UUID?>(principalId, principalId), emitted)
+        service.pullRefs(repositoryId, principalId)
+        assertEquals(2, emitted.size)
+        assertTrue(pipelineTriggers.isEmpty())
+    }
+
+    @Test fun `manual reconciliation imports GitHub branch and tag advances without webhook attribution`() = runBlocking {
+        withConnectionManager { repository.unmapUser(7) }
+        for (name in listOf(ref, "refs/tags/release")) {
+            val base = commit(); setRemote(base, name)
+            assertFalse(service.reconcileRefs(repositoryId, principalId).single { it.ref == name }.conflict)
+            val next = commit(base); setRemote(next, name)
+            val result = service.reconcileRefs(repositoryId, principalId).single { it.ref == name }
+            assertTrue(result.synchronized); assertFalse(result.conflict)
+            assertEquals(next.name(), result.sha)
+            withConnectionManager { assertEquals(next.name(), refs.findByName(repositoryId, name)?.objectId) }
+            assertEquals(next, remote.resolve(name))
+        }
+        assertEquals(List<UUID?>(4) { principalId }, emitted)
+        service.reconcileRefs(repositoryId, principalId)
+        assertEquals(4, emitted.size)
+    }
+
+    @Test fun `background reconciliation observes a GitHub only advance without inventing a conflict`() = runBlocking {
+        val base = commit(); setRemote(base)
+        service.pullRefs(repositoryId, principalId)
+        val next = commit(base); setRemote(next)
+        repeat(2) {
+            val observed = service.reconcileRefs(repositoryId).single()
+            assertFalse(observed.conflict)
+            assertEquals(base.name(), observed.sha); assertEquals(base.name(), observed.boscaSha)
+            assertEquals(next.name(), observed.githubSha)
+            withConnectionManager { assertEquals(base.name(), refs.findByName(repositoryId, ref)?.objectId) }
+            assertEquals(next, remote.resolve(ref))
+        }
+        assertEquals(listOf<UUID?>(principalId), emitted)
+        assertEquals(next.name(), service.reconcileRefs(repositoryId, principalId).single().sha)
+        assertEquals(listOf<UUID?>(principalId, principalId), emitted)
+    }
+
+    @Test fun `manual reconciliation exports native refs propagates tracked deletions and preserves initial deletion conflicts`() = runBlocking {
+        val local = createLocalRef()
+        val remoteHead = commit(); setRemote(remoteHead, "refs/tags/remote")
+        assertEquals(2, service.reconcileRefs(repositoryId, principalId).size)
+        assertEquals(local, remote.resolve(ref))
+        withConnectionManager { assertEquals(remoteHead.name(), refs.findByName(repositoryId, "refs/tags/remote")?.objectId) }
+        setRemote(null, "refs/tags/remote")
+        deleteLocalRef()
+        val deleted = service.reconcileRefs(repositoryId, principalId)
+        assertTrue(deleted.all { it.synchronized && !it.conflict && it.boscaSha == null && it.githubSha == null })
+        assertNull(remote.resolve(ref))
+        withConnectionManager { assertNull(refs.findByName(repositoryId, "refs/tags/remote")) }
+        val recreated = createLocalRef()
+        withConnectionManager { repository.saveRefState(GitHubRefState(repositoryId, ref, null,
+            boscaSha = recreated.name(), conflict = true)) }
+        assertTrue(service.reconcileRefs(repositoryId, principalId).single { it.ref == ref }.conflict)
+        assertNull(remote.resolve(ref))
+        withConnectionManager { assertEquals(recreated.name(), refs.findByName(repositoryId, ref)?.objectId) }
+    }
+
+    @Test fun `manual reconciliation retains independently edited branch and tag histories`() = runBlocking {
+        for (name in listOf(ref, "refs/tags/release")) {
+            val base = commit(); setRemote(base, name)
+            service.pullRefs(repositoryId, principalId)
+            deleteLocalRef(name); val localEdit = createLocalRef(name)
+            val remoteEdit = commit(base); setRemote(remoteEdit, name)
+            val observed = service.reconcileRefs(repositoryId, principalId).single { it.ref == name }
+            assertTrue(observed.conflict)
+            assertEquals(localEdit.name(), observed.boscaSha); assertEquals(remoteEdit.name(), observed.githubSha)
+            assertEquals(remoteEdit, remote.resolve(name))
+            withConnectionManager { assertEquals(localEdit.name(), refs.findByName(repositoryId, name)?.objectId) }
+        }
+        assertEquals(2, emitted.size)
+    }
+
+    @Test fun `manual reconciliation converges both advanced hosts when the remote is an ancestor of Bosca`() = runBlocking {
+        val base = commit(); setRemote(base)
+        service.pullRefs(repositoryId, principalId)
+        val next = commit(base); setRemote(next)
+        service.pullRefs(repositoryId, principalId)
+        val tip = withConnectionManager {
+            manager.open(repositoryId).use { repo ->
+                commit(next, repo).also { repo.updateRef(ref).apply { setNewObjectId(it) }.update() }
+            }.also {
+                repository.saveRefState(GitHubRefState(repositoryId, ref, base.name(), synchronized = true,
+                    boscaSha = base.name(), githubSha = base.name()))
+            }
+        }
+        val observed = service.reconcileRefs(repositoryId, principalId).single()
+        assertFalse(observed.conflict); assertEquals(tip.name(), observed.sha)
+        remote.refDatabase.refresh(); assertEquals(tip, remote.resolve(ref))
+        assertEquals(2, emitted.size)
+    }
+
+    @Test fun `manual reconciliation imports a pending delivery immediately and its later pipeline echo cannot duplicate CI`() = runBlocking {
+        val next = commit(); setRemote(next)
+        val delivery = receive(null, next)
+        assertTrue(service.reconcileRefs(repositoryId).isEmpty())
+        assertEquals(next.name(), service.reconcileRefs(repositoryId, principalId).single().sha)
+        assertEquals(GitHubSyncResult.UNCHANGED, service.synchronizePush(delivery))
+        assertEquals(listOf<UUID?>(principalId), emitted)
+        assertTrue(pipelineTriggers.isEmpty())
+    }
+
+    @Test fun `manual reconciliation respects protections and rolls back cancellation while retaining earlier ref commits`() = runBlocking {
+        val first = commit(); setRemote(first, "refs/heads/a")
+        val second = commit(); setRemote(second, "refs/heads/b")
+        coEvery { protections.findMatchingRule(repositoryId, "a") } returns BranchProtectionRule(
+            repositoryId = repositoryId, pattern = "a", requirePullRequest = true)
+        assertFailsWith<bosca.security.service.SecurityException> { service.reconcileRefs(repositoryId, principalId) }
+        withConnectionManager { assertNull(refs.findByName(repositoryId, "refs/heads/a")) }
+        coEvery { protections.findMatchingRule(repositoryId, "a") } returns null
+        var notified = 0
+        onNotify = { if (++notified == 2) throw CancellationException("cancel reconciliation") }
+        assertFailsWith<CancellationException> { service.reconcileRefs(repositoryId, principalId) }
+        withConnectionManager {
+            assertEquals(first.name(), refs.findByName(repositoryId, "refs/heads/a")?.objectId)
+            assertNull(refs.findByName(repositoryId, "refs/heads/b"))
+            assertNull(repository.findRefState(repositoryId, "refs/heads/b"))
+        }
+        assertEquals(listOf<UUID?>(principalId), emitted)
+        onNotify = {}
+        assertEquals(2, service.reconcileRefs(repositoryId, principalId).size)
+        assertEquals(listOf<UUID?>(principalId, principalId), emitted)
+    }
+
+    @Test fun `manual reconciliation rechecks permission and pair availability before each ref commit`() = runBlocking {
+        val first = commit(); setRemote(first, "refs/heads/a")
+        setRemote(commit(), "refs/heads/b")
+        onNotify = { coEvery { security.getPrincipalGroups(principalId) } returns emptyList() }
+        assertFailsWith<bosca.security.service.SecurityException> { service.reconcileRefs(repositoryId, principalId) }
+        withConnectionManager {
+            assertEquals(first.name(), refs.findByName(repositoryId, "refs/heads/a")?.objectId)
+            assertNull(refs.findByName(repositoryId, "refs/heads/b"))
+        }
+        coEvery { security.getPrincipalGroups(principalId) } returns listOf(writers)
+        onNotify = {}
+        for (enabled in listOf(true, false)) {
+            val changing = syncService(object : GitHubSyncRepository by repository {
+                override suspend fun lockPair(repositoryId: UUID): GitHubRepositoryPair? =
+                    repository.lockPair(repositoryId)?.copy(version = 99, enabled = enabled)
+            })
+            assertFailsWith<IllegalStateException> { changing.reconcileRefs(repositoryId, principalId) }
+        }
+        assertEquals(listOf<UUID?>(principalId), emitted)
+    }
+
+    @Test fun `manual push exports Bosca refs and leaves untracked destination refs alone`() = runBlocking {
+        val local = createLocalRef()
+        val remoteOnly = commit(); setRemote(remoteOnly, "refs/heads/remote-only")
+        val pushed = service.pushRefs(repositoryId, principalId)
+        assertEquals(ref, pushed.single().ref)
+        assertEquals(local, remote.resolve(ref))
+        assertEquals(remoteOnly, remote.resolve("refs/heads/remote-only"))
+        assertTrue(pushed.single().synchronized)
+        assertTrue(emitted.isEmpty())
+        val localOnly = createLocalRef("refs/heads/local-only")
+        service.pullRefs(repositoryId, principalId)
+        withConnectionManager { assertEquals(localOnly.name(), refs.findByName(repositoryId, "refs/heads/local-only")?.objectId) }
+        assertNull(remote.resolve("refs/heads/local-only"))
+    }
+
+    @Test fun `manual push and pull preserve divergent histories and report conflicts`() = runBlocking {
+        val local = createLocalRef()
+        val other = commit(); setRemote(other)
+        for (pull in listOf(true, false)) {
+            val result = if (pull) service.pullRefs(repositoryId, principalId) else service.pushRefs(repositoryId, principalId)
+            assertTrue(result.single().conflict)
+            assertFalse(result.single().synchronized)
+            assertEquals(local.name(), result.single().boscaSha)
+            assertEquals(other.name(), result.single().githubSha)
+            assertEquals(other, remote.resolve(ref))
+            withConnectionManager { assertEquals(local.name(), refs.findByName(repositoryId, ref)?.objectId) }
+        }
+        assertTrue(emitted.isEmpty())
+    }
+
+    private suspend fun resolutionConflict(name: String = ref): GitHubRefState {
+        createLocalRef(name)
+        setRemote(commit(), name)
+        return service.pullRefs(repositoryId, principalId).single { it.ref == name }.also { assertTrue(it.conflict) }
+    }
+
+    private fun resolutionInput(state: GitHubRefState, choice: GitHubRefResolution) =
+        GitHubRefResolutionInput(repositoryId, state.ref, choice, state.boscaSha, state.githubSha)
+
+    @Test fun `conflict choices converge only the reviewed branch or tag and keep original objects`() = runBlocking {
+        for (tag in listOf(false, true)) for ((index, choice) in GitHubRefResolution.entries.withIndex()) {
+            val name = if (tag) "refs/tags/release-$index" else "refs/heads/branch-$index"
+            val conflict = resolutionConflict(name)
+            val untouchedRef = "refs/heads/unrelated-$tag-$index"
+            val untouched = commit(); setRemote(untouched, untouchedRef)
+            val beforeNotifications = emitted.size
+            val result = service.resolveRef(resolutionInput(conflict, choice), principalId)
+            val selected = if (choice == GitHubRefResolution.BOSCA) conflict.boscaSha else conflict.githubSha
+            assertEquals(selected, result.sha)
+            assertEquals(selected, result.boscaSha); assertEquals(selected, result.githubSha)
+            assertTrue(result.synchronized); assertFalse(result.conflict)
+            remote.refDatabase.refresh()
+            assertEquals(selected, remote.resolve(name)?.name())
+            assertEquals(untouched, remote.resolve(untouchedRef))
+            withConnectionManager {
+                assertEquals(selected, refs.findByName(repositoryId, name)?.objectId)
+                assertNull(refs.findByName(repositoryId, untouchedRef))
+            }
+            assertEquals(if (choice == GitHubRefResolution.GITHUB) listOf<UUID?>(principalId) else emptyList(), emitted.drop(beforeNotifications))
+        }
+    }
+
+    @Test fun `conflict choices can retain either deletion or the surviving value on either host`() = runBlocking {
+        for (choice in GitHubRefResolution.entries) for (keepDeletion in listOf(true, false)) {
+            val name = "refs/heads/${choice.name.lowercase()}-$keepDeletion"
+            val base = commit(); setRemote(base, name)
+            service.pullRefs(repositoryId, principalId)
+            val absentBosca = (choice == GitHubRefResolution.BOSCA) == keepDeletion
+            val survivor: String
+            if (absentBosca) {
+                deleteLocalRef(name)
+                val changed = commit(base); setRemote(changed, name); survivor = changed.name()
+            } else {
+                deleteLocalRef(name); survivor = createLocalRef(name).name(); setRemote(null, name)
+            }
+            val conflict = service.reconcileRefs(repositoryId).single { it.ref == name }
+            assertTrue(conflict.conflict)
+            val resolved = service.resolveRef(resolutionInput(conflict, choice), principalId)
+            val selected = if (keepDeletion) null else survivor
+            assertEquals(selected, resolved.sha); assertFalse(resolved.conflict); assertTrue(resolved.synchronized)
+            remote.refDatabase.refresh()
+            assertEquals(selected, remote.resolve(name)?.name())
+            withConnectionManager { assertEquals(selected, refs.findByName(repositoryId, name)?.objectId) }
+        }
+    }
+
+    @Test fun `resolution rejects stale reviewed observations without touching transport`() = runBlocking {
+        val conflict = resolutionConflict()
+        val input = resolutionInput(conflict, GitHubRefResolution.GITHUB)
+        clearMocks(github, answers = false)
+        for (stale in listOf(input.copy(expectedBoscaSha = null), input.copy(expectedGitHubSha = "a".repeat(40)))) {
+            assertFailsWith<IllegalArgumentException> { service.resolveRef(stale, principalId) }
+        }
+        coVerify(exactly = 0) { github.repositoryUrl(any(), any()) }
+        withConnectionManager { assertEquals(conflict.boscaSha, refs.findByName(repositoryId, ref)?.objectId) }
+        assertEquals(conflict.githubSha, remote.resolve(ref)?.name())
+    }
+
+    @Test fun `resolution commits fresh observations and refuses source or destination movement since review`() = runBlocking {
+        for (choice in GitHubRefResolution.entries) for (moveBosca in listOf(true, false)) {
+            val name = "refs/heads/${choice.name.lowercase()}-$moveBosca"
+            val conflict = resolutionConflict(name)
+            val changed = if (moveBosca) {
+                deleteLocalRef(name); createLocalRef(name).name()
+            } else commit().also { setRemote(it, name) }.name()
+            assertFailsWith<IllegalStateException> { service.resolveRef(resolutionInput(conflict, choice), principalId) }
+            withConnectionManager {
+                val observed = assertNotNull(repository.findRefState(repositoryId, name))
+                assertTrue(observed.conflict)
+                assertEquals(if (moveBosca) changed else conflict.boscaSha, observed.boscaSha)
+                assertEquals(if (moveBosca) conflict.githubSha else changed, observed.githubSha)
+                assertEquals(observed.boscaSha, refs.findByName(repositoryId, name)?.objectId)
+                assertEquals(observed.githubSha, remote.resolve(name)?.name())
+            }
+        }
+        assertTrue(emitted.isEmpty())
+    }
+
+    @Test fun `resolution preserves required PR restricted push and force protections`() = runBlocking {
+        val conflict = resolutionConflict()
+        for (rule in listOf(
+            BranchProtectionRule(repositoryId = repositoryId, pattern = "main", requirePullRequest = true, allowForcePush = true),
+            BranchProtectionRule(repositoryId = repositoryId, pattern = "main", restrictPushAccess = listOf(UUID.random()), allowForcePush = true),
+            BranchProtectionRule(repositoryId = repositoryId, pattern = "main", allowForcePush = false),
+        )) {
+            coEvery { protections.findMatchingRule(repositoryId, "main") } returns rule
+            assertFailsWith<bosca.security.service.SecurityException> {
+                service.resolveRef(resolutionInput(conflict, GitHubRefResolution.GITHUB), principalId)
+            }
+            withConnectionManager { assertEquals(conflict.boscaSha, refs.findByName(repositoryId, ref)?.objectId) }
+        }
+        assertTrue(emitted.isEmpty())
+    }
+
+    @Test fun `resolution requires valid refs an active editor enabled pairing and a recorded conflict`() = runBlocking {
+        val input = GitHubRefResolutionInput(repositoryId, ref, GitHubRefResolution.BOSCA)
+        for (invalid in listOf(input.copy(ref = "HEAD"), input.copy(ref = "refs/heads/../bad"),
+            input.copy(expectedBoscaSha = "invalid"), input.copy(expectedGitHubSha = "invalid"))) {
+            assertFailsWith<IllegalArgumentException> { service.resolveRef(invalid, principalId) }
+        }
+        assertFailsWith<IllegalArgumentException> { service.resolveRef(input, principalId) }
+        withConnectionManager { repository.saveRefState(GitHubRefState(repositoryId, ref, null, synchronized = true)) }
+        assertFailsWith<IllegalArgumentException> { service.resolveRef(input, principalId) }
+        coEvery { security.getPrincipalById(principalId) } returns null
+        assertFailsWith<bosca.security.service.SecurityException> { service.resolveRef(input, principalId) }
+        coEvery { security.getPrincipalById(principalId) } returns bosca.security.model.Principal(id = principalId)
+        withConnectionManager { val pair = assertNotNull(repository.findPair(repositoryId)); repository.updatePair(pair.copy(enabled = false)) }
+        assertFailsWith<IllegalStateException> { service.resolveRef(input, principalId) }
+        assertFailsWith<IllegalStateException> { service.resolveRef(input.copy(repositoryId = UUID.random()), principalId) }
+        coVerify(exactly = 0) { github.repositoryUrl(any(), any()) }
+        Unit
+    }
+
+    @Test fun `resolution cancellation rolls back the ref and conflict and retry notifies exactly once`() = runBlocking {
+        val conflict = resolutionConflict()
+        val input = resolutionInput(conflict, GitHubRefResolution.GITHUB)
+        onNotify = { throw CancellationException("cancel resolution") }
+        assertFailsWith<CancellationException> { service.resolveRef(input, principalId) }
+        withConnectionManager {
+            assertEquals(conflict.boscaSha, refs.findByName(repositoryId, ref)?.objectId)
+            assertEquals(conflict, repository.findRefState(repositoryId, ref))
+        }
+        assertTrue(emitted.isEmpty())
+        onNotify = {}
+        assertFalse(service.resolveRef(input, principalId).conflict)
+        assertEquals(listOf<UUID?>(principalId), emitted)
+    }
+
+    @Test fun `manual transfers propagate tracked deletions but preserve independently changed targets`() = runBlocking {
+        val base = commit(); setRemote(base)
+        service.pullRefs(repositoryId, principalId)
+        setRemote(null)
+        assertNull(service.pullRefs(repositoryId, principalId).single().boscaSha)
+        val recreated = commit(); setRemote(recreated)
+        service.pullRefs(repositoryId, principalId)
+        deleteLocalRef()
+        assertNull(service.pushRefs(repositoryId, principalId).single().githubSha)
+        assertNull(remote.resolve(ref))
+        val later = commit(); setRemote(later)
+        service.pullRefs(repositoryId, principalId)
+        deleteLocalRef()
+        val remoteEdit = commit(later); setRemote(remoteEdit)
+        assertTrue(service.pushRefs(repositoryId, principalId).single().conflict)
+        assertEquals(remoteEdit, remote.resolve(ref))
+    }
+
+    @Test fun `manual pull respects required PR push access force deletion and linear history protections`() = runBlocking {
+        val base = commit(); setRemote(base)
+        for (rule in listOf(
+            BranchProtectionRule(repositoryId = repositoryId, pattern = "main", requirePullRequest = true),
+            BranchProtectionRule(repositoryId = repositoryId, pattern = "main", restrictPushAccess = listOf(UUID.random())),
+        )) {
+            coEvery { protections.findMatchingRule(repositoryId, "main") } returns rule
+            assertFailsWith<bosca.security.service.SecurityException> { service.pullRefs(repositoryId, principalId) }
+        }
+        coEvery { protections.findMatchingRule(repositoryId, "main") } returns null
+        service.pullRefs(repositoryId, principalId)
+        coEvery { protections.findMatchingRule(repositoryId, "main") } returns BranchProtectionRule(repositoryId = repositoryId, pattern = "main")
+        setRemote(commit())
+        assertFailsWith<bosca.security.service.SecurityException> { service.pullRefs(repositoryId, principalId) }
+        setRemote(null)
+        assertFailsWith<bosca.security.service.SecurityException> { service.pullRefs(repositoryId, principalId) }
+        val merge = remote.newObjectInserter().use { inserter ->
+            val builder = CommitBuilder().apply {
+                setTreeId(inserter.insert(TreeFormatter()))
+                setParentIds(base, commit(base))
+                author = PersonIdent("Author", "author@example.com"); committer = author; message = "Merge"
+            }
+            inserter.insert(builder).also { inserter.flush() }
+        }
+        setRemote(merge)
+        coEvery { protections.findMatchingRule(repositoryId, "main") } returns BranchProtectionRule(repositoryId = repositoryId, pattern = "main", requireLinearHistory = true)
+        assertFailsWith<bosca.security.service.SecurityException> { service.pullRefs(repositoryId, principalId) }
+        withConnectionManager { assertEquals(base.name(), refs.findByName(repositoryId, ref)?.objectId) }
+        assertEquals(listOf<UUID?>(principalId), emitted)
+    }
+
+    @Test fun `manual transfers require an enabled available pair and an active authorized caller before touching transport`() = runBlocking {
+        for (operation in listOf("pull", "push", "reconcile")) {
+            suspend fun transfer() = when (operation) {
+                "pull" -> service.pullRefs(repositoryId, principalId)
+                "push" -> service.pushRefs(repositoryId, principalId)
+                else -> service.reconcileRefs(repositoryId, principalId)
+            }
+            coEvery { security.getPrincipalById(principalId) } returns null
+            assertFailsWith<bosca.security.service.SecurityException> { transfer() }
+            coEvery { security.getPrincipalById(principalId) } returns bosca.security.model.Principal(id = principalId, deletedAt = java.time.OffsetDateTime.now())
+            assertFailsWith<bosca.security.service.SecurityException> { transfer() }
+            coEvery { security.getPrincipalById(principalId) } returns bosca.security.model.Principal(id = principalId)
+            coEvery { security.getPrincipalGroups(principalId) } returns emptyList()
+            assertFailsWith<bosca.security.service.SecurityException> { transfer() }
+            coEvery { security.getPrincipalGroups(principalId) } returns listOf(writers)
+        }
+        coVerify(exactly = 0) { github.repositoryUrl(any(), any()) }
+        withConnectionManager { val pair = assertNotNull(repository.findPair(repositoryId)); repository.updatePair(pair.copy(enabled = false)) }
+        assertFailsWith<IllegalStateException> { service.pullRefs(repositoryId, principalId) }
+        assertFailsWith<IllegalStateException> { service.pushRefs(repositoryId, principalId) }
+        assertFailsWith<IllegalStateException> { service.reconcileRefs(repositoryId, principalId) }
+        withConnectionManager { val pair = assertNotNull(repository.findPair(repositoryId)); repository.updatePair(pair.copy(enabled = true)) }
+        coEvery { hostedService.findById(repositoryId) } returns hosted.copy(archived = true)
+        assertFailsWith<IllegalStateException> { service.pullRefs(repositoryId, principalId) }
+        assertFailsWith<IllegalStateException> { service.pushRefs(UUID.random(), principalId) }
+        assertFailsWith<IllegalStateException> { service.reconcileRefs(repositoryId, principalId) }
+        assertFailsWith<IllegalStateException> { service.reconcileRefs(UUID.random(), principalId) }
+        Unit
+    }
+
+    @Test fun `manual transfers of empty repositories have no ref side effects`() = runBlocking {
+        assertTrue(service.pullRefs(repositoryId, principalId).isEmpty())
+        assertTrue(service.pushRefs(repositoryId, principalId).isEmpty())
+        assertTrue(service.reconcileRefs(repositoryId, principalId).isEmpty())
+        assertTrue(emitted.isEmpty())
+    }
+
+    @Test fun `manual pull cancellation rolls back the current ref retains earlier commits and retries without duplicate notifications`() = runBlocking {
+        val first = commit(); setRemote(first, "refs/heads/a")
+        val second = commit(); setRemote(second, "refs/heads/b")
+        var notified = 0
+        onNotify = { if (++notified == 2) throw CancellationException("cancelled pull") }
+        assertFailsWith<CancellationException> { service.pullRefs(repositoryId, principalId) }
+        withConnectionManager {
+            assertEquals(first.name(), refs.findByName(repositoryId, "refs/heads/a")?.objectId)
+            assertNull(refs.findByName(repositoryId, "refs/heads/b"))
+            assertNotNull(repository.findRefState(repositoryId, "refs/heads/a"))
+            assertNull(repository.findRefState(repositoryId, "refs/heads/b"))
+        }
+        assertEquals(listOf<UUID?>(principalId), emitted)
+        onNotify = {}
+        assertEquals(2, service.pullRefs(repositoryId, principalId).size)
+        assertEquals(listOf<UUID?>(principalId, principalId), emitted)
+    }
+
+    @Test fun `manual transfer rechecks pair version and caller permissions between ref commits`() = runBlocking {
+        val first = commit(); setRemote(first, "refs/heads/a")
+        val second = commit(); setRemote(second, "refs/heads/b")
+        onNotify = { coEvery { security.getPrincipalGroups(principalId) } returns emptyList() }
+        assertFailsWith<bosca.security.service.SecurityException> { service.pullRefs(repositoryId, principalId) }
+        withConnectionManager { assertNull(refs.findByName(repositoryId, "refs/heads/b")) }
+        coEvery { security.getPrincipalGroups(principalId) } returns listOf(writers)
+        onNotify = {}
+        val changing = syncService(object : GitHubSyncRepository by repository {
+            override suspend fun lockPair(repositoryId: UUID): GitHubRepositoryPair? = repository.lockPair(repositoryId)?.copy(version = 99)
+        })
+        assertFailsWith<IllegalStateException> { changing.pullRefs(repositoryId, principalId) }
+        val disabling = syncService(object : GitHubSyncRepository by repository {
+            override suspend fun lockPair(repositoryId: UUID): GitHubRepositoryPair? = repository.lockPair(repositoryId)?.copy(enabled = false)
+        })
+        assertFailsWith<IllegalStateException> { disabling.pullRefs(repositoryId, principalId) }
+        assertEquals(listOf<UUID?>(principalId), emitted)
+    }
+
     @Test fun `an unmapped GitHub writer cannot change the Bosca default branch or notify CI`() = runBlocking {
         val next = commit(); setRemote(next)
         withConnectionManager { repository.unmapUser(7) }

@@ -11,7 +11,7 @@
       <env name="BOSCA_SERVER_PORT" value="8060" />
     </envs>
     <option name="MAIN_CLASS_NAME" value="bosca.server.ApplicationKt" />
-    <module name="server.bosca-runner.main" />
+    <module name="bosca-workspace.server.bosca-runner.main" />
     <shortenClasspath name="NONE" />
     <option name="VM_PARAMETERS" value="-Xmx3096M --add-opens java.base/jdk.internal.misc=ALL-UNNAMED --add-opens java.base/java.nio=ALL-UNNAMED --add-opens java.base/sun.nio.ch=ALL-UNNAMED --sun-misc-unsafe-memory-access=allow --enable-native-access=ALL-UNNAMED" />
     <method v="2">

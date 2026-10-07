@@ -1,5 +1,3 @@
-@file:OptIn(DelicateCoroutinesApi::class)
-
 package bosca.sharedqueue.jobs
 
 import bosca.cache.withRequestCache
@@ -12,14 +10,11 @@ import bosca.observability.ErrorCapture
 import bosca.sharedqueue.jobs.JobRunner.Companion.EXECUTOR_LOCK_RENEW_INTERVAL_MILLIS
 import bosca.sharedqueue.jobs.JobRunner.Companion.EXECUTOR_LOCK_TTL_MILLIS
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.DelicateCoroutinesApi
-import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
-import kotlinx.coroutines.channels.ReceiveChannel
-import kotlinx.coroutines.channels.produce
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -47,6 +42,8 @@ class JobRunner(
     private suspend fun captureError(throwable: Throwable, context: Map<String, Any?>) {
         try {
             errorCapture.get().capture(throwable, null, context)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             log.error("error capturing error", e)
         }
@@ -55,42 +52,9 @@ class JobRunner(
     @OptIn(ExperimentalAtomicApi::class)
     private val active = AtomicLong(0)
 
-    @OptIn(ExperimentalCoroutinesApi::class)
-    private fun newProducer(): ReceiveChannel<Job> = scope.produce(capacity = max) {
-        launch {
-            // Backoff after a fetch error; reset once a fetch attempt succeeds.
-            var errorDelay = 1_000L
-            // Idle backoff when the queue is empty. A blocking backend (NATS) already waited inside
-            // dequeue(), so this stays near the floor; a non-blocking backend (Redis) returns null
-            // immediately, so this idle delay is what keeps the loop from hot-spinning on an idle queue.
-            var idleDelay = 1L
-            while (isActive) {
-                try {
-                    val job = queue.dequeue()
-                    if (job != null) {
-                        send(job)
-                        idleDelay = 1L
-                    } else {
-                        delay(idleDelay.milliseconds)
-                        idleDelay = minOf(idleDelay * 2, 1_000L)
-                    }
-                    errorDelay = 1_000L
-                } catch (_: CancellationException) {
-                    break
-                } catch (e: Exception) {
-                    log.error("error fetching next job: $queue", e)
-                    captureError(e, mapOf("queue" to queue.toString()))
-                    delay(errorDelay.milliseconds)
-                    errorDelay = minOf(errorDelay * 2, 10_000L)
-                }
-            }
-        }.join()
-    }
-
     fun run() {
-        val producer = newProducer()
         repeat(max) {
-            scope.launch { process(producer) }
+            scope.launch { process() }
         }
     }
 
@@ -116,36 +80,49 @@ class JobRunner(
         }
     }
 
-    private suspend fun process(channel: ReceiveChannel<Job>) {
+    private suspend fun process() {
+        var errorDelay = 1_000L
+        var idleDelay = 1L
         while (scope.isActive) {
+            // Dequeue acquires the job lock and starts the delivery's acknowledgement timer.
+            // Each worker fetches only when ready to start check-in and execution.
+            val job = try {
+                queue.dequeue().also { errorDelay = 1_000L }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                log.error("error fetching next job: $queue", e)
+                captureError(e, mapOf("queue" to queue.toString()))
+                delay(errorDelay.milliseconds)
+                errorDelay = minOf(errorDelay * 2, 10_000L)
+                continue
+            }
+            if (job == null) {
+                // NATS already waits inside dequeue; this backoff also keeps non-blocking queues idle.
+                delay(idleDelay.milliseconds)
+                idleDelay = minOf(idleDelay * 2, 1_000L)
+                continue
+            }
+            idleDelay = 1L
             try {
-                val result = channel.receiveCatching()
-                when (val job = result.getOrNull()) {
-                    null -> break
-                    else ->
+                val checkin = checkin(job)
+                try {
+                    job.execute(checkin)
+                } finally {
+                    withContext(NonCancellable) {
                         try {
-                            val checkin = checkin(job)
-                            try {
-                                job.execute(checkin)
-                            } finally {
-                                job.lock?.release()
-                                if (checkin.isActive) checkin.cancel()
-                            }
-                        } catch (_: CancellationException) {
-                            log.info("cancelled job: ${job.id}")
-                        } catch (e: Throwable) {
-                            log.error("error processing job: ${job.id}", e)
-                            captureError(e, mapOf("job.id" to job.id, "job.executor" to job.executorName))
+                            checkin.cancelAndJoin()
+                        } finally {
+                            job.lock?.release()
                         }
+                    }
                 }
             } catch (e: CancellationException) {
-                log.info("cancelled processing")
-                if (!scope.isActive) {
-                    throw e
-                }
-            } catch (e: Exception) {
-                log.error("error processing", e)
-                captureError(e, mapOf("queue" to queue.toString()))
+                log.info("cancelled job: ${job.id}")
+                throw e
+            } catch (e: Throwable) {
+                log.error("error processing job: ${job.id}", e)
+                captureError(e, mapOf("job.id" to job.id, "job.executor" to job.executorName))
             }
         }
     }

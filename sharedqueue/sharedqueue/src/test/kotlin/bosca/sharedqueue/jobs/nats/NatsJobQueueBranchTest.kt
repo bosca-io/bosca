@@ -273,8 +273,18 @@ class NatsJobQueueBranchTest {
     @Test
     fun `checkin renews and persists when locked`() = runTest {
         val job = lockedJob()
+        val previousModified = OffsetDateTime.now().minusHours(1)
+        job.modified = previousModified
+        val persisted = slot<String>()
+        every { kv.put(job.id.toString(), capture(persisted)) } returns 1L
         assertTrue(queue.checkin(job, 1000))
-        verify { kv.put(job.id.toString(), any<String>()) }
+        val state = json.decodeFromString(SerializedJob.serializer(), persisted.captured)
+        assertTrue(state.modified > previousModified, "Successful check-in must refresh stale-job liveness")
+        assertEquals(job.modified, state.modified)
+        every { kv.keys() } returns listOf(job.id.toString())
+        every { kv.get(job.id.toString()) } returns entryFor(state)
+        queue.checkForExpiredJobs(System.currentTimeMillis())
+        verify(exactly = 0) { js.publish(any<String>(), any<ByteArray>(), any<PublishOptions>()) }
     }
 
     @Test
@@ -290,9 +300,11 @@ class NatsJobQueueBranchTest {
         val job = lockedJob()
         val lock = job.lock!!
         coEvery { lock.renew(any()) } returns false
+        val previousModified = job.modified
 
         assertFalse(queue.checkin(job, 1000))
 
+        assertEquals(previousModified, job.modified)
         verify(exactly = 0) { kv.put(job.id.toString(), any<String>()) }
     }
 
@@ -546,6 +558,40 @@ class NatsJobQueueBranchTest {
     }
 
     // ----- internalGetJob error arms (via getJob) -----
+
+    @Test
+    fun `dequeue releases the acquired lock when persisting running status fails`() = runTest {
+        val id = UUID.random()
+        val msg = message(id.toString())
+        val lock = newLock(held = true, acquires = true)
+        stubFetch(msg)
+        every { scheduledKv.get(id.toString()) } returns null
+        every { kv.get(id.toString()) } returns entryFor(serializedJob(id, JobStatus.PENDING))
+        coEvery { lockFactory.create(any()) } returns lock
+        every { kv.put(id.toString(), any<String>()) } throws RuntimeException("state write failed")
+
+        assertNull(queue.dequeue())
+
+        io.mockk.coVerify(exactly = 1) { lock.release() }
+        verify { msg.nakWithDelay(java.time.Duration.ofSeconds(5)) }
+    }
+
+    @Test
+    fun `dequeue releases the acquired lock and propagates cancellation`() = runTest {
+        val id = UUID.random()
+        val msg = message(id.toString())
+        val lock = newLock(held = true, acquires = true)
+        stubFetch(msg)
+        every { scheduledKv.get(id.toString()) } returns null
+        every { kv.get(id.toString()) } returns entryFor(serializedJob(id, JobStatus.PENDING))
+        coEvery { lockFactory.create(any()) } returns lock
+        every { kv.put(id.toString(), any<String>()) } throws kotlin.coroutines.cancellation.CancellationException("cancelled")
+
+        assertFailsWith<kotlin.coroutines.cancellation.CancellationException> { queue.dequeue() }
+
+        io.mockk.coVerify(exactly = 1) { lock.release() }
+        verify(exactly = 0) { msg.nakWithDelay(any<java.time.Duration>()) }
+    }
 
     @Test
     fun `getJob errors when the state is missing`() = runTest {

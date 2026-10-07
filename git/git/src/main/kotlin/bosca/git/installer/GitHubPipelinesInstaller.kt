@@ -13,9 +13,9 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
-/** Seeds ordinary synchronization graphs without replacing operator-edited pipelines. */
+/** Seeds synchronization graphs and adds their Git tag while preserving operator configuration. */
 class GitHubPipelinesInstaller(private val pipelines: PipelineService) : PackageInstaller {
-    override val version = "1.1.0"
+    override val version = "1.2.0"
 
     override suspend fun install(installation: PackageInstallation, version: PackageInstallationVersion) {
         seed("github-import-refs", "GitHub: Import Refs", "bosca.git.model.GitHubDelivery", "githubPush", "delivery")
@@ -27,9 +27,22 @@ class GitHubPipelinesInstaller(private val pipelines: PipelineService) : Package
     }
 
     private suspend fun seed(key: String, name: String, inputType: String, nodeType: String, inputPort: String, schedule: String? = null) {
-        if (pipelines.getByKey(key) != null) return
+        val existing = pipelines.getByKey(key)
+        if (existing != null) {
+            if (existing.tags.none { it.equals("Git", ignoreCase = true) }) {
+                pipelines.save(
+                    id = existing.id, name = existing.name, description = existing.description,
+                    acceptedInputType = existing.acceptedInputType, triggered = existing.triggered,
+                    version = existing.version, graph = pipelines.graphAsJsonElement(existing),
+                    tags = existing.tags + "Git", key = existing.key, api = existing.api, public = existing.public,
+                    schedule = existing.schedule, maxConcurrentRuns = existing.maxConcurrentRuns,
+                    maxRunsPerMinute = existing.maxRunsPerMinute,
+                )
+            }
+            return
+        }
         pipelines.save(id = UUID.NIL, name = name, description = "Synchronize paired repositories through the GitHub service.",
-            key = key, acceptedInputType = inputType, triggered = schedule == null, schedule = schedule, version = 0,
+            key = key, acceptedInputType = inputType, triggered = schedule == null, schedule = schedule, version = 0, tags = listOf("Git"),
             graph = buildJsonObject {
                 put("nodes", JsonArray(listOf(
                     node("input", "input", 60).let { JsonObject(it + ("acceptedType" to kotlinx.serialization.json.JsonPrimitive(inputType))) },
@@ -62,6 +75,6 @@ class GitHubPackageInstallerRegistry {
     @Provider(name = "github")
     fun installation(): PackageInstallation = PackageInstallation(
         key = "github", name = "GitHub",
-        versions = listOf(PackageInstallationVersion(version = "1.1.0", installerNames = listOf("github-pipelines"))),
+        versions = listOf(PackageInstallationVersion(version = "1.2.0", installerNames = listOf("github-pipelines"))),
     )
 }

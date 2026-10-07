@@ -74,6 +74,7 @@ internal suspend fun synchronizeRef(
                     if (updated) target?.name() else null,
                 )
                 if (source != after) return@withRefSynchronizationLock result(GitHubSyncResult.STALE)
+                if (input.resolveConflict && target != before) return@withRefSynchronizationLock result(GitHubSyncResult.STALE)
                 if (source == target) {
                     val principal = input.principalId
                     val unattributedBefore = input.unattributedBeforeSha
@@ -92,7 +93,7 @@ internal suspend fun synchronizeRef(
                 val creation = target == null && expectedTarget == null && (input.hasSynchronized || before == null) &&
                     (input.hasSynchronized || !input.hasConflict)
                 val safe = if (source == null) unchangedTarget else creation || unchangedTarget || fastForward
-                if (!safe) return@withRefSynchronizationLock result(GitHubSyncResult.CONFLICT)
+                if (!safe && !input.resolveConflict) return@withRefSynchronizationLock result(GitHubSyncResult.CONFLICT)
 
                 if (inbound) input.protection?.let { rule ->
                     val branch = input.ref.removePrefix("refs/heads/")

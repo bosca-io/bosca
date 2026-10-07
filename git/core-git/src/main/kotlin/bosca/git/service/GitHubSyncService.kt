@@ -8,6 +8,7 @@ import bosca.git.model.GitHubDelivery
 import bosca.git.model.GitHubRepositoryPair
 import bosca.git.model.GitHubRepositoryPairInput
 import bosca.git.model.GitHubRefState
+import bosca.git.model.GitHubRefResolutionInput
 import bosca.git.model.GitHubSyncResult
 import bosca.git.model.RefUpdateEvent
 import bosca.serialization.UUID
@@ -30,7 +31,11 @@ interface GitHubSyncService : Service {
     /** The repository's pair, including disabled configuration. */
     suspend fun findPair(repositoryId: UUID): GitHubRepositoryPair?
 
-    /** Creates or optimistically updates a pair; changing its immutable GitHub repository ID is forbidden. */
+    /**
+     * Creates or optimistically updates a pair; changing its immutable GitHub repository ID is forbidden.
+     * An omitted ID is resolved with the referenced token on creation or when owner/name changes.
+     * Unchanged existing targets retain their ID so synchronization can be disabled without credentials.
+     */
     suspend fun savePair(input: GitHubRepositoryPairInput): GitHubRepositoryPair
 
     /** All administrator-verified user mappings, ordered by immutable GitHub user ID. */
@@ -75,6 +80,41 @@ interface GitHubSyncService : Service {
 
     /** Current common refs and unresolved conflicts, ordered by ref name. */
     suspend fun findRefStates(repositoryId: UUID, offset: Long, limit: Int): List<GitHubRefState>
+
+    /**
+     * Pulls current GitHub branches and tags into an enabled pair under [principalId]'s current
+     * repository EDIT permission and destination branch protections, without requiring a webhook.
+     * Applied writes notify the ordinary ref/CI path as this principal. Independent destination
+     * edits remain conflicts; refs absent from the source are deleted only with a common baseline.
+     * Each ref commits independently, so earlier writes survive a later failure or cancellation.
+     */
+    suspend fun pullRefs(repositoryId: UUID, principalId: UUID): List<GitHubRefState>
+
+    /**
+     * Pushes current Bosca branches and tags to an enabled pair under [principalId]'s current
+     * repository EDIT permission, using the configured token and GitHub's destination protections.
+     * Independent destination edits remain conflicts; untracked destination-only refs are preserved.
+     * Each ref commits independently, so earlier writes survive a later failure or cancellation.
+     */
+    suspend fun pushRefs(repositoryId: UUID, principalId: UUID): List<GitHubRefState>
+
+    /**
+     * Resolves one recorded branch/tag conflict by retaining the selected host's reviewed value,
+     * including deletion. Requires an active [principalId] with repository EDIT permission and an
+     * enabled pair. Both observed refs must match [input] when fetched, and the destination write
+     * is conditional on its reviewed value. Destination protections still apply. Inbound changes
+     * notify the ordinary ref/CI path as the caller. Changed observations remain conflicts and
+     * commit before reporting a stale-resolution failure; cancellation rolls back a local write.
+     */
+    suspend fun resolveRef(input: GitHubRefResolutionInput, principalId: UUID): GitHubRefState
+
+    /**
+     * Reconciles current branches/tags in both directions under [principalId]'s active repository
+     * EDIT permission, without requiring a webhook. Imports notify the ordinary ref/CI path as
+     * this caller; protections and conflicts remain enforced. Requires an enabled, available pair.
+     * Each ref commits independently, rechecking the pairing and permission between commits.
+     */
+    suspend fun reconcileRefs(repositoryId: UUID, principalId: UUID): List<GitHubRefState>
 
     /**
      * Reconciles missed branch/tag changes with the same operations as event-driven nodes.

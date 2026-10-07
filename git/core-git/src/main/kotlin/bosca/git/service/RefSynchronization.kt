@@ -26,8 +26,10 @@ class RefSynchronizationInput(
     val protection: BranchProtectionRule? = null,
     /** Only a paired PR whose Bosca merge checks passed may satisfy a required-PR rule. */
     val pullRequestMerge: Boolean = false,
-    /** PR merge imports preserve attribution but defer CI authorization to their verified push occurrence. */
+    /** Manual pulls and verified pushes notify CI; PR merge imports defer CI to their verified push occurrence. */
     val triggerBuild: Boolean = true,
+    /** Explicit conflict choice: checks afterSha against the fetched source and leases the destination with beforeSha, including deletion. */
+    val resolveConflict: Boolean = false,
 )
 
 data class RefSynchronizationResult(

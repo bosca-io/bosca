@@ -1,77 +1,13 @@
 <script setup lang="ts">
 import gql from 'graphql-tag'
-import type { SelectOption } from '@bosca/ui'
-import { useAuth } from '@bosca/auth-client-browser'
 
 const { accent } = useCurrentSubsystem()
-const { useAsyncQuery, mutation: gqlMutation } = useGraphQL()
-const { searchProfiles } = useProfileSearch()
+const { mutation: gqlMutation } = useGraphQL()
 const toast = useToast()
-const { profile } = import.meta.client ? useAuth() : { profile: ref(null) }
-
-const { save: saveLastOwner, load: loadLastOwner } = useLastGitOwner()
-const savedOwner = loadLastOwner()
-const selectedOwner = ref(savedOwner?.id ?? '')
-const knownProfiles = ref<Map<string, string>>(new Map())
-if (savedOwner) knownProfiles.value.set(savedOwner.id, savedOwner.label)
-
-const ownerOptions = computed<SelectOption[]>(() => {
-  const opts: SelectOption[] = []
-  const p = profile.value
-  if (p?.id) {
-    const label = p.name || p.slug || p.id
-    opts.push({ value: p.id, label })
-    knownProfiles.value.set(p.id, label)
-  }
-  if (savedOwner && savedOwner.id !== p?.id) opts.push({ value: savedOwner.id, label: savedOwner.label })
-  return opts
-})
-
-async function searchProfilesAndTrack(q: string) {
-  const results = await searchProfiles(q)
-  for (const opt of results) knownProfiles.value.set(opt.value, opt.label)
-  return results
-}
-
-watch(() => profile.value?.id, (id) => {
-  if (id && !selectedOwner.value) selectedOwner.value = id
-}, { immediate: true })
-
-watch(selectedOwner, (id) => {
-  if (!id) return
-  const label = knownProfiles.value.get(id) ?? id
-  saveLastOwner({ id, label })
-  selectedRepoId.value = undefined
-})
-
-interface UtilRepo { id: string; name: string; diskSizeBytes: number }
-
-const selectedRepoId = ref<string | undefined>(undefined)
-
-const reposGql = gql`
-  query UtilitiesRepos($ownerId: UUID!) {
-    git {
-      repositories(ownerId: $ownerId, includeArchived: true) {
-        id name diskSizeBytes
-      }
-    }
-  }
-`
-
-const { data: reposData, status: reposStatus, refresh: refreshRepos } = useAsyncQuery<{
-  git: { repositories: UtilRepo[] }
-}>('git-utilities-repos', reposGql, { ownerId: computed(() => selectedOwner.value || '') }, { server: false })
-
-const repos = computed<UtilRepo[]>(() => reposData.value?.git?.repositories ?? [])
-const reposLoading = computed(() => reposStatus.value === 'pending')
-
-const repoOptions = computed<SelectOption[]>(() =>
-  repos.value.map(r => ({ value: r.id, label: r.name })),
-)
-
-const selectedRepo = computed<UtilRepo | undefined>(() =>
-  repos.value.find(r => r.id === selectedRepoId.value),
-)
+const props = defineProps<{ repository: { id: string; name: string; diskSizeBytes: number } }>()
+const emit = defineEmits<{ refresh: [] }>()
+const selectedRepoId = computed(() => props.repository.id)
+const selectedRepo = computed(() => props.repository)
 
 function formatBytes(bytes: number): string {
   if (!bytes) return '0 B'
@@ -96,7 +32,7 @@ async function runGc() {
       }
     `, { id: selectedRepoId.value })
     toast.success('Garbage collection complete')
-    await refreshRepos()
+    emit('refresh')
   } catch (e: unknown) {
     toast.error(e instanceof Error ? e.message : 'Failed to run garbage collection')
   } finally {
@@ -114,7 +50,7 @@ async function runRepair() {
       }
     `, { id: selectedRepoId.value })
     toast.success('Repair complete')
-    await refreshRepos()
+    emit('refresh')
   } catch (e: unknown) {
     toast.error(e instanceof Error ? e.message : 'Failed to repair repository')
   } finally {
@@ -160,43 +96,9 @@ const confirmRunning = computed(() => gcRunning.value || repairRunning.value)
 </script>
 
 <template>
-  <PageShell>
-    <template #header>
-      <PageHeader
-        :accent="accent"
-        :breadcrumb="buildBreadcrumb('Git', 'Settings', 'Utilities')"
-        title="Utilities"
-        subtitle="Run maintenance operations on a repository"
-      >
-        <template #actions>
-          <Select
-            v-model="selectedOwner"
-            :options="ownerOptions"
-            placeholder="Owner"
-            searchable
-            :search-fn="searchProfilesAndTrack"
-            :accent="accent"
-            size="sm"
-          />
-          <Select
-            v-if="repoOptions.length"
-            v-model="selectedRepoId"
-            placeholder="Select repository..."
-            :options="repoOptions"
-            :accent="accent"
-            size="sm"
-          />
-        </template>
-      </PageHeader>
-    </template>
-
-    <div v-if="!selectedOwner" class="empty-centered">Select an owner to browse repositories.</div>
-    <div v-else-if="reposLoading" class="empty-centered">Loading repositories...</div>
-    <div v-else-if="!repoOptions.length" class="empty-centered">No repositories found for this owner.</div>
-    <div v-else-if="!selectedRepoId" class="empty-centered">Select a repository to run utilities.</div>
-
-    <div v-else class="utility-list">
-      <SectionCard title="Repository" subtitle="Currently selected" padded>
+  <div class="repository-settings-panel">
+    <div class="utility-list">
+      <SectionCard title="Storage" padded>
         <div class="repo-info">
           <div class="repo-info-line">
             <Icon name="folder" :size="14" color="var(--fg-3)" />
@@ -277,7 +179,7 @@ const confirmRunning = computed(() => gcRunning.value || repairRunning.value)
         </Button>
       </template>
     </Modal>
-  </PageShell>
+  </div>
 </template>
 
 <style scoped>

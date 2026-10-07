@@ -18,6 +18,7 @@ import io.mockk.unmockkAll
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
@@ -25,13 +26,15 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
 /**
  * Drives [JobRunner.run] against a mocked [JobQueue] to cover the worker loop's
  * decision arms without a real backend: the terminal outcomes (complete / fail /
  * delayed-retry), the executor-level distributed-lock outcomes (PROCEED / DELAY /
- * SKIP), and the producer/checkin error handling.
+ * SKIP), and the dequeue/checkin error handling.
  *
  * The runner uses its own cached-thread-pool dispatcher, so each test hands the
  * queue exactly one job (then `null` forever), waits on a [CompletableDeferred]
@@ -269,13 +272,49 @@ class JobRunnerTest {
         coEvery { queue.checkin(any(), any()) } returns true
         val runner = JobRunner(queue, 2, lockFactory)
         runner.run()
-        // Let the producer/process loops spin on the empty queue, then stop them.
+        // Let the worker loops poll the empty queue, then stop them.
         Thread.sleep(300)
         runner.shutdown()
         Thread.sleep(200)
     }
 
-    // ----- producer error handling -----
+    // ----- dequeue error handling -----
+
+    @Test
+    fun `does not dequeue another locked job while all workers are busy`() = runBlocking {
+        val started = CompletableDeferred<Unit>()
+        val finish = CompletableDeferred<Unit>()
+        val extraDequeue = CompletableDeferred<Unit>()
+        provides<WaitingExecutor> { WaitingExecutor(started, finish) }
+        val first = newJob(WaitingExecutor::class)
+        val next = newJob(WaitingExecutor::class)
+        val calls = AtomicInteger(0)
+        coEvery { queue.dequeue() } coAnswers {
+            when (calls.getAndIncrement()) {
+                0 -> first
+                1 -> {
+                    extraDequeue.complete(Unit)
+                    next
+                }
+                else -> null
+            }
+        }
+        coEvery { queue.checkin(any(), any()) } returns true
+        val runner = JobRunner(queue, 1, lockFactory)
+        runner.run()
+        try {
+            withTimeout(5.seconds) { started.await() }
+            assertNull(
+                withTimeoutOrNull(250.milliseconds) { extraDequeue.await() },
+                "A locked delivery must not wait in the runner without check-in"
+            )
+            finish.complete(Unit)
+            withTimeout(5.seconds) { extraDequeue.await() }
+        } finally {
+            runner.shutdown()
+            finish.complete(Unit)
+        }
+    }
 
     @Test
     fun `the producer recovers from a dequeue error and keeps consuming`() {
@@ -305,6 +344,16 @@ class JobRunnerTest {
 
     private class ProceedExecutor(private val ran: AtomicInteger) : JobExecutor {
         override suspend fun execute() { ran.incrementAndGet() }
+    }
+
+    private class WaitingExecutor(
+        private val started: CompletableDeferred<Unit>,
+        private val finish: CompletableDeferred<Unit>,
+    ) : JobExecutor {
+        override suspend fun execute() {
+            started.complete(Unit)
+            finish.await()
+        }
     }
 
     private class FailExecutor : JobExecutor {

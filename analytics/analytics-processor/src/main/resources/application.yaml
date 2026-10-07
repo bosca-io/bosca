@@ -31,6 +31,12 @@ database:
     password: "$TRINO_DATABASE_READONLY_PASSWORD:"
     driverClassName: "io.trino.jdbc.TrinoDriver"
 
+redis:
+  host: "$REDIS_HOST:localhost"
+  port: ${REDIS_PORT:6380}
+  database: ${REDIS_DATABASE:0}
+  namespace: "$REDIS_NAMESPACE:"
+
 nats:
   url: "$NATS_HOST:localhost:4222"
   token: "$NATS_TOKEN:OAVKZTG7ST62YCPUJYJ6LBQDMKLAUD4NRBPZ4GXUXNUJW2ATCFKKYGHV"

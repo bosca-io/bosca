@@ -20,8 +20,14 @@ type GitHubMutation {
     mapUser(githubUserId: Long!, principalId: UUID!): GitHubUser!
     "Remove a user mapping without rewriting previous delivery attribution."
     unmapUser(githubUserId: Long!): Boolean!
-    "Reconcile branches and tags using current refs; recovered writes are unattributed."
+    "Reconcile current branches and tags in both directions as the calling administrator; repository Edit, destination protections and conflicts apply."
     reconcileRefs(repositoryId: UUID!): [GitHubRefState!]!
+    "Pull current GitHub branches and tags as the calling administrator; repository Edit and Bosca branch protections apply."
+    pullRefs(repositoryId: UUID!): [GitHubRefState!]!
+    "Push current Bosca branches and tags as the calling administrator; repository Edit and GitHub protections apply."
+    pushRefs(repositoryId: UUID!): [GitHubRefState!]!
+    "Resolve one recorded ref conflict using the selected host's reviewed value; both refs are checked and destination protections apply."
+    resolveRef(input: GitHubRefResolutionInput!): GitHubRefState!
     "Reconcile current pull requests without creating new merge commits."
     reconcilePullRequests(repositoryId: UUID!): [GitHubPullRequestState!]!
 }
@@ -72,9 +78,22 @@ type GitHubRepositoryPair {
     modified: DateTime!
 }
 
+enum GitHubRefResolution { BOSCA GITHUB }
+
+input GitHubRefResolutionInput {
+    repositoryId: UUID!
+    ref: String!
+    resolution: GitHubRefResolution!
+    "Reviewed Bosca object ID; null means the ref is absent."
+    expectedBoscaSha: String
+    "Reviewed GitHub object ID; null means the ref is absent."
+    expectedGitHubSha: String
+}
+
 input GitHubRepositoryPairInput {
     repositoryId: UUID!
-    githubRepositoryId: Long!
+    "Omit to resolve using the token on creation or rename; unchanged pairs retain their immutable ID."
+    githubRepositoryId: Long
     owner: String!
     name: String!
     webhookSecretName: String!

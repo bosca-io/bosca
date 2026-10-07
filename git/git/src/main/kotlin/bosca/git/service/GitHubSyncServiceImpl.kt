@@ -14,6 +14,8 @@ import bosca.db.withConnectionManager
 import bosca.git.github.GitHubClient
 import bosca.git.model.GitHubPush
 import bosca.git.model.GitHubRefState
+import bosca.git.model.GitHubRefResolution
+import bosca.git.model.GitHubRefResolutionInput
 import bosca.git.model.GitHubSyncResult
 import bosca.git.model.RefUpdateEvent
 import bosca.git.model.GitHubDelivery
@@ -273,27 +275,34 @@ class GitHubSyncServiceImpl(
     override suspend fun findPair(repositoryId: UUID): GitHubRepositoryPair? = repository.findPair(repositoryId)
 
     override suspend fun savePair(input: GitHubRepositoryPairInput): GitHubRepositoryPair {
-        require(input.githubRepositoryId > 0 && input.version >= 0) { "Invalid GitHub repository ID or version" }
+        require(input.githubRepositoryId?.let { it > 0 } != false && input.version >= 0) { "Invalid GitHub repository ID or version" }
         require(input.owner.matches(SEGMENT) && input.name.matches(SEGMENT)) { "Invalid GitHub owner or repository name" }
         require(input.webhookSecretName.isNotBlank() && input.tokenSecretName.isNotBlank()) { "Secret names are required" }
         val hosted = repositoryService.findById(input.repositoryId)
             ?: throw NoSuchElementException("Repository not found: ${input.repositoryId}")
         require(!input.enabled || (!hosted.deleted && !hosted.archived)) { "Repository is unavailable for synchronization" }
+        val current = repository.findPair(input.repositoryId)
+        if (current == null) require(input.version == 0L) { "New pair must have version zero" }
         if (input.enabled) {
             require(!secrets.resolve(input.webhookSecretName).isNullOrBlank()) { "Webhook secret is not configured" }
             require(!secrets.resolve(input.tokenSecretName).isNullOrBlank()) { "GitHub token is not configured" }
         }
+        val githubRepositoryId = input.githubRepositoryId ?: if (current != null && current.owner == input.owner && current.name == input.name) {
+            current.githubRepositoryId
+        } else {
+            val token = secrets.resolve(input.tokenSecretName)
+            require(!token.isNullOrBlank()) { "GitHub token is not configured" }
+            github.repositoryId(input.owner, input.name, token)
+        }
+        require(current == null || current.githubRepositoryId == githubRepositoryId) { "A repository pair cannot change GitHub repository ID" }
         val pair = GitHubRepositoryPair(
-            repositoryId = input.repositoryId, githubRepositoryId = input.githubRepositoryId,
+            repositoryId = input.repositoryId, githubRepositoryId = githubRepositoryId,
             owner = input.owner, name = input.name, webhookSecretName = input.webhookSecretName,
             tokenSecretName = input.tokenSecretName, enabled = input.enabled, version = input.version,
         )
-        val current = repository.findPair(input.repositoryId)
         if (current == null) {
-            require(input.version == 0L) { "New pair must have version zero" }
             return repository.createPair(pair)
         }
-        require(current.githubRepositoryId == input.githubRepositoryId) { "A repository pair cannot change GitHub repository ID" }
         return repository.updatePair(pair) ?: error("Repository pair changed concurrently")
     }
 
@@ -408,6 +417,77 @@ class GitHubSyncServiceImpl(
         return repository.findRefStates(repositoryId, offset, limit)
     }
 
+    override suspend fun pullRefs(repositoryId: UUID, principalId: UUID): List<GitHubRefState> =
+        transferRefs(repositoryId, principalId, RefSynchronizationDirection.INBOUND)
+
+    override suspend fun pushRefs(repositoryId: UUID, principalId: UUID): List<GitHubRefState> =
+        transferRefs(repositoryId, principalId, RefSynchronizationDirection.OUTBOUND)
+
+    override suspend fun resolveRef(input: GitHubRefResolutionInput, principalId: UUID): GitHubRefState = withConnectionManager {
+        require(org.eclipse.jgit.lib.Repository.isValidRefName(input.ref) &&
+            (input.ref.startsWith("refs/heads/") || input.ref.startsWith("refs/tags/"))) { "Invalid synchronized ref" }
+        require(listOf(input.expectedBoscaSha, input.expectedGitHubSha).all { it == null || it.matches(OBJECT_ID) }) {
+            "Invalid reviewed object ID"
+        }
+        val (outcome, resolved) = withRefSynchronizationTransaction(input.repositoryId, locks) {
+            val pair = availablePair(repository.lockPair(input.repositoryId))
+                ?: error("An enabled, available repository pairing is required")
+            if (!canEdit(pair, principalId)) throw SecurityException("Repository EDIT permission is required")
+            val state = repository.findRefState(input.repositoryId, input.ref)
+            require(state?.conflict == true) { "This ref no longer has a recorded conflict. Refresh synchronization history." }
+            require(state.boscaSha == input.expectedBoscaSha && state.githubSha == input.expectedGitHubSha) {
+                "The conflict changed. Refresh synchronization history and review both values again."
+            }
+            val inbound = input.resolution == GitHubRefResolution.GITHUB
+            val token = token(pair)
+            val url = github.repositoryUrl(pair, token)
+            val outcome = synchronize(pair, input.ref,
+                if (inbound) input.expectedBoscaSha else input.expectedGitHubSha,
+                if (inbound) input.expectedGitHubSha else input.expectedBoscaSha,
+                if (inbound) RefSynchronizationDirection.INBOUND else RefSynchronizationDirection.OUTBOUND,
+                principalId, url, token, triggerBuild = inbound, resolveConflict = true)
+            outcome to checkNotNull(repository.findRefState(input.repositoryId, input.ref))
+        }
+        check(outcome == GitHubSyncResult.APPLIED || outcome == GitHubSyncResult.UNCHANGED) {
+            "The refs changed during resolution. Refresh synchronization history and review both values again."
+        }
+        resolved
+    }
+
+    private suspend fun transferRefs(
+        repositoryId: UUID, principalId: UUID, direction: RefSynchronizationDirection,
+    ): List<GitHubRefState> = withConnectionManager {
+        val pair = availablePair(repository.findPair(repositoryId))
+            ?: error("An enabled, available repository pairing is required")
+        if (!canEdit(pair, principalId)) throw SecurityException("Repository EDIT permission is required")
+        val token = token(pair)
+        val url = github.repositoryUrl(pair, token)
+        val current = writes.compareRefs(repositoryId, url, token).associateBy { it.ref }
+        val baselines = repository.findAllRefStates(repositoryId).associateBy { it.ref }
+        val result = mutableListOf<GitHubRefState>()
+        for (ref in (current.keys + baselines.keys).sorted()) {
+            withRefSynchronizationTransaction(repositoryId, locks) {
+                val lockedPair = availablePair(repository.lockPair(repositoryId))
+                    ?: error("Repository pairing is no longer enabled or available")
+                check(lockedPair.version == pair.version) { "GitHub repository pair changed during transfer" }
+                if (!canEdit(lockedPair, principalId)) throw SecurityException("Repository EDIT permission is required")
+                val comparison = current[ref]
+                val after = if (direction == RefSynchronizationDirection.INBOUND) comparison?.remoteSha else comparison?.localSha
+                val baseline = repository.findRefState(repositoryId, ref)
+                // A one-direction transfer does not delete destination-only refs without a common baseline.
+                if (after != null || baseline?.synchronized == true) {
+                    synchronize(lockedPair, ref, baseline?.sha, after, direction, principalId, url, token,
+                        triggerBuild = direction == RefSynchronizationDirection.INBOUND)
+                    repository.findRefState(repositoryId, ref)?.let(result::add)
+                }
+            }
+        }
+        result
+    }
+
+    override suspend fun reconcileRefs(repositoryId: UUID, principalId: UUID): List<GitHubRefState> =
+        reconcilePair(repositoryId, principalId)
+
     override suspend fun reconcileRefs(repositoryId: UUID?): List<GitHubRefState> {
         if (repositoryId != null) return reconcilePair(repositoryId)
         // Each pair commits or rolls back on its own, so one failing pair cannot block the others.
@@ -432,8 +512,12 @@ class GitHubSyncServiceImpl(
         return reconciled
     }
 
-    private suspend fun reconcilePair(repositoryId: UUID): List<GitHubRefState> = withConnectionManager {
-        val pair = availablePair(repository.findPair(repositoryId)) ?: return@withConnectionManager emptyList()
+    private suspend fun reconcilePair(repositoryId: UUID, principalId: UUID? = null): List<GitHubRefState> = withConnectionManager {
+        val pair = availablePair(repository.findPair(repositoryId)) ?: run {
+            check(principalId == null) { "An enabled, available repository pairing is required" }
+            return@withConnectionManager emptyList()
+        }
+        if (principalId != null && !canEdit(pair, principalId)) throw SecurityException("Repository EDIT permission is required")
         val token = token(pair)
         val url = github.repositoryUrl(pair, token)
         val current = writes.compareRefs(repositoryId, url, token).associateBy { it.ref }
@@ -441,42 +525,58 @@ class GitHubSyncServiceImpl(
         val reconciled = mutableListOf<GitHubRefState>()
         val pendingRefs = repository.findPendingPushRefs(repositoryId)
         for (ref in (current.keys + baselines.keys + pendingRefs).sorted()) {
-            reconciled += withPair(repositoryId, emptyList<GitHubRefState>()) { lockedPair ->
+            reconciled += withRefSynchronizationTransaction(repositoryId, locks) {
+                val lockedPair = availablePair(repository.lockPair(repositoryId)) ?: run {
+                    check(principalId == null) { "Repository pairing is no longer enabled or available" }
+                    return@withRefSynchronizationTransaction emptyList<GitHubRefState>()
+                }
                 check(lockedPair.version == pair.version) { "GitHub repository pair changed during reconciliation" }
+                if (principalId != null && !canEdit(lockedPair, principalId)) throw SecurityException("Repository EDIT permission is required")
                 val pending = repository.findPendingPushDeliveries(repositoryId, ref)
-                if (pending.isNotEmpty()) {
+                if (principalId == null && pending.isNotEmpty()) {
                     // The normal import pipeline owns these verified occurrences and their attribution.
                     pending.forEach { it.dispatch() }
-                    return@withPair listOfNotNull(repository.findRefState(repositoryId, ref))
+                    return@withRefSynchronizationTransaction listOfNotNull(repository.findRefState(repositoryId, ref))
                 }
                 val local = current[ref]?.localSha
                 val remote = current[ref]?.remoteSha
                 val baseline = repository.findRefState(repositoryId, ref)
                 // Both sides still hold the recorded common value: nothing to transfer or record.
                 if (baseline != null && baseline.synchronized && !baseline.conflict && local == baseline.sha && remote == baseline.sha) {
-                    return@withPair listOf(baseline)
+                    return@withRefSynchronizationTransaction listOf(baseline)
                 }
                 if (local == remote) {
-                    return@withPair listOf(repository.saveRefState(GitHubRefState(repositoryId, ref, sha = local,
+                    return@withRefSynchronizationTransaction listOf(repository.saveRefState(GitHubRefState(repositoryId, ref, sha = local,
                         synchronized = true, boscaSha = local, githubSha = remote)))
                 }
                 val outbound = if (baseline?.synchronized == true) remote == baseline.sha && local != remote
                     else remote == null && local != null
+                if (principalId != null) {
+                    val direction = if (outbound) RefSynchronizationDirection.OUTBOUND else RefSynchronizationDirection.INBOUND
+                    val result = synchronize(lockedPair, ref, baseline?.sha, if (outbound) local else remote,
+                        direction, principalId, url, token, triggerBuild = !outbound)
+                    // Both hosts may have advanced along the same history; the safe direction can be outbound.
+                    if (result == GitHubSyncResult.CONFLICT && !outbound && local != null && remote != null && ref.startsWith("refs/heads/")) {
+                        synchronize(lockedPair, ref, baseline?.sha, local, RefSynchronizationDirection.OUTBOUND,
+                            principalId, url, token)
+                    }
+                    return@withRefSynchronizationTransaction listOfNotNull(repository.findRefState(repositoryId, ref))
+                }
                 if (!outbound) {
                     val receipt = repository.findPushDelivery(repositoryId, ref, remote ?: "0000000000000000000000000000000000000000")
                     // Missing webhooks supply no user authority. Observe the divergence without importing it.
                     if (receipt == null) {
-                        if (baseline?.synchronized == true && local != null && remote != null && ref.startsWith("refs/heads/")) {
+                        if (baseline?.synchronized == true && local != baseline.sha && local != null && remote != null && ref.startsWith("refs/heads/")) {
                             synchronize(lockedPair, ref, baseline.sha, local, RefSynchronizationDirection.OUTBOUND, null, url, token)
-                            return@withPair listOfNotNull(repository.findRefState(repositoryId, ref))
+                            return@withRefSynchronizationTransaction listOfNotNull(repository.findRefState(repositoryId, ref))
                         }
                         val observed = repository.saveRefState(GitHubRefState(repositoryId, ref, sha = baseline?.sha,
                             synchronized = baseline?.synchronized == true, boscaSha = local, githubSha = remote,
                             conflict = baseline?.conflict == true || (baseline?.synchronized == true && local != baseline.sha && remote != baseline.sha)))
-                        return@withPair listOf(observed)
+                        return@withRefSynchronizationTransaction listOf(observed)
                     }
                     synchronizeVerifiedPush(lockedPair, receipt)
-                    return@withPair listOfNotNull(repository.findRefState(repositoryId, ref))
+                    return@withRefSynchronizationTransaction listOfNotNull(repository.findRefState(repositoryId, ref))
                 }
                 val result = synchronize(lockedPair, ref, baseline?.sha, local, RefSynchronizationDirection.OUTBOUND, null, url, token)
                 if (result == GitHubSyncResult.STALE) emptyList() else listOfNotNull(repository.findRefState(repositoryId, ref))
@@ -507,6 +607,8 @@ class GitHubSyncServiceImpl(
         direction: RefSynchronizationDirection, principalId: UUID?, remoteUrl: String, token: String,
         verifiedPush: Boolean = false,
         pullRequestMerge: Boolean = false,
+        triggerBuild: Boolean = verifiedPush,
+        resolveConflict: Boolean = false,
     ): GitHubSyncResult {
         if (direction == RefSynchronizationDirection.INBOUND && !canEdit(pair, principalId)) {
             throw SecurityException("The originating GitHub user requires Bosca repository EDIT permission")
@@ -524,11 +626,12 @@ class GitHubSyncServiceImpl(
             protection = if (direction == RefSynchronizationDirection.INBOUND && ref.startsWith("refs/heads/"))
                 protections.findMatchingRule(pair.repositoryId, ref.removePrefix("refs/heads/")) else null,
             pullRequestMerge = pullRequestMerge,
-            triggerBuild = verifiedPush,
+            triggerBuild = triggerBuild,
+            resolveConflict = resolveConflict,
         ))
         val converged = outcome.result == GitHubSyncResult.APPLIED || outcome.result == GitHubSyncResult.UNCHANGED
         val anonymousImport = outcome.result == GitHubSyncResult.APPLIED &&
-            direction == RefSynchronizationDirection.INBOUND && !verifiedPush && outcome.boscaSha != null
+            direction == RefSynchronizationDirection.INBOUND && !triggerBuild && outcome.boscaSha != null
         val retainAttribution = outcome.result != GitHubSyncResult.APPLIED &&
             !(verifiedPush && outcome.result == GitHubSyncResult.UNCHANGED) && state?.sha == outcome.boscaSha
         repository.saveRefState(GitHubRefState(
@@ -559,6 +662,7 @@ class GitHubSyncServiceImpl(
     companion object {
         private val json = Json { ignoreUnknownKeys = true; serializersModule = SerializersModule { contextual(OffsetDateTimeSerializer()) } }
         private val SEGMENT = Regex("[A-Za-z0-9_.-]+")
+        private val OBJECT_ID = Regex("[0-9a-f]{40}")
         /** Bounds export rounds for a PR edited faster than it can be exported. Later edits have their own events. */
         private const val MAX_EXPORT_ROUNDS = 3
         private val DELIVERY_ID = Regex("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
