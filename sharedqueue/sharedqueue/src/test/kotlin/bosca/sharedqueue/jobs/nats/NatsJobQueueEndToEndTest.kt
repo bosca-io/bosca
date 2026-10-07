@@ -28,7 +28,9 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.milliseconds
 
 class NatsJobQueueEndToEndTest {
 
@@ -419,6 +421,21 @@ class NatsJobQueueEndToEndTest {
 
         // Clean up
         queue.markComplete(dequeued)
+    }
+
+    @OptIn(Internal::class)
+    @Test
+    fun `failed dequeue releases its real distributed lock`(): Unit = runBlocking {
+        val id = queue.enqueue(InternalJobConstructor(Json.parseToJsonElement("{}"), E2ETestJobExecutor::class))
+        kv.put(id.toString(), "{invalid}")
+        try {
+            assertNull(queue.dequeue(100.milliseconds))
+            val contender = lockFactory.create("job-$id")
+            assertTrue(contender.tryAcquire(1000), "Failed deserialization must not leave a lock behind")
+            contender.release()
+        } finally {
+            queue.markCancelled(id)
+        }
     }
 
     /**

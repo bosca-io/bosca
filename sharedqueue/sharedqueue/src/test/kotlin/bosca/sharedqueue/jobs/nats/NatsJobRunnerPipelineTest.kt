@@ -13,9 +13,12 @@ import bosca.serialization.UUID
 import bosca.sharedqueue.jobs.InternalJobConstructor
 import bosca.sharedqueue.jobs.JobExecutor
 import bosca.sharedqueue.jobs.JobRunner
+import bosca.sharedqueue.jobs.JobStatus
+import bosca.sharedqueue.jobs.SerializedJob
 import io.mockk.mockk
 import io.nats.client.KeyValue
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -204,6 +207,43 @@ class NatsJobRunnerPipelineTest {
 
     @OptIn(Internal::class)
     @Test
+    fun `busy workers leave further deliveries pending in NATS`() = runBlocking {
+        val started = CompletableDeferred<Unit>()
+        val finish = CompletableDeferred<Unit>()
+        val executions = AtomicInteger(0)
+        provides<PipelineWaitingExecutor> { PipelineWaitingExecutor(started, finish, executions) }
+        val queueName = "pipeline-busy-${UUID.random().toString().substring(0, 8)}"
+        val queue = NatsJobQueue(queueName, natsPool, json, lockFactory, processExpiredJobs = false)
+        val ids = (1..3).map {
+            queue.enqueue(InternalJobConstructor(Json.parseToJsonElement("{}"), PipelineWaitingExecutor::class))
+        }
+        val kv = kvFor(queueName)
+        val runner = JobRunner(queue, 1, lockFactory)
+        runner.run()
+        try {
+            withTimeout(5_000) { started.await() }
+            delay(300)
+            val consumer = natsPool.systemConnection().jetStreamManagement()
+                .getConsumerInfo("jobs-$queueName", "jobs-$queueName")
+            assertEquals(1L, consumer.numAckPending, "Only the executing job may own a delivery")
+            for (id in ids.drop(1)) {
+                val entry = kv.get(id.toString())
+                val state = json.decodeFromString(SerializedJob.serializer(), requireNotNull(entry?.valueAsString))
+                assertEquals(JobStatus.PENDING, state.status)
+            }
+            finish.complete(Unit)
+            withTimeout(15_000) {
+                while (!kvDrained(kv, ids.toSet())) delay(50)
+            }
+            assertEquals(ids.size, executions.get(), "Each job must execute exactly once")
+        } finally {
+            runner.shutdown()
+            finish.complete(Unit)
+        }
+    }
+
+    @OptIn(Internal::class)
+    @Test
     fun `the background expiry sweep runs when enabled`() = runBlocking {
         // processExpiredJobs = true starts the init GlobalScope sweep loop, which calls
         // ensureInitialized() then checkForExpiredJobs() on a real stream.
@@ -264,6 +304,18 @@ class PipelineNoopExecutor : JobExecutor {
 class PipelineCountingExecutor(private val executions: AtomicInteger) : JobExecutor {
     override suspend fun execute() {
         executions.incrementAndGet()
+    }
+}
+
+class PipelineWaitingExecutor(
+    private val started: CompletableDeferred<Unit>,
+    private val finish: CompletableDeferred<Unit>,
+    private val executions: AtomicInteger,
+) : JobExecutor {
+    override suspend fun execute() {
+        executions.incrementAndGet()
+        started.complete(Unit)
+        finish.await()
     }
 }
 

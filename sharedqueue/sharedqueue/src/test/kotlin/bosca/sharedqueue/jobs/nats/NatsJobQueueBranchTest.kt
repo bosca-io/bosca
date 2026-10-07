@@ -560,6 +560,40 @@ class NatsJobQueueBranchTest {
     // ----- internalGetJob error arms (via getJob) -----
 
     @Test
+    fun `dequeue releases the acquired lock when persisting running status fails`() = runTest {
+        val id = UUID.random()
+        val msg = message(id.toString())
+        val lock = newLock(held = true, acquires = true)
+        stubFetch(msg)
+        every { scheduledKv.get(id.toString()) } returns null
+        every { kv.get(id.toString()) } returns entryFor(serializedJob(id, JobStatus.PENDING))
+        coEvery { lockFactory.create(any()) } returns lock
+        every { kv.put(id.toString(), any<String>()) } throws RuntimeException("state write failed")
+
+        assertNull(queue.dequeue())
+
+        io.mockk.coVerify(exactly = 1) { lock.release() }
+        verify { msg.nakWithDelay(java.time.Duration.ofSeconds(5)) }
+    }
+
+    @Test
+    fun `dequeue releases the acquired lock and propagates cancellation`() = runTest {
+        val id = UUID.random()
+        val msg = message(id.toString())
+        val lock = newLock(held = true, acquires = true)
+        stubFetch(msg)
+        every { scheduledKv.get(id.toString()) } returns null
+        every { kv.get(id.toString()) } returns entryFor(serializedJob(id, JobStatus.PENDING))
+        coEvery { lockFactory.create(any()) } returns lock
+        every { kv.put(id.toString(), any<String>()) } throws kotlin.coroutines.cancellation.CancellationException("cancelled")
+
+        assertFailsWith<kotlin.coroutines.cancellation.CancellationException> { queue.dequeue() }
+
+        io.mockk.coVerify(exactly = 1) { lock.release() }
+        verify(exactly = 0) { msg.nakWithDelay(any<java.time.Duration>()) }
+    }
+
+    @Test
     fun `getJob errors when the state is missing`() = runTest {
         val id = UUID.random()
         every { kv.get(id.toString()) } returns null
