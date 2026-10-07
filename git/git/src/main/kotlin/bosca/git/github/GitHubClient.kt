@@ -22,6 +22,15 @@ class GitHubClient(
     private val client: OkHttpClient = OkHttpClient(),
     private val baseUrl: String = "https://api.github.com",
 ) {
+    /** Resolves the immutable repository identity from the owner/name using the configured token. */
+    suspend fun repositoryId(owner: String, name: String, token: String): Long {
+        val remote = json.decodeFromString(GitHubRepository.serializer(), execute(
+            request(token, "repos", owner, name).build(), "repository lookup",
+        ))
+        check(remote.id > 0) { "GitHub returned an invalid repository ID" }
+        return remote.id
+    }
+
     suspend fun repositoryUrl(pair: GitHubRepositoryPair, token: String): String {
         verifyRepository(pair, token)
         return "https://github.com/${pair.owner}/${pair.name}.git"
@@ -98,10 +107,7 @@ class GitHubClient(
     }
 
     private suspend fun verifyRepository(pair: GitHubRepositoryPair, token: String) {
-        val remote = json.decodeFromString(GitHubRepository.serializer(), execute(
-            request(token, "repos", pair.owner, pair.name).build(), "repository lookup",
-        ))
-        check(remote.id == pair.githubRepositoryId) { "GitHub repository no longer matches its pair" }
+        check(repositoryId(pair.owner, pair.name, token) == pair.githubRepositoryId) { "GitHub repository no longer matches its pair" }
     }
 
     private fun url(vararg segments: String) = baseUrl.toHttpUrl().newBuilder().apply {
@@ -115,7 +121,14 @@ class GitHubClient(
 
     private suspend fun execute(request: Request, operation: String): String = client.newCall(request).await().use { response ->
         if (response.code == 422) throw GitHubRequestRejectedException("GitHub $operation failed: HTTP 422")
-        check(response.isSuccessful) { "GitHub $operation failed: HTTP ${response.code}" }
+        check(response.isSuccessful) {
+            val guidance = if (response.code == 404 && operation == "repository lookup") {
+                ". The repository was not found or is not accessible to the selected token. " +
+                    "Check the GitHub owner and repository name, and ensure the token has access to this repository. " +
+                    "For organization repositories, check token approval and SSO authorization."
+            } else ""
+            "GitHub $operation failed: HTTP ${response.code}$guidance"
+        }
         response.body.string()
     }
 

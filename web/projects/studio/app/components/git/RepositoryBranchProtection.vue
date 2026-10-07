@@ -1,14 +1,10 @@
 <script setup lang="ts">
 import gql from 'graphql-tag'
-import type { SelectOption } from '@bosca/ui'
-import { useAuth } from '@bosca/auth-client-browser'
 
 const { accent } = useCurrentSubsystem()
-const { query, mutation, useAsyncQuery } = useGraphQL()
-const { searchProfiles } = useProfileSearch()
-const { profile } = import.meta.client ? useAuth() : { profile: ref(null) }
-
-const selectedRepoId = ref<string | undefined>(undefined)
+const { query, mutation } = useGraphQL()
+const props = defineProps<{ repositoryId: string }>()
+const selectedRepoId = computed(() => props.repositoryId)
 interface BranchProtectionRule {
   id: string; pattern: string; requirePullRequest: boolean; requiredApprovals: number
   dismissStaleReviews: boolean; requireCodeOwnerReview: boolean; requireLinearHistory: boolean
@@ -36,75 +32,10 @@ const form = reactive({
   requireStatusChecks: '',
 })
 
-const { save: saveLastOwner, load: loadLastOwner } = useLastGitOwner()
-const savedOwner = loadLastOwner()
-const selectedOwner = ref(savedOwner?.id ?? '')
-const knownProfiles = ref<Map<string, string>>(new Map())
-if (savedOwner) knownProfiles.value.set(savedOwner.id, savedOwner.label)
-
-const ownerOptions = computed<SelectOption[]>(() => {
-  const options: SelectOption[] = []
-  const currentProfile = profile.value
-  if (currentProfile?.id) {
-    const label = currentProfile.name || currentProfile.slug || currentProfile.id
-    options.push({ value: currentProfile.id, label })
-    knownProfiles.value.set(currentProfile.id, label)
-  }
-  if (savedOwner && savedOwner.id !== currentProfile?.id) {
-    options.push({ value: savedOwner.id, label: savedOwner.label })
-  }
-  return options
-})
-
-async function searchProfilesAndTrack(search: string) {
-  const results = await searchProfiles(search)
-  for (const option of results) knownProfiles.value.set(option.value, option.label)
-  return results
-}
-
-watch(() => profile.value?.id, (id) => {
-  if (id && !selectedOwner.value) selectedOwner.value = id
-}, { immediate: true })
-
-watch(selectedOwner, (id) => {
-  selectedRepoId.value = undefined
-  rules.value = []
-  if (!id) return
-  const label = knownProfiles.value.get(id) ?? id
-  saveLastOwner({ id, label })
-})
-
-const repositoriesGql = gql`
-  query BranchProtectionRepositories($ownerId: UUID!) {
-    git { repositories(ownerId: $ownerId) { id name } }
-  }
-`
-
-const {
-  data: repositoriesData,
-  status: repositoriesStatus,
-  error: repositoriesQueryError,
-} = useAsyncQuery<{
-  git: { repositories: Array<{ id: string; name: string }> }
-}>(
-  'branch-protection-repositories',
-  repositoriesGql,
-  { ownerId: computed(() => selectedOwner.value || undefined) },
-  { server: false },
-)
-
-const repos = computed(() => repositoriesData.value?.git?.repositories ?? [])
-const repoOptions = computed<SelectOption[]>(() =>
-  repos.value.map(repository => ({ value: repository.id, label: repository.name })),
-)
-const reposLoading = computed(() => repositoriesStatus.value === 'pending')
-const repositoriesError = computed(() =>
-  repositoriesQueryError.value ? 'Could not load repositories for this owner.' : '',
-)
-
 async function loadRules() {
   if (!selectedRepoId.value) return
   loading.value = true
+  error.value = ''
   try {
     const result = await query<{ git: { branchProtectionRules: BranchProtectionRule[] } }>(gql`
       query BranchProtection($repositoryId: UUID!) {
@@ -117,7 +48,9 @@ async function loadRules() {
       }
     `, { repositoryId: selectedRepoId.value })
     rules.value = result.git?.branchProtectionRules ?? []
-  } catch { rules.value = [] }
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : 'Could not load branch protection rules.'
+  }
   finally { loading.value = false }
 }
 
@@ -197,10 +130,10 @@ async function handleUpdate() {
   error.value = ''
   try {
     await mutation(gql`
-      mutation UpdateRule($id: UUID!, $repositoryId: UUID!, $input: GitBranchProtectionRuleInput!) {
-        git { updateBranchProtectionRule(id: $id, repositoryId: $repositoryId, input: $input) { id } }
+      mutation UpdateRule($id: UUID!, $input: GitBranchProtectionRuleInput!) {
+        git { updateBranchProtectionRule(id: $id, input: $input) { id } }
       }
-    `, { id: editTarget.value.id, repositoryId: selectedRepoId.value, input: buildInput() })
+    `, { id: editTarget.value.id, input: buildInput() })
     showEdit.value = false
     await loadRules()
   } catch (e: unknown) {
@@ -221,77 +154,49 @@ async function deleteRule(id: string) {
 </script>
 
 <template>
-  <PageShell>
-    <template #header>
-      <PageHeader
-        :accent="accent"
-        :breadcrumb="buildBreadcrumb('Git', 'Settings', 'Branch Protection')"
-        title="Branch Protection"
-        subtitle="Enforce review requirements and push restrictions"
-      >
-        <template #actions>
-          <Select
-            v-model="selectedOwner"
-            :options="ownerOptions"
-            placeholder="Owner"
-            searchable
-            :search-fn="searchProfilesAndTrack"
-            :accent="accent"
-            size="sm" />
-          <Select
-            v-if="repoOptions.length"
-            v-model="selectedRepoId"
-            :options="repoOptions"
-            placeholder="Select repository"
-            :accent="accent"
-            size="sm" />
-          <Button
-            primary
-            icon="plus"
-            size="sm"
-            :accent="accent"
-            :disabled="!selectedRepoId"
-            @click="openCreate">New Rule</Button>
-        </template>
-      </PageHeader>
-    </template>
-
-    <div v-if="!selectedOwner" class="loading-state">Select an owner to browse repositories.</div>
-    <div v-else-if="reposLoading" class="loading-state">Loading repositories…</div>
-    <div v-else-if="repositoriesError" class="loading-state error-state">{{ repositoriesError }}</div>
-    <div v-else-if="!repoOptions.length" class="loading-state">No repositories found for this owner.</div>
-    <div v-else-if="loading" class="loading-state">Loading rules…</div>
-    <div v-else-if="!selectedRepoId" class="loading-state">Select a repository to manage branch protection.</div>
-
-    <div v-else class="rules-list">
-      <div v-for="rule in rules" :key="rule.id" class="rule-card">
-        <div class="rule-header">
-          <Icon name="shield" :size="15" :color="accent" />
-          <span class="mono rule-pattern">{{ rule.pattern }}</span>
-          <div class="rule-actions">
-            <button class="edit-btn" @click="openEdit(rule)">
-              <Icon name="pencil" :size="13" color="var(--fg-3)" />
-            </button>
-            <button class="delete-btn" @click="deleteRule(rule.id)">
-              <Icon name="trash" :size="13" color="var(--fg-3)" />
-            </button>
+  <div class="repository-settings-panel">
+    <SectionCard title="Branch protection">
+      <template #right>
+        <Button
+          primary
+          icon="plus"
+          size="sm"
+          :accent="accent"
+          @click="openCreate">New Rule</Button>
+      </template>
+      <p v-if="error && !showCreate && !showEdit" role="alert" class="form-error">{{ error }}</p>
+      <div v-if="loading" class="loading-state">Loading rules…</div>
+      <div v-else class="rules-list">
+        <div v-for="rule in rules" :key="rule.id" class="rule-card">
+          <div class="rule-header">
+            <Icon name="shield" :size="15" :color="accent" />
+            <span class="mono rule-pattern">{{ rule.pattern }}</span>
+            <div class="rule-actions">
+              <button class="edit-btn" @click="openEdit(rule)">
+                <Icon name="pencil" :size="13" color="var(--fg-3)" />
+              </button>
+              <button class="delete-btn" @click="deleteRule(rule.id)">
+                <Icon name="trash" :size="13" color="var(--fg-3)" />
+              </button>
+            </div>
+          </div>
+          <div class="rule-badges">
+            <Badge v-if="rule.requirePullRequest" :color="accent">Require PR</Badge>
+            <Badge v-if="rule.requiredApprovals > 0" :color="accent">{{ rule.requiredApprovals }} approvals</Badge>
+            <Badge v-if="rule.dismissStaleReviews" color="#ffb547">Dismiss stale</Badge>
+            <Badge v-if="rule.requireCodeOwnerReview" color="#5ec5ff">Code owner</Badge>
+            <Badge v-if="rule.requireLinearHistory" color="#a78bff">Linear history</Badge>
+            <Badge v-if="!rule.allowForcePush" color="#34d99a">No force push</Badge>
+            <Badge v-if="!rule.allowDeletion" color="#34d99a">No deletion</Badge>
+            <Badge v-if="rule.requireStatusChecks?.length" color="#ffb547">
+              {{ rule.requireStatusChecks.length }} status checks
+            </Badge>
           </div>
         </div>
-        <div class="rule-badges">
-          <Badge v-if="rule.requirePullRequest" :color="accent">Require PR</Badge>
-          <Badge v-if="rule.requiredApprovals > 0" :color="accent">{{ rule.requiredApprovals }} approvals</Badge>
-          <Badge v-if="rule.dismissStaleReviews" color="#ffb547">Dismiss stale</Badge>
-          <Badge v-if="rule.requireCodeOwnerReview" color="#5ec5ff">Code owner</Badge>
-          <Badge v-if="rule.requireLinearHistory" color="#a78bff">Linear history</Badge>
-          <Badge v-if="!rule.allowForcePush" color="#34d99a">No force push</Badge>
-          <Badge v-if="!rule.allowDeletion" color="#34d99a">No deletion</Badge>
-          <Badge v-if="rule.requireStatusChecks?.length" color="#ffb547">
-            {{ rule.requireStatusChecks.length }} status checks
-          </Badge>
-        </div>
+        <div v-if="!rules.length" class="empty-msg">No branch protection rules for this repository.</div>
       </div>
-      <div v-if="!rules.length" class="empty-msg">No branch protection rules for this repository.</div>
-    </div>
+
+    </SectionCard>
 
     <!-- Create / Edit Modal (shared template) -->
     <Modal
@@ -353,7 +258,7 @@ async function deleteRule(id: string) {
         </Button>
       </template>
     </Modal>
-  </PageShell>
+  </div>
 </template>
 
 <style scoped>

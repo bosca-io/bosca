@@ -7,7 +7,12 @@ import bosca.git.model.GitHubDelivery
 import bosca.git.model.GitHubRepositoryPair
 import bosca.git.model.GitHubRepositoryPairInput
 import bosca.git.model.GitHubRefState
+import bosca.git.model.GitHubRefResolutionInput
 import bosca.git.service.GitHubSyncService
+import bosca.git.service.RepositoryService
+import bosca.git.security.RepositoryPermissionEvaluator
+import bosca.security.model.PermissionAction
+import bosca.security.service.SecurityException
 import bosca.graphql.GraphQLController
 import bosca.graphql.annotations.Field
 import bosca.graphql.annotations.TypeController
@@ -54,17 +59,41 @@ class GitHubSyncQuery(private val service: GitHubSyncService, private val groups
 }
 
 @TypeController(type = "GitHubMutation")
-class GitHubSyncMutation(private val service: GitHubSyncService, private val groups: GroupEvaluator) : GraphQLController<GitHubMutation> {
+class GitHubSyncMutation(
+    private val service: GitHubSyncService,
+    private val groups: GroupEvaluator,
+    private val repositories: RepositoryService,
+    private val permissions: RepositoryPermissionEvaluator,
+) : GraphQLController<GitHubMutation> {
+    @Field
+    suspend fun pullRefs(authentication: AuthenticationContext, repositoryId: UUID): List<GitHubRefState> =
+        service.pullRefs(repositoryId, verifyManualTransfer(authentication, repositoryId))
+
+    @Field
+    suspend fun pushRefs(authentication: AuthenticationContext, repositoryId: UUID): List<GitHubRefState> =
+        service.pushRefs(repositoryId, verifyManualTransfer(authentication, repositoryId))
+
+    @Field
+    suspend fun resolveRef(authentication: AuthenticationContext, input: GitHubRefResolutionInput): GitHubRefState =
+        service.resolveRef(input, verifyManualTransfer(authentication, input.repositoryId))
+
+    private suspend fun verifyManualTransfer(authentication: AuthenticationContext, repositoryId: UUID): UUID {
+        groups.verifyHasAdminGroup(authentication)
+        val repository = repositories.findById(repositoryId)
+            ?: throw NoSuchElementException("Repository not found: $repositoryId")
+        permissions.verifyAllowed(authentication, repository, PermissionAction.EDIT)
+        return authentication.principal()?.id ?: throw SecurityException("Authentication required")
+    }
+
     @Field
     suspend fun reconcilePullRequests(authentication: AuthenticationContext, repositoryId: UUID): List<GitHubPullRequestState> {
         groups.verifyHasAdminGroup(authentication)
         return service.reconcilePullRequests(repositoryId)
     }
+
     @Field
-    suspend fun reconcileRefs(authentication: AuthenticationContext, repositoryId: UUID): List<GitHubRefState> {
-        groups.verifyHasAdminGroup(authentication)
-        return service.reconcileRefs(repositoryId)
-    }
+    suspend fun reconcileRefs(authentication: AuthenticationContext, repositoryId: UUID): List<GitHubRefState> =
+        service.reconcileRefs(repositoryId, verifyManualTransfer(authentication, repositoryId))
 
     @Field
     suspend fun savePair(authentication: AuthenticationContext, input: GitHubRepositoryPairInput): GitHubRepositoryPair {

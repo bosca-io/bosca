@@ -6,7 +6,8 @@ interface Webhook { id: string; url: string; active: boolean; events: string[]; 
 const { accent } = useCurrentSubsystem()
 const { query, mutation } = useGraphQL()
 
-const selectedRepoId = ref('')
+const props = defineProps<{ repositoryId: string }>()
+const selectedRepoId = computed(() => props.repositoryId)
 const webhooks = ref<Webhook[]>([])
 const loading = ref(false)
 const showCreate = ref(false)
@@ -33,23 +34,6 @@ const EVENT_OPTIONS = [
   { value: 'REVIEW_SUBMITTED', label: 'Review Submitted' },
 ]
 
-// Load repos for selector
-const repos = ref<Array<{ id: string; name: string }>>([])
-
-onMounted(async () => {
-  try {
-    const result = await query<{ git: { repositories: Array<{ id: string; name: string }> } }>(gql`
-      query Repos($ownerId: UUID!) {
-        git { repositories(ownerId: $ownerId) { id name } }
-      }
-    `, { ownerId: '00000000-0000-0000-0000-000000000000' })
-    repos.value = result.git?.repositories ?? []
-    if (repos.value[0]) selectedRepoId.value = repos.value[0].id
-  } catch { /* ignore */ }
-})
-
-const repoOptions = computed(() => repos.value.map(r => ({ value: r.id, label: r.name })))
-
 watch(selectedRepoId, async (id) => {
   if (!id) return
   loading.value = true
@@ -62,7 +46,9 @@ watch(selectedRepoId, async (id) => {
       }
     `, { repositoryId: id })
     webhooks.value = result.git?.webhooks ?? []
-  } catch { webhooks.value = [] }
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : 'Could not load webhooks.'
+  }
   finally { loading.value = false }
 }, { immediate: true })
 
@@ -131,54 +117,40 @@ function formatDate(iso: string): string {
 </script>
 
 <template>
-  <PageShell>
-    <template #header>
-      <PageHeader
-        :accent="accent"
-        :breadcrumb="buildBreadcrumb('Git', 'Settings', 'Webhooks')"
-        title="Webhooks"
-        subtitle="Manage webhook endpoints for repository events"
-      >
-        <template #actions>
-          <Select
-            v-model="selectedRepoId"
-            :options="repoOptions"
-            placeholder="Select repository"
-            :accent="accent"
-            size="sm" />
-          <Button
-            primary
-            icon="plus"
-            size="sm"
-            :accent="accent"
-            :disabled="!selectedRepoId"
-            @click="openCreate">New Webhook</Button>
-        </template>
-      </PageHeader>
-    </template>
+  <div class="repository-settings-panel">
+    <SectionCard title="Webhooks">
+      <template #right>
+        <Button
+          primary
+          icon="plus"
+          size="sm"
+          :accent="accent"
+          @click="openCreate">New Webhook</Button>
+      </template>
+      <p v-if="error && !showCreate" role="alert" class="form-error">{{ error }}</p>
+      <div v-if="loading" class="loading-state">Loading webhooks…</div>
 
-    <div v-if="loading" class="loading-state">Loading webhooks…</div>
-    <div v-else-if="!selectedRepoId" class="loading-state">Select a repository to manage webhooks.</div>
-
-    <div v-else class="webhook-list">
-      <div v-for="w in webhooks" :key="w.id" class="webhook-row">
-        <div class="webhook-icon" :style="{ background: `color-mix(in oklch, ${w.active ? '#34d99a' : '#6c7388'} 14%, transparent)` }">
-          <Icon name="globe" :size="14" :color="w.active ? '#34d99a' : '#6c7388'" />
-        </div>
-        <div class="webhook-body">
-          <div class="webhook-url mono">{{ w.url }}</div>
-          <div class="webhook-meta">
-            <Badge :color="w.active ? '#34d99a' : '#6c7388'">{{ w.active ? 'active' : 'inactive' }}</Badge>
-            <span class="event-list">{{ w.events.map((e: string) => e.replace(/_/g, ' ').toLowerCase()).join(', ') }}</span>
+      <div v-else class="webhook-list">
+        <div v-for="w in webhooks" :key="w.id" class="webhook-row">
+          <div class="webhook-icon" :style="{ background: `color-mix(in oklch, ${w.active ? '#34d99a' : '#6c7388'} 14%, transparent)` }">
+            <Icon name="globe" :size="14" :color="w.active ? '#34d99a' : '#6c7388'" />
           </div>
+          <div class="webhook-body">
+            <div class="webhook-url mono">{{ w.url }}</div>
+            <div class="webhook-meta">
+              <Badge :color="w.active ? '#34d99a' : '#6c7388'">{{ w.active ? 'active' : 'inactive' }}</Badge>
+              <span class="event-list">{{ w.events.map((e: string) => e.replace(/_/g, ' ').toLowerCase()).join(', ') }}</span>
+            </div>
+          </div>
+          <span class="mono webhook-date">{{ formatDate(w.created) }}</span>
+          <button class="delete-btn" @click="deleteWebhook(w.id)">
+            <Icon name="trash" :size="13" color="var(--fg-3)" />
+          </button>
         </div>
-        <span class="mono webhook-date">{{ formatDate(w.created) }}</span>
-        <button class="delete-btn" @click="deleteWebhook(w.id)">
-          <Icon name="trash" :size="13" color="var(--fg-3)" />
-        </button>
+        <div v-if="!webhooks.length" class="empty-msg">No webhooks configured for this repository.</div>
       </div>
-      <div v-if="!webhooks.length" class="empty-msg">No webhooks configured for this repository.</div>
-    </div>
+
+    </SectionCard>
 
     <!-- Create Modal -->
     <Modal
@@ -189,7 +161,11 @@ function formatDate(iso: string): string {
       @close="showCreate = false">
       <div class="form-stack">
         <TextInput v-model="form.url" label="Payload URL" placeholder="https://example.com/webhook" />
-        <TextInput v-model="form.secret" label="Secret" placeholder="webhook-secret" />
+        <TextInput
+          v-model="form.secret"
+          type="password"
+          label="Secret"
+          placeholder="webhook-secret" />
         <div class="field-group">
           <label class="field-label">Events</label>
           <div class="event-grid">
@@ -216,17 +192,12 @@ function formatDate(iso: string): string {
         </Button>
       </template>
     </Modal>
-  </PageShell>
+  </div>
 </template>
 
 <style scoped>
 .loading-state, .empty-msg {
   color: var(--fg-3); text-align: center; padding: 48px 0; font-size: 13.5px;
-}
-
-.webhook-list {
-  background: var(--bg-1); border: 1px solid var(--line); border-radius: 10px;
-  overflow: hidden;
 }
 
 .webhook-row {

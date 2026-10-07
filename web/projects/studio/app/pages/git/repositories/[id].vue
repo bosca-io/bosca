@@ -16,7 +16,7 @@ const profile = auth?.profile ?? null
 const commitAuthor = computed(() => resolveGitCommitAuthor(profile?.value))
 
 const repoId = computed(() => route.params.id as string)
-const validTabs = ['Code', 'Commits', 'Branches', 'Tags', 'Pull Requests', 'Pipelines', 'Statuses', 'Secrets']
+const validTabs = ['Code', 'Commits', 'Branches', 'Tags', 'Pull Requests', 'Pipelines', 'Statuses', 'Secrets', 'Settings']
 const DEFAULT_TAB = 'Code'
 
 /**
@@ -104,7 +104,7 @@ watch(repo, async (r) => {
     ownerSlug.value = result.profiles?.profile?.slug ?? ''
   } catch { /* ignore */ }
 }, { immediate: true })
-const isLoading = computed(() => repoStatus.value === 'pending')
+const isLoading = computed(() => repoStatus.value === 'idle' || repoStatus.value === 'pending')
 
 // ─── Stats ───────────────────────────────────────────────────────────────────
 interface RepoStats {
@@ -1344,7 +1344,7 @@ async function handleRenameSlug() {
         :breadcrumb="buildBreadcrumb('Git', 'Repositories', repo?.name || '…')"
         :title="repo?.name || 'Loading…'"
         :subtitle="repo ? `${repo.slug} · ${repo.visibility.toLowerCase()} · ${repo.defaultBranch}` : ''"
-        :tabs="['Code', 'Commits', 'Branches', 'Tags', 'Pull Requests', 'Pipelines', 'Statuses', 'Secrets']"
+        :tabs="validTabs"
         :active-tab="activeTab"
         @tab="activeTab = $event"
       >
@@ -1951,6 +1951,12 @@ git push -u origin {{ repo.defaultBranch }}</pre>
           </div>
         </div>
       </div>
+
+      <RepositorySettings
+        v-if="activeTab === 'Settings'"
+        :key="repo.id"
+        :repository="repo"
+        @refresh="refreshRepo" />
 
       <!-- ══════════════════════════════════════════════════════════════════ -->
       <!--  Secrets                                                         -->

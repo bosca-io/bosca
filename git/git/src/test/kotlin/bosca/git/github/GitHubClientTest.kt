@@ -20,6 +20,39 @@ class GitHubClientTest {
     private val pr = """{"id":456,"number":7,"node_id":"PR_456","title":"Change","body":"Description","state":"open","draft":true,"merged":false,"updated_at":"2026-10-02T10:00:00Z","user":{"id":8,"login":"author","type":"User"},"head":{"ref":"feature/one","sha":"${"1".repeat(40)}","repo":{"id":123}},"base":{"ref":"main","sha":"${"2".repeat(40)}","repo":{"id":123}}}"""
     private fun client(server: MockWebServer) = GitHubClient(baseUrl = server.url("/").toString().removeSuffix("/"))
     private fun verifyPair(server: MockWebServer) = server.enqueue(MockResponse.Builder().body("""{"id":123}""").build())
+    @Test fun `looks up a repository identity using its owner name and token`() = runBlocking {
+        MockWebServer().use { server ->
+            server.start()
+            server.enqueue(MockResponse.Builder().body("""{"id":123,"full_name":"owner/repo"}""").build())
+            assertEquals(123L, client(server).repositoryId("owner", "repo", "secret-token"))
+            val request = server.takeRequest()
+            assertEquals("GET", request.method)
+            assertEquals("/repos/owner/repo", request.url.encodedPath)
+            assertEquals("Bearer secret-token", request.headers["Authorization"])
+        }
+    }
+
+    @Test fun `repository lookup rejects invalid identities and reports inaccessible repositories without response secrets`() = runBlocking {
+        MockWebServer().use { server ->
+            server.start()
+            for (id in listOf(0, -1)) {
+                server.enqueue(MockResponse.Builder().body("""{"id":$id}""").build())
+                assertFailsWith<IllegalStateException> { client(server).repositoryId("owner", "repo", "secret-token") }
+            }
+            for (code in listOf(401, 403, 404)) {
+                server.enqueue(MockResponse.Builder().code(code).body("secret-token").build())
+                val failure = assertFailsWith<IllegalStateException> { client(server).repositoryId("owner", "repo", "secret-token") }
+                assertTrue(failure.message.orEmpty().contains(code.toString()))
+                assertFalse(failure.message.orEmpty().contains("secret-token"))
+                if (code == 404) {
+                    assertTrue(failure.message.orEmpty().contains("not found or is not accessible to the selected token"))
+                    assertTrue(failure.message.orEmpty().contains("owner and repository name"))
+                    assertTrue(failure.message.orEmpty().contains("token approval and SSO authorization"))
+                }
+            }
+        }
+    }
+
     @Test fun `verifies immutable repository identity and keeps credentials out of the Git URL`() = runBlocking {
         MockWebServer().use { server ->
             server.start()

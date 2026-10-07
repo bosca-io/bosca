@@ -21,11 +21,11 @@ data class GitHubRepositoryPair(
     @Contextual val modified: OffsetDateTime = OffsetDateTime.now(),
 )
 
-/** Configuration contains secret references; plaintext credentials never enter the pairing record. */
+/** Configuration contains secret references; an omitted ID is resolved using the token on creation or rename. */
 @Serializable
 data class GitHubRepositoryPairInput(
     @Contextual val repositoryId: UUID,
-    val githubRepositoryId: Long,
+    val githubRepositoryId: Long? = null,
     val owner: String,
     val name: String,
     val webhookSecretName: String,

@@ -197,10 +197,7 @@ export const SUBSYSTEMS: Subsystem[] = [
         ] },
       { group: 'Settings', items: [
           { id: 'ci-agents', label: 'CI Agents', icon: 'wand' },
-          { id: 'settings/webhooks', label: 'Webhooks', icon: 'globe' },
-          { id: 'settings/protection', label: 'Branch Protection', icon: 'shield' },
-          { id: 'settings/permissions', label: 'Permissions', icon: 'lock' },
-          { id: 'settings/utilities', label: 'Utilities', icon: 'wrench' },
+          { id: 'settings/github', label: 'GitHub User Mappings', icon: 'users' },
         ] },
     ],
   },

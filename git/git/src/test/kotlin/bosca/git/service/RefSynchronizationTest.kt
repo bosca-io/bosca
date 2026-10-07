@@ -70,10 +70,12 @@ class RefSynchronizationTest {
         known: Boolean = baseline != null, direction: RefSynchronizationDirection = RefSynchronizationDirection.INBOUND,
         name: String = ref, principal: UUID? = principalId, conflict: Boolean = false,
         protection: bosca.git.model.BranchProtectionRule? = null, pullRequestMerge: Boolean = false, triggerBuild: Boolean = true,
+        resolveConflict: Boolean = false,
     ) = service.synchronizeRef(RefSynchronizationInput(
         repositoryId, directory.toURI().toString(), "test-token", name,
         before?.name(), after?.name(), baseline?.name(), known, direction, principal, conflict,
         protection = protection, pullRequestMerge = pullRequestMerge, triggerBuild = triggerBuild,
+        resolveConflict = resolveConflict,
     ))
 
     private suspend fun common(): ObjectId {
@@ -150,6 +152,30 @@ class RefSynchronizationTest {
         assertEquals(github.name(), result.remoteSha)
         assertEquals(bosca, local.resolve(ref))
         assertEquals(github, remote.resolve(ref))
+    }
+
+    @Test fun `explicit resolution requires the reviewed destination including an absent destination`() = runBlocking {
+        val base = common()
+        val selected = commit(remote); set(remote, selected)
+        assertEquals(GitHubSyncResult.STALE, sync(selected, before = null, resolveConflict = true).result)
+        assertEquals(base, local.resolve(ref))
+        assertEquals(GitHubSyncResult.APPLIED, sync(selected, before = base, resolveConflict = true).result)
+        assertEquals(selected, local.resolve(ref))
+        set(local, null)
+        assertEquals(GitHubSyncResult.STALE, sync(selected, before = selected, resolveConflict = true).result)
+        assertEquals(GitHubSyncResult.APPLIED, sync(selected, before = null, resolveConflict = true).result)
+    }
+
+    @Test fun `explicit resolution retains the remote write lease after fetch`() = runBlocking {
+        val base = common()
+        val selected = commit(local); set(local, selected)
+        val concurrent = commit(remote, base)
+        coEvery { lock.renew(any()) } answers { set(remote, concurrent); true }
+        val result = sync(selected, before = base, direction = RefSynchronizationDirection.OUTBOUND, resolveConflict = true)
+        assertEquals(GitHubSyncResult.CONFLICT, result.result)
+        remote.refDatabase.refresh()
+        assertEquals(concurrent, remote.resolve(ref))
+        assertEquals(selected, local.resolve(ref))
     }
 
     @Test fun `fast forward converges even without a recorded common baseline`() = runBlocking {

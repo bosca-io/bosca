@@ -87,6 +87,8 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.modules.SerializersModule
 import kotlinx.serialization.modules.contextual
+import mockwebserver3.MockResponse
+import mockwebserver3.MockWebServer
 import kotlin.test.*
 
 /** Production intake, migrations and generated JDBC mapping run against PostgreSQL. */
@@ -470,6 +472,71 @@ class GitHubSyncServiceIntegrationTest {
         assertTrue(service.findDeliveries(repositoryId, 0, 25).isEmpty())
     }
 
+    @Test fun `pair creation and rename resolve repository identity through the authenticated API and preserve it`() = withDb {
+        MockWebServer().use { server ->
+            server.start()
+            val resolving = GitHubSyncServiceImpl(repository, hostedService, secrets, security, writes,
+                bosca.git.github.GitHubClient(baseUrl = server.url("/").toString().removeSuffix("/")),
+                locks, mockk(), mockk(), permissions, protections)
+            val automatic = input.copy(githubRepositoryId = null, enabled = false)
+            server.enqueue(MockResponse.Builder().code(404).body("upstream-credential").build())
+            val failure = assertFailsWith<IllegalStateException> { resolving.savePair(automatic) }
+            assertTrue(failure.message.orEmpty().contains("not found or is not accessible to the selected token"))
+            assertFalse(failure.message.orEmpty().contains("upstream-credential"))
+            assertNull(repository.findPair(repositoryId))
+            assertEquals("/repos/bosca-io/source", server.takeRequest().url.encodedPath)
+            server.enqueue(MockResponse.Builder().body("""{"id":123}""").build())
+            val created = resolving.savePair(automatic)
+            assertEquals(123L, created.githubRepositoryId)
+            assertEquals(created, repository.findPair(repositoryId))
+            val request = server.takeRequest()
+            assertEquals("/repos/bosca-io/source", request.url.encodedPath)
+            assertEquals("Bearer token", request.headers["Authorization"])
+            server.enqueue(MockResponse.Builder().body("""{"id":123}""").build())
+            val renamedInput = automatic.copy(owner = "new-owner", name = "renamed", version = created.version)
+            val renamed = resolving.savePair(renamedInput)
+            assertEquals(123L, renamed.githubRepositoryId)
+            assertEquals(1L, renamed.version)
+            assertEquals("/repos/new-owner/renamed", server.takeRequest().url.encodedPath)
+            server.enqueue(MockResponse.Builder().body("""{"id":999}""").build())
+            assertFailsWith<IllegalArgumentException> {
+                resolving.savePair(renamedInput.copy(name = "different", version = renamed.version))
+            }
+            assertEquals(renamed, repository.findPair(repositoryId))
+            assertFailsWith<IllegalStateException> { resolving.savePair(renamedInput) }
+            assertEquals(4, server.requestCount)
+        }
+    }
+
+    @Test fun `lookup failures missing tokens and cancellation do not create a pair`() = withDb {
+        val automatic = input.copy(githubRepositoryId = null, enabled = false)
+        coEvery { secrets.resolve("github-token") } returns null
+        assertFailsWith<IllegalArgumentException> { service.savePair(automatic) }
+        coVerify(exactly = 0) { github.repositoryId(any(), any(), any()) }
+        coEvery { secrets.resolve("github-token") } returns "token"
+        for (failure in listOf(IllegalStateException("GitHub repository lookup failed: HTTP 404"),
+            kotlinx.coroutines.CancellationException("lookup cancelled"))) {
+            coEvery { github.repositoryId("bosca-io", "source", "token") } throws failure
+            val thrown = assertFailsWith<IllegalStateException> { service.savePair(automatic) }
+            assertSame(failure, thrown)
+            assertNull(repository.findPair(repositoryId))
+        }
+    }
+
+    @Test fun `existing pair can be disabled without a token or repository lookup when its target is unchanged`() = withDb {
+        val created = service.savePair(input)
+        coEvery { secrets.resolve("github-token") } returns null
+        coEvery { secrets.resolve("github-webhook") } returns null
+        val disabled = service.savePair(input.copy(githubRepositoryId = null, enabled = false, version = created.version))
+        assertFalse(disabled.enabled)
+        assertEquals(created.githubRepositoryId, disabled.githubRepositoryId)
+        coVerify(exactly = 0) { github.repositoryId(any(), any(), any()) }
+        assertFailsWith<IllegalArgumentException> {
+            service.savePair(input.copy(githubRepositoryId = null, enabled = false, name = "renamed", version = disabled.version))
+        }
+        assertEquals(disabled, repository.findPair(repositoryId))
+    }
+
     @Test fun `signed repeated delivery retains one identity original attribution and complete JSON`() = withDb {
         service.savePair(input)
         val user = service.mapUser(7, principalId)
@@ -660,7 +727,7 @@ class GitHubSyncServiceIntegrationTest {
             override val dispatchersRegistrar = object : DispatchersRegistrar {
                 override suspend fun dispatchers(): Map<String, Dispatcher> = listOf(
                     GitHubSyncQueryDispatcher(GitHubSyncQuery(service, groups)),
-                    GitHubSyncMutationDispatcher(GitHubSyncMutation(service, groups)),
+                    GitHubSyncMutationDispatcher(GitHubSyncMutation(service, groups, hostedService, permissions)),
                     GitHubRepositoryPairControllerDispatcher(GitHubRepositoryPairController()),
                     GitHubUserControllerDispatcher(GitHubUserController()),
                     GitHubDeliveryControllerDispatcher(GitHubDeliveryController()),
@@ -677,13 +744,41 @@ class GitHubSyncServiceIntegrationTest {
         val admin = ImpersonatedAuthenticationContext(Principal(id = principalId), listOf(
             Group(name = "administrators", description = "", type = GroupType.SYSTEM),
         ))
+        coEvery { github.repositoryId("bosca-io", "source", "token") } returns 123L
         val mutation = """mutation { github { savePair(input: {
-            repositoryId: "$repositoryId", githubRepositoryId: 123, owner: "bosca-io", name: "source",
+            repositoryId: "$repositoryId", owner: "bosca-io", name: "source",
             webhookSecretName: "github-webhook", tokenSecretName: "github-token", enabled: true
         }) { repositoryId githubRepositoryId owner name webhookSecretName tokenSecretName enabled version created modified } } }"""
         val saved = graphQL.execute(admin, GraphQLRequest(query = mutation)).jsonObject
         assertFalse("errors" in saved, saved.toString())
+        assertEquals("123", saved.getValue("data").jsonObject.getValue("github").jsonObject.getValue("savePair").jsonObject.getValue("githubRepositoryId").jsonPrimitive.content)
         assertEquals("0", saved.getValue("data").jsonObject.getValue("github").jsonObject.getValue("savePair").jsonObject.getValue("version").jsonPrimitive.content)
+        coEvery { writes.compareRefs(repositoryId, any(), "token") } returns listOf(RefComparison(ref, null, sha))
+        coEvery { writes.synchronizeRef(any()) } returns RefSynchronizationResult(GitHubSyncResult.APPLIED, sha, sha)
+        val pulled = graphQL.execute(admin, GraphQLRequest(query = """mutation { github {
+            pullRefs(repositoryId: "$repositoryId") { ref sha boscaSha githubSha synchronized conflict }
+        } }""")).jsonObject
+        assertFalse("errors" in pulled, pulled.toString())
+        assertEquals(sha, pulled.getValue("data").jsonObject.getValue("github").jsonObject.getValue("pullRefs").jsonArray.single().jsonObject.getValue("sha").jsonPrimitive.content)
+        coVerify { writes.synchronizeRef(match { it.direction == RefSynchronizationDirection.INBOUND && it.principalId == principalId && it.triggerBuild }) }
+        coEvery { writes.compareRefs(repositoryId, any(), "token") } returns listOf(RefComparison(ref, nextSha, sha))
+        coEvery { writes.synchronizeRef(any()) } returns RefSynchronizationResult(GitHubSyncResult.APPLIED, nextSha, nextSha)
+        val pushed = graphQL.execute(admin, GraphQLRequest(query = """mutation { github {
+            pushRefs(repositoryId: "$repositoryId") { ref sha boscaSha githubSha synchronized conflict }
+        } }""")).jsonObject
+        assertFalse("errors" in pushed, pushed.toString())
+        assertEquals(nextSha, pushed.getValue("data").jsonObject.getValue("github").jsonObject.getValue("pushRefs").jsonArray.single().jsonObject.getValue("sha").jsonPrimitive.content)
+        coVerify { writes.synchronizeRef(match { it.direction == RefSynchronizationDirection.OUTBOUND && it.principalId == principalId && !it.triggerBuild }) }
+        coEvery { writes.compareRefs(repositoryId, any(), "token") } returns listOf(RefComparison(ref, nextSha, sha))
+        coEvery { writes.synchronizeRef(any()) } returns RefSynchronizationResult(GitHubSyncResult.APPLIED, sha, sha)
+        val reconciled = graphQL.execute(admin, GraphQLRequest(query = """mutation { github {
+            reconcileRefs(repositoryId: "$repositoryId") { ref sha boscaSha githubSha synchronized conflict }
+        } }""")).jsonObject
+        assertFalse("errors" in reconciled, reconciled.toString())
+        assertEquals(sha, reconciled.getValue("data").jsonObject.getValue("github").jsonObject.getValue("reconcileRefs").jsonArray.single().jsonObject.getValue("sha").jsonPrimitive.content)
+        coVerify { writes.synchronizeRef(match { it.direction == RefSynchronizationDirection.INBOUND &&
+            it.afterSha == sha && it.principalId == principalId && it.triggerBuild }) }
+        coEvery { writes.synchronizeRef(any()) } returns RefSynchronizationResult(GitHubSyncResult.APPLIED, nextSha, nextSha)
         val mapped = graphQL.execute(admin, GraphQLRequest(query = """mutation { github {
             mapUser(githubUserId: 7, principalId: "$principalId") { githubUserId principalId created modified }
         } }""")).jsonObject
@@ -720,6 +815,16 @@ class GitHubSyncServiceIntegrationTest {
         assertEquals(accepted.payload, delivery.getValue("payload"))
         assertEquals("7", delivery.getValue("githubUserId").jsonPrimitive.content)
         assertEquals(principalId.toString(), delivery.getValue("principalId").jsonPrimitive.content)
+        val resolved = graphQL.execute(admin, GraphQLRequest(query = """mutation { github {
+            resolveRef(input: { repositoryId: "$repositoryId", ref: "$ref", resolution: GITHUB,
+                expectedBoscaSha: "$sha", expectedGitHubSha: "$nextSha" }) { ref sha boscaSha githubSha synchronized conflict }
+        } }""")).jsonObject
+        assertFalse("errors" in resolved, resolved.toString())
+        val resolvedRef = resolved.getValue("data").jsonObject.getValue("github").jsonObject.getValue("resolveRef").jsonObject
+        assertEquals(nextSha, resolvedRef.getValue("sha").jsonPrimitive.content)
+        assertEquals("false", resolvedRef.getValue("conflict").jsonPrimitive.content)
+        coVerify { writes.synchronizeRef(match { it.resolveConflict && it.beforeSha == sha && it.afterSha == nextSha &&
+            it.direction == RefSynchronizationDirection.INBOUND && it.principalId == principalId && it.triggerBuild }) }
         val ordinary = ImpersonatedAuthenticationContext(Principal(id = principalId), emptyList())
         assertTrue("errors" in graphQL.execute(ordinary, GraphQLRequest(query = query)).jsonObject)
         val unmapped = graphQL.execute(admin, GraphQLRequest(query = """mutation { github {
@@ -1071,6 +1176,10 @@ class GitHubSyncServiceIntegrationTest {
             val imported = assertNotNull(actual.getByKey("github-import-refs"))
             val exported = assertNotNull(actual.getByKey("github-export-refs"))
             val reconciled = assertNotNull(actual.getByKey("github-reconcile-refs"))
+            for (key in listOf("github-import-refs", "github-export-refs", "github-reconcile-refs",
+                "github-import-pull-requests", "github-export-pull-requests", "github-reconcile-pull-requests")) {
+                assertEquals(listOf("Git"), assertNotNull(actual.getByKey(key)).tags)
+            }
             assertIs<bosca.git.pipeline.GitHubPushNode>(imported.nodes[1])
             assertIs<bosca.git.pipeline.GitHubRefNode>(exported.nodes[1])
             assertIs<bosca.git.pipeline.GitHubReconcileRefsNode>(reconciled.nodes[1])
@@ -1084,13 +1193,19 @@ class GitHubSyncServiceIntegrationTest {
                 assertNull(actual.validateGraph(actual.graphAsJsonElement(pipeline)))
             }
             val edited = actual.save(imported.id, "Operator's graph", imported.description, imported.acceptedInputType,
-                false, imported.version, actual.graphAsJsonElement(imported), key = imported.key)
+                false, imported.version, actual.graphAsJsonElement(imported), tags = listOf("Customized"), key = imported.key,
+                api = true, public = true, maxConcurrentRuns = 3, maxRunsPerMinute = 7)
             installer.install(installation, installation.versions.single())
             val retained = assertNotNull(actual.getByKey(imported.key))
             assertEquals(edited.name, retained.name)
-            assertEquals(edited.version, retained.version)
+            assertEquals(edited.version + 1, retained.version)
+            assertEquals(listOf("Customized", "Git"), retained.tags)
+            assertTrue(retained.api); assertTrue(retained.public)
+            assertEquals(3, retained.maxConcurrentRuns); assertEquals(7, retained.maxRunsPerMinute)
             assertFalse(retained.triggered)
             assertEquals(actual.graphAsJsonElement(edited), actual.graphAsJsonElement(retained))
+            installer.install(installation, installation.versions.single())
+            assertEquals(retained.version, assertNotNull(actual.getByKey(imported.key)).version)
             coVerify(exactly = 2) { scheduler.createJob(any(), any()) }
         } finally {
             actual.shutdown()

@@ -1,72 +1,13 @@
 <script setup lang="ts">
 import gql from 'graphql-tag'
 import type { GlassTableColumn, SelectOption } from '@bosca/ui'
-import { useAuth } from '@bosca/auth-client-browser'
 
 const { accent } = useCurrentSubsystem()
-const { useAsyncQuery, query: gqlQuery, mutation: gqlMutation } = useGraphQL()
-const { searchProfiles } = useProfileSearch()
+const { query: gqlQuery, mutation: gqlMutation } = useGraphQL()
 const toast = useToast()
-const { profile } = import.meta.client ? useAuth() : { profile: ref(null) }
-
-// ── Owner & Repository selection ────────────────────────────────────
-
-const { save: saveLastOwner, load: loadLastOwner } = useLastGitOwner()
-const savedOwner = loadLastOwner()
-const selectedOwner = ref(savedOwner?.id ?? '')
-const knownProfiles = ref<Map<string, string>>(new Map())
-if (savedOwner) knownProfiles.value.set(savedOwner.id, savedOwner.label)
-
-const initialOwnerOption = computed(() => {
-  const options: { value: string; label: string }[] = []
-  const p = profile.value
-  if (p?.id) {
-    const label = p.name || p.slug || p.id
-    options.push({ value: p.id, label })
-    knownProfiles.value.set(p.id, label)
-  }
-  if (savedOwner && savedOwner.id !== p?.id) {
-    options.push({ value: savedOwner.id, label: savedOwner.label })
-  }
-  return options
-})
-
-async function searchProfilesAndTrack(query: string) {
-  const results = await searchProfiles(query)
-  for (const opt of results) knownProfiles.value.set(opt.value, opt.label)
-  return results
-}
-
-watch(() => profile.value?.id, (id) => {
-  if (id && !selectedOwner.value) selectedOwner.value = id
-}, { immediate: true })
-
-watch(selectedOwner, (id) => {
-  if (!id) return
-  const label = knownProfiles.value.get(id) ?? id
-  saveLastOwner({ id, label })
-  selectedRepoId.value = undefined
-  permissions.value = []
-})
-
-const selectedRepoId = ref<string | undefined>(undefined)
-
-const reposGql = gql`
-  query PermRepos($ownerId: UUID!) {
-    git { repositories(ownerId: $ownerId, includeArchived: true) { id name slug } }
-  }
-`
-
-const { data: reposData, status: reposStatus } = useAsyncQuery<{
-  git: { repositories: Array<{ id: string; name: string; slug: string }> }
-}>('perm-git-repos', reposGql, { ownerId: computed(() => selectedOwner.value || '') }, { server: false })
-
-const repos = computed(() => reposData.value?.git?.repositories ?? [])
-const reposLoading = computed(() => reposStatus.value === 'pending')
-
-const repoOptions = computed<SelectOption[]>(() =>
-  repos.value.map((r) => ({ value: r.id, label: r.name })),
-)
+const props = defineProps<{ repositoryId: string }>()
+const selectedRepoId = computed(() => props.repositoryId)
+const error = ref('')
 
 // ── Security Groups ─────────────────────────────────────────────────
 
@@ -82,7 +23,9 @@ onMounted(async () => {
       query PermGroups { security { groups { all(offset: 0, limit: 100) { id name description } } } }
     `, {})
     groups.value = result.security?.groups?.all ?? []
-  } catch { /* ignore */ }
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : 'Could not load security groups.'
+  }
 })
 
 const groupOptions = computed<SelectOption[]>(() =>
@@ -113,14 +56,14 @@ async function loadPermissions() {
       }
     `, { id })
     permissions.value = result.git?.repositoryById?.permissions ?? []
-  } catch {
-    permissions.value = []
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : 'Could not load permissions.'
   } finally {
     loadingPerms.value = false
   }
 }
 
-watch(selectedRepoId, () => loadPermissions())
+watch(selectedRepoId, () => loadPermissions(), { immediate: true })
 
 // ── Table ────────────────────────────────────────────────────────────
 
@@ -135,6 +78,7 @@ const actionOptions: SelectOption[] = [
   { value: 'DELETE', label: 'DELETE' },
   { value: 'MANAGE', label: 'MANAGE' },
   { value: 'LIST', label: 'LIST' },
+  { value: 'EXECUTE', label: 'EXECUTE' },
 ]
 
 const actionColors: Record<string, string> = {
@@ -143,6 +87,7 @@ const actionColors: Record<string, string> = {
   DELETE: '#ffb547',
   MANAGE: '#ff5d6c',
   LIST: '#6c7388',
+  EXECUTE: '#a78bff',
 }
 
 // ── Add Permission ──────────────────────────────────────────────────
@@ -214,51 +159,20 @@ function handleRowAction({ action, row }: { action: string; row: PermissionEntry
 </script>
 
 <template>
-  <PageShell>
-    <template #header>
-      <PageHeader
-        :accent="accent"
-        :breadcrumb="buildBreadcrumb('Git', 'Settings', 'Permissions')"
-        title="Permissions"
-        subtitle="Manage access control for git repositories"
-      >
-        <template #actions>
-          <Select
-            v-model="selectedOwner"
-            :options="initialOwnerOption"
-            placeholder="Owner"
-            searchable
-            :search-fn="searchProfilesAndTrack"
-            :accent="accent"
-            size="sm"
-          />
-          <Select
-            v-if="repoOptions.length"
-            v-model="selectedRepoId"
-            placeholder="Select repository..."
-            :options="repoOptions"
-            :accent="accent"
-            size="sm"
-          />
-          <Button
-            v-if="selectedRepoId"
-            primary
-            icon="plus"
-            size="sm"
-            :accent="accent"
-            @click="showAdd = true"
-          >
-            Add Permission
-          </Button>
-        </template>
-      </PageHeader>
-    </template>
-
+  <div class="repository-settings-panel">
+    <p v-if="error" role="alert" class="form-error">{{ error }}</p>
     <SectionCard
-      v-if="selectedRepoId"
       title="Permissions"
       :subtitle="loadingPerms ? 'Loading...' : `${permissions.length} permission${permissions.length === 1 ? '' : 's'}`"
     >
+      <template #right>
+        <Button
+          primary
+          icon="plus"
+          size="sm"
+          :accent="accent"
+          @click="showAdd = true">Add Permission</Button>
+      </template>
       <GlassTable
         :columns="columns"
         :rows="permissions"
@@ -277,19 +191,6 @@ function handleRowAction({ action, row }: { action: string; row: PermissionEntry
         </template>
       </GlassTable>
     </SectionCard>
-
-    <div v-else-if="!selectedOwner" class="empty-centered">
-      Select an owner to browse repositories.
-    </div>
-    <div v-else-if="reposLoading" class="empty-centered">
-      Loading repositories...
-    </div>
-    <div v-else-if="!repoOptions.length" class="empty-centered">
-      No repositories found for this owner.
-    </div>
-    <div v-else class="empty-centered">
-      Select a repository to manage its permissions.
-    </div>
 
     <!-- Add Modal -->
     <Modal
@@ -337,7 +238,7 @@ function handleRowAction({ action, row }: { action: string; row: PermissionEntry
       @close="deleteTarget = null"
       @confirm="confirmDelete"
     />
-  </PageShell>
+  </div>
 </template>
 
 <style scoped>
