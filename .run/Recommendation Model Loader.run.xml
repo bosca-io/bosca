@@ -16,11 +16,11 @@
     <option name="IS_MODULE_SDK" value="false" />
     <option name="ADD_CONTENT_ROOTS" value="true" />
     <option name="ADD_SOURCE_ROOTS" value="true" />
-    <option name="DEBUG_JUST_MY_CODE" value="true" />
     <module name="" />
+    <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
     <option name="RUN_TOOL" value="true" />
+    <option name="RUN_AS_SCRIPT" value="false" />
     <option name="SCRIPT_NAME" value="$PROJECT_DIR$/experimentation/ml/recommendation-model-loader/model_loader.py" />
-    <!-- Configure ARTIFACTS_API_TOKEN locally; do not commit credentials. -->
     <option name="PARAMETERS" value="--content-model-dir $PROJECT_DIR$/server/services/models/recommender-content --personalized-model-dir $PROJECT_DIR$/server/services/models/recommender-personalized" />
     <option name="SHOW_COMMAND_LINE" value="false" />
     <option name="EMULATE_TERMINAL" value="true" />
