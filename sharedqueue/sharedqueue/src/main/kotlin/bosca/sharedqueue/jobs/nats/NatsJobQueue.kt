@@ -209,6 +209,8 @@ internal class NatsJobQueue(
         val lock = job.lock ?: return@withContext false
         if (!lock.isHeld || !lock.renew(lockRenew)) return@withContext false
         (job.message as? Message)?.inProgress()
+        // The stale-job scanner measures liveness from the persisted modification time.
+        job.modified = OffsetDateTime.now()
         setJob(job)
         true
     }

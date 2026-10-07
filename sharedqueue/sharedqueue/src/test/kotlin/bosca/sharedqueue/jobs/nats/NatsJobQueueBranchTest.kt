@@ -273,8 +273,18 @@ class NatsJobQueueBranchTest {
     @Test
     fun `checkin renews and persists when locked`() = runTest {
         val job = lockedJob()
+        val previousModified = OffsetDateTime.now().minusHours(1)
+        job.modified = previousModified
+        val persisted = slot<String>()
+        every { kv.put(job.id.toString(), capture(persisted)) } returns 1L
         assertTrue(queue.checkin(job, 1000))
-        verify { kv.put(job.id.toString(), any<String>()) }
+        val state = json.decodeFromString(SerializedJob.serializer(), persisted.captured)
+        assertTrue(state.modified > previousModified, "Successful check-in must refresh stale-job liveness")
+        assertEquals(job.modified, state.modified)
+        every { kv.keys() } returns listOf(job.id.toString())
+        every { kv.get(job.id.toString()) } returns entryFor(state)
+        queue.checkForExpiredJobs(System.currentTimeMillis())
+        verify(exactly = 0) { js.publish(any<String>(), any<ByteArray>(), any<PublishOptions>()) }
     }
 
     @Test
@@ -290,9 +300,11 @@ class NatsJobQueueBranchTest {
         val job = lockedJob()
         val lock = job.lock!!
         coEvery { lock.renew(any()) } returns false
+        val previousModified = job.modified
 
         assertFalse(queue.checkin(job, 1000))
 
+        assertEquals(previousModified, job.modified)
         verify(exactly = 0) { kv.put(job.id.toString(), any<String>()) }
     }
 

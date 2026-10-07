@@ -389,8 +389,8 @@ class NatsJobQueueEndToEndTest {
         val dequeued = queue.dequeue()
         assertNotNull(dequeued)
 
-        // Set to RUNNING before checkin
-        dequeued.setStatus(JobStatus.RUNNING)
+        // Model a long-running job that needs check-in to refresh scanner liveness.
+        dequeued.modified = bosca.serialization.OffsetDateTime.now().minusHours(1)
         queue.setJob(dequeued)
 
         val beforeCheckin = readKvEntry(jobId)
@@ -403,10 +403,18 @@ class NatsJobQueueEndToEndTest {
         val afterCheckin = readKvEntry(jobId)
         assertNotNull(afterCheckin, "KV entry should still exist after checkin")
         assertEquals(JobStatus.RUNNING, afterCheckin.status)
-        // Modified timestamp should be updated
         assertTrue(
-            afterCheckin.modified >= beforeCheckin.modified,
-            "Modified timestamp should be updated or equal after checkin"
+            afterCheckin.modified > beforeCheckin.modified,
+            "Successful check-in must advance the persisted liveness timestamp"
+        )
+        val messagesBeforeScan = natsPool.systemConnection().jetStreamManagement()
+            .getStreamInfo("jobs-e2e-test").streamState.msgCount
+        queue.checkForExpiredJobs(System.currentTimeMillis())
+        assertEquals(JobStatus.RUNNING, readKvEntry(jobId)?.status)
+        assertEquals(
+            messagesBeforeScan,
+            natsPool.systemConnection().jetStreamManagement().getStreamInfo("jobs-e2e-test").streamState.msgCount,
+            "The scanner must not republish a healthy running job"
         )
 
         // Clean up
