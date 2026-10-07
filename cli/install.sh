@@ -6,7 +6,7 @@
 #   curl -fsSL https://bosca.io/cli/install.sh | sh
 #
 # Installs the latest released `bosca` binary for your platform from the
-# project's GitHub Releases. No login or token is required.
+# project's GitHub Releases, or from BOSCA_CLI_ARTIFACTS_URL when configured.
 #
 # How "latest" is resolved
 # ------------------------
@@ -17,6 +17,8 @@
 # `bosca-<version>-<platform>.<ext>`; the asset for this OS/arch is read from the
 # release itself rather than guessed, and verified against the release's
 # SHA256SUMS asset.
+# Bosca raw repositories list versions newest-first. The first stable numeric
+# version is selected and verified against its SHA256SUMS file.
 #
 # Environment overrides
 # ---------------------
@@ -26,6 +28,10 @@
 #                          installs to /usr/local/bin (baked into the package).
 #   BOSCA_CLI_REPOSITORY   Read releases from this owner/name repository
 #                          instead of bosca-io/bosca (for example a fork).
+#   BOSCA_CLI_ARTIFACTS_URL  Bosca raw repository download URL, for example
+#                          https://artifacts.example.com/raw/bosca/bosca-cli.
+#                          Uses the newest stable version in its listing.
+#   BOSCA_CLI_ARTIFACTS_TOKEN  Optional Bosca API token for private artifacts.
 #   GITHUB_TOKEN           Optional token for GitHub API calls, only needed
 #                          when anonymous requests are rate limited.
 #
@@ -39,6 +45,9 @@ REPOSITORY="${BOSCA_CLI_REPOSITORY:-bosca-io/bosca}"
 TAG_PREFIX="cli-v"
 API_URL="https://api.github.com/repos/${REPOSITORY}"
 DOWNLOAD_BASE="https://github.com/${REPOSITORY}/releases/download"
+ARTIFACTS_BASE="${BOSCA_CLI_ARTIFACTS_URL:-}"
+ARTIFACTS_BASE="${ARTIFACTS_BASE%/}"
+ARTIFACTS_API_URL=""
 
 # ── Output helpers ──────────────────────────────────────────────────────────
 # Status goes to stderr so a future `... | sh` that wants to capture stdout is
@@ -48,10 +57,20 @@ warn() { printf 'warning: %s\n' "$*" >&2; }
 err()  { printf 'error: %s\n' "$*" >&2; }
 die()  { err "$*"; exit 1; }
 
+if [ -n "$ARTIFACTS_BASE" ]; then
+  case "$ARTIFACTS_BASE" in
+    http://*/raw/*/*|https://*/raw/*/*) ;;
+    *) die "BOSCA_CLI_ARTIFACTS_URL must be a raw repository download URL: https://HOST/raw/NAMESPACE/NAME" ;;
+  esac
+  ARTIFACTS_NAME="${ARTIFACTS_BASE##*/}"
+  ARTIFACTS_NAMESPACE_BASE="${ARTIFACTS_BASE%/*}"
+  ARTIFACTS_API_URL="${ARTIFACTS_NAMESPACE_BASE}/api/${ARTIFACTS_NAME}"
+fi
+
 # ── Prerequisites ───────────────────────────────────────────────────────────
 # A single downloader abstraction so the rest of the script doesn't care whether
-# curl or wget is present. `http_get URL [extra-args...]` writes the body to
-# stdout and returns non-zero on any HTTP/transport error.
+# curl or wget is present. `http_get URL [FILE]` writes the body to stdout or
+# FILE and returns non-zero on any HTTP/transport error.
 if command -v curl >/dev/null 2>&1; then
   DOWNLOADER="curl"
 elif command -v wget >/dev/null 2>&1; then
@@ -63,35 +82,36 @@ fi
 # GitHub serves releases anonymously; GITHUB_TOKEN only lifts the anonymous
 # API rate limit, so it is sent to api.github.com and nowhere else.
 #
-# http_get_to_stdout URL
-http_get_to_stdout() {
+# http_get URL [FILE]
+http_get() {
   _url="$1"
+  _file="${2:-}"
   _auth=""
+  _accept="application/json"
   case "$_url" in
-    https://api.github.com/*) [ -n "${GITHUB_TOKEN:-}" ] && _auth="Authorization: Bearer ${GITHUB_TOKEN}" ;;
+    https://api.github.com/*)
+      _accept="application/vnd.github+json"
+      [ -n "${GITHUB_TOKEN:-}" ] && _auth="Authorization: Bearer ${GITHUB_TOKEN}"
+      ;;
   esac
-  if [ "$DOWNLOADER" = "curl" ]; then
-    if [ -n "$_auth" ]; then
-      curl -fsSL --retry 3 -H "Accept: application/vnd.github+json" -H "$_auth" "$_url"
-    else
-      curl -fsSL --retry 3 -H "Accept: application/vnd.github+json" "$_url"
-    fi
-  else
-    if [ -n "$_auth" ]; then
-      wget -qO- --header="Accept: application/vnd.github+json" --header="$_auth" "$_url"
-    else
-      wget -qO- --header="Accept: application/vnd.github+json" "$_url"
-    fi
+  if [ -n "$ARTIFACTS_BASE" ] && [ -n "${BOSCA_CLI_ARTIFACTS_TOKEN:-}" ]; then
+    case "$_url" in
+      "$ARTIFACTS_API_URL"|"$ARTIFACTS_BASE"/*) _auth="Authorization: Bearer ${BOSCA_CLI_ARTIFACTS_TOKEN}" ;;
+    esac
   fi
-}
-
-# http_get_to_file URL FILE
-http_get_to_file() {
-  _url="$1"; _file="$2"
   if [ "$DOWNLOADER" = "curl" ]; then
-    curl -fsSL --retry 3 -o "$_file" "$_url"
+    set -- -fsSL --retry 3 -H "Accept: $_accept"
+    [ -z "$_auth" ] || set -- "$@" -H "$_auth"
+    [ -z "$_file" ] || set -- "$@" -o "$_file"
+    curl "$@" "$_url"
   else
-    wget -qO "$_file" "$_url"
+    if [ -n "$_file" ]; then
+      set -- -qO "$_file"
+    else
+      set -- -qO-
+    fi
+    [ -z "$_auth" ] || set -- "$@" --header="$_auth"
+    wget "$@" --header="Accept: $_accept" "$_url"
   fi
 }
 
@@ -120,10 +140,21 @@ info "Detected platform: ${PLATFORM}"
 # ── Resolve the version ─────────────────────────────────────────────────────
 if [ -n "${BOSCA_VERSION:-}" ]; then
   VERSION="${BOSCA_VERSION#"$TAG_PREFIX"}"
+elif [ -n "$ARTIFACTS_BASE" ]; then
+  info "Querying ${ARTIFACTS_API_URL}"
+  LISTING="$(http_get "$ARTIFACTS_API_URL")" || die "failed to list CLI versions in ${ARTIFACTS_BASE}"
+  # RawListVersions returns versions newest-first. Ignore aliases and prereleases.
+  VERSION="$(printf '%s' "$LISTING" \
+    | grep -o '"version"[[:space:]]*:[[:space:]]*"[^"]*"' \
+    | sed 's/.*:[[:space:]]*"//; s/"$//' \
+    | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' \
+    | head -1 \
+  || true)"
+  [ -n "$VERSION" ] || die "could not find a stable CLI version in ${ARTIFACTS_BASE}"
 else
   LIST_URL="${API_URL}/releases?per_page=100"
   info "Querying ${LIST_URL}"
-  LISTING="$(http_get_to_stdout "$LIST_URL")" || die "failed to list releases of ${REPOSITORY} (set GITHUB_TOKEN if rate limited)"
+  LISTING="$(http_get "$LIST_URL")" || die "failed to list releases of ${REPOSITORY} (set GITHUB_TOKEN if rate limited)"
   # Releases are listed newest-first. Stable CLI tags are cli-v<major>.<minor>.<patch>;
   # drafts are invisible anonymously and prerelease versions carry a suffix.
   VERSION="$(printf '%s' "$LISTING" \
@@ -142,21 +173,31 @@ info "Installing version: ${VERSION}"
 # Filenames embed both version and platform (bosca-<version>-<platform>.<ext>),
 # so this prefix uniquely identifies the right asset regardless of extension
 # (.pkg, .tar.gz, …).
-RELEASE="$(http_get_to_stdout "${API_URL}/releases/tags/${TAG}")" || die "release ${TAG} was not found in ${REPOSITORY}"
-ASSETS="$(printf '%s' "$RELEASE" | grep -o '"name": *"bosca-[^"]*"' | sed 's/.*"name": *"//; s/"$//' | sort -u)"
-PREFIX="bosca-${VERSION}-${PLATFORM}"
-# Escape regex metacharacters (the version's dots in particular) so the prefix is
-# matched literally rather than as a pattern.
-PREFIX_RE="$(printf '%s' "$PREFIX" | sed 's/[.[\*^$/]/\\&/g')"
-FILENAME="$(printf '%s\n' "$ASSETS" | grep "^${PREFIX_RE}\." | head -1 || true)"
+if [ -n "$ARTIFACTS_BASE" ]; then
+  # The CLI pipeline publishes these package names to the raw repository.
+  case "$PLATFORM" in
+    macos-*) FILENAME="bosca-${VERSION}-${PLATFORM}.pkg" ;;
+    linux-*) FILENAME="bosca-${VERSION}-${PLATFORM}.tar.gz" ;;
+  esac
+  DOWNLOAD_BASE="$ARTIFACTS_BASE"
+  DOWNLOAD_VERSION="$VERSION"
+else
+  RELEASE="$(http_get "${API_URL}/releases/tags/${TAG}")" || die "release ${TAG} was not found in ${REPOSITORY}"
+  ASSETS="$(printf '%s' "$RELEASE" | grep -o '"name": *"bosca-[^"]*"' | sed 's/.*"name": *"//; s/"$//' | sort -u)"
+  PREFIX="bosca-${VERSION}-${PLATFORM}"
+  # Escape regex metacharacters so the prefix is matched literally.
+  PREFIX_RE="$(printf '%s' "$PREFIX" | sed 's/[.[\*^$/]/\\&/g')"
+  FILENAME="$(printf '%s\n' "$ASSETS" | grep "^${PREFIX_RE}\." | head -1 || true)"
 
-if [ -z "$FILENAME" ]; then
-  err "no published package found for ${PREFIX} (version ${VERSION}, platform ${PLATFORM})."
-  if [ -n "$ASSETS" ]; then
-    info "Assets in ${TAG}:"
-    printf '%s\n' "$ASSETS" | sed 's/^/  - /' >&2
+  if [ -z "$FILENAME" ]; then
+    err "no published package found for ${PREFIX} (version ${VERSION}, platform ${PLATFORM})."
+    if [ -n "$ASSETS" ]; then
+      info "Assets in ${TAG}:"
+      printf '%s\n' "$ASSETS" | sed 's/^/  - /' >&2
+    fi
+    die "no installable asset for your platform"
   fi
-  die "no installable asset for your platform"
+  DOWNLOAD_VERSION="$TAG"
 fi
 info "Selected package: ${FILENAME}"
 
@@ -166,12 +207,12 @@ TMPDIR_INSTALL="$(mktemp -d 2>/dev/null || mktemp -d -t bosca-install)"
 trap 'rm -rf "$TMPDIR_INSTALL"' EXIT INT TERM
 PKG_PATH="${TMPDIR_INSTALL}/${FILENAME}"
 SUMS_PATH="${TMPDIR_INSTALL}/SHA256SUMS"
-DOWNLOAD_URL="${DOWNLOAD_BASE}/${TAG}/${FILENAME}"
+DOWNLOAD_URL="${DOWNLOAD_BASE}/${DOWNLOAD_VERSION}/${FILENAME}"
 
 info "Downloading ${DOWNLOAD_URL}"
-http_get_to_file "$DOWNLOAD_URL" "$PKG_PATH" || die "download failed"
+http_get "$DOWNLOAD_URL" "$PKG_PATH" || die "download failed"
 [ -s "$PKG_PATH" ] || die "downloaded file is empty"
-http_get_to_file "${DOWNLOAD_BASE}/${TAG}/SHA256SUMS" "$SUMS_PATH" || die "release ${TAG} has no SHA256SUMS asset"
+http_get "${DOWNLOAD_BASE}/${DOWNLOAD_VERSION}/SHA256SUMS" "$SUMS_PATH" || die "release ${VERSION} has no SHA256SUMS asset"
 
 # ── Verify integrity ────────────────────────────────────────────────────────
 verify_digest() {

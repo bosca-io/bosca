@@ -92,6 +92,7 @@ dependencies {
 }
 
 tasks.test {
+    inputs.file("install.sh").withPathSensitivity(PathSensitivity.RELATIVE)
     inputs.files(rootProject.fileTree(".bosca/pipelines") { include("*.yaml") })
         .withPathSensitivity(PathSensitivity.RELATIVE)
     inputs.files(rootProject.fileTree("scripts/release") { include("*.sh") })

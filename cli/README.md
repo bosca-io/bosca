@@ -9,9 +9,10 @@ curl -fsSL https://bosca.io/cli/install.sh | sh
 ```
 
 This downloads and installs the latest released `bosca` for your platform from
-the project's GitHub Releases (no login required). The script
-([`install.sh`](install.sh)) detects your OS/arch, resolves the newest
-`cli-v<version>` release, verifies the package against the release's
+the project's GitHub Releases (no login required), or from a configured Bosca
+Artifacts repository. The script
+([`install.sh`](install.sh)) detects your OS/arch, resolves the newest stable
+release, verifies the package against the release's
 `SHA256SUMS`, and installs it (a signed/notarized `.pkg` on macOS → `/usr/local/bin`; a tarball on Linux).
 
 Useful overrides (environment variables):
@@ -21,7 +22,21 @@ Useful overrides (environment variables):
 | `BOSCA_VERSION` | Install a specific version instead of the latest |
 | `BOSCA_INSTALL_DIR` | Target dir for tarball installs (default `/usr/local/bin`) |
 | `BOSCA_CLI_REPOSITORY` | Read releases from another `owner/name` repository (default `bosca-io/bosca`) |
+| `BOSCA_CLI_ARTIFACTS_URL` | Download from a Bosca raw repository instead of GitHub (e.g. `https://artifacts.example.com/raw/bosca/bosca-cli`) |
+| `BOSCA_CLI_ARTIFACTS_TOKEN` | Optional Bosca API token for private artifact downloads |
 | `GITHUB_TOKEN` | Optional token when anonymous GitHub API requests are rate limited |
+
+For packages published by the Bosca CLI release pipeline, set the raw repository
+download URL on the `sh` side of the pipe:
+
+```bash
+curl -fsSL https://bosca.io/cli/install.sh | \
+  BOSCA_CLI_ARTIFACTS_URL=https://artifacts.example.com/raw/bosca/bosca-cli sh
+```
+
+This queries `/raw/bosca/api/bosca-cli` for the newest stable version, then
+downloads its platform package and `SHA256SUMS` from `/raw/bosca/bosca-cli/<version>/`.
+Set `BOSCA_VERSION` to download an exact version without querying the listing.
 
 ### Version & updates
 
