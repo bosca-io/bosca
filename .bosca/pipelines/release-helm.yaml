@@ -1,0 +1,59 @@
+name: "Release: Helm Charts"
+on:
+  manual: true
+  release: true
+
+concurrency:
+  group: workspace-helm-release
+  cancel-in-progress: false
+
+jobs:
+  publish-charts:
+    runner: linux
+    timeout: 20m
+    steps:
+      - name: Validate release tag
+        run: |
+          case "$RELEASE_REF" in
+            refs/tags/?*) ;;
+            *) echo "Select an existing Git tag for this chart release." >&2; exit 1 ;;
+          esac
+        env:
+          RELEASE_REF: ${{ ref }}
+      - name: Checkout
+        uses: checkout
+      - name: Setup Registry
+        uses: setup-registry
+        with:
+          repository: bosca-maven
+      - name: Setup Helm
+        run: |
+          set -euo pipefail
+          case "$(uname -m)" in
+            x86_64) arch=amd64 ;;
+            aarch64|arm64) arch=arm64 ;;
+            *) echo "Unsupported Helm architecture" >&2; exit 1 ;;
+          esac
+          tools_dir=$(mktemp -d)
+          archive="helm-${HELM_VERSION}-linux-${arch}.tar.gz"
+          curl -fsSL "https://get.helm.sh/$archive" -o "$tools_dir/$archive"
+          curl -fsSL "https://get.helm.sh/$archive.sha256sum" -o "$tools_dir/$archive.sha256sum"
+          (cd "$tools_dir" && sha256sum -c "$archive.sha256sum")
+          tar -xzf "$tools_dir/$archive" -C "$tools_dir"
+          echo "$tools_dir/linux-$arch" >> "$BOSCA_PATH"
+        env:
+          HELM_VERSION: v3.22.0
+      - name: Test release script
+        run: bash helm/scripts/release-test.sh
+      - name: Package charts
+        run: bash helm/scripts/release.sh package --output .helm-release-packages
+      - name: Publish and verify both destinations
+        run: |
+          export HELM_REPO_URL="${BOSCA_REGISTRY_URL%/}/helm/bosca-charts"
+          registry_host="${BOSCA_REGISTRY_URL#http://}"
+          registry_host="${registry_host#https://}"
+          registry_host="${registry_host%%/*}"
+          export HELM_OCI_URL="oci://$registry_host/bosca-charts"
+          export HELM_OCI_USERNAME=api_token
+          export HELM_OCI_TOKEN="$BOSCA_REGISTRY_TOKEN"
+          bash helm/scripts/release.sh publish --output .helm-release-packages
