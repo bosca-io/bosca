@@ -213,6 +213,68 @@ updates, and bound query execution results with `returnedRecords` and
 BOSCA_PROFILE=work bosca mcp-server
 ```
 
+## Deployment image updates
+
+Resolve the highest stable version tag published for each Bosca image directly
+from its container registry. Moving aliases such as `latest` and prerelease tags
+are excluded. The commands use public GHCR images by default; they also support
+Bosca Artifacts registries.
+
+For an existing Swarm configuration:
+
+```bash
+bosca swarm update-images --config ./swarm.local.json --check
+bosca swarm update-images --config ./swarm.local.json
+bosca swarm deploy --config ./swarm.local.json
+```
+
+`update-images` saves version pins locally. It keeps each configured image
+repository, infrastructure images, root website images, and secrets. Repeat
+`--image` to update selected Swarm image keys, for example `--image server
+--image runner`. Use `--registry artifacts.example.com/bosca` to move the
+selected Bosca images to another registry and namespace. Registry credentials
+come from the matching `registryAuth` entry in the Swarm configuration. All
+selected lookups must succeed before any new image pins are saved. Encrypted
+configurations remain encrypted.
+An explicit `http://` or `https://` registry transport is saved separately in
+`registrySchemes`, keyed by hostname and optional port, so later updates can
+reuse the registry without repeating `--registry`. Docker image references
+remain in the ordinary `host/namespace/image:tag` format.
+
+For Helm, write a values file and pass it after your deployment values:
+
+```bash
+bosca helm images --output ./images.yaml
+helm upgrade --install bosca ./helm/bosca-services \
+  -f ./deployment-values.yaml -f ./images.yaml
+```
+
+For a subset of the umbrella chart, repeat `--service` with the subchart names:
+
+```bash
+bosca helm images --service bosca-server --service bosca-runner \
+  --service tf-serving --output ./images.yaml
+```
+
+Only selected services are queried and pinned; unavailable images for other
+services do not block the command. A lookup failure for a selected service
+fails the command and preserves any existing output file. Omit `--service` to
+resolve all Bosca services. The file sets `global.imageRegistry` for the release;
+when updating a subset, choose the registry already used by your deployment.
+
+The default chart is `bosca-services`. Use `--chart bosca-server` (or another
+individual Bosca chart) for standalone values. `--chart tf-serving` updates only
+the Bosca model-loader sidecar. Image settings include the registry, repository,
+version tag, and an empty digest override so an older digest does not mask the
+resolved tag. Service enablement and upstream infrastructure images remain in
+your deployment values.
+
+To query a private registry, pass `--registry artifacts.example.com/bosca
+--registry-username api_token` and set `BOSCA_REGISTRY_PASSWORD`; use
+`--registry-password-env` to choose another environment variable. The generated
+Helm values contain no credentials; configure Kubernetes image pull secrets
+separately. Omit `--output` to print the values to standard output.
+
 ## Prerequisites
 
 - Java 25

@@ -1,6 +1,15 @@
 {
   "reflection": [
     {
+      "type": "bosca.cli.helm.HelmCommand"
+    },
+    {
+      "type": "bosca.cli.helm.HelmImagesCommand"
+    },
+    {
+      "type": "bosca.cli.swarm.SwarmUpdateImagesCommand"
+    },
+    {
       "type": "bosca.cli.BoscaCommand"
     },
     {

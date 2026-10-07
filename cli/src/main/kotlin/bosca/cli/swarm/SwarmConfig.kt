@@ -20,6 +20,8 @@ data class SwarmConfig(
     val dataRoot: String = "/srv/bosca",
     val registryAuth: SwarmRegistryAuth = SwarmRegistryAuth(),
     val images: Map<String, String> = defaultImages(),
+    /** Transport for image tag lookups, keyed by registry hostname and optional port. Unlisted hosts use HTTPS. */
+    val registrySchemes: Map<String, String> = emptyMap(),
     val sites: List<SwarmSite> = listOf(
         SwarmSite("site1", "site1.example.invalid", "Site One", "noreply@site1.example.invalid", 1),
         SwarmSite("site2", "site2.example.invalid", "Site Two", "noreply@site2.example.invalid", 2),
@@ -240,7 +242,7 @@ internal class SwarmConfigFile(
 
     private fun passphrase(confirm: Boolean): CharArray = passphrase ?: readPassphrase(confirm).also { passphrase = it }
 
-    fun load(deploy: Boolean = false): SwarmConfig {
+    fun load(deploy: Boolean = false, saveDefaults: Boolean = true): SwarmConfig {
         require(Files.isRegularFile(path)) { "Configuration not found: $path" }
         val document = swarmJson.parseToJsonElement(Files.readString(path)).jsonObject
         encryptedSecrets = SwarmSecretEncryption.hasEncryptedSecrets(document)
@@ -248,7 +250,7 @@ internal class SwarmConfigFile(
         val original = swarmJson.decodeFromJsonElement(SwarmConfig.serializer(), clear)
         val config = original.withDefaultImages().withSecrets()
         config.validate(deploy)
-        if (config != original) save(config)
+        if (saveDefaults && config != original) save(config)
         return config
     }
 
@@ -350,6 +352,11 @@ internal fun SwarmConfig.validate(deploy: Boolean = false) {
         "Configure only one registry login per server"
     }
     require(defaultImages().keys.all { images[it]?.isNotBlank() == true }) { "Configure every image" }
+    require(registrySchemes.all { (server, scheme) ->
+        val uri = runCatching { java.net.URI("https://$server") }.getOrNull()
+        scheme in setOf("http", "https") && uri?.host != null && uri.rawAuthority == server &&
+            uri.userInfo == null && uri.path.isNullOrEmpty() && uri.query == null && uri.fragment == null
+    }) { "registrySchemes must map registry hostnames to http or https" }
     require(singleLine(registryAuth.password)) { "registryAuth.password must be a single-line value" }
     with(backup) {
         require(listOf(repository, accessKeyId, secretAccessKey).all(::singleLine)) { "Backup settings must be single-line values" }

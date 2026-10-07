@@ -145,6 +145,9 @@ import bosca.cli.swarm.SwarmInitCommand
 import bosca.cli.swarm.SwarmRenderCommand
 import bosca.cli.swarm.SwarmStatusCommand
 import bosca.cli.swarm.SwarmSetupTokensCommand
+import bosca.cli.swarm.SwarmUpdateImagesCommand
+import bosca.cli.helm.HelmCommand
+import bosca.cli.helm.HelmImagesCommand
 import bosca.cli.tokens.TokenCommand
 import bosca.cli.tokens.TokenCreateCommand
 import bosca.cli.tokens.TokenDeleteCommand
@@ -506,7 +509,9 @@ fun main(args: Array<String>) {
             SwarmDeployCommand(),
             SwarmSetupTokensCommand(),
             SwarmStatusCommand(),
+            SwarmUpdateImagesCommand(),
         ),
+        HelmCommand().subcommands(HelmImagesCommand()),
     )
     .main(args)
 

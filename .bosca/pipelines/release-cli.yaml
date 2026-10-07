@@ -1,5 +1,5 @@
 name: "Release: CLI"
-# Builds the native `bosca` CLI from an existing Git tag and publishes packages and checksums to Bosca Artifacts.
+# Builds the native `bosca` CLI from an existing Git tag and publishes packages, checksums, and the installer script to Bosca Artifacts.
 #
 # Build configuration: CLI_GRADLE_PROPERTIES supplies base64-encoded Gradle properties for both platforms.
 # Signing secret: MACOS_KEYCHAIN_PASSWORD (see cli/MACOS_SIGNING.md).
@@ -159,6 +159,7 @@ jobs:
             - dist/bosca-${{ version }}-linux-x86_64.tar.gz
             - dist/bosca-${{ version }}-macos-arm64.pkg
             - dist/SHA256SUMS
+            - cli/install.sh
 
   notify:
     runner: linux
