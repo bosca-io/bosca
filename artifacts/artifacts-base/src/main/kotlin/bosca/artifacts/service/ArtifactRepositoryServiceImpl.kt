@@ -3,6 +3,7 @@ package bosca.artifacts.service
 import bosca.artifacts.model.*
 import bosca.artifacts.repository.*
 import bosca.db.transaction
+import bosca.db.afterCommit
 import bosca.graphql.Batch
 import bosca.security.model.EntityPermission
 import bosca.security.model.PermissionAction
@@ -61,10 +62,10 @@ class ArtifactRepositoryServiceImpl(
      * already committed, and gated consumers have a sweep backstop — a publish failure is logged,
      * never propagated into the registry operation.
      */
-    private suspend fun announcePublished(repositoryId: UUID, version: String) {
+    private suspend fun announcePublished(repositoryId: UUID, version: String) = afterCommit {
         try {
-            val repository = repoRepo.findById(repositoryId) ?: return
-            val namespace = namespaceRepo.findById(repository.namespaceId) ?: return
+            val repository = repoRepo.findById(repositoryId) ?: return@afterCommit
+            val namespace = namespaceRepo.findById(repository.namespaceId) ?: return@afterCommit
             pubSubService.publish(
                 ArtifactVersionPublished.CHANNEL,
                 ArtifactVersionPublished.serializer(),
@@ -280,12 +281,17 @@ class ArtifactRepositoryServiceImpl(
         return tagRepo.findByRepositoryAndNamePrefix(repositoryId, prefix)
     }
 
-    override suspend fun setTag(repositoryId: UUID, name: String, manifestDigest: String): ArtifactTag {
+    override suspend fun setTag(repositoryId: UUID, name: String, manifestDigest: String): ArtifactTag = transaction {
         val tag = tagRepo.upsert(repositoryId, name, manifestDigest)
+        if (repoRepo.findById(repositoryId)?.type == ArtifactType.DOCKER.value) {
+            versionRepo.findByRepositoryAndVersion(repositoryId, manifestDigest)?.let { version ->
+                ArtifactTagPublished(UUID.random(), repositoryId, version.id, name, manifestDigest).dispatch()
+            }
+        }
         // Docker versions are digest-keyed; the human coordinate is the TAG — announce it as the
         // published "version" so requirement gates on docker coordinates release.
         announcePublished(repositoryId, name)
-        return tag
+        tag
     }
 
     override suspend fun listTags(repositoryId: UUID, limit: Int, last: String?): List<ArtifactTag> {

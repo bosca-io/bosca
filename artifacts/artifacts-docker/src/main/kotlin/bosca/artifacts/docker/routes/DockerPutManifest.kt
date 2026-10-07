@@ -5,6 +5,7 @@ import bosca.artifacts.model.ArtifactType
 import bosca.artifacts.service.ArtifactPermissionEvaluator
 import bosca.artifacts.service.ArtifactRepositoryService
 import bosca.artifacts.service.BlobStorageService
+import bosca.db.transaction
 import bosca.routes.APIRoute
 import bosca.routes.annotations.RouteAuthentication
 import bosca.routes.annotations.RouteController
@@ -54,17 +55,18 @@ class DockerPutManifest(
             }
 
             val repo = repoService.findOrCreateRepository(namespace, repoName, ArtifactType.DOCKER)
+            transaction {
+                val existing = repoService.findVersion(repo.id, digest)
+                if (existing == null) {
+                    val contentType = call.request.contentType()?.toString()
+                    val metadata = buildJsonObject { contentType?.let { put("mediaType", it) } }
+                    val version = repoService.createVersion(repo.id, digest, metadata)
+                    repoService.addVersionBlob(version.id, digest, "manifest", null, contentType)
+                }
 
-            val existing = repoService.findVersion(repo.id, digest)
-            if (existing == null) {
-                val contentType = call.request.contentType()?.toString()
-                val metadata = buildJsonObject { contentType?.let { put("mediaType", it) } }
-                val version = repoService.createVersion(repo.id, digest, metadata)
-                repoService.addVersionBlob(version.id, digest, "manifest", null, contentType)
-            }
-
-            if (!reference.contains(":")) {
-                repoService.setTag(repo.id, reference, digest)
+                if (!reference.contains(":")) {
+                    repoService.setTag(repo.id, reference, digest)
+                }
             }
 
             call.response.header(DOCKER_DISTRIBUTION_HEADER, DOCKER_DISTRIBUTION_VERSION)

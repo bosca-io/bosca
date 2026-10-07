@@ -16,6 +16,10 @@ enum ArtifactRegistryType {
 
 "Administrative queries for artifact registry management"
 type ArtifactsAdmin {
+    "GHCR sync destinations for a Docker repository. Requires admin."
+    syncDestinations(repositoryId: UUID!): [ArtifactSyncDestination!]!
+    "Latest desired tags and their sync results. Requires admin."
+    syncs(repositoryId: UUID!, limit: Int, offset: Long): [ArtifactSync!]!
     "Publication destinations for a repository. Requires admin."
     publicationDestinations(repositoryId: UUID!): [ArtifactPublicationDestination!]!
     "Durable publication results for a version. Requires admin."
@@ -36,6 +40,12 @@ type ArtifactsAdmin {
 
 "Administrative mutations for artifact registry management"
 type ArtifactsAdminMutation {
+    "Configure a GHCR image destination using a Pipeline secret. Requires admin."
+    createSyncDestination(input: ArtifactSyncDestinationInput!): ArtifactSyncDestination!
+    "Change activation or credentials with optimistic locking. Requires admin."
+    updateSyncDestination(id: UUID!, version: Long!, enabled: Boolean!, username: String, tokenSecretName: String): ArtifactSyncDestination!
+    "Requeue a failed sync or explicitly copy and verify its tag again. Requires admin."
+    retrySync(id: UUID!): ArtifactSync!
     "Configure a GitHub release destination referencing a Pipeline secret. Requires admin."
     createPublicationDestination(input: ArtifactPublicationDestinationInput!): ArtifactPublicationDestination!
     "Enable, disable or change a destination secret reference. Requires admin."
@@ -213,4 +223,41 @@ type ArtifactPublicationFile {
     digest: String!
     size: Long!
     mediaType: String!
+}
+
+"A GHCR image path; each published source tag is preserved."
+type ArtifactSyncDestination {
+    id: UUID!
+    repositoryId: UUID!
+    key: String!
+    remoteRepository: String!
+    username: String!
+    tokenSecretName: String!
+    enabled: Boolean!
+    version: Long!
+    created: DateTime
+    modified: DateTime
+}
+
+input ArtifactSyncDestinationInput {
+    repositoryId: UUID!
+    key: String!
+    remoteRepository: String!
+    username: String!
+    tokenSecretName: String!
+    enabled: Boolean! = false
+}
+
+"Latest desired manifest and result for one destination/tag."
+type ArtifactSync {
+    id: UUID!
+    destinationId: UUID!
+    versionId: UUID!
+    tagName: String!
+    manifestDigest: String!
+    attempts: Int!
+    synced: DateTime
+    error: String
+    created: DateTime
+    modified: DateTime
 }

@@ -8,6 +8,10 @@ import bosca.artifacts.service.ArtifactRepositoryService
 import bosca.artifacts.service.ArtifactPublicationService
 import bosca.artifacts.model.ArtifactPublicationDestination
 import bosca.artifacts.model.ArtifactPublicationDestinationInput
+import bosca.artifacts.model.ArtifactSync
+import bosca.artifacts.model.ArtifactSyncDestination
+import bosca.artifacts.model.ArtifactSyncDestinationInput
+import bosca.artifacts.service.ArtifactSyncService
 import bosca.graphql.GraphQLController
 import bosca.graphql.annotations.Field
 import bosca.graphql.annotations.TypeController
@@ -25,7 +29,26 @@ class ArtifactsAdminMutationController(
     private val repoService: ArtifactRepositoryService,
     private val groupEvaluator: GroupEvaluator,
     private val publications: ArtifactPublicationService,
+    private val syncing: ArtifactSyncService,
 ) : GraphQLController<ArtifactsAdminMutation> {
+
+    @Field
+    suspend fun createSyncDestination(authorization: AuthenticationContext, input: ArtifactSyncDestinationInput): ArtifactSyncDestination {
+        groupEvaluator.verifyHasAdminGroup(authorization)
+        return syncing.createDestination(input)
+    }
+
+    @Field
+    suspend fun updateSyncDestination(authorization: AuthenticationContext, id: UUID, version: Long, enabled: Boolean, username: String?, tokenSecretName: String?): ArtifactSyncDestination {
+        groupEvaluator.verifyHasAdminGroup(authorization)
+        return syncing.updateDestination(id, version, enabled, username, tokenSecretName)
+    }
+
+    @Field
+    suspend fun retrySync(authorization: AuthenticationContext, id: UUID): ArtifactSync {
+        groupEvaluator.verifyHasAdminGroup(authorization)
+        return syncing.retry(id)
+    }
 
     @Field
     suspend fun createPublicationDestination(authorization: AuthenticationContext, input: ArtifactPublicationDestinationInput): ArtifactPublicationDestination {

@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import gql from 'graphql-tag'
+import ArtifactRepositorySync from '~/components/artifacts/ArtifactRepositorySync.vue'
 
 const route = useRoute()
 const router = useRouter()
 const { accent } = useCurrentSubsystem()
+const { isAdmin } = usePersonas()
 const { useAsyncQuery, mutation: gqlMutation } = useGraphQL()
 const toast = useToast()
 const { stage: stageRawArtifactFiles } = useRawArtifactUploadStaging()
@@ -369,6 +371,8 @@ async function startRawUpload(files: File[]) {
       >
         <RawArtifactDropZone @files="startRawUpload" />
       </SectionCard>
+
+      <ArtifactRepositorySync v-if="isAdmin && repo.type === 'docker'" :key="repo.id" :repository-id="repo.id" />
 
       <!-- Tags (Docker only) -->
       <SectionCard v-if="repo.type === 'docker'" :title="`Tags (${tagCount})`">

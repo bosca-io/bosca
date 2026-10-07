@@ -50,6 +50,7 @@ import bosca.server.installer.DefaultGitEmailPipelinesInstaller
 import bosca.server.installer.DefaultSocialNotificationPipelinesInstaller
 import bosca.server.installer.DefaultTransactionalEmailPipelinesInstaller
 import bosca.server.installer.DefaultIndexPipelinesInstaller
+import bosca.server.installer.DefaultArtifactSyncPipelinesInstaller
 import bosca.lock.DistributedLockFactory
 import bosca.observability.ErrorCapture
 import bosca.analytics.livesessions.LiveSessionsService
@@ -141,6 +142,19 @@ class Configuration {
     @Provider(name = DefaultIndexPipelinesInstaller.NAME)
     fun defaultIndexPipelinesInstaller(pipelineService: PipelineService): PackageInstaller =
         DefaultIndexPipelinesInstaller(pipelineService)
+
+    @Provider(name = DefaultArtifactSyncPipelinesInstaller.NAME)
+    fun defaultArtifactSyncPipelinesInstaller(pipelineService: PipelineService): PackageInstaller =
+        DefaultArtifactSyncPipelinesInstaller(pipelineService)
+
+    @Provider(name = "default-artifact-sync-pipelines-package")
+    fun defaultArtifactSyncPipelinesPackage(): PackageInstallation = PackageInstallation(
+        key = DefaultArtifactSyncPipelinesInstaller.NAME,
+        name = "Default Artifact Sync Pipelines",
+        versions = listOf(PackageInstallationVersion(
+            version = "1.0.0", installerNames = listOf(DefaultArtifactSyncPipelinesInstaller.NAME),
+        )),
+    )
 
     @Provider(name = "default-index-pipelines-package")
     fun defaultIndexPipelinesPackage(): PackageInstallation = PackageInstallation(

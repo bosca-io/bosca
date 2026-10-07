@@ -10,6 +10,9 @@ import bosca.artifacts.model.ArtifactPublicationDestination
 import bosca.artifacts.service.ArtifactNamespacePermissionEvaluator
 import bosca.artifacts.service.ArtifactRepositoryService
 import bosca.artifacts.service.ArtifactPublicationService
+import bosca.artifacts.service.ArtifactSyncService
+import bosca.artifacts.model.ArtifactSync
+import bosca.artifacts.model.ArtifactSyncDestination
 import bosca.security.service.GroupEvaluator
 import bosca.graphql.GraphQLController
 import bosca.graphql.annotations.Field
@@ -28,7 +31,20 @@ class ArtifactsAdminController(
     private val namespaceEvaluator: ArtifactNamespacePermissionEvaluator,
     private val publications: ArtifactPublicationService,
     private val groups: GroupEvaluator,
+    private val syncing: ArtifactSyncService,
 ) : GraphQLController<ArtifactsAdmin> {
+
+    @Field
+    suspend fun syncDestinations(authorization: AuthenticationContext, repositoryId: UUID): List<ArtifactSyncDestination> {
+        groups.verifyHasAdminGroup(authorization)
+        return syncing.destinations(repositoryId)
+    }
+
+    @Field
+    suspend fun syncs(authorization: AuthenticationContext, repositoryId: UUID, limit: Int?, offset: Long?): List<ArtifactSync> {
+        groups.verifyHasAdminGroup(authorization)
+        return syncing.syncs(repositoryId, limit ?: 100, offset ?: 0)
+    }
 
     @Field
     suspend fun publicationDestinations(authorization: AuthenticationContext, repositoryId: UUID): List<ArtifactPublicationDestination> {

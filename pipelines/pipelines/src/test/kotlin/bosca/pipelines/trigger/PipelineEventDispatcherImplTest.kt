@@ -109,4 +109,14 @@ class PipelineEventDispatcherImplTest {
 
         coVerify(exactly = 0) { queue.enqueue(any()) }
     }
+
+    @Test
+    fun `producer dispatch enqueues without a pipeline service or engine`() = runTest {
+        registerConnectionPool()
+        val queue = mockk<JobQueue>(relaxed = true)
+        coEvery { queue.enqueue(any()) } returns UUID.random()
+        registerEnqueueDI(queue)
+        PipelineEventDispatcherImpl(null, json).dispatch("sample.event", SampleEvent("e1"), SampleEvent.serializer())
+        coVerify(exactly = 1) { queue.enqueue(any()) }
+    }
 }

@@ -18,5 +18,6 @@ class ArtifactsMigration : Migration {
         "V5__add_ml_type.sql",
         "V6__multipart_blob_uploads.sql",
         "V7__artifact_publication.sql",
+        "V8__artifact_sync.sql",
     )
 }

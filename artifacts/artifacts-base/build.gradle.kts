@@ -39,6 +39,9 @@ dependencies {
     testImplementation(libs.okhttp.mockwebserver)
     testImplementation(project(":bosca-core:test-support"))
     testImplementation(project(":pipelines:pipelines"))
+    testImplementation(project(":sharedqueue:sharedqueue"))
+    testImplementation(project(":bosca-core:core-events"))
+    testImplementation(project(":bosca-core:core-scheduler"))
 }
 
 ksp {

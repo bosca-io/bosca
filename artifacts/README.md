@@ -43,6 +43,43 @@ Each artifact protocol (Docker, Maven, npm) is isolated in its own module with p
 - `io.bosca:core-graalvm` -- Bosca Core GraalVM (native image support)
 - `io.bosca:analytics-server-client` -- Bosca Analytics (event reporting)
 
+## Docker syncing to GHCR
+
+Configure a Docker repository to copy each completed, tagged image to a GHCR image path. For example, a push to Bosca's `images/server:1.2.3` can publish the same image as `ghcr.io/bosca-io/bosca/server:1.2.3`. Source tags are preserved; image manifests, indexes, configs and layers retain their original bytes and digests. OCI images, multi-platform indexes and Docker schema-2 images are supported.
+
+In Studio, open **Artifacts → Repositories**, select a Docker image, and use **GitHub Container Registry sync → Add destination**. Enter a destination name, lowercase GHCR image path, and the GitHub username owning the token. Select an existing token secret or add one in the form, choose **Enable synchronization**, and save. Each artifact has its own destinations; destination names and remote image paths are fixed after creation. Use **Edit destination** to change credentials or disable syncing, and **Sync status** to inspect tag digests, attempts, errors, and successful sync times or retry failed requests.
+
+Token secrets can also be managed in **Pipelines → Secrets**. The credential needs the package permissions described in the [GHCR authentication documentation](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry#authenticating-with-a-personal-access-token-classic). The API server and Bosca Runner must share `PIPELINE_SECRET_KEY` to read the encrypted secret. Sync controls are available to administrators.
+
+An administrator creates a destination through the API server:
+
+```graphql
+mutation {
+  artifactsAdmin {
+    createSyncDestination(input: {
+      repositoryId: "<Bosca Docker repository UUID>"
+      key: "ghcr"
+      remoteRepository: "bosca-io/bosca/server"
+      username: "<GitHub username owning the token>"
+      tokenSecretName: "ghcr-token"
+      enabled: true
+    }) {
+      id version remoteRepository enabled
+    }
+  }
+}
+```
+
+`remoteRepository` is the lowercase owner/image path without `ghcr.io/` or a tag. Multiple enabled destinations can copy the same source repository. Destinations default to disabled. `updateSyncDestination(id, version, enabled, username, tokenSecretName)` changes activation or credentials with optimistic locking; the remote path is fixed at creation.
+
+The ordinary `ArtifactRepositoryService.setTag` write path dispatches `bosca.artifacts.model.ArtifactTagPublished` in the same transaction as the local tag. Pipeline event delivery waits for commit; rolled-back writes enqueue nothing. The tagged manifest route stores the manifest and its blob association before setting the tag. Digest-only child manifest uploads do not fire tag events. The standalone artifacts server produces events on the configured Bosca `pipelines` queue; Bosca Runner matches and executes triggered pipelines. No Docker daemon is required.
+
+The API server's **Default Artifact Sync Pipelines** package installs **Sync Published Docker Tags to GHCR** and its **Sync Docker Image to GHCR** body pipeline. The triggered graph connects the tag event to **Get Artifact Sync Destinations**, then **For Each** invokes the body for every enabled destination. The body uses **Sync Docker Image to GHCR**, a durable action with ordinary pipeline retries and run history. Destination failures are recorded independently so other destinations can still run. Both nodes verify artifact push permission under the pipeline execution identity (`pipelines.serviceAccount` for triggered runs). Existing graphs are preserved when the package is reinstalled; edit or disable the triggered pipeline in Studio to change syncing.
+
+The sync checks that the stored manifests and distributable blobs are present, uploads missing blobs, uploads child manifests before their indexes, then assigns and verifies the remote tag. Root manifests retain their stored publication media type when their JSON omits `mediaType`. Foreign and non-distributable layers with external URLs keep their original descriptors; syncing does not download or upload those layers. Pipeline retries reuse blobs already present on GHCR. Obsolete tag events and moved tags are skipped; the current tag's event prepares its desired digest and resets the previous result. Concurrent pipeline runs serialize copies of the same destination/tag. Disabling a destination stops tag publication; local version deletion cancels its pending copies and leaves GHCR content in place.
+
+Read `Query.artifactsAdmin.syncDestinations(repositoryId)` for configuration and `Query.artifactsAdmin.syncs(repositoryId, limit, offset)` for prepared digests, attempts, safe errors and successful `synced` timestamps. `Mutation.artifactsAdmin.retrySync(id)` clears the selected result and dispatches the current local tag's publication event through pipelines. Re-enabling a destination does not backfill existing tags; repush those tags or retry their existing sync records. Apply the registered artifact migration `V8__artifact_sync.sql`; Pipeline secret storage is managed by the API server's existing migrations.
+
 ## GitHub release publication
 
 Raw artifact repositories can publish completed versions as GitHub release assets. Apply the registered artifact migration `V7__artifact_publication.sql`. Administrators configure destinations through the API server; publication runs through ordinary pipelines in Bosca Runner.
@@ -63,4 +100,4 @@ The publisher creates a managed draft, uploads the stored files and publishes th
 
 Read `Query.artifactsAdmin.publications(versionId, limit, offset)` for the fixed file manifest, attempt count, remote release ID, error, and independent `published` and `verified` timestamps. Failed verification preserves the recorded publication result. Explicit local version deletion cancels remaining publication work and does not delete a GitHub release.
 
-Studio destination configuration and verification pages, package registries, Maven Central and remote retention remain to be implemented. Retention needs the version count, prerelease treatment and exemptions before implementation.
+Studio configuration and verification pages for raw release publication, Maven/npm syncing, Maven Central and remote retention remain to be implemented. Retention needs the version count, prerelease treatment and exemptions before implementation.

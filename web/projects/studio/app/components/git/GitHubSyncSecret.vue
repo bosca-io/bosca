@@ -5,6 +5,7 @@ import type { SelectOption } from '@bosca/ui'
 const model = defineModel<string>({ default: '' })
 const props = defineProps<{
   kind: 'webhook' | 'token'
+  tokenHelp?: string
   options: SelectOption[]
   names: string[]
   disabled: boolean
@@ -78,7 +79,7 @@ async function save() {
     :accent="accent"
     @close="close">
     <form class="secret-form" @submit.stop.prevent="save">
-      <p class="help">{{ kind === 'token' ? 'Enter a GitHub access token that can access this repository.' : 'Enter the shared secret you will also configure on the GitHub webhook.' }} Values are encrypted and cannot be read back.</p>
+      <p class="help">{{ kind === 'token' ? (tokenHelp ?? 'Enter a GitHub access token that can access this repository.') : 'Enter the shared secret you will also configure on the GitHub webhook.' }} Values are encrypted and cannot be read back.</p>
       <TextInput
         v-model="name"
         label="Secret name"

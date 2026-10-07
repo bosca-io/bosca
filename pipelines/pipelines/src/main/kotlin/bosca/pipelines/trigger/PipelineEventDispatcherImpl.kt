@@ -13,10 +13,11 @@ import kotlinx.serialization.json.Json
  * The event-firing process's side of triggered pipelines: a cached "any triggered pipeline for
  * this event?" gate plus a single durable [PipelineDispatchJob] enqueue. Matching and execution
  * happen on the runner ([PipelineDispatchJobExecutor] / [PipelineRunJobExecutor]); once the
- * dispatch job is enqueued, the reaction is at-least-once.
+ * dispatch job is enqueued, the reaction is at-least-once. Producer-only processes pass no
+ * [PipelineService]; the runner performs matching without requiring the producer to load the engine.
  */
 class PipelineEventDispatcherImpl(
-    private val pipelineService: PipelineService,
+    private val pipelineService: PipelineService?,
     private val json: Json,
 ) : PipelineEventDispatcher {
 
@@ -24,7 +25,7 @@ class PipelineEventDispatcherImpl(
         val eventCreated = OffsetDateTime.now()
         if (connectionOrNull() == null) {
             withConnectionManager {
-                if (eventName !in pipelineService.triggeredEventTypes()) return@withConnectionManager
+                if (pipelineService != null && eventName !in pipelineService.triggeredEventTypes()) return@withConnectionManager
                 val payload = json.encodeToJsonElement(serializer, event)
                 PipelineDispatchJob(
                     eventName = eventName,
@@ -33,7 +34,7 @@ class PipelineEventDispatcherImpl(
                 ).enqueue()
             }
         } else {
-            if (eventName !in pipelineService.triggeredEventTypes()) return
+            if (pipelineService != null && eventName !in pipelineService.triggeredEventTypes()) return
             val payload = json.encodeToJsonElement(serializer, event)
             PipelineDispatchJob(
                 eventName = eventName,

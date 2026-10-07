@@ -136,6 +136,8 @@ interface ArtifactRepositoryService : PermissionService<ArtifactNamespace, UUID>
     /**
      * Sets a tag to point at a manifest digest. Creates the tag if it does not exist,
      * or updates the existing tag's digest if it does.
+     * Stored Docker manifests dispatch [bosca.artifacts.model.ArtifactTagPublished] in the tag's
+     * transaction; durable pipeline delivery and pub/sub announcements wait for commit.
      */
     suspend fun setTag(repositoryId: UUID, name: String, manifestDigest: String): ArtifactTag
 
