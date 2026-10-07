@@ -22,7 +22,7 @@ export default defineNuxtConfig({
 
   runtimeConfig: {
     apiUrl: process.env.API_URL || 'http://localhost:8080',
-    // Target of /install.sh, which cli.bosca.io serves to install the CLI
+    // Target of /cli/install.sh on bosca.io to install the CLI
     // (NUXT_CLI_INSTALL_SCRIPT_URL).
     cliInstallScriptUrl: 'https://raw.githubusercontent.com/bosca-io/bosca/main/cli/install.sh',
     public: {

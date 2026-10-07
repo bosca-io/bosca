@@ -5,7 +5,7 @@ Unified command-line tool for the Bosca platform, handling version coordination,
 ## Install
 
 ```bash
-curl -fsSL https://cli.bosca.io/install.sh | sh
+curl -fsSL https://bosca.io/cli/install.sh | sh
 ```
 
 This downloads and installs the latest released `bosca` for your platform from

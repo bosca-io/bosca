@@ -3,7 +3,7 @@
 #
 # Bosca CLI installer.
 #
-#   curl -fsSL https://cli.bosca.io/install.sh | sh
+#   curl -fsSL https://bosca.io/cli/install.sh | sh
 #
 # Installs the latest released `bosca` binary for your platform from the
 # project's GitHub Releases. No login or token is required.

@@ -116,7 +116,7 @@ class WorkspaceReleasePublishingTest {
     }
 
     @Test
-    fun `CLI packages and verified checksums publish to Bosca without GitHub credentials`() = runTest {
+    fun `CLI packages installer and verified checksums publish to Bosca without GitHub credentials`() = runTest {
         val server = MockWebServer().apply { start() }
         val root = fixture()
         try {
@@ -126,20 +126,25 @@ class WorkspaceReleasePublishingTest {
                 "bosca-$version-macos-arm64.pkg" to "macos-package",
             )
             packages.forEach { (name, body) -> File(dist, name).writeText(body) }
-            repeat(3) { server.enqueue(MockResponse.Builder().code(201).build()) }
-            val executor = executor(root, registry = server.url("/").toString())
+            val installerFile = File(root, "cli/install.sh").apply { parentFile.mkdirs() }
+            File(workspace, "cli/install.sh").copyTo(installerFile)
+            val installer = installerFile.readText()
+            repeat(4) { server.enqueue(MockResponse.Builder().code(201).build()) }
             val context = ExpressionContext(ref = "refs/tags/v$version")
             val steps = pipeline("release-cli.yaml").jobs.getValue("publish").steps
             val checksum = steps.first { it.name == "Generate checksums" }
             assertTrue(executor(File(root, assertNotNull(checksum.workingDirectory))).execute(checksum, context).success)
-            assertTrue(executor.execute(steps.first { it.uses == "registry-upload" }, context).success)
+            val uploadLogs = TestLogBuffer()
+            val upload = executor(root, registry = server.url("/").toString(), logBuffer = uploadLogs)
+                .execute(steps.first { it.uses == "registry-upload" }, context)
+            assertTrue(upload.success, uploadLogs.lines.joinToString("\n"))
             val sums = File(dist, "SHA256SUMS").readText()
             packages.forEach { (name, body) ->
                 val digest = MessageDigest.getInstance("SHA-256").digest(body.toByteArray())
                     .joinToString("") { "%02x".format(it) }
                 assertTrue(sums.contains("$digest  $name"))
             }
-            for ((name, body) in packages + ("SHA256SUMS" to sums)) {
+            for ((name, body) in packages + ("SHA256SUMS" to sums) + ("install.sh" to installer)) {
                 val request = server.takeRequest()
                 assertEquals("PUT", request.method)
                 assertEquals("/raw/bosca/api/bosca-cli/$version/$name", request.target)
@@ -147,7 +152,7 @@ class WorkspaceReleasePublishingTest {
                 assertEquals(body, assertNotNull(request.body).utf8())
             }
             assertEquals("registry-upload", steps.last().uses)
-            assertEquals(3, server.requestCount)
+            assertEquals(4, server.requestCount)
         } finally {
             server.close()
             root.deleteRecursively()

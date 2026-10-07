@@ -36,7 +36,7 @@ object UpdateChecker {
     const val DEFAULT_REPOSITORY = "bosca-io/bosca"
 
     /** Short URL of the installer script for [DEFAULT_REPOSITORY] releases. */
-    const val DEFAULT_INSTALL_SCRIPT_URL = "https://cli.bosca.io/install.sh"
+    const val DEFAULT_INSTALL_SCRIPT_URL = "https://bosca.io/cli/install.sh"
 
     /** Tag prefix of CLI releases; the remainder of the tag is the version. */
     const val TAG_PREFIX = "cli-v"

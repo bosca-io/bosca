@@ -94,7 +94,7 @@ class UpdateCheckerTest {
     @Test
     fun `installCommand runs the repository's installer script`() {
         assertEquals(
-            "curl -fsSL https://cli.bosca.io/install.sh | sh",
+            "curl -fsSL https://bosca.io/cli/install.sh | sh",
             UpdateChecker.installCommand(UpdateChecker.DEFAULT_REPOSITORY),
         )
         assertEquals(
