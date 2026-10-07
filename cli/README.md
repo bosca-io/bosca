@@ -38,6 +38,12 @@ This queries `/raw/bosca/api/bosca-cli` for the newest stable version, then
 downloads its platform package and `SHA256SUMS` from `/raw/bosca/bosca-cli/<version>/`.
 Set `BOSCA_VERSION` to download an exact version without querying the listing.
 
+To make the website's install command use Bosca Artifacts by default, configure
+the website with
+`NUXT_CLI_INSTALL_SCRIPT_URL=https://artifacts.example.com/raw/bosca/bosca-cli/<version>/install.sh`
+and redeploy it. The website serves that script with its raw package repository
+configured automatically. Publish the updated `cli/install.sh` at that URL first.
+
 ### Version & updates
 
 ```bash
