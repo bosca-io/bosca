@@ -23,8 +23,12 @@ Run these commands from the **workspace root**. `server` is part of the root Gra
 ./gradlew :server:test  # Test server modules
 ./gradlew :server:bosca-server:run  # Run the GraphQL API
 ./gradlew :server:bosca-runner:run  # Run background jobs
-./gradlew :server:bosca-server:nativeCompile  # Build a native image
+./gradlew -Pbosca.scripting.engine=false :server:bosca-server:nativeCompile  # Build a native image
 ```
+
+Native server builds exclude the local Kotlin scripting engine and delegate script execution to
+the JVM runner. `scripts/release/build-image.sh bosca-server <version>` selects this variant
+automatically. JVM server builds retain local scripting by default.
 
 ## Local Infrastructure
 

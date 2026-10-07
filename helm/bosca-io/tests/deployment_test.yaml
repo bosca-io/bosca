@@ -88,6 +88,18 @@ tests:
             name: BAZ
             value: "qux"
 
+  - it: passes the CLI installer source to the Nuxt runtime
+    template: templates/deployment.yaml
+    set:
+      extraEnv:
+        NUXT_CLI_INSTALL_SCRIPT_URL: https://artifacts.example.com/raw/bosca/bosca-cli/6.10.0/install.sh
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: NUXT_CLI_INSTALL_SCRIPT_URL
+            value: https://artifacts.example.com/raw/bosca/bosca-cli/6.10.0/install.sh
+
   - it: Service exposes port 3000
     template: templates/service.yaml
     asserts:

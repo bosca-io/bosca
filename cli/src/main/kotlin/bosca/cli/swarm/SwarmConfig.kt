@@ -90,6 +90,8 @@ data class SwarmConfig(
     /** Optional website image for the root and www hosts; it listens on [rootPort]. */
     val rootImage: String = "",
     val rootPort: Int = 3000,
+    /** Additional runtime environment for the root website, overriding its generated defaults. */
+    val rootEnv: Map<String, String> = emptyMap(),
     /** Optional login for a private root website image registry distinct from [SwarmConfig.registryAuth]. */
     val rootRegistryAuth: SwarmRegistryAuth? = null,
     /** Outgoing email provider; its credentials are configured per site in Studio. */
@@ -299,6 +301,9 @@ internal fun SwarmConfig.validate(deploy: Boolean = false) {
         require(site.hosts.all.all(domainPattern::matches)) { "Invalid domain for ${site.id}" }
         require(site.redisDatabase in 1..15) { "Redis database must be between 1 and 15 for ${site.id}" }
         require(site.rootPort in 1..65535) { "Invalid rootPort for ${site.id}" }
+        require(site.rootEnv.keys.all { it.matches(Regex("[A-Za-z_][A-Za-z0-9_]*")) }) {
+            "Invalid rootEnv variable name for ${site.id}"
+        }
         require(site.serverMemory.matches(Regex("[1-9][0-9]*[bkmg]?", RegexOption.IGNORE_CASE))) {
             "serverMemory for ${site.id} must be a positive byte count with an optional B, K, M, or G suffix"
         }

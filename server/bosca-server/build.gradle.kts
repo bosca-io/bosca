@@ -199,6 +199,15 @@ tasks.named<JavaExec>("run") {
     outputs.upToDateWhen { false }
 }
 
+tasks.named("nativeCompile") {
+    doFirst {
+        check(!scriptingEngineEnabled) {
+            "The local Kotlin scripting engine cannot run in a native image. " +
+                "Build bosca-server with -Pbosca.scripting.engine=false to delegate scripting to the JVM runner."
+        }
+    }
+}
+
 graalvmNative {
     testSupport.set(false)
     agent {

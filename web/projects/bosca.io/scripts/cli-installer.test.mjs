@@ -33,7 +33,7 @@ test('website config selects Bosca packages for the served installer', { timeout
       response.end(outdated ? '#!/bin/sh\necho old-installer\n' : script)
     } else if (request.url === '/raw/team/api/bosca-cli' || request.url === '/raw/override/api/bosca-cli') {
       response.setHeader('Content-Type', 'application/json')
-      response.end('{"name":"bosca-cli","versions":[{"version":"6.10.0","files":[]}]}')
+      response.end('{"name":"bosca-cli","versions":[{"version":"6.11.0-rc1","files":[]},{"version":"6.10.0","files":[]}]}')
     } else if (request.url.endsWith('/' + filename)) {
       response.end(bytes)
     } else if (request.url.endsWith('/SHA256SUMS')) {
@@ -86,6 +86,16 @@ test('website config selects Bosca packages for the served installer', { timeout
   assert.match(response.headers.get('content-type'), /text\/x-shellscript/)
   const served = await response.text()
   assert.match(served, /export BOSCA_CLI_ARTIFACTS_URL/)
+
+  await t.test('release metadata points at the installer repository and skips prereleases', async () => {
+    const result = await fetch('http://127.0.0.1:' + port + '/cli/releases.json')
+    assert.equal(result.status, 200)
+    assert.equal(result.headers.get('cache-control'), 'no-store')
+    assert.deepEqual(await result.json(), {
+      version: '6.10.0',
+      artifactsUrl: artifactOrigin + '/raw/team/bosca-cli'
+    })
+  })
 
   await t.test('default curl pipe flow installs from the configured artifact repository', async () => {
     const installed = join(root, 'installed-default')

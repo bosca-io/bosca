@@ -60,6 +60,8 @@ podDisruptionBudget:
 # build with no backend integration. Footer legal links come from
 # NUXT_PUBLIC_TERMS_URL / NUXT_PUBLIC_PRIVACY_URL; prerendered pages capture them
 # at image build time, so set them for the build as well as here.
+# For a Bosca-hosted CLI installer, set NUXT_CLI_INSTALL_SCRIPT_URL to its raw
+# download URL: https://<artifacts-host>/raw/bosca/bosca-cli/<cli-version>/install.sh.
 extraEnv: {}
 
 envFromConfigMaps:

@@ -307,6 +307,8 @@ bosca-gateway:
 # ─── bosca-io ───────────────────────────────────────────────────────
 bosca-io:
   enabled: false
+  # extraEnv:
+  #   NUXT_CLI_INSTALL_SCRIPT_URL: https://<artifacts-host>/raw/bosca/bosca-cli/<cli-version>/install.sh
 
 # ─── notifications-web (BML SSR notification preferences / unsubscribe site) ───
 notifications-web:

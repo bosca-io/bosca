@@ -6,8 +6,8 @@
  */
 export default defineEventHandler(async (e) => {
   const source = new URL(useRuntimeConfig(e).cliInstallScriptUrl)
-  const rawInstaller = source.pathname.match(/^(.*\/raw\/[^/]+)\/([^/]+)\/[^/]+\/install\.sh$/)
-  if (!rawInstaller) {
+  const repository = cliArtifactsRepository(source)
+  if (!repository) {
     return sendRedirect(e, source.href, 302)
   }
 
@@ -19,7 +19,6 @@ export default defineEventHandler(async (e) => {
     })
   }
 
-  const repository = source.origin + rawInstaller[1] + '/' + rawInstaller[2]
   const quotedRepository = '\'' + repository.replaceAll('\'', '\'\\\'\'') + '\''
   setHeader(e, 'Content-Type', 'text/x-shellscript; charset=utf-8')
   return `#!/bin/sh

@@ -514,6 +514,43 @@ class SwarmDeploymentTest {
     }
 
     @Test
+    fun `root website environment survives configuration loading and stays scoped to its site`() {
+        val directory = Files.createTempDirectory("bosca-swarm-root-env-")
+        try {
+            val installer = "https://artifacts.example.org/raw/bosca/bosca-cli/6.10.0/install.sh"
+            val defaults = SwarmConfig()
+            val configured = defaults.copy(sites = defaults.sites.mapIndexed { index, site ->
+                site.copy(rootImage = "registry.example.org/bosca-io:website-version",
+                    rootEnv = if (index == 0) mapOf("NUXT_CLI_INSTALL_SCRIPT_URL" to installer) else emptyMap())
+            }).withSecrets()
+            val path = directory.resolve("swarm.local.json")
+            saveConfig(path, configured)
+            val loaded = loadConfig(path)
+            assertEquals(configured.sites.first().rootEnv, loaded.sites.first().rootEnv)
+
+            fun environment(site: SwarmSite, service: String): Map<*, *> {
+                val services = siteStack(loaded, site)["services"] as Map<*, *>
+                return (services[service] as Map<*, *>)["environment"] as Map<*, *>
+            }
+            val first = loaded.sites.first()
+            assertEquals(installer, environment(first, "root-web")["NUXT_CLI_INSTALL_SCRIPT_URL"])
+            assertEquals("http://site1-server:8080/graphql", environment(first, "root-web")["BML_GRAPHQL_ENDPOINT"])
+            assertNull(environment(first, "server")["NUXT_CLI_INSTALL_SCRIPT_URL"])
+            assertNull(environment(loaded.sites[1], "root-web")["NUXT_CLI_INSTALL_SCRIPT_URL"])
+
+            val output = directory.resolve("output")
+            renderSwarm(loaded, output)
+            assertTrue(Files.readString(output.resolve("stacks/site1.yml")).contains(installer))
+            assertFalse(Files.readString(output.resolve("stacks/site2.yml")).contains(installer))
+            assertFailsWith<IllegalArgumentException> {
+                loaded.copy(sites = listOf(first.copy(rootEnv = mapOf("INVALID=NAME" to "value")))).validate()
+            }
+        } finally {
+            directory.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
     fun `applications reach PostgreSQL through PgBouncer while Trino connects directly`() {
         val config = SwarmConfig().withSecrets()
         @Suppress("UNCHECKED_CAST")

@@ -443,7 +443,7 @@ internal fun siteStack(config: SwarmConfig, site: SwarmSite): Map<String, Any> {
         )),
     ) + if (site.rootImage.isNotBlank()) mapOf(
         "root-web" to service(site.rootImage, deploy(Placement.APPLICATION, rolling = true), mapOf(
-            "environment" to mapOf("BML_GRAPHQL_ENDPOINT" to "$server/graphql"),
+            "environment" to (mapOf("BML_GRAPHQL_ENDPOINT" to "$server/graphql") + site.rootEnv),
         )),
     ) else emptyMap()
     @Suppress("UNCHECKED_CAST")

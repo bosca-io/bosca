@@ -15,54 +15,49 @@ import java.time.Duration
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * Resolves the latest published `bosca` release from the project's GitHub
- * Releases and surfaces a non-intrusive "update available" notice.
- *
- * CLI releases are tagged `cli-v<version>` in a repository shared with other
- * independently versioned components, so "latest" is the newest non-draft,
- * non-prerelease release carrying that tag prefix — the same rule the installer
- * script applies, so the CLI and installer always agree on what "latest" means.
- *
- * The passive check is deliberately conservative: it only runs for interactive
- * terminals, at most once per day (cached), never blocks meaningfully, and
- * swallows every error — a missing network must never disrupt a command.
+ * Checks the release source selected by the website's installer, or an explicit
+ * artifact/GitHub repository override. Cached notices are scoped to that source.
+ * Passive checks are optional, bounded, and never disrupt ordinary commands.
  */
 object UpdateChecker {
-
-    /** Environment variable that points release lookups at another repository (`owner/name`), such as a fork. */
+    /** Explicit GitHub repository override for release checks. */
     const val REPOSITORY_ENV = "BOSCA_CLI_REPOSITORY"
-
-    /** The repository whose GitHub Releases publish `bosca`. */
     const val DEFAULT_REPOSITORY = "bosca-io/bosca"
-
-    /** Short URL of the installer script for [DEFAULT_REPOSITORY] releases. */
     const val DEFAULT_INSTALL_SCRIPT_URL = "https://bosca.io/cli/install.sh"
-
-    /** Tag prefix of CLI releases; the remainder of the tag is the version. */
+    /** Metadata published by the website using its configured installer repository. */
+    const val DEFAULT_RELEASES_URL = "https://bosca.io/cli/releases.json"
+    /** Raw repository download URL override, shared with cli/install.sh. */
+    const val ARTIFACTS_URL_ENV = "BOSCA_CLI_ARTIFACTS_URL"
+    /** Optional token for direct private artifact repository lookups. */
+    const val ARTIFACTS_TOKEN_ENV = "BOSCA_CLI_ARTIFACTS_TOKEN"
     const val TAG_PREFIX = "cli-v"
 
-    /** How often the passive check refreshes from GitHub. */
     private const val CHECK_INTERVAL_SECONDS = 24L * 60 * 60
-
-    /** Tight bounds so a slow/blocked network never stalls the CLI. */
     private val CONNECT_TIMEOUT = Duration.ofMillis(1500)
     private val REQUEST_TIMEOUT = Duration.ofMillis(3000)
-
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
-
-    /** Ensures the notice prints at most once per process. */
+    private val stableVersion = Regex("[0-9]+\\.[0-9]+\\.[0-9]+")
     private val notified = AtomicBoolean(false)
 
-    /**
-     * Set by commands that perform their own explicit check (e.g. `bosca
-     * version --check`) so the post-run passive notice doesn't duplicate it.
-     */
+    /** Explicit version checks suppress the duplicate post-command notice. */
     @Volatile
     var suppressPassive: Boolean = false
 
-    // ── GitHub model (subset of the list-releases response) ─────────────────
+    /** Metadata endpoint and the optional direct repository used to decode its response. */
+    data class ReleaseSource(
+        val listingUrl: String,
+        val artifactsUrl: String? = null,
+        val githubRepository: String? = null,
+    )
 
-    /** One GitHub release, as returned by `GET /repos/{owner}/{repo}/releases`. */
+    /** Published release and the repository used by its upgrade command. */
+    @Serializable
+    data class LatestRelease(
+        val version: String,
+        val artifactsUrl: String? = null,
+        val repository: String? = null,
+    )
+
     @Serializable
     data class GitHubRelease(
         @SerialName("tag_name") val tagName: String = "",
@@ -70,14 +65,19 @@ object UpdateChecker {
         val prerelease: Boolean = false,
     )
 
-    private val releasesSerializer = ListSerializer(GitHubRelease.serializer())
+    @Serializable
+    private data class ArtifactVersion(val version: String)
 
-    // ── Persistent throttle/cache ────────────────────────────────────────────
+    @Serializable
+    private data class ArtifactVersions(val versions: List<ArtifactVersion>)
+
+    private val releasesSerializer = ListSerializer(GitHubRelease.serializer())
 
     @Serializable
     private data class UpdateCheckCache(
+        val source: String? = null,
         val lastCheckEpochSeconds: Long = 0,
-        val latestVersion: String? = null,
+        val latestRelease: LatestRelease? = null,
     )
 
     private val cacheFile: File
@@ -93,51 +93,95 @@ object UpdateChecker {
         }
     }
 
-    // ── Public API ───────────────────────────────────────────────────────────
-
-    /** The `owner/name` repository releases are read from: [REPOSITORY_ENV] when set, else [DEFAULT_REPOSITORY]. */
+    /** Normalizes an explicit GitHub repository name. */
     fun releasesRepository(configured: String? = System.getenv(REPOSITORY_ENV)): String =
         configured?.trim()?.trim('/').takeUnless { it.isNullOrEmpty() } ?: DEFAULT_REPOSITORY
 
-    /**
-     * The one-line install/upgrade command shown to users: [DEFAULT_INSTALL_SCRIPT_URL] for the
-     * project's releases, or the other repository's own installer with [REPOSITORY_ENV] set.
-     */
-    fun installCommand(repository: String): String =
-        if (repository == DEFAULT_REPOSITORY) {
-            "curl -fsSL $DEFAULT_INSTALL_SCRIPT_URL | sh"
-        } else {
-            "curl -fsSL https://raw.githubusercontent.com/$repository/main/cli/install.sh | $REPOSITORY_ENV=$repository sh"
+    /** Selects an explicit artifact repository, an explicit GitHub repository, or website metadata. */
+    fun releaseSource(
+        artifactsUrl: String? = System.getenv(ARTIFACTS_URL_ENV),
+        repository: String? = System.getenv(REPOSITORY_ENV),
+    ): ReleaseSource {
+        val artifacts = artifactsUrl?.trim()?.trimEnd('/').takeUnless { it.isNullOrEmpty() }
+        if (artifacts != null) {
+            val uri = URI.create(artifacts)
+            require(uri.scheme in setOf("http", "https") && !uri.host.isNullOrBlank() &&
+                uri.rawQuery == null && uri.rawFragment == null &&
+                Regex(".*/raw/[^/]+/[^/]+").matches(uri.rawPath)) {
+                "$ARTIFACTS_URL_ENV must be a raw repository download URL: https://HOST/raw/NAMESPACE/NAME"
+            }
+            val slash = artifacts.lastIndexOf('/')
+            return ReleaseSource(
+                artifacts.substring(0, slash) + "/api" + artifacts.substring(slash),
+                artifactsUrl = artifacts,
+            )
         }
+        if (!repository.isNullOrBlank()) {
+            val name = releasesRepository(repository)
+            return ReleaseSource("https://api.github.com/repos/$name/releases?per_page=100", githubRepository = name)
+        }
+        return ReleaseSource(DEFAULT_RELEASES_URL)
+    }
 
-    /**
-     * Fetches the newest published version from the repository's releases, or
-     * null on any failure (offline, timeout, rate limit, no CLI release,
-     * malformed body). Never throws.
-     */
-    fun fetchLatestVersion(repository: String): String? = runCatching {
+    /** Builds the install command for a GitHub-distributed CLI. */
+    fun installCommand(repository: String): String =
+        "curl -fsSL https://raw.githubusercontent.com/$repository/main/cli/install.sh | $REPOSITORY_ENV=$repository sh"
+
+    /** Builds an upgrade command using the checked release's actual repository. */
+    fun installCommand(release: LatestRelease): String {
+        release.artifactsUrl?.let { repository ->
+            fun quoted(value: String) = "'" + value.replace("'", "'\\''") + "'"
+            val installer = repository.trimEnd('/') + "/" + release.version + "/install.sh"
+            return "curl -fsSL " + quoted(installer) + " | $ARTIFACTS_URL_ENV=" + quoted(repository) + " sh"
+        }
+        return release.repository?.let(::installCommand) ?: "curl -fsSL $DEFAULT_INSTALL_SCRIPT_URL | sh"
+    }
+
+    /** Fetches a stable release from the selected source; returns null on lookup failure without falling back to another source. */
+    fun fetchLatestRelease(source: ReleaseSource): LatestRelease? = runCatching {
         val client = HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT).build()
-        val request = HttpRequest.newBuilder(URI.create("https://api.github.com/repos/$repository/releases?per_page=100"))
+        val request = HttpRequest.newBuilder(URI.create(source.listingUrl))
             .timeout(REQUEST_TIMEOUT)
-            .header("Accept", "application/vnd.github+json")
+            .header("Accept", "application/json")
             .GET()
-            .build()
-        val response = client.send(request, HttpResponse.BodyHandlers.ofString())
+        val token = when {
+            source.artifactsUrl != null -> System.getenv(ARTIFACTS_TOKEN_ENV)
+            source.githubRepository != null -> System.getenv("GITHUB_TOKEN")
+            else -> null
+        }
+        if (!token.isNullOrBlank()) request.header("Authorization", "Bearer $token")
+        val response = client.send(request.build(), HttpResponse.BodyHandlers.ofString())
         if (response.statusCode() !in 200..299) return null
-        latestReleaseVersion(json.decodeFromString(releasesSerializer, response.body()))
+        when {
+            source.artifactsUrl != null -> {
+                val listing = json.decodeFromString(ArtifactVersions.serializer(), response.body())
+                listing.versions.firstOrNull { stableVersion.matches(it.version) }
+                    ?.let { LatestRelease(it.version, artifactsUrl = source.artifactsUrl) }
+            }
+            source.githubRepository != null -> {
+                latestReleaseVersion(json.decodeFromString(releasesSerializer, response.body()))
+                    ?.let { LatestRelease(it, repository = source.githubRepository) }
+            }
+            else -> json.decodeFromString(LatestRelease.serializer(), response.body())
+                .takeIf { stableVersion.matches(it.version) }
+        }
     }.getOrNull()
 
-    /**
-     * Picks the newest CLI version from a release listing that GitHub orders
-     * newest-first: the first published (non-draft, non-prerelease) release
-     * tagged [TAG_PREFIX] followed by a version starting with a digit. Returns
-     * null when the listing has no CLI release.
-     */
+    /** Reuses only cache entries from this source; old unscoped entries are discarded. */
+    internal fun cachedLatestRelease(source: ReleaseSource, now: Long = System.currentTimeMillis() / 1000): LatestRelease? {
+        val cached = loadCache().takeIf { it.source == source.listingUrl } ?: UpdateCheckCache(source = source.listingUrl)
+        if (now - cached.lastCheckEpochSeconds < CHECK_INTERVAL_SECONDS) return cached.latestRelease
+        val release = fetchLatestRelease(source) ?: cached.latestRelease
+        saveCache(UpdateCheckCache(source.listingUrl, now, release))
+        return release
+    }
+
+    /** Selects the first stable, non-draft CLI release in GitHub's newest-first listing. */
     fun latestReleaseVersion(releases: List<GitHubRelease>): String? =
         releases.asSequence()
             .filter { !it.draft && !it.prerelease && it.tagName.startsWith(TAG_PREFIX) }
             .map { it.tagName.removePrefix(TAG_PREFIX) }
-            .firstOrNull { it.firstOrNull()?.isDigit() == true }
+            .firstOrNull(stableVersion::matches)
 
     /**
      * Compares two version strings (tolerating an optional leading `v` and
@@ -170,61 +214,24 @@ object UpdateChecker {
         return rPre > cPre
     }
 
-    /**
-     * Passive, throttled "update available" notice, intended to run after a
-     * command completes. No-ops for dev builds, opted-out users, non-interactive
-     * terminals, and when already up to date. Refreshes from GitHub at most
-     * once per [CHECK_INTERVAL_SECONDS]; otherwise it reports from cache instantly.
-     * Every failure is swallowed.
-     */
+    /** Displays a cached, daily update notice for interactive terminals; errors never disrupt commands. */
     fun maybeNotify() {
         runCatching {
-            if (suppressPassive || notified.get()) return
-            if (Version.isDev) return
-            if (!isEnabled()) return
-            if (!isInteractive()) return
-
-            val repository = releasesRepository()
-            val cache = loadCache()
-            val now = System.currentTimeMillis() / 1000
-            var latest = cache.latestVersion
-
-            if (now - cache.lastCheckEpochSeconds >= CHECK_INTERVAL_SECONDS) {
-                val fetched = fetchLatestVersion(repository)
-                // Record the attempt regardless of outcome so we don't re-check
-                // every invocation while offline; keep the prior known-latest.
-                saveCache(UpdateCheckCache(lastCheckEpochSeconds = now, latestVersion = fetched ?: cache.latestVersion))
-                if (fetched != null) latest = fetched
-            }
-
-            val newest = latest ?: return
-            if (isNewer(newest, Version.current) && notified.compareAndSet(false, true)) {
-                printNotice(Version.current, newest, repository)
+            if (suppressPassive || notified.get() || Version.isDev || !isEnabled() || System.console() == null) return
+            val release = cachedLatestRelease(releaseSource()) ?: return
+            if (isNewer(release.version, Version.current) && notified.compareAndSet(false, true)) {
+                System.err.println()
+                System.err.println("A new release of bosca is available: " + Version.current + " → " + release.version)
+                System.err.println("  Update: " + installCommand(release))
             }
         }
     }
 
-    // ── Internals ────────────────────────────────────────────────────────────
-
-    /** Update checks are on by default; opt out via env. */
     private fun isEnabled(): Boolean {
         if (!System.getenv("BOSCA_NO_UPDATE_CHECK").isNullOrEmpty()) return false
         return when (System.getenv("BOSCA_UPDATE_CHECK")?.trim()?.lowercase()) {
             "0", "false", "no", "off" -> false
             else -> true
         }
-    }
-
-    /**
-     * True only when attached to a real terminal. `System.console()` is null
-     * when stdio is piped/redirected (CI, scripts, the embedded MCP server), so
-     * this keeps the nudge out of non-interactive contexts.
-     */
-    private fun isInteractive(): Boolean = System.console() != null
-
-    private fun printNotice(current: String, latest: String, repository: String) {
-        System.err.println()
-        System.err.println("A new release of bosca is available: $current → $latest")
-        System.err.println("  Update: ${installCommand(repository)}")
     }
 }

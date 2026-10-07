@@ -82,8 +82,9 @@ require_linux_x86_64() {
 # Builds <project>:nativeCompile and copies <binary> to <context>/artifacts/$STAGE/<staged>/.
 stage_native() {
   local project="$1" project_dir="$2" binary="$3" context="$4" staged="$5"
+  shift 5
   require_linux_x86_64
-  gradle --no-configuration-cache "$project:nativeCompile"
+  gradle --no-configuration-cache "$@" "$project:nativeCompile"
   local destination="$context/artifacts/$STAGE/$staged"
   rm -rf "$destination"
   mkdir -p "$destination"
@@ -113,7 +114,7 @@ docker_build() {
 
 case "$IMAGE" in
   bosca-server)
-    stage_native :server:bosca-server server/bosca-server bosca-server server bosca-server-native
+    stage_native :server:bosca-server server/bosca-server bosca-server server bosca-server-native -Pbosca.scripting.engine=false
     docker_build server server/bosca-server/Dockerfile.graalvm --build-arg "ARTIFACT_SHA=$STAGE"
     ;;
   bosca-runner)
