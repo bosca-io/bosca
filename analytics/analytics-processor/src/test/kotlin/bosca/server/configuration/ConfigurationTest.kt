@@ -3,11 +3,16 @@ package bosca.server.configuration
 import bosca.analytics.livesessions.LiveSessionsService
 import bosca.analytics.livesessions.nats.NatsLiveSessions
 import bosca.analytics.livesessions.redis.RedisLiveSessions
+import bosca.configuration.RedisModule
+import bosca.counter.Counter
+import bosca.counter.CounterModule
+import bosca.counter.redis.RedisCounter
 import bosca.di.AnalyticsProcessorProviderRegistrar
 import bosca.di.ProviderRegistry
 import bosca.di.asProvider
 import bosca.di.annotation.InternalDI
 import bosca.di.annotation.Provider
+import bosca.di.provide
 import bosca.nats.NatsConnectionPool
 import bosca.redis.RedisConnectionPool
 import bosca.server.BoscaApplication
@@ -31,6 +36,21 @@ class ConfigurationTest {
     @AfterTest
     fun tearDown() {
         ProviderRegistry.clear()
+    }
+
+    @Test
+    fun `packaged configuration registers Redis and resolves the Redis counter`() = runTest {
+        val application = BoscaApplication(ApplicationConfig.loadFromClasspath())
+
+        try {
+            application.install(RedisModule())
+            application.install(CounterModule())
+
+            assertTrue(ProviderRegistry.get(RedisConnectionPool::class).exists)
+            assertIs<RedisCounter>(provide<Counter>())
+        } finally {
+            application.shutdown()
+        }
     }
 
     @Test
