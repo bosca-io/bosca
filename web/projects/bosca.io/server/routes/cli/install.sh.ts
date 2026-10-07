@@ -20,7 +20,7 @@ export default defineEventHandler(async (e) => {
   }
 
   const repository = source.origin + rawInstaller[1] + '/' + rawInstaller[2]
-  const quotedRepository = "'" + repository.replaceAll("'", "'\\''") + "'"
+  const quotedRepository = '\'' + repository.replaceAll('\'', '\'\\\'\'') + '\''
   setHeader(e, 'Content-Type', 'text/x-shellscript; charset=utf-8')
   return `#!/bin/sh
 if [ -z "\${BOSCA_CLI_ARTIFACTS_URL:-}" ]; then

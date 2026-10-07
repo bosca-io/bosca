@@ -6,6 +6,7 @@
     "build": "nuxt build",
     "dev": "nuxt dev",
     "preview": "nuxt preview",
+    "test:installer": "node --test scripts/cli-installer.test.mjs",
     "nuxt:prepare": "nuxt prepare",
     "lint": "nuxt prepare && eslint .",
     "typecheck": "nuxt typecheck"
