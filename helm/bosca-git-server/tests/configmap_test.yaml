@@ -11,6 +11,12 @@ release:
   name: test
   namespace: bosca
 tests:
+  - it: does not require a Git-specific pipeline key configuration
+    asserts:
+      - notMatchRegex:
+          path: data["application.yaml"]
+          pattern: 'PIPELINE_SECRET_KEY|secretKey:.*pipeline'
+
   - it: derives the Studio URL from the deployment domain
     asserts:
       - matchRegex:

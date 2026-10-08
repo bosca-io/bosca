@@ -19,6 +19,22 @@ files. Update the chart source to the public GitHub location. Moving from a 6.x
 or 7.x version to 0.1.0 requires an explicit version selection; existing semver
 ranges do not automatically select the smaller version.
 
+## Pipeline encryption key
+
+The server, runner and Git server inherit `PIPELINE_SECRET_KEY` from their shared
+environment ConfigMaps (`server-v3-env` by default). The Git server does not
+override this with a separate Kubernetes Secret. When customizing
+`envFromConfigMaps`, supply the same pipeline key to all three applications.
+
+Before upgrading an existing deployment, preserve the effective key used by the
+server and runner to encrypt its stored pipeline secrets. The key must be a
+Base64-encoded AES key (16, 24 or 32 bytes after decoding). The old Git server
+`secrets.pipeline` values are no longer used. If the server and runner currently
+use the application's development fallback, removing the Git override makes it
+use that same fallback; moving stored secrets to a different key requires an
+explicit re-encryption migration. Restart all affected pods after changing a
+shared environment ConfigMap.
+
 ## Maintainer release process
 
 `.bosca/pipelines/release-helm.yaml` publishes each chart to Bosca Artifacts' HTTP

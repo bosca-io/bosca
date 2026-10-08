@@ -1,0 +1,55 @@
+suite: bosca-services shared pipeline key
+templates:
+  - charts/bosca-server/templates/deployment.yaml
+  - charts/bosca-server/templates/configmap-appconfig.yaml
+  - charts/bosca-runner/templates/statefulset.yaml
+  - charts/bosca-runner/templates/configmap-appconfig.yaml
+  - charts/bosca-git-server/templates/deployment.yaml
+  - charts/bosca-git-server/templates/configmap-appconfig.yaml
+values:
+  - ../values.yaml
+set:
+  global.domain: example.com
+  bosca-git-server.enabled: true
+tests:
+  - it: the server inherits the shared pipeline key
+    template: charts/bosca-server/templates/deployment.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].envFrom
+          content:
+            configMapRef:
+              name: server-v3-env
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: PIPELINE_SECRET_KEY
+          any: true
+
+  - it: the runner inherits the shared pipeline key
+    template: charts/bosca-runner/templates/statefulset.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].envFrom
+          content:
+            configMapRef:
+              name: server-v3-env
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: PIPELINE_SECRET_KEY
+          any: true
+
+  - it: the Git server inherits the shared pipeline key
+    template: charts/bosca-git-server/templates/deployment.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].envFrom
+          content:
+            configMapRef:
+              name: server-v3-env
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: PIPELINE_SECRET_KEY
+          any: true

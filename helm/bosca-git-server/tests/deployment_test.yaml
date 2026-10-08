@@ -30,17 +30,31 @@ tests:
           path: spec.template.spec.containers[0].args[0]
           value: "-config=/app/config/application.yaml"
 
-  - it: injects PIPELINE_SECRET_KEY
+  - it: inherits the pipeline key from the shared server environment without overriding it
     template: templates/deployment.yaml
     asserts:
       - contains:
+          path: spec.template.spec.containers[0].envFrom
+          content:
+            configMapRef:
+              name: server-v3-env
+      - notContains:
           path: spec.template.spec.containers[0].env
           content:
             name: PIPELINE_SECRET_KEY
-            valueFrom:
-              secretKeyRef:
-                name: pipeline
-                key: secret_key
+          any: true
+
+  - it: does not override the shared pipeline key when old pipeline values are supplied
+    template: templates/deployment.yaml
+    set:
+      secrets.pipeline.secretName: obsolete-pipeline
+      secrets.pipeline.key: secret_key
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: PIPELINE_SECRET_KEY
+          any: true
 
   - it: injects MEILISEARCH_API_KEY
     template: templates/deployment.yaml

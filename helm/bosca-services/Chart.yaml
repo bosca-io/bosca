@@ -2,7 +2,7 @@ apiVersion: v2
 name: bosca-services
 description: Bosca application services — requires bosca-infra to be deployed first
 type: application
-version: 0.1.0
+version: 0.1.1
 dependencies:
   - name: bosca-common
     version: ">=0.1.0"

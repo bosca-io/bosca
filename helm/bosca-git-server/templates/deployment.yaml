@@ -114,13 +114,6 @@ spec:
                   name: {{ . }}
                   key: {{ $.Values.secrets.url.key }}
             {{- end }}
-            {{- with .Values.secrets.pipeline.secretName }}
-            - name: PIPELINE_SECRET_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: {{ . }}
-                  key: {{ $.Values.secrets.pipeline.key }}
-            {{- end }}
           volumeMounts:
             - name: app-config
               mountPath: /app/config

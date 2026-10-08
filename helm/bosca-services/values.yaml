@@ -42,7 +42,6 @@
 #   google-account           | account                       | server, runner
 #   facebook                 | app_id, app_secret            | server, runner
 #   scrypt-key               | key, salt, mem_cost, rounds   | server, runner, artifacts
-#   pipeline                 | secret_key                    | git
 #   recommendation-ml        | bosca_token,                  | recommendation-trainer (data), tf-serving loader
 #                            | artifacts_push_token,         | (artifacts_push_token = trainer model push;
 #                            | artifacts_pull_token          |  artifacts_pull_token = trainer lineage read + loader pull)
@@ -246,7 +245,8 @@ bosca-artifacts-server:
       create: false
 
 # ─── bosca-git-server ───────────────────────────────────────────────
-# Consumes from secrets.yaml: pg-creds-bosca-git-server, nats, jwt, url, s3, meilisearch-master-key, pipeline.
+# Consumes from secrets.yaml: pg-creds-bosca-git-server, nats, jwt, url, s3, meilisearch-master-key.
+# Inherits PIPELINE_SECRET_KEY from the same environment ConfigMaps as server and runner.
 bosca-git-server:
   enabled: false
   secrets:
@@ -261,8 +261,6 @@ bosca-git-server:
     s3:
       create: false
     meilisearch:
-      create: false
-    pipeline:
       create: false
 
 # ─── bosca-collector ────────────────────────────────────────────────

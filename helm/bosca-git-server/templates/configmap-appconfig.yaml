@@ -65,9 +65,6 @@ data:
           max: {{ .Values.appConfig.pushRateLimit.max }}
           window-seconds: {{ .Values.appConfig.pushRateLimit.windowSeconds }}
 
-    pipeline:
-      secretKey: $PIPELINE_SECRET_KEY
-
     meilisearch:
       url: http://{{ .Values.appConfig.meilisearchHost }}.{{ .Release.Namespace }}.svc.cluster.local:7700
       apiKey: $MEILISEARCH_API_KEY

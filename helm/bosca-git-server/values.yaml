@@ -72,6 +72,7 @@ appConfig:
     max: 10000
     windowSeconds: 3600
 
+# Shared with bosca-server and bosca-runner, including PIPELINE_SECRET_KEY.
 envFromConfigMaps:
   - server-v3-env
   - otel-env
@@ -111,11 +112,6 @@ secrets:
     create: true
     secretName: url
     key: secret
-    value: ""
-  pipeline:
-    create: true
-    secretName: pipeline
-    key: secret_key
     value: ""
 
 imagePullSecrets:
