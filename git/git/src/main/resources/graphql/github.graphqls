@@ -78,6 +78,14 @@ type GitHubRepositoryPair {
     version: Long!
     created: DateTime!
     modified: DateTime!
+    "Automatic push branch include globs; empty includes match all."
+    pushBranchIncludes: [String!]!
+    "Automatic push branch exclude globs; empty excludes match none."
+    pushBranchExcludes: [String!]!
+    "Automatic pull branch include globs; empty includes match all."
+    pullBranchIncludes: [String!]!
+    "Automatic pull branch exclude globs; empty excludes match none."
+    pullBranchExcludes: [String!]!
 }
 
 enum GitHubRefResolution { BOSCA GITHUB }
@@ -102,6 +110,14 @@ input GitHubRepositoryPairInput {
     tokenSecretName: String!
     enabled: Boolean! = false
     version: Long! = 0
+    "Automatic push branch include globs; empty includes match all."
+    pushBranchIncludes: [String!]! = []
+    "Automatic push branch exclude globs; empty excludes match none."
+    pushBranchExcludes: [String!]! = []
+    "Automatic pull branch include globs; empty includes match all."
+    pullBranchIncludes: [String!]! = []
+    "Automatic pull branch exclude globs; empty excludes match none."
+    pullBranchExcludes: [String!]! = []
 }
 
 "An administrator-verified human user mapping; permissions remain group-based."

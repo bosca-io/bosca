@@ -17,6 +17,10 @@ data class GitHubRepositoryPair(
     @ColumnName("token_secret_name") val tokenSecretName: String,
     val enabled: Boolean = false,
     val version: Long = 0,
+    @ColumnName("push_branch_includes") val pushBranchIncludes: List<String> = emptyList(),
+    @ColumnName("push_branch_excludes") val pushBranchExcludes: List<String> = emptyList(),
+    @ColumnName("pull_branch_includes") val pullBranchIncludes: List<String> = emptyList(),
+    @ColumnName("pull_branch_excludes") val pullBranchExcludes: List<String> = emptyList(),
     @Contextual val created: OffsetDateTime = OffsetDateTime.now(),
     @Contextual val modified: OffsetDateTime = OffsetDateTime.now(),
 )
@@ -32,4 +36,8 @@ data class GitHubRepositoryPairInput(
     val tokenSecretName: String,
     val enabled: Boolean = false,
     val version: Long = 0,
+    val pushBranchIncludes: List<String> = emptyList(),
+    val pushBranchExcludes: List<String> = emptyList(),
+    val pullBranchIncludes: List<String> = emptyList(),
+    val pullBranchExcludes: List<String> = emptyList(),
 )

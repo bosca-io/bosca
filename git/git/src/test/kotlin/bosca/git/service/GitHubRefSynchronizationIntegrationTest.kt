@@ -157,7 +157,7 @@ class GitHubRefSynchronizationIntegrationTest {
                 "create table git.dfs_refs" + it.substringBefore("create table git.repository_permissions")
             }) { it.execute() }
             for (name in listOf("V23__dfs_pack_soft_delete.sql", "V44__github_intake.sql", "V45__github_ref_synchronization.sql",
-                "V3__pull_requests.sql", "V46__github_pull_request_synchronization.sql", "V47__github_delivery_problems.sql")) {
+                "V3__pull_requests.sql", "V46__github_pull_request_synchronization.sql", "V47__github_delivery_problems.sql", "V48__github_branch_filters.sql")) {
                 connection().useStatement(migration(name)) { it.execute() }
             }
             service.savePair(GitHubRepositoryPairInput(repositoryId, 123, "bosca-io", "source", "webhook", "token", true))
@@ -214,6 +214,63 @@ class GitHubRefSynchronizationIntegrationTest {
             repository.saveRefState(GitHubRefState(repositoryId, ref, sha.name(), synchronized = true,
                 boscaSha = sha.name(), githubSha = sha.name(), unattributedBeforeSha = ObjectId.zeroId().name()))
         }
+    }
+
+    private suspend fun filterBranches(push: List<String> = emptyList(), pull: List<String> = emptyList()) = withConnectionManager {
+        val pair = checkNotNull(service.findPair(repositoryId))
+        service.savePair(GitHubRepositoryPairInput(repositoryId, pair.githubRepositoryId, pair.owner, pair.name,
+            pair.webhookSecretName, pair.tokenSecretName, true, pair.version,
+            pushBranchExcludes = push, pullBranchExcludes = pull))
+    }
+
+    @Test fun `filtered verified push is neither imported nor redispatched and can retry after enabling the branch`() = runBlocking {
+        filterBranches(pull = listOf("**"))
+        val head = commit(); setRemote(head)
+        val receipt = receive(null, head)
+        assertEquals(GitHubSyncResult.IGNORED, service.synchronizePush(receipt))
+        assertTrue(service.reconcileRefs(repositoryId).isEmpty())
+        withConnectionManager {
+            assertNull(refs.findByName(repositoryId, ref))
+            assertNull(repository.findPushResult(receipt.deliveryId))
+            assertNull(repository.findRefState(repositoryId, ref))
+        }
+        assertTrue(emitted.isEmpty())
+        filterBranches()
+        assertEquals(GitHubSyncResult.APPLIED, service.synchronizePush(receipt))
+        withConnectionManager { assertEquals(head.name(), refs.findByName(repositoryId, ref)?.objectId) }
+        assertEquals(listOf<UUID?>(principalId), emitted)
+    }
+
+    @Test fun `background filters block branch creation and tracked deletion but still transfer tags`() = runBlocking {
+        val branch = createLocalRef()
+        val tag = createLocalRef("refs/tags/v1")
+        filterBranches(push = listOf("**"))
+        service.reconcileRefs(repositoryId)
+        assertNull(remote.resolve(ref)); assertEquals(tag, remote.resolve("refs/tags/v1"))
+        service.pushRefs(repositoryId, principalId)
+        assertEquals(branch, remote.resolve(ref))
+        deleteLocalRef()
+        service.reconcileRefs(repositoryId)
+        assertEquals(branch, remote.resolve(ref))
+        filterBranches()
+        service.reconcileRefs(repositoryId)
+        assertNull(remote.resolve(ref))
+    }
+
+    @Test fun `manual pull push reconcile and resolution override automatic filters`() = runBlocking {
+        filterBranches(push = listOf("**"), pull = listOf("**"))
+        val head = commit(); setRemote(head)
+        assertEquals(head.name(), service.pullRefs(repositoryId, principalId).single().sha)
+        val next = commit(head); setRemote(next)
+        assertEquals(next.name(), service.reconcileRefs(repositoryId, principalId).single().sha)
+        deleteLocalRef(); val local = createLocalRef()
+        assertEquals(local.name(), service.pushRefs(repositoryId, principalId).single().sha)
+        val remoteEdit = commit(local); setRemote(remoteEdit)
+        deleteLocalRef(); val divergent = createLocalRef()
+        assertTrue(service.pushRefs(repositoryId, principalId).single().conflict)
+        service.resolveRef(GitHubRefResolutionInput(repositoryId, ref, GitHubRefResolution.BOSCA, divergent.name(), remoteEdit.name()), principalId)
+        assertEquals(divergent, remote.resolve(ref))
+        withConnectionManager { assertEquals(divergent.name(), refs.findByName(repositoryId, ref)?.objectId) }
     }
 
     @Test fun `manual pull imports existing history and annotated tags without deliveries or mappings and notifies as the caller`() = runBlocking {
@@ -1108,5 +1165,43 @@ class GitHubRefSynchronizationIntegrationTest {
                 withConnectionManager { assertEquals(next.name(), refs.findByName(repositoryId, ref)?.objectId) }
             }
         }
+    }
+
+    @Test fun `disabled pull still allows scheduled outbound fast forwards`() = runBlocking {
+        val base = commit(); setRemote(base)
+        service.pullRefs(repositoryId, principalId)
+        val middle = commit(base); setRemote(middle)
+        withConnectionManager {
+            writes.synchronizeRef(RefSynchronizationInput(repositoryId, directory.toURI().toString(), "token", ref,
+                base.name(), middle.name(), base.name(), true, RefSynchronizationDirection.INBOUND, principalId))
+        }
+        val ahead = withConnectionManager {
+            manager.open(repositoryId).use { repo ->
+                commit(middle, repo).also { sha -> repo.updateRef(ref).apply { setNewObjectId(sha) }.update() }
+            }
+        }
+        filterBranches(pull = listOf("main"))
+        service.reconcileRefs(repositoryId)
+        assertEquals(ahead, remote.resolve(ref))
+        withConnectionManager { assertEquals(ahead.name(), repository.findRefState(repositoryId, ref)?.sha) }
+    }
+
+    @Test fun `blocked outbound fallback records observed divergence`() = runBlocking {
+        val base = commit(); setRemote(base)
+        service.pullRefs(repositoryId, principalId)
+        val remoteEdit = commit(base); setRemote(remoteEdit)
+        val localEdit = withConnectionManager {
+            manager.open(repositoryId).use { repo ->
+                commit(base, repo).also { sha -> repo.updateRef(ref).apply { setNewObjectId(sha) }.update() }
+            }
+        }
+        filterBranches(push = listOf("main"))
+        val observed = service.reconcileRefs(repositoryId).single()
+        assertEquals(localEdit.name(), observed.boscaSha)
+        assertEquals(remoteEdit.name(), observed.githubSha)
+        assertTrue(observed.conflict)
+        assertEquals(base.name(), observed.sha)
+        assertEquals(remoteEdit, remote.resolve(ref))
+        withConnectionManager { assertEquals(localEdit.name(), refs.findByName(repositoryId, ref)?.objectId) }
     }
 }

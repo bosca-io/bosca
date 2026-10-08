@@ -129,6 +129,10 @@ class GitHubRepositoryPairController : GraphQLController<GitHubRepositoryPair> {
     @Field fun name(source: GitHubRepositoryPair): String = source.name
     @Field fun webhookSecretName(source: GitHubRepositoryPair): String = source.webhookSecretName
     @Field fun tokenSecretName(source: GitHubRepositoryPair): String = source.tokenSecretName
+    @Field fun pushBranchIncludes(source: GitHubRepositoryPair): List<String> = source.pushBranchIncludes
+    @Field fun pushBranchExcludes(source: GitHubRepositoryPair): List<String> = source.pushBranchExcludes
+    @Field fun pullBranchIncludes(source: GitHubRepositoryPair): List<String> = source.pullBranchIncludes
+    @Field fun pullBranchExcludes(source: GitHubRepositoryPair): List<String> = source.pullBranchExcludes
     @Field fun enabled(source: GitHubRepositoryPair): Boolean = source.enabled
     @Field fun version(source: GitHubRepositoryPair): Long = source.version
     @Field fun created(source: GitHubRepositoryPair): OffsetDateTime = source.created

@@ -135,7 +135,7 @@ class GitHubPullRequestSynchronizationIntegrationTest {
         }
         db {
             connection().useStatement("drop schema if exists git cascade; create schema git; create table git.repositories(id uuid primary key)") { it.execute() }
-            for (name in listOf("V3__pull_requests.sql", "V6__review_comments.sql", "V44__github_intake.sql", "V45__github_ref_synchronization.sql", "V46__github_pull_request_synchronization.sql", "V47__github_delivery_problems.sql")) {
+            for (name in listOf("V3__pull_requests.sql", "V6__review_comments.sql", "V44__github_intake.sql", "V45__github_ref_synchronization.sql", "V46__github_pull_request_synchronization.sql", "V47__github_delivery_problems.sql", "V48__github_branch_filters.sql")) {
                 connection().useStatement(javaClass.getResource("/db/migrations/$name")?.readText() ?: error(name)) { it.execute() }
             }
             connection().useStatement("create table git.dfs_refs(repository_id uuid, name text, object_id text, updated timestamptz)") { it.execute() }
@@ -167,6 +167,24 @@ class GitHubPullRequestSynchronizationIntegrationTest {
             body = if (body != null) body.contentOrNull else remote.body,
             state = input.state ?: remote.state, base = remote.base.copy(ref = input.base ?: remote.base.ref))
         return remote
+    }
+
+    @Test fun `PR branch transfers cannot bypass either automatic direction filter`(): Unit = runBlocking {
+        db {
+            val pair = checkNotNull(service.findPair(repositoryId))
+            service.savePair(GitHubRepositoryPairInput(repositoryId, 123, "owner", "source", "webhook", "token", true,
+                pair.version, pushBranchExcludes = listOf("feature"), pullBranchExcludes = listOf("feature")))
+        }
+        coEvery { writes.compareRefs(any(), any(), any()) } returns listOf(
+            RefComparison("refs/heads/feature", "1".repeat(40), "3".repeat(40)),
+            RefComparison("refs/heads/main", "2".repeat(40), "2".repeat(40)),
+        )
+        assertEquals(GitHubSyncResult.CONFLICT, service.synchronizePullRequest(delivery()))
+        assertTrue(states().single().problem?.contains("filtered") == true)
+        val local = create()
+        assertEquals(GitHubSyncResult.CONFLICT, service.synchronizePullRequest(event(local)))
+        assertEquals(0, created)
+        coVerify(exactly = 0) { writes.synchronizeRef(any()) }
     }
 
     @Test fun `imports original author once and redelivery and echoes do not create or update another PR`(): Unit = runBlocking {
@@ -1404,5 +1422,21 @@ class GitHubPullRequestSynchronizationIntegrationTest {
             assertNull(nativeRepository.updateMergeState(pr.copy(status = PullRequestStatus.MERGED)))
             assertEquals("First", native.findById(pr.id)?.title)
         }
+    }
+
+    @Test fun `filtered matching refs allow PR metadata updates in both directions`(): Unit = runBlocking {
+        val pr = create()
+        assertEquals(GitHubSyncResult.APPLIED, service.synchronizePullRequest(event(pr)))
+        db {
+            val pair = checkNotNull(service.findPair(repositoryId))
+            service.savePair(GitHubRepositoryPairInput(repositoryId, 123, "owner", "source", "webhook", "token", true,
+                pair.version, pushBranchExcludes = listOf("main"), pullBranchExcludes = listOf("main")))
+            native.update(pr.id, UpdatePullRequestInput(title = "Updated title"))
+        }
+        assertEquals(GitHubSyncResult.APPLIED, service.synchronizePullRequest(event(pr)))
+        assertEquals("Updated title", remote.title)
+        remote = remote.copy(title = "Inbound title")
+        assertEquals(GitHubSyncResult.APPLIED, service.synchronizePullRequest(delivery()))
+        assertEquals("Inbound title", db { native.findById(pr.id) }?.title)
     }
 }

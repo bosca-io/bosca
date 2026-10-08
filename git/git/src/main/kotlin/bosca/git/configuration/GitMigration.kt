@@ -58,5 +58,6 @@ class GitMigration : Migration {
         "V45__github_ref_synchronization.sql",
         "V46__github_pull_request_synchronization.sql",
         "V47__github_delivery_problems.sql",
+        "V48__github_branch_filters.sql",
     )
 }

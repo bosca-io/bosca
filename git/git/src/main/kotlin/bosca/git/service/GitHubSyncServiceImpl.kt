@@ -93,6 +93,11 @@ class GitHubSyncServiceImpl(
             val target = if (direction == RefSynchronizationDirection.INBOUND) current?.localSha else current?.remoteSha
             // Only the other host moved or deleted this branch. Its own push or reconciliation transfers it in that direction.
             if (baseline != null && baseline.synchronized && !baseline.conflict && after == baseline.sha && target != baseline.sha) continue
+            if (!allowsAutomaticRef(pair, ref, direction)) {
+                // Matching refs need no transfer before synchronizing PR metadata.
+                if (after == target) continue
+                return false
+            }
             val result = if (direction == RefSynchronizationDirection.INBOUND) {
                 if (after == target) {
                     val principal = remote?.let { authorizedPullRequestPrincipal(pair, it) } ?: return false
@@ -280,6 +285,10 @@ class GitHubSyncServiceImpl(
         require(input.githubRepositoryId?.let { it > 0 } != false && input.version >= 0) { "Invalid GitHub repository ID or version" }
         require(input.owner.matches(SEGMENT) && input.name.matches(SEGMENT)) { "Invalid GitHub owner or repository name" }
         require(input.webhookSecretName.isNotBlank() && input.tokenSecretName.isNotBlank()) { "Secret names are required" }
+        require(listOf(input.pushBranchIncludes, input.pushBranchExcludes, input.pullBranchIncludes, input.pullBranchExcludes)
+            .flatten().all { it.isNotBlank() && it == it.trim() && !it.startsWith("refs/") }) {
+            "Branch filters must contain nonblank branch name patterns without the refs/ prefix or surrounding whitespace"
+        }
         val hosted = repositoryService.findById(input.repositoryId)
             ?: throw NoSuchElementException("Repository not found: ${input.repositoryId}")
         require(!input.enabled || (!hosted.deleted && !hosted.archived)) { "Repository is unavailable for synchronization" }
@@ -301,6 +310,10 @@ class GitHubSyncServiceImpl(
             repositoryId = input.repositoryId, githubRepositoryId = githubRepositoryId,
             owner = input.owner, name = input.name, webhookSecretName = input.webhookSecretName,
             tokenSecretName = input.tokenSecretName, enabled = input.enabled, version = input.version,
+            pushBranchIncludes = input.pushBranchIncludes.distinct(),
+            pushBranchExcludes = input.pushBranchExcludes.distinct(),
+            pullBranchIncludes = input.pullBranchIncludes.distinct(),
+            pullBranchExcludes = input.pullBranchExcludes.distinct(),
         )
         if (current == null) {
             return repository.createPair(pair)
@@ -332,6 +345,13 @@ class GitHubSyncServiceImpl(
 
     override suspend fun deliveryImportProblem(delivery: GitHubDelivery): String? {
         if (delivery.ignored || (delivery.event == "push" && repository.findPushResult(delivery.deliveryId) != null)) return null
+        if (delivery.event == "push") {
+            val pair = repository.findPair(delivery.repositoryId)
+            val push = json.decodeFromJsonElement(GitHubPush.serializer(), delivery.payload)
+            if (pair != null && !allowsAutomaticRef(pair, push.ref, RefSynchronizationDirection.INBOUND)) {
+                return "This branch is excluded from automatic pulls by the repository's GitHub synchronization filters."
+            }
+        }
         val principalId = delivery.principalId ?: return "No Bosca user was mapped when this delivery arrived. " +
             "Add a GitHub user mapping for future deliveries. For existing branches and tags, use Pull from GitHub; redelivery preserves the original unmapped identity."
         val principal = securityService.getPrincipalById(principalId)?.takeIf { it.deletedAt == null }
@@ -455,6 +475,7 @@ class GitHubSyncServiceImpl(
         if (verified.ignored || verified.event != "push") return GitHubSyncResult.IGNORED
         repository.findPushResult(verified.deliveryId)?.let { return GitHubSyncResult.valueOf(it) }
         val push = json.decodeFromJsonElement(GitHubPush.serializer(), verified.payload)
+        if (!allowsAutomaticRef(pair, push.ref, RefSynchronizationDirection.INBOUND)) return GitHubSyncResult.IGNORED
         val token = token(pair)
         val url = github.repositoryUrl(pair, token)
         if (!canEdit(pair, verified.principalId)) {
@@ -474,6 +495,7 @@ class GitHubSyncServiceImpl(
     }
 
     override suspend fun synchronizeRef(event: RefUpdateEvent): GitHubSyncResult = withPair(event.repositoryId, GitHubSyncResult.IGNORED) { pair ->
+        if (!allowsAutomaticRef(pair, event.ref, RefSynchronizationDirection.OUTBOUND)) return@withPair GitHubSyncResult.IGNORED
         val token = token(pair)
         val url = github.repositoryUrl(pair, token)
         synchronize(pair, event.ref, event.beforeSha, event.afterSha, RefSynchronizationDirection.OUTBOUND, null, url, token)
@@ -512,7 +534,7 @@ class GitHubSyncServiceImpl(
                 if (inbound) input.expectedBoscaSha else input.expectedGitHubSha,
                 if (inbound) input.expectedGitHubSha else input.expectedBoscaSha,
                 if (inbound) RefSynchronizationDirection.INBOUND else RefSynchronizationDirection.OUTBOUND,
-                principalId, url, token, triggerBuild = inbound, resolveConflict = true)
+                principalId, url, token, triggerBuild = inbound, resolveConflict = true, applyBranchFilters = false)
             outcome to checkNotNull(repository.findRefState(input.repositoryId, input.ref))
         }
         check(outcome == GitHubSyncResult.APPLIED || outcome == GitHubSyncResult.UNCHANGED) {
@@ -544,7 +566,7 @@ class GitHubSyncServiceImpl(
                 // A one-direction transfer does not delete destination-only refs without a common baseline.
                 if (after != null || baseline?.synchronized == true) {
                     synchronize(lockedPair, ref, baseline?.sha, after, direction, principalId, url, token,
-                        triggerBuild = direction == RefSynchronizationDirection.INBOUND)
+                        triggerBuild = direction == RefSynchronizationDirection.INBOUND, applyBranchFilters = false)
                     repository.findRefState(repositoryId, ref)?.let(result::add)
                 }
             }
@@ -600,7 +622,8 @@ class GitHubSyncServiceImpl(
                 check(lockedPair.version == pair.version) { "GitHub repository pair changed during reconciliation" }
                 if (principalId != null && !canEdit(lockedPair, principalId)) throw SecurityException("Repository EDIT permission is required")
                 val pending = repository.findPendingPushDeliveries(repositoryId, ref)
-                if (principalId == null && pending.isNotEmpty()) {
+                if (principalId == null && pending.isNotEmpty() &&
+                    allowsAutomaticRef(lockedPair, ref, RefSynchronizationDirection.INBOUND)) {
                     // The normal import pipeline owns these verified occurrences and their attribution.
                     pending.forEach { it.dispatch() }
                     return@withRefSynchronizationTransaction listOfNotNull(repository.findRefState(repositoryId, ref))
@@ -621,22 +644,29 @@ class GitHubSyncServiceImpl(
                 if (principalId != null) {
                     val direction = if (outbound) RefSynchronizationDirection.OUTBOUND else RefSynchronizationDirection.INBOUND
                     val result = synchronize(lockedPair, ref, baseline?.sha, if (outbound) local else remote,
-                        direction, principalId, url, token, triggerBuild = !outbound)
+                        direction, principalId, url, token, triggerBuild = !outbound, applyBranchFilters = false)
                     // Both hosts may have advanced along the same history; the safe direction can be outbound.
                     if (result == GitHubSyncResult.CONFLICT && !outbound && local != null && remote != null && ref.startsWith("refs/heads/")) {
                         synchronize(lockedPair, ref, baseline?.sha, local, RefSynchronizationDirection.OUTBOUND,
-                            principalId, url, token)
+                            principalId, url, token, applyBranchFilters = false)
                     }
                     return@withRefSynchronizationTransaction listOfNotNull(repository.findRefState(repositoryId, ref))
                 }
+                val canPull = allowsAutomaticRef(lockedPair, ref, RefSynchronizationDirection.INBOUND)
+                val canPush = allowsAutomaticRef(lockedPair, ref, RefSynchronizationDirection.OUTBOUND)
+                if (outbound && !canPush) {
+                    return@withRefSynchronizationTransaction listOfNotNull(baseline)
+                }
                 if (!outbound) {
-                    val receipt = repository.findPushDelivery(repositoryId, ref, remote ?: "0000000000000000000000000000000000000000")
-                    // Missing webhooks supply no user authority. Observe the divergence without importing it.
+                    val receipt = if (canPull) repository.findPushDelivery(repositoryId, ref,
+                        remote ?: "0000000000000000000000000000000000000000") else null
+                    // Without an eligible verified push, only an allowed outbound transfer can advance refs.
                     if (receipt == null) {
-                        if (baseline?.synchronized == true && local != baseline.sha && local != null && remote != null && ref.startsWith("refs/heads/")) {
+                        if (canPush && baseline?.synchronized == true && local != baseline.sha && local != null && remote != null && ref.startsWith("refs/heads/")) {
                             synchronize(lockedPair, ref, baseline.sha, local, RefSynchronizationDirection.OUTBOUND, null, url, token)
                             return@withRefSynchronizationTransaction listOfNotNull(repository.findRefState(repositoryId, ref))
                         }
+                        if (!canPull) return@withRefSynchronizationTransaction listOfNotNull(baseline)
                         val observed = repository.saveRefState(GitHubRefState(repositoryId, ref, sha = baseline?.sha,
                             synchronized = baseline?.synchronized == true, boscaSha = local, githubSha = remote,
                             conflict = baseline?.conflict == true || (baseline?.synchronized == true && local != baseline.sha && remote != baseline.sha)))
@@ -676,7 +706,9 @@ class GitHubSyncServiceImpl(
         pullRequestMerge: Boolean = false,
         triggerBuild: Boolean = verifiedPush,
         resolveConflict: Boolean = false,
+        applyBranchFilters: Boolean = true,
     ): GitHubSyncResult {
+        if (applyBranchFilters && !allowsAutomaticRef(pair, ref, direction)) return GitHubSyncResult.IGNORED
         if (direction == RefSynchronizationDirection.INBOUND && !canEdit(pair, principalId)) {
             throw SecurityException("The originating GitHub user requires Bosca repository EDIT permission")
         }
@@ -715,6 +747,16 @@ class GitHubSyncServiceImpl(
             unattributedRefModified = if (retainAttribution) state?.unattributedRefModified else null,
         ))
         return outcome.result
+    }
+
+    /** Branch globs use the same segment-aware matching as branch protection; tags remain eligible. */
+    private fun allowsAutomaticRef(pair: GitHubRepositoryPair, ref: String, direction: RefSynchronizationDirection): Boolean {
+        if (!ref.startsWith("refs/heads/")) return true
+        val branch = ref.removePrefix("refs/heads/")
+        val includes = if (direction == RefSynchronizationDirection.OUTBOUND) pair.pushBranchIncludes else pair.pullBranchIncludes
+        val excludes = if (direction == RefSynchronizationDirection.OUTBOUND) pair.pushBranchExcludes else pair.pullBranchExcludes
+        return (includes.isEmpty() || includes.any { BranchProtectionService.matchesGlob(it, branch) }) &&
+            excludes.none { BranchProtectionService.matchesGlob(it, branch) }
     }
 
     private suspend fun token(pair: GitHubRepositoryPair): String =

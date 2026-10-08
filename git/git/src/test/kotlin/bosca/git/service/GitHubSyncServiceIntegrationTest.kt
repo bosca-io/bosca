@@ -158,7 +158,7 @@ class GitHubSyncServiceIntegrationTest {
             val refMigration = javaClass.getResource("/db/migrations/V45__github_ref_synchronization.sql")?.readText()
                 ?: error("Missing ref migration")
             connection().useStatement(refMigration) { it.execute() }
-            for (name in listOf("V3__pull_requests.sql", "V46__github_pull_request_synchronization.sql", "V47__github_delivery_problems.sql")) {
+            for (name in listOf("V3__pull_requests.sql", "V46__github_pull_request_synchronization.sql", "V47__github_delivery_problems.sql", "V48__github_branch_filters.sql")) {
                 connection().useStatement(javaClass.getResource("/db/migrations/$name")?.readText() ?: error(name)) { it.execute() }
             }
             connection().useStatement("insert into git.repositories(id) values ('$repositoryId')") { it.execute() }
@@ -176,6 +176,58 @@ class GitHubSyncServiceIntegrationTest {
     private fun refEvent(before: String? = null, after: String? = sha) = RefUpdateEvent(
         repositoryId, "Source", ref, "main", GitRefKind.BRANCH, GitRefUpdateAction.UPDATED, before, after,
     )
+
+    @Test fun `pair filters round trip through generated JDBC mapping and reject invalid patterns`() = withDb {
+        val configured = input.copy(pushBranchIncludes = listOf("main", "release/*", "main"),
+            pushBranchExcludes = listOf("release/private"), pullBranchIncludes = listOf("feature/**"),
+            pullBranchExcludes = listOf("feature/wip/*"))
+        val created = service.savePair(configured)
+        assertEquals(listOf("main", "release/*"), created.pushBranchIncludes)
+        assertEquals(created, service.findPair(repositoryId))
+        val updated = service.savePair(configured.copy(version = created.version, pushBranchIncludes = emptyList(),
+            pullBranchExcludes = listOf("**")))
+        assertEquals(created.version + 1, updated.version)
+        assertTrue(updated.pushBranchIncludes.isEmpty())
+        assertEquals(listOf("**"), service.findPair(repositoryId)?.pullBranchExcludes)
+        assertEquals(configured.pushBranchExcludes, updated.pushBranchExcludes)
+        assertEquals(configured.pullBranchIncludes, updated.pullBranchIncludes)
+        for (pattern in listOf("", " ", " main", "main ", "refs/heads/main")) {
+            assertFailsWith<IllegalArgumentException> { service.savePair(input.copy(pushBranchIncludes = listOf(pattern))) }
+        }
+    }
+
+    @Test fun `filtered webhook stays retryable and reports the filter before checking permission`() = withDb {
+        service.savePair(input.copy(pullBranchExcludes = listOf("main")))
+        val receipt = receive(pushPayload())
+        assertEquals(GitHubSyncResult.IGNORED, service.synchronizePush(receipt))
+        assertNull(repository.findPushResult(receipt.deliveryId))
+        assertTrue(service.deliveryImportProblem(receipt)?.contains("excluded from automatic pulls") == true)
+        coVerify(exactly = 0) { writes.synchronizeRef(any()) }
+        coVerify(exactly = 0) { writes.compareRefs(any(), any(), any()) }
+        service.savePair(input)
+        service.mapUser(7, principalId)
+        // Intake attribution is immutable; a new mapped occurrence can apply after changing the filter.
+        val mapped = receive(pushPayload())
+        coEvery { writes.synchronizeRef(any()) } returns RefSynchronizationResult(GitHubSyncResult.APPLIED, sha, sha)
+        assertEquals(GitHubSyncResult.APPLIED, service.synchronizePush(mapped))
+    }
+
+    @Test fun `automatic push includes use segment globs and exclusions win without affecting tags`() = withDb {
+        service.savePair(input.copy(pushBranchIncludes = listOf("main", "release/*", "feature/**", "fix-?"),
+            pushBranchExcludes = listOf("release/private", "feature/wip/**"), pullBranchExcludes = listOf("**")))
+        coEvery { writes.synchronizeRef(any()) } answers {
+            val request = firstArg<RefSynchronizationInput>()
+            RefSynchronizationResult(GitHubSyncResult.APPLIED, request.afterSha, request.afterSha)
+        }
+        for (branch in listOf("main", "release/v1", "feature/team/one", "fix-a")) {
+            assertEquals(GitHubSyncResult.APPLIED, service.synchronizeRef(refEvent().copy(ref = "refs/heads/$branch", refName = branch)))
+        }
+        for (branch in listOf("other", "release/private", "release/team/v1", "feature/wip/one", "fix-ab")) {
+            assertEquals(GitHubSyncResult.IGNORED, service.synchronizeRef(refEvent().copy(ref = "refs/heads/$branch", refName = branch)))
+        }
+        assertEquals(GitHubSyncResult.APPLIED, service.synchronizeRef(refEvent().copy(ref = "refs/tags/v1")))
+        coVerify(exactly = 5) { writes.synchronizeRef(any()) }
+    }
 
     @Test fun `push synchronization persists a common baseline and redelivery cannot repeat the write`() = withDb {
         service.savePair(input); service.mapUser(7, principalId)
@@ -817,7 +869,8 @@ class GitHubSyncServiceIntegrationTest {
         val mutation = """mutation { github { savePair(input: {
             repositoryId: "$repositoryId", owner: "bosca-io", name: "source",
             webhookSecretName: "github-webhook", tokenSecretName: "github-token", enabled: true
-        }) { repositoryId githubRepositoryId owner name webhookSecretName tokenSecretName enabled version created modified } } }"""
+        }) { repositoryId githubRepositoryId owner name webhookSecretName tokenSecretName enabled version created modified
+            pushBranchIncludes pushBranchExcludes pullBranchIncludes pullBranchExcludes } } }"""
         val saved = graphQL.execute(admin, GraphQLRequest(query = mutation)).jsonObject
         assertFalse("errors" in saved, saved.toString())
         assertEquals("123", saved.getValue("data").jsonObject.getValue("github").jsonObject.getValue("savePair").jsonObject.getValue("githubRepositoryId").jsonPrimitive.content)
@@ -860,7 +913,8 @@ class GitHubSyncServiceIntegrationTest {
             githubId = 456, githubNumber = 7, snapshot = prSnapshot, boscaSnapshot = prSnapshot,
             githubSnapshot = prSnapshot.copy(title = "Other"), problem = "Concurrent edit"))
         val query = """{ github {
-            pair(repositoryId: "$repositoryId") { repositoryId githubRepositoryId owner name webhookSecretName tokenSecretName enabled version created modified }
+            pair(repositoryId: "$repositoryId") { repositoryId githubRepositoryId owner name webhookSecretName tokenSecretName enabled version created modified
+                pushBranchIncludes pushBranchExcludes pullBranchIncludes pullBranchExcludes }
             users { githubUserId principalId created modified }
             deliveries(repositoryId: "$repositoryId") { deliveryId repositoryId event payload githubUserId principalId ignored created }
             refStates(repositoryId: "$repositoryId") { repositoryId ref sha synchronized boscaSha githubSha conflict modified }

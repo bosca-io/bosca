@@ -85,8 +85,8 @@ interface GitHubSyncRepository {
 
     @Query("""
         insert into git.github_repository_pairs
-            (repository_id, github_repository_id, owner, name, webhook_secret_name, token_secret_name, enabled)
-        values (:repositoryId, :githubRepositoryId, :owner, :name, :webhookSecretName, :tokenSecretName, :enabled)
+            (repository_id, github_repository_id, owner, name, webhook_secret_name, token_secret_name, enabled, push_branch_includes, push_branch_excludes, pull_branch_includes, pull_branch_excludes)
+        values (:repositoryId, :githubRepositoryId, :owner, :name, :webhookSecretName, :tokenSecretName, :enabled, :pushBranchIncludes, :pushBranchExcludes, :pullBranchIncludes, :pullBranchExcludes)
         returning *
     """)
     suspend fun createPair(pair: GitHubRepositoryPair): GitHubRepositoryPair
@@ -94,7 +94,9 @@ interface GitHubSyncRepository {
     @Query("""
         update git.github_repository_pairs
         set owner = :owner, name = :name, webhook_secret_name = :webhookSecretName,
-            token_secret_name = :tokenSecretName, enabled = :enabled, version = version + 1, modified = now()
+            token_secret_name = :tokenSecretName, enabled = :enabled,
+            push_branch_includes = :pushBranchIncludes, push_branch_excludes = :pushBranchExcludes, pull_branch_includes = :pullBranchIncludes, pull_branch_excludes = :pullBranchExcludes,
+            version = version + 1, modified = now()
         where repository_id = :repositoryId and github_repository_id = :githubRepositoryId and version = :version
         returning *
     """)

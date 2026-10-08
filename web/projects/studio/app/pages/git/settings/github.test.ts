@@ -100,6 +100,28 @@ describe('GitHub sync administration', () => {
     })
   })
 
+  it('loads and saves separate automatic push and pull filters and reloads saved values', async () => {
+    const configured = { ...pair, pushBranchIncludes: ['main', 'release/*'], pushBranchExcludes: ['release/private'],
+      pullBranchIncludes: ['feature/**'], pullBranchExcludes: ['feature/wip/**'] }
+    query.mockResolvedValue({ github: { pair: configured }, pipelines: { secrets: [{ name: 'token' }, { name: 'webhook' }] } })
+    const wrapper = mountPair()
+    await flushPromises()
+    expect((wrapper.get('input[aria-label="Push: include branches"]').element as HTMLInputElement).value).toBe('main, release/*')
+    expect((wrapper.get('input[aria-label="Pull: exclude branches"]').element as HTMLInputElement).value).toBe('feature/wip/**')
+    await wrapper.get('input[aria-label="Push: include branches"]').setValue(' main, release/*, main, ')
+    await wrapper.get('input[aria-label="Pull: include branches"]').setValue('')
+    mutation.mockResolvedValueOnce({ github: { savePair: { ...configured, pullBranchIncludes: [], version: 8 } } })
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+    expect(mutation.mock.calls[0]?.[1].input).toMatchObject({ pushBranchIncludes: ['main', 'release/*'],
+      pushBranchExcludes: ['release/private'], pullBranchIncludes: [], pullBranchExcludes: ['feature/wip/**'] })
+    expect((wrapper.get('input[aria-label="Pull: include branches"]').element as HTMLInputElement).value).toBe('')
+    await button(wrapper, 'Reload pairing').trigger('click')
+    await flushPromises()
+    expect((wrapper.get('input[aria-label="Pull: include branches"]').element as HTMLInputElement).value).toBe('feature/**')
+    expect(wrapper.text()).toContain('Tags and manual Pull, Push, Reconcile, and Resolve actions are unaffected')
+  })
+
   it('saves secret references and uses the returned version on the next save', async () => {
     const wrapper = mountPair()
     await flushPromises()
@@ -110,7 +132,8 @@ describe('GitHub sync administration', () => {
     expect(mutation.mock.calls[0]?.[1]).toEqual({
       input: { repositoryId: pair.repositoryId, owner: 'renamed', name: pair.name,
         webhookSecretName: pair.webhookSecretName, tokenSecretName: pair.tokenSecretName,
-        enabled: pair.enabled, version: pair.version },
+        enabled: pair.enabled, version: pair.version,
+        pushBranchIncludes: [], pushBranchExcludes: [], pullBranchIncludes: [], pullBranchExcludes: [] },
     })
     await wrapper.get('form').trigger('submit')
     await flushPromises()
@@ -141,6 +164,7 @@ describe('GitHub sync administration', () => {
     expect(mutation.mock.calls[0]?.[1].input).toEqual({
       repositoryId: 'repo-1', owner: 'bosca', name: 'sync', webhookSecretName: 'webhook',
       tokenSecretName: 'token', version: 0, enabled: false,
+      pushBranchIncludes: [], pushBranchExcludes: [], pullBranchIncludes: [], pullBranchExcludes: [],
     })
   })
 
@@ -243,6 +267,7 @@ describe('GitHub sync administration', () => {
     expect(mutation.mock.calls[2]?.[1]).toEqual({ input: {
       repositoryId: 'repo-1', owner: 'new-owner', name: 'new-repo',
       webhookSecretName: 'new-webhook', tokenSecretName: 'new-token', enabled: true, version: 0,
+      pushBranchIncludes: [], pushBranchExcludes: [], pullBranchIncludes: [], pullBranchExcludes: [],
     } })
   })
 

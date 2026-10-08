@@ -35,6 +35,8 @@ interface GitHubSyncService : Service {
      * Creates or optimistically updates a pair; changing its immutable GitHub repository ID is forbidden.
      * An omitted ID is resolved with the referenced token on creation or when owner/name changes.
      * Unchanged existing targets retain their ID so synchronization can be disabled without credentials.
+     * Direction-specific branch include/exclude globs govern automatic transfers only; exclusions
+     * take priority and empty includes match all branches. Tags and manual ref actions are unaffected.
      */
     suspend fun savePair(input: GitHubRepositoryPairInput): GitHubRepositoryPair
 
@@ -72,6 +74,7 @@ interface GitHubSyncService : Service {
 
     /**
      * Applies a verified push once, retaining its original principal and surfacing concurrent edits.
+     * Automatic pull branch filters apply; excluded branches return IGNORED without consuming the occurrence.
      * The principal must retain current repository EDIT permission; destination branch protections apply.
      * Owns its transaction: ref changes, state and notification registration commit together,
      * independently of any caller transaction. A rolled-back import can retry its notifications.
@@ -79,7 +82,8 @@ interface GitHubSyncService : Service {
     suspend fun synchronizePush(delivery: GitHubDelivery): GitHubSyncResult
 
     /**
-     * Mirrors a native branch/tag occurrence without overwriting independently edited GitHub refs.
+     * Mirrors an eligible native branch/tag occurrence without overwriting independently edited GitHub refs.
+     * Automatic push branch filters apply; excluded branches return IGNORED.
      * Owns its synchronization transaction independently of any caller transaction.
      */
     suspend fun synchronizeRef(event: RefUpdateEvent): GitHubSyncResult
@@ -123,7 +127,7 @@ interface GitHubSyncService : Service {
     suspend fun reconcileRefs(repositoryId: UUID, principalId: UUID): List<GitHubRefState>
 
     /**
-     * Reconciles missed branch/tag changes with the same operations as event-driven nodes.
+     * Reconciles missed branch/tag changes with the same operations and automatic branch filters as event-driven nodes.
      * Null selects all enabled pairs. Verified pending pushes are redispatched through the event
      * system and their refs are deferred to the import pipeline, preserving original attribution.
      * Inbound changes without verified user authority are observed but never imported. Unresolved initial deletion conflicts

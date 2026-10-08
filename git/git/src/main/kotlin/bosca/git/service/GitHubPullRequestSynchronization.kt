@@ -59,7 +59,7 @@ internal class GitHubPullRequestSynchronization(
             if (author == null) return problem(state, null, snapshot(remote), "GitHub author needs a mapped Bosca principal with a primary profile")
             if (!verifyImport(remote)) return problem(state, null, snapshot(remote), "A matching verified GitHub occurrence and current Bosca repository EDIT permission are required")
             if (!synchronizeBranches(listOf(remote.head.ref, remote.base.ref), RefSynchronizationDirection.INBOUND, remote)) {
-                return problem(state, null, snapshot(remote), "Pull request branches have unresolved ref changes")
+                return problem(state, null, snapshot(remote), "Pull request branches are filtered or have unresolved ref changes")
             }
             val created = pulls.create(CreatePullRequestInput(pair.repositoryId, remote.title, remote.body,
                 remote.head.ref, remote.base.ref, isDraft = remote.draft), author.id)
@@ -96,7 +96,7 @@ internal class GitHubPullRequestSynchronization(
                 if (completed) return problem(state, snapshot(native), null, NO_COUNTERPART)
                 val intended = state.pending ?: snapshot(native)
                 if (!synchronizeBranches(listOf(intended.sourceBranch, intended.targetBranch), RefSynchronizationDirection.OUTBOUND, null)) {
-                    return problem(state, snapshot(native), null, "Pull request branches have unresolved ref changes")
+                    return problem(state, snapshot(native), null, "Pull request branches are filtered or have unresolved ref changes")
                 }
                 // GitHub refuses a source branch with no new commits or a second open PR for the same branches.
                 remote = try {
@@ -155,7 +155,7 @@ internal class GitHubPullRequestSynchronization(
                 catch (e: IllegalArgumentException) { return problem(state, local, other, e.message ?: "Bosca merge protection rejected the import") }
             }
             if (!synchronizeBranches(listOf(other.sourceBranch, other.targetBranch), RefSynchronizationDirection.INBOUND, remote)) {
-                return problem(state, local, other, "Pull request branches have unresolved ref changes")
+                return problem(state, local, other, "Pull request branches are filtered or have unresolved ref changes")
             }
             val updated = pulls.synchronize(native.id, native.version, other, remote.mergedAt ?: native.mergedAt, merger(remote))
                 ?: return problem(state, snapshot(pulls.findById(native.id) ?: error("Pull request disappeared")), other,
@@ -171,7 +171,7 @@ internal class GitHubPullRequestSynchronization(
         }
         if (remote.head.ref != intended.sourceBranch) return problem(state, local, other, "GitHub cannot change a counterpart's source branch")
         if (!synchronizeBranches(listOf(intended.sourceBranch, intended.targetBranch), RefSynchronizationDirection.OUTBOUND, null)) {
-            return problem(state, local, other, "Pull request branches have unresolved ref changes")
+            return problem(state, local, other, "Pull request branches are filtered or have unresolved ref changes")
         }
         // Ref transfers can cause GitHub to recognize an indirect merge. Read again before changing lifecycle.
         var current = client.getPullRequest(pair, token, remote.number)
