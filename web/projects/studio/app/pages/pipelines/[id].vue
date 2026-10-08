@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import gql from 'graphql-tag'
+import { pipelineEventLabel } from '~/components/pipelines/pipelineEventLabel'
 import { useAuth } from '@bosca/auth-client-browser'
 import { VueFlow, useVueFlow, type Node as FlowNode, type Edge as FlowEdge, type Connection } from '@vue-flow/core'
 import PipelineLinkToGitModal from '~/components/pipelines/PipelineLinkToGitModal.vue'
@@ -176,11 +177,6 @@ function resolveShapeFields(typeStr: string | null, nodeFields: { name: string, 
   return nodeFields
 }
 
-function humanizeLeaf(fqdn: string): string {
-  const leaf = fqdn.includes('.') ? fqdn.slice(fqdn.lastIndexOf('.') + 1) : fqdn
-  return leaf.replace(/([a-z0-9])([A-Z])/g, '$1 $2').trim() || fqdn
-}
-
 // The node-type selection (slots, settings, bounded structure depth) is shared with the node
 // browser page via nodeTypeSelection so the two views can't drift.
 const NODE_TYPE_FIELDS = nodeTypeSelection(5)
@@ -213,7 +209,7 @@ async function loadReferenceData() {
     cataloguedTypeNames.value = res?.pipelines?.types ?? []
     namedShapes.value = res?.pipelines?.shapes ?? []
     eventOptions.value = (res?.events?.catalog?.events ?? [])
-      .map(e => ({ value: e.fqdn, label: humanizeLeaf(e.displayName || e.fqdn) }))
+      .map(e => ({ value: e.fqdn, label: pipelineEventLabel(e.displayName || e.fqdn) }))
     eventFields.value = new Map((res?.events?.catalog?.events ?? []).map(e => [e.fqdn, e.fields ?? []]))
     scriptOptions.value = (res?.scripts?.all ?? []).map(s => ({ value: s.id, label: s.key }))
     allPipelines.value = res?.pipelines?.all ?? []

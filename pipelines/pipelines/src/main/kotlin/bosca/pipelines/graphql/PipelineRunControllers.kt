@@ -138,7 +138,16 @@ class PipelineRunStateController(
         (source.nodeOutputs as? JsonObject)?.let { it.keys.toList() } ?: emptyList()
 
     @Field
-    fun error(source: PipelineRun): String? = source.error
+    suspend fun error(source: PipelineRun): String? {
+        source.error?.let { return it }
+        if (source.status != PipelineRunStatus.SUSPENDED) return null
+        val awaiting = awaits(source).map { it.nodeId }.toSet()
+        return runService.nodeTimeline(source.id).associateBy { it.nodeId }.values
+            .firstOrNull { it.nodeId in awaiting && it.status == NodeExecutionStatus.FAILED }?.error
+    }
+
+    @Field
+    fun input(source: PipelineRun): JsonElement? = source.input
 
     @Field
     fun createdAt(source: PipelineRun): bosca.serialization.OffsetDateTime = source.createdAt

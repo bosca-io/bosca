@@ -156,7 +156,7 @@ onMounted(load)
       <label class="enable"><input v-model="form.enabled" type="checkbox" :disabled="saving"> Enable synchronization</label>
       <p class="help">In GitHub, configure a JSON webhook for push and pull request events using the selected webhook secret and this payload URL:</p>
       <code class="webhook-url">{{ webhookUrl }}</code>
-      <p class="help">User mappings grant no permissions. Inbound changes require repository Edit; builds also require Execute. Enable the GitHub package's import, export, and reconciliation pipelines in <NuxtLink to="/pipelines/all">Pipelines</NuxtLink>.</p>
+      <p class="help">Map each sender's GitHub username to their Bosca user in <NuxtLink to="/git/settings/github">GitHub User Mappings</NuxtLink>. Give one of that user's groups repository Edit in Permissions; builds also require Execute. Enable the GitHub package's import, export, and reconciliation pipelines in <NuxtLink to="/pipelines/all">Pipelines</NuxtLink>.</p>
       <p v-if="message" role="status">{{ message }}</p>
       <div><Button
         primary

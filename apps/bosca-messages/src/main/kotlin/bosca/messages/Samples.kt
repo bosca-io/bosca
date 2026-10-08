@@ -151,6 +151,14 @@ object Samples {
         pullRequestUrl = "https://studio.example.com/git/pulls/sample?repo=sample&number=79",
     )
 
+    private val gitHubSyncFailure = GitHubSyncFailureNotification(
+        repositoryName = "bosca-workspace",
+        problem = "The mapped Bosca user does not have repository Edit permission.",
+        synchronizationUrl = "https://studio.example.com/git/repositories/sample?tab=Settings&setting=github",
+        permissionsUrl = "https://studio.example.com/git/repositories/sample?tab=Settings&setting=permissions",
+        mappingsUrl = "https://studio.example.com/git/settings/github",
+    )
+
     private val gitRefUpdate = GitRefUpdateNotification(
         repositoryName = "bosca-workspace",
         refName = "feature/git-email-pipelines",
@@ -299,6 +307,11 @@ object Samples {
             "Branch update · before/after SHAs, commit summaries, task key, repository CTA",
             "git-ref-update",
         ) { context(GitRefUpdateNotification.serializer(), gitRefUpdate) },
+        PreviewEntry(
+            "08b-github-sync-failed", "8b", "GitHub Synchronization Failure",
+            "Import failure · problem, user mapping, repository permissions, recovery links",
+            "github-sync-failed",
+        ) { context(GitHubSyncFailureNotification.serializer(), gitHubSyncFailure) },
         PreviewEntry(
             "09-account-link", "9", "Account Link",
             "Security confirmation · single CTA + unrequested-action guidance",

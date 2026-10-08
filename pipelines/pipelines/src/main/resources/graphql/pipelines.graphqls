@@ -218,6 +218,8 @@ type PipelineHistoryRun {
 
 "The live, durable state of an in-flight pipeline run (distinct from the append-only run history above)."
 type PipelineRunState {
+    "Original input captured for the run."
+    input: JSON
     id: UUID!
     pipelineId: UUID!
     status: PipelineRunStatus!

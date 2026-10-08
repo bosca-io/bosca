@@ -111,7 +111,7 @@ class ConfigurationTest {
         val transactional = configuration.defaultTransactionalEmailPipelinesPackage()
 
         assertEquals(DefaultGitEmailPipelinesInstaller.VERSION, git.versions.single().version)
-        assertEquals("1.1.0", git.versions.single().version)
+        assertEquals("1.2.0", git.versions.single().version)
         assertEquals(DefaultTransactionalEmailPipelinesInstaller.VERSION, transactional.versions.single().version)
         assertEquals("1.2.0", transactional.versions.single().version)
     }

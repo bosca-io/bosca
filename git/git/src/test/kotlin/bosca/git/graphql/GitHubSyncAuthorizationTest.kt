@@ -50,6 +50,7 @@ class GitHubSyncAuthorizationTest {
             assertFails { query.pullRequestStates(authentication, repositoryId, null, null) }
             assertFails { mutation.savePair(authentication, input) }
             assertFails { mutation.mapUser(authentication, 7, principalId) }
+            assertFails { mutation.mapUserByUsername(authentication, "octocat", principalId) }
             assertFails { mutation.unmapUser(authentication, 7) }
             assertFails { mutation.reconcileRefs(authentication, repositoryId) }
             assertFails { mutation.reconcilePullRequests(authentication, repositoryId) }
@@ -59,6 +60,7 @@ class GitHubSyncAuthorizationTest {
         }
         coVerify(exactly = 0) { service.findPair(any()) }
         coVerify(exactly = 0) { service.mapUser(any(), any()) }
+        coVerify(exactly = 0) { service.mapUserByUsername(any(), any()) }
         coVerify(exactly = 0) { service.savePair(any()) }
         coVerify(exactly = 0) { service.pullRefs(any(), any()) }
         coVerify(exactly = 0) { service.pushRefs(any(), any()) }
@@ -75,6 +77,7 @@ class GitHubSyncAuthorizationTest {
         coEvery { service.findPair(repositoryId) } returns pair
         coEvery { service.savePair(input) } returns pair
         coEvery { service.mapUser(7, principalId) } returns user
+        coEvery { service.mapUserByUsername("octocat", principalId) } returns user
         coEvery { service.unmapUser(7) } returns Unit
         coEvery { service.findUsers(any(), any()) } returns listOf(user)
         coEvery { service.findDeliveries(any(), any(), any()) } returns emptyList()
@@ -89,6 +92,7 @@ class GitHubSyncAuthorizationTest {
         assertEquals(pair, query.pair(authentication, repositoryId))
         assertEquals(pair, mutation.savePair(authentication, input))
         assertEquals(user, mutation.mapUser(authentication, 7, principalId))
+        assertEquals(user, mutation.mapUserByUsername(authentication, "octocat", principalId))
         assertTrue(mutation.unmapUser(authentication, 7))
         assertTrue(mutation.reconcileRefs(authentication, repositoryId).isEmpty())
         coVerify(exactly = 1) { service.reconcileRefs(repositoryId, principalId) }

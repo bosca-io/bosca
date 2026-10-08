@@ -96,7 +96,7 @@ describe('GitHub sync administration', () => {
     })
     mutation.mockImplementation((document: DocumentNode, variables: Record<string, unknown>) => {
       if (print(document).includes('SetGitHubSyncSecret')) return { pipelines: { setSecret: { name: variables.name } } }
-      return { github: { savePair: { ...pair, version: 8 }, mapUser: { githubUserId: 99, principalId: principal.id }, unmapUser: true } }
+      return { github: { savePair: { ...pair, version: 8 }, mapUserByUsername: { githubUserId: 99, githubUsername: "octocat", principalId: principal.id }, unmapUser: true } }
     })
   })
 
@@ -320,6 +320,38 @@ describe('GitHub sync administration', () => {
     expect(wrapper.findAll('button').some(button => button.text() === 'Reconcile')).toBe(false)
   })
 
+  it('shows unmapped delivery recovery and opens branches without transferring refs', async () => {
+    const wrapper = mountHistory()
+    await flushPromises()
+    query.mockResolvedValueOnce({ github: { deliveries: [{
+      deliveryId: 'blocked', event: 'push', ignored: false, principalId: null, githubUserId: 99,
+      created: '2026-10-01T00:00:00Z', problem: 'The originating GitHub user requires EDIT permission',
+      importProblem: 'No Bosca user was mapped when this delivery arrived. Use Pull from GitHub.',
+    }] } })
+    await button(wrapper, 'Deliveries').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[role="alert"]').text()).toContain('No Bosca user was mapped')
+    expect(wrapper.findAll('a').some(link => link.attributes('href') === '/git/settings/github')).toBe(true)
+    await button(wrapper, 'Open branches and tags').trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('Pull from GitHub')
+    expect(mutation).not.toHaveBeenCalled()
+  })
+
+  it('links a mapped delivery permission blocker directly to repository permissions', async () => {
+    const wrapper = mountHistory()
+    await flushPromises()
+    query.mockResolvedValueOnce({ github: { deliveries: [{
+      deliveryId: 'blocked', event: 'push', ignored: false, principalId: principal.id, githubUserId: 99,
+      created: '2026-10-01T00:00:00Z', problem: null,
+      importProblem: 'Grant repository Edit to a group the user belongs to.',
+    }] } })
+    await button(wrapper, 'Deliveries').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[role="alert"]').text()).toContain('repository Edit')
+    expect(wrapper.findAll('a').some(link => link.attributes('href') === '/git/repositories/repo-1?tab=Settings&setting=permissions')).toBe(true)
+  })
+
   it('refreshes persisted observations after a failed reconciliation', async () => {
     const wrapper = mountHistory()
     await flushPromises()
@@ -489,12 +521,12 @@ describe('GitHub sync administration', () => {
     await flushPromises()
     expect(print(query.mock.calls[1]?.[0])).toContain('includeDeleted: false')
     expect(wrapper.findComponent(Field).exists()).toBe(true)
-    await wrapper.get('input[aria-label="GitHub human user ID"]').setValue('99')
-    await wrapper.get('input[aria-label="Bosca principal"]').setValue(principal.id)
+    await wrapper.get('input[aria-label="GitHub username"]').setValue('@octocat')
+    await wrapper.get('input[aria-label="Bosca user"]').setValue(principal.id)
     query.mockResolvedValueOnce({ github: { users: [{ githubUserId: 99, principalId: principal.id }] } })
     await wrapper.get('form').trigger('submit')
     await flushPromises()
-    expect(mutation.mock.calls[0]?.[1]).toEqual({ githubUserId: 99, principalId: 'principal-1' })
+    expect(mutation.mock.calls[0]?.[1]).toEqual({ username: 'octocat', principalId: 'principal-1' })
     await button(wrapper, 'Remove mapping').trigger('click')
     await flushPromises()
     expect(mutation.mock.calls[1]?.[1]).toEqual({ githubUserId: 99 })
@@ -510,8 +542,8 @@ describe('GitHub sync administration', () => {
     await button(wrapper, 'Next principals').trigger('click')
     await flushPromises()
     expect(query.mock.calls[2]?.[1]).toEqual({ offset: 25, limit: 26 })
-    await wrapper.get('input[aria-label="GitHub human user ID"]').setValue('99')
-    await wrapper.get('input[aria-label="Bosca principal"]').setValue(principal.id)
+    await wrapper.get('input[aria-label="GitHub username"]').setValue('@octocat')
+    await wrapper.get('input[aria-label="Bosca user"]').setValue(principal.id)
     mutation.mockRejectedValueOnce(new Error('Principal is deleted'))
     await wrapper.get('form').trigger('submit')
     await flushPromises()

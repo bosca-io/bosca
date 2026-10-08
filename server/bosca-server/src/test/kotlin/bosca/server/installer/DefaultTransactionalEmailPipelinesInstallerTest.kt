@@ -108,6 +108,7 @@ class DefaultTransactionalEmailPipelinesInstallerTest {
                 "form-submission-receipt",
                 "git-pull-request",
                 "git-ref-update",
+                "github-sync-failed",
                 "workops-notification",
                 "workops-automation",
             ),

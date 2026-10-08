@@ -19,6 +19,7 @@ delivery metadata, and a JSON payload decoded inside the template).
 | `form-submission-receipt` | Form submission created → the submitter | Your {formName} submission was received |
 | `git-pull-request` | Pull-request lifecycle activity, reviews, and comments | Event-specific pull-request activity subject |
 | `git-ref-update` | Branch/tag created, updated, or deleted | Event-specific ref activity subject |
+| `github-sync-failed` | First synchronization failure for a verified GitHub delivery → repository owner | GitHub synchronization failed in {repositoryName} |
 | `workops-notification` | WorkOps task, spec, requirement, workflow, or comment activity | {entityKey}: {title} |
 | `chat-message` | Chat message sent while the recipient is not connected | {senderName} sent a message in {channelName} |
 | `chat-reaction` | A reaction is added to the recipient's chat message | {reactorName} reacted to your message |

@@ -1185,6 +1185,10 @@ class PipelineRunServiceImpl(
      * Record the terminal event for a node the run service resumed (the executor does not re-run a
      * resumed node, so it never emits this) — closing the timeline it opened with a SUSPENDED event.
      */
+    override suspend fun recordNodeAttemptFailure(runId: UUID, nodeId: String, error: String) {
+        recordResumedNode(runId, nodeId, NodeExecutionStatus.FAILED, null, error, null)
+    }
+
     private suspend fun recordResumedNode(
         runId: UUID,
         nodeId: String,

@@ -20,6 +20,36 @@ class GitHubClientTest {
     private val pr = """{"id":456,"number":7,"node_id":"PR_456","title":"Change","body":"Description","state":"open","draft":true,"merged":false,"updated_at":"2026-10-02T10:00:00Z","user":{"id":8,"login":"author","type":"User"},"head":{"ref":"feature/one","sha":"${"1".repeat(40)}","repo":{"id":123}},"base":{"ref":"main","sha":"${"2".repeat(40)}","repo":{"id":123}}}"""
     private fun client(server: MockWebServer) = GitHubClient(baseUrl = server.url("/").toString().removeSuffix("/"))
     private fun verifyPair(server: MockWebServer) = server.enqueue(MockResponse.Builder().body("""{"id":123}""").build())
+    @Test fun `resolves human usernames without sending repository credentials`() = runBlocking {
+        MockWebServer().use { server ->
+            server.start()
+            server.enqueue(MockResponse.Builder().body("""{"id":7,"login":"octocat","type":"User"}""").build())
+            assertEquals(7L, client(server).humanUserId("octocat"))
+            val request = server.takeRequest()
+            assertEquals("GET", request.method)
+            assertEquals("/users/octocat", request.url.encodedPath)
+            assertNull(request.headers["Authorization"])
+        }
+    }
+
+    @Test fun `user lookup rejects invalid names organizations bots and missing accounts`() = runBlocking {
+        MockWebServer().use { server ->
+            server.start()
+            for (username in listOf("", "a/b", "@octocat", "-user", "user-", "a".repeat(40))) {
+                assertFailsWith<IllegalArgumentException> { client(server).humanUserId(username) }
+            }
+            assertEquals(0, server.requestCount)
+            for (type in listOf("Organization", "Bot")) {
+                server.enqueue(MockResponse.Builder().body("""{"id":7,"login":"octocat","type":"$type"}""").build())
+                assertFailsWith<IllegalArgumentException> { client(server).humanUserId("octocat") }
+            }
+            server.enqueue(MockResponse.Builder().code(404).body("private-response").build())
+            val error = assertFailsWith<IllegalStateException> { client(server).humanUserId("octocat") }
+            assertTrue(error.message.orEmpty().contains("username"))
+            assertFalse(error.message.orEmpty().contains("private-response"))
+        }
+    }
+
     @Test fun `looks up a repository identity using its owner name and token`() = runBlocking {
         MockWebServer().use { server ->
             server.start()

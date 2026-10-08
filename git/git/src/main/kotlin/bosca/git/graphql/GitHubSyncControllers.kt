@@ -108,6 +108,12 @@ class GitHubSyncMutation(
     }
 
     @Field
+    suspend fun mapUserByUsername(authentication: AuthenticationContext, username: String, principalId: UUID): GitHubUser {
+        groups.verifyHasAdminGroup(authentication)
+        return service.mapUserByUsername(username, principalId)
+    }
+
+    @Field
     suspend fun unmapUser(authentication: AuthenticationContext, githubUserId: Long): Boolean {
         groups.verifyHasAdminGroup(authentication)
         service.unmapUser(githubUserId)
@@ -131,6 +137,7 @@ class GitHubRepositoryPairController : GraphQLController<GitHubRepositoryPair> {
 
 @TypeController(type = "GitHubUser")
 class GitHubUserController : GraphQLController<GitHubUser> {
+    @Field fun githubUsername(source: GitHubUser): String? = source.githubUsername
     @Field fun githubUserId(source: GitHubUser): Long = source.githubUserId
     @Field fun principalId(source: GitHubUser): UUID = source.principalId
     @Field fun created(source: GitHubUser): OffsetDateTime = source.created
@@ -138,7 +145,9 @@ class GitHubUserController : GraphQLController<GitHubUser> {
 }
 
 @TypeController(type = "GitHubDelivery")
-class GitHubDeliveryController : GraphQLController<GitHubDelivery> {
+class GitHubDeliveryController(private val service: GitHubSyncService) : GraphQLController<GitHubDelivery> {
+    @Field fun problem(source: GitHubDelivery): String? = source.problem
+    @Field suspend fun importProblem(source: GitHubDelivery): String? = service.deliveryImportProblem(source)
     @Field fun deliveryId(source: GitHubDelivery): String = source.deliveryId
     @Field fun repositoryId(source: GitHubDelivery): UUID = source.repositoryId
     @Field fun event(source: GitHubDelivery): String = source.event

@@ -3,6 +3,7 @@ package bosca.server.installer
 import bosca.communications.model.NotificationTypeKeys
 import bosca.git.model.PullRequestEvent
 import bosca.git.model.RefUpdateEvent
+import bosca.git.model.GitHubSynchronizationFailed
 import bosca.pipelines.builtin.ConditionNode
 import bosca.pipelines.builtin.JsonataNode
 import bosca.pipelines.builtin.SendEmailTemplateNode
@@ -47,9 +48,9 @@ class DefaultGitEmailPipelinesInstallerTest {
         val (installer, captured) = installer()
         installer.install(mockk(relaxed = true), mockk(relaxed = true))
 
-        assertEquals(2, captured.size)
+        assertEquals(3, captured.size)
         assertEquals(
-            setOf(PullRequestEvent::class.qualifiedName, RefUpdateEvent::class.qualifiedName),
+            setOf(PullRequestEvent::class.qualifiedName, RefUpdateEvent::class.qualifiedName, GitHubSynchronizationFailed::class.qualifiedName),
             captured.map { it.acceptedInputType }.toSet(),
         )
         assertTrue(captured.all { it.triggered })
@@ -88,6 +89,6 @@ class DefaultGitEmailPipelinesInstallerTest {
         val (installer, captured) = installer(listOf(DefaultGitEmailPipelinesInstaller.PULL_REQUEST_PIPELINE))
         installer.install(mockk(relaxed = true), mockk(relaxed = true))
 
-        assertEquals(listOf(DefaultGitEmailPipelinesInstaller.REF_UPDATE_PIPELINE), captured.map { it.name })
+        assertEquals(listOf(DefaultGitEmailPipelinesInstaller.GITHUB_FAILURE_PIPELINE, DefaultGitEmailPipelinesInstaller.REF_UPDATE_PIPELINE), captured.map { it.name })
     }
 }

@@ -3,11 +3,11 @@ import gql from 'graphql-tag'
 import type { GlassTableColumn } from '@bosca/ui'
 
 const { query, mutation } = useGraphQL()
-interface Mapping { githubUserId: number; principalId: string }
+interface Mapping { githubUserId: number; githubUsername: string | null; principalId: string }
 interface Principal { id: string; primaryProfileId: string | null; profiles: { id: string; name: string }[]; credentials: { identifier: string }[] }
 const mappings = ref<Mapping[]>([])
 const principals = ref<Principal[]>([])
-const githubUserId = ref('')
+const githubUsername = ref('')
 const principalId = ref('')
 const offset = ref(0)
 const principalOffset = ref(0)
@@ -21,8 +21,8 @@ const error = ref('')
 const principalError = ref('')
 const message = ref('')
 const columns: GlassTableColumn[] = [
-  { key: 'githubUserId', label: 'GitHub user ID', width: '1fr' },
-  { key: 'principalId', label: 'Bosca principal', width: '1fr' },
+  { key: 'githubUsername', label: 'GitHub user', width: '1fr' },
+  { key: 'principalId', label: 'Bosca user', width: '1fr' },
   { key: 'actions', label: '', width: '1fr' },
 ]
 const principalOptions = computed(() => principals.value.map(principal => ({
@@ -37,7 +37,7 @@ async function loadMappings() {
   try {
     const result = await query<{ github: { users: Mapping[] } }>(gql`
       query GitHubSyncUsers($offset: Long!, $limit: Int!) {
-        github { users(offset: $offset, limit: $limit) { githubUserId principalId } }
+        github { users(offset: $offset, limit: $limit) { githubUserId githubUsername principalId } }
       }
     `, { offset: offset.value, limit: limit + 1 })
     mappings.value = result.github.users.slice(0, limit)
@@ -78,17 +78,21 @@ async function save() {
   if (busy.value || loading.value || principalsLoading.value) return
   error.value = ''
   message.value = ''
-  const id = Number(githubUserId.value)
-  if (!/^\d+$/.test(githubUserId.value) || !Number.isSafeInteger(id) || id <= 0 || !principalId.value) {
-    error.value = 'Enter a positive GitHub human user ID and select a Bosca principal.'
+  const username = githubUsername.value.trim().replace(/^@/, '')
+  if (!username) {
+    error.value = 'Enter the GitHub username of the person you want to map.'
+    return
+  }
+  if (!principalId.value) {
+    error.value = 'Choose the Bosca user who owns this GitHub account.'
     return
   }
   busy.value = true
   try {
-    await mutation(gql`mutation MapGitHubSyncUser($githubUserId: Long!, $principalId: UUID!) {
-      github { mapUser(githubUserId: $githubUserId, principalId: $principalId) { githubUserId principalId } }
-    }`, { githubUserId: id, principalId: principalId.value })
-    githubUserId.value = ''
+    await mutation(gql`mutation MapGitHubSyncUser($username: String!, $principalId: UUID!) {
+      github { mapUserByUsername(username: $username, principalId: $principalId) { githubUserId githubUsername principalId } }
+    }`, { username, principalId: principalId.value })
+    githubUsername.value = ''
     principalId.value = ''
     message.value = 'User mapping saved.'
     offset.value = 0
@@ -135,18 +139,19 @@ onMounted(async () => {
 
 <template>
   <SectionCard title="GitHub user mappings" padded>
-    <p class="help">Mappings apply to all paired repositories. Select an authenticated Bosca principal for each GitHub human user ID. Permissions come from their Bosca groups. PR imports also require the original author's primary profile.</p>
+    <p class="help">Enter a GitHub username and choose the same person's Bosca user. Bosca looks up the account automatically. Mappings apply to all paired repositories; repository Edit comes from the user's Bosca groups. PR imports also require the original author's primary profile.</p>
     <p v-if="error" role="alert" class="error">{{ error }}</p>
     <p v-if="principalError" role="alert" class="error">{{ principalError }} <Button :disabled="principalsLoading" @click="loadPrincipals">Retry principals</Button></p>
     <form class="mapping-form" @submit.prevent="save">
       <TextInput
-        v-model="githubUserId"
-        label="GitHub human user ID"
+        v-model="githubUsername"
+        label="GitHub username"
+        placeholder="octocat"
         :disabled="busy"
         mono />
       <Select
         v-model="principalId"
-        label="Bosca principal"
+        label="Bosca user"
         :options="principalOptions"
         searchable
         :loading="principalsLoading"
@@ -165,6 +170,7 @@ onMounted(async () => {
       :loading="loading"
       :arrow="false"
       empty-text="No user mappings on this page.">
+      <template #col-githubUsername="{ row }">{{ row.githubUsername ? `@${row.githubUsername}` : `GitHub user ${row.githubUserId}` }}</template>
       <template #col-principalId="{ row }"><NuxtLink :to="`/system/security/principals/${row.principalId}`">{{ row.principalId }}</NuxtLink></template>
       <template #col-actions="{ row }"><Button :disabled="busy || loading" size="sm" @click="remove(row.githubUserId)">Remove mapping</Button></template>
     </GlassTable>

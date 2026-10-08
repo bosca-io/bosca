@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import gql from 'graphql-tag'
+import { pipelineEventLabel } from '~/components/pipelines/pipelineEventLabel'
 import type { GlassTableColumn } from '@bosca/ui'
 import PipelineRunsModal from '~/components/pipelines/PipelineRunsModal.vue'
 
@@ -85,12 +86,6 @@ const brokenRowActions = [
 
 /** Pipeline whose run history is open, or null when the modal is closed. */
 const runsFor = ref<PipelineRow | null>(null)
-
-/** Show the readable leaf of the accepted input's fully-qualified type. */
-function acceptsLabel(fqdn: string): string {
-  const leaf = fqdn.includes('.') ? fqdn.slice(fqdn.lastIndexOf('.') + 1) : fqdn
-  return leaf.replace(/([a-z0-9])([A-Z])/g, '$1 $2').trim() || fqdn
-}
 
 function openEditor(id: string) {
   navigateTo(`/pipelines/${id}`)
@@ -241,7 +236,7 @@ function onBrokenRowAction(payload: { action: string, row: BrokenPipelineRow }) 
         </template>
         <template #col-acceptedInputType="{ row }">
           <code class="accepts">
-            {{ acceptsLabel(row.acceptedInputType) }}
+            {{ pipelineEventLabel(row.acceptedInputType) }}
             <span class="arrow">→</span>
             {{ row.hasOutput ? (row.outputType || 'output') : 'side effects' }}
           </code>

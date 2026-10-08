@@ -168,6 +168,21 @@ data class GitPullRequestNotification(
     val pullRequestUrl: String,
 )
 
+/** `github-sync-failed` — a verified delivery failed to import, with links to its recovery controls. */
+@Serializable
+data class GitHubSyncFailureNotification(
+    val appName: String = "Bosca",
+    val logoUrl: String = "",
+    val logoOnly: Boolean = false,
+    val primaryColor: String = DEFAULT_PRIMARY_COLOR,
+    val accentColor: String = DEFAULT_ACCENT_COLOR,
+    val repositoryName: String,
+    val problem: String,
+    val synchronizationUrl: String,
+    val permissionsUrl: String,
+    val mappingsUrl: String,
+)
+
 /** `git-ref-update` — branch/tag creation, advancement, and deletion activity. */
 @Serializable
 data class GitRefUpdateNotification(

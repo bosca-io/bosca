@@ -22,6 +22,7 @@ data class GitHubDelivery(
     @Contextual @ColumnName("principal_id") val principalId: UUID? = null,
     val ignored: Boolean = false,
     @Contextual val created: OffsetDateTime = OffsetDateTime.now(),
+    val problem: String? = null,
 ) : Event {
     override fun identityKey(): Any = deliveryId
 }

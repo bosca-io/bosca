@@ -21,6 +21,7 @@ import bosca.security.service.SecurityService
 import bosca.security.service.impersonate
 import bosca.serialization.UUID
 import bosca.sharedqueue.jobs.AbstractJobExecutor
+import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.Contextual
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -100,7 +101,14 @@ class ExecuteNodeInJobExecutor(
             graphJson(),
             inputCreated = run.createdAt,
         )
-        val value = (node.run(context, inputs) as? NodeResult.Output)?.value
+        val value = try {
+            (node.run(context, inputs) as? NodeResult.Output)?.value
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            runService.recordNodeAttemptFailure(jobDef.runId, jobDef.nodeId, e.message ?: e.toString())
+            throw e
+        }
         // Stage the output (JSON null when the node has none) on its emitted port, exactly where the
         // run's resume reads it (PipelineRunServiceImpl.resume → resultStore.get). A thrown execute()
         // never reaches here: the job fails and the resume routes the failure to the error port.

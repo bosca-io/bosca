@@ -64,6 +64,9 @@ interface PipelineRunService : Service {
     /** Durable run state by id, or `null` when absent or soft-deleted. */
     suspend fun get(runId: UUID): PipelineRun?
 
+    /** Records a failed backing-work attempt without ending the suspended run or changing retry policy. */
+    suspend fun recordNodeAttemptFailure(runId: UUID, nodeId: String, error: String)
+
     /** In-flight durable runs (running or suspended), newest activity first — for operator visibility. */
     suspend fun listActive(offset: Long, limit: Int): List<PipelineRun>
 

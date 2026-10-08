@@ -11,6 +11,8 @@ import bosca.git.model.PullRequestStatus
 import bosca.git.model.GitHubUser
 import bosca.lock.DistributedLockFactory
 import bosca.db.withConnectionManager
+import bosca.db.transaction
+import bosca.git.model.GitHubSynchronizationFailed
 import bosca.git.github.GitHubClient
 import bosca.git.model.GitHubPush
 import bosca.git.model.GitHubRefState
@@ -125,7 +127,7 @@ class GitHubSyncServiceImpl(
         return delivery.principalId
     }
 
-    override suspend fun synchronizePullRequest(delivery: GitHubDelivery): GitHubSyncResult {
+    override suspend fun synchronizePullRequest(delivery: GitHubDelivery): GitHubSyncResult = trackDelivery(delivery, "pull_request") {
         withPair(delivery.repositoryId, GitHubSyncResult.IGNORED) { pair ->
             val verified = repository.findDelivery(delivery.deliveryId)
                 ?: throw NoSuchElementException("Verified GitHub delivery not found")
@@ -136,7 +138,7 @@ class GitHubSyncServiceImpl(
             }
             GitHubSyncResult.UNCHANGED
         }
-        return withPair(delivery.repositoryId, GitHubSyncResult.IGNORED) { pair ->
+        withPair(delivery.repositoryId, GitHubSyncResult.IGNORED) { pair ->
             val verified = repository.findDelivery(delivery.deliveryId)
                 ?: throw NoSuchElementException("Verified GitHub delivery not found")
             require(verified.repositoryId == pair.repositoryId) { "Delivery belongs to another repository" }
@@ -319,6 +321,69 @@ class GitHubSyncServiceImpl(
         return repository.mapUser(githubUserId, principalId)
     }
 
+    override suspend fun mapUserByUsername(username: String, principalId: UUID): GitHubUser = withConnectionManager {
+        val login = username.trim().removePrefix("@")
+        val id = github.humanUserId(login)
+        transaction {
+            mapUser(id, principalId)
+            repository.setUsername(id, login)
+        }
+    }
+
+    override suspend fun deliveryImportProblem(delivery: GitHubDelivery): String? {
+        if (delivery.ignored || (delivery.event == "push" && repository.findPushResult(delivery.deliveryId) != null)) return null
+        val principalId = delivery.principalId ?: return "No Bosca user was mapped when this delivery arrived. " +
+            "Add a GitHub user mapping for future deliveries. For existing branches and tags, use Pull from GitHub; redelivery preserves the original unmapped identity."
+        val principal = securityService.getPrincipalById(principalId)?.takeIf { it.deletedAt == null }
+            ?: return "The mapped Bosca user is no longer available. Update the GitHub user mapping and send a new delivery."
+        val hosted = repositoryService.findById(delivery.repositoryId) ?: return "The Bosca repository is no longer available."
+        if (!permissions.isAllowed(securityService.impersonate(principal.id), hosted, PermissionAction.EDIT)) {
+            return "The mapped Bosca user does not have repository Edit permission. " +
+                "In Repository Settings → Permissions, grant Edit to a group the user belongs to. The existing delivery can then be retried."
+        }
+        return null
+    }
+
+    /** Keeps delivery diagnostics and one notification outside a rolled-back ref import. */
+    private suspend fun trackDelivery(delivery: GitHubDelivery, event: String, block: suspend () -> GitHubSyncResult): GitHubSyncResult = withConnectionManager {
+        try {
+            val result = block()
+            if (result != GitHubSyncResult.IGNORED) repository.setDeliveryProblem(delivery.deliveryId, null)
+            result
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            try {
+                withConnectionManager {
+                    transaction {
+                        val verified = repository.findDelivery(delivery.deliveryId)
+                            ?.takeIf { it.repositoryId == delivery.repositoryId && it.event == event && !it.ignored }
+                        if (verified != null) {
+                            val problem = (if (e is SecurityException) deliveryImportProblem(verified) else null)
+                                ?: e.message ?: e.javaClass.simpleName
+                            repository.setDeliveryProblem(verified.deliveryId, problem)
+                            val firstFailure = repository.reserveFailureNotification(verified.deliveryId)
+                            if (firstFailure != null) {
+                                val hosted = repositoryService.findById(verified.repositoryId)
+                                    ?: throw NoSuchElementException("Repository not found")
+                                GitHubSynchronizationFailed(
+                                    repositoryId = hosted.id, repositoryName = hosted.name,
+                                    deliveryId = verified.deliveryId, event = verified.event, problem = problem,
+                                    recipientIds = setOf(hosted.ownerId),
+                                ).dispatch()
+                            }
+                        }
+                    }
+                }
+            } catch (notificationFailure: CancellationException) {
+                throw notificationFailure
+            } catch (notificationFailure: Exception) {
+                e.addSuppressed(notificationFailure)
+            }
+            throw e
+        }
+    }
+
     override suspend fun unmapUser(githubUserId: Long) {
         require(githubUserId > 0) { "Invalid GitHub user ID" }
         repository.unmapUser(githubUserId)
@@ -375,11 +440,13 @@ class GitHubSyncServiceImpl(
         return repository.findDeliveries(repositoryId, offset, limit)
     }
 
-    override suspend fun synchronizePush(delivery: GitHubDelivery): GitHubSyncResult = withPair(delivery.repositoryId, GitHubSyncResult.IGNORED) { pair ->
-        // Use persisted signed input, including its original user mapping, rather than caller-supplied attribution.
-        val verified = repository.findDelivery(delivery.deliveryId)
-            ?: throw NoSuchElementException("Verified GitHub delivery not found")
-        synchronizeVerifiedPush(pair, verified)
+    override suspend fun synchronizePush(delivery: GitHubDelivery): GitHubSyncResult = trackDelivery(delivery, "push") {
+        withPair(delivery.repositoryId, GitHubSyncResult.IGNORED) { pair ->
+            // Use persisted signed input, including its original user mapping, rather than caller-supplied attribution.
+            val verified = repository.findDelivery(delivery.deliveryId)
+                ?: throw NoSuchElementException("Verified GitHub delivery not found")
+            synchronizeVerifiedPush(pair, verified)
+        }
     }
 
     /** The owning pair transaction is already locked, including during PR and ref recovery. */

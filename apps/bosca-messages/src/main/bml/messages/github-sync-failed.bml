@@ -1,0 +1,28 @@
+<message key="github-sync-failed">
+  <script server provides="m">
+    import bosca.messages.GitHubSyncFailureNotification
+    message.payload(GitHubSyncFailureNotification.serializer())
+  </script>
+  <script server provides="assets">message.assetsUrl ?: error("BmlMessageContext.assetsUrl is required")</script>
+  <script server provides="subject">t("github-sync-failed.subject", "GitHub synchronization failed in {repository}", "repository" to m.repositoryName)</script>
+  <script server provides="headline">t("github-sync-failed.headline", "GitHub synchronization needs attention")</script>
+  <script server provides="eyebrow">t("github-sync-failed.eyebrow", "Git · Synchronization")</script>
+  <script server provides="reason">t("github-sync-failed.reason", "You're receiving this because you own this repository on {appName}.", "appName" to m.appName)</script>
+  <script server provides="cta">t("github-sync-failed.cta", "Review synchronization")</script>
+  <email>
+    <subject>{ subject }</subject>
+    <bosca-shell :brand="m.appName" :logo="m.logoUrl" :logoOnly="m.logoOnly" title="{ m.appName } · GitHub Synchronization" :preheader="subject" :assets="assets" :unsubscribe="message.unsubscribeUrl" :preferences="message.preferencesUrl" :reason="reason" :primaryColor="m.primaryColor">
+      <bosca-heading :eyebrow="eyebrow" :headline="headline" :name="message.recipientName" :primaryColor="m.primaryColor" :accentColor="m.accentColor">
+        <span t="github-sync-failed.lede">A GitHub delivery for { m.repositoryName } could not be synchronized.</span>
+      </bosca-heading>
+      <panel :accentColor="m.accentColor">
+        <p>{ m.problem }</p>
+        <p t="github-sync-failed.instructions">For imports, map the GitHub sender to their Bosca user and give one of that user's groups repository Edit permission.</p>
+        <p><a href="{ m.mappingsUrl }" t="github-sync-failed.mappings">GitHub user mappings</a></p>
+        <p><a href="{ m.permissionsUrl }" t="github-sync-failed.permissions">Repository permissions</a></p>
+        <p t="github-sync-failed.recovery">A delivery received without a user mapping retains that identity. Configure the mapping for new deliveries, then use Pull from GitHub to import existing branches and tags.</p>
+        <cta-button wide :href="m.synchronizationUrl" :label="cta" :primaryColor="m.primaryColor"/>
+      </panel>
+    </bosca-shell>
+  </email>
+</message>

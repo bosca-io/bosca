@@ -3,6 +3,7 @@ package bosca.server.installer
 import bosca.communications.model.NotificationTypeKeys
 import bosca.git.model.PullRequestEvent
 import bosca.git.model.RefUpdateEvent
+import bosca.git.model.GitHubSynchronizationFailed
 import bosca.installer.model.PackageInstallation
 import bosca.installer.model.PackageInstallationVersion
 import bosca.installer.service.PackageInstaller
@@ -66,6 +67,22 @@ class DefaultGitEmailPipelinesInstaller(
     }
 
     private fun specs(): List<Spec> = listOf(
+        Spec(
+            name = GITHUB_FAILURE_PIPELINE,
+            description = "Emails the repository owner once when a verified GitHub delivery fails to synchronize.",
+            eventType = requireNotNull(GitHubSynchronizationFailed::class.qualifiedName),
+            template = "github-sync-failed",
+            payloadType = "email:bosca-messages/github-sync-failed",
+            payloadExpression = """
+                {
+                  "repositoryName": repositoryName,
+                  "problem": problem,
+                  "synchronizationUrl": $appUrlLiteral & "/git/repositories/" & repositoryId & "?tab=Settings&setting=github",
+                  "permissionsUrl": $appUrlLiteral & "/git/repositories/" & repositoryId & "?tab=Settings&setting=permissions",
+                  "mappingsUrl": $appUrlLiteral & "/git/settings/github"
+                }
+            """.trimIndent(),
+        ),
         Spec(
             name = PULL_REQUEST_PIPELINE,
             description = "Sends preference-aware email for pull-request lifecycle, review, comment, assignment, and source-update events.",
@@ -177,11 +194,12 @@ class DefaultGitEmailPipelinesInstaller(
         private val log = LoggerFactory.getLogger(DefaultGitEmailPipelinesInstaller::class.java)
 
         const val NAME = "default-git-email-pipelines"
-        const val VERSION = "1.1.0"
+        const val VERSION = "1.2.0"
+        const val GITHUB_FAILURE_PIPELINE = "Email Git Activity — GitHub Synchronization Failure"
         const val PULL_REQUEST_PIPELINE = "Email Git Activity — Pull Requests"
         const val REF_UPDATE_PIPELINE = "Email Git Activity — Branches and Tags"
 
-        val TEMPLATE_KEYS = setOf("git-pull-request", "git-ref-update")
+        val TEMPLATE_KEYS = setOf("git-pull-request", "git-ref-update", "github-sync-failed")
 
         private const val MESSAGE_PROJECT = "bosca-messages"
         private const val INPUT = "input"

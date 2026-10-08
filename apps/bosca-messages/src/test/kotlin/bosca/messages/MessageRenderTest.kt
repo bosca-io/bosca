@@ -391,6 +391,19 @@ class MessageRenderTest {
     }
 
     @Test
+    fun `GitHub synchronization failure email explains the problem and recovery`() {
+        val rendered = render("08b-github-sync-failed")
+        assertEquals("GitHub synchronization failed in bosca-workspace", rendered.subject)
+        assertTrue(rendered.html.contains("does not have repository Edit permission"))
+        assertTrue(rendered.html.contains("GitHub user mappings"))
+        assertTrue(rendered.html.contains("Repository permissions"))
+        assertTrue(rendered.text.contains("Pull from GitHub"))
+        assertTrue(rendered.text.contains("https://studio.example.com/git/settings/github"))
+        assertTrue(rendered.text.contains("setting=permissions"))
+        assertTrue(rendered.text.contains("setting=github"))
+    }
+
+    @Test
     fun `plain text alternative carries the key copy without markup`() {
         val rendered = render("03-reset-password")
         assertTrue(rendered.text.contains("Reset your password"), rendered.text.take(400))

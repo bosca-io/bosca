@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import gql from 'graphql-tag'
+import { pipelineEventLabel } from '~/components/pipelines/pipelineEventLabel'
 import PipelinePeekModal from '~/components/pipelines/PipelinePeekModal.vue'
 import PipelineRunGraph from '~/components/pipelines/PipelineRunGraph.vue'
 import { deriveRunVizNodes, resolveNodeName, resolveNodeTransitions, type NodeTransition, type RunVizNode } from '~/components/pipelines/pipelineRunViz'
@@ -35,6 +36,7 @@ interface RunDetail {
   pipelineId: string
   status: string
   eventName: string
+  input: Record<string, unknown> | null
   error: string | null
   createdAt: string
   modifiedAt: string
@@ -72,7 +74,7 @@ const RUN_DETAIL_QUERY = gql`
   query GetPipelineRunDetail($runId: UUID!) {
     pipelines {
       run(runId: $runId) {
-        id pipelineId status eventName error createdAt modifiedAt
+        id pipelineId status eventName input error createdAt modifiedAt
         awaitingNodeIds completedNodeIds
         awaitingNodes { nodeId type name runId }
         steps { nodeId title kind status depth item channelType }
@@ -252,6 +254,11 @@ async function cancelRun() {
   }
 }
 const isLive = computed(() => run.value?.status === 'RUNNING' || run.value?.status === 'SUSPENDED')
+const githubRepositoryId = computed(() => {
+  if (run.value?.eventName !== 'bosca.git.model.GitHubDelivery') return null
+  const id = run.value.input?.repositoryId
+  return typeof id === 'string' ? id : null
+})
 
 /** Decide an Approval Gate: approve lets the gated value flow on; reject fails the run. */
 async function decideGate(runId: string, nodeId: string, approved: boolean) {
@@ -400,10 +407,6 @@ function hasDetail(n: NodeExecution): boolean {
   return n.error != null || (n.output != null && n.output !== '')
 }
 
-function eventLabel(fqdn: string): string {
-  const leaf = fqdn.includes('.') ? fqdn.slice(fqdn.lastIndexOf('.') + 1) : fqdn
-  return leaf.replace(/([a-z0-9])([A-Z])/g, '$1 $2').trim() || fqdn
-}
 
 function formatTime(d: string): string {
   return new Date(d).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })
@@ -437,7 +440,7 @@ function statusColor(status: string): string {
 <template>
   <Modal
     title="Run detail"
-    :subtitle="run ? eventLabel(run.eventName) : 'Loading…'"
+    :subtitle="run ? pipelineEventLabel(run.eventName) : 'Loading…'"
     icon="workflow"
     :width="modalWidth"
     @close="emit('close')"
@@ -480,9 +483,19 @@ function statusColor(status: string): string {
       <p
         v-if="run.error"
         class="run-error"
+        role="alert"
       >
         {{ run.error }}
       </p>
+      <div v-if="run.error && run.status === 'SUSPENDED'" class="failure-help">
+        The latest attempt failed. This run is waiting while its backing work retries.
+      </div>
+      <div v-if="run.error && githubRepositoryId" class="failure-help">
+        <p>For GitHub imports, map the sender to a Bosca user and give one of that user's groups repository Edit. A delivery received without a mapping keeps that identity; use Pull from GitHub for existing refs after configuring the mapping.</p>
+        <NuxtLink to="/git/settings/github">GitHub user mappings</NuxtLink>
+        <NuxtLink :to="`/git/repositories/${githubRepositoryId}?tab=Settings&setting=permissions`">Repository permissions</NuxtLink>
+        <NuxtLink :to="`/git/repositories/${githubRepositoryId}?tab=Settings&setting=github`">GitHub synchronization history</NuxtLink>
+      </div>
 
       <div
         v-for="action in awaitingActions"
@@ -845,6 +858,9 @@ function statusColor(status: string): string {
   color: var(--err, #f87171);
   font-size: 12px;
 }
+.failure-help { display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: 13px; color: var(--fg-2); }
+.failure-help p { flex-basis: 100%; margin: 0; line-height: 1.6; }
+.failure-help a { text-decoration: underline; }
 
 /* A parked run waiting on a person — the amber card carries the decision controls. */
 .awaiting-card {

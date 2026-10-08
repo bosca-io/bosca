@@ -7,6 +7,7 @@ import bosca.db.afterCommit
 import bosca.events.catalog.CoreGitEventCatalogRegistrarProvider
 import bosca.events.catalog.EventCatalogRegistrar
 import bosca.git.model.GitHubDelivery
+import bosca.git.model.GitHubSynchronizationFailed
 import bosca.git.model.GitHubSyncResult
 import bosca.git.model.GitHubRefState
 import bosca.git.model.RefUpdateEvent
@@ -157,7 +158,7 @@ class GitHubSyncServiceIntegrationTest {
             val refMigration = javaClass.getResource("/db/migrations/V45__github_ref_synchronization.sql")?.readText()
                 ?: error("Missing ref migration")
             connection().useStatement(refMigration) { it.execute() }
-            for (name in listOf("V3__pull_requests.sql", "V46__github_pull_request_synchronization.sql")) {
+            for (name in listOf("V3__pull_requests.sql", "V46__github_pull_request_synchronization.sql", "V47__github_delivery_problems.sql")) {
                 connection().useStatement(javaClass.getResource("/db/migrations/$name")?.readText() ?: error(name)) { it.execute() }
             }
             connection().useStatement("insert into git.repositories(id) values ('$repositoryId')") { it.execute() }
@@ -240,6 +241,74 @@ class GitHubSyncServiceIntegrationTest {
         }
         coEvery { writes.synchronizeRef(any()) } returns RefSynchronizationResult(GitHubSyncResult.APPLIED, sha, sha)
         assertEquals(GitHubSyncResult.APPLIED, service.synchronizePush(delivery))
+        assertNull(repository.findDelivery(delivery.deliveryId)?.problem)
+    }
+
+    @Test fun `permission failure is visible and dispatches one durable event pipeline across retries`() = withDb {
+        val fixture = installTriggeredPipeline(failures = true)
+        service.savePair(input)
+        coEvery { github.humanUserId("octocat") } returns 7L
+        val mapping = service.mapUserByUsername(" @octocat ", principalId)
+        assertEquals("octocat", mapping.githubUsername)
+        assertEquals(7L, mapping.githubUserId)
+        val delivery = receive(pushPayload())
+        coEvery { hostedService.getPermissions(hosted) } returns emptyList()
+        coEvery { writes.compareRefs(repositoryId, any(), any()) } returns listOf(RefComparison(ref, null, sha))
+        repeat(2) { assertFailsWith<bosca.security.service.SecurityException> { service.synchronizePush(delivery) } }
+        val problem = assertNotNull(repository.findDelivery(delivery.deliveryId)?.problem)
+        assertTrue("Edit permission" in problem)
+        assertTrue("Permissions" in problem)
+        assertEquals(problem, service.deliveryImportProblem(delivery))
+        assertNull(repository.findPushResult(delivery.deliveryId))
+        fixture.dispatchAll()
+        fixture.driveAll()
+        val event = FailureProbe.observed.single()
+        assertEquals(delivery.deliveryId, event.deliveryId)
+        assertEquals(problem, event.problem)
+        assertEquals(setOf(hosted.ownerId), event.recipientIds)
+        assertEquals(repositoryId, event.repositoryId)
+        coEvery { hostedService.getPermissions(hosted) } returns listOf(
+            bosca.git.model.RepositoryPermission(repositoryId, writers.id, bosca.security.model.PermissionAction.EDIT))
+        coEvery { writes.synchronizeRef(any()) } returns RefSynchronizationResult(GitHubSyncResult.APPLIED, sha, sha)
+        assertNull(service.deliveryImportProblem(delivery))
+        assertEquals(GitHubSyncResult.APPLIED, service.synchronizePush(delivery))
+        assertNull(repository.findDelivery(delivery.deliveryId)?.problem)
+        fixture.dispatchAll()
+        fixture.driveAll()
+        assertEquals(1, FailureProbe.observed.size)
+    }
+
+    @Test fun `unmapped deliveries explain retained attribution and cancellation emits no failure`() = withDb {
+        val fixture = installTriggeredPipeline(failures = true)
+        service.savePair(input)
+        val delivery = receive(pushPayload())
+        assertTrue("redelivery preserves" in assertNotNull(service.deliveryImportProblem(delivery)))
+        service.mapUser(7, principalId)
+        assertTrue("Pull from GitHub" in assertNotNull(service.deliveryImportProblem(delivery)))
+        val mapped = receive(pushPayload())
+        coEvery { writes.synchronizeRef(any()) } throws kotlinx.coroutines.CancellationException("cancelled")
+        assertFailsWith<kotlinx.coroutines.CancellationException> { service.synchronizePush(mapped) }
+        assertNull(repository.findDelivery(mapped.deliveryId)?.problem)
+        fixture.dispatchAll()
+        fixture.driveAll()
+        assertTrue(FailureProbe.observed.isEmpty())
+    }
+
+    @Test fun `failed GitHub backing work remains suspended with a persisted visible error`() = withDb {
+        val fixture = installTriggeredPipeline(sync = true)
+        provides<GitHubSyncService> { service }
+        service.savePair(input)
+        service.mapUser(7, principalId)
+        receive(pushPayload())
+        fixture.dispatchAll()
+        fixture.driveAll()
+        val run = fixture.runRepository.listActive(0, 25).single()
+        coEvery { writes.synchronizeRef(any()) } throws IllegalStateException("GitHub transport unavailable")
+        assertFailsWith<IllegalStateException> { fixture.executeBackingJobs(security) }
+        val stillSuspended = assertNotNull(fixture.runRepository.getById(run.id))
+        assertEquals(PipelineRunStatus.SUSPENDED, stillSuspended.status)
+        assertEquals("GitHub transport unavailable", bosca.pipelines.graphql.PipelineRunStateController(fixture.json, fixture.runService).error(stillSuspended))
+        assertEquals(bosca.pipelines.model.NodeExecutionStatus.FAILED, fixture.runService.nodeTimeline(run.id).last().status)
     }
 
     @Test fun `only persisted eligible pushes from an active hosted pair may synchronize`() = withDb {
@@ -730,7 +799,7 @@ class GitHubSyncServiceIntegrationTest {
                     GitHubSyncMutationDispatcher(GitHubSyncMutation(service, groups, hostedService, permissions)),
                     GitHubRepositoryPairControllerDispatcher(GitHubRepositoryPairController()),
                     GitHubUserControllerDispatcher(GitHubUserController()),
-                    GitHubDeliveryControllerDispatcher(GitHubDeliveryController()),
+                    GitHubDeliveryControllerDispatcher(GitHubDeliveryController(service)),
                     GitHubRefStateControllerDispatcher(GitHubRefStateController()),
                     GitHubPullRequestStateControllerDispatcher(GitHubPullRequestStateController()),
                     GitHubPullRequestSnapshotControllerDispatcher(GitHubPullRequestSnapshotController()),
@@ -863,6 +932,24 @@ class GitHubSyncServiceIntegrationTest {
         }
     }
 
+    @Serializable
+    @SerialName("githubFailureProbe")
+    class FailureProbe(
+        override val id: String,
+        override val name: String = "",
+        override val description: String = "",
+        override val position: NodePosition = NodePosition(),
+    ) : ActionNode() {
+        override suspend fun execute(context: PipelineContext, inputs: NodeInputs): PipelineValue? {
+            observed += context.json.decodeFromJsonElement(
+                GitHubSynchronizationFailed.serializer(), requireNotNull(inputs.first).encode(context.json))
+            return inputs.first
+        }
+        companion object {
+            val observed = mutableListOf<GitHubSynchronizationFailed>()
+        }
+    }
+
     data class Observation(
         val delivery: GitHubDelivery,
         val principalId: UUID?,
@@ -938,7 +1025,7 @@ class GitHubSyncServiceIntegrationTest {
     }
 
     /** Exercises generated event dispatch, both production pipeline jobs and JDBC run mapping. */
-    private suspend fun installTriggeredPipeline(sync: Boolean = false, pullRequests: Boolean = false): EventFixture {
+    private suspend fun installTriggeredPipeline(sync: Boolean = false, pullRequests: Boolean = false, failures: Boolean = false): EventFixture {
         connection().useStatement("""
             drop schema if exists pipelines cascade;
             create table if not exists groups (id uuid primary key);
@@ -961,6 +1048,7 @@ class GitHubSyncServiceIntegrationTest {
                     subclass(InputNode::class, InputNode.serializer())
                     subclass(OutputNode::class, OutputNode.serializer())
                     subclass(DeliveryProbe::class, DeliveryProbe.serializer())
+                    subclass(FailureProbe::class, FailureProbe.serializer())
                 }
             }
         }
@@ -982,12 +1070,12 @@ class GitHubSyncServiceIntegrationTest {
         coEvery { pipelines.decodeGraph(any()) } answers {
             graphJson.decodeFromJsonElement(PipelineGraph.serializer(), firstArg())
         }
-        val eventName = GitHubDelivery.serializer().descriptor.serialName
+        val eventName = if (failures) GitHubSynchronizationFailed.serializer().descriptor.serialName else GitHubDelivery.serializer().descriptor.serialName
         val graph = Pipeline(
             id = UUID.NIL,
             name = "Inbound GitHub", key = "configured-by-administrator", triggered = true, acceptedInputType = eventName,
             nodes = listOf(InputNode("input", acceptedType = eventName),
-                if (pullRequests) bosca.git.pipeline.GitHubImportPullRequestNode("probe") else if (sync) bosca.git.pipeline.GitHubPushNode("probe") else DeliveryProbe("probe"), OutputNode("output")),
+                if (failures) FailureProbe("probe") else if (pullRequests) bosca.git.pipeline.GitHubImportPullRequestNode("probe") else if (sync) bosca.git.pipeline.GitHubPushNode("probe") else DeliveryProbe("probe"), OutputNode("output")),
             edges = listOf(
                 PipelineEdge(id = "in", source = "input", target = "probe"),
                 PipelineEdge(id = "out", source = "probe", target = "output"),
@@ -1049,6 +1137,7 @@ class GitHubSyncServiceIntegrationTest {
         fixture.queue = bosca.sharedqueue.jobs.enqueue.EventEmittingJobQueue(delegate, "pipelines", channel)
         provides<JobQueue>(name = bosca.pipelines.configuration.PipelinesJobQueueNames.jobQueue, singleton = true) { fixture.queue }
         DeliveryProbe.observed.clear()
+        FailureProbe.observed.clear()
         return fixture
     }
 

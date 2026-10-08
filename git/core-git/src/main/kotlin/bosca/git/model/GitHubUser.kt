@@ -13,4 +13,5 @@ data class GitHubUser(
     @Contextual @ColumnName("principal_id") val principalId: UUID,
     @Contextual val created: OffsetDateTime = OffsetDateTime.now(),
     @Contextual val modified: OffsetDateTime = OffsetDateTime.now(),
+    @ColumnName("github_username") val githubUsername: String? = null,
 )

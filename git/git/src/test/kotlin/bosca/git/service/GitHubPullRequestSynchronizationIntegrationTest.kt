@@ -135,7 +135,7 @@ class GitHubPullRequestSynchronizationIntegrationTest {
         }
         db {
             connection().useStatement("drop schema if exists git cascade; create schema git; create table git.repositories(id uuid primary key)") { it.execute() }
-            for (name in listOf("V3__pull_requests.sql", "V6__review_comments.sql", "V44__github_intake.sql", "V45__github_ref_synchronization.sql", "V46__github_pull_request_synchronization.sql")) {
+            for (name in listOf("V3__pull_requests.sql", "V6__review_comments.sql", "V44__github_intake.sql", "V45__github_ref_synchronization.sql", "V46__github_pull_request_synchronization.sql", "V47__github_delivery_problems.sql")) {
                 connection().useStatement(javaClass.getResource("/db/migrations/$name")?.readText() ?: error(name)) { it.execute() }
             }
             connection().useStatement("create table git.dfs_refs(repository_id uuid, name text, object_id text, updated timestamptz)") { it.execute() }

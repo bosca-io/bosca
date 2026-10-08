@@ -12,6 +12,7 @@ import bosca.git.model.GitRefUpdateAction
 import bosca.git.model.PullRequestEvent
 import bosca.git.model.PullRequestEventAction
 import bosca.git.model.RefUpdateEvent
+import bosca.git.model.GitHubSynchronizationFailed
 import bosca.pipelines.PipelineContext
 import bosca.pipelines.PipelineExecutorImpl
 import bosca.pipelines.model.Pipeline
@@ -145,6 +146,36 @@ class DefaultGitEmailPipelineExecutionTest {
                     payload["refName"]?.jsonPrimitive?.content == "v1.0.0" &&
                     payload["repositoryUrl"]?.jsonPrimitive?.content ==
                     "https://studio.example/git/repositories/$repositoryId"
+            })
+        }
+    }
+
+    @Test
+    fun `synchronization failure event sends the problem and actionable settings links`() = runTest {
+        val recipientId = UUID.random()
+        val repositoryId = UUID.random()
+        val event = GitHubSynchronizationFailed(
+            repositoryId, "Bosca", UUID.random().toString(), "push", "Repository Edit permission is required",
+            setOf(recipientId),
+        )
+        PipelineExecutorImpl().execute(
+            gitPipeline(DefaultGitEmailPipelinesInstaller.GITHUB_FAILURE_PIPELINE),
+            PipelineValue.of(event, GitHubSynchronizationFailed.serializer()),
+            PipelineContext(AuthenticationContext(null, null), json),
+        ).requireCompleted()
+        coVerify(exactly = 1) {
+            messageService.send(match<Message> { message ->
+                val template = message.bmlTemplate ?: return@match false
+                val payload = template.payload?.jsonObject ?: return@match false
+                message.recipients == listOf(recipientId) &&
+                    message.type == NotificationTypeKeys.GIT_ACTIVITY &&
+                    template.templateKey == "github-sync-failed" &&
+                    payload["problem"]?.jsonPrimitive?.content == event.problem &&
+                    payload["synchronizationUrl"]?.jsonPrimitive?.content ==
+                    "https://studio.example/git/repositories/$repositoryId?tab=Settings&setting=github" &&
+                    payload["permissionsUrl"]?.jsonPrimitive?.content ==
+                    "https://studio.example/git/repositories/$repositoryId?tab=Settings&setting=permissions" &&
+                    payload["mappingsUrl"]?.jsonPrimitive?.content == "https://studio.example/git/settings/github"
             })
         }
     }

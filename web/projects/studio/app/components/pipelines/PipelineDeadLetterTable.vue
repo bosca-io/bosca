@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import gql from 'graphql-tag'
+import { pipelineEventLabel } from '~/components/pipelines/pipelineEventLabel'
 import type { GlassTableColumn } from '@bosca/ui'
 
 /**
@@ -126,11 +127,6 @@ const columns = computed<GlassTableColumn[]>(() => [
   { key: 'actions', label: '', width: '232px', align: 'right' as const },
 ])
 
-function eventLabel(fqdn: string): string {
-  const leaf = fqdn.includes('.') ? fqdn.slice(fqdn.lastIndexOf('.') + 1) : fqdn
-  return leaf.replace(/([a-z0-9])([A-Z])/g, '$1 $2').trim() || fqdn
-}
-
 function formatAge(d: string): string {
   const ms = Date.now() - new Date(d).getTime()
   const sec = Math.round(ms / 1000)
@@ -165,7 +161,7 @@ function formatAge(d: string): string {
         <span
           class="event-name"
           :title="row.eventName"
-        >{{ eventLabel(row.eventName) }}</span>
+        >{{ pipelineEventLabel(row.eventName) }}</span>
       </template>
       <template #col-error="{ row }">
         <span

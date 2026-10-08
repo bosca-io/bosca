@@ -4,6 +4,7 @@ import bosca.git.model.GitHubRepositoryPair
 import bosca.git.model.GitHubPullRequest
 import bosca.git.model.GitHubCreatePullRequestInput
 import bosca.git.model.GitHubUpdatePullRequestInput
+import bosca.git.model.GitHubWebhookUser
 import bosca.serialization.OffsetDateTimeSerializer
 import bosca.server.http.await
 import kotlinx.serialization.Serializable
@@ -22,6 +23,19 @@ class GitHubClient(
     private val client: OkHttpClient = OkHttpClient(),
     private val baseUrl: String = "https://api.github.com",
 ) {
+    /** Resolves a human account by username without requiring a repository token. */
+    suspend fun humanUserId(username: String): Long {
+        require(username.matches(Regex("[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?"))) {
+            "Enter a GitHub username, such as octocat."
+        }
+        val request = Request.Builder().url(url("users", username))
+            .header("Accept", "application/vnd.github+json")
+            .header("X-GitHub-Api-Version", "2026-03-10").build()
+        val user = json.decodeFromString(GitHubWebhookUser.serializer(), execute(request, "user lookup"))
+        require(user.id > 0 && user.type == "User") { "Choose a GitHub person’s account; organizations and bots cannot be mapped." }
+        return user.id
+    }
+
     /** Resolves the immutable repository identity from the owner/name using the configured token. */
     suspend fun repositoryId(owner: String, name: String, token: String): Long {
         val remote = json.decodeFromString(GitHubRepository.serializer(), execute(
@@ -126,6 +140,8 @@ class GitHubClient(
                 ". The repository was not found or is not accessible to the selected token. " +
                     "Check the GitHub owner and repository name, and ensure the token has access to this repository. " +
                     "For organization repositories, check token approval and SSO authorization."
+            } else if (response.code == 404 && operation == "user lookup") {
+                ". No account was found. Check the GitHub username and try again."
             } else ""
             "GitHub $operation failed: HTTP ${response.code}$guidance"
         }

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import gql from 'graphql-tag'
+import { pipelineEventLabel } from '~/components/pipelines/pipelineEventLabel'
 import type { GlassTableColumn } from '@bosca/ui'
 
 /**
@@ -90,11 +91,6 @@ const columns = computed<GlassTableColumn[]>(() => [
   { key: 'actions', label: '', width: '160px', align: 'right' as const },
 ])
 
-function eventLabel(fqdn: string): string {
-  const leaf = fqdn.includes('.') ? fqdn.slice(fqdn.lastIndexOf('.') + 1) : fqdn
-  return leaf.replace(/([a-z0-9])([A-Z])/g, '$1 $2').trim() || fqdn
-}
-
 /** Compact "time since" for how long a run has been parked. */
 function formatAge(d: string): string {
   const ms = Date.now() - new Date(d).getTime()
@@ -149,7 +145,7 @@ function statusColor(status: string): string {
         <span
           class="event-name"
           :title="row.eventName"
-        >{{ eventLabel(row.eventName) }}</span>
+        >{{ pipelineEventLabel(row.eventName) }}</span>
       </template>
       <template #col-awaitingNodeIds="{ row }">
         <span
@@ -158,6 +154,7 @@ function statusColor(status: string): string {
           :title="row.awaitingNodeIds.join(', ')"
         >{{ row.awaitingNodeIds.join(', ') }}</span>
         <span v-else>—</span>
+        <p v-if="row.error" class="attempt-error" role="alert">{{ row.error }}</p>
       </template>
       <template #col-completedNodeIds="{ row }">
         {{ row.completedNodeIds.length }}
@@ -215,6 +212,7 @@ function statusColor(status: string): string {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.attempt-error { margin: 6px 0 0; color: var(--err); font-size: 12px; overflow-wrap: anywhere; }
 .awaiting {
   font-family: var(--font-mono, monospace);
   font-size: 11px;

@@ -157,7 +157,7 @@ class GitHubRefSynchronizationIntegrationTest {
                 "create table git.dfs_refs" + it.substringBefore("create table git.repository_permissions")
             }) { it.execute() }
             for (name in listOf("V23__dfs_pack_soft_delete.sql", "V44__github_intake.sql", "V45__github_ref_synchronization.sql",
-                "V3__pull_requests.sql", "V46__github_pull_request_synchronization.sql")) {
+                "V3__pull_requests.sql", "V46__github_pull_request_synchronization.sql", "V47__github_delivery_problems.sql")) {
                 connection().useStatement(migration(name)) { it.execute() }
             }
             service.savePair(GitHubRepositoryPairInput(repositoryId, 123, "bosca-io", "source", "webhook", "token", true))

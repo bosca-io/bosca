@@ -113,6 +113,15 @@ interface GitHubSyncRepository {
     """)
     suspend fun mapUser(githubUserId: Long, principalId: UUID): GitHubUser
 
+    @Query("update git.github_users set github_username = :username where github_user_id = :githubUserId returning *")
+    suspend fun setUsername(githubUserId: Long, username: String): GitHubUser
+
+    @Query("update git.github_deliveries set problem = :problem where delivery_id = :deliveryId", returnUpdateCount = true)
+    suspend fun setDeliveryProblem(deliveryId: String, problem: String?): Int
+
+    @Query("update git.github_deliveries set failure_reported = true where delivery_id = :deliveryId and not failure_reported returning *")
+    suspend fun reserveFailureNotification(deliveryId: String): GitHubDelivery?
+
     @Query("delete from git.github_users where github_user_id = :githubUserId")
     suspend fun unmapUser(githubUserId: Long)
 

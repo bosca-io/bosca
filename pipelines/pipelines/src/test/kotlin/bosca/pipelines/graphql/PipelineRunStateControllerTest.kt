@@ -72,7 +72,7 @@ class PipelineRunStateControllerTest {
     }
 
     @Test
-    fun `projects the scalar identity and timing fields`() {
+    fun `projects the scalar identity and timing fields`() = runTest {
         val id = UUID.random()
         val pipelineId = UUID.random()
         val created = java.time.OffsetDateTime.parse("2026-06-18T10:00:00Z")
@@ -94,6 +94,25 @@ class PipelineRunStateControllerTest {
         assertEquals("boom", controller.error(run))
         assertEquals(created, controller.createdAt(run))
         assertEquals(modified, controller.modifiedAt(run))
+    }
+
+    @Test
+    fun `suspended runs expose the latest failed attempt until that node recovers`() = runTest {
+        val run = suspendedAwaiting("susp" to "k")
+        val now = java.time.OffsetDateTime.parse("2026-06-18T10:00:00Z")
+        val failed = NodeExecutionRecord(
+            runId = run.id, nodeId = "susp", status = NodeExecutionStatus.FAILED,
+            startedAt = now, finishedAt = now, durationMs = 0, error = "Repository Edit permission is required",
+        )
+        coEvery { runService.nodeTimeline(run.id) } returns listOf(failed)
+        assertEquals(failed.error, controller.error(run))
+        coEvery { runService.nodeTimeline(run.id) } returns listOf(failed, failed.copy(status = NodeExecutionStatus.OK, error = null))
+        assertEquals(null, controller.error(run))
+        coEvery { runService.nodeTimeline(run.id) } returns listOf(failed.copy(nodeId = "other"))
+        assertEquals(null, controller.error(run))
+        assertEquals(null, controller.error(run.copy(status = PipelineRunStatus.OK)))
+        val input = buildJsonObject { put("repositoryId", "repo") }
+        assertEquals(input, controller.input(run.copy(input = input)))
     }
 
     @Test

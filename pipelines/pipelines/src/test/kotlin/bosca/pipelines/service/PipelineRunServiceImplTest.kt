@@ -954,6 +954,26 @@ class PipelineRunServiceImplTest {
     }
 
     @Test
+    fun `failed backing attempts publish diagnostics without completing the suspended run`() = runTest {
+        val runId = UUID.random()
+        val runRepo = mockk<PipelineRunRepository>(relaxed = true)
+        val nodeRepo = mockk<NodeExecutionRepository>(relaxed = true)
+        val pubsub = mockk<PubSubService>(relaxed = true)
+        val record = slot<NodeExecutionRecord>()
+        coEvery { nodeRepo.add(capture(record)) } answers { record.captured }
+        service(runRepo = runRepo, nodeExecutionRepo = nodeRepo, pubSub = pubsub)
+            .recordNodeAttemptFailure(runId, "import", "Missing repository Edit permission")
+        assertEquals(NodeExecutionStatus.FAILED, record.captured.status)
+        assertEquals("Missing repository Edit permission", record.captured.error)
+        coVerify(exactly = 0) { runRepo.complete(any(), any(), any(), any()) }
+        coVerify(exactly = 1) {
+            pubsub.publish(runEventChannel(runId), PipelineRunUpdate.serializer(), match {
+                it.nodeId == "import" && it.nodeStatus == NodeExecutionStatus.FAILED && it.error == record.captured.error
+            })
+        }
+    }
+
+    @Test
     fun `nodeTimeline forwards to the node-execution repository`() = runTest {
         val nodeRepo = mockk<NodeExecutionRepository>()
         val runId = UUID.random()

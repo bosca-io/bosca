@@ -18,6 +18,8 @@ type GitHubMutation {
     savePair(input: GitHubRepositoryPairInput!): GitHubRepositoryPair!
     "Map an immutable GitHub human user ID to a Bosca principal without granting permissions."
     mapUser(githubUserId: Long!, principalId: UUID!): GitHubUser!
+    "Resolve a GitHub username and map its immutable human user ID to a Bosca principal."
+    mapUserByUsername(username: String!, principalId: UUID!): GitHubUser!
     "Remove a user mapping without rewriting previous delivery attribution."
     unmapUser(githubUserId: Long!): Boolean!
     "Reconcile current branches and tags in both directions as the calling administrator; repository Edit, destination protections and conflicts apply."
@@ -104,6 +106,7 @@ input GitHubRepositoryPairInput {
 
 "An administrator-verified human user mapping; permissions remain group-based."
 type GitHubUser {
+    githubUsername: String
     githubUserId: Long!
     principalId: UUID!
     created: DateTime!
@@ -112,6 +115,10 @@ type GitHubUser {
 
 "An authentic delivery retained for workflow processing and reconciliation."
 type GitHubDelivery {
+    "Most recent synchronization failure; cleared when this delivery succeeds."
+    problem: String
+    "Current access blocker for importing this delivery; null does not mean synchronization completed."
+    importProblem: String
     deliveryId: String!
     repositoryId: UUID!
     event: String!

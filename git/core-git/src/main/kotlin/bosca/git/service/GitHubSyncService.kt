@@ -44,6 +44,12 @@ interface GitHubSyncService : Service {
     /** Maps a GitHub human user to an existing Bosca principal. Does not grant any permissions. */
     suspend fun mapUser(githubUserId: Long, principalId: UUID): GitHubUser
 
+    /** Resolves a GitHub human username and saves its immutable ID without granting permissions. */
+    suspend fun mapUserByUsername(username: String, principalId: UUID): GitHubUser
+
+    /** Current inbound-access problem for a saved delivery; null does not claim synchronization completed. */
+    suspend fun deliveryImportProblem(delivery: GitHubDelivery): String?
+
     /** Removes a mapping without rewriting the originating attribution of accepted deliveries. */
     suspend fun unmapUser(githubUserId: Long)
 

@@ -99,6 +99,7 @@ class ExecuteNodeInJobExecutorTest {
         coEvery { securityService.getPrincipalByIdentifier(any()) } returns Principal(id = UUID.random())
         coEvery { securityService.getPrincipalGroups(any<UUID>()) } returns emptyList()
         coEvery { runService.get(runId) } returns PipelineRun(pipelineId = UUID.random(), graphSnapshot = JsonObject(emptyMap()))
+        coEvery { runService.recordNodeAttemptFailure(any(), any(), any()) } returns Unit
     }
 
     @AfterTest
@@ -120,7 +121,20 @@ class ExecuteNodeInJobExecutorTest {
     @Test
     fun `a thrown execute fails the job and stages nothing`() = runTest {
         coEvery { pipelineService.decodeGraph(any()) } returns PipelineGraph(nodes = listOf(EchoNode("n", fail = true)))
-        assertFailsWith<IllegalStateException> { runExecutor(emptyMap()) }
+        val failure = assertFailsWith<IllegalStateException> { runExecutor(emptyMap()) }
+        assertEquals("boom", failure.message)
+        coVerify(exactly = 1) { runService.recordNodeAttemptFailure(runId, "n", "boom") }
+        coVerify(exactly = 0) { resultStore.put(any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun `cancellation does not record a failed attempt or stage an output`() = runTest {
+        val node = mockk<ActionNode>()
+        every { node.id } returns "n"
+        coEvery { node.run(any(), any()) } throws kotlinx.coroutines.CancellationException("stopping")
+        coEvery { pipelineService.decodeGraph(any()) } returns PipelineGraph(nodes = listOf(node))
+        assertFailsWith<kotlinx.coroutines.CancellationException> { runExecutor(emptyMap()) }
+        coVerify(exactly = 0) { runService.recordNodeAttemptFailure(any(), any(), any()) }
         coVerify(exactly = 0) { resultStore.put(any(), any(), any(), any()) }
     }
 

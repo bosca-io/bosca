@@ -9,7 +9,7 @@ type View = 'refStates' | 'pullRequestStates' | 'deliveries'
 interface Snapshot { title: string; description: string | null; sourceBranch: string; targetBranch: string; status: string; mergeSha: string | null }
 interface RefState { ref: string; sha: string | null; synchronized: boolean; boscaSha: string | null; githubSha: string | null; conflict: boolean; modified: string }
 interface PrState { pullRequestId: string | null; githubNumber: number | null; snapshot: Snapshot | null; bosca: Snapshot | null; github: Snapshot | null; problem: string | null; modified: string }
-interface Delivery { deliveryId: string; event: string; principalId: string | null; githubUserId: number | null; ignored: boolean; created: string }
+interface Delivery { deliveryId: string; event: string; principalId: string | null; githubUserId: number | null; ignored: boolean; created: string; problem: string | null; importProblem: string | null }
 interface History { refStates: RefState[]; pullRequestStates: PrState[]; deliveries: Delivery[] }
 
 const snapshotFields = gql`fragment SyncSnapshotFields on GitHubPullRequestSnapshot {
@@ -29,7 +29,7 @@ const documents = {
   } ${snapshotFields}`,
   deliveries: gql`query GitHubSyncDeliveries($repositoryId: UUID!, $offset: Long!, $limit: Int!) {
     github { deliveries(repositoryId: $repositoryId, offset: $offset, limit: $limit) {
-      deliveryId event principalId githubUserId ignored created
+      deliveryId event principalId githubUserId ignored created problem importProblem
     } }
   }`,
 }
@@ -88,6 +88,7 @@ const columns = computed<GlassTableColumn[]>(() => view.value === 'refStates' ? 
 ] : [
   { key: 'deliveryId', label: 'Delivery', width: '1fr' }, { key: 'event', label: 'Event', width: '1fr' },
   { key: 'attribution', label: 'Originating user', width: '1fr' }, { key: 'state', label: 'Intake', width: '1fr' },
+  { key: 'problem', label: 'Import problem', width: '2fr' },
   { key: 'created', label: 'Received', width: '1fr' },
 ])
 
@@ -235,7 +236,21 @@ onMounted(load)
           <span v-else>No Bosca counterpart</span>
           <div>{{ (row as PrState).githubNumber ? `GitHub #${(row as PrState).githubNumber}` : 'No GitHub counterpart' }}</div>
         </template>
-        <template #col-problem="{ row }"><span :class="{ error: (row as PrState).problem }">{{ (row as PrState).problem ?? '—' }}</span></template>
+        <template #col-problem="{ row }">
+          <div v-if="view === 'deliveries' && ((row as Delivery).importProblem || (row as Delivery).problem)" class="delivery-problem" role="alert">
+            <p class="error">{{ (row as Delivery).importProblem || (row as Delivery).problem }}</p>
+            <NuxtLink v-if="!(row as Delivery).principalId" to="/git/settings/github">Map GitHub user</NuxtLink>
+            <NuxtLink v-else-if="(row as Delivery).importProblem" :to="`/git/repositories/${repositoryId}?tab=Settings&setting=permissions`">Repository permissions</NuxtLink>
+            <NuxtLink v-else :to="`/git/repositories/${repositoryId}?tab=Settings&setting=github`">GitHub settings</NuxtLink>
+            <Button
+              v-if="(row as Delivery).event === 'push'"
+              size="sm"
+              :disabled="blocked"
+              @click="selectView('Branches and tags')">Open branches and tags</Button>
+            <NuxtLink to="/pipelines/all">View pipeline runs</NuxtLink>
+          </div>
+          <span v-else :class="{ error: (row as PrState).problem }">{{ (row as PrState).problem ?? '—' }}</span>
+        </template>
         <template #col-snapshots="{ row }">
           <details v-if="(row as PrState).snapshot || (row as PrState).bosca || (row as PrState).github">
             <summary>Compare snapshots</summary>
@@ -318,6 +333,8 @@ code { font-size: 11px; overflow-wrap: anywhere; }
 .history-table :deep(.glass-table) { min-width: 850px; }
 a { text-decoration: underline; }
 .ref-state { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.delivery-problem { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.delivery-problem p { margin: 0; }
 .resolution-form { display: flex; flex-direction: column; gap: 16px; }
 .resolution-form p { margin: 0; }
 .resolution-values { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px 16px; margin: 0; }
