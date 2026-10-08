@@ -117,6 +117,10 @@ graalvmNative {
         named("main") {
             imageName = "bosca-kubernetes-controller"
             mainClass = "bosca.kubernetes.controller.ApplicationKt"
+            buildArgs.add("-O3")
+            buildArgs.addAll(providers.gradleProperty("bosca.native.march")
+                .map { listOf("-march=$it") }
+                .orElse(emptyList()))
             buildArgs.add("-J-Xmx24g")
             buildArgs.add("-J--sun-misc-unsafe-memory-access=allow")
             buildArgs.add("-J--add-opens=java.base/java.nio=ALL-UNNAMED")

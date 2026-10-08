@@ -30,6 +30,28 @@ Native server builds exclude the local Kotlin scripting engine and delegate scri
 the JVM runner. `scripts/release/build-image.sh bosca-server <version>` selects this variant
 automatically. JVM server builds retain local scripting by default.
 
+Server native builds use `-O3` with Oracle GraalVM 25.4.4.1.1. This applies to the
+API server, analytics collector, artifacts server, Git server, Kubernetes controller,
+BML message server, notifications web, and profiles web. Optimization level 3 enables
+GraalVM's advanced profile inference and increases compilation time; runtime gains
+depend on the workload.
+
+The API server's native compiler heap defaults to 64 GB. Override it with
+`-Pbosca.native.buildHeap=48g` when sizing a build agent; the compiler heap is
+separate from the running server's heap.
+
+CPU targeting uses GraalVM's default unless `bosca.native.march` is supplied. To
+build for the build host's CPU features, run from the workspace root:
+
+```bash
+./gradlew --no-daemon --no-configuration-cache -Pbosca.scripting.engine=false \
+  -Pbosca.native.march=native :server:bosca-server:nativeCompile
+```
+
+Use `native` only when every deployment node supports the build host's CPU features.
+An explicit shared target, such as `-Pbosca.native.march=x86-64-v3`, can be used for
+AMD64 fleets. The property also applies to the other server native builds listed above.
+
 ## Local Infrastructure
 
 From the workspace root:

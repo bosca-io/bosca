@@ -83,6 +83,10 @@ graalvmNative {
         named("main") {
             imageName.set("notifications-web")
             mainClass.set("bosca.notifications.web.MainKt")
+            buildArgs.add("-O3")
+            buildArgs.addAll(providers.gradleProperty("bosca.native.march")
+                .map { listOf("-march=$it") }
+                .orElse(emptyList()))
             buildArgs.add("-J-Xmx16g")
             buildArgs.add("-J--sun-misc-unsafe-memory-access=allow")
             buildArgs.add("-J--add-opens=java.base/java.nio=ALL-UNNAMED")

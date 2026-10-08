@@ -128,15 +128,55 @@ helm_oci() {
 }
 
 check_oci() {
-  local name="$1" version="$2" archive="$3" expected="$4" directory="$5"
-  if helm_oci pull "$OCI/$name" --version "$version" --destination "$directory" > "$directory/oci.log" 2>&1; then
+  local name="$1" version="$2" archive="$3" expected="$4" directory="$5" status
+  status="$(inspect_oci "$name" "$version" "$directory")"
+  if [[ "$status" == present ]]; then
     [[ "$(sha256 "$directory/$archive")" == "$expected" ]] || fail "OCI chart version has different contents: $archive"
+  fi
+  echo "$status"
+}
+
+inspect_oci() {
+  local name="$1" version="$2" directory="$3"
+  if helm_oci pull "$OCI/$name" --version "$version" --destination "$directory" > "$directory/oci.log" 2>&1; then
     echo present
   elif grep -Eiq 'not found|manifest_unknown' "$directory/oci.log"; then
     echo missing
   else
     cat "$directory/oci.log" >&2
-    fail "Cannot check OCI chart: $archive"
+    fail "Cannot check OCI chart: $name-$version.tgz"
+  fi
+}
+
+# Helm stamps tar entries at packaging time. Preserve the published bytes when
+# rebuilding the same files, so retries retain a single archive at both registries.
+same_chart_files() {
+  local published="$1" candidate="$2" directory file left right source side
+  directory="$(mktemp -d "$TEMP/compare.XXXXXX")" || return 1
+  for side in existing candidate; do
+    source="$published"; [[ "$side" == existing ]] || source="$candidate"
+    tar -tzf "$source" > "$directory/$side.names" || return 1
+    tar -tvzf "$source" > "$directory/$side.entries" || return 1
+    # Helm packages contain regular files only. Read them directly from tar;
+    # do not extract registry archives or follow links into the filesystem.
+    awk 'substr($0, 1, 1) != "-" {exit 1}' "$directory/$side.entries" || return 1
+    LC_ALL=C sort "$directory/$side.names" > "$directory/$side.sorted" || return 1
+    uniq -d "$directory/$side.sorted" > "$directory/$side.duplicates" || return 1
+    [[ -s "$directory/$side.sorted" && ! -s "$directory/$side.duplicates" ]] || return 1
+  done
+  cmp -s "$directory/existing.sorted" "$directory/candidate.sorted" || return 1
+  while IFS= read -r file; do
+    left="$(tar -xOf "$published" -- "$file" | sha256 /dev/stdin)" || return 1
+    right="$(tar -xOf "$candidate" -- "$file" | sha256 /dev/stdin)" || return 1
+    [[ "$left" == "$right" ]] || return 1
+  done < "$directory/existing.sorted"
+}
+
+reuse_archive() {
+  local published="$1" candidate="$2" destination="$3" archive="$4"
+  if [[ "$(sha256 "$published")" != "$(sha256 "$candidate")" ]]; then
+    same_chart_files "$published" "$candidate" || fail "$destination chart version has different contents: $archive; bump the chart version"
+    cp "$published" "$candidate"
   fi
 }
 
@@ -176,16 +216,32 @@ publish_charts() {
   while IFS=$'\t' read -r name version archive expected; do
     directory="$TEMP/check-$count"
     mkdir "$directory"
+    cp "$OUTPUT/$archive" "$directory/publish.tgz"
     status="$(http GET "$REPO/charts/$name/$version" "$directory/http.tgz")"
     case "$status" in
-      200) [[ "$(sha256 "$directory/http.tgz")" == "$expected" ]] || fail "HTTP chart version has different contents: $archive" ;;
+      200) reuse_archive "$directory/http.tgz" "$directory/publish.tgz" HTTP "$archive" ;;
       404) ;;
       *) fail "HTTP chart check returned $status: $archive" ;;
     esac
-    oci_status="$(check_oci "$name" "$version" "$archive" "$expected" "$directory")"
+    expected="$(sha256 "$directory/publish.tgz")"
+    oci_status="$(inspect_oci "$name" "$version" "$directory")"
+    if [[ "$oci_status" == present ]]; then
+      if [[ "$status" == 200 ]]; then
+        [[ "$(sha256 "$directory/$archive")" == "$expected" ]] || fail "OCI chart version has different contents: $archive; HTTP and OCI archives differ"
+      else
+        reuse_archive "$directory/$archive" "$directory/publish.tgz" OCI "$archive"
+        expected="$(sha256 "$directory/publish.tgz")"
+      fi
+    fi
     printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$name" "$version" "$archive" "$expected" "$status" "$oci_status" "$directory" >> "$TEMP/status.tsv"
     count=$((count + 1))
   done < "$OUTPUT/release.tsv"
+  # Update retained packages only after every version passes the preflight check.
+  while IFS=$'\t' read -r name version archive expected status oci_status directory; do
+    cp "$directory/publish.tgz" "$OUTPUT/$archive"
+    printf '%s\t%s\t%s\t%s\n' "$name" "$version" "$archive" "$expected" >> "$TEMP/reconciled.tsv"
+  done < "$TEMP/status.tsv"
+  mv "$TEMP/reconciled.tsv" "$OUTPUT/release.tsv"
   while IFS=$'\t' read -r name version archive expected status oci_status directory; do
     if [[ "$status" == 404 ]]; then
       status="$(http POST "$REPO/api/charts" "$directory/response" "$OUTPUT/$archive")"

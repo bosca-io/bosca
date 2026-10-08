@@ -165,8 +165,9 @@ login keychain password is usually the account password, prefer a **dedicated
 signing keychain** on the agent (its own throwaway password as the secret) if
 you don't want the login password in CI.
 
-The agent also needs SDKMAN installed (the pipeline installs `25.0.3-graal` via
-`setup-java`) and ≥ 16 GB RAM free for `native-image`.
+The pipeline installs Oracle GraalVM `25.4.4.1.1` from Oracle GDS via
+`setup-java` (stream `25i4`, JDK version `25.0.4.1.1`). The agent needs ≥ 16 GB
+RAM free for `native-image`.
 
 The artifact upload authenticates with the agent token surfaced by
 `setup-registry` (`BOSCA_REGISTRY_TOKEN`), so no artifact secret is required —
