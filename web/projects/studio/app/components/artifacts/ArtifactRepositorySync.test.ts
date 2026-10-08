@@ -42,6 +42,11 @@ const stubs = {
     template: '<label>{{ label }}<input :aria-label="label" :value="modelValue" :disabled="disabled" @input="$emit(\'update:modelValue\', $event.target.value)" /></label>',
   },
   Modal: { template: '<div class="modal"><slot /></div>' },
+  NuxtLink: { props: ['to'], template: '<a><slot /></a>' },
+  ConfirmModal: {
+    props: ['title', 'subtitle', 'loading'], emits: ['close', 'confirm'],
+    template: '<div class="confirm"><h3>{{ title }}</h3><p>{{ subtitle }}</p><slot /><button @click="$emit(\'close\')">Cancel</button><button :disabled="loading" @click="$emit(\'confirm\')">Confirm delete</button></div>',
+  },
 }
 const destination = {
   id: 'destination-1', key: 'public', remoteRepository: 'bosca-io/bosca/server',
@@ -71,12 +76,180 @@ beforeEach(() => {
   query.mockImplementation((document: DocumentNode) => Promise.resolve(
     print(document).includes('ArtifactSyncSettings')
       ? { artifactsAdmin: { syncDestinations: [destination] }, pipelines: { secrets: [{ name: 'GHCR_TOKEN' }] } }
+      : print(document).includes('ArtifactPushTags')
+        ? { artifactsAdmin: { repository: { tagCount: 2, tags: [{ name: 'v1', manifestDigest: 'sha256:abc' }, { name: 'latest', manifestDigest: 'sha256:def' }] } } }
       : { artifactsAdmin: { syncs: [failed] } },
   ))
   mutation.mockResolvedValue({ artifactsAdmin: { createSyncDestination: { ...destination, id: 'new', key: 'mirror' } } })
 })
 
 describe('Artifact GHCR settings', () => {
+  it('pushes an existing selected tag to one destination and links its durable run', async () => {
+    mutation.mockResolvedValue({ artifactsAdmin: { pushImage: 'run-1' } })
+    const wrapper = mountSettings()
+    await flushPromises()
+    await button(wrapper, 'Push image').trigger('click')
+    await flushPromises()
+    expect(query.mock.calls.at(-1)?.[1]).toEqual({ repositoryId: 'artifact-1', limit: 15, offset: 0 })
+    expect(wrapper.text()).toContain('ghcr.io/bosca-io/bosca/server:v1')
+    await wrapper.get('input[aria-label="Source tag"]').setValue('latest')
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+    expect(print(mutation.mock.calls[0]?.[0])).toContain('pushImage')
+    expect(mutation.mock.calls[0]?.[1]).toEqual({ destinationId: destination.id, tagName: 'latest' })
+    expect(wrapper.find('form').exists()).toBe(false)
+    expect(wrapper.text()).toContain('Image push queued.')
+    expect(wrapper.findComponent(stubs.NuxtLink).props('to')).toEqual({ path: '/pipelines/runs', query: { runId: 'run-1' } })
+    expect(query.mock.calls.at(-1)?.[1]).toEqual({ repositoryId: 'artifact-1', limit: 16, offset: 0 })
+  })
+
+  it('blocks pushes for disabled destinations and missing secrets', async () => {
+    query.mockImplementation((document: DocumentNode) => Promise.resolve(
+      print(document).includes('ArtifactSyncSettings')
+        ? { artifactsAdmin: { syncDestinations: [{ ...destination, enabled: false }, { ...destination, id: 'missing-secret', key: 'missing', tokenSecretName: 'missing' }] }, pipelines: { secrets: [{ name: 'GHCR_TOKEN' }] } }
+        : { artifactsAdmin: { syncs: [] } },
+    ))
+    const wrapper = mountSettings()
+    await flushPromises()
+    const buttons = wrapper.findAll('button').filter(item => item.text() === 'Push image')
+    expect(buttons).toHaveLength(2)
+    for (const push of buttons) {
+      expect(push.attributes('disabled')).toBeDefined()
+      await push.trigger('click')
+    }
+    expect(wrapper.find('form').exists()).toBe(false)
+    expect(mutation).not.toHaveBeenCalled()
+  })
+
+  it('pages source tags and blocks pushing when no tags exist', async () => {
+    const initialQuery = query.getMockImplementation()
+    query.mockImplementation((document: DocumentNode, variables: { offset: number }) =>
+      print(document).includes('ArtifactPushTags')
+        ? Promise.resolve({ artifactsAdmin: { repository: { tagCount: 16, tags: variables.offset ? [{ name: 'last', manifestDigest: 'sha256:last' }] : Array.from({ length: 15 }, (_, i) => ({ name: 'v' + i, manifestDigest: 'sha256:' + i })) } } })
+        : initialQuery?.(document, variables),
+    )
+    const wrapper = mountSettings()
+    await flushPromises()
+    await button(wrapper, 'Push image').trigger('click')
+    await flushPromises()
+    await button(wrapper, 'Next tags').trigger('click')
+    await flushPromises()
+    expect(query.mock.calls.at(-1)?.[1]).toEqual({ repositoryId: 'artifact-1', limit: 15, offset: 15 })
+    expect(wrapper.get('input[aria-label="Source tag"]').element).toHaveProperty('value', 'last')
+    expect(button(wrapper, 'Next tags').attributes('disabled')).toBeDefined()
+    await button(wrapper, 'Cancel').trigger('click')
+    query.mockResolvedValue({ artifactsAdmin: { repository: { tagCount: 0, tags: [] } } })
+    await button(wrapper, 'Push image').trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('No image tags on this page.')
+    expect(button(wrapper, 'Push selected tag').attributes('disabled')).toBeDefined()
+    await wrapper.get('form').trigger('submit')
+    expect(mutation).not.toHaveBeenCalled()
+  })
+
+  it('shows tag loading failures and retains the chosen tag after a push failure', async () => {
+    const wrapper = mountSettings()
+    await flushPromises()
+    query.mockRejectedValueOnce(new Error('Cannot load tags'))
+    await button(wrapper, 'Push image').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[role="alert"]').text()).toBe('Cannot load tags')
+    expect(button(wrapper, 'Push selected tag').attributes('disabled')).toBeDefined()
+    await button(wrapper, 'Retry loading tags').trigger('click')
+    await flushPromises()
+    mutation.mockRejectedValueOnce(new Error('Docker tag not found'))
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+    expect(wrapper.get('[role="alert"]').text()).toBe('Docker tag not found')
+    expect(wrapper.get('input[aria-label="Source tag"]').element).toHaveProperty('value', 'v1')
+    expect(wrapper.text()).not.toContain('Image push queued.')
+  })
+
+  it('prevents duplicate pushes and closing the dialog while queuing', async () => {
+    let finish: (value: unknown) => void = () => {}
+    mutation.mockImplementation(() => new Promise(resolve => { finish = resolve }))
+    const wrapper = mountSettings()
+    await flushPromises()
+    await button(wrapper, 'Push image').trigger('click')
+    await flushPromises()
+    await wrapper.get('form').trigger('submit')
+    await wrapper.get('form').trigger('submit')
+    expect(mutation).toHaveBeenCalledTimes(1)
+    expect(button(wrapper, 'Cancel').attributes('disabled')).toBeDefined()
+    wrapper.findComponent(stubs.Modal).vm.$emit('close')
+    await flushPromises()
+    expect(wrapper.find('form').exists()).toBe(true)
+    finish({ artifactsAdmin: { pushImage: 'run-1' } })
+    await flushPromises()
+    expect(wrapper.find('form').exists()).toBe(false)
+  })
+
+  it('requires confirmation and allows cancelling destination deletion', async () => {
+    const wrapper = mountSettings()
+    await flushPromises()
+    await button(wrapper, 'Delete destination').trigger('click')
+    expect(wrapper.get('.confirm').text()).toContain("Delete destination 'public'?")
+    expect(wrapper.get('.confirm').text()).toContain('Source artifacts, images already pushed to GHCR, and the token secret are kept.')
+    expect(mutation).not.toHaveBeenCalled()
+    await button(wrapper, 'Cancel').trigger('click')
+    expect(wrapper.find('.confirm').exists()).toBe(false)
+    expect(wrapper.findAll('.destination')).toHaveLength(1)
+    expect(mutation).not.toHaveBeenCalled()
+  })
+
+  it('deletes only the selected destination using its version and refreshes sync status', async () => {
+    mutation.mockResolvedValue({ artifactsAdmin: { deleteSyncDestination: true } })
+    query.mockImplementation((document: DocumentNode) => Promise.resolve(
+      print(document).includes('ArtifactSyncSettings')
+        ? { artifactsAdmin: { syncDestinations: [destination, { ...destination, id: 'other', key: 'backup' }] }, pipelines: { secrets: [{ name: 'GHCR_TOKEN' }] } }
+        : { artifactsAdmin: { syncs: [failed] } },
+    ))
+    const wrapper = mountSettings()
+    await flushPromises()
+    query.mockResolvedValue({ artifactsAdmin: { syncs: [] } })
+    await wrapper.get('.destination button:last-child').trigger('click')
+    await button(wrapper, 'Confirm delete').trigger('click')
+    await flushPromises()
+    expect(print(mutation.mock.calls[0]?.[0])).toContain('deleteSyncDestination')
+    expect(mutation.mock.calls[0]?.[1]).toEqual({ id: destination.id, version: destination.version })
+    expect(wrapper.find('.confirm').exists()).toBe(false)
+    expect(wrapper.findAll('.destination')).toHaveLength(1)
+    expect(wrapper.get('.destination').text()).toContain('backup')
+    expect(wrapper.findAll('.sync-row')).toHaveLength(0)
+    expect(wrapper.text()).toContain('Sync destination deleted.')
+    expect(query.mock.calls.at(-1)?.[1]).toEqual({ repositoryId: 'artifact-1', limit: 16, offset: 0 })
+  })
+
+  it('retains the destination and confirmation when deletion fails', async () => {
+    mutation.mockRejectedValue(new Error('Sync destination changed; reload before deleting'))
+    const wrapper = mountSettings()
+    await flushPromises()
+    await button(wrapper, 'Delete destination').trigger('click')
+    await button(wrapper, 'Confirm delete').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('.confirm [role="alert"]').text()).toContain('reload before deleting')
+    expect(wrapper.findAll('.destination')).toHaveLength(1)
+    expect(wrapper.text()).not.toContain('Sync destination deleted.')
+    expect(button(wrapper, 'Confirm delete').attributes('disabled')).toBeUndefined()
+  })
+
+  it('prevents duplicate deletion and closing the confirmation while deleting', async () => {
+    let finish: (value: unknown) => void = () => {}
+    mutation.mockImplementation(() => new Promise(resolve => { finish = resolve }))
+    const wrapper = mountSettings()
+    await flushPromises()
+    await button(wrapper, 'Delete destination').trigger('click')
+    await button(wrapper, 'Confirm delete').trigger('click')
+    expect(button(wrapper, 'Confirm delete').attributes('disabled')).toBeDefined()
+    await button(wrapper, 'Cancel').trigger('click')
+    expect(wrapper.find('.confirm').exists()).toBe(true)
+    wrapper.findComponent(stubs.ConfirmModal).vm.$emit('confirm')
+    expect(mutation).toHaveBeenCalledTimes(1)
+    finish({ artifactsAdmin: { deleteSyncDestination: true } })
+    await flushPromises()
+    expect(wrapper.find('.confirm').exists()).toBe(false)
+  })
+
   it('loads configuration and sync status for the open artifact and creates a disabled destination', async () => {
     const wrapper = mountSettings()
     await flushPromises()
@@ -99,16 +272,72 @@ describe('Artifact GHCR settings', () => {
     const wrapper = mountSettings()
     await flushPromises()
     await button(wrapper, 'Edit destination').trigger('click')
-    expect(wrapper.get('input[aria-label="GHCR image path"]').attributes('disabled')).toBeDefined()
-    expect(wrapper.get('input[aria-label="Destination name"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.get('input[aria-label="GHCR image path"]').attributes('disabled')).toBeUndefined()
+    expect(wrapper.get('input[aria-label="Destination name"]').attributes('disabled')).toBeUndefined()
     await wrapper.get('input[aria-label="GitHub username"]').setValue('new-publisher')
     await wrapper.get('input[type="checkbox"]').setValue(false)
     await wrapper.get('form').trigger('submit')
     await flushPromises()
     expect(mutation.mock.calls[0]?.[1]).toEqual({
       id: destination.id, version: 4, enabled: false, username: 'new-publisher', tokenSecretName: 'GHCR_TOKEN',
+      key: destination.key, remoteRepository: destination.remoteRepository,
     })
     expect(wrapper.text()).toContain('Disabled')
+  })
+
+  it('renames a destination without clearing its sync status', async () => {
+    mutation.mockResolvedValue({ artifactsAdmin: { updateSyncDestination: { ...destination, key: 'renamed', version: 5 } } })
+    const wrapper = mountSettings()
+    await flushPromises()
+    await button(wrapper, 'Edit destination').trigger('click')
+    await wrapper.get('input[aria-label="Destination name"]').setValue(' renamed ')
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+    expect(mutation.mock.calls[0]?.[1]).toEqual({
+      id: destination.id, version: 4, enabled: true, username: destination.username,
+      tokenSecretName: destination.tokenSecretName, key: 'renamed', remoteRepository: destination.remoteRepository,
+    })
+    expect(wrapper.get('.destination').text()).toContain('renamed')
+    expect(wrapper.get('.sync-row').text()).toContain('renamed · v1')
+    expect(query).toHaveBeenCalledTimes(2)
+  })
+
+  it('edits the image path and refreshes its previous sync status after saving', async () => {
+    mutation.mockResolvedValue({ artifactsAdmin: { updateSyncDestination: { ...destination, key: 'renamed', remoteRepository: 'acme/new-image', version: 5 } } })
+    const wrapper = mountSettings()
+    await flushPromises()
+    await button(wrapper, 'Edit destination').trigger('click')
+    await wrapper.get('input[aria-label="Destination name"]').setValue('renamed')
+    await wrapper.get('input[aria-label="GHCR image path"]').setValue(' acme/new-image ')
+    expect(wrapper.text()).toContain('Changing the image path clears sync status for the previous path.')
+    query.mockResolvedValue({ artifactsAdmin: { syncs: [] } })
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+    expect(mutation.mock.calls[0]?.[1]).toMatchObject({
+      id: destination.id, version: 4, key: 'renamed', remoteRepository: 'acme/new-image',
+    })
+    expect(wrapper.get('.destination').text()).toContain('ghcr.io/acme/new-image')
+    expect(wrapper.findAll('.sync-row')).toHaveLength(0)
+    expect(query.mock.calls.at(-1)?.[1]).toEqual({ repositoryId: 'artifact-1', limit: 16, offset: 0 })
+    expect(wrapper.text()).toContain('Sync destination saved.')
+  })
+
+  it('retains destination edits and previous status when an update fails', async () => {
+    mutation.mockRejectedValue(new Error('Invalid sync destination key'))
+    const wrapper = mountSettings()
+    await flushPromises()
+    await button(wrapper, 'Edit destination').trigger('click')
+    await wrapper.get('input[aria-label="Destination name"]').setValue('invalid name')
+    await wrapper.get('input[aria-label="GHCR image path"]').setValue('acme/renamed')
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+    expect(wrapper.get('input[aria-label="Destination name"]').element).toHaveProperty('value', 'invalid name')
+    expect(wrapper.get('input[aria-label="GHCR image path"]').element).toHaveProperty('value', 'acme/renamed')
+    expect(wrapper.get('[role="alert"]').text()).toContain('Invalid sync destination key')
+    expect(wrapper.get('.destination').text()).toContain(destination.remoteRepository)
+    expect(wrapper.findAll('.sync-row')).toHaveLength(1)
+    expect(query).toHaveBeenCalledTimes(2)
+    expect(wrapper.text()).not.toContain('Sync destination saved.')
   })
 
   it('requires an existing secret to enable sync and can securely create it inline', async () => {

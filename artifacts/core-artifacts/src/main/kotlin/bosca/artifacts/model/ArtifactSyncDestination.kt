@@ -21,7 +21,7 @@ data class ArtifactSyncDestination(
     @Contextual val modified: OffsetDateTime? = null,
 )
 
-/** The remote image path is fixed at creation; source tags are preserved. */
+/** Configures a remote image path while preserving source tags. */
 @Serializable
 data class ArtifactSyncDestinationInput(
     @Contextual val repositoryId: UUID,

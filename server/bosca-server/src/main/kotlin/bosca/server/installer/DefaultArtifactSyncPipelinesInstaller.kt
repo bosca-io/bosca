@@ -4,6 +4,7 @@ import bosca.artifacts.model.ArtifactSyncTarget
 import bosca.artifacts.model.ArtifactTagPublished
 import bosca.artifacts.pipeline.ArtifactSyncGetDestinations
 import bosca.artifacts.pipeline.ArtifactSyncNode
+import bosca.artifacts.service.ArtifactSyncService
 import bosca.installer.model.PackageInstallation
 import bosca.installer.model.PackageInstallationVersion
 import bosca.installer.service.PackageInstaller
@@ -60,7 +61,7 @@ class DefaultArtifactSyncPipelinesInstaller(private val pipelines: PipelineServi
 
     companion object {
         const val NAME = "default-artifact-sync-pipelines"
-        const val BODY_NAME = "Sync Docker Image to GHCR"
+        const val BODY_NAME = ArtifactSyncService.PUSH_PIPELINE_NAME
         const val TRIGGER_NAME = "Sync Published Docker Tags to GHCR"
     }
 }

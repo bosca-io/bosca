@@ -1934,6 +1934,21 @@ export type ArtifactRepoInfo_VersionsArgs = {
   offset?: InputMaybe<Scalars['Long']['input']>;
 };
 
+/** A GHCR image path; each published source tag is preserved. */
+export type ArtifactSyncDestination = {
+  __typename?: 'ArtifactSyncDestination';
+  created?: Maybe<Scalars['DateTime']['output']>;
+  enabled: Scalars['Boolean']['output'];
+  id: Scalars['UUID']['output'];
+  key: Scalars['String']['output'];
+  modified?: Maybe<Scalars['DateTime']['output']>;
+  remoteRepository: Scalars['String']['output'];
+  repositoryId: Scalars['UUID']['output'];
+  tokenSecretName: Scalars['String']['output'];
+  username: Scalars['String']['output'];
+  version: Scalars['Long']['output'];
+};
+
 /** A mutable tag pointing to a specific manifest digest (Docker) */
 export type ArtifactTagInfo = {
   __typename?: 'ArtifactTagInfo';
@@ -2048,16 +2063,22 @@ export type ArtifactsAdminMutation = {
   deleteNamespace: Scalars['Boolean']['output'];
   /** Delete a repository and all its versions, tags, and blobs */
   deleteRepository: Scalars['Boolean']['output'];
+  /** Delete a GHCR sync destination and its sync records with optimistic locking, preserving source and remote images. Requires admin. */
+  deleteSyncDestination: Scalars['Boolean']['output'];
   /** Delete a tag from a repository */
   deleteTag: Scalars['Boolean']['output'];
   /** Delete a specific version and its blob associations */
   deleteVersion: Scalars['Boolean']['output'];
+  /** Queue a current Docker tag for one enabled GHCR destination under the caller's identity. Returns the durable pipeline run ID. Requires admin. */
+  pushImage: Scalars['UUID']['output'];
   /** Revoke a permission action from a group on a namespace. Requires admin. */
   removePermission: Scalars['Boolean']['output'];
   /** Set a tag to point at a manifest digest */
   setTag: ArtifactTagInfo;
   /** Update a namespace's public (anonymous pull) visibility */
   updateNamespace: ArtifactNamespaceInfo;
+  /** Update destination configuration with optimistic locking. Changing the image path clears its previous sync records. Requires admin. */
+  updateSyncDestination: ArtifactSyncDestination;
 };
 
 
@@ -2095,6 +2116,13 @@ export type ArtifactsAdminMutation_DeleteRepositoryArgs = {
 
 
 /** Administrative mutations for artifact registry management */
+export type ArtifactsAdminMutation_DeleteSyncDestinationArgs = {
+  id: Scalars['UUID']['input'];
+  version: Scalars['Long']['input'];
+};
+
+
+/** Administrative mutations for artifact registry management */
 export type ArtifactsAdminMutation_DeleteTagArgs = {
   name: Scalars['String']['input'];
   repositoryId: Scalars['UUID']['input'];
@@ -2104,6 +2132,13 @@ export type ArtifactsAdminMutation_DeleteTagArgs = {
 /** Administrative mutations for artifact registry management */
 export type ArtifactsAdminMutation_DeleteVersionArgs = {
   id: Scalars['UUID']['input'];
+};
+
+
+/** Administrative mutations for artifact registry management */
+export type ArtifactsAdminMutation_PushImageArgs = {
+  destinationId: Scalars['UUID']['input'];
+  tagName: Scalars['String']['input'];
 };
 
 
@@ -2125,6 +2160,18 @@ export type ArtifactsAdminMutation_SetTagArgs = {
 export type ArtifactsAdminMutation_UpdateNamespaceArgs = {
   id: Scalars['UUID']['input'];
   public: Scalars['Boolean']['input'];
+};
+
+
+/** Administrative mutations for artifact registry management */
+export type ArtifactsAdminMutation_UpdateSyncDestinationArgs = {
+  enabled: Scalars['Boolean']['input'];
+  id: Scalars['UUID']['input'];
+  key?: InputMaybe<Scalars['String']['input']>;
+  remoteRepository?: InputMaybe<Scalars['String']['input']>;
+  tokenSecretName?: InputMaybe<Scalars['String']['input']>;
+  username?: InputMaybe<Scalars['String']['input']>;
+  version: Scalars['Long']['input'];
 };
 
 /** Records the assignment of a user or device to a variation within an experiment. */

@@ -39,9 +39,22 @@ class ArtifactsAdminMutationController(
     }
 
     @Field
-    suspend fun updateSyncDestination(authorization: AuthenticationContext, id: UUID, version: Long, enabled: Boolean, username: String?, tokenSecretName: String?): ArtifactSyncDestination {
+    suspend fun updateSyncDestination(authorization: AuthenticationContext, id: UUID, version: Long, enabled: Boolean, username: String?, tokenSecretName: String?, key: String?, remoteRepository: String?): ArtifactSyncDestination {
         groupEvaluator.verifyHasAdminGroup(authorization)
-        return syncing.updateDestination(id, version, enabled, username, tokenSecretName)
+        return syncing.updateDestination(id, version, enabled, username, tokenSecretName, key, remoteRepository)
+    }
+
+    @Field
+    suspend fun deleteSyncDestination(authorization: AuthenticationContext, id: UUID, version: Long): Boolean {
+        groupEvaluator.verifyHasAdminGroup(authorization)
+        syncing.deleteDestination(id, version)
+        return true
+    }
+
+    @Field
+    suspend fun pushImage(authorization: AuthenticationContext, destinationId: UUID, tagName: String): UUID {
+        groupEvaluator.verifyHasAdminGroup(authorization)
+        return syncing.push(authorization, destinationId, tagName)
     }
 
     @Field

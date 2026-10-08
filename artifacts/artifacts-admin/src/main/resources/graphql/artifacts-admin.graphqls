@@ -42,8 +42,12 @@ type ArtifactsAdmin {
 type ArtifactsAdminMutation {
     "Configure a GHCR image destination using a Pipeline secret. Requires admin."
     createSyncDestination(input: ArtifactSyncDestinationInput!): ArtifactSyncDestination!
-    "Change activation or credentials with optimistic locking. Requires admin."
-    updateSyncDestination(id: UUID!, version: Long!, enabled: Boolean!, username: String, tokenSecretName: String): ArtifactSyncDestination!
+    "Update destination configuration with optimistic locking. Changing the image path clears its previous sync records. Requires admin."
+    updateSyncDestination(id: UUID!, version: Long!, enabled: Boolean!, username: String, tokenSecretName: String, key: String, remoteRepository: String): ArtifactSyncDestination!
+    "Delete a GHCR sync destination and its sync records with optimistic locking, preserving source and remote images. Requires admin."
+    deleteSyncDestination(id: UUID!, version: Long!): Boolean!
+    "Queue a current Docker tag for one enabled GHCR destination under the caller's identity. Returns the durable pipeline run ID. Requires admin."
+    pushImage(destinationId: UUID!, tagName: String!): UUID!
     "Requeue a failed sync or explicitly copy and verify its tag again. Requires admin."
     retrySync(id: UUID!): ArtifactSync!
     "Configure a GitHub release destination referencing a Pipeline secret. Requires admin."

@@ -34,9 +34,9 @@ const createDocument = gql`
   ${destinationFields}
 `
 const updateDocument = gql`
-  mutation UpdateArtifactSyncDestination($id: UUID!, $version: Long!, $enabled: Boolean!, $username: String!, $tokenSecretName: String!) {
+  mutation UpdateArtifactSyncDestination($id: UUID!, $version: Long!, $enabled: Boolean!, $username: String!, $tokenSecretName: String!, $key: String!, $remoteRepository: String!) {
     artifactsAdmin {
-      updateSyncDestination(id: $id, version: $version, enabled: $enabled, username: $username, tokenSecretName: $tokenSecretName) {
+      updateSyncDestination(id: $id, version: $version, enabled: $enabled, username: $username, tokenSecretName: $tokenSecretName, key: $key, remoteRepository: $remoteRepository) {
         ...ArtifactSyncDestinationFields
       }
     }
@@ -52,8 +52,28 @@ const historyDocument = gql`
     }
   }
 `
+const deleteDocument = gql`
+  mutation DeleteArtifactSyncDestination($id: UUID!, $version: Long!) {
+    artifactsAdmin { deleteSyncDestination(id: $id, version: $version) }
+  }
+`
 const retryDocument = gql`
   mutation RetryArtifactSync($id: UUID!) { artifactsAdmin { retrySync(id: $id) { id } } }
+`
+const pushDocument = gql`
+  mutation PushArtifactImage($destinationId: UUID!, $tagName: String!) {
+    artifactsAdmin { pushImage(destinationId: $destinationId, tagName: $tagName) }
+  }
+`
+const tagsDocument = gql`
+  query ArtifactPushTags($repositoryId: UUID!, $limit: Int!, $offset: Long!) {
+    artifactsAdmin {
+      repository(id: $repositoryId) {
+        tagCount
+        tags(limit: $limit, offset: $offset) { name manifestDigest }
+      }
+    }
+  }
 `
 
 const destinations = ref<Destination[]>([])
@@ -65,6 +85,23 @@ const message = ref('')
 const editing = ref(false)
 const selected = ref<Destination | null>(null)
 const saving = ref(false)
+const deleteTarget = ref<Destination | null>(null)
+const deleting = ref(false)
+const deleteError = ref('')
+const pushTarget = ref<Destination | null>(null)
+const pushing = ref(false)
+const pushError = ref('')
+const pushTag = ref('')
+const pushTags = ref<{ name: string; manifestDigest: string }[]>([])
+const tagsLoading = ref(false)
+const tagsLoaded = ref(false)
+const tagsOffset = ref(0)
+const tagsTotal = ref(0)
+const tagsPageSize = 15
+const pushTagOptions = computed(() => pushTags.value.map(tag => ({ value: tag.name, label: tag.name })))
+const selectedPushTag = computed(() => pushTags.value.find(tag => tag.name === pushTag.value))
+const pushRunId = ref('')
+let tagsRequest = 0
 const formError = ref('')
 const form = reactive({ key: '', remoteRepository: '', username: '', tokenSecretName: '', enabled: false })
 const secretOptions = computed(() => [...new Set([
@@ -158,11 +195,13 @@ async function save() {
   }
   saving.value = true
   try {
+    const imagePathChanged = selected.value !== null && fields.remoteRepository !== selected.value.remoteRepository
     let destination: Destination
     if (selected.value) {
       const result = await mutation<{ artifactsAdmin: { updateSyncDestination: Destination } }>(updateDocument, {
         id: selected.value.id, version: selected.value.version,
         enabled: fields.enabled, username: fields.username, tokenSecretName: fields.tokenSecretName,
+        key: fields.key, remoteRepository: fields.remoteRepository,
       })
       destination = result.artifactsAdmin.updateSyncDestination
     } else {
@@ -174,10 +213,108 @@ async function save() {
     destinations.value = [...destinations.value.filter(item => item.id !== destination.id), destination]
     editing.value = false
     message.value = 'Sync destination saved.'
+    if (imagePathChanged) {
+      offset.value = 0
+      await loadHistory()
+    }
   } catch (e) {
     formError.value = e instanceof Error ? e.message : 'Could not save sync destination.'
   } finally {
     saving.value = false
+  }
+}
+
+async function loadPushTags() {
+  const request = ++tagsRequest
+  tagsLoading.value = true
+  tagsLoaded.value = false
+  pushError.value = ''
+  pushTag.value = ''
+  try {
+    const result = await query<{ artifactsAdmin: { repository: { tagCount: number; tags: { name: string; manifestDigest: string }[] } | null } }>(
+      tagsDocument, { repositoryId: props.repositoryId, limit: tagsPageSize, offset: tagsOffset.value },
+    )
+    if (request !== tagsRequest) return
+    const repository = result.artifactsAdmin.repository
+    if (!repository) throw new Error('Artifact repository not found.')
+    pushTags.value = repository.tags
+    tagsTotal.value = repository.tagCount
+    tagsLoaded.value = true
+    pushTag.value = repository.tags[0]?.name ?? ''
+  } catch (e) {
+    if (request === tagsRequest) pushError.value = e instanceof Error ? e.message : 'Could not load image tags.'
+  } finally {
+    if (request === tagsRequest) tagsLoading.value = false
+  }
+}
+
+function openPush(destination: Destination) {
+  if (!destination.enabled) return
+  pushTarget.value = destination
+  tagsOffset.value = 0
+  pushTags.value = []
+  pushRunId.value = ''
+  message.value = ''
+  loadPushTags()
+}
+
+function closePush() {
+  if (pushing.value) return
+  pushTarget.value = null
+  tagsRequest++
+}
+
+function changeTagsPage(delta: number) {
+  tagsOffset.value = Math.max(0, tagsOffset.value + delta * tagsPageSize)
+  loadPushTags()
+}
+
+async function pushImage() {
+  const destination = pushTarget.value
+  if (!destination || !destination.enabled || pushing.value || !tagsLoaded.value || !selectedPushTag.value) return
+  pushing.value = true
+  pushError.value = ''
+  try {
+    const result = await mutation<{ artifactsAdmin: { pushImage: string } }>(pushDocument, {
+      destinationId: destination.id, tagName: pushTag.value,
+    })
+    pushRunId.value = result.artifactsAdmin.pushImage
+    pushTarget.value = null
+    message.value = 'Image push queued.'
+    offset.value = 0
+    await loadHistory()
+  } catch (e) {
+    pushError.value = e instanceof Error ? e.message : 'Could not queue image push.'
+  } finally {
+    pushing.value = false
+  }
+}
+
+function openDelete(destination: Destination) {
+  deleteTarget.value = destination
+  deleteError.value = ''
+  message.value = ''
+}
+
+async function confirmDelete() {
+  const destination = deleteTarget.value
+  if (!destination || deleting.value) return
+  deleting.value = true
+  deleteError.value = ''
+  try {
+    const result = await mutation<{ artifactsAdmin: { deleteSyncDestination: boolean } }>(deleteDocument, {
+      id: destination.id, version: destination.version,
+    })
+    if (!result.artifactsAdmin.deleteSyncDestination) throw new Error('Could not delete sync destination.')
+    destinations.value = destinations.value.filter(item => item.id !== destination.id)
+    deleteTarget.value = null
+    message.value = 'Sync destination deleted.'
+    offset.value = 0
+    await loadHistory()
+  } catch (e) {
+    deleteError.value = e instanceof Error ? e.message : 'Could not delete sync destination.'
+  } finally {
+    deleting.value = false
   }
 }
 
@@ -218,6 +355,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   settingsRequest++
   historyRequest++
+  tagsRequest++
 })
 </script>
 
@@ -225,12 +363,12 @@ onBeforeUnmount(() => {
   <SectionCard title="GitHub Container Registry sync" subtitle="Push each newly published tag to configured GHCR images" padded>
     <template #right>
       <div class="actions">
-        <Button size="sm" :disabled="loading || saving || editing" @click="loadSettings">Reload destinations</Button>
+        <Button size="sm" :disabled="loading || saving || editing || !!deleteTarget || !!pushTarget" @click="loadSettings">Reload destinations</Button>
         <Button
           size="sm"
           primary
           :accent="accent"
-          :disabled="!loaded || saving || editing"
+          :disabled="!loaded || saving || editing || !!deleteTarget || !!pushTarget"
           @click="open(null)">Add destination</Button>
       </div>
     </template>
@@ -246,11 +384,23 @@ onBeforeUnmount(() => {
           <span class="help">{{ destination.enabled ? 'Enabled' : 'Disabled' }} · {{ destination.username }} · {{ destination.tokenSecretName }}</span>
           <span v-if="!secrets.includes(destination.tokenSecretName)" class="error">Token secret is missing. Restore it or select a replacement.</span>
         </div>
-        <Button size="sm" :disabled="saving || editing" @click="open(destination)">Edit destination</Button>
+        <div class="actions">
+          <Button
+            size="sm"
+            :disabled="saving || editing || !!deleteTarget || !!pushTarget || !destination.enabled || !secrets.includes(destination.tokenSecretName)"
+            @click="openPush(destination)">Push image</Button>
+          <Button size="sm" :disabled="saving || editing || !!deleteTarget || !!pushTarget" @click="open(destination)">Edit destination</Button>
+          <Button
+            size="sm"
+            icon="trash"
+            :disabled="saving || editing || !!deleteTarget || !!pushTarget"
+            @click="openDelete(destination)">Delete destination</Button>
+        </div>
       </div>
-      <p class="help">Source tags are preserved. Enabling a destination applies to future publishes; publish an existing tag again to sync it.</p>
+      <p class="help">Source tags are preserved. Enabling a destination applies to future publishes. Use Push image to copy an existing tag to an enabled destination.</p>
     </div>
     <p v-if="message" role="status">{{ message }}</p>
+    <NuxtLink v-if="pushRunId" :to="{ path: '/pipelines/runs', query: { runId: pushRunId } }">View push run</NuxtLink>
   </SectionCard>
 
   <SectionCard title="Sync status" subtitle="Latest requested manifest for each destination and tag" padded>
@@ -286,19 +436,67 @@ onBeforeUnmount(() => {
   </SectionCard>
 
   <Modal
+    v-if="pushTarget"
+    :title="`Push image to '${pushTarget.key}'`"
+    :accent="accent"
+    @close="closePush">
+    <form class="stack" @submit.prevent="pushImage">
+      <p class="help">Choose a source tag to push to ghcr.io/{{ pushTarget.remoteRepository }}. The tag name is preserved.</p>
+      <p v-if="tagsLoading" class="help">Loading image tags…</p>
+      <Button v-else-if="!tagsLoaded" type="button" @click="loadPushTags">Retry loading tags</Button>
+      <p v-else-if="!pushTags.length" class="help">No image tags on this page.</p>
+      <Select
+        v-else
+        v-model="pushTag"
+        label="Source tag"
+        :options="pushTagOptions"
+        :disabled="pushing || tagsLoading"
+        :accent="accent" />
+      <code v-if="selectedPushTag && tagsLoaded">ghcr.io/{{ pushTarget.remoteRepository }}:{{ selectedPushTag.name }}</code>
+      <code v-if="selectedPushTag && tagsLoaded">{{ selectedPushTag.manifestDigest }}</code>
+      <div v-if="tagsOffset > 0 || tagsOffset + tagsPageSize < tagsTotal" class="actions">
+        <Button type="button" :disabled="pushing || tagsLoading || tagsOffset === 0" @click="changeTagsPage(-1)">Previous tags</Button>
+        <span class="help">Page {{ Math.floor(tagsOffset / tagsPageSize) + 1 }}</span>
+        <Button type="button" :disabled="pushing || tagsLoading || tagsOffset + tagsPageSize >= tagsTotal" @click="changeTagsPage(1)">Next tags</Button>
+      </div>
+      <p v-if="pushError" role="alert" class="error">{{ pushError }}</p>
+      <div class="actions">
+        <Button type="button" :disabled="pushing" @click="closePush">Cancel</Button>
+        <Button
+          type="submit"
+          primary
+          :accent="accent"
+          :disabled="pushing || !tagsLoaded || !selectedPushTag">{{ pushing ? 'Queuing…' : 'Push selected tag' }}</Button>
+      </div>
+    </form>
+  </Modal>
+
+  <ConfirmModal
+    v-if="deleteTarget"
+    :title="`Delete destination '${deleteTarget.key}'?`"
+    subtitle="This removes the sync destination and its sync status records. Source artifacts, images already pushed to GHCR, and the token secret are kept."
+    confirm-label="Delete destination"
+    :loading="deleting"
+    @close="!deleting && (deleteTarget = null)"
+    @confirm="confirmDelete">
+    <p v-if="deleteError" role="alert" class="error">{{ deleteError }}</p>
+  </ConfirmModal>
+
+  <Modal
     v-if="editing"
     :title="selected ? 'Edit GHCR destination' : 'Add GHCR destination'"
     :accent="accent"
     @close="!saving && (editing = false)">
     <form class="stack" @submit.prevent="save">
-      <TextInput v-model="form.key" label="Destination name" :disabled="saving || !!selected" />
+      <TextInput v-model="form.key" label="Destination name" :disabled="saving" />
       <TextInput
         v-model="form.remoteRepository"
         label="GHCR image path"
         placeholder="owner/image"
         mono
-        :disabled="saving || !!selected" />
-      <p class="help">Use a lowercase owner/image path without ghcr.io or a tag. The destination name and image path are fixed after creation.</p>
+        :disabled="saving" />
+      <p class="help">Use a lowercase owner/image path without ghcr.io or a tag.</p>
+      <p v-if="selected && form.remoteRepository.trim() !== selected.remoteRepository" class="help">Changing the image path clears sync status for the previous path. Use Push image to copy existing tags to the new path. Images already pushed to GHCR are kept.</p>
       <TextInput v-model="form.username" label="GitHub username" :disabled="saving" />
       <GitHubSyncSecret
         v-model="form.tokenSecretName"

@@ -9,7 +9,7 @@ import bosca.serialization.UUID
 /** GHCR destinations and the latest desired digest of each synchronized tag. */
 @Repository
 interface ArtifactSyncRepository {
-    /** Finds an immutable remote target and its current credentials. */
+    /** Finds a remote target and its current credentials. */
     @Query("SELECT * FROM artifacts.sync_destinations WHERE id = :id")
     suspend fun destination(id: UUID): ArtifactSyncDestination?
 
@@ -29,13 +29,29 @@ interface ArtifactSyncRepository {
     )
     suspend fun createDestination(destination: ArtifactSyncDestination): ArtifactSyncDestination
 
-    /** Updates activation and credentials when the version matches. */
+    /** Updates configuration when the version matches. */
     @Query(
         """UPDATE artifacts.sync_destinations SET enabled = :enabled, username = :username,
-        token_secret_name = :tokenSecretName, version = version + 1, modified = now()
+        token_secret_name = :tokenSecretName, key = :key, remote_repository = :remoteRepository,
+        version = version + 1, modified = now()
         WHERE id = :id AND version = :expectedVersion RETURNING *"""
     )
-    suspend fun updateDestination(id: UUID, expectedVersion: Long, enabled: Boolean, username: String, tokenSecretName: String): ArtifactSyncDestination?
+    suspend fun updateDestination(id: UUID, expectedVersion: Long, enabled: Boolean, username: String, tokenSecretName: String, key: String, remoteRepository: String): ArtifactSyncDestination?
+
+    /** Removes sync results and pending copies for a previous remote image path. */
+    @Query("DELETE FROM artifacts.syncs WHERE destination_id = :destinationId", returnUpdateCount = true)
+    suspend fun clearSyncs(destinationId: UUID): Int
+
+    /** Removes an obsolete pending digest without deleting a completed or newer request. */
+    @Query(
+        """DELETE FROM artifacts.syncs WHERE destination_id = :destinationId AND tag_name = :tagName
+        AND manifest_digest = :digest AND synced IS NULL""", returnUpdateCount = true
+    )
+    suspend fun discardPending(destinationId: UUID, tagName: String, digest: String): Int
+
+    /** Deletes the matching destination; its sync records are removed by the foreign key cascade. */
+    @Query("DELETE FROM artifacts.sync_destinations WHERE id = :id AND version = :expectedVersion", returnUpdateCount = true)
+    suspend fun deleteDestination(id: UUID, expectedVersion: Long): Int
 
     /** Stores the latest desired tag, resetting results only when the digest changes. */
     @Query(

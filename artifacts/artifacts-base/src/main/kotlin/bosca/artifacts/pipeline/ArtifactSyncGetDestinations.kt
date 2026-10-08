@@ -43,7 +43,7 @@ class ArtifactSyncGetDestinations(
             return ArtifactSyncGetDestinationsSerializer.serialize(emptyList())
         }
         val targets = provide<ArtifactSyncService>().destinations(repository.id).filter { it.enabled }.map {
-            ArtifactSyncTarget(it.id, version.id, event.tagName, event.manifestDigest)
+            ArtifactSyncTarget(it.id, version.id, event.tagName, event.manifestDigest, it.remoteRepository)
         }
         return ArtifactSyncGetDestinationsSerializer.serialize(targets)
     }

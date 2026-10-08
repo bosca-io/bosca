@@ -33,7 +33,7 @@ internal class GhcrTestServer : AutoCloseable {
                 if (request.headers["Authorization"] != "Bearer registry-token") return response(401)
                 if ("/blobs/uploads" in path) {
                     if (method == "POST") return response(202).newBuilder()
-                        .addHeader("Location", uploadLocation ?: "/v2/acme/server/blobs/uploads/1?state=keep-me").build()
+                        .addHeader("Location", uploadLocation ?: "${path.trimEnd('/')}/1?state=keep-me").build()
                     if (method == "PUT") {
                         if (url.queryParameter("state") != "keep-me") return response(400)
                         val bytes = requireNotNull(request.body).toByteArray()

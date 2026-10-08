@@ -36,7 +36,7 @@ class ArtifactSyncNodeTest {
     private val version = ArtifactVersion(UUID.random(), repository.id, digest)
     private val destination = ArtifactSyncDestination(UUID.random(), repository.id, "ghcr", "acme/server", "acme", "token", true)
     private val event = ArtifactTagPublished(UUID.random(), repository.id, version.id, "latest", digest)
-    private val target = ArtifactSyncTarget(destination.id, version.id, event.tagName, digest)
+    private val target = ArtifactSyncTarget(destination.id, version.id, event.tagName, digest, destination.remoteRepository)
     private fun context(dryRun: Boolean = false, runId: UUID? = null, trace: DryRunTrace? = null) =
         PipelineContext(authentication, json, dryRun = dryRun, runId = runId, trace = trace)
     private fun eventInputs() = NodeInputs(mapOf("artifact" to PipelineValue.of(event, ArtifactTagPublished.serializer())))

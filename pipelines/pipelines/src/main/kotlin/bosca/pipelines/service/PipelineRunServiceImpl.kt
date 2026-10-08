@@ -3,6 +3,7 @@
 package bosca.pipelines.service
 
 import bosca.db.afterCommit
+import bosca.db.connectionOrNull
 import bosca.di.ProviderRegistry
 import bosca.di.annotation.InternalDI
 import bosca.di.provide
@@ -187,7 +188,8 @@ class PipelineRunServiceImpl(
         // briefly for a run that parked on fast backing work to finish before handing back the handle, so
         // a request/response API pipeline returns its Output rather than a SUSPENDED handle. A triggered /
         // scheduled run (no authentication) never waits — it must not hold the worker while a child is in flight.
-        if (authentication != null) {
+        // Transactional callers cannot observe completion until commit releases the driving job.
+        if (authentication != null && connectionOrNull()?.inTransaction != true) {
             val deadlineNanos = System.nanoTime() + config.onDemandRunMaxBlockMillis * 1_000_000
             while (current != null && !current.status.isTerminal && System.nanoTime() < deadlineNanos) {
                 delay(ON_DEMAND_POLL_MILLIS.milliseconds)

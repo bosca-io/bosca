@@ -114,10 +114,13 @@ class ArtifactPublicationGraphQLTest {
         coEvery { publications.destinations(destination.repositoryId) } returns listOf(destination)
         coEvery { publications.publications(publication.versionId, 100, 0) } returns listOf(publication)
         coEvery { syncing.createDestination(any()) } returns syncDestination
-        coEvery { syncing.updateDestination(syncDestination.id, 0, true, null, "rotated") } returns syncDestination.copy(enabled = true, version = 1)
+        coEvery { syncing.updateDestination(syncDestination.id, 0, true, null, "rotated", null, null) } returns syncDestination.copy(enabled = true, version = 1)
+        coEvery { syncing.updateDestination(syncDestination.id, 0, true, null, null, "renamed", "acme/renamed") } returns syncDestination.copy(key = "renamed", remoteRepository = "acme/renamed", enabled = true, version = 1)
         coEvery { syncing.destinations(syncDestination.repositoryId) } returns listOf(syncDestination)
         coEvery { syncing.syncs(syncDestination.repositoryId, 100, 0) } returns listOf(sync)
         coEvery { syncing.retry(sync.id) } returns sync.copy(error = null)
+        coEvery { syncing.deleteDestination(syncDestination.id, 0) } returns Unit
+        coEvery { syncing.push(any(), syncDestination.id, "latest") } returns sync.id
     }
 
     @AfterTest
@@ -139,7 +142,10 @@ class ArtifactPublicationGraphQLTest {
             repositoryId: "${syncDestination.repositoryId}", key: "ghcr", remoteRepository: "acme/server", username: "acme", tokenSecretName: "ghcr-token"
         }) { $syncDestinationFields } } }""",
             """mutation { artifactsAdmin { updateSyncDestination(id: "${syncDestination.id}", version: 0, enabled: true, tokenSecretName: "rotated") { $syncDestinationFields } } }""",
+            """mutation { artifactsAdmin { updateSyncDestination(id: "${syncDestination.id}", version: 0, enabled: true, key: "renamed", remoteRepository: "acme/renamed") { $syncDestinationFields } } }""",
             """mutation { artifactsAdmin { retrySync(id: "${sync.id}") { $syncFields } } }""",
+            """mutation { artifactsAdmin { deleteSyncDestination(id: "${syncDestination.id}", version: 0) } }""",
+            """mutation { artifactsAdmin { pushImage(destinationId: "${syncDestination.id}", tagName: "latest") } }""",
             """{ artifactsAdmin { syncDestinations(repositoryId: "${syncDestination.repositoryId}") { $syncDestinationFields }
             syncs(repositoryId: "${syncDestination.repositoryId}") { $syncFields } } }""",
         )
@@ -153,6 +159,9 @@ class ArtifactPublicationGraphQLTest {
         }
         coVerify { publications.createDestination(match { !it.enabled && it.tagPrefix.isEmpty() && it.tokenSecretName == "github-token" }) }
         coVerify { syncing.createDestination(match { !it.enabled && it.remoteRepository == "acme/server" && it.tokenSecretName == "ghcr-token" }) }
+        coVerify(exactly = 1) { syncing.deleteDestination(syncDestination.id, 0) }
+        coVerify(exactly = 1) { syncing.updateDestination(syncDestination.id, 0, true, null, null, "renamed", "acme/renamed") }
+        coVerify(exactly = 1) { syncing.push(any(), syncDestination.id, "latest") }
     }
 
     @Test
@@ -166,10 +175,12 @@ class ArtifactPublicationGraphQLTest {
         coVerify(exactly = 0) { publications.destinations(any()) }
         coVerify(exactly = 0) { publications.publications(any(), any(), any()) }
         coVerify(exactly = 0) { syncing.createDestination(any()) }
-        coVerify(exactly = 0) { syncing.updateDestination(any(), any(), any(), any(), any()) }
+        coVerify(exactly = 0) { syncing.updateDestination(any(), any(), any(), any(), any(), any(), any()) }
         coVerify(exactly = 0) { syncing.destinations(any()) }
         coVerify(exactly = 0) { syncing.syncs(any(), any(), any()) }
         coVerify(exactly = 0) { syncing.retry(any()) }
+        coVerify(exactly = 0) { syncing.deleteDestination(any(), any()) }
+        coVerify(exactly = 0) { syncing.push(any(), any(), any()) }
     }
 
     @Test

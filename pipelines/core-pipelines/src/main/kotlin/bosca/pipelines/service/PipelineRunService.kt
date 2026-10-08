@@ -40,8 +40,10 @@ interface PipelineRunService : Service {
      * thread is not itself a run job, so the run is enqueued to drive durably via its own run job —
      * rather than driven inline, which would orphan it in SUSPENDED at the first suspending node (the
      * backing job having no run job to resume it) — and the call blocks briefly for a fast run to
-     * settle. Its [authentication] principal is captured on the run row so the whole durable run (first
-     * pass, backing work, every resume) executes under the caller's security context — security
+     * settle. Inside an active database transaction it returns without waiting, since job delivery is
+     * deferred until the outermost transaction commits. Its [authentication] principal is captured on
+     * the run row so the whole durable run (first pass, backing work, every resume) executes under
+     * the caller's security context — security
      * traverses end to end, not just the first pass. A `null` [authentication] is a triggered/scheduled
      * run, already executing inside its run job; it is driven inline under the pipelines service account
      * (as every resume of such a run does). Returns the run handle — OK with an Output if it finished in

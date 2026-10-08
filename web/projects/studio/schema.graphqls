@@ -1684,6 +1684,20 @@ type ArtifactRepoInfo {
   versions(limit: Int, offset: Long): [ArtifactVersionInfo!]!
 }
 
+"""A GHCR image path; each published source tag is preserved."""
+type ArtifactSyncDestination {
+  created: DateTime
+  enabled: Boolean!
+  id: UUID!
+  key: String!
+  modified: DateTime
+  remoteRepository: String!
+  repositoryId: UUID!
+  tokenSecretName: String!
+  username: String!
+  version: Long!
+}
+
 """A mutable tag pointing to a specific manifest digest (Docker)"""
 type ArtifactTagInfo {
   """When this tag was created"""
@@ -1762,10 +1776,18 @@ type ArtifactsAdminMutation {
   deleteNamespace(id: UUID!): Boolean!
   """Delete a repository and all its versions, tags, and blobs"""
   deleteRepository(id: UUID!): Boolean!
+  """
+  Delete a GHCR sync destination and its sync records with optimistic locking, preserving source and remote images. Requires admin.
+  """
+  deleteSyncDestination(id: UUID!, version: Long!): Boolean!
   """Delete a tag from a repository"""
   deleteTag(name: String!, repositoryId: UUID!): Boolean!
   """Delete a specific version and its blob associations"""
   deleteVersion(id: UUID!): Boolean!
+  """
+  Queue a current Docker tag for one enabled GHCR destination under the caller's identity. Returns the durable pipeline run ID. Requires admin.
+  """
+  pushImage(destinationId: UUID!, tagName: String!): UUID!
   """
   Revoke a permission action from a group on a namespace. Requires admin.
   """
@@ -1774,6 +1796,10 @@ type ArtifactsAdminMutation {
   setTag(manifestDigest: String!, name: String!, repositoryId: UUID!): ArtifactTagInfo!
   """Update a namespace's public (anonymous pull) visibility"""
   updateNamespace(id: UUID!, public: Boolean!): ArtifactNamespaceInfo!
+  """
+  Update destination configuration with optimistic locking. Changing the image path clears its previous sync records. Requires admin.
+  """
+  updateSyncDestination(enabled: Boolean!, id: UUID!, key: String, remoteRepository: String, tokenSecretName: String, username: String, version: Long!): ArtifactSyncDestination!
 }
 
 """
