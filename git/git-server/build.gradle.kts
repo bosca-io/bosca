@@ -116,6 +116,10 @@ graalvmNative {
         named("main") {
             imageName = "bosca-git-server"
             mainClass = "bosca.git.server.ApplicationKt"
+            buildArgs.add("-O3")
+            buildArgs.addAll(providers.gradleProperty("bosca.native.march")
+                .map { listOf("-march=$it") }
+                .orElse(emptyList()))
             buildArgs.add("--exclude-config")
             buildArgs.add(".*/.*.jar")
             buildArgs.add("^/META-INF/native-image/org\\.jline/.*")

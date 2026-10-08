@@ -237,7 +237,13 @@ graalvmNative {
         named("main") {
             imageName = "bosca-server"
             mainClass = "bosca.server.ApplicationKt"
-            buildArgs.add("-J-Xmx36g")
+            buildArgs.add("-O3")
+            buildArgs.addAll(providers.gradleProperty("bosca.native.march")
+                .map { listOf("-march=$it") }
+                .orElse(emptyList()))
+            buildArgs.add(providers.gradleProperty("bosca.native.buildHeap")
+                .orElse("64g")
+                .map { "-J-Xmx$it" })
             buildArgs.add("-J--sun-misc-unsafe-memory-access=allow")
             buildArgs.add("-J--add-opens=java.base/java.nio=ALL-UNNAMED")
             buildArgs.add("-J--add-opens=java.base/jdk.internal.misc=ALL-UNNAMED")

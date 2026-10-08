@@ -59,14 +59,18 @@ tasks.register<JavaExec>("packageDefaultMessageProject") {
 
 // Native image via GraalVM 25i's Crema (runtime class loading): the server hot-loads message jars
 // inside the native binary. Build with JAVA_HOME + GRAALVM_HOME at the 25i toolchain (the GDS
-// `25i1` stream — sdkman's 25.0.3-graal lacks `GraalJITCompileAtRuntime`; `./gradlew --stop`
-// after switching, GRAALVM_HOME is not part of the daemon fingerprint). KNOWN LIMITATION
+// `25i4` stream, JDK 25.0.4.1.1 / GraalVM 25.4.4.1.1). Run `./gradlew --stop`
+// after switching; GRAALVM_HOME is not part of the daemon fingerprint. KNOWN LIMITATION
 // (accepted): retired classloader generations never unload natively (~230KB leaked per publish;
 // Crema scopes load/link/execute only) — routine restarts cover it at email publish cadence.
 graalvmNative {
     binaries {
         named("main") {
             imageName.set("bml-message-server")
+            buildArgs.add("-O3")
+            buildArgs.addAll(providers.gradleProperty("bosca.native.march")
+                .map { listOf("-march=$it") }
+                .orElse(emptyList()))
             buildArgs.addAll(
                 "--enable-url-protocols=jar",
                 "-J--sun-misc-unsafe-memory-access=allow",

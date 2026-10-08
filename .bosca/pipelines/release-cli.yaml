@@ -42,8 +42,8 @@ jobs:
         uses: setup-java
         with:
           distribution: graal
-          stream: 25i1
-          version: "25.0.3"
+          stream: 25i4
+          version: "25.0.4.1.1"
       - name: Setup Rust
         # Configuring the build compiles firebase-scrypt's native library with Cargo.
         uses: setup-rust
@@ -93,8 +93,8 @@ jobs:
         uses: setup-java
         with:
           distribution: graal
-          stream: 25i1
-          version: "25.0.3"
+          stream: 25i4
+          version: "25.0.4.1.1"
       - name: Setup Rust
         uses: setup-rust
         with:

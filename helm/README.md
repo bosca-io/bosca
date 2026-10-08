@@ -64,7 +64,12 @@ verified after publication. Source charts, values and dependency locks remain
 untouched. The old `prepare-for-publish.sh` helper is not used by this pipeline.
 
 Before uploading, the publisher checks all versions at both destinations.
-Identical existing versions are accepted; differing contents fail the release.
+Existing versions with identical chart files are accepted; changed files fail the
+release. Helm adds packaging timestamps to archives, so a rebuild can have a
+different checksum without changing the chart. The publisher reuses the existing
+archive bytes and updates the local packages and checksum manifest after all
+versions pass inspection. If both destinations already contain a version, their
+archive bytes must match.
 The package directory contains the archives and a `release.tsv` checksum
 manifest. A failure between destinations can leave a partial release: retain
 that directory and rerun `publish` with those exact archives to finish it.
@@ -101,3 +106,5 @@ localhost registry in the integration test.
 The shell tests exercise conflict handling and partial-release retries using
 isolated command fixtures. They also package a chart with a local dependency
 using Helm and check that source files and chart versions remain untouched.
+Rebuilt releases and retries with only one populated destination reuse the
+published bytes; changed templates and bundled dependencies are rejected.

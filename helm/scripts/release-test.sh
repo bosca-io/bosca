@@ -88,7 +88,7 @@ reset_registry() {
 publish() {
   PATH="$TEMP/bin:$PATH" HELM_REPO_URL=https://example.invalid/helm/bosca-charts \
     HELM_OCI_URL=oci://example.invalid/bosca-charts \
-    bash "$SCRIPT" publish --output "$TEMP/packages"
+    bash "$SCRIPT" publish --output "${1:-$TEMP/packages}"
 }
 expect_failure() {
   local pattern="$1"; shift
@@ -133,7 +133,8 @@ mv "$TEMP/original" "$TEMP/packages/alpha-0.1.0.tgz"
 echo 'PASS: publishing, identical bytes, retries, conflicts and credentials'
 
 # Real Helm integration: retain versions, bundle local dependencies, preserve sources.
-mkdir -p "$TEMP/charts/common" "$TEMP/charts/app"
+mkdir -p "$TEMP/charts/common/templates" "$TEMP/charts/app"
+printf '{{- define "common.example" -}}original{{- end -}}' > "$TEMP/charts/common/templates/_helpers.tpl"
 cat > "$TEMP/charts/common/Chart.yaml" <<'CHART'
 apiVersion: v2
 name: common
@@ -164,3 +165,52 @@ expect_failure 'must be empty' bash "$SCRIPT" package --charts "$TEMP/charts" --
 rm "$TEMP/charts/app/Chart.lock"
 expect_failure 'Missing dependency lock' bash "$SCRIPT" package --charts "$TEMP/charts" --output "$TEMP/missing-lock"
 echo 'PASS: real Helm packaging, dependency locks, chart versions and source preservation'
+
+# Rebuilds differ only in archive timestamps. Both complete and partial releases
+# must reuse the existing bytes, while changed templates still fail preflight.
+cp "$TEMP/before/app/Chart.lock" "$TEMP/charts/app/Chart.lock"
+reset_registry
+publish "$TEMP/packaged"
+cp "$TEMP/packaged/release.tsv" "$TEMP/published.tsv"
+sleep 2
+bash "$SCRIPT" package --charts "$TEMP/charts" --output "$TEMP/rebuilt"
+! cmp -s "$TEMP/published.tsv" "$TEMP/rebuilt/release.tsv" || fail "Expected Helm timestamps to change archive bytes"
+publish "$TEMP/rebuilt"
+cmp "$TEMP/published.tsv" "$TEMP/rebuilt/release.tsv"
+[[ "$(wc -l < "$RELEASE_TEST_STATE/writes")" -eq 4 ]] || fail "Rebuilt release uploaded existing archives"
+
+# Two independently packaged registries cannot be reconciled without replacing
+# an existing archive, even when their files match.
+cp "$RELEASE_TEST_STATE/oci/app-0.1.0.tgz" "$TEMP/published-app.tgz"
+gzip -dc "$TEMP/published-app.tgz" | gzip -n > "$RELEASE_TEST_STATE/oci/app-0.1.0.tgz"
+: > "$RELEASE_TEST_STATE/writes"
+expect_failure 'HTTP and OCI archives differ' publish "$TEMP/rebuilt"
+[[ ! -s "$RELEASE_TEST_STATE/writes" ]] || fail "Divergent registries caused an upload"
+cp "$TEMP/published-app.tgz" "$RELEASE_TEST_STATE/oci/app-0.1.0.tgz"
+
+for destination in http oci; do
+  other=http; [[ "$destination" == http ]] && other=oci
+  rm "$RELEASE_TEST_STATE/$other/"*.tgz
+  sleep 2
+  bash "$SCRIPT" package --charts "$TEMP/charts" --output "$TEMP/partial-$destination"
+  publish "$TEMP/partial-$destination"
+  cmp "$TEMP/published.tsv" "$TEMP/partial-$destination/release.tsv"
+  for archive in "$TEMP/partial-$destination/"*.tgz; do
+    cmp "$archive" "$RELEASE_TEST_STATE/http/${archive##*/}"
+    cmp "$archive" "$RELEASE_TEST_STATE/oci/${archive##*/}"
+  done
+done
+
+printf '{{- define "common.example" -}}changed{{- end -}}' > "$TEMP/charts/common/templates/_helpers.tpl"
+bash "$SCRIPT" package --charts "$TEMP/charts" --output "$TEMP/changed"
+cp "$TEMP/changed/release.tsv" "$TEMP/changed-before.tsv"
+: > "$RELEASE_TEST_STATE/writes"
+expect_failure 'different contents' publish "$TEMP/changed"
+[[ ! -s "$RELEASE_TEST_STATE/writes" ]] || fail "Changed chart uploaded before conflict detection"
+cmp "$TEMP/changed-before.tsv" "$TEMP/changed/release.tsv"
+# Check the nested dependency independently of the standalone library chart.
+grep '^app' "$TEMP/changed/release.tsv" > "$TEMP/app-only.tsv"
+cp "$TEMP/app-only.tsv" "$TEMP/changed/release.tsv"
+expect_failure 'different contents' publish "$TEMP/changed"
+[[ ! -s "$RELEASE_TEST_STATE/writes" ]] || fail "Changed dependency uploaded before conflict detection"
+echo 'PASS: timestamp-only rebuilds, reuse from either registry, changed templates and nested dependencies'
