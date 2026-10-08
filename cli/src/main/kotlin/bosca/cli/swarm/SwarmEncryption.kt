@@ -39,9 +39,17 @@ internal object SwarmSecretEncryption {
         return found
     }
 
-    fun encrypt(document: JsonObject, passphrase: CharArray): JsonObject {
+    /** Retains authenticated ciphertext at the same secret path when its plaintext has not changed. */
+    fun encrypt(document: JsonObject, passphrase: CharArray, previous: JsonObject? = null): JsonObject {
         require(passphrase.size >= 12) { "Swarm config passphrase must be at least 12 characters" }
         KeyCache(passphrase).use { keys ->
+            val retained = mutableMapOf<String, Pair<String, String>>()
+            previous?.let { stored ->
+                transform(stored) { value, path ->
+                    if (value.startsWith("ENC[")) retained[path] = decryptValue(value, path, keys) to value
+                    null
+                }
+            }
             val salt = ByteArray(saltSize).also(random::nextBytes)
             return transform(document) { value, path ->
                 when {
@@ -51,7 +59,8 @@ internal object SwarmSecretEncryption {
                         decryptValue(value, path, keys)
                         value
                     }
-                    else -> encryptValue(value, path, salt, keys.key(salt))
+                    else -> retained[path]?.takeIf { it.first == value }?.second
+                        ?: encryptValue(value, path, salt, keys.key(salt))
                 }
             }
         }

@@ -5,6 +5,7 @@ import com.github.ajalt.clikt.testing.test
 import com.sun.net.httpserver.HttpServer
 import java.net.InetSocketAddress
 import java.nio.file.Files
+import kotlinx.serialization.json.jsonObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -121,7 +122,7 @@ class SwarmImagesTest {
     }
 
     @Test
-    fun `updated pins persist without decrypting an encrypted config on disk`() = runBlocking {
+    fun `updated pins preserve encrypted secrets exactly on disk`() = runBlocking {
         val directory = Files.createTempDirectory("swarm-images-")
         val path = directory.resolve("config.json")
         val passphrase = "test passphrase for swarm images".toCharArray()
@@ -129,11 +130,14 @@ class SwarmImagesTest {
             val original = SwarmConfig().withSecrets()
             saveConfig(path, original)
             transformSwarmConfig(path, path, encrypt = true, passphrase = passphrase)
+            val encrypted = swarmJson.parseToJsonElement(Files.readString(path)).jsonObject
             SwarmConfigFile(path) { passphrase.copyOf() }.use { file ->
                 val loaded = file.load()
                 file.save(updateSwarmImages(loaded, "http://registry.example:5000/bosca", setOf("server")) { "9.0.0" })
             }
             val stored = Files.readString(path)
+            val updated = swarmJson.parseToJsonElement(stored).jsonObject
+            assertEquals(encrypted - setOf("images", "registrySchemes"), updated - setOf("images", "registrySchemes"))
             assertTrue(stored.contains("bosca-server:9.0.0"))
             assertTrue(!stored.contains(original.secrets.postgresAdmin))
             SwarmConfigFile(path) { passphrase.copyOf() }.use { file ->
@@ -146,6 +150,12 @@ class SwarmImagesTest {
                     "9.1.0"
                 }
                 assertEquals("registry.example:5000/bosca/bosca-server:9.1.0", next.images["server"])
+                file.save(next)
+                val repeated = swarmJson.parseToJsonElement(Files.readString(path)).jsonObject
+                assertEquals(encrypted - setOf("images", "registrySchemes"), repeated - setOf("images", "registrySchemes"))
+                val unchanged = Files.readString(path)
+                SwarmConfigFile(path) { passphrase.copyOf() }.use { it.save(next) }
+                assertEquals(unchanged, Files.readString(path))
             }
         } finally {
             passphrase.fill('\u0000')

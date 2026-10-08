@@ -257,13 +257,12 @@ internal class SwarmConfigFile(
     }
 
     fun save(config: SwarmConfig) {
-        val existing = if (encryptedSecrets == null && Files.isRegularFile(path)) {
+        val existing = if (Files.isRegularFile(path)) {
             swarmJson.parseToJsonElement(Files.readString(path)).jsonObject
         } else null
         val useEncryption = encryptedSecrets ?: existing?.let(SwarmSecretEncryption::hasEncryptedSecrets) ?: false
-        if (existing != null && useEncryption) SwarmSecretEncryption.decrypt(existing, passphrase(false))
         val document = swarmJson.encodeToJsonElement(SwarmConfig.serializer(), config).jsonObject
-        val stored = if (useEncryption) SwarmSecretEncryption.encrypt(document, passphrase(false)) else document
+        val stored = if (useEncryption) SwarmSecretEncryption.encrypt(document, passphrase(false), existing) else document
         privateWrite(path, swarmJson.encodeToString(JsonObject.serializer(), stored) + "\n")
         encryptedSecrets = useEncryption
     }

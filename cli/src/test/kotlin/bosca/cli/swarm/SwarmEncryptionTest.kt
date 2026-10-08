@@ -5,6 +5,8 @@ import java.nio.file.attribute.PosixFilePermission
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -57,6 +59,16 @@ class SwarmEncryptionTest {
             }
             assertFalse(Files.readString(path).contains("new-bosca-token"))
             assertTrue(Files.readString(path).contains("site1.example.invalid"))
+            val updated = swarmJson.parseToJsonElement(Files.readString(path)).jsonObject
+            val firstSite = updated.getValue("sites").jsonArray[0].jsonObject
+            val previousSite = document.getValue("sites").jsonArray[0].jsonObject
+            val newToken = firstSite.getValue("ml").jsonObject.getValue("boscaToken")
+            assertTrue(newToken.jsonPrimitive.content.startsWith("ENC[v1:"))
+            assertFalse(newToken == previousSite.getValue("ml").jsonObject["boscaToken"])
+            val expectedMl = JsonObject(previousSite.getValue("ml").jsonObject + ("boscaToken" to newToken))
+            val expectedSite = JsonObject(previousSite + ("ml" to expectedMl))
+            val expectedSites = JsonArray(listOf(expectedSite) + document.getValue("sites").jsonArray.drop(1))
+            assertEquals(JsonObject(document + ("sites" to expectedSites)), updated)
             if ("posix" in path.fileSystem.supportedFileAttributeViews()) {
                 assertEquals(setOf(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE),
                     Files.getPosixFilePermissions(path))
@@ -84,10 +96,19 @@ class SwarmEncryptionTest {
             }
             assertEquals(intact, Files.readString(path))
 
+            assertFailsWith<IllegalArgumentException> {
+                SwarmConfigFile(path) { "wrong-passphrase".toCharArray() }.use { it.save(SwarmConfig().withSecrets()) }
+            }
+            assertEquals(intact, Files.readString(path))
+
             val damaged = intact.replaceFirst("ENC[v1:", "ENC[v2:")
             privateWrite(path, damaged)
             assertFailsWith<IllegalArgumentException> {
                 SwarmConfigFile(path) { passphrase.copyOf() }.use { it.load() }
+            }
+            assertEquals(damaged, Files.readString(path))
+            assertFailsWith<IllegalArgumentException> {
+                SwarmConfigFile(path) { passphrase.copyOf() }.use { it.save(SwarmConfig().withSecrets()) }
             }
             assertEquals(damaged, Files.readString(path))
         } finally {
