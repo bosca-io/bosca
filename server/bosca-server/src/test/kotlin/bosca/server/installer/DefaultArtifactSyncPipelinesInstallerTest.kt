@@ -1,5 +1,9 @@
 package bosca.server.installer
 
+import bosca.artifacts.model.ArtifactCompleted
+import bosca.artifacts.model.ArtifactPublicationTarget
+import bosca.artifacts.pipeline.ArtifactPublicationGetDestinations
+import bosca.artifacts.pipeline.ArtifactPublicationNode
 import bosca.artifacts.model.ArtifactTagPublished
 import bosca.artifacts.model.ArtifactSyncTarget
 import bosca.artifacts.pipeline.ArtifactSyncGetDestinations
@@ -28,10 +32,10 @@ class DefaultArtifactSyncPipelinesInstallerTest {
     @Test fun `seeds a typed triggered graph and a durable per-destination body`() = runTest {
         val (installer, graphs) = setup()
         installer.install(mockk(relaxed = true), mockk(relaxed = true))
-        assertEquals(2, graphs.size)
-        val body = graphs.single { !it.triggered }
+        assertEquals(4, graphs.size)
+        val body = graphs.single { it.name == DefaultArtifactSyncPipelinesInstaller.BODY_NAME }
         assertEquals(ArtifactSyncTarget::class.qualifiedName, body.acceptedInputType)
-        val triggered = graphs.single { it.triggered }
+        val triggered = graphs.single { it.name == DefaultArtifactSyncPipelinesInstaller.TRIGGER_NAME }
         assertIs<ArtifactSyncNode>(body.nodes[1])
         assertEquals("target", body.edges.first().targetPort)
         assertEquals(ArtifactTagPublished::class.qualifiedName, triggered.acceptedInputType)
@@ -42,13 +46,46 @@ class DefaultArtifactSyncPipelinesInstallerTest {
         assertEquals("artifact", triggered.edges.first().targetPort)
     }
 
+    @Test fun `raw completion seeds a durable publication body and continues across destinations`() = runTest {
+        val (installer, graphs) = setup()
+        installer.install(mockk(relaxed = true), mockk(relaxed = true))
+        val body = graphs.single { it.name == DefaultArtifactSyncPipelinesInstaller.PUBLICATION_BODY_NAME }
+        assertEquals(ArtifactPublicationTarget::class.qualifiedName, body.acceptedInputType)
+        assertIs<ArtifactPublicationNode>(body.nodes[1])
+        assertEquals("target", body.edges.first().targetPort)
+        val trigger = graphs.single { it.name == DefaultArtifactSyncPipelinesInstaller.PUBLICATION_TRIGGER_NAME }
+        assertTrue(trigger.triggered)
+        assertEquals(ArtifactCompleted::class.qualifiedName, trigger.acceptedInputType)
+        assertIs<ArtifactPublicationGetDestinations>(trigger.nodes[1])
+        val each = assertIs<ForEach>(trigger.nodes[2])
+        assertNotEquals(UUID.NIL, each.pipelineId)
+        assertTrue(each.continueOnError)
+        assertEquals("artifact", trigger.edges.first().targetPort)
+    }
+
+    @Test fun `upgrade with existing Docker graphs still installs raw publication graphs`() = runTest {
+        val existing = listOf(
+            Pipeline(id = UUID.random(), name = DefaultArtifactSyncPipelinesInstaller.BODY_NAME, acceptedInputType = "JSON"),
+            Pipeline(id = UUID.random(), name = DefaultArtifactSyncPipelinesInstaller.TRIGGER_NAME, acceptedInputType = "JSON", triggered = true),
+        )
+        val (installer, graphs) = setup(existing)
+        assertEquals("1.1.0", installer.version)
+        installer.install(mockk(relaxed = true), mockk(relaxed = true))
+        assertEquals(setOf(DefaultArtifactSyncPipelinesInstaller.PUBLICATION_BODY_NAME,
+            DefaultArtifactSyncPipelinesInstaller.PUBLICATION_TRIGGER_NAME), graphs.map { it.name }.toSet())
+        val (again, unchanged) = setup(existing + graphs)
+        again.install(mockk(relaxed = true), mockk(relaxed = true))
+        assertTrue(unchanged.isEmpty())
+    }
+
     @Test fun `reinstall preserves edited graphs and the existing body reference`() = runTest {
         val body = Pipeline(id = UUID.random(), name = DefaultArtifactSyncPipelinesInstaller.BODY_NAME,
             acceptedInputType = "JSON")
         val (installer, graphs) = setup(listOf(body))
         installer.install(mockk(relaxed = true), mockk(relaxed = true))
-        assertEquals(body.id, assertIs<ForEach>(graphs.single().nodes[2]).pipelineId)
-        val (again, unchanged) = setup(listOf(body, graphs.single()))
+        val triggered = graphs.single { it.name == DefaultArtifactSyncPipelinesInstaller.TRIGGER_NAME }
+        assertEquals(body.id, assertIs<ForEach>(triggered.nodes[2]).pipelineId)
+        val (again, unchanged) = setup(listOf(body) + graphs)
         again.install(mockk(relaxed = true), mockk(relaxed = true))
         assertTrue(unchanged.isEmpty())
     }
