@@ -8,7 +8,7 @@ Content management, language, localization, slug generation, and Bible compilati
 |--------|-------------|
 | `core-content` | Contracts: content models (metadata, collections, transitions, categories, sources) |
 | `core-bible-providers` | Integration contracts: Bible provider access, configuration, and source administration |
-| `bible-providers` | Bible provider adapters using the shared Bible models |
+| `bible-providers` | Bible provider adapters, source persistence, and chapter caches using the shared Bible models |
 | `content` | Implementation: repositories, GraphQL controllers, migrations |
 | `core-languages` | Contracts: language model and service interfaces |
 | `languages` | Implementation: language repository and controllers |
@@ -30,7 +30,7 @@ Run these commands from the **workspace root**. `content` is part of the root Gr
 ```bash
 ./gradlew :content:test  # Test content modules
 ./gradlew :content:content:test :content:bible-compiler:test  # Focused tests
-./gradlew :content:bible-providers:test  # Provider adapters against local HTTP test servers
+./gradlew :content:bible-providers:test  # Provider adapters and PostgreSQL source/cache tests
 ```
 
 The Bible compiler tests download KJV and ASV DBL bundles rather than storing them in Git.

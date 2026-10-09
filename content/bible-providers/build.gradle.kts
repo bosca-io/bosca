@@ -1,5 +1,6 @@
 plugins {
     id("org.jetbrains.kotlin.jvm")
+    alias(libs.plugins.kotlin.ksp)
     alias(libs.plugins.kotlin.plugin.serialization)
     alias(libs.plugins.kover)
 }
@@ -18,4 +19,29 @@ dependencies {
     testImplementation(libs.kotlin.test.junit)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.okhttp.mockwebserver)
+    testImplementation(project(":bosca-core:test-support"))
+
+    "ksp"(project(":bosca-core:core-ksp"))
+    "ksp"(project(":services-di:di-ksp"))
+    "ksp"(project(":services-di:service-ksp"))
+}
+
+ksp {
+    arg("ProviderRegistrarPrefix", "BibleProviders")
+}
+
+tasks.withType<com.google.devtools.ksp.gradle.KspAATask>().configureEach {
+    if (name.contains("Test")) {
+        commandLineArgumentProviders.add(
+            org.gradle.process.CommandLineArgumentProvider { listOf("isTest=true") }
+        )
+    }
+}
+
+kover {
+    reports {
+        filters {
+            excludes { annotatedBy("bosca.di.annotation.Generated") }
+        }
+    }
 }
