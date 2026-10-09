@@ -10,6 +10,7 @@ import io.mockk.mockk
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
 import okhttp3.Credentials
+import mockwebserver3.MockResponse
 import java.io.ByteArrayInputStream
 import kotlin.test.*
 
@@ -112,6 +113,44 @@ class GhcrClientTest {
         GhcrTestServer().use { remote ->
             assertFailsWith<GhcrException> { client(remote).push(destination, "credential", "latest", root, null) { true } }
             assertTrue(remote.requests.isEmpty())
+        }
+    }
+
+    @Test
+    fun `forbidden responses identify each operation without exposing credentials or provider content`(): Unit = runBlocking {
+        for ((method, path, operation) in listOf(
+            Triple("GET", "/token", "requesting a registry token"),
+            Triple("HEAD", "/blobs/${fixture.config}", "checking for an existing blob"),
+            Triple("POST", "/blobs/uploads/", "starting a blob upload"),
+            Triple("PUT", "/blobs/uploads/1", "uploading a blob"),
+            Triple("PUT", "/manifests/${fixture.manifest}", "uploading a manifest"),
+            Triple("PUT", "/manifests/v1", "assigning the image tag"),
+            Triple("HEAD", "/manifests/v1", "verifying the image tag"),
+        )) {
+            GhcrTestServer().use { remote ->
+                remote.responseOverride = { request ->
+                    if (request.method == method && request.url.encodedPath.endsWith(path))
+                        MockResponse.Builder().code(403)
+                            .addHeader("WWW-Authenticate", "Bearer secret-provider-header")
+                            .body("secret-provider-body").build()
+                    else null
+                }
+                val failure = assertFailsWith<GhcrException> {
+                    client(remote).push(destination, "secret-credential", "v1", fixture.index, null) { true }
+                }
+                val message = failure.message.orEmpty()
+                assertEquals(
+                    "GHCR artifact sync failed: HTTP 403 while $operation. Check the destination username, a classic token with write:packages, package write access, and organization SSO authorization.",
+                    message,
+                )
+                assertFalse(message.contains("secret-"))
+                assertFalse(message.contains("registry-token"))
+                assertFalse(message.contains("keep-me"))
+                assertFalse(message.contains(remote.base))
+                assertEquals(method, remote.requests.last().method)
+                assertTrue(remote.requests.last().url.encodedPath.endsWith(path))
+                if (operation != "verifying the image tag") assertTrue(remote.tags.isEmpty())
+            }
         }
     }
 

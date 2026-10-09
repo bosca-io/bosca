@@ -15,6 +15,7 @@ import bosca.security.service.SecurityConfigurationImpl
 import bosca.server.BoscaApplication
 import bosca.server.config.ApplicationConfig
 import bosca.server.installer.DefaultGitEmailPipelinesInstaller
+import bosca.server.installer.DefaultArtifactSyncPipelinesInstaller
 import bosca.server.installer.DefaultSocialNotificationPipelinesInstaller
 import bosca.server.installer.DefaultTransactionalEmailPipelinesInstaller
 import bosca.server.installer.MaintenanceJobsInstaller
@@ -103,6 +104,17 @@ class ConfigurationTest {
         assertEquals(1, pkg.versions.size)
         assertEquals(MaintenanceJobsInstaller.VERSION, pkg.versions[0].version)
         assertEquals(listOf("maintenance-jobs"), pkg.versions[0].installerNames)
+    }
+
+    @Test
+    fun `default artifact sync package is enabled for startup installation`() {
+        val keys = ApplicationConfig.loadFromClasspath().property("packages").getAs<Set<String>>()
+        val pkg = configuration.defaultArtifactSyncPipelinesPackage()
+
+        assertTrue(pkg.key in keys)
+        assertEquals(DefaultArtifactSyncPipelinesInstaller.NAME, pkg.key)
+        assertEquals(listOf(DefaultArtifactSyncPipelinesInstaller.NAME), pkg.versions.single().installerNames)
+        assertEquals(configuration.defaultArtifactSyncPipelinesInstaller(mockk()).version, pkg.versions.single().version)
     }
 
     @Test

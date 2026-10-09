@@ -295,7 +295,7 @@ oauth2:
     - "$OAUTH2_ALLOWED_REDIRECT:http://localhost:8080"
     - "http://localhost:3000"
 
-packages: [core, security-initial, profiles, languages, messages-localization, search-index, root-collection-installer, bible, community-ai, ai, kit, maintenance, hubspot, feeds, recommendations, default-embedding-pipeline, default-git-email-pipelines, github, default-transactional-email-pipelines, default-social-notification-pipelines]
+packages: [core, security-initial, profiles, languages, messages-localization, search-index, root-collection-installer, bible, community-ai, ai, kit, maintenance, hubspot, feeds, recommendations, default-embedding-pipeline, default-git-email-pipelines, github, default-transactional-email-pipelines, default-social-notification-pipelines, default-artifact-sync-pipelines]
 
 runners:
   enabled:

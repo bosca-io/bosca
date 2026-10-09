@@ -209,9 +209,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
      instead. dvh tracks dynamic browser chrome; the 90dvh cap keeps a little
      breathing room on tall screens. */
   max-height: min(90dvh, calc(100dvh - 48px));
-  background: color-mix(in oklch, var(--bg-0) 25%, transparent);
-  backdrop-filter: blur(40px) saturate(1.6);
-  -webkit-backdrop-filter: blur(40px) saturate(1.6);
+  background: var(--bg-0);
   border: 1px solid color-mix(in oklch, var(--fg-3) 18%, transparent);
   border-radius: var(--r-lg);
   box-shadow:

@@ -20,12 +20,14 @@ internal class GhcrTestServer : AutoCloseable {
     var tagFailures = 0
     var uploadLocation: String? = null
     var verificationDigest: String? = null
+    var responseOverride: ((RecordedRequest) -> MockResponse?)? = null
     val base get() = server.url("/").toString().removeSuffix("/")
 
     init {
         server.dispatcher = object : Dispatcher() {
             override fun dispatch(request: RecordedRequest): MockResponse {
                 requests += request
+                responseOverride?.invoke(request)?.let { return it }
                 val url = request.url
                 val path = url.encodedPath
                 val method = request.method

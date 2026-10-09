@@ -101,7 +101,11 @@ class ArtifactSyncServiceImpl(
             .filter { !it.triggered }
         val pipeline = candidates.singleOrNull { it.name == ArtifactSyncService.PUSH_PIPELINE_NAME }
             ?: candidates.singleOrNull()
-            ?: error("Docker sync pipeline is missing or ambiguous")
+            ?: if (candidates.isEmpty()) {
+                error("No Docker sync pipeline accepts ArtifactSyncTarget. Install 'Default Artifact Sync Pipelines' in System > Packages, or check the sync pipeline's input type and trigger setting.")
+            } else {
+                error("Multiple Docker sync pipelines accept ArtifactSyncTarget. Give exactly one the name '${ArtifactSyncService.PUSH_PIPELINE_NAME}'.")
+            }
         val runService = runs.get()
         return transaction {
             val destination = repository.lockDestination(destinationId) ?: throw NoSuchElementException("Sync destination not found")

@@ -47,14 +47,14 @@ class GhcrClient(
         val bearer = token(destination, credential)
         for ((blobDigest, size) in content) uploadBlob(destination, bearer, blobDigest, size)
         for ((manifestDigest, manifest) in manifests) {
-            putManifest(destination, bearer, manifestDigest, manifest)
+            putManifest(destination, bearer, manifestDigest, manifest, "uploading a manifest")
         }
         if (!beforeTag()) return false
         val manifest = manifests[digest] ?: throw GhcrException("Stored root manifest is missing")
-        putManifest(destination, bearer, tag, manifest)
+        putManifest(destination, bearer, tag, manifest, "assigning the image tag")
         request(destination, bearer, "manifests", tag).head().build().let { request ->
             client.newCall(request).await().use { response ->
-                requireStatus(response, 200)
+                requireStatus(response, 200, "verifying the image tag")
                 remoteRequire(response.header("Docker-Content-Digest") == digest, "GHCR tag digest differs from the stored image")
             }
         }
@@ -109,7 +109,7 @@ class GhcrClient(
             .addQueryParameter("scope", "repository:${destination.remoteRepository}:pull,push").build()
         val request = Request.Builder().url(url).header("Authorization", Credentials.basic(destination.username, credential)).build()
         val response = client.newCall(request).await().use {
-            requireStatus(it, 200)
+            requireStatus(it, 200, "requesting a registry token")
             json.decodeFromString(RegistryToken.serializer(), it.body.string())
         }
         return (response.token ?: response.accessToken)?.takeIf { it.isNotBlank() }
@@ -119,13 +119,13 @@ class GhcrClient(
     private suspend fun uploadBlob(destination: ArtifactSyncDestination, bearer: String, digest: String, size: Long) {
         client.newCall(request(destination, bearer, "blobs", digest).head().build()).await().use {
             if (it.code == 200) return
-            requireStatus(it, 404)
+            requireStatus(it, 404, "checking for an existing blob")
         }
         val location = client.newCall(
             request(destination, bearer, "blobs", "uploads", "")
                 .post(ByteArray(0).toRequestBody(null)).build()
         ).await().use {
-            requireStatus(it, 202)
+            requireStatus(it, 202, "starting a blob upload")
             uploadLocation(it)
         }
         blobs.getInputStream(digest).use { input ->
@@ -139,7 +139,7 @@ class GhcrClient(
             }
             val url = location.newBuilder().addQueryParameter("digest", digest).build()
             client.newCall(Request.Builder().url(url).header("Authorization", "Bearer $bearer").put(body).build()).await().use {
-                requireStatus(it, 201)
+                requireStatus(it, 201, "uploading a blob")
                 remoteRequire(it.header("Docker-Content-Digest") == digest, "GHCR uploaded blob digest differs")
             }
         }
@@ -155,12 +155,12 @@ class GhcrClient(
         return url
     }
 
-    private suspend fun putManifest(destination: ArtifactSyncDestination, bearer: String, reference: String, manifest: StoredManifest) {
+    private suspend fun putManifest(destination: ArtifactSyncDestination, bearer: String, reference: String, manifest: StoredManifest, operation: String) {
         client.newCall(
             request(destination, bearer, "manifests", reference)
                 .put(manifest.bytes.toRequestBody(manifest.mediaType.toMediaType())).build()
         ).await().use {
-            requireStatus(it, 201)
+            requireStatus(it, 201, operation)
             remoteRequire(it.header("Docker-Content-Digest") == sha256(manifest.bytes), "GHCR uploaded manifest digest differs")
         }
     }
@@ -177,8 +177,12 @@ class GhcrClient(
         remoteRequire(digest.matches(Regex("sha256:[0-9a-f]{64}")), "GHCR syncing requires SHA-256 image digests")
     }
 
-    private fun requireStatus(response: Response, expected: Int) {
-        remoteRequire(response.code == expected, "GHCR artifact sync failed: HTTP ${response.code}")
+    private fun requireStatus(response: Response, expected: Int, operation: String) {
+        if (response.code == expected) return
+        val guidance = if (response.code == 401 || response.code == 403)
+            ". Check the destination username, a classic token with write:packages, package write access, and organization SSO authorization."
+        else ""
+        throw GhcrException("GHCR artifact sync failed: HTTP ${response.code} while $operation$guidance")
     }
 
     private fun remoteRequire(condition: Boolean, message: String) {
@@ -204,7 +208,7 @@ class GhcrClient(
     }
 }
 
-/** Messages contain status and contract errors, never credentials or provider response bodies. */
+/** Messages contain operation, status and contract errors, never credentials, upload URLs or provider response bodies. */
 class GhcrException(message: String) : IllegalStateException(message)
 
 @Serializable

@@ -359,7 +359,7 @@ class ArtifactSyncIntegrationTest {
         assertFailsWith<GhcrException> { ArtifactSyncNode("sync").run(context, inputs) }
         val failed = syncing.syncs(artifact.id).single()
         assertNull(failed.synced)
-        assertEquals("GHCR artifact sync failed: HTTP 503", failed.error)
+        assertEquals("GHCR artifact sync failed: HTTP 503 while assigning the image tag", failed.error)
         secrets.setSecret("ghcr-token", "rotated")
         syncing.retry(failed.id)
         runPipelines(2)
@@ -555,7 +555,25 @@ class ArtifactSyncIntegrationTest {
         assertFailsWith<IllegalStateException> { syncing.push(authentication, destination.id, "latest") }
         secrets.setSecret("ghcr-token", "credential")
         pipelines.delete(body.id)
-        assertFailsWith<IllegalStateException> { syncing.push(authentication, destination.id, "latest") }
+        val missing = assertFailsWith<IllegalStateException> { syncing.push(authentication, destination.id, "latest") }
+        assertContains(missing.message.orEmpty(), "Install 'Default Artifact Sync Pipelines' in System > Packages")
+        assertTrue(syncing.syncs(artifact.id).isEmpty())
+        assertTrue(provide<PipelineRunService>().listActive(0, 100).isEmpty())
+        assertTrue(remote.requests.isEmpty())
+    }
+
+    @Test
+    fun `ambiguous on demand pipelines report how to select the intended sync graph`() = withDb {
+        pipelines.delete(trigger.id)
+        pipelines.delete(body.id)
+        savePipeline(body.copy(id = UUID.NIL, name = "First Docker sync"))
+        savePipeline(body.copy(id = UUID.NIL, name = "Second Docker sync"))
+        artifacts.setTag(artifact.id, "latest", fixture.index)
+        val failure = assertFailsWith<IllegalStateException> {
+            syncing.push(ImpersonatedAuthenticationContext(caller, emptyList()), destination.id, "latest")
+        }
+        assertContains(failure.message.orEmpty(), "Multiple Docker sync pipelines")
+        assertContains(failure.message.orEmpty(), "Give exactly one the name '${ArtifactSyncService.PUSH_PIPELINE_NAME}'")
         assertTrue(syncing.syncs(artifact.id).isEmpty())
         assertTrue(provide<PipelineRunService>().listActive(0, 100).isEmpty())
         assertTrue(remote.requests.isEmpty())

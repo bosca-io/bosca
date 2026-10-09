@@ -1,6 +1,7 @@
 package bosca.server.installer
 
 import bosca.artifacts.model.ArtifactTagPublished
+import bosca.artifacts.model.ArtifactSyncTarget
 import bosca.artifacts.pipeline.ArtifactSyncGetDestinations
 import bosca.artifacts.pipeline.ArtifactSyncNode
 import bosca.pipelines.builtin.ForEach
@@ -29,6 +30,7 @@ class DefaultArtifactSyncPipelinesInstallerTest {
         installer.install(mockk(relaxed = true), mockk(relaxed = true))
         assertEquals(2, graphs.size)
         val body = graphs.single { !it.triggered }
+        assertEquals(ArtifactSyncTarget::class.qualifiedName, body.acceptedInputType)
         val triggered = graphs.single { it.triggered }
         assertIs<ArtifactSyncNode>(body.nodes[1])
         assertEquals("target", body.edges.first().targetPort)
