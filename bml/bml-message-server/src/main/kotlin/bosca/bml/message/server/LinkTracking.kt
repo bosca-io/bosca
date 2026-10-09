@@ -1,5 +1,6 @@
 package bosca.bml.message.server
 
+import com.fleeksoft.ksoup.parser.Parser
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import java.util.Base64
@@ -56,10 +57,11 @@ class LinkTracking(
     /**
      * Rewrite every `href="http(s)://…"` in [html] to a tracked redirect and inject the open
      * pixel before `</body>`. [excludeUrls] (unsubscribe/preferences) pass through untouched.
+     * HTML attribute entities are decoded once before comparing or signing destinations.
      */
     fun rewrite(html: String, messageId: String, recipientId: String?, excludeUrls: Set<String>): String {
         val rewritten = HREF.replace(html) { match ->
-            val url = match.groupValues[1]
+            val url = Parser.unescapeEntities(match.groupValues[1], inAttribute = true)
             if (url in excludeUrls) match.value else "href=\"${clickUrl(url, messageId, recipientId)}\""
         }
         val pixel = "<img src=\"${openPixelUrl(messageId, recipientId)}\" width=\"1\" height=\"1\" alt=\"\" style=\"display:none;\"/>"

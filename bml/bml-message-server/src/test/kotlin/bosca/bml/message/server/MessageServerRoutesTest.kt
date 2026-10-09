@@ -329,7 +329,7 @@ class MessageServerRoutesTest {
         val rendered = requireNotNull(renderTracked(messageId = null).email)
         assertTrue("/c/" !in rendered.html, rendered.html)
         assertTrue("/o/" !in rendered.html, rendered.html)
-        assertTrue("href=\"https://example.com/course?id=7\"" in rendered.html, rendered.html)
+        assertTrue("href=\"https://example.com/course?id=7&amp;lesson=3\"" in rendered.html, rendered.html)
     }
 
     @Test
@@ -340,13 +340,13 @@ class MessageServerRoutesTest {
 
         val response = get("/c/$token")
         assertEquals(302, response.statusCode())
-        assertEquals("https://example.com/course?id=7", response.headers().firstValue("Location").orElse(null))
+        assertEquals("https://example.com/course?id=7&lesson=3", response.headers().firstValue("Location").orElse(null))
         assertEquals(302, get("/c/$token").statusCode())
 
         val event = analytics.events.last { it.element?.type == "email-click" }
         assertEquals(bosca.analytics.model.EventType.Interaction, event.type)
         assertTrue(""""messageId":"m-2"""" in event.element?.extras.toString(), event.element?.extras.toString())
-        assertTrue(""""url":"https://example.com/course?id=7"""" in event.element?.extras.toString())
+        assertTrue(""""url":"https://example.com/course?id=7&lesson=3"""" in event.element?.extras.toString())
         val clicked = pubSub.published
             .filter { it.first == EmailLinkClicked.CHANNEL }
             .takeLast(2)
@@ -354,6 +354,7 @@ class MessageServerRoutesTest {
         assertEquals(2, clicked.size)
         assertNotEquals(clicked[0].id, clicked[1].id)
         assertEquals("m-2", clicked.last().messageId)
+        assertTrue(clicked.all { it.url == "https://example.com/course?id=7&lesson=3" }, clicked.toString())
         assertTrue(clicked.all { it.id.startsWith("bml-") }, clicked.toString())
     }
 

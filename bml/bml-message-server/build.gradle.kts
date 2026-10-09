@@ -26,6 +26,7 @@ dependencies {
     implementation(project(":analytics:analytics-server-client")) // engagement events -> the analytics pipeline (CTR)
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.serialization.json)
+    implementation(libs.ksoup)                 // decode HTML attribute entities before signing tracked links
     implementation(platform(libs.okhttp.bom))
     implementation(libs.okhttp)                 // artifact fetch (ArtifactsRegistryClient precedent)
     runtimeOnly(libs.logback.classic)
