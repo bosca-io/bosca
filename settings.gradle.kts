@@ -145,6 +145,7 @@ includeComponent("bosca-kmp", listOf(
 
 includeComponent("content", listOf(
     "core-content",
+    "core-bible-providers",
     "content",
     "core-languages",
     "languages",

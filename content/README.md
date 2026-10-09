@@ -7,6 +7,7 @@ Content management, language, localization, slug generation, and Bible compilati
 | Module | Description |
 |--------|-------------|
 | `core-content` | Contracts: content models (metadata, collections, transitions, categories, sources) |
+| `core-bible-providers` | Integration contracts: Bible provider access, configuration, and source administration |
 | `content` | Implementation: repositories, GraphQL controllers, migrations |
 | `core-languages` | Contracts: language model and service interfaces |
 | `languages` | Implementation: language repository and controllers |
