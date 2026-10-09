@@ -1,26 +1,35 @@
 <script setup lang="ts">
-useSeoMeta({ title: 'Infrastructure' })
+definePageMeta({ layout: 'developers' })
+
+useSeoMeta({
+  title: 'Infrastructure',
+  description: 'Choose the local image stack or source-development dependencies, and configure backing services.'
+})
 </script>
 
 <template>
   <div class="doc-content article">
     <h1>Infrastructure</h1>
     <p class="subtitle">
-      Running Bosca locally with Docker Compose, deploying to Kubernetes with the CLI, and understanding the downstream systems.
+      Choose the local image stack or source-development dependencies, and configure backing services.
     </p>
 
     <h2 id="local-dev">
       Local Development (Docker Compose)
     </h2>
     <p>
-      The full dependency stack runs via Docker Compose. The root
-      <code>docker-compose.yaml</code> includes <code>server/services/docker-compose.yaml</code>,
-      which defines every backing service.
+      To run Bosca locally using published images, follow
+      <NuxtLink to="/developers/run-locally">Run Bosca Locally</NuxtLink>.
+      The root <code>docker-compose.yaml</code> starts the applications and their backing services using published images. It keeps data in its own named volumes.
+    </p>
+    <p>
+      When running the backend from source, start the development dependencies with
+      <code>server/services/docker-compose.yaml</code>. Run these commands from the repository root:
     </p>
     <CodeBlock
       lang="bash"
-      :code="`docker compose up -d      # Start all services
-docker compose down       # Stop all services`"
+      :code="`docker compose -f server/services/docker-compose.yaml up -d
+docker compose -f server/services/docker-compose.yaml down`"
     />
 
     <h3>Services</h3>
@@ -36,7 +45,7 @@ docker compose down       # Stop all services`"
       <tbody>
         <tr>
           <td><strong>PostgreSQL</strong></td>
-          <td><code>postgres:18.1-alpine</code></td>
+          <td><code>pgvector/pgvector:pg18</code></td>
           <td>5433</td>
           <td>Primary database</td>
         </tr>
@@ -44,7 +53,7 @@ docker compose down       # Stop all services`"
           <td><strong>PostgreSQL (Warehouse)</strong></td>
           <td><code>postgres:18.1-alpine</code></td>
           <td>5434</td>
-          <td>Analytics warehouse</td>
+          <td>Iceberg catalog database</td>
         </tr>
         <tr>
           <td><strong>NATS</strong></td>
@@ -54,7 +63,7 @@ docker compose down       # Stop all services`"
         </tr>
         <tr>
           <td><strong>Redis-compatible</strong></td>
-          <td><code>dragonflydb/dragonfly</code></td>
+          <td><code>docker.dragonflydb.io/dragonflydb/dragonfly</code></td>
           <td>6380</td>
           <td>Cache, distributed locks</td>
         </tr>
@@ -78,32 +87,49 @@ docker compose down       # Stop all services`"
         </tr>
         <tr>
           <td><strong>Jaeger</strong></td>
-          <td><code>jaegertracing/jaeger:2.13.0</code></td>
+          <td><code>cr.jaegertracing.io/jaegertracing/jaeger:2.13.0</code></td>
           <td>16686</td>
           <td>Distributed tracing (OTEL)</td>
         </tr>
         <tr>
-          <td><strong>Text Extractor</strong></td>
-          <td>Text extraction service</td>
-          <td>8083</td>
-          <td>Document text extraction (PDF, DOCX, etc.)</td>
+          <td><strong>TensorFlow Serving</strong></td>
+          <td><code>tensorflow/serving</code></td>
+          <td>8501</td>
+          <td>Serve recommendation models when model artifacts are present</td>
+        </tr>
+        <tr>
+          <td><strong>Text Embeddings Inference</strong></td>
+          <td>CPU embedding service</td>
+          <td>8092</td>
+          <td>Semantic embeddings for content indexing</td>
         </tr>
       </tbody>
     </table>
 
-    <p>Then start the server and runner:</p>
+    <p>Start the server and runner in separate terminals from the repository root. JVM modules use the Java 25 toolchain:</p>
     <CodeBlock
       lang="bash"
-      :code="`./gradlew :bosca-server:run     # GraphQL API on :8080
-./gradlew :bosca-runner:run     # Background job processor`"
+      :code="`./gradlew :server:bosca-server:run     # GraphQL API on :8080
+./gradlew :server:bosca-runner:run     # Background job processor`"
     />
 
+    <p>
+      For Studio development, run <code>pnpm install</code> in <code>web/</code>, then
+      <code>pnpm --filter @bosca/studio dev</code>. Its development proxy targets the API on port 8080.
+      The dependencies Compose file also offers a Git server through the <code>git-server</code>
+      profile; alternatively run <code>./gradlew :git:git-server:run</code>.
+    </p>
+    <p>
+      The dependency stack differs from the root image stack: it publishes backing-service ports
+      for applications running on the host and includes embedding and model-serving services.
+      It does not start Studio, the API, and the runner for you.
+    </p>
     <h2 id="downstream">
       Downstream Systems
     </h2>
 
     <h3 id="required">
-      Required
+      Core backing services
     </h3>
     <table>
       <thead>
@@ -121,12 +147,12 @@ docker compose down       # Stop all services`"
         </tr>
         <tr>
           <td><strong>Redis-compatible</strong></td>
-          <td>Cache, distributed locks, job queues (when configured)</td>
+          <td>Cache, pub/sub, locks, and jobs when Redis backends are selected</td>
           <td><code>REDIS_HOST</code>, <code>REDIS_PORT</code></td>
         </tr>
         <tr>
           <td><strong>NATS</strong></td>
-          <td>Messaging, pub/sub, job queues, distributed locks, cache (when configured)</td>
+          <td>Default cache, pub/sub, durable jobs, and distributed locks</td>
           <td><code>NATS_HOST</code>, <code>NATS_TOKEN</code></td>
         </tr>
         <tr>
@@ -168,48 +194,11 @@ docker compose down       # Stop all services`"
       </tbody>
     </table>
 
-    <h3 id="integrations">
-      Integrations
-    </h3>
-    <table>
-      <thead>
-        <tr>
-          <th>System</th>
-          <th>Role</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td><strong>Mux</strong></td>
-          <td>Video upload, transcoding, and streaming</td>
-        </tr>
-        <tr>
-          <td><strong>HubSpot</strong></td>
-          <td>CRM contact sync</td>
-        </tr>
-        <tr>
-          <td><strong>SendGrid</strong></td>
-          <td>Transactional email</td>
-        </tr>
-        <tr>
-          <td><strong>Crowdin</strong></td>
-          <td>Localization / translation management</td>
-        </tr>
-        <tr>
-          <td><strong>Google OAuth2 / TTS / GenAI</strong></td>
-          <td>Authentication, text-to-speech, AI features</td>
-        </tr>
-        <tr>
-          <td><strong>OpenAI / Anthropic</strong></td>
-          <td>AI model providers for chat, agents, and tools</td>
-        </tr>
-        <tr>
-          <td><strong>PostHog</strong></td>
-          <td>Product analytics and experimentation</td>
-        </tr>
-      </tbody>
-    </table>
-
+    <p>
+      External integrations such as mail, OAuth2, and AI model providers need their own configuration
+      and credentials. See <NuxtLink to="/developers/run-locally#integrations">Optional Integrations</NuxtLink>
+      for the local image stack.
+    </p>
     <h2 id="configurable">
       Configurable Backends
     </h2>
@@ -226,7 +215,7 @@ docker compose down       # Stop all services`"
         <tr>
           <td>Cache</td>
           <td><code>CACHE_TYPE</code></td>
-          <td><code>redis</code> (default), <code>nats</code></td>
+          <td><code>nats</code> (default), <code>redis</code></td>
         </tr>
         <tr>
           <td>Pub/Sub</td>
@@ -236,7 +225,7 @@ docker compose down       # Stop all services`"
         <tr>
           <td>Job Queue</td>
           <td><code>JOB_QUEUE_FACTORY</code></td>
-          <td><code>redis</code> (default), <code>nats</code></td>
+          <td><code>nats</code> (default), <code>redis</code></td>
         </tr>
         <tr>
           <td>Distributed Locks</td>
@@ -265,7 +254,7 @@ docker compose down       # Stop all services`"
     </h2>
     <p>
       Configuration is loaded from <code>application.yaml</code> with <code>$VAR:default</code>
-      substitution. The names below are read directly by the server and runner:
+      substitution. The names below are read by the server and runner. This is a variable reference, not a complete environment file. Their checked-in local defaults match the dependency stack; the root Compose stack supplies container-network settings:
     </p>
     <CodeBlock
       lang="bash"
@@ -286,9 +275,9 @@ STORAGE_ACCESS_KEY_SECRET=bosca-s3
 MEILISEARCH_URL=http://localhost:7701
 MEILISEARCH_API_KEY=...
 JWT_SECRET=your-secret-here
-CACHE_TYPE=redis
+CACHE_TYPE=nats
 PUBSUB_TYPE=nats
-JOB_QUEUE_FACTORY=redis
+JOB_QUEUE_FACTORY=nats
 DISTRIBUTED_LOCK_TYPE=nats`"
     />
   </div>

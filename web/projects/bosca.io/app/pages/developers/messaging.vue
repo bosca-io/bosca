@@ -1,5 +1,10 @@
 <script setup lang="ts">
-useSeoMeta({ title: 'Messaging & Events' })
+definePageMeta({ layout: 'developers' })
+
+useSeoMeta({
+  title: 'Messaging & Events',
+  description: 'PubSubService, domain events, @JobEvent, event dispatch, deduplication, job queues, and @JobDefinition executors.'
+})
 </script>
 
 <template>
@@ -57,20 +62,28 @@ class CollectionCreated(override val id: UUID) : CollectionEvent {
     <h2 id="dispatching">
       Dispatching Events
     </h2>
-    <p>KSP generates a <code>dispatch()</code> extension. Both job enqueuing and pub-sub publishing are <strong>deferred until after the transaction commits</strong>.</p>
+    <p>KSP generates a <code>dispatch()</code> extension. Job queues defer enqueueing while a transaction is active until commit. Pub/sub publication happens immediately during dispatch.</p>
     <CodeBlock
       lang="kotlin"
-      :code="`override suspend fun add(input: CollectionInput): Collection = transaction {
-    val newCollection = repository.add(collection)
-    CollectionCreated(newCollection).dispatch()
-    newCollection
-}`"
+      :code="`// Excerpt inside a transactional collection write:
+val newCollection = repository.add(collection)
+CollectionCreated(newCollection).dispatch()`"
     />
 
+    <p>
+      Dispatch directly inside the transaction. Job enqueueing already waits for commit.
+      Subscribers should treat pub/sub messages as notifications and apply the normal read
+      permissions when fetching data.
+    </p>
     <h2 id="deduplication">
       Event Deduplication
     </h2>
-    <p>The <code>deferredEvents {}</code> scope deduplicates events by <code>(eventClass, identityKey())</code>:</p>
+    <p>
+      Within an event-manager context, <code>deferredEvents {}</code> captures events and flushes them
+      on scope exit. Events of the same class and <code>identityKey()</code> collapse to the last occurrence.
+      Event types must override the default key to deduplicate separate instances.
+      Scope-exit flushing is separate from transaction commit timing:
+    </p>
     <CodeBlock
       lang="kotlin"
       :code="`deferredEvents {
@@ -83,11 +96,12 @@ class CollectionCreated(override val id: UUID) : CollectionEvent {
     <h2 id="job-executors">
       Job Executors
     </h2>
-    <p>A job executor extends <code>AbstractJobExecutor&lt;T&gt;</code> and is annotated with <code>@JobDefinition</code>:</p>
+    <p>The following excerpt uses the collection indexing executor and its named transformation provider. A job executor extends <code>AbstractJobExecutor&lt;T&gt;</code> and is annotated with <code>@JobDefinition</code>:</p>
     <CodeBlock
       lang="kotlin"
       :code="`@JobDefinition(CollectionIndexJob::class, JobQueueNames.contentJobQueue, &quot;index-collection&quot;)
 class CollectionIndexExecutor(
+    @ProviderName(TransformProvider)
     private val transform: Transformation<IndexStorageSystem, Collection, List<JsonElement>>,
     private val distributedLock: DistributedLockFactory,
     application: BoscaApplication
@@ -100,6 +114,12 @@ class CollectionIndexExecutor(
 }`"
     />
 
+    <p>
+      The <code>queue</code> in <code>@JobDefinition</code> is a DI provider name, such as
+      <code>JobQueueNames.contentJobQueue</code>. Register the generated executor provider in the
+      runner that handles the job. At-least-once delivery means executors must handle redelivery
+      without duplicating completed effects.
+    </p>
     <h3>Job payload</h3>
     <CodeBlock
       lang="kotlin"
@@ -108,6 +128,8 @@ data class CollectionIndexJob(
     val id: UUID? = null,
     val storage: IndexStorageSystem? = null,
     val deleteFirst: Boolean = false,
+    val deleteOnly: Boolean = false,
+    val batchSize: Int? = null,
 ) : IJobDefinition`"
     />
 
@@ -116,14 +138,13 @@ data class CollectionIndexJob(
     </h2>
     <p>The complete lifecycle:</p>
     <CodeBlock
-      lang="bash"
+      lang="text"
       title="Event flow"
       :code="`Service method (e.g., CollectionServiceImpl.add)
   → CollectionCreated(newCollection).dispatch()
-    → [deferred until transaction commits]
-      → JobQueue.enqueue(CollectionIndexJob)
-      → PubSubService.publish(COLLECTION_CREATED_CHANNEL)
-        → SubscriptionController Flow emits to WebSocket clients`"
+    → PubSubService.publish(COLLECTION_CREATED_CHANNEL) immediately
+    → JobQueue.enqueue(CollectionIndexJob) after transaction commit
+    → PipelineEventDispatcher dispatches registered event-triggered pipelines`"
     />
   </div>
 </template>

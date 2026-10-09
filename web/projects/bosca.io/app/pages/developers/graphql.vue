@@ -1,14 +1,40 @@
 <script setup lang="ts">
-useSeoMeta({ title: 'GraphQL' })
+definePageMeta({ layout: 'developers' })
+
+useSeoMeta({
+  title: 'GraphQL',
+  description: 'Call the API, then learn how schemas and controllers expose platform services.'
+})
 </script>
 
 <template>
   <div class="doc-content article">
     <h1>GraphQL</h1>
     <p class="subtitle">
-      Schema files, <code>@TypeController</code>, <code>@Field</code>, the namespace pattern, queries, mutations, subscriptions, and DataLoader batching.
+      Call the API, then learn how schemas and controllers expose platform services.
     </p>
 
+    <h2 id="calling">
+      Call the GraphQL API
+    </h2>
+    <p>
+      The local Compose endpoint is <code>http://bosca.localhost:3000/graphql</code>.
+      Authenticate using the <NuxtLink to="/developers/security">login mutation</NuxtLink>,
+      then send the access token as a bearer token. For example, after setting
+      <code>BOSCA_TOKEN</code> to the returned token:
+    </p>
+    <CodeBlock
+      lang="bash"
+      :code="`curl -sS http://bosca.localhost:3000/graphql \\
+  -H &quot;Authorization: Bearer $BOSCA_TOKEN&quot; \\
+  -H 'Content-Type: application/json' \\
+  --data '{&quot;query&quot;:&quot;query { content { categories { all { id name } } } }&quot;}'`"
+    />
+    <p>
+      This category query requires editor authority. GraphQL responses can contain an
+      <code>errors</code> array even when HTTP succeeds; check both <code>data</code> and
+      <code>errors</code>. The following sections cover extending the Kotlin backend.
+    </p>
     <h2 id="schema-files">
       Schema Files
     </h2>
@@ -51,7 +77,7 @@ interface SchemaRegistrar {
     val collections: String
 }`"
     />
-    <p>KSP merges all <code>@Schemas</code> interfaces across all modules into a single unified schema.</p>
+    <p>KSP generates schema registrars for the declared resources. The application loads its selected registrars to build the schema. A schema file must be listed and its registrar loaded to become available.</p>
 
     <h2 id="type-controller">
       TypeController &amp; Fields
@@ -69,7 +95,7 @@ class CategoryController : GraphQLController<Category> {
     fun name(category: Category) = category.name
 }`"
     />
-    <p>The first parameter receives the <strong>parent object</strong> being resolved.</p>
+    <p>A parameter matching the controller's model type receives the <strong>parent object</strong>. Other parameters supply arguments or request context.</p>
 
     <h3 id="auto-inject">
       Automatic Parameter Injection
@@ -84,19 +110,19 @@ class CategoryController : GraphQLController<Category> {
       <tbody>
         <tr>
           <td><code>AuthenticationContext</code></td>
-          <td>Authenticated user (required — fails if unauthenticated)</td>
+          <td>Request authentication context; its principal can be null</td>
         </tr>
         <tr>
           <td><code>AuthenticationContext?</code></td>
-          <td>Optional auth — <code>null</code> for unauthenticated requests</td>
+          <td>Nullable form of the request authentication context</td>
         </tr>
         <tr>
           <td><code>Batch&lt;K, V&gt;</code></td>
           <td>DataLoader batch context</td>
         </tr>
         <tr>
-          <td><code>DataFetchingEnvironment</code></td>
-          <td>GraphQL Java environment</td>
+          <td><code>ResolverContext</code></td>
+          <td>Bosca GraphQL resolver environment</td>
         </tr>
         <tr>
           <td><code>ServerCall</code></td>
@@ -141,6 +167,11 @@ fun content() = Content`"
     />
     <p>This creates the query path: <code>query {{ '{' }} content {{ '{' }} categories {{ '{' }} all {{ '{' }} ... {{ '}' }} {{ '}' }} {{ '}' }} {{ '}' }}</code></p>
 
+    <p>
+      Complete every wiring layer when adding a domain: schema registrar, root namespace field,
+      nested namespace fields, and controller dispatcher registrar. Keep GraphQL argument nullability
+      and defaults in the SDL; a Kotlin default argument does not make an SDL argument optional.
+    </p>
     <h2 id="mutations">
       Mutation Controllers
     </h2>
@@ -177,13 +208,18 @@ class CategoryMutationController(
     />
 
     <Callout type="info">
-      Every mutation follows: <strong>Authenticate</strong> (non-nullable <code>AuthenticationContext</code>) → <strong>Authorize</strong> (permission check) → <strong>Execute</strong> (delegate to service) → <strong>Return</strong>.
+      Protected mutations explicitly check authentication and authorization through an evaluator before calling a service. An <code>AuthenticationContext</code> parameter alone does not require a logged-in principal.
     </Callout>
 
     <h2 id="subscriptions">
       Subscriptions
     </h2>
-    <p>Subscription fields return <code>Flow&lt;T&gt;</code> backed by <code>PubSubService</code>:</p>
+    <p>
+      Subscription fields return <code>Flow&lt;T&gt;</code>, often backed by <code>PubSubService</code>.
+      The server's <code>collection</code> subscription authenticates the caller and checks
+      <code>collections:view</code> for scoped tokens before subscribing. This is an excerpt using
+      the existing <code>readSubscription</code> helper:
+    </p>
     <CodeBlock
       lang="kotlin"
       :code="`@TypeController
@@ -192,10 +228,10 @@ class SubscriptionController(
 ) : GraphQLController<Subscription> {
 
     @Field
-    fun collection() = merge(
+    fun collection(authenticationContext: AuthenticationContext): Flow<CollectionEvent> =\n        readSubscription(authenticationContext, ApiTokenScopes.COLLECTIONS_VIEW) { merge(
         pubSubService.subscribe(COLLECTION_STATE_CHANNEL, CollectionUpdated.serializer()),
         pubSubService.subscribe(COLLECTION_UPDATED_CHANNEL, CollectionUpdated.serializer())
-    ).map { CollectionEvent(it.channel, it.message.id, it.message.languageTag) }
+    ).map { CollectionEvent(it.channel, it.message.id, it.message.languageTag) } }
 }`"
     />
 

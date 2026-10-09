@@ -1,33 +1,41 @@
 <script setup lang="ts">
-useSeoMeta({ title: 'Architecture' })
+definePageMeta({ layout: 'developers' })
+
+useSeoMeta({
+  title: 'Architecture',
+  description: 'How the workspace organizes domain code, generates wiring, and connects applications to infrastructure.'
+})
 </script>
 
 <template>
   <div class="doc-content article">
     <h1>Architecture Overview</h1>
     <p class="subtitle">
-      Core/impl split, KSP code generation, key abstractions, and how the pieces fit together.
+      How the workspace organizes domain code, generates wiring, and connects applications to infrastructure.
     </p>
 
     <h2 id="core-impl">
       Core/Impl Split
     </h2>
     <p>
-      Bosca follows a strict <strong>core/impl split</strong> architecture:
+      Backend domains generally separate <strong>contracts</strong> from <strong>implementations</strong>:
     </p>
     <ul>
       <li><strong><code>core-*</code> modules</strong> define contracts: interfaces, models, and annotations. They publish to Maven so any module in any repository can depend on the contract without pulling in the implementation.</li>
       <li><strong>Implementation modules</strong> provide concrete classes: repositories backed by PostgreSQL, services with business logic, and GraphQL controllers.</li>
     </ul>
     <p>
-      An implementation module never reaches into another implementation module directly. All cross-module communication goes through core interfaces.
+      When extending a domain, depend on another domain's core contracts and call its service interfaces.
+      Keep SQL and persistence details in the module that owns the data.
     </p>
 
     <h2 id="ksp">
       KSP Code Generation
     </h2>
     <p>
-      All boilerplate wiring is handled by <strong>KSP (Kotlin Symbol Processing)</strong> at compile time. There is no runtime reflection.
+      <strong>KSP (Kotlin Symbol Processing)</strong> generates dependency injection, database, GraphQL,
+      route, and job wiring at compile time. Follow these patterns when adding code that must also run
+      in GraalVM native images.
     </p>
 
     <table>
@@ -113,13 +121,35 @@ useSeoMeta({ title: 'Architecture' })
       Server Architecture
     </h2>
     <p>
-      The platform runs as two applications:
+      The main backend is assembled into two applications:
     </p>
     <ul>
       <li><strong><code>bosca-server</code></strong> — Serves the GraphQL API over Netty (queries, mutations, subscriptions via WebSocket).</li>
       <li><strong><code>bosca-runner</code></strong> — Processes background jobs from the job queue.</li>
     </ul>
-    <p>Both share the same domain libraries. The server is a composition root with minimal domain logic.</p>
+    <p>
+      Both load domain libraries through application-specific provider registrars. The server is a
+      composition root: business logic belongs in the domain modules. Dedicated applications serve
+      Git transport, artifacts, analytics collection, and BML messages; Studio is the administration UI.
+    </p>
+
+    <h2 id="workspace">
+      Build from the workspace root
+    </h2>
+    <p>
+      <code>settings.gradle.kts</code> maps component directories to Gradle projects. Local
+      <code>io.bosca:*</code> dependencies resolve to these projects without publishing to Maven Local.
+      JVM modules use Java 25. For example:
+    </p>
+    <CodeBlock
+      lang="bash"
+      :code="`./gradlew :content:core-content:test
+./gradlew :server:bosca-server:run`"
+    />
+    <p>
+      Start with <NuxtLink to="/developers/infrastructure">Infrastructure</NuxtLink> to run from source,
+      or <NuxtLink to="/developers/run-locally">Run Bosca Locally</NuxtLink> to use published images.
+    </p>
 
     <h2 id="async">
       Async-First

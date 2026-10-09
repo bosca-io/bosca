@@ -53,6 +53,7 @@ export default defineNuxtConfig({
     '/recommendation-models/**': { prerender: true },
     '/discover/**': { prerender: true },
     '/developers': { redirect: '/developers/getting-started' },
+    '/developers/**': { prerender: true },
     '/graphql': {
       proxy: (process.env.API_URL || 'http://localhost:8080') + '/graphql'
     },

@@ -1,230 +1,129 @@
 <script setup lang="ts">
-useSeoMeta({ title: 'Profile' })
+definePageMeta({ layout: 'developers' })
+useSeoMeta({ title: 'Profiles', description: 'Keep account identity separate from social data, typed attributes, visibility, and relationships.' })
+const current = 'query MyProfiles {\n  profiles {\n    current {\n      id\n      name\n      type\n      visibility\n      searchable\n      isPrimary\n      attributes { id typeId attributes confidence priority source visibility }\n    }\n  }\n}'
+const edit = 'mutation EditProfile($id: UUID!, $profile: ProfileInput!) {\n  profiles {\n    edit(id: $id, profile: $profile) { id name visibility searchable }\n  }\n}'
+const variables = '{\n  "id": "00000000-0000-0000-0000-000000000000",\n  "profile": {\n    "name": "Alex",\n    "attributes": [],\n    "visibility": "USER",\n    "searchable": false\n  }\n}'
+const types = 'query AttributeTypes {\n  profiles {\n    attributeTypes {\n      all { id name description visibility protected formSchemaId }\n    }\n  }\n}'
+const attributes = 'mutation AddAttributes($id: UUID!, $attributes: [ProfileAttributeInput!]!) {\n  profiles { addAttributes(id: $id, attributes: $attributes) }\n}'
 </script>
 
 <template>
   <div class="doc-content article">
-    <h1>Profile</h1>
+    <h1>Profiles</h1>
     <p class="subtitle">
-      User identity beyond authentication — <code>ProfileService</code>, profile types, flexible
-      attributes, visibility controls, and the relationship to Principals.
+      Keep account identity separate from social data, typed attributes, visibility, and relationships.
     </p>
-
     <h2 id="overview">
-      Overview
+      What a profile represents
     </h2>
     <p>
-      A <strong>Profile</strong> represents a user's public-facing identity. While a
-      <NuxtLink to="/developers/security">Principal</NuxtLink> handles authentication,
-      Profiles hold the information others see — name, avatar, email, and extensible attributes.
-      A single Principal can own multiple Profiles.
+      A profile holds a name, typed attributes, and social information such as relationships,
+      bookmarks, marks, ratings, and guide progress. It can be linked to a
+      <NuxtLink to="/developers/security">Principal</NuxtLink> or exist independently.
+      Profiles and principals use separate IDs.
     </p>
-
-    <h2 id="model">
-      Profile Model
-    </h2>
-    <CodeBlock
-      lang="kotlin"
-      :code="`@Serializable
-data class Profile(
-    override val id: UUID = UUID.NIL,
-    val type: ProfileType,            // GENERIC, ORGANIZATION, or CHILD
-    val principal: UUID? = null,      // owning principal (nullable for org / placeholder profiles)
-    val collectionId: UUID? = null,   // associated content collection
-    val name: String,
-    val visibility: ProfileVisibility,
-    val created: OffsetDateTime,
-    val modified: OffsetDateTime,
-) : PermissibleEntity<UUID>, Indexable, ContentItem`"
-    />
-
+    <p>
+      <code>Profile.principal</code> is the optional owning principal ID in Kotlin; GraphQL resolves it
+      to a principal object. <code>Principal.primaryProfileId</code> identifies the selected default
+      profile and can be unset.
+    </p>
     <h2 id="types">
-      Profile Types
+      Profile types
     </h2>
-    <table>
-      <thead>
-        <tr>
-          <th>Type</th>
-          <th>Purpose</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td><code>GENERIC</code></td>
-          <td>Standard user profile — one per Principal by default</td>
-        </tr>
-        <tr>
-          <td><code>ORGANIZATION</code></td>
-          <td>Linked to an Organization entity for org-level identity</td>
-        </tr>
-        <tr>
-          <td><code>CHILD</code></td>
-          <td>Sub-profile managed by a parent — for dependent accounts</td>
-        </tr>
-      </tbody>
-    </table>
-    <p>
-      Every Principal has a <code>primaryProfileId</code> that determines which Profile is used by
-      default in the UI and API responses.
-    </p>
-
-    <h2 id="attributes">
-      Flexible Attributes
-    </h2>
-    <p>
-      Profile data is stored as typed <strong>attributes</strong> rather than fixed columns. Each
-      attribute has metadata for merging, deduplication, and progressive enrichment.
-    </p>
-    <CodeBlock
-      lang="kotlin"
-      :code="`@Serializable
-data class ProfileAttribute(
-    val id: UUID = UUID.NIL,
-    val profile: UUID,                 // owning profile id
-    val typeId: String,                // e.g. &quot;bosca.profiles.email&quot;
-    val visibility: ProfileVisibility,
-    val confidence: Int,               // reconciliation weight
-    val priority: Int,                 // ordering when multiple records share a typeId
-    val source: String,                // free-text label (e.g. &quot;oauth2&quot;, &quot;signup&quot;)
-    val attributes: JsonElement? = null,   // structured value (schema depends on typeId)
-    val metadataId: UUID? = null,
-    val expires: OffsetDateTime? = null,
-)`"
-    />
-
-    <h3>Common Attribute Types</h3>
-    <table>
-      <thead>
-        <tr>
-          <th>Type ID</th>
-          <th>Purpose</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td><code>bosca.profiles.name</code></td>
-          <td>Display name</td>
-        </tr>
-        <tr>
-          <td><code>bosca.profiles.email</code></td>
-          <td>Email address</td>
-        </tr>
-        <tr>
-          <td><code>bosca.profiles.avatar</code></td>
-          <td>Profile picture URL</td>
-        </tr>
-        <tr>
-          <td><code>bosca.profiles.locale</code></td>
-          <td>Language/locale preference</td>
-        </tr>
-        <tr>
-          <td><code>bosca.profiles.name.given</code></td>
-          <td>First name</td>
-        </tr>
-        <tr>
-          <td><code>bosca.profiles.name.family</code></td>
-          <td>Last name</td>
-        </tr>
-      </tbody>
-    </table>
-    <Callout type="info">
-      The <code>source</code> field tracks where each attribute came from — <code>"oauth2"</code> for
-      data pulled from a third-party login, <code>"signup"</code> for registration data,
-      <code>"manual"</code> for user edits. This enables progressive enrichment without overwriting
-      higher-confidence data.
-    </Callout>
-
+    <ul>
+      <li><code>GENERIC</code>: an individual or standalone profile.</li>
+      <li><code>ORGANIZATION</code>: the profile associated with an organization.</li>
+      <li><code>CHILD</code>: a managed child profile.</li>
+    </ul>
     <h2 id="graphql">
-      GraphQL API
+      Read your profiles
     </h2>
-
-    <h3>Fetching the Current Profile</h3>
     <CodeBlock
       lang="graphql"
-      :code="`query GetCurrentProfile {
-  profiles {
-    current {
-      id
-      name
-      attributes {
-        id
-        typeId
-        attributes
-        confidence
-        priority
-        source
-        visibility
-      }
-    }
-  }
-}`"
+      :code="current"
     />
-
-    <h3>Editing a Profile</h3>
+    <p>
+      <code>profiles.current</code> returns a list of profiles associated with the current principal.
+      Use <code>isPrimary</code> to identify its default. Unauthenticated callers receive an Anonymous placeholder profile with a nil UUID.
+    </p>
+    <h2 id="editing">
+      Edit a profile
+    </h2>
     <CodeBlock
       lang="graphql"
-      :code="`mutation EditProfile($id: UUID!, $profile: ProfileInput!) {
-  profiles {
-    edit(id: $id, profile: $profile) {
-      id
-      name
-    }
-  }
-}`"
+      :code="edit"
     />
-
-    <h3>Managing Attributes</h3>
+    <p>
+      Replace the example ID with a profile you manage. <code>ProfileInput</code> requires
+      <code>name</code>, <code>attributes</code>, and <code>visibility</code>.
+      Omitting <code>searchable</code> while editing preserves its current value.
+    </p>
+    <CodeBlock
+      lang="json"
+      title="Variables"
+      :code="variables"
+    />
+    <p>
+      Editing submits the provided attribute inputs; it does not replace the entire attribute list. For a targeted attribute addition,
+      use <code>addAttributes</code> instead.
+    </p>
+    <h2 id="attributes">
+      Typed attributes
+    </h2>
+    <p>
+      Attributes reference an entry in the attribute-type registry by <code>typeId</code>.
+      Their JSON values can carry contact data, preferences, or other structured information.
+      Each record also has visibility, confidence, priority, source, and an optional expiration.
+      Discover the installed types rather than assuming a fixed list:
+    </p>
     <CodeBlock
       lang="graphql"
-      :code="`mutation AddProfileAttributes($id: UUID!, $attributes: [ProfileAttributeInput!]!) {
-  profiles {
-    addAttributes(id: $id, attributes: $attributes)
-  }
-}`"
+      :code="types"
     />
-
+    <CodeBlock
+      lang="graphql"
+      :code="attributes"
+    />
+    <p>
+      <code>ProfileAttributeInput</code> requires <code>typeId</code>, <code>confidence</code>,
+      <code>priority</code>, <code>source</code>, and
+      <code>visibility</code>. The JSON <code>attributes</code> value itself is optional.
+      Use <code>expiration</code> in input; the result field is named <code>expires</code>.
+      Protected attribute types require administrator authority to write.
+    </p>
     <h2 id="visibility">
-      Visibility
+      Visibility and search
     </h2>
     <p>
-      Each Profile and its individual attributes have a <code>ProfileVisibility</code> setting that
-      controls who can see the data. This allows users to share their name publicly while keeping
-      their email private, for example.
-    </p>
-
-    <h2 id="service">
-      ProfileService
-    </h2>
-    <p>The service interface for profile management:</p>
-    <CodeBlock
-      lang="kotlin"
-      :code="`interface ProfileService {
-    suspend fun getCurrent(authentication: AuthenticationContext): Profile?
-    suspend fun getById(id: UUID): Profile?
-    suspend fun getByPrincipal(principalId: UUID): List<Profile>
-    suspend fun create(authentication: AuthenticationContext, profile: ProfileInput): Profile
-    suspend fun edit(authentication: AuthenticationContext, id: UUID, profile: ProfileInput): Profile
-    suspend fun delete(authentication: AuthenticationContext, id: UUID)
-    suspend fun getAttributes(profileId: UUID): List<ProfileAttribute>
-    suspend fun addAttributes(profileId: UUID, attributes: List<ProfileAttributeInput>)
-    suspend fun getAttributeTypes(): List<ProfileAttributeType>
-    // ... filtering, bulk loading, relationships
-}`"
-    />
-
-    <h2 id="principal-relationship">
-      Relationship to Principals
-    </h2>
-    <p>
-      A <strong>Principal</strong> is the security identity (credentials, tokens, groups). A
-      <strong>Profile</strong> is the social identity (name, avatar, preferences). They are linked
-      by <code>Profile.principal</code>, and the Principal's <code>primaryProfileId</code> points back
-      to the default Profile.
+      Profiles and attributes each carry a <code>ProfileVisibility</code>: <code>USER</code>,
+      <code>FRIENDS</code>, <code>FRIENDS_OF_FRIENDS</code>, <code>PUBLIC</code>, or <code>SYSTEM</code>.
+      Read access also goes through permission evaluation. A <code>PUBLIC</code> profile permits
+      public record reads; it does not make every attribute public.
     </p>
     <p>
-      During signup, a Profile is created automatically from the registration data or OAuth2 provider
-      response. Additional Profiles can be created later for different contexts (e.g., an organization
-      profile vs. a personal profile).
+      <code>searchable</code> controls profile search eligibility. Setting it does not override
+      visibility or access rules. Soft-deleted profiles are excluded from search.
+    </p>
+    <h2 id="relationships">
+      Relationships and account administration
+    </h2>
+    <p>
+      Applications can request relationships through <code>profiles.requestRelationship</code> and
+      approve, decline, or cancel pending requests. Direct <code>addRelationship</code> is reserved
+      for administrators and system services.
+    </p>
+    <p>
+      Administrator operations can link or clear a principal, mark a profile deleted, restore it,
+      and permanently delete it. Permanent deletion requires the profile to have been marked deleted first.
+    </p>
+    <h2 id="source">
+      Where to look in the workspace
+    </h2>
+    <p>
+      The base model lives in <code>bosca-core/core/src/main/kotlin/bosca/profile/model/Profile.kt</code>.
+      Profile services, controllers, attribute handling, and the <code>profiles.graphqls</code> schema
+      belong to the <code>social</code> component.
     </p>
   </div>
 </template>

@@ -1,12 +1,23 @@
 <script setup lang="ts">
-useSeoMeta({ title: 'Permissions' })
+definePageMeta({ layout: 'developers' })
+
+useSeoMeta({
+  title: 'Permissions',
+  description: 'Grant actions to groups, filter readable records, and check authority before a write.'
+})
 </script>
 
 <template>
   <div class="doc-content article">
     <h1>Permissions</h1>
     <p class="subtitle">
-      Entity-scoped, group-based access control — <code>PermissibleEntity</code>, <code>PermissionEvaluator</code>, <code>GroupEvaluator</code>, visibility flags, and the full decision matrix.
+      Grant actions to groups, filter readable records, and check authority before a write.
+    </p>
+
+    <p>
+      Permissions are granted to security groups. A principal receives access through its group
+      memberships, including its personal group. Organization membership does not automatically
+      grant access to content. Domain-specific evaluators can add rules to the shared behavior below.
     </p>
 
     <h2 id="permissible-entity">
@@ -43,7 +54,7 @@ useSeoMeta({ title: 'Permissions' })
         </tr>
         <tr>
           <td><code>LIST</code></td>
-          <td>Entity appears in list/search results</td>
+          <td>List an entity or its items, as defined by the owning API</td>
         </tr>
         <tr>
           <td><code>EDIT</code></td>
@@ -59,7 +70,7 @@ useSeoMeta({ title: 'Permissions' })
         </tr>
         <tr>
           <td><code>EXECUTE</code></td>
-          <td>Trigger workflow transitions</td>
+          <td>Execute an operation such as a script, job, or workflow transition</td>
         </tr>
         <tr>
           <td><code>IMPERSONATE</code></td>
@@ -73,11 +84,13 @@ useSeoMeta({ title: 'Permissions' })
     </h2>
     <p>When <code>isAllowed(authentication, entity, action)</code> is called:</p>
     <ol>
-      <li><strong>Deleted check</strong> — if <code>entity.isDeleted</code>, only SA gets access.</li>
+      <li><strong>Deleted check</strong> — access to deleted records requires <code>hasSaGroup()</code>, which accepts SA or administrators with the required token scope.</li>
       <li><strong>Public access</strong> — if <code>public</code> and published/advertised, <code>VIEW</code> is granted. If <code>publicList</code> and published/advertised, <code>LIST</code> is granted.</li>
-      <li><strong>Editor group</strong> — editor group members get <code>EDIT</code> access globally.</li>
+      <li><strong>Token scopes</strong> — private access and writes through scoped API tokens must satisfy the evaluator's domain scope rules. Public reads remain independently accessible.</li>
+      <li><strong>Editor group</strong> — the shared evaluator grants <code>EDIT</code> through <code>hasEditorGroup()</code>; domain evaluators can impose additional rules.</li>
       <li><strong>Entity-level permissions</strong> — checks user's groups against <code>EntityPermission</code> records. <code>MANAGE</code> also satisfies <code>EDIT</code>.</li>
-      <li><strong>Role-based fallback</strong> — SA and admin get all actions. Editors get everything except <code>MANAGE</code>, <code>EXECUTE</code>, <code>IMPERSONATE</code>.</li>
+      <li><strong>Role-based fallback</strong> — the shared evaluator accepts SA and administrators for all actions. Editors and managers satisfy actions other than <code>MANAGE</code>, <code>EXECUTE</code>, and <code>IMPERSONATE</code>, subject to scope checks.</li>
+      <li><strong>Parent access</strong> — if no earlier rule allows access, the owning permission service evaluates inherited access through <code>isParentAllowed()</code>.</li>
     </ol>
 
     <h2 id="published-vs-advertised">
@@ -131,7 +144,9 @@ suspend fun permissions(authentication: AuthenticationContext?, collection: Coll
 }`"
     />
     <Callout type="info">
-      <code>AuthenticationContext?</code> is <strong>nullable</strong> in queries — unauthenticated requests are allowed but get filtered results.
+      Public query resolvers can accept an unauthenticated context and return only accessible data.
+      Administrative queries require explicit group or permission checks. Parameter nullability alone
+      does not authorize a request.
     </Callout>
 
     <h2 id="mutations">
@@ -171,7 +186,7 @@ suspend fun add(authentication: AuthenticationContext, collection: CollectionInp
     <p>For operations that don't target a specific entity:</p>
     <CodeBlock
       lang="kotlin"
-      :code="`groupEvaluator.verifyHasSaGroup(authentication)       // super admin
+      :code="`groupEvaluator.verifyHasSaGroup(authentication)       // sa or administrators
 groupEvaluator.verifyHasAdminGroup(authentication)     // administrators
 groupEvaluator.verifyHasEditorGroup(authentication)    // editors (or admin/sa/managers)
 groupEvaluator.verifyHasManagerGroup(authentication)   // managers (or admin)
@@ -182,7 +197,10 @@ val isAdmin = groupEvaluator.hasAdminGroup(authentication)  // check without thr
     <h2 id="locked">
       Locked Entities
     </h2>
-    <p>Some entities have a <code>locked</code> flag. Only the SA group can modify locked entities:</p>
+    <p>
+      Collection controllers restrict edits to locked records using <code>hasSaGroup()</code>,
+      which accepts SA or administrators with the required scope:
+    </p>
     <CodeBlock
       lang="kotlin"
       :code="`if (collection.locked && !groupEvaluator.hasSaGroup(authentication)) {

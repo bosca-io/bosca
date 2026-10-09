@@ -119,9 +119,15 @@ const INFRA = [
           compile time.
         </p>
         <div class="hero-ctas load-4">
+          <NuxtLink
+            to="/developers/getting-started"
+            class="btn btn-primary"
+          >
+            Read documentation
+          </NuxtLink>
           <a
             href="#how"
-            class="btn btn-primary"
+            class="btn btn-ghost"
           >
             How it works
           </a>

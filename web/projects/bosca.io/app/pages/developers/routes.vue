@@ -1,5 +1,10 @@
 <script setup lang="ts">
-useSeoMeta({ title: 'Routes' })
+definePageMeta({ layout: 'developers' })
+
+useSeoMeta({
+  title: 'Routes',
+  description: 'HTTP endpoints with @RouteController, Route<T>, APIRoute<T>, SSERoute<T>, Page, and ServerCall.'
+})
 </script>
 
 <template>
@@ -64,11 +69,22 @@ class PasskeyList(private val securityService: SecurityService) : Route<List<Pas
         authenticationContext: AuthenticationContext
     ): List<PasskeyInfo>? {
         val principal = authenticationContext.principal() ?: return null
-        return securityService.getPasskeys(principal.id)
+        return securityService.getCredentials(principal.asPrincipal(), CredentialType.PASSKEY).map { credential ->
+            val attributes = credential.attributes as PasskeyCredentialAttributes
+            PasskeyInfo(attributes.identifier, attributes.name, attributes.createdAt,
+                attributes.lastUsedAt, attributes.transports)
+        }
     }
 }`"
     />
 
+    <p>
+      This excerpt uses <code>PasskeyInfo</code> from the existing passkey routes.
+      The complete route and response model are in
+      <code>bosca-core/security/src/main/kotlin/bosca/security/routes/passkey/PasskeyList.kt</code>.
+      Import routing types from <code>bosca.routes</code> and <code>bosca.routes.annotations</code>,
+      and HTTP types from <code>bosca.server</code>.
+    </p>
     <h3 id="annotation">
       @RouteController
     </h3>
@@ -99,25 +115,22 @@ class PasskeyList(private val securityService: SecurityService) : Route<List<Pas
       </tbody>
     </table>
 
+    <p>Return a value with an explicit serializer for JSON model responses. Returning null without a response produces 404; returning Unit without a response produces 204.</p>
     <h2 id="sse">
       SSE Routes
     </h2>
+    <p>This illustrative route sends two status events and closes the stream. Import SSE types from <code>bosca.server.sse</code>.</p>
     <CodeBlock
       lang="kotlin"
-      :code="`@RouteController(&quot;/api/community/v1/ai/chat&quot;, RouteMethod.POST)
-class Chat(json: Json, private val configurationService: ConfigurationService) : SSERoute<Unit>() {
-
+      :code="`@RouteController(&quot;/api/v1/example/events&quot;, authentication = RouteAuthentication.REQUIRED)
+class ExampleEvents : SSERoute<Unit>() {
     override suspend fun execute(
         session: ServerSSESession,
         authenticationContext: AuthenticationContext
-    ): Unit? {
-        val request = session.call.receive<ChatRequest>()
-        agent.stream { message ->
-            session.send(ServerSentEvent(json.encodeToString(message)))
-        }
-        session.send(ServerSentEvent(&quot;[DONE]&quot;))
+    ): Unit {
+        session.send(data = &quot;Started&quot;, event = &quot;status&quot;)
+        session.send(data = &quot;Finished&quot;, event = &quot;status&quot;)
         session.close()
-        return Unit
     }
 }`"
     />
@@ -137,8 +150,8 @@ val page = call.request.queryParameters[&quot;page&quot;] // Query parameter`"
     <CodeBlock
       lang="kotlin"
       title="Writing responses"
-      :code="`call.respond(myObject)                         // 200 + JSON
-call.respond(HttpStatusCode.Created, myObject) // 201 + JSON
+      :code="`call.respond(myObject, MyModel.serializer())    // 200 + JSON
+call.respond(HttpStatusCode.Created, myObject, MyModel.serializer()) // 201 + JSON
 call.respondRedirect(&quot;/other/path&quot;)             // 302 redirect
 call.respondBytes(bytes, contentType, status)  // Raw bytes
 call.respondStreaming(contentType, status) {    // Streaming
@@ -166,8 +179,8 @@ call.respondStreaming(contentType, status) {    // Streaming
     </h2>
     <p>
       <strong>Routes</strong> declare auth at the route level (<code>NONE</code>/<code>REQUIRED</code>/<code>OPTIONAL</code>).
-      <strong>GraphQL</strong> declares it per-field via parameter nullability (<code>AuthenticationContext</code> vs <code>AuthenticationContext?</code>).
+      <strong>GraphQL</strong> injects a request authentication context into resolvers; protected fields explicitly use permission or group evaluators.
     </p>
-    <p>Both use the same underlying auth middleware chain.</p>
+    <p>Both use the shared authentication providers. Route authentication still needs domain authorization checks before accessing protected records.</p>
   </div>
 </template>

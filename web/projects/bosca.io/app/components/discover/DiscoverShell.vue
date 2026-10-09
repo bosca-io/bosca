@@ -111,6 +111,13 @@ onUnmounted(() => observer?.disconnect())
         >{{ link.label }}</a>
       </nav>
       <NuxtLink
+        v-if="sectionId === 'developers'"
+        to="/developers/getting-started"
+        class="learning-guide-link"
+      >
+        Developer Documentation
+      </NuxtLink>
+      <NuxtLink
         v-if="sectionId === 'bml'"
         to="/bml-reference/getting-started"
         class="learning-guide-link"

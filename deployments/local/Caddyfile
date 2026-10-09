@@ -1,0 +1,29 @@
+{
+	auto_https off
+}
+
+:{$BOSCA_PORT} {
+	@analytics path /api/v1/events /api/v1/events/* /api/v1/installation /api/v1/installation/*
+	handle @analytics {
+		reverse_proxy analytics-collector:8081
+	}
+
+	@api path /graphql /graphqlws /graphqlws/* /oauth2/* /api/v1/* /content/* /files/* /ci/*
+	handle @api {
+		reverse_proxy bosca-server:8080
+	}
+
+	@messageAssets path /bml-messages/assets/* /bml-messages/c/* /bml-messages/o/*
+	handle @messageAssets {
+		uri strip_prefix /bml-messages
+		reverse_proxy bml-message-server:9093
+	}
+
+	handle /bml-messages/* {
+		respond 404
+	}
+
+	handle {
+		reverse_proxy studio:3000
+	}
+}

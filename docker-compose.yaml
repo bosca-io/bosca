@@ -1,5 +1,393 @@
-include:
-  # This includes services like database, storage, etc
-  - server/services/docker-compose.yaml
+name: bosca-local
 
-services: {}
+# Local Bosca instance. See https://bosca.io/developers/run-locally for setup.
+# No .env file is required. BOSCA_VERSION can override the default image tag.
+x-bosca-environment: &bosca-environment
+  BOSCA_DEVELOPMENT: "true"
+  # Tracing is opt-in; this stack has no OTLP collector.
+  OTEL_TRACES_EXPORTER: none
+  OTEL_LOGS_EXPORTER: none
+  JWT_DOMAIN: ${BOSCA_HOST:-bosca.localhost}
+  JWT_ADMIN_DOMAIN: ${BOSCA_HOST:-bosca.localhost}
+  JWT_COOKIE_SECURE: "false"
+  JWT_SECRET: ${JWT_SECRET:-c534b2595b38f5d9cb33f8cd05996c95}
+  SECURITY_ENCRYPTION_KEY: ${SECURITY_ENCRYPTION_KEY:-changeme}
+  INIT_ADMIN_PASSWORD: ${INIT_ADMIN_PASSWORD:-password}
+  INIT_SA_PASSWORD: ${INIT_SA_PASSWORD:-sa-password}
+  DATABASE_URL: jdbc:postgresql://postgres:5432/bosca
+  DATABASE_USER: bosca
+  DATABASE_PASSWORD: bosca
+  TRINO_DATABASE_URL: jdbc:trino://trino:8089
+  TRINO_DATABASE_USER: admin
+  TRINO_DATABASE_READONLY_USER: rouser
+  NATS_HOST: nats:4222
+  NATS_MONITORING_URL: http://nats:8222
+  NATS_TOKEN: OAVKZTG7ST62YCPUJYJ6LBQDMKLAUD4NRBPZ4GXUXNUJW2ATCFKKYGHV
+  REDIS_HOST: redis
+  REDIS_PORT: "6379"
+  MEILISEARCH_URL: http://meilisearch:7700
+  MEILISEARCH_API_KEY: p8JcB_HuMHRxN7uVXfrG2wU06b5k7oTvaAAYo6nsi9M
+  STORAGE_TYPE: s3
+  STORAGE_BUCKET: storage
+  STORAGE_ENDPOINT: http://s3proxy:8000
+  STORAGE_FORCE_PATH_STYLE: "true"
+  STORAGE_REGION: us-east-1
+  STORAGE_ACCESS_KEY_ID: bosca-s3
+  STORAGE_ACCESS_KEY_SECRET: bosca-s3
+  STORAGE_URL_PREFIX: http://${BOSCA_HOST:-bosca.localhost}:${BOSCA_PORT:-3000}
+  STORAGE_URL_UPLOAD_PREFIX: http://${BOSCA_HOST:-bosca.localhost}:${BOSCA_PORT:-3000}
+  STORAGE_URL_SIGNER_SECRET_KEY: ${STORAGE_URL_SIGNER_SECRET_KEY:-10df7d451e8365cd6a8d43d408a25c82}
+  AWS_REGION: us-east-1
+  AWS_REQUEST_CHECKSUM_CALCULATION: WHEN_REQUIRED
+  IMAGE_RESIZER_URL: http://imageprocessor:8003
+  APP_URL: http://${BOSCA_HOST:-bosca.localhost}:${BOSCA_PORT:-3000}
+  APP_ALLOWED_ORIGIN: http://${BOSCA_HOST:-bosca.localhost}:${BOSCA_PORT:-3000}
+  OAUTH2_ALLOWED_REDIRECT: http://${BOSCA_HOST:-bosca.localhost}:${BOSCA_PORT:-3000}
+  OAUTH2_GOOGLE_REDIRECT: http://${BOSCA_HOST:-bosca.localhost}:${BOSCA_PORT:-3000}/oauth2/google/callback
+  OAUTH2_GOOGLE_ADMIN_REDIRECT: http://${BOSCA_HOST:-bosca.localhost}:${BOSCA_PORT:-3000}/oauth2/google/callback
+  GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+  GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+  OPENAI_API_KEY: ${OPENAI_API_KEY:-changeme}
+  GIT_URL: http://${BOSCA_HOST:-bosca.localhost}:${BOSCA_GIT_PORT:-8091}
+  BML_MESSAGE_SERVER_URL: http://bml-message-server:9093
+  ANALYTICS_SERVER_URL: http://analytics-collector:8081
+  ICEBERG_CATALOG: bosca
+  ICEBERG_NAMESPACE: bosca
+  ICEBERG_TABLE: events
+  ICEBERG_LOCAL_PATH: /app/data/iceberg
+  ICEBERG_WAREHOUSE_LOCATION: s3://warehouse/warehouse
+  ICEBERG_DATABASE_URI: jdbc:postgresql://postgres-warehouse:5432/bosca-warehouse
+  ICEBERG_DATABASE_USER: bosca-warehouse
+  ICEBERG_DATABASE_PASSWORD: bosca-warehouse
+  ICEBERG_S3_BUCKET: warehouse
+  ICEBERG_S3_ENDPOINT: http://s3proxy:8000
+  ICEBERG_S3_PATH_STYLE_ACCESS: "true"
+  ICEBERG_S3_ACCESS_KEY: bosca-s3
+  ICEBERG_S3_SECRET_KEY: bosca-s3
+  ECOMMERCE_ENABLED: "true"
+  KUBERNETES_ENABLED: "false"
+  MAILER_TYPE: ${MAILER_TYPE:-sendgrid}
+  MAILER_FROM_NAME: Bosca
+  MAILER_FROM_EMAIL: ${MAILER_FROM_EMAIL:-noreply@example.com}
+
+x-bosca-service: &bosca-service
+  platform: linux/amd64
+  restart: unless-stopped
+
+x-ready: &ready
+  interval: 10s
+  timeout: 5s
+  retries: 12
+  start_period: 5m
+
+services:
+  postgres:
+    image: pgvector/pgvector:0.8.6-pg18
+    restart: unless-stopped
+    command: ["postgres", "-c", "max_connections=400"]
+    environment:
+      POSTGRES_USER: bosca
+      POSTGRES_PASSWORD: bosca
+      POSTGRES_DB: bosca
+    volumes:
+      - postgres:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "bosca", "-d", "bosca"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  postgres-warehouse:
+    image: postgres:18.1-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: bosca-warehouse
+      POSTGRES_PASSWORD: bosca-warehouse
+      POSTGRES_DB: bosca-warehouse
+    volumes:
+      - postgres-warehouse:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "bosca-warehouse", "-d", "bosca-warehouse"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  nats:
+    image: nats:2.12.15-alpine
+    restart: unless-stopped
+    command: ["-c", "/etc/nats/nats.config"]
+    volumes:
+      - ./server/services/nats/nats.config:/etc/nats/nats.config:ro
+      - nats:/data
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8222/healthz"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  redis:
+    image: redis:7.4.11-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  meilisearch:
+    image: getmeili/meilisearch:v1.39.0
+    restart: unless-stopped
+    environment:
+      MEILI_MASTER_KEY: p8JcB_HuMHRxN7uVXfrG2wU06b5k7oTvaAAYo6nsi9M
+      MEILI_NO_ANALYTICS: "true"
+    volumes:
+      - meilisearch:/meili_data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:7700/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  s3proxy:
+    platform: linux/amd64
+    image: andrewgaul/s3proxy:3.0.0
+    restart: unless-stopped
+    environment:
+      S3PROXY_AUTHORIZATION: aws-v2-or-v4
+      S3PROXY_IDENTITY: bosca-s3
+      S3PROXY_CREDENTIAL: bosca-s3
+      S3PROXY_ENDPOINT: http://0.0.0.0:8000
+      S3PROXY_IGNORE_UNKNOWN_HEADERS: "true"
+      JCLOUDS_PROVIDER: filesystem-nio2
+      JCLOUDS_FILESYSTEM_NIO2_BASEDIR: /data
+    volumes:
+      - objects:/data
+    healthcheck:
+      test: ["CMD", "bash", "-ec", "exec 3<>/dev/tcp/127.0.0.1/8000"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  storage-init:
+    image: minio/mc:latest
+    depends_on:
+      s3proxy:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        mc alias set local http://s3proxy:8000 bosca-s3 bosca-s3
+        mc mb --ignore-existing local/storage
+        mc mb --ignore-existing local/warehouse
+
+  trino:
+    image: trinodb/trino:479
+    restart: unless-stopped
+    volumes:
+      - ./server/services/trino:/etc/trino:ro
+      - ./deployments/local/trino-jvm.config:/etc/trino/jvm.config:ro
+      - trino:/data/trino
+    depends_on:
+      postgres:
+        condition: service_healthy
+      postgres-warehouse:
+        condition: service_healthy
+      storage-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8089/v1/info"]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 2m
+
+  imageprocessor:
+    <<: *bosca-service
+    image: ${BOSCA_IMAGE_REGISTRY:-ghcr.io/bosca-io}/imageprocessor:${BOSCA_IMAGEPROCESSOR_VERSION:-0.0.26}
+    environment:
+      SUPPORTED_URLS: http://${BOSCA_HOST:-bosca.localhost}:${BOSCA_PORT:-3000},http://bosca-server:8080
+    healthcheck:
+      <<: *ready
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8003/health"]
+
+  bosca-server:
+    <<: *bosca-service
+    image: ${BOSCA_IMAGE_REGISTRY:-ghcr.io/bosca-io}/bosca-server:${BOSCA_VERSION:-0.0.28}
+    environment:
+      <<: *bosca-environment
+      GIT_SYNC_LISTENERS: "false"
+      SCHEDULER_ENABLED: "true"
+      ANALYTICS_PROCESSOR_ENABLED: "false"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      meilisearch:
+        condition: service_healthy
+      trino:
+        condition: service_healthy
+      imageprocessor:
+        condition: service_healthy
+      storage-init:
+        condition: service_completed_successfully
+    healthcheck:
+      <<: *ready
+      test: ["CMD", "bash", "-ec", "exec 3<>/dev/tcp/127.0.0.1/8080; printf 'GET /api/v1/ready HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n' >&3; read -r protocol status rest <&3; test \"$$status\" = 200"]
+
+  bosca-runner:
+    <<: *bosca-service
+    image: ${BOSCA_IMAGE_REGISTRY:-ghcr.io/bosca-io}/bosca-runner:${BOSCA_VERSION:-0.0.28}
+    environment:
+      <<: *bosca-environment
+      BOSCA_SERVER_PORT: "8060"
+      GIT_SYNC_LISTENERS: "true"
+      SCHEDULER_ENABLED: "false"
+      ANALYTICS_PROCESSOR_ENABLED: "true"
+    volumes:
+      - runner-events:/app/data/iceberg
+    depends_on:
+      bosca-server:
+        condition: service_healthy
+      bml-message-server:
+        condition: service_healthy
+    healthcheck:
+      <<: *ready
+      test: ["CMD", "bash", "-ec", "exec 3<>/dev/tcp/127.0.0.1/8060; printf 'GET /api/v1/ready HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n' >&3; read -r protocol status rest <&3; test \"$$status\" = 200"]
+
+  analytics-collector:
+    <<: *bosca-service
+    image: ${BOSCA_IMAGE_REGISTRY:-ghcr.io/bosca-io}/analytics-collector:${BOSCA_VERSION:-0.0.28}
+    environment:
+      <<: *bosca-environment
+      BOSCA_SERVER_PORT: "8081"
+    depends_on:
+      # The API creates schemas required by the collector's module migrations.
+      bosca-server:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      trino:
+        condition: service_healthy
+      storage-init:
+        condition: service_completed_successfully
+    healthcheck:
+      <<: *ready
+      test: ["CMD", "bash", "-ec", "exec 3<>/dev/tcp/127.0.0.1/8081; printf 'GET /api/v1/ready HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n' >&3; read -r protocol status rest <&3; test \"$$status\" = 200"]
+
+  artifacts-server:
+    <<: *bosca-service
+    image: ${BOSCA_IMAGE_REGISTRY:-ghcr.io/bosca-io}/artifacts-server:${BOSCA_VERSION:-0.0.28}
+    environment:
+      <<: *bosca-environment
+      BOSCA_SERVER_PORT: "8084"
+    ports:
+      - "127.0.0.1:${BOSCA_ARTIFACTS_PORT:-8084}:8084"
+    depends_on:
+      bosca-server:
+        condition: service_healthy
+    healthcheck:
+      <<: *ready
+      test: ["CMD", "bash", "-ec", "exec 3<>/dev/tcp/127.0.0.1/8084; printf 'GET /api/v1/ready HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n' >&3; read -r protocol status rest <&3; test \"$$status\" = 200"]
+
+  git-server:
+    <<: *bosca-service
+    image: ${BOSCA_IMAGE_REGISTRY:-ghcr.io/bosca-io}/git-server:${BOSCA_VERSION:-0.0.28}
+    environment:
+      <<: *bosca-environment
+    ports:
+      - "127.0.0.1:${BOSCA_GIT_PORT:-8091}:8091"
+    depends_on:
+      bosca-server:
+        condition: service_healthy
+    healthcheck:
+      <<: *ready
+      test: ["CMD", "bash", "-ec", "exec 3<>/dev/tcp/127.0.0.1/8091"]
+
+  bml-message-server:
+    <<: *bosca-service
+    image: ${BOSCA_IMAGE_REGISTRY:-ghcr.io/bosca-io}/bml-message-server:${BOSCA_VERSION:-0.0.28}
+    environment:
+      PORT: "9093"
+      BML_MESSAGE_ARTIFACTS_URL: http://artifacts-server:8084
+      BML_MESSAGE_ARTIFACTS_TOKEN: ${BML_MESSAGE_ARTIFACTS_TOKEN:-}
+      BML_MESSAGE_PROJECTS: bosca-messages
+      BML_GRAPHQL_ENDPOINT: http://bosca-server:8080/graphql
+      BML_MESSAGE_PUBLIC_URL: http://${BOSCA_HOST:-bosca.localhost}:${BOSCA_PORT:-3000}/bml-messages
+      BML_MESSAGE_CACHE_DIR: /app/message-cache
+      NATS_URL: nats://nats:4222
+      NATS_TOKEN: OAVKZTG7ST62YCPUJYJ6LBQDMKLAUD4NRBPZ4GXUXNUJW2ATCFKKYGHV
+    volumes:
+      - messages:/app/message-cache
+    depends_on:
+      artifacts-server:
+        condition: service_healthy
+    healthcheck:
+      <<: *ready
+      test: ["CMD", "bash", "-ec", "exec 3<>/dev/tcp/127.0.0.1/9093; printf 'GET /api/v1/ready HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n' >&3; read -r protocol status rest <&3; test \"$$status\" = 200"]
+
+  studio:
+    <<: *bosca-service
+    image: ${BOSCA_IMAGE_REGISTRY:-ghcr.io/bosca-io}/bosca-studio:${BOSCA_VERSION:-0.0.28}
+    environment:
+      HOST: 0.0.0.0
+      PORT: "3000"
+      API_URL: http://bosca-server:8080
+      NUXT_API_URL: http://bosca-server:8080
+      COLLABORATION_URL: http://bosca-server:8080
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      NUXT_PUBLIC_API_URL: http://${BOSCA_HOST:-bosca.localhost}:${BOSCA_PORT:-3000}
+      NUXT_PUBLIC_WS_URL: ws://${BOSCA_HOST:-bosca.localhost}:${BOSCA_PORT:-3000}
+      NUXT_PUBLIC_AUTH_DOMAIN: ${BOSCA_HOST:-bosca.localhost}
+      NUXT_PUBLIC_GIT_SERVER_URL: http://${BOSCA_HOST:-bosca.localhost}:${BOSCA_GIT_PORT:-8091}
+      NUXT_PUBLIC_GIT_BASE_URL: /
+      NUXT_PUBLIC_ARTIFACTS_URL: http://${BOSCA_HOST:-bosca.localhost}:${BOSCA_ARTIFACTS_PORT:-8084}
+      NUXT_PUBLIC_APP_VERSION: ${BOSCA_VERSION:-0.0.28}
+    depends_on:
+      bosca-server:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      <<: *ready
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3000/health"]
+
+  web:
+    image: caddy:2.11.4
+    restart: unless-stopped
+    environment:
+      BOSCA_PORT: ${BOSCA_PORT:-3000}
+    ports:
+      - "127.0.0.1:${BOSCA_PORT:-3000}:${BOSCA_PORT:-3000}"
+    volumes:
+      - ./deployments/local/Caddyfile:/etc/caddy/Caddyfile:ro
+    networks:
+      default:
+        aliases:
+          - ${BOSCA_HOST:-bosca.localhost}
+    depends_on:
+      studio:
+        condition: service_healthy
+      analytics-collector:
+        condition: service_healthy
+    healthcheck:
+      <<: *ready
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:$$BOSCA_PORT/health"]
+
+volumes:
+  postgres:
+  postgres-warehouse:
+  nats:
+  redis:
+  meilisearch:
+  objects:
+  trino:
+  messages:
+  runner-events:

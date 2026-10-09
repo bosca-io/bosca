@@ -87,36 +87,42 @@ export const SECTIONS: DocSection[] = [
     discover: '/discover/developers',
     groups: [
       {
-        title: 'Start Here',
+        title: 'Get Started',
         links: [
-          { label: 'Getting Started', to: '/developers/getting-started' },
-          { label: 'Architecture', to: '/developers/architecture' }
+          { label: 'Overview', to: '/developers/getting-started' },
+          { label: 'Run Bosca Locally', to: '/developers/run-locally' },
+          { label: 'CLI', to: '/developers/cli' },
+          { label: 'Infrastructure', to: '/developers/infrastructure' }
         ]
       },
       {
-        title: 'Core Concepts',
+        title: 'Build on Bosca',
         links: [
+          { label: 'Architecture', to: '/developers/architecture' },
           { label: 'Models & Repositories', to: '/developers/models-and-repositories' },
           { label: 'Services', to: '/developers/services' },
           { label: 'GraphQL', to: '/developers/graphql' },
-          { label: 'Routes', to: '/developers/routes' },
-          { label: 'Security', to: '/developers/security' },
-          { label: 'Profile', to: '/developers/profile' },
-          { label: 'Organizations', to: '/developers/organizations' },
-          { label: 'Permissions', to: '/developers/permissions' },
-          { label: 'Transactions', to: '/developers/transactions' },
-          { label: 'Scripting', to: '/developers/scripting' },
-          { label: 'Bosca Git', to: '/developers/git' }
+          { label: 'HTTP Routes', to: '/developers/routes' }
         ]
       },
       {
-        title: 'Guides',
+        title: 'Identity & Access',
         links: [
+          { label: 'Security', to: '/developers/security' },
+          { label: 'Profiles', to: '/developers/profile' },
+          { label: 'Organizations', to: '/developers/organizations' },
+          { label: 'Permissions', to: '/developers/permissions' }
+        ]
+      },
+      {
+        title: 'Runtime',
+        links: [
+          { label: 'Transactions', to: '/developers/transactions' },
           { label: 'Caching', to: '/developers/caching' },
           { label: 'Messaging & Events', to: '/developers/messaging' },
           { label: 'Bulk Processing', to: '/developers/bulk-processing' },
-          { label: 'Bosca CLI', to: '/developers/cli' },
-          { label: 'Infrastructure', to: '/developers/infrastructure' }
+          { label: 'Scripting', to: '/developers/scripting' },
+          { label: 'Git', to: '/developers/git' }
         ]
       }
     ]
