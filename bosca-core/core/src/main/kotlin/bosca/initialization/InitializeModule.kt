@@ -29,6 +29,10 @@ import bosca.server.BoscaApplication
 import bosca.server.BoscaApplicationModule
 import bosca.server.HttpStatusCode
 import bosca.telemetry.MonitoringModule
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.Serializable
 import kotlin.reflect.KClass
@@ -157,6 +161,9 @@ class InitializeModule(
                         }
                     }
                 } catch (e: Exception) {
+                    // Dependency timeouts fail the probe; cancellation of the request propagates.
+                    currentCoroutineContext().ensureActive()
+                    if (e is CancellationException && e !is TimeoutCancellationException) throw e
                     log.error("Failed to check database connection: ${e.message}", e)
                     call.respond(HttpStatusCode.ServiceUnavailable, ReadyResponse("primary connection pool unavailable"))
                     return@get
@@ -198,6 +205,9 @@ class InitializeModule(
                         }
                     }
                 } catch (e: Exception) {
+                    // Dependency timeouts fail the probe; cancellation of the request propagates.
+                    currentCoroutineContext().ensureActive()
+                    if (e is CancellationException && e !is TimeoutCancellationException) throw e
                     log.error("Failed to check database connection: ${e.message}", e)
                     call.respond(HttpStatusCode.ServiceUnavailable, ReadyResponse("primary connection pool unavailable"))
                     return@get

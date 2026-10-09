@@ -20,6 +20,7 @@ import bosca.db.ConnectionManager
 import bosca.db.ConnectionPool
 import bosca.db.PoolConnection
 import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.netty.buffer.UnpooledByteBufAllocator
@@ -28,7 +29,12 @@ import io.netty.channel.ChannelFuture
 import io.netty.channel.ChannelHandlerContext
 import io.netty.handler.codec.http.DefaultFullHttpResponse
 import io.opentelemetry.api.GlobalOpenTelemetry
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withTimeout
 import java.sql.PreparedStatement
 import java.sql.ResultSet
 import kotlin.test.AfterTest
@@ -36,6 +42,7 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 class InitializeModuleTest {
@@ -81,15 +88,14 @@ class InitializeModuleTest {
         application,
     )
 
-    private suspend fun execute(path: String): List<DefaultFullHttpResponse> {
-        val responses = mutableListOf<Any>()
+    private suspend fun execute(path: String, responses: MutableList<Any> = mutableListOf()): List<DefaultFullHttpResponse> {
         val call = call(responses)
         val route = requireNotNull(application.router.resolve(HttpMethod.Get, path))
         route.handler(RoutingContext(call, application))
         return responses.map { it as DefaultFullHttpResponse }
     }
 
-    private fun installDatabase(graphQLReady: Boolean, queryFailure: Throwable? = null) {
+    private fun installDatabase(graphQLReady: Boolean, queryFailure: Throwable? = null): ConnectionPool {
         val resultSet = mockk<ResultSet>(relaxed = true)
         every { resultSet.next() } returns true
         every { resultSet.getInt(1) } returns 1
@@ -118,6 +124,7 @@ class InitializeModuleTest {
         val cache = mockk<CacheManager>()
         every { cache.cacheNames } returns setOf("metadata", "collections")
         provides<CacheManager>(overrideExisting = true) { cache }
+        return pool
     }
 
     @Test
@@ -157,6 +164,58 @@ class InitializeModuleTest {
 
         response = execute("/api/v1/health").single()
         assertEquals(503, response.status().code())
+    }
+
+    @Test
+    fun `ready and health probes propagate cancellation and release the connection`() = runTest {
+        application.install(InitializeModule(enableConnectionPool = false))
+        val cancellation = CancellationException("Channel closed")
+        val pool = installDatabase(graphQLReady = true, queryFailure = cancellation)
+
+        for (path in listOf("/api/v1/ready", "/api/v1/health")) {
+            val responses = mutableListOf<Any>()
+            val failure = assertFailsWith<CancellationException> { execute(path, responses) }
+            assertEquals("Channel closed", failure.message)
+            assertTrue(responses.isEmpty())
+        }
+        coVerify(exactly = 2) { pool.releaseConnection(any()) }
+    }
+
+    @Test
+    fun `ready and health probes stop when the request is cancelled during acquisition`() = runTest {
+        application.install(InitializeModule(enableConnectionPool = false))
+        val pool = installDatabase(graphQLReady = true)
+
+        for (path in listOf("/api/v1/ready", "/api/v1/health")) {
+            val started = CompletableDeferred<Unit>()
+            coEvery { pool.obtainConnection(any(), any()) } coAnswers {
+                started.complete(Unit)
+                awaitCancellation()
+            }
+            val responses = mutableListOf<Any>()
+            val request = launch { execute(path, responses) }
+            started.await()
+            request.cancel(CancellationException("Channel closed"))
+            request.join()
+            assertTrue(request.isCancelled)
+            assertTrue(responses.isEmpty())
+        }
+        coVerify(exactly = 0) { pool.releaseConnection(any()) }
+    }
+
+    @Test
+    fun `ready and health probes still report dependency timeouts`() = runTest {
+        application.install(InitializeModule(enableConnectionPool = false))
+        val pool = installDatabase(graphQLReady = true)
+        coEvery { pool.obtainConnection(any(), any()) } coAnswers {
+            withTimeout(10) { awaitCancellation() }
+        }
+
+        for (path in listOf("/api/v1/ready", "/api/v1/health")) {
+            val response = execute(path).single()
+            assertEquals(503, response.status().code())
+            assertTrue(response.content().toString(Charsets.UTF_8).contains("primary connection pool unavailable"))
+        }
     }
 
     @Test
