@@ -1,5 +1,7 @@
 package bosca.content.metadata.service
 
+import bosca.bible.BibleContentUse
+import bosca.bible.IBibleChapterContent
 import bosca.bible.Reference
 import bosca.content.metadata.model.Bible
 import bosca.content.metadata.model.BibleBook
@@ -101,6 +103,19 @@ interface BibleService : Service {
      * @return the matching Bible chapter
      */
     suspend fun getChapter(bible: Bible, reference: Reference): BibleChapter
+
+    /**
+     * Reads chapter content and attribution for this exact Bible variant. External content
+     * must permit the requested [use]; local DBL content has no provider restriction.
+     * Provider attribution comes from the exact content response, falling back to its source.
+     */
+    suspend fun getChapterContent(book: BibleBook, usfm: String, use: BibleContentUse): IBibleChapterContent
+
+    /**
+     * Reads the chapter containing [reference] with the same use checks and attribution as
+     * the book-based overload. The returned chapter supports selecting individual verses.
+     */
+    suspend fun getChapterContent(bible: Bible, reference: Reference, use: BibleContentUse): IBibleChapterContent
 
     /**
      * Converts a structured Scripture reference into a short human-readable citation string

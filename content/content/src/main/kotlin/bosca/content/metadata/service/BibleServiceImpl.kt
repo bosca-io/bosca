@@ -1,5 +1,8 @@
 package bosca.content.metadata.service
 
+import bosca.bible.BibleChapterContent
+import bosca.bible.BibleContentUse
+import bosca.bible.Chapter
 import bosca.bible.Reference
 import bosca.cache.ServiceCache
 import bosca.cache.requestCache
@@ -118,6 +121,12 @@ class BibleServiceImpl(
     override suspend fun getChapter(bible: Bible, reference: Reference): BibleChapter {
         return bibleChapterCache.get(BibleCacheKeyId(bible.metadataId, bible.version, bible.variant, reference.chapterUsfm)) ?: error("chapter not found: $reference")
     }
+
+    override suspend fun getChapterContent(book: BibleBook, usfm: String, use: BibleContentUse): BibleChapterContent =
+        getChapter(book, usfm).let { BibleChapterContent(Chapter(Reference(it.usfm), it.getChapterComponents())) }
+
+    override suspend fun getChapterContent(bible: Bible, reference: Reference, use: BibleContentUse): BibleChapterContent =
+        getChapter(bible, reference).let { BibleChapterContent(Chapter(Reference(it.usfm), it.getChapterComponents())) }
 
     override suspend fun getHuman(bible: Bible, reference: Reference): String {
         val books = getBooks(bible)

@@ -11,6 +11,7 @@ import bosca.bible.providers.model.BibleSourceKind
 import bosca.content.metadata.model.Bible
 import bosca.serialization.UUID
 import bosca.service.Service
+import kotlin.uuid.Uuid
 
 /**
  * Manages provider configurations and their sources. GraphQL controllers enforce administrator
@@ -41,6 +42,21 @@ interface BibleProviderService : Service {
 
     /** Lists active sources belonging to a configuration, including sources of disabled variants. */
     suspend fun getSources(configurationId: UUID): List<BibleSource>
+
+    /**
+     * Looks up the server-only FUMS token for one cached chapter response in this exact
+     * Bible variant. [usfm] identifies the chapter; [audioId] selects a recording, and null
+     * selects text. Returns null for local content or when no unexpired cached token exists.
+     * Never fetches content or emits Analytics events. The token must not enter client
+     * responses or analytical storage.
+     */
+    suspend fun getFumsToken(
+        bibleId: UUID,
+        version: Int,
+        variant: String,
+        usfm: String,
+        audioId: Uuid? = null,
+    ): String?
 
     /** Lists exact Bosca Bible variants compatible with the selected provider recording. */
     suspend fun getAudioTargets(configurationId: UUID, providerBibleId: String): List<Bible>

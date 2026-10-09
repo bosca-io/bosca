@@ -1,6 +1,13 @@
 package bosca.content.metadata.service
 
+import bosca.bible.BibleContentUse
 import bosca.bible.Reference
+import bosca.bible.components.ComponentContainer
+import bosca.bible.components.ContainerType
+import bosca.bible.components.IComponent
+import bosca.bible.components.Text
+import bosca.bible.components.VerseEnd
+import bosca.bible.components.VerseStart
 import bosca.cache.CacheManager
 import bosca.cache.RequestCache
 import bosca.cache.RequestCacheSerializer
@@ -15,6 +22,7 @@ import bosca.content.metadata.model.BibleLanguageInput
 import bosca.content.metadata.model.BookInput
 import bosca.content.metadata.model.ChapterInput
 import bosca.content.metadata.model.ReferenceInput
+import bosca.content.metadata.model.toJson
 import bosca.content.metadata.repository.BibleBookRepository
 import bosca.content.metadata.repository.BibleChapterRepository
 import bosca.content.metadata.repository.BibleLanguageRepository
@@ -52,6 +60,7 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -464,6 +473,53 @@ class BibleServiceImplCoverageTest {
     }
 
     // ── getChapter(book, usfm) ───────────────────────────────────────────────
+
+    @Test
+    fun `getChapterContent preserves locally imported content and exact variant`() = runTest {
+        val id = UUID.random()
+        val components = ComponentContainer(
+            ContainerType.DIV,
+            listOf(
+                VerseStart(Reference("GEN.1.1")), Text("First verse.", null), VerseEnd(),
+                VerseStart(Reference("GEN.1.2")), Text("Second verse.", null), VerseEnd(),
+            ),
+            null,
+        )
+        val stored = chapter(id, variant = "study").copy(version = 2, components = components.toJson())
+        coEvery { bibleChapterRepository.getByIdAndVariantAndUsfm(id, 2, "study", "GEN.1") } returns stored
+
+        val content = withRequest {
+            service.getChapterContent(
+                bible(id, variant = "study").copy(version = 2),
+                Reference("GEN.1.2"),
+                BibleContentUse.AI_CONTEXT,
+            )
+        }
+
+        assertEquals(Reference("GEN.1"), content.chapter.reference)
+        assertEquals("Second verse.", text(assertNotNull(content.chapter[Reference("GEN.1.2")])))
+        assertEquals("First verse.", text(assertNotNull(content.chapter[Reference("GEN.1.1")])))
+        assertNull(content.attribution)
+        coVerify(exactly = 1) { bibleChapterRepository.getByIdAndVariantAndUsfm(id, 2, "study", "GEN.1") }
+    }
+
+    private fun text(component: IComponent): String = when (component) {
+        is Text -> component.text
+        is ComponentContainer -> component.components.joinToString("") { text(it) }
+        else -> ""
+    }
+
+    @Test
+    fun `getChapterContent by book preserves chapters without local components`() = runTest {
+        val id = UUID.random()
+        coEvery { bibleChapterRepository.getByIdAndVariantAndUsfm(id, 1, "default", "GEN.1") } returns chapter(id)
+
+        val content = withRequest { service.getChapterContent(book(id), "GEN.1", BibleContentUse.DISPLAY) }
+
+        assertEquals(Reference("GEN.1"), content.chapter.reference)
+        assertNull(content.chapter[Reference("GEN.1")])
+        assertNull(content.attribution)
+    }
 
     @Test
     fun `getChapter by book and usfm returns the chapter when found`() = runTest(timeout = kotlin.time.Duration.parse("60s")) {
