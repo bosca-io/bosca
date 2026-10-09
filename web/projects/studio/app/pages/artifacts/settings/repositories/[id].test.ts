@@ -12,10 +12,9 @@ const isAdmin = ref(true)
 vi.stubGlobal('usePersonas', () => ({ isAdmin }))
 vi.stubGlobal('useRoute', () => ({ params: { id: 'image-1' } }))
 vi.stubGlobal('useCurrentSubsystem', () => ({ accent: '#64748b' }))
-vi.stubGlobal('useRawArtifactUploadStaging', () => ({ stage: vi.fn() }))
 vi.stubGlobal('useGraphQL', () => ({
   useAsyncQuery: () => ({
-    data: ref({ artifactsAdmin: { repository } }), status: ref('success'), refresh: vi.fn(),
+    data: ref({ artifactsAdmin: { repository } }), status: ref('success'), error: ref(null), refresh: vi.fn(),
   }),
   mutation: vi.fn(),
 }))
@@ -32,23 +31,29 @@ const stubs = {
 }
 const mocks = { buildBreadcrumb: (...parts: string[]) => parts }
 
-describe('Artifact detail settings', () => {
-  it.each(['docker', 'raw'])('offers settings for %s without mounting sync controls on the detail page', async type => {
+describe('Repository sync settings page', () => {
+  it.each([
+    ['docker', 'ArtifactRepositorySync'], ['raw', 'ArtifactRepositoryPublication'],
+  ])('mounts %s controls only in settings and scopes them to the repository', async (type, component) => {
     repository.value.type = type
+    const wrapper = shallowMount(RepositoryPage, { global: { stubs, mocks } })
+    await flushPromises()
+    const original = wrapper.getComponent({ name: component })
+    expect(original.props('repositoryId')).toBe('image-1')
+    repository.value = { ...repository.value, id: 'image-2' }
+    await flushPromises()
+    const next = wrapper.getComponent({ name: component })
+    expect(next.props('repositoryId')).toBe('image-2')
+    expect(next.vm).not.toBe(original.vm)
+    isAdmin.value = false
+    await flushPromises()
+    expect(wrapper.findComponent({ name: component }).exists()).toBe(false)
+  })
+  it('does not mount GitHub controls for unsupported artifact types', async () => {
+    repository.value.type = 'maven'
     const wrapper = shallowMount(RepositoryPage, { global: { stubs, mocks } })
     await flushPromises()
     expect(wrapper.findComponent({ name: 'ArtifactRepositorySync' }).exists()).toBe(false)
     expect(wrapper.findComponent({ name: 'ArtifactRepositoryPublication' }).exists()).toBe(false)
-    expect(wrapper.text()).toContain('Settings')
-    isAdmin.value = false
-    await flushPromises()
-    expect(wrapper.text()).not.toContain('Settings')
-  })
-
-  it.each(['maven', 'npm', 'helm', 'ml'])('does not offer GitHub settings for %s artifacts', async type => {
-    repository.value.type = type
-    const wrapper = shallowMount(RepositoryPage, { global: { stubs, mocks } })
-    await flushPromises()
-    expect(wrapper.text()).not.toContain('Settings')
   })
 })
