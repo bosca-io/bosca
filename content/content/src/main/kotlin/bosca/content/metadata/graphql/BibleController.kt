@@ -102,8 +102,8 @@ class BibleController(
                 book = book,
                 chapter = chapter,
                 component = JsonArray(filtered),
-                human = bibleService.getHuman(bible, reference),
-                humanShort = bibleService.getHumanLong(bible, reference),
+                human = bibleService.getHumanLong(bible, reference),
+                humanShort = bibleService.getHuman(bible, reference),
                 reference = reference
             )
         }

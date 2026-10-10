@@ -301,8 +301,9 @@ class BibleControllerCoverageTest {
         val result = results[0]
         assertEquals(genesis, result.book)
         assertEquals(ch, result.chapter)
-        assertEquals("Gen 1:1", result.human)
-        assertEquals("Genesis 1:1", result.humanShort)
+        // As every other reference: the long form is `human`, the short form `humanShort`.
+        assertEquals("Genesis 1:1", result.human)
+        assertEquals("Gen 1:1", result.humanShort)
         assertEquals(reference, result.reference)
         // component is a JsonArray of filtered component json (one match for the single reference)
         assertTrue(result.component is JsonArray)

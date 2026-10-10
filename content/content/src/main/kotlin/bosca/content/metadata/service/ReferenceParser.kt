@@ -15,15 +15,12 @@ internal object ReferenceParser {
                 references.add(reference)
             }
         }
+        // Verses of the same book and chapter join into one reference; anything else stays apart.
         val joinedReferences = mutableMapOf<String, String>()
         for (reference in references) {
-            var usfms = joinedReferences[reference.chapter]
-            if (usfms == null) {
-                usfms = reference.usfm
-            } else {
-                usfms += '+' + reference.usfm
-            }
-            joinedReferences[reference.chapter] = usfms
+            val key = reference.chapterUsfm.ifEmpty { reference.usfm }
+            val usfms = joinedReferences[key]
+            joinedReferences[key] = if (usfms == null) reference.usfm else usfms + '+' + reference.usfm
         }
         val finalReferences = mutableListOf<Reference>()
         for (usfm in joinedReferences.values) {
@@ -34,24 +31,10 @@ internal object ReferenceParser {
 
     private suspend fun parseSingle(bibleService: BibleService, bible: Bible, human: String): Reference? {
         val humanLower = human.lowercase()
-        var book: BibleBook? = null
-        var nonBook: String? = null
         val books = bibleService.getBooks(bible)
-        for (b in books) {
-            if (b.nameLong != null && humanLower.indexOf(b.nameLong?.lowercase() ?: "") == 0) {
-                book = b
-                nonBook = humanLower.substring(b.nameLong?.length ?: 0).trim()
-            } else if (b.nameShort != null && humanLower.indexOf(b.nameShort?.lowercase() ?: "") == 0) {
-                book = b
-                nonBook = humanLower.substring(b.nameShort?.length ?: 0).trim()
-            } else if (humanLower.indexOf(b.abbreviation.lowercase()) == 0) {
-                book = b
-                nonBook = humanLower.substring(b.abbreviation.length).trim()
-            }
-        }
-        if (book == null || nonBook == null) {
-            return null
-        }
+        val (book, nameLength) = Reference.matchBook(humanLower, books.map { it to listOfNotNull(it.nameLong, it.nameShort, it.abbreviation) })
+            ?: return null
+        val nonBook = humanLower.substring(nameLength).trim()
         if (nonBook.isEmpty()) {
             return Reference(book.usfm)
         }
