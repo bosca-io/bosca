@@ -221,6 +221,7 @@ class S3ObjectStorageService(
             partNumberMarker = response.nextPartNumberMarker()
         } while (response.isTruncated == true)
 
+        listedParts.sortBy { it.partNumber() }
         val partNumbers = listedParts.map { it.partNumber() }
         require(partNumbers == (1..partCount).toList()) {
             "multipart upload $uploadId has parts $partNumbers, expected 1..$partCount"
