@@ -11,6 +11,7 @@ import bosca.lock.DistributedLockFactory
 import bosca.nats.NatsConnectionPool
 import bosca.pubsub.NatsPubSubServiceImpl
 import bosca.pubsub.PubSubService
+import bosca.pubsub.RedisPubSubServiceImpl
 import bosca.server.BoscaApplication
 import bosca.sharedqueue.jobs.JobQueueFactory
 import bosca.sharedqueue.jobs.nats.NatsJobQueueFactory
@@ -22,13 +23,18 @@ import kotlinx.serialization.json.Json
 @Providers
 class Configuration {
 
+    /** Selects the site's pub/sub backend for Git events shared with the server and runner. */
     @Provider
     suspend fun pubsubService(
         application: BoscaApplication,
         natsConnectionPool: ObjectProvider<NatsConnectionPool>,
+        redisConnectionPool: ObjectProvider<RedisConnectionPool>,
         json: Json,
     ): PubSubService {
-        return NatsPubSubServiceImpl(json, natsConnectionPool.get())
+        return when (application.environment.config.propertyOrNull("pubsub.type")?.getString()) {
+            "nats" -> NatsPubSubServiceImpl(json, natsConnectionPool.get())
+            else -> RedisPubSubServiceImpl(json, redisConnectionPool.get())
+        }
     }
 
     @Provider(singleton = true)

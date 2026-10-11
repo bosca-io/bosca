@@ -6,6 +6,9 @@ import com.auth0.jwt.interfaces.JWTVerifier
 import bosca.server.BoscaApplication
 import bosca.server.config.ApplicationConfig
 import bosca.server.config.ConfigValue
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.builtins.serializer
+import kotlinx.serialization.json.Json
 
 private fun <T> ApplicationConfig.getOrDefault(
     path: String,
@@ -49,7 +52,12 @@ class SecurityConfigurationImpl(application: BoscaApplication) : SecurityConfigu
         expirationTimeInSeconds = cfg.property("jwt.expiration-time").getString().toLongOrNull() ?: 3600
         algorithm = Algorithm.HMAC256(secret)
         verifier = JWT.require(algorithm).withIssuer(issuer).withAudience(audience).build()
-        allowedRedirects = cfg.getOrDefault("oauth2.redirects", emptyList<String>()) { it.getList() }
+        val redirectsJson = cfg.getOrDefault("oauth2.redirects-json", "") { it.getString() }
+        allowedRedirects = if (redirectsJson.isBlank()) {
+            cfg.getOrDefault("oauth2.redirects", emptyList<String>()) { it.getList() }
+        } else {
+            Json.decodeFromString(ListSerializer(String.serializer()), redirectsJson)
+        }
         oauth2 = cfg.getOrDefault("oauth2.providers", emptyList<OAuth2Provider>()) {
             it.getAs<List<OAuth2Provider>>()
         }

@@ -86,6 +86,7 @@ dependencies {
 
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.kotlin.test.junit)
+    testImplementation(project(":bosca-core:security"))
     testImplementation(libs.testcontainers)
     testImplementation(platform(libs.okhttp.bom))
     testImplementation(libs.okhttp.mockwebserver) // WebSocket loopback for the subscription transport test
@@ -93,6 +94,13 @@ dependencies {
 
 tasks.test {
     inputs.file("install.sh").withPathSensitivity(PathSensitivity.RELATIVE)
+    inputs.files(
+        rootProject.file("server/bosca-server/src/main/resources/application.yaml"),
+        rootProject.file("server/bosca-runner/src/main/resources/application.yaml"),
+        rootProject.file("git/git-server/src/main/resources/application.yaml"),
+        rootProject.file("analytics/analytics-collector/src/main/resources/application.yaml"),
+        rootProject.file("artifacts/artifacts-server/src/main/resources/application.yaml"),
+    ).withPathSensitivity(PathSensitivity.RELATIVE)
     inputs.files(rootProject.fileTree(".bosca/pipelines") { include("*.yaml") })
         .withPathSensitivity(PathSensitivity.RELATIVE)
     inputs.files(rootProject.fileTree("scripts/release") { include("*.sh") })
