@@ -1,6 +1,9 @@
 package bosca.content.metadata.routes
 
 import bosca.bible.Reference
+import bosca.bible.BibleChapterContent
+import bosca.bible.BibleContentUse
+import bosca.bible.Chapter
 import bosca.bible.bibleJson
 import bosca.bible.components.IComponent
 import bosca.bible.components.Text
@@ -34,12 +37,21 @@ import kotlin.reflect.full.declaredMemberFunctions
 import kotlin.reflect.jvm.isAccessible
 import kotlin.test.AfterTest
 import kotlin.test.Test
+import kotlin.test.BeforeTest
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class GetBibleLanguageVersesCoverageTest {
+
+    @BeforeTest
+    fun stubLocalChapterContent() {
+        coEvery { bibleService.getChapterContent(any<Bible>(), any<Reference>(), BibleContentUse.DISPLAY) } coAnswers {
+            val chapter = bibleService.getChapter(firstArg<Bible>(), secondArg<Reference>())
+            BibleChapterContent(Chapter(Reference(chapter.usfm), chapter.getChapterComponents()))
+        }
+    }
 
     private val metadataService = mockk<MetadataService>()
     private val bibleService = mockk<BibleService>()
@@ -245,12 +257,10 @@ class GetBibleLanguageVersesCoverageTest {
 
     @Test
     fun `returns empty list when the reference maps to no chapters`() = runTest {
-        // A bare book usfm ("GEN") has chapterUsfm == "" and produces a single group keyed by "";
-        // the chapter for that empty reference has null components, so it is skipped -> empty result.
+        // A bare book reference has no chapter to read.
         val call = createCall(queryParams = mapOf("language" to "en", "usfm" to "GEN"))
         stubLanguageBible()
         coEvery { bibleService.getBooks(testBible) } returns listOf(book())
-        coEvery { bibleService.getChapter(testBible, Reference("")) } returns chapter(components = null)
 
         val result = executeRoute(call, authenticationContext)
 

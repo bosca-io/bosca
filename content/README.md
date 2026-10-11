@@ -8,7 +8,7 @@ Content management, language, localization, slug generation, and Bible compilati
 |--------|-------------|
 | `core-content` | Contracts: content models (metadata, collections, transitions, categories, sources) |
 | `core-bible-providers` | Integration contracts: Bible provider access, configuration, and source administration |
-| `bible-providers` | Bible provider adapters, encrypted configuration, source persistence, and chapter caches using the shared Bible models |
+| `bible-providers` | Bible provider adapters, encrypted configuration, and source persistence using the shared Bible models |
 | `content` | Implementation: repositories, GraphQL controllers, migrations |
 | `core-languages` | Contracts: language model and service interfaces |
 | `languages` | Implementation: language repository and controllers |
@@ -32,6 +32,17 @@ Run these commands from the **workspace root**. `content` is part of the root Gr
 ./gradlew :content:content:test :content:bible-compiler:test  # Focused tests
 ./gradlew :content:bible-providers:test  # Provider adapters and configuration/source/cache tests
 ```
+
+API.Bible chapter reads enqueue edition-wide cache cleanup on the content queue after the
+response is stored. The worker keeps the newest responses within 499 verses across
+configurations. This limit is eventual while jobs are pending; the worker evicts whole
+responses, including chapters larger than the cache budget. Reads return the full chapter,
+and cached responses expire after 14 days.
+
+The existing Bible `/api/v1/content/metadata/` routes retain their response structure.
+Verse responses add attribution when available. The single-chapter `/api/v2/` route
+returns the shared `BibleChapterContent` model; its `/api/v1/` counterpart continues
+to return `BibleChapter`.
 
 The Bible compiler tests download KJV and ASV DBL bundles rather than storing them in Git.
 Set `BIBLE_RAW_ARTIFACTS` to the raw artifact download base URL, including the namespace,

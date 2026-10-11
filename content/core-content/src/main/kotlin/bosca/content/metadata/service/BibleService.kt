@@ -88,6 +88,8 @@ interface BibleService : Service {
 
     /**
      * Retrieves a specific chapter of a Bible book by its USFM identifier.
+     * Provider chapters include their reference and source identity; use [getChapterContent]
+     * to read their content with the requested use checks.
      *
      * @param book the Bible book containing the chapter
      * @param usfm the USFM (Unified Standard Format Marker) identifier for the chapter
@@ -97,6 +99,7 @@ interface BibleService : Service {
 
     /**
      * Retrieves a specific chapter of a Bible using a structured Scripture reference.
+     * Provider chapter bodies and cache metadata are omitted; use [getChapterContent] to read them.
      *
      * @param bible the Bible translation to look up
      * @param reference the structured reference identifying the chapter
@@ -108,6 +111,9 @@ interface BibleService : Service {
      * Reads chapter content and attribution for this exact Bible variant. External content
      * must permit the requested [use]; local DBL content has no provider restriction.
      * Provider attribution comes from the exact content response, falling back to its source.
+     * Reads use the service caches and reject expired provider responses without extending expiry.
+     * A skipped cache write still returns the fetched response.
+     * Complete chapters are returned regardless of size; background maintenance enforces retention limits.
      */
     suspend fun getChapterContent(book: BibleBook, usfm: String, use: BibleContentUse): IBibleChapterContent
 
@@ -116,6 +122,24 @@ interface BibleService : Service {
      * the book-based overload. The returned chapter supports selecting individual verses.
      */
     suspend fun getChapterContent(bible: Bible, reference: Reference, use: BibleContentUse): IBibleChapterContent
+
+    /** Attaches an external text source to the existing chapters of an exact Bible variant. */
+    suspend fun setChapterSource(id: UUID, version: Int, variant: String, sourceId: UUID)
+
+    /** Clears retained provider text and private response metadata, preserving chapter references. */
+    suspend fun clearChapterContent(sourceId: UUID): Int
+
+    /** Clears expired provider responses without changing locally imported chapters. */
+    suspend fun removeExpiredChapterContent(): Int
+
+    /**
+     * Trims an upstream edition to 499 retained verses across configurations, keeping newest responses first.
+     * Called by background maintenance; returns the number of complete chapter responses cleared.
+     */
+    suspend fun limitChapterContent(provider: String, providerBibleId: String): Int
+
+    /** Reads a private token from an unexpired provider response without fetching chapter text. */
+    suspend fun getFumsToken(id: UUID, version: Int, variant: String, usfm: String): String?
 
     /**
      * Converts a structured Scripture reference into a short human-readable citation string

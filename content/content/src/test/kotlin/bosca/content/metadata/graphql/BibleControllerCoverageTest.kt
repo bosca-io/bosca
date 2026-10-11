@@ -1,6 +1,9 @@
 package bosca.content.metadata.graphql
 
 import bosca.bible.Reference
+import bosca.bible.BibleChapterContent
+import bosca.bible.BibleContentUse
+import bosca.bible.Chapter
 import bosca.bible.bibleJson
 import bosca.bible.components.ComponentContainer
 import bosca.bible.components.ContainerType
@@ -28,6 +31,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.encodeToJsonElement
 import kotlin.test.AfterTest
 import kotlin.test.Test
+import kotlin.test.BeforeTest
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
@@ -35,6 +39,14 @@ import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class BibleControllerCoverageTest {
+
+    @BeforeTest
+    fun stubLocalChapterContent() {
+        coEvery { bibleService.getChapterContent(any<BibleBook>(), any<String>(), BibleContentUse.DISPLAY) } coAnswers {
+            val chapter = bibleService.getChapter(firstArg<BibleBook>(), secondArg<String>())
+            BibleChapterContent(Chapter(Reference(chapter.usfm), chapter.getChapterComponents()))
+        }
+    }
 
     private val bibleService = mockk<BibleService>()
     private val metadataService = mockk<MetadataService>()

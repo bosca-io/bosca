@@ -8,13 +8,11 @@ import bosca.bible.Chapter
 import bosca.bible.Reference
 import bosca.bible.providers.apibible.ApiBibleException
 import bosca.bible.providers.apibible.ApiBibleProvider
-import bosca.bible.providers.model.BibleChapterCache
 import bosca.bible.providers.model.BibleProviderConfiguration
 import bosca.bible.providers.model.BibleProviderConfigurationInput
 import bosca.bible.providers.model.BibleProviderSettings
 import bosca.bible.providers.model.BibleSource
 import bosca.bible.providers.model.BibleSourceKind
-import bosca.bible.providers.repository.BibleChapterCacheRepositoryImpl
 import bosca.bible.providers.configuration.BibleProvidersMigration
 import bosca.lock.DistributedLockFactory
 import bosca.lock.redis.RedisDistributedLockFactory
@@ -26,6 +24,7 @@ import bosca.cache.redis.RedisCacheScripts
 import bosca.cache.withRequestCache
 import bosca.configuration.model.ConfigurationInput
 import bosca.configuration.service.ConfigurationService
+import bosca.configuration.service.getValueAs
 import bosca.db.ConnectionConfig
 import bosca.db.ConnectionFactoryImpl
 import bosca.db.ConnectionPool
@@ -86,6 +85,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlin.uuid.toJavaUuid
@@ -155,7 +155,7 @@ class BibleProviderConfigurationTest {
         server.start()
         client = OkHttpClient.Builder().callTimeout(5, TimeUnit.SECONDS).build()
         bosca.di.provides<bosca.content.metadata.service.MetadataService> { mockk() }
-        bosca.di.provides<bosca.content.metadata.service.BibleService> { mockk() }
+        bosca.di.provides<bosca.content.metadata.service.BibleService> { mockk(relaxed = true) }
         bosca.di.provides<bosca.content.collection.service.CollectionService> { mockk() }
         bosca.di.provides<bosca.slug.service.SlugService> { mockk() }
         BibleProvidersProviderRegistrar().register()
@@ -219,7 +219,7 @@ class BibleProviderConfigurationTest {
     }
 
     @Test
-    fun `rename and disable preserve the saved key sources cache and permissions across requests`() {
+    fun `rename and disable preserve the saved key source identity and permissions across requests`() {
         val saved = request { service.saveConfiguration(input()) }
         val metadata = request { configurationService.getAll().single() }
         val permissions = request {
@@ -232,9 +232,6 @@ class BibleProviderConfigurationTest {
             configurationService.getPermissions(metadata).also { assertEquals(1, it.size) }
         }
         val source = request { addSource(saved.id) }
-        val cache = BibleChapterCache(source.id, "API_BIBLE", "JHN.1", Chapter(Reference("JHN.1"), null),
-            null, 1, "cached-token", OffsetDateTime.now(), OffsetDateTime.now().plusDays(1))
-        request { BibleChapterCacheRepositoryImpl().put(cache) }
 
         val changed = request { service.saveConfiguration(input().copy(
             id = saved.id, name = "Renamed", enabled = false, apiKey = null,
@@ -243,8 +240,10 @@ class BibleProviderConfigurationTest {
         assertEquals(saved.copy(name = "Renamed", enabled = false), changed)
         request {
             assertEquals(metadata, configurationService.getByKey(metadata.key))
-            assertEquals(source, ProviderRegistry.get<BibleSourceService>().getById(source.id))
-            assertEquals("cached-token", BibleChapterCacheRepositoryImpl().get(source.id, "JHN.1", cache.created)?.fumsToken)
+            val current = assertNotNull(ProviderRegistry.get<BibleSourceService>().getById(source.id))
+            assertEquals(source.id, current.id)
+            assertEquals(source.configurationId, current.configurationId)
+            assertEquals(source.version + 1, current.version)
             assertEquals(permissions, configurationService.getPermissions(metadata))
         }
         server.enqueue(MockResponse.Builder().body("{\"data\":[]}").build())
@@ -253,13 +252,56 @@ class BibleProviderConfigurationTest {
     }
 
     @Test
+    fun `changing a configuration provider updates attached source integration keys`() {
+        provides<BibleProvider>(name = "OTHER_PROVIDER") { mockk() }
+        val saved = request { service.saveConfiguration(input()) }
+        val source = request { addSource(saved.id) }
+        request { ProviderRegistry.get<BibleSourceService>().getForUse(source.id, BibleContentUse.DISPLAY) }
+        request { service.saveConfiguration(input().copy(id = saved.id, provider = "OTHER_PROVIDER", apiKey = null)) }
+        request {
+            val current = ProviderRegistry.get<BibleSourceService>().getForUse(source.id, BibleContentUse.DISPLAY)
+            assertEquals("OTHER_PROVIDER", current.provider)
+            assertEquals(source.id, current.id)
+            assertEquals(source.version + 1, current.version)
+        }
+    }
+
+    @Test
+    fun `configuration mutations invalidate cached settings for subsequent requests`() {
+        val saved = request { service.saveConfiguration(input()) }
+        request { assertNotNull(configurationService.getValue(saved.id)) }
+        request { service.saveConfiguration(input().copy(id = saved.id, enabled = false, apiKey = null)) }
+        request {
+            assertFalse(connection().inTransaction)
+            val current = assertNotNull(configurationService.getValue(saved.id))
+            assertFalse(json.decodeFromJsonElement(BibleProviderSettings.serializer(), current).enabled)
+        }
+        request { service.removeConfiguration(saved.id, false) }
+        request { assertNull(configurationService.getValue(saved.id)) }
+    }
+
+    @Test
+    fun `typed configuration reads use IDs and return null for missing values`() = request {
+        val saved = service.saveConfiguration(input())
+        val settings = assertNotNull(configurationService.getValueAs<BibleProviderSettings>(saved.id, json))
+        assertEquals("saved-secret", settings.apiKey)
+        assertTrue(settings.enabled)
+        assertNull(configurationService.getValueAs<BibleProviderSettings>(UUID.random(), json))
+    }
+
+    @Test
     fun `locked configuration reads require a transaction and refresh previously cached credentials`() = request {
         val saved = service.saveConfiguration(input())
-        assertNotNull(configurationService.getValue(saved.id))
-        assertFailsWith<IllegalStateException> { configurationService.getValueForUpdate(saved.id) }
+        assertNotNull(configurationService.getValueAs<BibleProviderSettings>(saved.id, json))
+        assertFailsWith<IllegalStateException> {
+            configurationService.getValueAs<BibleProviderSettings>(saved.id, json, forUpdate = true)
+        }
         request { service.saveConfiguration(input().copy(id = saved.id, apiKey = "rotated-secret")) }
 
-        transaction { assertNotNull(configurationService.getValueForUpdate(saved.id)) }
+        transaction {
+            val current = assertNotNull(configurationService.getValueAs<BibleProviderSettings>(saved.id, json, forUpdate = true))
+            assertEquals("rotated-secret", current.apiKey)
+        }
 
         server.enqueue(MockResponse.Builder().body("{\"data\":[]}").build())
         service.test(saved.id)
@@ -484,7 +526,7 @@ class BibleProviderConfigurationTest {
             it.setObject(1, metadataId.toJavaUuid())
             it.executeUpdate()
         }
-        return ProviderRegistry.get<BibleSourceService>().add(BibleSource(UUID.random(), configurationId, "edition", metadataId,
+        return ProviderRegistry.get<BibleSourceService>().add(BibleSource(UUID.random(), configurationId, "API_BIBLE", "edition", metadataId,
             1, "default", BibleSourceKind.TEXT, "Bible", "Bible", "B", BibleAttribution("Copyright"),
             setOf(BibleContentUse.DISPLAY)))
     }

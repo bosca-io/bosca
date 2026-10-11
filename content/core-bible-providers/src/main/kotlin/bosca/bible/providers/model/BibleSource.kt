@@ -20,6 +20,7 @@ import kotlinx.serialization.Serializable
 data class BibleSource(
     @Contextual val id: UUID,
     @Contextual @ColumnName("configuration_id") val configurationId: UUID,
+    val provider: String,
     @ColumnName("provider_bible_id") val providerBibleId: String,
     @Contextual @ColumnName("metadata_id") val metadataId: UUID,
     @ColumnName("metadata_version") val metadataVersion: Int,

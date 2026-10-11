@@ -1,7 +1,7 @@
 package bosca.content.metadata.graphql
 
+import bosca.bible.BibleContentUse
 import bosca.bible.Reference
-import bosca.bible.components.filter
 import bosca.content.metadata.model.Bible
 import bosca.content.metadata.model.BibleBook
 import bosca.content.metadata.model.BibleBookChapter
@@ -94,9 +94,10 @@ class BibleController(
         return references.mapNotNull { reference ->
             val book = books.find { it.usfm == reference.bookUsfm } ?: return@mapNotNull null
             val chapter = bibleService.getChapter(book, reference.chapterUsfm)
-            val components = chapter.getChapterComponents() ?: return@mapNotNull null
+            val content = bibleService.getChapterContent(book, reference.chapterUsfm, BibleContentUse.DISPLAY)
+            if (content.chapter[Reference(reference.chapterUsfm)] == null) return@mapNotNull null
             val filtered = references.mapNotNull {
-                components.filter(it)?.toJson()
+                content.chapter[it]?.toJson()
             }
             FindBibleResult(
                 book = book,
@@ -104,7 +105,8 @@ class BibleController(
                 component = JsonArray(filtered),
                 human = bibleService.getHuman(bible, reference),
                 humanShort = bibleService.getHumanLong(bible, reference),
-                reference = reference
+                reference = reference,
+                attribution = content.attribution?.asSerializable(),
             )
         }
     }

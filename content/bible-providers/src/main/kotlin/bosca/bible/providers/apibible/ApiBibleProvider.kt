@@ -18,6 +18,7 @@ import bosca.bible.providers.model.BibleSourceKind
 import bosca.bible.providers.model.IBibleCatalog
 import bosca.bible.providers.service.BibleProvider
 import bosca.configuration.service.ConfigurationService
+import bosca.configuration.service.getValueAs
 import bosca.serialization.UUID
 import bosca.server.http.await
 import kotlinx.coroutines.Dispatchers
@@ -173,11 +174,11 @@ class ApiBibleProvider internal constructor(
     }
 
     private suspend fun apiKey(configurationId: UUID, requireEnabled: Boolean = true): String {
-        val value = requireNotNull(configurations.getValue(configurationId)) { "Bible provider configuration has no settings" }
         val settings = try {
-            json.decodeFromJsonElement(BibleProviderSettings.serializer(), value)
+            requireNotNull(configurations.getValueAs<BibleProviderSettings>(configurationId, json)) {
+                "Bible provider configuration has no settings"
+            }
         } catch (_: SerializationException) {
-            // Parsing diagnostics can include decrypted credentials.
             throw SerializationException("Invalid Bible provider settings for configuration $configurationId")
         }
         require(settings.provider == key) { "Configuration belongs to another Bible provider" }

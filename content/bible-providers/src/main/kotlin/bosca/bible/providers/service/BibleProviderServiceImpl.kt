@@ -20,6 +20,7 @@ import bosca.bible.providers.model.IBibleProviderResponse
 import bosca.configuration.model.Configuration
 import bosca.configuration.model.ConfigurationInput
 import bosca.configuration.service.ConfigurationService
+import bosca.configuration.service.getValueAs
 import bosca.content.collection.service.CollectionService
 import bosca.content.metadata.model.Bible
 import bosca.content.metadata.model.MetadataInput
@@ -80,8 +81,11 @@ class BibleProviderServiceImpl(
         } else {
             // Replacing configuration metadata cascades to sources. Value updates preserve its identity and permissions.
             configurations.setValue(existing.id, value)
-            if (previous?.apiKey != apiKey || previous.provider != input.provider) {
-                for (source in sources.getByConfiguration(existing.id)) sources.update(source)
+            if (previous?.apiKey != apiKey || previous.provider != input.provider || previous.enabled != input.enabled) {
+                for (source in sources.getByConfiguration(existing.id)) {
+                    sources.update(source.copy(provider = input.provider))
+                    bibles.clearChapterContent(source.id)
+                }
             }
             existing.id
         }
@@ -136,12 +140,13 @@ class BibleProviderServiceImpl(
                 parentCollectionId = parentId, attributes = attributes,
             ))
             metadata.setBible(added, bibleInput)
-            sources.add(BibleSource(
-                id = UUID.random(), configurationId = input.configurationId, providerBibleId = input.providerBibleId,
+            val source = sources.add(BibleSource(
+                id = UUID.random(), configurationId = input.configurationId, provider = provider.key, providerBibleId = input.providerBibleId,
                 metadataId = added.id, metadataVersion = added.version, variant = input.variant, kind = BibleSourceKind.TEXT,
                 name = bibleInput.name, nameLocal = bibleInput.nameLocal, abbreviation = bibleInput.abbreviation,
                 attribution = attribution, allowedUses = input.allowedUses,
             ))
+            bibles.setChapterSource(added.id, added.version, input.variant, source.id)
             bibles.getBible(added.id, added.version, input.variant) ?: error("Registered Bible variant was not found")
         }
     }
@@ -149,7 +154,7 @@ class BibleProviderServiceImpl(
     override suspend fun getFumsToken(bibleId: UUID, version: Int, variant: String, usfm: String, audioId: Uuid?): String? {
         // Text response tokens cannot identify an audio response; recordings have no cached responses yet.
         if (audioId != null) return null
-        return sources.getFumsToken(bibleId, version, variant, usfm)
+        return bibles.getFumsToken(bibleId, version, variant, usfm)
     }
 
     override suspend fun getAudioTargets(configurationId: UUID, providerBibleId: String): List<Bible> {
@@ -170,12 +175,13 @@ class BibleProviderServiceImpl(
         require(input.allowedUses.all { it == BibleContentUse.PLAYBACK }) { "Audio sources may permit only playback" }
         check(!connection().inTransaction) { "Audio registration must start outside a database transaction" }
         val target = variant(bible.metadataId, bible.version, bible.variant)
-        val (catalog, response) = recording(getProvider(input.configurationId), input.configurationId, input.providerBibleId)
+        val provider = getProvider(input.configurationId)
+        val (catalog, response) = recording(provider, input.configurationId, input.providerBibleId)
         require(compatible(target, catalog, response.content)) { "Recording is not compatible with the Bible variant" }
         val attribution = response.attribution?.asSerializable() ?: error("Provider recording attribution is required")
         val description = response.content.metadata.identification
         val source = sources.add(BibleSource(
-            id = UUID.random(), configurationId = input.configurationId, providerBibleId = input.providerBibleId,
+            id = UUID.random(), configurationId = input.configurationId, provider = provider.key, providerBibleId = input.providerBibleId,
             metadataId = target.metadataId, metadataVersion = target.version, variant = target.variant, kind = BibleSourceKind.AUDIO,
             name = description.name, nameLocal = description.nameLocal, abbreviation = description.abbreviation,
             attribution = attribution, allowedUses = input.allowedUses,
@@ -200,15 +206,19 @@ class BibleProviderServiceImpl(
         transaction {
             sources.update(source.copy(name = input.name, nameLocal = input.nameLocal,
                 abbreviation = input.abbreviation, attribution = attribution))
+            bibles.clearChapterContent(source.id)
             if (source.kind == BibleSourceKind.TEXT) {
                 val content = metadata.getById(source.metadataId, source.metadataVersion) ?: error("Bible metadata was not found")
                 metadata.setBible(content, input)
+                bibles.setChapterSource(source.metadataId, source.metadataVersion, source.variant, source.id)
             }
         }
     }
 
-    override suspend fun removeSource(sourceId: UUID, expectedVersion: Long) {
+    override suspend fun removeSource(sourceId: UUID, expectedVersion: Long) = transaction {
         sources.remove(sourceId, expectedVersion)
+        bibles.clearChapterContent(sourceId)
+        Unit
     }
 
     override suspend fun removeConfiguration(configurationId: UUID, purgeSources: Boolean) = transaction {
@@ -216,7 +226,10 @@ class BibleProviderServiceImpl(
         configurations.getValueForUpdate(configurationId)
         val attached = sources.getByConfiguration(configurationId)
         check(purgeSources || attached.isEmpty()) { "Bible provider configuration has active sources" }
-        for (source in attached) sources.remove(source.id, source.version)
+        for (source in attached) {
+            sources.remove(source.id, source.version)
+            bibles.clearChapterContent(source.id)
+        }
         configurations.deleteConfiguration(configuration.key)
         Unit
     }
@@ -251,12 +264,11 @@ class BibleProviderServiceImpl(
         ?: throw IllegalArgumentException("Bible provider configuration was not found")
 
     private suspend fun settings(configuration: Configuration, forUpdate: Boolean = false): BibleProviderSettings {
-        val value = (if (forUpdate) configurations.getValueForUpdate(configuration.id) else configurations.getValue(configuration.id))
-            ?: error("Bible provider configuration has no settings")
         return try {
-            json.decodeFromJsonElement(BibleProviderSettings.serializer(), value)
+            requireNotNull(configurations.getValueAs<BibleProviderSettings>(configuration.id, json, forUpdate)) {
+                "Bible provider configuration has no settings"
+            }
         } catch (_: SerializationException) {
-            // Parsing diagnostics can include the decrypted settings, including credentials.
             throw SerializationException("Invalid Bible provider settings for configuration ${configuration.id}")
         }
     }

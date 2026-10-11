@@ -33,6 +33,7 @@ class BibleServiceImplTest {
             bibleChapterRepository,
             bibleLanguageRepository,
             sources,
+            mockk(relaxed = true),
         )
     }
 

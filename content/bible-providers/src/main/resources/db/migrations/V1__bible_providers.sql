@@ -1,6 +1,7 @@
 create table bible_providers.sources (
     id uuid primary key,
     configuration_id uuid not null references public.configurations (id) on delete cascade,
+    provider varchar not null,
     provider_bible_id varchar not null,
     metadata_id uuid not null,
     metadata_version integer not null,

@@ -194,7 +194,8 @@ class CoreMigration : Migration {
                 "V191__protect_language_resolution_contexts.sql",
                 "V192__metadata_embedding_chunks.sql",
                 "V193__bible_variant_availability.sql",
-                "V194__domain_language_resolution.sql"
+                "V194__domain_language_resolution.sql",
+                "V195__bible_chapter_sources.sql"
             )
             return base
         }

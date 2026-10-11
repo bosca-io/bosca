@@ -5,6 +5,13 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 import kotlin.test.assertNotNull
+import kotlin.test.assertFalse
+import bosca.serialization.OffsetDateTimeSerializer
+import bosca.serialization.UUIDSerializer
+import bosca.serialization.OffsetDateTime
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.modules.SerializersModule
+import kotlinx.serialization.modules.contextual
 import kotlin.uuid.Uuid
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.buildJsonObject
@@ -90,5 +97,32 @@ class BibleChapterTest {
     fun `getChapterComponents returns null when components is null`() {
         val chapter = createChapter(components = null)
         assertNull(chapter.getChapterComponents())
+    }
+
+    @Test
+    fun `JSON null components project to an empty chapter`() {
+        val chapter = createChapter(components = JsonNull)
+        assertNull(chapter.getChapterComponents())
+        assertNull(chapter.getContent().chapter[bosca.bible.Reference("GEN.1")])
+    }
+
+    @Test
+    fun `chapter cache serialization preserves expiry and version while excluding private response data`() {
+        val json = Json { serializersModule = SerializersModule {
+            contextual(UUIDSerializer())
+            contextual(OffsetDateTimeSerializer())
+        } }
+        val chapter = createChapter().copy(
+            sourceId = testId, sourceVersion = 7, verseCount = 2, fumsToken = "private-fums-token",
+            created = OffsetDateTime.now(), expires = OffsetDateTime.now().plusDays(14),
+        )
+        val value = json.encodeToString(BibleChapter.serializer(), chapter)
+        for (privateField in listOf("fumsToken", "verseCount", "created", "private-fums-token")) {
+            assertFalse(value.contains(privateField))
+        }
+        assertFalse(chapter.toString().contains("private-fums-token"))
+        val cached = json.decodeFromString(BibleChapter.serializer(), value)
+        assertEquals(chapter.sourceVersion, cached.sourceVersion)
+        assertEquals(chapter.expires, cached.expires)
     }
 }

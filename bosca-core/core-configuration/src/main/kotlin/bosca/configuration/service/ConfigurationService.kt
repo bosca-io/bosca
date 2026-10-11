@@ -90,3 +90,17 @@ suspend inline fun <reified T> ConfigurationService.getValueAs(key: String, json
     val value = getValue(configuration.id) ?: return null
     return json.decodeFromJsonElement<T>(value)
 }
+
+/**
+ * Reads a configuration value by [id] and decodes it as [T] using the supplied [json].
+ * Uses the cached value unless [forUpdate] is true, which locks and reads the current value
+ * through [getValueForUpdate] and requires an active transaction.
+ */
+suspend inline fun <reified T> ConfigurationService.getValueAs(
+    id: UUID,
+    json: Json,
+    forUpdate: Boolean = false,
+): T? {
+    val value = (if (forUpdate) getValueForUpdate(id) else getValue(id)) ?: return null
+    return json.decodeFromJsonElement<T>(value)
+}

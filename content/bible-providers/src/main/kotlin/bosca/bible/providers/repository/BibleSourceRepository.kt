@@ -10,10 +10,10 @@ interface BibleSourceRepository {
 
     /** Persists a source for an existing configuration and exact Bible variant. */
     @Query("""
-        insert into bible_providers.sources (id, configuration_id, provider_bible_id, metadata_id,
+        insert into bible_providers.sources (id, configuration_id, provider, provider_bible_id, metadata_id,
             metadata_version, variant, kind, name, name_local, abbreviation, attribution,
             allowed_uses, version, created, modified, deleted_at)
-        values (:id, :configurationId, :providerBibleId, :metadataId, :metadataVersion, :variant,
+        values (:id, :configurationId, :provider, :providerBibleId, :metadataId, :metadataVersion, :variant,
             :kind, :name, :nameLocal, :abbreviation, :attribution, :allowedUses, :version,
             :created, :modified, :deletedAt) returning *
     """)
@@ -30,18 +30,6 @@ interface BibleSourceRepository {
             and kind = 'text' and deleted_at is null
     """)
     suspend fun getText(metadataId: UUID, metadataVersion: Int, variant: String): BibleSource?
-
-    /** Finds the active text source or its latest removal, distinguishing it from an implicit local Bible. */
-    @Query("""
-        select * from bible_providers.sources where metadata_id = :metadataId
-            and metadata_version = :metadataVersion and variant = :variant and kind = 'text'
-        order by deleted_at desc nulls first, modified desc, id limit 1
-    """)
-    suspend fun findText(metadataId: UUID, metadataVersion: Int, variant: String): BibleSource?
-
-    /** Locks an active source while a response is read or persisted and its version is rechecked. */
-    @Query("select * from bible_providers.sources where id = :id and deleted_at is null for update")
-    suspend fun lock(id: UUID): BibleSource?
 
     /** Lists active recordings attached to this exact Bible version and variant. */
     @Query("""
@@ -60,7 +48,7 @@ interface BibleSourceRepository {
 
     /** Refreshes descriptive metadata at [BibleSource.version], preserving identity and reviewed uses. */
     @Query("""
-        update bible_providers.sources set name = :name, name_local = :nameLocal,
+        update bible_providers.sources set provider = :provider, name = :name, name_local = :nameLocal,
             abbreviation = :abbreviation, attribution = :attribution,
             version = version + 1, modified = now()
         where id = :id and version = :version and deleted_at is null returning *

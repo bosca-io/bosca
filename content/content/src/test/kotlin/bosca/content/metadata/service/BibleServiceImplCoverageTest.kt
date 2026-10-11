@@ -12,6 +12,14 @@ import bosca.bible.components.Text
 import bosca.bible.components.VerseEnd
 import bosca.bible.components.VerseStart
 import bosca.bible.providers.service.BibleSourceService
+import bosca.bible.providers.model.BibleSource
+import bosca.bible.providers.model.BibleSourceKind
+import bosca.serialization.OffsetDateTime
+import bosca.lock.DistributedLock
+import bosca.lock.DistributedLockFactory
+import bosca.bible.providers.model.BibleProviderResponse
+import kotlinx.coroutines.CancellationException
+import java.io.IOException
 import bosca.cache.CacheManager
 import bosca.cache.RequestCache
 import bosca.cache.RequestCacheSerializer
@@ -31,6 +39,10 @@ import bosca.content.metadata.repository.BibleBookRepository
 import bosca.content.metadata.repository.BibleChapterRepository
 import bosca.content.metadata.repository.BibleLanguageRepository
 import bosca.content.metadata.repository.BibleRepository
+import bosca.content.configuration.JobQueueNames
+import bosca.content.metadata.jobs.LimitBibleChaptersExecutor
+import bosca.content.metadata.jobs.LimitBibleChaptersJob
+import bosca.content.metadata.jobs.prepare
 import bosca.db.ConnectionManager
 import bosca.db.asCoroutineContext
 import bosca.di.ProviderRegistry
@@ -42,6 +54,8 @@ import bosca.events.asCoroutineContext
 import bosca.serialization.OffsetDateTimeSerializer
 import bosca.serialization.UUID
 import bosca.serialization.UUIDSerializer
+import bosca.sharedqueue.jobs.JobQueue
+import bosca.sharedqueue.jobs.asCoroutineContext
 import bosca.test.ContentTestInfrastructure
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -93,6 +107,8 @@ class BibleServiceImplCoverageTest {
     private val bibleLanguages = mockk<BibleLanguageRepository>(relaxed = true)
 
     private val sources = mockk<BibleSourceService>(relaxed = true)
+    private val locks = mockk<DistributedLockFactory>()
+    private val jobQueue = mockk<JobQueue>(relaxed = true)
     private lateinit var service: BibleServiceImpl
 
     @BeforeTest
@@ -105,6 +121,7 @@ class BibleServiceImplCoverageTest {
         provides<CacheManager>(singleton = true) { cacheManager }
         provides<RequestCacheSerializer>(singleton = true) { serializer }
         provides<Json>(singleton = true) { testJson }
+        provides<JobQueue>(name = JobQueueNames.contentJobQueue) { jobQueue }
 
         service = BibleServiceImpl(
             bibleRepository,
@@ -112,8 +129,8 @@ class BibleServiceImplCoverageTest {
             bibleChapterRepository,
             bibleLanguages,
             sources,
+            locks,
         )
-        coEvery { sources.getChapterContent(any(), any(), any(), any(), any()) } returns null
     }
 
     @AfterTest
@@ -508,6 +525,243 @@ class BibleServiceImplCoverageTest {
         assertEquals("First verse.", text(assertNotNull(content.chapter[Reference("GEN.1.1")])))
         assertNull(content.attribution)
         coVerify(exactly = 1) { bibleChapterRepository.getByIdAndVariantAndUsfm(id, 2, "study", "GEN.1") }
+        coVerify(exactly = 0) { sources.getForUse(any(), any()) }
+    }
+
+    private fun external(provider: String = "API_BIBLE"): Pair<Bible, BibleChapter> {
+        val id = UUID.random()
+        val descriptor = chapter(id).copy(sourceId = UUID.random())
+        val source = BibleSource(assertNotNull(descriptor.sourceId), UUID.random(), provider, "edition", id, 1, "default",
+            BibleSourceKind.TEXT, "Bible", "Bible", "B", BibleAttribution("Edition copyright"), setOf(BibleContentUse.DISPLAY))
+        val lock = mockk<DistributedLock>()
+        coEvery { sources.getForUse(source.id, BibleContentUse.DISPLAY) } returns source
+        coEvery { bibleChapterRepository.getByIdAndVariantAndUsfm(id, 1, "default", "GEN.1") } returns descriptor
+        coEvery { bibleChapterRepository.getContent(source.id, "GEN.1", any()) } returns null
+        coEvery { sources.getChapter(source, "GEN.1") } returns BibleProviderResponse(
+            Chapter(Reference("GEN.1"), Text("Provider text", null)), BibleAttribution("Response copyright"), 2, "private-token",
+        )
+        coEvery { locks.create("bible:chapter:$provider:edition") } returns lock
+        coEvery { lock.withLock<Any?>(any(), any(), any(), any()) } coAnswers {
+            arg<suspend () -> Any?>(3).invoke()
+        }
+        coEvery { lock.renew(any()) } returns true
+        coEvery { bibleChapterRepository.putContent(any()) } returns 1
+        coEvery { bibleChapterRepository.getByEdition(any(), any(), any()) } returns emptyList()
+        return bible(id) to descriptor
+    }
+
+    @Test
+    fun `provider response is stored on the existing chapter with its private token and fixed expiry`() = runTest {
+        val (bible, descriptor) = external()
+        val saved = slot<BibleChapter>()
+        coEvery { bibleChapterRepository.putContent(capture(saved)) } returns 1
+        val result = withRequest { service.getChapterContent(bible, Reference("GEN.1"), BibleContentUse.DISPLAY) }
+        assertEquals("Provider text", text(assertNotNull(result.chapter[Reference("GEN.1")])))
+        assertEquals("Response copyright", result.attribution?.copyright)
+        assertEquals(descriptor.sourceId, saved.captured.sourceId)
+        assertEquals(0L, saved.captured.sourceVersion)
+        assertEquals("private-token", saved.captured.fumsToken)
+        assertEquals(assertNotNull(saved.captured.created).plusDays(14), saved.captured.expires)
+        coEvery { bibleChapterRepository.getContent(assertNotNull(descriptor.sourceId), "GEN.1", any()) } returns saved.captured
+        withRequest { service.getChapterContent(bible, Reference("GEN.1"), BibleContentUse.DISPLAY) }
+        coVerify(exactly = 1) { sources.getChapter(any(), any()) }
+        coVerify(exactly = 1) { bibleChapterRepository.getContent(any(), any(), any()) }
+        coVerify(exactly = 1) { locks.create(any()) }
+        coVerify(exactly = 1) { jobQueue.enqueue(any()) }
+    }
+
+    @Test
+    fun `chapter fetches enqueue retention without querying or evicting the edition`() = runTest {
+        val (bible, _) = external()
+        withRequest { service.getChapterContent(bible, Reference("GEN.1"), BibleContentUse.DISPLAY) }
+        coVerify(exactly = 1) { jobQueue.enqueue(any()) }
+        coVerify(exactly = 0) { bibleChapterRepository.getByEdition(any(), any(), any()) }
+        coVerify(exactly = 0) { bibleChapterRepository.removeContent(any(), any()) }
+    }
+
+    @Test
+    fun `cached provider chapters with expired missing or stale response metadata are fetched again`() = runTest {
+        for ((version, expires) in listOf(0L to OffsetDateTime.now().minusSeconds(1),
+            1L to OffsetDateTime.now().plusDays(1), 0L to null)) {
+            val (bible, descriptor) = external()
+            coEvery { bibleChapterRepository.getByIdAndVariantAndUsfm(bible.metadataId, 1, "default", "GEN.1") } returns
+                descriptor.copy(components = Text("Stale text", null).toJson(), sourceVersion = version, expires = expires)
+            val result = withRequest { service.getChapterContent(bible, Reference("GEN.1"), BibleContentUse.DISPLAY) }
+            assertEquals("Provider text", text(assertNotNull(result.chapter[Reference("GEN.1")])))
+        }
+        coVerify(exactly = 3) { sources.getChapter(any(), any()) }
+    }
+
+    @Test
+    fun `warm provider chapters can be read within a transaction without fetching or locking`() = runTest {
+        val (bible, _) = external()
+        withRequest { service.getChapterContent(bible, Reference("GEN.1"), BibleContentUse.DISPLAY) }
+        withRequest {
+            bosca.db.transaction {
+                val content = service.getChapterContent(bible, Reference("GEN.1"), BibleContentUse.DISPLAY)
+                assertEquals("Provider text", text(assertNotNull(content.chapter[Reference("GEN.1")])))
+            }
+        }
+        coVerify(exactly = 1) { bibleChapterRepository.getByIdAndVariantAndUsfm(any(), any(), any(), any()) }
+        coVerify(exactly = 1) { bibleChapterRepository.getContent(any(), any(), any()) }
+        coVerify(exactly = 1) { sources.getChapter(any(), any()) }
+        coVerify(exactly = 1) { locks.create(any()) }
+    }
+
+    @Test
+    fun `provider cache filled while waiting for the lock is reused without fetching`() = runTest {
+        val (bible, descriptor) = external()
+        coEvery { bibleChapterRepository.getContent(assertNotNull(descriptor.sourceId), "GEN.1", any()) } returns descriptor.copy(components = Text("Cached", null).toJson(), attribution = BibleAttribution("Cached copyright"))
+        val result = withRequest { service.getChapterContent(bible, Reference("GEN.1"), BibleContentUse.DISPLAY) }
+        assertEquals("Cached copyright", result.attribution?.copyright)
+        coVerify(exactly = 0) { sources.getChapter(any(), any()) }
+    }
+
+    @Test
+    fun `provider response without attribution falls back to the edition`() = runTest {
+        val (bible, _) = external()
+        coEvery { sources.getChapter(any(), any()) } returns BibleProviderResponse(Chapter(Reference("GEN.1"), null), verseCount = 0)
+        val result = withRequest { service.getChapterContent(bible, Reference("GEN.1"), BibleContentUse.DISPLAY) }
+        assertEquals("Edition copyright", result.attribution?.copyright)
+        assertNull(result.chapter[Reference("GEN.1")])
+    }
+
+    @Test
+    fun `invalid provider responses fail before storing chapter data`() = runTest {
+        val (bible, _) = external()
+        val valid = BibleProviderResponse(Chapter(Reference("GEN.1"), Text("Text", null)), verseCount = 2)
+        for (response in listOf(valid.copy(content = Chapter(Reference("GEN.2"), null)),
+            valid.copy(verseCount = null), valid.copy(verseCount = -1))) {
+            coEvery { sources.getChapter(any(), any()) } returns response
+            assertFailsWith<IllegalStateException> {
+                withRequest { service.getChapterContent(bible, Reference("GEN.1"), BibleContentUse.DISPLAY) }
+            }
+        }
+        coVerify(exactly = 0) { bibleChapterRepository.putContent(any()) }
+    }
+
+    @Test
+    fun `provider failure and cancellation propagate without persisting content`() = runTest {
+        val (bible, _) = external()
+        coEvery { sources.getChapter(any(), any()) } throws IOException("Unavailable")
+        assertFailsWith<IOException> { withRequest { service.getChapterContent(bible, Reference("GEN.1"), BibleContentUse.DISPLAY) } }
+        coEvery { sources.getChapter(any(), any()) } throws CancellationException("Cancelled")
+        assertFailsWith<CancellationException> { withRequest { service.getChapterContent(bible, Reference("GEN.1"), BibleContentUse.DISPLAY) } }
+        coVerify(exactly = 0) { bibleChapterRepository.putContent(any()) }
+    }
+
+    @Test
+    fun `provider fetch timeouts and lost locks cannot persist a response`() = runTest {
+        val (bible, _) = external()
+        val lock = locks.create("bible:chapter:API_BIBLE:edition")
+        coEvery { lock.renew(any()) } returns false
+        assertFailsWith<IllegalStateException> { withRequest { service.getChapterContent(bible, Reference("GEN.1"), BibleContentUse.DISPLAY) } }
+        coEvery { lock.withLock<BibleChapterContent>(any(), any(), any(), any()) } returns null
+        assertFailsWith<IllegalStateException> { withRequest { service.getChapterContent(bible, Reference("GEN.1"), BibleContentUse.DISPLAY) } }
+        coVerify(exactly = 0) { bibleChapterRepository.putContent(any()) }
+    }
+
+    @Test
+    fun `skipped cache writes return fresh content without caching`() = runTest {
+        val (bible, _) = external()
+        coEvery { bibleChapterRepository.putContent(any()) } returns 0
+        val first = withRequest { service.getChapterContent(bible, Reference("GEN.1"), BibleContentUse.DISPLAY) }
+        assertEquals("Provider text", text(assertNotNull(first.chapter[Reference("GEN.1")])))
+        coEvery { sources.getChapter(any(), any()) } returns BibleProviderResponse(
+            Chapter(Reference("GEN.1"), Text("Fresh text", null)), verseCount = 2,
+        )
+        val second = withRequest { service.getChapterContent(bible, Reference("GEN.1"), BibleContentUse.DISPLAY) }
+        assertEquals("Fresh text", text(assertNotNull(second.chapter[Reference("GEN.1")])))
+        coVerify(exactly = 2) { sources.getChapter(any(), any()) }
+        coVerify(exactly = 0) { bibleChapterRepository.getByEdition(any(), any(), any()) }
+        coVerify(exactly = 0) { jobQueue.enqueue(any()) }
+    }
+
+    @Test
+    fun `provider fetches cannot run inside a database transaction`() = runTest {
+        val (bible, _) = external()
+        assertFailsWith<IllegalStateException> {
+            withRequest { bosca.db.transaction { service.getChapterContent(bible, Reference("GEN.1"), BibleContentUse.DISPLAY) } }
+        }
+        coVerify(exactly = 0) { sources.getChapter(any(), any()) }
+    }
+
+    @Test
+    fun `retention evicts whole older responses when an edition exceeds 499 verses`() = runTest {
+        val (bible, descriptor) = external()
+        val olderSource = UUID.random()
+        coEvery { bibleChapterRepository.getByEdition("API_BIBLE", "edition", any()) } returns listOf(
+            descriptor.copy(verseCount = 2),
+            descriptor.copy(sourceId = olderSource, verseCount = 496),
+            descriptor.copy(sourceId = olderSource, usfm = "GEN.2", verseCount = 2),
+        )
+        coEvery { bibleChapterRepository.removeContent(olderSource, "GEN.2") } returns 1
+        withRequest { service.getChapterContent(bible, Reference("GEN.1"), BibleContentUse.DISPLAY) }
+        coVerify(exactly = 0) { bibleChapterRepository.getByEdition(any(), any(), any()) }
+        withRequest { assertEquals(1, service.limitChapterContent("API_BIBLE", "edition")) }
+        coVerify(exactly = 1) { bibleChapterRepository.removeContent(olderSource, "GEN.2") }
+        coVerify(exactly = 0) { bibleChapterRepository.removeContent(olderSource, "GEN.1") }
+    }
+
+    @Test
+    fun `retention executor checks the current edition even when no responses remain`() = runTest {
+        external()
+        withRequest {
+            val job = LimitBibleChaptersJob("API_BIBLE", "edition").prepare()
+            withContext(jobQueue.asCoroutineContext(job)) { LimitBibleChaptersExecutor(service).execute() }
+        }
+        coVerify(exactly = 1) { bibleChapterRepository.getByEdition("API_BIBLE", "edition", any()) }
+        coVerify(exactly = 0) { bibleChapterRepository.removeContent(any(), any()) }
+        coVerify(exactly = 0) { sources.getForUse(any(), any()) }
+        coVerify(exactly = 0) { jobQueue.enqueue(any()) }
+    }
+
+    @Test
+    fun `retention fails when its edition lock is unavailable or expires`() = runTest {
+        external()
+        val lock = locks.create("bible:chapter:API_BIBLE:edition")
+        coEvery { lock.withLock<Int>(any(), any(), any(), any()) } returns null
+        assertFailsWith<IllegalStateException> { withRequest { service.limitChapterContent("API_BIBLE", "edition") } }
+        coVerify(exactly = 0) { bibleChapterRepository.getByEdition(any(), any(), any()) }
+        coEvery { lock.withLock<Any?>(any(), any(), any(), any()) } coAnswers {
+            arg<suspend () -> Any?>(3).invoke()
+        }
+        coEvery { lock.renew(any()) } returns false
+        assertFailsWith<IllegalStateException> { withRequest { service.limitChapterContent("API_BIBLE", "edition") } }
+        coVerify(exactly = 1) { bibleChapterRepository.getByEdition(any(), any(), any()) }
+    }
+
+    @Test
+    fun `retention preserves cancellation`() = runTest {
+        external()
+        coEvery { bibleChapterRepository.getByEdition(any(), any(), any()) } throws CancellationException("Cancelled cleanup")
+        assertFailsWith<CancellationException> { withRequest { service.limitChapterContent("API_BIBLE", "edition") } }
+    }
+
+    @Test
+    fun `other providers do not inherit API Bible verse limits`() = runTest {
+        val (bible, _) = external("OTHER")
+        coEvery { sources.getChapter(any(), any()) } returns BibleProviderResponse(Chapter(Reference("GEN.1"), null), verseCount = 500)
+        withRequest { service.getChapterContent(bible, Reference("GEN.1"), BibleContentUse.DISPLAY) }
+        coVerify(exactly = 1) { bibleChapterRepository.putContent(any()) }
+        coVerify(exactly = 0) { bibleChapterRepository.getByEdition(any(), any(), any()) }
+        coVerify(exactly = 0) { jobQueue.enqueue(any()) }
+    }
+
+    @Test
+    fun `chapter maintenance clears retained responses and attaches sources through its repository`() = runTest {
+        val id = UUID.random()
+        val sourceId = UUID.random()
+        coEvery { bibleChapterRepository.clearContent(sourceId) } returns listOf(chapter(id), chapter(id).copy(usfm = "GEN.2"))
+        coEvery { bibleChapterRepository.removeExpired(any()) } returns listOf(chapter(id))
+        coEvery { bibleChapterRepository.getFumsToken(id, 1, "study", "GEN.1", any()) } returns "token"
+        withRequest {
+            service.setChapterSource(id, 1, "study", sourceId)
+            assertEquals(2, service.clearChapterContent(sourceId))
+            assertEquals(1, service.removeExpiredChapterContent())
+            assertEquals("token", service.getFumsToken(id, 1, "study", "GEN.1"))
+        }
+        coVerify(exactly = 1) { bibleChapterRepository.setSource(id, 1, "study", sourceId) }
     }
 
     private fun text(component: IComponent): String = when (component) {
@@ -532,19 +786,30 @@ class BibleServiceImplCoverageTest {
     fun `getChapterContent reads both overloads without reloading the Bible and preserves attribution`() = runTest {
         val id = UUID.random()
         val bible = bible(id, variant = "study").copy(version = 2)
-        val chapter = chapter(id, variant = "study").copy(version = 2)
+        val sourceId = UUID.random()
+        val chapter = chapter(id, variant = "study").copy(version = 2, sourceId = sourceId)
         val content = BibleChapterContent(Chapter(Reference("GEN.1"), Text("External text", null)), BibleAttribution("Copyright"))
         coEvery { bibleRepository.getByIdAndVariant(id, 2, "study") } throws AssertionError("Chapter reads must not reload the Bible")
-        coEvery { bibleChapterRepository.getByIdAndVariantAndUsfm(id, 2, "study", "GEN.1") } returns chapter
-        coEvery { sources.getChapterContent(id, 2, "study", "GEN.1", BibleContentUse.AI_CONTEXT) } returns content
+        coEvery { bibleChapterRepository.getByIdAndVariantAndUsfm(id, 2, "study", "GEN.1") } returns chapter.copy(
+            components = content.chapter[content.chapter.reference]?.toJson(), attribution = content.attribution,
+            sourceVersion = 0, expires = OffsetDateTime.now().plusDays(1),
+        )
+        val source = BibleSource(sourceId, UUID.random(), "API_BIBLE", "edition", id, 2, "study", BibleSourceKind.TEXT,
+            "Bible", "Bible", "B", BibleAttribution("Copyright"), setOf(BibleContentUse.AI_CONTEXT))
+        coEvery { sources.getForUse(sourceId, BibleContentUse.AI_CONTEXT) } returns source
+        coEvery { bibleChapterRepository.getContent(sourceId, "GEN.1", any()) } returns chapter.copy(
+            components = content.chapter[content.chapter.reference]?.toJson(), attribution = content.attribution,
+            sourceVersion = 0, expires = OffsetDateTime.now().plusDays(1),
+        )
 
         val result = withRequest { service.getChapterContent(bible, Reference("GEN.1.2"), BibleContentUse.AI_CONTEXT) }
         val bookResult = withRequest { service.getChapterContent(book(id, variant = "study").copy(version = 2), "GEN.1", BibleContentUse.AI_CONTEXT) }
 
         assertEquals("External text", text(assertNotNull(result.chapter[Reference("GEN.1")])))
         assertEquals("Copyright", result.attribution?.copyright)
-        assertEquals(result, bookResult)
-        coVerify(exactly = 2) { sources.getChapterContent(id, 2, "study", "GEN.1", BibleContentUse.AI_CONTEXT) }
+        assertEquals(bosca.bible.bibleJson.encodeToJsonElement(BibleChapterContent.serializer(), result.asSerializable()),
+            bosca.bible.bibleJson.encodeToJsonElement(BibleChapterContent.serializer(), bookResult.asSerializable()))
+        coVerify(exactly = 2) { sources.getForUse(sourceId, BibleContentUse.AI_CONTEXT) }
     }
 
     @Test
@@ -556,7 +821,7 @@ class BibleServiceImplCoverageTest {
             withRequest { service.getChapterContent(bible(id, variant = "study"), Reference("GEN.1"), BibleContentUse.DISPLAY) }
         }
 
-        coVerify(exactly = 0) { sources.getChapterContent(any(), any(), any(), any(), any()) }
+        coVerify(exactly = 0) { sources.getForUse(any(), any()) }
     }
 
     @Test

@@ -1,6 +1,6 @@
 package bosca.bible.providers.jobs
 
-import bosca.bible.providers.service.BibleSourceService
+import bosca.content.metadata.service.BibleService
 import bosca.queue.annotations.JobDefinition
 import bosca.sharedqueue.jobs.AbstractJobExecutor
 import bosca.sharedqueue.jobs.configuration.JobQueueNames
@@ -13,9 +13,9 @@ import bosca.sharedqueue.jobs.configuration.JobQueueNames
     displayName = "Delete Expired Bible Chapters",
 )
 class DeleteExpiredBibleChaptersExecutor(
-    private val sources: BibleSourceService,
+    private val bibles: BibleService,
 ) : AbstractJobExecutor<DeleteExpiredBibleChaptersJob>(DeleteExpiredBibleChaptersJob.serializer()) {
     override suspend fun execute() {
-        sources.removeExpired()
+        bibles.removeExpiredChapterContent()
     }
 }

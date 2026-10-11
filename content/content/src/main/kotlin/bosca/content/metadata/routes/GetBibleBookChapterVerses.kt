@@ -1,11 +1,11 @@
 package bosca.content.metadata.routes
 
+import bosca.bible.BibleAttribution
+import bosca.bible.BibleContentUse
 import bosca.bible.Reference
-import bosca.bible.bibleJson
-import bosca.bible.components.IComponent
-import bosca.bible.components.filter
 import bosca.content.metadata.model.Bible
 import bosca.content.metadata.model.BibleChapter
+import bosca.content.metadata.model.toJson
 import bosca.content.metadata.service.BibleService
 import bosca.content.metadata.service.MetadataService
 import bosca.content.security.MetadataPermissionEvaluator
@@ -16,8 +16,7 @@ import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.decodeFromJsonElement
-import kotlinx.serialization.json.encodeToJsonElement
+import kotlinx.serialization.json.JsonNull
 
 @Serializable
 class ChapterContent(
@@ -26,6 +25,7 @@ class ChapterContent(
     val usfm: String,
     val chapter: BibleChapter,
     val content: List<JsonElement>,
+    val attribution: BibleAttribution? = null,
 )
 
 @RouteController("/api/v1/content/metadata/bible/{id}/contents")
@@ -45,24 +45,25 @@ class GetBibleBookChapterVerses(
 
     companion object {
 
-        suspend fun getChapterVerses(reference: Reference, bible: Bible, bibleService: BibleService): List<ChapterContent> {
+        /** Resolves chapter references, optionally reading display content and its attribution. */
+        suspend fun getChapterVerses(
+            reference: Reference,
+            bible: Bible,
+            bibleService: BibleService,
+            includeContent: Boolean = true,
+        ): List<ChapterContent> {
             val mapping = reference.references.filter { it.chapterUsfm.isNotEmpty() }.groupBy { it.chapterUsfm }
             val chapters = mutableListOf<ChapterContent>()
             val books = bibleService.getBooks(bible).associateBy { it.usfm }
             for ((chapterUsfm, references) in mapping) {
                 val chapter = bibleService.getChapter(bible, Reference(chapterUsfm))
-                val components = chapter.components?.let {
-                    bibleJson.decodeFromJsonElement<IComponent>(it)
-                } ?: continue
-                val filtered = references.map {
-                    bibleJson.encodeToJsonElement(
-                        if (it.chapterUsfm == it.usfm) {
-                            components
-                        } else {
-                            components.filter(it)
-                        }
-                    )
-                }
+                val content = if (includeContent) {
+                    bibleService.getChapterContent(bible, Reference(chapterUsfm), BibleContentUse.DISPLAY)
+                } else null
+                if (content != null && content.chapter[Reference(chapterUsfm)] == null) continue
+                val filtered = content?.let { chapterContent ->
+                    references.map { chapterContent.chapter[it]?.toJson() ?: JsonNull }
+                } ?: emptyList()
                 val fullReference = Reference(references.joinToString("+") { it.usfm })
                 val book = books.getValue(fullReference.bookUsfm)
                 chapters.add(
@@ -71,7 +72,8 @@ class GetBibleBookChapterVerses(
                         fullReference.toHuman(book.nameLong ?: book.abbreviation),
                         fullReference.usfm,
                         chapter.copy(components = null),
-                        filtered
+                        filtered,
+                        content?.attribution?.asSerializable(),
                     )
                 )
             }
