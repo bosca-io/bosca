@@ -1,6 +1,9 @@
 package bosca.content.metadata.service
 
 import bosca.bible.BibleContentUse
+import bosca.bible.BibleAttribution
+import bosca.bible.BibleChapterContent
+import bosca.bible.Chapter
 import bosca.bible.Reference
 import bosca.bible.components.ComponentContainer
 import bosca.bible.components.ContainerType
@@ -8,6 +11,7 @@ import bosca.bible.components.IComponent
 import bosca.bible.components.Text
 import bosca.bible.components.VerseEnd
 import bosca.bible.components.VerseStart
+import bosca.bible.providers.service.BibleSourceService
 import bosca.cache.CacheManager
 import bosca.cache.RequestCache
 import bosca.cache.RequestCacheSerializer
@@ -88,10 +92,11 @@ class BibleServiceImplCoverageTest {
     private val bibleChapterRepository = mockk<BibleChapterRepository>(relaxed = true)
     private val bibleLanguages = mockk<BibleLanguageRepository>(relaxed = true)
 
+    private val sources = mockk<BibleSourceService>(relaxed = true)
     private lateinit var service: BibleServiceImpl
 
     @BeforeTest
-    fun setup() = runBlocking {
+    fun setup(): Unit = runBlocking {
         unmockkAll()
         infrastructure.reset()
         serializer = RequestCacheSerializerImpl(testJson)
@@ -106,7 +111,9 @@ class BibleServiceImplCoverageTest {
             bibleBookRepository,
             bibleChapterRepository,
             bibleLanguages,
+            sources,
         )
+        coEvery { sources.getChapterContent(any(), any(), any(), any(), any()) } returns null
     }
 
     @AfterTest
@@ -519,6 +526,37 @@ class BibleServiceImplCoverageTest {
         assertEquals(Reference("GEN.1"), content.chapter.reference)
         assertNull(content.chapter[Reference("GEN.1")])
         assertNull(content.attribution)
+    }
+
+    @Test
+    fun `getChapterContent reads both overloads without reloading the Bible and preserves attribution`() = runTest {
+        val id = UUID.random()
+        val bible = bible(id, variant = "study").copy(version = 2)
+        val chapter = chapter(id, variant = "study").copy(version = 2)
+        val content = BibleChapterContent(Chapter(Reference("GEN.1"), Text("External text", null)), BibleAttribution("Copyright"))
+        coEvery { bibleRepository.getByIdAndVariant(id, 2, "study") } throws AssertionError("Chapter reads must not reload the Bible")
+        coEvery { bibleChapterRepository.getByIdAndVariantAndUsfm(id, 2, "study", "GEN.1") } returns chapter
+        coEvery { sources.getChapterContent(id, 2, "study", "GEN.1", BibleContentUse.AI_CONTEXT) } returns content
+
+        val result = withRequest { service.getChapterContent(bible, Reference("GEN.1.2"), BibleContentUse.AI_CONTEXT) }
+        val bookResult = withRequest { service.getChapterContent(book(id, variant = "study").copy(version = 2), "GEN.1", BibleContentUse.AI_CONTEXT) }
+
+        assertEquals("External text", text(assertNotNull(result.chapter[Reference("GEN.1")])))
+        assertEquals("Copyright", result.attribution?.copyright)
+        assertEquals(result, bookResult)
+        coVerify(exactly = 2) { sources.getChapterContent(id, 2, "study", "GEN.1", BibleContentUse.AI_CONTEXT) }
+    }
+
+    @Test
+    fun `getChapterContent rejects an unavailable chapter before requesting provider content`() = runTest {
+        val id = UUID.random()
+        coEvery { bibleChapterRepository.getByIdAndVariantAndUsfm(id, 1, "study", "GEN.1") } returns null
+
+        assertFailsWith<IllegalStateException> {
+            withRequest { service.getChapterContent(bible(id, variant = "study"), Reference("GEN.1"), BibleContentUse.DISPLAY) }
+        }
+
+        coVerify(exactly = 0) { sources.getChapterContent(any(), any(), any(), any(), any()) }
     }
 
     @Test

@@ -1,5 +1,7 @@
 package bosca.bible.providers.service
 
+import bosca.bible.BibleChapterContent
+import bosca.bible.BibleContentUse
 import bosca.bible.providers.model.BibleSource
 import bosca.serialization.UUID
 import bosca.service.Service
@@ -21,6 +23,22 @@ interface BibleSourceService : Service {
 
     /** Lists active sources belonging to a configuration. */
     suspend fun getByConfiguration(configurationId: UUID): List<BibleSource>
+
+    /**
+     * Reads text for this exact variant after checking reviewed [use] and configuration availability.
+     * Returns null for a local Bible; removed sources fail. Fetches missing responses on demand and
+     * retains attribution and the private token with the cached response without extending its expiry.
+     */
+    suspend fun getChapterContent(
+        metadataId: UUID,
+        metadataVersion: Int,
+        variant: String,
+        usfm: String,
+        use: BibleContentUse,
+    ): BibleChapterContent?
+
+    /** Removes expired text responses and their tokens, including those of disabled configurations. */
+    suspend fun removeExpired(): Int
 
     /**
      * Refreshes descriptions at [BibleSource.version] and purges cached responses atomically.

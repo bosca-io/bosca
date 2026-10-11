@@ -63,11 +63,11 @@ class BibleProviderServiceImpl(
         .map { details(it.id, settings(it)) }
 
     /** Saves encrypted settings; null credentials on an update retain the previously saved key. */
-    override suspend fun saveConfiguration(input: BibleProviderConfigurationInput): BibleProviderConfiguration {
+    override suspend fun saveConfiguration(input: BibleProviderConfigurationInput): BibleProviderConfiguration = transaction {
         require(input.name.isNotBlank()) { "A Bible provider configuration name is required" }
         require(input.provider in getProviders()) { "Unsupported Bible provider" }
         val existing = input.id?.let { find(it) }
-        val previous = existing?.let { settings(it) }
+        val previous = existing?.let { settings(it, forUpdate = true) }
         val apiKey = input.apiKey ?: previous?.apiKey
         require(!apiKey.isNullOrBlank()) { "A Bible provider API key is required" }
         val settings = BibleProviderSettings(input.name.trim(), input.provider, input.enabled, apiKey)
@@ -80,9 +80,12 @@ class BibleProviderServiceImpl(
         } else {
             // Replacing configuration metadata cascades to sources. Value updates preserve its identity and permissions.
             configurations.setValue(existing.id, value)
+            if (previous?.apiKey != apiKey || previous.provider != input.provider) {
+                for (source in sources.getByConfiguration(existing.id)) sources.update(source)
+            }
             existing.id
         }
-        return details(id, settings)
+        details(id, settings)
     }
 
     /** Tests saved credentials even when disabled, without registering Bibles or fetching chapter bodies. */
@@ -210,6 +213,7 @@ class BibleProviderServiceImpl(
 
     override suspend fun removeConfiguration(configurationId: UUID, purgeSources: Boolean) = transaction {
         val configuration = find(configurationId)
+        configurations.getValueForUpdate(configurationId)
         val attached = sources.getByConfiguration(configurationId)
         check(purgeSources || attached.isEmpty()) { "Bible provider configuration has active sources" }
         for (source in attached) sources.remove(source.id, source.version)
@@ -246,8 +250,8 @@ class BibleProviderServiceImpl(
         .singleOrNull { it.id == id && it.key.startsWith(KEY_PREFIX) }
         ?: throw IllegalArgumentException("Bible provider configuration was not found")
 
-    private suspend fun settings(configuration: Configuration): BibleProviderSettings {
-        val value = configurations.getValue(configuration.id)
+    private suspend fun settings(configuration: Configuration, forUpdate: Boolean = false): BibleProviderSettings {
+        val value = (if (forUpdate) configurations.getValueForUpdate(configuration.id) else configurations.getValue(configuration.id))
             ?: error("Bible provider configuration has no settings")
         return try {
             json.decodeFromJsonElement(BibleProviderSettings.serializer(), value)

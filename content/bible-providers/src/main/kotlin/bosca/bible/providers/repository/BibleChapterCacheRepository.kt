@@ -46,4 +46,18 @@ interface BibleChapterCacheRepository {
     /** Deletes all responses attached to a refreshed or removed source. */
     @Query("delete from bible_providers.chapters where source_id = :sourceId", returnUpdateCount = true)
     suspend fun removeBySource(sourceId: UUID): Int
+
+    /** Lists responses for the same upstream text edition across all configurations, newest first. */
+    @Query("""
+        select chapters.* from bible_providers.chapters chapters
+        join bible_providers.sources source on source.id = chapters.source_id
+        where chapters.provider = :provider and source.provider_bible_id = :providerBibleId
+            and source.kind = 'text' and source.deleted_at is null and chapters.expires > :now
+        order by chapters.created desc, chapters.source_id, chapters.usfm
+    """)
+    suspend fun getByEdition(provider: String, providerBibleId: String, now: OffsetDateTime): List<BibleChapterCache>
+
+    /** Evicts a complete response, including its attribution and private token. */
+    @Query("delete from bible_providers.chapters where source_id = :sourceId and usfm = :usfm", returnUpdateCount = true)
+    suspend fun remove(sourceId: UUID, usfm: String): Int
 }

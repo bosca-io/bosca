@@ -4,6 +4,7 @@ package bosca.bible.providers.service
 
 import bosca.bible.Bible as SharedBible
 import bosca.bible.BibleAttribution
+import bosca.bible.BibleChapterContent
 import bosca.bible.BibleContentUse
 import bosca.bible.BibleIdentification
 import bosca.bible.BibleLanguage
@@ -14,6 +15,7 @@ import bosca.bible.Book
 import bosca.bible.Chapter
 import bosca.bible.Name
 import bosca.bible.Reference
+import bosca.bible.bibleJson
 import bosca.bible.components.Text
 import bosca.bible.providers.configuration.BibleProvidersMigration
 import bosca.bible.providers.model.AddProviderBibleInput
@@ -22,15 +24,18 @@ import bosca.bible.providers.model.BibleCatalog
 import bosca.bible.providers.model.BibleChapterCache
 import bosca.bible.providers.model.BibleProviderConfigurationInput
 import bosca.bible.providers.model.BibleProviderResponse
+import bosca.bible.providers.model.BibleProviderSettings
 import bosca.bible.providers.model.BibleSourceKind
 import bosca.bible.providers.model.BibleSource
 import bosca.bible.providers.repository.BibleChapterCacheRepository
+import bosca.bible.providers.repository.BibleSourceRepository
 import bosca.cache.CacheManager
 import bosca.cache.RequestCacheSerializer
 import bosca.cache.RequestCacheSerializerImpl
 import bosca.cache.redis.RedisCacheManager
 import bosca.cache.redis.RedisCacheScripts
 import bosca.cache.withRequestCache
+import bosca.configuration.service.ConfigurationService
 import bosca.content.collection.model.Collection
 import bosca.content.collection.model.CollectionInput
 import bosca.content.collection.repository.*
@@ -52,10 +57,13 @@ import bosca.db.migrations.FlywayMigration
 import bosca.di.BibleProvidersProviderRegistrar
 import bosca.di.ConfigurationProviderRegistrar
 import bosca.di.ProviderRegistry
+import bosca.di.provideProvider
 import bosca.di.provides
 import bosca.events.DisabledEventManagerFilter
 import bosca.events.EventManager
 import bosca.events.asCoroutineContext
+import bosca.lock.DistributedLockFactory
+import bosca.lock.redis.RedisDistributedLockFactory
 import bosca.security.encryption.EncryptionService
 import bosca.security.encryption.EncryptionServiceImpl
 import bosca.serialization.OffsetDateTimeSerializer
@@ -64,6 +72,9 @@ import bosca.serialization.UUID
 import bosca.serialization.UUIDSerializer
 import bosca.server.BoscaApplication
 import bosca.server.config.ApplicationConfig
+import bosca.sharedqueue.jobs.JobConfigurationEnqueuer
+import bosca.sharedqueue.jobs.JobQueue
+import bosca.sharedqueue.jobs.configuration.JobQueueNames
 import bosca.slug.repository.SlugRepositoryImpl
 import bosca.slug.service.SlugService
 import bosca.slug.service.SlugServiceImpl
@@ -78,11 +89,14 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.modules.SerializersModule
@@ -108,6 +122,7 @@ class BibleProviderServiceImplTest {
         private val cleanupScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
         private lateinit var pool: ConnectionPool
         private lateinit var cacheManager: CacheManager
+        private lateinit var locks: DistributedLockFactory
 
         @BeforeClass
         @JvmStatic
@@ -118,6 +133,7 @@ class BibleProviderServiceImplTest {
                 postgres.jdbcUrl, postgres.username, postgres.password,
             ), key = "bible-registration-test"))
             val connections = valkey.newConnectionPool()
+            locks = RedisDistributedLockFactory(connections)
             cacheManager = RedisCacheManager(connections, RedisCacheScripts(connections), cleanupScope)
             FlywayMigration(pool).migrate(listOf(CoreMigration(), BibleProvidersMigration()))
         }
@@ -167,6 +183,7 @@ class BibleProviderServiceImplTest {
         """.trimIndent().byteInputStream()))
         provides<Json>(overrideExisting = true) { json }
         provides<CacheManager> { cacheManager }
+        provides<DistributedLockFactory> { locks }
         provides<RequestCacheSerializer> { RequestCacheSerializerImpl(json) }
         provides<EncryptionService> { EncryptionServiceImpl(application) }
         ConfigurationProviderRegistrar().register()
@@ -174,7 +191,7 @@ class BibleProviderServiceImplTest {
         provides<BibleProvider>(name = "API_BIBLE", overrideExisting = true) { provider }
         sources = ProviderRegistry.get<BibleSourceService>()
         slugs = SlugServiceImpl(SlugRepositoryImpl())
-        bibles = BibleServiceImpl(BibleRepositoryImpl(), BibleBookRepositoryImpl(), BibleChapterRepositoryImpl(), BibleLanguageRepositoryImpl())
+        bibles = BibleServiceImpl(BibleRepositoryImpl(), BibleBookRepositoryImpl(), BibleChapterRepositoryImpl(), BibleLanguageRepositoryImpl(), sources)
         collections = CollectionServiceImpl(
             CollectionRepositoryImpl(), CollectionItemRepositoryImpl(), CollectionFindRepository(json),
             CollectionCategoryRepositoryImpl(), CollectionTraitRepositoryImpl(), CollectionMetadataRelationshipRepositoryImpl(),
@@ -411,13 +428,15 @@ class BibleProviderServiceImplTest {
         assertEquals("spa", bibles.getLanguages(variant).single().iso)
         val book = bibles.getBooks(variant).single()
         assertEquals(listOf("JHN.3"), bibles.getChapters(book).map { it.usfm })
-        assertEquals(JsonNull, bibles.getChapter(book, "JHN.3").components)
+        assertFailsWith<IllegalStateException> { bibles.getChapter(book, "JHN.3") }
         val updated = assertNotNull(sources.getById(source.id))
         assertEquals(1L, updated.version)
         assertEquals(source.allowedUses, updated.allowedUses)
         assertEquals(source.providerBibleId, updated.providerBibleId)
         assertEquals("Updated copyright", updated.attribution.copyright)
         assertEquals(0, count("bible_providers.chapters"))
+        bibles.setVariantEnabled(added.metadataId, added.version, added.variant, true)
+        assertEquals(JsonNull, bibles.getChapter(book, "JHN.3").components)
     }
 
     @Test
@@ -506,16 +525,305 @@ class BibleProviderServiceImplTest {
         }
     }
 
-    private suspend fun cache(source: BibleSource, expired: Boolean = false) {
+    private suspend fun cache(source: BibleSource, expired: Boolean = false, usfm: String = "JHN.1") {
         val created = OffsetDateTime.now().minusHours(1)
         ProviderRegistry.get<BibleChapterCacheRepository>().put(BibleChapterCache(
-            source.id, "API_BIBLE", "JHN.1", Chapter(Reference("JHN.1"), null), attribution, 1, "response-token",
+            source.id, "API_BIBLE", usfm, Chapter(Reference(usfm), null), attribution, 1, "response-token",
             created, if (expired) created.plusMinutes(1) else created.plusDays(1),
         ))
     }
 
     private fun input() = AddProviderBibleInput(configurationId, "edition", "study",
         setOf(BibleContentUse.DISPLAY, BibleContentUse.AI_CONTEXT))
+
+    @Test
+    fun `BibleService fetches and caches the exact chapter with attribution and a private response token`() = request {
+        val bible = service.addBible(input())
+        chapterResponse()
+        val first = bibles.getChapterContent(bible, Reference("JHN.1.1"), BibleContentUse.DISPLAY).asSerializable()
+        assertEquals("Chapter copyright", first.attribution?.copyright)
+        assertEquals(Reference("JHN.1"), first.chapter.reference)
+        val source = assertNotNull(sources.getText(bible.metadataId, bible.version, bible.variant))
+        val cache = assertNotNull(ProviderRegistry.get<BibleChapterCacheRepository>().get(source.id, "JHN.1", OffsetDateTime.now()))
+        assertEquals(cache.created.plusDays(14), cache.expires)
+        assertEquals("chapter-token", service.getFumsToken(bible.metadataId, bible.version, bible.variant, "JHN.1"))
+        val second = bibles.getChapterContent(bibles.getBooks(bible).single(), "JHN.1", BibleContentUse.AI_CONTEXT).asSerializable()
+        assertEquals(bibleJson.encodeToJsonElement(BibleChapterContent.serializer(), first),
+            bibleJson.encodeToJsonElement(BibleChapterContent.serializer(), second))
+        assertEquals(cache.created, assertNotNull(ProviderRegistry.get<BibleChapterCacheRepository>().get(source.id, "JHN.1", OffsetDateTime.now())).created)
+        assertFalse(bibleJson.encodeToString(BibleChapterContent.serializer(), second).contains("chapter-token"))
+        assertEquals(JsonNull, bibles.getChapter(bibles.getBooks(bible).single(), "JHN.1").components)
+        coVerify(exactly = 1) { provider.getChapter(configurationId, "edition", "JHN.1") }
+    }
+
+    @Test
+    fun `external use checks apply to both new responses and cache hits`() = request {
+        val bible = service.addBible(input())
+        chapterResponse()
+        for (use in BibleContentUse.entries.filter { it !in input().allowedUses }) {
+            assertFailsWith<IllegalArgumentException> { bibles.getChapterContent(bible, Reference("JHN.1"), use) }
+        }
+        coVerify(exactly = 0) { provider.getChapter(any(), any(), any()) }
+        bibles.getChapterContent(bible, Reference("JHN.1"), BibleContentUse.DISPLAY)
+        assertFailsWith<IllegalArgumentException> { bibles.getChapterContent(bible, Reference("JHN.1"), BibleContentUse.EXPORT) }
+        coVerify(exactly = 1) { provider.getChapter(any(), any(), any()) }
+    }
+
+    @Test
+    fun `disabled configurations and removed sources cannot serve cached external text`() = request {
+        val bible = service.addBible(input())
+        chapterResponse()
+        bibles.getChapterContent(bible, Reference("JHN.1"), BibleContentUse.DISPLAY)
+        val source = assertNotNull(sources.getText(bible.metadataId, bible.version, bible.variant))
+        service.saveConfiguration(BibleProviderConfigurationInput("Provider", "API_BIBLE", false, configurationId))
+        assertFailsWith<IllegalStateException> { bibles.getChapterContent(bible, Reference("JHN.1"), BibleContentUse.DISPLAY) }
+        service.removeSource(source.id, source.version)
+        assertFailsWith<IllegalStateException> { bibles.getChapterContent(bible, Reference("JHN.1"), BibleContentUse.DISPLAY) }
+        assertEquals(0, count("bible_providers.chapters"))
+        coVerify(exactly = 1) { provider.getChapter(any(), any(), any()) }
+    }
+
+    @Test
+    fun `disabling a configuration in another request prevents an in-flight chapter from being cached`() = request {
+        val bible = service.addBible(input())
+        coEvery { provider.getChapter(any(), any(), any()) } coAnswers {
+            request { service.saveConfiguration(BibleProviderConfigurationInput("Provider", "API_BIBLE", false, configurationId)) }
+            response("JHN.1")
+        }
+
+        assertFailsWith<IllegalStateException> { bibles.getChapterContent(bible, Reference("JHN.1"), BibleContentUse.DISPLAY) }
+        assertEquals(0, count("bible_providers.chapters"))
+        assertNull(service.getFumsToken(bible.metadataId, bible.version, bible.variant, "JHN.1"))
+    }
+
+    @Test
+    fun `disabling a configuration in another request prevents further reads with previously cached settings`() = request {
+        val bible = service.addBible(input())
+        chapterResponse()
+        bibles.getChapterContent(bible, Reference("JHN.1"), BibleContentUse.DISPLAY)
+        request { service.saveConfiguration(BibleProviderConfigurationInput("Provider", "API_BIBLE", false, configurationId)) }
+
+        assertFailsWith<IllegalStateException> { bibles.getChapterContent(bible, Reference("JHN.1"), BibleContentUse.DISPLAY) }
+        assertFailsWith<IllegalStateException> { bibles.getChapterContent(bible, Reference("JHN.2"), BibleContentUse.DISPLAY) }
+        coVerify(exactly = 1) { provider.getChapter(any(), any(), any()) }
+        assertEquals(1, count("bible_providers.chapters"))
+    }
+
+    @Test
+    fun `renaming with previously cached settings preserves a concurrent key rotation and its responses`() = request {
+        val bible = service.addBible(input())
+        val configurations = ProviderRegistry.get<ConfigurationService>()
+        assertNotNull(configurations.getValue(configurationId))
+        chapterResponse()
+        val rotatedSource = request {
+            service.saveConfiguration(BibleProviderConfigurationInput("Provider", "API_BIBLE", true, configurationId, "rotated-key"))
+            bibles.getChapterContent(bible, Reference("JHN.1"), BibleContentUse.DISPLAY)
+            assertNotNull(sources.getText(bible.metadataId, bible.version, bible.variant))
+        }
+
+        service.saveConfiguration(BibleProviderConfigurationInput("Renamed", "API_BIBLE", true, configurationId))
+
+        request {
+            val settings = json.decodeFromJsonElement(BibleProviderSettings.serializer(), assertNotNull(configurations.getValue(configurationId)))
+            assertEquals("rotated-key", settings.apiKey)
+            assertEquals("Renamed", settings.name)
+            assertEquals(rotatedSource.version, assertNotNull(sources.getById(rotatedSource.id)).version)
+            assertEquals("chapter-token", service.getFumsToken(bible.metadataId, bible.version, bible.variant, "JHN.1"))
+        }
+    }
+
+    @Test
+    fun `disabled exact variants and missing references fail before fetching chapters`() = request {
+        val bible = service.addBible(input())
+        bibles.setBible(bible.metadataId, bible.version, remote.toInput(false, "other"))
+        bibles.setDefaultVariant(bible.metadataId, bible.version, "other")
+        val book = bibles.getBooks(bible).single()
+        assertEquals("JHN.1", bibles.getChapter(book, "JHN.1").usfm)
+        bibles.setVariantEnabled(bible.metadataId, bible.version, bible.variant, false)
+        assertFailsWith<IllegalStateException> { bibles.getChapter(book, "JHN.1") }
+        assertFailsWith<IllegalStateException> { bibles.getChapterContent(book, "JHN.1", BibleContentUse.DISPLAY) }
+        assertFailsWith<IllegalStateException> { bibles.getChapterContent(bible, Reference("JHN.1"), BibleContentUse.DISPLAY) }
+        bibles.setVariantEnabled(bible.metadataId, bible.version, bible.variant, true)
+        assertEquals("JHN.1", bibles.getChapter(book, "JHN.1").usfm)
+        assertFailsWith<IllegalStateException> { bibles.getChapterContent(bible, Reference("JHN.99"), BibleContentUse.DISPLAY) }
+        coVerify(exactly = 0) { provider.getChapter(any(), any(), any()) }
+    }
+
+    @Test
+    fun `expired responses are replaced and absent response attribution falls back to the source`() = request {
+        val bible = service.addBible(input())
+        val source = assertNotNull(sources.getText(bible.metadataId, bible.version, bible.variant))
+        cache(source, expired = true)
+        chapterResponse(attribution = null)
+        val content = bibles.getChapterContent(bible, Reference("JHN.1"), BibleContentUse.DISPLAY)
+        assertEquals(attribution, content.attribution)
+        assertEquals("chapter-token", service.getFumsToken(bible.metadataId, bible.version, bible.variant, "JHN.1"))
+        assertEquals(1, count("bible_providers.chapters"))
+        coVerify(exactly = 1) { provider.getChapter(any(), any(), any()) }
+    }
+
+    @Test
+    fun `generated maintenance job deletes expired responses and tokens while their configuration is disabled`(): Unit = request {
+        val bible = service.addBible(input())
+        val source = assertNotNull(sources.getText(bible.metadataId, bible.version, bible.variant))
+        cache(source, expired = true)
+        cache(source, usfm = "JHN.2")
+        service.saveConfiguration(BibleProviderConfigurationInput("Provider", "API_BIBLE", false, configurationId))
+        provides<JobQueue>(name = JobQueueNames.commonJobQueue) { mockk(relaxed = true) }
+        val enqueuer = provideProvider<JobConfigurationEnqueuer>("delete-expired-bible-chapters")
+        assertTrue(enqueuer.exists)
+        assertEquals(JobQueueNames.commonJobQueue, enqueuer.get().queueName)
+        val job = enqueuer.get().prepare(JsonObject(emptyMap()))
+        job.newExecutor().execute()
+        assertEquals(0, sources.removeExpired())
+        assertEquals(1, count("bible_providers.chapters"))
+        assertNull(service.getFumsToken(bible.metadataId, bible.version, bible.variant, "JHN.1"))
+        assertEquals("response-token", service.getFumsToken(bible.metadataId, bible.version, bible.variant, "JHN.2"))
+        assertNotNull(sources.getById(source.id))
+        coVerify(exactly = 0) { provider.getChapter(any(), any(), any()) }
+    }
+
+    @Test
+    fun `chapter failures and cancellation never persist a response or token`() = request {
+        val bible = service.addBible(input())
+        coEvery { provider.getChapter(any(), any(), any()) } throws IOException("Unavailable")
+        assertFailsWith<IOException> { bibles.getChapterContent(bible, Reference("JHN.1"), BibleContentUse.DISPLAY) }
+        coEvery { provider.getChapter(any(), any(), any()) } throws CancellationException("Cancelled chapter")
+        assertFailsWith<CancellationException> { bibles.getChapterContent(bible, Reference("JHN.1"), BibleContentUse.DISPLAY) }
+        assertEquals(0, count("bible_providers.chapters"))
+        assertNull(service.getFumsToken(bible.metadataId, bible.version, bible.variant, "JHN.1"))
+    }
+
+    @Test
+    fun `a source changed during chapter fetching cannot persist stale content`() = request {
+        val bible = service.addBible(input())
+        val source = assertNotNull(sources.getText(bible.metadataId, bible.version, bible.variant))
+        coEvery { provider.getChapter(any(), any(), any()) } coAnswers {
+            sources.update(source.copy(name = "Changed"))
+            response("JHN.1")
+        }
+        assertFailsWith<IllegalStateException> { bibles.getChapterContent(bible, Reference("JHN.1"), BibleContentUse.DISPLAY) }
+        assertEquals(0, count("bible_providers.chapters"))
+    }
+
+    @Test
+    fun `a fetch that loses its distributed lock cannot persist content`() = request {
+        val bible = service.addBible(input())
+        val lock = locks.create("bible-test-lost-lock:${UUID.random()}")
+        val factory = mockk<DistributedLockFactory>()
+        coEvery { factory.create(any()) } returns lock
+        val sourceService = BibleSourceServiceImpl(
+            ProviderRegistry.get<BibleSourceRepository>(), ProviderRegistry.get<BibleChapterCacheRepository>(),
+            ProviderRegistry.get<ConfigurationService>(), factory, json,
+        )
+        coEvery { provider.getChapter(any(), any(), any()) } coAnswers {
+            assertTrue(lock.release())
+            response("JHN.1")
+        }
+        assertFailsWith<IllegalStateException> {
+            sourceService.getChapterContent(bible.metadataId, bible.version, bible.variant, "JHN.1", BibleContentUse.DISPLAY)
+        }
+        assertEquals(0, count("bible_providers.chapters"))
+    }
+
+    @Test
+    fun `mismatched chapters and missing or invalid verse counts cannot be cached`() = request {
+        val bible = service.addBible(input())
+        for (response in listOf(response("JHN.2"), response("JHN.1").copy(verseCount = null), response("JHN.1", -1))) {
+            coEvery { provider.getChapter(any(), any(), any()) } returns response
+            assertFailsWith<IllegalStateException> { bibles.getChapterContent(bible, Reference("JHN.1"), BibleContentUse.DISPLAY) }
+            assertEquals(0, count("bible_providers.chapters"))
+        }
+    }
+
+    @Test
+    fun `credential changes purge responses and prevent an in-flight response from being persisted`() = request {
+        val bible = service.addBible(input())
+        chapterResponse()
+        bibles.getChapterContent(bible, Reference("JHN.1"), BibleContentUse.DISPLAY)
+        val source = assertNotNull(sources.getText(bible.metadataId, bible.version, bible.variant))
+        service.saveConfiguration(BibleProviderConfigurationInput("Provider", "API_BIBLE", true, configurationId, "new-key"))
+        assertEquals(0, count("bible_providers.chapters"))
+        assertEquals(source.version + 1, assertNotNull(sources.getById(source.id)).version)
+        coEvery { provider.getChapter(any(), any(), any()) } coAnswers {
+            service.saveConfiguration(BibleProviderConfigurationInput("Provider", "API_BIBLE", true, configurationId, "another-key"))
+            response("JHN.1")
+        }
+        assertFailsWith<IllegalStateException> { bibles.getChapterContent(bible, Reference("JHN.1"), BibleContentUse.DISPLAY) }
+        assertEquals(0, count("bible_providers.chapters"))
+    }
+
+    @Test
+    fun `text cache bounds apply across configurations for the same upstream edition`() = request {
+        val bible = service.addBible(input())
+        bibles.setBible(bible.metadataId, bible.version, remote.toInput(false, "other"))
+        val otherConfiguration = service.saveConfiguration(BibleProviderConfigurationInput("Other", "API_BIBLE", true, apiKey = "other-key"))
+        val source = assertNotNull(sources.getText(bible.metadataId, bible.version, bible.variant))
+        sources.add(source.copy(id = UUID.random(), configurationId = otherConfiguration.id, variant = "other"))
+        coEvery { provider.getChapter(any(), "edition", any()) } coAnswers { response(thirdArg(), verseCount = 250) }
+        bibles.getChapterContent(bible, Reference("JHN.1"), BibleContentUse.DISPLAY)
+        val other = assertNotNull(bibles.getBible(bible.metadataId, bible.version, "other"))
+        bibles.getChapterContent(other, Reference("JHN.2"), BibleContentUse.DISPLAY)
+        assertNull(service.getFumsToken(bible.metadataId, bible.version, bible.variant, "JHN.1"))
+        assertEquals("chapter-token", service.getFumsToken(bible.metadataId, bible.version, "other", "JHN.2"))
+        assertEquals(1, count("bible_providers.chapters"))
+        assertEquals(listOf("JHN.1", "JHN.2"), bibles.getChapters(bibles.getBooks(bible).single()).map { it.usfm })
+    }
+
+    @Test
+    fun `text cache retains 499 verses and keeps separate upstream editions independent`() = request {
+        val bible = service.addBible(input())
+        coEvery { provider.getChapter(configurationId, "edition", "JHN.1") } returns response("JHN.1", 250)
+        coEvery { provider.getChapter(configurationId, "edition", "JHN.2") } returns response("JHN.2", 249)
+        bibles.getChapterContent(bible, Reference("JHN.1"), BibleContentUse.DISPLAY)
+        bibles.getChapterContent(bible, Reference("JHN.2"), BibleContentUse.DISPLAY)
+        assertEquals(2, count("bible_providers.chapters"))
+        coEvery { provider.getBible(configurationId, "other-edition", BibleSourceKind.TEXT) } returns BibleProviderResponse(remote, attribution)
+        val other = service.addBible(input().copy(providerBibleId = "other-edition"))
+        coEvery { provider.getChapter(configurationId, "other-edition", "JHN.1") } returns response("JHN.1", 499)
+        bibles.getChapterContent(other, Reference("JHN.1"), BibleContentUse.DISPLAY)
+        assertEquals(3, count("bible_providers.chapters"))
+        assertEquals("chapter-token", service.getFumsToken(bible.metadataId, bible.version, bible.variant, "JHN.1"))
+        assertEquals("chapter-token", service.getFumsToken(bible.metadataId, bible.version, bible.variant, "JHN.2"))
+        assertEquals("chapter-token", service.getFumsToken(other.metadataId, other.version, other.variant, "JHN.1"))
+    }
+
+    @Test
+    fun `an oversized response cannot be cached and provider work cannot run in a database transaction`() = request {
+        val bible = service.addBible(input())
+        chapterResponse(verseCount = 500)
+        assertFailsWith<IllegalStateException> { bibles.getChapterContent(bible, Reference("JHN.1"), BibleContentUse.DISPLAY) }
+        assertEquals(0, count("bible_providers.chapters"))
+        bosca.db.transaction {
+            assertFailsWith<IllegalStateException> { bibles.getChapterContent(bible, Reference("JHN.2"), BibleContentUse.DISPLAY) }
+        }
+        coVerify(exactly = 1) { provider.getChapter(any(), any(), any()) }
+    }
+
+    @Test
+    fun `concurrent requests share one fetch and response token`() = runBlocking {
+        val bible = request { service.addBible(input()) }
+        coEvery { provider.getChapter(any(), any(), any()) } coAnswers {
+            assertFalse(connection().inTransaction)
+            delay(200)
+            response("JHN.1")
+        }
+        val first = async(Dispatchers.IO) { request { bibles.getChapterContent(bible, Reference("JHN.1"), BibleContentUse.DISPLAY).asSerializable() } }
+        val second = async(Dispatchers.IO) { request { bibles.getChapterContent(bible, Reference("JHN.1"), BibleContentUse.DISPLAY).asSerializable() } }
+        assertEquals(bibleJson.encodeToJsonElement(BibleChapterContent.serializer(), first.await()),
+            bibleJson.encodeToJsonElement(BibleChapterContent.serializer(), second.await()))
+        coVerify(exactly = 1) { provider.getChapter(any(), any(), any()) }
+    }
+
+    private fun chapterResponse(verseCount: Int = 2, attribution: BibleAttribution? = BibleAttribution("Chapter copyright")) {
+        coEvery { provider.getChapter(configurationId, "edition", "JHN.1") } coAnswers {
+            assertFalse(connection().inTransaction)
+            response("JHN.1", verseCount, attribution)
+        }
+    }
+
+    private fun response(usfm: String, verseCount: Int = 2, attribution: BibleAttribution? = BibleAttribution("Chapter copyright")) =
+        BibleProviderResponse(Chapter(Reference(usfm), Text("Provider chapter", null)), attribution, verseCount, "chapter-token")
 
     private suspend fun count(table: String): Int = connection().useStatement("select count(*) from $table") {
         it.executeQuery().use { result -> assertTrue(result.next()); result.getInt(1) }

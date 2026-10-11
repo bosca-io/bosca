@@ -14,6 +14,9 @@ java {
 dependencies {
     api(project(":content:core-bible-providers"))
     implementation(project(":bosca-core:core-configuration"))
+    implementation(project(":sharedqueue:sharedqueue"))
+    // @JobDefinition KSP emits pipeline-aware enqueue helpers.
+    implementation(project(":pipelines:core-pipelines"))
     implementation(platform(libs.okhttp.bom))
     implementation(libs.okhttp)
 

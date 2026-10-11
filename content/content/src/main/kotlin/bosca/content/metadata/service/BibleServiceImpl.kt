@@ -4,6 +4,7 @@ import bosca.bible.BibleChapterContent
 import bosca.bible.BibleContentUse
 import bosca.bible.Chapter
 import bosca.bible.Reference
+import bosca.bible.providers.service.BibleSourceService
 import bosca.cache.ServiceCache
 import bosca.cache.requestCache
 import bosca.content.metadata.model.Bible
@@ -26,6 +27,7 @@ class BibleServiceImpl(
     private val bibleBookRepository: BibleBookRepository,
     private val bibleChapterRepository: BibleChapterRepository,
     private val bibleLanguages: BibleLanguageRepository,
+    private val sources: BibleSourceService,
 ) : BibleService {
 
     private val semaphore = Semaphore(5)
@@ -123,10 +125,14 @@ class BibleServiceImpl(
     }
 
     override suspend fun getChapterContent(book: BibleBook, usfm: String, use: BibleContentUse): BibleChapterContent =
-        getChapter(book, usfm).let { BibleChapterContent(Chapter(Reference(it.usfm), it.getChapterComponents())) }
+        content(getChapter(book, usfm), use)
 
     override suspend fun getChapterContent(bible: Bible, reference: Reference, use: BibleContentUse): BibleChapterContent =
-        getChapter(bible, reference).let { BibleChapterContent(Chapter(Reference(it.usfm), it.getChapterComponents())) }
+        content(getChapter(bible, reference), use)
+
+    private suspend fun content(chapter: BibleChapter, use: BibleContentUse): BibleChapterContent =
+        sources.getChapterContent(chapter.metadataId, chapter.version, chapter.variant, chapter.usfm, use)
+            ?: BibleChapterContent(Chapter(Reference(chapter.usfm), chapter.getChapterComponents()))
 
     override suspend fun getHuman(bible: Bible, reference: Reference): String {
         val books = getBooks(bible)

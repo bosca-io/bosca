@@ -21,6 +21,7 @@ import bosca.di.CommentsProviderRegistrar
 import bosca.di.CommunityProviderRegistrar
 import bosca.di.ConfigurationProviderRegistrar
 import bosca.di.ContentProviderRegistrar
+import bosca.di.BibleProvidersProviderRegistrar
 import bosca.di.CoreAnalyticsProviderRegistrar
 import bosca.di.CoreCommunityProviderRegistrar
 import bosca.di.CoreConfigurationProviderRegistrar
@@ -176,6 +177,7 @@ suspend fun BoscaApplication.module() {
         SecurityProviderRegistrar(),
         SlugProviderRegistrar(),
         ContentProviderRegistrar(),
+        BibleProvidersProviderRegistrar(),
         CommunicationsProviderRegistrar(),
         MessagesPagesProviderRegistrar(),
         SearchProviderRegistrar(),

@@ -1,5 +1,6 @@
 package bosca.server.installer
 
+import bosca.bible.providers.jobs.DeleteExpiredBibleChaptersJob
 import bosca.installer.model.PackageInstallation
 import bosca.installer.model.PackageInstallationVersion
 import bosca.installer.service.PackageInstaller
@@ -43,7 +44,7 @@ class MaintenanceJobsInstaller(
             name = "Finalize Deletion",
             description = "Permanently removes soft-deleted metadata and collections",
             jobName = "finalize-deletion",
-            cronExpression = "0 * * * *",
+            cronExpression = "0 0 * * *",
             enabled = true,
             allowConcurrent = false,
             catchUp = false,
@@ -86,17 +87,28 @@ class MaintenanceJobsInstaller(
             name = "Recover Message Outbox",
             description = "Recovers committed communications outbox rows not yet owned by the delivery queue",
             jobName = "message-outbox-maintenance",
-            cronExpression = "* * * * *",
+            cronExpression = "0 0 * * *",
             enabled = true,
             allowConcurrent = false,
             catchUp = false,
             maxCatchUp = 1
         ),
         ScheduledJobInput(
+            name = "Delete Expired Bible Chapters",
+            description = "Removes expired Bible provider chapter responses and their private tokens",
+            jobName = "delete-expired-bible-chapters",
+            jobParameters = json.encodeToJsonElement(DeleteExpiredBibleChaptersJob.serializer(), DeleteExpiredBibleChaptersJob()),
+            cronExpression = "0 0 * * *",
+            enabled = true,
+            allowConcurrent = false,
+            catchUp = false,
+            maxCatchUp = 1,
+        ),
+        ScheduledJobInput(
             name = "Maintain WorkOps Notifications",
             description = "Recovers notification outbox rows and dispatches due digests and task notifications",
             jobName = "notification-maintenance",
-            cronExpression = "* * * * *",
+            cronExpression = "0 0 * * *",
             enabled = true,
             allowConcurrent = false,
             catchUp = false,
@@ -105,7 +117,7 @@ class MaintenanceJobsInstaller(
     )
 
     companion object {
-        const val VERSION = "1.3.0"
+        const val VERSION = "1.4.0"
         private val log = LoggerFactory.getLogger(MaintenanceJobsInstaller::class.java)
     }
 }

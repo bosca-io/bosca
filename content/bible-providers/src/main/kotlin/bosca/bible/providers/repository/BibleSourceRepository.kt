@@ -31,6 +31,18 @@ interface BibleSourceRepository {
     """)
     suspend fun getText(metadataId: UUID, metadataVersion: Int, variant: String): BibleSource?
 
+    /** Finds the active text source or its latest removal, distinguishing it from an implicit local Bible. */
+    @Query("""
+        select * from bible_providers.sources where metadata_id = :metadataId
+            and metadata_version = :metadataVersion and variant = :variant and kind = 'text'
+        order by deleted_at desc nulls first, modified desc, id limit 1
+    """)
+    suspend fun findText(metadataId: UUID, metadataVersion: Int, variant: String): BibleSource?
+
+    /** Locks an active source while a response is read or persisted and its version is rechecked. */
+    @Query("select * from bible_providers.sources where id = :id and deleted_at is null for update")
+    suspend fun lock(id: UUID): BibleSource?
+
     /** Lists active recordings attached to this exact Bible version and variant. */
     @Query("""
         select * from bible_providers.sources where metadata_id = :metadataId

@@ -16,6 +16,8 @@ import bosca.bible.providers.model.BibleSource
 import bosca.bible.providers.model.BibleSourceKind
 import bosca.bible.providers.repository.BibleChapterCacheRepositoryImpl
 import bosca.bible.providers.configuration.BibleProvidersMigration
+import bosca.lock.DistributedLockFactory
+import bosca.lock.redis.RedisDistributedLockFactory
 import bosca.cache.CacheManager
 import bosca.cache.RequestCacheSerializer
 import bosca.cache.RequestCacheSerializerImpl
@@ -31,6 +33,7 @@ import bosca.db.asCoroutineContext
 import bosca.db.connection
 import bosca.db.migrations.CoreMigration
 import bosca.db.migrations.FlywayMigration
+import bosca.db.transaction
 import bosca.di.BibleProvidersProviderRegistrar
 import bosca.di.ConfigurationProviderRegistrar
 import bosca.di.ProviderRegistry
@@ -48,13 +51,17 @@ import bosca.server.config.ApplicationConfig
 import bosca.test.resources.SharedPostgreSQLContainer
 import bosca.test.resources.SharedValkeyContainer
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonPrimitive
@@ -90,6 +97,7 @@ class BibleProviderConfigurationTest {
         private val cleanupScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
         private lateinit var pool: ConnectionPool
         private lateinit var cacheManager: CacheManager
+        private lateinit var locks: DistributedLockFactory
 
         @BeforeClass
         @JvmStatic
@@ -100,6 +108,7 @@ class BibleProviderConfigurationTest {
                 postgres.jdbcUrl, postgres.username, postgres.password,
             ), key = "bible-configurations-test"))
             val connections = valkey.newConnectionPool()
+            locks = RedisDistributedLockFactory(connections)
             cacheManager = RedisCacheManager(connections, RedisCacheScripts(connections), cleanupScope)
             FlywayMigration(pool).migrate(listOf(CoreMigration(), BibleProvidersMigration()))
         }
@@ -137,6 +146,7 @@ class BibleProviderConfigurationTest {
         """.trimIndent().byteInputStream()))
         provides<Json>(overrideExisting = true) { json }
         provides<CacheManager> { cacheManager }
+        provides<DistributedLockFactory> { locks }
         provides<RequestCacheSerializer> { RequestCacheSerializerImpl(json) }
         provides<EncryptionService> { EncryptionServiceImpl(application) }
         ConfigurationProviderRegistrar().register()
@@ -240,6 +250,61 @@ class BibleProviderConfigurationTest {
         server.enqueue(MockResponse.Builder().body("{\"data\":[]}").build())
         request { service.test(saved.id) }
         assertEquals("saved-secret", server.takeRequest().headers["api-key"])
+    }
+
+    @Test
+    fun `locked configuration reads require a transaction and refresh previously cached credentials`() = request {
+        val saved = service.saveConfiguration(input())
+        assertNotNull(configurationService.getValue(saved.id))
+        assertFailsWith<IllegalStateException> { configurationService.getValueForUpdate(saved.id) }
+        request { service.saveConfiguration(input().copy(id = saved.id, apiKey = "rotated-secret")) }
+
+        transaction { assertNotNull(configurationService.getValueForUpdate(saved.id)) }
+
+        server.enqueue(MockResponse.Builder().body("{\"data\":[]}").build())
+        service.test(saved.id)
+        assertEquals("rotated-secret", server.takeRequest().headers["api-key"])
+    }
+
+    @Test
+    fun `concurrent configuration updates wait for commit and preserve the latest credentials`() = runBlocking {
+        withTimeout(30_000) {
+            val saved = request { service.saveConfiguration(input()) }
+            val rotated = CompletableDeferred<Unit>()
+            val commit = CompletableDeferred<Unit>()
+            val renameStarted = CompletableDeferred<Unit>()
+            val rotation = async(Dispatchers.IO) {
+                request {
+                    transaction {
+                        service.saveConfiguration(input().copy(id = saved.id, apiKey = "rotated-secret"))
+                        rotated.complete(Unit)
+                        commit.await()
+                    }
+                }
+            }
+            try {
+                rotated.await()
+                val rename = async(Dispatchers.IO) {
+                    request {
+                        assertNotNull(configurationService.getValue(saved.id))
+                        renameStarted.complete(Unit)
+                        service.saveConfiguration(input().copy(id = saved.id, name = "Renamed", apiKey = null))
+                    }
+                }
+                renameStarted.await()
+                delay(200)
+                assertFalse(rename.isCompleted)
+                commit.complete(Unit)
+                rotation.await()
+                assertEquals("Renamed", rename.await().name)
+                request {
+                    val value = assertNotNull(configurationService.getValue(saved.id)).jsonObject
+                    assertEquals("rotated-secret", value.getValue("apiKey").jsonPrimitive.content)
+                }
+            } finally {
+                commit.complete(Unit)
+            }
+        }
     }
 
     @Test
