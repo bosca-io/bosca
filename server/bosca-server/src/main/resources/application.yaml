@@ -203,6 +203,9 @@ natsMonitoring:
 cache:
   type: "$CACHE_TYPE:nats"
 
+counter:
+  type: "$COUNTER_TYPE:redis"
+
 experimentation:
   eventsTable: "$EXPERIMENTATION_EVENTS_TABLE:warehouse.bosca.events"
   assignmentsTable: "$EXPERIMENTATION_ASSIGNMENTS_TABLE:bosca.experimentation.assignments"
@@ -291,6 +294,7 @@ oauth2:
         - public_profile
         - email
       enabled: false
+  redirects-json: "$OAUTH2_ALLOWED_REDIRECTS:"
   redirects:
     - "$OAUTH2_ALLOWED_REDIRECT:http://localhost:8080"
     - "http://localhost:3000"

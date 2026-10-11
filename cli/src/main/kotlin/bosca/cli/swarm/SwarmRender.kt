@@ -219,7 +219,7 @@ internal fun infraStack(config: SwarmConfig): Map<String, Any> {
 
 /**
  * Nightly backup, present only when a repository is configured: `backup-dump` writes a `pg_dump` of every
- * site database, and `backup` snapshots the dumps plus S3 objects, NATS data, Meilisearch snapshots,
+ * site database, and `backup` snapshots the dumps plus S3 objects, broker data, Meilisearch snapshots,
  * Caddy certificates and configuration to the off-VM restic repository 30 minutes later.
  */
 internal fun backupServices(config: SwarmConfig): Map<String, Any> {
@@ -249,7 +249,9 @@ internal fun backupServices(config: SwarmConfig): Map<String, Any> {
                 "$root/backups:/data/postgres-dumps:ro", "$root/s3:/data/s3:ro", "$root/nats:/data/nats:ro",
                 "$root/meilisearch/snapshots:/data/meilisearch-snapshots:ro", "$root/caddy-data:/data/caddy-data:ro",
                 "$root/config:/data/config:ro", "$root/backup-state:/state",
-            ),
+            ) + if (config.sites.any { it.jobQueueBackend == "redis" || it.counterBackend == "redis" }) {
+                listOf("$root/redis:/data/redis:ro")
+            } else emptyList(),
             "configs" to listOf(mapOf("source" to "backup-snapshot", "target" to "/scripts/backup.sh", "mode" to 365)),
         )),
     )
@@ -275,7 +277,9 @@ internal fun siteEnvironment(config: SwarmConfig, site: SwarmSite): Map<String, 
         "NATS_HOST" to "nats://nats:4222", "NATS_USERNAME" to name, "NATS_PASSWORD" to secret.nats,
         "NATS_MONITORING_URL" to "http://nats:8222",
         "REDIS_HOST" to "redis", "REDIS_PORT" to "6379", "REDIS_DATABASE" to site.redisDatabase.toString(),
-        "REDIS_NAMESPACE" to "${name}_", "CACHE_TYPE" to "nats",
+        "REDIS_NAMESPACE" to "${name}_", "CACHE_TYPE" to site.cacheBackend,
+        "JOB_QUEUE_FACTORY" to site.jobQueueBackend, "PUBSUB_TYPE" to site.pubsubBackend,
+        "DISTRIBUTED_LOCK_TYPE" to site.distributedLockBackend, "COUNTER_TYPE" to site.counterBackend,
         "MEILISEARCH_URL" to "http://meilisearch:7700", "MEILISEARCH_API_KEY" to common.meilisearchKey,
         "MEILISEARCH_INDEX_PREFIX" to "${name}_",
         "STORAGE_TYPE" to "s3", "STORAGE_BUCKET" to "$name-storage", "STORAGE_ENDPOINT" to "http://s3proxy:8000",
@@ -291,7 +295,6 @@ internal fun siteEnvironment(config: SwarmConfig, site: SwarmSite): Map<String, 
         "INIT_ADMIN_PASSWORD" to secret.initialAdmin, "INIT_SA_PASSWORD" to secret.initialSa,
         // The server's development default is public, and the base domain exposes /api/* publicly.
         "GATEWAY_PROXY_SHARED_TOKEN" to secret.gatewayProxy,
-        // Users sign in through Studio; the application files allow one configurable redirect origin.
         "OAUTH2_ALLOWED_REDIRECT" to studio,
         // Passkeys are registered from Studio, whose origin is not one of the server's default WebAuthn origins.
         "WEBAUTHN_EXTRA_ORIGIN" to studio,
@@ -323,7 +326,7 @@ internal fun siteEnvironment(config: SwarmConfig, site: SwarmSite): Map<String, 
         // Explicit because every site's stack shares one network, where the short name `tf-serving`
         // would resolve to any site's TensorFlow Serving.
         "RECOMMENDATIONS_TF_SERVING_URL" to "http://${name}-tf-serving:8501",
-    )
+    ) + (site.oauthRedirects?.let { mapOf("OAUTH2_ALLOWED_REDIRECTS" to document(it).trimEnd()) } ?: emptyMap())
 }
 
 private fun webBrandEnvironment(

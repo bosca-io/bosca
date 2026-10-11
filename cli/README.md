@@ -240,6 +240,14 @@ updates, and bound query execution results with `returnedRecords` and
 BOSCA_PROFILE=work bosca mcp-server
 ```
 
+## Swarm backends
+
+Set each site's `cacheBackend`, `pubsubBackend`, `jobQueueBackend`, `distributedLockBackend`, and `counterBackend` independently to `nats` (the default) or `redis` in the Swarm JSON configuration. For Redis caching with NATS pub/sub, set `"cacheBackend": "redis"` and `"pubsubBackend": "nats"`. See [backend selection](../deployments/bosca-swarm/README.md#backend-selection) for deployment and switching steps.
+
+## Swarm OAuth redirects
+
+Set a site's `oauthRedirects` list in the Swarm JSON configuration to control allowed destinations after sign-in, then render and deploy the configuration. Omitting the setting keeps the existing Studio and local development defaults. See [OAuth redirects](../deployments/bosca-swarm/README.md#oauth-redirects) for the configuration format and image requirements.
+
 ## Deployment image updates
 
 Resolve the highest stable version tag published for each Bosca image directly

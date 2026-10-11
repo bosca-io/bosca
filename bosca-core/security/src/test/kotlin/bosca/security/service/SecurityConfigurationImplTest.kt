@@ -12,6 +12,35 @@ import kotlin.test.assertTrue
 class SecurityConfigurationImplTest {
 
     @Test
+    fun `JSON redirect configuration replaces YAML redirects including an empty list`() {
+        val jwt = """
+            jwt:
+              secret: test-secret
+              issuer: issuer
+              audience: audience
+              domain: localhost
+              admin-domain: localhost
+              realm: test
+              expiration-time: "3600"
+        """.trimIndent()
+        fun configured(value: String) = SecurityConfigurationImpl(application(jwt + "\n" + """
+            oauth2:
+              redirects-json: '$value'
+              redirects:
+                - https://fallback.example
+        """.trimIndent()))
+
+        assertEquals(listOf("https://studio.example", "https://profiles.example/path?a=1,2"),
+            configured("[\"https://studio.example\",\"https://profiles.example/path?a=1,2\"]").allowedRedirects)
+        assertTrue(configured("[]").allowedRedirects.isEmpty())
+        assertEquals(listOf("https://fallback.example"), configured("").allowedRedirects)
+        assertEquals(listOf("https://fallback.example"), configured("   ").allowedRedirects)
+        listOf("invalid", "{}", "null", "[null]").forEach { invalid ->
+            assertFailsWith<IllegalArgumentException> { configured(invalid) }
+        }
+    }
+
+    @Test
     fun `loads explicit security configuration and builds a working verifier`() {
         val configuration = SecurityConfigurationImpl(
             application(
