@@ -8,16 +8,19 @@ import java.nio.file.Path
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import org.yaml.snakeyaml.Yaml
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class SwarmOAuthRedirectsTest {
     @Test
-    fun `redirects survive config saves and configure server and runner from the rendered stack`() {
+    fun `redirects survive config saves and configure server and runner through generated YAML lists`() {
         val directory = Files.createTempDirectory("swarm-oauth-test-")
         try {
             val defaults = SwarmConfig().withSecrets()
@@ -35,14 +38,72 @@ class SwarmOAuthRedirectsTest {
                 val services = stack.getValue("services").jsonObject
                 val expected = site.oauthRedirects ?: listOf("https://${site.hosts.studio}", "http://localhost:3000")
                 listOf("server", "runner").forEach { service ->
-                    val environment = services.getValue(service).jsonObject.getValue("environment").jsonObject
+                    val definition = services.getValue(service).jsonObject
+                    val environment = definition.getValue("environment").jsonObject
                         .mapValues { it.value.jsonPrimitive.content }
-                    assertRedirectConfiguration(service, environment, expected)
+                    assertFalse("OAUTH2_ALLOWED_REDIRECTS" in environment)
+                    val template = Path.of("../server/bosca-$service/src/main/resources/application.yaml").toAbsolutePath()
+                    val application = if (site.oauthRedirects == null) {
+                        assertFalse("command" in definition)
+                        assertFalse("configs" in definition)
+                        assertFalse(Files.exists(bundle.resolve("config/sites/${site.id}")))
+                        template
+                    } else {
+                        assertEquals(listOf("-config=/config/application.yaml"),
+                            definition.getValue("command").jsonArray.map { it.jsonPrimitive.content })
+                        val mount = definition.getValue("configs").jsonArray.single().jsonObject
+                        assertEquals("/config/application.yaml", mount.getValue("target").jsonPrimitive.content)
+                        assertEquals("292", mount.getValue("mode").jsonPrimitive.content)
+                        val resource = stack.getValue("configs").jsonObject
+                            .getValue(mount.getValue("source").jsonPrimitive.content).jsonObject
+                        val relative = "config/sites/${site.id}/$service.yaml"
+                        assertEquals("${config.dataRoot}/$relative", resource.getValue("file").jsonPrimitive.content)
+                        bundle.resolve(relative).also { generated ->
+                            val original = Yaml().load<Map<String, Any>>(Files.readString(template))
+                            val rendered = Yaml().load<Map<String, Any>>(Files.readString(generated))
+                            assertEquals(original.filterKeys { it != "oauth2" }, rendered.filterKeys { it != "oauth2" })
+                            val originalOAuth2 = original.getValue("oauth2") as Map<*, *>
+                            val renderedOAuth2 = rendered.getValue("oauth2") as Map<*, *>
+                            assertEquals(originalOAuth2.filterKeys { it != "redirects" }, renderedOAuth2.filterKeys { it != "redirects" })
+                            assertEquals(redirects, renderedOAuth2["redirects"])
+                        }
+                    }
+                    assertRedirectConfiguration(application, environment, expected)
                 }
             }
+        } finally {
+            Files.walk(directory).use { paths -> paths.sorted(Comparator.reverseOrder()).forEach(Files::delete) }
+        }
+    }
 
-            val disabled = loaded.sites[0].copy(oauthRedirects = emptyList())
-            assertRedirectConfiguration("server", siteEnvironment(loaded, disabled), emptyList())
+    @Test
+    fun `empty redirect lists roll both services and removing the setting restores packaged defaults`() {
+        val directory = Files.createTempDirectory("swarm-oauth-test-")
+        try {
+            val defaults = SwarmConfig().withSecrets()
+            val config = defaults.copy(sites = defaults.sites.map { it.copy(oauthRedirects = listOf("https://${it.hosts.studio}")) })
+            val bundle = renderSwarm(config, directory.resolve("generated"))
+            fun stack() = swarmJson.parseToJsonElement(Files.readString(bundle.resolve("stacks/site1.yml"))).jsonObject
+            val originalConfigs = stack().getValue("configs").jsonObject
+            val disabled = config.copy(sites = config.sites.map { it.copy(oauthRedirects = emptyList()) })
+            renderSwarm(disabled, bundle)
+            val updated = stack()
+            listOf("server", "runner").forEach { service ->
+                assertFalse(originalConfigs.getValue("$service-application") == updated.getValue("configs").jsonObject.getValue("$service-application"))
+                val environment = updated.getValue("services").jsonObject.getValue(service).jsonObject
+                    .getValue("environment").jsonObject.mapValues { it.value.jsonPrimitive.content }
+                assertRedirectConfiguration(bundle.resolve("config/sites/site1/$service.yaml"), environment, emptyList())
+            }
+            renderSwarm(defaults, bundle)
+            assertFalse(Files.exists(bundle.resolve("config/sites")))
+            listOf("server", "runner").forEach { service ->
+                val definition = stack().getValue("services").jsonObject.getValue(service).jsonObject
+                assertFalse("command" in definition)
+                assertFalse("configs" in definition)
+                val environment = definition.getValue("environment").jsonObject.mapValues { it.value.jsonPrimitive.content }
+                assertRedirectConfiguration(Path.of("../server/bosca-$service/src/main/resources/application.yaml").toAbsolutePath(),
+                    environment, listOf("https://${defaults.sites[0].hosts.studio}", "http://localhost:3000"))
+            }
         } finally {
             Files.walk(directory).use { paths -> paths.sorted(Comparator.reverseOrder()).forEach(Files::delete) }
         }
@@ -61,21 +122,20 @@ class SwarmOAuthRedirectsTest {
             }
     }
 
-    private fun assertRedirectConfiguration(service: String, environment: Map<String, String>, expected: List<String>) {
+    private fun assertRedirectConfiguration(application: Path, environment: Map<String, String>, expected: List<String>) {
         val classpath = System.getProperty("java.class.path")
         assertTrue(classpath.isNotEmpty())
-        val application = Path.of("../server/bosca-$service/src/main/resources/application.yaml").toAbsolutePath()
         val process = ProcessBuilder(
             Path.of(System.getProperty("java.home"), "bin/java").toString(), "-cp", classpath,
             SwarmOAuthRedirectsProbe::class.java.name, application.toString(),
         ).redirectErrorStream(true).apply {
-            environment().remove("OAUTH2_ALLOWED_REDIRECTS")
+            environment()["OAUTH2_ALLOWED_REDIRECTS"] = "invalid JSON must not affect the original YAML list"
             environment().putAll(environment)
         }.start()
         val output = process.inputStream.bufferedReader().readText()
         assertEquals(0, process.waitFor(), output)
         val result = output.lineSequence().single { it.startsWith("REDIRECTS=") }.substringAfter("=")
-        assertEquals(expected, Json.decodeFromString(ListSerializer(String.serializer()), result), service)
+        assertEquals(expected, Json.decodeFromString(ListSerializer(String.serializer()), result), application.toString())
     }
 }
 

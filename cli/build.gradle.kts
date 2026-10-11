@@ -181,6 +181,18 @@ val generateVersionResource = tasks.register("generateVersionResource") {
 sourceSets["main"].resources.srcDir(generatedVersionDir)
 tasks.named("processResources") { dependsOn(generateVersionResource) }
 
+// Swarm renders site-specific application YAML from the owning applications' current defaults.
+tasks.processResources {
+    from(rootProject.file("server/bosca-server/src/main/resources/application.yaml")) {
+        into("swarm")
+        rename { "application-server.yaml" }
+    }
+    from(rootProject.file("server/bosca-runner/src/main/resources/application.yaml")) {
+        into("swarm")
+        rename { "application-runner.yaml" }
+    }
+}
+
 afterEvaluate {
     configurations.matching { it.name.startsWith("nativeImageTest") }.configureEach {
         setExtendsFrom(emptyList())

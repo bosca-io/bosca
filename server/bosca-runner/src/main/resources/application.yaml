@@ -246,7 +246,6 @@ oauth2:
         - public_profile
         - email
       enabled: false
-  redirects-json: "$OAUTH2_ALLOWED_REDIRECTS:"
   redirects:
     - "$OAUTH2_ALLOWED_REDIRECT:http://localhost:8080"
     - "http://localhost:3000"

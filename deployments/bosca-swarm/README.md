@@ -143,7 +143,7 @@ Set each site's `oauthRedirects` to the URLs users may return to after sign-in:
 
 The server checks the destination's origin (scheme, host, and port), so paths on an allowed origin are also accepted. Use HTTP URLs for local development when needed. Omitting the setting or using `null` keeps the existing defaults: `https://studio.<domain>` and `http://localhost:3000`. A configured list replaces those defaults, and `[]` disables redirects. Include Studio in the list if users should return there after sign-in.
 
-Run `bosca swarm render --config ./swarm.local.json` to review the generated stack, then `bosca swarm deploy --config ./swarm.local.json` to apply it. The CLI passes the list as JSON in `OAUTH2_ALLOWED_REDIRECTS`; the server and runner images must include support for `oauth2.redirects-json`. Google and Facebook provider callback URLs remain `https://<domain>/oauth2/<provider>/callback`.
+Run `bosca swarm render --config ./swarm.local.json` to review the generated stack, then `bosca swarm deploy --config ./swarm.local.json` to apply it. For an explicit list, the CLI generates `config/sites/<site>/server.yaml` and `runner.yaml` with the standard `oauth2.redirects` YAML list, mounts each file as a Swarm config, and starts the application with `-config=/config/application.yaml`. All other settings come from the application defaults bundled with the CLI; use server and runner images built from the corresponding workspace revision. Omitting the list uses the images' packaged application configuration. Google and Facebook provider callback URLs remain `https://<domain>/oauth2/<provider>/callback`.
 
 ## Recommendations and embeddings
 
