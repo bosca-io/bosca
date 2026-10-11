@@ -17,6 +17,9 @@ import bosca.bible.providers.configuration.BibleProvidersMigration
 import bosca.bible.providers.model.BibleChapterCache
 import bosca.bible.providers.model.BibleSource
 import bosca.bible.providers.model.BibleSourceKind
+import bosca.bible.providers.service.BibleProvider
+import bosca.configuration.service.ConfigurationService
+import io.mockk.mockk
 import bosca.db.ConnectionConfig
 import bosca.db.ConnectionFactoryImpl
 import bosca.db.ConnectionPool
@@ -49,6 +52,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
+import kotlin.test.assertSame
 import kotlin.test.assertNull
 import kotlin.test.assertFalse
 import kotlin.uuid.toJavaUuid
@@ -198,8 +202,12 @@ class BibleProviderRepositoryTest {
     }
 
     @Test
-    fun `generated registrar provides named migration and working repositories`() = withDb {
+    fun `generated registrar provides named provider migration and working repositories`() = withDb {
         BibleProvidersProviderRegistrar().register()
+        provides<ConfigurationService> { mockk() }
+        val provider = ProviderRegistry.get<BibleProvider>("API_BIBLE")
+        assertEquals("API_BIBLE", provider.key)
+        assertSame(provider, ProviderRegistry.get<BibleProvider>("API_BIBLE"))
         val migration = ProviderRegistry.get<Migration>("bible-providers-migrations")
         assertEquals("bible_providers", migration.schema)
         val sources = ProviderRegistry.get<BibleSourceRepository>()

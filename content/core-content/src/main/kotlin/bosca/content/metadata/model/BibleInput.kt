@@ -2,11 +2,15 @@ package bosca.content.metadata.model
 
 import bosca.bible.IBible
 import bosca.bible.bibleJson
+import bosca.bible.components.IComponent
+import bosca.bible.style.IStyle
 import bosca.serialization.UUID
 import kotlinx.serialization.Contextual
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.PolymorphicSerializer
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.builtins.nullable
 import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.encodeToJsonElement
 import org.slf4j.LoggerFactory
 
 private val log = LoggerFactory.getLogger("bosca.content.metadata.model.BibleInput")
@@ -44,7 +48,11 @@ class BibleInput(
     }
 }
 
-fun IBible.toInput(defaultVariant: Boolean) = BibleInput(
+/** Projects a Bible for persistence using its publication identifier as the variant. */
+fun IBible.toInput(defaultVariant: Boolean) = toInput(defaultVariant, metadata.publication.id)
+
+/** Projects a Bible for persistence with an explicitly selected Bosca variant. */
+fun IBible.toInput(defaultVariant: Boolean, variant: String) = BibleInput(
     systemId = metadata.identification.system.id,
     name = metadata.identification.name,
     nameLocal = metadata.identification.nameLocal,
@@ -69,7 +77,7 @@ fun IBible.toInput(defaultVariant: Boolean) = BibleInput(
             chapters = it.chapters.map {
                 val content = it[it.reference]
                 val components = try {
-                    bibleJson.encodeToJsonElement(content)
+                    bibleJson.encodeToJsonElement(IComponent.serializer().nullable, content)
                 } catch (e: Exception) {
                     log.error("Error parsing content: {}", content, e)
                     throw e
@@ -87,6 +95,6 @@ fun IBible.toInput(defaultVariant: Boolean) = BibleInput(
         )
     },
     defaultVariant = defaultVariant,
-    styles = bibleJson.encodeToJsonElement(styles),
-    variant = metadata.publication.id
+    styles = bibleJson.encodeToJsonElement(ListSerializer(PolymorphicSerializer(IStyle::class)), styles),
+    variant = variant
 )

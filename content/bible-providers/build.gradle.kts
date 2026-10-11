@@ -13,6 +13,7 @@ java {
 
 dependencies {
     api(project(":content:core-bible-providers"))
+    implementation(project(":bosca-core:core-configuration"))
     implementation(platform(libs.okhttp.bom))
     implementation(libs.okhttp)
 
@@ -20,6 +21,13 @@ dependencies {
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.okhttp.mockwebserver)
     testImplementation(project(":bosca-core:test-support"))
+    testImplementation(project(":bosca-core:configuration"))
+    testImplementation(project(":bosca-core:core-security"))
+    testImplementation(project(":bosca-core:security"))
+    testImplementation(project(":bosca-core:core-storage"))
+    testImplementation(project(":content:content"))
+    testImplementation(project(":content:slugs"))
+    testImplementation(libs.mockk)
 
     "ksp"(project(":bosca-core:core-ksp"))
     "ksp"(project(":services-di:di-ksp"))

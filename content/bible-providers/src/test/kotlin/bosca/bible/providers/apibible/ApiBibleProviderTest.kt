@@ -7,13 +7,19 @@ import bosca.bible.components.ComponentContainer
 import bosca.bible.components.IComponent
 import bosca.bible.components.Text
 import bosca.bible.providers.model.BibleProviderResponse
+import bosca.bible.providers.model.BibleProviderSettings
 import bosca.bible.providers.model.BibleSourceKind
+import bosca.configuration.service.ConfigurationService
+import bosca.serialization.UUID
+import io.mockk.coEvery
+import io.mockk.mockk
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerializationException
+import kotlinx.serialization.json.Json
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
 import mockwebserver3.SocketEffect
@@ -38,9 +44,13 @@ class ApiBibleProviderTest {
 
     private lateinit var server: MockWebServer
     private lateinit var client: OkHttpClient
+    private val json = Json { ignoreUnknownKeys = true }
+    private val configurations = mockk<ConfigurationService>()
+    private val configurationId = UUID.random()
 
     @BeforeTest
     fun setup() {
+        coEvery { configurations.getValue(configurationId) } returns settings("test-key")
         server = MockWebServer()
         server.start()
         client = OkHttpClient.Builder().callTimeout(5, TimeUnit.SECONDS).build()
@@ -57,8 +67,8 @@ class ApiBibleProviderTest {
     fun `chapter content attribution and token come from one response`() = runTest {
         server.enqueue(MockResponse.Builder().body(chapterResponse).build())
 
-        val response = ApiBibleProvider("test-key", client, server.url("/v1/"))
-            .getChapter("edition", "GEN.1")
+        val response = ApiBibleProvider(configurations, json, client, server.url("/v1/"))
+            .getChapter(configurationId, "edition", "GEN.1")
 
         assertEquals(Reference("GEN.1"), response.content.reference)
         assertEquals("First verse. ", text(assertNotNull(response.content[Reference("GEN.1.1")])))
@@ -90,8 +100,8 @@ class ApiBibleProviderTest {
             .replace("Chapter copyright", "Next copyright")).build())
         val provider = provider()
 
-        val first = provider.getChapter("edition", "GEN.1")
-        val second = provider.getChapter("edition", "GEN.1")
+        val first = provider.getChapter(configurationId, "edition", "GEN.1")
+        val second = provider.getChapter(configurationId, "edition", "GEN.1")
 
         assertEquals("response-token", first.fumsToken)
         assertEquals("Chapter copyright", first.attribution?.copyright)
@@ -104,7 +114,7 @@ class ApiBibleProviderTest {
     fun `missing chapter attribution remains absent for source fallback`() = runTest {
         server.enqueue(MockResponse.Builder().body(chapterResponse.replace("\"copyright\": \"Chapter copyright\",", "")).build())
 
-        assertNull(provider().getChapter("edition", "GEN.1").attribution)
+        assertNull(provider().getChapter(configurationId, "edition", "GEN.1").attribution)
     }
 
     @Test
@@ -118,7 +128,7 @@ class ApiBibleProviderTest {
             chapterResponse.replace("\"meta\": {\"fumsToken\":\"response-token\"}", "\"meta\": {}"),
         )) {
             server.enqueue(MockResponse.Builder().body(payload).build())
-            assertFailsWith<IOException> { provider().getChapter("edition", "GEN.1") }
+            assertFailsWith<IOException> { provider().getChapter(configurationId, "edition", "GEN.1") }
         }
     }
 
@@ -127,7 +137,7 @@ class ApiBibleProviderTest {
         server.enqueue(MockResponse.Builder().code(429).addHeader("Retry-After", "60")
             .body("private-provider-response").build())
 
-        val failure = assertFailsWith<ApiBibleException> { provider().getChapter("edition", "GEN.1") }
+        val failure = assertFailsWith<ApiBibleException> { provider().getChapter(configurationId, "edition", "GEN.1") }
 
         assertEquals(429, failure.statusCode)
         assertEquals("60", failure.retryAfter)
@@ -138,7 +148,7 @@ class ApiBibleProviderTest {
     @Test
     fun `cancelling a pending request propagates cancellation`() = runTest {
         server.enqueue(MockResponse.Builder().onResponseStart(SocketEffect.Stall).build())
-        val call = async(Dispatchers.Default) { provider().getChapter("edition", "GEN.1") }
+        val call = async(Dispatchers.Default) { provider().getChapter(configurationId, "edition", "GEN.1") }
         assertNotNull(withContext(Dispatchers.IO) { server.takeRequest(5, TimeUnit.SECONDS) })
 
         call.cancel(CancellationException("Cancelled by caller"))
@@ -150,7 +160,7 @@ class ApiBibleProviderTest {
     fun `API redirects are reported without following them`() = runTest {
         server.enqueue(MockResponse.Builder().code(302).addHeader("Location", server.url("/redirected").toString()).build())
 
-        assertEquals(302, assertFailsWith<ApiBibleException> { provider().getChapter("edition", "GEN.1") }.statusCode)
+        assertEquals(302, assertFailsWith<ApiBibleException> { provider().getChapter(configurationId, "edition", "GEN.1") }.statusCode)
         assertEquals(1, server.requestCount)
     }
 
@@ -158,25 +168,35 @@ class ApiBibleProviderTest {
     fun `malformed provider JSON fails instead of returning empty content`() = runTest {
         server.enqueue(MockResponse.Builder().body("{invalid").build())
 
-        assertFailsWith<SerializationException> { provider().getChapter("edition", "GEN.1") }
+        assertFailsWith<SerializationException> { provider().getChapter(configurationId, "edition", "GEN.1") }
+    }
+
+    @Test
+    fun `provider honors the injected JSON configuration`() = runTest {
+        val response = """{"data":[],"additionalField":true}"""
+        server.enqueue(MockResponse.Builder().body(response).build())
+        val strict = ApiBibleProvider(configurations, Json, client, server.url("/v1/"))
+        assertFailsWith<SerializationException> { strict.test(configurationId) }
+
+        server.enqueue(MockResponse.Builder().body(response).build())
+        provider().test(configurationId)
     }
 
     @Test
     fun `invalid JSON errors do not expose the response FUMS token`() = runTest {
         server.enqueue(MockResponse.Builder().body("""{"meta":{"fumsToken":"private-token"},"data":null}""").build())
 
-        val failure = assertFailsWith<SerializationException> { provider().getChapter("edition", "GEN.1") }
+        val failure = assertFailsWith<SerializationException> { provider().getChapter(configurationId, "edition", "GEN.1") }
 
         assertTrue("private-token" !in failure.toString())
     }
 
     @Test
     fun `invalid requests fail before contacting the provider`() = runTest {
-        assertFailsWith<IllegalArgumentException> { provider().getChapter("edition", "GEN.1.1") }
-        assertFailsWith<IllegalArgumentException> { provider().getCatalog(BibleSourceKind.TEXT, null, -1, 10) }
-        assertFailsWith<IllegalArgumentException> { provider().getCatalog(BibleSourceKind.TEXT, null, 0, -1) }
-        assertFailsWith<IllegalArgumentException> { ApiBibleProvider("key\nprivate", client, server.url("/v1/")) }
-        assertTrue(provider().getCatalog(BibleSourceKind.TEXT, null, 0, 0).isEmpty())
+        assertFailsWith<IllegalArgumentException> { provider().getChapter(configurationId, "edition", "GEN.1.1") }
+        assertFailsWith<IllegalArgumentException> { provider().getCatalog(configurationId, BibleSourceKind.TEXT, null, -1, 10) }
+        assertFailsWith<IllegalArgumentException> { provider().getCatalog(configurationId, BibleSourceKind.TEXT, null, 0, -1) }
+        assertTrue(provider().getCatalog(configurationId, BibleSourceKind.TEXT, null, 0, 0).isEmpty())
         assertEquals(0, server.requestCount)
     }
 
@@ -185,7 +205,7 @@ class ApiBibleProviderTest {
         val second = edition.replace("\"id\":\"edition\"", "\"id\":\"second-edition\"")
         server.enqueue(MockResponse.Builder().body("""{"data":[$edition,$second]}""").build())
 
-        val catalog = provider().getCatalog(BibleSourceKind.AUDIO, "ENGLISH", 1, 1).single()
+        val catalog = provider().getCatalog(configurationId, BibleSourceKind.AUDIO, "ENGLISH", 1, 1).single()
 
         assertEquals("second-edition", catalog.id)
         assertEquals(BibleSourceKind.AUDIO, catalog.kind)
@@ -203,13 +223,13 @@ class ApiBibleProviderTest {
     @Test
     fun `catalog query can exclude all editions and missing details convert through projections`() = runTest {
         server.enqueue(MockResponse.Builder().body("""{"data":[$edition]}""").build())
-        assertTrue(provider().getCatalog(BibleSourceKind.TEXT, "absent", 0, 10).isEmpty())
+        assertTrue(provider().getCatalog(configurationId, BibleSourceKind.TEXT, "absent", 0, 10).isEmpty())
         val sparse = edition.replace("\"copyright\":\"Edition copyright\",", "")
             .replace("\"nameLocal\":\"English\",", "")
             .replace("\"script\":\"Latin\"", "\"script\":\"Latn\"")
         server.enqueue(MockResponse.Builder().body("""{"data":[$sparse]}""").build())
 
-        val snapshot = provider().getCatalog(BibleSourceKind.TEXT, null, 0, 10).single().asSerializable()
+        val snapshot = provider().getCatalog(configurationId, BibleSourceKind.TEXT, null, 0, 10).single().asSerializable()
 
         assertEquals("", snapshot.attribution.copyright)
         assertEquals("English", snapshot.languages.single().nameLocal)
@@ -221,7 +241,7 @@ class ApiBibleProviderTest {
         server.enqueue(MockResponse.Builder().body("""{"data":$edition}""").build())
         server.enqueue(MockResponse.Builder().body(books).build())
 
-        val response = provider().getBible("edition", BibleSourceKind.TEXT)
+        val response = provider().getBible(configurationId, "edition", BibleSourceKind.TEXT)
         val bible = response.content.asSerializable()
 
         assertEquals("dbl-edition", bible.metadata.identification.system.id)
@@ -245,7 +265,7 @@ class ApiBibleProviderTest {
         server.enqueue(MockResponse.Builder().body("""{"data":${edition.replace("\"description\":\"English translation\"", "\"description\":null,\"descriptionLocal\":null")}}""").build())
         server.enqueue(MockResponse.Builder().body(books).build())
 
-        val bible = provider().getBible("edition", BibleSourceKind.TEXT).content
+        val bible = provider().getBible(configurationId, "edition", BibleSourceKind.TEXT).content
 
         assertEquals("", bible.metadata.identification.description)
         assertEquals("", bible.metadata.publication.description)
@@ -257,7 +277,7 @@ class ApiBibleProviderTest {
         server.enqueue(MockResponse.Builder().body("""{"data":[$edition]}""").build())
         server.enqueue(MockResponse.Builder().body(books).build())
 
-        assertEquals("edition", provider().getBible("edition", BibleSourceKind.AUDIO).content.metadata.publication.id)
+        assertEquals("edition", provider().getBible(configurationId, "edition", BibleSourceKind.AUDIO).content.metadata.publication.id)
         val request = server.takeRequest()
         assertEquals("/v1/audio-bibles", request.url.encodedPath)
         assertEquals("edition", request.url.queryParameter("ids"))
@@ -267,23 +287,85 @@ class ApiBibleProviderTest {
     @Test
     fun `unavailable audio Bible and inconsistent text metadata fail`() = runTest {
         server.enqueue(MockResponse.Builder().body("""{"data":[]}""").build())
-        assertFailsWith<IOException> { provider().getBible("edition", BibleSourceKind.AUDIO) }
+        assertFailsWith<IOException> { provider().getBible(configurationId, "edition", BibleSourceKind.AUDIO) }
         server.enqueue(MockResponse.Builder().body("""{"data":${edition.replace("\"id\":\"edition\"", "\"id\":\"other\"")}}""").build())
-        assertFailsWith<IOException> { provider().getBible("edition", BibleSourceKind.TEXT) }
+        assertFailsWith<IOException> { provider().getBible(configurationId, "edition", BibleSourceKind.TEXT) }
         server.enqueue(MockResponse.Builder().body("""{"data":$edition}""").build())
         server.enqueue(MockResponse.Builder().body(books.replace("\"bookId\":\"GEN\"", "\"bookId\":\"EXO\"")).build())
-        assertFailsWith<IOException> { provider().getBible("edition", BibleSourceKind.TEXT) }
+        assertFailsWith<IOException> { provider().getBible(configurationId, "edition", BibleSourceKind.TEXT) }
     }
 
     @Test
     fun `test verifies catalog access without fetching content`() = runTest {
         server.enqueue(MockResponse.Builder().body("""{"data":[]}""").build())
 
-        provider().test()
+        provider().test(configurationId)
 
         assertEquals("API_BIBLE", provider().key)
         assertEquals("/v1/bibles", server.takeRequest().url.encodedPath)
         assertEquals(1, server.requestCount)
+    }
+
+    @Test
+    fun `shared provider reads credentials for each configuration without retaining them`() = runTest {
+        val secondId = UUID.random()
+        coEvery { configurations.getValue(secondId) } returns settings("second-key")
+        val provider = provider()
+        repeat(2) { server.enqueue(MockResponse.Builder().body("""{"data":[]}""").build()) }
+        val first = async(Dispatchers.Default) { provider.test(configurationId) }
+        val second = async(Dispatchers.Default) { provider.test(secondId) }
+        first.await()
+        second.await()
+        assertEquals(setOf("test-key", "second-key"), setOf(server.takeRequest().headers["api-key"], server.takeRequest().headers["api-key"]))
+
+        coEvery { configurations.getValue(configurationId) } returns settings("replacement-key")
+        server.enqueue(MockResponse.Builder().body("""{"data":[]}""").build())
+        provider.test(configurationId)
+        assertEquals("replacement-key", server.takeRequest().headers["api-key"])
+    }
+
+    @Test
+    fun `a Bible operation reads its configuration once for all upstream requests`() = runTest {
+        coEvery { configurations.getValue(configurationId) } returnsMany listOf(settings("first-key"), settings("next-key"))
+        server.enqueue(MockResponse.Builder().body("""{"data":$edition}""").build())
+        server.enqueue(MockResponse.Builder().body(books).build())
+        val provider = provider()
+        provider.getBible(configurationId, "edition", BibleSourceKind.TEXT)
+        assertEquals("first-key", server.takeRequest().headers["api-key"])
+        assertEquals("first-key", server.takeRequest().headers["api-key"])
+        server.enqueue(MockResponse.Builder().body(chapterResponse).build())
+        provider.getChapter(configurationId, "edition", "GEN.1")
+        assertEquals("next-key", server.takeRequest().headers["api-key"])
+    }
+
+    @Test
+    fun `invalid saved credentials fail before network access and disabled configurations allow only tests`() = runTest {
+        val provider = provider()
+        for (value in listOf(null, settings(null), settings(" "), settings("key\nprivate"), settings("key", provider = "OTHER"))) {
+            coEvery { configurations.getValue(configurationId) } returns value
+            assertFailsWith<IllegalArgumentException> { provider.test(configurationId) }
+        }
+        coEvery { configurations.getValue(configurationId) } returns settings("test-key", enabled = false)
+        assertFailsWith<IllegalStateException> { provider.getChapter(configurationId, "edition", "GEN.1") }
+        assertEquals(0, server.requestCount)
+        server.enqueue(MockResponse.Builder().body("""{"data":[]}""").build())
+        provider.test(configurationId)
+        assertEquals("test-key", server.takeRequest().headers["api-key"])
+    }
+
+    @Test
+    fun `configuration parsing hides credentials and configuration reads preserve cancellation`() = runTest {
+        coEvery { configurations.getValue(configurationId) } returns json.parseToJsonElement(
+            """{"name":"Test","provider":"API_BIBLE","enabled":"invalid","apiKey":"private-key"}""",
+        )
+        val provider = provider()
+        val failure = assertFailsWith<SerializationException> { provider.test(configurationId) }
+        assertTrue("private-key" !in failure.toString())
+
+        val cancelled = CancellationException("Configuration read cancelled")
+        coEvery { configurations.getValue(configurationId) } throws cancelled
+        assertEquals(cancelled, assertFailsWith<CancellationException> { provider.test(configurationId) })
+        assertEquals(0, server.requestCount)
     }
 
     @Test
@@ -295,7 +377,7 @@ class ApiBibleProviderTest {
                 .body("""{"data":[]}""".toResponseBody("application/json".toMediaType())).build()
         }.build()
 
-        ApiBibleProvider("test-key", intercepted).test()
+        ApiBibleProvider(configurations, json, intercepted).test(configurationId)
     }
 
     @Test
@@ -314,7 +396,7 @@ class ApiBibleProviderTest {
             """.trimIndent()).build())
             media.enqueue(MockResponse.Builder().addHeader("Content-Type", "audio/mpeg").body("audio-bytes").build())
 
-            val response = provider().downloadAudioChapter("edition", "GEN.1", destination)
+            val response = provider().downloadAudioChapter(configurationId, "edition", "GEN.1", destination)
 
             assertEquals("audio-bytes", destination.toString(Charsets.UTF_8))
             assertTrue(!destination.closed)
@@ -346,7 +428,7 @@ class ApiBibleProviderTest {
         )) {
             server.enqueue(MockResponse.Builder().body(payload).build())
             val destination = ByteArrayOutputStream()
-            assertFailsWith<IOException> { provider().downloadAudioChapter("edition", "GEN.1", destination) }
+            assertFailsWith<IOException> { provider().downloadAudioChapter(configurationId, "edition", "GEN.1", destination) }
             assertEquals(0, destination.size())
         }
     }
@@ -361,7 +443,7 @@ class ApiBibleProviderTest {
         )) {
             server.enqueue(MockResponse.Builder().body(audioResponse()).build())
             server.enqueue(mediaResponse)
-            assertFailsWith<IOException> { provider().downloadAudioChapter("edition", "GEN.1", ByteArrayOutputStream()) }
+            assertFailsWith<IOException> { provider().downloadAudioChapter(configurationId, "edition", "GEN.1", ByteArrayOutputStream()) }
             server.takeRequest()
             assertNull(server.takeRequest().headers["api-key"])
         }
@@ -379,7 +461,7 @@ class ApiBibleProviderTest {
             override fun close() { closed = true }
         }
 
-        val propagated = assertFailsWith<IOException> { provider().downloadAudioChapter("edition", "GEN.1", destination) }
+        val propagated = assertFailsWith<IOException> { provider().downloadAudioChapter(configurationId, "edition", "GEN.1", destination) }
         assertEquals(failure.message, propagated.message)
         assertTrue(!destination.closed)
     }
@@ -389,7 +471,10 @@ class ApiBibleProviderTest {
         "timecodes":[{"verseId":"GEN.1.1","start":"1.5","end":"4"}]},"meta":{"fumsToken":"audio-token"}}
     """.trimIndent()
 
-    private fun provider() = ApiBibleProvider("test-key", client, server.url("/v1/"))
+    private fun settings(apiKey: String?, enabled: Boolean = true, provider: String = "API_BIBLE") =
+        json.encodeToJsonElement(BibleProviderSettings.serializer(), BibleProviderSettings("Test", provider, enabled, apiKey))
+
+    private fun provider() = ApiBibleProvider(configurations, json, client, server.url("/v1/"))
 
     private fun text(component: IComponent): String = when (component) {
         is Text -> component.text

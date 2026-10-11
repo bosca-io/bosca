@@ -42,4 +42,8 @@ interface BibleChapterCacheRepository {
     /** Deletes expired responses across all configurations, including removed sources. */
     @Query("delete from bible_providers.chapters where expires <= :now", returnUpdateCount = true)
     suspend fun removeExpired(now: OffsetDateTime): Int
+
+    /** Deletes all responses attached to a refreshed or removed source. */
+    @Query("delete from bible_providers.chapters where source_id = :sourceId", returnUpdateCount = true)
+    suspend fun removeBySource(sourceId: UUID): Int
 }

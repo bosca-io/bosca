@@ -31,6 +31,9 @@ interface BibleProviderService : Service {
     /** Verifies a saved configuration without adding Bibles or downloading chapter content. */
     suspend fun test(configurationId: UUID)
 
+    /** Resolves the registered provider for an enabled configuration; operations read its saved credentials. */
+    suspend fun getProvider(configurationId: UUID): BibleProvider
+
     /** Browses a provider's accessible text Bibles or audio recordings with offset pagination. */
     suspend fun getCatalog(
         configurationId: UUID,
