@@ -66,6 +66,65 @@ class S3ObjectStorageServiceTest {
     }
 
     @Test
+    fun `explicit multipart completion sorts lexicographic parts across pages numerically`() = runTest {
+        val s3 = mockk<S3Client>()
+        val parts = (1..13).sortedBy { it.toString() }.map {
+            Part.builder().partNumber(it).eTag("etag-$it").size(it.toLong()).build()
+        }
+        every { s3.listParts(any<ListPartsRequest>()) } returnsMany listOf(
+            ListPartsResponse.builder().parts(parts.take(6))
+                .isTruncated(true).nextPartNumberMarker(2).build(),
+            ListPartsResponse.builder().parts(parts.drop(6)).isTruncated(false).build(),
+        )
+        every { s3.completeMultipartUpload(any<CompleteMultipartUploadRequest>()) } returns
+            CompleteMultipartUploadResponse.builder().build()
+        val path = object : ObjectPath { override fun toString() = "multipart-key" }
+
+        service(s3).completeMultipartUpload(path, "upload-1", 13, 91)
+
+        verify(exactly = 1) {
+            s3.listParts(match<ListPartsRequest> { it.partNumberMarker() == 2 })
+        }
+        verify(exactly = 1) {
+            s3.completeMultipartUpload(match<CompleteMultipartUploadRequest> {
+                it.multipartUpload().parts().map(CompletedPart::partNumber) == (1..13).toList() &&
+                    it.multipartUpload().parts().map(CompletedPart::eTag) == (1..13).map { number -> "etag-$number" }
+            })
+        }
+    }
+
+    @Test
+    fun `explicit multipart completion rejects duplicate parts`() = runTest {
+        val s3 = mockk<S3Client>()
+        every { s3.listParts(any<ListPartsRequest>()) } returns ListPartsResponse.builder()
+            .parts(listOf(2, 1, 2).map {
+                Part.builder().partNumber(it).eTag("etag-$it").size(5L).build()
+            }).isTruncated(false).build()
+        val path = object : ObjectPath { override fun toString() = "multipart-key" }
+
+        assertFailsWith<IllegalArgumentException> {
+            service(s3).completeMultipartUpload(path, "upload-1", 2, 15)
+        }
+        verify(exactly = 0) { s3.completeMultipartUpload(any<CompleteMultipartUploadRequest>()) }
+    }
+
+    @Test
+    fun `explicit multipart completion rejects incorrect total length after sorting`() = runTest {
+        val s3 = mockk<S3Client>()
+        every { s3.listParts(any<ListPartsRequest>()) } returns ListPartsResponse.builder()
+            .parts(listOf(2, 1).map {
+                Part.builder().partNumber(it).eTag("etag-$it").size(5L).build()
+            }).isTruncated(false).build()
+        val path = object : ObjectPath { override fun toString() = "multipart-key" }
+
+        val error = assertFailsWith<IllegalArgumentException> {
+            service(s3).completeMultipartUpload(path, "upload-1", 2, 11)
+        }
+        assertEquals("multipart upload upload-1 contains 10 bytes, expected 11", error.message)
+        verify(exactly = 0) { s3.completeMultipartUpload(any<CompleteMultipartUploadRequest>()) }
+    }
+
+    @Test
     fun `copies a staged object into an existing multipart upload`() = runTest {
         val s3 = mockk<S3Client>()
         every { s3.uploadPartCopy(any<UploadPartCopyRequest>()) } returns
