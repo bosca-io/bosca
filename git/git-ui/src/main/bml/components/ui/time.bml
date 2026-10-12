@@ -1,5 +1,6 @@
 <component tag="ui-time">
   <prop name="relative" type="Boolean" default="false" />
+  <prop name="ago" type="Boolean" default="false" />
   <prop name="value" type="String" required />
   <script server provides="label">
     try {
@@ -22,7 +23,9 @@
                             )
                         )
                 }
-            if (seconds < -60 && age < 604800) "in $label" else label
+            if (seconds < -60 && age < 604800) "in $label"
+            else if (ago && seconds >= 60 && age < 604800) "$label ago"
+            else label
         } else {
             timestamp
                 .withOffsetSameInstant(java.time.ZoneOffset.UTC)

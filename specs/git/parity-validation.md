@@ -406,3 +406,34 @@ Restart Git Server to load the updated resources and open `http://localhost:8093
 
 
 Pre-push validation repeated `:git:git-ui:test` and the complete `:git:git-server:test` after the UI asset handlers moved resource reads to `Dispatchers.IO` and the standalone UI module became non-suspending. All **60 UI tests** and **12 server tests** passed, with no failures, errors or skips. This run includes the default-port configuration regression and both production combined-server cases. No native rebuild was run for those final edits.
+
+## 2026-10-12 pull-request presentation and interaction revision
+
+The PR list, creation dialog and three detail views were compared with Studio's actual PR source. A shared lifecycle component now applies green Open, purple Merged, red Closed and neutral Draft presentation across titles, rows, dependencies and merge plans. Review outcomes use readable labels and dismissed reviews remain neutral. Headers group title/number/status, author/source/target and timestamps; date labels have explicit spacing. Repository labels exclude deleted records; the list-name regression is covered over HTTP and in the browser.
+
+Overview puts merge readiness and checks together in the main column, followed by recent reviews and changed files. Assignees and dependencies share a compact sidebar. Auxiliary actions use specifically labelled, tooltipped icons. Merge, close, reopen and review actions retain explicit text. Merge confirmation names the selected method and shows the ordered dependency plan. Known branch conflicts and blocked plans disable the respective merge controls; the API retains required-review/check enforcement. Drafts offer Ready for review rather than an unavailable review submission action.
+
+Creation groups target and source repositories/branches side by side on desktop and stacks them on phones, retaining draft fields across selections. Diff files use framed headings, aligned line numbers and compact comment icons. Comment composition opens inside the selected diff; cancellation clears it. A real added-line click exposed a previous 500 response: nullable line numbers were sent through BML's primitive-only action decoder. Git now sends zero for an absent side and normalizes it inside its model, without changing core BML.
+
+Measured validation:
+
+- `:git:git-ui:check` and Git-server `installDist` passed: **63 JVM tests**, **15 client tests**, strict TypeScript, schema contracts and compiled BML assets. The three new HTTP/action regressions cover lifecycle controls, conflict/metadata controls and selecting/cancelling an added-line comment.
+- PR browser interactions passed at **1920, 1440, 1024 and 390px**. Checks cover five lifecycle/conflict states, rendered badge colors, title and timestamp spacing, grouped checks/reviews, merge-method confirmation, a real line-comment click, its 24px control and keyboard-focus tooltip, and cancellation beside the diff. No PR browser runtime exceptions were observed.
+- The complete isolated browser suite passed, including authentication, repository editing/navigation, Markdown assets, search, PR interactions, and **220 route/viewport cases** with no document overflow or browser runtime exceptions. Live logs, agent drafts and pipeline-trigger checks also passed. After the timestamp adjustment, the PR module and screen matrix were repeated against the rebuilt fixture.
+- Desktop and phone PR overview, creation, merge confirmation, reviews, conflicts and inline-comment captures were inspected. `git diff --check` passed. The [component specification](bml-ui-components-spec.md) records the Nuxt mappings and the local control contracts.
+
+The first inline-comment regression failed because the primitive decoder received null; both the compiled action test and real browser click pass after the Git-only argument correction. One combined browser run later timed out loading branches in the global creation dialog. Its field/action binding was inspected; the complete run passed against a freshly rebuilt fixture, with timeout diagnostics added to the runner. Earlier copy expectations for result counts and merge-method labels were updated to the new presentation. Failed attempts are not counted as passes.
+
+```bash
+./gradlew :git:git-ui:check :git:git-server:installDist
+./gradlew :git:git-ui:runBrowserFixture
+GIT_UI_BASE_URL=http://localhost:<fixture-port> \
+  GIT_UI_ARTIFACT_DIR=/tmp/git-pr-complete-browser \
+  node git/git-ui/src/test/browser/run.mjs
+GIT_UI_BASE_URL=http://localhost:<fixture-port> \
+  GIT_UI_BROWSER_TESTS=pulls.mjs,screens.mjs \
+  GIT_UI_ARTIFACT_DIR=/tmp/git-pr-verified-browser \
+  node git/git-ui/src/test/browser/run.mjs
+```
+
+Final build output is in `/tmp/git-pr-last-check.log`; full-suite and final PR/matrix logs and captures are in `/tmp/git-pr-complete-browser*` and `/tmp/git-pr-verified-browser*`. The repository-label correction was then verified with the same 63-test check and a focused four-width PR browser run in `/tmp/git-pr-label-browser*`. All isolated fixtures and browsers were stopped. This revision changes Git UI and its specifications only. No production BML, GraphQL, authentication or API code changed. Browser mutations use isolated fixtures; real Git/backend merge execution and native packaging were not rerun for this presentation change. Earlier replacement-acceptance gates remain open. Restart Git Server to load the rebuilt UI at `http://localhost:8093`.

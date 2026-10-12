@@ -4,51 +4,126 @@
     bosca.git.ui.PullActionsModel(page)
   </script>
   <island name="git-pull-assignees" :key="page.pull.id">
-    <section :data-next-href="model.nextHref">
-      <h2>Assignees</h2>
+    <section class="assignees" :data-next-href="model.nextHref">
+      <header class="sidebar-heading">
+        <h2>Assignees</h2>
+        <if model.page.canEdit>
+          <ui-dialog
+            title="Add assignee"
+            triggerLabel="Add assignee"
+            icon="users"
+            triggerIcon="plus"
+            triggerIconOnly
+            :forceOpen='model.failed && model.selectedAction == "assign"'
+          >
+            <form class="modal-form" @submit="model.assign(form.profile, false, ctx)">
+              <div class="modal-fields">
+                <if model.message.isNotBlank()>
+                  <ui-alert>{ model.message }</ui-alert>
+                </if>
+                <git-owner-picker
+                  :allowAll="false"
+                  caption="Assignee"
+                  name="profile"
+                  id=""
+                  label="Choose an assignee"
+                />
+              </div>
+              <footer class="modal-footer">
+                <ui-button ref="cancel">Cancel</ui-button>
+                <ui-button type="submit" primary>Add assignee</ui-button>
+              </footer>
+            </form>
+          </ui-dialog>
+        </if>
+      </header>
       <if model.page.pull.assignees.isEmpty()>
-        <p class="muted">No assignees.</p>
-      </if>
-      <if model.message.isNotBlank()>
-        <ui-alert>{ model.message }</ui-alert>
-      </if>
-      <for profile in model.page.pull.assignees>
-        <form class="toolbar" @submit="model.assign(profile.id, true, ctx)">
-          <span>{ profile.name } · { profile.slug ?: profile.id }</span>
-          <if model.page.canEdit>
-            <ui-button type="submit">Unassign</ui-button>
-          </if>
-        </form>
-      </for>
-      <if model.page.canEdit>
-        <ui-dialog
-          title="Assign pull request"
-          triggerLabel="Assign"
-          icon="users"
-          :forceOpen="model.failed"
-        >
-          <form class="modal-form" @submit="model.assign(form.profile, false, ctx)">
-            <div class="modal-fields">
-              <if model.message.isNotBlank()>
-                <ui-alert>{ model.message }</ui-alert>
+        <p class="sidebar-empty">No one assigned.</p>
+      <else>
+        <div class="assignee-list">
+          <for profile in model.page.pull.assignees>
+            <form class="assignee" @submit="model.assign(profile.id, true, ctx)">
+              <span class="avatar" aria-hidden="true">{ profile.name.take(1).uppercase() }</span>
+              <div class="assignee-name">
+                <strong>{ profile.name }</strong>
+                <span>{ profile.slug?.let { "@" + it } ?: profile.id }</span>
+              </div>
+              <if model.page.canEdit>
+                <ui-icon-button
+                  type="submit"
+                  icon="close"
+                  :label='"Remove assignee " + profile.name + " · " + (profile.slug?.let { "@" + it } ?: profile.id)'
+                />
               </if>
-              <git-owner-picker
-                :allowAll="false"
-                caption="Profile"
-                name="profile"
-                id=""
-                label="Choose a profile"
-              />
-            </div>
-            <footer class="modal-footer">
-              <ui-button ref="cancel">Cancel</ui-button>
-              <ui-button type="submit" primary>Assign</ui-button>
-            </footer>
-          </form>
-        </ui-dialog>
+            </form>
+          </for>
+        </div>
+      </if>
+      <if model.failed && model.selectedAction == "unassign">
+        <ui-alert>{ model.message }</ui-alert>
       </if>
     </section>
   </island>
+  <style scoped>
+    .assignees {
+      padding: 16px;
+    }
+    .sidebar-heading {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    h2 {
+      margin: 0;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .sidebar-empty {
+      margin: 0;
+      color: var(--fg-3);
+      font-size: 12px;
+    }
+    .assignee-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .assignee {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 0;
+    }
+    .avatar {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      flex: none;
+      border-radius: 50%;
+      background: var(--bg-3);
+      color: var(--fg-2);
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .assignee-name {
+      min-width: 0;
+      flex: 1;
+      font-size: 12px;
+      overflow-wrap: anywhere;
+    }
+    .assignee-name strong {
+      display: block;
+      font-weight: 500;
+    }
+    .assignee-name > span {
+      color: var(--fg-3);
+      font-size: 11px;
+    }
+  </style>
   <script client scoped>
     ctx.onUpdate(() => {
       const next =

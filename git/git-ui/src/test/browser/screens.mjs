@@ -11,7 +11,7 @@ const ws = new WebSocket(
   targets.find(
     (t) =>
       t.url.startsWith(base) ||
-      (t.type === "page" && t.url.startsWith("http://")),
+      t.type === "page",
   ).webSocketDebuggerUrl,
 );
 await new Promise((r) => ws.addEventListener("open", r, { once: true }));
@@ -73,6 +73,14 @@ async function until(s) {
     if (await ev(s)) return;
     await new Promise((r) => setTimeout(r, 100));
   }
+  const diagnostic = await ev(`JSON.stringify({
+    url: location.href,
+    active: document.activeElement?.outerHTML,
+    modal: document.querySelector('dialog[open]')?.outerHTML,
+    pending: [...document.querySelectorAll('[data-bml-action-pending]')].map(e => e.outerHTML),
+  })`);
+  console.error("Screen timeout state:", diagnostic);
+  console.error("Browser exceptions:", errors);
   throw Error("Timeout " + s);
 }
 async function pressKey(key) {
@@ -103,6 +111,7 @@ async function nav(path) {
 }
 await call("Runtime.enable");
 await call("Page.enable");
+await call("Page.bringToFront");
 await call("Network.setCookie", {
   name: "_git_test",
   value: "ui-test-token",
@@ -584,7 +593,7 @@ for (const width of [1920, 1440, 1024, 390]) {
         6,
         "Pull numbers and titles use Studio's 6px gap",
       );
-      assert.equal(title.count, "1 result");
+      assert.equal(title.count, "1 pull request");
     }
     await writeFile(
       `${process.env.GIT_UI_ARTIFACT_DIR}/bosca-git-ui-initial-${path.replace(/[^a-zA-Z0-9]+/g, "-")}-${width}.png`,
@@ -846,7 +855,7 @@ for (const width of [1920, 1440, 1024, 390]) {
       );
       await inspectDialog("pull-close-dialog", width);
       await ev(`(() => {
-        const trigger = [...document.querySelectorAll('${pullActions} [data-bml-ref=trigger]')].find(e => e.textContent.includes('Prepare merge'));
+        const trigger = [...document.querySelectorAll('${pullActions} [data-bml-ref=trigger]')].find(e => e.textContent.includes('Merge pull request'));
         trigger.click();
         const select = document.querySelector('${pullActions} dialog[open] select[name=strategy]');
         select.value = 'SQUASH'; select.dispatchEvent(new Event('change',{bubbles:true}));
@@ -857,12 +866,12 @@ for (const width of [1920, 1440, 1024, 390]) {
       );
       assert.ok(
         await ev(
-          `document.querySelector('${pullActions} dialog[open]').innerText.includes('squash')`,
+          `document.querySelector('${pullActions} dialog[open]').innerText.toLowerCase().includes('squash')`,
         ),
         "Merge plan shows the reviewed strategy",
       );
       await ev(`(() => {
-        const button = [...document.querySelectorAll('${pullActions} dialog[open] button')].find(e => e.textContent.includes('Change strategy'));
+        const button = [...document.querySelectorAll('${pullActions} dialog[open] button')].find(e => e.textContent.includes('Change method'));
         button.click();
       })()`);
       await until(

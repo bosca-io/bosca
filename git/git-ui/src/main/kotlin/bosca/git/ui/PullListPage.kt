@@ -18,6 +18,7 @@ data class PullListPage(
     val canEdit: Boolean,
     val targetBranches: List<String> = emptyList(),
     val baseHref: String = "",
+    val repositoryNames: Map<String, String> = emptyMap(),
 ) {
     val tabs: List<NavigationItem>
         get() =

@@ -7,6 +7,11 @@
     <slot />
   </span>
   <style scoped>
+    .badge[data-tone="purple"] {
+      color: #a78bff;
+      border-color: #a78bff4d;
+      background: #a78bff1a;
+    }
     .badge[data-tone="info"] {
       color: var(--info);
       border-color: color-mix(in srgb, var(--info) 30%, transparent);

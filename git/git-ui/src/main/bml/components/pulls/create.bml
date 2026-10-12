@@ -11,6 +11,7 @@
         icon="pull"
         triggerIcon="plus"
         primary
+        size="lg"
         :forceOpen="model.page.showCreate || model.failed || model.editing"
       >
         <form
@@ -29,96 +30,84 @@
                 to open a pull request.
               </p>
             </if>
-            <ui-field label="Target repository">
-              <ui-select
-                searchable
-                name="repo"
-                label="Target repository"
-                required
-                @change="model.selectRepositories(form.repo, form.sourceRepo, form.title, form.description, form.source, form.target, form.draft, ctx)"
-              >
-                <option value="" :selected="model.page.repository.isBlank()">
-                  Choose a repository
-                </option>
-                <for repository in model.page.repositories>
-                  <option :value="repository.id" :selected="repository.id == model.page.repository">
-                    { repository.name }
-                    ·
-                    { repository.slug }
-                  </option>
-                </for>
-              </ui-select>
-            </ui-field>
+            <p class="create-intro">Choose the branches to merge, then describe your changes.</p>
+            <div class="comparison-grid">
+              <div class="comparison-column">
+                <ui-field label="Target repository">
+                  <ui-select
+                    searchable
+                    name="repo"
+                    label="Target repository"
+                    required
+                    @change="model.selectRepositories(form.repo, form.sourceRepo, form.title, form.description, form.source, form.target, form.draft, ctx)"
+                  >
+                    <option value="" :selected="model.page.repository.isBlank()">Choose a repository</option>
+                    <for repository in model.page.repositories>
+                      <option :value="repository.id" :selected="repository.id == model.page.repository">
+                        { repository.name + " · " + repository.slug }
+                      </option>
+                    </for>
+                  </ui-select>
+                </ui-field>
+                <ui-field label="Target branch">
+                  <ui-select
+                    searchable
+                    name="target"
+                    label="Target branch"
+                    :disabled="model.page.targetBranches.isEmpty()"
+                    required
+                  >
+                    <option value="" :selected="model.target.isBlank()">Choose a branch</option>
+                    <for branch in model.page.targetBranches>
+                      <option :value="branch" :selected="branch == model.target">{ branch }</option>
+                    </for>
+                  </ui-select>
+                </ui-field>
+              </div>
+              <div class="comparison-column">
+                <ui-field label="Source repository">
+                  <ui-select
+                    searchable
+                    name="sourceRepo"
+                    label="Source repository"
+                    :disabled="model.page.repository.isBlank()"
+                    @change="model.selectRepositories(form.repo, form.sourceRepo, form.title, form.description, form.source, form.target, form.draft, ctx)"
+                  >
+                    <option value="" :selected="model.page.sourceRepository.isBlank()">Choose a repository</option>
+                    <for repository in model.page.repositories>
+                      <option :value="repository.id" :selected="repository.id == model.page.sourceRepository">
+                        { repository.name + " · " + repository.slug }
+                      </option>
+                    </for>
+                  </ui-select>
+                </ui-field>
+                <ui-field label="Source branch">
+                  <ui-select
+                    searchable
+                    name="source"
+                    label="Source branch"
+                    :disabled="model.page.branches.isEmpty()"
+                    required
+                  >
+                    <option value="" :selected="model.source.isBlank()">Choose a branch</option>
+                    <for branch in model.page.branches>
+                      <option :value="branch" :selected="branch == model.source">{ branch }</option>
+                    </for>
+                  </ui-select>
+                </ui-field>
+              </div>
+            </div>
             <ui-field label="Title">
-              <ui-input
-                name="title"
-                :value="model.title"
-                placeholder="Describe the change"
-                required
-              />
+              <ui-input name="title" :value="model.title" placeholder="Describe the change" required />
             </ui-field>
             <ui-field label="Description">
               <textarea name="description" rows="4" placeholder="Explain what changed and why">{ model.description }</textarea>
             </ui-field>
-            <ui-field label="Source repository">
-              <ui-select
-                searchable
-                name="sourceRepo"
-                label="Source repository"
-                :disabled="model.page.repository.isBlank()"
-                @change="model.selectRepositories(form.repo, form.sourceRepo, form.title, form.description, form.source, form.target, form.draft, ctx)"
-              >
-                <option value="" :selected="model.page.sourceRepository.isBlank()">
-                  Choose a source repository
-                </option>
-                <for repository in model.page.repositories>
-                  <option
-                    :value="repository.id"
-                    :selected="repository.id == model.page.sourceRepository"
-                  >
-                    { repository.name }
-                    ·
-                    { repository.slug }
-                  </option>
-                </for>
-              </ui-select>
-            </ui-field>
-            <div class="branch-pickers">
-              <ui-field label="Source branch">
-                <ui-select
-                  searchable
-                  name="source"
-                  label="Source branch"
-                  placeholder="Choose a branch"
-                  :disabled="model.page.branches.isEmpty()"
-                  required
-                >
-                  <option value="" :selected="model.source.isBlank()">Choose a branch</option>
-                  <for branch in model.page.branches>
-                    <option :value="branch" :selected="branch == model.source">{ branch }</option>
-                  </for>
-                </ui-select>
-              </ui-field>
-              <ui-field label="Target branch">
-                <ui-select
-                  searchable
-                  name="target"
-                  label="Target branch"
-                  :disabled="model.page.targetBranches.isEmpty()"
-                  required
-                >
-                  <option value="" :selected="model.target.isBlank()">Choose a branch</option>
-                  <for branch in model.page.targetBranches>
-                    <option :value="branch" :selected="branch == model.target">{ branch }</option>
-                  </for>
-                </ui-select>
-              </ui-field>
-            </div>
             <ui-switch
               name="draft"
               :checked="model.draft"
               label="Create as draft"
-              description="Request a review when the changes are ready."
+              description="Mark it ready when you want feedback."
             />
             <if model.page.repository.isNotBlank() && !model.page.canEdit>
               <ui-alert>Repository edit access is required to create a pull request.</ui-alert>
@@ -141,13 +130,27 @@
     </section>
   </island>
   <style scoped>
-    .branch-pickers {
+    .create-intro {
+      margin: 0;
+      color: var(--fg-3);
+      font-size: 12px;
+      line-height: 1.6;
+    }
+    .comparison-grid {
       display: grid;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 18px;
+      padding-bottom: 18px;
+      border-bottom: 1px solid var(--line);
+    }
+    .comparison-column {
+      display: flex;
+      flex-direction: column;
       gap: 12px;
+      min-width: 0;
     }
     @media (max-width: 480px) {
-      .branch-pickers {
+      .comparison-grid {
         grid-template-columns: 1fr;
       }
     }

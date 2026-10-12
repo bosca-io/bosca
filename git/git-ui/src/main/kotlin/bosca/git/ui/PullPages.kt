@@ -9,11 +9,13 @@ internal fun pullHref(id: String, repo: String, number: Int): String =
 
 suspend fun pullListPage(repositoryId: String = "", baseHref: String = ""): PullListPage {
     val ctx = currentRenderContext()
-    var repositories =
+    val allRepositories =
         ctx.gql
             .execute(GitUiRepositories, GitUiRepositories.Variables(false, null))
             .git
             .repositories
+    var repositories =
+        allRepositories
             .filter { !it.deleted && !it.archived }
             .map {
                 RepositorySummary(
@@ -119,6 +121,7 @@ suspend fun pullListPage(repositoryId: String = "", baseHref: String = ""): Pull
                     .map { it.name }
             else emptyList(),
         baseHref = baseHref,
+        repositoryNames = allRepositories.filterNot { it.deleted }.associate { it.id to it.name },
     )
 }
 
@@ -173,6 +176,9 @@ suspend fun pullPage(): PullPage? {
         if (sha.isBlank()) emptyList()
         else
             ctx.gql.execute(GitUiStatuses, GitUiStatuses.Variables(repo.id, sha)).git.commitStatuses
+    val targetRepository =
+        if (repo.id == repository) repo
+        else ctx.gql.execute(GitUiRepository, GitUiRepository.Variables(repository)).git.repositoryById
     return PullPage(
         pull,
         pullHref(pull.id, repository, number),
@@ -190,15 +196,13 @@ suspend fun pullPage(): PullPage? {
         checks,
         candidates,
         identities,
-        (if (repo.id == repository) repo
-            else
-                ctx.gql
-                    .execute(GitUiRepository, GitUiRepository.Variables(repository))
-                    .git
-                    .repositoryById)
-            ?.canEdit == true,
+        targetRepository?.let { it.canEdit && !it.archived } == true,
         candidateResults.size,
         ctx.query["view"]?.takeIf { it in setOf("overview", "files", "reviews") } ?: "overview",
         ctx.query["review"] == "true",
+        targetRepository?.name.orEmpty(),
+        repo.name,
+        ctx.gql.execute(GitUiRepositories, GitUiRepositories.Variables(false, null))
+            .git.repositories.filterNot { it.deleted }.associate { it.id to it.name },
     )
 }

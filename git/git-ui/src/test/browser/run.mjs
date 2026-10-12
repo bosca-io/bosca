@@ -60,12 +60,16 @@ try {
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
   if (!ready) throw new Error("The isolated Chrome instance did not start.");
-  for (const test of [
+  const available = [
     "auth.mjs",
     "repository.mjs",
+    "pulls.mjs",
     "search.mjs",
     "screens.mjs",
-  ]) {
+  ];
+  const selected = process.env.GIT_UI_BROWSER_TESTS?.split(",") ?? available;
+  for (const test of selected) {
+    if (!available.includes(test)) throw new Error(`Unknown browser test: ${test}`);
     const child = spawn(process.execPath, [join(directory, test)], {
       env: {
         ...process.env,

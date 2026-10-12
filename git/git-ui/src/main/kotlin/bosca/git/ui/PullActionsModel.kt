@@ -19,6 +19,15 @@ class PullActionsModel(
     var selectedAction: String = "",
     var plan: List<GitUiMergePlanData.Git.PullRequestMergePlan> = emptyList(),
 ) {
+    val mergeBlocked: Boolean
+        get() = plan.any { it.status.name != "OPEN" || !it.mergeable }
+
+    val dependencyCandidates: List<PullLink>
+        get() = candidates.filter {
+            it.status in setOf("OPEN", "DRAFT") &&
+                page.pull.dependencies.none { dependency -> dependency.id == it.id }
+        }
+
     suspend fun loadCandidates(offset: Long, ctx: RenderContext) = perform {
         candidateOffset = offset.coerceAtLeast(0)
         val batch =
@@ -101,6 +110,7 @@ class PullActionsModel(
     }
 
     suspend fun assign(profile: String, remove: Boolean, ctx: RenderContext) = perform {
+        selectedAction = if (remove) "unassign" else "assign"
         require(profile.isNotBlank() && profile != "all") { "Choose a profile." }
         if (remove)
             ctx.gql.execute(GitUiUnassignPull, GitUiUnassignPull.Variables(page.pull.id, profile))
@@ -109,6 +119,7 @@ class PullActionsModel(
     }
 
     suspend fun dependency(id: String, remove: Boolean, ctx: RenderContext) = perform {
+        selectedAction = if (remove) "remove-dependency" else "add-dependency"
         require(id.isNotBlank()) { "Choose a pull request." }
         if (remove)
             ctx.gql.execute(

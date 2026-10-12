@@ -23,9 +23,19 @@ class PullReviewModel(
     var message: String = "",
     var failed: Boolean = false,
     var reviewFailed: Boolean = false,
+    var reviewing: Boolean = false,
 ) {
     val files: List<DiffTreeEntry>
         get() = changedFileTree(diff)
+
+    val reviewSummary: String
+        get() = "${reviews.size} " + if (reviews.size == 1) "review" else "reviews"
+
+    val fileSummary: String
+        get() = "${diff.size} " + if (diff.size == 1) "changed file" else "changed files"
+
+    val viewSummary: String
+        get() = if (page.view == "reviews") reviewSummary else fileSummary
 
     fun lineComments(
         file: String,
@@ -70,18 +80,22 @@ class PullReviewModel(
             reloadReviews(ctx)
             reviewBody = ""
             reviewSubmitted = true
+            reviewing = false
             message = "Review submitted."
         }
         reviewFailed = failed
     }
 
-    suspend fun select(file: String, oldLine: Int?, newLine: Int?) {
+    /** Selects a displayed diff line; zero represents an absent side in the primitive action arguments. */
+    suspend fun select(file: String, oldLine: Int, newLine: Int) {
+        val old = oldLine.takeIf { it > 0 }
+        val new = newLine.takeIf { it > 0 }
         require(
             diff.any {
                 it.path == file &&
                     it.hunks.any { h ->
                         h.lines.any { line ->
-                            line.oldLineNumber == oldLine && line.newLineNumber == newLine
+                            line.oldLineNumber == old && line.newLineNumber == new
                         }
                     }
             }
@@ -89,9 +103,21 @@ class PullReviewModel(
             "Choose a displayed diff line."
         }
         commentFile = file
-        this.oldLine = oldLine
-        this.newLine = newLine
+        this.oldLine = old
+        this.newLine = new
         reviewId = ownReviews.lastOrNull()?.id.orEmpty()
+    }
+
+    fun cancelComment() {
+        commentFile = ""
+        commentBody = ""
+        message = ""
+        failed = false
+    }
+
+    fun openReview() {
+        reviewing = true
+        reviewSubmitted = false
     }
 
     suspend fun comment(reviewId: String, body: String, ctx: RenderContext) {

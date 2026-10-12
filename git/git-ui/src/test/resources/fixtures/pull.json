@@ -3,7 +3,7 @@
   "repositoryId": "repo",
   "number": 1,
   "title": "Fix image",
-  "description": "![Logo](images/logo.png)",
+  "description": "Fix Markdown previews so repository images resolve from the reviewed commit.\n\nThe preview and source views now share the same file context.\n\n![Logo](images/logo.png)",
   "status": "OPEN",
   "sourceBranch": "feature/one",
   "targetBranch": "main",

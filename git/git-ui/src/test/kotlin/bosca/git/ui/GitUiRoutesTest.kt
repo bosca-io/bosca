@@ -579,7 +579,10 @@ class GitUiRoutesTest {
 
     @Test
     fun `pull lists default open and preserve explicit all and paging`() {
-        assertEquals(200, get("/pulls").statusCode())
+        val response = get("/pulls")
+        assertEquals(200, response.statusCode())
+        assertTrue("Active project" in response.body(), response.body())
+        assertFalse("Deleted project" in response.body(), response.body())
         assertEquals(
             "OPEN",
             requests
@@ -758,6 +761,45 @@ class GitUiRoutesTest {
         assertTrue("/owner/repo/raw/abc/images/logo.png" in page.body(), page.body())
         assertEquals(404, get("/pulls/other?repo=repo&number=1").statusCode())
         assertEquals(404, get("/pulls/pull").statusCode())
+    }
+
+    @Test
+    fun `pull lifecycle states show the appropriate actions and review controls`() {
+        val draft = get("/pulls/pull-draft?repo=repo&number=2").body()
+        assertTrue("Draft pull request" in draft && "Ready for review" in draft, draft)
+        assertFalse("Review changes" in draft, draft)
+        val draftFiles = get("/pulls/pull-draft?repo=repo&number=2&view=files").body()
+        assertFalse("Comment on line" in draftFiles, draftFiles)
+        assertTrue("Mark this draft ready" in draftFiles, draftFiles)
+
+        val merged = get("/pulls/pull-merged?repo=repo&number=3").body()
+        assertTrue("Pull request merged" in merged && "data-tone=\"purple\"" in merged, merged)
+        assertFalse("Close pull request" in merged || "Review changes" in merged, merged)
+        val closed = get("/pulls/pull-closed?repo=repo&number=4").body()
+        assertTrue("Pull request closed" in closed && "Reopen pull request" in closed, closed)
+        assertFalse("Review changes" in closed, closed)
+    }
+
+    @Test
+    fun `conflicts block merging and metadata actions have descriptive icon labels`() {
+        val page = get("/pulls/pull-conflicts?repo=repo&number=5").body()
+        assertTrue("Resolve merge conflicts" in page && "docs/guide.md" in page, page)
+        assertTrue(Regex("<button[^>]*disabled[^>]*>.*?</button>", RegexOption.DOT_MATCHES_ALL)
+            .findAll(page).any { "Merge pull request" in it.value }, page)
+        assertTrue("Remove assignee Alice" in page, page)
+        assertTrue("Remove dependency #2" in page, page)
+        assertTrue("Depends on" in page, page)
+    }
+
+    @Test
+    fun `line comments open beside the selected line and cancel without losing the review`() {
+        val path = "/pulls/pull?repo=repo&number=1&view=files"
+        val selected = action(path, "git-pull-review.model", "select", listOf("a.txt", 0, 1))
+        assertTrue("comment-form" in selected.body(), selected.body())
+        val cancelled = continueAction(path, "git-pull-review.model:pull", "cancelComment",
+            actionState(selected), emptyList())
+        assertEquals("", actionState(cancelled)["commentFile"]?.jsonPrimitive?.content)
+        assertTrue("Existing line comment" in cancelled.body(), cancelled.body())
     }
 
     @Test
@@ -1713,7 +1755,8 @@ class GitUiRoutesTest {
                             """{"data":{"git":{"allPullRequests":[$pull]}}}"""
                         operation == "GitUiRepositoryPullList" ->
                             """{"data":{"git":{"pullRequests":[$pull]}}}"""
-                        operation == "GitUiPull" -> """{"data":{"git":{"pullRequest":$pull}}}"""
+                        operation == "GitUiPull" ->
+                            """{"data":{"git":{"pullRequest":${pullStateFixture(pull, variables["number"]?.jsonPrimitive?.int ?: 1)}}}}"""
                         operation == "GitUiCreatePull" ->
                             """{"errors":[{"message":"Rejected pull request"}]}"""
                         operation == "GitUiReview" ->

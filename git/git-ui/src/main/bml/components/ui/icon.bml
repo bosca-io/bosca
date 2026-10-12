@@ -33,6 +33,16 @@
       <circle cx="6" cy="6" r="3" />
       <path d="M13 6h3a2 2 0 0 1 2 2v7" />
       <line x1="6" x2="6" y1="9" y2="21" />
+    <else-if name == "merge">
+      <circle cx="18" cy="18" r="3" />
+      <circle cx="6" cy="6" r="3" />
+      <path d="M6 9v12" />
+      <path d="M6 9a9 9 0 0 0 9 9" />
+    <else-if name == "eye">
+      <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
+      <circle cx="12" cy="12" r="3" />
+    <else-if name == "message">
+      <path d="M21 15a4 4 0 0 1-4 4H7l-5 3V6a4 4 0 0 1 4-4h11a4 4 0 0 1 4 4Z" />
     <else-if name == "workflow">
       <rect width="8" height="8" x="3" y="3" rx="2" />
       <path d="M7 11v4a2 2 0 0 0 2 2h4" />

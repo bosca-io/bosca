@@ -1,5 +1,6 @@
 <component tag="ui-disclosure-heading">
-  <summary class="disclosure-heading">
+  <prop name="framed" type="Boolean" default="false" />
+  <summary class="disclosure-heading" :data-framed="framed">
     <span class="disclosure-chevron">
       <ui-icon name="chevron" :size="12" />
     </span>
@@ -8,6 +9,11 @@
     </span>
   </summary>
   <style scoped>
+    summary[data-framed] {
+      padding: 12px 14px;
+      background: var(--bg-1);
+      border-bottom: 1px solid var(--line);
+    }
     summary {
       display: flex;
       align-items: center;

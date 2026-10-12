@@ -8,48 +8,53 @@
       <if model.page.view != "overview">
         <ui-section-heading
           :title='if (model.page.view == "reviews") "Reviews" else "Files changed"'
-          :subtitle='if (model.page.view == "reviews") model.reviews.size.toString() + (if (model.reviews.size == 1) " review" else " reviews") else model.diff.size.toString() + (if (model.diff.size == 1) " changed file" else " changed files")'
+          :subtitle="model.viewSummary"
         >
-          <ui-dialog
-            title="Submit review"
-            triggerLabel="Write a review"
-            icon="check"
-            primary
-            :forceOpen="model.page.reviewing || model.reviewFailed"
-            :completed="model.reviewSubmitted"
-          >
-            <form class="modal-form" @submit="model.review(form.status, form.body, ctx)">
-              <div class="modal-fields">
-                <if model.reviewFailed>
-                  <ui-alert>{ model.message }</ui-alert>
-                </if>
-                <ui-field label="Review">
-                  <ui-select name="status">
-                    <option value="COMMENT_ONLY" :selected='model.reviewStatus == "COMMENT_ONLY"'>
-                      Comment
-                    </option>
-                    <option value="APPROVED" :selected='model.reviewStatus == "APPROVED"'>
-                      Approve
-                    </option>
-                    <option
-                      value="CHANGES_REQUESTED"
-                      :selected='model.reviewStatus == "CHANGES_REQUESTED"'
-                    >
-                      Request changes
-                    </option>
-                  </ui-select>
-                </ui-field>
-                <ui-field label="Body">
-                  <textarea name="body" rows="6">{ model.reviewBody }</textarea>
-                </ui-field>
-              </div>
-              <footer class="modal-footer">
-                <ui-button ref="cancel">Cancel</ui-button>
-                <ui-button type="submit" primary>Submit review</ui-button>
-              </footer>
-            </form>
-          </ui-dialog>
+          <if model.page.canReview>
+            <ui-dialog
+              title="Review changes"
+              triggerLabel="Review changes"
+              icon="eye"
+              primary
+              :forceOpen="model.page.reviewing || model.reviewFailed || model.reviewing"
+              :completed="model.reviewSubmitted"
+            >
+              <form class="modal-form" @submit="model.review(form.status, form.body, ctx)">
+                <div class="modal-fields">
+                  <if model.reviewFailed>
+                    <ui-alert>{ model.message }</ui-alert>
+                  </if>
+                  <ui-field label="Review outcome">
+                    <ui-select name="status">
+                      <option value="COMMENT_ONLY" :selected='model.reviewStatus == "COMMENT_ONLY"'>
+                        Comment
+                      </option>
+                      <option value="APPROVED" :selected='model.reviewStatus == "APPROVED"'>
+                        Approve
+                      </option>
+                      <option
+                        value="CHANGES_REQUESTED"
+                        :selected='model.reviewStatus == "CHANGES_REQUESTED"'
+                      >
+                        Request changes
+                      </option>
+                    </ui-select>
+                  </ui-field>
+                  <ui-field label="Comment">
+                    <textarea name="body" rows="6" placeholder="Share feedback about these changes">{ model.reviewBody }</textarea>
+                  </ui-field>
+                </div>
+                <footer class="modal-footer">
+                  <ui-button ref="cancel">Cancel</ui-button>
+                  <ui-button type="submit" primary>Submit review</ui-button>
+                </footer>
+              </form>
+            </ui-dialog>
+          </if>
         </ui-section-heading>
+      </if>
+      <if !model.page.canReview && model.page.pull.status.name == "DRAFT" && model.page.view != "overview">
+        <p class="detail-note">Mark this draft ready before submitting a review.</p>
       </if>
       <if model.message.isNotBlank() && !model.reviewFailed>
         <ui-alert :tone='if (model.failed) "error" else "success"'>{ model.message }</ui-alert>
@@ -60,7 +65,7 @@
             <ui-empty-state
               icon="pull"
               title="No reviews yet"
-              message="Write a review to comment, approve, or request changes."
+              :message='if (model.page.canReview) "Comment, approve, or request changes." else "Reviews for this pull request will appear here."'
             />
           </ui-card>
         </if>
@@ -69,11 +74,7 @@
             <article class="review">
               <header class="review-header">
                 <strong>{ model.page.identity(review.reviewerId) }</strong>
-                <ui-badge
-                  :tone='when (review.status.name) { "APPROVED" -> "success"; "CHANGES_REQUESTED" -> "warning"; else -> "neutral" }'
-                >
-                  { review.status.name.lowercase().replace('_', ' ') }
-                </ui-badge>
+                <git-pull-review-status :status="review.status.name" :dismissed="review.dismissedAt != null" />
                 <span class="review-time">
                   <ui-time :value="review.created" />
                 </span>
@@ -112,7 +113,7 @@
                       · Resolved
                     </if>
                   </p>
-                  <if !comment.resolved>
+                  <if !comment.resolved && model.page.canReview>
                     <form
                       @submit="model.resolve(comment.filePath, comment.newLineNumber ?: comment.oldLineNumber ?: 0, ctx)"
                     >
@@ -126,24 +127,49 @@
         </for>
       </if>
       <if model.page.view == "overview">
-        <p class="diff-summary">
-          { model.diff.size }
-          changed
-          { if (model.diff.size == 1) "file" else "files" }
-          ·
-          { model.reviews.size }
-          { if (model.reviews.size == 1) "review" else "reviews" }
-        </p>
-        <a :href='model.page.href + "&view=files"'>View file changes</a>
+        <ui-card :padded="false">
+          <ui-section-heading title="Reviews" :subtitle="model.reviewSummary">
+            <ui-icon-link icon="arrow-right" label="View all reviews" :href='model.page.href + "&view=reviews"' />
+          </ui-section-heading>
+          <if model.reviews.isEmpty()>
+            <p class="summary-empty">No reviews yet.</p>
+          <else>
+            <div class="review-summary-list">
+              <for review in model.reviews.sortedByDescending { it.created }.take(3)>
+                <article class="review-summary-row">
+                  <span class="summary-review-icon"><ui-icon name="eye" :size="15" /></span>
+                  <div class="review-summary-copy">
+                    <div class="review-summary-title">
+                      <strong>{ model.page.identity(review.reviewerId) }</strong>
+                      <git-pull-review-status :status="review.status.name" :dismissed="review.dismissedAt != null" />
+                    </div>
+                    <if review.body.orEmpty().isNotBlank()>
+                      <p>{ review.body.orEmpty() }</p>
+                    </if>
+                  </div>
+                  <ui-time :value="review.created" relative />
+                </article>
+              </for>
+            </div>
+          </if>
+        </ui-card>
+        <ui-card :padded="false">
+          <ui-section-heading title="Files changed" :subtitle="model.fileSummary">
+            <ui-icon-link icon="arrow-right" label="View file changes" :href='model.page.href + "&view=files"' />
+          </ui-section-heading>
+          <div class="changed-file-summary"><git-diff-tree :entries="model.files" /></div>
+        </ui-card>
       </if>
-      <if model.page.view != "reviews">
+      <if model.page.view == "files">
         <git-diff-tree :entries="model.files" />
       </if>
       <if model.page.view == "files">
         <for file in model.diff>
           <details class="diff-file" :id="file.anchor" open>
-            <ui-disclosure-heading>
-              { file.changeType.lowercase() + " · " + if (file.oldPath.orEmpty().isNotBlank() && file.newPath.orEmpty().isNotBlank() && file.oldPath != file.newPath) file.oldPath.orEmpty() + " → " + file.newPath.orEmpty() else file.newPath.orEmpty().ifBlank { file.oldPath.orEmpty() } }
+            <ui-disclosure-heading framed>
+              <ui-icon name="file" :size="14" />
+              <code class="diff-path">{ file.displayPath }</code>
+              <ui-badge>{ bosca.git.ui.pullFileChangeLabel(file.changeType) }</ui-badge>
             </ui-disclosure-heading>
             <if file.hunks.isEmpty()>
               <p>No text diff is available for this file.</p>
@@ -166,14 +192,19 @@
               <div class="diff-lines">
                 <for line in hunk.lines>
                   <div :class='"diff-line " + line.type.lowercase()'>
-                    <span>{ line.oldLineNumber ?: "" }</span>
-                    <span>{ line.newLineNumber ?: "" }</span>
-                    <ui-button
-                      size="xs"
-                      @click="model.select(file.path, line.oldLineNumber, line.newLineNumber)"
-                    >
-                      Comment
-                    </ui-button>
+                    <span class="line-number">{ line.oldLineNumber ?: "" }</span>
+                    <span class="line-number">{ line.newLineNumber ?: "" }</span>
+                    <span class="line-action">
+                      <if model.page.canReview>
+                        <ui-icon-button
+                          size="xs"
+                          icon="message"
+                          :label='"Comment on line " + (line.newLineNumber ?: line.oldLineNumber)'
+                          @click="model.select(file.path, line.oldLineNumber ?: 0, line.newLineNumber ?: 0)"
+                        />
+                      </if>
+                    </span>
+                    <span class="line-mark" aria-hidden="true">{ if (line.type == "ADD") "+" else if (line.type == "DELETE") "−" else " " }</span>
                     <code>{ line.content }</code>
                   </div>
                   <for comment in model.lineComments(file.path, line.oldLineNumber, line.newLineNumber)>
@@ -182,7 +213,7 @@
                       <p>{ comment.content }</p>
                       <if comment.resolved>
                         <span class="muted">Resolved</span>
-                      <else>
+                      <else-if model.page.canReview>
                         <form
                           @submit="model.resolve(comment.filePath, comment.newLineNumber ?: comment.oldLineNumber ?: 0, ctx)"
                         >
@@ -191,6 +222,43 @@
                       </if>
                     </article>
                   </for>
+                  <if model.commentFile == file.path && model.oldLine == line.oldLineNumber && model.newLine == line.newLineNumber>
+                    <section class="comment-form">
+                      <ui-card :padded="false">
+                        <ui-section-heading
+                          title="Line comment"
+                          :subtitle='model.commentFile + ":" + (model.newLine ?: model.oldLine)'
+                        >
+                          <ui-icon-button icon="close" label="Cancel line comment" @click="model.cancelComment()" />
+                        </ui-section-heading>
+                        <div class="section-body">
+                          <if model.ownReviews.isEmpty()>
+                            <p>Submit a review before adding a line comment.</p>
+                            <ui-button icon="eye" @click="model.openReview()">Review changes</ui-button>
+                          <else>
+                            <form class="form-grid" @submit="model.comment(form.review, form.body, ctx)">
+                              <ui-field label="Your review">
+                                <ui-select name="review">
+                                  <for review in model.ownReviews>
+                                    <option :value="review.id" :selected="review.id == model.reviewId">
+                                      { bosca.git.ui.reviewStatusLabel(review.status.name) + " · " + review.created.take(10) }
+                                    </option>
+                                  </for>
+                                </ui-select>
+                              </ui-field>
+                              <ui-field label="Comment">
+                                <textarea name="body" rows="4" required>{ model.commentBody }</textarea>
+                              </ui-field>
+                              <div class="comment-actions">
+                                <ui-button @click="model.cancelComment()">Cancel</ui-button>
+                                <ui-button type="submit" primary icon="message">Add comment</ui-button>
+                              </div>
+                            </form>
+                          </if>
+                        </div>
+                      </ui-card>
+                    </section>
+                  </if>
                 </for>
               </div>
             </for>
@@ -201,37 +269,6 @@
             <ui-button type="submit">Load more diff lines</ui-button>
           </form>
         </if>
-        <if model.commentFile.isNotBlank()>
-          <section class="comment-form">
-            <ui-card :padded="false">
-              <ui-section-heading
-                title="Line comment"
-                :subtitle='model.commentFile + ":" + (model.newLine ?: model.oldLine)'
-              />
-              <div class="section-body">
-                <if model.ownReviews.isEmpty()>
-                  <p>Submit your own review above before adding a line comment.</p>
-                <else>
-                  <form class="form-grid" @submit="model.comment(form.review, form.body, ctx)">
-                    <ui-field label="Your review">
-                      <ui-select name="review">
-                        <for review in model.ownReviews>
-                          <option :value="review.id" :selected="review.id == model.reviewId">
-                            { review.status.name.lowercase().replace('_', ' ') + " · " + review.created.take(10) }
-                          </option>
-                        </for>
-                      </ui-select>
-                    </ui-field>
-                    <ui-field label="Comment">
-                      <textarea name="body" rows="4" required>{ model.commentBody }</textarea>
-                    </ui-field>
-                    <ui-button type="submit" primary>Add line comment</ui-button>
-                  </form>
-                </if>
-              </div>
-            </ui-card>
-          </section>
-        </if>
       </if>
     </section>
   </island>
@@ -241,10 +278,6 @@
       flex-direction: column;
       gap: 14px;
       min-width: 0;
-    }
-    .diff-summary {
-      margin-top: 0;
-      color: var(--fg-2);
     }
     .inline-thread {
       padding: 12px;
@@ -288,15 +321,6 @@
       border-radius: 8px;
       overflow: hidden;
     }
-    .diff-file > summary {
-      padding: 12px 14px;
-      background: var(--bg-1);
-      font-size: 12px;
-      cursor: pointer;
-    }
-    .diff-file[open] > summary {
-      border-bottom: 1px solid var(--line);
-    }
     .diff-file > p {
       margin: 12px 14px;
     }
@@ -304,23 +328,114 @@
       overflow: auto;
     }
     .diff-line {
-      display: flex;
+      display: grid;
+      grid-template-columns: 42px 42px 28px 16px minmax(max-content, 1fr);
+      width: 100%;
       min-width: max-content;
       align-items: center;
-      font: 13px/1.7 var(--font-mono);
+      font: 12px/26px var(--font-mono);
     }
-    .diff-line > span {
-      display: inline-block;
+    .line-number {
       text-align: right;
-      width: 50px;
       padding-right: 10px;
-      color: var(--muted);
+      color: var(--fg-3);
+      user-select: none;
+    }
+    .line-mark {
+      color: var(--fg-3);
+      user-select: none;
+    }
+    .line-action {
+      display: flex;
+      align-items: center;
+      opacity: 0;
+    }
+    .diff-line:hover .line-action,
+    .line-action:focus-within {
+      opacity: 1;
     }
     .add {
-      background: #196b3840;
+      background: color-mix(in srgb, var(--ok) 12%, transparent);
     }
     .delete {
-      background: #a52a3540;
+      background: color-mix(in srgb, var(--err) 12%, transparent);
+    }
+    .add .line-mark {
+      color: var(--ok);
+    }
+    .delete .line-mark {
+      color: var(--err);
+    }
+    .diff-path {
+      flex: 1;
+      min-width: 0;
+      overflow-wrap: anywhere;
+      white-space: normal;
+    }
+    .comment-form {
+      padding: 12px;
+      min-width: 300px;
+    }
+    .comment-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+    .review-summary-list {
+      padding: 0 18px;
+    }
+    .review-summary-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 14px 0;
+    }
+    .review-summary-row + .review-summary-row {
+      border-top: 1px solid var(--line);
+    }
+    .summary-review-icon {
+      display: flex;
+      color: var(--fg-3);
+      padding-top: 3px;
+    }
+    .review-summary-copy {
+      flex: 1;
+      min-width: 0;
+      font-size: 12px;
+    }
+    .review-summary-title {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .review-summary-title strong {
+      font-weight: 500;
+    }
+    .review-summary-copy p {
+      display: -webkit-box;
+      -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      margin: 6px 0 0;
+      color: var(--fg-2);
+      line-height: 1.6;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+    .summary-empty {
+      padding: 16px 18px;
+      margin: 0;
+      color: var(--fg-3);
+      font-size: 12px;
+    }
+    .changed-file-summary {
+      padding: 8px 12px;
+    }
+    @media (hover: none) {
+      .line-action {
+        opacity: 1;
+      }
     }
     code {
       white-space: pre;

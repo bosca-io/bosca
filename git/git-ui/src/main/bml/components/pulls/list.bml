@@ -3,32 +3,30 @@
   <div class="pull-panel">
     <ui-tabs label="Pull request state" :items="page.tabs">
       <span class="muted result-count">
-        { page.rows.size.toString() + if (page.rows.size == 1) " result" else " results" }
+        { page.rows.size.toString() + if (page.rows.size == 1) " pull request" else " pull requests" }
       </span>
     </ui-tabs>
     <if page.rows.isEmpty()>
       <ui-empty-state
         icon="pull"
-        title="No pull requests found"
-        message="Pull requests matching this selection will appear here."
+        :title='if (page.status == "ALL") "No pull requests" else "No " + page.status.lowercase() + " pull requests"'
+        message="Try another repository or pull request state."
       />
     <else>
       <div class="pull-list">
         <for pull in page.rows>
           <a class="pull-row" :href="pull.href">
-            <span class="pull-icon">
-              <ui-icon name="pull" :size="16" />
-            </span>
+            <git-pull-status :status="pull.status" iconOnly />
             <div class="pull-copy">
               <strong>
                 <code class="muted">#{ pull.number }</code>
                 <span>{ pull.title }</span>
               </strong>
               <div class="pull-meta">
-                <git-status-badge :status="pull.status" />
+                <git-pull-status :status="pull.status" />
                 <if page.baseHref.isBlank()>
                   <span>
-                    { page.repositories.firstOrNull { it.id == pull.repository }?.name ?: pull.repository }
+                    { page.repositoryNames[pull.repository] ?: "Repository" }
                   </span>
                 </if>
                 <code>{ pull.source } → { pull.target }</code>
@@ -39,14 +37,16 @@
         </for>
       </div>
     </if>
-    <nav class="toolbar">
-      <if page.offset != 0L>
-        <a :href="page.href(offset = (page.offset - 50).coerceAtLeast(0))">Previous</a>
-      </if>
-      <if page.rows.size == 50>
-        <a :href="page.href(offset = page.offset + 50)">Next</a>
-      </if>
-    </nav>
+    <if page.offset != 0L || page.rows.size == 50>
+      <nav class="pull-pagination" aria-label="Pull request pages">
+        <if page.offset != 0L>
+          <ui-icon-link icon="arrow-left" label="Previous page" :href="page.href(offset = (page.offset - 50).coerceAtLeast(0))" />
+        </if>
+        <if page.rows.size == 50>
+          <ui-icon-link icon="arrow-right" label="Next page" :href="page.href(offset = page.offset + 50)" />
+        </if>
+      </nav>
+    </if>
   </div>
   <style scoped>
     .pull-panel {
@@ -80,16 +80,11 @@
     .pull-row:hover {
       background: var(--bg-2);
     }
-    .pull-icon {
+    .pull-pagination {
       display: flex;
       align-items: center;
-      justify-content: center;
-      width: 28px;
-      height: 28px;
-      flex: none;
-      border-radius: 7px;
-      background: var(--bg-3);
-      color: var(--fg-2);
+      justify-content: flex-end;
+      gap: 8px;
     }
     .pull-copy {
       flex: 1;

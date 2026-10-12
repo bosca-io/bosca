@@ -121,6 +121,10 @@
       padding: 0;
       flex: none;
     }
+    .button.icon-only.size-xs {
+      width: 24px;
+      height: 24px;
+    }
     .button:disabled {
       opacity: 0.35;
       cursor: not-allowed;

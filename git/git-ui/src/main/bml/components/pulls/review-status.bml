@@ -1,0 +1,15 @@
+<component tag="git-pull-review-status">
+  <prop name="status" type="String" required />
+  <prop name="dismissed" type="Boolean" default="false" />
+  <script server provides="tone">
+    if (dismissed) "neutral"
+    else when (status) {
+        "APPROVED" -> "success"
+        "CHANGES_REQUESTED" -> "error"
+        else -> "neutral"
+    }
+  </script>
+  <ui-badge :tone="tone">
+    { if (dismissed) "Dismissed" else bosca.git.ui.reviewStatusLabel(status) }
+  </ui-badge>
+</component>

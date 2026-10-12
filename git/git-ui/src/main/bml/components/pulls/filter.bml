@@ -3,7 +3,7 @@
   <form method="get" class="pull-filter">
     <ui-field label="Repository">
       <ui-select searchable size="sm" name="repo">
-        <option value="" :selected="page.repository.isBlank()">All accessible repositories</option>
+        <option value="" :selected="page.repository.isBlank()">All repositories</option>
         <for repository in page.repositories>
           <option :value="repository.id" :selected="repository.id == page.repository">
             { repository.name }

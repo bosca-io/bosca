@@ -12,6 +12,12 @@ data class DiffView(
     val path: String
         get() = newPath ?: oldPath.orEmpty()
 
+    val displayPath: String
+        get() =
+            if (!oldPath.isNullOrBlank() && !newPath.isNullOrBlank() && oldPath != newPath)
+                "$oldPath → $newPath"
+            else path
+
     val anchor: String
         get() = "diff-$path"
 

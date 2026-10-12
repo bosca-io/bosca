@@ -1,5 +1,6 @@
 <component tag="ui-dialog">
   <prop name="triggerIconOnly" type="Boolean" default="false" />
+  <prop name="triggerDisabled" type="Boolean" default="false" />
   <prop name="showTrigger" type="Boolean" default="true" />
   <prop name="returnFocus" type="String" default="" />
   <prop name="subtitle" type="String" default="" />
@@ -19,9 +20,9 @@
   >
     <if showTrigger>
       <if triggerIconOnly>
-        <ui-icon-button ref="trigger" :icon="triggerIcon.ifBlank { icon }" :label="triggerLabel" />
+        <ui-icon-button ref="trigger" :icon="triggerIcon.ifBlank { icon }" :label="triggerLabel" :disabled="triggerDisabled" />
       <else>
-        <ui-button size="sm" ref="trigger" :primary="primary" :icon="triggerIcon.ifBlank { icon }">
+        <ui-button size="sm" ref="trigger" :primary="primary" :icon="triggerIcon.ifBlank { icon }" :disabled="triggerDisabled">
           { triggerLabel }
         </ui-button>
       </if>
