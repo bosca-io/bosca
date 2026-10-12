@@ -45,6 +45,24 @@ beforeEach(() => {
 })
 
 describe('Integrations Page', () => {
+  it('links to Bible provider administration using credential presence without reading the key', () => {
+    configurations.value = {
+      ...(configurations.value as Record<string, unknown>),
+      content: { bibleProviders: { configurations: [{ enabled: true, hasApiKey: true }] } },
+    }
+    const wrapper = mount(IntegrationsPage, { global: globalConfig })
+    expect(wrapper.get('[data-to="/system/integrations/bible"]').text()).toContain('Connected')
+  })
+
+  it('reports disabled Bible providers as not configured', () => {
+    configurations.value = {
+      ...(configurations.value as Record<string, unknown>),
+      content: { bibleProviders: { configurations: [{ enabled: false, hasApiKey: true }] } },
+    }
+    const wrapper = mount(IntegrationsPage, { global: globalConfig })
+    expect(wrapper.get('[data-to="/system/integrations/bible"]').text()).toContain('Not configured')
+  })
+
   it('links to Mailgun configuration and reports complete credentials as connected', () => {
     const wrapper = mount(IntegrationsPage, { global: globalConfig })
     const card = wrapper.get('[data-to="/system/integrations/mailgun"]')
