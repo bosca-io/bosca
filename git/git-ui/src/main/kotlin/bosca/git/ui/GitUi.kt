@@ -8,6 +8,8 @@ import bosca.bml.server.BmlServer
 import bosca.server.BoscaApplication
 import bosca.server.ContentType
 import bosca.server.HttpStatusCode
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /** Installs the compiled Git UI and its packaged client assets into an existing server. */
 fun installGitUi(
@@ -22,33 +24,37 @@ fun installGitUi(
 
 private fun installClientAssets(application: BoscaApplication) {
     application.router.get("/_git/fonts/{path}") {
-        val path = call.pathParameters["path"].orEmpty()
-        val bytes =
-            if (FONT_ASSET_NAME.matches(path)) {
-                GitUiAssets::class.java.getResourceAsStream("/git-ui/fonts/$path")?.use {
-                    it.readAllBytes()
-                }
-            } else null
-        if (bytes == null) {
-            call.respond(HttpStatusCode.NotFound)
-        } else {
-            call.response.header("Cache-Control", "public, max-age=31536000, immutable")
-            call.respondBytes(bytes, ContentType("font", "woff2"))
+        withContext(Dispatchers.IO) {
+            val path = call.pathParameters["path"].orEmpty()
+            val bytes =
+                if (FONT_ASSET_NAME.matches(path)) {
+                    GitUiAssets::class.java.getResourceAsStream("/git-ui/fonts/$path")?.use {
+                        it.readAllBytes()
+                    }
+                } else null
+            if (bytes == null) {
+                call.respond(HttpStatusCode.NotFound)
+            } else {
+                call.response.header("Cache-Control", "public, max-age=31536000, immutable")
+                call.respondBytes(bytes, ContentType("font", "woff2"))
+            }
         }
     }
     application.router.get("/_bml/js/{path}") {
-        val path = call.pathParameters["path"].orEmpty()
-        val bytes =
-            if (CLIENT_ASSET_NAME.matches(path)) {
-                GitUiAssets::class.java.getResourceAsStream("/git-ui/js/$path")?.use {
-                    it.readAllBytes()
-                }
-            } else null
-        if (bytes == null) {
-            call.respond(HttpStatusCode.NotFound)
-        } else {
-            call.response.header("Cache-Control", "public, max-age=0, must-revalidate")
-            call.respondBytes(bytes, ContentType.Text.JavaScript)
+        withContext(Dispatchers.IO) {
+            val path = call.pathParameters["path"].orEmpty()
+            val bytes =
+                if (CLIENT_ASSET_NAME.matches(path)) {
+                    GitUiAssets::class.java.getResourceAsStream("/git-ui/js/$path")?.use {
+                        it.readAllBytes()
+                    }
+                } else null
+            if (bytes == null) {
+                call.respond(HttpStatusCode.NotFound)
+            } else {
+                call.response.header("Cache-Control", "public, max-age=0, must-revalidate")
+                call.respondBytes(bytes, ContentType.Text.JavaScript)
+            }
         }
     }
 }

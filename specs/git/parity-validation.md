@@ -4,7 +4,7 @@ Acceptance record for the [application specification](bml-git-application-spec.m
 
 ## Acceptance status
 
-The `:git:git-ui` BML library is hosted by the separate `:git:git-ui-server` application. Git server owns its GraphQL and security routes. BML loaders/actions/contracts/fragments use the existing HTTP client; browser GraphQL/OAuth and subscriptions use same-origin proxies to Git server. Raw files and CI artifacts are streamed through the UI origin. Local GraphQL execution and its core BML auth hooks have been removed. Studio and the main server composition remain unchanged in this stage. Historical validations below refer to the composition in place when they were run; they do not establish the separated servers’ acceptance.
+The `:git:git-ui` BML library is hosted by the `:git:git-ui-server` module on a second listener in the `git-server` process. Git server owns its GraphQL and security routes. BML loaders/actions/contracts/fragments use the existing HTTP client; browser GraphQL/OAuth and subscriptions use same-origin proxies to Git server. Raw files and CI artifacts are streamed through the UI origin. Local GraphQL execution and its core BML auth hooks have been removed. Studio and the main server composition remain unchanged in this stage. Historical validations below refer to the composition in place when they were run; they do not establish the current combined host’s acceptance.
 
 **Full Studio replacement parity is not accepted.** Fixture checks establish the behaviors listed below. They do not establish the supplied deployed repository's image behavior, external authentication/email delivery, real GitHub synchronization, production CI subscriptions, or full external-service acceptance. These remain acceptance work, and the old surfaces cannot be retired on the strength of this record.
 
@@ -12,7 +12,7 @@ The `:git:git-ui` BML library is hosted by the separate `:git:git-ui-server` app
 
 | Surface | Implemented behavior and measured checks | Evidence boundary |
 | --- | --- | --- |
-| Authentication | Studio's browser auth SDK; password/Google signup and sign-in, password feedback, verification/resend cooldown, recovery/reset, offered account-link proofs, OAuth callback, return destinations and sign-out. Desktop/mobile screenshots reviewed. Browser checks drive the real SDK and compiled BML islands. | Browser interaction uses isolated API fixtures. Separate JVM and native production-composition tests verify real local signup/login, identity queries, invalid-token rejection and sign-out cookies against isolated PostgreSQL/NATS. No external Google account, real emailed link, or deployed session was exercised. |
+| Authentication | Studio's browser auth SDK; password/Google signup and sign-in, password feedback, verification/resend cooldown, recovery/reset, offered account-link proofs, OAuth callback, return destinations and sign-out. Desktop/mobile screenshots reviewed. Browser checks drive the real SDK and compiled BML islands. | Browser interaction uses isolated API fixtures. Combined JVM and native production-composition tests verify real local signup/login, identity queries, invalid-token rejection and sign-out cookies against isolated PostgreSQL/NATS. No external Google account, real emailed link, or deployed session was exercised. |
 | Repository list and owners | Active by default; explicit Archived/All; deleted records excluded; create/import/lifecycle actions; owner URL and remembered selection; same-name results show slug or full ID. Browser measurements confirm unchanged picker width when opened. | Test API data; failed actions and retained posted fields checked through compiled actions. |
 | Code workspace | CodeMirror viewing/editing with line numbers, language support, search/folding/wrapping, keyboard focus, full available height and zero inner radius. Empty and 500-line files measured at 1440 and 1024px: editor 591.25px inside a 638.25px surface; long content scrolls within CodeMirror. At 390px, the file surface is at least 360px and at least 240px of code is visible after scrolling into view. Dirty buffers and failed commits preserve content/message; successful commit navigates. | Browser edits use isolated test records. Real JGit writes and branch-protection enforcement are covered separately below. |
 | Files and Markdown | Root/nested README, Markdown Preview/Source, pinned SHA image/document links, headings/fragments, spaces/Unicode, binary/oversized/LFS states, raster preview, missing-image fallback, clone copy. Browser image fetch and preserved prose verified; HTML is escaped and unsafe URL schemes rejected. | Browser image response is a fixture. A separate real Git transport test verifies nested raw PNG delivery with signed cookies. The reported private production repository remains uninspected. |
@@ -25,7 +25,7 @@ The `:git:git-ui` BML library is hosted by the separate `:git:git-ui-server` app
 | Repository administration | Metadata, webhooks, branch protection, group permissions including Execute, GC/repair, write-only CI secrets. Settings require Manage; failed forms retain drafts; secret values are not echoed. | Compiled routes/actions compare against actual schema and API permission contracts. |
 | CI agents | Administrator gating, registration with transient one-time token, confirmed deregistration, name/labels and orchestrator JSON editors, status/heartbeat/jobs/parent, polling. Browser checks mount both structured JSON editors and retain settings drafts across polling. | Agent API is a fixture; no real agent was registered or deregistered. |
 | GitHub administration | Pair/version/filter/secret controls, paged history/ref/pull/deliveries, transfers/reconciliation, reviewed conflict SHAs, shared principal mappings with distinguishing identity. | Compiled actions and browser rendering; real external transfers and conflict resolution remain unverified. |
-| Packaging | Production BML page bundles are served from the library jar. Git server embeds the UI before its generic repository redirect. JVM distribution, GraalVM native compilation, and isolated JVM/native startup and local GraphQL flows checked. | Native compilation uses `-Ob`; the native executable passes the same isolated local-auth/page/action/subscription test as JVM. Release `-O3`, external provider exchange and production-service acceptance remain unverified. |
+| Packaging | Production BML page bundles are served from the library jar. Git server hosts separate API and UI listeners in one process with loopback HTTP proxies. JVM distribution, GraalVM native compilation, isolated JVM/native auth/page/action/subscription flows and graceful shutdown checked. | Combined native compilation uses `-Ob`; release `-O3`, external provider exchange and production-service acceptance remain unverified for this composition. |
 
 The current browser matrix visits 47 route/view combinations at 1440, 1024 and 390px (141 checks), including empty repositories and administration screens. It measures rendered headings, document fit, control dimensions/alignment and browser exceptions, exercises dialogs and deferred file browsing, then separately checks live logs and agent drafts. It is not a claim that every possible action or permission combination has been executed in a browser. Counts in earlier revision records below describe those earlier runs.
 
@@ -357,3 +357,52 @@ Native build/test logs are `/tmp/git-ui-server-packaging.log`, `/tmp/git-ui-serv
 5. Complete the separately specified Git API/backend ownership move, remote domain consumers, notification origins and cutover. Do not remove Studio or main-server Git composition in this first stage.
 
 Unknown behavior remains unaccepted until measured. These gates are part of the migration, rather than assumptions hidden behind passing fixture counts.
+
+
+## 2026-10-12 one process with separate API and UI listeners
+
+Commit `ff408e51` records the preceding separate-host migration and removal of local GraphQL execution. The subsequent composition change makes `:git:git-server` consume the `:git:git-ui-server` host module and start both listeners in one process. Run `:git:git-server:run`; API/transport defaults to 8091 and UI defaults to 8093 (corrected after the local embedding-service collision described below). `GIT_HTTP_PORT` and `GIT_UI_HTTP_PORT` configure the listeners. API transport configuration remains under `bosca.server`; UI transport configuration lives under `git.ui.server` in the same application configuration file.
+
+BML remains an HTTP client/proxy. The embedded UI's GraphQL, OAuth, files and subscriptions use loopback HTTP/WebSocket connections to the API's actual bound port. `BML_GRAPHQL_ENDPOINT` applies only to the optional standalone UI entry point. The combined production test deliberately sets that variable to an unreachable endpoint and verifies that the embedded UI still targets its own API. Authentication, scopes and domain authorization remain in the API's fresh request contexts. No production BML or GraphQL execution/authentication source changed in this step.
+
+`BoscaApplication` now accepts explicit service ownership. The existing one-argument constructor retains its registration/shutdown behavior and JVM signature. The UI application's non-owning constructor leaves the API's application and serializers registered in DI; UI shutdown closes its own hooks and scope without stopping process-wide services. The API is started before the UI. The host drains the UI before stopping the API, and a failed or closed listener shuts down the whole host without invoking the JVM-halting engine stop method.
+
+Measured validation:
+
+- Full `:bosca-core:core:test`: **1,915 tests**, no failures, errors or skips. The new ownership regression verifies that the UI cannot replace the API's application/JSON/Protobuf providers, runs its hooks in reverse order, cancels its scope and leaves shared services running until the owner shuts down.
+- Full `:git:git-server:test`: **11 tests**, no failures, errors or skips. Four real-listener lifecycle cases cover API bind failure, UI bind failure, UI installation failure and sibling-listener shutdown, including released ports and application cleanup.
+- The two production-composition tests now start **one process with both listeners**, against isolated PostgreSQL/NATS. Both passed on JVM and the rebuilt combined native executable with default and custom cookie prefixes. Existing signup/login, profile identity, repository reads/writes, initial README commits, deferred tree/actions/search/tabs, CSS/fonts/raw delivery, subscriptions, invalid credentials, sign-out cookies, anonymous shared shells and scoped-token override checks passed. Process shutdown is required to complete gracefully and release both ports.
+- `:git:git-ui-server:test`: **6 file-proxy tests**, no failures, errors or skips.
+- `:git:git-server:installDist` and `:git:git-server:nativeCompile --build-args=-Ob` passed. The combined JVM distribution contains the UI host and BML libraries, **23 page bundles** and **11 font assets**. Final native integration was rerun with `--rerun --no-build-cache`; four JVM listener-lifecycle cases passed alongside the two native production cases.
+
+Moving the production test initially omitted its test-only BML server dependency; that compile failure was corrected. A subsequent full run caught a race in classifying a listener closed immediately after binding as a startup error. The host now treats a completed close as ordinary shutdown, preserves bind exceptions and stops the sibling. The full Git suite and final native/lifecycle run passed after that correction. The API's JMX worker count also follows its configured/default Netty worker count.
+
+Commands used for final validation:
+
+```bash
+./gradlew :bosca-core:core:test
+./gradlew :git:git-ui-server:test
+./gradlew :git:git-server:test :git:git-server:installDist :git:git-server:nativeCompile --build-args=-Ob --no-configuration-cache
+GIT_SERVER_TEST_BINARY="$PWD/git/git-server/build/native/nativeCompile/bosca-git-server" \
+  ./gradlew :git:git-server:test --tests bosca.git.server.GitServerIntegrationTest --tests bosca.git.server.GitServerLifecycleTest --rerun --no-build-cache --no-configuration-cache
+```
+
+The application specification and component READMEs now describe one-command startup. External OAuth/email, deployed data/service acceptance, combined release `-O3`, and the earlier UI/cutover gates were not revalidated by this listener change. Core and Git test counts are behavior checks, not coverage measurements; no new Kover gate was run.
+
+
+## 2026-10-12 local UI port collision
+
+The first default UI port, 8092, conflicts with the workspace's text-embeddings service. The reported bind failure was confirmed with `lsof` and `docker ps`: `bosca-dependencies-text-embeddings-inference-1` publishes `8092:80`, as specified in `server/services/docker-compose.yaml` and the existing embedding run configuration.
+
+The Git UI listener now defaults to **8093**, both in the combined server and the standalone UI configuration. The API's default app URL, origin allowlist, OAuth return allowlist and repository UI URL all use `http://localhost:8093`. Git transport remains on 8091. No embedding-service configuration or running container was changed.
+
+`GitServerConfigurationTest` checks default API/UI separation, avoids the embedding service's configured port, and verifies the UI host, authentication/redirect origins and transport endpoints agree. It reads both packaged Git configurations and the actual workspace dependency configuration. This regression and both production combined-server integration cases passed (**3 tests**, no failures, errors or skips). `:git:git-server:installDist` also passed. These checks used JVM processes; the native executable was not rebuilt for this configuration-only correction.
+
+```bash
+./gradlew :git:git-server:test --tests bosca.git.server.GitServerConfigurationTest --tests bosca.git.server.GitServerIntegrationTest :git:git-server:installDist
+```
+
+Restart Git Server to load the updated resources and open `http://localhost:8093`. An explicit `GIT_UI_HTTP_PORT=8092` or custom configuration still overrides the default and must be changed if present.
+
+
+Pre-push validation repeated `:git:git-ui:test` and the complete `:git:git-server:test` after the UI asset handlers moved resource reads to `Dispatchers.IO` and the standalone UI module became non-suspending. All **60 UI tests** and **12 server tests** passed, with no failures, errors or skips. This run includes the default-port configuration regression and both production combined-server cases. No native rebuild was run for those final edits.

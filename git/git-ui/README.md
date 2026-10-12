@@ -1,6 +1,6 @@
 # Git UI
 
-BML UI library hosted by `:git:git-ui-server`. This project owns the pages, generated GraphQL operations and packaged browser assets; the separate host owns its HTTP engine and configuration.
+BML UI library hosted by `:git:git-ui-server`. This project owns the pages, generated GraphQL operations and packaged browser assets; the host module owns its HTTP routes and proxies. `git-server` starts the UI and API listeners on different ports in one process.
 
 The library provides authentication, repository browsing and writes, CodeMirror editing, commit-pinned Markdown assets, search/compare/statuses, pull requests and reviews, CI runs and live logs, repository administration, agents and GitHub synchronization. Repository lists default to Active. Owner choices include the profile slug or ID so duplicate names remain distinguishable. The shell and controls use Studio’s design tokens, sidebar, compact headers and table treatment. Geist and Geist Mono are packaged and served from the Git origin. Local controls and Git components are kept separate for later extraction into a shared BML UI library.
 
@@ -23,11 +23,9 @@ From the workspace root:
 ```bash
 ./gradlew :git:git-ui:check :git:git-ui-server:test :git:git-server:test
 ./gradlew :git:git-server:run
-# In another terminal:
-./gradlew :git:git-ui-server:run
 ```
 
-Git UI defaults to `http://localhost:8092` and forwards to `BML_GRAPHQL_ENDPOINT` (default `http://localhost:8091/graphql`). Git server remains the API and transport host on port 8091. Browser requests use `/graphql`; subscriptions use `/_git/subscriptions`, relayed to the API’s `/graphqlws`. BML pages, actions, fragments and contracts use the existing HTTP client. Configure auth app origins and provider callbacks as described in the [UI server README](../git-ui-server/README.md). The UI host needs no database or domain providers; the API retains its infrastructure requirements.
+Git UI defaults to `http://localhost:8093` and proxies over loopback HTTP to the API’s bound port (8091 by default). Both listeners run in the Git server process. Browser requests use `/graphql`; subscriptions use `/_git/subscriptions`, relayed to the API’s `/graphqlws`. BML pages, actions, fragments and contracts use the existing HTTP client. Configure auth app origins and provider callbacks as described in the [UI server README](../git-ui-server/README.md). The UI host needs no database or domain providers; the API retains its infrastructure requirements.
 
 On a fresh database, the existing `security-initial` installer bootstraps the administrator and service account. Use its logged initial password or configured initialization password, following the platform's normal installation flow. Existing group and repository/profile permissions still apply; signup does not grant repository-creation permissions.
 
@@ -35,20 +33,19 @@ File writes resolve the displayed and committed author from the current primary 
 
 Public authentication routes are `/login`, `/auth/signup`, `/auth/forgot`, `/auth/reset-password`, `/auth/verify` and `/auth/link/confirm`. Email landing routes match the platform's existing email links. Return destinations survive signup, verification, recovery and OAuth; account-link controls use the proof methods offered by the backend. Configure the Git UI origin in the Git server authentication app-origin allowlist so emailed links return to this application. Google starts through BML’s existing OAuth proxy; the configured provider callback is on Git server, and the browser SDK finishes on the UI origin.
 
-`check` includes client flow tests, strict TypeScript checking, schema contract checks, and real HTTP/WebSocket tests of compiled BML pages, actions, assets and proxies. UI tests use an isolated upstream fixture. Git UI server integration tests start separate production UI and API JVM processes against isolated PostgreSQL and NATS. They exercise authentication, pages, actions, raw files, subscriptions, custom cookie prefixes and GraphQL credential isolation. These tests do not send emails or complete an external Google exchange.
+`check` includes client flow tests, strict TypeScript checking, schema contract checks, and real HTTP/WebSocket tests of compiled BML pages, actions, assets and proxies. UI tests use an isolated upstream fixture. Git server integration tests start one production JVM process with both UI and API listeners against isolated PostgreSQL and NATS. They exercise authentication, pages, actions, raw files, subscriptions, custom cookie prefixes and GraphQL credential isolation. These tests do not send emails or complete an external Google exchange.
 
 The client schema contains the fields used by the UI. Its contract test compares fields, arguments, inputs and enums with the owning domain schemas; update the subset alongside new operations. Local npm file dependencies use the workspace BML runtime and framework-free auth client. Gradle builds the production page bundles into the library jar so the UI server can serve them in JVM and native packages.
 
-The two-process production integration test can also exercise native executables:
+The production integration test can also exercise the combined native executable:
 
 ```bash
-./gradlew :git:git-server:nativeCompile --build-args=-Ob :git:git-ui-server:nativeCompile --build-args=-Ob --no-configuration-cache
+./gradlew :git:git-server:nativeCompile --build-args=-Ob --no-configuration-cache
 GIT_SERVER_TEST_BINARY="$PWD/git/git-server/build/native/nativeCompile/bosca-git-server" \
-GIT_UI_SERVER_TEST_BINARY="$PWD/git/git-ui-server/build/native/nativeCompile/bosca-git-ui-server" \
-  ./gradlew :git:git-ui-server:test --tests 'bosca.git.ui.server.GitUiServerIntegrationTest' --rerun --no-build-cache --no-configuration-cache
+  ./gradlew :git:git-server:test --tests 'bosca.git.server.GitServerIntegrationTest' --rerun --no-build-cache --no-configuration-cache
 ```
 
-It creates isolated PostgreSQL/NATS resources and exits both server processes. `-Ob` is quick optimization; release optimization is a separate check.
+It creates isolated PostgreSQL/NATS resources and shuts down both listeners in that process. `-Ob` is quick optimization; release optimization is a separate check.
 
 See the [application specification](../../specs/git/bml-git-application-spec.md) and [Studio inventory](../../specs/git/studio-ui-inventory.md). Studio and the main server are unchanged in this step.
 

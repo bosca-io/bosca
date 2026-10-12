@@ -32,12 +32,11 @@ import bosca.routes.configureGitCiRoutes
 import bosca.routes.configureGitRoutes
 import bosca.security.routes.SecurityRoutesModule
 import bosca.server.BoscaApplication
-import bosca.server.netty.NettyServerEngine
 
-/** Hosts the Git GraphQL API, authentication, smart transport and CI routes. */
+/** Hosts the Git API and BML UI on separate ports in one process. */
 fun main(args: Array<String>) {
     DfsBlockCacheInitializer.initialize()
-    NettyServerEngine.start("application.yaml", args) { module() }
+    startGitServer(args)
 }
 
 suspend fun BoscaApplication.module() {

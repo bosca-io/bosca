@@ -18,7 +18,6 @@ dependencies {
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(project(":bosca-core:test-support"))
     testImplementation(project(":bml:core-bml"))
-    testImplementation(project(":git:git-server"))
 }
 
 application {
@@ -28,16 +27,6 @@ application {
 
 tasks.named<JavaExec>("run") {
     outputs.upToDateWhen { false }
-}
-
-tasks.test {
-    val uiClasspath = sourceSets.main.get().runtimeClasspath
-    val apiClasspath = sourceSets.test.get().runtimeClasspath
-    doFirst {
-        systemProperty("uiServerClasspath", uiClasspath.asPath)
-        systemProperty("apiServerClasspath", apiClasspath.asPath)
-    }
-    systemProperty("workspaceRoot", rootProject.projectDir.absolutePath)
 }
 
 graalvmNative {

@@ -1,4 +1,4 @@
-package bosca.git.ui.server
+package bosca.git.server
 
 import bosca.bml.graphql.GraphQLClientFactory
 import bosca.bml.project.CompiledProject
@@ -29,8 +29,8 @@ import kotlin.test.assertTrue
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.*
 
-/** Exercises separate production UI and API processes with isolated PostgreSQL and NATS. */
-class GitUiServerIntegrationTest {
+/** Exercises both production listeners in one process with isolated PostgreSQL and NATS. */
+class GitServerIntegrationTest {
     private fun JsonElement.at(vararg fields: String): JsonElement =
         fields.fold(this) { value, field -> value.jsonObject.getValue(field) }
 
@@ -77,21 +77,24 @@ class GitUiServerIntegrationTest {
     fun `HTTP API authenticates browser SSR actions file delivery and subscription relay`() = verify("_bat")
 
     @Test
-    fun `custom cookie prefix works through separate UI and API servers`() = verify("_git_review")
+    fun `custom cookie prefix works through UI and API listeners`() = verify("_git_review")
 
     private fun verify(cookiePrefix: String) {
         val postgres = SharedPostgreSQLContainer().withDatabaseName("git_http_ui")
         val nats = SharedNatsContainer()
         val directory = kotlin.io.path.createTempDirectory("git-http-ui").toFile()
         var process: Process? = null
-        var uiProcess: Process? = null
+        var apiPort: Int? = null
+        var uiListenerPort: Int? = null
         try {
             postgres.start()
             nats.start()
             val port = ServerSocket(0).use { it.localPort }
+            apiPort = port
             val apiOrigin = "http://localhost:$port"
             var uiPort = ServerSocket(0).use { it.localPort }
             while (uiPort == port) uiPort = ServerSocket(0).use { it.localPort }
+            uiListenerPort = uiPort
             val origin = "http://localhost:$uiPort"
             val config = File(directory, "application.yaml")
             val template =
@@ -129,6 +132,9 @@ class GitUiServerIntegrationTest {
                             .putAll(
                                 mapOf(
                                     "GIT_HTTP_PORT" to port.toString(),
+                                    "GIT_UI_HTTP_PORT" to uiPort.toString(),
+                                    "BML_AUTH_COOKIE_PREFIX" to cookiePrefix,
+                                    "BML_GRAPHQL_ENDPOINT" to "http://127.0.0.1:1/graphql",
                                     "GIT_DEVELOPMENT" to "true",
                                     "DATABASE_URL" to postgres.jdbcUrl,
                                     "DATABASE_USER" to postgres.username,
@@ -151,30 +157,6 @@ class GitUiServerIntegrationTest {
                         redirectOutput(log)
                     }
                     .start()
-            val uiConfig = File(directory, "git-ui-server.yaml")
-            uiConfig.writeText(
-                File(requireNotNull(System.getProperty("workspaceRoot")),
-                    "git/git-ui-server/src/main/resources/git-ui-server.yaml").readText()
-            )
-            val uiLog = File(directory, "ui-server.log")
-            val uiExecutable = System.getenv("GIT_UI_SERVER_TEST_BINARY")?.takeIf(String::isNotBlank)
-            val uiCommand = if (uiExecutable == null) {
-                listOf(
-                    File(System.getProperty("java.home"), "bin/java").absolutePath,
-                    "--enable-native-access=ALL-UNNAMED", "-cp",
-                    requireNotNull(System.getProperty("uiServerClasspath")),
-                    "bosca.git.ui.server.ApplicationKt", "-config=${uiConfig.absolutePath}",
-                )
-            } else listOf(uiExecutable, "-config=${uiConfig.absolutePath}")
-            uiProcess = ProcessBuilder(uiCommand).apply {
-                environment().putAll(mapOf(
-                    "GIT_UI_HTTP_PORT" to uiPort.toString(),
-                    "BML_GRAPHQL_ENDPOINT" to "$apiOrigin/graphql",
-                    "BML_AUTH_COOKIE_PREFIX" to cookiePrefix,
-                ))
-                redirectErrorStream(true)
-                redirectOutput(uiLog)
-            }.start()
             val client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build()
             fun request(
                 path: String,
@@ -210,12 +192,12 @@ class GitUiServerIntegrationTest {
             )
             val uiDeadline = System.nanoTime() + Duration.ofSeconds(30).toNanos()
             var uiReady = false
-            while (uiProcess.isAlive && System.nanoTime() < uiDeadline) {
+            while (process.isAlive && System.nanoTime() < uiDeadline) {
                 uiReady = runCatching { request("/api/v1/ready").statusCode() == 200 }.getOrDefault(false)
                 if (uiReady) break
                 Thread.sleep(100)
             }
-            assertTrue(uiReady, "UI server failed to start. ${uiLog.readText().takeLast(12_000)}")
+            assertTrue(uiReady, "UI server failed to start. ${log.readText().takeLast(12_000)}")
             assertEquals(404, request("/login", base = apiOrigin).statusCode())
             assertEquals(404, request("/_bml/app.css", base = apiOrigin).statusCode())
             fun graphql(
@@ -887,16 +869,19 @@ class GitUiServerIntegrationTest {
                 },
                 signOut.headers().toString(),
             )
-            assertFalse("graphql proxy upstream unreachable" in uiLog.readText(), uiLog.readText())
+            assertFalse("graphql proxy upstream unreachable" in log.readText(), log.readText())
         } finally {
-            uiProcess?.destroy()
-            uiProcess?.waitFor(10, TimeUnit.SECONDS)
-            if (uiProcess?.isAlive == true) uiProcess.destroyForcibly().waitFor(10, TimeUnit.SECONDS)
             process?.destroy()
-            process?.waitFor(10, TimeUnit.SECONDS)
-            if (process?.isAlive == true) process.destroyForcibly().waitFor(10, TimeUnit.SECONDS)
-            nats.stop()
-            postgres.stop()
+            val stopped = process?.waitFor(45, TimeUnit.SECONDS) ?: true
+            if (!stopped) process.destroyForcibly().waitFor(10, TimeUnit.SECONDS)
+            try {
+                assertTrue(stopped, "Git host did not shut down both listeners gracefully")
+                apiPort?.let { ServerSocket(it).use { socket -> assertTrue(socket.isBound) } }
+                uiListenerPort?.let { ServerSocket(it).use { socket -> assertTrue(socket.isBound) } }
+            } finally {
+                nats.stop()
+                postgres.stop()
+            }
         }
     }
 }

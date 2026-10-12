@@ -8,11 +8,11 @@ The first release must provide a code workspace that fills the available page, a
 
 The BML UI now implements the inventoried screens in the separate `:git:git-ui` library. Authentication, repositories/editor/Markdown, pull requests/reviews, search/compare/statuses, CI/live logs, repository administration, agents and GitHub administration have compiled routes and typed server actions. [Parity validation](parity-validation.md) records measured checks, fixes and remaining acceptance gaps.
 
-Git server hosts the UI's Git, GitHub, security, profile identity, owner search, pipeline and scheduler GraphQL schema and resolver wiring. Git UI server hosts BML pages, actions and assets. BML server operations use the HTTP GraphQL client; browser GraphQL/OAuth and subscription requests use same-origin proxies to the API. Studio and the main server composition remain in place. Deployed data, real provider/email flows, external synchronization, release optimization, external-service acceptance, backend separation and cutover are not established by fixture checks. No old UI or API is accepted for retirement.
+Git server hosts the UI's Git, GitHub, security, profile identity, owner search, pipeline and scheduler GraphQL schema and resolver wiring. Git UI server hosts BML pages, actions and assets on a second listener in the same Git server process. BML server operations use the HTTP GraphQL client; browser GraphQL/OAuth and subscription requests use same-origin proxies to the API. Studio and the main server composition remain in place. Deployed data, real provider/email flows, external synchronization, release optimization, external-service acceptance, backend separation and cutover are not established by fixture checks. No old UI or API is accepted for retirement.
 
 ## Scope and application ownership
 
-UI source location: a new BML library project, `:git:git-ui`, with pages/components under `git/git-ui/src/main/bml` and client assets under `src/main/client`. `:git:git-ui-server` depends on this library and installs it into its application. The library owns BML compilation, generated operations and client bundling; the UI server owns its executable and configuration. Git server has no UI-library dependency. Keep this specification and the Git feature inventory in `specs/git/`. The deployment supplies separate public UI and API/transport origins; no Sowers-specific host belongs in platform code.
+UI source location: a new BML library project, `:git:git-ui`, with pages/components under `git/git-ui/src/main/bml` and client assets under `src/main/client`. `:git:git-ui-server` depends on this library and installs it into its application. The library owns BML compilation, generated operations and client bundling; the UI host module owns its routes and proxies. Git server depends on the host module and runs both listeners in one executable, with UI transport configuration under `git.ui.server`. Keep this specification and the Git feature inventory in `specs/git/`. The deployment supplies separate public UI and API/transport origins; no Sowers-specific host belongs in platform code.
 
 Step 1 leaves Studio and `bosca-server` unchanged. Establish the separate UI with sign-in, an Active-by-default repository index, ref/directory browsing and read-only text display. The application uses BML's original endpoint-based integration for repository data and authentication. BML forwards credentials without validating them or sharing authentication state with the GraphQL engine. The current implementation also includes editing, numbered CodeMirror viewing, Markdown/image previews, owner selection and the remaining inventoried Git surfaces; their validation status is tracked separately. Move API ownership and verify HTTP GraphQL routing before removing Git from the main server.
 
@@ -155,8 +155,12 @@ When extraction is scheduled, prove a separate custom library consumed by a BML 
 
 ```mermaid
 flowchart LR
-    Browser[Git browser application] --> UI[git-ui-server: BML and proxies]
-    UI -->|HTTP GraphQL and OAuth| API[git-server: auth and Git API]
+    subgraph Host[git-server process]
+        UI[UI port: git-ui-server BML and proxies]
+        API[API port: auth and Git API]
+    end
+    Browser[Git browser application] --> UI
+    UI -->|HTTP GraphQL and OAuth| API
     UI -->|Raw files and CI artifacts| API
     UI -->|WebSocket relay| API
     Git[Git clients and CI agents] --> API
@@ -174,15 +178,17 @@ Follow the established browser SDK refresh and BML auth gate, same-origin GraphQ
 
 Use Studio's authentication presentation and flow behavior as the baseline, implemented with local BML components. Provide password and Google sign-in, signup with typed name/email profile attributes, verification and resend with cooldown, password recovery/reset, and account linking with the backend's offered PASSWORD/EMAIL proofs. Signup does not create a session: verified accounts must complete sign-in before navigating to Git. Handle unverified sign-in by continuing to verification. Keep friendly errors, loading states, password-strength feedback, responsive layouts and working navigation between flows. Public email landing routes are `/auth/verify`, `/auth/reset-password` and `/auth/link/confirm`, matching the platform's email-link contract. Preserve the original destination across these flows and keep the OAuth callback public so exchange tokens reach the SDK. Shared library extraction remains deferred.
 
-BML exposes `install(BoscaApplication)` for composition. Install the compiled UI into the dedicated `git-ui-server` application. Keep its Netty engine separate from `git-server`, and reuse BML's existing HTTP GraphQL/OAuth proxies. Relay raw files and CI artifacts without buffering complete downloads, preserving credentials, status, MIME and security headers.
+BML exposes `install(BoscaApplication)` for composition. Install the compiled UI into the dedicated `git-ui-server` application. Run its Netty engine on a second port in the same `git-server` process, and reuse BML's existing HTTP GraphQL/OAuth proxies. Relay raw files and CI artifacts without buffering complete downloads, preserving credentials, status, MIME and security headers.
 
-Git server's `GraphQLModule` owns `/graphql` and `/graphqlws`; its security routes own OAuth callbacks and credential validation. UI-side BML loaders, actions, contracts and fragments use `GraphQLClientFactory` with the configured endpoint. Browser SDK requests use BML's same-origin `/graphql` proxy, which forwards origin and session response cookies. UI subscriptions at `/_git/subscriptions` relay to the API's `/graphqlws`. Shared BML shells execute anonymously; each HTTP operation receives fresh authentication state, including when a server operation overrides its token.
+The API application alone registers and shuts down process-wide DI services; the UI application owns only its router, middleware, shutdown hooks and coroutine scope. Start the API before the UI; use the API’s actual bound port for loopback GraphQL, file and subscription proxies. Drain the UI before stopping the API. Binding or initialization failure stops both listeners. Keep this lifecycle composition in Git; BML needs no internal execution or authentication hooks.
 
-Use root Gradle project paths and Java 25. Bundle BML client assets with Git UI server JVM/native packages and validate both servers' reachability/resource metadata. Run project and dependency validation from the workspace root without intermediate Maven Local publication. Never edit generated BML/KSP output.
+Git server's `GraphQLModule` owns `/graphql` and `/graphqlws`; its security routes own OAuth callbacks and credential validation. UI-side BML loaders, actions, contracts and fragments use `GraphQLClientFactory` with the loopback HTTP endpoint. Browser SDK requests use BML's same-origin `/graphql` proxy, which forwards origin and session response cookies. UI subscriptions at `/_git/subscriptions` relay to the API's `/graphqlws`. Shared BML shells execute anonymously; each HTTP operation receives fresh authentication state, including when a server operation overrides its token.
+
+Use root Gradle project paths and Java 25. Bundle BML client assets with the combined Git server JVM/native package and validate its reachability/resource metadata. Run project and dependency validation from the workspace root without intermediate Maven Local publication. Never edit generated BML/KSP output.
 
 ## Cutover and operation
 
-Deploy Git UI server alongside the Git API and current Studio routes first. Configure the UI public origin for UI links and preserve transport URLs where routing permits; existing clones must continue to work or have an explicit remote-update path. Keep local development valid with both server commands and configured local infrastructure. The UI defaults to port 8092 and the API/transport server to port 8091. Choose branding through application configuration and the real brand mark.
+Deploy Git UI server alongside the Git API and current Studio routes first. Configure the UI public origin for UI links and preserve transport URLs where routing permits; existing clones must continue to work or have an explicit remote-update path. Keep local development valid with one Git server command and configured local infrastructure. The UI defaults to port 8093 and the API/transport server to port 8091. Choose branding through application configuration and the real brand mark.
 
 Map every old `/git/...` UI route and its query context to its new destination. This is a proposed UI-link migration mechanism; it does not require preserving duplicate application logic or introducing internal service overloads. Inventory consumers before agreeing the duration of legacy redirects. Do not redirect Git smart-HTTP, LFS or webhook traffic with UI routes.
 
@@ -194,12 +200,12 @@ Retire Studio Git pages and the main server's embedded Git composition only afte
 
 | Milestone | Deliverable and completion gate |
 | --- | --- |
-| 1 UI foundation | New `:git:git-ui` BML library installed by `:git:git-ui-server`; separate UI and API processes; packaged browser assets; SDK sign-in/sign-out and same-origin proxy to the configured existing API; Active default; read-only repository/ref/tree/text browsing. Real HTTP tests prove page authentication, token forwarding, filters, escaping and asset delivery. Studio and main server remain unchanged. |
+| 1 UI foundation | New `:git:git-ui` BML library installed by `:git:git-ui-server`; separate UI and API listeners in one process; packaged browser assets; SDK sign-in/sign-out and same-origin proxy to the configured existing API; Active default; read-only repository/ref/tree/text browsing. Real HTTP tests prove page authentication, token forwarding, filters, escaping and asset delivery. Studio and main server remain unchanged. |
 | 2 API integration | Git GraphQL schema/controllers/dispatchers/subscriptions hosted by Git server; HTTP BML operations and same-origin browser proxies with API-owned authentication routing; authenticated raw image, artifact and live-log checks. Prove routing and auth contracts before relying on them for broader UI functionality. |
 | 3 Repositories and code | Active default, stable distinguishable owner picker, listing/create/import/lifecycle, complete code workspace/write flows, Markdown preview/resolution, supported image previews, URL/dirty-state behavior. Pass layout and asset acceptance cases below. |
 | 4 Pull requests and search | Repository/global PR views and actions, diffs/reviews/dependencies, search/compare/statuses. Verify each workflow against current source and behavior. |
 | 5 CI and administration | Catalog/runs/logs/inputs/requirements/artifact downloads/agents/secrets plus all settings and GitHub panels. Pass real auth and transport integration checks. |
-| 6 Backend separation and cutover | Authenticated cross-domain Git clients and workflow tests; migration/job/installer ownership; remove embedded Git dependencies/providers/API from `bosca-server`; complete route/link matrix, separate UI and API packages, agreed legacy links and matched-version rollback; remove old pages only after all gates pass. |
+| 6 Backend separation and cutover | Authenticated cross-domain Git clients and workflow tests; migration/job/installer ownership; remove embedded Git dependencies/providers/API from `bosca-server`; complete route/link matrix, a combined Git server package and independent UI module, agreed legacy links and matched-version rollback; remove old pages only after all gates pass. |
 
 ## Acceptance and validation
 

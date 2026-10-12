@@ -11,9 +11,9 @@ Native git hosting platform with WorkOps integration, source ref management for 
 | `git` | Full implementation — DFS, services, transport, GraphQL, repositories |
 | `git-ci` | CI implementation |
 | `git-jobs` | Background job workers (GC, purge, webhooks, maintenance) |
-| `git-server` | Git API, authentication and transport server |
+| `git-server` | One process hosting API/transport and a separate UI listener |
 | `git-ui` | Componentized BML UI library |
-| `git-ui-server` | Separate BML host with HTTP and subscription proxies to Git server |
+| `git-ui-server` | BML host module with HTTP and subscription proxies to Git server |
 
 ## Prerequisites
 
@@ -28,12 +28,11 @@ Run these commands from the **workspace root**. `git` is part of the root Gradle
 
 ```bash
 ./gradlew :git:test  # Test Git modules
-./gradlew :git:git-server:run  # Run the API and transport server on port 8091
-./gradlew :git:git-ui-server:run  # Run the BML UI on port 8092 (another terminal)
+./gradlew :git:git-server:run  # API/transport on 8091 and BML UI on 8093 in one process
 ./gradlew :git:git-server:nativeCompile  # Build a native image
 ```
 
-The UI host uses `BML_GRAPHQL_ENDPOINT` (default `http://localhost:8091/graphql`) and performs no local authentication or GraphQL execution. See [Git UI server](git-ui-server/README.md) for origin, OAuth and cookie configuration.
+The embedded UI host proxies over loopback HTTP to the API’s actual bound port and performs no local authentication or GraphQL execution. `GIT_HTTP_PORT` and `GIT_UI_HTTP_PORT` select the two listeners. See [Git UI server](git-ui-server/README.md) for origin, OAuth and cookie configuration.
 
 ## Local Infrastructure
 
