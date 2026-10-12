@@ -26,6 +26,12 @@ class BibleController(
 ) : GraphQLController<Bible> {
 
     @Field
+    fun metadataId(bible: Bible) = bible.metadataId
+
+    @Field
+    fun version(bible: Bible) = bible.version
+
+    @Field
     fun systemId(bible: Bible) = bible.systemId
 
     @Field

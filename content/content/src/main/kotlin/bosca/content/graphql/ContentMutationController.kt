@@ -4,6 +4,7 @@ import bosca.category.graphql.CategoryMutation
 import bosca.content.collection.graphql.CollectionMutation
 import bosca.content.healthcheck.ContentHealthCheckMutation
 import bosca.content.metadata.graphql.MetadataMutation
+import bosca.content.metadata.graphql.BibleProvidersMutation
 import bosca.content.state.graphql.WorkflowStatesMutation
 import bosca.content.tools.graphql.TemplateAttributeToolsMutation
 import bosca.content.transition.graphql.TransitionsMutation
@@ -31,6 +32,9 @@ class ContentMutationController : GraphQLController<ContentMutation> {
 
     @Field
     fun sources() = SourceMutation
+
+    @Field
+    fun bibleProviders() = BibleProvidersMutation
 
     @Field
     fun states() = WorkflowStatesMutation

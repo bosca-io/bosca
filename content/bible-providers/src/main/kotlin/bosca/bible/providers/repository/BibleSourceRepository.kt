@@ -8,14 +8,17 @@ import bosca.serialization.UUID
 @Repository
 interface BibleSourceRepository {
 
-    /** Persists a source for an existing configuration and exact Bible variant. */
+    /** Persists a source for an exact Bible variant only while its metadata exists and has not been deleted. */
     @Query("""
         insert into bible_providers.sources (id, configuration_id, provider, provider_bible_id, metadata_id,
             metadata_version, variant, kind, name, name_local, abbreviation, attribution,
             allowed_uses, version, created, modified, deleted_at)
-        values (:id, :configurationId, :provider, :providerBibleId, :metadataId, :metadataVersion, :variant,
+        select :id, :configurationId, :provider, :providerBibleId, :metadataId, :metadataVersion, :variant,
             :kind, :name, :nameLocal, :abbreviation, :attribution, :allowedUses, :version,
-            :created, :modified, :deletedAt) returning *
+            :created, :modified, :deletedAt
+        where exists (select 1 from public.metadata
+            where id = :metadataId and not deleted)
+        returning *
     """)
     suspend fun add(source: BibleSource): BibleSource
 

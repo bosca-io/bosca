@@ -10,7 +10,7 @@ import bosca.service.Service
 /** Manages provider integrations attached to existing Bosca Bible variants. */
 interface BibleSourceService : Service {
 
-    /** Attaches a source to an existing configuration and exact Bible variant. */
+    /** Attaches a source to an existing configuration and exact Bible variant whose metadata has not been deleted. */
     suspend fun add(source: BibleSource): BibleSource
 
     /** Finds an active source, including sources whose configuration or variant is disabled. */

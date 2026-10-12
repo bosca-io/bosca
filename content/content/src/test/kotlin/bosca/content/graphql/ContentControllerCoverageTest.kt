@@ -12,6 +12,7 @@ import bosca.content.find.FindQueryInput
 import bosca.content.healthcheck.ContentHealthCheck
 import bosca.content.guide.graphql.Guides
 import bosca.content.metadata.graphql.CollectionTemplates
+import bosca.content.metadata.graphql.BibleProviders
 import bosca.content.metadata.graphql.DataTemplates
 import bosca.content.metadata.graphql.DocumentTemplates
 import bosca.content.metadata.graphql.GuideTemplates
@@ -47,6 +48,11 @@ import kotlin.test.assertTrue
 import kotlin.test.assertFalse
 
 class ContentControllerCoverageTest {
+
+    @Test
+    fun `bibleProviders returns BibleProviders`() {
+        assertSame(BibleProviders, controller.bibleProviders())
+    }
 
     private val slugService = mockk<SlugService>()
     private val metadataService = mockk<MetadataService>()

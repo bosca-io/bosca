@@ -167,7 +167,11 @@ class BibleProviderServiceImpl(
                 if (compatible(variant, catalog, response.content)) targets.add(variant)
             }
         }
-        return targets
+        if (targets.isEmpty()) return targets
+        val liveMetadata = metadata.getByIds(targets.map { it.metadataId }.distinct())
+            .filterNot { it.deleted }
+            .map { it.id }.toSet()
+        return targets.filter { it.metadataId in liveMetadata }
     }
 
     override suspend fun addAudio(bible: Bible, input: AddProviderAudioInput): BibleAudio {
@@ -175,6 +179,8 @@ class BibleProviderServiceImpl(
         require(input.allowedUses.all { it == BibleContentUse.PLAYBACK }) { "Audio sources may permit only playback" }
         check(!connection().inTransaction) { "Audio registration must start outside a database transaction" }
         val target = variant(bible.metadataId, bible.version, bible.variant)
+        val content = metadata.getById(target.metadataId) ?: error("Bible metadata was not found")
+        check(!content.deleted) { "Bible metadata was deleted" }
         val provider = getProvider(input.configurationId)
         val (catalog, response) = recording(provider, input.configurationId, input.providerBibleId)
         require(compatible(target, catalog, response.content)) { "Recording is not compatible with the Bible variant" }

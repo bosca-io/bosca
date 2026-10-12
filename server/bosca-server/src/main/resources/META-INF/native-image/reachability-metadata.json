@@ -3095,6 +3095,9 @@
       "glob": "graphql/metadata/bible.graphqls"
     },
     {
+      "glob": "graphql/metadata/bible-providers.graphqls"
+    },
+    {
       "glob": "graphql/metadata/data.graphqls"
     },
     {

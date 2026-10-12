@@ -61,13 +61,13 @@ interface BibleProviderService : Service {
         audioId: Uuid? = null,
     ): String?
 
-    /** Lists exact Bosca Bible variants compatible with the selected provider recording. */
+    /** Lists compatible exact Bible variants whose metadata has not been deleted, including disabled variants. */
     suspend fun getAudioTargets(configurationId: UUID, providerBibleId: String): List<Bible>
 
     /** Adds a selected text Bible as unpublished content in the existing Bibles collection. */
     suspend fun addBible(input: AddProviderBibleInput): Bible
 
-    /** Attaches a compatible recording with reviewed playback rights to an exact Bible variant. */
+    /** Attaches a compatible recording with reviewed playback rights; deleted or missing target metadata fails. */
     suspend fun addAudio(bible: Bible, input: AddProviderAudioInput): BibleAudio
 
     /** Refreshes source descriptions, languages, and chapter references without prefetching bodies. */

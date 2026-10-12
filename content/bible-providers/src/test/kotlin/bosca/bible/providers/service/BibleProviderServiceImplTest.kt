@@ -38,6 +38,7 @@ import bosca.cache.redis.RedisCacheManager
 import bosca.cache.redis.RedisCacheScripts
 import bosca.cache.withRequestCache
 import bosca.configuration.service.ConfigurationService
+import bosca.configuration.service.getValueAs
 import bosca.configuration.repository.ConfigurationValueRepository
 import bosca.configuration.repository.ConfigurationValueRepositoryImpl
 import bosca.bible.providers.repository.BibleSourceRepositoryImpl
@@ -59,6 +60,15 @@ import bosca.content.metadata.graphql.BibleReferenceController
 import bosca.content.metadata.graphql.BibleReferenceControllerDispatcher
 import bosca.content.metadata.graphql.FindBibleResultController
 import bosca.content.metadata.graphql.FindBibleResultControllerDispatcher
+import bosca.content.metadata.graphql.BibleProviders
+import bosca.content.metadata.graphql.BibleProvidersMutation
+import bosca.content.metadata.graphql.BibleProvidersControllerDispatcher
+import bosca.content.metadata.graphql.BibleProvidersMutationControllerDispatcher
+import bosca.content.metadata.graphql.BibleProviderConfigurationControllerDispatcher
+import bosca.content.metadata.graphql.BibleSourceControllerDispatcher
+import bosca.content.metadata.graphql.BibleCatalogControllerDispatcher
+import bosca.content.metadata.graphql.BibleLanguageControllerDispatcher
+import bosca.content.metadata.graphql.BibleAudioControllerDispatcher
 import bosca.content.metadata.routes.GetBibleBookChapterVerses
 import bosca.content.metadata.routes.ChapterContent
 import bosca.content.metadata.jobs.LimitBibleChaptersJob
@@ -90,6 +100,11 @@ import bosca.graphql.server.GraphQLContext
 import bosca.graphql.server.GraphQLRequest
 import bosca.graphql.server.RuntimeWiringBuilder
 import bosca.security.service.AuthenticationContext
+import bosca.security.service.GroupEvaluator
+import bosca.security.service.ImpersonatedAuthenticationContext
+import bosca.security.model.Principal
+import bosca.security.model.Group
+import bosca.security.model.GroupType
 import io.opentelemetry.api.GlobalOpenTelemetry
 import io.opentelemetry.api.trace.Tracer
 import bosca.lock.DistributedLockFactory
@@ -544,6 +559,56 @@ class BibleProviderServiceImplTest {
     }
 
     @Test
+    fun `audio targets exclude deleted metadata and retain live disabled variants`() = request {
+        val live = service.addBible(input())
+        bibles.setBible(live.metadataId, live.version, remote.toInput(false, "other"))
+        bibles.setDefaultVariant(live.metadataId, live.version, "other")
+        bibles.setVariantEnabled(live.metadataId, live.version, live.variant, false)
+        val deleted = service.addBible(input())
+        bosca.db.transaction { metadata.markDeleted(deleted.metadataId) }
+        audioCatalog()
+
+        val targets = service.getAudioTargets(configurationId, "recording")
+        assertEquals(setOf(live.metadataId), targets.map { it.metadataId }.toSet())
+        assertEquals(setOf("study", "other"), targets.map { it.variant }.toSet())
+        val disabled = targets.single { it.variant == "study" }
+        assertFalse(disabled.enabled)
+        val audio = service.addAudio(disabled, AddProviderAudioInput(configurationId, "recording", setOf(BibleContentUse.PLAYBACK)))
+        assertEquals(audio.id, sources.getAudio(live.metadataId, live.version, live.variant).single().id)
+        assertTrue(sources.getAudio(deleted.metadataId, deleted.version, deleted.variant).isEmpty())
+    }
+
+    @Test
+    fun `audio registration rejects deleted metadata before requesting provider content`() = request {
+        val bible = service.addBible(input())
+        assertFalse(assertNotNull(metadata.getById(bible.metadataId, bible.version)).deleted)
+        bosca.db.transaction { metadata.markDeleted(bible.metadataId) }
+
+        assertFailsWith<IllegalStateException> {
+            service.addAudio(bible, AddProviderAudioInput(configurationId, "recording", setOf(BibleContentUse.PLAYBACK)))
+        }
+        assertEquals(1, service.getSources(configurationId).size)
+        assertTrue(sources.getAudio(bible.metadataId, bible.version, bible.variant).isEmpty())
+        coVerify(exactly = 0) { provider.getCatalog(any(), any(), any(), any(), any()) }
+        coVerify(exactly = 0) { provider.getBible(any(), any(), BibleSourceKind.AUDIO) }
+    }
+
+    @Test
+    fun `audio targets and registration preserve Bible versions that differ from the metadata row version`() = request {
+        val first = service.addBible(input())
+        bibles.setBible(first.metadataId, 2, remote.toInput(true, first.variant))
+        audioCatalog()
+
+        val targets = service.getAudioTargets(configurationId, "recording")
+        assertEquals(setOf(1, 2), targets.map { it.version }.toSet())
+        val second = targets.single { it.version == 2 }
+        assertEquals(1, assertNotNull(metadata.getById(second.metadataId)).version)
+        val audio = service.addAudio(second, AddProviderAudioInput(configurationId, "recording", setOf(BibleContentUse.PLAYBACK)))
+        assertEquals(audio.id, sources.getAudio(second.metadataId, second.version, second.variant).single().id)
+        assertTrue(sources.getAudio(first.metadataId, first.version, first.variant).isEmpty())
+    }
+
+    @Test
     fun `configuration removal requires explicit purge and preserves registered Bible content`() = request {
         val added = service.addBible(input())
         val source = assertNotNull(sources.getText(added.metadataId, added.version, added.variant))
@@ -561,6 +626,24 @@ class BibleProviderServiceImplTest {
         val empty = service.saveConfiguration(BibleProviderConfigurationInput("Empty", "API_BIBLE", true, apiKey = "key"))
         service.removeConfiguration(empty.id, false)
         assertTrue(service.getConfigurations().isEmpty())
+    }
+
+    @Test
+    fun `audio registration rejects metadata deleted during provider lookup`() = request {
+        val bible = service.addBible(input())
+        audioCatalog()
+        coEvery { provider.getBible(configurationId, "recording", BibleSourceKind.AUDIO) } coAnswers {
+            assertFalse(connection().inTransaction)
+            request { bosca.db.transaction { metadata.markDeleted(bible.metadataId) } }
+            BibleProviderResponse(remote, attribution)
+        }
+
+        assertFailsWith<IllegalStateException> {
+            service.addAudio(bible, AddProviderAudioInput(configurationId, "recording", setOf(BibleContentUse.PLAYBACK)))
+        }
+        assertEquals(1, service.getSources(configurationId).size)
+        assertTrue(sources.getAudio(bible.metadataId, bible.version, bible.variant).isEmpty())
+        coVerify(exactly = 1) { provider.getBible(configurationId, "recording", BibleSourceKind.AUDIO) }
     }
 
     private fun audioCatalog(relatedSystemId: String = "publication", recording: SharedBible = remote) {
@@ -1064,6 +1147,7 @@ class BibleProviderServiceImplTest {
             ?: error("Bible schema not found")
         val wiring = RuntimeWiringBuilder().apply {
             scalar("JSON", ExtendedScalars.Json)
+            scalar("UUID", ExtendedScalars.Uuid)
             type("Query") { field("bible") { bible } }
             type(BibleControllerDispatcher(BibleController(bibles, metadata, mockk())).type)
             type(BibleChapterControllerDispatcher(BibleChapterController(bibles)).type)
@@ -1071,7 +1155,7 @@ class BibleProviderServiceImplTest {
             type(BibleReferenceControllerDispatcher(BibleReferenceController()).type)
             type(FindBibleResultControllerDispatcher(FindBibleResultController()).type)
         }.build()
-        val graphql = GraphQL(ExecutableSchema.fromSdl("scalar JSON\ntype Query { bible: Bible! }\n$sdl", wiring))
+        val graphql = GraphQL(ExecutableSchema.fromSdl("scalar JSON\nscalar UUID\ntype Query { bible: Bible! }\n$sdl", wiring))
         val context = GraphQLContext(mapOf("authenticationContext" to mockk<AuthenticationContext>()))
         request {
             val references = graphql.execute(GraphQLRequest("{ bible { chapter(usfm: \"JHN.1\") { reference { usfm } } } }", context = context))
@@ -1153,6 +1237,164 @@ class BibleProviderServiceImplTest {
 
     private suspend fun count(table: String): Int = connection().useStatement("select count(*) from $table") {
         it.executeQuery().use { result -> assertTrue(result.next()); result.getInt(1) }
+    }
+
+    private suspend fun providerGraphQL(): GraphQL {
+        provides<ConnectionPool> { pool }
+        provides<Tracer> { GlobalOpenTelemetry.getTracer("bible-provider-admin-integration") }
+        provides<GroupEvaluator>(overrideExisting = true) { GroupEvaluator(mockk()) }
+        val wiring = RuntimeWiringBuilder().apply {
+            scalar("JSON", ExtendedScalars.Json)
+            scalar("UUID", ExtendedScalars.Uuid)
+            scalar("Long", ExtendedScalars.Long)
+            scalar("DateTime", bosca.graphql.scalars.DateTime.Type)
+            type("Query") { field("providers") { BibleProviders } }
+            type("Mutation") { field("providers") { BibleProvidersMutation } }
+            type(ProviderRegistry.get<BibleProvidersControllerDispatcher>().type)
+            type(ProviderRegistry.get<BibleProvidersMutationControllerDispatcher>().type)
+            type(ProviderRegistry.get<BibleProviderConfigurationControllerDispatcher>().type)
+            type(ProviderRegistry.get<BibleSourceControllerDispatcher>().type)
+            type(ProviderRegistry.get<BibleCatalogControllerDispatcher>().type)
+            type(ProviderRegistry.get<BibleLanguageControllerDispatcher>().type)
+            type(ProviderRegistry.get<BibleAttributionControllerDispatcher>().type)
+            type(ProviderRegistry.get<BibleAudioControllerDispatcher>().type)
+            type(BibleControllerDispatcher(BibleController(bibles, metadata, mockk())).type)
+        }.build()
+        val schema = listOf("bible", "bible-providers").joinToString("\n") { name ->
+            assertNotNull(javaClass.getResourceAsStream("/graphql/metadata/$name.graphqls")).bufferedReader().use { it.readText() }
+        }
+        return GraphQL(ExecutableSchema.fromSdl("""
+            scalar JSON
+            scalar UUID
+            scalar Long
+            scalar DateTime
+            type Query { providers: BibleProviders! }
+            type Mutation { providers: BibleProvidersMutation! }
+            type Content { unused: Boolean }
+            type ContentMutation { unused: Boolean }
+            $schema
+        """.trimIndent(), wiring))
+    }
+
+    @Test
+    fun `generated administrator GraphQL preserves encrypted keys and manages real text and audio sources`() {
+        val graphql = request { providerGraphQL() }
+        val authentication = ImpersonatedAuthenticationContext(Principal(id = UUID.random()), listOf(
+            Group(name = "administrators", description = "Administrators", type = GroupType.SYSTEM),
+        ))
+        val context = GraphQLContext(mapOf("authenticationContext" to authentication))
+        fun execute(query: String) = request { graphql.execute(GraphQLRequest(query, context = context)) }
+        val updated = execute("""
+            mutation { providers { saveConfiguration(input: {
+                id: "$configurationId", name: "Renamed", provider: "API_BIBLE", enabled: true
+            }) { id name provider enabled hasApiKey } } }
+        """.trimIndent())
+        assertTrue(updated.errors.isEmpty(), updated.errors.toString())
+        assertFalse(updated.data.toString().contains("server-secret"))
+        request {
+            val settings = assertNotNull(ProviderRegistry.get<ConfigurationService>().getValueAs<BibleProviderSettings>(configurationId, json))
+            assertEquals("server-secret", settings.apiKey)
+            assertEquals("Renamed", settings.name)
+        }
+        val added = execute("""
+            mutation { providers { addBible(input: { configurationId: "$configurationId", providerBibleId: "edition",
+                variant: "study", allowedUses: [DISPLAY, AI_CONTEXT] }) { metadataId version variant name } } }
+        """.trimIndent())
+        assertTrue(added.errors.isEmpty(), added.errors.toString())
+        val bibleData = assertNotNull(added.data).jsonObject.getValue("providers").jsonObject.getValue("addBible").jsonObject
+        val metadataId = UUID.parse(bibleData.getValue("metadataId").jsonPrimitive.content)
+        val source = request { service.getSources(configurationId).single() }
+        assertEquals(metadataId, source.metadataId)
+        assertEquals(setOf(BibleContentUse.DISPLAY, BibleContentUse.AI_CONTEXT), source.allowedUses)
+        request {
+            val stored = assertNotNull(metadata.getById(metadataId, 1))
+            assertFalse(stored.isPublished)
+            assertFalse(stored.public)
+            assertEquals(0, countRetained())
+        }
+        request { audioCatalog() }
+        val recording = execute("""
+            mutation { providers { addAudio(bibleId: "$metadataId", version: 1, variant: "study",
+                input: { configurationId: "$configurationId", providerBibleId: "recording", allowedUses: [PLAYBACK] }) {
+                id name attribution { copyright }
+            } } }
+        """.trimIndent())
+        assertTrue(recording.errors.isEmpty(), recording.errors.toString())
+        val listing = execute("""
+            { providers { configurations { id name hasApiKey }
+                sources(configurationId: "$configurationId") { id metadataId metadataVersion variant kind version allowedUses created modified }
+            } }
+        """.trimIndent())
+        assertTrue(listing.errors.isEmpty(), listing.errors.toString())
+        assertEquals(2, assertNotNull(listing.data).jsonObject.getValue("providers").jsonObject.getValue("sources").jsonArray.size)
+        assertFalse(listing.data.toString().contains("server-secret"))
+        val blocked = execute("mutation { providers { removeConfiguration(configurationId: \"$configurationId\") } }")
+        assertTrue(blocked.errors.isNotEmpty())
+        assertEquals(2, request { service.getSources(configurationId).size })
+        val refreshed = execute("mutation { providers { refresh(sourceId: \"${source.id}\") } }")
+        assertTrue(refreshed.errors.isEmpty(), refreshed.errors.toString())
+        val stale = execute("mutation { providers { removeSource(sourceId: \"${source.id}\", expectedVersion: 0) } }")
+        assertTrue(stale.errors.isNotEmpty())
+        val removed = execute("mutation { providers { removeSource(sourceId: \"${source.id}\", expectedVersion: 1) } }")
+        assertTrue(removed.errors.isEmpty(), removed.errors.toString())
+        val purged = execute("mutation { providers { removeConfiguration(configurationId: \"$configurationId\", purgeSources: true) } }")
+        assertTrue(purged.errors.isEmpty(), purged.errors.toString())
+        request { assertTrue(service.getConfigurations().isEmpty()) }
+        coVerify(exactly = 0) { provider.getChapter(any(), any(), any()); provider.downloadAudioChapter(any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun `generated GraphQL with real group authorization rejects non-administrators without changing storage`() {
+        val graphql = request { providerGraphQL() }
+        for (authentication in listOf(
+            AuthenticationContext(null, null),
+            ImpersonatedAuthenticationContext(Principal(id = UUID.random()), emptyList()),
+        )) {
+            val context = GraphQLContext(mapOf("authenticationContext" to authentication))
+            for (query in listOf(
+                "{ providers { configurations { id name hasApiKey } } }",
+                "mutation { providers { removeConfiguration(configurationId: \"$configurationId\", purgeSources: true) } }",
+            )) {
+                val result = request { graphql.execute(GraphQLRequest(query, context = context)) }
+                assertTrue(result.errors.isNotEmpty())
+                assertFalse(result.data.toString().contains("server-secret"))
+            }
+        }
+        request { assertEquals(1, service.getConfigurations().size); assertEquals(0, count("metadata")) }
+        coVerify(exactly = 0) { provider.getBible(any(), any(), any()); provider.getChapter(any(), any(), any()) }
+    }
+
+    @Test
+    fun `generated GraphQL excludes deleted audio targets and rejects registration without persisting a source`() {
+        val bible = request { service.addBible(input()) }
+        request {
+            bosca.db.transaction { metadata.markDeleted(bible.metadataId) }
+            audioCatalog()
+        }
+        val graphql = request { providerGraphQL() }
+        val authentication = ImpersonatedAuthenticationContext(Principal(id = UUID.random()), listOf(
+            Group(name = "administrators", description = "Administrators", type = GroupType.SYSTEM),
+        ))
+        val context = GraphQLContext(mapOf("authenticationContext" to authentication))
+        val targets = request { graphql.execute(GraphQLRequest(
+            "{ providers { audioTargets(configurationId: \"$configurationId\", providerBibleId: \"recording\") { metadataId version variant } } }",
+            context = context,
+        )) }
+        assertTrue(targets.errors.isEmpty(), targets.errors.toString())
+        assertTrue(assertNotNull(targets.data).jsonObject.getValue("providers").jsonObject.getValue("audioTargets").jsonArray.isEmpty())
+        val registered = request { graphql.execute(GraphQLRequest(
+            """mutation { providers { addAudio(bibleId: "${bible.metadataId}", version: ${bible.version}, variant: "${bible.variant}",
+                input: { configurationId: "$configurationId", providerBibleId: "recording", allowedUses: [PLAYBACK] }) { id name }
+            } }""".trimIndent(),
+            context = context,
+        )) }
+        assertTrue(registered.errors.isNotEmpty(), registered.errors.toString())
+        request {
+            assertEquals(1, service.getSources(configurationId).size)
+            assertTrue(sources.getAudio(bible.metadataId, bible.version, bible.variant).isEmpty())
+        }
+        coVerify(exactly = 1) { provider.getCatalog(configurationId, BibleSourceKind.AUDIO, null, 0, Int.MAX_VALUE) }
+        coVerify(exactly = 1) { provider.getBible(configurationId, "recording", BibleSourceKind.AUDIO) }
     }
 
     private fun <T> request(block: suspend () -> T): T = runBlocking {

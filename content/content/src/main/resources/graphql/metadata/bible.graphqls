@@ -1,5 +1,9 @@
 "A Bible translation or version available in the system, containing books, chapters, and verses with rendering metadata for scripture display"
 type Bible {
+    "Bosca content identity for selecting an exact Bible variant"
+    metadataId: UUID!
+    "Content version containing this Bible variant"
+    version: Int!
     "Unique identifier for this Bible within the external Bible API or system"
     systemId: String!
     "Variant identifier distinguishing different editions or formats of the same Bible (e.g. 'reader', 'study')"

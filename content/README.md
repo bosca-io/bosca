@@ -44,6 +44,10 @@ Verse responses add attribution when available. The single-chapter `/api/v2/` ro
 returns the shared `BibleChapterContent` model; its `/api/v1/` counterpart continues
 to return `BibleChapter`.
 
+Administrator queries and mutations under `content.bibleProviders` manage saved provider
+configurations, browse catalogs, and add, refresh, or remove text and audio sources.
+Configuration responses expose whether a key is saved without returning the key itself.
+
 The Bible compiler tests download KJV and ASV DBL bundles rather than storing them in Git.
 Set `BIBLE_RAW_ARTIFACTS` to the raw artifact download base URL, including the namespace,
 repository, and version (`https://<artifact-host>/raw/<namespace>/<repository>/<version>`).

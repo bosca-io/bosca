@@ -1,0 +1,119 @@
+"Administrator queries for Bible provider integration"
+type BibleProviders {
+    providers: [String!]!
+    configurations: [BibleProviderConfiguration!]!
+    catalog(configurationId: UUID!, kind: BibleSourceKind!, query: String, offset: Int! = 0, limit: Int! = 20): [BibleCatalog!]!
+    sources(configurationId: UUID!): [BibleSource!]!
+    audioTargets(configurationId: UUID!, providerBibleId: String!): [Bible!]!
+}
+
+"Administrator operations for configuring providers and managing their sources"
+type BibleProvidersMutation {
+    saveConfiguration(input: BibleProviderConfigurationInput!): BibleProviderConfiguration!
+    test(configurationId: UUID!): Boolean!
+    addBible(input: AddProviderBibleInput!): Bible!
+    addAudio(bibleId: UUID!, version: Int!, variant: String!, input: AddProviderAudioInput!): BibleAudio!
+    refresh(sourceId: UUID!): Boolean!
+    removeSource(sourceId: UUID!, expectedVersion: Long!): Boolean!
+    "Active sources prevent removal unless purgeSources is explicitly true"
+    removeConfiguration(configurationId: UUID!, purgeSources: Boolean! = false): Boolean!
+}
+
+"Saved provider setup without credentials"
+type BibleProviderConfiguration {
+    id: UUID!
+    name: String!
+    provider: String!
+    enabled: Boolean!
+    hasApiKey: Boolean!
+}
+
+input BibleProviderConfigurationInput {
+    id: UUID
+    name: String!
+    provider: String!
+    enabled: Boolean!
+    "Omit or send null to preserve the saved key when updating"
+    apiKey: String
+}
+
+"A text Bible or recording available upstream; browsing does not download chapter content"
+type BibleCatalog {
+    id: String!
+    systemId: String!
+    kind: BibleSourceKind!
+    name: String!
+    nameLocal: String!
+    abbreviation: String!
+    abbreviationLocal: String!
+    description: String!
+    languages: [BibleLanguage!]!
+    attribution: BibleAttribution!
+    relatedSystemId: String
+}
+
+"A provider edition attached to an exact Bosca Bible version and variant"
+type BibleSource {
+    id: UUID!
+    configurationId: UUID!
+    provider: String!
+    providerBibleId: String!
+    metadataId: UUID!
+    metadataVersion: Int!
+    variant: String!
+    kind: BibleSourceKind!
+    name: String!
+    nameLocal: String!
+    abbreviation: String!
+    attribution: BibleAttribution!
+    allowedUses: [BibleContentUse!]!
+    version: Long!
+    created: DateTime!
+    modified: DateTime!
+}
+
+"An attached recording; listing it does not download audio"
+type BibleAudio {
+    id: UUID!
+    name: String!
+    nameLocal: String!
+    abbreviation: String!
+    attribution: BibleAttribution!
+}
+
+input AddProviderBibleInput {
+    configurationId: UUID!
+    providerBibleId: String!
+    variant: String!
+    "Uses reviewed by an administrator; an empty list grants no use"
+    allowedUses: [BibleContentUse!]!
+}
+
+input AddProviderAudioInput {
+    configurationId: UUID!
+    providerBibleId: String!
+    "Audio sources may permit only PLAYBACK; an empty list grants no use"
+    allowedUses: [BibleContentUse!]!
+}
+
+enum BibleSourceKind {
+    TEXT
+    AUDIO
+}
+
+enum BibleContentUse {
+    DISPLAY
+    AI_CONTEXT
+    TEXT_TO_SPEECH
+    INDEXING
+    EXPORT
+    PLAYBACK
+}
+
+extend type Content {
+    bibleProviders: BibleProviders!
+}
+
+extend type ContentMutation {
+    bibleProviders: BibleProvidersMutation!
+}
