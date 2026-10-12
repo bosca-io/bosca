@@ -66,6 +66,14 @@ class RepositoryMarkdownTest {
     }
 
     @Test
+    fun `API URL prefix stays in the proxy rather than raw UI links`() {
+        assertEquals(
+            "/alice/project/raw/abc/images/logo%20%231.png",
+            rawFileHref("https://git.example.test/api/git/alice/project.git", "abc", "images/logo #1.png"),
+        )
+    }
+
+    @Test
     fun `unsafe list redirects and file paths are rejected`() {
         assertEquals("/repositories", safeListHref("//evil.example/repositories"))
         assertEquals("/repositories", safeListHref("/repositories/../../login"))

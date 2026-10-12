@@ -121,9 +121,11 @@ internal fun markdownDestination(
             fragment
 }
 
-/** Raw routes use a commit SHA so refs containing slashes cannot change path interpretation. */
+/** UI raw routes use owner/repository coordinates and a commit SHA; the proxy supplies the API base. */
 internal fun rawFileHref(cloneUrl: String, sha: String, path: String): String {
     if (sha.isBlank()) return ""
-    val base = URI(cloneUrl).rawPath.removeSuffix(".git").trimEnd('/')
+    val coordinates = URI(cloneUrl).rawPath.removeSuffix(".git").trimEnd('/')
+        .split('/').takeLast(2).joinToString("/")
+    val base = "/$coordinates"
     return "$base/raw/${encode(sha)}/${path.split('/').joinToString("/") { encode(it) }}"
 }

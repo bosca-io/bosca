@@ -252,6 +252,7 @@ includeComponent("git", listOf(
     "git-ci",
     "git-jobs",
     "git-ui",
+    "git-ui-server",
     "git-server",
 ))
 

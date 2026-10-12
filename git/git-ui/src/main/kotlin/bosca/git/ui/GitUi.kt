@@ -3,7 +3,6 @@ package bosca.git.ui
 import bml.generated.BmlComponents
 import bml.generated.BmlIslands
 import bml.generated.BmlPages
-import bosca.bml.graphql.GraphQLBackend
 import bosca.bml.project.CompiledProject
 import bosca.bml.server.BmlServer
 import bosca.server.BoscaApplication
@@ -18,18 +17,6 @@ fun installGitUi(
 ) {
     gitUiServer(graphqlEndpoint, authCookiePrefix).install(application)
     installGitSubscriptions(application, graphqlEndpoint)
-    installClientAssets(application)
-}
-
-/**
- * Installs the UI with an in-process backend; the host supplies its GraphQL and security routes.
- */
-fun installGitUi(
-    application: BoscaApplication,
-    graphqlBackend: GraphQLBackend,
-    authCookiePrefix: String? = null,
-) {
-    gitUiServer(null, authCookiePrefix).withGraphQLBackend(graphqlBackend).install(application)
     installClientAssets(application)
 }
 
@@ -89,8 +76,6 @@ fun gitUiServer(graphqlEndpoint: String?, authCookiePrefix: String? = null): Bml
         globalJs = resource("git-ui.js"),
         dev = false,
     )
-
-private object GitUiAssets
 
 private val CLIENT_ASSET_NAME = Regex("[A-Za-z0-9_-]+\\.page\\.js")
 private val FONT_ASSET_NAME = Regex("[A-Za-z0-9_-]+\\.woff2")

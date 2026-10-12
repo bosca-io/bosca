@@ -1,12 +1,12 @@
 # Git UI
 
-BML UI library embedded in `:git:git-server`. The server owns the HTTP engine and configuration; this project owns the pages, generated GraphQL operations and packaged browser assets.
+BML UI library hosted by `:git:git-ui-server`. This project owns the pages, generated GraphQL operations and packaged browser assets; the separate host owns its HTTP engine and configuration.
 
 The library provides authentication, repository browsing and writes, CodeMirror editing, commit-pinned Markdown assets, search/compare/statuses, pull requests and reviews, CI runs and live logs, repository administration, agents and GitHub synchronization. Repository lists default to Active. Owner choices include the profile slug or ID so duplicate names remain distinguishable. The shell and controls use Studio’s design tokens, sidebar, compact headers and table treatment. Geist and Geist Mono are packaged and served from the Git origin. Local controls and Git components are kept separate for later extraction into a shared BML UI library.
 
 Repository Pull requests, Pipelines, Statuses, Secrets and Settings stay inside the repository tabs. Global pipelines are grouped by repository for the selected owner. Manual runs open a ref/input dialog; ref changes load their definitions automatically through a BML server action. Pull-request creation includes repository and branch selection and retains the draft when those selections change. App settings collapse during browsing. Each hand-written top-level Kotlin type has its own file.
 
-The Git server now hosts the GraphQL operations used by this application, including authentication and profile identity. BML loaders and server actions execute through that engine in process. Browser authentication and subscriptions use the same Git origin. Studio and the main server composition are unchanged. Full replacement acceptance, backend separation and cutover are tracked in the specifications, with measured results in [parity validation](../../specs/git/parity-validation.md).
+The Git server hosts the GraphQL operations used by this application, including authentication and profile identity. BML loaders and server actions use its HTTP API. Browser authentication and subscriptions use same-origin proxies on the UI server; the API validates credentials and permissions. Studio and the main server composition are unchanged. Full replacement acceptance, backend separation and cutover are tracked in the specifications, with measured results in [parity validation](../../specs/git/parity-validation.md).
 
 Pages own routes and load their data, then compose local BML components. `src/main/bml/components/ui/` contains generic layout, cards, dialogs, rich selects, search inputs, segmented controls, sections, popovers, timestamps, form controls, tabs, switches, hover/focus tooltips, keyboard file trees, Lucide icon actions, badges, alerts and text viewing, with component-scoped styles. `components/repositories/` and `components/auth/` own Git views and authentication behavior. Global document and theme CSS stays in `src/main/client/git-ui.css`. These boundaries support later extraction of shared controls into a Bosca BML UI library; that library is deferred while Git functionality is developed.
 
@@ -21,31 +21,34 @@ Client behavior uses `<script client scoped>` at component scope, outside island
 From the workspace root:
 
 ```bash
-./gradlew :git:git-ui:check :git:git-server:test :git:git-server:installDist
+./gradlew :git:git-ui:check :git:git-ui-server:test :git:git-server:test
 ./gradlew :git:git-server:run
+# In another terminal:
+./gradlew :git:git-ui-server:run
 ```
 
-Git server defaults to `http://localhost:8091` and uses its own GraphQL engine. No main API process or `BML_GRAPHQL_ENDPOINT` is needed. Browser requests use `/graphql`; subscriptions use `/_git/subscriptions`. BML pages, actions, fragments and contracts use the same engine directly, with the original request and verified credentials. `APP_URL`, `APP_ALLOWED_ORIGIN` and OAuth redirect/provider settings must match the Git application's public origin. For a custom browser cookie prefix, configure that prefix and Git host in `jwt.cookie-prefixes`; `BML_AUTH_COOKIE_PREFIX` selects the UI SDK cookie. PostgreSQL, NATS and the configured storage/search services remain required.
+Git UI defaults to `http://localhost:8092` and forwards to `BML_GRAPHQL_ENDPOINT` (default `http://localhost:8091/graphql`). Git server remains the API and transport host on port 8091. Browser requests use `/graphql`; subscriptions use `/_git/subscriptions`, relayed to the API’s `/graphqlws`. BML pages, actions, fragments and contracts use the existing HTTP client. Configure auth app origins and provider callbacks as described in the [UI server README](../git-ui-server/README.md). The UI host needs no database or domain providers; the API retains its infrastructure requirements.
 
 On a fresh database, the existing `security-initial` installer bootstraps the administrator and service account. Use its logged initial password or configured initialization password, following the platform's normal installation flow. Existing group and repository/profile permissions still apply; signup does not grant repository-creation permissions.
 
 File writes resolve the displayed and committed author from the current primary profile, then its slug, using Studio's existing neutral fallbacks (`Studio User` and `studio@bosca.io`) for missing fields. The initial administrator can create a README without adding a profile email. File writes retain repository permissions, archive checks and branch protection.
 
-Public authentication routes are `/login`, `/auth/signup`, `/auth/forgot`, `/auth/reset-password`, `/auth/verify` and `/auth/link/confirm`. Email landing routes match the platform's existing email links. Return destinations survive signup, verification, recovery and OAuth; account-link controls use the proof methods offered by the backend. Configure the Git UI origin in the Git server authentication app-origin allowlist so emailed links return to this application. Google uses the Git server's security routes and configured provider.
+Public authentication routes are `/login`, `/auth/signup`, `/auth/forgot`, `/auth/reset-password`, `/auth/verify` and `/auth/link/confirm`. Email landing routes match the platform's existing email links. Return destinations survive signup, verification, recovery and OAuth; account-link controls use the proof methods offered by the backend. Configure the Git UI origin in the Git server authentication app-origin allowlist so emailed links return to this application. Google starts through BML’s existing OAuth proxy; the configured provider callback is on Git server, and the browser SDK finishes on the UI origin.
 
-`check` includes client flow tests, strict TypeScript checking, schema contract checks, and real HTTP/WebSocket tests of compiled BML pages, actions, assets and proxies. UI tests use an isolated upstream fixture. Git-server integration tests additionally start the production JVM composition against isolated PostgreSQL and NATS, exercising local authentication, pages, actions and subscriptions. These tests do not send emails or complete an external Google exchange.
+`check` includes client flow tests, strict TypeScript checking, schema contract checks, and real HTTP/WebSocket tests of compiled BML pages, actions, assets and proxies. UI tests use an isolated upstream fixture. Git UI server integration tests start separate production UI and API JVM processes against isolated PostgreSQL and NATS. They exercise authentication, pages, actions, raw files, subscriptions, custom cookie prefixes and GraphQL credential isolation. These tests do not send emails or complete an external Google exchange.
 
-The client schema contains the fields used by the UI. Its contract test compares fields, arguments, inputs and enums with the owning domain schemas; update the subset alongside new operations. Local npm file dependencies use the workspace BML runtime and framework-free auth client. Gradle builds the production page bundles into the library jar so the Git server can serve them in JVM and native packages.
+The client schema contains the fields used by the UI. Its contract test compares fields, arguments, inputs and enums with the owning domain schemas; update the subset alongside new operations. Local npm file dependencies use the workspace BML runtime and framework-free auth client. Gradle builds the production page bundles into the library jar so the UI server can serve them in JVM and native packages.
 
-The production-composition integration test can also exercise the native executable:
+The two-process production integration test can also exercise native executables:
 
 ```bash
-./gradlew :git:git-server:nativeCompile --build-args=-Ob --no-configuration-cache
+./gradlew :git:git-server:nativeCompile --build-args=-Ob :git:git-ui-server:nativeCompile --build-args=-Ob --no-configuration-cache
 GIT_SERVER_TEST_BINARY="$PWD/git/git-server/build/native/nativeCompile/bosca-git-server" \
-  ./gradlew :git:git-server:test --tests 'bosca.git.server.LocalGitGraphQLIntegrationTest' --rerun --no-build-cache --no-configuration-cache
+GIT_UI_SERVER_TEST_BINARY="$PWD/git/git-ui-server/build/native/nativeCompile/bosca-git-ui-server" \
+  ./gradlew :git:git-ui-server:test --tests 'bosca.git.ui.server.GitUiServerIntegrationTest' --rerun --no-build-cache --no-configuration-cache
 ```
 
-It creates isolated PostgreSQL/NATS test resources and exits its own server process. `-Ob` is quick optimization; release optimization is a separate check.
+It creates isolated PostgreSQL/NATS resources and exits both server processes. `-Ob` is quick optimization; release optimization is a separate check.
 
 See the [application specification](../../specs/git/bml-git-application-spec.md) and [Studio inventory](../../specs/git/studio-ui-inventory.md). Studio and the main server are unchanged in this step.
 

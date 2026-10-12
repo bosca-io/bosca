@@ -269,10 +269,6 @@ abstract class GraphQLService(
     suspend fun post(call: ServerCall, request: GraphQLRequest): JsonContent<JsonElement> =
         execute(call, request, request.variables.orEmpty())
 
-    /** Executes in-process while retaining the caller's authentication, origin, and session. */
-    suspend fun execute(call: ServerCall, request: GraphQLRequest): JsonElement =
-        executeAsJsonElement(call, request, request.variables.orEmpty())
-
     suspend fun execute(authenticationContext: AuthenticationContext, request: GraphQLRequest): JsonElement =
         executeAsJsonElement(
             request.query,

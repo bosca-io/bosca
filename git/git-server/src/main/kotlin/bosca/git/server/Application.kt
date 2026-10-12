@@ -1,8 +1,6 @@
 package bosca.git.server
 
 import bosca.analytics.server.AnalyticsServerClientModule
-import bosca.analytics.server.analyticsContext
-import bosca.bml.server.LocalGraphQLBackend
 import bosca.configuration.GraphQLModule
 import bosca.di.ContentProviderRegistrar
 import bosca.di.CoreContentProviderRegistrar
@@ -25,26 +23,18 @@ import bosca.di.SearchProviderRegistrar
 import bosca.di.SecurityProviderRegistrar
 import bosca.di.SlugProviderRegistrar
 import bosca.di.StorageProviderRegistrar
-import bosca.di.provide
 import bosca.git.dfs.DfsBlockCacheInitializer
 import bosca.git.server.graphql.GitGraphQLService
-import bosca.git.ui.installGitUi
-import bosca.graphql.GraphQLConnectionInitAuthenticator
-import bosca.graphql.GraphQLWebSocketProtocolHandler
 import bosca.http.StatusPageModule
 import bosca.initialization.InitializeModule
 import bosca.installer.model.PackageInstallations
 import bosca.routes.configureGitCiRoutes
 import bosca.routes.configureGitRoutes
-import bosca.security.routes.BoscaAuthMiddleware
 import bosca.security.routes.SecurityRoutesModule
-import bosca.security.service.AuthenticationProviders
 import bosca.server.BoscaApplication
 import bosca.server.netty.NettyServerEngine
-import bosca.server.routing.AuthConfig
-import kotlinx.serialization.json.Json
 
-/** Hosts Git transports, CI routes and the embedded BML UI on one HTTP engine. */
+/** Hosts the Git GraphQL API, authentication, smart transport and CI routes. */
 fun main(args: Array<String>) {
     DfsBlockCacheInitializer.initialize()
     NettyServerEngine.start("application.yaml", args) { module() }
@@ -65,7 +55,7 @@ suspend fun BoscaApplication.module() {
     log.info("installing packages")
     PackageInstallations.install(this)
 
-    log.info("configuring git UI")
+    log.info("configuring git GraphQL API")
     val graphql =
         GitGraphQLService(
             environment.config
@@ -74,46 +64,6 @@ suspend fun BoscaApplication.module() {
                 ?.toBoolean() ?: false
         )
     install(GraphQLModule(graphql))
-    installGitSubscriptions(graphql)
-    val authentication = provide<BoscaAuthMiddleware>()
-    val providers = provide<AuthenticationProviders>()
-    val backend =
-        LocalGraphQLBackend(
-            graphql,
-            requestMetadata = { call, installation, session ->
-                call.analyticsContext =
-                    call.analyticsContext.copy(
-                        appId =
-                            System.getenv("BML_APP_ID")?.takeIf(String::isNotBlank)
-                                ?: call.analyticsContext.appId,
-                        appVersion =
-                            System.getenv("APP_VERSION")?.takeIf(String::isNotBlank)
-                                ?: call.analyticsContext.appVersion,
-                        installationId = installation,
-                        sessionId = session,
-                    )
-            },
-        ) { call, token ->
-            if (token != null) {
-                authentication.authenticateBearerToken(call, token.removePrefix("Bearer "))
-            } else {
-                authentication.authenticate(
-                    call,
-                    AuthConfig(providers.providers.toList(), optional = true),
-                )
-                !call.response.isCommitted
-            }
-        }
-    // UI routes must precede the transport's generic /{owner}/{repo} browser redirect.
-    installGitUi(
-        this,
-        backend,
-        environment.config.propertyOrNull("git.ui.authCookiePrefix")?.getString()?.takeIf {
-            it.isNotBlank()
-        },
-    )
-    router.get("/welcome") { call.respondRedirect("/repositories") }
-
     log.info("configuring git routes")
     configureGitRoutes()
     configureGitCiRoutes()
@@ -146,20 +96,3 @@ internal fun gitServerProviderRegistrars() =
         GitCiProviderRegistrar(),
         GitJobsProviderRegistrar(),
     )
-
-/** Runs CI subscriptions on this process using the same engine and token validation as GraphQL. */
-internal suspend fun BoscaApplication.installGitSubscriptions(service: GitGraphQLService) {
-    val providers = provide<AuthenticationProviders>()
-    val authenticator = provide<GraphQLConnectionInitAuthenticator>()
-    val json = provide<Json>()
-    router.authenticate(*providers.providers, optional = true) {
-        webSocket("/_git/subscriptions", "graphql-transport-ws") {
-            GraphQLWebSocketProtocolHandler.handle(
-                this,
-                json,
-                service::subscribe,
-                onConnectionInit = authenticator::authenticate,
-            )
-        }
-    }
-}

@@ -1,5 +1,13 @@
-package bosca.git.server
+package bosca.git.ui.server
 
+import bosca.bml.graphql.GraphQLClientFactory
+import bosca.bml.project.CompiledProject
+import bosca.bml.render.BmlPageRenderer
+import bosca.bml.render.RenderContext
+import bosca.bml.server.BmlServer
+import bosca.server.BoscaApplication
+import bosca.server.config.ApplicationConfig
+import bosca.server.netty.NettyServerEngine
 import bosca.test.resources.SharedNatsContainer
 import bosca.test.resources.SharedPostgreSQLContainer
 import java.io.File
@@ -13,28 +21,78 @@ import java.time.Duration
 import java.util.concurrent.CompletionStage
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
+import kotlin.concurrent.thread
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.*
 
-/** Starts the production composition with isolated PostgreSQL/NATS and no upstream API server. */
-class LocalGitGraphQLIntegrationTest {
+/** Exercises separate production UI and API processes with isolated PostgreSQL and NATS. */
+class GitUiServerIntegrationTest {
     private fun JsonElement.at(vararg fields: String): JsonElement =
         fields.fold(this) { value, field -> value.jsonObject.getValue(field) }
 
+    private fun verifySharedShell(apiOrigin: String, token: String, cookiePrefix: String) {
+        val application = BoscaApplication(ApplicationConfig.load("".byteInputStream()))
+        val shared = object : BmlPageRenderer {
+            override val route = "/shared-review"
+            override val sharedCacheMaxAgeSeconds = 60L
+            override suspend fun render(ctx: RenderContext) {
+                assertEquals(null, ctx.token)
+                assertTrue(ctx.cookies.isEmpty())
+                val repositories = ctx.gql.execute("{ git { repositories { id } } }")
+                    .at("git", "repositories").jsonArray
+                ctx.writer.markup("<html><body>visible=${repositories.size}</body></html>")
+            }
+        }
+        BmlServer(CompiledProject("git-http-isolation", "1"), listOf(shared),
+            graphqlEndpoint = "$apiOrigin/graphql", dev = false).install(application)
+        val port = ServerSocket(0).use { it.localPort }
+        val engine = NettyServerEngine(application, port)
+        thread(isDaemon = true) { engine.start() }
+        try {
+            val http = HttpClient.newHttpClient()
+            val request = HttpRequest.newBuilder(URI.create("http://localhost:$port/shared-review"))
+                .header("Authorization", "Bearer $token").header("Cookie", "$cookiePrefix=$token")
+                .timeout(Duration.ofSeconds(10)).build()
+            val deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos()
+            var response: HttpResponse<String>? = null
+            while (response == null && System.nanoTime() < deadline) {
+                response = runCatching { http.send(request, HttpResponse.BodyHandlers.ofString()) }.getOrNull()
+                if (response == null) Thread.sleep(25)
+            }
+            val rendered = requireNotNull(response) { "Shared BML probe did not start" }
+            assertEquals(200, rendered.statusCode(), rendered.body())
+            assertTrue("visible=0" in rendered.body(), rendered.body())
+            assertEquals("public, max-age=60, stale-while-revalidate=60",
+                rendered.headers().firstValue("Cloudflare-CDN-Cache-Control").orElse(""))
+        } finally {
+            engine.stopWithoutHalting()
+        }
+    }
+
     @Test
-    fun `local API authenticates browser SSR actions and subscriptions without an upstream`() {
-        val postgres = SharedPostgreSQLContainer().withDatabaseName("git_local_graphql")
+    fun `HTTP API authenticates browser SSR actions file delivery and subscription relay`() = verify("_bat")
+
+    @Test
+    fun `custom cookie prefix works through separate UI and API servers`() = verify("_git_review")
+
+    private fun verify(cookiePrefix: String) {
+        val postgres = SharedPostgreSQLContainer().withDatabaseName("git_http_ui")
         val nats = SharedNatsContainer()
-        val directory = kotlin.io.path.createTempDirectory("git-local-graphql").toFile()
+        val directory = kotlin.io.path.createTempDirectory("git-http-ui").toFile()
         var process: Process? = null
+        var uiProcess: Process? = null
         try {
             postgres.start()
             nats.start()
             val port = ServerSocket(0).use { it.localPort }
-            val origin = "http://localhost:$port"
+            val apiOrigin = "http://localhost:$port"
+            var uiPort = ServerSocket(0).use { it.localPort }
+            while (uiPort == port) uiPort = ServerSocket(0).use { it.localPort }
+            val origin = "http://localhost:$uiPort"
             val config = File(directory, "application.yaml")
             val template =
                 File(
@@ -42,8 +100,11 @@ class LocalGitGraphQLIntegrationTest {
                         "git/git-server/src/main/resources/application.yaml",
                     )
                     .readText()
+            val cookieConfig = if (cookiePrefix == "_bat") template else template.replace(
+                "cookie-prefixes: []", "cookie-prefixes:\n    - prefix: $cookiePrefix\n      domains: [localhost]"
+            )
             config.writeText(
-                template +
+                cookieConfig +
                     "\ninitialization:\n  password:\n    admin: local-admin-password\n    sa: local-sa-password\n"
             )
             val log = File(directory, "server.log")
@@ -54,7 +115,7 @@ class LocalGitGraphQLIntegrationTest {
                         File(System.getProperty("java.home"), "bin/java").absolutePath,
                         "--enable-native-access=ALL-UNNAMED",
                         "-cp",
-                        requireNotNull(System.getProperty("applicationClasspath")),
+                        requireNotNull(System.getProperty("apiServerClasspath")),
                         "bosca.git.server.ApplicationKt",
                         "-config=${config.absolutePath}",
                     )
@@ -77,30 +138,53 @@ class LocalGitGraphQLIntegrationTest {
                                     "NATS_PASSWORD" to nats.password,
                                     "NATS_TOKEN" to "",
                                     "APP_URL" to origin,
-                                    "GIT_URL" to origin,
+                                    "GIT_URL" to apiOrigin,
+                                    "GIT_UI_URL" to origin,
                                     "GRAPHQL_INTROSPECTION_ENABLED" to "true",
                                     "SECURITY_AUTO_VERIFY" to "true",
                                     "APP_ALLOWED_ORIGIN" to origin,
                                     "WELCOME_EMAIL_URL" to "$origin/repositories",
                                     "OAUTH2_ALLOWED_REDIRECT" to origin,
-                                    // Deliberately unreachable: local BML must never use this
-                                    // legacy endpoint.
-                                    "BML_GRAPHQL_ENDPOINT" to "http://127.0.0.1:1/graphql",
                                 )
                             )
                         redirectErrorStream(true)
                         redirectOutput(log)
                     }
                     .start()
+            val uiConfig = File(directory, "git-ui-server.yaml")
+            uiConfig.writeText(
+                File(requireNotNull(System.getProperty("workspaceRoot")),
+                    "git/git-ui-server/src/main/resources/git-ui-server.yaml").readText()
+            )
+            val uiLog = File(directory, "ui-server.log")
+            val uiExecutable = System.getenv("GIT_UI_SERVER_TEST_BINARY")?.takeIf(String::isNotBlank)
+            val uiCommand = if (uiExecutable == null) {
+                listOf(
+                    File(System.getProperty("java.home"), "bin/java").absolutePath,
+                    "--enable-native-access=ALL-UNNAMED", "-cp",
+                    requireNotNull(System.getProperty("uiServerClasspath")),
+                    "bosca.git.ui.server.ApplicationKt", "-config=${uiConfig.absolutePath}",
+                )
+            } else listOf(uiExecutable, "-config=${uiConfig.absolutePath}")
+            uiProcess = ProcessBuilder(uiCommand).apply {
+                environment().putAll(mapOf(
+                    "GIT_UI_HTTP_PORT" to uiPort.toString(),
+                    "BML_GRAPHQL_ENDPOINT" to "$apiOrigin/graphql",
+                    "BML_AUTH_COOKIE_PREFIX" to cookiePrefix,
+                ))
+                redirectErrorStream(true)
+                redirectOutput(uiLog)
+            }.start()
             val client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build()
             fun request(
                 path: String,
                 body: String? = null,
                 token: String? = null,
                 cookie: String? = null,
+                base: String = origin,
             ): HttpResponse<String> {
                 val builder =
-                    HttpRequest.newBuilder(URI.create(origin + path))
+                    HttpRequest.newBuilder(URI.create(base + path))
                         .timeout(Duration.ofSeconds(15))
                         .header("Origin", origin)
                 token?.let { builder.header("Authorization", "Bearer $it") }
@@ -116,7 +200,7 @@ class LocalGitGraphQLIntegrationTest {
             var ready = false
             while (process.isAlive && System.nanoTime() < deadline) {
                 ready =
-                    runCatching { request("/api/v1/ready").statusCode() == 200 }.getOrDefault(false)
+                    runCatching { request("/api/v1/ready", base = apiOrigin).statusCode() == 200 }.getOrDefault(false)
                 if (ready) break
                 Thread.sleep(250)
             }
@@ -124,6 +208,16 @@ class LocalGitGraphQLIntegrationTest {
                 ready,
                 "Git server failed to start. Log: ${log.absolutePath}\n${log.readText().takeLast(12_000)}",
             )
+            val uiDeadline = System.nanoTime() + Duration.ofSeconds(30).toNanos()
+            var uiReady = false
+            while (uiProcess.isAlive && System.nanoTime() < uiDeadline) {
+                uiReady = runCatching { request("/api/v1/ready").statusCode() == 200 }.getOrDefault(false)
+                if (uiReady) break
+                Thread.sleep(100)
+            }
+            assertTrue(uiReady, "UI server failed to start. ${uiLog.readText().takeLast(12_000)}")
+            assertEquals(404, request("/login", base = apiOrigin).statusCode())
+            assertEquals(404, request("/_bml/app.css", base = apiOrigin).statusCode())
             fun graphql(
                 query: String,
                 variables: JsonObject = JsonObject(emptyMap()),
@@ -268,6 +362,20 @@ class LocalGitGraphQLIntegrationTest {
                     adminToken,
                 )
             val repositoryId = created.at("git", "createRepository", "id").jsonPrimitive.content
+            val apiToken = graphql(
+                "mutation { security { apiTokens { create(input: { name: \"Read-only review\", scopes: [\"git:read\"] }) { rawToken } } } }",
+                token = adminToken,
+            ).at("security", "apiTokens", "create", "rawToken").jsonPrimitive.content
+            runBlocking {
+                val client = GraphQLClientFactory("$apiOrigin/graphql").forToken(adminToken)
+                val query = "{ git { repositoryById(id: \"$repositoryId\") { canEdit canManage } } }"
+                assertTrue(client.execute(query).at("git", "repositoryById", "canEdit").jsonPrimitive.boolean)
+                val restricted = client.execute(query, token = apiToken).at("git", "repositoryById")
+                assertFalse(restricted.at("canEdit").jsonPrimitive.boolean)
+                assertFalse(restricted.at("canManage").jsonPrimitive.boolean)
+                assertTrue(client.execute(query).at("git", "repositoryById", "canEdit").jsonPrimitive.boolean)
+            }
+            verifySharedShell(apiOrigin, adminToken, cookiePrefix)
             val ownerGroup =
                 identity
                     .at("security", "principals", "current", "groups")
@@ -290,7 +398,27 @@ class LocalGitGraphQLIntegrationTest {
                 },
                 adminToken,
             )
-            val page = request("/repositories/$repositoryId", cookie = "_bat=$token")
+            val repository = graphql(
+                "query Read(${'$'}id: UUID!) { git { repositoryById(id: ${'$'}id) { cloneUrl } } }",
+                buildJsonObject { put("id", repositoryId) }, adminToken,
+            ).at("git", "repositoryById")
+            val clonePath = URI(repository.at("cloneUrl").jsonPrimitive.content).rawPath
+            val rawPath = clonePath.removeSuffix(".git") + "/raw/main/README.md"
+            val raw = request(rawPath, cookie = "$cookiePrefix=$token")
+            assertEquals(200, raw.statusCode(), raw.body())
+            assertTrue("Local Repository" in raw.body(), raw.body())
+            assertEquals("private, no-store", raw.headers().firstValue("Cache-Control").orElse(""))
+            val denied = request(rawPath)
+            val upstreamDenied = request(rawPath, base = apiOrigin)
+            assertEquals(400, upstreamDenied.statusCode(), upstreamDenied.body())
+            assertEquals(upstreamDenied.statusCode(), denied.statusCode(), denied.body())
+            assertEquals(upstreamDenied.body(), denied.body())
+            assertFalse("Local Repository" in denied.body(), denied.body())
+            assertEquals(401, request(rawPath, token = "invalid-token", cookie = "$cookiePrefix=$token").statusCode())
+            val cloneBrowser = request(clonePath, base = apiOrigin)
+            assertEquals(302, cloneBrowser.statusCode(), cloneBrowser.body())
+            assertEquals("$origin/repositories/$repositoryId", cloneBrowser.headers().firstValue("Location").orElse(""))
+            val page = request("/repositories/$repositoryId", cookie = "$cookiePrefix=$token")
             assertEquals(200, page.statusCode(), page.body())
             assertTrue("Local Repository" in page.body(), page.body())
             val treeProps =
@@ -314,7 +442,7 @@ class LocalGitGraphQLIntegrationTest {
                 request(
                     "/_bml/deferred/component%3Agit-repository-sidebar%3Arepository-tree-loader",
                     treeRequest,
-                    cookie = "_bat=$token",
+                    cookie = "$cookiePrefix=$token",
                 )
             assertEquals(200, tree.statusCode(), tree.body())
             assertEquals("private, no-store", tree.headers().firstValue("Cache-Control").orElse(""))
@@ -325,7 +453,7 @@ class LocalGitGraphQLIntegrationTest {
             assertFalse("data-bml-method" in readmeRow, tree.body())
             assertTrue("file=README.md" in tree.body(), tree.body())
             val filePage =
-                request("/repositories/$repositoryId?file=README.md", cookie = "_bat=$token")
+                request("/repositories/$repositoryId?file=README.md", cookie = "$cookiePrefix=$token")
             assertEquals(200, filePage.statusCode(), filePage.body())
             assertTrue("markdown-file" in filePage.body(), filePage.body())
             assertEquals(
@@ -337,7 +465,7 @@ class LocalGitGraphQLIntegrationTest {
                     .statusCode(),
             )
 
-            val list = request("/repositories", cookie = "_bat=$token")
+            val list = request("/repositories", cookie = "$cookiePrefix=$token")
             assertEquals(200, list.statusCode(), list.body())
             val marker =
                 Regex(
@@ -363,7 +491,7 @@ class LocalGitGraphQLIntegrationTest {
                         )
                     }
                         .toString(),
-                    cookie = "_bat=$token",
+                    cookie = "$cookiePrefix=$token",
                 )
             assertEquals(200, archived.statusCode(), archived.body())
             assertFalse(
@@ -432,7 +560,7 @@ class LocalGitGraphQLIntegrationTest {
                 },
                 adminToken,
             )
-            val emptyPage = request("/repositories/$emptyId", cookie = "_bat=$token")
+            val emptyPage = request("/repositories/$emptyId", cookie = "$cookiePrefix=$token")
             assertEquals(200, emptyPage.statusCode(), emptyPage.body())
             assertTrue("Empty Repository" in emptyPage.body(), emptyPage.body())
             assertTrue("Start this repository" in emptyPage.body(), emptyPage.body())
@@ -440,7 +568,7 @@ class LocalGitGraphQLIntegrationTest {
                 "0 commits · 0 branches · 0 tags · 0 contributors" in emptyPage.body(),
                 emptyPage.body(),
             )
-            val emptyCommits = request("/repositories/$emptyId?tab=commits", cookie = "_bat=$token")
+            val emptyCommits = request("/repositories/$emptyId?tab=commits", cookie = "$cookiePrefix=$token")
             assertEquals(200, emptyCommits.statusCode(), emptyCommits.body())
             assertTrue("No commits at this ref" in emptyCommits.body(), emptyCommits.body())
 
@@ -462,7 +590,7 @@ class LocalGitGraphQLIntegrationTest {
                 },
                 adminProfiles.toString(),
             )
-            val editor = request("/repositories/$emptyId?new=true", cookie = "_bat=$adminToken")
+            val editor = request("/repositories/$emptyId?new=true", cookie = "$cookiePrefix=$adminToken")
             assertEquals(200, editor.statusCode(), editor.body())
             val editorState =
                 Regex(
@@ -498,7 +626,7 @@ class LocalGitGraphQLIntegrationTest {
                         )
                     }
                         .toString(),
-                    cookie = "_bat=$adminToken",
+                    cookie = "$cookiePrefix=$adminToken",
                 )
             assertEquals(200, committed.statusCode(), committed.body())
             val saved =
@@ -538,7 +666,7 @@ class LocalGitGraphQLIntegrationTest {
                     "secrets" to "Pipeline secrets",
                     "settings" to "Save repository",
                 )) {
-                val panel = request("/repositories/$emptyId?tab=$tab", cookie = "_bat=$adminToken")
+                val panel = request("/repositories/$emptyId?tab=$tab", cookie = "$cookiePrefix=$adminToken")
                 assertEquals(200, panel.statusCode(), panel.body())
                 assertTrue(heading in panel.body(), panel.body())
             }
@@ -550,12 +678,12 @@ class LocalGitGraphQLIntegrationTest {
             assertEquals("admin", initialCommit["authorName"]?.jsonPrimitive?.content)
             assertEquals("studio@bosca.io", initialCommit["authorEmail"]?.jsonPrimitive?.content)
             val readmePage =
-                request("/repositories/$emptyId?file=README.md", cookie = "_bat=$adminToken")
+                request("/repositories/$emptyId?file=README.md", cookie = "$cookiePrefix=$adminToken")
             assertEquals(200, readmePage.statusCode(), readmePage.body())
             assertTrue("Created through the Git UI." in readmePage.body(), readmePage.body())
 
             val searchPage =
-                request("/search?repo=$emptyId&mode=paths&ref=trunk", cookie = "_bat=$adminToken")
+                request("/search?repo=$emptyId&mode=paths&ref=trunk", cookie = "$cookiePrefix=$adminToken")
             assertEquals(200, searchPage.statusCode(), searchPage.body())
             val searchState =
                 Regex(
@@ -580,7 +708,7 @@ class LocalGitGraphQLIntegrationTest {
                             )
                         }
                             .toString(),
-                    cookie = "_bat=$adminToken",
+                    cookie = "$cookiePrefix=$adminToken",
                 )
             assertEquals(200, searchAction.statusCode(), searchAction.body())
             val searchResult =
@@ -642,7 +770,7 @@ class LocalGitGraphQLIntegrationTest {
                     client
                         .newWebSocketBuilder()
                         .subprotocols("graphql-transport-ws")
-                        .buildAsync(URI.create("ws://localhost:$port/_git/subscriptions"), listener)
+                        .buildAsync(URI.create("ws://localhost:$uiPort/_git/subscriptions"), listener)
                         .get(10, TimeUnit.SECONDS)
                 socket
                     .sendText(
@@ -750,17 +878,20 @@ class LocalGitGraphQLIntegrationTest {
                 request(
                     "/graphql",
                     "{\"query\":\"mutation { security { login { signOut } } }\"}",
-                    cookie = "_bat=$token",
+                    cookie = "$cookiePrefix=$token",
                 )
             assertEquals(200, signOut.statusCode(), signOut.body())
             assertTrue(
                 signOut.headers().allValues("Set-Cookie").any {
-                    it.startsWith("_bat=") && "Max-Age=0" in it
+                    it.startsWith("$cookiePrefix=") && "Max-Age=0" in it
                 },
                 signOut.headers().toString(),
             )
-            assertFalse("graphql proxy upstream unreachable" in log.readText(), log.readText())
+            assertFalse("graphql proxy upstream unreachable" in uiLog.readText(), uiLog.readText())
         } finally {
+            uiProcess?.destroy()
+            uiProcess?.waitFor(10, TimeUnit.SECONDS)
+            if (uiProcess?.isAlive == true) uiProcess.destroyForcibly().waitFor(10, TimeUnit.SECONDS)
             process?.destroy()
             process?.waitFor(10, TimeUnit.SECONDS)
             if (process?.isAlive == true) process.destroyForcibly().waitFor(10, TimeUnit.SECONDS)

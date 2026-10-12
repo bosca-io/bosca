@@ -19,6 +19,10 @@ application {
     applicationDefaultJvmArgs = listOf("--enable-native-access=ALL-UNNAMED", "-XX:+UseG1GC")
 }
 
+tasks.named<JavaExec>("run") {
+    outputs.upToDateWhen { false }
+}
+
 val projects = arrayOf(
     project(":bosca-core:core"),
     project(":pipelines:core-pipelines"),
@@ -35,8 +39,6 @@ val projects = arrayOf(
     project(":bosca-core:storage"),
     project(":content:core-content"),
     project(":content:content"),
-    project(":bml:bml-server"),
-    project(":bml:core-bml"),
     project(":search:core-search"),
     project(":search:search"),
     project(":content:slugs"),
@@ -45,7 +47,6 @@ val projects = arrayOf(
     project(":git:git"),
     project(":git:git-ci"),
     project(":git:git-jobs"),
-    project(":git:git-ui"),
 )
 
 configurations.all {
@@ -74,8 +75,6 @@ dependencies {
 }
 
 tasks.test {
-    val applicationClasspath = sourceSets.main.get().runtimeClasspath
-    doFirst { systemProperty("applicationClasspath", applicationClasspath.asPath) }
     systemProperty("workspaceRoot", rootProject.projectDir.absolutePath)
 }
 

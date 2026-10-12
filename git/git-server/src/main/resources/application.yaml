@@ -60,9 +60,9 @@ analyticsServer:
   url: "$ANALYTICS_SERVER_URL:http://localhost:8081"
 
 app:
-  url: "${APP_URL:http://localhost:8091}"
+  url: "${APP_URL:http://localhost:8092}"
   allowed-origins:
-    - "${APP_ALLOWED_ORIGIN:http://localhost:8091}"
+    - "${APP_ALLOWED_ORIGIN:http://localhost:8092}"
   welcome-url: "${WELCOME_EMAIL_URL:}"
 
 oauth2:
@@ -80,7 +80,7 @@ oauth2:
         - https://www.googleapis.com/auth/userinfo.email
       enabled: ${GOOGLE_ENABLED:true}
   redirects:
-    - "${OAUTH2_ALLOWED_REDIRECT:http://localhost:8091}"
+    - "${OAUTH2_ALLOWED_REDIRECT:http://localhost:8092}"
 
 webauthn:
   extraOrigins:
@@ -93,7 +93,7 @@ graphql:
 git:
   url: "${GIT_URL:http://localhost:8091}"
   ui:
-    authCookiePrefix: "${BML_AUTH_COOKIE_PREFIX:}"
+    url: "${GIT_UI_URL:http://localhost:8092}"
 
 pipeline:
   secretKey: "$PIPELINE_SECRET_KEY:dGhpcy1pcy1hLWRldi1vbmx5LXNlY3JldC1rZXktMzI="

@@ -1,0 +1,8 @@
+bosca:
+  server:
+    port: "${GIT_UI_HTTP_PORT:8092}"
+    development: "${GIT_UI_DEVELOPMENT:false}"
+
+bml:
+  graphqlEndpoint: "${BML_GRAPHQL_ENDPOINT:http://localhost:8091/graphql}"
+  authCookiePrefix: "${BML_AUTH_COOKIE_PREFIX:}"

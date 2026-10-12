@@ -1,10 +1,10 @@
 # Git BML parity acceptance
 
-Acceptance record for the [application specification](bml-git-application-spec.md), against the [Studio source inventory](studio-ui-inventory.md). Updated 11 October 2026.
+Acceptance record for the [application specification](bml-git-application-spec.md), against the [Studio source inventory](studio-ui-inventory.md). Updated 12 October 2026.
 
 ## Acceptance status
 
-The new `:git:git-ui` BML library is integrated into `:git:git-server`. The source inventory has been implemented and checked through compiled pages, typed actions, browser interaction tests and focused domain integration tests. Git server now hosts its GraphQL and security routes. BML loaders/actions/contracts/fragments use the host engine in process; browser GraphQL and subscriptions use the same origin. Studio and the main server composition remain unchanged in this stage.
+The `:git:git-ui` BML library is hosted by the separate `:git:git-ui-server` application. Git server owns its GraphQL and security routes. BML loaders/actions/contracts/fragments use the existing HTTP client; browser GraphQL/OAuth and subscriptions use same-origin proxies to Git server. Raw files and CI artifacts are streamed through the UI origin. Local GraphQL execution and its core BML auth hooks have been removed. Studio and the main server composition remain unchanged in this stage. Historical validations below refer to the composition in place when they were run; they do not establish the separated servers’ acceptance.
 
 **Full Studio replacement parity is not accepted.** Fixture checks establish the behaviors listed below. They do not establish the supplied deployed repository's image behavior, external authentication/email delivery, real GitHub synchronization, production CI subscriptions, or full external-service acceptance. These remain acceptance work, and the old surfaces cannot be retired on the strength of this record.
 
@@ -319,12 +319,41 @@ GIT_UI_BASE_URL=http://localhost:<fixture-port> \
 
 Artifacts and measured geometry are in `/tmp/git-layout-loading-browser`, including the screen-matrix JSON, Markdown and wide-screen Compare/Statuses captures, and `bosca-git-ui-loading-<context>-<width>.png` captures. The isolated fixture/browser were stopped. Restart Git server to load the rebuilt UI. This revision checks the packaged JVM UI with isolated records; deployed/native replacement acceptance remains governed by the gates below.
 
+## 2026-10-12 separate UI host and restored BML HTTP boundary
+
+The application now runs in `:git:git-ui-server`, which consumes the existing `:git:git-ui` component library. Git server retains its GraphQL/security, Git transport and CI routes. The local backend, host-backend selection hooks and added `GraphQLService.execute(ServerCall, ...)` entry point are removed. Production BML/core GraphQL source affected by that adapter matches the pre-adapter implementation. The UI host uses BML's existing HTTP GraphQL/OAuth proxies and the existing WebSocket relay; it streams raw files and artifacts without validating credentials. API URL prefixes remain in the proxy configuration rather than raw UI links. Clone-URL browser visits redirect to the configured UI origin.
+
+Measured validation passed:
+
+- `:git:git-ui:check`: **60 JVM tests**, **15 client auth tests**, strict TypeScript, generated BML compilation and packaged browser assets.
+- `:bml:bml-server:test`: **163 tests**; the focused core `GraphQLServiceExecutionTest`: **3 tests**. Git-server's remaining schema/provider/infrastructure checks: **5 tests**. Repository browser-redirect checks: **6 tests**. No failures or skips in these reports.
+- `:git:git-ui-server:test`: **8 tests** across the JVM production flows and file-proxy checks, then rerun with both native server executables. Six HTTP proxy tests cover nested/encoded image and artifact paths, exact binary bytes, headers, API prefixes, explicit credential precedence, upstream denial, rejection of path normalization to another API route and delivery before the upstream finishes producing a download.
+- The two production-process tests use isolated PostgreSQL/NATS and exercise default and custom cookie prefixes. They verify signup/login, profiles, fonts/CSS, repository reads and writes, empty repositories, deferred trees, repository tabs, search, raw README delivery, invalid credentials, sign-out cookies and authenticated pipeline-event relay through `/graphqlws`.
+- Real API regressions verify that an anonymous shared BML shell cannot list a private repository despite incoming bearer/cookie credentials, and that a scoped API-token override cannot reuse a preceding unrestricted JWT's permissions. The default JWT remains usable on the following HTTP operation.
+- Both JVM distributions and native binaries built successfully. API native compilation used **`-O3`**; UI native compilation used **`-Ob`**. The distribution audit found no BML/UI modules in Git server and no Git/security implementation modules in Git UI server. The UI library jar retains its page scripts, theme CSS and all 11 font assets.
+
+The initial integration probe asked the anonymous principal resolver for an unseeded NIL principal and failed; the regression now queries permission-filtered private repository data. Another assertion expected 401/403 for raw access denial; source and real HTTP confirmed the API's existing route contract returns 400. The final test requires the proxy to preserve that status/body and verifies that private content is absent. Compilation initially lacked the test-only BML runtime dependency, which was added. One command had a malformed task selector and did not run tests. All final checks above completed successfully; failed attempts are not counted as passes.
+
+Current test/run commands are in the [UI server README](../../git/git-ui-server/README.md). Historical commands earlier in this record refer to the former embedded host.
+
+```bash
+./gradlew :git:git-ui:check :git:git-ui-server:test :git:git-server:test
+./gradlew :bml:bml-server:test :bosca-core:core:test --tests 'bosca.graphql.GraphQLServiceExecutionTest'
+./gradlew :git:git:test --tests 'bosca.git.transport.GitRepositoryRedirectRouteTest'
+./gradlew :git:git-server:installDist :git:git-ui-server:installDist
+GIT_SERVER_TEST_BINARY="$PWD/git/git-server/build/native/nativeCompile/bosca-git-server" \
+GIT_UI_SERVER_TEST_BINARY="$PWD/git/git-ui-server/build/native/nativeCompile/bosca-git-ui-server" \
+  ./gradlew :git:git-ui-server:test --rerun --no-build-cache --no-configuration-cache
+```
+
+Native build/test logs are `/tmp/git-ui-server-packaging.log`, `/tmp/git-ui-server-final-validation.log`, `/tmp/git-ui-server-path-validation.log` and `/tmp/git-ui-server-native-final.log`. The UI presentation was retained; the browser screen matrix was not rerun for this server migration. External OAuth/email delivery, production storage-backed artifacts and live pipeline-step logs, the supplied deployed repository, UI release optimization and the later Studio/main-server cutover remain unverified. Test resources and server processes were stopped.
+
 ## Remaining replacement acceptance
 
 1. Inspect the supplied Studio repository read-only with a real session: Markdown syntax/ref, exact image request, response/MIME and actual ACLs. Repeat against the Git application and record the result.
-2. Complete real provider/email/link/refresh flows on the configured Git origin. Confirm the Git server app-origin allowlist and custom cookie-prefix/domain configuration. Local password auth and sign-out are covered on JVM/native; deployed external flows remain open.
+2. Complete real provider/email/link/refresh flows on the configured Git origin. Confirm the Git server app-origin allowlist and custom cookie-prefix/domain configuration. Password auth and sign-out through the separate UI/API processes are covered on JVM/native; deployed external flows remain open.
 3. Exercise real Git CI subscriptions and artifact delivery, real agent behavior, and external GitHub synchronization using isolated records and normal APIs.
-4. Extend isolated JVM/native startup coverage to storage-backed artifacts, real pipeline-step logs and Git transports using the newly composed auth paths. Initialization, local authentication, packaged pages, a BML mutation and subscription events are covered. Compile release optimization when evaluating release readiness.
+4. Extend isolated JVM/native startup coverage to storage-backed artifacts, real pipeline-step logs and Git transports through the HTTP proxy boundary. Initialization, password authentication, packaged pages, BML mutations and subscription relay are covered. UI release optimization remains a release-readiness check.
 5. Complete the separately specified Git API/backend ownership move, remote domain consumers, notification origins and cutover. Do not remove Studio or main-server Git composition in this first stage.
 
 Unknown behavior remains unaccepted until measured. These gates are part of the migration, rather than assumptions hidden behind passing fixture counts.
