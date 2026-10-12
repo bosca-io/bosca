@@ -18,7 +18,7 @@ kotlin {
 
 // the dedicated SSR server composition root. Lean — bosca-core's
 // Netty engine and the BML render runtime only; no domain registrars.
-// Data is fetched via the Bosca GraphQL API at a configurable endpoint.
+// Data uses an HTTP GraphQL endpoint or a host-provided GraphQL backend.
 dependencies {
     implementation(project(":bosca-core:core"))
     implementation(project(":bml:core-bml"))
@@ -27,6 +27,7 @@ dependencies {
 
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.kotlin.test.junit)
+    testImplementation(libs.mockk)
 }
 
 application {

@@ -1,0 +1,129 @@
+<component tag="ui-button">
+  <prop name="size" type="String" default="md" />
+  <prop name="loading" type="Boolean" default="false" />
+  <prop name="type" type="String" default="button" />
+  <prop name="ref" type="String" default="" />
+  <prop name="primary" type="Boolean" default="false" />
+  <prop name="icon" type="String" default="" />
+  <prop name="disabled" type="Boolean" default="false" />
+  <script server provides="attrs">
+    props.filterKeys {
+        it !in
+            setOf(
+                "size",
+                "loading",
+                "type",
+                "ref",
+                "disabled",
+                "primary",
+                "icon",
+                "class",
+                "__bmlAttrs",
+            )
+    }
+  </script>
+  <script server provides="buttonClasses">
+    "button size-" +
+        size +
+        " " +
+        (if (primary) "primary " else "") +
+        (props["class"] as? String).orEmpty()
+  </script>
+  <button
+    :class="buttonClasses"
+    :type="type"
+    :ref="ref.takeIf(String::isNotBlank)"
+    :disabled="disabled || loading"
+    :aria-busy="loading.toString()"
+    {...attrs}
+  >
+    <span class="button-content">
+      <if icon.isNotBlank()>
+        <ui-icon :name="icon" :size='if (size == "xs") 12 else 14' />
+      </if>
+      <slot />
+    </span>
+    <span class="button-progress" aria-hidden="true">
+      <ui-spinner :size='if (size == "xs") "xs" else "sm"' />
+    </span>
+  </button>
+  <style scoped>
+    .button.size-xs {
+      padding: 0 8px;
+      font-size: 12px;
+      height: 24px;
+    }
+    .button.size-md {
+      padding: 0 14px;
+      font-size: 13px;
+      height: 32px;
+    }
+    .button-content {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      min-width: 0;
+    }
+    .button-progress {
+      display: none;
+      position: absolute;
+      inset: 0;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+    }
+    .button[aria-busy="true"] .button-content {
+      opacity: 0;
+    }
+    .button[aria-busy="true"] .button-progress {
+      display: flex;
+    }
+    .button[aria-busy="true"],
+    .button[aria-busy="true"]:disabled {
+      opacity: 1;
+      cursor: progress;
+    }
+    .button {
+      position: relative;
+      font: inherit;
+      color: var(--fg-1);
+      background: var(--control-bg);
+      border: 1px solid var(--line-2);
+      border-radius: var(--control-radius);
+      padding: 0 10px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      font-size: 12.5px;
+      font-weight: 500;
+      line-height: normal;
+      height: 30px;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+    .button:hover:not(:disabled) {
+      background: var(--bg-3);
+    }
+    .button.primary {
+      border-color: color-mix(in srgb, var(--accent) 60%, transparent);
+      font-weight: 550;
+      color: var(--fg-0);
+    }
+    .button.danger {
+      color: var(--err);
+      border-color: color-mix(in srgb, var(--err) 40%, var(--line));
+    }
+    .button.icon-only {
+      width: 30px;
+      height: 30px;
+      padding: 0;
+      flex: none;
+    }
+    .button:disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
+    }
+  </style>
+</component>

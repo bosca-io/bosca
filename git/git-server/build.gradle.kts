@@ -34,6 +34,9 @@ val projects = arrayOf(
     project(":bosca-core:core-storage"),
     project(":bosca-core:storage"),
     project(":content:core-content"),
+    project(":content:content"),
+    project(":bml:bml-server"),
+    project(":bml:core-bml"),
     project(":search:core-search"),
     project(":search:search"),
     project(":content:slugs"),
@@ -42,6 +45,7 @@ val projects = arrayOf(
     project(":git:git"),
     project(":git:git-ci"),
     project(":git:git-jobs"),
+    project(":git:git-ui"),
 )
 
 configurations.all {
@@ -62,10 +66,17 @@ dependencies {
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.kotlin.test.junit)
     testImplementation(libs.mockk)
+    testImplementation(project(":bosca-core:test-support"))
 
     "ksp"(project(":bosca-core:core-ksp"))
     "ksp"(project(":services-di:service-ksp"))
     "ksp"(project(":services-di:di-ksp"))
+}
+
+tasks.test {
+    val applicationClasspath = sourceSets.main.get().runtimeClasspath
+    doFirst { systemProperty("applicationClasspath", applicationClasspath.asPath) }
+    systemProperty("workspaceRoot", rootProject.projectDir.absolutePath)
 }
 
 ksp {

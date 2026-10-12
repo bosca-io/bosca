@@ -1,0 +1,148 @@
+<component tag="git-pull-list">
+  <prop name="page" type="bosca.git.ui.PullListPage" required />
+  <div class="pull-panel">
+    <ui-tabs label="Pull request state" :items="page.tabs">
+      <span class="muted result-count">
+        { page.rows.size.toString() + if (page.rows.size == 1) " result" else " results" }
+      </span>
+    </ui-tabs>
+    <if page.rows.isEmpty()>
+      <ui-empty-state
+        icon="pull"
+        title="No pull requests found"
+        message="Pull requests matching this selection will appear here."
+      />
+    <else>
+      <div class="pull-list">
+        <for pull in page.rows>
+          <a class="pull-row" :href="pull.href">
+            <span class="pull-icon">
+              <ui-icon name="pull" :size="16" />
+            </span>
+            <div class="pull-copy">
+              <strong>
+                <code class="muted">#{ pull.number }</code>
+                <span>{ pull.title }</span>
+              </strong>
+              <div class="pull-meta">
+                <git-status-badge :status="pull.status" />
+                <if page.baseHref.isBlank()>
+                  <span>
+                    { page.repositories.firstOrNull { it.id == pull.repository }?.name ?: pull.repository }
+                  </span>
+                </if>
+                <code>{ pull.source } → { pull.target }</code>
+              </div>
+            </div>
+            <ui-time :value="pull.updated" relative />
+          </a>
+        </for>
+      </div>
+    </if>
+    <nav class="toolbar">
+      <if page.offset != 0L>
+        <a :href="page.href(offset = (page.offset - 50).coerceAtLeast(0))">Previous</a>
+      </if>
+      <if page.rows.size == 50>
+        <a :href="page.href(offset = page.offset + 50)">Next</a>
+      </if>
+    </nav>
+  </div>
+  <style scoped>
+    .pull-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .result-count {
+      display: flex;
+      align-items: center;
+      flex: none;
+      font-size: 11.5px;
+      white-space: nowrap;
+    }
+    .pull-list {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      overflow: hidden;
+      background: var(--bg-1);
+    }
+    .pull-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+    }
+    .pull-row:last-child {
+      border-bottom: 0;
+    }
+    .pull-row:hover {
+      background: var(--bg-2);
+    }
+    .pull-icon {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      flex: none;
+      border-radius: 7px;
+      background: var(--bg-3);
+      color: var(--fg-2);
+    }
+    .pull-copy {
+      flex: 1;
+      min-width: 0;
+    }
+    .pull-copy strong {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .pull-copy strong > code {
+      flex: none;
+      font-size: 10px;
+      padding: 1px 5px;
+      border-radius: 3px;
+      background: var(--bg-3);
+    }
+    .pull-copy strong > span {
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }
+    .pull-meta {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 5px;
+      font-size: 11.5px;
+      color: var(--fg-3);
+    }
+    .pull-meta code {
+      overflow-wrap: anywhere;
+    }
+    .pull-row time {
+      font-size: 11px;
+      white-space: nowrap;
+      color: var(--fg-3);
+    }
+    @media (max-width: 600px) {
+      .pull-row {
+        flex-wrap: wrap;
+      }
+      .pull-copy {
+        flex-basis: calc(100% - 48px);
+      }
+      .pull-row time {
+        margin-left: 40px;
+      }
+      .result-count {
+        display: none;
+      }
+    }
+  </style>
+</component>

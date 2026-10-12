@@ -1,6 +1,7 @@
 package bosca.bml.graphql
 
 import bosca.server.http.await
+import bosca.server.ServerCall
 import kotlinx.serialization.json.Json
 import okhttp3.Dispatcher
 import okhttp3.MediaType.Companion.toMediaType
@@ -54,14 +55,20 @@ internal fun defaultGraphQLHttpClient(appId: String?, appVersion: String?): OkHt
 /**
  * Mints per-request [GraphQLClient]s bound to the caller's token (passthrough) while
  * sharing one [OkHttpClient] — so the connection pool is reused across requests instead of rebuilt
- * per page render. `bml-server` holds one factory (for the configurable endpoint) and calls
- * [forToken] in each route handler.
+ * per page render. `bml-server` uses [forRequest] through the shared [GraphQLBackend] contract.
  */
 class GraphQLClientFactory(
     private val endpoint: String,
     private val httpClient: OkHttpClient = defaultGraphQLHttpClient(),
     private val json: Json = Json { ignoreUnknownKeys = true }
-) {
+) : GraphQLBackend {
+    override fun forRequest(
+        call: ServerCall,
+        token: String?,
+        installationId: String?,
+        analyticsSessionId: String?,
+    ): GraphQLClient = forToken(token, installationId, analyticsSessionId)
+
     /** A client for [endpoint] that forwards [token] (the incoming request's bearer) on every call. */
     fun forToken(token: String?): GraphQLClient =
         HttpGraphQLClient(endpoint, httpClient, json = json, defaultToken = token)

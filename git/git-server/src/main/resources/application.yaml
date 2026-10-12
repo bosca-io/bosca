@@ -1,4 +1,5 @@
 packages:
+  - "security-initial"
   - "git-search-index"
 
 bosca:
@@ -43,16 +44,50 @@ jwt:
   secret: "$JWT_SECRET:c534b2595b38f5d9cb33f8cd05996c95"
   cookie-secure: ${JWT_COOKIE_SECURE:false}
   expiration-time: ${JWT_EXPIRATION_TIME:2592000}
+  cookie-prefixes: []
+
+security:
+  autoVerify: ${SECURITY_AUTO_VERIFY:false}
 
 analyticsServer:
   appId: "$ANALYTICS_APP_ID:bosca-git-server"
   url: "$ANALYTICS_SERVER_URL:http://localhost:8081"
 
 app:
-  url: "${APP_URL:http://localhost:3000}"
+  url: "${APP_URL:http://localhost:8091}"
+  allowed-origins:
+    - "${APP_ALLOWED_ORIGIN:http://localhost:8091}"
+  welcome-url: "${WELCOME_EMAIL_URL:}"
+
+oauth2:
+  providers:
+    - type: google
+      clientId: ${GOOGLE_CLIENT_ID:}
+      clientSecret: ${GOOGLE_CLIENT_SECRET:}
+      callback: "${OAUTH2_GOOGLE_REDIRECT:http://localhost:8091/oauth2/google/callback}"
+      adminCallback: "${OAUTH2_GOOGLE_ADMIN_REDIRECT:http://localhost:8091/oauth2/google/callback}"
+      authorizeUrl: https://accounts.google.com/o/oauth2/auth
+      accessTokenUrl: https://accounts.google.com/o/oauth2/token
+      userInfoUrl: https://www.googleapis.com/oauth2/v1/userinfo
+      scopes:
+        - https://www.googleapis.com/auth/userinfo.profile
+        - https://www.googleapis.com/auth/userinfo.email
+      enabled: ${GOOGLE_ENABLED:true}
+  redirects:
+    - "${OAUTH2_ALLOWED_REDIRECT:http://localhost:8091}"
+
+webauthn:
+  extraOrigins:
+    - "${WEBAUTHN_EXTRA_ORIGIN:}"
+
+graphql:
+  introspection:
+    enabled: "${GRAPHQL_INTROSPECTION_ENABLED:false}"
 
 git:
   url: "${GIT_URL:http://localhost:8091}"
+  ui:
+    authCookiePrefix: "${BML_AUTH_COOKIE_PREFIX:}"
 
 pipeline:
   secretKey: "$PIPELINE_SECRET_KEY:dGhpcy1pcy1hLWRldi1vbmx5LXNlY3JldC1rZXktMzI="

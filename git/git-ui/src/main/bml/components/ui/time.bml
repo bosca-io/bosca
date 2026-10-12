@@ -1,0 +1,48 @@
+<component tag="ui-time">
+  <prop name="relative" type="Boolean" default="false" />
+  <prop name="value" type="String" required />
+  <script server provides="label">
+    try {
+        val timestamp = java.time.OffsetDateTime.parse(value)
+        if (relative) {
+            val seconds =
+                java.time.Duration.between(timestamp.toInstant(), java.time.Instant.now()).seconds
+            val age = kotlin.math.abs(seconds)
+            val label =
+                when {
+                    age < 60 -> "just now"
+                    age < 3600 -> "${age / 60}m"
+                    age < 86400 -> "${age / 3600}h"
+                    age < 604800 -> "${age / 86400}d"
+                    else ->
+                        timestamp.format(
+                            java.time.format.DateTimeFormatter.ofPattern(
+                                "MMM d",
+                                java.util.Locale.ENGLISH,
+                            )
+                        )
+                }
+            if (seconds < -60 && age < 604800) "in $label" else label
+        } else {
+            timestamp
+                .withOffsetSameInstant(java.time.ZoneOffset.UTC)
+                .format(
+                    java.time.format.DateTimeFormatter.ofPattern(
+                        "MMM d, HH:mm 'UTC'",
+                        java.util.Locale.ENGLISH,
+                    )
+                )
+        }
+    } catch (_: java.time.format.DateTimeParseException) {
+        value
+    }
+  </script>
+  <time :datetime="value" :title="value">{ label }</time>
+  <style scoped>
+    time {
+      white-space: nowrap;
+      color: var(--fg-2);
+      font-size: 12px;
+    }
+  </style>
+</component>

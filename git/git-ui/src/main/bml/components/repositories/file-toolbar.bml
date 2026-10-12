@@ -1,0 +1,47 @@
+<component tag="git-file-toolbar">
+  <prop name="page" type="bosca.git.ui.RepositoryPage" required />
+  <prop name="inline" type="Boolean" default="false" />
+  <div
+    :class='"toolbar file-toolbar" + if (inline) " inline" else ""'
+    role="group"
+    aria-label="File actions"
+  >
+    <if page.canEdit && !page.archived && (page.branches.contains(page.ref) || page.branches.isEmpty())>
+      <if page.file.isNotBlank() && page.content != null && page.fileMessage.isBlank()>
+        <ui-icon-link
+          icon="edit"
+          label="Edit or rename file"
+          :href='page.href(path = page.path, file = page.file) + "&edit=true"'
+        />
+      <else-if page.file.isBlank()>
+        <ui-icon-link
+          icon="file-plus"
+          label="New file"
+          :href='page.href(path = page.path) + "&new=true"'
+        />
+      </if>
+      <git-file-actions :page="page" />
+    </if>
+    <if page.rawHref.isNotBlank()>
+      <ui-icon-link icon="download" label="Download file" :href="page.rawHref" download />
+      <ui-icon-link
+        icon="code"
+        label="Open raw file"
+        :href="page.rawHref"
+        target="_blank"
+        rel="noopener"
+      />
+    </if>
+  </div>
+  <style scoped>
+    .file-toolbar.inline {
+      padding: 0;
+    }
+    .file-toolbar {
+      margin: 0;
+      padding: 8px 12px;
+      gap: 6px;
+      justify-content: flex-end;
+    }
+  </style>
+</component>

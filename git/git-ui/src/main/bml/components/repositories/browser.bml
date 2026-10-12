@@ -1,0 +1,94 @@
+<component tag="git-repository-browser">
+  <prop name="page" type="bosca.git.ui.RepositoryPage" required />
+  <ui-page fill :data-repository-page="page.id">
+    <ui-page-heading
+      icon="folder"
+      :badge="page.visibility.lowercase()"
+      :description="page.slug"
+      :title="page.name"
+      :backHref="page.listHref"
+      backLabel="Repositories"
+    >
+      <div class="repository-controls">
+        <if page.tab == "code" || page.tab == "commits" || page.tab == "statuses">
+          <git-ref-selector :page="page" />
+        </if>
+        <if page.pulls != null>
+          <git-pull-create :page="page.pulls" />
+        </if>
+        <ui-popover label="Clone repository" icon="download" iconOnly :width="420">
+          <ui-copy-field :value="page.cloneUrl" label="Clone URL" copyLabel="Copy clone URL" />
+        </ui-popover>
+      </div>
+    </ui-page-heading>
+    <p class="muted repository-summary">
+      <if page.description.isNotBlank()>
+        { page.description }
+        ·
+      </if>
+      { page.stats }
+    </p>
+    <ui-tabs label="Repository section" :items="page.tabs" />
+    <if page.tab == "commits">
+      <git-repository-commits :page="page" />
+    <else-if page.tab == "branches" || page.tab == "tags">
+      <git-repository-refs :page="page" />
+    <else-if page.pulls != null>
+      <git-pull-list :page="page.pulls" />
+    <else-if page.pipelines != null>
+      <git-pipeline-catalog :page="page.pipelines" />
+      <git-pipeline-trigger :page="page.pipelines" />
+    <else-if page.statuses != null>
+      <git-statuses-results :page="page.statuses" />
+    <else-if page.secrets != null>
+      <if page.secrets.allowed>
+        <git-repository-secrets :page="page.secrets" />
+      <else>
+        <ui-alert>Manage permission is required.</ui-alert>
+      </if>
+    <else-if page.settings != null>
+      <git-repository-settings :page="page.settings" />
+    <else>
+      <git-repository-path :page="page" />
+      <div
+        :class='"repository-workspace" + if (page.branches.isEmpty() && page.tags.isEmpty()) " empty-workspace" else ""'
+      >
+        <if page.branches.isNotEmpty() || page.tags.isNotEmpty()>
+          <git-repository-sidebar :page="page" />
+        </if>
+        <git-file-surface :page="page" />
+      </div>
+    </if>
+  </ui-page>
+  <style scoped>
+    .repository-workspace {
+      display: grid;
+      grid-template-columns: 220px minmax(0, 1fr);
+      min-height: 0;
+      flex: 1;
+      gap: 0;
+      border-top: 1px solid var(--line);
+    }
+    .empty-workspace {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    @media (max-width: 700px) {
+      .repository-workspace {
+        display: flex;
+        flex-direction: column;
+        flex: none;
+        gap: 8px;
+      }
+    }
+    .repository-summary {
+      margin: 0;
+      font-size: 12px;
+    }
+    .repository-controls {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+  </style>
+</component>

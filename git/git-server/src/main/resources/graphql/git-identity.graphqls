@@ -1,0 +1,141 @@
+# Identity fields used by Git. Resolvers and authorization belong to Security, Profile, and Search.
+enum ProfileVisibility {
+  "Visible only to the profile owner's direct friends/connections."
+  FRIENDS
+  "Visible to the profile owner's friends and their friends (two degrees of separation)."
+  FRIENDS_OF_FRIENDS
+  "Visible to all authenticated users of the platform."
+  PUBLIC
+  "Visible system-wide, including to internal platform services and administrative processes."
+  SYSTEM
+  "Visible only to the profile owner themselves. The most restrictive visibility level."
+  USER
+}
+
+enum ProfileType {
+  "A standard user profile with full capabilities."
+  GENERIC
+  "A profile that represents an organization rather than an individual user."
+  ORGANIZATION
+  "A child profile created under a parent profile, typically used for managed or dependent accounts."
+  CHILD
+}
+
+input ProfileInput {
+  "A URL-friendly slug identifier for the profile. Used in URLs and as a human-readable identifier."
+  slug: String
+  "The display name of the profile."
+  name: String!
+  "The list of profile attributes to set on the profile."
+  attributes: [ProfileAttributeInput!]!
+  "The visibility level that controls who can discover and view this profile."
+  visibility: ProfileVisibility!
+  "Whether this profile may appear in profile search. If omitted while editing, the current setting is preserved."
+  searchable: Boolean
+}
+
+input ProfileAttributeInput {
+  "The UUID of an existing attribute to update. Null when creating a new attribute."
+  id: UUID
+  "The UUID of a metadata item linked to this attribute, providing additional context or content."
+  metadataId: UUID
+  "The UUID of a supplementary metadata item associated with this attribute."
+  metadataSupplementary: UUID
+  "The attribute value stored as JSON. The structure depends on the attribute type."
+  attributes: JSON
+  "A confidence score (0-100) indicating how reliable or accurate this attribute value is."
+  confidence: Int!
+  "The date and time when this attribute expires and should no longer be considered valid."
+  expiration: DateTime
+  "The priority of this attribute relative to other attributes of the same type. Higher values take precedence."
+  priority: Int!
+  "The source system or process that provided this attribute value (e.g. 'user-input', 'ai-inference', 'import')."
+  source: String!
+  "The identifier of the attribute type that defines the schema and semantics of this attribute."
+  typeId: String!
+  "The visibility level that controls who can see this attribute."
+  visibility: ProfileVisibility!
+}
+
+type Profiles {
+  current: [Profile!]
+  profile(id: UUID!): Profile
+}
+
+type Profile {
+  id: UUID!
+  name: String!
+  type: ProfileType!
+  visibility: ProfileVisibility!
+  created: DateTime!
+  slug: String
+  isPrimary: Boolean!
+  attributes: [ProfileAttribute!]!
+}
+
+type ProfileAttribute {
+  id: UUID!
+  typeId: String!
+  attributes: JSON
+  source: String!
+  priority: Int!
+  confidence: Int!
+  visibility: ProfileVisibility!
+}
+
+type ProfilesMutation {
+  edit(id: UUID, profile: ProfileInput!): Profile
+}
+
+type Search {
+  search(query: SearchQuery): SearchResult
+}
+
+type SearchDocument {
+  profile: Profile
+}
+
+input SearchQuery {
+  "The name of the embedder to use for semantic search. Required when using vector-based search or a non-zero semanticRatio."
+  embedder: String
+  "The list of field names to compute faceted aggregations for (e.g. ['category', 'author']). Returns counts for each unique value."
+  facets: [String!]
+  "The list of filter expressions to apply to narrow search results (e.g. ['category = news', 'published > 2024-01-01'])."
+  filter: [String!]
+  "The maximum number of search results to return per page."
+  limit: Int
+  "The zero-based offset for paginating through search results."
+  offset: Int
+  "The search query text to match against indexed content."
+  query: String!
+  "The ratio between semantic (vector) and keyword search results, from 0.0 (pure keyword) to 1.0 (pure semantic). Requires an embedder to be specified."
+  semanticRatio: Float
+  "The list of sort expressions to order results by (e.g. ['created:desc', 'name:asc'])."
+  sort: [String!]
+  "The UUID of the storage system to search within. If null, the default search storage system is used."
+  storageSystemId: String
+  "The name of the storage system to search within. Alternative to storageSystemId for lookup by name."
+  storageSystemName: String
+  "A pre-computed vector embedding to use for similarity search. Alternative to text-based semantic search."
+  vector: [Float!]
+  "Whether to include the vector embeddings in the search results. Useful for debugging or downstream processing."
+  retrieveVectors: Boolean
+}
+
+type SearchResult {
+  "The list of documents matching the search query, ordered by relevance."
+  documents: [SearchDocument!]!
+  "The estimated total number of documents matching the query across all pages. Useful for pagination."
+  estimatedHits: Int!
+  "The faceted aggregations computed for the search results, allowing users to filter by categories."
+  facets: [SearchResultFacet!]!
+}
+
+type SearchResultFacet {
+  "The number of documents matching this facet value."
+  count: Int!
+  "The field name that this facet belongs to (e.g. 'category', 'author', 'type')."
+  field: String!
+  "The specific value within the facet field (e.g. 'news', 'tutorial')."
+  value: String!
+}

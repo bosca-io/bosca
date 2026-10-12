@@ -1,0 +1,10 @@
+{
+  "id": "status",
+  "context": "tests",
+  "state": "SUCCESS",
+  "description": "Checks passed",
+  "targetUrl": "javascript:alert(1)",
+  "created": "2026-10-09T00:00:00Z",
+  "commitSha": "abc",
+  "repositoryId": "repo"
+}

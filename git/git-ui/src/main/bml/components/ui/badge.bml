@@ -1,0 +1,41 @@
+<component tag="ui-badge">
+  <prop name="tone" type="String" default="neutral" />
+  <script server provides="attrs">
+    props.filterKeys { it !in setOf("tone", "__bmlAttrs") }
+  </script>
+  <span class="badge" :data-tone="tone" {...attrs}>
+    <slot />
+  </span>
+  <style scoped>
+    .badge[data-tone="info"] {
+      color: var(--info);
+      border-color: color-mix(in srgb, var(--info) 30%, transparent);
+      background: color-mix(in srgb, var(--info) 10%, transparent);
+    }
+    .badge[data-tone="success"] {
+      color: var(--ok);
+      border-color: color-mix(in srgb, var(--ok) 30%, transparent);
+      background: color-mix(in srgb, var(--ok) 10%, transparent);
+    }
+    .badge[data-tone="warning"] {
+      color: var(--warn);
+      border-color: color-mix(in srgb, var(--warn) 30%, transparent);
+      background: color-mix(in srgb, var(--warn) 10%, transparent);
+    }
+    .badge[data-tone="error"] {
+      color: var(--err);
+      border-color: color-mix(in srgb, var(--err) 30%, transparent);
+      background: color-mix(in srgb, var(--err) 10%, transparent);
+    }
+    .badge {
+      border: 1px solid color-mix(in oklch, var(--fg-3) 30%, transparent);
+      background: color-mix(in oklch, var(--fg-3) 12%, transparent);
+      color: var(--fg-2);
+      padding: 2px 7px;
+      border-radius: var(--control-radius);
+      font-size: 10.5px;
+      font-weight: 500;
+      white-space: nowrap;
+    }
+  </style>
+</component>

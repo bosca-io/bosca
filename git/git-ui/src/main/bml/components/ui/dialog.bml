@@ -1,0 +1,119 @@
+<component tag="ui-dialog">
+  <prop name="triggerIconOnly" type="Boolean" default="false" />
+  <prop name="showTrigger" type="Boolean" default="true" />
+  <prop name="returnFocus" type="String" default="" />
+  <prop name="subtitle" type="String" default="" />
+  <prop name="size" type="String" default="md" />
+  <prop name="title" type="String" required />
+  <prop name="triggerLabel" type="String" required />
+  <prop name="triggerIcon" type="String" default="" />
+  <prop name="icon" type="String" default="" />
+  <prop name="primary" type="Boolean" default="false" />
+  <prop name="forceOpen" type="Boolean" default="false" />
+  <prop name="completed" type="Boolean" default="false" />
+  <div
+    :class='"dialog-control" + if (showTrigger) "" else " programmatic-dialog"'
+    :data-force-open="forceOpen"
+    :data-completed="completed"
+    :data-return-focus="returnFocus"
+  >
+    <if showTrigger>
+      <if triggerIconOnly>
+        <ui-icon-button ref="trigger" :icon="triggerIcon.ifBlank { icon }" :label="triggerLabel" />
+      <else>
+        <ui-button size="sm" ref="trigger" :primary="primary" :icon="triggerIcon.ifBlank { icon }">
+          { triggerLabel }
+        </ui-button>
+      </if>
+    </if>
+    <dialog :class='"dialog size-" + size' ref="dialog" :aria-label="title">
+      <div class="dialog-content">
+        <header class="dialog-header">
+          <div class="dialog-heading">
+            <h2>
+              <if icon.isNotBlank()>
+                <span class="dialog-icon">
+                  <ui-icon :name="icon" />
+                </span>
+              </if>
+              { title }
+            </h2>
+            <if subtitle.isNotBlank()>
+              <p class="dialog-subtitle">{ subtitle }</p>
+            </if>
+          </div>
+          <ui-icon-button ref="close" label="Close dialog" icon="close" />
+        </header>
+        <slot />
+      </div>
+    </dialog>
+  </div>
+  <style scoped>
+    .programmatic-dialog {
+      display: contents;
+    }
+    dialog.size-lg {
+      width: 760px;
+    }
+    dialog.size-sm {
+      width: 400px;
+    }
+    .dialog-subtitle {
+      margin: 4px 0 0;
+      color: var(--fg-3);
+      font-size: 11.5px;
+    }
+    .dialog-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      border-radius: 9px;
+      color: var(--accent);
+      background: color-mix(in srgb, var(--accent) 16%, var(--bg-2));
+      border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent);
+    }
+    dialog {
+      width: 520px;
+      max-width: calc(100vw - 32px);
+      max-height: min(90dvh, calc(100dvh - 40px));
+      padding: 0;
+      color: var(--fg-1);
+      background: var(--bg-1);
+      border: 1px solid var(--line-2);
+      border-radius: 16px;
+      box-shadow: 0 30px 100px #0008;
+    }
+    dialog::backdrop {
+      background: #0009;
+      backdrop-filter: blur(4px);
+    }
+    .dialog-content {
+      display: flex;
+      flex-direction: column;
+      max-height: calc(min(90dvh, 100dvh - 40px) - 2px);
+    }
+    .dialog-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--line);
+      flex: none;
+    }
+    h2 {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin: 0;
+      font-size: 15px;
+      font-weight: 600;
+    }
+  </style>
+  <script client scoped>
+    import { modalDialog } from "@client/dialog";
+    modalDialog(ctx);
+  </script>
+</component>

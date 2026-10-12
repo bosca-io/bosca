@@ -1,0 +1,25 @@
+<component tag="ui-icon-button">
+  <prop name="icon" type="String" required />
+  <prop name="label" type="String" required />
+  <prop name="ref" type="String" default="" />
+  <prop name="type" type="String" default="button" />
+  <prop name="disabled" type="Boolean" default="false" />
+  <script server provides="attrs">
+    props.filterKeys {
+        it !in setOf("icon", "label", "ref", "type", "disabled", "class", "__bmlAttrs")
+    }
+  </script>
+  <ui-tooltip :content="label">
+    <ui-button
+      :class='"icon-only " + (props["class"] as? String).orEmpty()'
+      size="sm"
+      :icon="icon"
+      :ref="ref"
+      :type="type"
+      :disabled="disabled"
+      :aria-label="label"
+      :title="label"
+      {...attrs}
+    />
+  </ui-tooltip>
+</component>

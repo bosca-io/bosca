@@ -1,0 +1,44 @@
+<component tag="ui-checkbox">
+  <prop name="label" type="String" required />
+  <prop name="description" type="String" default="" />
+  <prop name="checked" type="Boolean" default="false" />
+  <script server provides="attrs">
+    props.filterKeys { it !in setOf("label", "description", "checked", "__bmlAttrs") }
+  </script>
+  <label class="checkbox-row">
+    <input type="checkbox" :checked="checked" {...attrs} />
+    <span>
+      <strong>{ label }</strong>
+      <if description.isNotBlank()>
+        <small>{ description }</small>
+      </if>
+    </span>
+  </label>
+  <style scoped>
+    .checkbox-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 9px;
+      cursor: pointer;
+    }
+    input {
+      width: 14px;
+      height: 14px;
+      margin: 3px 0 0;
+      flex: none;
+    }
+    strong {
+      display: block;
+      font-size: 12.5px;
+      font-weight: 500;
+      line-height: 20px;
+    }
+    small {
+      display: block;
+      color: var(--fg-3);
+      font-size: 11.5px;
+      line-height: 1.5;
+      margin-top: 2px;
+    }
+  </style>
+</component>

@@ -591,6 +591,7 @@ class GitRepositoryMutation(
         permissionEvaluator.verifyAllowed(authentication, repository, PermissionAction.EDIT)
         val principalId = authentication.principal()?.id
             ?: throw SecurityException("Authentication required")
+        verifyDirectFileWrite(input.repositoryId, input.branch, principalId)
         return writeService.commitFile(
             CommitFileInput(
                 repositoryId = input.repositoryId,
@@ -619,6 +620,7 @@ class GitRepositoryMutation(
         permissionEvaluator.verifyAllowed(authentication, repository, PermissionAction.EDIT)
         val principalId = authentication.principal()?.id
             ?: throw SecurityException("Authentication required")
+        verifyDirectFileWrite(repositoryId, branch, principalId)
         return writeService.deleteFile(
             DeleteFileInput(
                 repositoryId = repositoryId,
@@ -631,6 +633,12 @@ class GitRepositoryMutation(
             principalId,
         )
     }
+    private suspend fun verifyDirectFileWrite(repositoryId: UUID, branch: String, principalId: UUID) {
+        val rule = branchProtectionService.findMatchingRule(repositoryId, branch) ?: return
+        check(!rule.requirePullRequest) { "Branch '$branch' is protected: changes must be made through a pull request" }
+        check(rule.restrictPushAccess.isEmpty() || principalId in rule.restrictPushAccess) { "Branch '$branch' is protected: you are not in the push access list" }
+    }
+
 }
 
 private fun BranchProtectionRuleInput.toRule(

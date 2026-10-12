@@ -1,0 +1,128 @@
+<component tag="git-pipeline-trigger">
+  <prop name="page" type="bosca.git.ui.PipelinePage" required />
+  <script server provides="model">
+    bosca.git.ui.PipelineTriggerModel(page)
+  </script>
+  <div class="pipeline-trigger">
+    <if page.selected.isNotBlank()>
+      <island name="git-pipeline-trigger" :key="page.selected">
+        <section :data-next-href="model.nextHref">
+          <ui-dialog
+            title="Run pipeline"
+            triggerLabel="Run pipeline"
+            icon="play"
+            :subtitle="model.page.selectedName"
+            :showTrigger="false"
+            forceOpen
+          >
+            <form class="modal-form" data-pipeline-trigger @submit="model.start(form.inputs, ctx)">
+              <div class="modal-fields">
+                <if model.message.isNotBlank()>
+                  <ui-alert>{ model.message }</ui-alert>
+                </if>
+                <ui-field
+                  label="Ref"
+                  hint="The pipeline definition and inputs come from the selected branch or tag."
+                >
+                  <ui-select
+                    searchable
+                    name="ref"
+                    label="Pipeline ref"
+                    @change="model.selectRef(form.ref, form.inputs, ctx)"
+                  >
+                    <for ref in model.page.refs>
+                      <option :value="ref" :selected="ref == model.page.ref">
+                        { ref.removePrefix("refs/heads/").removePrefix("refs/tags/") }
+                        (
+                        { if (ref.startsWith("refs/tags/")) "tag" else "branch" }
+                        )
+                      </option>
+                    </for>
+                  </ui-select>
+                </ui-field>
+                <input name="inputs" type="hidden" value="[]" />
+                <for input in model.page.inputs>
+                  <ui-field :label="input.name" :hint="input.description.orEmpty()">
+                    <if input.type.name == "CHOICE" || input.type.name == "BOOLEAN">
+                      <ui-select
+                        :data-pipeline-input="input.name"
+                        :label="input.name"
+                        :required="input.required"
+                      >
+                        <if !input.required>
+                          <option value="">Use default</option>
+                        </if>
+                        <for value in (if (input.type.name == "BOOLEAN") listOf("true", "false") else input.options)>
+                          <option
+                            :value="value"
+                            :selected="value == model.value(input.name, input.defaultValue)"
+                          >
+                            { value }
+                          </option>
+                        </for>
+                      </ui-select>
+                    <else>
+                      <ui-input
+                        :type='if (input.type.name == "NUMBER") "number" else "text"'
+                        step="any"
+                        :data-pipeline-input="input.name"
+                        :value="model.value(input.name, input.defaultValue)"
+                        :required="input.required"
+                      />
+                    </if>
+                  </ui-field>
+                </for>
+                <if !model.page.canExecute>
+                  <ui-alert>Execute permission is required to run this pipeline.</ui-alert>
+                </if>
+              </div>
+              <footer class="modal-footer">
+                <ui-button ref="cancel">Cancel</ui-button>
+                <ui-button
+                  type="submit"
+                  primary
+                  icon="play"
+                  :disabled="!model.page.canExecute || model.page.ref.isBlank()"
+                >
+                  Run pipeline
+                </ui-button>
+              </footer>
+            </form>
+          </ui-dialog>
+        </section>
+      </island>
+    </if>
+  </div>
+  <style scoped>
+    .pipeline-trigger {
+      display: contents;
+    }
+  </style>
+  <script client scoped>
+    const captureInputs = (event: Event) => {
+      const form =
+        event.target instanceof Element
+          ? event.target.closest<HTMLFormElement>("[data-pipeline-trigger]")
+          : null;
+      if (!form) return;
+      const values = Array.from(
+        form.querySelectorAll<HTMLInputElement | HTMLSelectElement>(
+          "[data-pipeline-input]",
+        ),
+        (input) => ({
+          name: input.dataset.pipelineInput ?? "",
+          value: input.value,
+        }),
+      );
+      const transport = form.elements.namedItem("inputs") as HTMLInputElement;
+      transport.value = JSON.stringify(values);
+    };
+    ctx.on<Event>(ctx.root, "submit", captureInputs, true);
+    ctx.on<Event>(ctx.root, "change", captureInputs, true);
+    ctx.onUpdate(() => {
+      const next =
+        ctx.root.querySelector<HTMLElement>("[data-next-href]")?.dataset.nextHref;
+      if (next) location.assign(next);
+    });
+  </script>
+</component>

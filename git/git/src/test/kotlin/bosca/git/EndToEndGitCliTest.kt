@@ -48,6 +48,12 @@ import bosca.security.service.AuthenticationContext
 import bosca.security.service.AuthenticationProviders
 import bosca.security.service.SecurityException
 import bosca.security.service.SecurityService
+import bosca.security.service.SecurityConfiguration
+import bosca.security.service.AuthCookiePrefix
+import com.auth0.jwt.JWT
+import com.auth0.jwt.algorithms.Algorithm
+import java.time.Instant
+import java.util.Date
 import bosca.serialization.UUID
 import bosca.server.BoscaApplication
 import bosca.server.config.ApplicationConfig
@@ -146,6 +152,46 @@ class EndToEndGitCliTest {
                 url,
             )
         }
+    }
+
+    @Test
+    fun `nested raw images preserve bytes and enforce signed custom cookies`() {
+        val repository = newRepository(Visibility.PRIVATE)
+        val origin = newWorkDir("raw-image")
+        gitInit(origin)
+        val image = java.util.Base64.getDecoder().decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aZ1sAAAAASUVORK5CYII=")
+        Files.createDirectories(origin.resolve("assets/images"))
+        Files.write(origin.resolve("assets/images/logo #2.png"), image)
+        commitAll(origin, "Image fixture")
+        gitOk(origin, "remote", "add", "origin", authUrl(repository))
+        gitOk(origin, "push", "origin", "main")
+        val sha = revParseHead(origin)
+        val uri = URI("http://127.0.0.1:$port/$OWNER/${repository.slug}/raw/$sha/assets/images/logo%20%232.png")
+        val client = HttpClient.newHttpClient()
+        fun get(token: String? = null): HttpResponse<ByteArray> {
+            val request = HttpRequest.newBuilder(uri).GET()
+            if (token != null) request.header("Cookie", "_git_e2e=$token")
+            return client.send(request.build(), HttpResponse.BodyHandlers.ofByteArray())
+        }
+        fun token(expiration: Instant, algorithm: Algorithm = jwtAlgorithm): String = JWT.create()
+            .withSubject(principal.id.toString()).withIssuer("git-e2e").withAudience("git-e2e")
+            .withExpiresAt(Date.from(expiration)).sign(algorithm)
+        fun denied(token: String? = null) {
+            val response = get(token)
+            // Domain security failures follow Route's established GraphQLException-to-400 mapping.
+            assertEquals(400, response.statusCode(), response.body().decodeToString())
+            assertTrue("Authentication required" in response.body().decodeToString())
+        }
+        denied()
+        denied(token(Instant.now().minusSeconds(120)))
+        denied(token(Instant.now().plusSeconds(600), Algorithm.HMAC256("wrong-fixture-signing-key")))
+        val authorized = get(token(Instant.now().plusSeconds(600)))
+        assertEquals(200, authorized.statusCode(), authorized.body().decodeToString())
+        assertTrue(image.contentEquals(authorized.body()))
+        assertTrue(authorized.headers().firstValue("Content-Type").orElse("").startsWith("image/png"))
+        assertEquals("private, no-store", authorized.headers().firstValue("Cache-Control").orElse(""))
+        assertEquals("nosniff", authorized.headers().firstValue("X-Content-Type-Options").orElse(""))
+        assertEquals(200, get(token(Instant.now().plusSeconds(1200))).statusCode())
     }
 
     @Test
@@ -603,6 +649,7 @@ class EndToEndGitCliTest {
         private val branchProtectionService = mockk<BranchProtectionService>()
         private val refUpdateNotifier = mockk<RefUpdateNotifier>(relaxed = true)
         private val securityService = mockk<SecurityService>()
+        private val jwtAlgorithm = Algorithm.HMAC256("git-e2e-isolated-fixture-signing-key")
 
         private val dfsManager = object : BoscaDfsRepositoryManager(
             mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true),
@@ -750,6 +797,10 @@ class EndToEndGitCliTest {
                     .orEmpty()
                     .firstOrNull { BranchProtectionService.matchesGlob(it.pattern, branchName) }
             }
+            coEvery { securityService.authenticateWithPayload(any()) } coAnswers {
+                if (firstArg<com.auth0.jwt.interfaces.Payload>().subject == principal.id.toString()) principal
+                else throw SecurityException("Unknown principal")
+            }
             coEvery { securityService.authenticateWithCredential(any()) } coAnswers {
                 val attributes = firstArg<SimplePasswordAttributes>()
                 if (attributes.identifier == USERNAME && attributes.password == PASSWORD) {
@@ -817,7 +868,10 @@ class EndToEndGitCliTest {
          * Only the credential check at the bottom ([SecurityService]) is stubbed.
          */
         private fun productionAuthMiddleware() = BoscaAuthMiddleware(
-            securityConfiguration = mockk(relaxed = true),
+            securityConfiguration = mockk<SecurityConfiguration>(relaxed = true) {
+                every { verifier } returns JWT.require(jwtAlgorithm).withIssuer("git-e2e").withAudience("git-e2e").build()
+                every { authCookiePrefixes } returns listOf(AuthCookiePrefix("_git_e2e", listOf("127.0.0.1")))
+            },
             connectionPool = connectionPool,
             securityService = securityService,
             apiTokenService = mockk(relaxed = true),

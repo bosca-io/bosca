@@ -1,0 +1,59 @@
+<component tag="git-pull-assignees">
+  <prop name="page" type="bosca.git.ui.PullPage" required />
+  <script server provides="model">
+    bosca.git.ui.PullActionsModel(page)
+  </script>
+  <island name="git-pull-assignees" :key="page.pull.id">
+    <section :data-next-href="model.nextHref">
+      <h2>Assignees</h2>
+      <if model.page.pull.assignees.isEmpty()>
+        <p class="muted">No assignees.</p>
+      </if>
+      <if model.message.isNotBlank()>
+        <ui-alert>{ model.message }</ui-alert>
+      </if>
+      <for profile in model.page.pull.assignees>
+        <form class="toolbar" @submit="model.assign(profile.id, true, ctx)">
+          <span>{ profile.name } · { profile.slug ?: profile.id }</span>
+          <if model.page.canEdit>
+            <ui-button type="submit">Unassign</ui-button>
+          </if>
+        </form>
+      </for>
+      <if model.page.canEdit>
+        <ui-dialog
+          title="Assign pull request"
+          triggerLabel="Assign"
+          icon="users"
+          :forceOpen="model.failed"
+        >
+          <form class="modal-form" @submit="model.assign(form.profile, false, ctx)">
+            <div class="modal-fields">
+              <if model.message.isNotBlank()>
+                <ui-alert>{ model.message }</ui-alert>
+              </if>
+              <git-owner-picker
+                :allowAll="false"
+                caption="Profile"
+                name="profile"
+                id=""
+                label="Choose a profile"
+              />
+            </div>
+            <footer class="modal-footer">
+              <ui-button ref="cancel">Cancel</ui-button>
+              <ui-button type="submit" primary>Assign</ui-button>
+            </footer>
+          </form>
+        </ui-dialog>
+      </if>
+    </section>
+  </island>
+  <script client scoped>
+    ctx.onUpdate(() => {
+      const next =
+        ctx.root.querySelector<HTMLElement>("[data-next-href]")?.dataset.nextHref;
+      if (next) location.assign(next);
+    });
+  </script>
+</component>

@@ -1,0 +1,36 @@
+<component tag="git-pull-checks">
+  <prop name="page" type="bosca.git.ui.PullPage" required />
+  <details open>
+    <ui-disclosure-heading>Status checks</ui-disclosure-heading>
+    <if page.checks.isEmpty()>
+      <p>No status checks have been reported for the source commit.</p>
+    </if>
+    <for check in page.checks>
+      <p>
+        <ui-badge
+          :tone='when (check.state.name) { "SUCCESS" -> "success"; "FAILURE", "ERROR" -> "error"; "PENDING" -> "warning"; else -> "neutral" }'
+        >
+          { check.state.name.lowercase() }
+        </ui-badge>
+        { check.context }
+        ·
+        { check.description.orEmpty() }
+        <if bosca.git.ui.safeWebHref(check.targetUrl).isNotBlank()>
+          <a
+            :href="bosca.git.ui.safeWebHref(check.targetUrl)"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            View check
+          </a>
+        </if>
+      </p>
+    </for>
+    <a
+      :href='"/statuses?repo=" + bosca.git.ui.encode(page.sourceRepository) + "&sha=" + bosca.git.ui.encode(page.headSha)'
+    >
+      All checks for
+      { page.headSha.take(12) }
+    </a>
+  </details>
+</component>

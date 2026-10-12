@@ -1,0 +1,121 @@
+<component tag="git-file-surface">
+  <prop name="page" type="bosca.git.ui.RepositoryPage" required />
+  <section
+    :class='"file-surface" + if (page.branches.isEmpty() && page.tags.isEmpty()) " file-surface-empty" else ""'
+  >
+    <if (page.branches.isNotEmpty() || page.tags.isNotEmpty() || page.editing || page.creating) && !page.editing && !page.creating && !(page.file.isNotBlank() && page.isMarkdown && page.fileMessage.isBlank()) && !(page.file.isNotBlank() && page.content != null && page.fileMessage.isBlank() && !page.isImage && !page.isMarkdown)>
+      <git-file-toolbar :page="page" />
+    </if>
+    <if page.editing || page.creating>
+      <git-file-editor :page="page" />
+    <else-if page.fileMessage.isNotBlank()>
+      <ui-empty-state :message="page.fileMessage" />
+      <if page.rawHref.isNotBlank() && page.branches.isEmpty() && page.tags.isEmpty()>
+        <ui-icon-link icon="download" label="Download file" :href="page.rawHref" download />
+      </if>
+    <else-if page.file.isNotBlank()>
+      <if page.isImage>
+        <img class="repository-image" :src="page.rawHref" :alt="page.file" />
+      <else-if page.isMarkdown>
+        <git-markdown-file :page="page" />
+      <else-if page.content != null>
+        <ui-source-view :content="page.content" :path="page.file">
+          <git-file-toolbar :page="page" inline />
+        </ui-source-view>
+      </if>
+    <else>
+      <if page.branches.isEmpty() && page.tags.isEmpty()>
+        <div class="empty-setup">
+          <ui-empty-state
+            icon="folder"
+            title="Start this repository"
+            message="Create your first file here, or clone the repository and push an existing project."
+          >
+            <if page.canEdit && !page.archived>
+              <a class="button-link primary" :href='page.href() + "&new=true"'>
+                <ui-icon name="plus" :size="14" />
+                Create first file
+              </a>
+            </if>
+          </ui-empty-state>
+          <div class="clone-setup">
+            <span>Clone this repository</span>
+            <div>
+              <code>git clone { page.cloneUrl }</code>
+              <ui-copy :value='"git clone " + page.cloneUrl' label="Copy clone command" />
+            </div>
+          </div>
+        </div>
+      <else>
+        <git-repository-tree :entries="page.entries" />
+      </if>
+      <if page.readmeHtml.isNotBlank()>
+        <git-markdown :html="page.readmeHtml" />
+      </if>
+    </if>
+  </section>
+  <style scoped>
+    .file-surface {
+      flex: 1;
+      min-height: 0;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      overflow: auto;
+      border-left: 1px solid var(--line);
+    }
+    .file-surface-empty {
+      border-left: 0;
+    }
+    .repository-image {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+    }
+    .empty-setup {
+      max-width: 640px;
+      width: 100%;
+      margin: 24px auto;
+    }
+    .clone-setup {
+      margin: 0 24px 24px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--bg-1);
+      overflow: hidden;
+    }
+    .clone-setup > span {
+      display: block;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--line);
+      font-size: 12px;
+      font-weight: 500;
+    }
+    .clone-setup > div {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 16px;
+    }
+    .clone-setup code {
+      min-width: 0;
+      overflow-wrap: anywhere;
+      font-size: 12px;
+    }
+    .empty-setup pre {
+      overflow: auto;
+    }
+    @media (max-width: 700px) {
+      .clone-setup > div {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+      .file-surface {
+        flex: none;
+        height: max(360px, calc(100dvh - 180px));
+        min-height: 360px;
+      }
+    }
+  </style>
+</component>

@@ -1,0 +1,125 @@
+<component tag="git-repository-permissions">
+  <prop name="page" type="bosca.git.ui.RepositorySettingsPage" required />
+  <script server provides="model">
+    bosca.git.ui.RepositoryPermissionsModel(page)
+  </script>
+  <island name="git-repository-permissions" :key="page.repository.id">
+    <section class="settings-stack" :data-next-href="model.nextHref">
+      <if model.message.isNotBlank()>
+        <ui-alert :tone='if (model.failed) "error" else "success"'>{ model.message }</ui-alert>
+      </if>
+      <ui-card :padded="false">
+        <ui-section-heading
+          title="Group permissions"
+          :subtitle='model.page.permissions.size.toString() + (if (model.page.permissions.size == 1) " permission" else " permissions") + " assigned to security groups."'
+        >
+          <ui-dialog
+            title="Add group permission"
+            triggerLabel="Add permission"
+            triggerIcon="plus"
+            icon="users"
+            primary
+            :forceOpen="model.failed && !model.removing"
+          >
+            <form
+              class="modal-form"
+              @submit="model.change(form.group, form.action, false, true, ctx)"
+            >
+              <div class="modal-fields">
+                <if model.failed && !model.removing>
+                  <ui-alert :tone='if (model.failed) "error" else "success"'>
+                    { model.message }
+                  </ui-alert>
+                </if>
+                <ui-field label="Group">
+                  <ui-select name="group" searchable required>
+                    <option value="">Choose a group</option>
+                    <for group in model.page.groups>
+                      <option :value="group.id" :selected="group.id == model.group">
+                        { group.name }
+                      </option>
+                    </for>
+                  </ui-select>
+                </ui-field>
+                <ui-field label="Permission">
+                  <ui-select name="action">
+                    <for action in bosca.git.ui.graphql.PermissionAction.entries>
+                      <option :value="action.name" :selected="action.name == model.action">
+                        { action.name.lowercase().replaceFirstChar(Char::uppercase) }
+                      </option>
+                    </for>
+                  </ui-select>
+                </ui-field>
+              </div>
+              <footer class="modal-footer">
+                <ui-button ref="cancel">Cancel</ui-button>
+                <ui-button type="submit" primary>Add permission</ui-button>
+              </footer>
+            </form>
+          </ui-dialog>
+        </ui-section-heading>
+        <if model.page.permissions.isEmpty()>
+          <ui-empty-state
+            icon="users"
+            title="No group permissions"
+            message="Grant a security group access to this repository."
+          />
+        <else>
+          <ui-table-scroll>
+            <table>
+              <thead>
+                <tr>
+                  <th>Group</th>
+                  <th>Permission</th>
+                  <th class="actions-column"></th>
+                </tr>
+              </thead>
+              <tbody>
+                <for permission in model.page.permissions>
+                  <tr>
+                    <td>
+                      <div class="identity-cell">
+                        <span class="record-icon">
+                          <ui-icon name="users" />
+                        </span>
+                        <span>{ permission.group.name }</span>
+                      </div>
+                    </td>
+                    <td>
+                      <ui-badge>
+                        { permission.action.name.lowercase().replaceFirstChar(Char::uppercase) }
+                      </ui-badge>
+                    </td>
+                    <td class="actions-column">
+                      <ui-confirm-dialog
+                        :title='"Remove " + permission.action.name.lowercase() + " permission?"'
+                        :description='"The " + permission.group.name + " group will lose this permission on the repository."'
+                      >
+                        <form
+                          class="modal-form"
+                          @submit="model.change(permission.group.id, permission.action.name, true, true, ctx)"
+                        >
+                          <footer class="modal-footer">
+                            <ui-button ref="cancel">Cancel</ui-button>
+                            <ui-button type="submit" class="danger">Remove permission</ui-button>
+                          </footer>
+                        </form>
+                      </ui-confirm-dialog>
+                    </td>
+                  </tr>
+                </for>
+              </tbody>
+            </table>
+          </ui-table-scroll>
+        </if>
+      </ui-card>
+    </section>
+  </island>
+  <script client scoped>
+    ctx.onUpdate(() => {
+      const next =
+        ctx.root.querySelector<HTMLElement>("[data-next-href]")?.dataset.nextHref;
+      if (next) location.assign(next);
+    });
+  </script>
+</component>

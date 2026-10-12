@@ -1,0 +1,149 @@
+<component tag="git-repository-create">
+  <prop name="initial" type="bosca.git.ui.RepositoryListModel" required />
+  <script server provides="model">
+    bosca.git.ui.RepositoryListModel(initial.state, initial.owner)
+  </script>
+  <island name="git-repository-create" :key="initial.owner.id">
+    <div :data-next-href="model.nextHref">
+      <ui-dialog
+        title="New repository"
+        triggerLabel="New repository"
+        icon="folder"
+        triggerIcon="plus"
+        :primary="true"
+        :forceOpen="model.failed"
+      >
+        <form
+          class="modal-form"
+          @submit="model.create(form.name, form.slug, form.description, form.ownerId, form.visibility, form.contentType, form.branch, form.readme, form.gitignore, form.license, ctx)"
+        >
+          <div class="modal-fields">
+            <if model.message.isNotBlank()>
+              <ui-alert>{ model.message }</ui-alert>
+            </if>
+            <ui-field label="Name">
+              <ui-input
+                name="name"
+                type="text"
+                placeholder="my-project"
+                :value="model.draft.name"
+                required
+              />
+            </ui-field>
+            <ui-field label="Slug">
+              <ui-input
+                name="slug"
+                type="text"
+                placeholder="my-project"
+                mono
+                :value="model.draft.slug"
+                required
+              />
+            </ui-field>
+            <ui-field label="Description">
+              <ui-input
+                name="description"
+                type="text"
+                placeholder="Optional description"
+                :value="model.draft.description"
+              />
+            </ui-field>
+            <git-owner-picker
+              :allowAll="false"
+              name="ownerId"
+              :id="model.draft.ownerId.ifBlank { model.owner.id }"
+              :label='if (model.owner.id == "all") "Choose an owner" else model.owner.label'
+            />
+            <ui-field label="Visibility">
+              <ui-select name="visibility">
+                <option value="PRIVATE" :selected='model.draft.visibility == "PRIVATE"'>
+                  Private
+                </option>
+                <option value="INTERNAL" :selected='model.draft.visibility == "INTERNAL"'>
+                  Internal
+                </option>
+                <option value="PUBLIC" :selected='model.draft.visibility == "PUBLIC"'>
+                  Public
+                </option>
+              </ui-select>
+            </ui-field>
+            <ui-field label="Content type">
+              <ui-select name="contentType">
+                <option value="GENERAL" :selected='model.draft.contentType == "GENERAL"'>
+                  General
+                </option>
+                <option
+                  value="SCRIPT_PROJECT"
+                  :selected='model.draft.contentType == "SCRIPT_PROJECT"'
+                >
+                  Script project
+                </option>
+                <option
+                  value="DOCUMENTATION"
+                  :selected='model.draft.contentType == "DOCUMENTATION"'
+                >
+                  Documentation
+                </option>
+                <option
+                  value="ANALYTIC_QUERY_PROJECT"
+                  :selected='model.draft.contentType == "ANALYTIC_QUERY_PROJECT"'
+                >
+                  Analytic query project
+                </option>
+                <option
+                  value="AGENT_PROJECT"
+                  :selected='model.draft.contentType == "AGENT_PROJECT"'
+                >
+                  Agent project
+                </option>
+                <option
+                  value="PIPELINE_PROJECT"
+                  :selected='model.draft.contentType == "PIPELINE_PROJECT"'
+                >
+                  Pipeline project
+                </option>
+              </ui-select>
+            </ui-field>
+            <ui-field label="Default branch">
+              <ui-input name="branch" type="text" mono :value="model.draft.branch" required />
+            </ui-field>
+            <ui-switch name="readme" :checked="model.draft.readme" label="Initialize with README" />
+            <details class="modal-options">
+              <ui-disclosure-heading>Initialization options</ui-disclosure-heading>
+              <ui-field label="Gitignore template">
+                <ui-select name="gitignore">
+                  <option value="">None</option>
+                  <option :selected='model.draft.gitignore == "Kotlin"'>Kotlin</option>
+                  <option :selected='model.draft.gitignore == "Java"'>Java</option>
+                  <option :selected='model.draft.gitignore == "Python"'>Python</option>
+                  <option :selected='model.draft.gitignore == "Node"'>Node</option>
+                </ui-select>
+              </ui-field>
+              <ui-field label="License">
+                <ui-select name="license">
+                  <option value="">None</option>
+                  <option :selected='model.draft.license == "MIT"'>MIT</option>
+                  <option :selected='model.draft.license == "Apache-2.0"'>Apache-2.0</option>
+                  <option :selected='model.draft.license == "BSD-3-Clause"'>BSD-3-Clause</option>
+                </ui-select>
+              </ui-field>
+            </details>
+          </div>
+          <footer class="modal-footer">
+            <ui-button type="button" ref="cancel">Cancel</ui-button>
+            <ui-button type="submit" primary>Create repository</ui-button>
+          </footer>
+        </form>
+      </ui-dialog>
+    </div>
+  </island>
+  <script client scoped>
+    import { suggestSlug } from "@client/slug";
+    suggestSlug(ctx);
+    ctx.onUpdate(() => {
+      const next =
+        ctx.root.querySelector<HTMLElement>("[data-next-href]")?.dataset.nextHref;
+      if (next) location.assign(next);
+    });
+  </script>
+</component>

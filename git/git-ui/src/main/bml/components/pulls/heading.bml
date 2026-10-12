@@ -1,0 +1,54 @@
+<component tag="git-pull-heading">
+  <prop name="page" type="bosca.git.ui.PullPage" required />
+  <ui-page-heading
+    :title='"#" + page.pull.number + " " + page.pull.title'
+    backHref="/pulls"
+    backLabel="Pull requests"
+  >
+    <ui-icon-link
+      icon="edit"
+      label="Review pull request"
+      :href='page.href + "&view=reviews&review=true"'
+    />
+  </ui-page-heading>
+  <p class="pull-identity">
+    <ui-badge
+      :tone='when (page.pull.status.name) { "OPEN", "MERGED" -> "success"; "CLOSED" -> "error"; else -> "neutral" }'
+    >
+      { page.pull.status.name.lowercase() }
+    </ui-badge>
+    <span>{ page.pull.sourceBranch + " → " + page.pull.targetBranch }</span>
+    <span class="muted">·</span>
+    <span>{ page.identity(page.pull.authorId) }</span>
+  </p>
+  <p class="muted pull-dates">
+    { "Created " + page.pull.created.take(10) + " · Updated " + page.pull.updated.take(10) }
+  </p>
+  <if page.pull.mergedAt != null>
+    <p>
+      Merged
+      { page.pull.mergedAt }
+      ·
+      { page.pull.mergeSha.orEmpty() }
+      ·
+      { page.pull.mergeStrategy }
+    </p>
+  </if>
+  <if page.pull.conflictingFiles.isNotEmpty()>
+    <ui-alert>Merge conflicts: { page.pull.conflictingFiles.joinToString(", ") }</ui-alert>
+  </if>
+  <style scoped>
+    .pull-identity {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 10px 0 4px;
+      color: var(--fg-1);
+    }
+    .pull-dates {
+      margin: 0 0 8px;
+      font-size: 12px;
+    }
+  </style>
+</component>

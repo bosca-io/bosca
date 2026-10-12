@@ -188,9 +188,16 @@ For one-shot source generation without an application lifecycle, use `bosca bml 
 ## Data via GraphQL
 
 All data is fetched through the **Bosca GraphQL API** — never direct Bosca services.
-The endpoint is configurable and the caller's token is forwarded (passthrough), so
-local dev can point at a remote Bosca and the same code runs unchanged once deployed.
-In a `<script server>` use the in-scope GraphQL client; islands call it client-side too.
+The default backend forwards the caller's token to a configurable HTTP endpoint. An embedded
+application can instead select a host backend with `BmlServer.withGraphQLBackend(...)` before
+installation. `LocalGraphQLBackend` runs the same operations through the host's `GraphQLService`
+and original `ServerCall`; the host supplies credential verification and installs its normal
+GraphQL and security routes. BML does not register HTTP/OAuth proxy routes in that mode.
+Pages, actions, fragments and contracts use the same `GraphQLClient` interface in either mode,
+and a host backend survives development reloads.
+
+In a `<script server>` use the in-scope GraphQL client. Islands use declarative actions that
+execute server code through the same backend. Browser SDK requests remain same-origin.
 When both `io.bosca.bml` and `io.bosca.graphql` are applied, the build generates Kotlin operations
 and browser TypeScript operations from the same `src/main/graphql` documents. Client modules import
 typed functions from `./graphql/<OperationName>`; `bmlBundleClient` orders generation before esbuild.

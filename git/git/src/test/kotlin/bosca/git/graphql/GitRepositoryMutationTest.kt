@@ -68,6 +68,7 @@ class GitRepositoryMutationTest {
     private val repo = Repository(id = id, slug = "r", name = "R", ownerId = UUID.random(), visibility = bosca.git.model.Visibility.PRIVATE)
 
     private fun repoFound() {
+        coEvery { branchProtectionService.findMatchingRule(any(), any()) } returns null
         coEvery { repositoryService.findById(id) } returns repo
         coEvery { repositoryService.findByIdIncludingDeleted(id) } returns repo
     }
@@ -926,4 +927,27 @@ class GitRepositoryMutationTest {
         assertTrue(json.contains("\"authorName\":\"n\""), json)
         assertTrue(GitMutation.toString().isNotEmpty())
     }
+    @Test
+    fun `direct file writes honor pull request protection and restricted push identities`() = runTest {
+        repoFound()
+        val principalId = principal()
+        val input = GraphQLCommitFileInput(id, "main", "a.txt", "new", "Edit", "Author", "author@example.test")
+        coEvery { branchProtectionService.findMatchingRule(id, "main") } returns BranchProtectionRule(repositoryId = id, pattern = "main", requirePullRequest = true)
+        assertFailsWith<IllegalStateException> { mutation.commitFile(auth, input) }
+        assertFailsWith<IllegalStateException> { mutation.deleteFile(auth, id, "main", "a.txt", "Author", "author@example.test") }
+        coVerify(exactly = 0) { writeService.commitFile(any(), any()) }
+        coVerify(exactly = 0) { writeService.deleteFile(any(), any()) }
+        coEvery { branchProtectionService.findMatchingRule(id, "main") } returns BranchProtectionRule(repositoryId = id, pattern = "main", restrictPushAccess = listOf(UUID.random()))
+        assertFailsWith<IllegalStateException> { mutation.commitFile(auth, input) }
+        assertFailsWith<IllegalStateException> { mutation.deleteFile(auth, id, "main", "a.txt", "Author", "author@example.test") }
+        coEvery { branchProtectionService.findMatchingRule(id, "main") } returns BranchProtectionRule(repositoryId = id, pattern = "main", restrictPushAccess = listOf(principalId))
+        mutation.commitFile(auth, input)
+        mutation.deleteFile(auth, id, "main", "a.txt", "Author", "author@example.test")
+        coVerify(exactly = 1) { writeService.commitFile(any(), principalId) }
+        coVerify(exactly = 1) { writeService.deleteFile(any(), principalId) }
+        coEvery { branchProtectionService.findMatchingRule(id, "main") } returns BranchProtectionRule(repositoryId = id, pattern = "main")
+        mutation.commitFile(auth, input)
+        mutation.deleteFile(auth, id, "main", "a.txt", "Author", "author@example.test")
+    }
+
 }

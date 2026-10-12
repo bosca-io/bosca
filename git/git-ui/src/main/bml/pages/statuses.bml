@@ -1,0 +1,12 @@
+<page route="/statuses" requireAuth>
+  <script server provides="page">
+    bosca.git.ui.explorePage("statuses")
+  </script>
+  <git-layout title="Commit statuses">
+    <ui-page>
+      <ui-page-heading title="Commit statuses" />
+      <git-explore-picker :page="page" />
+      <git-statuses-results :page="page" />
+    </ui-page>
+  </git-layout>
+</page>

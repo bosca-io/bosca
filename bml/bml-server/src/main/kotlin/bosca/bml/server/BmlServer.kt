@@ -1,6 +1,7 @@
 package bosca.bml.server
 
 import bosca.bml.render.BML_INSTALLATION_COOKIE
+import bosca.bml.graphql.GraphQLBackend
 import bosca.bml.graphql.GraphQLClientFactory
 import bosca.bml.i18n.toClientJson
 import bosca.bml.project.CompiledProject
@@ -40,9 +41,8 @@ import kotlin.time.Duration.Companion.milliseconds
  * The dedicated BML SSR server runs a lean
  * [BoscaApplication] over bosca-core's Netty engine without domain registrars.
  * Serves a [BmlRouteTable] (route -> page render fn) plus the project's
- * discovery files (sitemap/robots/llms). Data for pages is fetched via the Bosca
- * GraphQL API at a configurable endpoint; the caller's token is
- * forwarded (passthrough). Same code in dev and prod — only the endpoint differs.
+ * discovery files (sitemap/robots/llms). Data uses the same BML GraphQL client contract
+ * with either an HTTP endpoint or a host-provided in-process backend.
  */
 class BmlServer(
     project: CompiledProject,
@@ -220,7 +220,7 @@ class BmlServer(
                 .joinToString("\n")
                 .takeIf { it.isNotBlank() }
         },
-        val gqlFactory: GraphQLClientFactory? = graphqlEndpoint?.let(::GraphQLClientFactory),
+        val gqlBackend: GraphQLBackend? = graphqlEndpoint?.let(::GraphQLClientFactory),
         val contractsByName: Map<String, bosca.bml.render.BmlContractDispatcher> = contracts.associateBy { it.name },
     ) {
         init {
@@ -407,6 +407,7 @@ class BmlServer(
     private val reloadGeneration = MutableStateFlow(0L)
     private val registeredPageRoutes = ConcurrentHashMap.newKeySet<String>()
     @Volatile private var installedApplication: BoscaApplication? = null
+    private var hostGraphQLBackend: GraphQLBackend? = null
 
     /** Starts the server, or publishes this generation into the existing dev server. */
     fun start() {
@@ -457,8 +458,10 @@ class BmlServer(
         val replacementState = replacement.state.get()
         // Preserve the shared OkHttp connection pool when the endpoint is unchanged. Renderers
         // are generation-specific; the transport factory is framework state and need not churn.
-        val next = if (previous.graphqlEndpoint == replacementState.graphqlEndpoint) {
-            replacementState.copy(gqlFactory = previous.gqlFactory)
+        val next = if (hostGraphQLBackend != null) {
+            replacementState.copy(gqlBackend = hostGraphQLBackend)
+        } else if (previous.gqlBackend is GraphQLClientFactory && previous.graphqlEndpoint == replacementState.graphqlEndpoint) {
+            replacementState.copy(gqlBackend = previous.gqlBackend)
         } else {
             replacementState
         }
@@ -524,7 +527,7 @@ class BmlServer(
             )
             val errorSession = sessionForAlternatePage(current, call, errorPage, existingSession)
             val errorCtx = RenderContext(
-                gql = current.gqlFactory?.forToken(identity.token, identity.installationId, call.analyticsSessionId),
+                gql = current.gqlBackend?.forRequest(call, identity.token, identity.installationId, call.analyticsSessionId),
                 token = identity.token,
                 cookies = installationCookies(call.request.cookies.all, identity.installationId),
                 query = requestQuery(call.request),
@@ -705,7 +708,8 @@ class BmlServer(
                 resolveSharedLocale(current, call.request)
             }
             ctx = RenderContext(
-                gql = current.gqlFactory?.forToken(
+                gql = current.gqlBackend?.forRequest(
+                    call,
                     token,
                     installationId,
                     analyticsSessionId,
@@ -804,7 +808,7 @@ class BmlServer(
                 )
                 val notFoundSession = sessionForAlternatePage(current, call, notFoundPage, session)
                 val notFoundCtx = RenderContext(
-                    gql = current.gqlFactory?.forToken(identity.token, identity.installationId, call.analyticsSessionId),
+                    gql = current.gqlBackend?.forRequest(call, identity.token, identity.installationId, call.analyticsSessionId),
                     token = identity.token,
                     cookies = installationCookies(call.request.cookies.all, identity.installationId),
                     query = requestQuery(call.request),
@@ -833,12 +837,28 @@ class BmlServer(
         )
     }
 
+    /** Selects a host-provided backend before installation; the host owns GraphQL and OAuth routes. */
+    fun withGraphQLBackend(backend: GraphQLBackend): BmlServer = apply {
+        check(installedApplication == null) { "Select the GraphQL backend before installing BML" }
+        hostGraphQLBackend = backend
+        state.updateAndGet { it.copy(gqlBackend = backend) }
+    }
+
     fun install(application: BoscaApplication) {
         check(installedApplication == null) { "BML server is already installed" }
         installedApplication = application
         application.install(AnalyticsSessionIdGenerator())
         state.get().logSharedCacheRefusals()
         val router = application.router
+        if (hostGraphQLBackend != null) {
+            application.installHandler(bosca.server.middleware.HandlerMiddleware { call, next ->
+                if (call.request.path == "/graphql") {
+                    val current = state.get()
+                    current.gqlBackend?.prepareRequest(call, resolveInstallationId(call, current), call.analyticsSessionId)
+                }
+                next()
+            })
+        }
         // Keep the conventional discovery URLs ahead of parameterized application routes. An
         // exact BML /sitemap.xml page is intentionally delegated to, while the compiled discovery
         // document remains the fallback for sites that do not provide one.
@@ -960,7 +980,7 @@ class BmlServer(
                 }
                 val token = resolveToken(current, call.request)
                 val installationId = resolveInstallationId(call, current)
-                val gql = current.gqlFactory?.forToken(token, installationId, call.analyticsSessionId)
+                val gql = current.gqlBackend?.forRequest(call, token, installationId, call.analyticsSessionId)
                 // Ambient context for the implementation: contract bodies are site
                 // Kotlin like any loader, so currentRenderContext()/currentLocale() (and the
                 // localization helpers built on them) must work here too. The dispatcher keeps
@@ -987,11 +1007,12 @@ class BmlServer(
                 }
                 call.respondBytes(result.toByteArray(Charsets.UTF_8), ContentType.Application.Json)
         }
-        // Same-origin OAuth pass-through (the auth SDK's signInWithRedirect navigates to
-        // /oauth2/{provider}/login on THIS origin; the data plane answers with the provider
-        // redirect, which is relayed — never followed). Mirrors Studio's oauth2 dev proxy.
-        router.get("/oauth2/{provider}/login") {
-                val factory = state.get().gqlFactory
+        if (hostGraphQLBackend == null) {
+            // Same-origin OAuth pass-through (the auth SDK's signInWithRedirect navigates to
+            // /oauth2/{provider}/login on THIS origin; the data plane answers with the provider
+            // redirect, which is relayed — never followed). Mirrors Studio's oauth2 dev proxy.
+            router.get("/oauth2/{provider}/login") {
+                val factory = state.get().gqlBackend as? GraphQLClientFactory
                 if (factory == null) {
                     call.respond(bosca.server.HttpStatusCode.NotFound, "404 Not Found")
                     return@get
@@ -1011,13 +1032,13 @@ class BmlServer(
                     forwarded.contentType?.let { ContentType.parse(it) } ?: ContentType.Text.Plain,
                     bosca.server.HttpStatusCode.fromValue(forwarded.status),
                 )
-        }
-        // Account linking uses the same redirect relay, but forwards the current Bosca token so the
-        // data plane can bind the provider identity to the authenticated principal instead of signing
-        // into whichever account already owns that provider identity.
-        router.get("/oauth2/{provider}/connect") {
+            }
+            // Account linking uses the same redirect relay, but forwards the current Bosca token so the
+            // data plane can bind the provider identity to the authenticated principal instead of signing
+            // into whichever account already owns that provider identity.
+            router.get("/oauth2/{provider}/connect") {
                 val current = state.get()
-                val factory = current.gqlFactory
+                val factory = current.gqlBackend as? GraphQLClientFactory
                 if (factory == null) {
                     call.respond(bosca.server.HttpStatusCode.NotFound, "404 Not Found")
                     return@get
@@ -1037,14 +1058,14 @@ class BmlServer(
                     forwarded.contentType?.let { ContentType.parse(it) } ?: ContentType.Text.Plain,
                     bosca.server.HttpStatusCode.fromValue(forwarded.status),
                 )
-        }
-        // Same-origin GraphQL BFF proxy (the "BFF" half of the BML server): browser code POSTs GraphQL
-        // here instead of the (cross-origin) data plane, and the server forwards the body untouched
-        // with the caller's resolved token attached. Upstream status, JSON, and session cookies pass
-        // through as-is so auth mutations can create or clear browser sessions on the BML origin.
-        router.post("/graphql") {
+            }
+            // Same-origin GraphQL BFF proxy (the "BFF" half of the BML server): browser code POSTs GraphQL
+            // here instead of the (cross-origin) data plane, and the server forwards the body untouched
+            // with the caller's resolved token attached. Upstream status, JSON, and session cookies pass
+            // through as-is so auth mutations can create or clear browser sessions on the BML origin.
+            router.post("/graphql") {
                 val current = state.get()
-                val factory = current.gqlFactory
+                val factory = current.gqlBackend as? GraphQLClientFactory
                 if (factory == null) {
                     call.respond(bosca.server.HttpStatusCode.NotFound, "404 Not Found")
                     return@post
@@ -1070,6 +1091,7 @@ class BmlServer(
                     ContentType.Application.Json,
                     bosca.server.HttpStatusCode.fromValue(forwarded.status),
                 )
+            }
         }
         // Deferred island render: the cached page carries only a public descriptor and fallback.
         // This request resolves the caller's CURRENT identity, creates an isolated RenderContext,
@@ -1119,7 +1141,7 @@ class BmlServer(
                         acceptLanguage = call.request.acceptLanguage(),
                     )
                 val ctx = RenderContext(
-                    gql = current.gqlFactory?.forToken(token, installationId, call.existingAnalyticsSessionId),
+                    gql = current.gqlBackend?.forRequest(call, token, installationId, call.existingAnalyticsSessionId),
                     token = token,
                     params = pathParameters,
                     cookies = installationCookies(call.request.cookies.all, installationId),
@@ -1168,7 +1190,7 @@ class BmlServer(
                 val props = bosca.bml.render.propsFromJson(call.request.bodyText())
                 val installationId = resolveInstallationId(call, current)
                 val ctx = RenderContext( // TODO: several of these things could be computed in the RenderContext
-                    gql = current.gqlFactory?.forToken(token, installationId, call.analyticsSessionId),
+                    gql = current.gqlBackend?.forRequest(call, token, installationId, call.analyticsSessionId),
                     token = token,
                     cookies = installationCookies(call.request.cookies.all, installationId),
                     // The browser sends the page's selected locale as ?lang, which takes precedence
@@ -1270,7 +1292,7 @@ class BmlServer(
                         acceptLanguage = call.request.acceptLanguage(),
                     )
                 val ctx = RenderContext(
-                    gql = current.gqlFactory?.forToken(token, installationId, call.analyticsSessionId),
+                    gql = current.gqlBackend?.forRequest(call, token, installationId, call.analyticsSessionId),
                     token = token,
                     params = pathParameters,
                     cookies = installationCookies(call.request.cookies.all, installationId),

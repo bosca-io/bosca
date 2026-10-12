@@ -184,6 +184,19 @@ class GraphQLServiceExecutionTest {
             ),
         )
         assertEquals(
+            "local",
+            value(
+                service.execute(
+                    call,
+                    GraphQLRequest(
+                        query = "query Echo(\$value: String) { echo(value: \$value) }",
+                        operationName = "Echo",
+                        variables = buildJsonObject { put("value", "local") },
+                    ),
+                ).jsonObject,
+            ),
+        )
+        assertEquals(
             "direct",
             value(
                 service.execute(

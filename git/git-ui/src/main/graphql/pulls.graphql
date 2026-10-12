@@ -1,0 +1,260 @@
+query GitUiPullList($status: GitPullRequestStatus, $offset: Long!) {
+  git {
+    allPullRequests(status: $status, offset: $offset, limit: 50) {
+      id
+      repositoryId
+      number
+      title
+      description
+      status
+      sourceBranch
+      targetBranch
+      authorId
+      mergeable
+      created
+      updated
+    }
+  }
+}
+query GitUiRepositoryPullList(
+  $repo: UUID!
+  $status: GitPullRequestStatus
+  $offset: Long!
+) {
+  git {
+    pullRequests(
+      repositoryId: $repo
+      status: $status
+      offset: $offset
+      limit: 50
+    ) {
+      id
+      repositoryId
+      number
+      title
+      description
+      status
+      sourceBranch
+      targetBranch
+      authorId
+      mergeable
+      created
+      updated
+    }
+  }
+}
+query GitUiPull($repo: UUID!, $number: Int!, $lines: Int!) {
+  git {
+    pullRequest(repositoryId: $repo, number: $number) {
+      id
+      repositoryId
+      number
+      title
+      description
+      status
+      sourceBranch
+      targetBranch
+      authorId
+      mergeable
+      created
+      updated
+      sourceRepositoryId
+      mergeStrategy
+      mergedBy
+      mergedAt
+      mergeSha
+      conflictingFiles
+      assignees {
+        id
+        name
+        slug
+      }
+      dependencies {
+        id
+        repositoryId
+        number
+        title
+        status
+      }
+      dependents {
+        id
+        repositoryId
+        number
+        title
+        status
+      }
+      reviews {
+        id
+        reviewerId
+        status
+        body
+        created
+        dismissedAt
+        dismissReason
+        comments {
+          id
+          authorId
+          content
+          filePath
+          oldLineNumber
+          newLineNumber
+          commitSha
+          outdated
+          resolved
+          created
+          updated
+        }
+      }
+      diff {
+        oldPath
+        newPath
+        changeType
+        hunks {
+          oldStart
+          oldCount
+          newStart
+          newCount
+          totalLineCount
+          lines(limit: $lines) {
+            content
+            type
+            oldLineNumber
+            newLineNumber
+          }
+        }
+      }
+    }
+  }
+}
+query GitUiMergePlan($id: UUID!) {
+  git {
+    pullRequestMergePlan(id: $id) {
+      id
+      repositoryId
+      number
+      title
+      status
+      mergeable
+    }
+  }
+}
+mutation GitUiCreatePull($input: CreateGitPullRequestInput!) {
+  git {
+    createPullRequest(input: $input) {
+      id
+      repositoryId
+      number
+    }
+  }
+}
+mutation GitUiMergePull($id: UUID!, $strategy: GitMergeStrategy!) {
+  git {
+    mergePullRequest(id: $id, strategy: $strategy) {
+      id
+      status
+    }
+  }
+}
+mutation GitUiMergePullDependencies($id: UUID!, $strategy: GitMergeStrategy!) {
+  git {
+    mergePullRequestWithDependencies(id: $id, strategy: $strategy) {
+      id
+      status
+    }
+  }
+}
+mutation GitUiClosePull($id: UUID!) {
+  git {
+    closePullRequest(id: $id) {
+      id
+      status
+    }
+  }
+}
+mutation GitUiReopenPull($id: UUID!) {
+  git {
+    reopenPullRequest(id: $id) {
+      id
+      status
+    }
+  }
+}
+mutation GitUiReadyPull($id: UUID!) {
+  git {
+    markPullRequestReady(id: $id) {
+      id
+      status
+    }
+  }
+}
+mutation GitUiReview($input: SubmitGitReviewInput!) {
+  git {
+    submitReview(input: $input) {
+      id
+    }
+  }
+}
+mutation GitUiReviewComment($input: AddGitReviewCommentInput!) {
+  git {
+    addReviewComment(input: $input) {
+      id
+    }
+  }
+}
+mutation GitUiResolveThread($id: UUID!, $file: String!, $line: Int!) {
+  git {
+    resolveReviewThread(pullRequestId: $id, filePath: $file, lineNumber: $line)
+  }
+}
+mutation GitUiAssignPull($id: UUID!, $profile: UUID!) {
+  git {
+    assignPullRequest(id: $id, profileId: $profile) {
+      id
+    }
+  }
+}
+mutation GitUiUnassignPull($id: UUID!, $profile: UUID!) {
+  git {
+    unassignPullRequest(id: $id, profileId: $profile) {
+      id
+    }
+  }
+}
+mutation GitUiAddPullDependency($id: UUID!, $dependency: UUID!) {
+  git {
+    addPullRequestDependency(id: $id, dependencyId: $dependency) {
+      id
+    }
+  }
+}
+mutation GitUiRemovePullDependency($id: UUID!, $dependency: UUID!) {
+  git {
+    removePullRequestDependency(id: $id, dependencyId: $dependency) {
+      id
+    }
+  }
+}
+query GitUiPullDiffPage($repo: UUID!, $number: Int!, $offset: Int!) {
+  git {
+    pullRequest(repositoryId: $repo, number: $number) {
+      diff {
+        oldPath
+        newPath
+        changeType
+        hunks {
+          oldStart
+          oldCount
+          newStart
+          newCount
+          totalLineCount
+          lines(offset: $offset, limit: 2000) {
+            content
+            type
+            oldLineNumber
+            newLineNumber
+          }
+        }
+      }
+    }
+  }
+}

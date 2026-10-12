@@ -1,0 +1,39 @@
+<component tag="git-repository-settings">
+  <prop name="page" type="bosca.git.ui.RepositorySettingsPage" required />
+  <div class="settings-stack">
+    <ui-tabs label="Repository settings" :items="page.tabs" />
+    <if !page.repository.canManage>
+      <ui-alert>The required repository permission is not granted.</ui-alert>
+    <else-if page.panel == "metadata">
+      <git-repository-metadata :page="page" />
+    <else-if page.panel == "webhooks">
+      <git-repository-webhooks :page="page" />
+    <else-if page.panel == "protection">
+      <git-repository-protection :page="page" />
+    <else-if page.panel == "permissions">
+      <git-repository-permissions :page="page" />
+    <else>
+      <git-repository-utilities :page="page" />
+    </if>
+    <if page.repository.canManage && page.panel == "metadata">
+      <a
+        class="sync-link"
+        :href='"/repositories/" + bosca.git.ui.encode(page.repository.id) + "/github"'
+      >
+        <ui-icon name="refresh" :size="14" />
+        GitHub synchronization
+        <ui-icon name="external" :size="12" />
+      </a>
+    </if>
+  </div>
+  <style scoped>
+    .sync-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--fg-2);
+      font-size: 12px;
+      align-self: flex-start;
+    }
+  </style>
+</component>

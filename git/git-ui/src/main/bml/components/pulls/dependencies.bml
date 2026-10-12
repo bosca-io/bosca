@@ -1,0 +1,104 @@
+<component tag="git-pull-dependencies">
+  <prop name="page" type="bosca.git.ui.PullPage" required />
+  <script server provides="model">
+    bosca.git.ui.PullActionsModel(page)
+  </script>
+  <island name="git-pull-dependencies" :key="page.pull.id">
+    <section :data-next-href="model.nextHref">
+      <h2>Dependencies</h2>
+      <if model.page.pull.dependencies.isEmpty()>
+        <p class="muted">No dependencies.</p>
+      </if>
+      <if model.message.isNotBlank()>
+        <ui-alert>{ model.message }</ui-alert>
+      </if>
+      <for pull in model.page.pull.dependencies>
+        <form class="toolbar" @submit="model.dependency(pull.id, true, ctx)">
+          <a :href="bosca.git.ui.pullHref(pull.id, pull.repositoryId, pull.number)">
+            #
+            { pull.number }
+            { pull.title }
+          </a>
+          <ui-badge>{ pull.status }</ui-badge>
+          <if model.page.canEdit>
+            <ui-button type="submit">Remove dependency</ui-button>
+          </if>
+        </form>
+      </for>
+      <if model.page.canEdit>
+        <ui-dialog
+          title="Add dependency"
+          triggerLabel="Add dependency"
+          icon="plus"
+          :forceOpen="model.failed"
+        >
+          <form class="modal-form" @submit="model.dependency(form.dependency, false, ctx)">
+            <div class="modal-fields">
+              <if model.message.isNotBlank()>
+                <ui-alert>{ model.message }</ui-alert>
+              </if>
+              <ui-field label="Pull request">
+                <ui-select searchable name="dependency">
+                  <if model.candidates.isEmpty()>
+                    <option value="">No open pull requests</option>
+                  </if>
+                  <for pull in model.candidates>
+                    <option :value="pull.id">
+                      #
+                      { pull.number }
+                      { pull.title }
+                      ·
+                      { pull.repository }
+                      ·
+                      { pull.status }
+                    </option>
+                  </for>
+                </ui-select>
+              </ui-field>
+              <nav class="toolbar">
+                <if model.candidateOffset != 0L>
+                  <ui-button @click="model.loadCandidates(model.candidateOffset - 50, ctx)">
+                    Previous candidates
+                  </ui-button>
+                </if>
+                <if model.candidateHasNext>
+                  <ui-button @click="model.loadCandidates(model.candidateOffset + 50, ctx)">
+                    Next candidates
+                  </ui-button>
+                </if>
+              </nav>
+            </div>
+            <footer class="modal-footer">
+              <ui-button ref="cancel">Cancel</ui-button>
+              <ui-button type="submit" primary :disabled="model.candidates.isEmpty()">
+                Add dependency
+              </ui-button>
+            </footer>
+          </form>
+        </ui-dialog>
+      </if>
+      <h3>Dependents</h3>
+      <if model.page.pull.dependents.isEmpty()>
+        <p class="muted">No dependents.</p>
+      </if>
+      <for pull in model.page.pull.dependents>
+        <p>
+          <a :href="bosca.git.ui.pullHref(pull.id, pull.repositoryId, pull.number)">
+            #
+            { pull.number }
+            { pull.title }
+          </a>
+          ·
+          { pull.status }
+        </p>
+      </for>
+    </section>
+  </island>
+  <script client scoped>
+    ctx.onUpdate(() => {
+      const next =
+        ctx.root.querySelector<HTMLElement>("[data-next-href]")?.dataset.nextHref;
+      if (next) location.assign(next);
+    });
+  </script>
+</component>

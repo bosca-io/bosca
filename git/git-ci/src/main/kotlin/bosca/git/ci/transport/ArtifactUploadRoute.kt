@@ -18,7 +18,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 @RouteController(
-    path = "/ci/artifacts/{repositoryId}/{runId}/{name}",
+    path = "/ci/artifacts/{repositoryId}/{runId}/{name...}",
     method = RouteMethod.PUT,
     authentication = RouteAuthentication.REQUIRED
 )
@@ -39,6 +39,7 @@ class ArtifactUploadRoute(
         permissionEvaluator.verifyAllowed(authenticationContext, repository, PermissionAction.EDIT)
 
         val run = runService.findById(runId) ?: return call.respond(HttpStatusCode.NotFound)
+        if (run.repositoryId != repositoryId) return call.respond(HttpStatusCode.NotFound)
 
         val tempFile = withContext(Dispatchers.IO) {
             File.createTempFile("ci-artifact-", ".tar.gz")

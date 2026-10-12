@@ -1,0 +1,26 @@
+<component tag="ui-alert">
+  <prop name="ref" type="String" default="" />
+  <prop name="hidden" type="Boolean" default="false" />
+  <prop name="tone" type="String" default="error" />
+  <script server provides="attrs">
+    props.filterKeys { it !in setOf("ref", "hidden", "tone", "__bmlAttrs") }
+  </script>
+  <p
+    class="alert"
+    role="alert"
+    :data-tone="tone"
+    :ref="ref.takeIf(String::isNotBlank)"
+    :hidden="hidden"
+    {...attrs}
+  >
+    <slot />
+  </p>
+  <style scoped>
+    .alert {
+      color: var(--error-fg);
+    }
+    .alert[data-tone="success"] {
+      color: var(--ok);
+    }
+  </style>
+</component>

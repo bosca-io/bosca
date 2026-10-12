@@ -73,6 +73,8 @@ type GitRepository {
     "The intended content classification."
     contentType: GitRepositoryContentType
     "Whether the current caller may execute builds in this repository."
+    canEdit: Boolean!
+    canManage: Boolean!
     canExecute: Boolean!
     "Total storage consumed in bytes."
     diskSizeBytes: Long!
