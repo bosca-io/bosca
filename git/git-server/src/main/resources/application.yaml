@@ -15,16 +15,22 @@ database:
     maxConnections: "${DATABASE_MAX_CONNECTIONS:20}"
 
 cache:
-  type: nats
+  type: "$CACHE_TYPE:nats"
 
 jobQueue:
-  factory: nats
+  factory: "$JOB_QUEUE_FACTORY:nats"
 
 pubsub:
-  type: nats
+  type: "$PUBSUB_TYPE:nats"
 
 distributedLock:
-  type: nats
+  type: "$DISTRIBUTED_LOCK_TYPE:nats"
+
+redis:
+  host: "$REDIS_HOST:localhost"
+  port: ${REDIS_PORT:6380}
+  database: ${REDIS_DATABASE:0}
+  namespace: "$REDIS_NAMESPACE:"
 
 nats:
   url: "$NATS_HOST:localhost:4222"
@@ -33,7 +39,7 @@ nats:
   password: "$NATS_PASSWORD:"
 
 counter:
-  type: nats
+  type: "$COUNTER_TYPE:nats"
 
 jwt:
   domain: "$JWT_DOMAIN:localhost"

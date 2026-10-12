@@ -12,6 +12,7 @@ Top-level directories share this Git repository. This file covers workspace-wide
 - Use Bosca Work Ops for specifications and planning when that integration is available, and keep the work item current.
 - Preserve unrelated changes. Check workspace Git status before and after editing.
 - Do not commit, push, switch branches, or rewrite history unless the user explicitly requests it.
+- Agents are not responsible parties, they are tools that responsible parties use. Never list an agent or model as a Git author, co-author, or committer, or add attribution trailers crediting an agent (such as `Co-Authored-By`). Only the human working on the project may be the committer; use that human's Git identity for explicitly authorized commits.
 - Keep changes in the directory that owns the code. Cross-module source changes belong in their respective component directories and are tracked by the same repository.
 - Never edit or commit generated output such as `build/`, `.gradle/`, `.nuxt/`, `.output/`, or `build/generated/ksp/`.
 - Finish all in-scope implementation and validation. Do not leave avoidable stubs, TODOs, or known failures.

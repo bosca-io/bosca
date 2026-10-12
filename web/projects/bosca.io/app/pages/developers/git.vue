@@ -1,19 +1,27 @@
 <script setup lang="ts">
-useSeoMeta({ title: 'Bosca Git' })
+definePageMeta({ layout: 'developers' })
+
+useSeoMeta({
+  title: 'Bosca Git',
+  description: 'Host repositories, manage pull requests, and connect versioned source files to scripts and analytics queries.'
+})
 </script>
 
 <template>
   <div class="doc-content article">
     <h1>Bosca Git</h1>
     <p class="subtitle">
-      A full, self-hosted Git server with Object Storage, PostgreSQL refs, pull requests, branch protection, CI/CD pipelines — and the source of truth for scripts and analytics queries.
+      Host repositories, manage pull requests, and connect versioned source files to scripts and analytics queries.
     </p>
 
     <h2 id="overview">
       Overview
     </h2>
     <p>
-      Bosca Git is a <strong>complete, self-hosted Git server</strong> — not a wrapper around any external hosting service. It implements the <strong>Git smart HTTP protocol</strong> natively using <strong>JGit</strong>, stores pack files in <strong>S3-compatible object storage</strong>, and keeps ref metadata in <strong>PostgreSQL</strong>. This makes the server completely stateless — multiple pods can serve the same repositories concurrently.
+      Bosca Git serves the <strong>Git smart HTTP protocol</strong> using <strong>JGit</strong>.
+      Pack files live in S3-compatible object storage; refs and pack metadata live in PostgreSQL.
+      The dedicated Git server handles clone, fetch, and push requests, while the platform API exposes
+      repository management through GraphQL.
     </p>
 
     <h2 id="protocol">
@@ -27,9 +35,21 @@ git push origin main
 git fetch --all`"
     />
     <p>
-      All I/O is <strong>fully streamed</strong> — pack files are piped directly between Netty and JGit without memory buffering. Authentication uses bearer tokens; scoped API tokens require <code>git:read</code> / <code>git:write</code> scopes.
+      Private repositories require authentication and repository permissions. Scoped API tokens use
+      <code>git:read</code> for reads and <code>git:write</code> for writes.
+      For a signed-in CLI account, <code>bosca git clone</code> provisions a Git credential and configures
+      the Bosca credential helper:
     </p>
 
+    <CodeBlock
+      lang="bash"
+      :code="`bosca --profile local git clone http://bosca.localhost:8091/OWNER/REPOSITORY.git`"
+    />
+    <p>
+      Create the repository in Studio first and use its displayed clone URL in place of the example.
+      The CLI requires Git on your PATH. Later plain <code>git push</code> and <code>git fetch</code>
+      operations use the configured credential helper.
+    </p>
     <h2 id="content-types">
       Repository Content Types
     </h2>
@@ -75,28 +95,25 @@ git fetch --all`"
     <CodeBlock
       lang="graphql"
       title="Link a script to a Git file"
-      :code="`mutation {
-    git {
-        setScriptSourceRef(
-            scriptId: &quot;script-uuid&quot;
-            repositoryId: &quot;repo-uuid&quot;
-            path: &quot;scripts/my-script/source.bosca.kts&quot;
-            ref: &quot;refs/heads/main&quot;
-        )
+      :code="`mutation LinkScript($scriptId: UUID!, $repositoryId: UUID!, $path: String!, $ref: String!) {
+  git {
+    setScriptSourceRef(scriptId: $scriptId, repositoryId: $repositoryId, path: $path, ref: $ref) {
+      scriptId repositoryId path ref
     }
+  }
 }`"
     />
-    <p>When a push lands on the linked branch and the file has changed:</p>
-    <ol>
-      <li>The <strong>ContentChangeWatcher</strong> job detects the changed file</li>
-      <li>Reads the blob content at the new commit SHA via JGit DFS</li>
-      <li>Updates the script source in the scripting engine's database</li>
-      <li>Dispatches a <code>ScriptSourceUpdatedEvent</code> for cache invalidation</li>
-    </ol>
+    <p>
+      Supply an existing script ID and repository ID, a file path such as
+      <code>scripts/example/source.bosca.kts</code>, and a full ref such as
+      <code>refs/heads/main</code>. With the runner's Git listeners enabled, pushes enqueue source-sync
+      jobs. They find linked files changed on the selected ref, read the blobs from Git, and update
+      the stored script source and version.
+    </p>
     <p>The same flow works for <strong>analytics queries</strong> via <code>setQuerySourceRef</code> — SQL files stored in Git are synced to the analytics query store on push.</p>
 
     <Callout type="tip">
-      This means you can version-control your scripts and queries in Git, review changes via pull requests, and have them automatically deployed to the platform on merge.
+      This means you can version-control your scripts and queries in Git, review changes via pull requests, and update linked platform source when the selected ref changes. Keep the runner and Git listeners running for synchronization.
     </Callout>
 
     <h2 id="pull-requests">
@@ -149,7 +166,7 @@ git fetch --all`"
       <li><strong>Agent modes</strong>: runner (executes jobs) and orchestrator (manages ephemeral VMs)</li>
       <li><strong>Concurrency groups</strong> to prevent conflicting runs</li>
       <li><strong>Per-repository secrets</strong> (encrypted at rest)</li>
-      <li><strong>Step-level logs</strong> with streaming via the CLI (<code>bosca ci run logs --follow</code>)</li>
+      <li><strong>Step-level logs</strong> with streaming via the CLI (<code>bosca ci run logs --step-id STEP_UUID --run-id RUN_UUID --follow</code>)</li>
     </ul>
 
     <h2 id="webhooks">
@@ -162,14 +179,15 @@ git fetch --all`"
     <h2 id="storage">
       Storage Architecture
     </h2>
-    <p>The server is stateless — Git object bytes and ref metadata are split between two backends:</p>
+    <p>Repository data is split between two backends:</p>
     <ul>
       <li><strong>Object data (packs, LFS objects)</strong> — streamed to and from S3-compatible object storage.</li>
       <li><strong>Refs and pack metadata</strong> — kept in PostgreSQL so any server pod can resolve refs without local disk.</li>
     </ul>
     <p>
-      This means clones, fetches, and pushes scale horizontally: multiple pods can serve the
-      same repositories concurrently, and adding capacity is a matter of running more pods.
+      Git server instances use the shared database and object storage rather than a local repository
+      directory. Keep those backing services available and use matching authentication and storage
+      configuration across instances.
     </p>
 
     <h2 id="graphql">
@@ -178,19 +196,19 @@ git fetch --all`"
     <p>The full Git API is available via GraphQL:</p>
     <CodeBlock
       lang="graphql"
-      :code="`query {
-    git {
-        repositories { id slug visibility defaultBranch }
-        tree(repositoryId: &quot;uuid&quot;, ref: &quot;main&quot;, path: &quot;/&quot;) {
-            entries { name type size }
-        }
-        commits(repositoryId: &quot;uuid&quot;, ref: &quot;main&quot;, limit: 10) {
-            sha message author { name email } date
-        }
-        pullRequests(repositoryId: &quot;uuid&quot;, state: OPEN) {
-            number title sourceBranch targetBranch
-        }
+      :code="`query RepositoryDetails($repositoryId: UUID!, $ref: String!) {
+  git {
+    repositories { id slug visibility defaultBranch }
+    tree(repositoryId: $repositoryId, ref: $ref, path: &quot;&quot;) {
+      name type size
     }
+    commits(repositoryId: $repositoryId, ref: $ref, limit: 10) {
+      sha message authorName authorEmail authorDate
+    }
+    pullRequests(repositoryId: $repositoryId, status: OPEN, offset: 0, limit: 10) {
+      number title sourceBranch targetBranch
+    }
+  }
 }`"
     />
   </div>

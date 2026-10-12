@@ -4,6 +4,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
+import java.net.URI
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
@@ -32,7 +33,8 @@ data class SwarmConfig(
 
 /**
  * Nightly off-VM backup with restic: PostgreSQL dumps of every site database plus the S3 objects, NATS
- * JetStream data, Caddy certificates and rendered configuration. A blank [repository] disables it.
+ * JetStream data, Redis data when used for jobs or counters, Caddy certificates and rendered configuration.
+ * A blank [repository] disables it.
  */
 @Serializable data class SwarmBackup(
     /** restic repository, for example `s3:https://sfo3.digitaloceanspaces.com/my-bucket/bosca`. */
@@ -79,6 +81,16 @@ data class SwarmConfig(
     val mailFromName: String,
     val mailFromEmail: String,
     val redisDatabase: Int,
+    /** Cache backend: `nats` or `redis`. */
+    val cacheBackend: String = "nats",
+    /** Pub/sub backend: `nats` or `redis`. */
+    val pubsubBackend: String = "nats",
+    /** Job queue backend: `nats` or `redis`. */
+    val jobQueueBackend: String = "nats",
+    /** Distributed lock backend: `nats` or `redis`. */
+    val distributedLockBackend: String = "nats",
+    /** Counter backend: `nats` or `redis`. */
+    val counterBackend: String = "nats",
     val bmlArtifactsUrl: String = "SET_URL",
     val bmlArtifactsToken: String = "SET_TOKEN",
     val secrets: SwarmSiteSecrets = SwarmSiteSecrets(),
@@ -87,6 +99,8 @@ data class SwarmConfig(
     val ml: SwarmSiteMl = SwarmSiteMl(),
     /** Optional Google sign-in client; blank values leave Google sign-in unconfigured. */
     val google: SwarmSiteGoogle = SwarmSiteGoogle(),
+    /** Allowed sign-in redirect URLs; null keeps application defaults, and an empty list disables redirects. */
+    val oauthRedirects: List<String>? = null,
     /** Optional website image for the root and www hosts; it listens on [rootPort]. */
     val rootImage: String = "",
     val rootPort: Int = 3000,
@@ -299,6 +313,13 @@ internal fun SwarmConfig.validate(deploy: Boolean = false) {
         require(idPattern.matches(site.id) && site.id !in setOf("infra", "edge")) { "Invalid site id: ${site.id}" }
         require(site.hosts.all.all(domainPattern::matches)) { "Invalid domain for ${site.id}" }
         require(site.redisDatabase in 1..15) { "Redis database must be between 1 and 15 for ${site.id}" }
+        mapOf(
+            "cacheBackend" to site.cacheBackend, "pubsubBackend" to site.pubsubBackend,
+            "jobQueueBackend" to site.jobQueueBackend, "distributedLockBackend" to site.distributedLockBackend,
+            "counterBackend" to site.counterBackend,
+        ).forEach { (setting, backend) ->
+            require(backend in setOf("nats", "redis")) { "$setting for ${site.id} must be nats or redis" }
+        }
         require(site.rootPort in 1..65535) { "Invalid rootPort for ${site.id}" }
         require(site.rootEnv.keys.all { it.matches(Regex("[A-Za-z_][A-Za-z0-9_]*")) }) {
             "Invalid rootEnv variable name for ${site.id}"
@@ -344,6 +365,9 @@ internal fun SwarmConfig.validate(deploy: Boolean = false) {
             site.google.clientId.isBlank() == site.google.clientSecret.isBlank()) {
             "Set both or neither of google.clientId and google.clientSecret for ${site.id}"
         }
+        require(site.oauthRedirects.orEmpty().all(::validRedirectUrl)) {
+            "oauthRedirects for ${site.id} must contain absolute HTTP or HTTPS URLs without credentials"
+        }
         if (deploy) {
             require(site.hosts.all.none { it.endsWith(".invalid") }) { "Replace example domains for ${site.id}" }
             require(!site.bmlArtifactsUrl.startsWith("SET_")) { "Set bmlArtifactsUrl for ${site.id}" }
@@ -384,6 +408,14 @@ private val REMOTE_BACKENDS = listOf("s3:", "b2:", "azure:", "gs:", "sftp:", "re
 private val HEX_COLOR = Regex("^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$")
 
 private fun singleLine(value: String) = !value.contains('\n') && !value.contains('\r')
+
+private fun validRedirectUrl(value: String): Boolean = try {
+    val uri = URI(value)
+    value == value.trim() && singleLine(value) && uri.scheme in setOf("http", "https") &&
+        uri.host != null && uri.rawUserInfo == null && (uri.port == -1 || uri.port in 1..65535)
+} catch (_: java.net.URISyntaxException) {
+    false
+}
 
 /**
  * Writes [value] to [path] with owner-only permissions. The content goes to a temporary file created

@@ -62,7 +62,7 @@ If a provider firewall is active, allow Swarm traffic between the VMs there as w
 
 ## Services and isolation
 
-One shared PostgreSQL with pgvector provides separate operational and warehouse databases and roles per site. As in the Kubernetes deployment, the Bosca services connect through PgBouncer in transaction mode (up to 1000 client connections, 25 server connections per database and role), so their connection pools cannot exhaust the shared server; PostgreSQL's connection limit is sized from the number of sites. Trino connects to PostgreSQL directly. PgBouncer logs in to PostgreSQL as the connecting role, so each site still reaches only its own databases. Shared NATS has an account per site. Redis uses distinct logical databases and key namespaces. Meilisearch uses per-site index prefixes. S3Proxy uses separate content and warehouse buckets. Trino has per-site catalogs and file access rules. Image processing and the text-embeddings service are shared; embeddings carry no site data. Each site runs its own Bosca server, runner, Git server, analytics collector, artifacts server, Studio, Profiles, Notifications, BML message server, recommendation trainer, model loader, and TensorFlow Serving. Caddy routes by hostname.
+One shared PostgreSQL with pgvector provides separate operational and warehouse databases and roles per site. As in the Kubernetes deployment, the Bosca services connect through PgBouncer in transaction mode (up to 1000 client connections, 25 server connections per database and role), so their connection pools cannot exhaust the shared server; PostgreSQL's connection limit is sized from the number of sites. Trino connects to PostgreSQL directly. PgBouncer logs in to PostgreSQL as the connecting role, so each site still reaches only its own databases. Shared NATS has an account per site. Redis uses distinct logical databases and Pub/Sub namespaces. Each site selects NATS or Redis independently for caches, pub/sub, job queues, locks, and counters (see [Backend selection](#backend-selection)). Meilisearch uses per-site index prefixes. S3Proxy uses separate content and warehouse buckets. Trino has per-site catalogs and file access rules. Image processing and the text-embeddings service are shared; embeddings carry no site data. Each site runs its own Bosca server, runner, Git server, analytics collector, artifacts server, Studio, Profiles, Notifications, BML message server, recommendation trainer, model loader, and TensorFlow Serving. Caddy routes by hostname.
 
 The manager runs the stateful services: PostgreSQL, PgBouncer, NATS, Redis, Meilisearch, S3Proxy, Trino, Caddy and the backups. Application services run on the workers with memory limits but no CPU caps, allowing CPU overprovisioning. The first worker also holds each site's recommendation-model volume, shared by its model loader and TensorFlow Serving. Workers must be x86_64: the embeddings and TensorFlow Serving images are published for amd64 only. Every service rotates its logs (three 10 MB files). Services with a health check restart when it fails, and stateless application services start their replacement before stopping the old task and roll back when it does not become healthy.
 
@@ -90,6 +90,61 @@ Studio remains the application origin for administration and the collaborative e
 
 The manager holds the stateful bind mounts, so this initial two-VM arrangement has one stateful failure point; configure [backups](#backups) and keep a copy of the private CLI configuration elsewhere. A two-manager arrangement is not a failover pair because Swarm needs a manager majority. Both site stacks and shared services are operated under one trust boundary: S3Proxy and Meilisearch still use shared root credentials, and Trino's internal HTTP user names are not authentication. The catalog rules prevent accidental cross-site queries, but are not an independent security boundary against a compromised container.
 
+## Backend selection
+
+Choose `nats` or `redis` independently for each site's infrastructure backends in `swarm.local.json`. For Redis caching with NATS pub/sub:
+
+```json
+"cacheBackend": "redis",
+"pubsubBackend": "nats",
+"jobQueueBackend": "nats",
+"distributedLockBackend": "nats",
+"counterBackend": "nats"
+```
+
+Every setting defaults to `nats`. Each selection applies consistently across the site's server, runner, Git server, analytics collector, and artifacts server, while different sites can have different selections:
+
+| Site setting | Application environment |
+| --- | --- |
+| `cacheBackend` | `CACHE_TYPE` |
+| `pubsubBackend` | `PUBSUB_TYPE` |
+| `jobQueueBackend` | `JOB_QUEUE_FACTORY` |
+| `distributedLockBackend` | `DISTRIBUTED_LOCK_TYPE` |
+| `counterBackend` | `COUNTER_TYPE` |
+
+Redis keeps the site's existing `redisDatabase` and Pub/Sub namespace; NATS uses its existing account. Use images built with these configuration changes, including the Git server's selectable pub/sub binding and the collector's Redis connection settings.
+
+Both infrastructure services stay deployed. Chat and collaboration use NATS directly, the analytics event pipeline stores and consumes batches through NATS JetStream, and Studio uses Redis for editor collaboration. Backups include Redis data whenever a site uses Redis for job queues or counters.
+
+For a new installation, choose the backends before the first `bosca swarm deploy`. To change an existing site's selections in either direction:
+
+1. Pause incoming writes and CI agents for the site. When changing `jobQueueBackend`, also stop scheduling new work and finish or explicitly resolve its queued, running, and suspended jobs on the current backend.
+2. Stop the site's Bosca processes together on the manager to keep their backend selections consistent during the change. For a site named `site1`:
+
+   ```bash
+   sudo docker service scale site1_server=0 site1_runner=0 site1_git=0 site1_collector=0 site1_artifacts=0
+   ```
+
+3. Change the desired site settings, review `bosca swarm render --config ./swarm.local.json`, and run `bosca swarm deploy --config ./swarm.local.json`. Resume traffic and CI agents after readiness checks pass.
+
+Changing a setting does not copy its queued jobs, cached entries, or counter values between backends. Changing only `cacheBackend` leaves jobs, pub/sub, locks, and counters on their selected backends; caches populate as the site serves requests again. The broker data directories remain in place.
+
+## OAuth redirects
+
+Set each site's `oauthRedirects` to the URLs users may return to after sign-in:
+
+```json
+"oauthRedirects": [
+  "https://studio.example.com",
+  "https://profiles.example.com",
+  "https://www.example.com"
+]
+```
+
+The server checks the destination's origin (scheme, host, and port), so paths on an allowed origin are also accepted. Use HTTP URLs for local development when needed. Omitting the setting or using `null` keeps the existing defaults: `https://studio.<domain>` and `http://localhost:3000`. A configured list replaces those defaults, and `[]` disables redirects. Include Studio in the list if users should return there after sign-in.
+
+Run `bosca swarm render --config ./swarm.local.json` to review the generated stack, then `bosca swarm deploy --config ./swarm.local.json` to apply it. For an explicit list, the CLI generates `config/sites/<site>/server.yaml` and `runner.yaml` with the standard `oauth2.redirects` YAML list, mounts each file as a Swarm config, and starts the application with `-config=/config/application.yaml`. All other settings come from the application defaults bundled with the CLI; use server and runner images built from the corresponding workspace revision. Omitting the list uses the images' packaged application configuration. Google and Facebook provider callback URLs remain `https://<domain>/oauth2/<provider>/callback`.
+
 ## Recommendations and embeddings
 
 Embeddings are enabled: the server and runner use the shared text-embeddings service (EmbeddingGemma through Text Embeddings Inference, as in the Kubernetes deployment). Recommendation training runs on each site's trainer service instead of Kubernetes Jobs. Bosca starts a training run for a model version in the background and polls it, so a long run holds no request open.
@@ -100,11 +155,11 @@ When a site's `rootRegistryAuth.username` is `api_token` and its password is bla
 
 ## Backups
 
-With `backup.repository` set, the deployment runs two services on the manager. At `backup.hour` (UTC) `backup-dump` writes a `pg_dump` of every site database and the PostgreSQL roles to `<dataRoot>/backups`. Thirty minutes later `backup` takes an encrypted restic snapshot of those dumps, the S3 objects, NATS data, Meilisearch's daily snapshots, Caddy certificates and the rendered configuration, then prunes to `backup.keepDaily`, `keepWeekly` and `keepMonthly` snapshots. A snapshot also runs at start-up when the last success is more than a day old. `bosca swarm status` shows the last successful and failed backup. NATS data is copied while NATS is running. Redis holds caches and is not backed up.
+With `backup.repository` set, the deployment runs two services on the manager. At `backup.hour` (UTC) `backup-dump` writes a `pg_dump` of every site database and the PostgreSQL roles to `<dataRoot>/backups`. Thirty minutes later `backup` takes an encrypted restic snapshot of those dumps, the S3 objects, NATS data, Meilisearch's daily snapshots, Caddy certificates and the rendered configuration, then prunes to `backup.keepDaily`, `keepWeekly` and `keepMonthly` snapshots. It also includes Redis data when any site uses Redis for job queues or counters. A snapshot runs at start-up when the last success is more than a day old. `bosca swarm status` shows the last successful and failed backup. NATS and selected Redis data are copied while those services are running.
 
 To run a backup now, run the scripts on the manager: `sudo docker exec $(sudo docker ps -q --filter label=com.docker.swarm.service.name=infra_backup-dump) /bin/sh /scripts/backup-dump.sh once`, then the same with `infra_backup` and `/scripts/backup.sh once`.
 
-To restore, use restic with the same repository, `secrets.backupPassword` and credentials: `restic snapshots`, then `restic restore latest --target <directory>`. Load each database with `pg_restore --no-owner -d <database> <directory>/data/postgres-dumps/postgres/<database>.dump` after recreating it with the bootstrap, and copy the S3, NATS and Caddy directories back into the data root with the services stopped. Test a restore before relying on the installation.
+To restore, use restic with the same repository, `secrets.backupPassword` and credentials: `restic snapshots`, then `restic restore latest --target <directory>`. Load each database with `pg_restore --no-owner -d <database> <directory>/data/postgres-dumps/postgres/<database>.dump` after recreating it with the bootstrap, and copy the S3, NATS, any included Redis, and Caddy directories back into the data root with the services stopped. Test a restore before relying on the installation.
 
 ## Mail and checks
 

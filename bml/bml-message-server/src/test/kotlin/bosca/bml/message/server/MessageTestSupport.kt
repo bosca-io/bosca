@@ -257,7 +257,7 @@ fun buildTrackedJar(): ByteArray = buildJarFromSources(
     "tracked",
     mapOf(
         "messages/promo.bml" to """<message key="promo"><email><subject>Promo</subject>""" +
-            """<p><a href="https://example.com/course?id=7">Open the course</a></p>""" +
+            """<p><a :href='"https://example.com/course?id=7&lesson=3"'>Open the course</a></p>""" +
             """<p><a href="{ message.unsubscribeUrl }">Unsubscribe</a></p></email></message>""",
     ),
 )

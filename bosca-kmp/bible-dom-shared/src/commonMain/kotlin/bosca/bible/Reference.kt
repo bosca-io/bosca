@@ -88,15 +88,12 @@ data class Reference(val usfm: String) {
                     references.add(reference)
                 }
             }
+            // Verses of the same book and chapter join into one reference; anything else stays apart.
             val joinedReferences = mutableMapOf<String, String>()
             for (reference in references) {
-                var usfms = joinedReferences[reference.chapter]
-                if (usfms == null) {
-                    usfms = reference.usfm
-                } else {
-                    usfms += '+' + reference.usfm
-                }
-                joinedReferences[reference.chapter] = usfms
+                val key = reference.chapterUsfm.ifEmpty { reference.usfm }
+                val usfms = joinedReferences[key]
+                joinedReferences[key] = if (usfms == null) reference.usfm else usfms + '+' + reference.usfm
             }
             val finalReferences = mutableListOf<Reference>()
             for (usfm in joinedReferences.values) {
@@ -105,30 +102,44 @@ data class Reference(val usfm: String) {
             return finalReferences
         }
 
-        private fun parseSingle(bible: IBible, human: String): Reference? {
-            val humanLower = human.lowercase()
-            var book: IBook? = null
-            var nonBook: String? = null
-            for (b in bible.books) {
-                if (humanLower.indexOf(b.name.long.lowercase()) == 0) {
-                    book = b
-                    nonBook = humanLower.substring(b.name.long.length).trim()
-                } else if (humanLower.indexOf(b.name.short.lowercase()) == 0) {
-                    book = b
-                    nonBook = humanLower.substring(b.name.short.length).trim()
-                } else if (humanLower.indexOf(b.name.abbreviation.lowercase()) == 0) {
-                    book = b
-                    nonBook = humanLower.substring(b.name.abbreviation.length).trim()
+        /**
+         * The book a reference starts with: the longest of every book's names that begins the text and
+         * ends where a word ends, so "Judges 5" isn't taken for Jude's "Jud" and "Psst" isn't "Ps". A
+         * plural name ("Psalms") also matches as a singular ("Psalm 23"). Ties go to the earlier book.
+         *
+         * @param humanLower The reference, lowercased.
+         * @param books Each book with its names.
+         * @return The book and how many characters of the text its name took, or null when none matches.
+         */
+        fun <T> matchBook(humanLower: String, books: List<Pair<T, List<String>>>): Pair<T, Int>? {
+            var best: Pair<T, Int>? = null
+            for ((book, names) in books) {
+                for (name in names) {
+                    val lower = name.lowercase().trim()
+                    if (lower.isEmpty()) continue
+                    val forms = if (lower.length > 3 && lower.endsWith('s')) listOf(lower, lower.dropLast(1)) else listOf(lower)
+                    for (form in forms) {
+                        if (!humanLower.startsWith(form)) continue
+                        val endsAtWord = humanLower.length == form.length || !humanLower[form.length].isLetter()
+                        if (endsAtWord && form.length > (best?.second ?: 0)) {
+                            best = book to form.length
+                        }
+                    }
                 }
             }
-            if (book == null || nonBook == null) {
-                return null
-            }
+            return best
+        }
+
+        private fun parseSingle(bible: IBible, human: String): Reference? {
+            val humanLower = human.lowercase()
+            val (book, nameLength) = matchBook(humanLower, bible.books.map { it to listOf(it.name.long, it.name.short, it.name.abbreviation) })
+                ?: return null
+            val nonBook = humanLower.substring(nameLength).trim()
             if (nonBook.isEmpty()) {
                 return Reference(book.reference.usfm)
             }
             val numberParts = nonBook.split(':').toMutableList()
-            val chapter = book.chapters.find({ it.reference.number.lowercase() === numberParts[0].lowercase() })
+            val chapter = book.chapters.find { it.reference.chapter.lowercase() == numberParts[0].trim().lowercase() }
             if (chapter == null) {
                 return book.reference
             }

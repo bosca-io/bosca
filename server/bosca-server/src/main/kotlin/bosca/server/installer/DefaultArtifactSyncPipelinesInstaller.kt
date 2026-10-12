@@ -2,6 +2,10 @@ package bosca.server.installer
 
 import bosca.artifacts.model.ArtifactSyncTarget
 import bosca.artifacts.model.ArtifactTagPublished
+import bosca.artifacts.model.ArtifactCompleted
+import bosca.artifacts.model.ArtifactPublicationTarget
+import bosca.artifacts.pipeline.ArtifactPublicationGetDestinations
+import bosca.artifacts.pipeline.ArtifactPublicationNode
 import bosca.artifacts.pipeline.ArtifactSyncGetDestinations
 import bosca.artifacts.pipeline.ArtifactSyncNode
 import bosca.artifacts.service.ArtifactSyncService
@@ -16,9 +20,9 @@ import bosca.pipelines.node.OutputNode
 import bosca.pipelines.service.PipelineService
 import bosca.serialization.UUID
 
-/** Seeds editable Docker sync pipelines once, preserving existing operator graphs on reinstall. */
+/** Seeds editable Docker and raw artifact sync pipelines, preserving operator graphs on reinstall. */
 class DefaultArtifactSyncPipelinesInstaller(private val pipelines: PipelineService) : PackageInstaller {
-    override val version = "1.0.0"
+    override val version = "1.1.0"
 
     override suspend fun install(installation: PackageInstallation, version: PackageInstallationVersion) {
         val existing = pipelines.getAll().associateBy { it.name }
@@ -35,8 +39,7 @@ class DefaultArtifactSyncPipelinesInstaller(private val pipelines: PipelineServi
                 PipelineEdge("sync-output", "sync", "output"),
             ),
         ))
-        if (TRIGGER_NAME in existing) return
-        save(Pipeline(
+        if (TRIGGER_NAME !in existing) save(Pipeline(
             id = UUID.NIL, name = TRIGGER_NAME,
             description = "Sync published Docker tags to enabled artifact destinations. Edit or disable this pipeline to change syncing.",
             acceptedInputType = ArtifactTagPublished::class.qualifiedName.orEmpty(), triggered = true,
@@ -44,6 +47,34 @@ class DefaultArtifactSyncPipelinesInstaller(private val pipelines: PipelineServi
                 InputNode("input", acceptedType = ArtifactTagPublished::class.qualifiedName.orEmpty()),
                 ArtifactSyncGetDestinations("destinations"),
                 ForEach("each", pipelineId = body.id, continueOnError = true), OutputNode("output"),
+            ),
+            edges = listOf(
+                PipelineEdge("input-destinations", "input", "destinations", targetPort = "artifact"),
+                PipelineEdge("destinations-each", "destinations", "each"),
+                PipelineEdge("each-output", "each", "output"),
+            ),
+        ))
+        val publicationBody = existing[PUBLICATION_BODY_NAME] ?: save(Pipeline(
+            id = UUID.NIL, name = PUBLICATION_BODY_NAME,
+            description = "Publish one completed raw artifact version to its configured GitHub release destination.",
+            acceptedInputType = ArtifactPublicationTarget::class.qualifiedName.orEmpty(),
+            nodes = listOf(
+                InputNode("input", acceptedType = ArtifactPublicationTarget::class.qualifiedName.orEmpty()),
+                ArtifactPublicationNode("publish"), OutputNode("output"),
+            ),
+            edges = listOf(
+                PipelineEdge("input-publish", "input", "publish", targetPort = "target"),
+                PipelineEdge("publish-output", "publish", "output"),
+            ),
+        ))
+        if (PUBLICATION_TRIGGER_NAME !in existing) save(Pipeline(
+            id = UUID.NIL, name = PUBLICATION_TRIGGER_NAME,
+            description = "Publish completed raw artifact versions to enabled GitHub release destinations. Edit or disable this pipeline to change syncing.",
+            acceptedInputType = ArtifactCompleted::class.qualifiedName.orEmpty(), triggered = true,
+            nodes = listOf(
+                InputNode("input", acceptedType = ArtifactCompleted::class.qualifiedName.orEmpty()),
+                ArtifactPublicationGetDestinations("destinations"),
+                ForEach("each", pipelineId = publicationBody.id, continueOnError = true), OutputNode("output"),
             ),
             edges = listOf(
                 PipelineEdge("input-destinations", "input", "destinations", targetPort = "artifact"),
@@ -63,5 +94,7 @@ class DefaultArtifactSyncPipelinesInstaller(private val pipelines: PipelineServi
         const val NAME = "default-artifact-sync-pipelines"
         const val BODY_NAME = ArtifactSyncService.PUSH_PIPELINE_NAME
         const val TRIGGER_NAME = "Sync Published Docker Tags to GHCR"
+        const val PUBLICATION_BODY_NAME = "Publish Raw Artifact to GitHub"
+        const val PUBLICATION_TRIGGER_NAME = "Sync Completed Raw Artifacts to GitHub"
     }
 }
