@@ -57,6 +57,7 @@ class BibleRouteVersionTest {
         provides<bosca.content.metadata.routes.GetBible> { mockk() }
         provides<bosca.content.metadata.routes.Download> { mockk() }
         provides<GetBibleBookChapterV2> { mockk() }
+        provides<GetBibleAudio> { mockk() }
         application.configureContentRoutes()
 
         val paths = listOf(
@@ -79,5 +80,7 @@ class BibleRouteVersionTest {
         assertTrue(chapterV2 in registered)
         assertNotNull(application.router.resolve(HttpMethod.Get,
             "/api/v2/content/metadata/bible/00000000-0000-0000-0000-000000000001/books/GEN/chapter/GEN.1"))
+        assertTrue("/api/v1/content/metadata/bible/audio" in registered)
+        assertNotNull(application.router.resolve(HttpMethod.Get, "/api/v1/content/metadata/bible/audio"))
     }
 }

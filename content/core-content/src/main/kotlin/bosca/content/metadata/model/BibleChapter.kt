@@ -39,6 +39,8 @@ data class BibleChapter(
     @Transient @ColumnName("fums_token") val fumsToken: String? = null,
     @Transient @Contextual val created: OffsetDateTime? = null,
     @Contextual val expires: OffsetDateTime? = null,
+    @Transient @property:DbMapper(JsonbMapper::class)
+    val audio: List<BibleChapterAudio>? = null,
 ) {
 
     fun getChapterComponents() = components?.let {

@@ -10,5 +10,6 @@ class BibleProvidersMigration : Migration {
 
     override val resources: List<String> = listOf(
         "V1__bible_providers.sql",
+        "V2__bible_source_metadata_deletion.sql",
     )
 }

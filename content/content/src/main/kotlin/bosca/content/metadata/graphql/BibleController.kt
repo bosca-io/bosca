@@ -82,6 +82,17 @@ class BibleController(
     suspend fun books(bible: Bible) = bibleService.getBooks(bible)
 
     @Field
+    suspend fun audio(bible: Bible) = bibleService.getAudio(bible)
+
+    @Field
+    suspend fun audioChapter(authentication: AuthenticationContext?, bible: Bible, audioId: bosca.serialization.UUID, usfm: String): bosca.bible.IBibleAudioChapter {
+        val metadata = metadataService.getById(bible.metadataId)?.takeUnless { it.deleted }
+            ?: throw NoSuchElementException("Bible metadata was not found")
+        metadataPermissionEvaluator.verifyContentAllowed(authentication, metadata, PermissionAction.VIEW)
+        return bibleService.getAudioChapter(bible, audioId, usfm)
+    }
+
+    @Field
     suspend fun chapter(bible: Bible, usfm: String): BibleBookChapter? {
         val reference = Reference(usfm)
         val book = bibleService.getBooks(bible).firstOrNull { it.usfm == reference.bookUsfm } ?: return null

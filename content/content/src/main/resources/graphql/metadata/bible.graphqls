@@ -24,6 +24,10 @@ type Bible {
     abbreviationLocal: String!
     "All books contained in this Bible translation"
     books: [BibleBook!]!
+    "Recordings attached to this exact Bible variant; listing does not download media"
+    audio: [BibleAudio!]!
+    "Authorized chapter recording with its attribution and timing; media is downloaded on demand"
+    audioChapter(audioId: UUID!, usfm: String!): BibleAudioChapter!
     "Human-readable description of this Bible translation"
     description: String!
     "Languages available for this Bible translation"
@@ -36,6 +40,38 @@ type Bible {
     book(usfm: String!): BibleBook
     "Search for scripture by a human-readable reference string (e.g. 'Genesis 1:1' or 'John 3:16-18'). Returns matching books, chapters, and verse ranges."
     find(human: String!): [FindBibleResult!]!
+}
+
+"An attached recording; listing it does not download audio"
+type BibleAudio {
+    id: UUID!
+    name: String!
+    nameLocal: String!
+    abbreviation: String!
+    attribution: BibleAttribution!
+}
+
+"A chapter recording served through an authorized Bosca route"
+type BibleAudioChapter {
+    audio: BibleAudio!
+    usfm: String!
+    url: String!
+    content: BibleAudioContent!
+    attribution: BibleAttribution!
+}
+
+"Format, byte length and verse timing of a downloaded recording"
+type BibleAudioContent {
+    contentType: String!
+    contentLength: Long!
+    timecodes: [BibleAudioTimecode!]!
+}
+
+"A verse's start and end offsets in seconds within a chapter recording"
+type BibleAudioTimecode {
+    usfm: String!
+    start: Float!
+    end: Float!
 }
 
 "A book within a Bible translation, such as Genesis or Matthew"

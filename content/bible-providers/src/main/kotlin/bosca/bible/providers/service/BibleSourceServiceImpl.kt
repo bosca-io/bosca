@@ -1,6 +1,7 @@
 package bosca.bible.providers.service
 
 import bosca.bible.BibleContentUse
+import bosca.bible.BibleAudioContent
 import bosca.bible.Chapter
 import bosca.bible.providers.model.BibleProviderResponse
 import bosca.bible.providers.model.BibleProviderSettings
@@ -16,6 +17,7 @@ import bosca.serialization.UUID
 import bosca.service.annotation.ServiceImplementation
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
+import java.io.OutputStream
 
 @ServiceImplementation
 class BibleSourceServiceImpl(
@@ -73,6 +75,10 @@ class BibleSourceServiceImpl(
 
     override suspend fun getChapter(source: BibleSource, usfm: String): BibleProviderResponse<Chapter> =
         provide<BibleProvider>(source.provider).getChapter(source.configurationId, source.providerBibleId, usfm)
+            .asSerializable { it.asSerializable() }
+
+    override suspend fun downloadAudioChapter(source: BibleSource, usfm: String, destination: OutputStream): BibleProviderResponse<BibleAudioContent> =
+        provide<BibleProvider>(source.provider).downloadAudioChapter(source.configurationId, source.providerBibleId, usfm, destination)
             .asSerializable { it.asSerializable() }
 
     override suspend fun update(source: BibleSource): BibleSource =

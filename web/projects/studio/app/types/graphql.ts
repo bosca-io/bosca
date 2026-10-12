@@ -2401,6 +2401,10 @@ export type Bible = {
   abbreviation: Scalars['String']['output'];
   /** Short abbreviation of the Bible translation in its native language */
   abbreviationLocal: Scalars['String']['output'];
+  /** Recordings attached to this exact Bible variant; listing does not download media */
+  audio: Array<BibleAudio>;
+  /** Authorized chapter recording with its attribution and timing; media is downloaded on demand */
+  audioChapter: BibleAudioChapter;
   /** Look up a specific book by its USFM reference (e.g. 'GEN' for Genesis) */
   book?: Maybe<BibleBook>;
   /** All books contained in this Bible translation */
@@ -2433,6 +2437,13 @@ export type Bible = {
   variants: Array<Bible>;
   /** Content version containing this Bible variant */
   version: Scalars['Int']['output'];
+};
+
+
+/** A Bible translation or version available in the system, containing books, chapters, and verses with rendering metadata for scripture display */
+export type Bible_AudioChapterArgs = {
+  audioId: Scalars['UUID']['input'];
+  usfm: Scalars['String']['input'];
 };
 
 
@@ -2475,6 +2486,32 @@ export type BibleAudio = {
   id: Scalars['UUID']['output'];
   name: Scalars['String']['output'];
   nameLocal: Scalars['String']['output'];
+};
+
+/** A chapter recording served through an authorized Bosca route */
+export type BibleAudioChapter = {
+  __typename?: 'BibleAudioChapter';
+  attribution: BibleAttribution;
+  audio: BibleAudio;
+  content: BibleAudioContent;
+  url: Scalars['String']['output'];
+  usfm: Scalars['String']['output'];
+};
+
+/** Format, byte length and verse timing of a downloaded recording */
+export type BibleAudioContent = {
+  __typename?: 'BibleAudioContent';
+  contentLength: Scalars['Long']['output'];
+  contentType: Scalars['String']['output'];
+  timecodes: Array<BibleAudioTimecode>;
+};
+
+/** A verse's start and end offsets in seconds within a chapter recording */
+export type BibleAudioTimecode = {
+  __typename?: 'BibleAudioTimecode';
+  end: Scalars['Float']['output'];
+  start: Scalars['Float']['output'];
+  usfm: Scalars['String']['output'];
 };
 
 /** A book within a Bible translation, such as Genesis or Matthew */

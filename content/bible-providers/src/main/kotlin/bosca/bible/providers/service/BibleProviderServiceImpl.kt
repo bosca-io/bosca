@@ -152,8 +152,7 @@ class BibleProviderServiceImpl(
     }
 
     override suspend fun getFumsToken(bibleId: UUID, version: Int, variant: String, usfm: String, audioId: Uuid?): String? {
-        // Text response tokens cannot identify an audio response; recordings have no cached responses yet.
-        if (audioId != null) return null
+        if (audioId != null) return bibles.getAudioFumsToken(bibleId, version, variant, usfm, audioId)
         return bibles.getFumsToken(bibleId, version, variant, usfm)
     }
 

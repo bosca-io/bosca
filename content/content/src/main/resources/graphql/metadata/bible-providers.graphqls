@@ -72,15 +72,6 @@ type BibleSource {
     modified: DateTime!
 }
 
-"An attached recording; listing it does not download audio"
-type BibleAudio {
-    id: UUID!
-    name: String!
-    nameLocal: String!
-    abbreviation: String!
-    attribution: BibleAttribution!
-}
-
 input AddProviderBibleInput {
     configurationId: UUID!
     providerBibleId: String!

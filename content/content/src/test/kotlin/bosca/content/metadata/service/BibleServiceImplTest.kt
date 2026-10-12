@@ -34,6 +34,9 @@ class BibleServiceImplTest {
             bibleLanguageRepository,
             sources,
             mockk(relaxed = true),
+            mockk(relaxed = true),
+            kotlinx.serialization.json.Json,
+            mockk(relaxed = true),
         )
     }
 

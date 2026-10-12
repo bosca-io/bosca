@@ -1,11 +1,13 @@
 package bosca.bible.providers.service
 
 import bosca.bible.BibleContentUse
+import bosca.bible.BibleAudioContent
 import bosca.bible.Chapter
 import bosca.bible.providers.model.BibleProviderResponse
 import bosca.bible.providers.model.BibleSource
 import bosca.serialization.UUID
 import bosca.service.Service
+import java.io.OutputStream
 
 /** Manages provider integrations attached to existing Bosca Bible variants. */
 interface BibleSourceService : Service {
@@ -30,6 +32,9 @@ interface BibleSourceService : Service {
 
     /** Fetches a chapter from a source checked with [getForUse]; does not store chapter data. */
     suspend fun getChapter(source: BibleSource, usfm: String): BibleProviderResponse<Chapter>
+
+    /** Downloads a recording from a source checked with [getForUse]; the caller owns [destination]. */
+    suspend fun downloadAudioChapter(source: BibleSource, usfm: String, destination: OutputStream): BibleProviderResponse<BibleAudioContent>
 
     /** Updates descriptions at [BibleSource.version], preserving identity and reviewed uses. */
     suspend fun update(source: BibleSource): BibleSource

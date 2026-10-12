@@ -2022,6 +2022,14 @@ type Bible {
   abbreviation: String!
   """Short abbreviation of the Bible translation in its native language"""
   abbreviationLocal: String!
+  """
+  Recordings attached to this exact Bible variant; listing does not download media
+  """
+  audio: [BibleAudio!]!
+  """
+  Authorized chapter recording with its attribution and timing; media is downloaded on demand
+  """
+  audioChapter(audioId: UUID!, usfm: String!): BibleAudioChapter!
   """Look up a specific book by its USFM reference (e.g. 'GEN' for Genesis)"""
   book(usfm: String!): BibleBook
   """All books contained in this Bible translation"""
@@ -2086,6 +2094,29 @@ type BibleAudio {
   id: UUID!
   name: String!
   nameLocal: String!
+}
+
+"""A chapter recording served through an authorized Bosca route"""
+type BibleAudioChapter {
+  attribution: BibleAttribution!
+  audio: BibleAudio!
+  content: BibleAudioContent!
+  url: String!
+  usfm: String!
+}
+
+"""Format, byte length and verse timing of a downloaded recording"""
+type BibleAudioContent {
+  contentLength: Long!
+  contentType: String!
+  timecodes: [BibleAudioTimecode!]!
+}
+
+"""A verse's start and end offsets in seconds within a chapter recording"""
+type BibleAudioTimecode {
+  end: Float!
+  start: Float!
+  usfm: String!
 }
 
 """A book within a Bible translation, such as Genesis or Matthew"""

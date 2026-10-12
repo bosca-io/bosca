@@ -1,6 +1,8 @@
 package bosca.content.metadata.service
 
 import bosca.bible.BibleContentUse
+import bosca.bible.IBibleAudio
+import bosca.bible.IBibleAudioChapter
 import bosca.bible.IBibleChapterContent
 import bosca.bible.Reference
 import bosca.content.metadata.model.Bible
@@ -126,10 +128,10 @@ interface BibleService : Service {
     /** Attaches an external text source to the existing chapters of an exact Bible variant. */
     suspend fun setChapterSource(id: UUID, version: Int, variant: String, sourceId: UUID)
 
-    /** Clears retained provider text and private response metadata, preserving chapter references. */
+    /** Clears retained text or recordings and private response metadata, preserving chapter references; media deletion is queued. */
     suspend fun clearChapterContent(sourceId: UUID): Int
 
-    /** Clears expired provider responses without changing locally imported chapters. */
+    /** Clears expired provider text and recordings without changing locally imported chapters; media deletion is queued. */
     suspend fun removeExpiredChapterContent(): Int
 
     /**
@@ -140,6 +142,27 @@ interface BibleService : Service {
 
     /** Reads a private token from an unexpired provider response without fetching chapter text. */
     suspend fun getFumsToken(id: UUID, version: Int, variant: String, usfm: String): String?
+
+    /** Lists recordings attached to this exact Bible variant without downloading chapter media. */
+    suspend fun getAudio(bible: Bible): List<IBibleAudio>
+
+    /** Reads a chapter recording with playback permission, attribution, timing and an absolute Bosca playback URL. */
+    suspend fun getAudioChapter(bible: Bible, audioId: UUID, usfm: String): IBibleAudioChapter
+
+    /**
+     * Resolves a recording with playback permission. Its metadata and streams refer to the same file.
+     * Open and close its streams within the current authorized request.
+     */
+    suspend fun getAudioPlayback(bible: Bible, audioId: UUID, usfm: String): BibleAudioPlayback
+
+    /** Reads an unexpired recording response's private usage token without downloading media. */
+    suspend fun getAudioFumsToken(id: UUID, version: Int, variant: String, usfm: String, audioId: UUID): String?
+
+    /** Trims one upstream recording to 50 retained files across configurations, keeping newest responses first. */
+    suspend fun limitAudioChapterContent(provider: String, providerBibleId: String): Int
+
+    /** Clears recordings for every version of metadata before its owning content is deleted; media deletion is queued. */
+    suspend fun clearAudioChapterContent(id: UUID): Int
 
     /**
      * Converts a structured Scripture reference into a short human-readable citation string
