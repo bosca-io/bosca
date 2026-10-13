@@ -52,6 +52,9 @@ data:
     cache:
       type: nats
 
+    eventProcessing:
+      fumsEnabled: ${FUMS_TRANSFORM_ENABLED:{{ .Values.appConfig.fumsTransformEnabled }}}
+
     jobQueue:
       factory: nats
 

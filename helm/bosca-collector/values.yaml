@@ -50,6 +50,8 @@ podDisruptionBudget:
   minAvailable: 1
 
 appConfig:
+  # Includes FUMS enqueueing in this application's Analytics transform list.
+  fumsTransformEnabled: true
   domain: ""
   realm: ""
   databaseUrl: ""
