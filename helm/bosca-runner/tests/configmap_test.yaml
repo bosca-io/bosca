@@ -54,6 +54,12 @@ tests:
           path: data["application.yaml"]
           pattern: "feedsQueueRunner"
 
+  - it: enables the FUMS queue runner
+    asserts:
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: '(?m)^\s*- fumsQueueRunner$'
+
   - it: disables ecommerce by default
     asserts:
       - matchRegex:

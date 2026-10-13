@@ -58,6 +58,7 @@ appConfig:
     - communityRunner
     - commonQueueRunner
     - analyticsQueueRunner
+    - fumsQueueRunner
     - backupQueueRunner
     - segmentationQueueRunner
     - scriptingQueueRunner
