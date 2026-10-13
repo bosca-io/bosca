@@ -87,6 +87,7 @@ class GitUiRoutesTest {
     @Test
     fun `repository browsing preserves and encodes refs and file paths`() {
         val response = get("/repositories/repo?ref=feature%2Fone&path=docs")
+        assertTrue("2 commits · 2 branches · 1 tag · 1 contributor" in response.body(), response.body())
         assertEquals(200, response.statusCode(), response.body())
         assertTrue(
             "ref=feature%2Fone&amp;path=docs&amp;file=docs%2Fa%20%23%20b.txt" in response.body(),
@@ -761,6 +762,17 @@ class GitUiRoutesTest {
         assertTrue("/owner/repo/raw/abc/images/logo.png" in page.body(), page.body())
         assertEquals(404, get("/pulls/other?repo=repo&number=1").statusCode())
         assertEquals(404, get("/pulls/pull").statusCode())
+    }
+
+    @Test
+    fun `empty added files render a clear notice instead of an empty diff hunk`() {
+        val response = get("/pulls/pull-empty?repo=repo&number=6&view=files")
+        assertEquals(200, response.statusCode(), response.body())
+        assertTrue("Test/.gitkeep" in response.body(), response.body())
+        assertTrue("Empty file added." in response.body(), response.body())
+        assertTrue("diff-sidebar" in response.body(), response.body())
+        assertFalse("diff-hunk-heading" in response.body(), response.body())
+        assertFalse("Comment on line" in response.body(), response.body())
     }
 
     @Test

@@ -437,3 +437,41 @@ GIT_UI_BASE_URL=http://localhost:<fixture-port> \
 ```
 
 Final build output is in `/tmp/git-pr-last-check.log`; full-suite and final PR/matrix logs and captures are in `/tmp/git-pr-complete-browser*` and `/tmp/git-pr-verified-browser*`. The repository-label correction was then verified with the same 63-test check and a focused four-width PR browser run in `/tmp/git-pr-label-browser*`. All isolated fixtures and browsers were stopped. This revision changes Git UI and its specifications only. No production BML, GraphQL, authentication or API code changed. Browser mutations use isolated fixtures; real Git/backend merge execution and native packaging were not rerun for this presentation change. Earlier replacement-acceptance gates remain open. Restart Git Server to load the rebuilt UI at `http://localhost:8093`.
+
+## 2026-10-12 compact pull-request header
+
+Commit `877bb4c2` records the PR-page improvements above. The subsequent header adjustment removes the separate desktop timestamp row. Author/branch context and dates share a centerline, with timestamps right-aligned beneath the header action. At phone width they wrap with a 6px gap. Titles and branch chips retain readable wrapping for longer content.
+
+`:git:git-ui:check` and Git-server `installDist` passed, including all **63 JVM tests** with no failures, errors or skips, TypeScript checking, schema contracts and BML compilation. The focused PR browser module passed at **1920, 1440, 1024 and 390px**, including its existing lifecycle/merge/comment interactions and new header measurements. Regular desktop headers measured **85.546875px** high at all three desktop widths; context/date centers and timestamp/header right edges had **0px** deviation. Phone metadata measured the intended **6px** gap. Short and long title/branch captures were inspected, and the long-content check found no document/header overflow. No browser runtime exceptions were observed.
+
+Build output is `/tmp/git-pr-header-check.log`; browser output, screenshots and `pull-header-layout.json` are in `/tmp/git-pr-header-browser*`. The browser used an isolated fixture. The full screen matrix and native/backend execution tests were not repeated for this scoped header change. The fixture and browser were stopped; `git diff --check` passed.
+
+## 2026-10-12 compact repository header and workspace spacing
+
+The repository header now lives in `git-repository-heading`, composing the shared heading, branch picker, PR creation and clone controls. Description and stats share a desktop row, with stats aligned beneath the controls. Phones stack that metadata. Count labels now distinguish one commit, branch, tag or contributor from plural counts.
+
+Baseline browser measurements found the branch controls **11px above** the title center and a **16px** gap before the summary. The intended global compact-gap rule lost to the page component's scoped styles. The page now owns an explicit `compact` option; the heading owns an opt-in title-aligned action layout. Repository pages select both contracts. Other page/header defaults retain their layouts.
+
+Measured validation passed:
+
+- `:git:git-ui:check` and Git-server `installDist`: **63 JVM tests**, no failures/errors/skips, TypeScript, schema contracts and compiled BML assets. The repository route regression now checks singular and plural stat labels; its first run caught an incorrect branch plural, which was corrected with explicit forms before final validation.
+- Desktop headers measured **79px**, down from **89px**, at 1920, 1440 and 1024px. Title/control centers now have **0px** deviation. Tabs start **18px higher** on desktop; header-to-tab spacing is **12px** and repository page gaps are **8px**. Description and stats share a centerline, with stats at the header's right edge. Desktop and phone captures were inspected.
+- The complete isolated browser suite passed: authentication, repository file/keyboard navigation, ref and clone controls, editor writes/drafts, Markdown assets, PR interactions, search, and **220 route/viewport cases** with no document overflow or browser runtime exceptions. Repository-header checks run across the repository tabs and empty views. Pipeline triggers/live logs and agent drafts also passed.
+- Empty and long files at 1440 and 1024px now have a **625.25px** CodeMirror editor inside a **672.25px** surface, **34px taller** than the preceding measured layout. Line gutters, internal scrolling, flat surfaces and viewport fit remain verified.
+
+Build output is `/tmp/git-repository-header-check-final.log`; browser output and screen-matrix measurements are in `/tmp/git-repository-header-browser*`. Baseline and rebuilt header measurements/captures are in `/tmp/git-repository-header-before` and `/tmp/git-repository-header-after`. The isolated browser and fixture were stopped; `git diff --check` passed. API/authentication and production BML source did not change, and native/backend production tests were not rerun for this UI revision.
+
+## 2026-10-12 Files Changed workspace and timestamp text alignment
+
+The supplied empty-file screenshot exposed a poor arrangement: a repeated section heading and a full-width file tree separated from its diff. Files Changed now uses a compact count/action toolbar with a bounded 220px tree beside the diff, following Studio's review layout. Phones stack the tree above the diff. The new `git-pull-files` component owns only this layout; the existing review model, dialogs, line comments, thread resolution and pagination remain in their owning component. Empty text files show “Empty file added.” or the corresponding deletion message instead of an unhelpful zero-line hunk. Normal hunks retain standard spacing in their captions.
+
+The timestamp containers had shared a centerline, but their text did not: the parent used 11.5px text while `ui-time` forced 12px. The labels and values now share inherited 12px/18px typography and a baseline. The earlier container-only measurements missed this defect; the new checks compare computed fonts and actual text-range bounds.
+
+Measured validation passed:
+
+- `:git:git-ui:check` and Git-server `installDist`, including **64 JVM tests** with no failures, errors or skips, strict TypeScript, schema contracts and BML compilation. The new compiled-route regression verifies the added empty file's notice and absence of a zero-line hunk or nonexistent line-comment controls.
+- PR browser checks at **1920, 1440, 1024 and 390px**, covering desktop sidebar/diff alignment, mobile stacking, the compact toolbar, folder collapse/keyboard expansion, native file-fragment navigation and inline-comment editing/cancellation. All **16 timestamp pairs** across older and fresh “just now” cases have identical fonts and **0px** text-top/text-bottom deviation.
+- The complete isolated browser suite, including authentication, repository navigation/editing, Markdown images, search, PR interactions and **220 route/viewport cases**, with no document overflow or runtime exceptions. Live logs, agent drafts and pipeline triggers also passed.
+- Desktop and phone empty-file and regular-diff captures, including an open inline-comment form, were visually inspected. `git diff --check` passed.
+
+Build output is `/tmp/git-pr-workspace-check.log`. Focused PR measurements and captures are in `/tmp/git-pr-workspace-browser`; full-suite output and captures are in `/tmp/git-pr-workspace-full-browser*`. Browser actions use isolated fixtures. Production BML, API and authentication source did not change; native packaging and real backend merge execution were not rerun for this presentation change. The component specification records the supported layout and typography contracts without claiming complete Nuxt review-feature parity. Restart Git Server to load the rebuilt UI at `http://localhost:8093`.

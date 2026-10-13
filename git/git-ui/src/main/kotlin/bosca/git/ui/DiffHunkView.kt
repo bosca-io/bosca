@@ -10,4 +10,7 @@ data class DiffHunkView(
     val newCount: Int,
     val totalLineCount: Int,
     val lines: List<DiffLineView>,
-)
+) {
+    val heading: String
+        get() = "@@ -$oldStart,$oldCount +$newStart,$newCount @@"
+}

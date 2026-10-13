@@ -6,10 +6,8 @@
   <island name="git-pull-review" :key="page.pull.id">
     <section class="review-workspace">
       <if model.page.view != "overview">
-        <ui-section-heading
-          :title='if (model.page.view == "reviews") "Reviews" else "Files changed"'
-          :subtitle="model.viewSummary"
-        >
+        <div class="review-toolbar">
+          <span class="review-count">{ model.viewSummary }</span>
           <if model.page.canReview>
             <ui-dialog
               title="Review changes"
@@ -51,7 +49,7 @@
               </form>
             </ui-dialog>
           </if>
-        </ui-section-heading>
+        </div>
       </if>
       <if !model.page.canReview && model.page.pull.status.name == "DRAFT" && model.page.view != "overview">
         <p class="detail-note">Mark this draft ready before submitting a review.</p>
@@ -161,113 +159,114 @@
         </ui-card>
       </if>
       <if model.page.view == "files">
-        <git-diff-tree :entries="model.files" />
-      </if>
-      <if model.page.view == "files">
-        <for file in model.diff>
-          <details class="diff-file" :id="file.anchor" open>
-            <ui-disclosure-heading framed>
-              <ui-icon name="file" :size="14" />
-              <code class="diff-path">{ file.displayPath }</code>
-              <ui-badge>{ bosca.git.ui.pullFileChangeLabel(file.changeType) }</ui-badge>
-            </ui-disclosure-heading>
-            <if file.hunks.isEmpty()>
-              <p>No text diff is available for this file.</p>
-            </if>
-            <for hunk in file.hunks>
-              <p class="muted">
-                @@ −
-                { hunk.oldStart }
-                ,
-                { hunk.oldCount }
-                +
-                { hunk.newStart }
-                ,
-                { hunk.newCount }
-                @@
-              </p>
-              <if hunk.totalLineCount != hunk.lines.size>
-                <ui-alert>Showing { hunk.lines.size } of { hunk.totalLineCount } lines.</ui-alert>
-              </if>
-              <div class="diff-lines">
-                <for line in hunk.lines>
-                  <div :class='"diff-line " + line.type.lowercase()'>
-                    <span class="line-number">{ line.oldLineNumber ?: "" }</span>
-                    <span class="line-number">{ line.newLineNumber ?: "" }</span>
-                    <span class="line-action">
-                      <if model.page.canReview>
-                        <ui-icon-button
-                          size="xs"
-                          icon="message"
-                          :label='"Comment on line " + (line.newLineNumber ?: line.oldLineNumber)'
-                          @click="model.select(file.path, line.oldLineNumber ?: 0, line.newLineNumber ?: 0)"
-                        />
-                      </if>
-                    </span>
-                    <span class="line-mark" aria-hidden="true">{ if (line.type == "ADD") "+" else if (line.type == "DELETE") "−" else " " }</span>
-                    <code>{ line.content }</code>
-                  </div>
-                  <for comment in model.lineComments(file.path, line.oldLineNumber, line.newLineNumber)>
-                    <article class="inline-thread">
-                      <strong>{ model.page.identity(comment.authorId) }</strong>
-                      <p>{ comment.content }</p>
-                      <if comment.resolved>
-                        <span class="muted">Resolved</span>
-                      <else-if model.page.canReview>
-                        <form
-                          @submit="model.resolve(comment.filePath, comment.newLineNumber ?: comment.oldLineNumber ?: 0, ctx)"
-                        >
-                          <ui-button type="submit" size="sm" icon="check">Resolve thread</ui-button>
-                        </form>
-                      </if>
-                    </article>
-                  </for>
-                  <if model.commentFile == file.path && model.oldLine == line.oldLineNumber && model.newLine == line.newLineNumber>
-                    <section class="comment-form">
-                      <ui-card :padded="false">
-                        <ui-section-heading
-                          title="Line comment"
-                          :subtitle='model.commentFile + ":" + (model.newLine ?: model.oldLine)'
-                        >
-                          <ui-icon-button icon="close" label="Cancel line comment" @click="model.cancelComment()" />
-                        </ui-section-heading>
-                        <div class="section-body">
-                          <if model.ownReviews.isEmpty()>
-                            <p>Submit a review before adding a line comment.</p>
-                            <ui-button icon="eye" @click="model.openReview()">Review changes</ui-button>
-                          <else>
-                            <form class="form-grid" @submit="model.comment(form.review, form.body, ctx)">
-                              <ui-field label="Your review">
-                                <ui-select name="review">
-                                  <for review in model.ownReviews>
-                                    <option :value="review.id" :selected="review.id == model.reviewId">
-                                      { bosca.git.ui.reviewStatusLabel(review.status.name) + " · " + review.created.take(10) }
-                                    </option>
-                                  </for>
-                                </ui-select>
-                              </ui-field>
-                              <ui-field label="Comment">
-                                <textarea name="body" rows="4" required>{ model.commentBody }</textarea>
-                              </ui-field>
-                              <div class="comment-actions">
-                                <ui-button @click="model.cancelComment()">Cancel</ui-button>
-                                <ui-button type="submit" primary icon="message">Add comment</ui-button>
-                              </div>
-                            </form>
-                          </if>
-                        </div>
-                      </ui-card>
-                    </section>
+        <if model.diff.isEmpty()>
+          <ui-empty-state
+            icon="file"
+            title="No files changed"
+            message="The source and target have no file changes."
+          />
+        <else>
+          <git-pull-files :entries="model.files">
+            <for file in model.diff>
+              <details class="diff-file" :id="file.anchor" open>
+                <ui-disclosure-heading framed>
+                  <ui-icon name="file" :size="14" />
+                  <code class="diff-path">{ file.displayPath }</code>
+                  <ui-badge>{ bosca.git.ui.pullFileChangeLabel(file.changeType) }</ui-badge>
+                </ui-disclosure-heading>
+                <if file.emptyTextChange>
+                  <p class="diff-notice">{ file.emptyTextLabel }</p>
+                <else>
+                  <if file.hunks.isEmpty()>
+                    <p class="diff-notice">No text diff is available for this file.</p>
                   </if>
-                </for>
-              </div>
+                  <for hunk in file.hunks>
+                    <div class="diff-hunk-heading"><code>{ hunk.heading }</code></div>
+                    <if hunk.totalLineCount != hunk.lines.size>
+                      <ui-alert>Showing { hunk.lines.size } of { hunk.totalLineCount } lines.</ui-alert>
+                    </if>
+                    <div class="diff-lines">
+                      <for line in hunk.lines>
+                        <div :class='"diff-line " + line.type.lowercase()'>
+                          <span class="line-number">{ line.oldLineNumber ?: "" }</span>
+                          <span class="line-number">{ line.newLineNumber ?: "" }</span>
+                          <span class="line-action">
+                            <if model.page.canReview>
+                              <ui-icon-button
+                                size="xs"
+                                icon="message"
+                                :label='"Comment on line " + (line.newLineNumber ?: line.oldLineNumber)'
+                                @click="model.select(file.path, line.oldLineNumber ?: 0, line.newLineNumber ?: 0)"
+                              />
+                            </if>
+                          </span>
+                          <span class="line-mark" aria-hidden="true">{ if (line.type == "ADD") "+" else if (line.type == "DELETE") "−" else " " }</span>
+                          <code>{ line.content }</code>
+                        </div>
+                        <for comment in model.lineComments(file.path, line.oldLineNumber, line.newLineNumber)>
+                          <article class="inline-thread">
+                            <strong>{ model.page.identity(comment.authorId) }</strong>
+                            <p>{ comment.content }</p>
+                            <if comment.resolved>
+                              <span class="muted">Resolved</span>
+                            <else-if model.page.canReview>
+                              <form
+                                @submit="model.resolve(comment.filePath, comment.newLineNumber ?: comment.oldLineNumber ?: 0, ctx)"
+                              >
+                                <ui-button type="submit" size="sm" icon="check">Resolve thread</ui-button>
+                              </form>
+                            </if>
+                          </article>
+                        </for>
+                        <if model.commentFile == file.path && model.oldLine == line.oldLineNumber && model.newLine == line.newLineNumber>
+                          <section class="comment-form">
+                            <ui-card :padded="false">
+                              <ui-section-heading
+                                title="Line comment"
+                                :subtitle='model.commentFile + ":" + (model.newLine ?: model.oldLine)'
+                              >
+                                <ui-icon-button icon="close" label="Cancel line comment" @click="model.cancelComment()" />
+                              </ui-section-heading>
+                              <div class="section-body">
+                                <if model.ownReviews.isEmpty()>
+                                  <p>Submit a review before adding a line comment.</p>
+                                  <ui-button icon="eye" @click="model.openReview()">Review changes</ui-button>
+                                <else>
+                                  <form class="form-grid" @submit="model.comment(form.review, form.body, ctx)">
+                                    <ui-field label="Your review">
+                                      <ui-select name="review">
+                                        <for review in model.ownReviews>
+                                          <option :value="review.id" :selected="review.id == model.reviewId">
+                                            { bosca.git.ui.reviewStatusLabel(review.status.name) + " · " + review.created.take(10) }
+                                          </option>
+                                        </for>
+                                      </ui-select>
+                                    </ui-field>
+                                    <ui-field label="Comment">
+                                      <textarea name="body" rows="4" required>{ model.commentBody }</textarea>
+                                    </ui-field>
+                                    <div class="comment-actions">
+                                      <ui-button @click="model.cancelComment()">Cancel</ui-button>
+                                      <ui-button type="submit" primary icon="message">Add comment</ui-button>
+                                    </div>
+                                  </form>
+                                </if>
+                              </div>
+                            </ui-card>
+                          </section>
+                        </if>
+                      </for>
+                    </div>
+                  </for>
+                </if>
+              </details>
             </for>
-          </details>
-        </for>
-        <if model.truncated>
-          <form @submit="model.expand(ctx)">
-            <ui-button type="submit">Load more diff lines</ui-button>
-          </form>
+            <if model.truncated>
+              <form @submit="model.expand(ctx)">
+                <ui-button type="submit">Load more diff lines</ui-button>
+              </form>
+            </if>
+          </git-pull-files>
         </if>
       </if>
     </section>
@@ -278,6 +277,19 @@
       flex-direction: column;
       gap: 14px;
       min-width: 0;
+    }
+    .review-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 8px 12px;
+      min-height: 30px;
+    }
+    .review-count {
+      color: var(--fg-3);
+      font-size: 12px;
+      line-height: 18px;
     }
     .inline-thread {
       padding: 12px;
@@ -321,8 +333,18 @@
       border-radius: 8px;
       overflow: hidden;
     }
-    .diff-file > p {
-      margin: 12px 14px;
+    .diff-notice {
+      margin: 0;
+      padding: 14px;
+      color: var(--fg-3);
+      font-size: 12px;
+    }
+    .diff-hunk-heading {
+      padding: 8px 14px;
+      color: var(--fg-3);
+      background: var(--bg-1);
+      border-bottom: 1px solid var(--line);
+      font: 11px/18px var(--font-mono);
     }
     .diff-lines {
       overflow: auto;

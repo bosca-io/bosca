@@ -300,9 +300,6 @@ select {
   padding: 20px;
 }
 
-.page-fill[data-repository-page] {
-  gap: 8px;
-}
 .file-toolbar {
   flex: none;
 }

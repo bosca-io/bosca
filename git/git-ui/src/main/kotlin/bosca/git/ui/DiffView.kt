@@ -23,4 +23,16 @@ data class DiffView(
 
     val truncated: Boolean
         get() = hunks.any { it.totalLineCount > it.lines.size }
+
+    val emptyTextChange: Boolean
+        get() = hunks.isNotEmpty() && hunks.all {
+            it.oldCount == 0 && it.newCount == 0 && it.totalLineCount == 0
+        }
+
+    val emptyTextLabel: String
+        get() = when (changeType) {
+            "ADD" -> "Empty file added."
+            "DELETE" -> "Empty file deleted."
+            else -> "No text changes."
+        }
 }

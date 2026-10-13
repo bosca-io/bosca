@@ -1,33 +1,7 @@
 <component tag="git-repository-browser">
   <prop name="page" type="bosca.git.ui.RepositoryPage" required />
-  <ui-page fill :data-repository-page="page.id">
-    <ui-page-heading
-      icon="folder"
-      :badge="page.visibility.lowercase()"
-      :description="page.slug"
-      :title="page.name"
-      :backHref="page.listHref"
-      backLabel="Repositories"
-    >
-      <div class="repository-controls">
-        <if page.tab == "code" || page.tab == "commits" || page.tab == "statuses">
-          <git-ref-selector :page="page" />
-        </if>
-        <if page.pulls != null>
-          <git-pull-create :page="page.pulls" />
-        </if>
-        <ui-popover label="Clone repository" icon="download" iconOnly :width="420">
-          <ui-copy-field :value="page.cloneUrl" label="Clone URL" copyLabel="Copy clone URL" />
-        </ui-popover>
-      </div>
-    </ui-page-heading>
-    <p class="muted repository-summary">
-      <if page.description.isNotBlank()>
-        { page.description }
-        ·
-      </if>
-      { page.stats }
-    </p>
+  <ui-page fill compact :data-repository-page="page.id">
+    <git-repository-heading :page="page" />
     <ui-tabs label="Repository section" :items="page.tabs" />
     <if page.tab == "commits">
       <git-repository-commits :page="page" />
@@ -79,16 +53,6 @@
         flex: none;
         gap: 8px;
       }
-    }
-    .repository-summary {
-      margin: 0;
-      font-size: 12px;
-    }
-    .repository-controls {
-      display: flex;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: 8px;
     }
   </style>
 </component>

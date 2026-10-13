@@ -4,9 +4,10 @@
   <prop name="badge" type="String" default="" />
   <prop name="description" type="String" default="" />
   <prop name="descriptionBelow" type="Boolean" default="false" />
+  <prop name="titleAlignedActions" type="Boolean" default="false" />
   <prop name="backHref" type="String" default="" />
   <prop name="backLabel" type="String" default="" />
-  <header class="page-heading">
+  <header class="page-heading" :data-title-aligned="titleAlignedActions">
     <div class="heading-copy">
       <div class="breadcrumb">
         <if backHref.isBlank()>
@@ -35,7 +36,11 @@
         </if>
       </div>
     </div>
-    <slot />
+    <if titleAlignedActions>
+      <div class="heading-actions"><slot /></div>
+    <else>
+      <slot />
+    </if>
   </header>
   <style scoped>
     .page-heading {
@@ -78,9 +83,54 @@
       letter-spacing: -0.02em;
       margin: 0;
     }
+    .page-heading[data-title-aligned] {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 4px 16px;
+    }
+    .page-heading[data-title-aligned] .heading-copy {
+      display: contents;
+    }
+    .page-heading[data-title-aligned] .breadcrumb {
+      grid-column: 1 / -1;
+      margin: 0;
+    }
+    .page-heading[data-title-aligned] .heading-title {
+      grid-column: 1;
+      grid-row: 2;
+      min-width: 0;
+    }
+    .page-heading[data-title-aligned] h1 {
+      min-width: 0;
+      max-width: 100%;
+      overflow-wrap: anywhere;
+    }
+    .heading-actions {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      grid-column: 2;
+      grid-row: 2;
+      min-width: 0;
+      max-width: 100%;
+    }
     @media (max-width: 600px) {
       .page-heading {
         flex-wrap: wrap;
+      }
+      .page-heading[data-title-aligned] {
+        display: flex;
+        gap: 8px;
+      }
+      .page-heading[data-title-aligned] .heading-copy {
+        display: block;
+        width: 100%;
+      }
+      .page-heading[data-title-aligned] .breadcrumb {
+        margin-bottom: 4px;
+      }
+      .heading-actions {
+        justify-content: flex-start;
       }
     }
   </style>

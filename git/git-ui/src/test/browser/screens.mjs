@@ -617,6 +617,52 @@ for (const width of [1920, 1440, 1024, 390]) {
       `({width:innerWidth,scroll:document.documentElement.scrollWidth,heading:document.querySelector('h1')?.textContent,overflow:[...document.querySelectorAll('body *')].filter(e=>e.getBoundingClientRect().right>innerWidth+2&&!e.closest('.cm-scroller,.diff-lines,.table-scroll,.log-output')&&getComputedStyle(e).display!=='none').slice(0,7).map(e=>e.tagName+'.'+e.className)})`,
     );
     results.push({ viewport: width, path, ...g });
+    if (await ev("Boolean(document.querySelector('.repository-heading'))")) {
+      const header = await ev(`(() => {
+        const bounds = document.querySelector('.repository-heading').getBoundingClientRect();
+        const title = document.querySelector('.heading-title').getBoundingClientRect();
+        const controls = document.querySelector('.repository-controls').getBoundingClientRect();
+        const description = document.querySelector('.repository-description')?.getBoundingClientRect();
+        const stats = document.querySelector('.repository-summary').getBoundingClientRect();
+        const tabs = document.querySelector('nav[aria-label="Repository section"]').getBoundingClientRect();
+        return {
+          height: bounds.height,
+          gap: parseFloat(getComputedStyle(document.querySelector('main')).gap),
+          controlsCenter: controls.top + controls.height / 2,
+          titleCenter: title.top + title.height / 2,
+          descriptionCenter: description ? description.top + description.height / 2 : null,
+          statsCenter: stats.top + stats.height / 2,
+          right: bounds.right,
+          statsRight: stats.right,
+          tabGap: tabs.top - bounds.bottom,
+          stats: document.querySelector('.repository-summary').innerText,
+        };
+      })()`);
+      results.at(-1).repositoryHeader = header;
+      assert.equal(header.gap, 8, "Repository pages apply their compact spacing");
+      assert.equal(header.tabGap, 12, "Repository headers use the shared 12px tab spacing");
+      if (width >= 1024) {
+        assert.ok(header.height <= 90, "Desktop repository headers stay compact");
+        assert.ok(
+          Math.abs(header.controlsCenter - header.titleCenter) <= 1,
+          "Branch and clone controls align with the repository title",
+        );
+        assert.ok(
+          Math.abs(header.statsRight - header.right) <= 1,
+          "Repository stats fill the header's right edge",
+        );
+        if (header.descriptionCenter !== null) {
+          assert.ok(
+            Math.abs(header.descriptionCenter - header.statsCenter) <= 1,
+            "Description and stats share a desktop centerline",
+          );
+        }
+      }
+      if (!path.startsWith('/repositories/empty')) {
+        assert.ok(header.stats.includes('1 tag') && !header.stats.includes('1 tags'));
+        assert.ok(header.stats.includes('1 contributor') && !header.stats.includes('1 contributors'));
+      }
+    }
     const panelWidths =
       await ev(`(() => [...document.querySelectorAll('.settings-stack')]
       .filter(panel=>panel.checkVisibility()).map(panel=>{

@@ -221,7 +221,15 @@ suspend fun repositoryPage(): RepositoryPage? {
         listHref,
         author.first,
         author.second,
-        "${stats.commitCount} commits · ${stats.branchCount} branches · ${stats.tagCount} tags · ${stats.contributorCount} contributors · ${formatSize(stats.diskSizeBytes)}",
+        listOf(
+                Triple(stats.commitCount, "commit", "commits"),
+                Triple(stats.branchCount, "branch", "branches"),
+                Triple(stats.tagCount, "tag", "tags"),
+                Triple(stats.contributorCount, "contributor", "contributors"),
+            )
+            .joinToString(" · ") { (count, singular, plural) ->
+                "$count " + if (count.toLong() == 1L) singular else plural
+            } + " · ${formatSize(stats.diskSizeBytes)}",
         repo.slug,
         repo.visibility.name,
         repo.contentType?.name ?: "GENERAL",
