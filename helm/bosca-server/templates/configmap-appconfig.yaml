@@ -307,6 +307,9 @@ data:
     {{- $packages := concat (list "core" "security-initial" "profiles" "languages" "search-index" "root-collection-installer" "bible" "community-ai" "ai" "kit" "docs" "maintenance" "default-git-email-pipelines" "github" "default-transactional-email-pipelines" "default-social-notification-pipelines") (.Values.appConfig.extraPackages | default (list)) | uniq }}
     packages: {{ $packages | toJson }}
 
+    eventProcessing:
+      fumsEnabled: ${FUMS_TRANSFORM_ENABLED:{{ .Values.appConfig.fumsTransformEnabled }}}
+
     runners:
       enabled: []
 
