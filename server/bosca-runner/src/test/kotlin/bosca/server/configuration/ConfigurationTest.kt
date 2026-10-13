@@ -11,6 +11,7 @@ import bosca.di.annotation.Provider
 import bosca.nats.NatsConnectionPool
 import bosca.redis.RedisConnectionPool
 import bosca.server.BoscaApplication
+import bosca.server.RunnerConfig
 import bosca.server.config.ApplicationConfig
 import io.mockk.mockk
 import kotlinx.coroutines.test.runTest
@@ -20,6 +21,7 @@ import kotlin.test.Test
 import kotlin.test.assertIs
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
+import kotlin.test.assertNotNull
 
 @OptIn(InternalDI::class)
 class ConfigurationTest {
@@ -31,6 +33,13 @@ class ConfigurationTest {
     @AfterTest
     fun tearDown() {
         ProviderRegistry.clear()
+    }
+
+    @Test
+    fun `packaged configuration enables the FUMS worker`() {
+        val config = ApplicationConfig.loadFromClasspath()
+        val runners = assertNotNull(config.propertyOrNull("runners")).getAs<RunnerConfig>()
+        assertTrue("fumsQueueRunner" in runners.enabled)
     }
 
     @Test

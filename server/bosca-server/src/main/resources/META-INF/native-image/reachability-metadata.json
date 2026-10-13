@@ -1,6 +1,9 @@
 {
   "reflection": [
     {
+      "type": "bosca.analytics.jobs.FumsDeliveryExecutor"
+    },
+    {
       "type": "android.os.Build$VERSION"
     },
     {

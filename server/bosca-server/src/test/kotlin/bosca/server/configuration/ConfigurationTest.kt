@@ -40,6 +40,12 @@ class ConfigurationTest {
     }
 
     @Test
+    fun `packaged server configuration enables the FUMS worker`() {
+        val runners = ApplicationConfig.loadFromClasspath().property("runners.enabled").getList()
+        assertTrue("fumsQueueRunner" in runners)
+    }
+
+    @Test
     fun `application CORS configuration allows Bosca GraphQL client identity headers`() {
         val allowedHeaders = ApplicationConfig.loadFromClasspath()
             .property("cors.allowedHeaders")

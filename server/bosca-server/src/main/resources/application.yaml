@@ -308,6 +308,7 @@ runners:
     - gitQueueRunner
     - workopsQueueRunner
     - analyticsQueueRunner
+    - fumsQueueRunner
     - scriptingQueueRunner
     - backupQueueRunner
     - segmentationQueueRunner
