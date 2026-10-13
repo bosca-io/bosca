@@ -148,7 +148,10 @@ interface BibleChapterRepository {
     """)
     suspend fun getAudioByEdition(provider: String, providerBibleId: String): List<BibleChapter>
 
-    /** Atomically replaces one recording response only while its source and metadata are active. */
+    /**
+     * Updates audio on an existing chapter while its source and metadata are active and its variant is enabled.
+     * Returns zero if the chapter is missing or those conditions no longer match.
+     */
     @Query("""
         update bible_chapters chapter set audio = coalesce((
             select jsonb_agg(value) from jsonb_array_elements(chapter.audio)
@@ -161,8 +164,10 @@ interface BibleChapterRepository {
             and source.metadata_id = chapter.metadata_id and source.metadata_version = chapter.version
             and source.variant = chapter.variant and source.kind = 'audio' and source.deleted_at is null
             and exists (select 1 from metadata where id = chapter.metadata_id and not deleted)
+            and exists (select 1 from bibles where metadata_id = chapter.metadata_id
+                and version = chapter.version and variant = chapter.variant and enabled)
     """, returnUpdateCount = true)
-    suspend fun putAudioContent(id: UUID, version: Int, variant: String, usfm: String, sourceId: UUID, sourceVersion: Long, audio: JsonElement): Int
+    suspend fun updateAudioContent(id: UUID, version: Int, variant: String, usfm: String, sourceId: UUID, sourceVersion: Long, audio: JsonElement): Int
 
     /** Removes only this exact response, preserving replacements and every other recording on the chapter. */
     @Query("""

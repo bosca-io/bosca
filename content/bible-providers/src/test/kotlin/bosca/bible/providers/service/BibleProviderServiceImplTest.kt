@@ -163,6 +163,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -690,7 +691,8 @@ class BibleProviderServiceImplTest {
         assertEquals(content, first.content)
         assertEquals(attribution, first.attribution)
         assertEquals("https://media.bosca.test/platform/api/v1/content/metadata/bible/audio" +
-            "?id=${bible.metadataId}&version=${bible.version}&variant=${bible.variant}&audioId=${audio.id}&usfm=JHN.1", first.url)
+            "?id=${bible.metadataId}&version=${bible.version}&variant=${bible.variant}&audioId=${audio.id}&usfm=JHN.1" +
+            "&recordingId=${recordingId(first.url)}", first.url)
         assertEquals(first, request { bibles.getAudioChapter(bible, audio.id, "JHN.1").asSerializable() })
         request { assertEquals("private-audio-token", service.getFumsToken(bible.metadataId, bible.version, bible.variant, "JHN.1", audio.id)) }
         coVerify(exactly = 1) { provider.downloadAudioChapter(configurationId, "recording", "JHN.1", any()) }
@@ -702,11 +704,12 @@ class BibleProviderServiceImplTest {
     fun `warm recordings serve bytes and ranges across requests without database reads or transactions`() {
         val (bible, audio) = registeredAudio()
         val bytes = audioResponse()
-        request { bibles.getAudioChapter(bible, audio.id, "JHN.1") }
+        val description = request { bibles.getAudioChapter(bible, audio.id, "JHN.1") }
         clearMocks(chapterRepository, sourceRepository, configurationValues, encryption, cleanupQueue, answers = false)
         repeat(2) {
             request {
-                val response = bibles.getAudioPlayback(bible, audio.id, "JHN.1")
+                val response = bibles.getAudioPlayback(bible, audio.id, "JHN.1", recordingId(description.url))
+                assertEquals(response.content, bibles.getAudioPlayback(bible, audio.id, "JHN.1").content)
                 assertEquals(bytes.toList(), response.openStream().use { it.readBytes().toList() })
                 assertEquals(bytes.slice(2..5), response.openStream(2L..5L).use { it.readBytes().toList() })
                 assertFalse(connection().inTransaction)
@@ -716,6 +719,25 @@ class BibleProviderServiceImplTest {
         coVerify(exactly = 0) { chapterRepository.getAudioChapter(any(), any(), any(), any()) }
         coVerify(exactly = 0) { sourceRepository.get(any()); configurationValues.getById(any()); encryption.decrypt(any(), any()) }
         coVerify(exactly = 0) { cleanupQueue.enqueue(any()) }
+        coVerify(exactly = 1) { provider.downloadAudioChapter(any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun `recording playback recovers from a cache miss without downloading again`() {
+        val (bible, audio) = registeredAudio()
+        val bytes = audioResponse()
+        val description = request { bibles.getAudioChapter(bible, audio.id, "JHN.1") }
+        request { cacheManager.getCache<String>("bible:audio:chapter").clear() }
+        clearMocks(chapterRepository, cleanupQueue, answers = false)
+        repeat(2) {
+            request {
+                val playback = bibles.getAudioPlayback(bible, audio.id, "JHN.1", recordingId(description.url))
+                assertEquals(description.content, playback.content)
+                assertEquals(bytes.toList(), playback.openStream().use { it.readBytes().toList() })
+            }
+        }
+        coVerify(exactly = 1) { chapterRepository.getAudioChapter(bible.metadataId, bible.version, bible.variant, "JHN.1") }
+        coVerify(exactly = 0) { chapterRepository.updateAudioContent(any(), any(), any(), any(), any(), any(), any()); cleanupQueue.enqueue(any()) }
         coVerify(exactly = 1) { provider.downloadAudioChapter(any(), any(), any(), any()) }
     }
 
@@ -805,19 +827,30 @@ class BibleProviderServiceImplTest {
                     if (index > 2) chapterRepository.add(bosca.content.metadata.model.BibleChapter(bible.metadataId, bible.version, bible.variant, "JHN", "JHN.$index", null, index))
                     val cached = bosca.content.metadata.model.BibleChapterAudio(UUID.random(), source.id, source.version, "JHN.$index",
                         BibleAudioContent("audio/mpeg", 10), attribution, "token", now, now.plusDays(14))
-                    chapterRepository.putAudioContent(bible.metadataId, bible.version, bible.variant, cached.usfm, source.id, source.version,
+                    chapterRepository.updateAudioContent(bible.metadataId, bible.version, bible.variant, cached.usfm, source.id, source.version,
                         json.encodeToJsonElement(kotlinx.serialization.builtins.ListSerializer(bosca.content.metadata.model.BibleChapterAudio.serializer()), listOf(cached)))
                 }
                 assertEquals(1, bibles.limitAudioChapterContent("API_BIBLE", "recording"))
                 assertTrue(chapterRepository.getAudioByEdition("API_BIBLE", "recording").flatMap { it.audio.orEmpty() }.none { it.id == stored.id })
             }
             assertEquals(bytes.toList(), response.openStream().use { it.readBytes().toList() })
+            request {
+                assertFailsWith<bosca.storage.service.ObjectNotFoundException> {
+                    bibles.getAudioPlayback(bible, audio.id, "JHN.1", stored.id)
+                }
+            }
             coVerify(exactly = 0) { cleanupQueue.enqueue(any()) }
             coVerify(exactly = 1) { cleanupQueue.enqueueLater(any(), kotlin.time.Duration.parse("5m")) }
             val delete = provideProvider<JobConfigurationEnqueuer>("delete-bible-audio").get()
                 .prepare(JsonObject(mapOf("id" to kotlinx.serialization.json.JsonPrimitive(stored.id.toString()))))
             withContext(cleanupQueue.asCoroutineContext(delete)) { delete.newExecutor().execute() }
             assertFalse(objects.containsKey("bible/audio/${stored.id}"))
+            request {
+                assertFailsWith<bosca.storage.service.ObjectNotFoundException> {
+                    bibles.getAudioPlayback(bible, audio.id, "JHN.1", stored.id).openStream().use { it.readBytes() }
+                }
+            }
+            coVerify(exactly = 1) { provider.downloadAudioChapter(any(), any(), any(), any()) }
         }
     }
 
@@ -887,7 +920,7 @@ class BibleProviderServiceImplTest {
             val responses = listOf(source, sameRecording, otherRecording).map { selected ->
                 val response = bosca.content.metadata.model.BibleChapterAudio(UUID.random(), selected.id, selected.version, "JHN.1",
                     BibleAudioContent("audio/mpeg", 10), attribution, "token", now, now.plusDays(14))
-                chapterRepository.putAudioContent(bible.metadataId, bible.version, bible.variant, response.usfm, selected.id, selected.version,
+                chapterRepository.updateAudioContent(bible.metadataId, bible.version, bible.variant, response.usfm, selected.id, selected.version,
                     json.encodeToJsonElement(kotlinx.serialization.builtins.ListSerializer(bosca.content.metadata.model.BibleChapterAudio.serializer()), listOf(response)))
                 response
             }
@@ -941,7 +974,7 @@ class BibleProviderServiceImplTest {
                 val selected = if (index % 2 == 0) source else other
                 val response = bosca.content.metadata.model.BibleChapterAudio(UUID.random(), selected.id, selected.version, "JHN.$index",
                     BibleAudioContent("audio/mpeg", 10), attribution, "token-$index", now.minusMinutes(index.toLong()), now.plusDays(14))
-                chapterRepository.putAudioContent(bible.metadataId, bible.version, bible.variant, response.usfm, selected.id, selected.version,
+                chapterRepository.updateAudioContent(bible.metadataId, bible.version, bible.variant, response.usfm, selected.id, selected.version,
                     json.encodeToJsonElement(kotlinx.serialization.builtins.ListSerializer(bosca.content.metadata.model.BibleChapterAudio.serializer()), listOf(response)))
             }
             assertEquals(3, bibles.limitAudioChapterContent("API_BIBLE", "recording"))
@@ -949,7 +982,7 @@ class BibleProviderServiceImplTest {
             assertEquals(50, retained.size)
             assertEquals((1..50).map { "JHN.$it" }.toSet(), retained.map { it.usfm }.toSet())
             val expired = retained.first().copy(expires = now.minusSeconds(1))
-            chapterRepository.putAudioContent(bible.metadataId, bible.version, bible.variant, expired.usfm, expired.sourceId, expired.sourceVersion,
+            chapterRepository.updateAudioContent(bible.metadataId, bible.version, bible.variant, expired.usfm, expired.sourceId, expired.sourceVersion,
                 json.encodeToJsonElement(kotlinx.serialization.builtins.ListSerializer(bosca.content.metadata.model.BibleChapterAudio.serializer()), listOf(expired)))
             assertEquals(1, bibles.removeExpiredChapterContent())
             assertNull(bibles.getAudioFumsToken(bible.metadataId, bible.version, bible.variant, expired.usfm, expired.sourceId))
@@ -1006,6 +1039,103 @@ class BibleProviderServiceImplTest {
         audioCatalog()
         bible to service.addAudio(bible, AddProviderAudioInput(configurationId, "recording", uses))
     }
+
+    @Test
+    fun `a variant disabled during download cannot repopulate the recording cache`() {
+        val (bible, _) = registeredAudio()
+        val (variant, audio) = request {
+            val variant = bible.copy(variant = "reader", defaultVariant = false)
+            bibles.setBible(variant.metadataId, variant.version, remote.toInput(false, variant.variant))
+            variant to service.addAudio(variant, AddProviderAudioInput(configurationId, "recording", setOf(BibleContentUse.PLAYBACK)))
+        }
+        val bytes = "recording bytes".toByteArray()
+        coEvery { provider.downloadAudioChapter(configurationId, "recording", "JHN.1", any()) } coAnswers {
+            arg<java.io.OutputStream>(3).write(bytes)
+            request { bibles.setVariantEnabled(variant.metadataId, variant.version, variant.variant, false) }
+            BibleProviderResponse(BibleAudioContent("audio/mpeg", bytes.size.toLong()), attribution, fumsToken = "token")
+        }
+        request {
+            val playback = bibles.getAudioPlayback(variant, audio.id, "JHN.1")
+            assertEquals(bytes.toList(), playback.openStream().use { it.readBytes().toList() })
+        }
+        val disabled = request { bibles.getVariants(variant.metadataId, variant.version).single { it.variant == variant.variant } }
+        assertFalse(disabled.enabled)
+        request {
+            assertTrue(chapterRepository.getAudioBySource(audio.id).isEmpty())
+            assertFailsWith<IllegalStateException> { bibles.getAudioChapter(disabled, audio.id, "JHN.1") }
+            assertFailsWith<IllegalStateException> { bibles.getAudioChapter(variant, audio.id, "JHN.1") }
+        }
+    }
+
+    @Test
+    fun `chapter playback URLs reject retired recordings instead of serving a replacement`() {
+        val (bible, audio) = registeredAudio()
+        val original = "original recording".toByteArray()
+        val originalContent = BibleAudioContent("audio/mpeg", original.size.toLong(), listOf(BibleAudioTimecode("JHN.1.1", 0.0, 1.5)))
+        val originalAttribution = BibleAttribution("Original recording copyright")
+        coEvery { provider.downloadAudioChapter(configurationId, "recording", "JHN.1", any()) } coAnswers {
+            arg<java.io.OutputStream>(3).write(original)
+            BibleProviderResponse(originalContent, originalAttribution, fumsToken = "original-token")
+        }
+        val description = request { bibles.getAudioChapter(bible, audio.id, "JHN.1") }
+        request {
+            val playback = bibles.getAudioPlayback(bible, audio.id, "JHN.1", recordingId(description.url))
+            assertEquals(originalContent, playback.content)
+            assertEquals(originalAttribution, description.attribution)
+            assertEquals(original.toList(), playback.openStream().use { it.readBytes().toList() })
+        }
+        request { service.refresh(audio.id) }
+        val replacement = "replacement recording with different timing".toByteArray()
+        coEvery { provider.downloadAudioChapter(configurationId, "recording", "JHN.1", any()) } coAnswers {
+            arg<java.io.OutputStream>(3).write(replacement)
+            BibleProviderResponse(BibleAudioContent("audio/ogg", replacement.size.toLong(), listOf(BibleAudioTimecode("JHN.1.1", 5.0, 10.0))),
+                attribution, fumsToken = "replacement-token")
+        }
+        val uri = java.net.URI(description.url)
+        val query = uri.rawQuery.split('&').associate {
+            val name = it.substringBefore('=')
+            name to java.net.URLDecoder.decode(it.substringAfter('='), java.nio.charset.StandardCharsets.UTF_8)
+        }
+        request {
+            val target = assertNotNull(bibles.getBible(UUID.parse(query.getValue("id")), query.getValue("version").toInt(), query.getValue("variant")))
+            assertFailsWith<bosca.storage.service.ObjectNotFoundException> {
+                bibles.getAudioPlayback(target, UUID.parse(query.getValue("audioId")), query.getValue("usfm"), UUID.parse(query.getValue("recordingId")))
+            }
+        }
+        coVerify(exactly = 1) { provider.downloadAudioChapter(any(), any(), any(), any()) }
+        val updated = request { bibles.getAudioChapter(bible, audio.id, "JHN.1") }
+        assertEquals("audio/ogg", updated.content.contentType)
+        assertNotEquals(description.url, updated.url)
+        request {
+            assertFailsWith<bosca.storage.service.ObjectNotFoundException> {
+                bibles.getAudioPlayback(bible, audio.id, "JHN.1", recordingId(description.url))
+            }
+            val playback = bibles.getAudioPlayback(bible, audio.id, "JHN.1", recordingId(updated.url))
+            assertEquals(updated.content, playback.content)
+            assertEquals(replacement.toList(), playback.openStream().use { it.readBytes().toList() })
+        }
+        coVerify(exactly = 2) { provider.downloadAudioChapter(any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun `recording identifiers cannot read media from another attached source`() {
+        val (bible, audio) = registeredAudio()
+        audioResponse()
+        val original = request { bibles.getAudioChapter(bible, audio.id, "JHN.1") }
+        val (otherBible, otherAudio) = registeredAudio()
+        request {
+            assertFailsWith<bosca.storage.service.ObjectNotFoundException> {
+                bibles.getAudioPlayback(otherBible, otherAudio.id, "JHN.1", recordingId(original.url))
+            }
+            assertFailsWith<IllegalArgumentException> {
+                bibles.getAudioPlayback(otherBible, audio.id, "JHN.1", recordingId(original.url))
+            }
+        }
+        coVerify(exactly = 1) { provider.downloadAudioChapter(any(), any(), any(), any()) }
+    }
+
+    private fun recordingId(url: String): UUID = UUID.parse(java.net.URI(url).rawQuery.split('&')
+        .single { it.startsWith("recordingId=") }.substringAfter('='))
 
     private fun audioResponse(): ByteArray {
         val bytes = "recording bytes".toByteArray()

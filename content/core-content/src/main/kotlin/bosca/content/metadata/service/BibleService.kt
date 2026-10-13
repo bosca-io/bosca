@@ -151,9 +151,10 @@ interface BibleService : Service {
 
     /**
      * Resolves a recording with playback permission. Its metadata and streams refer to the same file.
+     * When [recordingId] is supplied, returns only that current recording; unavailable recordings are not replaced.
      * Open and close its streams within the current authorized request.
      */
-    suspend fun getAudioPlayback(bible: Bible, audioId: UUID, usfm: String): BibleAudioPlayback
+    suspend fun getAudioPlayback(bible: Bible, audioId: UUID, usfm: String, recordingId: UUID? = null): BibleAudioPlayback
 
     /** Reads an unexpired recording response's private usage token without downloading media. */
     suspend fun getAudioFumsToken(id: UUID, version: Int, variant: String, usfm: String, audioId: UUID): String?

@@ -34,6 +34,7 @@ import bosca.server.BoscaApplication
 import bosca.service.annotation.ServiceImplementation
 import bosca.storage.service.ObjectStorageService
 import bosca.storage.service.ObjectPath
+import bosca.storage.service.ObjectNotFoundException
 import bosca.storage.service.StringObjectPath
 import bosca.storage.service.StorageDispatcher
 import kotlinx.coroutines.NonCancellable
@@ -289,13 +290,13 @@ class BibleServiceImpl(
         val response = getAudioChapterResponse(bible, source, usfm)
         val variant = URLEncoder.encode(bible.variant, StandardCharsets.UTF_8)
         val url = "$urlPrefix/api/v1/content/metadata/bible/audio?id=${bible.metadataId}&version=${bible.version}" +
-            "&variant=$variant&audioId=$audioId&usfm=${URLEncoder.encode(usfm, StandardCharsets.UTF_8)}"
+            "&variant=$variant&audioId=$audioId&usfm=${URLEncoder.encode(usfm, StandardCharsets.UTF_8)}&recordingId=${response.id}"
         return BibleAudioChapter(BibleAudio(source.id, source.name, source.nameLocal, source.abbreviation, source.attribution),
             usfm, url, response.content, response.attribution)
     }
 
-    override suspend fun getAudioPlayback(bible: Bible, audioId: UUID, usfm: String): BibleAudioPlayback {
-        val response = getAudioChapterResponse(bible, sources.getForUse(audioId, BibleContentUse.PLAYBACK), usfm)
+    override suspend fun getAudioPlayback(bible: Bible, audioId: UUID, usfm: String, recordingId: UUID?): BibleAudioPlayback {
+        val response = getAudioChapterResponse(bible, sources.getForUse(audioId, BibleContentUse.PLAYBACK), usfm, recordingId)
         return object : BibleAudioPlayback {
             override val content = response.content
             override suspend fun openStream(range: LongRange?): InputStream = getAudioChapterStream(response, range)
@@ -310,14 +311,20 @@ class BibleServiceImpl(
         return if (range == null) storage.getInputStream(path) else storage.getInputStreamRange(path, range)
     }
 
-    private suspend fun getAudioChapterResponse(bible: Bible, source: BibleSource, usfm: String): BibleChapterAudio {
+    private suspend fun getAudioChapterResponse(bible: Bible, source: BibleSource, usfm: String, recordingId: UUID? = null): BibleChapterAudio {
+        check(bible.enabled) { "Bible variant is disabled" }
         require(Reference(usfm).chapterUsfm == usfm) { "A chapter reference is required" }
         val audioId = source.id
         require(source.kind == BibleSourceKind.AUDIO && source.metadataId == bible.metadataId
             && source.metadataVersion == bible.version && source.variant == bible.variant) { "Recording does not belong to the Bible variant" }
         val key = "$audioId:$usfm"
         fun BibleChapterAudio.isCurrent() = sourceVersion == source.version && expires.isAfter(OffsetDateTime.now())
-        audioChapterCache.get(key)?.takeIf { it.isCurrent() }?.let { return it }
+        val current = audioChapterCache.get(key)
+        if (recordingId != null) {
+            return current?.takeIf { it.id == recordingId && it.sourceId == audioId && it.usfm == usfm && it.isCurrent() }
+                ?: throw ObjectNotFoundException(getBibleAudioPath(recordingId))
+        }
+        current?.takeIf { it.isCurrent() }?.let { return it }
         check(!connection().inTransaction) { "Provider audio requests must run outside a database transaction" }
         val lock = locks.create("bible:audio:$key")
         return lock.withLock(ttlMillis = 300_000, waitTimeoutMillis = 30_000) {
@@ -351,7 +358,7 @@ class BibleServiceImpl(
                 check(lock.renew(300_000)) { "Provider audio fetch lock expired" }
                 val audio = json.encodeToJsonElement(ListSerializer(BibleChapterAudio.serializer()), listOf(fetched))
                 retained = transaction {
-                    if (bibleChapterRepository.putAudioContent(bible.metadataId, bible.version, bible.variant, usfm, source.id, source.version, audio) == 0) {
+                    if (bibleChapterRepository.updateAudioContent(bible.metadataId, bible.version, bible.variant, usfm, source.id, source.version, audio) == 0) {
                         false
                     } else {
                         audioChapterCache.put(key, fetched)

@@ -7,7 +7,7 @@ import bosca.serialization.UUID
 import kotlinx.serialization.Contextual
 import kotlinx.serialization.Serializable
 
-/** One retained recording response on an existing chapter; its object identifier and usage token remain private. */
+/** One cached recording response; its usage token remains private. */
 @Serializable
 data class BibleChapterAudio(
     @Contextual val id: UUID,

@@ -51,10 +51,14 @@ Configuration responses expose whether a key is saved without returning the key 
 Bible `audio` lists attached recordings; `audioChapter(audioId, usfm)` fetches a recording
 on demand and returns its attribution, verse timing and absolute Bosca playback URL
 using the configured `content.storage.urlPrefix`.
+Playback URLs identify the exact recording described by the response. Replaced, evicted,
+expired or missing recordings return not found rather than serving a replacement. Existing
+requests without a recording identifier continue to read the current recording.
 The audio route supports byte ranges and checks content and playback access on every request.
 Recording metadata remains on existing chapter rows, and media uses `ObjectStorageService`.
-Warm playback uses service caches. Background jobs retain the newest 50 files per upstream
-recording across configurations and delete evicted or expired media. Responses expire
+Warm playback uses the chapter cache, which reads recording metadata from PostgreSQL on a miss.
+Background jobs retain the newest 50 files per upstream recording across configurations
+and delete evicted or expired media. Responses expire
 after 14 days; usage tokens remain private alongside their exact response. Cache entries
 are removed immediately, while media deletion has a five-minute grace period so requests
 that already resolved a recording can open it.

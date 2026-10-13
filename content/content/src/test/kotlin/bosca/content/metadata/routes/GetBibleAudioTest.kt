@@ -56,11 +56,17 @@ class GetBibleAudioTest {
         val body = ByteArrayOutputStream()
     }
 
-    private suspend fun execute(range: String? = null): Result {
+    private suspend fun execute(range: String? = null, recordingId: UUID? = null): Result {
         val result = Result()
         val request = mockk<ServerRequest>()
-        every { request.queryParameters } returns Parameters(mapOf("id" to listOf(id.toString()), "version" to listOf("2"),
-            "variant" to listOf("study"), "audioId" to listOf(audioId.toString()), "usfm" to listOf("GEN.1")))
+        every { request.queryParameters } returns Parameters(buildMap {
+            put("id", listOf(id.toString()))
+            put("version", listOf("2"))
+            put("variant", listOf("study"))
+            put("audioId", listOf(audioId.toString()))
+            put("usfm", listOf("GEN.1"))
+            recordingId?.let { put("recordingId", listOf(it.toString())) }
+        })
         every { request.header(HttpHeaders.Range) } returns range
         val response = mockk<ServerResponse>(relaxed = true)
         every { response.header(any(), any()) } answers { result.headers[firstArg()] = secondArg() }
@@ -121,7 +127,7 @@ class GetBibleAudioTest {
         coEvery { metadata.getById(id) } returns item
         coEvery { bibles.getBible(id, 2, "study") } returns null
         assertEquals(HttpStatusCode.NotFound, execute().status)
-        coVerify(exactly = 0) { bibles.getAudioPlayback(any(), any(), any()) }
+        coVerify(exactly = 0) { bibles.getAudioPlayback(any(), any(), any(), any()) }
     }
 
     @Test
@@ -130,7 +136,7 @@ class GetBibleAudioTest {
         assertFailsWith<IllegalStateException> { execute() }
         coEvery { permissions.verifyContentAllowed(auth, item, PermissionAction.VIEW) } throws kotlinx.coroutines.CancellationException("cancelled")
         assertFailsWith<kotlinx.coroutines.CancellationException> { execute() }
-        coVerify(exactly = 0) { bibles.getAudioPlayback(any(), any(), any()) }
+        coVerify(exactly = 0) { bibles.getAudioPlayback(any(), any(), any(), any()) }
     }
 
     @Test
@@ -139,5 +145,39 @@ class GetBibleAudioTest {
         val result = execute()
         assertEquals(HttpStatusCode.NotFound, result.status)
         assertNull(result.headers[HttpHeaders.ContentLength])
+    }
+
+    @Test
+    fun `recording identifiers select the described file for range requests`() = runTest {
+        val recordingId = UUID.random()
+        coEvery { bibles.getAudioPlayback(bible, audioId, "GEN.1", recordingId) } returns playback
+        val result = execute("bytes=2-5", recordingId)
+        assertEquals(HttpStatusCode.PartialContent, result.status)
+        assertEquals(bytes.slice(2..5), result.body.toByteArray().toList())
+        coVerify(exactly = 1) { bibles.getAudioPlayback(bible, audioId, "GEN.1", recordingId) }
+        coVerify(exactly = 0) { bibles.getAudioPlayback(bible, audioId, "GEN.1", null) }
+    }
+
+    @Test
+    fun `unavailable recording identifiers return not found without falling back to current audio`() = runTest {
+        val recordingId = UUID.random()
+        coEvery { bibles.getAudioPlayback(bible, audioId, "GEN.1", recordingId) } throws
+            bosca.storage.service.ObjectNotFoundException(bosca.storage.service.StringObjectPath("missing"))
+        val result = execute(recordingId = recordingId)
+        assertEquals(HttpStatusCode.NotFound, result.status)
+        assertNull(result.headers[HttpHeaders.ContentLength])
+        coVerify(exactly = 0) { bibles.getAudioPlayback(bible, audioId, "GEN.1", null); playback.openStream(any()) }
+    }
+
+    @Test
+    fun `media failures after response headers propagate and close the stream`() = runTest {
+        val failure = bosca.storage.service.ObjectNotFoundException(bosca.storage.service.StringObjectPath("missing"))
+        var closed = false
+        coEvery { playback.openStream(any()) } returns object : ByteArrayInputStream(bytes) {
+            override fun read(b: ByteArray, off: Int, len: Int): Int = throw failure
+            override fun close() { closed = true; super.close() }
+        }
+        assertSame(failure, assertFailsWith<bosca.storage.service.ObjectNotFoundException> { execute() })
+        assertTrue(closed)
     }
 }

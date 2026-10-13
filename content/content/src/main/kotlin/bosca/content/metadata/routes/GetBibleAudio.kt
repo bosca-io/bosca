@@ -29,13 +29,19 @@ class GetBibleAudio(
         val version = requireNotNull(query["version"]?.toIntOrNull()) { "Bible version is required" }
         val variant = requireNotNull(query["variant"]) { "Bible variant is required" }
         val audioId = UUID.parse(requireNotNull(query["audioId"]) { "Recording is required" })
+        val recordingId = query["recordingId"]?.let { UUID.parse(it) }
         val usfm = requireNotNull(query["usfm"]) { "Chapter reference is required" }
         val item = metadata.getById(id)?.takeUnless { it.deleted }
         if (item == null) { call.respond(HttpStatusCode.NotFound); return }
         permissions.verifyContentAllowed(authenticationContext, item, PermissionAction.VIEW)
         val bible = bibles.getBible(id, version, variant)
         if (bible == null) { call.respond(HttpStatusCode.NotFound); return }
-        val audio = bibles.getAudioPlayback(bible, audioId, usfm)
+        val audio = try {
+            bibles.getAudioPlayback(bible, audioId, usfm, recordingId)
+        } catch (_: ObjectNotFoundException) {
+            call.respond(HttpStatusCode.NotFound)
+            return
+        }
         val length = audio.content.contentLength
         val rangeHeader = call.request.header(HttpHeaders.Range)
         val range = Download.parseRangeHeader(rangeHeader, length)
@@ -45,18 +51,20 @@ class GetBibleAudio(
             call.respond(HttpStatusCode(416, "Range Not Satisfiable"))
             return
         }
-        try {
-            audio.openStream(range).use { stream ->
-                connection().release()
-                call.response.header(HttpHeaders.AcceptRanges, "bytes")
-                range?.let { call.response.header(HttpHeaders.ContentRange, "bytes ${it.first}-${it.last}/$length") }
-                call.response.header(HttpHeaders.ContentLength, (range?.let { it.last - it.first + 1 } ?: length).toString())
-                call.respondStreaming(contentType = ContentType.parse(audio.content.contentType),
-                    status = if (range == null) HttpStatusCode.OK else HttpStatusCode.PartialContent,
-                    timeLimit = null) { it.copyFrom(stream) }
-            }
+        val stream = try {
+            audio.openStream(range)
         } catch (_: ObjectNotFoundException) {
             call.respond(HttpStatusCode.NotFound)
+            return
+        }
+        stream.use {
+            connection().release()
+            call.response.header(HttpHeaders.AcceptRanges, "bytes")
+            range?.let { call.response.header(HttpHeaders.ContentRange, "bytes ${it.first}-${it.last}/$length") }
+            call.response.header(HttpHeaders.ContentLength, (range?.let { it.last - it.first + 1 } ?: length).toString())
+            call.respondStreaming(contentType = ContentType.parse(audio.content.contentType),
+                status = if (range == null) HttpStatusCode.OK else HttpStatusCode.PartialContent,
+                timeLimit = null) { it.copyFrom(stream) }
         }
     }
 }
