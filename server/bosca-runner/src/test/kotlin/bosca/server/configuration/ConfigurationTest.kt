@@ -19,6 +19,7 @@ import kotlinx.serialization.json.Json
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertIs
+import kotlin.test.assertEquals
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
 import kotlin.test.assertNotNull
@@ -40,6 +41,7 @@ class ConfigurationTest {
         val config = ApplicationConfig.loadFromClasspath()
         val runners = assertNotNull(config.propertyOrNull("runners")).getAs<RunnerConfig>()
         assertTrue("fumsQueueRunner" in runners.enabled)
+        assertEquals("false", config.property("eventProcessing.fumsEnabled").getString())
     }
 
     @Test

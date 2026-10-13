@@ -43,6 +43,7 @@ class ConfigurationTest {
     fun `packaged server configuration enables the FUMS worker`() {
         val runners = ApplicationConfig.loadFromClasspath().property("runners.enabled").getList()
         assertTrue("fumsQueueRunner" in runners)
+        assertEquals("false", ApplicationConfig.loadFromClasspath().property("eventProcessing.fumsEnabled").getString())
     }
 
     @Test
