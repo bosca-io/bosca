@@ -79,6 +79,13 @@ class InstallerTest(unittest.TestCase):
         installer.install(second, settings())
         self.assertNotEqual((first / ".env").read_bytes(), (second / ".env").read_bytes())
 
+    def test_installed_server_configuration_runs_the_fums_worker(self):
+        directory = self.install()
+        server = (directory / "config/server.yaml").read_text()
+        self.assertRegex(server, r"(?m)^    - fumsQueueRunner$")
+        compose = (directory / "compose.yaml").read_text()
+        self.assertIn("./config/server.yaml:/app/config/application.yaml:ro", compose)
+
     def test_rerun_preserves_user_configuration_credentials_and_data(self):
         directory = self.install()
         (directory / "config/server.yaml").write_text("user configuration\n")

@@ -162,6 +162,10 @@ Configure a mail provider before enabling email workflows. Image processing, CI
 agents, recommendations, model services, and analytics infrastructure are not included.
 The existing Git/WorkOps integration and required GraphQL schemas remain enabled.
 
+API.Bible usage reports run in the API process through `fumsQueueRunner`. When
+updating an existing installation's configuration, include `fumsQueueRunner` in
+`config/server.yaml` under `runners.enabled`.
+
 | Service | Container limit | Heap or indexing limit |
 | --- | ---: | ---: |
 | API and workers | 768 MiB | 512 MiB native heap |
