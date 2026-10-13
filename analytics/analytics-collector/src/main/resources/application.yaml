@@ -67,6 +67,7 @@ eventRepository:
   type: "${EVENT_REPOSITORY_TYPE:nats}"
 
 eventProcessing:
+  fumsEnabled: ${FUMS_TRANSFORM_ENABLED:true}
   workerCount: "${EVENT_PROCESSING_WORKER_COUNT:16}"
   channelCapacity: "${EVENT_PROCESSING_CHANNEL_CAPACITY:5000}"
 

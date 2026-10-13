@@ -7,11 +7,15 @@ import bosca.di.ObjectProvider
 import bosca.di.annotation.Provider
 import bosca.di.annotation.Providers
 import bosca.nats.NatsConnectionPool
+import bosca.lock.DistributedLockFactory
 import bosca.pubsub.NatsPubSubServiceImpl
 import bosca.pubsub.PubSubService
 import bosca.pubsub.RedisPubSubServiceImpl
 import bosca.redis.RedisConnectionPool
 import bosca.server.BoscaApplication
+import bosca.sharedqueue.jobs.JobQueueFactory
+import bosca.sharedqueue.jobs.nats.NatsJobQueueFactory
+import bosca.sharedqueue.jobs.redis.RedisJobQueueFactory
 import kotlinx.serialization.json.Json
 
 /**
@@ -20,7 +24,7 @@ import kotlinx.serialization.json.Json
  * The collector is intentionally a minimal GraalVM-compatible service that
  * receives analytics events over HTTP, enriches them statically, and publishes
  * them onto the pubsub transport for downstream processing by the analytics
- * processor. It does not run job queues or consume events itself.
+ * processor. It enqueues FUMS delivery jobs but does not run job workers or consume events itself.
  *
  * The [PubSubService] binding lives here (rather than being discovered via KSP)
  * because the concrete implementation is chosen at runtime from the
@@ -28,6 +32,19 @@ import kotlinx.serialization.json.Json
  */
 @Providers
 class Configuration {
+
+    /** Provides the configured job transport for enqueueing FUMS delivery. */
+    @Provider
+    suspend fun jobQueueFactory(
+        application: BoscaApplication,
+        nats: ObjectProvider<NatsConnectionPool>,
+        redis: ObjectProvider<RedisConnectionPool>,
+        json: Json,
+        locks: DistributedLockFactory,
+    ): JobQueueFactory = when (application.environment.config.propertyOrNull("jobQueue.factory")?.getString()) {
+        "nats" -> NatsJobQueueFactory(nats.get(), json, locks, null, emptyList(), false)
+        else -> RedisJobQueueFactory(redis.get(), json, locks, null, emptyList(), false)
+    }
 
     /**
      * Selects the NATS or Redis [PubSubService] implementation based on the
