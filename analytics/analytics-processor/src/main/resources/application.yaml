@@ -52,6 +52,9 @@ experimentation:
   eventsTable: "$EXPERIMENTATION_EVENTS_TABLE:warehouse.bosca.events"
   postgresCatalog: "$EXPERIMENTATION_POSTGRES_CATALOG:bosca"
 
+eventProcessing:
+  fumsEnabled: ${FUMS_TRANSFORM_ENABLED:false}
+
 jobQueue:
   factory: "$JOB_QUEUE_FACTORY:nats"
 

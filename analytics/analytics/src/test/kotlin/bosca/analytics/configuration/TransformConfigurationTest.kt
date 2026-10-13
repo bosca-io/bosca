@@ -51,7 +51,10 @@ class TransformConfigurationTest {
 
     private fun buildTransforms(
         fums: Boolean = true,
-        queue: ObjectProvider<JobQueue> = mockk { coEvery { get() } returns mockk() },
+        queue: ObjectProvider<JobQueue> = mockk {
+            every { exists } returns true
+            coEvery { get() } returns mockk()
+        },
     ): EventPipelineTransforms = runBlocking { config.transforms(
         config.cloudflare(),
         mockk<ObjectProvider<AnalyticsScriptBindingService>>(relaxed = true),
@@ -102,6 +105,13 @@ class TransformConfigurationTest {
     fun `EventPipelineTransforms wraps transform list`() {
         val pipeline = EventPipelineTransforms(emptyList())
         assertTrue(pipeline.transforms.isEmpty())
+    }
+
+    @Test
+    fun `servers without a FUMS queue omit the transform`() {
+        val queue = mockk<ObjectProvider<JobQueue>> { every { exists } returns false }
+        assertTrue(buildTransforms(queue = queue).transforms.none { it is FumsAnalyticsTransform })
+        coVerify(exactly = 0) { queue.get() }
     }
 
     @Test

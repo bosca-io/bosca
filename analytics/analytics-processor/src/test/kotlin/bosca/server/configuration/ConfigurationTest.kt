@@ -28,6 +28,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlin.test.AfterTest
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
@@ -38,6 +39,11 @@ class ConfigurationTest {
     private val configuration = Configuration()
     private val nats = mockk<NatsConnectionPool>().asProvider()
     private val redis = mockk<RedisConnectionPool>().asProvider()
+
+    @Test
+    fun `packaged configuration chooses FUMS transform placement`() {
+        assertEquals("false", ApplicationConfig.loadFromClasspath().property("eventProcessing.fumsEnabled").getString())
+    }
 
     @Test
     fun `generated wiring lets the processor publish FUMS jobs`() = runTest {
