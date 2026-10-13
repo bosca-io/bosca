@@ -29,8 +29,7 @@ export default defineEventHandler(async (e) => {
   const repository = path[1] + '/' + path[2]
   const listing = await $fetch<GitHubRelease[]>('https://api.github.com/repos/' + repository + '/releases?per_page=100')
   return {
-    version: listing.find(item => !item.draft && !item.prerelease
-      && item.tag_name.startsWith('cli-v') && stable.test(item.tag_name.slice(5)))?.tag_name.slice(5) ?? null,
+    version: listing.find(item => !item.draft && !item.prerelease && stable.test(item.tag_name))?.tag_name ?? null,
     repository
   }
 })

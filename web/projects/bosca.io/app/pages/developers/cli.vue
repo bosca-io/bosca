@@ -34,7 +34,7 @@ bosca --help`"
       The installer downloads a platform package and verifies it against <code>SHA256SUMS</code>.
       Public releases are available from
       <a href="https://github.com/bosca-io/bosca/releases">Bosca releases</a>
-      with <code>cli-v&lt;version&gt;</code> tags.
+      tagged with the bare version, such as <code>1.3.3</code>.
     </p>
     <h2 id="auth">
       Authentication

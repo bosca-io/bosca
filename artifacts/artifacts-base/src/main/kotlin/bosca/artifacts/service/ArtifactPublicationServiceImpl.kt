@@ -5,7 +5,13 @@ import bosca.artifacts.github.GitHubReleaseClient
 import bosca.artifacts.model.*
 import bosca.artifacts.repository.ArtifactPublicationRepository
 import bosca.db.transaction
+import bosca.di.ObjectProvider
+import bosca.pipelines.node.PipelineValue
+import bosca.pipelines.service.PipelineService
+import bosca.pipelines.service.PipelineRunService
 import bosca.pipelines.service.PipelineSecretService
+import bosca.security.service.AuthenticationContext
+import bosca.serialization.OffsetDateTime
 import bosca.serialization.UUID
 import bosca.service.annotation.ServiceImplementation
 import kotlinx.coroutines.CancellationException
@@ -19,6 +25,8 @@ class ArtifactPublicationServiceImpl(
     private val blobs: BlobStorageService,
     private val secrets: PipelineSecretService,
     private val github: GitHubReleaseClient,
+    private val pipelines: ObjectProvider<PipelineService>,
+    private val runs: ObjectProvider<PipelineRunService>,
 ) : ArtifactPublicationService {
     override suspend fun createDestination(input: ArtifactPublicationDestinationInput): ArtifactPublicationDestination {
         require(input.tokenSecretName.isNotBlank()) { "A destination secret name is required" }
@@ -53,10 +61,12 @@ class ArtifactPublicationServiceImpl(
 
     override suspend fun prepare(destinationId: UUID, versionId: UUID, commitSha: String, prerelease: Boolean): ArtifactPublication = transaction {
         require(commitSha.matches(Regex("[0-9a-f]{40}"))) { "Publication requires the exact Git commit SHA" }
-        val version = artifacts.finalizeVersion(versionId)
         val destination = repository.findDestination(destinationId) ?: throw NoSuchElementException("Publication destination not found")
         require(destination.enabled) { "Publication destination is disabled" }
+        val version = artifacts.finalizeVersion(versionId)
         require(destination.repositoryId == version.repositoryId) { "Publication destination does not match the artifact repository" }
+        val original = repository.publications(versionId, 1, 0).firstOrNull()
+        verifyCompletion(version, commitSha, original)
         val source = artifacts.getVersionBlobs(versionId)
         require(source.isNotEmpty()) { "An empty version cannot be published" }
         val files = source.map { file ->
@@ -69,7 +79,7 @@ class ArtifactPublicationServiceImpl(
             ArtifactPublicationFile(filename, file.digest, blob.size, mediaType)
         }.sortedBy { it.filename }
         require(files.map { it.filename }.distinct().size == files.size) { "Release asset filenames must be unique" }
-        repository.publications(versionId, 1, 0).firstOrNull()?.let { original ->
+        original?.let { original ->
             require(original.commitSha == commitSha && original.prerelease == prerelease && original.files == files) {
                 "Publication already exists with different input"
             }
@@ -85,7 +95,10 @@ class ArtifactPublicationServiceImpl(
                 "Publication already exists with different input"
             }
             existing
-        } else repository.create(ArtifactPublication(UUID.random(), destination.id, versionId, tag, commitSha, prerelease, files))
+        } else {
+            github.verifyTarget(destination, token(destination), tag, commitSha)
+            repository.create(ArtifactPublication(UUID.random(), destination.id, versionId, tag, commitSha, prerelease, files))
+        }
     }
 
     override suspend fun publications(versionId: UUID, limit: Int, offset: Long): List<ArtifactPublication> {
@@ -93,26 +106,81 @@ class ArtifactPublicationServiceImpl(
         return repository.publications(versionId, limit, offset)
     }
 
-    override suspend fun publish(id: UUID) {
+    private fun verifyCompletion(version: ArtifactVersion, commitSha: String, original: ArtifactPublication?) {
+        require(version.completedCommitSha != null || original != null) { "Artifact version uploads have not completed" }
+        require((version.completedCommitSha ?: original?.commitSha) == commitSha) { "Publication commit does not match the completed build" }
+    }
+
+    override suspend fun publish(authentication: AuthenticationContext, destinationId: UUID, versionId: UUID, commitSha: String): UUID {
+        require(commitSha.matches(Regex("[0-9a-f]{40}"))) { "Publication requires the exact Git commit SHA" }
+        val candidates = pipelines.get().acceptingInput(setOf(ArtifactPublicationTarget::class.qualifiedName.orEmpty()))
+            .filter { !it.triggered }
+        val pipeline = candidates.singleOrNull { it.name == ArtifactPublicationService.PUBLICATION_PIPELINE_NAME }
+            ?: candidates.singleOrNull()
+            ?: if (candidates.isEmpty()) {
+                error("No release publication pipeline accepts ArtifactPublicationTarget. Install 'Default Artifact Sync Pipelines' in System > Packages, or check the publication pipeline's input type and trigger setting.")
+            } else {
+                error("Multiple release publication pipelines accept ArtifactPublicationTarget. Give exactly one the name '${ArtifactPublicationService.PUBLICATION_PIPELINE_NAME}'.")
+            }
+        val runService = runs.get()
+        return transaction {
+            val destination = repository.findDestination(destinationId) ?: throw NoSuchElementException("Publication destination not found")
+            check(destination.enabled) { "Publication destination is disabled" }
+            val token = token(destination)
+            val version = artifacts.getVersion(versionId) ?: throw NoSuchElementException("Artifact version not found")
+            require(version.repositoryId == destination.repositoryId) { "Publication destination does not match the artifact repository" }
+            val artifact = artifacts.getRepository(version.repositoryId) ?: throw NoSuchElementException("Artifact repository not found")
+            require(artifact.type == ArtifactType.RAW.value) { "GitHub release assets require a raw artifact repository" }
+            require(artifacts.getVersionBlobs(version.id).isNotEmpty()) { "An empty version cannot be published" }
+            val original = repository.publications(versionId, 1, 0).firstOrNull()
+            verifyCompletion(version, commitSha, original)
+            original?.let { original ->
+                require(original.commitSha == commitSha) { "Publication already exists with a different commit" }
+            }
+            github.verifyTarget(destination, token, destination.tagPrefix + version.version, commitSha)
+            val target = ArtifactPublicationTarget(destination.id, version.id, commitSha, reverify = true)
+            val run = runService.start(pipeline, PipelineValue.of(target, ArtifactPublicationTarget.serializer()),
+                "manual", OffsetDateTime.now(), authentication)
+                ?: error("Release publication pipeline is at its concurrency or rate limit")
+            run.id
+        }
+    }
+
+    override suspend fun publish(id: UUID) = publish(id, false)
+
+    override suspend fun publish(id: UUID, reverify: Boolean) {
         val initial = repository.find(id) ?: return
-        var attempted = false
+        var failureState: ArtifactPublication? = null
         try {
-            transaction {
+            // Commit the attempt number before provider work so a failed request cannot roll it back.
+            val attempt = transaction {
                 artifacts.finalizeVersion(initial.versionId)
-                val publication = repository.lock(id) ?: return@transaction
-                if (publication.verified != null) return@transaction
+                val publication = repository.lock(id) ?: return@transaction null
+                val verified = publication.verified
+                val modified = publication.modified
+                if (verified != null && publication.error == null && !reverify &&
+                    (modified == null || !verified.isBefore(modified))) return@transaction null
+                repository.attempt(id) ?: error("Publication disappeared")
+            } ?: return
+            failureState = attempt
+            val published = transaction {
+                if (repository.find(id) == null) return@transaction null
+                artifacts.finalizeVersion(initial.versionId)
+                val publication = repository.lock(id) ?: return@transaction null
+                if (publication.attempts != attempt.attempts) return@transaction null
+                failureState = publication
                 val destination = repository.findDestination(publication.destinationId) ?: error("Publication destination not found")
                 check(destination.enabled) { "Publication destination is disabled" }
-                repository.attempt(id)
                 val releaseId = github.publish(destination, token(destination), publication)
-                repository.published(id, releaseId)
-            }
-            attempted = true
+                repository.published(id, releaseId) ?: error("Publication disappeared")
+            } ?: return
+            failureState = published
             transaction {
                 if (repository.find(id) == null) return@transaction
                 artifacts.finalizeVersion(initial.versionId)
                 val publication = repository.lock(id) ?: return@transaction
-                if (publication.verified != null) return@transaction
+                if (publication.attempts != published.attempts) return@transaction
+                failureState = publication
                 val destination = repository.findDestination(publication.destinationId) ?: error("Publication destination not found")
                 check(destination.enabled) { "Publication destination is disabled" }
                 github.verify(destination, token(destination), publication)
@@ -123,7 +191,9 @@ class ArtifactPublicationServiceImpl(
         } catch (e: Exception) {
             val message = if (e is GitHubPublicationException) e.message.orEmpty() else "Publication failed (${e.javaClass.simpleName})"
             try {
-                transaction { repository.failed(id, message, !attempted) }
+                failureState?.let { state ->
+                    transaction { repository.failed(id, message, state.attempts, state.modified) }
+                }
             } catch (recordingFailure: CancellationException) {
                 throw recordingFailure
             } catch (recordingFailure: Exception) {

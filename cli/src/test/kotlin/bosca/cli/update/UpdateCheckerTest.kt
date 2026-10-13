@@ -64,23 +64,23 @@ class UpdateCheckerTest {
     @Test
     fun `latestReleaseVersion takes the newest CLI release among other components`() {
         // The repository's releases are shared with independently versioned components.
-        val releases = listOf(release("server-v6.31.0"), release("cli-v5.9.0"), release("cli-v5.8.4"))
+        val releases = listOf(release("server-v6.31.0"), release("5.9.0"), release("5.8.4"))
         assertEquals("5.9.0", UpdateChecker.latestReleaseVersion(releases))
     }
 
     @Test
     fun `latestReleaseVersion skips drafts and prereleases`() {
         val releases = listOf(
-            release("cli-v6.0.0", draft = true),
-            release("cli-v5.10.0-rc1", prerelease = true),
-            release("cli-v5.9.0"),
+            release("6.0.0", draft = true),
+            release("5.10.0-rc1", prerelease = true),
+            release("5.9.0"),
         )
         assertEquals("5.9.0", UpdateChecker.latestReleaseVersion(releases))
     }
 
     @Test
     fun `latestReleaseVersion is null when no CLI release is present`() {
-        assertNull(UpdateChecker.latestReleaseVersion(listOf(release("server-v6.31.0"), release("cli-vnext"))))
+        assertNull(UpdateChecker.latestReleaseVersion(listOf(release("server-v6.31.0"), release("next"), release("v5.9.0"))))
         assertNull(UpdateChecker.latestReleaseVersion(emptyList()))
     }
 

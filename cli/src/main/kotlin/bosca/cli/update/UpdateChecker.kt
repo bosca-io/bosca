@@ -30,7 +30,6 @@ object UpdateChecker {
     const val ARTIFACTS_URL_ENV = "BOSCA_CLI_ARTIFACTS_URL"
     /** Optional token for direct private artifact repository lookups. */
     const val ARTIFACTS_TOKEN_ENV = "BOSCA_CLI_ARTIFACTS_TOKEN"
-    const val TAG_PREFIX = "cli-v"
 
     private const val CHECK_INTERVAL_SECONDS = 24L * 60 * 60
     private val CONNECT_TIMEOUT = Duration.ofMillis(1500)
@@ -176,11 +175,14 @@ object UpdateChecker {
         return release
     }
 
-    /** Selects the first stable, non-draft CLI release in GitHub's newest-first listing. */
+    /**
+     * Selects the first stable, non-draft CLI release in GitHub's newest-first listing.
+     * CLI releases use bare `<major>.<minor>.<patch>` tags; prefixed tags belong to other components.
+     */
     fun latestReleaseVersion(releases: List<GitHubRelease>): String? =
         releases.asSequence()
-            .filter { !it.draft && !it.prerelease && it.tagName.startsWith(TAG_PREFIX) }
-            .map { it.tagName.removePrefix(TAG_PREFIX) }
+            .filter { !it.draft && !it.prerelease }
+            .map { it.tagName }
             .firstOrNull(stableVersion::matches)
 
     /**

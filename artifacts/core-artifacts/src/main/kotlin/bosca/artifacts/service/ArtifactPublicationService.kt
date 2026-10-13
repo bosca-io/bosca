@@ -4,6 +4,7 @@ import bosca.artifacts.model.ArtifactPublication
 import bosca.artifacts.model.ArtifactPublicationDestination
 import bosca.artifacts.model.ArtifactPublicationDestinationInput
 import bosca.serialization.UUID
+import bosca.security.service.AuthenticationContext
 import bosca.service.Service
 
 /** Publishes completed raw artifact versions to configured GitHub releases using their stored bytes. */
@@ -30,4 +31,24 @@ interface ArtifactPublicationService : Service {
 
     /** Performs one publication/verification attempt using the fixed input. Deleted local versions cancel their work. */
     suspend fun publish(id: UUID)
+
+    /**
+     * Repeats verification when [reverify] is true. The attempt number is committed before provider work;
+     * failures retain prior success timestamps, and only the current attempt can record its result.
+     * An unfinished attempt remains eligible for retry even when an earlier attempt was verified.
+     */
+    suspend fun publish(id: UUID, reverify: Boolean)
+
+    /**
+     * Queues a completed raw version for one enabled destination through a durable pipeline
+     * under the caller's identity. [commitSha] is the exact build commit and must match the
+     * destination's existing GitHub tag. The publication action fixes the stored file manifest;
+     * repeated requests retain that manifest and publication result while verifying the release again.
+     */
+    suspend fun publish(authentication: AuthenticationContext, destinationId: UUID, versionId: UUID, commitSha: String): UUID
+
+    companion object {
+        /** Default editable pipeline for publishing one raw version to GitHub. */
+        const val PUBLICATION_PIPELINE_NAME = "Publish Raw Artifact to GitHub"
+    }
 }

@@ -79,11 +79,20 @@ interface ArtifactRepositoryService : PermissionService<ArtifactNamespace, UUID>
     suspend fun createVersion(repositoryId: UUID, version: String, metadata: JsonObject? = null): ArtifactVersion
 
     /**
-     * Announces [ArtifactCompleted] after the producer has finished every file upload for this version.
+     * Records the exact build commit and announces [ArtifactCompleted] after every file upload finishes.
+     * A subsequent manifest change clears completion until the producer completes the version again.
      * CI calls this when all associated producer jobs succeed; no publication is prepared here.
      * Dispatch participates in the caller's transaction and ordinary pipelines own processing/retries.
      */
     suspend fun completeVersion(id: UUID, commitSha: String, jobIds: List<UUID>, principalId: UUID?)
+
+    /**
+     * Confirms that the reviewed files of a stored raw version have finished uploading.
+     * [expectedBlobs] must match the entire current manifest; changed files require another review.
+     * Records the exact build commit and dispatches ordinary completion events for enabled destinations.
+     * Callers must authorize this administrative confirmation and supply the confirming principal.
+     */
+    suspend fun confirmVersionCompletion(id: UUID, commitSha: String, expectedBlobs: List<ArtifactVersionBlob>, principalId: UUID?): ArtifactVersion
 
     /**
      * Locks and finalizes a completed version in the caller's transaction. Further blob changes fail;

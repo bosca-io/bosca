@@ -9,6 +9,7 @@ import bosca.artifacts.pipeline.ArtifactPublicationNode
 import bosca.artifacts.pipeline.ArtifactSyncGetDestinations
 import bosca.artifacts.pipeline.ArtifactSyncNode
 import bosca.artifacts.service.ArtifactSyncService
+import bosca.artifacts.service.ArtifactPublicationService
 import bosca.installer.model.PackageInstallation
 import bosca.installer.model.PackageInstallationVersion
 import bosca.installer.service.PackageInstaller
@@ -94,7 +95,7 @@ class DefaultArtifactSyncPipelinesInstaller(private val pipelines: PipelineServi
         const val NAME = "default-artifact-sync-pipelines"
         const val BODY_NAME = ArtifactSyncService.PUSH_PIPELINE_NAME
         const val TRIGGER_NAME = "Sync Published Docker Tags to GHCR"
-        const val PUBLICATION_BODY_NAME = "Publish Raw Artifact to GitHub"
+        const val PUBLICATION_BODY_NAME = ArtifactPublicationService.PUBLICATION_PIPELINE_NAME
         const val PUBLICATION_TRIGGER_NAME = "Sync Completed Raw Artifacts to GitHub"
     }
 }

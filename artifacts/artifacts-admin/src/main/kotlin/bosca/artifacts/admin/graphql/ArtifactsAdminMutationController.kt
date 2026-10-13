@@ -4,6 +4,8 @@ import bosca.artifacts.model.ArtifactNamespace
 import bosca.artifacts.model.ArtifactRepository
 import bosca.artifacts.model.ArtifactTag
 import bosca.artifacts.model.ArtifactType
+import bosca.artifacts.model.ArtifactVersion
+import bosca.artifacts.model.ArtifactVersionBlob
 import bosca.artifacts.service.ArtifactRepositoryService
 import bosca.artifacts.service.ArtifactPublicationService
 import bosca.artifacts.model.ArtifactPublicationDestination
@@ -73,6 +75,18 @@ class ArtifactsAdminMutationController(
     suspend fun updatePublicationDestination(authorization: AuthenticationContext, id: UUID, version: Long, enabled: Boolean, tokenSecretName: String?): ArtifactPublicationDestination {
         groupEvaluator.verifyHasAdminGroup(authorization)
         return publications.updateDestination(id, version, enabled, tokenSecretName)
+    }
+
+    @Field
+    suspend fun publishRelease(authorization: AuthenticationContext, destinationId: UUID, versionId: UUID, commitSha: String): UUID {
+        groupEvaluator.verifyHasAdminGroup(authorization)
+        return publications.publish(authorization, destinationId, versionId, commitSha)
+    }
+
+    @Field
+    suspend fun completeVersion(authorization: AuthenticationContext, versionId: UUID, commitSha: String, expectedBlobs: List<ArtifactVersionBlob>): ArtifactVersion {
+        groupEvaluator.verifyHasAdminGroup(authorization)
+        return repoService.confirmVersionCompletion(versionId, commitSha, expectedBlobs, authorization.principal()?.id)
     }
 
     @Field

@@ -19,5 +19,6 @@ class ArtifactsMigration : Migration {
         "V6__multipart_blob_uploads.sql",
         "V7__artifact_publication.sql",
         "V8__artifact_sync.sql",
+        "V9__artifact_completion.sql",
     )
 }

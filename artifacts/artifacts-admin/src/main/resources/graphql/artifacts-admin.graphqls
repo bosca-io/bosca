@@ -34,6 +34,8 @@ type ArtifactsAdmin {
     repository(id: UUID!): ArtifactRepoInfo
     "List versions for a repository"
     versions(repositoryId: UUID!): [ArtifactVersionInfo!]!
+    "A stored version and its current file manifest. Requires admin."
+    version(id: UUID!): ArtifactVersionInfo
     "List tags for a repository"
     tags(repositoryId: UUID!, limit: Int, last: String): [ArtifactTagInfo!]!
 }
@@ -54,6 +56,10 @@ type ArtifactsAdminMutation {
     createPublicationDestination(input: ArtifactPublicationDestinationInput!): ArtifactPublicationDestination!
     "Enable, disable or change a destination secret reference. Requires admin."
     updatePublicationDestination(id: UUID!, version: Long!, enabled: Boolean!, tokenSecretName: String): ArtifactPublicationDestination!
+    "Queue an existing raw version for one enabled GitHub release destination under the caller's identity. The exact build commit must match its existing GitHub tag. Returns the durable pipeline run ID. Requires admin."
+    publishRelease(destinationId: UUID!, versionId: UUID!, commitSha: String!): UUID!
+    "Confirm every reviewed raw file has finished uploading and record its build commit. The current manifest must match expectedBlobs. Enabled destinations may publish automatically. Requires admin."
+    completeVersion(versionId: UUID!, commitSha: String!, expectedBlobs: [ArtifactVersionBlobInput!]!): ArtifactVersionInfo!
     "Create a new namespace"
     createNamespace(name: String!, public: Boolean): ArtifactNamespaceInfo!
     "Update a namespace's public (anonymous pull) visibility"
@@ -124,6 +130,9 @@ type ArtifactRepoInfo {
 type ArtifactVersionInfo {
     "Whether the version's files are fixed for publication"
     finalized: Boolean!
+    completed: Boolean!
+    "The build commit recorded when uploads completed"
+    completedCommitSha: String
     "Unique identifier"
     id: UUID!
     "ID of the owning repository"
@@ -136,6 +145,15 @@ type ArtifactVersionInfo {
     created: DateTime
     "Blobs associated with this version"
     blobs: [ArtifactVersionBlobInfo!]!
+}
+
+"Association between a version and a blob with a specific role"
+input ArtifactVersionBlobInput {
+    versionId: UUID!
+    digest: String!
+    role: String!
+    filename: String
+    mediaType: String
 }
 
 "Association between a version and a blob with a specific role"

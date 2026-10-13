@@ -18,6 +18,7 @@ const { data, status, error, refresh } = useAsyncQuery<{
   }
 `, { id: repositoryId }, { server: false })
 const repository = computed(() => data.value?.artifactsAdmin.repository)
+const loading = computed(() => status.value === 'idle' || status.value === 'pending')
 const repositoryPath = computed(() => repository.value ? `${repository.value.namespace?.name ?? '?'}/${repository.value.name}` : 'Repository')
 </script>
 
@@ -31,7 +32,7 @@ const repositoryPath = computed(() => repository.value ? `${repository.value.nam
       </PageHeader>
     </template>
     <div v-if="isAdmin" class="content-stack">
-      <p v-if="status === 'pending' && !repository">Loading repository…</p>
+      <p v-if="loading && !repository">Loading repository…</p>
       <template v-else-if="error">
         <p role="alert">Could not load repository settings.</p>
         <Button @click="refresh()">Retry</Button>
