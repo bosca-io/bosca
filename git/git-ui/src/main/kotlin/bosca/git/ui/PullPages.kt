@@ -131,19 +131,39 @@ suspend fun pullPage(): PullPage? {
     val number = ctx.query["number"]?.toIntOrNull() ?: return null.also { ctx.notFound = true }
     val pull =
         ctx.gql
-            .execute(GitUiPull, GitUiPull.Variables(repository, number, 2000))
+            .execute(GitUiPull, GitUiPull.Variables(repository, number))
             .git
             .pullRequest
             ?.takeIf { it.id == ctx.params["id"] } ?: return null.also { ctx.notFound = true }
+    val merged = pull.status == GitPullRequestStatus.MERGED
     val repo =
         ctx.gql
             .execute(
                 GitUiRepository,
-                GitUiRepository.Variables(pull.sourceRepositoryId ?: repository),
+                GitUiRepository.Variables(if (merged) repository else pull.sourceRepositoryId ?: repository),
             )
             .git
             .repositoryById ?: return null.also { ctx.notFound = true }
-    val sha = ctx.gql.commitShaForRef(repo.id, pull.sourceBranch).orEmpty()
+    val sourceRefs = if (merged) emptyMap()
+        else ctx.gql.execute(GitUiBranches, GitUiBranches.Variables(repo.id)).git.branches.associate { it.name to it.sha }
+    val targetRefs = if (merged || repo.id == repository) sourceRefs
+        else ctx.gql.execute(GitUiBranches, GitUiBranches.Variables(repository)).git.branches.associate { it.name to it.sha }
+    val sha = if (merged) pull.mergeSha.orEmpty()
+        else ctx.gql.commitShaForRef(repo.id, pull.sourceBranch, sourceRefs).orEmpty()
+    val diffUnavailable = when {
+        merged && sha.isBlank() -> "The completed merge commit is not recorded."
+        merged && pull.mergeBaseSha.isNullOrBlank() -> "The original target commit for this merge is not recorded."
+        merged -> ""
+        sha.isBlank() -> "Source branch '${pull.sourceBranch}' is no longer available."
+        targetRefs[pull.targetBranch].isNullOrBlank() -> "Target branch '${pull.targetBranch}' is no longer available."
+        else -> ""
+    }
+    val diff = if (diffUnavailable.isBlank()) {
+        val comparison = ctx.gql.execute(GitUiPullDiffPage, GitUiPullDiffPage.Variables(repository, number, 0))
+            .git.pullRequest ?: error("Pull request unavailable.")
+        require(comparison.version == pull.version) { "Pull request changed. Reload it before continuing." }
+        comparison.diff.map { it.view() }
+    } else emptyList()
     val ownProfiles = ctx.gql.execute(GitUiProfiles, Unit).profiles.current.orEmpty().map { it.id }
     val identities = mutableMapOf<String, String>()
     for (id in
@@ -201,8 +221,13 @@ suspend fun pullPage(): PullPage? {
         ctx.query["view"]?.takeIf { it in setOf("overview", "files", "reviews") } ?: "overview",
         ctx.query["review"] == "true",
         targetRepository?.name.orEmpty(),
-        repo.name,
+        if (merged && pull.sourceRepositoryId != null && pull.sourceRepositoryId != repository)
+            ctx.gql.execute(GitUiRepository, GitUiRepository.Variables(pull.sourceRepositoryId.orEmpty()))
+                .git.repositoryById?.name.orEmpty()
+        else repo.name,
         ctx.gql.execute(GitUiRepositories, GitUiRepositories.Variables(false, null))
             .git.repositories.filterNot { it.deleted }.associate { it.id to it.name },
+        diff,
+        diffUnavailable,
     )
 }

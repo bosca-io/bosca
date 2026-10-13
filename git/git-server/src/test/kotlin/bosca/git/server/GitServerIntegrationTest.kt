@@ -642,7 +642,7 @@ class GitServerIntegrationTest {
             assertEquals(readmeContent, readback.at("git", "blob", "content").jsonPrimitive.content)
             for ((tab, heading) in
                 listOf(
-                    "pulls" to "No pull requests",
+                    "pulls" to "No open pull requests",
                     "pipelines" to "No pipelines",
                     "statuses" to "Recent commits",
                     "secrets" to "Pipeline secrets",
@@ -710,6 +710,250 @@ class GitServerIntegrationTest {
                 searchAction.body(),
             )
 
+            // Exercise compiled editing against the production API and actual Git/SQL state.
+            for (branch in listOf("feature", "feature-two", "release")) {
+                graphql(
+                    "mutation Branch(\$repo: UUID!, \$name: String!) { git { createBranch(repositoryId: \$repo, branchName: \$name, sourceRef: \"trunk\") { name } } }",
+                    buildJsonObject { put("repo", emptyId); put("name", branch) }, adminToken,
+                )
+            }
+            for ((branch, content) in listOf("feature" to "Before retarget\n", "feature-two" to "After retarget\n")) {
+                graphql(
+                    "mutation File(\$repo: UUID!, \$branch: String!, \$content: String!) { git { commitFile(input: { repositoryId: \$repo, branch: \$branch, path: \"review.txt\", content: \$content, message: \"Prepare review\", authorName: \"Reviewer\", authorEmail: \"reviewer@example.test\" }) { commitSha } } }",
+                    buildJsonObject { put("repo", emptyId); put("branch", branch); put("content", content) }, adminToken,
+                )
+            }
+            val editable = graphql(
+                "mutation Pull(\$repo: UUID!) { git { createPullRequest(input: { repositoryId: \$repo, title: \"Original PR\", description: \"Original description\", sourceBranch: \"feature\", targetBranch: \"trunk\" }) { id number version } } }",
+                buildJsonObject { put("repo", emptyId) }, adminToken,
+            ).at("git", "createPullRequest").jsonObject
+            val pullId = editable.getValue("id").jsonPrimitive.content
+            val pullNumber = editable.getValue("number").jsonPrimitive.int
+            val reviewId = graphql(
+                "mutation Review(\$id: UUID!) { git { submitReview(input: { pullRequestId: \$id, status: APPROVED, expectedVersion: 0 }) { id } } }",
+                buildJsonObject { put("id", pullId) }, adminToken,
+            ).at("git", "submitReview", "id").jsonPrimitive.content
+            val sourceSha = graphql(
+                "query Head(\$repo: UUID!) { git { branches(repositoryId: \$repo) { name sha } } }",
+                buildJsonObject { put("repo", emptyId) }, adminToken,
+            ).at("git", "branches").jsonArray.single { it.at("name").jsonPrimitive.content == "feature" }.at("sha").jsonPrimitive.content
+            val originalCommentId = graphql(
+                "mutation Comment(\$id: UUID!, \$review: UUID!, \$sha: String!) { git { addReviewComment(input: { pullRequestId: \$id, reviewId: \$review, filePath: \"review.txt\", newLineNumber: 1, commitSha: \$sha, content: \"Original line comment\", expectedVersion: 0 }) { id } } }",
+                buildJsonObject { put("id", pullId); put("review", reviewId); put("sha", sourceSha) }, adminToken,
+            ).at("git", "addReviewComment", "id").jsonPrimitive.content
+            val pullPath = "/pulls/$pullId?repo=$emptyId&number=$pullNumber&view=files"
+            val pullHtml = request(pullPath, cookie = "$cookiePrefix=$adminToken").body()
+            assertTrue("Before retarget" in pullHtml, pullHtml)
+            val editState = Regex("<script type=\"application/json\" data-bml-state-key=\"(git-pull-edit.model[^\"]*)\"[^>]*>(.*?)</script>", RegexOption.DOT_MATCHES_ALL)
+                .find(pullHtml) ?: error("Missing PR edit state: $pullHtml")
+            val edited = request(
+                "/_bml/action",
+                buildJsonObject {
+                    put("page", "/pulls/{id}"); put("path", "/pulls/$pullId")
+                    put("stateKey", editState.groupValues[1]); put("state", editState.groupValues[2]); put("method", "save")
+                    put("args", buildJsonArray { add("Edited PR"); add("## Updated description\n\nEdited through BML."); add("feature-two"); add("release") })
+                }.toString(), cookie = "$cookiePrefix=$adminToken",
+            )
+            assertEquals(200, edited.statusCode(), edited.body())
+            val editedModel = Json.parseToJsonElement(Json.parseToJsonElement(edited.body()).at("state").jsonPrimitive.content).jsonObject
+            assertEquals(false, editedModel["failed"]?.jsonPrimitive?.boolean, edited.body())
+            assertTrue(editedModel["nextHref"]?.jsonPrimitive?.content?.endsWith("&view=files") == true, edited.body())
+            val currentPull = graphql(
+                "query Current(\$repo: UUID!, \$number: Int!) { git { pullRequest(repositoryId: \$repo, number: \$number) { id number version title description sourceBranch targetBranch mergeable reviews { dismissedAt dismissReason comments { outdated content } } diff { hunks { lines { content } } } } } }",
+                buildJsonObject { put("repo", emptyId); put("number", pullNumber) }, adminToken,
+            ).at("git", "pullRequest")
+            assertEquals(pullId, currentPull.at("id").jsonPrimitive.content)
+            assertEquals(pullNumber, currentPull.at("number").jsonPrimitive.int)
+            assertEquals(1L, currentPull.at("version").jsonPrimitive.long)
+            assertEquals("Edited PR", currentPull.at("title").jsonPrimitive.content)
+            assertEquals("feature-two", currentPull.at("sourceBranch").jsonPrimitive.content)
+            assertEquals("release", currentPull.at("targetBranch").jsonPrimitive.content)
+            assertTrue(currentPull.at("mergeable").jsonPrimitive.boolean)
+            assertTrue("After retarget" in currentPull.at("diff").toString())
+            assertFalse("Before retarget" in currentPull.at("diff").toString())
+            assertEquals("branches_updated", currentPull.at("reviews").jsonArray.single().at("dismissReason").jsonPrimitive.content)
+            assertTrue(currentPull.at("reviews").jsonArray.single().at("comments").jsonArray.single().at("outdated").jsonPrimitive.boolean)
+            val refreshed = request(pullPath, cookie = "$cookiePrefix=$adminToken").body()
+            assertTrue("After retarget" in refreshed && "Edited PR" in refreshed, refreshed)
+            val overview = request(pullPath.replace("view=files", "view=overview"), cookie = "$cookiePrefix=$adminToken").body()
+            assertTrue("Updated description" in overview && "Edited through BML." in overview, overview)
+            graphql(
+                "mutation Resolve(\$id: UUID!) { git { resolveReviewThread(pullRequestId: \$id, filePath: \"review.txt\", lineNumber: 1) } }",
+                buildJsonObject { put("id", pullId) }, adminToken,
+            )
+            val historyPath = pullPath.replace("view=files", "view=reviews")
+            val history = request(historyPath, cookie = "$cookiePrefix=$adminToken").body()
+            assertTrue("Outdated" in history && "Resolved" in history && "Reply" in history, history)
+            val reviewState = Regex("<script type=\"application/json\" data-bml-state-key=\"(git-pull-review.model[^\"]*)\"[^>]*>(.*?)</script>", RegexOption.DOT_MATCHES_ALL)
+                .find(history) ?: error("Missing review state")
+            fun reviewAction(method: String, state: String, argument: String): HttpResponse<String> = request(
+                "/_bml/action", buildJsonObject {
+                    put("page", "/pulls/{id}"); put("path", "/pulls/$pullId")
+                    put("stateKey", reviewState.groupValues[1]); put("state", state); put("method", method)
+                    put("args", buildJsonArray { add(argument) })
+                }.toString(), cookie = "$cookiePrefix=$adminToken",
+            )
+            val openedReply = reviewAction("reply", reviewState.groupValues[2], originalCommentId)
+            assertEquals(200, openedReply.statusCode(), openedReply.body())
+            assertTrue("Write a reply" in openedReply.body() && "Submit a review to start" !in openedReply.body(), openedReply.body())
+            val savedReply = reviewAction("comment", Json.parseToJsonElement(openedReply.body()).at("state").jsonPrimitive.content, "Response to the original discussion")
+            assertEquals(200, savedReply.statusCode(), savedReply.body())
+            val replyModel = Json.parseToJsonElement(Json.parseToJsonElement(savedReply.body()).at("state").jsonPrimitive.content)
+            assertFalse(replyModel.at("failed").jsonPrimitive.boolean, savedReply.body())
+            assertEquals("Reply added.", replyModel.at("message").jsonPrimitive.content)
+            val savedComments = graphql(
+                "query Discussion(\$repo: UUID!, \$number: Int!) { git { pullRequest(repositoryId: \$repo, number: \$number) { reviews { comments { id reviewId commitSha filePath newLineNumber outdated resolved content } } } } }",
+                buildJsonObject { put("repo", emptyId); put("number", pullNumber) }, adminToken,
+            ).at("git", "pullRequest", "reviews").jsonArray.single().at("comments").jsonArray
+            val savedResponse = savedComments.single { it.at("content").jsonPrimitive.content == "Response to the original discussion" }
+            assertEquals(reviewId, savedResponse.at("reviewId").jsonPrimitive.content)
+            assertEquals(sourceSha, savedResponse.at("commitSha").jsonPrimitive.content)
+            assertEquals("review.txt", savedResponse.at("filePath").jsonPrimitive.content)
+            assertEquals(1, savedResponse.at("newLineNumber").jsonPrimitive.int)
+            assertTrue(savedResponse.at("outdated").jsonPrimitive.boolean)
+            assertFalse(savedResponse.at("resolved").jsonPrimitive.boolean)
+            assertTrue(savedComments.single { it.at("id").jsonPrimitive.content == originalCommentId }.at("resolved").jsonPrimitive.boolean)
+            val deniedReply = request("/graphql", buildJsonObject {
+                put("query", "mutation DeniedReply(\$id: UUID!, \$comment: UUID!) { git { replyReviewComment(pullRequestId: \$id, commentId: \$comment, content: \"Denied reply\", expectedVersion: 1) { id } } }")
+                put("variables", buildJsonObject { put("id", pullId); put("comment", originalCommentId) })
+            }.toString(), apiToken)
+            assertTrue(Json.parseToJsonElement(deniedReply.body()).jsonObject.containsKey("errors"), deniedReply.body())
+            val currentDiffHtml = request(pullPath, cookie = "$cookiePrefix=$adminToken").body()
+                .replace(Regex("<script\\b[^>]*>.*?</script>", RegexOption.DOT_MATCHES_ALL), "")
+            val displayedDiff = Regex("<details[^>]*class=\"diff-file\"[^>]*>.*?</details>", RegexOption.DOT_MATCHES_ALL)
+                .findAll(currentDiffHtml).joinToString("\n") { it.value }
+            assertFalse("Response to the original discussion" in displayedDiff)
+            assertTrue("Response to the original discussion" in currentDiffHtml && "Discussions outside this diff" in currentDiffHtml)
+            val deniedApiEdit = request("/graphql", buildJsonObject {
+                put("query", "mutation Denied(\$id: UUID!) { git { updatePullRequest(id: \$id, input: { title: \"Denied edit\", expectedVersion: 1 }) { id } } }")
+                put("variables", buildJsonObject { put("id", pullId) })
+            }.toString(), apiToken)
+            assertTrue(Json.parseToJsonElement(deniedApiEdit.body()).jsonObject.containsKey("errors"), deniedApiEdit.body())
+            for ((actor, message) in listOf(
+                adminToken to "Pull request changed",
+                apiToken to "edit access",
+            )) {
+                val rejected = request("/_bml/action", buildJsonObject {
+                    put("page", "/pulls/{id}"); put("path", "/pulls/$pullId")
+                    put("stateKey", editState.groupValues[1]); put("state", editState.groupValues[2]); put("method", "save")
+                    put("args", buildJsonArray { add("Stale edit"); add(""); add("feature"); add("trunk") })
+                }.toString(), cookie = "$cookiePrefix=$actor")
+                assertTrue(message in rejected.body(), rejected.body())
+            }
+            for (mutation in listOf(
+                "mutation StaleReview(\$id: UUID!) { git { submitReview(input: { pullRequestId: \$id, status: APPROVED, expectedVersion: 0 }) { id } } }",
+                "mutation StaleComment(\$id: UUID!, \$review: UUID!, \$sha: String!) { git { addReviewComment(input: { pullRequestId: \$id, reviewId: \$review, filePath: \"review.txt\", newLineNumber: 1, commitSha: \$sha, content: \"Stale line comment\", expectedVersion: 0 }) { id } } }",
+                "mutation StaleReply(\$id: UUID!, \$comment: UUID!) { git { replyReviewComment(pullRequestId: \$id, commentId: \$comment, content: \"Stale reply\", expectedVersion: 0) { id } } }",
+                "mutation InvalidBranch(\$id: UUID!) { git { updatePullRequest(id: \$id, input: { targetBranch: \"missing\", expectedVersion: 1 }) { id } } }",
+                "mutation StaleMerge(\$id: UUID!) { git { mergePullRequest(id: \$id, strategy: MERGE_COMMIT, expectedVersion: 0) { id } } }",
+                "mutation StalePlan(\$id: UUID!) { git { mergePullRequestWithDependencies(id: \$id, strategy: MERGE_COMMIT, expectedVersion: 0) { id } } }",
+            )) {
+                val rejected = request("/graphql", buildJsonObject {
+                    put("query", mutation)
+                    put("variables", buildJsonObject { put("id", pullId); put("review", reviewId); put("sha", sourceSha); put("comment", originalCommentId) })
+                }.toString(), adminToken)
+                val result = Json.parseToJsonElement(rejected.body()).jsonObject
+                assertTrue(result.containsKey("errors"), rejected.body())
+                assertTrue("Pull request changed" in rejected.body() || "no longer available" in rejected.body(), rejected.body())
+            }
+            graphql(
+                "mutation DeleteSource(\$repo: UUID!) { git { deleteBranch(repositoryId: \$repo, branchName: \"feature-two\") } }",
+                buildJsonObject { put("repo", emptyId) }, adminToken,
+            )
+            for ((source, title) in listOf("feature-two" to "Metadata with deleted source", "feature" to "Repaired PR")) {
+                val pageWithMissingSource = request(pullPath, cookie = "$cookiePrefix=$adminToken")
+                assertEquals(200, pageWithMissingSource.statusCode(), pageWithMissingSource.body())
+                assertTrue("Comparison unavailable" in pageWithMissingSource.body(), pageWithMissingSource.body())
+                val state = Regex("<script type=\"application/json\" data-bml-state-key=\"(git-pull-edit.model[^\"]*)\"[^>]*>(.*?)</script>", RegexOption.DOT_MATCHES_ALL)
+                    .find(pageWithMissingSource.body()) ?: error("Missing recovery edit state")
+                val repair = request("/_bml/action", buildJsonObject {
+                    put("page", "/pulls/{id}"); put("path", "/pulls/$pullId")
+                    put("stateKey", state.groupValues[1]); put("state", state.groupValues[2]); put("method", "save")
+                    put("args", buildJsonArray { add(title); add("Edited with a deleted source branch."); add(source); add("release") })
+                }.toString(), cookie = "$cookiePrefix=$adminToken")
+                val stateAfter = Json.parseToJsonElement(Json.parseToJsonElement(repair.body()).at("state").jsonPrimitive.content)
+                assertEquals(false, stateAfter.at("failed").jsonPrimitive.boolean, repair.body())
+            }
+            val recovered = request(pullPath, cookie = "$cookiePrefix=$adminToken")
+            assertEquals(200, recovered.statusCode(), recovered.body())
+            assertTrue("Repaired PR" in recovered.body() && "Before retarget" in recovered.body(), recovered.body())
+            assertFalse("Comparison unavailable" in recovered.body(), recovered.body())
+            for (strategy in listOf("MERGE_COMMIT", "SQUASH", "REBASE", "FAST_FORWARD")) {
+                val source = "merged-${strategy.lowercase()}"
+                val target = "target-${strategy.lowercase()}"
+                for (branch in listOf(source, target)) {
+                    graphql(
+                        "mutation Branch(\$repo: UUID!, \$name: String!) { git { createBranch(repositoryId: \$repo, branchName: \$name, sourceRef: \"trunk\") { name } } }",
+                        buildJsonObject { put("repo", emptyId); put("name", branch) }, adminToken,
+                    )
+                }
+                val before = graphql(
+                    "query Branches(\$repo: UUID!) { git { branches(repositoryId: \$repo) { name sha } } }",
+                    buildJsonObject { put("repo", emptyId) }, adminToken,
+                ).at("git", "branches").jsonArray.first { it.at("name").jsonPrimitive.content == target }
+                    .at("sha").jsonPrimitive.content
+                var sourceHead = ""
+                for (path in listOf("first-change.txt", "second-change.txt")) {
+                    sourceHead = graphql(
+                        "mutation File(\$repo: UUID!, \$branch: String!, \$path: String!) { git { commitFile(input: { repositoryId: \$repo, branch: \$branch, path: \$path, content: \"Retained merged change\\n\", message: \"Prepare merged diff\", authorName: \"Reviewer\", authorEmail: \"reviewer@example.test\" }) { commitSha } } }",
+                        buildJsonObject { put("repo", emptyId); put("branch", source); put("path", path) }, adminToken,
+                    ).at("git", "commitFile", "commitSha").jsonPrimitive.content
+                }
+                val createdPull = graphql(
+                    "mutation Pull(\$repo: UUID!, \$source: String!, \$target: String!) { git { createPullRequest(input: { repositoryId: \$repo, title: \"Retained merged diff\", sourceBranch: \$source, targetBranch: \$target }) { id number version } } }",
+                    buildJsonObject { put("repo", emptyId); put("source", source); put("target", target) }, adminToken,
+                ).at("git", "createPullRequest")
+                val mergedReview = graphql(
+                    "mutation Review(\$id: UUID!) { git { submitReview(input: { pullRequestId: \$id, status: COMMENT_ONLY }) { id } } }",
+                    buildJsonObject { put("id", createdPull.at("id").jsonPrimitive.content) }, adminToken,
+                ).at("git", "submitReview", "id").jsonPrimitive.content
+                graphql(
+                    "mutation Comment(\$id: UUID!, \$review: UUID!, \$sha: String!) { git { addReviewComment(input: { pullRequestId: \$id, reviewId: \$review, filePath: \"first-change.txt\", newLineNumber: 1, commitSha: \$sha, content: \"Retained source discussion\" }) { id } } }",
+                    buildJsonObject { put("id", createdPull.at("id").jsonPrimitive.content); put("review", mergedReview); put("sha", sourceHead) }, adminToken,
+                )
+                val merged = graphql(
+                    "mutation Merge(\$id: UUID!, \$strategy: GitMergeStrategy!, \$version: Long!) { git { mergePullRequest(id: \$id, strategy: \$strategy, expectedVersion: \$version) { mergeSha mergeBaseSha } } }",
+                    buildJsonObject {
+                        put("id", createdPull.at("id").jsonPrimitive.content); put("strategy", strategy)
+                        put("version", createdPull.at("version").jsonPrimitive.long)
+                    }, adminToken,
+                ).at("git", "mergePullRequest")
+                val mergedSha = merged.at("mergeSha").jsonPrimitive.content
+                assertEquals(before, merged.at("mergeBaseSha").jsonPrimitive.content, strategy)
+                graphql(
+                    "mutation Delete(\$repo: UUID!, \$branch: String!) { git { deleteBranch(repositoryId: \$repo, branchName: \$branch) } }",
+                    buildJsonObject { put("repo", emptyId); put("branch", source) }, adminToken,
+                )
+                graphql(
+                    "mutation Later(\$repo: UUID!, \$branch: String!) { git { commitFile(input: { repositoryId: \$repo, branch: \$branch, path: \"unrelated-after-merge.txt\", content: \"Later target change\", message: \"Advance target\", authorName: \"Reviewer\", authorEmail: \"reviewer@example.test\" }) { commitSha } } }",
+                    buildJsonObject { put("repo", emptyId); put("branch", target) }, adminToken,
+                )
+                val historical = graphql(
+                    "query Merged(\$repo: UUID!, \$number: Int!) { git { pullRequest(repositoryId: \$repo, number: \$number) { mergeSha mergeBaseSha diff { newPath } } } }",
+                    buildJsonObject { put("repo", emptyId); put("number", createdPull.at("number").jsonPrimitive.int) }, adminToken,
+                ).at("git", "pullRequest")
+                assertEquals(before, historical.at("mergeBaseSha").jsonPrimitive.content, strategy)
+                assertEquals(mergedSha, historical.at("mergeSha").jsonPrimitive.content, strategy)
+                assertEquals(setOf("first-change.txt", "second-change.txt"),
+                    historical.at("diff").jsonArray.map { it.at("newPath").jsonPrimitive.content }.toSet(), strategy)
+                graphql(
+                    "mutation Delete(\$repo: UUID!, \$branch: String!) { git { deleteBranch(repositoryId: \$repo, branchName: \$branch) } }",
+                    buildJsonObject { put("repo", emptyId); put("branch", target) }, adminToken,
+                )
+                val filesPath = "/pulls/${createdPull.at("id").jsonPrimitive.content}?repo=$emptyId&number=${createdPull.at("number").jsonPrimitive.int}&view=files"
+                val files = request(filesPath, cookie = "$cookiePrefix=$adminToken")
+                assertEquals(200, files.statusCode(), files.body())
+                assertTrue("first-change.txt" in files.body() && "second-change.txt" in files.body() && "Retained merged change" in files.body(), files.body())
+                assertFalse("Comparison unavailable" in files.body() || "No files changed" in files.body(), files.body())
+                val mergedFiles = Regex("<details[^>]*class=\"diff-file\"[^>]*>.*?</details>", RegexOption.DOT_MATCHES_ALL)
+                    .findAll(files.body()).joinToString("\n") { it.value }
+                if (strategy == "FAST_FORWARD") {
+                    assertTrue("Retained source discussion" in mergedFiles, files.body())
+                } else {
+                    assertFalse("Retained source discussion" in mergedFiles, files.body())
+                    assertTrue("Retained source discussion" in files.body() && "Earlier revision" in files.body(), files.body())
+                }
+            }
             fun socket(authToken: String?): Pair<WebSocket, LinkedBlockingQueue<JsonObject>> {
                 val messages = LinkedBlockingQueue<JsonObject>()
                 val listener =

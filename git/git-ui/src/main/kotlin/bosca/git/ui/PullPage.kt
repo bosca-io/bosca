@@ -22,9 +22,11 @@ data class PullPage(
     val repositoryName: String = "",
     val sourceRepositoryName: String = "",
     val repositoryNames: Map<String, String> = emptyMap(),
+    val diff: List<DiffView> = emptyList(),
+    val diffUnavailableMessage: String = "",
 ) {
     val canReview: Boolean
-        get() = pull.status.name == "OPEN"
+        get() = pull.status.name == "OPEN" && diffUnavailableMessage.isBlank()
 
     val hasMergeBlockers: Boolean
         get() = !pull.mergeable
@@ -86,7 +88,8 @@ data class PullPage(
                 }
 
     val sourceRepository: String
-        get() = pull.sourceRepositoryId ?: pull.repositoryId
+        get() = if (pull.status == GitPullRequestStatus.MERGED) pull.repositoryId
+            else pull.sourceRepositoryId ?: pull.repositoryId
 
     fun identity(id: String): String = identities[id] ?: id
 
@@ -94,4 +97,12 @@ data class PullPage(
 
     fun fileHref(path: String, line: Int?): String =
         repositoryHref(sourceRepository, headSha, file = path) + (line?.let { "&line=$it" } ?: "")
+
+    /** Opens the discussion in Files Changed, including discussions outside the current diff. */
+    fun discussionHref(thread: PullReviewThread): String = "$href&view=files#${thread.anchor}"
+
+    /** Opens the source at the discussion's original commit and line. */
+    fun discussionSourceHref(thread: PullReviewThread): String =
+        repositoryHref(pull.sourceRepositoryId ?: pull.repositoryId, thread.first.commitSha.ifBlank { headSha }, file = thread.first.filePath) +
+            if (thread.line > 0) "&line=${thread.line}" else ""
 }

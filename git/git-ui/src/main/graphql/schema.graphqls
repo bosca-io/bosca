@@ -293,16 +293,19 @@ type GitMutation {
   deletePipelineSecret(repositoryId: UUID!, name: String!): Boolean!
 
   createPullRequest(input: CreateGitPullRequestInput!): GitPullRequest!
-  mergePullRequest(id: UUID!, strategy: GitMergeStrategy!): GitPullRequest!
+  updatePullRequest(id: UUID!, input: UpdateGitPullRequestInput!): GitPullRequest!
+  mergePullRequest(id: UUID!, strategy: GitMergeStrategy!, expectedVersion: Long): GitPullRequest!
   mergePullRequestWithDependencies(
     id: UUID!
     strategy: GitMergeStrategy!
+    expectedVersion: Long
   ): [GitPullRequest!]!
   closePullRequest(id: UUID!): GitPullRequest!
   reopenPullRequest(id: UUID!): GitPullRequest!
   markPullRequestReady(id: UUID!): GitPullRequest!
   submitReview(input: SubmitGitReviewInput!): GitReview!
-  addReviewComment(input: AddGitReviewCommentInput!): GitReviewComment!
+    addReviewComment(input: AddGitReviewCommentInput!): GitReviewComment!
+    replyReviewComment(pullRequestId: UUID!, commentId: UUID!, content: String!, expectedVersion: Long): GitReviewComment!
   resolveReviewThread(
     pullRequestId: UUID!
     filePath: String!
@@ -449,6 +452,8 @@ enum GitCommitStatusState {
 
 type GitPullRequest {
   id: UUID!
+  "Version used to reject stale edits and reviews."
+  version: Long!
   "The repository this PR belongs to."
   repositoryId: UUID!
   "Per-repository auto-incrementing number (e.g. #42)."
@@ -469,6 +474,7 @@ type GitPullRequest {
   mergedAt: DateTime
   "The SHA of the merge commit."
   mergeSha: String
+  mergeBaseSha: String
   created: DateTime!
   updated: DateTime!
   "Whether the PR can be cleanly merged."
@@ -553,10 +559,19 @@ input CreateGitPullRequestInput {
   isDraft: Boolean
 }
 
+input UpdateGitPullRequestInput {
+  title: String
+  description: String
+  sourceBranch: String
+  targetBranch: String
+  expectedVersion: Long
+}
+
 input SubmitGitReviewInput {
   pullRequestId: UUID!
   status: GitReviewStatus!
   body: String
+  expectedVersion: Long
 }
 
 input AddGitReviewCommentInput {
@@ -567,6 +582,7 @@ input AddGitReviewCommentInput {
   newLineNumber: Int
   commitSha: String!
   content: String!
+  expectedVersion: Long
 }
 
 type GitPipeline {

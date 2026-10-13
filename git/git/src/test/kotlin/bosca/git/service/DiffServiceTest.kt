@@ -2,6 +2,9 @@ package bosca.git.service
 
 import bosca.git.dfs.BoscaDfsRepositoryManager
 import bosca.git.model.DiffChangeType
+import bosca.git.model.MergeStrategy
+import bosca.git.model.PullRequest
+import bosca.git.model.PullRequestStatus
 import bosca.serialization.UUID
 import io.mockk.every
 import io.mockk.mockk
@@ -19,6 +22,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.test.assertFailsWith
 
 class DiffServiceTest {
 
@@ -28,6 +32,81 @@ class DiffServiceTest {
     private lateinit var inMemoryRepo: InMemoryRepository
     private var baseCommitId: ObjectId = ObjectId.zeroId()
     private var headCommitId: ObjectId = ObjectId.zeroId()
+
+    private fun mergedPull(strategy: MergeStrategy, sha: String, base: String? = null) = PullRequest(
+        repositoryId = repositoryId, title = "Merged changes", authorId = UUID.random(),
+        sourceBranch = "feature", targetBranch = "main", status = PullRequestStatus.MERGED,
+        mergeStrategy = strategy, mergeSha = sha, mergeBaseSha = base,
+    )
+
+    @Test
+    fun `merged comparisons retain all source commits for every strategy after branch changes`() = runTest {
+        val author = PersonIdent("Merger", "merger@example.test")
+        val second = inMemoryRepo.objectDatabase.newInserter().use { inserter ->
+            val tree = TreeFormatter().apply {
+                append("file.txt", FileMode.REGULAR_FILE, inserter.insert(Constants.OBJ_BLOB, "line 1\nline 2 modified\nline 3\nline 4\n".toByteArray()))
+                append("new.txt", FileMode.REGULAR_FILE, inserter.insert(Constants.OBJ_BLOB, "new content\n".toByteArray()))
+                append("second.txt", FileMode.REGULAR_FILE, inserter.insert(Constants.OBJ_BLOB, "Second source commit\n".toByteArray()))
+            }
+            val commit = CommitBuilder().apply {
+                setTreeId(inserter.insert(tree)); setParentId(headCommitId)
+                setAuthor(author); setCommitter(author); setMessage("Second source commit")
+            }
+            inserter.insert(commit).also { inserter.flush() }
+        }
+        val originalDiff = service.computeDiff(repositoryId, baseCommitId.name(), second.name())
+        assertEquals(setOf("file.txt", "new.txt", "second.txt"), originalDiff.map { it.newPath }.toSet())
+        for (strategy in MergeStrategy.entries) {
+            val result = MergeExecutor.merge(inMemoryRepo, second, baseCommitId, strategy, "Merge source", author)
+            assertTrue(result.success, strategy.name)
+            val sha = kotlin.test.assertNotNull(result.mergeSha)
+            inMemoryRepo.refDatabase.newUpdate("refs/heads/main", true).apply {
+                setNewObjectId(ObjectId.fromString(sha)); setForceUpdate(true); update()
+            }
+            val pr = mergedPull(strategy, sha, baseCommitId.name())
+            assertEquals(baseCommitId.name(), service.resolveMergedBase(pr))
+            if (strategy == MergeStrategy.MERGE_COMMIT)
+                assertEquals(baseCommitId.name(), service.resolveMergedBase(pr.copy(mergeStrategy = null)))
+            assertEquals(originalDiff, service.computeDiff(repositoryId, pr.mergeBaseSha.orEmpty(), sha), strategy.name)
+            inMemoryRepo.refDatabase.newUpdate("refs/heads/feature", true).apply { setForceUpdate(true); delete() }
+            inMemoryRepo.refDatabase.newUpdate("refs/heads/main", true).apply {
+                setNewObjectId(headCommitId); setForceUpdate(true); update()
+            }
+            assertEquals(originalDiff, service.computeDiff(repositoryId, pr.mergeBaseSha.orEmpty(), sha), strategy.name)
+        }
+    }
+
+    @Test
+    fun `merge and squash parents recover existing comparisons without recorded bases`() = runTest {
+        for (strategy in listOf(MergeStrategy.MERGE_COMMIT, MergeStrategy.SQUASH)) {
+            val result = MergeExecutor.merge(inMemoryRepo, headCommitId, baseCommitId, strategy, "Merge", PersonIdent("Test", "test@example.com"))
+            val pr = mergedPull(strategy, kotlin.test.assertNotNull(result.mergeSha))
+            assertEquals(baseCommitId.name(), service.resolveMergedBase(pr))
+            assertEquals(baseCommitId.name(), service.resolveMergedBase(pr.copy(mergeBaseSha = " ")))
+            if (strategy == MergeStrategy.MERGE_COMMIT)
+                assertEquals(baseCommitId.name(), service.resolveMergedBase(pr.copy(mergeStrategy = null)))
+            assertEquals(service.computeDiff(repositoryId, baseCommitId.name(), headCommitId.name()),
+                service.computeDiff(repositoryId, service.resolveMergedBase(pr).orEmpty(), pr.mergeSha.orEmpty()))
+        }
+    }
+
+    @Test
+    fun `missing merged metadata is explicit and unknown multi-commit bases are not guessed`() = runTest {
+        val pr = mergedPull(MergeStrategy.MERGE_COMMIT, headCommitId.name())
+        assertNull(service.resolveMergedBase(pr.copy(status = PullRequestStatus.OPEN)))
+        assertNull(service.resolveMergedBase(pr.copy(mergeSha = null)))
+        assertNull(service.resolveMergedBase(pr.copy(mergeSha = " ")))
+        for (strategy in listOf(null, MergeStrategy.REBASE, MergeStrategy.FAST_FORWARD)) {
+            assertNull(service.resolveMergedBase(pr.copy(mergeStrategy = strategy)))
+        }
+        assertNull(service.resolveMergedBase(pr.copy(mergeSha = baseCommitId.name())))
+        assertNull(service.resolveMergedBase(pr.copy(mergeStrategy = MergeStrategy.SQUASH, mergeSha = baseCommitId.name())))
+        assertFailsWith<org.eclipse.jgit.errors.MissingObjectException> {
+            service.resolveMergedBase(pr.copy(mergeSha = ObjectId.zeroId().name()))
+        }
+        every { dfsManager.open(repositoryId) } throws kotlinx.coroutines.CancellationException("cancelled")
+        assertFailsWith<kotlinx.coroutines.CancellationException> { service.resolveMergedBase(pr) }
+    }
 
     @BeforeTest
     fun setup() {

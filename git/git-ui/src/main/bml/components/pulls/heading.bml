@@ -17,12 +17,17 @@
         <h1>{ page.pull.title } <span class="pull-number">#{ page.pull.number }</span></h1>
         <git-pull-status :status="page.pull.status.name" />
       </div>
-      <if page.canReview && page.view == "overview">
-        <a class="button-link" :href='page.href + "&view=reviews&review=true"'>
-          <ui-icon name="eye" :size="14" />
-          Review changes
-        </a>
-      </if>
+      <div class="heading-actions">
+        <if page.canEdit>
+          <git-pull-edit :page="page" />
+        </if>
+        <if page.canReview && page.view == "overview">
+          <a class="button-link" :href='page.href + "&view=reviews&review=true"'>
+            <ui-icon name="eye" :size="14" />
+            Review changes
+          </a>
+        </if>
+      </div>
     </div>
     <div class="pull-details-row">
       <div class="pull-meta">
@@ -88,6 +93,11 @@
     .pull-title {
       min-width: 0;
       flex: 1;
+    }
+    .heading-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
     }
     h1 {
       max-width: 100%;

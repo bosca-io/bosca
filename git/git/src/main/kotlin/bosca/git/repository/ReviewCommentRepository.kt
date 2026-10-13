@@ -22,8 +22,8 @@ interface ReviewCommentRepository {
     suspend fun findByPullRequest(pullRequestId: UUID): List<ReviewComment>
 
     @Query("""
-        insert into git.review_comments (review_id, pull_request_id, author_id, file_path, old_line_number, new_line_number, commit_sha, content)
-        values (:reviewId, :pullRequestId, :authorId, :filePath, :oldLineNumber, :newLineNumber, :commitSha, :content)
+        insert into git.review_comments (review_id, pull_request_id, author_id, file_path, old_line_number, new_line_number, commit_sha, content, outdated)
+        values (:reviewId, :pullRequestId, :authorId, :filePath, :oldLineNumber, :newLineNumber, :commitSha, :content, :outdated)
         returning *
     """)
     suspend fun create(comment: ReviewComment): ReviewComment
@@ -33,6 +33,13 @@ interface ReviewCommentRepository {
         where pull_request_id = :pullRequestId and outdated = false and commit_sha != :currentSha
     """)
     suspend fun markOutdatedByPullRequest(pullRequestId: UUID, currentSha: String)
+
+    /** Retains comment history while invalidating every line anchor after a branch change. */
+    @Query("""
+        update git.review_comments set outdated = true, updated = now()
+        where pull_request_id = :pullRequestId and outdated = false
+    """)
+    suspend fun markAllOutdatedByPullRequest(pullRequestId: UUID)
 
     @Query("""
         update git.review_comments set resolved = true, updated = now() where id = :id returning *

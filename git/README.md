@@ -32,6 +32,8 @@ Run these commands from the **workspace root**. `git` is part of the root Gradle
 ./gradlew :git:git-server:nativeCompile  # Build a native image
 ```
 
+Migration `V49__pull_request_merge_base.sql` records the target commit before each merge. Completed PR diffs compare that commit with the recorded merge result, so later branch changes and source deletion do not replace their history. Existing merge and squash commit parents can supply the original base; older rebase/fast-forward records without it report unavailable comparison history. The Git migration provider applies this migration at server startup.
+
 The embedded UI host proxies over loopback HTTP to the API’s actual bound port and performs no local authentication or GraphQL execution. `GIT_HTTP_PORT` and `GIT_UI_HTTP_PORT` select the two listeners. See [Git UI server](git-ui-server/README.md) for origin, OAuth and cookie configuration.
 
 ## Local Infrastructure

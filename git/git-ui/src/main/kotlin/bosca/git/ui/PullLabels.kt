@@ -1,5 +1,11 @@
 package bosca.git.ui
 
+fun reviewDismissReasonLabel(reason: String): String = when (reason) {
+    "branches_updated" -> "Branches changed"
+    "source_updated" -> "Source branch updated"
+    else -> reason
+}
+
 internal fun reviewStatusLabel(status: String): String = when (status) {
     "APPROVED" -> "Approved"
     "CHANGES_REQUESTED" -> "Changes requested"

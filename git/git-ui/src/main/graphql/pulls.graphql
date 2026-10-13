@@ -43,10 +43,11 @@ query GitUiRepositoryPullList(
     }
   }
 }
-query GitUiPull($repo: UUID!, $number: Int!, $lines: Int!) {
+query GitUiPull($repo: UUID!, $number: Int!) {
   git {
     pullRequest(repositoryId: $repo, number: $number) {
       id
+      version
       repositoryId
       number
       title
@@ -63,6 +64,7 @@ query GitUiPull($repo: UUID!, $number: Int!, $lines: Int!) {
       mergedBy
       mergedAt
       mergeSha
+      mergeBaseSha
       conflictingFiles
       assignees {
         id
@@ -105,24 +107,6 @@ query GitUiPull($repo: UUID!, $number: Int!, $lines: Int!) {
           updated
         }
       }
-      diff {
-        oldPath
-        newPath
-        changeType
-        hunks {
-          oldStart
-          oldCount
-          newStart
-          newCount
-          totalLineCount
-          lines(limit: $lines) {
-            content
-            type
-            oldLineNumber
-            newLineNumber
-          }
-        }
-      }
     }
   }
 }
@@ -130,6 +114,7 @@ query GitUiMergePlan($id: UUID!) {
   git {
     pullRequestMergePlan(id: $id) {
       id
+      version
       repositoryId
       number
       title
@@ -147,17 +132,17 @@ mutation GitUiCreatePull($input: CreateGitPullRequestInput!) {
     }
   }
 }
-mutation GitUiMergePull($id: UUID!, $strategy: GitMergeStrategy!) {
+mutation GitUiMergePull($id: UUID!, $strategy: GitMergeStrategy!, $expectedVersion: Long!) {
   git {
-    mergePullRequest(id: $id, strategy: $strategy) {
+    mergePullRequest(id: $id, strategy: $strategy, expectedVersion: $expectedVersion) {
       id
       status
     }
   }
 }
-mutation GitUiMergePullDependencies($id: UUID!, $strategy: GitMergeStrategy!) {
+mutation GitUiMergePullDependencies($id: UUID!, $strategy: GitMergeStrategy!, $expectedVersion: Long!) {
   git {
-    mergePullRequestWithDependencies(id: $id, strategy: $strategy) {
+    mergePullRequestWithDependencies(id: $id, strategy: $strategy, expectedVersion: $expectedVersion) {
       id
       status
     }
@@ -206,6 +191,13 @@ mutation GitUiResolveThread($id: UUID!, $file: String!, $line: Int!) {
     resolveReviewThread(pullRequestId: $id, filePath: $file, lineNumber: $line)
   }
 }
+mutation GitUiReplyComment($id: UUID!, $comment: UUID!, $content: String!, $version: Long!) {
+  git {
+    replyReviewComment(pullRequestId: $id, commentId: $comment, content: $content, expectedVersion: $version) {
+      id
+    }
+  }
+}
 mutation GitUiAssignPull($id: UUID!, $profile: UUID!) {
   git {
     assignPullRequest(id: $id, profileId: $profile) {
@@ -237,6 +229,7 @@ mutation GitUiRemovePullDependency($id: UUID!, $dependency: UUID!) {
 query GitUiPullDiffPage($repo: UUID!, $number: Int!, $offset: Int!) {
   git {
     pullRequest(repositoryId: $repo, number: $number) {
+      version
       diff {
         oldPath
         newPath
@@ -255,6 +248,15 @@ query GitUiPullDiffPage($repo: UUID!, $number: Int!, $offset: Int!) {
           }
         }
       }
+    }
+  }
+}
+
+mutation GitUiUpdatePull($id: UUID!, $input: UpdateGitPullRequestInput!) {
+  git {
+    updatePullRequest(id: $id, input: $input) {
+      id
+      version
     }
   }
 }

@@ -776,6 +776,83 @@ class GitUiRoutesTest {
     }
 
     @Test
+    fun `pull editing loads branch choices on demand and retains the selected view after saving`() {
+        val path = "/pulls/pull?repo=repo&number=1&view=files"
+        val html = get(path).body()
+        assertTrue("Edit pull request" in html, html)
+        val opened = action(path, "git-pull-edit.model", "open", emptyList())
+        assertEquals(200, opened.statusCode(), opened.body())
+        assertTrue("feature/one" in opened.body() && "main" in opened.body(), opened.body())
+        val saved = action(path, "git-pull-edit.model", "save", listOf("Updated title", "", "main", "feature/one"))
+        assertEquals(200, saved.statusCode(), saved.body())
+        val state = actionState(saved)
+        assertEquals(false, state["failed"]?.jsonPrimitive?.boolean, saved.body())
+        assertTrue(state["nextHref"]?.jsonPrimitive?.content?.endsWith("&view=files") == true, saved.body())
+        val input = requests.last { it.operation == "GitUiUpdatePull" }.variables.getValue("input").jsonObject
+        assertEquals("Updated title", input["title"]?.jsonPrimitive?.content)
+        assertEquals("", input["description"]?.jsonPrimitive?.content)
+        assertEquals("main", input["sourceBranch"]?.jsonPrimitive?.content)
+        assertEquals("feature/one", input["targetBranch"]?.jsonPrimitive?.content)
+        assertEquals(0L, input["expectedVersion"]?.jsonPrimitive?.long)
+    }
+
+    @Test
+    fun `a rejected edit retains every field and exposes its API error`() {
+        val response = action("/pulls/pull?repo=repo&number=1", "git-pull-edit.model", "save", listOf("Reject edit", "Draft description", "main", "feature/one"))
+        val state = actionState(response)
+        assertEquals(true, state["failed"]?.jsonPrimitive?.boolean, response.body())
+        assertEquals("Draft description", state["description"]?.jsonPrimitive?.content)
+        assertEquals("main", state["source"]?.jsonPrimitive?.content)
+        assertEquals("feature/one", state["target"]?.jsonPrimitive?.content)
+        assertTrue("Rejected pull request edit" in response.body(), response.body())
+    }
+
+    @Test
+    fun `blank titles are rejected by the editor without sending an update`() {
+        val count = requests.count { it.operation == "GitUiUpdatePull" }
+        val response = action("/pulls/pull?repo=repo&number=1", "git-pull-edit.model", "save", listOf("   ", "Draft description", "feature/one", "main"))
+        assertTrue(actionState(response)["failed"]?.jsonPrimitive?.boolean == true, response.body())
+        assertTrue("Enter a pull request title" in response.body(), response.body())
+        assertEquals(count, requests.count { it.operation == "GitUiUpdatePull" })
+    }
+
+    @Test
+    fun `diff pagination rejects a retargeted PR instead of mixing comparisons`() {
+        val response = action("/pulls/pull?repo=repo&number=1&view=files", "git-pull-review.model", "expand", emptyList())
+        val state = actionState(response)
+        assertTrue(state["failed"]?.jsonPrimitive?.boolean == true, response.body())
+        assertTrue("Pull request changed" in response.body(), response.body())
+        assertEquals(2, state.getValue("diff").jsonArray.single().jsonObject.getValue("hunks").jsonArray.single().jsonObject.getValue("lines").jsonArray.size)
+    }
+
+    @Test
+    fun `a PR with a deleted source remains editable without requesting an invalid diff`() {
+        val path = "/pulls/pull-missing-branch?repo=repo&number=8&view=files"
+        val count = requests.count { it.operation == "GitUiPullDiffPage" }
+        val response = get(path)
+        assertEquals(200, response.statusCode(), response.body())
+        assertTrue("Comparison unavailable" in response.body() && "no longer available" in response.body(), response.body())
+        assertTrue("Edit pull request" in response.body(), response.body())
+        assertFalse("Review changes" in response.body(), response.body())
+        assertEquals(count, requests.count { it.operation == "GitUiPullDiffPage" })
+        val opened = action(path, "git-pull-edit.model", "open", emptyList())
+        assertTrue("missing (unavailable)" in opened.body(), opened.body())
+        assertTrue("feature/one" in opened.body(), opened.body())
+    }
+
+    @Test
+    fun `readers have no PR edit control and closed or merged requests retain only metadata editing`() {
+        val reader = get("/pulls/pull?repo=repo&number=1", token = "reader-token")
+        assertEquals(200, reader.statusCode(), reader.body())
+        assertFalse("data-bml-component=\"git-pull-edit\"" in reader.body(), reader.body())
+        for ((id, number) in listOf("pull-merged" to 3, "pull-closed" to 4)) {
+            val html = get("/pulls/$id?repo=repo&number=$number").body()
+            assertTrue("Edit pull request" in html, html)
+            assertTrue("type=\"hidden\" name=\"source\"" in html, html)
+        }
+    }
+
+    @Test
     fun `pull lifecycle states show the appropriate actions and review controls`() {
         val draft = get("/pulls/pull-draft?repo=repo&number=2").body()
         assertTrue("Draft pull request" in draft && "Ready for review" in draft, draft)
@@ -790,6 +867,28 @@ class GitUiRoutesTest {
         val closed = get("/pulls/pull-closed?repo=repo&number=4").body()
         assertTrue("Pull request closed" in closed && "Reopen pull request" in closed, closed)
         assertFalse("Review changes" in closed, closed)
+    }
+
+    @Test
+    fun `merged pull files survive deleted branches and paginate without live ref validation`() {
+        val path = "/pulls/pull-merged?repo=repo&number=3&view=files"
+        val before = requests.size
+        val html = get(path).body()
+        assertTrue("Existing line comment" in html && "Second diff line" in html, html)
+        assertTrue("Earlier revision" in html && "Discussions outside this diff" in html, html)
+        val displayedDiff = Regex("<details[^>]*class=\"diff-file\"[^>]*>.*?</details>", RegexOption.DOT_MATCHES_ALL)
+            .findAll(html).joinToString("\n") { it.value }
+        assertFalse("Existing line comment" in displayedDiff, displayedDiff)
+        assertFalse("Comparison unavailable" in html || "No files changed" in html, html)
+        assertTrue(requests.drop(before).none { it.operation == "GitUiBranches" })
+        val expanded = action(path, "git-pull-review.model", "expand", emptyList())
+        assertEquals(false, actionState(expanded)["failed"]?.jsonPrimitive?.boolean, expanded.body())
+        assertEquals(4000, actionState(expanded)["offset"]?.jsonPrimitive?.int)
+        assertEquals("merged-abc", actionState(expanded).getValue("page").jsonObject.getValue("headSha").jsonPrimitive.content)
+        assertTrue(requests.drop(before).none { it.operation == "GitUiBranches" || it.operation == "GitUiCommit" })
+        val unavailable = get("/pulls/pull-merged-no-base?repo=repo&number=11&view=files").body()
+        assertTrue("The original target commit for this merge is not recorded." in unavailable, unavailable)
+        assertFalse("No files changed" in unavailable, unavailable)
     }
 
     @Test
@@ -812,6 +911,163 @@ class GitUiRoutesTest {
             actionState(selected), emptyList())
         assertEquals("", actionState(cancelled)["commentFile"]?.jsonPrimitive?.content)
         assertTrue("Existing line comment" in cancelled.body(), cancelled.body())
+    }
+
+    @Test
+    fun `compact line comments use the latest active owned review and show rejected drafts beside the field`() {
+        val path = "/pulls/pull?repo=repo&number=1&view=files"
+        val selected = action(path, "git-pull-review.model", "select", listOf("a.txt", 0, 1))
+        val html = Json.parseToJsonElement(selected.body()).jsonObject.getValue("html").jsonPrimitive.content
+        assertTrue("ui-comment-editor" in html && "Comment on a.txt:1" in html, html)
+        assertFalse("Your review" in html, html)
+        val original = actionState(selected)
+        val review = original.getValue("reviews").jsonArray.first().jsonObject
+        fun reviewWith(id: String, reviewer: String = "owner", dismissed: Boolean = false): JsonObject =
+            JsonObject(review + mapOf("id" to JsonPrimitive(id), "reviewerId" to JsonPrimitive(reviewer),
+                "dismissedAt" to if (dismissed) JsonPrimitive("2026-10-12T00:00:00Z") else JsonNull))
+        val state = JsonObject(original + ("reviews" to JsonArray(listOf(
+            review, reviewWith("latest-owned"), reviewWith("dismissed", dismissed = true), reviewWith("other", "other"),
+        ))))
+        val saved = continueAction(path, "git-pull-review.model:pull", "comment", state, listOf("Saved comment"))
+        assertEquals(false, actionState(saved)["failed"]?.jsonPrimitive?.boolean)
+        assertEquals("latest-owned", requests.last { it.operation == "GitUiReviewComment" }.variables
+            .getValue("input").jsonObject.getValue("reviewId").jsonPrimitive.content)
+        val failed = continueAction(path, "git-pull-review.model:pull", "comment", state, listOf("Reject comment"))
+        assertEquals(true, actionState(failed)["commentFailed"]?.jsonPrimitive?.boolean)
+        assertEquals("Reject comment", actionState(failed)["commentBody"]?.jsonPrimitive?.content)
+        val failureHtml = Json.parseToJsonElement(failed.body()).jsonObject.getValue("html").jsonPrimitive.content
+        assertTrue("aria-invalid=\"true\"" in failureHtml && "Comment rejected" in failureHtml, failureHtml)
+        val switched = continueAction(path, "git-pull-review.model:pull", "select", actionState(failed), listOf("a.txt", 0, 2))
+        assertEquals("", actionState(switched)["commentBody"]?.jsonPrimitive?.content)
+        assertEquals(false, actionState(switched)["commentFailed"]?.jsonPrimitive?.boolean)
+        assertEquals(2, actionState(switched)["commentOpenSequence"]?.jsonPrimitive?.int)
+        val first = action("/pulls/pull-first-comment?repo=repo&number=9&view=files", "git-pull-review.model", "select", listOf("a.txt", 0, 1))
+        assertTrue("Submit a review to start commenting." in first.body(), first.body())
+
+        val file = original.getValue("diff").jsonArray.single().jsonObject
+        val spacedFile = JsonObject(file + mapOf("oldPath" to JsonPrimitive("notes with spaces.md"),
+            "newPath" to JsonPrimitive("notes with spaces.md")))
+        val spacedState = JsonObject(original + ("diff" to JsonArray(listOf(spacedFile))))
+        val spaced = continueAction(path, "git-pull-review.model:pull", "select", spacedState, listOf("notes with spaces.md", 0, 1))
+        val spacedFailure = continueAction(path, "git-pull-review.model:pull", "comment", actionState(spaced), listOf("Reject comment"))
+        val spacedHtml = Json.parseToJsonElement(spacedFailure.body()).jsonObject.getValue("html").jsonPrimitive.content
+        val errorId = "pull-comment-pull-${encode("notes with spaces.md:0:1")}-error"
+        assertTrue("id=\"$errorId\"" in spacedHtml && " $errorId\"" in spacedHtml, spacedHtml)
+    }
+
+    @Test
+    fun `replies work without an owned review and retain original and outdated discussion context`() {
+        post("/_fixture/replies/reset", "{}")
+        val files = "/pulls/pull-replies?repo=repo&number=10&view=files"
+        val selected = action(files, "git-pull-review.model", "reply", listOf("comment"))
+        assertEquals("comment", actionState(selected)["replyToCommentId"]?.jsonPrimitive?.content)
+        assertTrue("Write a reply" in selected.body() && "Submit a review to start" !in selected.body(), selected.body())
+        val blank = continueAction(files, "git-pull-review.model:pull-replies", "comment", actionState(selected), listOf(" \n"))
+        assertEquals(true, actionState(blank)["commentFailed"]?.jsonPrimitive?.boolean)
+        assertTrue("Enter a reply" in blank.body(), blank.body())
+        val rejected = continueAction(files, "git-pull-review.model:pull-replies", "comment", actionState(selected), listOf("Reject reply"))
+        assertEquals("Reject reply", actionState(rejected)["commentBody"]?.jsonPrimitive?.content)
+        assertEquals("comment", actionState(rejected)["replyToCommentId"]?.jsonPrimitive?.content)
+        val saved = continueAction(files, "git-pull-review.model:pull-replies", "comment", actionState(rejected), listOf("Reply through the UI"))
+        assertEquals(false, actionState(saved)["failed"]?.jsonPrimitive?.boolean)
+        assertEquals("Reply added.", actionState(saved)["message"]?.jsonPrimitive?.content)
+        assertEquals("", actionState(saved)["replyToCommentId"]?.jsonPrimitive?.content)
+        val request = requests.last { it.operation == "GitUiReplyComment" }
+        assertEquals("comment", request.variables["comment"]?.jsonPrimitive?.content)
+        assertEquals(0, request.variables["version"]?.jsonPrimitive?.int)
+        val savedHtml = Json.parseToJsonElement(saved.body()).jsonObject.getValue("html").jsonPrimitive.content
+        assertTrue("Existing line comment" in savedHtml && "Reply through the UI" in savedHtml, savedHtml)
+        assertTrue("Discussions outside this diff" in savedHtml && "Outdated discussion" in savedHtml, savedHtml)
+        val reviews = files.replace("view=files", "view=reviews")
+        val old = action(reviews, "git-pull-review.model", "reply", listOf("old-comment"))
+        val response = continueAction(reviews, "git-pull-review.model:pull-replies", "comment", actionState(old), listOf("Reply to old context"))
+        assertEquals(false, actionState(response)["failed"]?.jsonPrimitive?.boolean)
+        val oldHtml = Json.parseToJsonElement(response.body()).jsonObject.getValue("html").jsonPrimitive.content
+        assertTrue("Reply to old context" in oldHtml && "Outdated" in oldHtml && "ref=old-sha" in oldHtml, oldHtml)
+        val currentHtml = get(files).body().replace(Regex("<script\\b[^>]*>.*?</script>", RegexOption.DOT_MATCHES_ALL), "")
+        assertTrue("Reply to old context" in currentHtml && "ref=old-sha" in currentHtml)
+        assertTrue("id=\"discussion-old-comment\"" in currentHtml)
+        post("/_fixture/replies/reset", "{}")
+    }
+
+    @Test
+    fun `review locations link to unique reachable discussions with original source context`() {
+        post("/_fixture/replies/reset", "{}")
+        val reviews = get("/pulls/pull-replies?repo=repo&number=10&view=reviews").body()
+        for (id in listOf("comment", "old-comment", "file-comment")) {
+            assertTrue("view=files#discussion-$id" in reviews, reviews)
+            assertTrue("id=\"discussion-$id\"" in reviews, reviews)
+        }
+        assertTrue("View discussion on a.txt:1 in Files Changed" in reviews, reviews)
+        assertTrue("View old name.kt:3 at the original commit" in reviews && "ref=old-sha" in reviews, reviews)
+        val files = get("/pulls/pull-replies?repo=repo&number=10&view=files").body()
+        for (id in listOf("comment", "old-comment", "file-comment")) {
+            assertEquals(1, Regex("id=\"discussion-$id\"").findAll(files).count(), files)
+        }
+        val inline = files.substringAfter("data-thread=\"comment\"").substringBefore("</article>")
+        assertTrue("Existing line comment" in inline && "Outdated discussion" !in inline, inline)
+        assertFalse("File-level discussion" in inline, inline)
+        val fileDiscussion = files.substringAfter("data-thread=\"file-comment\"").substringBefore("</article>")
+        assertFalse("Resolve thread" in fileDiscussion, fileDiscussion)
+        assertTrue("Discussions outside this diff" in files, files)
+        val reply = action("/pulls/pull-replies?repo=repo&number=10&view=files", "git-pull-review.model", "reply", listOf("file-comment"))
+        val replyHtml = Json.parseToJsonElement(reply.body()).jsonObject.getValue("html").jsonPrimitive.content
+        assertTrue("aria-label=\"Reply to comment on a.txt\"" in replyHtml, replyHtml)
+    }
+
+    @Test
+    fun `discussions outside displayed lines stay reachable for removed sides and truncated diffs`() {
+        val response = action("/pulls/pull?repo=repo&number=1&view=files", "git-pull-review.model", "select", listOf("a.txt", 0, 1))
+        val model = Json.decodeFromJsonElement(PullReviewModel.serializer(), actionState(response))
+        val original = model.reviews.first().comments.first()
+        val deleted = original.copy(id = "deleted", newLineNumber = null, oldLineNumber = 4)
+        val hidden = original.copy(id = "hidden", newLineNumber = 4000)
+        val old = original.copy(id = "outdated", outdated = true)
+        val fileComment = original.copy(id = "file-comment", oldLineNumber = null, newLineNumber = null)
+        model.reviews = listOf(model.reviews.first().copy(comments = listOf(original, deleted, hidden, old, fileComment)))
+        model.diff = listOf(DiffView("a.txt", "a.txt", "MODIFY", listOf(
+            DiffHunkView(1, 4, 1, 4000, 4004, listOf(
+                DiffLineView("ADD", null, 1, "Current line"),
+                DiffLineView("DELETE", 4, null, "Deleted line"),
+            ))
+        )))
+        assertEquals(listOf(original.id), model.lineThreads("a.txt", null, 1).map { it.id })
+        assertEquals(listOf("deleted"), model.lineThreads("a.txt", 4, null).map { it.id })
+        assertEquals(listOf("hidden", "outdated", "file-comment"), model.detachedThreads.map { it.id })
+        assertEquals("a.txt", model.detachedThreads.last().location)
+        model.diff = emptyList()
+        assertEquals(5, model.detachedThreads.size)
+    }
+
+    @Test
+    fun `review notifications advance for successes and keep failures inline`() {
+        val path = "/pulls/pull?repo=repo&number=1&view=files"
+        val resolved = action(path, "git-pull-review.model", "resolve", listOf("a.txt", 1))
+        val first = actionState(resolved)
+        assertEquals(false, first["failed"]?.jsonPrimitive?.boolean)
+        assertEquals("Thread resolved.", first["message"]?.jsonPrimitive?.content)
+        assertEquals(1, first["noticeSequence"]?.jsonPrimitive?.int)
+        val html = Json.parseToJsonElement(resolved.body()).jsonObject.getValue("html").jsonPrimitive.content
+        assertTrue("data-message=\"Thread resolved.\"" in html, html)
+        assertTrue("data-bml-preserve=\"pull-review-notice-pull\"" in html, html)
+        assertFalse("role=\"alert\"" in html, "Success must not insert an inline alert: $html")
+
+        val repeated = continueAction(path, "git-pull-review.model:pull", "resolve", first, listOf("a.txt", 1))
+        assertEquals(2, actionState(repeated)["noticeSequence"]?.jsonPrimitive?.int)
+        val rejected = continueAction(path, "git-pull-review.model:pull", "resolve", actionState(repeated), listOf("fail", 1))
+        assertEquals(true, actionState(rejected)["failed"]?.jsonPrimitive?.boolean)
+        assertEquals(2, actionState(rejected)["noticeSequence"]?.jsonPrimitive?.int)
+        val failureHtml = Json.parseToJsonElement(rejected.body()).jsonObject.getValue("html").jsonPrimitive.content
+        assertTrue("role=\"alert\"" in failureHtml && "Thread resolution rejected" in failureHtml, failureHtml)
+
+        val selected = continueAction(path, "git-pull-review.model:pull", "select", actionState(rejected), listOf("a.txt", 0, 1))
+        val commented = continueAction(path, "git-pull-review.model:pull", "comment", actionState(selected), listOf("Saved comment"))
+        assertEquals("Comment added.", actionState(commented)["message"]?.jsonPrimitive?.content)
+        assertEquals(3, actionState(commented)["noticeSequence"]?.jsonPrimitive?.int)
+        val reviewed = continueAction(path, "git-pull-review.model:pull", "review", actionState(commented), listOf("COMMENT_ONLY", "Review accepted"))
+        assertEquals("Review submitted.", actionState(reviewed)["message"]?.jsonPrimitive?.content)
+        assertEquals(4, actionState(reviewed)["noticeSequence"]?.jsonPrimitive?.int)
+        assertEquals(true, actionState(reviewed)["reviewSubmitted"]?.jsonPrimitive?.boolean)
     }
 
     @Test
@@ -839,7 +1095,7 @@ class GitUiRoutesTest {
                 "$source&view=files",
                 "git-pull-review.model",
                 "comment",
-                listOf("review", ""),
+                listOf(""),
             )
         assertEquals(true, actionState(comment)["failed"]?.jsonPrimitive?.boolean)
         assertEquals(false, actionState(comment)["reviewFailed"]?.jsonPrimitive?.boolean)
@@ -1767,12 +2023,89 @@ class GitUiRoutesTest {
                             """{"data":{"git":{"allPullRequests":[$pull]}}}"""
                         operation == "GitUiRepositoryPullList" ->
                             """{"data":{"git":{"pullRequests":[$pull]}}}"""
+                        operation == "GitUiPull" && variables["number"]?.jsonPrimitive?.int == 7 ->
+                            """{"data":{"git":{"pullRequest":$editedPull}}}"""
+                        operation == "GitUiPull" && variables["number"]?.jsonPrimitive?.int == 10 ->
+                            """{"data":{"git":{"pullRequest":$replyPull}}}"""
+                        operation == "GitUiPullDiffPage" -> {
+                            val number = variables.getValue("number").jsonPrimitive.int
+                            val current = when (number) {
+                                7 -> editedPull
+                                10 -> replyPull
+                                else -> Json.parseToJsonElement(pullStateFixture(pull, number)).jsonObject
+                            }
+                            val result = if (variables["offset"]?.jsonPrimitive?.int == 0 || number == 3) current
+                                else JsonObject(current + ("version" to JsonPrimitive(current.getValue("version").jsonPrimitive.long + 1)))
+                            """{"data":{"git":{"pullRequest":$result}}}"""
+                        }
                         operation == "GitUiPull" ->
                             """{"data":{"git":{"pullRequest":${pullStateFixture(pull, variables["number"]?.jsonPrimitive?.int ?: 1)}}}}"""
+                        operation == "GitUiUpdatePull" && variables["input"]?.jsonObject?.get("title")?.jsonPrimitive?.content == "Reject edit" ->
+                            """{"errors":[{"message":"Rejected pull request edit"}]}"""
+                        operation == "GitUiUpdatePull" -> {
+                            if (id == "pull-edit") {
+                                val changes = variables.getValue("input").jsonObject
+                                val current = editedPull
+                                val version = current.getValue("version").jsonPrimitive.long
+                                if (changes["expectedVersion"]?.jsonPrimitive?.long != version) {
+                                    """{"errors":[{"message":"Pull request changed. Reload it before continuing."}]}"""
+                                } else {
+                                    editedPull = JsonObject(current + changes.filterKeys { it != "expectedVersion" } + ("version" to JsonPrimitive(version + 1)))
+                                    """{"data":{"git":{"updatePullRequest":{"id":"pull-edit","version":${version + 1}}}}}"""
+                                }
+                            } else """{"data":{"git":{"updatePullRequest":{"id":"pull","version":1}}}}"""
+                        }
                         operation == "GitUiCreatePull" ->
                             """{"errors":[{"message":"Rejected pull request"}]}"""
+                        operation == "GitUiReview" && variables["input"]?.jsonObject?.get("body")?.jsonPrimitive?.content == "Review accepted" ->
+                            """{"data":{"git":{"submitReview":{"id":"review"}}}}"""
                         operation == "GitUiReview" ->
                             """{"errors":[{"message":"Review rejected"}]}"""
+                        operation == "GitUiReviewComment" && variables["input"]?.jsonObject?.get("content")?.jsonPrimitive?.content == "Reject comment" ->
+                            """{"errors":[{"message":"Comment rejected"}]}"""
+                        operation == "GitUiReviewComment" ->
+                            """{"data":{"git":{"addReviewComment":{"id":"comment"}}}}"""
+                        operation == "GitUiReplyComment" && variables["content"]?.jsonPrimitive?.content == "Reject reply" ->
+                            """{"errors":[{"message":"Reply rejected"}]}"""
+                        operation == "GitUiReplyComment" -> {
+                            if (id == "pull-replies") {
+                                val current = replyPull
+                                val review = current.getValue("reviews").jsonArray.single().jsonObject
+                                val comments = review.getValue("comments").jsonArray
+                                val original = comments.firstOrNull { it.jsonObject.getValue("id") == variables["comment"] }?.jsonObject
+                                if (original == null || variables["version"] != current["version"]) {
+                                    """{"errors":[{"message":"Pull request changed. Reload it before continuing."}]}"""
+                                } else {
+                                    val now = java.time.OffsetDateTime.now().toString()
+                                    val reply = JsonObject(original + mapOf(
+                                        "id" to JsonPrimitive(java.util.UUID.randomUUID().toString()),
+                                        "authorId" to JsonPrimitive("owner"),
+                                        "content" to variables.getValue("content"),
+                                        "resolved" to JsonPrimitive(false),
+                                        "created" to JsonPrimitive(now), "updated" to JsonPrimitive(now),
+                                    ))
+                                    val updated = JsonObject(review + ("comments" to JsonArray(comments + reply)))
+                                    replyPull = JsonObject(current + ("reviews" to JsonArray(listOf(updated))))
+                                    """{"data":{"git":{"replyReviewComment":{"id":${reply.getValue("id")}}}}}"""
+                                }
+                            } else """{"data":{"git":{"replyReviewComment":{"id":"response"}}}}"""
+                        }
+                        operation == "GitUiResolveThread" && variables["file"]?.jsonPrimitive?.content == "fail" ->
+                            """{"errors":[{"message":"Thread resolution rejected"}]}"""
+                        operation == "GitUiResolveThread" && id == "pull-replies" -> {
+                            val review = replyPull.getValue("reviews").jsonArray.single().jsonObject
+                            val comments = review.getValue("comments").jsonArray.map { value ->
+                                val comment = value.jsonObject
+                                if (comment["filePath"] == variables["file"] &&
+                                    (comment["newLineNumber"] == variables["line"] || comment["oldLineNumber"] == variables["line"]))
+                                    JsonObject(comment + ("resolved" to JsonPrimitive(true))) else comment
+                            }
+                            val updated = JsonObject(review + ("comments" to JsonArray(comments)))
+                            replyPull = JsonObject(replyPull + ("reviews" to JsonArray(listOf(updated))))
+                            """{"data":{"git":{"resolveReviewThread":true}}}"""
+                        }
+                        operation == "GitUiResolveThread" ->
+                            """{"data":{"git":{"resolveReviewThread":true}}}"""
                         operation == "GitUiMergePlan" ->
                             """{"data":{"git":{"pullRequestMergePlan":[$pull]}}}"""
                         operation == "GitUiMergePull" ->
@@ -1889,7 +2222,7 @@ class GitUiRoutesTest {
                         operation == "GitUiProfiles" ->
                             """{"data":{"profiles":{"current":[$profile]}}}"""
                         operation == "GitUiProfile" ->
-                            """{"data":{"profiles":{"profile":$profile}}}"""
+                            """{"data":{"profiles":{"profile":${if (id == "other") profile.replace("\"id\":\"owner\"", "\"id\":\"other\"").replace("Alice", "Bob").replace("alice", "bob") else profile}}}}"""
                         operation == "GitUiOwners" &&
                             variables["query"]?.jsonPrimitive?.content == "Fail" ->
                             """{"errors":[{"message":"Profile search unavailable"}]}"""
@@ -2152,6 +2485,10 @@ class GitUiRoutesTest {
                 "bosca:\n  server:\n    port: $port\n    drain-timeout-ms: 0\n    development: true\n"
             val app = BoscaApplication(ApplicationConfig.load(config.byteInputStream()))
             installGitUi(app, "http://localhost:$subscriptionPort/graphql", "_git_test")
+            app.router.post("/_fixture/replies/reset") {
+                replyPull = Json.parseToJsonElement(pullStateFixture(pull, 10)).jsonObject
+                call.respond("reset")
+            }
             // Fixture asset delivery for browser rendering; production transport is tested in
             // EndToEndGitCliTest.
             app.router.get("/owner/repo/raw/{ref}/{path...}") {
@@ -2200,6 +2537,8 @@ class GitUiRoutesTest {
         private val refs = fixture("refs")
         private val orchestrator = fixture("orchestrator")
         private val pull = fixture("pull")
+        @Volatile private var editedPull = Json.parseToJsonElement(pullStateFixture(pull, 7)).jsonObject
+        @Volatile private var replyPull = Json.parseToJsonElement(pullStateFixture(pull, 10)).jsonObject
         private val run = fixture("run")
         private val comparison = fixture("compare")
         private val status = fixture("status")

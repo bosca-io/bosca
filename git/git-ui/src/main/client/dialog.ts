@@ -39,12 +39,11 @@ export function modalDialog(ctx: ClientContext) {
     visible = false;
     dialog()?.close();
     const target =
-      ctx.ref<HTMLElement>("trigger") ??
       (ctx.root.dataset.returnFocus
         ? ctx.root
             .closest("[data-bml-island]")
             ?.querySelector<HTMLElement>(ctx.root.dataset.returnFocus)
-        : null);
+        : null) ?? ctx.ref<HTMLElement>("trigger");
     target?.focus();
   };
   ctx.on<MouseEvent>(ctx.root, "click", (event) => {

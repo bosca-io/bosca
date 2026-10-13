@@ -292,6 +292,31 @@ class GitRepositoryMutationTest {
     }
 
     @Test
+    fun `branch edits require an available target and view access to a fork source`() = runTest {
+        val prId = UUID.random()
+        val pr = prFound(prId)
+        val sourceId = UUID.random()
+        coEvery { pr.sourceBranch } returns "feature"
+        coEvery { pr.targetBranch } returns "main"
+        coEvery { pr.sourceRepositoryId } returns sourceId
+        val input = bosca.git.model.UpdatePullRequestInput(targetBranch = "release")
+        coEvery { repositoryService.findById(sourceId) } returns null
+        assertFailsWith<NoSuchElementException> { mutation.updatePullRequest(auth, prId, input) }
+        val source = mockk<Repository>(relaxed = true)
+        coEvery { repositoryService.findById(sourceId) } returns source
+        coEvery { permissionEvaluator.verifyAllowed(auth, source, PermissionAction.VIEW) } throws SecurityException("Source unavailable")
+        assertFailsWith<SecurityException> { mutation.updatePullRequest(auth, prId, input) }
+        coEvery { permissionEvaluator.verifyAllowed(auth, source, PermissionAction.VIEW) } returns Unit
+        mutation.updatePullRequest(auth, prId, input)
+        coVerify { permissionEvaluator.verifyAllowed(auth, repo, PermissionAction.EDIT) }
+        coVerify { permissionEvaluator.verifyAllowed(auth, source, PermissionAction.VIEW) }
+        coEvery { repositoryService.findById(id) } returns repo.copy(archived = true)
+        assertFailsWith<IllegalArgumentException> { mutation.updatePullRequest(auth, prId, input) }
+        coEvery { repositoryService.findById(id) } returns repo.copy(deleted = true)
+        assertFailsWith<IllegalArgumentException> { mutation.updatePullRequest(auth, prId, input) }
+    }
+
+    @Test
     fun `mergePullRequest requires a principal and delegates`() = runTest {
         val prId = UUID.random()
         prFound(prId)
@@ -546,6 +571,33 @@ class GitRepositoryMutationTest {
                 input.reviewId, prId, pid, "src/a.kt", null, 3, "abc", "looks off",
             )
         }
+    }
+
+    @Test
+    fun `replyReviewComment verifies view and authenticates the replying profile`() = runTest {
+        val prId = UUID.random()
+        val commentId = UUID.random()
+        prFound(prId)
+        io.mockk.every { auth.principal() } returns null
+        assertFailsWith<SecurityException> { mutation.replyReviewComment(auth, prId, commentId, "Reply", 3) }
+        val pid = actorProfile()
+        io.mockk.every { groupEvaluator.hasScope(auth, "git:write") } returns true
+        mutation.replyReviewComment(auth, prId, commentId, "Reply", 3)
+        coVerify { permissionEvaluator.verifyAllowed(auth, repo, PermissionAction.VIEW) }
+        coVerify { pullRequestService.replyReviewComment(prId, commentId, pid, "Reply", 3) }
+        io.mockk.every { groupEvaluator.hasScope(auth, "git:write") } returns false
+        assertFailsWith<SecurityException> { mutation.replyReviewComment(auth, prId, commentId, "Read-only", 3) }
+        coVerify(exactly = 0) { pullRequestService.replyReviewComment(prId, commentId, any(), "Read-only", any()) }
+        io.mockk.every { groupEvaluator.hasScope(auth, "ci:edit") } returns true
+        mutation.replyReviewComment(auth, prId, commentId, "CI reply", null)
+        coVerify { pullRequestService.replyReviewComment(prId, commentId, pid, "CI reply", null) }
+        io.mockk.every { groupEvaluator.hasScope(auth, "ci:edit") } returns false
+        io.mockk.every { groupEvaluator.hasSaGroup(auth) } returns true
+        mutation.replyReviewComment(auth, prId, commentId, "Service reply", null)
+        coVerify { pullRequestService.replyReviewComment(prId, commentId, pid, "Service reply", null) }
+        coEvery { permissionEvaluator.verifyAllowed(auth, repo, PermissionAction.VIEW) } throws SecurityException("denied")
+        assertFailsWith<SecurityException> { mutation.replyReviewComment(auth, prId, commentId, "Denied", 3) }
+        coVerify(exactly = 0) { pullRequestService.replyReviewComment(prId, commentId, any(), "Denied", any()) }
     }
 
     @Test
@@ -815,6 +867,7 @@ class GitRepositoryMutationTest {
             { mutation.unassignPullRequest(auth, prId, UUID.random()) },
             { mutation.submitReview(auth, reviewInput) },
             { mutation.addReviewComment(auth, reviewCommentInput) },
+            { mutation.replyReviewComment(auth, prId, UUID.random(), "Reply", null) },
             { mutation.resolveReviewThread(auth, prId, "p", 1) },
             { mutation.createWebhook(auth, id, bosca.git.model.Webhook(repositoryId = id, url = "u", secret = "s")) },
             { mutation.updateWebhook(auth, hookId, bosca.git.model.Webhook(repositoryId = id, url = "u", secret = "s")) },
@@ -854,6 +907,7 @@ class GitRepositoryMutationTest {
             ))
         }
         assertFailsWith<NoSuchElementException> { mutation.resolveReviewThread(auth, prId, "p", 1) }
+        assertFailsWith<NoSuchElementException> { mutation.replyReviewComment(auth, prId, UUID.random(), "Reply", null) }
 
         val hookId = UUID.random()
         coEvery { webhookService.findById(hookId) } returns null

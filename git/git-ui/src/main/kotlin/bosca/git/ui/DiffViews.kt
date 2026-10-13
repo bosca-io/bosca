@@ -21,25 +21,6 @@ internal fun GitUiCompareData.Git.Compare.Files.view(): DiffView =
         },
     )
 
-internal fun GitUiPullData.Git.PullRequest.Diff.view(): DiffView =
-    DiffView(
-        oldPath,
-        newPath,
-        changeType.name,
-        hunks.map { h ->
-            DiffHunkView(
-                h.oldStart,
-                h.oldCount,
-                h.newStart,
-                h.newCount,
-                h.totalLineCount,
-                h.lines.map {
-                    DiffLineView(it.type.name, it.oldLineNumber, it.newLineNumber, it.content)
-                },
-            )
-        },
-    )
-
 internal fun GitUiPullDiffPageData.Git.PullRequest.Diff.view(): DiffView =
     DiffView(
         oldPath,

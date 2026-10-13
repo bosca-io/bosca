@@ -65,6 +65,7 @@ class PullActionsModel(
                 .git
                 .pullRequestMergePlan
         require(plan.isNotEmpty()) { "No merge plan is available." }
+        require(plan.last().version == page.pull.version) { "Pull request changed. Reload it before merging." }
     }
 
     suspend fun merge(confirmed: Boolean, ctx: RenderContext) = perform {
@@ -83,7 +84,7 @@ class PullActionsModel(
         if (plan.size == 1)
             ctx.gql.execute(
                 GitUiMergePull,
-                GitUiMergePull.Variables(page.pull.id, GitMergeStrategy.valueOf(strategy)),
+                GitUiMergePull.Variables(page.pull.id, GitMergeStrategy.valueOf(strategy), page.pull.version),
             )
         else
             ctx.gql.execute(
@@ -91,6 +92,7 @@ class PullActionsModel(
                 GitUiMergePullDependencies.Variables(
                     page.pull.id,
                     GitMergeStrategy.valueOf(strategy),
+                    page.pull.version,
                 ),
             )
         nextHref = page.href

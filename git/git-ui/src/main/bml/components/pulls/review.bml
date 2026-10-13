@@ -5,7 +5,7 @@
   </script>
   <island name="git-pull-review" :key="page.pull.id">
     <section class="review-workspace">
-      <if model.page.view != "overview">
+      <if model.page.view == "reviews" || (model.page.view == "files" && model.page.diffUnavailableMessage.isBlank())>
         <div class="review-toolbar">
           <span class="review-count">{ model.viewSummary }</span>
           <if model.page.canReview>
@@ -16,6 +16,7 @@
               primary
               :forceOpen="model.page.reviewing || model.reviewFailed || model.reviewing"
               :completed="model.reviewSubmitted"
+              :returnFocus='if (model.commentFile.isNotBlank()) ".comment-form textarea" else ""'
             >
               <form class="modal-form" @submit="model.review(form.status, form.body, ctx)">
                 <div class="modal-fields">
@@ -54,8 +55,14 @@
       <if !model.page.canReview && model.page.pull.status.name == "DRAFT" && model.page.view != "overview">
         <p class="detail-note">Mark this draft ready before submitting a review.</p>
       </if>
-      <if model.message.isNotBlank() && !model.reviewFailed>
-        <ui-alert :tone='if (model.failed) "error" else "success"'>{ model.message }</ui-alert>
+      <ui-toast
+        :id='"pull-review-notice-" + model.page.pull.id'
+        :message='if (model.failed) "" else model.message'
+        :sequence="model.noticeSequence"
+        tone="success"
+      />
+      <if model.failed && !model.reviewFailed && !model.commentFailed>
+        <ui-alert>{ model.message }</ui-alert>
       </if>
       <if model.page.view == "reviews">
         <if model.reviews.isEmpty()>
@@ -70,55 +77,47 @@
         <for review in model.reviews>
           <ui-card :padded="false">
             <article class="review">
-              <header class="review-header">
-                <strong>{ model.page.identity(review.reviewerId) }</strong>
-                <git-pull-review-status :status="review.status.name" :dismissed="review.dismissedAt != null" />
-                <span class="review-time">
-                  <ui-time :value="review.created" />
-                </span>
-              </header>
-              <if review.body.orEmpty().isNotBlank()>
-                <p>{ review.body.orEmpty() }</p>
-              </if>
-              <if review.dismissedAt != null>
-                <p class="detail-note">
-                  Dismissed
-                  <ui-time :value="review.dismissedAt.orEmpty()" />
-                  <if review.dismissReason.orEmpty().isNotBlank()>
-                    ·
-                    { review.dismissReason.orEmpty() }
-                  </if>
-                </p>
-              </if>
-              <for comment in review.comments>
-                <article class="thread">
-                  <a
-                    :href="model.page.fileHref(comment.filePath, comment.newLineNumber ?: comment.oldLineNumber)"
-                  >
-                    { comment.filePath }
-                    :
-                    { comment.newLineNumber ?: comment.oldLineNumber ?: 0 }
-                  </a>
-                  ·
-                  { model.page.identity(comment.authorId) }
-                  <p>{ comment.content }</p>
+              <div class="review-heading">
+                <header class="review-header">
+                  <strong>{ model.page.identity(review.reviewerId) }</strong>
+                  <git-pull-review-status :status="review.status.name" :dismissed="review.dismissedAt != null" />
+                  <span class="review-time">
+                    <ui-time :value="review.created" relative ago inheritTypography />
+                  </span>
+                </header>
+                <if review.body.orEmpty().isNotBlank()>
+                  <p class="review-body">{ review.body.orEmpty() }</p>
+                </if>
+                <if review.dismissedAt != null>
                   <p class="detail-note">
-                    <ui-time :value="comment.created" />
-                    <if comment.outdated>
-                      · Outdated
-                    </if>
-                    <if comment.resolved>
-                      · Resolved
+                    Dismissed
+                    <ui-time :value="review.dismissedAt.orEmpty()" />
+                    <if review.dismissReason.orEmpty().isNotBlank()>
+                      ·
+                      { bosca.git.ui.reviewDismissReasonLabel(review.dismissReason.orEmpty()) }
                     </if>
                   </p>
-                  <if !comment.resolved && model.page.canReview>
-                    <form
-                      @submit="model.resolve(comment.filePath, comment.newLineNumber ?: comment.oldLineNumber ?: 0, ctx)"
-                    >
-                      <ui-button type="submit" size="sm" icon="check">Resolve thread</ui-button>
-                    </form>
+                </if>
+              </div>
+              <for thread in model.reviewThreads(review)>
+                <git-pull-thread :page="model.page" :thread="thread">
+                  <if model.replyToCommentId != thread.id>
+                    <div class="thread-actions">
+                      <ui-button size="sm" icon="reply" :data-comment-anchor="thread.replyAnchor" @click="model.reply(thread.id)">Reply</ui-button>
+                      <if !thread.resolved && thread.hasLine && model.page.canReview>
+                        <form @submit="model.resolve(thread.first.filePath, thread.line, ctx)">
+                          <ui-button type="submit" size="sm" icon="check">Resolve thread</ui-button>
+                        </form>
+                      </if>
+                    </div>
                   </if>
-                </article>
+                  <if model.replyToCommentId == thread.id>
+                    <git-pull-comment :model="model" @submit="model.comment(form.body, ctx)">
+                      <ui-button size="sm" aria-label="Cancel reply" @click="model.cancelComment()">Cancel</ui-button>
+                      <ui-button ref="commentSubmit" size="sm" type="submit" primary :disabled="model.commentBody.isBlank()">Reply</ui-button>
+                    </git-pull-comment>
+                  </if>
+                </git-pull-thread>
               </for>
             </article>
           </ui-card>
@@ -152,14 +151,20 @@
           </if>
         </ui-card>
         <ui-card :padded="false">
-          <ui-section-heading title="Files changed" :subtitle="model.fileSummary">
+          <ui-section-heading title="Files changed" :subtitle='if (model.page.diffUnavailableMessage.isBlank()) model.fileSummary else "Comparison unavailable"'>
             <ui-icon-link icon="arrow-right" label="View file changes" :href='model.page.href + "&view=files"' />
           </ui-section-heading>
-          <div class="changed-file-summary"><git-diff-tree :entries="model.files" /></div>
+          <if model.page.diffUnavailableMessage.isNotBlank()>
+            <p class="summary-empty">{ model.page.diffUnavailableMessage }</p>
+          <else>
+            <div class="changed-file-summary"><git-diff-tree :entries="model.files" /></div>
+          </if>
         </ui-card>
       </if>
       <if model.page.view == "files">
-        <if model.diff.isEmpty()>
+        <if model.page.diffUnavailableMessage.isNotBlank()>
+          <ui-empty-state icon="branch" title="Comparison unavailable" :message="model.page.diffUnavailableMessage" />
+        <else-if model.diff.isEmpty()>
           <ui-empty-state
             icon="file"
             title="No files changed"
@@ -187,7 +192,10 @@
                     </if>
                     <div class="diff-lines">
                       <for line in hunk.lines>
-                        <div :class='"diff-line " + line.type.lowercase()'>
+                        <div
+                          :class='"diff-line " + line.type.lowercase()'
+                          :data-comment-anchor='file.path + ":" + (line.oldLineNumber ?: 0) + ":" + (line.newLineNumber ?: 0)'
+                        >
                           <span class="line-number">{ line.oldLineNumber ?: "" }</span>
                           <span class="line-number">{ line.newLineNumber ?: "" }</span>
                           <span class="line-action">
@@ -203,57 +211,35 @@
                           <span class="line-mark" aria-hidden="true">{ if (line.type == "ADD") "+" else if (line.type == "DELETE") "−" else " " }</span>
                           <code>{ line.content }</code>
                         </div>
-                        <for comment in model.lineComments(file.path, line.oldLineNumber, line.newLineNumber)>
-                          <article class="inline-thread">
-                            <strong>{ model.page.identity(comment.authorId) }</strong>
-                            <p>{ comment.content }</p>
-                            <if comment.resolved>
-                              <span class="muted">Resolved</span>
-                            <else-if model.page.canReview>
-                              <form
-                                @submit="model.resolve(comment.filePath, comment.newLineNumber ?: comment.oldLineNumber ?: 0, ctx)"
-                              >
-                                <ui-button type="submit" size="sm" icon="check">Resolve thread</ui-button>
-                              </form>
-                            </if>
-                          </article>
-                        </for>
-                        <if model.commentFile == file.path && model.oldLine == line.oldLineNumber && model.newLine == line.newLineNumber>
-                          <section class="comment-form">
-                            <ui-card :padded="false">
-                              <ui-section-heading
-                                title="Line comment"
-                                :subtitle='model.commentFile + ":" + (model.newLine ?: model.oldLine)'
-                              >
-                                <ui-icon-button icon="close" label="Cancel line comment" @click="model.cancelComment()" />
-                              </ui-section-heading>
-                              <div class="section-body">
-                                <if model.ownReviews.isEmpty()>
-                                  <p>Submit a review before adding a line comment.</p>
-                                  <ui-button icon="eye" @click="model.openReview()">Review changes</ui-button>
-                                <else>
-                                  <form class="form-grid" @submit="model.comment(form.review, form.body, ctx)">
-                                    <ui-field label="Your review">
-                                      <ui-select name="review">
-                                        <for review in model.ownReviews>
-                                          <option :value="review.id" :selected="review.id == model.reviewId">
-                                            { bosca.git.ui.reviewStatusLabel(review.status.name) + " · " + review.created.take(10) }
-                                          </option>
-                                        </for>
-                                      </ui-select>
-                                    </ui-field>
-                                    <ui-field label="Comment">
-                                      <textarea name="body" rows="4" required>{ model.commentBody }</textarea>
-                                    </ui-field>
-                                    <div class="comment-actions">
-                                      <ui-button @click="model.cancelComment()">Cancel</ui-button>
-                                      <ui-button type="submit" primary icon="message">Add comment</ui-button>
-                                    </div>
+                        <for thread in model.lineThreads(file.path, line.oldLineNumber, line.newLineNumber)>
+                          <git-pull-thread :page="model.page" :thread="thread" inline>
+                            <if model.replyToCommentId != thread.id>
+                              <div class="thread-actions">
+                                <ui-button size="sm" icon="reply" :data-comment-anchor="thread.replyAnchor" @click="model.reply(thread.id)">Reply</ui-button>
+                                <if !thread.resolved && thread.hasLine && model.page.canReview>
+                                  <form @submit="model.resolve(thread.first.filePath, thread.line, ctx)">
+                                    <ui-button type="submit" size="sm" icon="check">Resolve thread</ui-button>
                                   </form>
                                 </if>
                               </div>
-                            </ui-card>
-                          </section>
+                            </if>
+                            <if model.replyToCommentId == thread.id>
+                              <git-pull-comment :model="model" @submit="model.comment(form.body, ctx)">
+                                <ui-button size="sm" aria-label="Cancel reply" @click="model.cancelComment()">Cancel</ui-button>
+                                <ui-button ref="commentSubmit" size="sm" type="submit" primary :disabled="model.commentBody.isBlank()">Reply</ui-button>
+                              </git-pull-comment>
+                            </if>
+                          </git-pull-thread>
+                        </for>
+                        <if !model.isReply && model.commentFile == file.path && model.oldLine == line.oldLineNumber && model.newLine == line.newLineNumber>
+                          <git-pull-comment :model="model" @submit="model.comment(form.body, ctx)">
+                            <ui-button size="sm" aria-label="Cancel line comment" @click="model.cancelComment()">Cancel</ui-button>
+                            <if model.ownReviews.isEmpty()>
+                              <ui-button size="sm" icon="eye" @click="model.openReview()">Review changes</ui-button>
+                            <else>
+                              <ui-button ref="commentSubmit" size="sm" type="submit" primary :disabled="model.commentBody.isBlank()">Comment</ui-button>
+                            </if>
+                          </git-pull-comment>
                         </if>
                       </for>
                     </div>
@@ -267,6 +253,34 @@
               </form>
             </if>
           </git-pull-files>
+        </if>
+        <if model.detachedThreads.isNotEmpty()>
+          <section class="detached-discussions" aria-label="Discussions outside this diff">
+            <header class="detached-heading">
+              <h2>Discussions outside this diff</h2>
+              <p>These comments refer to earlier revisions or lines outside the displayed changes.</p>
+            </header>
+            <for thread in model.detachedThreads>
+              <git-pull-thread :page="model.page" :thread="thread">
+                <if model.replyToCommentId != thread.id>
+                  <div class="thread-actions">
+                    <ui-button size="sm" icon="reply" :data-comment-anchor="thread.replyAnchor" @click="model.reply(thread.id)">Reply</ui-button>
+                    <if !thread.resolved && thread.hasLine && model.page.canReview>
+                      <form @submit="model.resolve(thread.first.filePath, thread.line, ctx)">
+                        <ui-button type="submit" size="sm" icon="check">Resolve thread</ui-button>
+                      </form>
+                    </if>
+                  </div>
+                </if>
+                <if model.replyToCommentId == thread.id>
+                  <git-pull-comment :model="model" @submit="model.comment(form.body, ctx)">
+                    <ui-button size="sm" aria-label="Cancel reply" @click="model.cancelComment()">Cancel</ui-button>
+                    <ui-button ref="commentSubmit" size="sm" type="submit" primary :disabled="model.commentBody.isBlank()">Reply</ui-button>
+                  </git-pull-comment>
+                </if>
+              </git-pull-thread>
+            </for>
+          </section>
         </if>
       </if>
     </section>
@@ -291,17 +305,19 @@
       font-size: 12px;
       line-height: 18px;
     }
-    .inline-thread {
-      padding: 12px;
-      border-left: 3px solid var(--accent);
-      max-width: 700px;
-      white-space: normal;
-    }
-    .inline-thread p {
-      white-space: pre-wrap;
+    .thread-actions {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 0;
     }
     .review {
-      padding: 18px;
+      padding: 0;
+    }
+    .review-heading,
+    .detached-heading {
+      padding: 14px 16px;
     }
     .review-header {
       display: flex;
@@ -309,23 +325,38 @@
       flex-wrap: wrap;
       gap: 8px;
       font-size: 12px;
+      line-height: 20px;
     }
+    .review-header strong { min-width: 0; overflow-wrap: anywhere; }
     .review-time {
       margin-left: auto;
       color: var(--fg-3);
       font-size: 11px;
+      white-space: nowrap;
     }
-    .thread {
-      padding: 14px;
-      margin-top: 14px;
-      background: var(--bg-2);
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      font-size: 12px;
-    }
-    .review p,
-    .thread p {
+    .review-body {
+      margin: 8px 0 0;
+      font-size: 13px;
+      line-height: 20px;
       white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+    .detached-discussions {
+      min-width: 0;
+      border: 1px solid var(--line);
+      border-radius: var(--r-sm);
+      background: var(--bg-1);
+    }
+    .detached-heading h2 {
+      margin: 0;
+      font-size: 13px;
+      line-height: 20px;
+    }
+    .detached-heading p {
+      margin: 4px 0 0;
+      color: var(--fg-3);
+      font-size: 12px;
+      line-height: 18px;
     }
     .diff-file {
       margin: 0;
@@ -394,15 +425,6 @@
       overflow-wrap: anywhere;
       white-space: normal;
     }
-    .comment-form {
-      padding: 12px;
-      min-width: 300px;
-    }
-    .comment-actions {
-      display: flex;
-      justify-content: flex-end;
-      gap: 8px;
-    }
     .review-summary-list {
       padding: 0 18px;
     }
@@ -464,10 +486,9 @@
     }
   </style>
   <script client scoped>
-    ctx.onUpdate(() => {
-      ctx.root
-        .querySelector<HTMLElement>(".comment-form")
-        ?.scrollIntoView({ block: "nearest" });
-    });
+    import { pullComments } from "@client/pull-comments";
+    import { pullDiscussions } from "@client/pull-discussions";
+    pullComments(ctx);
+    pullDiscussions(ctx);
   </script>
 </component>

@@ -1,5 +1,6 @@
 {
   "id": "pull",
+  "version": 0,
   "repositoryId": "repo",
   "number": 1,
   "title": "Fix image",
@@ -16,6 +17,7 @@
   "mergedBy": null,
   "mergedAt": null,
   "mergeSha": null,
+  "mergeBaseSha": null,
   "conflictingFiles": [],
   "assignees": [],
   "dependencies": [],
@@ -56,14 +58,20 @@
           "oldStart": 1,
           "oldCount": 0,
           "newStart": 1,
-          "newCount": 1,
-          "totalLineCount": 1,
+          "newCount": 2,
+          "totalLineCount": 2,
           "lines": [
             {
               "content": "<script>diff</script>",
               "type": "ADD",
               "oldLineNumber": null,
               "newLineNumber": 1
+            },
+            {
+              "content": "Second diff line",
+              "type": "ADD",
+              "oldLineNumber": null,
+              "newLineNumber": 2
             }
           ]
         }
