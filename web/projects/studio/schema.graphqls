@@ -1657,6 +1657,8 @@ type ArtifactPublication {
   releaseId: Long
   tagName: String!
   verified: DateTime
+  """Attempt number of the last successful verification, when recorded"""
+  verifiedAttempt: Int
   versionId: UUID!
 }
 

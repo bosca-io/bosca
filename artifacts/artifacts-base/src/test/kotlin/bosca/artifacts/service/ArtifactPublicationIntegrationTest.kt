@@ -666,6 +666,104 @@ class ArtifactPublicationIntegrationTest {
         assertEquals(1, remote.uploads)
     }
 
+    @Test fun `a delayed cancelled attempt remains retryable after another attempt verifies`() = withDb {
+        val publication = publications.prepare(destination.id, version.id, commit)
+        publications.publish(publication.id)
+        val transactionStarted = CompletableDeferred<Unit>()
+        val newerVerificationFinished = CompletableDeferred<Unit>()
+        var first = true
+        val delayedArtifacts = object : ArtifactRepositoryService by artifacts {
+            override suspend fun finalizeVersion(id: UUID): ArtifactVersion {
+                if (!first) return artifacts.finalizeVersion(id)
+                first = false
+                // A nested transaction starts PostgreSQL's clock before the version row is locked.
+                return transaction {
+                    transactionStarted.complete(Unit)
+                    newerVerificationFinished.await()
+                    artifacts.finalizeVersion(id)
+                }
+            }
+        }
+        val github = mockk<GitHubReleaseClient>()
+        coEvery { github.publish(any(), any(), any()) } throws CancellationException("cancelled")
+        val delayed = ArtifactPublicationServiceImpl(repository, delayedArtifacts, blobs, secrets, github, mockk(), mockk())
+        withTimeout(20_000) {
+            coroutineScope {
+                val earlier = async {
+                    withSeparateConnection {
+                        assertFailsWith<CancellationException> { delayed.publish(publication.id, reverify = true) }
+                    }
+                }
+                transactionStarted.await()
+                try {
+                    withSeparateConnection { publications.publish(publication.id, reverify = true) }
+                } finally {
+                    newerVerificationFinished.complete(Unit)
+                }
+                earlier.await()
+            }
+        }
+        val pending = assertNotNull(repository.find(publication.id))
+        assertEquals(3, pending.attempts)
+        assertEquals(2, pending.verifiedAttempt)
+        assertNull(pending.error)
+        assertTrue(assertNotNull(pending.modified).isBefore(assertNotNull(pending.verified)))
+        val callsBeforeRetry = remote.requests.size
+        publications.publish(publication.id)
+        val retried = assertNotNull(repository.find(publication.id))
+        assertEquals(4, retried.attempts)
+        assertEquals(retried.attempts, retried.verifiedAttempt)
+        assertTrue(remote.requests.size > callsBeforeRetry)
+        assertEquals(pending.published, retried.published)
+        assertEquals(1, remote.uploads)
+        val callsAfterRetry = remote.requests.size
+        publications.publish(publication.id)
+        assertEquals(callsAfterRetry, remote.requests.size)
+        assertEquals(retried, repository.find(publication.id))
+    }
+
+    @Test fun `verification migration preserves confirmed success and retries ambiguous historical states`() = withDb {
+        val publication = publications.prepare(destination.id, version.id, commit)
+        publications.publish(publication.id)
+        val migration = javaClass.getResource("/db/migrations/V10__artifact_publication_verified_attempt.sql")
+            ?.readText() ?: error("Missing V10")
+        val verified = java.time.OffsetDateTime.parse("2026-10-13T12:00:00Z")
+        data class HistoricalState(
+            val verified: java.time.OffsetDateTime?,
+            val modified: java.time.OffsetDateTime,
+            val error: String?,
+            val expectedAttempt: Int?,
+        )
+        for (state in listOf(
+            HistoricalState(verified, verified, null, 3),
+            HistoricalState(null, verified, null, null),
+            HistoricalState(verified, verified.plusSeconds(1), null, null),
+            HistoricalState(verified, verified.minusSeconds(1), null, null),
+            HistoricalState(verified, verified, "Verification failed", null),
+        )) {
+            connection().useStatement("ALTER TABLE artifacts.publications DROP COLUMN verified_attempt") { it.execute() }
+            connection().useStatement("UPDATE artifacts.publications SET attempts = 3, verified = ?, modified = ?, error = ? WHERE id = ?") {
+                it.setObject(1, state.verified)
+                it.setObject(2, state.modified)
+                it.setString(3, state.error)
+                it.setObject(4, java.util.UUID.fromString(publication.id.toString()))
+                it.executeUpdate()
+            }
+            connection().useStatement(migration) { it.execute() }
+            val migrated = assertNotNull(repository.find(publication.id))
+            assertEquals(state.expectedAttempt, migrated.verifiedAttempt, state.toString())
+            assertEquals(state.verified, migrated.verified)
+            val callsBeforeRetry = remote.requests.size
+            publications.publish(publication.id)
+            val result = assertNotNull(repository.find(publication.id))
+            assertEquals(if (state.expectedAttempt == null) 4 else 3, result.attempts)
+            assertEquals(result.attempts, result.verifiedAttempt)
+            assertNull(result.error)
+            assertEquals(state.expectedAttempt == null, remote.requests.size > callsBeforeRetry)
+        }
+        assertEquals(1, remote.uploads)
+    }
+
     @Test fun `repeat verification failures retain the previous verification and record only one new attempt`() = withDb {
         val publication = publications.prepare(destination.id, version.id, commit)
         publications.publish(publication.id)

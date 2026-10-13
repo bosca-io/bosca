@@ -29,4 +29,6 @@ data class ArtifactPublication(
     val error: String? = null,
     @Contextual val created: OffsetDateTime? = null,
     @Contextual val modified: OffsetDateTime? = null,
+    /** Attempt number of the last successful verification, when recorded. */
+    @ColumnName("verified_attempt") val verifiedAttempt: Int? = null,
 )

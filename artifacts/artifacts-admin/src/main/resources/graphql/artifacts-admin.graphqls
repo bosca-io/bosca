@@ -235,6 +235,8 @@ type ArtifactPublication {
     attempts: Int!
     published: DateTime
     verified: DateTime
+    "Attempt number of the last successful verification, when recorded"
+    verifiedAttempt: Int
     error: String
     created: DateTime
     modified: DateTime

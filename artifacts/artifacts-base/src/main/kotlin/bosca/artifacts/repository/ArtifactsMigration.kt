@@ -20,5 +20,6 @@ class ArtifactsMigration : Migration {
         "V7__artifact_publication.sql",
         "V8__artifact_sync.sql",
         "V9__artifact_completion.sql",
+        "V10__artifact_publication_verified_attempt.sql",
     )
 }

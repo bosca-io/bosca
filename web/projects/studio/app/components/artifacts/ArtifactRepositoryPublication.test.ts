@@ -45,7 +45,7 @@ const destination = {
 }
 const publication = {
   id: 'publication-1', destinationId: destination.id, tagName: 'cli-v1.2.3', commitSha: 'a'.repeat(40),
-  attempts: 2, published: '2026-10-09T12:00:00Z', verified: null, error: 'Verification failed',
+  attempts: 2, published: '2026-10-09T12:00:00Z', verified: null, verifiedAttempt: null, error: 'Verification failed',
   files: [{ filename: 'SHA256SUMS', digest: 'sha256:abc', size: 64 }],
 }
 function button(wrapper: VueWrapper, label: string) {
@@ -88,10 +88,15 @@ describe('Raw artifact GitHub release settings', () => {
     expect(wrapper.text()).toContain('GitHub asset content differs')
     expect(wrapper.text()).not.toContain('Verified · 2 attempts')
   })
-  it('shows pending verification after a repeat publishes while retaining the earlier verification date', async () => {
+  it.each([
+    { modified: '2026-10-10T13:00:00Z', verifiedAttempt: 1 },
+    { modified: '2026-10-09T12:00:00Z', verifiedAttempt: 1 },
+    { modified: '2026-10-09T13:00:00Z', verifiedAttempt: 1 },
+    { modified: '2026-10-09T13:00:00Z', verifiedAttempt: null },
+  ])('keeps an unfinished attempt pending with modified=$modified and verifiedAttempt=$verifiedAttempt', async ({ modified, verifiedAttempt }) => {
     const initial = query.getMockImplementation()
     query.mockImplementation((document: DocumentNode, variables: unknown) => print(document).includes('ArtifactPublicationHistory')
-      ? Promise.resolve({ artifactsAdmin: { publications: [{ ...publication, attempts: 2, error: null, verified: '2026-10-09T13:00:00Z', modified: '2026-10-10T13:00:00Z' }] } })
+      ? Promise.resolve({ artifactsAdmin: { publications: [{ ...publication, attempts: 2, error: null, verified: '2026-10-09T13:00:00Z', modified, verifiedAttempt }] } })
       : initial?.(document, variables))
     const wrapper = mountSettings()
     await flushPromises()
@@ -186,7 +191,7 @@ describe('Raw artifact GitHub release settings', () => {
     expect(wrapper.text()).toContain('Published:')
     expect(wrapper.text()).toContain('Verification failed')
     expect(wrapper.text()).toContain('SHA256SUMS')
-    query.mockResolvedValue({ artifactsAdmin: { publications: [{ ...publication, error: null, verified: '2026-10-09T13:00:00Z' }] } })
+    query.mockResolvedValue({ artifactsAdmin: { publications: [{ ...publication, error: null, verified: '2026-10-09T13:00:00Z', verifiedAttempt: 2 }] } })
     await button(wrapper, 'Refresh status').trigger('click')
     await flushPromises()
     expect(wrapper.text()).toContain('Verified')

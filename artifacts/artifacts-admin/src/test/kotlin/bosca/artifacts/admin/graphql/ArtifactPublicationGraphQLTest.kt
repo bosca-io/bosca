@@ -134,7 +134,7 @@ class ArtifactPublicationGraphQLTest {
     fun cleanup() = ProviderRegistry.clear()
 
     private val destinationFields = "id repositoryId key githubRepositoryId owner githubRepository tagPrefix tokenSecretName enabled version created modified"
-    private val publicationFields = "id destinationId versionId tagName commitSha prerelease releaseId attempts published verified error created modified files { filename digest size mediaType }"
+    private val publicationFields = "id destinationId versionId tagName commitSha prerelease releaseId attempts published verified verifiedAttempt error created modified files { filename digest size mediaType }"
     private val syncDestinationFields = "id repositoryId key remoteRepository username tokenSecretName enabled version created modified"
     private val syncFields = "id destinationId versionId tagName manifestDigest attempts synced error created modified"
     private val operations: List<String>
@@ -176,6 +176,24 @@ class ArtifactPublicationGraphQLTest {
         coVerify(exactly = 1) { syncing.push(any(), syncDestination.id, "latest") }
         coVerify(exactly = 1) { publications.publish(admin, destination.id, publication.versionId, publication.commitSha) }
         coVerify(exactly = 1) { artifacts.confirmVersionCompletion(publication.versionId, publication.commitSha, listOf(storedBlob), principal.id) }
+    }
+
+    @Test
+    fun `publication exposes its last verified attempt independently of its current attempt`() = runBlocking {
+        for (verifiedAttempt in listOf(1, null)) {
+            coEvery { publications.publications(publication.versionId, 100, 0) } returns listOf(publication.copy(
+                attempts = 2, verified = OffsetDateTime.now(), verifiedAttempt = verifiedAttempt,
+            ))
+            val result = graph.execute(admin, GraphQLRequest(query = """{ artifactsAdmin {
+                publications(versionId: "${publication.versionId}") { attempts verified verifiedAttempt }
+            } }""")).jsonObject
+            assertFalse("errors" in result, result.toString())
+            val value = result.getValue("data").jsonObject.getValue("artifactsAdmin").jsonObject
+                .getValue("publications").jsonArray.single().jsonObject
+            assertEquals(2, value.getValue("attempts").jsonPrimitive.int)
+            assertNotEquals(JsonNull, value.getValue("verified"))
+            assertEquals(verifiedAttempt, value.getValue("verifiedAttempt").jsonPrimitive.intOrNull)
+        }
     }
 
     @Test

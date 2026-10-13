@@ -14,7 +14,7 @@ const files = [
 const publication = {
   id: '77777777-7777-7777-7777-777777777777', destinationId: destination.id,
   tagName: '1.2.3', commitSha: 'a'.repeat(40), attempts: 1,
-  published: '2026-10-01T12:00:00Z', verified: null, error: 'Verification failed', files,
+  published: '2026-10-01T12:00:00Z', verified: null, verifiedAttempt: null, error: 'Verification failed', files,
 }
 const mocks = {
   ArtifactRepositorySettings: { artifactsAdmin: { repository: {
@@ -102,7 +102,7 @@ test('configures CLI release publication and reviews all four stored files', asy
   for (const file of files) await expect(page.getByText(file.filename, { exact: false })).toBeVisible()
 
   await setMocks(request, { ...mocks, ArtifactPublicationHistory: { artifactsAdmin: { publications: [{
-    ...publication, attempts: 2, error: null, verified: '2026-10-01T13:00:00Z',
+    ...publication, attempts: 2, error: null, verified: '2026-10-01T13:00:00Z', verifiedAttempt: 2,
   }] } } })
   await page.getByRole('button', { name: 'Refresh status', exact: true }).click()
   await expect(page.getByText('Verified · 2 attempts', { exact: true })).toBeVisible()
@@ -180,7 +180,13 @@ test('recovers completion for existing files and displays a failed repeat with i
   expect((await queued).postDataJSON().variables).toEqual({ destinationId: destination.id, versionId, commitSha: publication.commitSha })
   await expect(dialog).toHaveCount(0)
   await setMocks(request, { ...mocks, ArtifactPublicationHistory: { artifactsAdmin: { publications: [{
-    ...publication, attempts: 2, verified: '2026-10-01T13:00:00Z', error: 'GitHub asset content differs', modified: '2026-10-02T13:00:00Z',
+    ...publication, attempts: 2, verifiedAttempt: 1, verified: '2026-10-01T13:00:00Z', error: null, modified: '2026-10-01T12:59:00Z',
+  }] } } })
+  await page.getByRole('button', { name: 'Refresh status', exact: true }).click()
+  await expect(page.getByText('Published · awaiting verification · 2 attempts', { exact: true })).toBeVisible()
+  await expect(page.getByText('Last verified:', { exact: false })).toBeVisible()
+  await setMocks(request, { ...mocks, ArtifactPublicationHistory: { artifactsAdmin: { publications: [{
+    ...publication, attempts: 2, verifiedAttempt: 1, verified: '2026-10-01T13:00:00Z', error: 'GitHub asset content differs', modified: '2026-10-02T13:00:00Z',
   }] } } })
   await page.getByRole('button', { name: 'Refresh status', exact: true }).click()
   await expect(page.getByText('Failed · 2 attempts', { exact: true })).toBeVisible()

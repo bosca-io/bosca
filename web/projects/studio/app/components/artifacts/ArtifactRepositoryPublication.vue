@@ -12,7 +12,7 @@ interface Destination {
 interface Publication {
   id: string; destinationId: string; tagName: string; commitSha: string; attempts: number
   published: string | null; verified: string | null; error: string | null
-  modified?: string | null
+  verifiedAttempt: number | null
   files: { filename: string; digest: string; size: number }[]
 }
 interface Version { id: string; version: string; completed: boolean; finalized: boolean; completedCommitSha: string | null }
@@ -68,7 +68,7 @@ const completeDocument = gql`
 const historyDocument = gql`
   query ArtifactPublicationHistory($versionId: UUID!, $limit: Int!, $offset: Long!) {
     artifactsAdmin { publications(versionId: $versionId, limit: $limit, offset: $offset) {
-      id destinationId tagName commitSha attempts published verified error modified files { filename digest size }
+      id destinationId tagName commitSha attempts published verified verifiedAttempt error files { filename digest size }
     } }
   }
 `
@@ -281,7 +281,7 @@ async function completeUploads() {
 }
 function publicationStatus(publication: Publication) {
   if (publication.error) return 'Failed'
-  if (publication.verified && (!publication.modified || new Date(publication.verified) >= new Date(publication.modified))) return 'Verified'
+  if (publication.verified && publication.verifiedAttempt === publication.attempts) return 'Verified'
   return publication.published ? 'Published · awaiting verification' : 'Queued'
 }
 async function publishRelease() {

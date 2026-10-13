@@ -1893,6 +1893,8 @@ export type ArtifactPublication = {
   releaseId?: Maybe<Scalars['Long']['output']>;
   tagName: Scalars['String']['output'];
   verified?: Maybe<Scalars['DateTime']['output']>;
+  /** Attempt number of the last successful verification, when recorded */
+  verifiedAttempt?: Maybe<Scalars['Int']['output']>;
   versionId: Scalars['UUID']['output'];
 };
 

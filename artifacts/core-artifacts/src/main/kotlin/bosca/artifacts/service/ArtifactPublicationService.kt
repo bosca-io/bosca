@@ -35,7 +35,8 @@ interface ArtifactPublicationService : Service {
     /**
      * Repeats verification when [reverify] is true. The attempt number is committed before provider work;
      * failures retain prior success timestamps, and only the current attempt can record its result.
-     * An unfinished attempt remains eligible for retry even when an earlier attempt was verified.
+     * Verification is tied to its attempt number. An unfinished attempt remains eligible for retry
+     * even when an earlier attempt was verified, regardless of transaction timestamp ordering.
      */
     suspend fun publish(id: UUID, reverify: Boolean)
 

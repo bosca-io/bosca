@@ -64,8 +64,9 @@ interface ArtifactPublicationRepository {
         modified = now() WHERE id = :id RETURNING *""")
     suspend fun published(id: UUID, releaseId: Long): ArtifactPublication?
 
-    /** Records successful verification independently of publication. */
-    @Query("UPDATE artifacts.publications SET verified = now(), error = null, modified = now() WHERE id = :id RETURNING *")
+    /** Records successful verification and its attempt number independently of publication. */
+    @Query("""UPDATE artifacts.publications SET verified = now(), verified_attempt = attempts,
+        error = null, modified = now() WHERE id = :id RETURNING *""")
     suspend fun verified(id: UUID): ArtifactPublication?
 
     /** Records a failed attempt while retaining earlier success and refusing to overwrite newer attempt results. */

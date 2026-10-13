@@ -156,10 +156,8 @@ class ArtifactPublicationServiceImpl(
             val attempt = transaction {
                 artifacts.finalizeVersion(initial.versionId)
                 val publication = repository.lock(id) ?: return@transaction null
-                val verified = publication.verified
-                val modified = publication.modified
-                if (verified != null && publication.error == null && !reverify &&
-                    (modified == null || !verified.isBefore(modified))) return@transaction null
+                if (!reverify && publication.error == null && publication.verified != null &&
+                    publication.verifiedAttempt == publication.attempts) return@transaction null
                 repository.attempt(id) ?: error("Publication disappeared")
             } ?: return
             failureState = attempt
