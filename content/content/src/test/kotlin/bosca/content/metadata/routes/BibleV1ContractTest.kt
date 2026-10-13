@@ -134,6 +134,8 @@ class BibleV1ContractTest {
     fun `v1 single chapter keeps its published chapter fields while v2 returns shared content`() = runTest {
         stubBible()
         val v1 = GetBibleBookChapter(metadata, permissions, bibles)
+        val local = chapter.copy(sourceId = null, attribution = null, sourceVersion = null, expires = null)
+        coEvery { bibles.getChapter(book, any<String>()) } returns local
         val old = encode(v1, assertNotNull(execute(v1, call()))).jsonObject
         assertTrue(old.keys.containsAll(chapterFields))
         assertEquals(components.toJson(), old.getValue("components"))
@@ -153,6 +155,24 @@ class BibleV1ContractTest {
         assertEquals(components.toJson(), restored.chapter[reference]?.toJson())
         assertEquals(attribution, restored.attribution)
         coVerify(exactly = 2) { permissions.verifyAllowed(authentication, record, PermissionAction.VIEW) }
+    }
+
+    @Test
+    fun `v1 single chapter returns provider text with display checks`() = runTest {
+        stubBible()
+        // BibleService omits provider bodies and response metadata from getChapter.
+        coEvery { bibles.getChapter(book, any<String>()) } returns
+            chapter.copy(components = null, attribution = null, sourceVersion = null, expires = null)
+        coEvery { bibles.getChapterContent(book, "JHN.1", BibleContentUse.DISPLAY) } returns
+            BibleChapterContent(Chapter(reference, components), attribution)
+        val route = GetBibleBookChapter(metadata, permissions, bibles)
+
+        val value = encode(route, assertNotNull(execute(route, call()))).jsonObject
+
+        assertTrue(value.keys.containsAll(chapterFields))
+        assertEquals(components.toJson(), value.getValue("components"))
+        assertFalse(value.toString().contains("private-token"))
+        coVerify(exactly = 1) { bibles.getChapterContent(book, "JHN.1", BibleContentUse.DISPLAY) }
     }
 
     @Test

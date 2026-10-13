@@ -1,6 +1,7 @@
 package bosca.content.metadata.graphql
 
 import bosca.bible.BibleContentUse
+import bosca.bible.IBibleAudioChapter
 import bosca.bible.Reference
 import bosca.content.metadata.model.Bible
 import bosca.content.metadata.model.BibleBook
@@ -15,6 +16,7 @@ import bosca.graphql.annotations.Field
 import bosca.graphql.annotations.TypeController
 import bosca.security.model.PermissionAction
 import bosca.security.service.AuthenticationContext
+import bosca.serialization.UUID
 import kotlinx.serialization.json.JsonArray
 
 
@@ -85,7 +87,7 @@ class BibleController(
     suspend fun audio(bible: Bible) = bibleService.getAudio(bible)
 
     @Field
-    suspend fun audioChapter(authentication: AuthenticationContext?, bible: Bible, audioId: bosca.serialization.UUID, usfm: String): bosca.bible.IBibleAudioChapter {
+    suspend fun audioChapter(authentication: AuthenticationContext?, bible: Bible, audioId: UUID, usfm: String): IBibleAudioChapter {
         val metadata = metadataService.getById(bible.metadataId)?.takeUnless { it.deleted }
             ?: throw NoSuchElementException("Bible metadata was not found")
         metadataPermissionEvaluator.verifyContentAllowed(authentication, metadata, PermissionAction.VIEW)

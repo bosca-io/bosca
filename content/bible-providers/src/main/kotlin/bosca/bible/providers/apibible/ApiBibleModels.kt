@@ -6,8 +6,6 @@ import bosca.bible.providers.model.BibleSourceKind
 import bosca.bible.providers.model.IBibleCatalog
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
-import java.io.IOException
-import java.util.Locale
 
 @Serializable
 internal data class ApiBibleResponse<T>(val data: T, val meta: ApiBibleMeta? = null)
@@ -25,11 +23,7 @@ internal data class ApiBibleLanguage(
     override val script: String,
     override val scriptDirection: String,
 ) : IBibleLanguage {
-    override val scriptCode: String
-        get() = Locale.getAvailableLocales().firstOrNull {
-            it.script.isNotBlank() && (it.script.equals(script, ignoreCase = true) ||
-                it.getDisplayScript(Locale.ENGLISH).equals(script, ignoreCase = true))
-        }?.script ?: throw IOException("API.Bible returned an unrecognized script: $script")
+    override val scriptCode: String get() = resolveScriptCode(script)
 }
 
 @Serializable
@@ -111,5 +105,4 @@ internal data class ApiBibleAttributes(
     val number: String? = null,
     val sid: String? = null,
     @SerialName("verseId") val usfm: String? = null,
-    @SerialName("verseOrgIds") val references: List<String> = emptyList(),
 )

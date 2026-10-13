@@ -13,53 +13,66 @@ import java.io.IOException
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
+/** Fixtures under `apibible/` are excerpts of real API.Bible chapter responses (content only). */
 class ApiBibleContentTest {
 
     @Test
-    fun `verse filtering preserves paragraphs nested styles and whitespace`() {
-        val chapter = chapter("""
-            [
-              {"type":"tag","name":"para","attrs":{"style":"s1"},"items":[{"type":"text","text":"Heading"}]},
-              {"type":"tag","name":"para","attrs":{"style":"p"},"items":[
-                {"type":"tag","name":"verse","attrs":{"number":"1"},"items":[{"type":"text","text":"1"}]},
-                {"type":"text","text":" First ","attrs":{"verseId":"GEN.1.1"}},
-                {"type":"tag","name":"char","attrs":{"style":"nd"},"items":[{"type":"text","text":"styled"}]}
-              ]},
-              {"type":"tag","name":"para","attrs":{"style":"q1"},"items":[
-                {"type":"text","text":" continuation. ","attrs":{"verseId":"GEN.1.1"}},
-                {"type":"tag","name":"verse","attrs":{"sid":"GEN 1:2"}},
-                {"type":"text","text":"Second."}
-              ]}
-            ]
-        """)
+    fun `section headings and cross reference lines belong to no verse`() {
+        val chapter = fixture("bsb-MAT.5.json", "MAT.5")
 
-        val first = assertNotNull(chapter[Reference("GEN.1.1")])
-        assertEquals(" First styled continuation. ", text(first))
-        assertEquals("Second.", text(assertNotNull(chapter[Reference("GEN.1.2")])))
-        assertEquals("Heading First styled continuation. Second.", text(assertNotNull(chapter[Reference("GEN.1")])))
-        val containers = descendants(first).filterIsInstance<ComponentContainer>().toList()
-        assertEquals(listOf("p", "nd", "q1"), containers.mapNotNull { it.style?.id })
-        assertTrue(containers.any { it.type == ContainerType.SPAN })
+        assertEquals("When Jesus saw the crowds, He went up on the mountain and sat down. His disciples came to Him, ",
+            text(assertNotNull(chapter[Reference("MAT.5.1")])))
+        assertEquals("and He began to teach them, saying:", text(assertNotNull(chapter[Reference("MAT.5.2")])))
+        assertEquals("“Blessed are the poor in spirit,", text(assertNotNull(chapter[Reference("MAT.5.3")])))
+        val whole = text(assertNotNull(chapter[Reference("MAT.5")]))
+        assertTrue(whole.startsWith("The Sermon on the Mount"))
+        assertTrue(whole.contains("saying:The Beatitudes(Psalms 1:1–6; Luke 6:20–23)“Blessed"))
+        val references = descendants(assertNotNull(chapter[Reference("MAT.5")])).filterIsInstance<ComponentContainer>()
+            .filter { it.type == ContainerType.DIV && it.style?.id == "" }.toList()
+        assertEquals(listOf("Psalms 1:1–6", "Luke 6:20–23"), references.map { text(it) })
     }
 
     @Test
-    fun `combined ranges organizational references and partial verses retain their text`() {
+    fun `verses continue across paragraphs and nested character styles`() {
+        val chapter = fixture("web-MAT.5.json", "MAT.5")
+
+        val blessed = assertNotNull(chapter[Reference("MAT.5.3")])
+        assertEquals("“Blessed are the poor in spirit,for theirs is the Kingdom of Heaven.", text(blessed))
+        val containers = descendants(blessed).filterIsInstance<ComponentContainer>()
+            .filter { container -> descendants(container).any { it is Text } }.toList()
+        assertEquals(listOf("q1", "wj", "q2", "wj"), containers.mapNotNull { it.style?.id })
+        assertTrue(containers.any { it.type == ContainerType.SPAN })
+        assertFalse(text(blessed).contains("He opened his mouth"))
+    }
+
+    @Test
+    fun `verses use the Bible's own numbering and superscriptions belong to no verse`() {
+        // KJV Psalm 3 numbers the superscription separately; verseOrgIds shift each verse by one.
+        val chapter = fixture("kjv-PSA.3.json", "PSA.3")
+
+        assertEquals("LORD, how are they increased that trouble me! many are they that rise up against me.",
+            text(assertNotNull(chapter[Reference("PSA.3.1")])))
+        assertTrue(text(assertNotNull(chapter[Reference("PSA.3.2")])).startsWith("Many there be which say of my soul"))
+        assertNull(chapter[Reference("PSA.3.3")])
+        assertTrue(text(assertNotNull(chapter[Reference("PSA.3")])).startsWith("A Psalm of David, when he fled from Absalom his son."))
+    }
+
+    @Test
+    fun `combined ranges and partial verses retain their text`() {
         val chapter = chapter("""
             [
               {"type":"text","text":"Combined. ","attrs":{"verseId":"GEN.1.1-2"}},
-              {"type":"text","text":"Mapped. ","attrs":{"verseId":"GEN.1.3","verseOrgIds":["GEN.1.4","GEN.1.5"]}},
               {"type":"text","text":"Partial.","attrs":{"verseId":"GEN.1.6a"}}
             ]
         """)
 
         for (usfm in listOf("GEN.1.1", "GEN.1.2")) {
             assertEquals("Combined. ", text(assertNotNull(chapter[Reference(usfm)])))
-        }
-        for (usfm in listOf("GEN.1.4", "GEN.1.5")) {
-            assertEquals("Mapped. ", text(assertNotNull(chapter[Reference(usfm)])))
         }
         assertEquals("Partial.", text(assertNotNull(chapter[Reference("GEN.1.6a")])))
     }
@@ -70,7 +83,7 @@ class ApiBibleContentTest {
             [{"type":"tag","name":"table","items":[{"type":"tag","name":"row","items":[
               {"type":"tag","name":"cell","attrs":{"style":"tc1"},"items":[
                 {"type":"tag","name":"verse","attrs":{"number":"1"}},
-                {"type":"text","text":"Cell"},
+                {"type":"text","text":"Cell","attrs":{"verseId":"GEN.1.1"}},
                 {"type":"tag","name":"optbreak"}
               ]}
             ]}]}]
@@ -99,8 +112,14 @@ class ApiBibleContentTest {
         }
     }
 
-    private fun chapter(content: String) = Chapter(Reference("GEN.1"), ApiBibleContent("GEN.1").convert(
-        Json.decodeFromString(ListSerializer(ApiBibleNode.serializer()), content),
+    private val json = Json { ignoreUnknownKeys = true }
+
+    private fun fixture(name: String, usfm: String): Chapter = chapter(
+        assertNotNull(javaClass.getResource("/apibible/$name")).readText(), usfm,
+    )
+
+    private fun chapter(content: String, usfm: String = "GEN.1") = Chapter(Reference(usfm), ApiBibleContent(usfm).convert(
+        json.decodeFromString(ListSerializer(ApiBibleNode.serializer()), content),
     ))
 
     private fun text(component: IComponent): String = descendants(component).filterIsInstance<Text>().joinToString("") { it.text }

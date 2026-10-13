@@ -29,7 +29,7 @@ function waitForOperation(page: Page, name: string) {
 test.beforeEach(async ({ request }) => { await setMocks(request, mocks) })
 test.afterEach(async ({ request }) => { await resetMocks(request) })
 
-test('edits saved configuration and registers a text Bible through the authenticated Studio page', async ({ page }) => {
+test('edits saved configuration and registers a text Bible through the authenticated Studio page', async ({ page }, testInfo) => {
   await page.goto('/system/integrations')
   const card = page.locator('a[href="/system/integrations/bible"]')
   await expect(card).toContainText('Connected')
@@ -57,7 +57,7 @@ test('edits saved configuration and registers a text Bible through the authentic
   await modal.getByRole('button', { name: 'Register', exact: true }).click()
   expect((await add).postDataJSON().variables.input).toEqual({ configurationId: configuration.id, providerBibleId: edition.id, variant: 'reader', allowedUses: ['DISPLAY'] })
   await expect(modal).toBeHidden()
-  await page.screenshot({ path: '/private/tmp/bible-provider-studio-desktop.png', fullPage: true })
+  await page.screenshot({ path: testInfo.outputPath('bible-provider-studio-desktop.png'), fullPage: true })
 })
 
 test('selects the exact audio target and confirms configuration source removal', async ({ page, request }) => {

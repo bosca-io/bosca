@@ -11,7 +11,6 @@ import bosca.bible.providers.model.BibleSourceKind
 import bosca.content.metadata.model.Bible
 import bosca.serialization.UUID
 import bosca.service.Service
-import kotlin.uuid.Uuid
 
 /**
  * Manages provider configurations and their sources. GraphQL controllers enforce administrator
@@ -58,7 +57,7 @@ interface BibleProviderService : Service {
         version: Int,
         variant: String,
         usfm: String,
-        audioId: Uuid? = null,
+        audioId: UUID? = null,
     ): String?
 
     /** Lists compatible exact Bible variants whose metadata has not been deleted, including disabled variants. */

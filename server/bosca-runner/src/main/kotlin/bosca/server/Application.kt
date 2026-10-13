@@ -16,6 +16,7 @@ import bosca.di.CommunityProviderRegistrar
 import bosca.di.ConfigurationProviderRegistrar
 import bosca.di.ContentProviderRegistrar
 import bosca.di.BibleProvidersProviderRegistrar
+import bosca.di.CoreBibleProvidersProviderRegistrar
 import bosca.di.DevicesProviderRegistrar
 import bosca.di.MeilisearchAdminProviderRegistrar
 import bosca.di.NatsAdminProviderRegistrar
@@ -145,6 +146,7 @@ suspend fun BoscaApplication.module() {
         SecurityProviderRegistrar(),
         SlugProviderRegistrar(),
         ContentProviderRegistrar(),
+        CoreBibleProvidersProviderRegistrar(),
         BibleProvidersProviderRegistrar(),
         CommunicationsProviderRegistrar(),
         SearchProviderRegistrar(),

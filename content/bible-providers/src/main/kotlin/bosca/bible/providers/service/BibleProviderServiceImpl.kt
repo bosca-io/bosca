@@ -16,11 +16,11 @@ import bosca.bible.providers.model.BibleProviderConfigurationInput
 import bosca.bible.providers.model.BibleProviderSettings
 import bosca.bible.providers.model.BibleSource
 import bosca.bible.providers.model.BibleSourceKind
+import bosca.bible.providers.configuration.getBibleProviderSettings
 import bosca.bible.providers.model.IBibleProviderResponse
 import bosca.configuration.model.Configuration
 import bosca.configuration.model.ConfigurationInput
 import bosca.configuration.service.ConfigurationService
-import bosca.configuration.service.getValueAs
 import bosca.content.collection.service.CollectionService
 import bosca.content.metadata.model.Bible
 import bosca.content.metadata.model.MetadataInput
@@ -35,12 +35,10 @@ import bosca.di.provide
 import bosca.serialization.UUID
 import bosca.service.annotation.ServiceImplementation
 import bosca.slug.service.SlugService
-import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
-import kotlin.uuid.Uuid
 
 @ServiceImplementation
 class BibleProviderServiceImpl(
@@ -106,7 +104,6 @@ class BibleProviderServiceImpl(
 
     /** Browses provider descriptions with offset pagination without creating Bosca content. */
     override suspend fun getCatalog(configurationId: UUID, kind: BibleSourceKind, query: String?, offset: Int, limit: Int): List<BibleCatalog> {
-        require(offset >= 0 && limit >= 0) { "Catalog offset and limit must be nonnegative" }
         check(!connection().inTransaction) { "Provider catalog requests must run outside a database transaction" }
         return getProvider(configurationId).getCatalog(configurationId, kind, query, offset, limit).map { it.asSerializable() }
     }
@@ -151,7 +148,7 @@ class BibleProviderServiceImpl(
         }
     }
 
-    override suspend fun getFumsToken(bibleId: UUID, version: Int, variant: String, usfm: String, audioId: Uuid?): String? {
+    override suspend fun getFumsToken(bibleId: UUID, version: Int, variant: String, usfm: String, audioId: UUID?): String? {
         if (audioId != null) return bibles.getAudioFumsToken(bibleId, version, variant, usfm, audioId)
         return bibles.getFumsToken(bibleId, version, variant, usfm)
     }
@@ -160,10 +157,11 @@ class BibleProviderServiceImpl(
         require(providerBibleId.isNotBlank()) { "A provider recording identifier is required" }
         check(!connection().inTransaction) { "Provider requests must run outside a database transaction" }
         val (catalog, response) = recording(getProvider(configurationId), configurationId, providerBibleId)
+        val recording = RecordingIdentity(catalog, response.content)
         val targets = mutableListOf<Bible>()
         for (identity in bibles.getBibles().distinctBy { it.metadataId to it.version }) {
             for (variant in bibles.getVariants(identity.metadataId, identity.version)) {
-                if (compatible(variant, catalog, response.content)) targets.add(variant)
+                if (compatible(variant, recording)) targets.add(variant)
             }
         }
         if (targets.isEmpty()) return targets
@@ -182,7 +180,7 @@ class BibleProviderServiceImpl(
         check(!content.deleted) { "Bible metadata was deleted" }
         val provider = getProvider(input.configurationId)
         val (catalog, response) = recording(provider, input.configurationId, input.providerBibleId)
-        require(compatible(target, catalog, response.content)) { "Recording is not compatible with the Bible variant" }
+        require(compatible(target, RecordingIdentity(catalog, response.content))) { "Recording is not compatible with the Bible variant" }
         val attribution = response.attribution?.asSerializable() ?: error("Provider recording attribution is required")
         val description = response.content.metadata.identification
         val source = sources.add(BibleSource(
@@ -201,7 +199,7 @@ class BibleProviderServiceImpl(
         val target = variant(source.metadataId, source.metadataVersion, source.variant)
         val response = if (source.kind == BibleSourceKind.AUDIO) {
             val (catalog, recording) = recording(provider, source.configurationId, source.providerBibleId)
-            require(compatible(target, catalog, recording.content)) { "Recording is not compatible with the Bible variant" }
+            require(compatible(target, RecordingIdentity(catalog, recording.content))) { "Recording is not compatible with the Bible variant" }
             recording
         } else {
             provider.getBible(source.configurationId, source.providerBibleId, source.kind)
@@ -211,11 +209,13 @@ class BibleProviderServiceImpl(
         transaction {
             sources.update(source.copy(name = input.name, nameLocal = input.nameLocal,
                 abbreviation = input.abbreviation, attribution = attribution))
-            bibles.clearChapterContent(source.id)
             if (source.kind == BibleSourceKind.TEXT) {
+                // Replacing the variant recreates its chapters without retained provider text.
                 val content = metadata.getById(source.metadataId, source.metadataVersion) ?: error("Bible metadata was not found")
                 metadata.setBible(content, input)
                 bibles.setChapterSource(source.metadataId, source.metadataVersion, source.variant, source.id)
+            } else {
+                bibles.clearChapterContent(source.id)
             }
         }
     }
@@ -249,15 +249,19 @@ class BibleProviderServiceImpl(
         return catalog to provider.getBible(configurationId, id, BibleSourceKind.AUDIO)
     }
 
-    private suspend fun compatible(bible: Bible, catalog: BibleCatalog, recording: IBible): Boolean {
+    /** The parts of a recording that decide which Bible variants it can be attached to. */
+    private class RecordingIdentity(catalog: BibleCatalog, recording: IBible) {
         val systemId = catalog.relatedSystemId ?: catalog.systemId
-        if (systemId.isBlank() || bible.systemId != systemId) return false
-        if (bibles.getLanguages(bible).none { it.iso == recording.metadata.language.iso }) return false
-        val references = recording.books.flatMap { it.chapters }.map { it.reference.chapterUsfm }.toSet()
-        if (references.isEmpty()) return false
+        val language = recording.metadata.language.iso
+        val chapters = recording.books.flatMap { it.chapters }.map { it.reference.chapterUsfm }.toSet()
+    }
+
+    private suspend fun compatible(bible: Bible, recording: RecordingIdentity): Boolean {
+        if (recording.systemId.isBlank() || bible.systemId != recording.systemId || recording.chapters.isEmpty()) return false
+        if (bibles.getLanguages(bible).none { it.iso == recording.language }) return false
         val available = mutableSetOf<String>()
         for (book in bibles.getBooks(bible)) available.addAll(bibles.getChapters(book).map { it.usfm })
-        return available.containsAll(references)
+        return available.containsAll(recording.chapters)
     }
 
     private fun references(bible: IBible): SharedBible = SharedBible(bible.metadata.asSerializable(), bible.books.map { book ->
@@ -268,15 +272,8 @@ class BibleProviderServiceImpl(
         .singleOrNull { it.id == id && it.key.startsWith(KEY_PREFIX) }
         ?: throw IllegalArgumentException("Bible provider configuration was not found")
 
-    private suspend fun settings(configuration: Configuration, forUpdate: Boolean = false): BibleProviderSettings {
-        return try {
-            requireNotNull(configurations.getValueAs<BibleProviderSettings>(configuration.id, json, forUpdate)) {
-                "Bible provider configuration has no settings"
-            }
-        } catch (_: SerializationException) {
-            throw SerializationException("Invalid Bible provider settings for configuration ${configuration.id}")
-        }
-    }
+    private suspend fun settings(configuration: Configuration, forUpdate: Boolean = false): BibleProviderSettings =
+        configurations.getBibleProviderSettings(configuration.id, json, forUpdate)
 
     private suspend fun provider(settings: BibleProviderSettings): BibleProvider {
         require(settings.provider in getProviders()) { "Unsupported Bible provider" }

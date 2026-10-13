@@ -1,0 +1,176 @@
+[
+ {
+  "name": "para",
+  "type": "tag",
+  "attrs": {
+   "style": "p"
+  },
+  "items": [
+   {
+    "name": "verse",
+    "type": "tag",
+    "attrs": {
+     "number": "1",
+     "style": "v",
+     "sid": "MAT 5:1"
+    },
+    "items": [
+     {
+      "text": "1",
+      "type": "text"
+     }
+    ]
+   },
+   {
+    "text": "Seeing the multitudes, he went up onto the mountain. When he had sat down, his disciples came to him. ",
+    "type": "text",
+    "attrs": {
+     "verseId": "MAT.5.1",
+     "verseOrgIds": [
+      "MAT.5.1"
+     ]
+    }
+   },
+   {
+    "name": "verse",
+    "type": "tag",
+    "attrs": {
+     "number": "2",
+     "style": "v",
+     "sid": "MAT 5:2"
+    },
+    "items": [
+     {
+      "text": "2",
+      "type": "text"
+     }
+    ]
+   },
+   {
+    "text": "He opened his mouth and taught them, saying,",
+    "type": "text",
+    "attrs": {
+     "verseId": "MAT.5.2",
+     "verseOrgIds": [
+      "MAT.5.2"
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "name": "para",
+  "type": "tag",
+  "attrs": {
+   "style": "q1"
+  },
+  "items": [
+   {
+    "name": "verse",
+    "type": "tag",
+    "attrs": {
+     "number": "3",
+     "style": "v",
+     "sid": "MAT 5:3"
+    },
+    "items": [
+     {
+      "text": "3",
+      "type": "text"
+     }
+    ]
+   },
+   {
+    "name": "char",
+    "type": "tag",
+    "attrs": {
+     "style": "wj"
+    },
+    "items": [
+     {
+      "text": "“Blessed are the poor in spirit,",
+      "type": "text",
+      "attrs": {
+       "verseId": "MAT.5.3",
+       "verseOrgIds": [
+        "MAT.5.3"
+       ]
+      }
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "para",
+  "type": "tag",
+  "attrs": {
+   "style": "q2",
+   "vid": "MAT 5:3"
+  },
+  "items": [
+   {
+    "name": "char",
+    "type": "tag",
+    "attrs": {
+     "style": "wj"
+    },
+    "items": [
+     {
+      "text": "for theirs is the Kingdom of Heaven.",
+      "type": "text",
+      "attrs": {
+       "verseId": "MAT.5.3",
+       "verseOrgIds": [
+        "MAT.5.3"
+       ]
+      }
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "para",
+  "type": "tag",
+  "attrs": {
+   "style": "q1"
+  },
+  "items": [
+   {
+    "name": "verse",
+    "type": "tag",
+    "attrs": {
+     "number": "4",
+     "style": "v",
+     "sid": "MAT 5:4"
+    },
+    "items": [
+     {
+      "text": "4",
+      "type": "text"
+     }
+    ]
+   },
+   {
+    "name": "char",
+    "type": "tag",
+    "attrs": {
+     "style": "wj"
+    },
+    "items": [
+     {
+      "text": "Blessed are those who mourn,",
+      "type": "text",
+      "attrs": {
+       "verseId": "MAT.5.4",
+       "verseOrgIds": [
+        "MAT.5.4"
+       ]
+      }
+     }
+    ]
+   }
+  ]
+ }
+]

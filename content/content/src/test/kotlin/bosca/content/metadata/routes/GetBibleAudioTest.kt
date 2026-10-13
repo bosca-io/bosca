@@ -109,13 +109,24 @@ class GetBibleAudioTest {
 
     @Test
     fun `rejects unsatisfiable ranges before opening media`() = runTest {
-        for (range in listOf("bytes=100-", "bytes=3-1", "invalid", "bytes=-0")) {
+        for (range in listOf("bytes=100-", "bytes=100-200", "bytes=-0")) {
             val result = execute(range)
             assertEquals(416, result.status?.value)
             assertEquals("bytes */${bytes.size}", result.headers[HttpHeaders.ContentRange])
             assertNull(result.headers[HttpHeaders.ContentLength])
         }
         coVerify(exactly = 0) { playback.openStream(any()) }
+    }
+
+    @Test
+    fun `ignores malformed ranges and serves the whole recording`() = runTest {
+        for (range in listOf("bytes=3-1", "invalid", "items=0-", "bytes=abc")) {
+            val result = execute(range)
+            assertEquals(200, result.status?.value)
+            assertNull(result.headers[HttpHeaders.ContentRange])
+            assertEquals(bytes.size.toString(), result.headers[HttpHeaders.ContentLength])
+        }
+        coVerify(exactly = 4) { playback.openStream(null) }
     }
 
     @Test

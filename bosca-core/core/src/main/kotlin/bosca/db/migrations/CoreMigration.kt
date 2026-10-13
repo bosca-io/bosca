@@ -196,7 +196,8 @@ class CoreMigration : Migration {
                 "V193__bible_variant_availability.sql",
                 "V194__domain_language_resolution.sql",
                 "V195__bible_chapter_sources.sql",
-                "V196__bible_chapter_audio.sql"
+                "V196__bible_chapter_audio.sql",
+                "V197__bible_chapter_retention_hours.sql"
             )
             return base
         }

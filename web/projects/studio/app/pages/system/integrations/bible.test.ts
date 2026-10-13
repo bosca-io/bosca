@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { flushPromises, mount } from '@vue/test-utils'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils'
 import { ref } from 'vue'
 import BiblePage from './bible.vue'
 
@@ -40,7 +40,6 @@ vi.stubGlobal('buildBreadcrumb', (...parts: string[]) => parts)
 const global = {
   mocks: { buildBreadcrumb: (...parts: string[]) => parts },
   stubs: {
-    ClientOnly: { template: '<slot />' },
     PageShell: { template: '<main><slot name="header" /><slot /></main>' },
     PageHeader: { props: ['title'], template: '<header><h1>{{ title }}</h1><slot name="actions" /></header>' },
     SectionCard: { props: ['title'], template: '<section><h2>{{ title }}</h2><slot /><slot name="actions" /></section>' },
@@ -59,6 +58,8 @@ function button(wrapper: ReturnType<typeof mount>, label: string) {
   if (!found) throw new Error(`Missing button: ${label}`)
   return found
 }
+
+enableAutoUnmount(afterEach)
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -85,11 +86,20 @@ describe('Bible provider administration', () => {
     await flushPromises()
     expect(mutation).toHaveBeenCalledWith(expect.anything(), { input: { id: config.id, name: 'Renamed', provider: 'API_BIBLE', enabled: true, apiKey: null } })
     expect(wrapper.find('.modal').exists()).toBe(false)
-    expect(refreshSources).toHaveBeenCalledOnce()
+    expect(refresh).toHaveBeenCalledOnce()
+    expect(refreshSources).not.toHaveBeenCalled()
+    expect(query).toHaveBeenLastCalledWith(expect.anything(), { configurationId: config.id, kind: 'TEXT', query: null, offset: 0, limit: 20 })
+    expect(query).toHaveBeenCalledTimes(2)
   })
 
-  it('creates configuration with a key and clears secret drafts after cancel or save', async () => {
+  it('creates configuration with a key, selects it, and clears secret drafts after cancel or save', async () => {
+    const created = { ...config, id: 'config-2', name: 'New setup' }
+    mutation.mockResolvedValue({ content: { bibleProviders: { saveConfiguration: created } } })
+    refresh.mockImplementation(async () => {
+      configurations.value = { content: { bibleProviders: { providers: ['API_BIBLE'], configurations: [config, created] } } }
+    })
     const wrapper = mount(BiblePage, { global })
+    await flushPromises()
     await button(wrapper, 'Add configuration').trigger('click')
     await wrapper.get('[data-field="Name"]').setValue('New setup')
     expect(button(wrapper, 'Save').attributes('disabled')).toBeDefined()
@@ -103,6 +113,24 @@ describe('Bible provider administration', () => {
     await flushPromises()
     expect(mutation).toHaveBeenCalledWith(expect.anything(), { input: { id: null, name: 'New setup', provider: 'API_BIBLE', enabled: true, apiKey: 'new-secret' } })
     expect(refresh).toHaveBeenCalledOnce()
+    expect((wrapper.get('[data-field="Configuration"]').element as HTMLSelectElement).value).toBe(created.id)
+    expect(query).toHaveBeenLastCalledWith(expect.anything(), { configurationId: created.id, kind: 'TEXT', query: null, offset: 0, limit: 20 })
+    expect(refreshSources).not.toHaveBeenCalled()
+  })
+
+  it('keeps the selection and catalog when saving a configuration fails', async () => {
+    const wrapper = mount(BiblePage, { global })
+    await flushPromises()
+    await button(wrapper, 'Add configuration').trigger('click')
+    await wrapper.get('[data-field="Name"]').setValue('New setup')
+    await wrapper.get('[data-field="API key"]').setValue('new-secret')
+    mutation.mockRejectedValueOnce(new Error('Save failed'))
+    await button(wrapper, 'Save').trigger('click')
+    await flushPromises()
+    expect(toastError).toHaveBeenCalledWith('Save failed')
+    expect(wrapper.find('.modal').exists()).toBe(true)
+    expect(refresh).not.toHaveBeenCalled()
+    expect(query).toHaveBeenCalledOnce()
   })
 
   it('tests saved configurations without reading credentials and permits retry after failure', async () => {
@@ -162,7 +190,7 @@ describe('Bible provider administration', () => {
     await flushPromises()
     expect(button(wrapper, 'Register').attributes('disabled')).toBeDefined()
     expect(wrapper.text()).toContain('version 2 · study (disabled)')
-    await wrapper.get('[data-field="Bible variant"]').setValue('1')
+    await wrapper.get('[data-field="Bible variant"]').setValue('metadata-1:2:study')
     await wrapper.get('[data-field="Playback"]').setValue(true)
     await button(wrapper, 'Register').trigger('click')
     await flushPromises()

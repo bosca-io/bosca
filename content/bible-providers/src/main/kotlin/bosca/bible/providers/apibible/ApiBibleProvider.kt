@@ -13,12 +13,11 @@ import bosca.bible.Chapter
 import bosca.bible.Name
 import bosca.bible.Reference
 import bosca.bible.providers.model.BibleProviderResponse
-import bosca.bible.providers.model.BibleProviderSettings
 import bosca.bible.providers.model.BibleSourceKind
 import bosca.bible.providers.model.IBibleCatalog
 import bosca.bible.providers.service.BibleProvider
 import bosca.configuration.service.ConfigurationService
-import bosca.configuration.service.getValueAs
+import bosca.bible.providers.configuration.getBibleProviderSettings
 import bosca.serialization.UUID
 import bosca.server.http.await
 import kotlinx.coroutines.Dispatchers
@@ -50,6 +49,10 @@ class ApiBibleProvider internal constructor(
 
     override val key = "API_BIBLE"
     private val client = client.newBuilder().followRedirects(false).followSslRedirects(false).build()
+
+    // Recordings can take longer than an API call to transfer; the read timeout still bounds stalled downloads.
+    private val mediaClient = this.client.newBuilder().callTimeout(0, TimeUnit.SECONDS).build()
+
     override suspend fun test(configurationId: UUID) {
         catalog(apiKey(configurationId, requireEnabled = false), BibleSourceKind.TEXT)
     }
@@ -65,6 +68,7 @@ class ApiBibleProvider internal constructor(
     }
 
     override suspend fun getBible(configurationId: UUID, providerBibleId: String, kind: BibleSourceKind): BibleProviderResponse<Bible> {
+        checkBibleId(providerBibleId)
         val apiKey = apiKey(configurationId)
         val remote = if (kind == BibleSourceKind.AUDIO) {
             catalog(apiKey, kind, providerBibleId).singleOrNull { it.id == providerBibleId }
@@ -93,6 +97,7 @@ class ApiBibleProvider internal constructor(
     }
 
     override suspend fun getChapter(configurationId: UUID, providerBibleId: String, usfm: String): BibleProviderResponse<Chapter> {
+        checkBibleId(providerBibleId)
         checkChapterReference(usfm)
         val response = request(apiKey(configurationId), listOf("bibles", providerBibleId, "chapters", usfm), mapOf(
             "content-type" to "json", "fums-version" to "3", "include-titles" to "true",
@@ -108,6 +113,7 @@ class ApiBibleProvider internal constructor(
     }
 
     override suspend fun downloadAudioChapter(configurationId: UUID, providerBibleId: String, usfm: String, destination: OutputStream): BibleProviderResponse<BibleAudioContent> {
+        checkBibleId(providerBibleId)
         checkChapterReference(usfm)
         val response = request(apiKey(configurationId), listOf("audio-bibles", providerBibleId, "chapters", usfm),
             mapOf("fums-version" to "3"), ApiBibleResponse.serializer(ApiBibleAudioChapter.serializer()))
@@ -123,7 +129,7 @@ class ApiBibleProvider internal constructor(
         checkPayload(timecodes.zipWithNext().all { (first, second) -> second.start >= first.start })
         val url = chapter.resourceUrl.toHttpUrlOrNull() ?: throw IOException("API.Bible returned an invalid audio URL")
         checkPayload(url.isHttps || !endpoint.isHttps && url.host == endpoint.host)
-        return client.newCall(Request.Builder().url(url).build()).await().use { media ->
+        return mediaClient.newCall(Request.Builder().url(url).build()).await().use { media ->
             if (!media.isSuccessful) throw ApiBibleException(media.code, media.header("Retry-After"))
             val type = media.body.contentType()?.let { "${it.type}/${it.subtype}" } ?: "application/octet-stream"
             checkPayload(type.startsWith("audio/") || type == "application/octet-stream")
@@ -174,13 +180,7 @@ class ApiBibleProvider internal constructor(
     }
 
     private suspend fun apiKey(configurationId: UUID, requireEnabled: Boolean = true): String {
-        val settings = try {
-            requireNotNull(configurations.getValueAs<BibleProviderSettings>(configurationId, json)) {
-                "Bible provider configuration has no settings"
-            }
-        } catch (_: SerializationException) {
-            throw SerializationException("Invalid Bible provider settings for configuration $configurationId")
-        }
+        val settings = configurations.getBibleProviderSettings(configurationId, json)
         require(settings.provider == key) { "Configuration belongs to another Bible provider" }
         check(!requireEnabled || settings.enabled) { "Bible provider configuration is disabled" }
         val apiKey = settings.apiKey
@@ -196,7 +196,16 @@ class ApiBibleProvider internal constructor(
     private fun attribution(copyright: String?) = copyright?.takeIf { it.isNotBlank() }?.let { BibleAttribution(it) }
 
     private fun checkChapterReference(usfm: String) {
-        require(usfm.matches(Regex("[A-Z0-9]+\\.([0-9]+|intro)"))) { "A chapter USFM reference is required" }
+        require(usfm.matches(chapterReference)) { "A chapter USFM reference is required" }
+    }
+
+    private fun checkBibleId(providerBibleId: String) {
+        require(providerBibleId.matches(bibleId)) { "A valid API.Bible identifier is required" }
+    }
+
+    private companion object {
+        val chapterReference = Regex("[A-Z0-9]+\\.([0-9]+|intro)")
+        val bibleId = Regex("[A-Za-z0-9_-]+")
     }
 
     private fun seconds(value: String): Double {

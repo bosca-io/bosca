@@ -57,9 +57,6 @@ export default defineNuxtConfig({
     '/api/v1/**': {
       proxy: (process.env.API_URL || 'http://localhost:8080') + '/api/v1/**',
     },
-    '/api/v2/**': {
-      proxy: (process.env.API_URL || 'http://localhost:8080') + '/api/v2/**',
-    },
     '/ci/**': {
       proxy: (process.env.API_URL || 'http://localhost:8080') + '/ci/**',
     },

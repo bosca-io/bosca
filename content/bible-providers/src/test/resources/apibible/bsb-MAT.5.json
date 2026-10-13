@@ -1,0 +1,176 @@
+[
+ {
+  "name": "para",
+  "type": "tag",
+  "attrs": {
+   "style": "s1"
+  },
+  "items": [
+   {
+    "text": "The Sermon on the Mount",
+    "type": "text"
+   }
+  ]
+ },
+ {
+  "name": "para",
+  "type": "tag",
+  "attrs": {
+   "style": "m"
+  },
+  "items": [
+   {
+    "name": "verse",
+    "type": "tag",
+    "attrs": {
+     "number": "1",
+     "style": "v",
+     "sid": "MAT 5:1"
+    },
+    "items": [
+     {
+      "text": "1",
+      "type": "text"
+     }
+    ]
+   },
+   {
+    "text": "When Jesus saw the crowds, He went up on the mountain and sat down. His disciples came to Him, ",
+    "type": "text",
+    "attrs": {
+     "verseId": "MAT.5.1",
+     "verseOrgIds": [
+      "MAT.5.1"
+     ]
+    }
+   },
+   {
+    "name": "verse",
+    "type": "tag",
+    "attrs": {
+     "number": "2",
+     "style": "v",
+     "sid": "MAT 5:2"
+    },
+    "items": [
+     {
+      "text": "2",
+      "type": "text"
+     }
+    ]
+   },
+   {
+    "text": "and He began to teach them, saying:",
+    "type": "text",
+    "attrs": {
+     "verseId": "MAT.5.2",
+     "verseOrgIds": [
+      "MAT.5.2"
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "name": "para",
+  "type": "tag",
+  "attrs": {
+   "style": "s1"
+  },
+  "items": [
+   {
+    "text": "The Beatitudes",
+    "type": "text"
+   }
+  ]
+ },
+ {
+  "name": "para",
+  "type": "tag",
+  "attrs": {
+   "style": "r"
+  },
+  "items": [
+   {
+    "text": "(",
+    "type": "text"
+   },
+   {
+    "name": "ref",
+    "type": "tag",
+    "attrs": {
+     "id": "PSA.1.1-PSA.1.6"
+    },
+    "items": [
+     {
+      "text": "Psalms 1:1–6",
+      "type": "text"
+     }
+    ]
+   },
+   {
+    "text": "; ",
+    "type": "text"
+   },
+   {
+    "name": "ref",
+    "type": "tag",
+    "attrs": {
+     "id": "LUK.6.20-LUK.6.23"
+    },
+    "items": [
+     {
+      "text": "Luke 6:20–23",
+      "type": "text"
+     }
+    ]
+   },
+   {
+    "text": ")",
+    "type": "text"
+   }
+  ]
+ },
+ {
+  "name": "para",
+  "type": "tag",
+  "attrs": {
+   "style": "b"
+  },
+  "items": []
+ },
+ {
+  "name": "para",
+  "type": "tag",
+  "attrs": {
+   "style": "q1"
+  },
+  "items": [
+   {
+    "name": "verse",
+    "type": "tag",
+    "attrs": {
+     "number": "3",
+     "style": "v",
+     "sid": "MAT 5:3"
+    },
+    "items": [
+     {
+      "text": "3",
+      "type": "text"
+     }
+    ]
+   },
+   {
+    "text": "“Blessed are the poor in spirit,",
+    "type": "text",
+    "attrs": {
+     "verseId": "MAT.5.3",
+     "verseOrgIds": [
+      "MAT.5.3"
+     ]
+    }
+   }
+  ]
+ }
+]

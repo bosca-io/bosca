@@ -401,7 +401,6 @@ class BibleProviderServiceImplTest {
         coEvery { provider.getBible(any(), any(), any()) } throws CancellationException("Cancelled registration")
         assertFailsWith<CancellationException> { service.addBible(input()) }
         assertEquals(0, count("metadata"))
-        assertEquals(0, count("bible_providers.sources"))
         assertEquals(1, count("collections"))
     }
 
@@ -415,7 +414,6 @@ class BibleProviderServiceImplTest {
         assertEquals(0, count("bibles"))
         assertEquals(0, count("bible_books"))
         assertEquals(0, count("bible_chapters"))
-        assertEquals(0, count("bible_providers.sources"))
         assertEquals(1, count("slugs"))
         assertTrue(collections.getItemsNoCache(parent.id, 0, 10).isEmpty())
     }
@@ -631,6 +629,19 @@ class BibleProviderServiceImplTest {
         val audio = service.addAudio(second, AddProviderAudioInput(configurationId, "recording", setOf(BibleContentUse.PLAYBACK)))
         assertEquals(audio.id, sources.getAudio(second.metadataId, second.version, second.variant).single().id)
         assertTrue(sources.getAudio(first.metadataId, first.version, first.variant).isEmpty())
+    }
+
+    @Test
+    fun `deleting a provider Bible version deletes its sources including removed ones`() = request {
+        val added = service.addBible(input())
+        val text = assertNotNull(sources.getText(added.metadataId, added.version, added.variant))
+        service.removeSource(text.id, text.version)
+        val replacement = sources.add(text.copy(id = UUID.random(), version = 0))
+
+        bibles.deleteBible(added.metadataId, added.version)
+
+        assertNull(sources.getById(replacement.id))
+        assertNull(bibles.getBible(added.metadataId, added.version, added.variant))
     }
 
     @Test

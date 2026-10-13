@@ -257,10 +257,12 @@ class GetBibleLanguageVersesCoverageTest {
 
     @Test
     fun `returns empty list when the reference maps to no chapters`() = runTest {
-        // A bare book reference has no chapter to read.
+        // A bare book usfm ("GEN") has chapterUsfm == "" and produces a single group keyed by "";
+        // the chapter for that empty reference has null components, so it is skipped -> empty result.
         val call = createCall(queryParams = mapOf("language" to "en", "usfm" to "GEN"))
         stubLanguageBible()
         coEvery { bibleService.getBooks(testBible) } returns listOf(book())
+        coEvery { bibleService.getChapter(testBible, Reference("")) } returns chapter(components = null)
 
         val result = executeRoute(call, authenticationContext)
 

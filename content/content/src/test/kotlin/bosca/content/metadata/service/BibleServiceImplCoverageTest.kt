@@ -61,6 +61,7 @@ import bosca.sharedqueue.jobs.asCoroutineContext
 import bosca.test.ContentTestInfrastructure
 import io.mockk.coEvery
 import io.mockk.coVerify
+import io.mockk.coVerifyOrder
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
@@ -668,6 +669,19 @@ class BibleServiceImplCoverageTest {
 
         assertEquals(updated, withRequest { service.setVariantEnabled(id, 1, "study", false) })
         coVerify { bibleRepository.setEnabled(id, 1, "study", false) }
+        coVerify(exactly = 1) { sources.getAudio(id, 1, "study") }
+    }
+
+    @Test
+    fun `setVariantEnabled invalidates recordings when a variant is enabled again`() = runTest(timeout = kotlin.time.Duration.parse("60s")) {
+        val id = UUID.random()
+        val existing = bible(id, variant = "study", defaultVariant = false).copy(enabled = false)
+        coEvery { bibleRepository.getByIdAndVariantIncludingDisabled(id, 1, "study") } returns existing
+        coEvery { bibleRepository.setEnabled(id, 1, "study", true) } returns existing.copy(enabled = true)
+
+        withRequest { service.setVariantEnabled(id, 1, "study", true) }
+
+        coVerify(exactly = 1) { sources.getAudio(id, 1, "study") }
     }
 
     @Test
@@ -854,7 +868,8 @@ class BibleServiceImplCoverageTest {
         coEvery { sources.getChapter(source, "GEN.1") } returns BibleProviderResponse(
             Chapter(Reference("GEN.1"), Text("Provider text", null)), BibleAttribution("Response copyright"), 2, "private-token",
         )
-        coEvery { locks.create("bible:chapter:$provider:edition") } returns lock
+        // Fetches lock one chapter of one source; retention locks the upstream edition.
+        coEvery { locks.create(match { it == "bible:chapter:${source.id}:GEN.1" || it == "bible:chapter:limit:$provider:edition" }) } returns lock
         coEvery { lock.withLock<Any?>(any(), any(), any(), any()) } coAnswers {
             arg<suspend () -> Any?>(3).invoke()
         }
@@ -967,7 +982,7 @@ class BibleServiceImplCoverageTest {
     @Test
     fun `provider fetch timeouts and lost locks cannot persist a response`() = runTest {
         val (bible, _) = external()
-        val lock = locks.create("bible:chapter:API_BIBLE:edition")
+        val lock = locks.create("bible:chapter:limit:API_BIBLE:edition")
         coEvery { lock.renew(any()) } returns false
         assertFailsWith<IllegalStateException> { withRequest { service.getChapterContent(bible, Reference("GEN.1"), BibleContentUse.DISPLAY) } }
         coEvery { lock.withLock<BibleChapterContent>(any(), any(), any(), any()) } returns null
@@ -1033,7 +1048,7 @@ class BibleServiceImplCoverageTest {
     @Test
     fun `retention fails when its edition lock is unavailable or expires`() = runTest {
         external()
-        val lock = locks.create("bible:chapter:API_BIBLE:edition")
+        val lock = locks.create("bible:chapter:limit:API_BIBLE:edition")
         coEvery { lock.withLock<Int>(any(), any(), any(), any()) } returns null
         assertFailsWith<IllegalStateException> { withRequest { service.limitChapterContent("API_BIBLE", "edition") } }
         coVerify(exactly = 0) { bibleChapterRepository.getByEdition(any(), any(), any()) }
@@ -1274,9 +1289,16 @@ class BibleServiceImplCoverageTest {
     fun `deleteBible deletes from repository and clears the cache`() = runTest(timeout = kotlin.time.Duration.parse("60s")) {
         val id = UUID.random()
 
+        val source = BibleSource(UUID.random(), UUID.random(), "API_BIBLE", "edition", id, 1, "default",
+            BibleSourceKind.TEXT, "Bible", "Bible", "B", BibleAttribution("Copyright"), setOf(BibleContentUse.DISPLAY))
+        coEvery { sources.deleteByBible(id, 1) } returns listOf(source)
+
         withRequest { service.deleteBible(id, 1) }
 
-        coVerify { bibleRepository.deleteById(id, 1) }
+        coVerifyOrder {
+            sources.deleteByBible(id, 1)
+            bibleRepository.deleteById(id, 1)
+        }
     }
 
     // ── setBible ─────────────────────────────────────────────────────────────

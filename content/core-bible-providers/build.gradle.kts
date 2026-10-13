@@ -1,5 +1,6 @@
 plugins {
     id("org.jetbrains.kotlin.jvm")
+    alias(libs.plugins.kotlin.ksp)
     alias(libs.plugins.kotlin.plugin.serialization)
     alias(libs.plugins.kover)
 }
@@ -17,4 +18,20 @@ dependencies {
 
     testImplementation(project(":content:bible-compiler"))
     testImplementation(libs.kotlin.test.junit)
+
+    "ksp"(project(":bosca-core:core-ksp"))
+    "ksp"(project(":services-di:service-ksp"))
+    "ksp"(project(":services-di:di-ksp"))
+}
+
+ksp {
+    arg("ProviderRegistrarPrefix", "CoreBibleProviders")
+}
+
+kover {
+    reports {
+        filters {
+            excludes { annotatedBy("bosca.di.annotation.Generated") }
+        }
+    }
 }

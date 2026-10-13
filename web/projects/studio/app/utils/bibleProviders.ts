@@ -11,6 +11,18 @@ export type ProviderSource = Pick<BibleSource, 'id' | 'configurationId' | 'name'
 export type AudioTarget = Pick<Bible, 'metadataId' | 'version' | 'variant' | 'name' | 'enabled'>
 export interface BibleProviderResult<T> { content: { bibleProviders: T } }
 
+const providerLabels: Record<string, string> = { API_BIBLE: 'API.Bible' }
+
+/** Returns the display name for a Bible provider identifier, falling back to the identifier itself. */
+export function providerLabel(provider: string): string {
+  return providerLabels[provider] ?? provider
+}
+
+/** Returns a stable selection key that identifies one Bible version and variant as an audio target. */
+export function audioTargetKey(target: Pick<AudioTarget, 'metadataId' | 'version' | 'variant'>): string {
+  return `${target.metadataId}:${target.version}:${target.variant}`
+}
+
 export const configurationsQuery = gql`
   query GetBibleProviderConfigurations {
     content { bibleProviders { providers configurations { id name provider enabled hasApiKey } } }

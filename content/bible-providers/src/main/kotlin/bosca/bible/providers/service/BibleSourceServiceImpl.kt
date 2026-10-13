@@ -4,18 +4,16 @@ import bosca.bible.BibleContentUse
 import bosca.bible.BibleAudioContent
 import bosca.bible.Chapter
 import bosca.bible.providers.model.BibleProviderResponse
-import bosca.bible.providers.model.BibleProviderSettings
 import bosca.bible.providers.model.BibleSource
 import bosca.bible.providers.model.BibleSourceKind
+import bosca.bible.providers.configuration.getBibleProviderSettings
 import bosca.bible.providers.repository.BibleSourceRepository
 import bosca.cache.ServiceCache
 import bosca.cache.serializers.UUIDKeySerializer
 import bosca.configuration.service.ConfigurationService
-import bosca.configuration.service.getValueAs
 import bosca.di.provide
 import bosca.serialization.UUID
 import bosca.service.annotation.ServiceImplementation
-import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import java.io.OutputStream
 
@@ -29,13 +27,7 @@ class BibleSourceServiceImpl(
     private val sourceCache = ServiceCache("bible:source", UUIDKeySerializer) { sources.get(it) }
     private val validationCache = ServiceCache("bible:source:validation", UUIDKeySerializer) { id ->
         val source = getById(id) ?: return@ServiceCache null
-        val settings = try {
-            requireNotNull(configurations.getValueAs<BibleProviderSettings>(source.configurationId, json)) {
-                "Bible provider configuration has no settings"
-            }
-        } catch (_: SerializationException) {
-            throw SerializationException("Invalid Bible provider settings for configuration ${source.configurationId}")
-        }
+        val settings = configurations.getBibleProviderSettings(source.configurationId, json)
         check(settings.enabled) { "Bible provider configuration is disabled" }
         check(settings.provider == source.provider) { "Bible source belongs to another provider" }
         source.version
@@ -46,7 +38,7 @@ class BibleSourceServiceImpl(
             BibleSourceKind.TEXT -> BibleContentUse.PLAYBACK !in source.allowedUses
             BibleSourceKind.AUDIO -> source.allowedUses.all { it == BibleContentUse.PLAYBACK }
         }) { "Reviewed uses do not match the Bible source kind" }
-        return sources.add(source).also {
+        return (sources.add(source) ?: error("Bible metadata was deleted")).also {
             sourceCache.put(it.id, it)
             validationCache.remove(it.id)
         }
@@ -87,6 +79,12 @@ class BibleSourceServiceImpl(
                 sourceCache.remove(it.id)
                 validationCache.remove(it.id)
             }
+
+    override suspend fun deleteByBible(metadataId: UUID, metadataVersion: Int): List<BibleSource> =
+        sources.deleteByBible(metadataId, metadataVersion).onEach {
+            sourceCache.remove(it.id)
+            validationCache.remove(it.id)
+        }
 
     override suspend fun remove(id: UUID, expectedVersion: Long): BibleSource =
         (sources.remove(id, expectedVersion) ?: error("Bible source was removed or its version changed"))

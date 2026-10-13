@@ -134,7 +134,7 @@ class BibleProviderReaderTest {
     }
 
     @Test
-    fun `language based REST reader returns a whole provider chapter with its exact variant attribution`() = runTest {
+    fun `language based REST reader returns provider verses with their exact variant attribution`() = runTest {
         stubContent()
         val record = Metadata(id = id, version = 3, name = "Bible", type = MetadataType.STANDARD,
             contentType = "bosca/v-bible", contentLength = 0, languageTag = "eng", workflowStateId = "published")
@@ -142,7 +142,7 @@ class BibleProviderReaderTest {
         coEvery { bibles.getBible(id, 3, "study") } returns bible
         val request = mockk<ServerRequest>(relaxed = true)
         every { request.queryParameters } returns Parameters(mapOf(
-            "usfm" to listOf("JHN.1"), "language" to listOf("en"), "variant" to listOf("study"),
+            "usfm" to listOf("JHN.1.1 JHN.1.2"), "language" to listOf("en"), "variant" to listOf("study"),
         ))
         val call = mockk<ServerCall>(relaxed = true)
         every { call.request } returns request

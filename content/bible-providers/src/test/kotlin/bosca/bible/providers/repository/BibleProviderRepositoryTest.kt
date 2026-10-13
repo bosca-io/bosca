@@ -220,7 +220,7 @@ class BibleProviderRepositoryTest {
         assertEquals("bible_providers", migration.schema)
         val sources = ProviderRegistry.get<BibleSourceRepository>()
         val caches = chapters
-        val source = sources.add(source())
+        val source = assertNotNull(sources.add(source()))
         chapters.setSource(metadataId, 1, "default", source.id)
         val cache = cache(source)
         caches.putContent(cache)
@@ -257,7 +257,7 @@ class BibleProviderRepositoryTest {
 
     @Test
     fun `cached chapter retains the exact response and Bible identity`() = withDb {
-        val source = repository.add(source().copy(metadataVersion = 2))
+        val source = assertNotNull(repository.add(source().copy(metadataVersion = 2)))
         val cache = cache(source)
         chapters.putContent(cache)
 
@@ -277,7 +277,7 @@ class BibleProviderRepositoryTest {
 
     @Test
     fun `replacing a cached response replaces its content token attribution and expiry together`() = withDb {
-        val source = repository.add(source())
+        val source = assertNotNull(repository.add(source()))
         val cache = cache(source)
         chapters.putContent(cache)
         val replacement = cache.copy(components = Text("Updated text", null).toJson(),
@@ -297,7 +297,7 @@ class BibleProviderRepositoryTest {
 
     @Test
     fun `cache reads never extend expiry and expired tokens cannot be returned`() = withDb {
-        val source = repository.add(source())
+        val source = assertNotNull(repository.add(source()))
         val cache = cache(source)
         chapters.putContent(cache)
 
@@ -312,7 +312,7 @@ class BibleProviderRepositoryTest {
 
     @Test
     fun `cache retention cannot exceed fourteen days or end before creation`() = withDb {
-        val source = repository.add(source())
+        val source = assertNotNull(repository.add(source()))
         val cache = cache(source)
         for (expires in listOf(assertNotNull(cache.created), assertNotNull(cache.created).minusDays(1), assertNotNull(cache.created).plusDays(14).plusSeconds(1))) {
             val error = assertFailsWith<SQLException> { chapters.putContent(cache.copy(expires = expires)) }
@@ -325,7 +325,7 @@ class BibleProviderRepositoryTest {
 
     @Test
     fun `removed source hides its cached content and token until maintenance purges it`() = withDb {
-        val source = repository.add(source())
+        val source = assertNotNull(repository.add(source()))
         val cache = cache(source)
         chapters.putContent(cache)
         assertNotNull(repository.remove(source.id, 0))
@@ -333,6 +333,44 @@ class BibleProviderRepositoryTest {
         assertNull(chapters.getContent(source.id, "JHN.1", assertNotNull(cache.created)))
         assertNull(chapters.getFumsToken(metadataId, 1, "default", "JHN.1", assertNotNull(cache.created)))
         assertEquals(1, chapters.removeExpired(assertNotNull(cache.expires)).size)
+    }
+
+    @Test
+    fun `deleting a Bible version removes its active and removed sources`() = withDb {
+        val active = assertNotNull(repository.add(source().copy(metadataVersion = 2)))
+        val removed = assertNotNull(repository.add(source(BibleSourceKind.AUDIO).copy(metadataVersion = 2)))
+        assertNotNull(repository.remove(removed.id, removed.version))
+        val other = assertNotNull(repository.add(source()))
+
+        assertEquals(setOf(active.id, removed.id), repository.deleteByBible(metadataId, 2).map { it.id }.toSet())
+        connection().useStatement("delete from bibles where metadata_id = ? and version = 2") {
+            it.setObject(1, metadataId.toJavaUuid())
+            assertEquals(1, it.executeUpdate())
+        }
+        assertNull(repository.get(active.id))
+        assertEquals(other, repository.get(other.id))
+    }
+
+    @Test
+    fun `sources are not added to deleted metadata`() = withDb {
+        connection().useStatement("update metadata set deleted = true where id = ?") {
+            it.setObject(1, metadataId.toJavaUuid())
+            it.executeUpdate()
+        }
+        assertNull(repository.add(source()))
+    }
+
+    @Test
+    fun `retained responses may last fourteen days across a daylight saving change`() = withDb {
+        val source = assertNotNull(repository.add(source()))
+        val created = OffsetDateTime.parse("2026-03-01T12:00:00Z")
+        val chapter = cache(source).copy(created = created, expires = created.plusDays(14))
+        connection().useStatement("set time zone 'America/Chicago'") { it.execute() }
+        try {
+            assertEquals(1, chapters.putContent(chapter))
+        } finally {
+            connection().useStatement("reset time zone") { it.execute() }
+        }
     }
 
     private suspend fun cache(source: BibleSource): BibleChapter {

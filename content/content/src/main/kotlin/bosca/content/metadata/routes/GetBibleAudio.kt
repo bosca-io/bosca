@@ -44,9 +44,10 @@ class GetBibleAudio(
         }
         val length = audio.content.contentLength
         val rangeHeader = call.request.header(HttpHeaders.Range)
-        val range = Download.parseRangeHeader(rangeHeader, length)
-            ?.takeIf { it.first >= 0 && it.last >= it.first && it.last < length }
-        if (rangeHeader != null && range == null) {
+        val parsed = Download.parseRangeHeader(rangeHeader, length)
+        // Malformed ranges are ignored and the whole recording is served; only valid but unsatisfiable ranges fail.
+        val range = parsed?.takeUnless { it.isEmpty() }
+        if (parsed?.isEmpty() == true || parsed == null && rangeHeader != null && startsAfter(rangeHeader, length)) {
             call.response.header(HttpHeaders.ContentRange, "bytes */$length")
             call.respond(HttpStatusCode(416, "Range Not Satisfiable"))
             return
@@ -66,5 +67,12 @@ class GetBibleAudio(
                 status = if (range == null) HttpStatusCode.OK else HttpStatusCode.PartialContent,
                 timeLimit = null) { it.copyFrom(stream) }
         }
+    }
+
+    private fun startsAfter(header: String, length: Long): Boolean =
+        rangeStart.matchEntire(header.trim())?.groupValues?.get(1)?.toLongOrNull()?.let { it >= length } == true
+
+    private companion object {
+        val rangeStart = Regex("""bytes=\s*([0-9]+)-[0-9]*\s*(,.*)?""")
     }
 }

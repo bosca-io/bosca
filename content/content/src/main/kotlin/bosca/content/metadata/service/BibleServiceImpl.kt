@@ -55,6 +55,11 @@ internal fun getBibleAudioPath(id: UUID): ObjectPath = StringObjectPath("bible/a
 
 private val audioDeletionDelay = 5.minutes
 
+/** API.Bible terms limit retained text per edition and retained files per recording. */
+private const val API_BIBLE = "API_BIBLE"
+private const val API_BIBLE_VERSE_LIMIT = 499
+private const val API_BIBLE_RECORDING_LIMIT = 50
+
 @ServiceImplementation
 class BibleServiceImpl(
     private val bibleRepository: BibleRepository,
@@ -142,10 +147,9 @@ class BibleServiceImpl(
         val updated = bibleRepository.setEnabled(id, version, variant, enabled)
             ?: throw NoSuchElementException("Bible variant not found: $variant")
         removeFromCache(id, version)
-        if (!enabled) {
-            for (source in sources.getAudio(id, version, variant)) {
-                audioChapterCache.remove("${source.id}:", keyPrefix = true)
-            }
+        // Lookups cache misses while disabled, so both directions invalidate recordings.
+        for (source in sources.getAudio(id, version, variant)) {
+            audioChapterCache.remove("${source.id}:", keyPrefix = true)
         }
         updated
     }
@@ -185,16 +189,7 @@ class BibleServiceImpl(
         val chapter = bibleChapterCache.get(key) ?: error("chapter not found")
         if (chapter.sourceId == null) return chapter
         // Provider text is read through getChapterContent, which checks its use and expiry.
-        return BibleChapter(
-            metadataId = chapter.metadataId,
-            version = chapter.version,
-            variant = chapter.variant,
-            bookUsfm = chapter.bookUsfm,
-            usfm = chapter.usfm,
-            components = null,
-            sort = chapter.sort,
-            sourceId = chapter.sourceId,
-        )
+        return chapter.copy(components = null, attribution = null, sourceVersion = null, expires = null)
     }
 
     private fun BibleChapter.cacheKey() = BibleCacheKeyId(metadataId, version, variant, usfm)
@@ -207,7 +202,7 @@ class BibleServiceImpl(
             return chapter.getContent()
         }
         check(!connection().inTransaction) { "Provider chapter requests must run outside a database transaction" }
-        val lock = locks.create("bible:chapter:${source.provider}:${source.providerBibleId}")
+        val lock = locks.create("bible:chapter:${source.id}:${chapter.usfm}")
         return lock.withLock(ttlMillis = 60_000, waitTimeoutMillis = 30_000) {
             bibleChapterRepository.getContent(source.id, chapter.usfm, OffsetDateTime.now())?.let {
                 bibleChapterCache.put(it.cacheKey(), it)
@@ -228,7 +223,7 @@ class BibleServiceImpl(
             transaction {
                 if (bibleChapterRepository.putContent(fetchedChapter) > 0) {
                     bibleChapterCache.put(fetchedChapter.cacheKey(), fetchedChapter)
-                    if (source.provider == "API_BIBLE") LimitBibleChaptersJob(source.provider, source.providerBibleId).enqueue()
+                    if (source.provider == API_BIBLE) LimitBibleChaptersJob(source.provider, source.providerBibleId).enqueue()
                 }
             }
             fetchedChapter.getContent()
@@ -236,10 +231,10 @@ class BibleServiceImpl(
     }
 
     override suspend fun limitChapterContent(provider: String, providerBibleId: String): Int {
-        val lock = locks.create("bible:chapter:$provider:$providerBibleId")
+        val lock = locks.create("bible:chapter:limit:$provider:$providerBibleId")
         return lock.withLock(ttlMillis = 60_000, waitTimeoutMillis = 30_000) {
             transaction {
-                var remaining = 499
+                var remaining = API_BIBLE_VERSE_LIMIT
                 var removed = 0
                 for (chapter in bibleChapterRepository.getByEdition(provider, providerBibleId, OffsetDateTime.now())) {
                     val count = checkNotNull(chapter.verseCount)
@@ -321,7 +316,7 @@ class BibleServiceImpl(
         fun BibleChapterAudio.isCurrent() = sourceVersion == source.version && expires.isAfter(OffsetDateTime.now())
         val current = audioChapterCache.get(key)
         if (recordingId != null) {
-            return current?.takeIf { it.id == recordingId && it.sourceId == audioId && it.usfm == usfm && it.isCurrent() }
+            return current?.takeIf { it.id == recordingId && it.isCurrent() }
                 ?: throw ObjectNotFoundException(getBibleAudioPath(recordingId))
         }
         current?.takeIf { it.isCurrent() }?.let { return it }
@@ -364,7 +359,7 @@ class BibleServiceImpl(
                     audioChapterCache.put(key, fetched)
                     previous?.let { DeleteBibleAudioJob(it.id).enqueueLater(audioDeletionDelay) }
                     DeleteBibleAudioJob(id).enqueueLater(14.days + audioDeletionDelay)
-                    if (source.provider == "API_BIBLE") LimitBibleAudioChaptersJob(source.provider, source.providerBibleId).enqueue()
+                    if (source.provider == API_BIBLE) LimitBibleAudioChaptersJob(source.provider, source.providerBibleId).enqueue()
                     true
                 }
                 fetched
@@ -395,7 +390,7 @@ class BibleServiceImpl(
         val recordings = bibleChapterRepository.getAudioByEdition(provider, providerBibleId).flatMap { it.audio.orEmpty() }
             .sortedByDescending { it.created }
         val now = OffsetDateTime.now()
-        removeAudioResponses(recordings.filter { !it.expires.isAfter(now) } + recordings.filter { it.expires.isAfter(now) }.drop(50))
+        removeAudioResponses(recordings.filter { !it.expires.isAfter(now) } + recordings.filter { it.expires.isAfter(now) }.drop(API_BIBLE_RECORDING_LIMIT))
     }
 
     override suspend fun clearAudioChapterContent(id: UUID): Int = transaction {
@@ -432,6 +427,9 @@ class BibleServiceImpl(
 
     override suspend fun deleteBible(id: UUID, version: Int) = transaction {
         removeAudioResponses(bibleChapterRepository.getAudioByBible(id, version, null).flatMap { it.audio.orEmpty() })
+        for (source in sources.deleteByBible(id, version)) {
+            audioChapterCache.remove("${source.id}:", keyPrefix = true)
+        }
         bibleRepository.deleteById(id, version)
         removeFromCache(id, version)
     }

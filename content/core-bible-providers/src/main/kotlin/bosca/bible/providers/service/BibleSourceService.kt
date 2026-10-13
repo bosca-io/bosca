@@ -41,4 +41,12 @@ interface BibleSourceService : Service {
 
     /** Soft-deletes at [expectedVersion]; stale versions fail. */
     suspend fun remove(id: UUID, expectedVersion: Long): BibleSource
+
+    /**
+     * Permanently deletes every source attached to a Bible metadata version, including removed sources.
+     * Call within the transaction that deletes that version's Bible variants.
+     *
+     * @return the deleted sources
+     */
+    suspend fun deleteByBible(metadataId: UUID, metadataVersion: Int): List<BibleSource>
 }

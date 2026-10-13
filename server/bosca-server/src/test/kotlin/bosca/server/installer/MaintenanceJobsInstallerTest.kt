@@ -127,7 +127,7 @@ class MaintenanceJobsInstallerTest {
         val messageOutbox = captured.find { it.jobName == "message-outbox-maintenance" }
         val notifications = captured.find { it.jobName == "notification-maintenance" }
 
-        assertEquals("0 0 * * *", finalize?.cronExpression)
+        assertEquals("0 * * * *", finalize?.cronExpression)
         assertEquals("0 3 * * *", purge?.cronExpression)
         assertEquals("0 0 * * *", purgeHistory?.cronExpression)
         assertEquals(false, purgeHistory?.allowConcurrent)
@@ -140,9 +140,9 @@ class MaintenanceJobsInstallerTest {
         assertEquals(false, chapters?.allowConcurrent)
         assertEquals(false, chapters?.catchUp)
         assertEquals(JsonObject(emptyMap()), chapters?.jobParameters)
-        assertEquals("0 0 * * *", messageOutbox?.cronExpression)
+        assertEquals("0 * * * *", messageOutbox?.cronExpression)
         assertEquals(false, messageOutbox?.allowConcurrent)
-        assertEquals("0 0 * * *", notifications?.cronExpression)
+        assertEquals("0 * * * *", notifications?.cronExpression)
         assertEquals(false, notifications?.allowConcurrent)
     }
 }

@@ -90,9 +90,12 @@ interface BibleChapterRepository {
     """)
     suspend fun removeExpired(now: OffsetDateTime): List<BibleChapter>
 
-    /** Lists retained responses for one upstream edition across configurations, newest first. */
+    /** Lists retained response sizes for one upstream edition across configurations, newest first, omitting text. */
     @Query("""
-        select chapter.* from bible_chapters chapter
+        select chapter.metadata_id, chapter.version, chapter.variant, chapter.book_usfm, chapter.usfm,
+            null as components, chapter.sort, chapter.source_id, null as attribution, null as source_version,
+            chapter.verse_count, null as fums_token, chapter.created, chapter.expires, null as audio
+        from bible_chapters chapter
         join bible_providers.sources source on source.id = chapter.source_id
         where source.provider = :provider and source.provider_bible_id = :providerBibleId
             and source.kind = 'text' and source.deleted_at is null and chapter.expires > :now
@@ -118,16 +121,35 @@ interface BibleChapterRepository {
     """)
     suspend fun getFumsToken(id: UUID, version: Int, variant: String, usfm: String, now: OffsetDateTime): String?
 
-    /** Reads retained recordings for one source from the existing chapters. */
-    @Query("select * from bible_chapters where audio @> jsonb_build_array(jsonb_build_object('sourceId', :sourceId::text))")
+    /** Reads retained recordings for one source from the existing chapters, omitting chapter text. */
+    @Query("""
+        select metadata_id, version, variant, book_usfm, usfm, null as components, sort, source_id,
+            null as attribution, null as source_version, null as verse_count, null as fums_token,
+            null as created, null as expires, audio
+        from bible_chapters
+        where audio @> jsonb_build_array(jsonb_build_object('sourceId', :sourceId::text))
+    """)
     suspend fun getAudioBySource(sourceId: UUID): List<BibleChapter>
 
-    /** Lists recording responses affected by replacing or deleting a Bible variant. */
-    @Query("select * from bible_chapters where metadata_id = :id and (:version::integer is null or version = :version) and (:variant::text is null or variant = :variant) and audio is not null")
+    /** Lists recording responses affected by replacing or deleting a Bible variant, omitting chapter text. */
+    @Query("""
+        select metadata_id, version, variant, book_usfm, usfm, null as components, sort, source_id,
+            null as attribution, null as source_version, null as verse_count, null as fums_token,
+            null as created, null as expires, audio
+        from bible_chapters
+        where metadata_id = :id and (:version::integer is null or version = :version)
+            and (:variant::text is null or variant = :variant) and audio is not null
+    """)
     suspend fun getAudioByBible(id: UUID, version: Int?, variant: String?): List<BibleChapter>
 
-    /** Lists chapters with retained audio for expiry maintenance. */
-    @Query("select * from bible_chapters where audio is not null and audio <> '[]'::jsonb")
+    /** Lists chapters with retained audio for expiry maintenance, omitting chapter text. */
+    @Query("""
+        select metadata_id, version, variant, book_usfm, usfm, null as components, sort, source_id,
+            null as attribution, null as source_version, null as verse_count, null as fums_token,
+            null as created, null as expires, audio
+        from bible_chapters
+        where audio is not null and audio <> '[]'::jsonb
+    """)
     suspend fun getRetainedAudio(): List<BibleChapter>
 
     /** Lists only the cached recordings belonging to this upstream edition. */

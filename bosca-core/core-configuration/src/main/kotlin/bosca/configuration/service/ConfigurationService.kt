@@ -42,7 +42,7 @@ interface ConfigurationService : PermissionService<Configuration, UUID> {
     suspend fun getValue(id: UUID): JsonElement?
 
     /**
-     * Locks the configuration and reads its current value from storage, refreshing the request cache.
+     * Locks the configuration and reads its current value from storage, refreshing the configuration value cache.
      * Requires an active database transaction; the lock is held until that transaction ends.
      * Use this when a read and subsequent write or availability check must share the same state.
      * Returns null when the configuration or its value does not exist.

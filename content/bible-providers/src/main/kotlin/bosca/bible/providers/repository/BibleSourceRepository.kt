@@ -20,7 +20,7 @@ interface BibleSourceRepository {
             where id = :metadataId and not deleted)
         returning *
     """)
-    suspend fun add(source: BibleSource): BibleSource
+    suspend fun add(source: BibleSource): BibleSource?
 
     /** Finds a source that has not been explicitly removed. */
     @Query("select * from bible_providers.sources where id = :id and deleted_at is null")
@@ -57,6 +57,13 @@ interface BibleSourceRepository {
         where id = :id and version = :version and deleted_at is null returning *
     """)
     suspend fun update(source: BibleSource): BibleSource?
+
+    /** Permanently deletes every source, including removed sources, attached to a Bible metadata version. */
+    @Query("""
+        delete from bible_providers.sources where metadata_id = :metadataId and metadata_version = :metadataVersion
+        returning *
+    """)
+    suspend fun deleteByBible(metadataId: UUID, metadataVersion: Int): List<BibleSource>
 
     /** Removes a source only when its version still matches the caller's observation. */
     @Query("""

@@ -3098,12 +3098,6 @@
       "glob": "graphql/metadata/bible-providers.graphqls"
     },
     {
-      "glob": "db/migrations/V196__bible_chapter_audio.sql"
-    },
-    {
-      "glob": "db/migrations/V2__bible_source_metadata_deletion.sql"
-    },
-    {
       "glob": "graphql/metadata/data.graphqls"
     },
     {

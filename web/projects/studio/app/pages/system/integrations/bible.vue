@@ -4,7 +4,7 @@ import { BibleContentUse, BibleSourceKind } from '~/types/graphql'
 import {
   configurationsQuery, sourcesQuery, catalogQuery, audioTargetsQuery,
   saveConfigurationMutation, testConfigurationMutation, addBibleMutation, addAudioMutation,
-  refreshSourceMutation, removeSourceMutation, removeConfigurationMutation,
+  refreshSourceMutation, removeSourceMutation, removeConfigurationMutation, providerLabel, audioTargetKey,
   type ProviderConfiguration, type ProviderCatalog, type ProviderSource, type AudioTarget, type BibleProviderResult,
 } from '~/utils/bibleProviders'
 
@@ -32,16 +32,16 @@ function message(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
-async function perform(document: DocumentNode, variables: Record<string, unknown>, success: string): Promise<boolean> {
-  if (busy.value) return false
+async function perform<T = unknown>(document: DocumentNode, variables: Record<string, unknown>, success: string): Promise<T | null> {
+  if (busy.value) return null
   busy.value = true
   try {
-    await mutation(document, variables)
+    const result = await mutation<T>(document, variables)
     toast.success(success)
-    return true
+    return result
   } catch (error: unknown) {
     toast.error(message(error))
-    return false
+    return null
   } finally {
     busy.value = false
   }
@@ -74,14 +74,18 @@ function closeConfiguration() {
 
 async function saveConfiguration() {
   if (!canSave.value) return
-  if (await perform(saveConfigurationMutation, { input: {
+  const creating = !editing.value
+  const result = await perform<BibleProviderResult<{ saveConfiguration: ProviderConfiguration }>>(saveConfigurationMutation, { input: {
     id: editing.value?.id ?? null, name: name.value.trim(), provider: provider.value,
     enabled: enabled.value, apiKey: apiKey.value.trim() || null,
-  } }, 'Bible provider configuration saved')) {
-    closeConfiguration()
-    await refresh()
-    await refreshSources()
-  }
+  } }, 'Bible provider configuration saved')
+  if (result === null) return
+  closeConfiguration()
+  await refresh()
+  const savedId = result.content.bibleProviders.saveConfiguration.id
+  // Selecting a different configuration reloads the catalog through the configuration watcher.
+  if (creating && configurationId.value !== savedId) configurationId.value = savedId
+  else await loadCatalog()
 }
 
 const kind = ref<string | null>(BibleSourceKind.Text)
@@ -129,7 +133,7 @@ const textUses = [
 ]
 const useOptions = computed(() => registration.value?.entry.kind === BibleSourceKind.Audio
   ? [{ value: BibleContentUse.Playback, label: 'Playback' }] : textUses)
-const chosenTarget = computed(() => audioTarget.value === null ? undefined : audioTargets.value[Number(audioTarget.value)])
+const chosenTarget = computed(() => audioTargets.value.find(target => audioTargetKey(target) === audioTarget.value))
 const canRegister = computed(() => !busy.value && !!registration.value && !targetsLoading.value
   && (registration.value.entry.kind === BibleSourceKind.Text ? !!variant.value.trim() : !!chosenTarget.value))
 
@@ -175,8 +179,8 @@ async function register() {
   const target = chosenTarget.value
   const saved = current.entry.kind === BibleSourceKind.Text
     ? await perform(addBibleMutation, { input: { ...input, variant: variant.value.trim() } }, 'Bible added')
-    : target && await perform(addAudioMutation, { input, bibleId: target.metadataId, version: target.version, variant: target.variant }, 'Bible audio added')
-  if (saved) {
+    : target ? await perform(addAudioMutation, { input, bibleId: target.metadataId, version: target.version, variant: target.variant }, 'Bible audio added') : null
+  if (saved !== null) {
     closeRegistration()
     await refreshSources()
   }
@@ -197,7 +201,7 @@ async function deleteConfiguration() {
   if (!target || (target.sources.length > 0 && !purgeSources.value)) return
   if (await perform(removeConfigurationMutation, {
     configurationId: target.configuration.id, purgeSources: target.sources.length > 0 && purgeSources.value,
-  }, 'Bible provider configuration removed')) {
+  }, 'Bible provider configuration removed') !== null) {
     removeConfiguration.value = null
     await refresh()
   }
@@ -206,14 +210,14 @@ async function deleteConfiguration() {
 async function deleteSource() {
   const target = removeSource.value
   if (!target) return
-  if (await perform(removeSourceMutation, { sourceId: target.id, expectedVersion: target.version }, 'Bible source removed')) {
+  if (await perform(removeSourceMutation, { sourceId: target.id, expectedVersion: target.version }, 'Bible source removed') !== null) {
     removeSource.value = null
     await refreshSources()
   }
 }
 
 async function refreshSource(source: ProviderSource) {
-  if (await perform(refreshSourceMutation, { sourceId: source.id }, 'Bible source refreshed')) await refreshSources()
+  if (await perform(refreshSourceMutation, { sourceId: source.id }, 'Bible source refreshed') !== null) await refreshSources()
 }
 
 watch([configurationId, kind, () => selected.value?.enabled], () => {
@@ -222,7 +226,7 @@ watch([configurationId, kind, () => selected.value?.enabled], () => {
   removeConfiguration.value = null
   void loadCatalog()
 }, { immediate: true })
-onUnmounted(() => { apiKey.value = ''; catalogRequest++; targetRequest++ })
+onUnmounted(() => { catalogRequest++; targetRequest++ })
 </script>
 
 <template>
@@ -239,95 +243,90 @@ onUnmounted(() => { apiKey.value = ''; catalogRequest++; targetRequest++ })
       </PageHeader>
     </template>
 
-    <ClientOnly>
-      <div class="bible-providers-stack">
-        <p v-if="error" role="alert" class="field-error">{{ error.message }}</p>
-        <p v-else-if="status === 'pending'">Loading configurations…</p>
-        <SectionCard title="Configurations" padded>
-          <div class="form-stack">
-            <Select
-              v-model="configurationId"
-              label="Configuration"
-              :options="configurations.map(config => ({ value: config.id, label: `${config.name}${config.enabled ? '' : ' (disabled)'}` }))"
-              :disabled="busy"
-              :accent="accent" />
-            <p v-if="!configurations.length && status === 'success'" class="field-help">Add a configuration to browse the provider catalog.</p>
-            <template v-if="selected">
-              <p class="field-help">{{ selected.provider === 'API_BIBLE' ? 'API.Bible' : selected.provider }} · {{ selected.hasApiKey ? 'Key saved' : 'Key missing' }}</p>
-              <div class="actions">
-                <Button size="sm" :disabled="busy" @click="editConfiguration(selected)">Edit configuration</Button>
-                <Button size="sm" :disabled="busy" @click="perform(testConfigurationMutation, { configurationId: selected.id }, 'Bible provider connection succeeded')">Test connection</Button>
-                <Button size="sm" :disabled="busy || sourceStatus !== 'success'" @click="confirmRemoveConfiguration">Remove configuration</Button>
-              </div>
-            </template>
-          </div>
-        </SectionCard>
-
-        <SectionCard v-if="selected" title="Catalog" padded>
-          <p v-if="!selected.enabled" class="field-help">Enable this configuration to browse its catalog.</p>
-          <template v-else>
-            <div class="catalog-controls">
-              <Select
-                v-model="kind"
-                label="Catalog"
-                :options="[{ value: 'TEXT', label: 'Text' }, { value: 'AUDIO', label: 'Audio' }]"
-                :disabled="busy"
-                :accent="accent" />
-              <TextInput
-                v-model="search"
-                label="Search catalog"
-                :disabled="busy"
-                @keydown.enter="loadCatalog()" />
-              <Button size="sm" :disabled="busy" @click="loadCatalog()">Search</Button>
-            </div>
-            <p v-if="catalogError" role="alert" class="field-error">{{ catalogError }}</p>
-            <p v-else-if="catalogLoading">Loading catalog…</p>
-            <p v-else-if="!catalog.length" class="field-help">No catalog results.</p>
-            <ul class="entries">
-              <li v-for="entry in catalog" :key="entry.id" class="entry">
-                <div class="entry-details">
-                  <strong>{{ entry.name }}</strong>
-                  <span v-if="entry.nameLocal !== entry.name">{{ entry.nameLocal }}</span>
-                  <span>{{ entry.abbreviation }} · {{ entry.languages.map(language => language.name).join(', ') }}</span>
-                  <p v-if="entry.description">{{ entry.description }}</p>
-                  <p>{{ entry.attribution.copyright }}</p>
-                  <p v-if="entry.attribution.citation">{{ entry.attribution.citation }}</p>
-                </div>
-                <Button size="sm" :disabled="busy" @click="registerEntry(entry)">{{ entry.kind === 'TEXT' ? 'Add Bible' : 'Add audio' }}</Button>
-              </li>
-            </ul>
+    <div class="bible-providers-stack">
+      <p v-if="error" role="alert" class="field-error">{{ error.message }}</p>
+      <p v-else-if="status === 'pending'">Loading configurations…</p>
+      <SectionCard title="Configurations" padded>
+        <div class="form-stack">
+          <Select
+            v-model="configurationId"
+            label="Configuration"
+            :options="configurations.map(config => ({ value: config.id, label: `${config.name}${config.enabled ? '' : ' (disabled)'}` }))"
+            :disabled="busy"
+            :accent="accent" />
+          <p v-if="!configurations.length && status === 'success'" class="field-help">Add a configuration to browse the provider catalog.</p>
+          <template v-if="selected">
+            <p class="field-help">{{ providerLabel(selected.provider) }} · {{ selected.hasApiKey ? 'Key saved' : 'Key missing' }}</p>
             <div class="actions">
-              <Button size="sm" :disabled="busy || catalogLoading || offset === 0" @click="loadCatalog(Math.max(0, offset - limit))">Previous</Button>
-              <span class="field-help">Page {{ Math.floor(offset / limit) + 1 }}</span>
-              <Button size="sm" :disabled="busy || catalogLoading || catalog.length < limit" @click="loadCatalog(offset + limit)">Next</Button>
+              <Button size="sm" :disabled="busy" @click="editConfiguration(selected)">Edit configuration</Button>
+              <Button size="sm" :disabled="busy" @click="perform(testConfigurationMutation, { configurationId: selected.id }, 'Bible provider connection succeeded')">Test connection</Button>
+              <Button size="sm" :disabled="busy || sourceStatus !== 'success'" @click="confirmRemoveConfiguration">Remove configuration</Button>
             </div>
           </template>
-        </SectionCard>
+        </div>
+      </SectionCard>
 
-        <SectionCard v-if="selected" title="Sources" padded>
-          <p v-if="sourceError" role="alert" class="field-error">{{ sourceError.message }}</p>
-          <p v-else-if="sourceStatus === 'pending'">Loading sources…</p>
-          <p v-else-if="!sources.length" class="field-help">No sources registered.</p>
+      <SectionCard v-if="selected" title="Catalog" padded>
+        <p v-if="!selected.enabled" class="field-help">Enable this configuration to browse its catalog.</p>
+        <template v-else>
+          <div class="catalog-controls">
+            <Select
+              v-model="kind"
+              label="Catalog"
+              :options="[{ value: BibleSourceKind.Text, label: 'Text' }, { value: BibleSourceKind.Audio, label: 'Audio' }]"
+              :disabled="busy"
+              :accent="accent" />
+            <TextInput
+              v-model="search"
+              label="Search catalog"
+              :disabled="busy"
+              @keydown.enter="loadCatalog()" />
+            <Button size="sm" :disabled="busy" @click="loadCatalog()">Search</Button>
+          </div>
+          <p v-if="catalogError" role="alert" class="field-error">{{ catalogError }}</p>
+          <p v-else-if="catalogLoading">Loading catalog…</p>
+          <p v-else-if="!catalog.length" class="field-help">No catalog results.</p>
           <ul class="entries">
-            <li v-for="source in sources" :key="source.id" class="entry">
+            <li v-for="entry in catalog" :key="entry.id" class="entry">
               <div class="entry-details">
-                <NuxtLink :to="`/cms/metadata/${source.metadataId}`">{{ source.name }}</NuxtLink>
-                <span>{{ source.kind === 'TEXT' ? 'Text' : 'Audio' }} · version {{ source.metadataVersion }} · {{ source.variant }}</span>
-                <span>Permitted uses: {{ source.allowedUses.map(use => use.replaceAll('_', ' ').toLowerCase()).join(', ') || 'None' }}</span>
-                <p>{{ source.attribution.copyright }}</p>
+                <strong>{{ entry.name }}</strong>
+                <span v-if="entry.nameLocal !== entry.name">{{ entry.nameLocal }}</span>
+                <span>{{ entry.abbreviation }} · {{ entry.languages.map(language => language.name).join(', ') }}</span>
+                <p v-if="entry.description">{{ entry.description }}</p>
+                <p>{{ entry.attribution.copyright }}</p>
+                <p v-if="entry.attribution.citation">{{ entry.attribution.citation }}</p>
               </div>
-              <div class="actions">
-                <Button size="sm" :disabled="busy || !selected.enabled" @click="refreshSource(source)">Refresh</Button>
-                <Button size="sm" :disabled="busy" @click="removeSource = source">Remove source</Button>
-              </div>
+              <Button size="sm" :disabled="busy" @click="registerEntry(entry)">{{ entry.kind === BibleSourceKind.Text ? 'Add Bible' : 'Add audio' }}</Button>
             </li>
           </ul>
-        </SectionCard>
-      </div>
-      <template #fallback>
-        <p>Loading configurations…</p>
-      </template>
-    </ClientOnly>
+          <div class="actions">
+            <Button size="sm" :disabled="busy || catalogLoading || offset === 0" @click="loadCatalog(Math.max(0, offset - limit))">Previous</Button>
+            <span class="field-help">Page {{ Math.floor(offset / limit) + 1 }}</span>
+            <Button size="sm" :disabled="busy || catalogLoading || catalog.length < limit" @click="loadCatalog(offset + limit)">Next</Button>
+          </div>
+        </template>
+      </SectionCard>
+
+      <SectionCard v-if="selected" title="Sources" padded>
+        <p v-if="sourceError" role="alert" class="field-error">{{ sourceError.message }}</p>
+        <p v-else-if="sourceStatus === 'pending'">Loading sources…</p>
+        <p v-else-if="!sources.length" class="field-help">No sources registered.</p>
+        <ul class="entries">
+          <li v-for="source in sources" :key="source.id" class="entry">
+            <div class="entry-details">
+              <NuxtLink :to="`/cms/metadata/${source.metadataId}`">{{ source.name }}</NuxtLink>
+              <span>{{ source.kind === BibleSourceKind.Text ? 'Text' : 'Audio' }} · version {{ source.metadataVersion }} · {{ source.variant }}</span>
+              <span>Permitted uses: {{ source.allowedUses.map(use => use.replaceAll('_', ' ').toLowerCase()).join(', ') || 'None' }}</span>
+              <p>{{ source.attribution.copyright }}</p>
+            </div>
+            <div class="actions">
+              <Button size="sm" :disabled="busy || !selected.enabled" @click="refreshSource(source)">Refresh</Button>
+              <Button size="sm" :disabled="busy" @click="removeSource = source">Remove source</Button>
+            </div>
+          </li>
+        </ul>
+      </SectionCard>
+    </div>
 
     <Modal
       v-if="showConfiguration"
@@ -339,7 +338,7 @@ onUnmounted(() => { apiKey.value = ''; catalogRequest++; targetRequest++ })
         <Select
           v-model="provider"
           label="Provider"
-          :options="providers.map(value => ({ value, label: value === 'API_BIBLE' ? 'API.Bible' : value }))"
+          :options="providers.map(value => ({ value, label: providerLabel(value) }))"
           :disabled="busy"
           :accent="accent" />
         <Checkbox
@@ -375,7 +374,7 @@ onUnmounted(() => { apiKey.value = ''; catalogRequest++; targetRequest++ })
         <p>{{ registration.entry.attribution.copyright }}</p>
         <p v-if="registration.entry.attribution.citation">{{ registration.entry.attribution.citation }}</p>
         <TextInput
-          v-if="registration.entry.kind === 'TEXT'"
+          v-if="registration.entry.kind === BibleSourceKind.Text"
           v-model="variant"
           label="Variant"
           placeholder="reader"
@@ -387,7 +386,7 @@ onUnmounted(() => { apiKey.value = ''; catalogRequest++; targetRequest++ })
           <Select
             v-model="audioTarget"
             label="Bible variant"
-            :options="audioTargets.map((target, index) => ({ value: String(index), label: `${target.name} · version ${target.version} · ${target.variant}${target.enabled ? '' : ' (disabled)'}` }))"
+            :options="audioTargets.map(target => ({ value: audioTargetKey(target), label: `${target.name} · version ${target.version} · ${target.variant}${target.enabled ? '' : ' (disabled)'}` }))"
             :disabled="busy || targetsLoading"
             :accent="accent" />
         </template>
