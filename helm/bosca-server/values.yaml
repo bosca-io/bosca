@@ -80,8 +80,6 @@ startupProbe:
 # Application config template values — rendered into application.yaml ConfigMap.
 # These replace the [PLACEHOLDER] tokens from the CLI's template.
 appConfig:
-  # Includes FUMS enqueueing in this application's Analytics transform list.
-  fumsTransformEnabled: false
   domain: ""
   realm: ""
   # Additional host-only authentication cookie prefixes. `_bat` remains the default

@@ -25,10 +25,10 @@ The runner chart enables `fumsQueueRunner` for API.Bible usage reports. If your
 deployment overrides `appConfig.runners`, include `fumsQueueRunner` in that list
 (`bosca-runner.appConfig.runners` in umbrella values).
 
-`appConfig.fumsTransformEnabled` chooses whether each chart includes the FUMS
-transform. Collector defaults are `true`; server and runner defaults to `false`.
-Enable it at one stage of each event path. `FUMS_TRANSFORM_ENABLED` overrides this
-per-application setting.
+The collector chart enables the FUMS transform by default. The collector and runner
+charts expose `appConfig.fumsTransformEnabled`; the runner defaults to `false`.
+Enable it on the runner only when it handles FUMS event processing instead of the
+collector. `FUMS_TRANSFORM_ENABLED` overrides this setting on those applications.
 
 ## Pipeline encryption key
 

@@ -86,6 +86,12 @@ class InstallerTest(unittest.TestCase):
         compose = (directory / "compose.yaml").read_text()
         self.assertIn("./config/server.yaml:/app/config/application.yaml:ro", compose)
 
+    def test_server_does_not_configure_fums_ingestion(self):
+        directory = self.install()
+        self.assertNotIn("FUMS_TRANSFORM_ENABLED", (directory / ".env").read_text())
+        self.assertNotIn("fumsEnabled", (directory / "config/server.yaml").read_text())
+        self.assertNotIn("FUMS_TRANSFORM_ENABLED", (directory / "compose.yaml").read_text())
+
     def test_rerun_preserves_user_configuration_credentials_and_data(self):
         directory = self.install()
         (directory / "config/server.yaml").write_text("user configuration\n")

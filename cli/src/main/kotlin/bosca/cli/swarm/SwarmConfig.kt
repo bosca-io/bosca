@@ -102,6 +102,8 @@ data class SwarmConfig(
     val notificationsWeb: SwarmNotificationsWeb = SwarmNotificationsWeb(),
     /** Bosca server memory limit in Docker units, for example `768M` or `1536M`. */
     val serverMemory: String = "768M",
+    /** Enables API.Bible usage reporting in this site's Analytics collector. */
+    val fumsEnabled: Boolean = true,
 )
 
 /** Per-site host, auth cookie domain, and optional branding for profiles-web. */

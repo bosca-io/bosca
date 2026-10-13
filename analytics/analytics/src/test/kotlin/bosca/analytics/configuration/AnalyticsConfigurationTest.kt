@@ -96,12 +96,13 @@ class AnalyticsConfigurationTest {
     fun `application configuration providers support defaults and explicit values`() {
         val defaultApplication = application("bosca: {}")
         assertEquals(16, configuration.eventProcessingConfiguration(defaultApplication).workerCount)
+        assertEquals(false, configuration.eventProcessingConfiguration(defaultApplication).fumsEnabled)
         assertEquals(100, configuration.analyticsQueryCacheConfiguration(defaultApplication).maxEntriesPerQuery)
 
         val configured = application(
             """
             eventProcessing:
-              fumsEnabled: false
+              fumsEnabled: true
               workerCount: 2
               channelCapacity: 12
               natsBatchSize: 3
@@ -127,7 +128,7 @@ class AnalyticsConfigurationTest {
             """,
         )
         val processing = configuration.eventProcessingConfiguration(configured)
-        assertEquals(false, processing.fumsEnabled)
+        assertEquals(true, processing.fumsEnabled)
         assertEquals(2, processing.workerCount)
         assertEquals(12, processing.channelCapacity)
         assertEquals("analytics-sa", processing.scriptServiceAccount)

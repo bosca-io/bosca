@@ -50,7 +50,7 @@ class TransformConfigurationTest {
     private val config = TransformConfiguration()
 
     private fun buildTransforms(
-        fums: Boolean = true,
+        fums: Boolean = EventProcessingConfiguration().fumsEnabled,
         queue: ObjectProvider<JobQueue> = mockk {
             every { exists } returns true
             coEvery { get() } returns mockk()
@@ -82,7 +82,7 @@ class TransformConfigurationTest {
 
     @Test
     fun `transforms pipeline has correct number of transforms`() {
-        val pipeline = buildTransforms()
+        val pipeline = buildTransforms(fums = true)
         val expected = 7
         assertEquals(expected, pipeline.transforms.size)
         assertTrue(pipeline.transforms[1] is SessionHeartbeatTransform)
@@ -92,10 +92,10 @@ class TransformConfigurationTest {
     }
 
     @Test
-    fun `server configuration selects whether the list contains FUMS`() {
-        assertTrue(buildTransforms().transforms.any { it is FumsAnalyticsTransform })
+    fun `FUMS requires an explicit opt in`() {
+        assertTrue(buildTransforms(fums = true).transforms.any { it is FumsAnalyticsTransform })
         val queue = mockk<ObjectProvider<JobQueue>>()
-        val disabled = buildTransforms(fums = false, queue = queue)
+        val disabled = buildTransforms(queue = queue)
         coVerify(exactly = 0) { queue.get() }
         assertEquals(6, disabled.transforms.size)
         assertTrue(disabled.transforms.none { it is FumsAnalyticsTransform })
@@ -110,7 +110,7 @@ class TransformConfigurationTest {
     @Test
     fun `servers without a FUMS queue omit the transform`() {
         val queue = mockk<ObjectProvider<JobQueue>> { every { exists } returns false }
-        assertTrue(buildTransforms(queue = queue).transforms.none { it is FumsAnalyticsTransform })
+        assertTrue(buildTransforms(fums = true, queue = queue).transforms.none { it is FumsAnalyticsTransform })
         coVerify(exactly = 0) { queue.get() }
     }
 

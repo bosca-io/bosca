@@ -15,19 +15,11 @@ release:
   name: test
   namespace: bosca
 tests:
-  - it: selects the default FUMS transform placement
+  - it: leaves FUMS ingestion to the collector
     asserts:
-      - matchRegex:
+      - notMatchRegex:
           path: data["application.yaml"]
-          pattern: 'fumsEnabled: \$\{FUMS_TRANSFORM_ENABLED:true\}'
-
-  - it: configures the FUMS transform for this server
-    set:
-      appConfig.fumsTransformEnabled: false
-    asserts:
-      - matchRegex:
-          path: data["application.yaml"]
-          pattern: 'fumsEnabled: \$\{FUMS_TRANSFORM_ENABLED:false\}'
+          pattern: 'fumsEnabled|FUMS_TRANSFORM_ENABLED'
 
   - it: renders a ConfigMap named *-config
     asserts:

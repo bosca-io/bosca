@@ -1,5 +1,6 @@
 package bosca.server.configuration
 
+import bosca.analytics.configuration.AnalyticsConfiguration
 import bosca.analytics.livesessions.LiveSessionsService
 import bosca.analytics.livesessions.nats.NatsLiveSessions
 import bosca.analytics.livesessions.redis.RedisLiveSessions
@@ -30,6 +31,7 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
@@ -41,8 +43,10 @@ class ConfigurationTest {
     private val redis = mockk<RedisConnectionPool>().asProvider()
 
     @Test
-    fun `packaged configuration chooses FUMS transform placement`() {
-        assertEquals("false", ApplicationConfig.loadFromClasspath().property("eventProcessing.fumsEnabled").getString())
+    fun `packaged processor configuration leaves FUMS ingestion to the collector`() {
+        val config = ApplicationConfig.loadFromClasspath()
+        assertNull(config.propertyOrNull("eventProcessing.fumsEnabled"))
+        assertEquals(false, AnalyticsConfiguration().eventProcessingConfiguration(BoscaApplication(config)).fumsEnabled)
     }
 
     @Test

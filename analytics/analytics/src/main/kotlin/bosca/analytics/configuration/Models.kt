@@ -20,8 +20,8 @@ class EventProcessingConfiguration(
      * runs bound scripts (see [AnalyticsScriptTransform][bosca.analytics.transform.AnalyticsScriptTransform]).
      */
     val scriptServiceAccount: String = "sa",
-    /** Includes FUMS enqueueing in this server's transform list. */
-    val fumsEnabled: Boolean = true,
+    /** Enables FUMS enqueueing on the collector or runner handling Bible usage events. */
+    val fumsEnabled: Boolean = false,
 )
 
 /**

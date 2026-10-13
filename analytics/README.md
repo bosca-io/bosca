@@ -56,8 +56,9 @@ The Analytics pipeline reports API.Bible usage from client-authored events. Text
 an `impression` event with `element.type` set to `bible-text`; audio playback uses an
 `interaction` event with `element.type` set to `bible-audio`.
 
-Studio's Bible reader sends an impression when a chapter becomes visible in the
-active tab and an interaction when a selected recording starts playing. It displays
+Studio's Bible reader and document reference previews use the existing automatic
+impression tracking, with Bible metadata on their chapter headings. The reader sends an interaction when
+a selected recording starts playing. It displays
 the attribution delivered with each chapter and recording. Loading audio alone does
 not report playback; buffering and pause/resume do not add another report for the
 same loaded recording.
@@ -73,13 +74,14 @@ The element's `extras` identifies the content:
 | `bible_audio_id` | Recording source UUID, required for audio |
 
 The event context supplies its device installation ID, session ID, and optional user ID.
-Device and user identifiers are hashed before queueing. `eventProcessing.fumsEnabled`
-selects whether this server includes FUMS in its normal Analytics transform list. The
-packaged configurations read `FUMS_TRANSFORM_ENABLED`, defaulting to `true` on the API
-and collector and `false` on the runner and processor. Enable the transform at one
-stage of each event path; either ingestion or downstream processing can enqueue the
-reference-only jobs on the dedicated `fums` queue. This choice is independent of
-the event storage and job queue transports. The `fumsQueueRunner` worker in `bosca-runner` resolves the private token through `BibleProviderService`
+Device and user identifiers are hashed before queueing. The collector includes FUMS
+in its normal Analytics transform list and enqueues reference-only jobs on the
+dedicated `fums` queue. `eventProcessing.fumsEnabled` is configured only on the
+collector and runner, through `FUMS_TRANSFORM_ENABLED`: the collector defaults to
+`true` and the runner to `false`. The shared configuration defaults to `false`.
+If the runner handles FUMS event processing instead, enable it there and disable
+it on the collector. This choice is independent of the event storage and job queue
+transports. The `fumsQueueRunner` worker in `bosca-runner` resolves the private token through `BibleProviderService`
 and sends the [manual FUMS report](https://docs.api.bible/guides/fair-use/).
 Tokens never enter client responses, queued usage payloads, or Analytics events. Missing
 or expired tokens are skipped without fetching Scripture content. The ordinary job queue

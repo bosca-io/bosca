@@ -66,6 +66,13 @@ Each site's runner uses the application configuration bundled in its image,
 including `fumsQueueRunner` for API.Bible usage reports. Swarm supplies the site's
 database and queue credentials through the runner's environment.
 
+Each site's `fumsEnabled` setting controls API.Bible usage reporting and defaults
+to `true`. Set `"fumsEnabled": false` on that site's entry in `swarm.local.json` to
+disable it, then run `bosca swarm deploy --config ./swarm.local.json` to apply the
+change. The renderer passes this setting as `FUMS_TRANSFORM_ENABLED` only to that
+site's collector. The runner's transform remains disabled; delivery jobs use its
+separate `fumsQueueRunner` worker.
+
 One shared PostgreSQL with pgvector provides separate operational and warehouse databases and roles per site. As in the Kubernetes deployment, the Bosca services connect through PgBouncer in transaction mode (up to 1000 client connections, 25 server connections per database and role), so their connection pools cannot exhaust the shared server; PostgreSQL's connection limit is sized from the number of sites. Trino connects to PostgreSQL directly. PgBouncer logs in to PostgreSQL as the connecting role, so each site still reaches only its own databases. Shared NATS has an account per site. Redis uses distinct logical databases and key namespaces. Meilisearch uses per-site index prefixes. S3Proxy uses separate content and warehouse buckets. Trino has per-site catalogs and file access rules. Image processing and the text-embeddings service are shared; embeddings carry no site data. Each site runs its own Bosca server, runner, Git server, analytics collector, artifacts server, Studio, Profiles, Notifications, BML message server, recommendation trainer, model loader, and TensorFlow Serving. Caddy routes by hostname.
 
 The manager runs the stateful services: PostgreSQL, PgBouncer, NATS, Redis, Meilisearch, S3Proxy, Trino, Caddy and the backups. Application services run on the workers with memory limits but no CPU caps, allowing CPU overprovisioning. The first worker also holds each site's recommendation-model volume, shared by its model loader and TensorFlow Serving. Workers must be x86_64: the embeddings and TensorFlow Serving images are published for amd64 only. Every service rotates its logs (three 10 MB files). Services with a health check restart when it fails, and stateless application services start their replacement before stopping the old task and roll back when it does not become healthy.
