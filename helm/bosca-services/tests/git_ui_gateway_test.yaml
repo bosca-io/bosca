@@ -1,0 +1,27 @@
+suite: Git UI shared Gateway hostname
+templates:
+  - templates/gateway.yaml
+  - templates/httproute-redirect.yaml
+set:
+  bosca-git-server.enabled: true
+  bosca-git-server.gateway.hostnames: [git.example.com]
+tests:
+  - it: uses one Git TLS listener
+    template: templates/gateway.yaml
+    asserts:
+      - equal:
+          path: spec.listeners[1].hostname
+          value: git.example.com
+      - equal:
+          path: spec.listeners[1].tls.certificateRefs[0].name
+          value: git-example-com-tls
+      - lengthEqual:
+          path: spec.listeners
+          count: 2
+
+  - it: redirects HTTP for the shared Git origin
+    template: templates/httproute-redirect.yaml
+    asserts:
+      - equal:
+          path: spec.hostnames
+          value: [git.example.com]

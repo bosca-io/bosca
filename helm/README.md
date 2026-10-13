@@ -35,6 +35,46 @@ use that same fallback; moving stored secrets to a different key requires an
 explicit re-encryption migration. Restart all affected pods after changing a
 shared environment ConfigMap.
 
+## Git API and BML UI
+
+`bosca-git-server` runs the API on 8091 and the BML UI on 8093 in one pod.
+Both share the existing `git.<domain>` public origin. Chart version 0.1.2 adds
+the UI listener configuration, Service port, startup probe and path routing.
+For the services chart, set these values in the deployment's operations repository:
+
+```yaml
+bosca-git-server:
+  enabled: true
+  gateway:
+    hostnames: [git.example.com]
+  appConfig:
+    gitUrl: https://git.example.com
+```
+
+The existing Git TLS listener and certificate serve both applications. The
+HTTPRoute sends known UI pages, `/_bml` endpoints and `/_git` assets/subscriptions
+to 8093. Other paths stay on 8091: smart HTTP, LFS, raw files, GraphQL/WebSockets,
+OAuth callbacks, webhooks and CI artifacts. Matching UI repository IDs explicitly
+keeps clone URLs such as `/repositories/project.git/info/refs` on the API.
+The route uses regular-expression matching supported by the chart's Cilium Gateway.
+
+Custom public origins use `appConfig.gitUrl`. It also configures Git UI links,
+auth returns and passkey origins; defaults derive from `appConfig.domain`, falling
+back to `global.domain`. Remove the former Git chart's `appConfig.studioUrl`
+setting. Studio's own configuration continues to use its existing origin.
+
+Register `<gitUrl>/oauth2/google/callback` with the Google provider and supply
+`GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` through the Git pod's environment
+sources. `ui.authCookiePrefix` can select a prefix configured under
+`appConfig.authCookiePrefixes` for the shared Git hostname. The default uses the
+existing `_bat` cookies.
+
+Deploy the chart with a Git image built from the same revision. Git applies its
+registered V49 migration at startup before serving PR queries. Preserve the
+shared pipeline encryption key during the rollout. API readiness still checks
+its dependencies; the UI startup probe waits for the second listener before
+admitting traffic. A failed listener stops the combined host.
+
 ## Maintainer release process
 
 `.bosca/pipelines/release-helm.yaml` publishes each chart to Bosca Artifacts' HTTP

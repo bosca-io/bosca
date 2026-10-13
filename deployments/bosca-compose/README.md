@@ -20,7 +20,7 @@ services and changes no host nginx configuration.
 - An amd64 CPU compatible with the selected native images. The default Bosca images
   require AVX2, BMI1/BMI2, FMA, and F16C; use compatible image builds for other CPUs.
 - Access to the Bosca image registry and a token that can read the BML message artifacts.
-- Two DNS names under a shared domain, such as `studio.example.com` and `git.example.com`.
+- Two DNS names under a shared domain: `studio.example.com` and `git.example.com`.
 - Host nginx 1.25.1 or newer with HTTP/2 support and Certbot for public HTTPS.
 
 The container limits total 2880 MiB. This is a small-server baseline, not a measured
@@ -32,12 +32,13 @@ Docker, nginx, and the operating system, and test your workload before importing
 Extract the archive on the intended host, then run:
 
 ```sh
-tar -xzf bosca-compose-0.1.0.tar.gz
-cd bosca-compose-0.1.0
+tar -xzf bosca-compose-0.1.1.tar.gz
+cd bosca-compose-0.1.1
 sudo sh install.sh --domain example.com --directory /opt/bosca
 ```
 
-The default hostnames are `studio.<domain>` and `git.<domain>`. To choose different names:
+The default hostnames are `studio.<domain>` and `git.<domain>`. Git API and BML
+UI share the Git hostname. To choose different names:
 
 ```sh
 sudo sh install.sh --domain example.com \
@@ -46,8 +47,9 @@ sudo sh install.sh --domain example.com \
 ```
 
 Both names must belong to the shared cookie domain. `--api-port`, `--git-port`,
-`--studio-port`, and `--bml-port` set the loopback ports; defaults are 8080, 8091,
-3000, and 9093. Container ports remain fixed. `--cert-name` defaults to `bosca`.
+`--git-ui-port`, `--studio-port`, and `--bml-port` set the loopback ports; defaults
+are 8080, 8091, 8093, 3000, and 9093. Container ports remain fixed. `--cert-name`
+defaults to `bosca`.
 
 The destination must be empty for a new installation. Rerunning the same package
 against an existing installation preserves its files, credentials, and data.
@@ -130,7 +132,9 @@ sudo systemctl enable --now certbot.timer
 sudo certbot renew --dry-run --run-deploy-hooks
 ```
 
-Nginx routes Studio and Git to loopback ports. Only BML's static assets under
+Nginx splits the Git hostname by path: UI pages and BML endpoints use the UI
+loopback port; other requests use the Git API loopback port. Studio has its own
+hostname. Only the message server's static assets under
 `/bml-messages/assets/` are public; its rendering and administration endpoints remain
 internal. WebSocket forwarding and streaming Git requests are configured. Request
 bodies are limited to 1 GiB in `config/nginx-proxy.conf`.
@@ -156,6 +160,12 @@ Open `https://studio.example.com`. The initial administrator username is `admin`
 its password is `INIT_ADMIN_PASSWORD` in the private `.env`. Clone URLs use the Git
 hostname. Verify a scratch repository push and clone, including LFS if required,
 and measure memory under your expected workload.
+
+Open `https://git.example.com` for the BML Git application. The same Git process
+serves both ports; its health check requires HTTP readiness from both. Git's auth
+return origin is `GIT_URL`; Studio continues to use `APP_URL`. For Google login,
+set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in `.env` and register
+`https://git.example.com/oauth2/google/callback` with the provider.
 
 The application configuration is in `config/server.yaml` and `config/git.yaml`.
 Configure a mail provider before enabling email workflows. Image processing, CI
@@ -187,6 +197,14 @@ new archive separately, compare its files with the installation, and apply the
 desired changes while preserving `.env` and `data/`; the installer does not perform
 automatic upgrades. Stop with `sh compose.sh down` before removing an installation.
 
+When upgrading from package 0.1.0, add `GIT_UI_PORT=8093` to the existing private
+`.env`. This is a loopback backend port; the existing Git public domain and
+certificate serve both listeners. Compare and update `compose.yaml`, `config/git.yaml`,
+`installer.py`, and the nginx templates from the new package while preserving
+credentials and data, then rerender and reload nginx. Use a Git image built with
+the combined BML host; the older default image tag in this package has not been
+validated with these changes. Git applies migration V49 at startup.
+
 ## Build the distributable
 
 From `deployments/bosca-compose` in the workspace source checkout:
@@ -196,7 +214,7 @@ python3 -m unittest discover -s tests -v
 sh package.sh
 ```
 
-The builder writes `dist/bosca-compose-0.1.0.tar.gz` and a matching `.sha256` file.
+The builder writes `dist/bosca-compose-0.1.1.tar.gz` and a matching `.sha256` file.
 `VERSION` is the installer package version, independent of application image tags.
 The archive is reproducible and includes only the public files listed in
 `installer.py`. It excludes `.env`, `.docker`, `data`, generated nginx files,

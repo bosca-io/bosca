@@ -28,6 +28,14 @@ Subscriptions relay from UI `/_git/subscriptions` to API `/graphqlws`. Raw files
 
 For a standalone UI host, `:git:git-ui-server:run` still reads `git-ui-server.yaml` and `BML_GRAPHQL_ENDPOINT`. Do not start it on the same UI port as the combined host. The combined host reads `application.yaml` (or `-config=...`): API transport settings remain under `bosca.server`; UI transport settings live under `git.ui.server`, with cookie selection under `git.ui.auth-cookie-prefix`. Both listeners support ordinary Netty transport settings independently.
 
+Helm, the portable Compose installer and Swarm serve both listeners on the existing
+`git.<domain>` public origin with path routing. Known UI pages and BML endpoints
+use 8093; Git/API paths use 8091. See [Helm deployment settings](../../helm/README.md#git-api-and-bml-ui)
+and [Compose upgrade instructions](../../deployments/bosca-compose/README.md#data-updates-and-removal).
+Root Compose serves both at `http://bosca.localhost:8091`, configurable with
+`BOSCA_GIT_PORT`. Direct JVM development still uses the two local listeners.
+Use a matching rebuilt Git image.
+
 Build and validate:
 
 ```bash

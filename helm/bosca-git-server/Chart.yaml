@@ -1,8 +1,8 @@
 apiVersion: v2
 name: bosca-git-server
-description: Bosca native git hosting server with DFS (PostgreSQL + S3) backend
+description: Bosca Git API and BML UI with DFS (PostgreSQL + S3) backend
 type: application
-version: 0.1.1
+version: 0.1.2
 appVersion: "5.0.21"
 dependencies:
   - name: bosca-common

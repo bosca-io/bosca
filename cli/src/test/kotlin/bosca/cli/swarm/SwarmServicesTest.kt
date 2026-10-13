@@ -179,8 +179,10 @@ class SwarmServicesTest {
     @Test
     fun `the bash HTTP check passes only on a 200 response`() {
         val server = HttpServer.create(InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0)
+        val uiStatus = java.util.concurrent.atomic.AtomicInteger(200)
         server.createContext("/api/v1/live") { exchange -> exchange.sendResponseHeaders(200, -1); exchange.close() }
         server.createContext("/api/v1/down") { exchange -> exchange.sendResponseHeaders(503, -1); exchange.close() }
+        server.createContext("/api/v1/ready") { exchange -> exchange.sendResponseHeaders(uiStatus.get(), -1); exchange.close() }
         server.start()
         try {
             fun run(check: List<String>) = ProcessBuilder(check.drop(1)).redirectErrorStream(true).start().waitFor()
@@ -188,6 +190,14 @@ class SwarmServicesTest {
             assertEquals(0, run(bashHttpCheck(port, "/api/v1/live")))
             assertNotEquals(0, run(bashHttpCheck(port, "/api/v1/down")))
             assertEquals(0, run(bashTcpCheck(port)))
+            val git = services(siteStack(config, site)).getValue("git")
+            val test = (git["healthcheck"] as Map<String, Any>)["test"] as List<String>
+            val combined = test.dropLast(1) + test.last()
+                .replace("127.0.0.1/8091", "127.0.0.1/$port")
+                .replace("127.0.0.1/8093", "127.0.0.1/$port")
+            assertEquals(0, run(combined))
+            uiStatus.set(503)
+            assertNotEquals(0, run(combined), "API liveness alone must not mark the Git host healthy")
         } finally {
             server.stop(0)
         }
