@@ -8,6 +8,7 @@ import bosca.counter.Counter
 import bosca.counter.CounterModule
 import bosca.counter.redis.RedisCounter
 import bosca.di.AnalyticsProcessorProviderRegistrar
+import bosca.di.AnalyticsProviderRegistrar
 import bosca.di.ProviderRegistry
 import bosca.di.asProvider
 import bosca.di.annotation.InternalDI
@@ -18,6 +19,11 @@ import bosca.redis.RedisConnectionPool
 import bosca.server.BoscaApplication
 import bosca.server.config.ApplicationConfig
 import io.mockk.mockk
+import io.mockk.every
+import io.mockk.verify
+import bosca.sharedqueue.jobs.JobQueue
+import bosca.sharedqueue.jobs.JobQueueFactory
+import bosca.di.provides
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlin.test.AfterTest
@@ -32,6 +38,18 @@ class ConfigurationTest {
     private val configuration = Configuration()
     private val nats = mockk<NatsConnectionPool>().asProvider()
     private val redis = mockk<RedisConnectionPool>().asProvider()
+
+    @Test
+    fun `generated wiring lets the processor publish FUMS jobs`() = runTest {
+        val queue = mockk<JobQueue>()
+        val factory = mockk<JobQueueFactory> { every { create("fums") } returns queue }
+        AnalyticsProcessorProviderRegistrar().register()
+        AnalyticsProviderRegistrar().register()
+        provides<JobQueueFactory>(overrideExisting = true) { factory }
+        assertSame(queue, provide<JobQueue>("fums"))
+        assertSame(queue, provide<JobQueue>("fums"))
+        verify(exactly = 1) { factory.create("fums") }
+    }
 
     @AfterTest
     fun tearDown() {
