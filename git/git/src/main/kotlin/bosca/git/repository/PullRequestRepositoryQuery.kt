@@ -11,4 +11,3 @@ data class PullRequestRepositoryQuery(
     val offset: Long,
     val limit: Int
 )
-
