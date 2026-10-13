@@ -1,0 +1,178 @@
+<component tag="git-github-users">
+  <prop name="initial" type="bosca.git.ui.GitHubUsersModel" required />
+  <script server provides="model">
+    bosca.git.ui.GitHubUsersModel(
+        initial.allowed,
+        initial.offset,
+        initial.principalOffset,
+        initial.mappings,
+        initial.principals,
+    )
+  </script>
+  <island name="git-github-users" :key='"shared"'>
+    <section class="settings-stack">
+      <if model.message.isNotBlank()>
+        <ui-alert :tone='if (model.failed) "error" else "success"'>{ model.message }</ui-alert>
+      </if>
+      <ui-card :padded="false">
+        <ui-section-heading
+          title="Add user mapping"
+          subtitle="Associate a GitHub username with the same person's Bosca identity."
+        />
+        <div class="section-body">
+          <p class="mapping-help">
+            Mappings apply to all paired repositories and grant no permissions. Repository edit
+            access comes from Bosca groups. Pull request imports also need the author's primary
+            profile.
+          </p>
+          <form class="mapping-form" @submit="model.save(form.username, form.principal, ctx)">
+            <ui-field label="GitHub username">
+              <ui-input name="username" :value="model.username" required />
+            </ui-field>
+            <ui-field label="Bosca principal">
+              <ui-select searchable name="principal" required>
+                <option value="">Choose the same person's Bosca principal</option>
+                <if model.principal.isNotBlank() && model.principals.none { it.id == model.principal }>
+                  <option :value="model.principal" selected>
+                    { model.principal }
+                    (selected on another page)
+                  </option>
+                </if>
+                <for principal in model.principals.take(25)>
+                  <option :value="principal.id" :selected="principal.id == model.principal">
+                    { model.label(principal) }
+                  </option>
+                </for>
+              </ui-select>
+            </ui-field>
+            <ui-button primary type="submit">Save mapping</ui-button>
+            <div class="toolbar mapping-paging">
+              <if model.principalOffset != 0L>
+                <ui-button
+                  @click="model.move(model.offset, model.principalOffset - 25, form.username, form.principal, ctx)"
+                >
+                  Previous principals
+                </ui-button>
+              </if>
+              <if model.principalOffset != 0L || model.principals.size == 26>
+                <span class="muted">Users page { model.principalOffset / 25 + 1 }</span>
+              </if>
+              <if model.principals.size == 26>
+                <ui-button
+                  @click="model.move(model.offset, model.principalOffset + 25, form.username, form.principal, ctx)"
+                >
+                  Next principals
+                </ui-button>
+              </if>
+              <if model.offset != 0L>
+                <ui-button
+                  @click="model.move(model.offset - 25, model.principalOffset, form.username, form.principal, ctx)"
+                >
+                  Previous mappings
+                </ui-button>
+              </if>
+              <if model.offset != 0L || model.mappings.size == 26>
+                <span class="muted">Mappings page { model.offset / 25 + 1 }</span>
+              </if>
+              <if model.mappings.size == 26>
+                <ui-button
+                  @click="model.move(model.offset + 25, model.principalOffset, form.username, form.principal, ctx)"
+                >
+                  Next mappings
+                </ui-button>
+              </if>
+              <ui-button
+                @click="model.move(model.offset, model.principalOffset, form.username, form.principal, ctx)"
+              >
+                Refresh
+              </ui-button>
+            </div>
+          </form>
+        </div>
+      </ui-card>
+      <ui-card :padded="false">
+        <ui-section-heading
+          title="User mappings"
+          :subtitle='model.mappings.take(25).size.toString() + (if (model.mappings.take(25).size == 1) " mapping" else " mappings") + " on this page."'
+        />
+        <if model.mappings.isEmpty()>
+          <ui-empty-state
+            icon="users"
+            title="No user mappings"
+            message="Add a mapping above to attribute synchronized changes to the right Bosca user."
+          />
+        <else>
+          <ui-table-scroll>
+            <table>
+              <thead>
+                <tr>
+                  <th>GitHub user</th>
+                  <th>Bosca identity</th>
+                  <th class="actions-column"></th>
+                </tr>
+              </thead>
+              <tbody>
+                <for mapping in model.mappings.take(25)>
+                  <tr>
+                    <td>
+                      <strong>
+                        { mapping.githubUsername?.let { "@$it" } ?: mapping.githubUserId.toString() }
+                      </strong>
+                    </td>
+                    <td>
+                      { model.principals.firstOrNull { it.id == mapping.principalId }?.let { model.label(it) } ?: mapping.principalId }
+                    </td>
+                    <td class="actions-column">
+                      <ui-confirm-dialog
+                        title="Remove user mapping?"
+                        description="Future synchronized changes will no longer use this identity. Previous deliveries retain their attribution."
+                        triggerLabel="Remove mapping"
+                      >
+                        <form
+                          class="modal-form"
+                          @submit="model.remove(mapping.githubUserId, true, ctx)"
+                        >
+                          <footer class="modal-footer">
+                            <ui-button ref="cancel">Cancel</ui-button>
+                            <ui-button type="submit" class="danger">Remove mapping</ui-button>
+                          </footer>
+                        </form>
+                      </ui-confirm-dialog>
+                    </td>
+                  </tr>
+                </for>
+              </tbody>
+            </table>
+          </ui-table-scroll>
+        </if>
+      </ui-card>
+    </section>
+  </island>
+  <style scoped>
+    .mapping-help {
+      max-width: 680px;
+      margin: 0 0 18px;
+      font-size: 12.5px;
+      line-height: 1.6;
+      color: var(--fg-3);
+    }
+    .mapping-form {
+      display: grid;
+      grid-template-columns: minmax(0, 220px) minmax(0, 1fr) auto;
+      gap: 12px;
+      align-items: end;
+    }
+    .mapping-paging {
+      grid-column: 1 / -1;
+      margin-top: 6px;
+    }
+    @media (max-width: 700px) {
+      .mapping-form {
+        grid-template-columns: minmax(0, 1fr);
+      }
+      .mapping-form > button {
+        justify-self: start;
+      }
+    }
+  </style>
+</component>

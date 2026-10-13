@@ -1,0 +1,70 @@
+{
+  "id": "run",
+  "pipelineId": "pipeline",
+  "repositoryId": "repo",
+  "commitSha": "abc",
+  "ref": "refs/heads/main",
+  "triggerType": "MANUAL",
+  "triggeredBy": "owner",
+  "status": "RUNNING",
+  "number": 3,
+  "concurrencyGroup": null,
+  "parameters": {},
+  "created": "2026-10-09T00:00:00Z",
+  "started": "2026-10-09T00:00:00Z",
+  "finished": null,
+  "durationSeconds": 7,
+  "jobs": [
+    {
+      "id": "job",
+      "pipelineRunId": "run",
+      "name": "Build",
+      "status": "QUEUED",
+      "runnerLabel": "linux",
+      "agentId": "agent",
+      "matrixValues": null,
+      "dependsOn": [],
+      "requirements": [
+        {
+          "type": "test"
+        }
+      ],
+      "pipelineRequirements": null,
+      "requirementsSatisfiedAt": null,
+      "requirementsDeadline": "2026-10-09T00:00:00Z",
+      "awaitingRequirements": true,
+      "requirementsBypassedAt": null,
+      "requirementsBypassReason": null,
+      "errorMessage": null,
+      "started": null,
+      "finished": null,
+      "attempt": 1,
+      "agent": {
+        "id": "agent",
+        "name": "Linux runner",
+        "status": "ONLINE"
+      },
+      "steps": [
+        {
+          "id": "step",
+          "pipelineJobId": "job",
+          "name": "Compile",
+          "ordinal": 0,
+          "status": "RUNNING",
+          "exitCode": null,
+          "errorMessage": null,
+          "started": "2026-10-09T00:00:00Z",
+          "finished": null
+        }
+      ]
+    }
+  ],
+  "artifacts": [
+    {
+      "id": "artifact",
+      "name": "build/report #1.zip",
+      "sizeBytes": 1024,
+      "created": "2026-10-09T00:00:00Z"
+    }
+  ]
+}

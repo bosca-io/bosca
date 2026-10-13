@@ -1,0 +1,112 @@
+<component tag="ui-view-tabs">
+  <prop name="label" type="String" required />
+  <prop name="tabs" type="List<String>" required />
+  <prop name="selected" type="String" required />
+  <div class="view-tabs" role="tablist" :aria-label="label">
+    <for tab in tabs>
+      <button
+        type="button"
+        role="tab"
+        :data-tab="tab"
+        :aria-selected="(tab == selected).toString()"
+        :tabindex="if (tab == selected) 0 else -1"
+      >
+        { tab }
+      </button>
+    </for>
+  </div>
+  <style scoped>
+    .view-tabs {
+      display: flex;
+      align-items: stretch;
+      align-self: stretch;
+      gap: 4px;
+      min-width: 0;
+    }
+    button {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border: 0;
+      background: transparent;
+      padding: 0 12px;
+      min-height: 46px;
+      color: var(--fg-3);
+      font: inherit;
+      font-size: 12.5px;
+      line-height: normal;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+    button::after {
+      content: "";
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: -1px;
+      height: 2px;
+      background: transparent;
+    }
+    button[aria-selected="true"]::after {
+      background: var(--accent);
+    }
+    button[aria-selected="true"] {
+      color: var(--fg-0);
+      font-weight: 500;
+    }
+    button:hover {
+      color: var(--fg-1);
+    }
+    button:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: -2px;
+    }
+  </style>
+  <script client scoped>
+    const select = (button: HTMLButtonElement) => {
+      for (const item of ctx.root.querySelectorAll<HTMLButtonElement>(
+        "[role=tab]",
+      )) {
+        item.setAttribute("aria-selected", String(item === button));
+        item.tabIndex = item === button ? 0 : -1;
+      }
+      ctx.root.dispatchEvent(
+        new CustomEvent("viewchange", {
+          bubbles: true,
+          detail: button.dataset.tab,
+        }),
+      );
+    };
+    ctx.on<MouseEvent>(ctx.root, "click", (event) => {
+      const tab =
+        event.target instanceof Element
+          ? event.target.closest<HTMLButtonElement>("[role=tab]")
+          : null;
+      if (tab) select(tab);
+    });
+    ctx.on<KeyboardEvent>(ctx.root, "keydown", (event) => {
+      const tabs = [...ctx.root.querySelectorAll<HTMLButtonElement>("[role=tab]")];
+      const index = tabs.indexOf(document.activeElement as HTMLButtonElement);
+      if (
+        index < 0 ||
+        !["ArrowRight", "ArrowLeft", "Home", "End"].includes(event.key)
+      )
+        return;
+      event.preventDefault();
+      const next =
+        event.key === "Home"
+          ? tabs[0]
+          : event.key === "End"
+            ? tabs.at(-1)
+            : tabs[
+                (index + (event.key === "ArrowRight" ? 1 : tabs.length - 1)) %
+                  tabs.length
+              ];
+      if (next) {
+        select(next);
+        next.focus();
+      }
+    });
+  </script>
+</component>

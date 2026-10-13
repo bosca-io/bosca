@@ -1,0 +1,75 @@
+<component tag="git-statuses-results">
+  <prop name="page" type="bosca.git.ui.ExplorePage" required />
+  <div class="settings-stack">
+    <if page.sha.isNotBlank()>
+      <ui-card :padded="false">
+        <ui-section-heading
+          :title='"Checks for " + page.sha.take(12)'
+          subtitle="Statuses reported for the selected commit."
+        />
+        <if page.statuses.isEmpty()>
+          <ui-empty-state
+            icon="check"
+            title="No reported checks"
+            message="No status checks have been reported for this commit."
+          />
+        <else>
+          <div class="record-list">
+            <for status in page.statuses>
+              <div class="record-row">
+                <git-status-badge :status="status.state.name" />
+                <div class="record-copy">
+                  <strong>{ status.context }</strong>
+                  <p>{ status.description.orEmpty() }</p>
+                  <span class="record-meta">
+                    <ui-time :value="status.created" />
+                  </span>
+                </div>
+                <if bosca.git.ui.safeWebHref(status.targetUrl).isNotBlank()>
+                  <a
+                    class="button-link"
+                    :href="bosca.git.ui.safeWebHref(status.targetUrl)"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    View check
+                  </a>
+                </if>
+              </div>
+            </for>
+          </div>
+        </if>
+      </ui-card>
+    </if>
+    <ui-card :padded="false">
+      <ui-section-heading
+        title="Recent commits"
+        subtitle="Choose a commit to inspect its checks."
+      />
+      <if page.recent.isEmpty()>
+        <ui-empty-state
+          icon="commit"
+          title="No recent commits"
+          message="Repository commits will appear here."
+        />
+      <else>
+        <div class="record-list">
+          <for commit in page.recent>
+            <div class="record-row">
+              <span class="record-icon">
+                <ui-icon name="commit" />
+              </span>
+              <div class="record-copy">
+                <strong>{ commit.message }</strong>
+                <p>{ commit.author }</p>
+              </div>
+              <a class="button-link" :href="page.statusHref(commit.sha)">
+                <code>{ commit.sha.take(12) }</code>
+              </a>
+            </div>
+          </for>
+        </div>
+      </if>
+    </ui-card>
+  </div>
+</component>

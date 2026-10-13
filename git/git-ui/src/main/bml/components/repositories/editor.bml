@@ -1,0 +1,60 @@
+<component tag="git-file-editor">
+  <prop name="page" type="bosca.git.ui.RepositoryPage" required />
+  <script server provides="model">
+    bosca.git.ui.RepositoryEditorModel(
+        page,
+        page.id,
+        page.ref,
+        if (page.creating) "" else page.file,
+        if (page.creating) (if (page.path.isBlank()) "" else page.path + "/") else page.file,
+        page.content.orEmpty(),
+        page.listHref,
+    )
+  </script>
+  <island name="git-file-editor" :key="model.page.id + model.page.ref + model.page.file">
+    <form
+      class="code-widget"
+      :data-path="model.draftPath"
+      :data-repository="model.id"
+      :data-ref="model.ref"
+      :data-next-href="model.nextHref"
+      @submit="model.save(form.path, form.content, form.message, ctx)"
+    >
+      <div class="toolbar">
+        <ui-field label="File path">
+          <ui-input ref="path" name="path" :value="model.draftPath" required />
+        </ui-field>
+        <ui-button ref="preview" aria-pressed="false">Preview Markdown</ui-button>
+        <ui-button ref="wrap" aria-pressed="false">Wrap lines</ui-button>
+        <a :href="model.page.href(path = model.page.path, file = model.page.file)">Cancel</a>
+      </div>
+      <if model.message.isNotBlank()>
+        <ui-alert>{ model.message }</ui-alert>
+      </if>
+      <textarea ref="content" name="content" hidden>{ model.draftContent }</textarea>
+      <div ref="editor" class="code-editor" data-bml-preserve="code-editor"></div>
+      <article ref="previewSurface" class="markdown draft-preview" hidden></article>
+      <p ref="previewStatus" role="status" hidden></p>
+      <div class="toolbar commit-controls">
+        <ui-field label="Commit message">
+          <ui-input name="message" :value="model.commitMessage" required />
+        </ui-field>
+        <ui-button type="submit">Commit to { model.page.ref }</ui-button>
+        <span class="muted">
+          Author:
+          { model.page.authorName }
+          &lt;
+          { model.page.authorEmail }
+          &gt;
+        </span>
+      </div>
+    </form>
+  </island>
+  <script client scoped>
+    import { GitMarkdownPreview } from "./GitMarkdownPreview";
+    import { mountCodeEditor } from "@client/editor";
+    mountCodeEditor(ctx, false, (id, ref, path, source) =>
+      GitMarkdownPreview.render(id, ref, path, source),
+    );
+  </script>
+</component>

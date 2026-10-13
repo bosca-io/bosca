@@ -136,6 +136,7 @@ Operational data belongs in PostgreSQL; analytical data belongs in Iceberg and T
 
 ## Cross-module conventions
 
+- Put each hand-written top-level Kotlin class, data class, enum, and interface in its own file named after the type. Keep page loaders and shared functions in focused files.
 - I/O boundaries are async-first and should be `suspend` functions.
 - Avoid `!!`; prefer safe calls, `let`, Elvis expressions, or restructuring so non-nullability is evident to the compiler.
 - Never use `GlobalScope` and never catch or swallow `CancellationException`.

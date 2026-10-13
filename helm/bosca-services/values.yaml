@@ -247,6 +247,8 @@ bosca-artifacts-server:
 # ─── bosca-git-server ───────────────────────────────────────────────
 # Consumes from secrets.yaml: pg-creds-bosca-git-server, nats, jwt, url, s3, meilisearch-master-key.
 # Inherits PIPELINE_SECRET_KEY from the same environment ConfigMaps as server and runner.
+# gateway.hostnames: [git.<domain>] serves both listeners with HTTP path routing.
+# Custom public origins use appConfig.gitUrl on this subchart.
 bosca-git-server:
   enabled: false
   secrets:

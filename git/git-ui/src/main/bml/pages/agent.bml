@@ -1,0 +1,16 @@
+<page route="/ci-agents/{id}" requireAuth>
+  <script server provides="page">
+    bosca.git.ui.agentPage()
+  </script>
+  <git-layout title="CI agent">
+    <ui-page>
+      <if !page.allowed>
+        <ui-alert>Administrator access is required.</ui-alert>
+      <else-if page.selected != null>
+        <ui-page-heading :title="page.selected.name" backHref="/ci-agents" backLabel="CI agents" />
+        <git-agent-status :agent="page.selected" />
+        <git-agent-settings :page="page" />
+      </if>
+    </ui-page>
+  </git-layout>
+</page>

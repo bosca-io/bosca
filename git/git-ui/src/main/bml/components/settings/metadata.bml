@@ -1,0 +1,189 @@
+<component tag="git-repository-metadata">
+  <prop name="page" type="bosca.git.ui.RepositorySettingsPage" required />
+  <script server provides="model">
+    bosca.git.ui.RepositoryMetadataModel(page)
+  </script>
+  <island name="git-repository-metadata" :key="page.repository.id">
+    <div class="settings-stack" :data-next-href="model.nextHref">
+      <if model.message.isNotBlank()>
+        <ui-alert :tone='if (model.failed) "error" else "success"'>{ model.message }</ui-alert>
+      </if>
+      <ui-card :padded="false">
+        <ui-section-heading
+          title="Repository details"
+          subtitle="Name, description and defaults for this repository."
+        >
+          <ui-dialog
+            title="Edit repository"
+            triggerLabel="Edit details"
+            icon="edit"
+            primary
+            :forceOpen="model.failed && !model.renaming"
+          >
+            <form
+              class="modal-form"
+              @submit="model.save(form.name, form.description, form.visibility, form.contentType, form.branch, ctx)"
+            >
+              <div class="modal-fields">
+                <if model.failed && !model.renaming>
+                  <ui-alert :tone='if (model.failed) "error" else "success"'>
+                    { model.message }
+                  </ui-alert>
+                </if>
+                <ui-field label="Name">
+                  <ui-input name="name" :value="model.name" required />
+                </ui-field>
+                <ui-field label="Description">
+                  <textarea name="description" rows="3">{ model.description }</textarea>
+                </ui-field>
+                <div class="field-pair">
+                  <ui-field label="Visibility">
+                    <ui-select name="visibility">
+                      <for value in bosca.git.ui.graphql.GitVisibility.entries>
+                        <option :value="value.name" :selected="value.name == model.visibility">
+                          { value.name.lowercase().replaceFirstChar(Char::uppercase) }
+                        </option>
+                      </for>
+                    </ui-select>
+                  </ui-field>
+                  <ui-field label="Content type">
+                    <ui-select name="contentType">
+                      <for value in bosca.git.ui.graphql.GitRepositoryContentType.entries>
+                        <option :value="value.name" :selected="value.name == model.contentType">
+                          { value.name.lowercase().replace('_', ' ').replaceFirstChar(Char::uppercase) }
+                        </option>
+                      </for>
+                    </ui-select>
+                  </ui-field>
+                </div>
+                <ui-field label="Default branch">
+                  <ui-input name="branch" :value="model.branch" required />
+                </ui-field>
+              </div>
+              <footer class="modal-footer">
+                <ui-button ref="cancel">Cancel</ui-button>
+                <ui-button primary type="submit">Save repository</ui-button>
+              </footer>
+            </form>
+          </ui-dialog>
+        </ui-section-heading>
+        <dl class="repository-details">
+          <div>
+            <dt>Name</dt>
+            <dd>{ model.page.repository.name }</dd>
+          </div>
+          <div>
+            <dt>Default branch</dt>
+            <dd>
+              <code>{ model.page.repository.defaultBranch }</code>
+            </dd>
+          </div>
+          <div>
+            <dt>Visibility</dt>
+            <dd>
+              <ui-badge>
+                { model.page.repository.visibility.name.lowercase().replaceFirstChar(Char::uppercase) }
+              </ui-badge>
+            </dd>
+          </div>
+          <div>
+            <dt>Content type</dt>
+            <dd>
+              { model.page.repository.contentType?.name?.lowercase()?.replace('_', ' ')?.replaceFirstChar(Char::uppercase) ?: "General" }
+            </dd>
+          </div>
+          <div class="repository-description">
+            <dt>Description</dt>
+            <dd>
+              { model.page.repository.description?.takeIf(String::isNotBlank) ?: "No description" }
+            </dd>
+          </div>
+        </dl>
+      </ui-card>
+      <ui-card :padded="false">
+        <div class="settings-action">
+          <span class="action-icon">
+            <ui-icon name="edit" :size="20" />
+          </span>
+          <div class="action-copy">
+            <h3>Repository slug</h3>
+            <p>Changing the slug changes the clone URL. Update existing remotes after renaming.</p>
+            <code class="clone-address">{ model.page.repository.cloneUrl }</code>
+          </div>
+          <ui-dialog
+            title="Rename repository slug"
+            triggerLabel="Rename slug"
+            icon="edit"
+            :forceOpen="model.failed && model.renaming"
+          >
+            <form class="modal-form" @submit="model.rename(form.slug, true, ctx)">
+              <div class="modal-fields">
+                <p class="form-help">
+                  This changes the clone URL. Existing remotes will need the new address.
+                </p>
+                <ui-field label="Slug">
+                  <ui-input name="slug" :value="model.slug" required />
+                </ui-field>
+                <if model.failed && model.renaming>
+                  <ui-alert :tone='if (model.failed) "error" else "success"'>
+                    { model.message }
+                  </ui-alert>
+                </if>
+              </div>
+              <footer class="modal-footer">
+                <ui-button ref="cancel">Cancel</ui-button>
+                <ui-button type="submit" primary>Rename slug</ui-button>
+              </footer>
+            </form>
+          </ui-dialog>
+        </div>
+      </ui-card>
+    </div>
+  </island>
+  <style scoped>
+    .repository-details {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 20px 28px;
+      padding: 18px;
+      margin: 0;
+    }
+    .repository-details dt {
+      color: var(--fg-3);
+      font-size: 11.5px;
+      margin-bottom: 6px;
+    }
+    .repository-details dd {
+      margin: 0;
+      font-size: 13px;
+      overflow-wrap: anywhere;
+    }
+    .repository-description {
+      grid-column: 1 / -1;
+    }
+    .field-pair {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+    }
+    .clone-address {
+      display: block;
+      margin-top: 8px;
+      color: var(--fg-3);
+      font-size: 11.5px;
+      overflow-wrap: anywhere;
+    }
+    @media (max-width: 600px) {
+      .field-pair {
+        grid-template-columns: minmax(0, 1fr);
+      }
+    }
+  </style>
+  <script client scoped>
+    ctx.onUpdate(() => {
+      const next =
+        ctx.root.querySelector<HTMLElement>("[data-next-href]")?.dataset.nextHref;
+      if (next) location.assign(next);
+    });
+  </script>
+</component>

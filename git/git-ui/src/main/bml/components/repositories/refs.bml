@@ -1,0 +1,144 @@
+<component tag="git-repository-refs">
+  <prop name="page" type="bosca.git.ui.RepositoryPage" required />
+  <script server provides="model">
+    bosca.git.ui.RepositoryRefModel(page, page.id, page.ref, page.listHref)
+  </script>
+  <island name="git-repository-refs" :key="model.page.id + model.page.ref + model.page.file">
+    <section class="settings-stack" :data-next-href="model.nextHref">
+      <if model.message.isNotBlank()>
+        <ui-alert :tone='if (model.failed) "error" else "success"'>{ model.message }</ui-alert>
+      </if>
+      <ui-card :padded="false">
+        <ui-section-heading
+          :title='if (model.page.tab == "branches") "Branches" else "Tags"'
+          :subtitle='if (model.page.tab == "branches") model.page.branches.size.toString() + (if (model.page.branches.size == 1) " branch" else " branches") else model.page.tags.size.toString() + (if (model.page.tags.size == 1) " tag" else " tags")'
+        >
+          <if model.page.tab == "branches" && model.page.canEdit && !model.page.archived && model.page.resolvedSha.isNotBlank()>
+            <ui-dialog
+              title="Create branch"
+              triggerLabel="Create branch"
+              triggerIcon="plus"
+              icon="branch"
+              primary
+              :forceOpen="model.failed"
+            >
+              <form class="modal-form" @submit="model.create(form.name, form.source, ctx)">
+                <div class="modal-fields">
+                  <if model.failed>
+                    <ui-alert :tone='if (model.failed) "error" else "success"'>
+                      { model.message }
+                    </ui-alert>
+                  </if>
+                  <ui-field label="Branch name">
+                    <ui-input
+                      name="name"
+                      :value="model.name"
+                      placeholder="feature/new-work"
+                      required
+                    />
+                  </ui-field>
+                  <ui-field label="Source ref">
+                    <ui-input name="source" :value="model.source" required />
+                  </ui-field>
+                </div>
+                <footer class="modal-footer">
+                  <ui-button ref="cancel">Cancel</ui-button>
+                  <ui-button type="submit" primary>Create branch</ui-button>
+                </footer>
+              </form>
+            </ui-dialog>
+          </if>
+        </ui-section-heading>
+        <if model.page.tab == "branches">
+          <if model.page.branches.isEmpty()>
+            <ui-empty-state
+              icon="branch"
+              title="No branches yet"
+              message="Create the first commit in this repository to start its default branch."
+            >
+              <a class="button-link" :href="model.page.rootHref">Open repository</a>
+            </ui-empty-state>
+          <else>
+            <div class="record-list">
+              <for branch in model.page.branches>
+                <div class="record-row">
+                  <span class="record-icon">
+                    <ui-icon name="branch" />
+                  </span>
+                  <div class="record-copy">
+                    <a class="record-title" :href="model.page.href(ref = branch)">{ branch }</a>
+                    <if branch == model.page.ref>
+                      <div class="record-meta">
+                        <ui-badge>Selected</ui-badge>
+                      </div>
+                    </if>
+                  </div>
+                  <if model.page.canEdit && !model.page.archived>
+                    <ui-confirm-dialog
+                      title="Delete branch?"
+                      :description='"The branch " + branch + " will be deleted from this repository."'
+                      triggerLabel="Delete"
+                    >
+                      <form class="modal-form" @submit='model.remove(branch, "branch", true, ctx)'>
+                        <footer class="modal-footer">
+                          <ui-button ref="cancel">Cancel</ui-button>
+                          <ui-button type="submit" class="danger">Delete branch</ui-button>
+                        </footer>
+                      </form>
+                    </ui-confirm-dialog>
+                  </if>
+                </div>
+              </for>
+            </div>
+          </if>
+        <else>
+          <if model.page.tags.isEmpty()>
+            <ui-empty-state
+              icon="tag"
+              title="No tags yet"
+              message="Push a tag to mark a release or another point in this repository's history."
+            />
+          <else>
+            <div class="record-list">
+              <for tag in model.page.tags>
+                <div class="record-row">
+                  <span class="record-icon">
+                    <ui-icon name="tag" />
+                  </span>
+                  <div class="record-copy">
+                    <a class="record-title" :href="model.page.href(ref = tag.name)">{ tag.name }</a>
+                    <div class="record-meta">
+                      <code>{ tag.sha.take(12) }</code>
+                      <span>{ tag.message }</span>
+                    </div>
+                  </div>
+                  <if model.page.canEdit && !model.page.archived>
+                    <ui-confirm-dialog
+                      title="Delete tag?"
+                      :description='"The tag " + tag.name + " will be deleted from this repository."'
+                      triggerLabel="Delete"
+                    >
+                      <form class="modal-form" @submit='model.remove(tag.name, "tag", true, ctx)'>
+                        <footer class="modal-footer">
+                          <ui-button ref="cancel">Cancel</ui-button>
+                          <ui-button type="submit" class="danger">Delete tag</ui-button>
+                        </footer>
+                      </form>
+                    </ui-confirm-dialog>
+                  </if>
+                </div>
+              </for>
+            </div>
+          </if>
+        </if>
+      </ui-card>
+    </section>
+  </island>
+  <script client scoped>
+    ctx.onUpdate(() => {
+      const next =
+        ctx.root.querySelector<HTMLElement>("[data-next-href]")?.dataset.nextHref;
+      if (next) location.assign(next);
+    });
+  </script>
+</component>

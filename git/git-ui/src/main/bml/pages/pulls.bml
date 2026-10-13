@@ -1,0 +1,16 @@
+<page route="/pulls" requireAuth>
+  <script server provides="page">
+    bosca.git.ui.pullListPage()
+  </script>
+  <git-layout title="Pull requests">
+    <ui-page>
+      <ui-page-heading title="Pull requests" icon="branch">
+        <div class="heading-actions">
+          <git-pull-filter :page="page" />
+          <git-pull-create :page="page" />
+        </div>
+      </ui-page-heading>
+      <git-pull-list :page="page" />
+    </ui-page>
+  </git-layout>
+</page>

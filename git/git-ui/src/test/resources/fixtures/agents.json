@@ -1,0 +1,87 @@
+[
+  {
+    "id": "agent",
+    "name": "Linux runner",
+    "labels": [
+      "linux"
+    ],
+    "mode": "RUNNER",
+    "status": "BUSY",
+    "ephemeral": false,
+    "jobId": null,
+    "parentAgentId": null,
+    "instanceId": null,
+    "lastHeartbeat": "2026-10-09T00:00:00Z",
+    "expiresAt": null,
+    "created": "2026-10-09T00:00:00Z",
+    "currentJob": {
+      "id": "job",
+      "pipelineRunId": "run",
+      "name": "Build",
+      "status": "QUEUED",
+      "runnerLabel": "linux",
+      "matrixValues": null,
+      "dependsOn": [],
+      "started": null,
+      "finished": null,
+      "timeoutMinutes": 30,
+      "steps": [
+        {
+          "id": "step",
+          "pipelineJobId": "job",
+          "name": "Compile",
+          "ordinal": 0,
+          "status": "RUNNING",
+          "exitCode": null,
+          "errorMessage": null,
+          "started": "2026-10-09T00:00:00Z",
+          "finished": null,
+          "uses": null,
+          "run": "echo build",
+          "image": "builder",
+          "condition": null,
+          "workingDirectory": "/workspace"
+        }
+      ]
+    },
+    "recentJobs": [
+      {
+        "id": "job",
+        "pipelineRunId": "run",
+        "name": "Build",
+        "status": "QUEUED",
+        "runnerLabel": "linux",
+        "started": null,
+        "finished": null
+      }
+    ]
+  },
+  {
+    "id": "orchestrator",
+    "name": "VM orchestrator",
+    "labels": [
+      "linux"
+    ],
+    "mode": "ORCHESTRATOR",
+    "status": "BUSY",
+    "ephemeral": false,
+    "jobId": null,
+    "parentAgentId": null,
+    "instanceId": null,
+    "lastHeartbeat": "2026-10-09T00:00:00Z",
+    "expiresAt": null,
+    "created": "2026-10-09T00:00:00Z",
+    "currentJob": null,
+    "recentJobs": [
+      {
+        "id": "job",
+        "pipelineRunId": "run",
+        "name": "Build",
+        "status": "QUEUED",
+        "runnerLabel": "linux",
+        "started": null,
+        "finished": null
+      }
+    ]
+  }
+]

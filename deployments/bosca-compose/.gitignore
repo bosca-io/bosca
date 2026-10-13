@@ -1,0 +1,8 @@
+/.env
+/.docker/
+/data/
+/dist/
+/.bosca-compose-install.json
+/config/nginx.conf
+/config/nginx-bootstrap.conf
+__pycache__/

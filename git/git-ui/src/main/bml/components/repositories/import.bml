@@ -1,0 +1,75 @@
+<component tag="git-repository-import">
+  <prop name="initial" type="bosca.git.ui.RepositoryListModel" required />
+  <script server provides="model">
+    bosca.git.ui.RepositoryListModel(initial.state, initial.owner)
+  </script>
+  <island name="git-repository-import" :key="initial.owner.id">
+    <div :data-next-href="model.nextHref">
+      <ui-dialog
+        title="Import repository"
+        triggerLabel="Import"
+        icon="download"
+        :primary="false"
+        :forceOpen="model.failed"
+      >
+        <form
+          class="modal-form"
+          @submit="model.importRepository(form.name, form.slug, form.cloneUrl, form.ownerId, ctx)"
+        >
+          <div class="modal-fields">
+            <if model.message.isNotBlank()>
+              <ui-alert>{ model.message }</ui-alert>
+            </if>
+            <ui-field label="Clone URL">
+              <ui-input
+                name="cloneUrl"
+                type="url"
+                placeholder="https://git.example.com/team/project.git"
+                :value="model.draft.cloneUrl"
+                required
+              />
+            </ui-field>
+            <ui-field label="Name">
+              <ui-input
+                name="name"
+                type="text"
+                placeholder="my-project"
+                :value="model.draft.name"
+                required
+              />
+            </ui-field>
+            <ui-field label="Slug">
+              <ui-input
+                name="slug"
+                type="text"
+                placeholder="my-project"
+                mono
+                :value="model.draft.slug"
+                required
+              />
+            </ui-field>
+            <git-owner-picker
+              :allowAll="false"
+              name="ownerId"
+              :id="model.draft.ownerId.ifBlank { model.owner.id }"
+              :label='if (model.owner.id == "all") "Choose an owner" else model.owner.label'
+            />
+          </div>
+          <footer class="modal-footer">
+            <ui-button type="button" ref="cancel">Cancel</ui-button>
+            <ui-button type="submit" primary>Import repository</ui-button>
+          </footer>
+        </form>
+      </ui-dialog>
+    </div>
+  </island>
+  <script client scoped>
+    import { suggestSlug } from "@client/slug";
+    suggestSlug(ctx);
+    ctx.onUpdate(() => {
+      const next =
+        ctx.root.querySelector<HTMLElement>("[data-next-href]")?.dataset.nextHref;
+      if (next) location.assign(next);
+    });
+  </script>
+</component>

@@ -1,0 +1,53 @@
+<component tag="git-compare-results">
+  <prop name="page" type="bosca.git.ui.ExplorePage" required />
+  <script server provides="comparison">
+    page.comparison
+  </script>
+  <div class="settings-stack">
+    <if comparison != null>
+      <ui-card :padded="false">
+        <ui-section-heading title="Comparison" :subtitle='page.base + " → " + page.head'>
+          <a class="button-link primary" :href="page.createPullHref">
+            <ui-icon name="pull" />
+            Create pull request
+          </a>
+        </ui-section-heading>
+        <div class="section-body">
+          <p class="detail-note">
+            { comparison.filesChanged.toString() + (if (comparison.filesChanged == 1) " file changed" else " files changed") + " · +" + comparison.insertions + " −" + comparison.deletions }
+          </p>
+          <details open>
+            <ui-disclosure-heading>Commits ({ comparison.commits.size })</ui-disclosure-heading>
+            <div class="record-list">
+              <for commit in comparison.commits>
+                <div class="record-row">
+                  <span class="record-icon">
+                    <ui-icon name="commit" />
+                  </span>
+                  <div class="record-copy">
+                    <strong>{ commit.message }</strong>
+                    <p>{ commit.authorName }</p>
+                  </div>
+                  <a class="button-link" :href="page.browseHref(commit.sha)">
+                    <code>{ commit.sha.take(12) }</code>
+                  </a>
+                </div>
+              </for>
+            </div>
+          </details>
+        </div>
+      </ui-card>
+      <for file in comparison.files>
+        <git-diff-file :file="bosca.git.ui.diffView(file)" />
+      </for>
+    <else>
+      <ui-card :padded="false">
+        <ui-empty-state
+          icon="compare"
+          title="Choose refs to compare"
+          message="Choose a repository and two refs to compare."
+        />
+      </ui-card>
+    </if>
+  </div>
+</component>

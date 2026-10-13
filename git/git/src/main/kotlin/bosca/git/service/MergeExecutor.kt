@@ -153,6 +153,8 @@ object MergeExecutor {
             rebasedCommit.message = c.fullMessage
 
             currentHead = inserter.insert(rebasedCommit)
+            // The next merge reads this commit through a separate object reader.
+            inserter.flush()
         }
 
         inserter.flush()

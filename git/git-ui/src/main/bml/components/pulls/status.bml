@@ -1,0 +1,61 @@
+<component tag="git-pull-status">
+  <prop name="status" type="String" required />
+  <prop name="iconOnly" type="Boolean" default="false" />
+  <script server provides="label">
+    status.lowercase().replaceFirstChar(Char::uppercase)
+  </script>
+  <script server provides="tone">
+    when (status) {
+        "OPEN" -> "success"
+        "MERGED" -> "purple"
+        "CLOSED" -> "error"
+        else -> "neutral"
+    }
+  </script>
+  <span class="pull-status" :data-state="status" :data-icon-only="iconOnly">
+    <if iconOnly>
+      <span class="state-icon" role="img" :aria-label="label">
+        <ui-icon :name='if (status == "MERGED") "merge" else "pull"' />
+      </span>
+    <else>
+      <ui-badge :tone="tone">
+        <span class="state-label">
+          <ui-icon :name='if (status == "MERGED") "merge" else if (status == "CLOSED") "close" else "pull"' :size="12" />
+          { label }
+        </span>
+      </ui-badge>
+    </if>
+  </span>
+  <style scoped>
+    .pull-status {
+      --state-color: var(--fg-3);
+      display: inline-flex;
+      flex: none;
+    }
+    .pull-status[data-state="OPEN"] {
+      --state-color: var(--ok);
+    }
+    .pull-status[data-state="MERGED"] {
+      --state-color: #a78bff;
+    }
+    .pull-status[data-state="CLOSED"] {
+      --state-color: var(--err);
+    }
+    .state-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      line-height: 16px;
+    }
+    .state-icon {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 30px;
+      height: 30px;
+      border-radius: 8px;
+      color: var(--state-color);
+      background: color-mix(in srgb, var(--state-color) 12%, transparent);
+    }
+  </style>
+</component>

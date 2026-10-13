@@ -32,7 +32,7 @@ Edit `swarm.local.json` before deployment:
 
 - Set the manager and worker SSH targets and the manager's private advertise address. Set a worker's optional `advertiseAddress` to its private address when it has multiple network interfaces.
 - Set each site's `serverMemory` when its Bosca server needs a different memory limit. It defaults to `768M`; for example, `1536M` allows 1.5 GiB. CPU remains uncapped.
-- Set each site's `id`, base `domain`, mail sender and `mailerType` (`sendgrid` or `mailgun`), Redis database number, and BML Artifacts URL/token. Site IDs must be unique lower-case letters and digits. Each site gets `<id>-bosca` and `<id>-warehouse` PostgreSQL databases. A site's public hostnames are derived from its base domain as in the Kubernetes deployment (see [Hostnames](#hostnames)); `gitDomain` is optional and only overrides the `git.` host. Set `rootImage` and optionally `rootPort` to serve a website at the root and `www` hosts.
+- Set each site's `id`, base `domain`, mail sender and `mailerType` (`sendgrid` or `mailgun`), Redis database number, and BML Artifacts URL/token. Site IDs must be unique lower-case letters and digits. Each site gets `<id>-bosca` and `<id>-warehouse` PostgreSQL databases. A site's public hostnames are derived from its base domain as in the Kubernetes deployment (see [Hostnames](#hostnames)); `gitDomain` overrides the shared Git API and UI hostname. Set `rootImage` and optionally `rootPort` to serve a website at the root and `www` hosts.
 - If a site's `rootImage` comes from another private registry, set `rootRegistryAuth.server` to the image's registry host. Set `username` to `api_token` and leave `password` blank for the one-time `setup-tokens` command to mint a pull-only token, or provide an existing `username` and `password` in the owner-only config. `passwordEnv` can supply the password during deployment instead. The CLI logs in to both the platform registry and any configured root image registries before deploying stacks.
 - The root website service receives `BML_GRAPHQL_ENDPOINT` pointing to that site's Bosca server over the Swarm overlay network, so BML pages can load data and proxy browser GraphQL calls.
 - Set a site's `rootEnv` map for additional website runtime environment variables. For the Bosca Nuxt website, set `rootEnv.NUXT_CLI_INSTALL_SCRIPT_URL` to `https://<artifacts-host>/raw/bosca/bosca-cli/<cli-version>/install.sh`. The website then configures that raw repository as the installer's package source. Use the CLI artifact version, which is independent of the website image tag. These settings apply only to that site's `root-web` service; run `bosca swarm deploy` after changing them.
@@ -81,7 +81,7 @@ Each site's hostnames and routes mirror the Kubernetes Gateway HTTPRoutes, with 
 | `studio.<domain>` | Studio; `/api/v1/events` and `/api/v1/installation` go to the analytics collector, and `/graphql`, `/graphqlws`, `/oauth2`, `/api/v1`, `/files`, and `/content` go to the Bosca server |
 | `profiles.<domain>` | Profiles self-service account site |
 | `a.<domain>` | Analytics collector |
-| `git.<domain>` | Git server |
+| `git.<domain>` | Git API/transport on 8091 and BML UI on 8093, selected by HTTP path |
 | `artifacts.<domain>` | Artifacts server (the site's registry) |
 | `notifications.<domain>` | Notifications preferences and unsubscribe pages |
 | `messages.<domain>` | Message server assets (`/assets`) and engagement tracking (`/c`, `/o`); existing notification links continue to work |
@@ -128,6 +128,13 @@ For a new installation, choose the backends before the first `bosca swarm deploy
 3. Change the desired site settings, review `bosca swarm render --config ./swarm.local.json`, and run `bosca swarm deploy --config ./swarm.local.json`. Resume traffic and CI agents after readiness checks pass.
 
 Changing a setting does not copy its queued jobs, cached entries, or counter values between backends. Changing only `cacheBackend` leaves jobs, pub/sub, locks, and counters on their selected backends; caches populate as the site serves requests again. The broker data directories remain in place.
+
+Git UI, clone URLs and auth returns share `https://git.<domain>`, overridden with
+`gitDomain`. Caddy sends known UI pages and BML endpoints to 8093 and leaves Git
+transport, LFS, raw files, GraphQL, OAuth, webhooks and CI paths on 8091. Register
+`https://git.<domain>/oauth2/google/callback` with the site's Google client in
+addition to the Bosca server callback. Health checks cover both Git listeners.
+Deploy a Git image built from this revision; its UI listener is required.
 
 ## OAuth redirects
 

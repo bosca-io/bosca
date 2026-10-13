@@ -19,7 +19,8 @@ Services:
   - bosca-artifacts-server: :8084
 {{- end }}
 {{- if index .Values "bosca-git-server" "enabled" }}
-  - bosca-git-server: :8091
+  - bosca-git-server API/transport: :{{ index .Values "bosca-git-server" "service" "port" }}
+  - bosca-git-server BML UI: :{{ index .Values "bosca-git-server" "ui" "port" }}
 {{- end }}
 
 Verify:

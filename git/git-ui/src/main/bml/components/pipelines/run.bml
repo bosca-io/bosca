@@ -1,0 +1,235 @@
+<component tag="git-pipeline-run">
+  <prop name="initial" type="bosca.git.ui.PipelineRunModel" required />
+  <script server provides="model">
+    bosca.git.ui.PipelineRunModel(
+        initial.run,
+        initial.canExecute,
+        initial.canEdit,
+        initial.canManage,
+    )
+  </script>
+  <island name="git-pipeline-run" :key="initial.run.id">
+    <section class="run-page" :data-next-href="model.nextHref" :data-run-active="model.active">
+      <ui-page-heading
+        :title='"Run #" + model.run.number'
+        :backHref='"/pipelines?repo=" + bosca.git.ui.encode(model.run.repositoryId)'
+        backLabel="Pipelines"
+      >
+        <div
+          class="toolbar run-controls"
+          :data-bml-preserve='"run-actions-" + model.run.status.name'
+        >
+          <if model.active && model.canEdit>
+            <ui-confirm-dialog
+              title="Cancel pipeline run?"
+              description="Running jobs will be stopped and pending jobs cancelled."
+              triggerLabel="Cancel run"
+              icon="close"
+              :forceOpen='model.failed && model.selectedAction == "cancel"'
+            >
+              <form class="modal-form" @submit='model.action("cancel", "", "", true, ctx)'>
+                <footer class="modal-footer">
+                  <ui-button ref="cancel">Keep running</ui-button>
+                  <ui-button type="submit" class="danger">Cancel run</ui-button>
+                </footer>
+              </form>
+            </ui-confirm-dialog>
+          </if>
+          <if !model.active && model.canExecute>
+            <ui-confirm-dialog
+              title="Rerun pipeline?"
+              description="Start a new pipeline run using this run's commit."
+              triggerLabel="Rerun pipeline"
+              icon="refresh"
+              :forceOpen='model.failed && model.selectedAction == "rerun"'
+            >
+              <form class="modal-form" @submit='model.action("rerun", "", "", true, ctx)'>
+                <footer class="modal-footer">
+                  <ui-button ref="cancel">Cancel</ui-button>
+                  <ui-button type="submit" primary>Rerun pipeline</ui-button>
+                </footer>
+              </form>
+            </ui-confirm-dialog>
+            <if model.run.status.name == "FAILURE" || model.run.status.name == "CANCELLED">
+              <ui-confirm-dialog
+                title="Rerun failed jobs?"
+                description="Retry the failed or cancelled jobs in this run."
+                triggerLabel="Rerun failed jobs"
+                icon="refresh"
+                :forceOpen='model.failed && model.selectedAction == "failed"'
+              >
+                <form class="modal-form" @submit='model.action("failed", "", "", true, ctx)'>
+                  <footer class="modal-footer">
+                    <ui-button ref="cancel">Cancel</ui-button>
+                    <ui-button type="submit" primary>Rerun failed jobs</ui-button>
+                  </footer>
+                </form>
+              </ui-confirm-dialog>
+            </if>
+          </if>
+          <if !model.active && model.canManage>
+            <ui-confirm-dialog
+              title="Delete pipeline run?"
+              description="This permanently removes the run, its logs and artifacts."
+              triggerLabel="Delete run"
+              :forceOpen='model.failed && model.selectedAction == "delete"'
+            >
+              <form class="modal-form" @submit='model.action("delete", "", "", true, ctx)'>
+                <footer class="modal-footer">
+                  <ui-button ref="cancel">Cancel</ui-button>
+                  <ui-button type="submit" class="danger">Delete run</ui-button>
+                </footer>
+              </form>
+            </ui-confirm-dialog>
+          </if>
+          <ui-button size="sm" icon="refresh" @click="model.refresh(ctx)">Refresh</ui-button>
+        </div>
+      </ui-page-heading>
+      <div class="settings-stack">
+        <if model.message.isNotBlank()>
+          <ui-alert :tone='if (model.failed) "error" else "success"'>{ model.message }</ui-alert>
+        </if>
+        <span data-bml-ref="pollError" role="status" />
+        <ui-card :padded="false">
+          <div class="section-body">
+            <dl class="info-grid">
+              <div>
+                <dt>Status</dt>
+                <dd>
+                  <git-status-badge :status="model.run.status.name" />
+                </dd>
+              </div>
+              <div>
+                <dt>Duration</dt>
+                <dd>{ model.run.durationSeconds?.let { "$it s" } ?: "—" }</dd>
+              </div>
+              <div>
+                <dt>Trigger</dt>
+                <dd>
+                  { model.run.triggerType.name.lowercase().replace('_', ' ').replaceFirstChar(Char::uppercase) }
+                </dd>
+              </div>
+              <div>
+                <dt>Ref</dt>
+                <dd>
+                  <code>{ model.run.ref }</code>
+                </dd>
+              </div>
+              <div>
+                <dt>Commit</dt>
+                <dd>
+                  <code :title="model.run.commitSha">{ model.run.commitSha.take(12) }</code>
+                </dd>
+              </div>
+              <div>
+                <dt>Started</dt>
+                <dd>
+                  <ui-time :value="model.run.started ?: model.run.created" />
+                </dd>
+              </div>
+            </dl>
+          </div>
+        </ui-card>
+        <div class="job-list">
+          <h2>Jobs</h2>
+          <if model.run.jobs.isEmpty()>
+            <ui-card :padded="false">
+              <ui-empty-state
+                icon="workflow"
+                title="No jobs"
+                message="This run contains no jobs."
+              />
+            </ui-card>
+          </if>
+          <for job in model.run.jobs>
+            <git-pipeline-job :job="job" :model="model" />
+          </for>
+        </div>
+        <ui-card :padded="false">
+          <ui-section-heading title="Artifacts" subtitle="Files produced by this pipeline run." />
+          <if model.run.artifacts.isEmpty()>
+            <ui-empty-state
+              icon="folder"
+              title="No artifacts"
+              message="Published build artifacts will appear here."
+            />
+          <else>
+            <div class="record-list">
+              <for artifact in model.run.artifacts>
+                <a
+                  class="record-row"
+                  download
+                  :href='"/ci/artifacts/" + bosca.git.ui.encode(model.run.repositoryId) + "/" + bosca.git.ui.encode(model.run.id) + "/" + bosca.git.ui.encode(artifact.name)'
+                >
+                  <span class="record-icon">
+                    <ui-icon name="file" />
+                  </span>
+                  <span class="record-copy">
+                    <strong>{ artifact.name }</strong>
+                  </span>
+                  <span class="muted">{ bosca.git.ui.formatSize(artifact.sizeBytes) }</span>
+                  <ui-icon name="download" />
+                </a>
+              </for>
+            </div>
+          </if>
+        </ui-card>
+      </div>
+    </section>
+  </island>
+  <style scoped>
+    .run-page {
+      width: 100%;
+      min-width: 0;
+    }
+    .run-controls {
+      padding: 0;
+      gap: 8px;
+    }
+    .job-list {
+      display: grid;
+      gap: 12px;
+    }
+    .job-list > h2 {
+      margin: 0;
+      font-size: 14px;
+      font-weight: 600;
+    }
+  </style>
+  <script client scoped>
+    let disposed = false;
+    let busy = false;
+    const tick = async () => {
+      if (disposed || busy || !ctx.root.querySelector("[data-run-active]")) return;
+      busy = true;
+      const open = Array.from(
+        ctx.root.querySelectorAll<HTMLDetailsElement>("details[open][data-job]"),
+        (item) => item.dataset.job,
+      );
+      try {
+        await ctx.dispatch("model", "refresh");
+        for (const detail of ctx.root.querySelectorAll<HTMLDetailsElement>(
+          "details[data-job]",
+        ))
+          detail.open = open.includes(detail.dataset.job);
+      } catch (error) {
+        const status = ctx.ref<HTMLElement>("pollError");
+        if (status)
+          status.textContent =
+            error instanceof Error ? error.message : "Refresh failed.";
+      } finally {
+        busy = false;
+      }
+    };
+    const timer = setInterval(tick, 2000);
+    ctx.onUpdate(() => {
+      const next =
+        ctx.root.querySelector<HTMLElement>("[data-next-href]")?.dataset.nextHref;
+      if (next) location.assign(next);
+    });
+    ctx.onUnmount(() => {
+      disposed = true;
+      clearInterval(timer);
+    });
+  </script>
+</component>

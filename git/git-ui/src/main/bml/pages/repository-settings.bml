@@ -1,0 +1,17 @@
+<page route="/repositories/{id}/settings" requireAuth>
+  <script server provides="page">
+    bosca.git.ui.repositorySettingsPage()
+  </script>
+  <if page != null>
+    <git-layout :title='page.repository.name + " settings"'>
+      <ui-page>
+        <ui-page-heading
+          :title='page.repository.name + " settings"'
+          :backHref='"/repositories/" + bosca.git.ui.encode(page.repository.id)'
+          backLabel="Repository"
+        />
+        <git-repository-settings :page="page" />
+      </ui-page>
+    </git-layout>
+  </if>
+</page>

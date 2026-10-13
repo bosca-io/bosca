@@ -42,7 +42,9 @@ interface PullRequestService : Service {
     suspend fun create(input: CreatePullRequestInput, authorId: UUID): PullRequest
 
     /**
-     * Updates the title and/or description of an existing pull request.
+     * Updates metadata and optionally the source/target branches of an open or draft request.
+     * Branch changes dismiss existing review decisions and mark diff comments outdated atomically.
+     * A supplied expected version rejects stale edits. Branch names must resolve to existing commits.
      */
     suspend fun update(id: UUID, input: UpdatePullRequestInput): PullRequest
 
@@ -112,13 +114,15 @@ interface PullRequestService : Service {
      * Owns its transaction independently of the caller. Locks and rechecks the PR version
      * before writing; merge metadata, the target ref, and event registration commit together.
      * Holds the repository write lock through commit. Cancellation rolls back the ref and PR.
+     * A supplied [expectedVersion] rejects a merge based on a previous PR comparison.
      */
     suspend fun merge(
         id: UUID,
         strategy: MergeStrategy,
         mergedById: UUID,
         mergerName: String,
-        mergerEmail: String
+        mergerEmail: String,
+        expectedVersion: Long? = null,
     ): PullRequest
 
     /**
@@ -133,6 +137,7 @@ interface PullRequestService : Service {
      * dependencies are skipped. [expectedPullRequestIds] must match the current
      * dependency-first plan so an authorization decision cannot be reused after the graph changes.
      * The returned list is in the order merged.
+     * A supplied [expectedVersion] verifies the root PR before merging any dependencies.
      */
     suspend fun mergeWithDependencies(
         id: UUID,
@@ -140,7 +145,8 @@ interface PullRequestService : Service {
         mergedById: UUID,
         mergerName: String,
         mergerEmail: String,
-        expectedPullRequestIds: List<UUID>
+        expectedPullRequestIds: List<UUID>,
+        expectedVersion: Long? = null,
     ): List<PullRequest>
 
     /**
@@ -164,7 +170,8 @@ interface PullRequestService : Service {
     suspend fun markReady(id: UUID): PullRequest
 
     /**
-     * Submits a review (approve, request changes, or comment) on a pull request.
+     * Submits a review (approve, request changes, or comment) on an open pull request.
+     * A supplied expected version rejects decisions based on a previous branch comparison.
      */
     suspend fun submitReview(input: SubmitReviewInput, reviewerId: UUID): Review
 
@@ -175,6 +182,7 @@ interface PullRequestService : Service {
 
     /**
      * Adds a comment anchored to a specific diff line in a pull request review.
+     * A supplied [expectedVersion] rejects comments based on a previous branch comparison.
      */
     suspend fun addReviewComment(
         reviewId: UUID,
@@ -184,7 +192,21 @@ interface PullRequestService : Service {
         oldLineNumber: Int?,
         newLineNumber: Int?,
         commitSha: String,
-        content: String
+        content: String,
+        expectedVersion: Long? = null,
+    ): ReviewComment
+
+    /**
+     * Replies under the original comment's review and immutable diff context.
+     * Outdated anchors are retained; a new unresolved reply reopens a resolved discussion.
+     * A supplied [expectedVersion] rejects replies from a stale pull-request page.
+     */
+    suspend fun replyReviewComment(
+        pullRequestId: UUID,
+        commentId: UUID,
+        authorId: UUID,
+        content: String,
+        expectedVersion: Long?,
     ): ReviewComment
 
     /**

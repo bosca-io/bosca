@@ -1,0 +1,30 @@
+<component tag="git-repository-path">
+  <prop name="page" type="bosca.git.ui.RepositoryPage" required />
+  <nav class="path" aria-label="Repository path">
+    <a :href="page.rootHref">Root</a>
+    <for crumb in page.breadcrumbs>
+      <span class="separator" aria-hidden="true">/</span>
+      <a :href="crumb.href">{ crumb.label }</a>
+    </for>
+    <if page.file.isNotBlank()>
+      <span class="separator" aria-hidden="true">/</span>
+      <span aria-current="page">{ page.file.substringAfterLast('/') }</span>
+    </if>
+  </nav>
+  <style scoped>
+    .path {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 12px;
+      padding: 6px 0;
+      font-size: 12px;
+    }
+    .separator {
+      color: var(--fg-4);
+    }
+    .path span {
+      overflow-wrap: anywhere;
+    }
+  </style>
+</component>

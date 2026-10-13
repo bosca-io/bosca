@@ -255,15 +255,15 @@ class RepositoryBrowseServiceImpl(
         val stats = withRepository(repositoryId) {
             val branches = it.refDatabase.getRefsByPrefix(Constants.R_HEADS)
             val tags = it.refDatabase.getRefsByPrefix(Constants.R_TAGS)
-            val headRef = it.refDatabase.findRef(Constants.HEAD)
-                ?: it.refDatabase.getRefsByPrefix(Constants.R_HEADS).firstOrNull()
+            val headId = it.refDatabase.findRef(Constants.HEAD)?.objectId
+                ?: branches.firstNotNullOfOrNull { branch -> branch.objectId }
 
             var commitCount = 0L
             val contributors = mutableSetOf<String>()
 
-            if (headRef != null) {
+            if (headId != null) {
                 RevWalk(it).use { revWalk ->
-                    revWalk.markStart(revWalk.parseCommit(headRef.objectId))
+                    revWalk.markStart(revWalk.parseCommit(headId))
                     for (commit in revWalk) {
                         commitCount++
                         contributors.add(commit.authorIdent.emailAddress)

@@ -1,0 +1,143 @@
+<component tag="git-pull-list">
+  <prop name="page" type="bosca.git.ui.PullListPage" required />
+  <div class="pull-panel">
+    <ui-tabs label="Pull request state" :items="page.tabs">
+      <span class="muted result-count">
+        { page.rows.size.toString() + if (page.rows.size == 1) " pull request" else " pull requests" }
+      </span>
+    </ui-tabs>
+    <if page.rows.isEmpty()>
+      <ui-empty-state
+        icon="pull"
+        :title='if (page.status == "ALL") "No pull requests" else "No " + page.status.lowercase() + " pull requests"'
+        message="Try another repository or pull request state."
+      />
+    <else>
+      <div class="pull-list">
+        <for pull in page.rows>
+          <a class="pull-row" :href="pull.href">
+            <git-pull-status :status="pull.status" iconOnly />
+            <div class="pull-copy">
+              <strong>
+                <code class="muted">#{ pull.number }</code>
+                <span>{ pull.title }</span>
+              </strong>
+              <div class="pull-meta">
+                <git-pull-status :status="pull.status" />
+                <if page.baseHref.isBlank()>
+                  <span>
+                    { page.repositoryNames[pull.repository] ?: "Repository" }
+                  </span>
+                </if>
+                <code>{ pull.source } → { pull.target }</code>
+              </div>
+            </div>
+            <ui-time :value="pull.updated" relative />
+          </a>
+        </for>
+      </div>
+    </if>
+    <if page.offset != 0L || page.rows.size == 50>
+      <nav class="pull-pagination" aria-label="Pull request pages">
+        <if page.offset != 0L>
+          <ui-icon-link icon="arrow-left" label="Previous page" :href="page.href(offset = (page.offset - 50).coerceAtLeast(0))" />
+        </if>
+        <if page.rows.size == 50>
+          <ui-icon-link icon="arrow-right" label="Next page" :href="page.href(offset = page.offset + 50)" />
+        </if>
+      </nav>
+    </if>
+  </div>
+  <style scoped>
+    .pull-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .result-count {
+      display: flex;
+      align-items: center;
+      flex: none;
+      font-size: 11.5px;
+      white-space: nowrap;
+    }
+    .pull-list {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      overflow: hidden;
+      background: var(--bg-1);
+    }
+    .pull-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+    }
+    .pull-row:last-child {
+      border-bottom: 0;
+    }
+    .pull-row:hover {
+      background: var(--bg-2);
+    }
+    .pull-pagination {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+    .pull-copy {
+      flex: 1;
+      min-width: 0;
+    }
+    .pull-copy strong {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .pull-copy strong > code {
+      flex: none;
+      font-size: 10px;
+      padding: 1px 5px;
+      border-radius: 3px;
+      background: var(--bg-3);
+    }
+    .pull-copy strong > span {
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }
+    .pull-meta {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 5px;
+      font-size: 11.5px;
+      color: var(--fg-3);
+    }
+    .pull-meta code {
+      overflow-wrap: anywhere;
+    }
+    .pull-row time {
+      font-size: 11px;
+      white-space: nowrap;
+      color: var(--fg-3);
+    }
+    @media (max-width: 600px) {
+      .pull-row {
+        flex-wrap: wrap;
+      }
+      .pull-copy {
+        flex-basis: calc(100% - 48px);
+      }
+      .pull-row time {
+        margin-left: 40px;
+      }
+      .result-count {
+        display: none;
+      }
+    }
+  </style>
+</component>
