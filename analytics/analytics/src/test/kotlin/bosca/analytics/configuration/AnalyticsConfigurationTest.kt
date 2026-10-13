@@ -101,6 +101,7 @@ class AnalyticsConfigurationTest {
         val configured = application(
             """
             eventProcessing:
+              fumsEnabled: false
               workerCount: 2
               channelCapacity: 12
               natsBatchSize: 3
@@ -126,6 +127,7 @@ class AnalyticsConfigurationTest {
             """,
         )
         val processing = configuration.eventProcessingConfiguration(configured)
+        assertEquals(false, processing.fumsEnabled)
         assertEquals(2, processing.workerCount)
         assertEquals(12, processing.channelCapacity)
         assertEquals("analytics-sa", processing.scriptServiceAccount)

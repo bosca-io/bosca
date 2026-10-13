@@ -7,8 +7,8 @@ import bosca.analytics.livesessions.LiveSessionsService
 import bosca.analytics.transform.AnalyticsScriptTransform
 import bosca.analytics.transform.ErrorFingerprintTransform
 import bosca.analytics.transform.SessionHeartbeatTransform
-import bosca.analytics.transform.fums.FumsAnalyticsTransform
 import bosca.analytics.transform.fums.FumsReporter
+import bosca.analytics.transform.fums.FumsAnalyticsTransform
 import bosca.analytics.transform.geo.CloudflareGeoTransform
 import bosca.counter.Counter
 import bosca.di.ObjectProvider
@@ -20,20 +20,20 @@ import bosca.lock.DistributedLockFactory
 import bosca.scripting.service.ScriptExecutionService
 import bosca.scripting.service.ScriptService
 import bosca.security.service.SecurityService
-import bosca.server.BoscaApplication
-import bosca.server.config.ApplicationConfig
 import bosca.sharedqueue.jobs.JobQueue
 import bosca.sharedqueue.jobs.JobQueueFactory
 import bosca.sharedqueue.jobs.JobRunner
 import bosca.sharedqueue.jobs.JobConfigurationEnqueuer
 import kotlinx.coroutines.runBlocking
-import io.mockk.every
 import io.mockk.coEvery
 import io.mockk.coVerify
+import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
+import kotlin.test.BeforeTest
+import kotlin.test.AfterTest
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.test.assertSame
@@ -41,12 +41,17 @@ import kotlin.test.assertIs
 
 class TransformConfigurationTest {
 
+    @BeforeTest
+    fun setup() = ProviderRegistry.clear()
+
+    @AfterTest
+    fun teardown() = ProviderRegistry.clear()
+
     private val config = TransformConfiguration()
 
     private fun buildTransforms(
-        repository: String? = "iceberg",
-        jobs: ObjectProvider<JobQueue> = mockk { every { exists } returns false },
-        factory: ObjectProvider<JobQueueFactory> = mockk { every { exists } returns jobs.exists },
+        fums: Boolean = true,
+        queue: ObjectProvider<JobQueue> = mockk { coEvery { get() } returns mockk() },
     ): EventPipelineTransforms = runBlocking { config.transforms(
         config.cloudflare(),
         mockk<ObjectProvider<AnalyticsScriptBindingService>>(relaxed = true),
@@ -54,12 +59,10 @@ class TransformConfigurationTest {
         mockk<ObjectProvider<ScriptExecutionService>>(relaxed = true),
         mockk<ObjectProvider<SecurityService>>(relaxed = true),
         Json,
-        EventProcessingConfiguration(),
+        EventProcessingConfiguration(fumsEnabled = fums),
         mockk<Counter>(relaxed = true),
         mockk<ObjectProvider<LiveSessionsService>>(relaxed = true),
-        BoscaApplication(ApplicationConfig.load((repository?.let { "eventRepository:\n  type: $it" } ?: "bosca: {}").byteInputStream())),
-        jobs,
-        factory,
+        queue,
     ) }
 
     @Test
@@ -86,46 +89,19 @@ class TransformConfigurationTest {
     }
 
     @Test
+    fun `server configuration selects whether the list contains FUMS`() {
+        assertTrue(buildTransforms().transforms.any { it is FumsAnalyticsTransform })
+        val queue = mockk<ObjectProvider<JobQueue>>()
+        val disabled = buildTransforms(fums = false, queue = queue)
+        coVerify(exactly = 0) { queue.get() }
+        assertEquals(6, disabled.transforms.size)
+        assertTrue(disabled.transforms.none { it is FumsAnalyticsTransform })
+    }
+
+    @Test
     fun `EventPipelineTransforms wraps transform list`() {
         val pipeline = EventPipelineTransforms(emptyList())
         assertTrue(pipeline.transforms.isEmpty())
-    }
-
-    @Test
-    fun `final processors publish FUMS jobs to their own queue`() = runBlocking {
-        val queue = mockk<JobQueue>()
-        val provider = mockk<ObjectProvider<JobQueue>> {
-            every { exists } returns true
-            coEvery { get() } returns queue
-        }
-        buildTransforms(jobs = provider)
-        coVerify(exactly = 1) { provider.get() }
-    }
-
-    @Test
-    fun `forwarding collectors leave FUMS to the downstream processor`() {
-        val provider = mockk<ObjectProvider<JobQueue>> { every { exists } returns true }
-        buildTransforms("nats", provider)
-        coVerify(exactly = 0) { provider.get() }
-    }
-
-    @Test
-    fun `collectors without a queue factory do not resolve the FUMS queue`() {
-        val queue = mockk<ObjectProvider<JobQueue>>()
-        val factory = mockk<ObjectProvider<JobQueueFactory>> { every { exists } returns false }
-        buildTransforms(jobs = queue, factory = factory)
-        coVerify(exactly = 0) { queue.get() }
-    }
-
-    @Test
-    fun `default storage configuration publishes FUMS jobs`() {
-        val queue = mockk<JobQueue>()
-        val provider = mockk<ObjectProvider<JobQueue>> {
-            every { exists } returns true
-            coEvery { get() } returns queue
-        }
-        buildTransforms(repository = null, jobs = provider)
-        coVerify(exactly = 1) { provider.get() }
     }
 
     @Test
