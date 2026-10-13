@@ -146,7 +146,10 @@ interface BibleService : Service {
     /** Lists recordings attached to this exact Bible variant without downloading chapter media. */
     suspend fun getAudio(bible: Bible): List<IBibleAudio>
 
-    /** Reads a chapter recording with playback permission, attribution, timing and an absolute Bosca playback URL. */
+    /**
+     * Reads a chapter recording with playback permission, attribution and timing.
+     * Returns an absolute Bosca playback URL only after that exact recording is retained.
+     */
     suspend fun getAudioChapter(bible: Bible, audioId: UUID, usfm: String): IBibleAudioChapter
 
     /**

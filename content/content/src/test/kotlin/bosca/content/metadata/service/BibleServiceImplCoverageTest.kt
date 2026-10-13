@@ -276,31 +276,16 @@ class BibleServiceImplCoverageTest {
     }
 
     @Test
-    fun `audio playback returns the described bytes when retention is rejected`() = runTest {
+    fun `audio playback fails when its recording cannot be saved`() = runTest {
         val (bible, source) = audioFixture()
-        var downloads = 0
-        val objects = mutableMapOf<String, ByteArray>()
         coEvery { bibleChapterRepository.updateAudioContent(any(), any(), any(), any(), any(), any(), any()) } returns 0
-        coEvery { sources.downloadAudioChapter(source, "GEN.1", any()) } coAnswers {
-            val bytes = (if (++downloads == 1) "first recording" else "replacement recording").toByteArray()
-            thirdArg<java.io.OutputStream>().write(bytes)
-            BibleProviderResponse(bosca.bible.BibleAudioContent("audio/mpeg", bytes.size.toLong()), source.attribution)
-        }
-        coEvery { audioStorage.setInputStream(any(), any(), any()) } coAnswers {
-            val bytes = secondArg<java.io.InputStream>().readBytes()
-            objects[firstArg<bosca.storage.service.ObjectPath>().toString()] = bytes
-            bytes.size.toLong()
-        }
-        coEvery { audioStorage.getInputStream(any()) } coAnswers {
-            java.io.ByteArrayInputStream(checkNotNull(objects[firstArg<bosca.storage.service.ObjectPath>().toString()]))
-        }
         withRequest {
-            val response = service.getAudioPlayback(bible, source.id, "GEN.1")
-            val bytes = response.openStream(null).use { it.readBytes() }
-            assertEquals(response.content.contentLength, bytes.size.toLong())
-            assertEquals("first recording", bytes.decodeToString())
+            assertFailsWith<IllegalStateException> { service.getAudioPlayback(bible, source.id, "GEN.1") }
         }
         coVerify(exactly = 1) { sources.downloadAudioChapter(any(), any(), any()) }
+        coVerify(exactly = 1) { bibleChapterRepository.updateAudioContent(any(), any(), any(), any(), any(), any(), any()) }
+        coVerify(exactly = 1) { jobQueue.enqueueLater(any(), kotlin.time.Duration.parse("5m")) }
+        coVerify(exactly = 0) { audioStorage.getInputStream(any()) }
     }
 
     @Test
@@ -429,11 +414,14 @@ class BibleServiceImplCoverageTest {
     }
 
     @Test
-    fun `audio write rejection still returns its description without populating the response cache`() = runTest {
+    fun `audio descriptions fail a skipped write before publishing a recording URL`() = runTest {
         val (bible, source) = audioFixture()
         coEvery { bibleChapterRepository.updateAudioContent(any(), any(), any(), any(), any(), any(), any()) } returns 0
-        repeat(2) { withRequest { assertEquals("GEN.1", service.getAudioChapter(bible, source.id, "GEN.1").usfm) } }
-        coVerify(exactly = 2) { sources.downloadAudioChapter(any(), any(), any()) }
+        withRequest {
+            assertFailsWith<IllegalStateException> { service.getAudioChapter(bible, source.id, "GEN.1") }
+        }
+        coVerify(exactly = 1) { sources.downloadAudioChapter(any(), any(), any()) }
+        coVerify(exactly = 1) { jobQueue.enqueueLater(any(), kotlin.time.Duration.parse("5m")) }
     }
 
     @Test

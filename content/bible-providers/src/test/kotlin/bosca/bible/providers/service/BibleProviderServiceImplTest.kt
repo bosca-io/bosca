@@ -708,6 +708,7 @@ class BibleProviderServiceImplTest {
         clearMocks(chapterRepository, sourceRepository, configurationValues, encryption, cleanupQueue, answers = false)
         repeat(2) {
             request {
+                assertEquals(description, bibles.getAudioChapter(bible, audio.id, "JHN.1"))
                 val response = bibles.getAudioPlayback(bible, audio.id, "JHN.1", recordingId(description.url))
                 assertEquals(response.content, bibles.getAudioPlayback(bible, audio.id, "JHN.1").content)
                 assertEquals(bytes.toList(), response.openStream().use { it.readBytes().toList() })
@@ -887,7 +888,7 @@ class BibleProviderServiceImplTest {
     }
 
     @Test
-    fun `source changes during audio downloads return the resolved media without caching or downloading again`() {
+    fun `source changes during audio downloads fail without caching or downloading again`() {
         val (bible, audio) = registeredAudio()
         val bytes = "recording bytes".toByteArray()
         coEvery { provider.downloadAudioChapter(configurationId, "recording", "JHN.1", any()) } coAnswers {
@@ -897,10 +898,7 @@ class BibleProviderServiceImplTest {
             BibleProviderResponse(BibleAudioContent("audio/mpeg", bytes.size.toLong()), attribution, fumsToken = "private-audio-token")
         }
         request {
-            val response = bibles.getAudioPlayback(bible, audio.id, "JHN.1")
-            assertEquals(bytes.size.toLong(), response.content.contentLength)
-            assertEquals(bytes.toList(), response.openStream().use { it.readBytes().toList() })
-            assertEquals(bytes.slice(2..5), response.openStream(2L..5L).use { it.readBytes().toList() })
+            assertFailsWith<IllegalStateException> { bibles.getAudioPlayback(bible, audio.id, "JHN.1") }
             assertTrue(chapterRepository.getAudioBySource(audio.id).isEmpty())
             assertNull(bibles.getAudioFumsToken(bible.metadataId, bible.version, bible.variant, "JHN.1", audio.id))
         }
@@ -1055,8 +1053,7 @@ class BibleProviderServiceImplTest {
             BibleProviderResponse(BibleAudioContent("audio/mpeg", bytes.size.toLong()), attribution, fumsToken = "token")
         }
         request {
-            val playback = bibles.getAudioPlayback(variant, audio.id, "JHN.1")
-            assertEquals(bytes.toList(), playback.openStream().use { it.readBytes().toList() })
+            assertFailsWith<IllegalStateException> { bibles.getAudioPlayback(variant, audio.id, "JHN.1") }
         }
         val disabled = request { bibles.getVariants(variant.metadataId, variant.version).single { it.variant == variant.variant } }
         assertFalse(disabled.enabled)
@@ -1129,6 +1126,68 @@ class BibleProviderServiceImplTest {
             }
             assertFailsWith<IllegalArgumentException> {
                 bibles.getAudioPlayback(otherBible, audio.id, "JHN.1", recordingId(original.url))
+            }
+        }
+        coVerify(exactly = 1) { provider.downloadAudioChapter(any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun `audio descriptions fail a source change before publishing a recording URL`() {
+        val (bible, audio) = registeredAudio()
+        var downloads = 0
+        val first = "original recording".toByteArray()
+        val replacement = "replacement recording".toByteArray()
+        val content = BibleAudioContent("audio/ogg", replacement.size.toLong(), listOf(BibleAudioTimecode("JHN.1.1", 5.0, 10.0)))
+        val copyright = BibleAttribution("Replacement recording copyright")
+        coEvery { provider.downloadAudioChapter(configurationId, "recording", "JHN.1", any()) } coAnswers {
+            if (++downloads == 1) {
+                arg<java.io.OutputStream>(3).write(first)
+                val source = assertNotNull(sources.getById(audio.id))
+                sources.update(source.copy(name = "Updated recording"))
+                BibleProviderResponse(BibleAudioContent("audio/mpeg", first.size.toLong()), attribution, fumsToken = "original-token")
+            } else {
+                arg<java.io.OutputStream>(3).write(replacement)
+                BibleProviderResponse(content, copyright, fumsToken = "replacement-token")
+            }
+        }
+        request {
+            assertFailsWith<IllegalStateException> { bibles.getAudioChapter(bible, audio.id, "JHN.1") }
+            assertTrue(chapterRepository.getAudioBySource(audio.id).isEmpty())
+        }
+        coVerify(exactly = 1) { provider.downloadAudioChapter(any(), any(), any(), any()) }
+        val description = request { bibles.getAudioChapter(bible, audio.id, "JHN.1") }
+        assertEquals("Updated recording", description.audio.name)
+        assertEquals(content, description.content)
+        assertEquals(copyright, description.attribution)
+        request {
+            val playback = bibles.getAudioPlayback(bible, audio.id, "JHN.1", recordingId(description.url))
+            assertEquals(content, playback.content)
+            assertEquals(replacement.toList(), playback.openStream().use { it.readBytes().toList() })
+            assertEquals("replacement-token", bibles.getAudioFumsToken(bible.metadataId, bible.version, bible.variant, "JHN.1", audio.id))
+            val stored = chapterRepository.getAudioBySource(audio.id).flatMap { it.audio.orEmpty() }.single()
+            assertEquals(recordingId(description.url), stored.id)
+            assertEquals(assertNotNull(sources.getById(audio.id)).version, stored.sourceVersion)
+        }
+        coVerify(exactly = 2) { provider.downloadAudioChapter(any(), any(), any(), any()) }
+        coVerify(exactly = 1) { cleanupQueue.enqueueLater(any(), kotlin.time.Duration.parse("5m")) }
+    }
+
+    @Test
+    fun `removed chapter recording URLs report not found without downloading a replacement`() {
+        val (bible, audio) = registeredAudio()
+        audioResponse()
+        val description = request { bibles.getAudioChapter(bible, audio.id, "JHN.1") }
+        val replacement = SharedBible(remote.metadata, remote.books.map {
+            it.copy(chapters = it.chapters.filterNot { chapter -> chapter.reference.usfm == "JHN.1" })
+        }, remote.styles)
+        request {
+            bibles.setBible(bible.metadataId, bible.version, replacement.toInput(true, bible.variant))
+        }
+        request {
+            assertNotNull(bibles.getBible(bible.metadataId, bible.version, bible.variant))
+            assertNotNull(sources.getById(audio.id))
+            assertFailsWith<bosca.storage.service.ObjectNotFoundException> {
+                bibles.getAudioPlayback(bible, audio.id, "JHN.1", recordingId(description.url))
             }
         }
         coVerify(exactly = 1) { provider.downloadAudioChapter(any(), any(), any(), any()) }

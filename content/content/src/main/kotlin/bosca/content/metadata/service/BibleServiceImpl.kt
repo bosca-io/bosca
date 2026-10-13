@@ -106,7 +106,7 @@ class BibleServiceImpl(
         val sourceId = UUID.parse(key.substringBefore(':'))
         val source = sources.getById(sourceId) ?: return@ServiceCache null
         val chapter = bibleChapterRepository.getAudioChapter(source.metadataId, source.metadataVersion, source.variant, key.substringAfter(':'))
-            ?: error("chapter not found")
+            ?: return@ServiceCache null
         chapter.audio?.singleOrNull { it.sourceId == sourceId }
     }
 
@@ -358,15 +358,14 @@ class BibleServiceImpl(
                 check(lock.renew(300_000)) { "Provider audio fetch lock expired" }
                 val audio = json.encodeToJsonElement(ListSerializer(BibleChapterAudio.serializer()), listOf(fetched))
                 retained = transaction {
-                    if (bibleChapterRepository.updateAudioContent(bible.metadataId, bible.version, bible.variant, usfm, source.id, source.version, audio) == 0) {
-                        false
-                    } else {
-                        audioChapterCache.put(key, fetched)
-                        previous?.let { DeleteBibleAudioJob(it.id).enqueueLater(audioDeletionDelay) }
-                        DeleteBibleAudioJob(id).enqueueLater(14.days + audioDeletionDelay)
-                        if (source.provider == "API_BIBLE") LimitBibleAudioChaptersJob(source.provider, source.providerBibleId).enqueue()
-                        true
+                    check(bibleChapterRepository.updateAudioContent(bible.metadataId, bible.version, bible.variant, usfm, source.id, source.version, audio) == 1) {
+                        "Recording could not be saved for playback"
                     }
+                    audioChapterCache.put(key, fetched)
+                    previous?.let { DeleteBibleAudioJob(it.id).enqueueLater(audioDeletionDelay) }
+                    DeleteBibleAudioJob(id).enqueueLater(14.days + audioDeletionDelay)
+                    if (source.provider == "API_BIBLE") LimitBibleAudioChaptersJob(source.provider, source.providerBibleId).enqueue()
+                    true
                 }
                 fetched
             } catch (error: Throwable) {
