@@ -49,8 +49,6 @@ haze = "1.7.2"
 ical4j = "4.2.4"
 iceberg = "1.10.1"
 intellij-platform = "2.18.1"
-java-graphql = "25.0"
-java-graphql-scalars = "24.0"
 jetbrains-lifecycle = "2.10.0"
 jgit = "7.6.0.202603022253-r"
 jsonata = "0.9.9"
@@ -171,8 +169,6 @@ iceberg-aws = { module = "org.apache.iceberg:iceberg-aws", version.ref = "iceber
 iceberg-core = { module = "org.apache.iceberg:iceberg-core", version.ref = "iceberg" }
 iceberg-data = { module = "org.apache.iceberg:iceberg-data", version.ref = "iceberg" }
 iceberg-parquet = { module = "org.apache.iceberg:iceberg-parquet", version.ref = "iceberg" }
-java-graphql = { module = "com.graphql-java:graphql-java", version.ref = "java-graphql" }
-java-graphql-extended-scalars = { module = "com.graphql-java:graphql-java-extended-scalars", version.ref = "java-graphql-scalars" }
 jetbrains-lifecycle-runtime-compose = { module = "org.jetbrains.androidx.lifecycle:lifecycle-runtime-compose", version.ref = "jetbrains-lifecycle" }
 jetbrains-lifecycle-viewmodel-compose = { module = "org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "jetbrains-lifecycle" }
 jetbrains-lifecycle-viewmodelNavigation3 = { module = "org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-navigation3", version.ref = "compose-multiplatform-lifecycle" }

@@ -62,6 +62,7 @@ dependencies {
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.kotlin.test.junit)
     testImplementation(libs.mockk)
+    testImplementation(project(":bosca-core:test-support"))
 
     "ksp"(project(":bosca-core:core-ksp"))
     "ksp"(project(":services-di:service-ksp"))

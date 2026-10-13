@@ -229,6 +229,33 @@ class ArtifactPublicationIntegrationTest {
         assertEquals(1, remote.uploads)
     }
 
+    @Test fun `CLI packages checksums and installer publish together with the cli tag prefix`() = withDb {
+        publications.updateDestination(destination.id, destination.version, false)
+        val cli = publications.createDestination(input("cli").copy(tagPrefix = "cli-v"))
+        remote.tag = "cli-v1.0.0"
+        val expected = linkedMapOf(
+            "bosca-1.0.0-linux-x86_64.tar.gz" to "linux package".toByteArray(),
+            "bosca-1.0.0-macos-arm64.pkg" to "macos package".toByteArray(),
+            "SHA256SUMS" to "package checksums".toByteArray(),
+            "install.sh" to "installer script".toByteArray(),
+        )
+        artifacts.deleteVersion(version.id)
+        version = artifacts.createVersion(artifact.id, "1.0.0")
+        for ((filename, data) in expected) {
+            val hash = GitHubReleaseTestServer.digest(data)
+            blobs.store(hash, data.inputStream(), data.size.toLong())
+            artifacts.addVersionBlob(version.id, hash, "file", filename, "application/octet-stream")
+        }
+        assertIs<NodeResult.Output>(publishThroughPipeline())
+        val result = publications.publications(version.id).single()
+        assertEquals(cli.id, result.destinationId)
+        assertEquals("cli-v1.0.0", result.tagName)
+        assertNotNull(result.verified)
+        assertEquals(expected.keys, result.files.map { it.filename }.toSet())
+        assertEquals(expected.keys, remote.files.keys)
+        for ((filename, data) in expected) assertContentEquals(data, remote.files.getValue(filename))
+    }
+
     @Test fun `outer rollback leaves no finalized version or publication`() = runBlocking {
         withDb {
             assertFailsWith<IllegalStateException> {

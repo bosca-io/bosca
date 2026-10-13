@@ -35,9 +35,11 @@ database:
     user: "$DATABASE_USER:bosca"
     password: "$DATABASE_PASSWORD:bosca"
 
-#redis:
-#  host: "$REDIS_HOST:localhost"
-#  port: ${REDIS_PORT:6380}
+redis:
+  host: "$REDIS_HOST:localhost"
+  port: ${REDIS_PORT:6380}
+  database: ${REDIS_DATABASE:0}
+  namespace: "$REDIS_NAMESPACE:"
 
 nats:
   url: "$NATS_HOST:localhost:4222"

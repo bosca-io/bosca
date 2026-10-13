@@ -6,7 +6,7 @@ Backend infrastructure foundation for the Bosca platform. Provides HTTP/GraphQL 
 
 | Module | Description |
 |--------|-------------|
-| `core` | Bosca Server (Netty), GraphQL Java, PostgreSQL, Redis/NATS, Caffeine cache, OpenTelemetry |
+| `core` | Bosca Server (Netty), PostgreSQL, Redis/NATS, Caffeine cache, OpenTelemetry |
 | `core-annotations` | `@TypeController`, `@Repository`, `@JobDefinition`, `@RouteController` |
 | `core-ksp` | KSP processor that generates GraphQL dispatchers and repository impls |
 | `core-security` | Security interfaces: authentication, authorization, permissions |
