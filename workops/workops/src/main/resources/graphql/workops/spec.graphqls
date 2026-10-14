@@ -233,6 +233,10 @@ type WorkOpsSpecs {
 }
 
 type WorkOpsSpecsMutation {
+    "Atomically creates a complete plan. Reuse requestId with identical input to retry."
+    createPlan(input: CreateWorkOpsSpecPlanInput!): WorkOpsSpec!
+    "Atomically adds a populated requirement. Requests are scoped to the authenticated principal."
+    addPlanRequirement(specId: UUID!, requestId: UUID!, input: WorkOpsRequirementContentInput!): WorkOpsRequirement!
     create(input: CreateWorkOpsSpecInput!): WorkOpsSpec!
     update(id: UUID!, input: UpdateWorkOpsSpecInput!): WorkOpsSpec!
     softDelete(id: UUID!, expectedVersion: Long!): WorkOpsSpec!
@@ -257,6 +261,8 @@ type WorkOpsRequirements {
 }
 
 type WorkOpsRequirementsMutation {
+    "Explicitly replaces the rich document and independent linked task content atomically."
+    setContent(id: UUID!, input: SetWorkOpsRequirementContentInput!): WorkOpsRequirement!
     create(input: CreateWorkOpsRequirementInput!): WorkOpsRequirement!
     update(id: UUID!, input: UpdateWorkOpsRequirementInput!): WorkOpsRequirement!
     softDelete(id: UUID!, expectedVersion: Long!): WorkOpsRequirement!
@@ -316,4 +322,25 @@ type WorkOpsSpecCommentsMutation {
     unlike(specId: UUID!, commentId: Long!): Int!
     setStatus(specId: UUID!, commentId: Long!, status: CommentStatus!): Boolean!
     delete(specId: UUID!, commentId: Long!): Boolean!
+}
+
+input WorkOpsRequirementContentInput {
+    name: String!
+    markdownContent: String!
+    acceptanceCriteria: [String!]!
+}
+
+input CreateWorkOpsSpecPlanInput {
+    requestId: UUID!
+    projectId: UUID!
+    name: String!
+    markdownContent: String!
+    requirements: [WorkOpsRequirementContentInput!]!
+}
+
+input SetWorkOpsRequirementContentInput {
+    content: WorkOpsRequirementContentInput!
+    expectedVersion: Long!
+    expectedTaskVersion: Long!
+    metadataVersion: Int!
 }

@@ -43,28 +43,12 @@ internal val MCP_SERVER_INSTRUCTIONS = """
     Use whichever family the task needs; nothing here requires you to involve WorkOps when you are
     only doing content (or other) work.
 
-    ── When you work with WorkOps Specs, Requirements, or Tasks ──
-    FIRST call `workops_spec_instructions` (no arguments) for the full mental model, lifecycle,
-    document-authoring rules, and worked examples. The rules below are the short version, and they
-    apply specifically to WorkOps planning/execution:
-
-    1. KEEP STATUSES CURRENT. Transition a Spec/Requirement/Task to IN_PROGRESS *before* you start
-       its work and to DONE (with a resolution) *immediately* after — never batch these. A Spec is
-       DONE only when all its Requirements are DONE. A status that lags the real state is a data
-       integrity bug; fix stale statuses when you find them.
-
-    2. TRACK ALL WORK AS TASKS. Every unit of WorkOps work must exist as a Task. When you break work
-       down, create a Task for EACH subtask with `parentTaskId` set. Untracked work is invisible work.
-
-    3. THE SPEC DOCUMENT IS A LIVING PLAN. As you learn, change approach, drop, or add scope, update
-       the spec body (and its Requirements) to match. Use comments for point-in-time notes; the body
-       is the authoritative current plan.
-
-    4. A REQUIREMENT'S LINKED TASK STARTS EMPTY. Creating a Requirement snapshots its (initially
-       empty) document into the linked Task once, and nothing re-syncs it afterward. After you write
-       the Requirement's body, also push it to the linked Task via
-       `workops_task action=update id=<taskId> descriptionMarkdown=<body>` — otherwise the Task page
-       is blank.
+    When working with WorkOps, FIRST call workops_spec_instructions with the projectId or projectKey
+    to load the effective editable guides and executable policy. No arguments loads platform defaults.
+    Reload when resuming work; Studio → WorkOps → Settings → Guidance owns these instructions.
+    workops_plan context, reviews, next_action, and verification use the current project configuration.
+    Reviews and validation record its revision and report stale evidence after guidance changes.
+    Tool schemas describe API mechanics; configured guides describe the workflow. Never invent evidence.
 
     ── When you author a document body (spec, requirement, RFC, guide, design note) ──
     5. DOCUMENT BODIES ARE RICH DOCUMENTS. Write them via `content_metadata` using `documentContent`

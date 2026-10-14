@@ -165,6 +165,7 @@ export const SUBSYSTEMS: Subsystem[] = [
         { id: 'releases/versions', label: 'Versions', icon: 'tag' },
       ] },
       { group: 'Settings', items: [
+        { id: 'settings/guidance', label: 'Guidance', icon: 'book' },
         { id: 'settings/task-types', label: 'Task Types', icon: 'list' },
         { id: 'settings/environment-types', label: 'Environment Types', icon: 'globe' },
         { id: 'settings/statuses', label: 'Statuses', icon: 'check' },

@@ -240,6 +240,221 @@ updates, and bound query execution results with `returnedRecords` and
 BOSCA_PROFILE=work bosca mcp-server
 ```
 
+## WorkOps through MCP
+
+`bosca mcp-server` exposes `workops_plan` for planning, review, resumption, and
+validation using WorkOps specs, rich documents, requirements, linked tasks,
+references, and comments. Start with `action=instructions` for the workflow.
+
+Create a complete plan in one tool call:
+
+```json
+{
+  "action": "create",
+  "requestId": "<caller-generated UUID; reuse for retries>",
+  "projectKey": "WORK",
+  "name": "Improve search filtering",
+  "markdownContent": "## Goal\nSupport the requested filter in the existing search UI.\n\n## Approach\nFollow the current query and permission checks.",
+  "requirements": [
+    {
+      "name": "Apply the filter",
+      "markdownContent": "Implement the filter and add focused regression tests.",
+      "acceptanceCriteria": [
+        "Matching results are returned",
+        "Inaccessible results remain excluded"
+      ]
+    }
+  ]
+}
+```
+
+Creation is one backend transaction: the spec, its rich document, requirements,
+and populated linked tasks commit together. `requestId` is a caller-generated UUID;
+reuse it with identical input to retry a lost response. Reusing it with different
+input fails. Requests are scoped to the authenticated principal.
+
+Review the resulting plan before beginning execution. `action=context` accepts
+the returned spec `id` or `key` and returns its document, requirement criteria,
+linked task progress and transitions, references, recent comments, and generated
+tasks. Follow the returned `nextOffset`, `nextCommentOffset`, and
+`nextGenerationOffset` for larger plans. `limit` defaults to 50 and supports
+1–100 entries per page.
+
+After reviewing the content, call `action=review` with the spec `id` or `key` and
+an optional `reviewNote`. It stores a review baseline in a spec comment and returns
+`reviewId`; it does not grant execution approval or change status. `action=diff`
+compares the current plan with the latest readable review, or a supplied
+`reviewId`. It reports changed scope, source bindings, references, documents,
+requirement additions/removals/order, and acceptance criteria, including readable
+before/after text and changed lines. Changes with unchanged visible text retain their rich JSON
+for inspection. Missing or inaccessible documents fail comparison instead of
+being reported as removals.
+
+Start implementation by drafting interfaces, models, signatures, documented
+behavior, and representative callers in the owning module. Present and iterate
+on those contracts before implementing behavior. Include the current contracts
+in the rich spec document, then record their review separately:
+
+```json
+{
+  "action": "review_interfaces",
+  "id": "<spec UUID>",
+  "interfaces": [
+    {
+      "path": "search/core-search/src/main/kotlin/SearchService.kt",
+      "declaration": "interface SearchService { suspend fun search(input: SearchInput): SearchResult }"
+    }
+  ],
+  "reviewNote": "Record the interface discussion, corrections, and representative caller checks here."
+}
+```
+
+Declarations and review evidence are caller-supplied; the MCP does not read
+repository files or establish human approval. A plan review alone does not count
+as an interface review. Plan edits invalidate interface review. When source
+contracts change, update the plan and repeat interface review; a source-only
+change cannot be detected by this tool. If the user requires sign-off, obtain it
+before implementing behavior and record it honestly in the review note.
+
+`action=next_action` recommends reviewing a new or changed plan, designing and
+reviewing interfaces (`DESIGN_INTERFACES`), continuing an
+unblocked task already in progress, starting the next unblocked task through an
+available transition, resolving blockers, or running verification. It considers
+both requirement-linked and additional generated tasks and existing `BLOCKS`
+links. Inaccessible dependency endpoints are treated as unresolved. It returns
+suggested tool arguments but never transitions or executes work.
+
+Use `update` to revise the spec body, `add_requirement` (with a new `requestId`)
+to add a deliverable atomically with retry protection,
+and `update_requirement` to replace a requirement's body and acceptance criteria.
+Requirement writes replace the document and linked task's summary and independent
+Markdown description in one transaction, checking requirement, task, and metadata
+versions. A conflict rolls back both writes. The existing `workops_requirement`
+tool provides the same behavior through `action=set_content` with `id` or `key`, `name`,
+`markdownContent`, and `acceptanceCriteria`. Direct `content_metadata` edits
+continue to affect only the document; custom document nodes use `documentContent`
+and require an explicit task-description update when applicable.
+
+Discover actual workflow transitions using `workops_spec action=transitions` and
+`workops_task_transitions`, then transition the spec and linked tasks as work
+begins and finishes. Workflow names are configurable. Requirements already have
+linked tasks; `generate_tasks` optionally creates additional tasks.
+
+Use TDD for each behavioral increment. Write a focused test and observe its
+intended failure before implementing behavior (RED), implement the smallest
+passing change (GREEN), then refactor and rerun relevant tests (REFACTOR). Repeat
+for each increment. Compilation errors, unavailable infrastructure, and unrelated
+failures do not establish RED. Record the actual commands and observations as
+they happen; do not invent a prior failure after implementation. If no refactoring
+is needed, record the review and passing rerun.
+
+Define the test strategy and coverage scopes during interface review. Aim to
+cover every changed behavior. The default minimum is **99% line coverage and
+97% branch coverage**, preserving stricter owning-module gates. Run the owning
+module's reports and verification, inspect changed code in those reports, and
+record all affected production scopes so an aggregate cannot hide missing tests.
+Review uncovered paths explicitly; never lower thresholds, exclude handwritten
+production code, or narrow scope to inflate coverage.
+
+Tests must assert observable behavior and contracts and fail when the behavior
+is wrong. Cover relevant success, boundary, empty/null, invalid-input, denied
+permission, failure/cancellation, conflict, rollback, retry, and concurrency
+paths. Use isolated, deterministic fixtures. Mock-call counts and assertions that
+repeat private implementation do not establish behavioral quality. Wiring, SQL
+mapping, transactions, migrations, and cross-module dispatch need real integration
+tests with the established infrastructure where applicable. Very high coverage
+alone does not establish test quality.
+
+After completing a linked task and running its checks, record the evidence:
+
+```json
+{
+  "action": "record_validation",
+  "id": "<spec UUID>",
+  "requirementId": "<requirement UUID>",
+  "checks": [
+    {
+      "criterion": "Matching results are returned",
+      "outcome": "PASSED",
+      "evidence": "Focused search regression test passed.",
+      "tdd": {
+        "red": {
+          "command": "<focused test command run before implementing behavior>",
+          "outcome": "FAILED",
+          "evidence": "<expected assertion failure demonstrating missing behavior>"
+        },
+        "green": {
+          "command": "<focused test command>",
+          "outcome": "PASSED",
+          "evidence": "<observed pass after minimal implementation>"
+        },
+        "refactor": {
+          "command": "<relevant test command after refactoring>",
+          "outcome": "PASSED",
+          "evidence": "<observed pass after refactoring or review with no change needed>"
+        }
+      }
+    },
+    {
+      "criterion": "Inaccessible results remain excluded",
+      "outcome": "NOT_RUN",
+      "evidence": "Required test infrastructure is unavailable."
+    }
+  ],
+  "testQuality": {
+    "review": "Describe the behavioral assertions, boundary/failure cases, applicable integration tests, fixture isolation, and remaining limitations.",
+    "coverage": [
+      {
+        "scope": "<affected production module and changed classes>",
+        "command": "<exact test, coverage report, and verification commands>",
+        "report": "<path to the measured coverage report>",
+        "lineCovered": 990,
+        "lineMissed": 10,
+        "branchCovered": 970,
+        "branchMissed": 30,
+        "uncovered": "<identify remaining uncovered lines/branches and review changed paths>"
+      }
+    ]
+  }
+}
+```
+
+Copy normalized criterion text from `context`; outcomes are `PASSED`, `FAILED`,
+or `NOT_RUN`. A `PASSED` check requires a current interface review and TDD runs
+with RED=`FAILED`, GREEN=`PASSED`, and REFACTOR=`PASSED`, each with a nonblank
+command and observed result. Failed and unrun checks may report incomplete
+cycles; they cannot establish completion. `PASSED` also requires `testQuality`
+with a review and nonempty coverage reports. The example counts above illustrate
+99% lines and 97% branches; replace them with actual raw counters from each report.
+The tool derives percentages from those counters without rounding to meet a gate.
+No executable lines cannot establish coverage. A report with no branches must
+have `branchCovered=0`, `branchMissed=0`, and a nonblank `noBranchesReason`
+explaining that measured scope; its branch percentage is reported as unavailable,
+rather than inventing a percentage. `context` and `verify` expose `coverageSummary`.
+Evidence is stored in a readable spec
+comment tied to the current plan and requirement content, linked task version,
+and interface review. `action=verify` reads every
+page and reports missing criteria, absent/failed/unrun or stale evidence,
+missing/stale interface reviews, absent/invalid TDD cycles, missing test-quality
+reviews, invalid/missing coverage counters or coverage below the minimums, incomplete
+linked/generated tasks, and incomplete child specs. It returns
+`readyToComplete` only when these checks pass. It records caller-supplied
+evidence; it does not read coverage files, audit test quality, run tests,
+independently establish phase chronology, or
+transition workflow states. Earlier passing records without TDD evidence or
+measured coverage cannot establish completion under this workflow. Backend transitions
+into DONE enforce the same effective policy, so a direct workflow mutation cannot bypass
+the evidence checks. Rejected completion leaves the spec status and history unchanged. Unavailable
+infrastructure, failed owning-module gates, and unmeasured coverage must remain
+unverified; never substitute passing test counts for measured coverage. Rerun
+reports after source or test changes. Review that
+evidence before marking the spec done.
+
+The new atomic operations require a matching backend deployment and the registered
+WorkOps migration `V56__plan_creation.sql`. Independent low-level operations keep
+their existing semantics. These tools do not silently fall back to separate writes
+against an older backend.
+
 ## Deployment image updates
 
 Resolve the highest stable version tag published for each Bosca image directly
@@ -409,3 +624,23 @@ This is a single-module application built on the Clikt command framework for con
 - `io.bosca:core`, `io.bosca:core-security`, `io.bosca:core-graalvm` -- from bosca-core
 - `io.bosca:di`, `io.bosca:service` -- from `services-di`
 - `io.bosca:core-content` -- from bosca-content
+
+### Configuring WorkOps instructions
+
+Open Studio → WorkOps → Settings → Guidance to edit investigation, specification,
+interface, implementation, and verification guides, with platform defaults and project
+overrides. The typed policy controls required interface review, TDD evidence, test quality,
+and minimum line/branch coverage (defaults: 99%/97%). Rich documents are authoritative;
+SKILL.md import/export makes individual guides portable without changing policy.
+
+`workops_spec_instructions` and `workops_plan action=instructions` load the current
+configuration. Pass `projectId` or `projectKey` for project guidance; omit both for
+platform defaults. Plan context, reviews, recommendations, and verification use the
+spec's project. A changed revision, including explicit override state, makes earlier reviews
+and validation stale. Studio preserves drafts during scope changes and pending saves.
+Saving or restoring defaults uses the loaded revision and rejects concurrent changes;
+use Reload and reconcile to preserve the draft and resolve conflicting saved changes before retrying.
+Identical saves retain revisions, and overridden platform changes do not invalidate project evidence.
+Resetting or inheriting a guide also
+removes its obsolete AgentResource.
+Update the backend and CLI together; no MCP restart is needed for subsequent edits.

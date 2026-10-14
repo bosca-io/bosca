@@ -21171,6 +21171,7 @@ type WorkOps {
   boards: WorkOpsBoards!
   components: WorkOpsComponents!
   crossProject: WorkOpsCrossProjectQuery!
+  guidance: WorkOpsGuidanceQuery!
   labels: WorkOpsLabels!
   links: WorkOpsTaskLinks!
   milestones: WorkOpsMilestones!
@@ -21793,6 +21794,71 @@ enum WorkOpsGenerationSource {
   MANUAL
 }
 
+type WorkOpsGuidance {
+  guides: [WorkOpsGuide!]!
+  policy: WorkOpsGuidancePolicy!
+  policyInherited: Boolean!
+  revision: String!
+}
+
+input WorkOpsGuidanceInput {
+  guides: [WorkOpsGuideInput!]! = []
+  policy: WorkOpsGuidancePolicyInput
+}
+
+type WorkOpsGuidanceMutation {
+  reset(expectedRevision: String!, projectId: UUID): WorkOpsGuidance!
+  save(input: WorkOpsGuidanceInput!, projectId: UUID): WorkOpsGuidance!
+}
+
+enum WorkOpsGuidancePhase {
+  IMPLEMENTATION
+  INTERFACES
+  INVESTIGATION
+  SPECIFICATION
+  VERIFICATION
+}
+
+type WorkOpsGuidancePolicy {
+  minimumBranchCoverage: Float!
+  minimumLineCoverage: Float!
+  requireInterfaceReview: Boolean!
+  requireTdd: Boolean!
+  requireTestQuality: Boolean!
+}
+
+input WorkOpsGuidancePolicyInput {
+  minimumBranchCoverage: Float!
+  minimumLineCoverage: Float!
+  requireInterfaceReview: Boolean!
+  requireTdd: Boolean!
+  requireTestQuality: Boolean!
+}
+
+type WorkOpsGuidanceQuery {
+  effective(projectId: UUID): WorkOpsGuidance!
+  exportSkill(phase: WorkOpsGuidancePhase!, projectId: UUID): String!
+  importSkill(phase: WorkOpsGuidancePhase!, skill: String!): WorkOpsGuide!
+}
+
+type WorkOpsGuide {
+  description: String!
+  documentVersion: Int
+  inherited: Boolean!
+  markdown: String!
+  metadataId: UUID
+  name: String!
+  phase: WorkOpsGuidancePhase!
+  resourceId: UUID
+}
+
+input WorkOpsGuideInput {
+  description: String!
+  markdown: String!
+  name: String!
+  phase: WorkOpsGuidancePhase!
+}
+
 enum WorkOpsHealthCheckStatus {
   DEGRADED
   HEALTHY
@@ -21975,6 +22041,7 @@ type WorkOpsMutations {
   boards: WorkOpsBoardsMutation!
   components: WorkOpsComponentsMutation!
   crossProject: WorkOpsCrossProjectMutation!
+  guidance: WorkOpsGuidanceMutation!
   labels: WorkOpsLabelsMutation!
   linkTypes: WorkOpsTaskLinkTypesMutation!
   links: WorkOpsTaskLinksMutation!

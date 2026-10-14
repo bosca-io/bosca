@@ -16,6 +16,10 @@ interface RequirementRepository {
     @Query("select * from workops.requirement where id = :id and deleted_at is null")
     suspend fun getActiveById(id: UUID): Requirement?
 
+    /** Locks an active requirement inside the caller's transaction, before task and completion-revision writes. */
+    @Query("select * from workops.requirement where id = :id and deleted_at is null for update")
+    suspend fun getActiveForUpdate(id: UUID): Requirement?
+
     @Query("select * from workops.requirement where key = :key and deleted_at is null")
     suspend fun getActiveByKey(key: String): Requirement?
 
@@ -64,7 +68,7 @@ interface RequirementRepository {
         where parent_type = (:parentType)::workops.requirement_parent
           and parent_id = :parentId
           and deleted_at is null
-        order by sort_order, modified_at desc
+        order by sort_order, created_at, id
         limit :limit offset :offset
         """
     )

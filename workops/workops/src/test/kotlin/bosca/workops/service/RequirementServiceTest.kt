@@ -49,6 +49,7 @@ class RequirementServiceTest {
 
     @BeforeTest
     fun setup() {
+        coEvery { requirementRepository.getActiveForUpdate(any()) } coAnswers { requirementRepository.getActiveById(firstArg()) }
         mockkStatic("bosca.db.ConnectionManagerKt")
         coEvery { bosca.db.transaction(any<suspend () -> Any?>()) } coAnswers {
             firstArg<suspend () -> Any?>().invoke()
@@ -132,6 +133,65 @@ class RequirementServiceTest {
         statusId = statusId, workflowId = workflowId, priorityId = priorityId,
         createdByPrincipalId = principalId, modifiedByPrincipalId = principalId,
     )
+
+    @Test
+    fun `explicit content rejects missing requirement task metadata and stale metadata version`() = runTest {
+        val requirement = sampleRequirement().copy(taskId = taskId)
+        val input = bosca.workops.model.spec.SetRequirementContentInput(
+            bosca.workops.model.spec.RequirementContentInput("Edited", "Body", listOf("Pass")), requirement.version, 0, 1,
+        )
+        coEvery { requirementRepository.getActiveById(requirement.id) } returns null
+        assertFailsWith<WorkOpsNotFoundException> { service.setContent(requirement.id, input, principalId, profileId) }
+        coEvery { requirementRepository.getActiveById(requirement.id) } returns requirement.copy(taskId = null)
+        assertFailsWith<IllegalStateException> { service.setContent(requirement.id, input, principalId, profileId) }
+        coEvery { requirementRepository.getActiveById(requirement.id) } returns requirement
+        coEvery { metadataService.getById(metadataId) } returns null
+        assertFailsWith<IllegalStateException> { service.setContent(requirement.id, input, principalId, profileId) }
+        coEvery { metadataService.getById(metadataId) } returns mockk { every { version } returns 2 }
+        assertFailsWith<IllegalArgumentException> { service.setContent(requirement.id, input, principalId, profileId) }
+        coVerify(exactly = 0) { metadataService.setDocument(any(), any(), any()) }
+        coVerify(exactly = 0) { taskService.update(any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun `content replacement can populate absent documents and nullable document content`() = runTest {
+        for (oldDocument in listOf(null, bosca.content.metadata.model.Document(metadataId, 1, title = "Old", content = null))) {
+            setupDefaults()
+            val requirement = sampleRequirement().copy(taskId = taskId)
+            val updated = requirement.copy(version = 1)
+            val input = bosca.workops.model.spec.SetRequirementContentInput(
+                bosca.workops.model.spec.RequirementContentInput("Edited", "Body", listOf("Pass")), 0, 0, 1,
+            )
+            coEvery { requirementRepository.getActiveById(requirement.id) } returns requirement
+            coEvery { documentService.getDocument(metadataId, 1) } returns oldDocument
+            coEvery { requirementRepository.updateCore(any(), any(), any(), any(), any(), any(), any()) } returns updated
+            coEvery { metadataService.setDocument(any(), any(), any()) } just Runs
+            coEvery { taskService.update(taskId, any(), principalId, profileId) } returns sampleTask
+            assertEquals(updated, service.setContent(requirement.id, input, principalId, profileId))
+            coVerify { taskService.update(taskId, match { it.summary == "Edited" && it.descriptionMarkdown == input.content.body() }, principalId, profileId) }
+        }
+    }
+
+    @Test
+    fun `atomic requirement creation reports missing linked tasks and metadata`() = runTest {
+        setupDefaults()
+        val content = bosca.workops.model.spec.RequirementContentInput("Created", "Body", listOf("Pass"))
+        val createdMetadata = mockk<bosca.content.metadata.model.Metadata> {
+            every { id } returns metadataId; every { version } returns 1
+        }
+        coEvery { specRepository.getActiveById(specId) } returns sampleSpec
+        coEvery { projectRepository.getById(projectId) } returns sampleProject
+        coEvery { keyCounterRepository.reserveNext(projectId) } returns 1L
+        coEvery { metadataService.add(any(), any(), any()) } returns createdMetadata
+        coEvery { requirementRepository.add(any()) } answers { firstArg<Requirement>().copy(id = UUID.random(), taskId = null) }
+        assertFailsWith<IllegalStateException> { service.createWithContent(RequirementParent.SPEC, specId, content, principalId, profileId) }
+        coEvery { requirementRepository.add(any()) } answers { firstArg<Requirement>().copy(id = UUID.random(), taskId = taskId) }
+        coEvery { taskService.getById(taskId) } returns null
+        assertFailsWith<IllegalStateException> { service.createWithContent(RequirementParent.SPEC, specId, content, principalId, profileId) }
+        coEvery { taskService.getById(taskId) } returns sampleTask
+        coEvery { metadataService.getById(metadataId) } returns null
+        assertFailsWith<IllegalStateException> { service.createWithContent(RequirementParent.SPEC, specId, content, principalId, profileId) }
+    }
 
     private fun setupDefaults() {
         coEvery { statusRepository.getAll() } returns listOf(todoStatus)

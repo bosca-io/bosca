@@ -82,10 +82,10 @@ class SpecTypeFieldController(
     fun sortOrder(s: Spec) = s.sortOrder
 
     @Field
-    fun childCount(s: Spec) = s.childCount
+    suspend fun childCount(s: Spec) = specService.countChildren(s.id).toInt()
 
     @Field
-    fun childDoneCount(s: Spec) = s.childDoneCount
+    suspend fun childDoneCount(s: Spec) = specService.countDoneChildren(s.id).toInt()
 
     @Field
     fun gitRepositoryId(s: Spec) = s.gitRepositoryId

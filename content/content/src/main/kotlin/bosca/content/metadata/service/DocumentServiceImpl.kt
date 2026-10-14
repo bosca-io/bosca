@@ -84,6 +84,8 @@ class DocumentServiceImpl(
 
     override suspend fun getDocument(id: UUID, version: Int) = documentCache.get(MetadataCacheKeyId(id, version))
 
+    override suspend fun getDocumentFresh(id: UUID, version: Int) = loadDocument(id, version)
+
     override suspend fun getDocumentsBatch(batch: Batch<MetadataCacheKeyId, Document>) = documentCache.addToBatch(batch)
 
     override suspend fun addDocument(id: UUID, version: Int, document: DocumentInput) {

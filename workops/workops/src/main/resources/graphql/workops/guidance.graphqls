@@ -1,0 +1,50 @@
+enum WorkOpsGuidancePhase { INVESTIGATION SPECIFICATION INTERFACES IMPLEMENTATION VERIFICATION }
+type WorkOpsGuidancePolicy {
+    requireInterfaceReview: Boolean!
+    requireTdd: Boolean!
+    requireTestQuality: Boolean!
+    minimumLineCoverage: Float!
+    minimumBranchCoverage: Float!
+}
+input WorkOpsGuidancePolicyInput {
+    requireInterfaceReview: Boolean!
+    requireTdd: Boolean!
+    requireTestQuality: Boolean!
+    minimumLineCoverage: Float!
+    minimumBranchCoverage: Float!
+}
+type WorkOpsGuide {
+    phase: WorkOpsGuidancePhase!
+    name: String!
+    description: String!
+    markdown: String!
+    inherited: Boolean!
+    metadataId: UUID
+    documentVersion: Int
+    resourceId: UUID
+}
+input WorkOpsGuideInput {
+    phase: WorkOpsGuidancePhase!
+    name: String!
+    description: String!
+    markdown: String!
+}
+type WorkOpsGuidance {
+    revision: String!
+    policy: WorkOpsGuidancePolicy!
+    policyInherited: Boolean!
+    guides: [WorkOpsGuide!]!
+}
+input WorkOpsGuidanceInput {
+    policy: WorkOpsGuidancePolicyInput
+    guides: [WorkOpsGuideInput!]! = []
+}
+type WorkOpsGuidanceQuery {
+    effective(projectId: UUID): WorkOpsGuidance!
+    exportSkill(projectId: UUID, phase: WorkOpsGuidancePhase!): String!
+    importSkill(phase: WorkOpsGuidancePhase!, skill: String!): WorkOpsGuide!
+}
+type WorkOpsGuidanceMutation {
+    save(projectId: UUID, input: WorkOpsGuidanceInput!, expectedRevision: String!): WorkOpsGuidance!
+    reset(projectId: UUID, expectedRevision: String!): WorkOpsGuidance!
+}

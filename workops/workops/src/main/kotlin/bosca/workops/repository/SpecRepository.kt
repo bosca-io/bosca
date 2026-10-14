@@ -91,6 +91,14 @@ interface SpecRepository {
     )
     suspend fun countByParentSpec(parentSpecId: UUID): Long
 
+    /** Counts currently active DONE children from their persisted status definitions. */
+    @Query("select count(*) from workops.spec s join workops.status status on status.id = s.status_id where s.parent_spec_id = :parentSpecId and s.deleted_at is null and status.category = 'DONE'")
+    suspend fun countDoneChildren(parentSpecId: UUID): Long
+
+    /** Tests actual active children, including cancelled children, without trusting cached rollups. */
+    @Query("select exists(select 1 from workops.spec s join workops.status status on status.id = s.status_id where s.parent_spec_id = :parentSpecId and s.deleted_at is null and status.category <> 'DONE')")
+    suspend fun hasIncompleteChildren(parentSpecId: UUID): Boolean
+
     @Query(
         """
         insert into workops.spec (
@@ -145,6 +153,10 @@ interface SpecRepository {
         expectedVersion: Long,
     ): Spec?
 
+    /**
+     * Applies a transition only while the ordinary version and optional completion revision match.
+     * The caller validates completion inside this transaction; a changed contributing row returns null.
+     */
     @Query(
         """
         update workops.spec
@@ -153,6 +165,7 @@ interface SpecRepository {
             modified_at = now(),
             version = version + 1
         where id = :id and version = :expectedVersion and deleted_at is null
+          and (:expectedCompletionVersion::bigint is null or completion_version = :expectedCompletionVersion::bigint)
         returning *
         """
     )
@@ -161,6 +174,7 @@ interface SpecRepository {
         statusId: UUID,
         modifiedByPrincipalId: UUID,
         expectedVersion: Long,
+        expectedCompletionVersion: Long?,
     ): Spec?
 
     @Query(

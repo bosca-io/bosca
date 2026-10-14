@@ -21,6 +21,10 @@ import bosca.graphql.annotations.Schemas
 @Schemas
 interface SchemaRegistrar {
 
+    /** Editable workflow guides and executable policy. */
+    @Schema("workops/guidance.graphqls")
+    val guidance: String
+
     /** Portfolio root queries and CRUD (R1). Populated in Phase 2. */
     @Schema("workops/portfolio.graphqls")
     val portfolio: String

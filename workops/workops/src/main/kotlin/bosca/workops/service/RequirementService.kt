@@ -59,6 +59,55 @@ class RequirementServiceImpl(
     private val json: Json,
 ) : RequirementService {
 
+    override suspend fun createWithContent(
+        parentType: RequirementParent, parentId: UUID,
+        input: bosca.workops.model.spec.RequirementContentInput,
+        actingPrincipalId: UUID, actingProfileId: UUID?,
+    ): Requirement {
+        input.validate()
+        MarkdownConverter.fromMarkdown(input.body())
+        return transaction {
+            val requirement = create(CreateRequirementInput(name = input.name, parentType = parentType, parentId = parentId), actingPrincipalId, actingProfileId)
+            val task = taskService.getById(requirement.taskId ?: error("Linked task is missing")) ?: error("Linked task is missing")
+            val metadata = metadataService.getById(requirement.metadataId) ?: error("Requirement metadata is missing")
+            setContent(requirement.id, bosca.workops.model.spec.SetRequirementContentInput(input, requirement.version, task.version, metadata.version), actingPrincipalId, actingProfileId)
+        }
+    }
+
+    override suspend fun setContent(
+        id: UUID, input: bosca.workops.model.spec.SetRequirementContentInput,
+        actingPrincipalId: UUID, actingProfileId: UUID?,
+    ): Requirement {
+        input.content.validate()
+        val body = input.content.body()
+        val content = MarkdownConverter.fromMarkdown(body)
+        return transaction {
+            val requirement = requirementRepository.getActiveForUpdate(id) ?: throw WorkOpsNotFoundException("Requirement", id.toString())
+            val taskId = requirement.taskId ?: error("Requirement has no linked task")
+            val metadata = metadataService.getById(requirement.metadataId) ?: error("Requirement metadata is missing")
+            require(metadata.version == input.metadataVersion) { "Requirement metadata version changed" }
+            val oldDocument = documentService.getDocument(metadata.id, metadata.version)
+            // Validate the linked task version before replacing the requirement document.
+            taskService.update(taskId, bosca.workops.model.task.UpdateTaskInput(
+                summary = input.content.name, descriptionMarkdown = body, expectedVersion = input.expectedTaskVersion,
+            ), actingPrincipalId, actingProfileId)
+            // The requirement update serializes explicit content replacements and checks its version.
+            val updated = update(id, UpdateRequirementInput(expectedVersion = input.expectedVersion), actingPrincipalId, actingProfileId)
+            metadataService.setDocument(metadata, DocumentInput(
+                templateMetadataId = oldDocument?.templateMetadataId,
+                templateMetadataVersion = oldDocument?.templateMetadataVersion,
+                title = input.content.name, content = content,
+            ), bosca.content.metadata.service.CollaborationSyncMode.RESET)
+            val oldContent = oldDocument?.content
+            writeHistory(id, actingPrincipalId, actingProfileId, listOf(
+                FieldChange("document_title", if (oldDocument == null) JsonNull else JsonPrimitive(oldDocument.title), JsonPrimitive(input.content.name)),
+                FieldChange("document_content", if (oldContent == null) JsonNull else json.encodeToJsonElement(Content.serializer(), oldContent),
+                    json.encodeToJsonElement(Content.serializer(), content)),
+            ))
+            updated
+        }
+    }
+
     override suspend fun getPermissions(entity: Requirement): List<EntityPermission> =
         requirementPermissionRepository.getByRequirementId(entity.id)
 
@@ -120,8 +169,8 @@ class RequirementServiceImpl(
         val project = projectRepository.getById(projectId)
             ?: throw WorkOpsNotFoundException("Project", projectId.toString())
 
-        // Reserve the key sequence outside the transaction so the counter
-        // increment auto-commits and cannot be rolled back by a later failure.
+        // Reserve before the entity transaction. An enclosing content or plan
+        // transaction also owns this reservation.
         val seq = keyCounterRepository.reserveNext(projectId)
             ?: run {
                 keyCounterRepository.initialize(projectId)

@@ -12,6 +12,11 @@ import java.io.File
 
 class ContentMetadata(network: NetworkClient) : Api(network) {
 
+    /** Returns an active document's metadata and current version, or null for missing/deleted metadata. */
+    suspend fun getDocumentContext(id: Uuid): GetMetadataDocumentContextData.Content.Metadata? =
+        network.boscaGraphql.execute(GetMetadataDocumentContext, GetMetadataDocumentContext.Variables(id)).content.metadata
+            ?.takeUnless { it.deleted }
+
     suspend fun getAll(offset: Int, limit: Int): List<GetAllMetadataData.Content.FindMetadata> =
         network.boscaGraphql.execute(GetAllMetadata, GetAllMetadata.Variables(offset, limit)).content.findMetadata
 

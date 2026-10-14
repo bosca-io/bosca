@@ -12,6 +12,26 @@ class WorkOpsApi(network: NetworkClient) : Api(network) {
 
     private val gql = network.boscaGraphql
 
+    /** Atomically creates a complete plan, replaying an identical requestId for this principal. */
+    suspend fun createPlan(input: CreateWorkOpsSpecPlanInput): CreateWorkOpsSpecPlanData.WorkOps.Specs.CreatePlan =
+        gql.execute(CreateWorkOpsSpecPlan, CreateWorkOpsSpecPlan.Variables(input)).workOps.specs.createPlan
+
+    /** Atomically adds a populated requirement with principal-scoped retry protection. */
+    suspend fun addPlanRequirement(specId: Uuid, requestId: Uuid, input: WorkOpsRequirementContentInput): AddWorkOpsPlanRequirementData.WorkOps.Specs.AddPlanRequirement =
+        gql.execute(AddWorkOpsPlanRequirement, AddWorkOpsPlanRequirement.Variables(specId, requestId, input)).workOps.specs.addPlanRequirement
+
+    /** Replaces rich requirement content and linked task text in a single transaction. */
+    suspend fun setRequirementContent(id: Uuid, input: SetWorkOpsRequirementContentInput): SetWorkOpsRequirementContentData.WorkOps.Requirements.SetContent =
+        gql.execute(SetWorkOpsRequirementContent, SetWorkOpsRequirementContent.Variables(id, input)).workOps.requirements.setContent
+
+    /** Returns permission-filtered task-link endpoints for dependency recommendations. */
+    suspend fun getPlanTaskLinks(id: Uuid): List<GetWorkOpsPlanTaskLinksData.WorkOps.Links.ForTask> =
+        gql.execute(GetWorkOpsPlanTaskLinks, GetWorkOpsPlanTaskLinks.Variables(id)).workOps.links.forTask
+
+    /** Loads the effective workflow documents and executable policy for the optional project. */
+    suspend fun getEffectiveGuidance(projectId: Uuid? = null): GetEffectiveWorkOpsGuidanceData.WorkOps.Guidance.Effective =
+        gql.execute(GetEffectiveWorkOpsGuidance, GetEffectiveWorkOpsGuidance.Variables(projectId)).workOps.guidance.effective
+
     // ── Portfolios ──────────────────────────────────────────────
 
     suspend fun listPortfolios(offset: Long = 0, limit: Int = 50): List<IWorkOpsPortfolioFragment> =
@@ -278,6 +298,29 @@ class WorkOpsApi(network: NetworkClient) : Api(network) {
 
     suspend fun getSpec(id: Uuid): IWorkOpsSpecFragment? =
         gql.execute(GetWorkOpsSpec, GetWorkOpsSpec.Variables(id)).workOps.specs.spec
+
+    /** Returns the spec, references, and a page of requirements with linked tasks and transitions. */
+    suspend fun getPlanContext(specId: Uuid, offset: Long = 0, limit: Int = 50): GetWorkOpsPlanContextData.WorkOps.Specs.Spec? =
+        gql.execute(GetWorkOpsPlanContext, GetWorkOpsPlanContext.Variables(specId, offset, limit)).workOps.specs.spec
+
+    /** Returns available spec transitions, optionally including transitions outside the current state. */
+    suspend fun getSpecTransitions(specId: Uuid, currentOnly: Boolean = true): GetWorkOpsSpecTransitionsData.WorkOps.Specs.Spec? =
+        gql.execute(GetWorkOpsSpecTransitions, GetWorkOpsSpecTransitions.Variables(specId, currentOnly)).workOps.specs.spec
+
+    /** Returns a task's execution state and available transitions for plan review. */
+    suspend fun getPlanTask(taskId: Uuid): IWorkOpsPlanTask? =
+        gql.execute(GetWorkOpsPlanTask, GetWorkOpsPlanTask.Variables(taskId)).workOps.tasks.task
+
+    /** Replaces linked task content with optimistic locking when explicitly editing a requirement body. */
+    suspend fun updatePlanTaskContent(taskId: Uuid, input: UpdateWorkOpsTaskInput): IWorkOpsPlanTask =
+        gql.execute(UpdateWorkOpsPlanTaskContent, UpdateWorkOpsPlanTaskContent.Variables(taskId, input)).workOps.tasks.update
+
+    /** Returns a page of task generations so plan verification can inspect additional tasks. */
+    suspend fun getPlanGenerations(specId: Uuid, offset: Long = 0, limit: Int = 50): List<GetWorkOpsPlanGenerationsData.WorkOps.Specs.Spec.TaskGenerations> {
+        val spec = gql.execute(GetWorkOpsPlanGenerations, GetWorkOpsPlanGenerations.Variables(specId, offset, limit)).workOps.specs.spec
+            ?: error("Spec not found: $specId")
+        return spec.taskGenerations
+    }
 
     suspend fun getSpecByKey(key: String): IWorkOpsSpecFragment? =
         gql.execute(GetWorkOpsSpecByKey, GetWorkOpsSpecByKey.Variables(key)).workOps.specs.specByKey

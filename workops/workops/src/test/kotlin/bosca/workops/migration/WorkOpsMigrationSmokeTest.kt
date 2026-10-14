@@ -127,6 +127,15 @@ class WorkOpsMigrationSmokeTest {
         }
 
     @Test
+    fun `completion contributor constraints are deferred and migration is registered`() {
+        migrate(listOf(CoreMigration(), WorkOpsMigration()))
+        val deferred = querySingleColumn("select tgname from pg_trigger where tgname like 'spec_completion_%' and tgdeferrable and tginitdeferred order by tgname", "tgname")
+        assertEquals(listOf("spec_completion_child", "spec_completion_comment_insert_delete", "spec_completion_comment_update",
+            "spec_completion_context", "spec_completion_document", "spec_completion_generation", "spec_completion_metadata",
+            "spec_completion_metadata_delete", "spec_completion_requirement", "spec_completion_status", "spec_completion_task"), deferred)
+    }
+
+    @Test
     fun `WorkOpsMigration creates the workops schema and the Phase 2-5+ table inventory`() {
         migrate(listOf(CoreMigration(), WorkOpsMigration()))
 
@@ -282,6 +291,7 @@ class WorkOpsMigrationSmokeTest {
             // (durable mobile-store build identities)
             "app_build_number_counter",
             "app_build_number_allocation",
+            "plan_creation",
         )
         val actual = tables.sorted()
         assertEquals(expected.sorted(), actual, "table inventory drifted")

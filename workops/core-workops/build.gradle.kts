@@ -19,6 +19,11 @@ kotlin {
 }
 
 dependencies {
+    implementation(libs.commonmark)
+    implementation(libs.commonmark.ext.gfm.tables)
+    implementation(libs.commonmark.ext.gfm.strikethrough)
+    implementation(libs.commonmark.ext.task.list.items)
+    implementation(libs.commonmark.ext.autolink)
     implementation(project(":bosca-core:core"))
     implementation(project(":bosca-core:core-events"))
     // Phase 4 reuses CommentStatus from core-comments and ProfileVisibility

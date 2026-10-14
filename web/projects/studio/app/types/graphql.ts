@@ -25597,6 +25597,7 @@ export type WorkOps = {
   boards: WorkOpsBoards;
   components: WorkOpsComponents;
   crossProject: WorkOpsCrossProjectQuery;
+  guidance: WorkOpsGuidanceQuery;
   labels: WorkOpsLabels;
   links: WorkOpsTaskLinks;
   milestones: WorkOpsMilestones;
@@ -26504,6 +26505,105 @@ export enum WorkOpsGenerationSource {
   Manual = 'MANUAL'
 }
 
+export type WorkOpsGuidance = {
+  __typename?: 'WorkOpsGuidance';
+  guides: Array<WorkOpsGuide>;
+  policy: WorkOpsGuidancePolicy;
+  policyInherited: Scalars['Boolean']['output'];
+  revision: Scalars['String']['output'];
+};
+
+export type WorkOpsGuidanceInput = {
+  guides?: Array<WorkOpsGuideInput>;
+  policy?: InputMaybe<WorkOpsGuidancePolicyInput>;
+};
+
+export type WorkOpsGuidanceMutation = {
+  __typename?: 'WorkOpsGuidanceMutation';
+  reset: WorkOpsGuidance;
+  save: WorkOpsGuidance;
+};
+
+
+export type WorkOpsGuidanceMutation_ResetArgs = {
+  expectedRevision: Scalars['String']['input'];
+  projectId?: InputMaybe<Scalars['UUID']['input']>;
+};
+
+
+export type WorkOpsGuidanceMutation_SaveArgs = {
+  input: WorkOpsGuidanceInput;
+  projectId?: InputMaybe<Scalars['UUID']['input']>;
+};
+
+export enum WorkOpsGuidancePhase {
+  Implementation = 'IMPLEMENTATION',
+  Interfaces = 'INTERFACES',
+  Investigation = 'INVESTIGATION',
+  Specification = 'SPECIFICATION',
+  Verification = 'VERIFICATION'
+}
+
+export type WorkOpsGuidancePolicy = {
+  __typename?: 'WorkOpsGuidancePolicy';
+  minimumBranchCoverage: Scalars['Float']['output'];
+  minimumLineCoverage: Scalars['Float']['output'];
+  requireInterfaceReview: Scalars['Boolean']['output'];
+  requireTdd: Scalars['Boolean']['output'];
+  requireTestQuality: Scalars['Boolean']['output'];
+};
+
+export type WorkOpsGuidancePolicyInput = {
+  minimumBranchCoverage: Scalars['Float']['input'];
+  minimumLineCoverage: Scalars['Float']['input'];
+  requireInterfaceReview: Scalars['Boolean']['input'];
+  requireTdd: Scalars['Boolean']['input'];
+  requireTestQuality: Scalars['Boolean']['input'];
+};
+
+export type WorkOpsGuidanceQuery = {
+  __typename?: 'WorkOpsGuidanceQuery';
+  effective: WorkOpsGuidance;
+  exportSkill: Scalars['String']['output'];
+  importSkill: WorkOpsGuide;
+};
+
+
+export type WorkOpsGuidanceQuery_EffectiveArgs = {
+  projectId?: InputMaybe<Scalars['UUID']['input']>;
+};
+
+
+export type WorkOpsGuidanceQuery_ExportSkillArgs = {
+  phase: WorkOpsGuidancePhase;
+  projectId?: InputMaybe<Scalars['UUID']['input']>;
+};
+
+
+export type WorkOpsGuidanceQuery_ImportSkillArgs = {
+  phase: WorkOpsGuidancePhase;
+  skill: Scalars['String']['input'];
+};
+
+export type WorkOpsGuide = {
+  __typename?: 'WorkOpsGuide';
+  description: Scalars['String']['output'];
+  documentVersion?: Maybe<Scalars['Int']['output']>;
+  inherited: Scalars['Boolean']['output'];
+  markdown: Scalars['String']['output'];
+  metadataId?: Maybe<Scalars['UUID']['output']>;
+  name: Scalars['String']['output'];
+  phase: WorkOpsGuidancePhase;
+  resourceId?: Maybe<Scalars['UUID']['output']>;
+};
+
+export type WorkOpsGuideInput = {
+  description: Scalars['String']['input'];
+  markdown: Scalars['String']['input'];
+  name: Scalars['String']['input'];
+  phase: WorkOpsGuidancePhase;
+};
+
 export enum WorkOpsHealthCheckStatus {
   Degraded = 'DEGRADED',
   Healthy = 'HEALTHY',
@@ -27051,6 +27151,7 @@ export type WorkOpsMutations = {
   boards: WorkOpsBoardsMutation;
   components: WorkOpsComponentsMutation;
   crossProject: WorkOpsCrossProjectMutation;
+  guidance: WorkOpsGuidanceMutation;
   labels: WorkOpsLabelsMutation;
   linkTypes: WorkOpsTaskLinkTypesMutation;
   links: WorkOpsTaskLinksMutation;

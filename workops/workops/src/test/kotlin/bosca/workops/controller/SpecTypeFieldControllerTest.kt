@@ -110,6 +110,8 @@ class SpecTypeFieldControllerTest {
         coEvery { profilePermissions.isAllowed(authentication, owner, PermissionAction.VIEW) } returns true
         coEvery { workflowService.resolveWorkflowForSpec(spec) } returns
                 WorkflowResolution(mockk(), currentState, transitions)
+        coEvery { specService.countChildren(spec.id) } returns 4L
+        coEvery { specService.countDoneChildren(spec.id) } returns 2L
         coEvery { specService.listChildren(spec.id, 1, 2) } returns emptyList()
         coEvery { specService.listHistory(spec.id, 3, 4) } returns emptyList()
         coEvery { requirementService.listByParent(any(), spec.id, 5, 6) } returns emptyList()
@@ -126,8 +128,8 @@ class SpecTypeFieldControllerTest {
         assertEquals(spec.ownerProfileId, controller.ownerProfileId(spec))
         assertEquals(spec.parentSpecId, controller.parentSpecId(spec))
         assertEquals(spec.sortOrder, controller.sortOrder(spec))
-        assertEquals(spec.childCount, controller.childCount(spec))
-        assertEquals(spec.childDoneCount, controller.childDoneCount(spec))
+        assertEquals(4, controller.childCount(spec))
+        assertEquals(2, controller.childDoneCount(spec))
         assertEquals(spec.gitRepositoryId, controller.gitRepositoryId(spec))
         assertEquals(spec.gitPath, controller.gitPath(spec))
         assertEquals(spec.watcherProfileIds, controller.watcherProfileIds(spec))

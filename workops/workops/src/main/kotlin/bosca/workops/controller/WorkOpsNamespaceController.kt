@@ -8,6 +8,7 @@ object WorkOps
 
 @TypeController
 class WorkOpsQueryController : GraphQLController<WorkOps> {
+    @Field fun guidance() = WorkOpsGuidanceQuery
     @Field fun portfolios() = WorkOpsPortfolios
     @Field fun programs() = WorkOpsPrograms
     @Field fun projects() = WorkOpsProjects
@@ -40,6 +41,7 @@ object WorkOpsMutationsRoot
 
 @TypeController(type = "WorkOpsMutations")
 class WorkOpsMutationController : GraphQLController<WorkOpsMutationsRoot> {
+    @Field fun guidance() = WorkOpsGuidanceMutation
     @Field fun portfolios() = WorkOpsPortfoliosMutation
     @Field fun programs() = WorkOpsProgramsMutation
     @Field fun projects() = WorkOpsProjectsMutation

@@ -1,0 +1,128 @@
+fragment WorkOpsPlanTransition on WorkOpsWorkflowTransition {
+    id
+    name
+    description
+    toState {
+        id
+        status { id name category }
+    }
+}
+
+fragment WorkOpsPlanTask on WorkOpsTask {
+    id
+    key
+    summary
+    descriptionMarkdown
+    version
+    status { id name category }
+    resolution { id name }
+    transitions { ...WorkOpsPlanTransition }
+}
+
+query GetWorkOpsSpecTransitions($specId: UUID!, $currentOnly: Boolean! = true) {
+    workOps {
+        specs {
+            spec(id: $specId) {
+                id
+                key
+                version
+                transitions(currentOnly: $currentOnly) { ...WorkOpsPlanTransition }
+            }
+        }
+    }
+}
+
+query GetWorkOpsPlanContext($specId: UUID!, $offset: Long! = 0, $limit: Int! = 50) {
+    workOps {
+        specs {
+            spec(id: $specId) {
+                id
+                key
+                metadataId
+                version
+                projectId
+                programId
+                parentSpecId
+                gitRepositoryId
+                gitPath
+                status { id name category }
+                childCount
+                childDoneCount
+                requirementCount
+                transitions { ...WorkOpsPlanTransition }
+                requirements(offset: $offset, limit: $limit) {
+                    id
+                    key
+                    metadataId
+                    version
+                    taskId
+                    status { id name category }
+                    task { ...WorkOpsPlanTask }
+                }
+                contexts {
+                    id
+                    contextType
+                    targetId
+                    label
+                    attributes
+                }
+            }
+        }
+    }
+}
+
+query GetWorkOpsPlanTask($taskId: UUID!) {
+    workOps { tasks { task(id: $taskId) { ...WorkOpsPlanTask } } }
+}
+
+mutation UpdateWorkOpsPlanTaskContent($id: UUID!, $input: UpdateWorkOpsTaskInput!) {
+    workOps { tasks { update(id: $id, input: $input) { ...WorkOpsPlanTask } } }
+}
+
+query GetWorkOpsPlanGenerations($specId: UUID!, $offset: Long! = 0, $limit: Int! = 50) {
+    workOps {
+        specs {
+            spec(id: $specId) {
+                taskGenerations(offset: $offset, limit: $limit) {
+                    id
+                    metadataVersion
+                    source
+                    generatedTaskIds
+                }
+            }
+        }
+    }
+}
+
+query GetMetadataDocumentContext($id: UUID!) {
+    content {
+        metadata(id: $id) {
+            id
+            version
+            name
+            deleted
+            document { title content }
+        }
+    }
+}
+
+mutation CreateWorkOpsSpecPlan($input: CreateWorkOpsSpecPlanInput!) {
+    workOps { specs { createPlan(input: $input) { id key metadataId } } }
+}
+
+mutation AddWorkOpsPlanRequirement($specId: UUID!, $requestId: UUID!, $input: WorkOpsRequirementContentInput!) {
+    workOps { specs { addPlanRequirement(specId: $specId, requestId: $requestId, input: $input) { id key metadataId taskId } } }
+}
+
+mutation SetWorkOpsRequirementContent($id: UUID!, $input: SetWorkOpsRequirementContentInput!) {
+    workOps { requirements { setContent(id: $id, input: $input) { id key metadataId taskId } } }
+}
+
+query GetWorkOpsPlanTaskLinks($taskId: UUID!) {
+    workOps { links { forTask(taskId: $taskId) {
+        id
+        linkType { category name }
+        sourceTask { id key summary status { category name } }
+        targetTask { id key }
+    } } }
+}

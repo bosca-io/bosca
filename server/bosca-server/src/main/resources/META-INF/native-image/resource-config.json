@@ -1,6 +1,7 @@
 {
   "resources": {
     "includes": [
+      {"pattern": "workops/guidance/.*/SKILL\\.md"},
       {"pattern": "application\\.yaml"},
       {"pattern": "logback\\.xml"},
       {"pattern": "db/migrations/.*\\.sql"},

@@ -1,0 +1,18 @@
+query GetEffectiveWorkOpsGuidance($projectId: UUID) {
+    workOps {
+        guidance {
+            effective(projectId: $projectId) {
+                revision
+                policyInherited
+                policy {
+                    requireInterfaceReview
+                    requireTdd
+                    requireTestQuality
+                    minimumLineCoverage
+                    minimumBranchCoverage
+                }
+                guides { phase name description markdown inherited metadataId documentVersion resourceId }
+            }
+        }
+    }
+}

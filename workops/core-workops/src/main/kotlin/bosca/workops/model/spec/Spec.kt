@@ -98,6 +98,9 @@ data class Spec(
     @Contextual
     val deletedAt: OffsetDateTime? = null,
     val version: Long = 0,
+    /** Internal optimistic token for all persisted inputs checked during completion. */
+    @ColumnName("completion_version")
+    val completionVersion: Long = 0,
 ) : PermissibleEntity<UUID> {
 
     init {

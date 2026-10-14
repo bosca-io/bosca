@@ -198,6 +198,24 @@ class DocumentServiceImplCoverageTest {
     // ── cache resolvers ──────────────────────────────────────────────────────
 
     @Test
+    fun `fresh documents bypass cached bodies and preserve the ordinary cache contract`() = runTest(timeout = kotlin.time.Duration.parse("60s")) {
+        val id = insertMetadata("Fresh document")
+        withRequest {
+            service.addDocument(id, 1, DocumentInput(title = "Cached", content = Content()))
+            assertEquals("Cached", service.getDocument(id, 1)?.title)
+            documentRepository.add(id, 1, "Current", Content())
+            assertEquals("Current", service.getDocumentFresh(id, 1)?.title)
+            assertEquals("Cached", service.getDocument(id, 1)?.title)
+            assertNull(service.getDocumentFresh(UUID.random(), 1))
+        }
+        replaceContent(id, legacySuperscriptContent)
+        val fresh = assertNotNull(withRequest { service.getDocumentFresh(id, 1) })
+        val text = assertIs<TextNode>(assertIs<ParagraphNode>(fresh.content?.document?.content?.single()).content.single())
+        assertEquals("2", text.text)
+        assertIs<Superscript>(text.marks.single())
+    }
+
+    @Test
     fun `getDocument single-key resolver misses then hits after addDocument`() = runTest(timeout = kotlin.time.Duration.parse("60s")) {
         val id = insertMetadata()
 

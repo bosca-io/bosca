@@ -3,6 +3,7 @@ Single entry point for all Work Ops queries. Subsystems hang off
 this type rather than polluting the root Query with 15+ fields.
 """
 type WorkOps {
+    guidance: WorkOpsGuidanceQuery!
     portfolios: WorkOpsPortfolios!
     programs: WorkOpsPrograms!
     projects: WorkOpsProjects!
@@ -35,6 +36,7 @@ type WorkOps {
 Single entry point for all Work Ops mutations.
 """
 type WorkOpsMutations {
+    guidance: WorkOpsGuidanceMutation!
     portfolios: WorkOpsPortfoliosMutation!
     programs: WorkOpsProgramsMutation!
     projects: WorkOpsProjectsMutation!

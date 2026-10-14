@@ -21,6 +21,8 @@ kotlin {
 dependencies {
     implementation(project(":bosca-core:core"))
     implementation(project(":bosca-core:core-events"))
+    implementation(project(":bosca-core:core-configuration"))
+    implementation(project(":ai:core-ai"))
     implementation(project(":pipelines:core-pipelines"))
     implementation(project(":workops:core-workops"))
     implementation(project(":workops:store-pipelines"))
@@ -56,6 +58,8 @@ dependencies {
     testImplementation(libs.flyway.postgresql)
     testImplementation(libs.testcontainers)
     testImplementation(project(":bosca-core:test-support"))
+    testImplementation(project(":bosca-core:configuration"))
+    testImplementation(project(":ai:ai"))
     testImplementation(libs.testcontainers.postgresql)
     testImplementation(libs.okhttp.mockwebserver)
 }

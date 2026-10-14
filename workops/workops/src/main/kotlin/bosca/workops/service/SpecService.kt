@@ -70,6 +70,7 @@ class SpecServiceImpl(
     private val projectPermissionEvaluator: ProjectPermissionEvaluator,
     private val programPermissionEvaluator: ProgramPermissionEvaluator,
     private val json: Json,
+    private val completion: SpecCompletionService,
 ) : SpecService {
 
     override suspend fun getPermissions(entity: Spec): List<EntityPermission> =
@@ -128,9 +129,8 @@ class SpecServiceImpl(
         val project = projectRepository.getById(projectId)
             ?: throw WorkOpsNotFoundException("Project", projectId.toString())
 
-        // Reserve the key sequence outside the transaction so the counter
-        // increment auto-commits and cannot be rolled back by a later failure
-        // in the spec insert / history write.
+        // Reserve before the entity transaction. Standalone creation commits this
+        // reservation first; an enclosing plan transaction owns it along with the plan.
         val seq = keyCounterRepository.reserveNext(projectId)
             ?: run {
                 keyCounterRepository.initialize(projectId)
@@ -361,12 +361,28 @@ class SpecServiceImpl(
         val targetState = states.firstOrNull { it.id == transition.toStateId }
             ?: error("Target state ${transition.toStateId} missing in workflow ${workflow.id}")
         val newStatusId = targetState.statusId
+        val targetStatus = statusRepository.getById(newStatusId) ?: error("Target status $newStatusId is missing")
+        if (targetStatus.category == bosca.workops.model.workflow.StatusCategory.DONE) {
+            val requirements = mutableListOf<bosca.workops.model.requirement.Requirement>()
+            val count = requirementRepository.countByParent(RequirementParent.SPEC, id)
+            while (requirements.size.toLong() < count) {
+                val page = requirementRepository.listByParent(RequirementParent.SPEC, id, requirements.size.toLong(), 100)
+                if (page.isEmpty()) break
+                requirements.addAll(page)
+            }
+            if (requirements.size.toLong() != count || requirements.map { it.id }.distinct().size != requirements.size) {
+                throw bosca.workops.model.WorkOpsValidationException("completion", "Requirements changed during completion; retry")
+            }
+            val issues = completion.issues(spec, requirements)
+            if (issues.isNotEmpty()) throw bosca.workops.model.WorkOpsValidationException("completion", issues.joinToString("; "))
+        }
 
         val updated = specRepository.applyTransition(
             id = id,
             statusId = newStatusId,
             modifiedByPrincipalId = actingPrincipalId,
             expectedVersion = expectedVersion,
+            expectedCompletionVersion = if (targetStatus.category == bosca.workops.model.workflow.StatusCategory.DONE) spec.completionVersion else null,
         ) ?: throw OptimisticLockFailedException("Spec", id)
 
         val changes = buildList {
@@ -408,6 +424,9 @@ class SpecServiceImpl(
 
     override suspend fun countChildren(parentSpecId: UUID): Long =
         specRepository.countByParentSpec(parentSpecId)
+
+    override suspend fun countDoneChildren(parentSpecId: UUID): Long =
+        specRepository.countDoneChildren(parentSpecId)
 
     override suspend fun generateTasks(
         specId: UUID,

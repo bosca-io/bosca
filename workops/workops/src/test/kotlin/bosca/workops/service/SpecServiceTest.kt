@@ -73,7 +73,11 @@ class SpecServiceTest {
             projectPermissionEvaluator = projectPermissionEvaluator,
             programPermissionEvaluator = programPermissionEvaluator,
             json = json,
+            completion = completion,
         )
+        coEvery { statusRepository.getById(any()) } returns todoStatus
+        coEvery { requirementRepository.countByParent(any(), any()) } returns 0L
+        coEvery { requirementRepository.listByParent(any(), any(), any(), any()) } returns emptyList()
         // Caller-supplied metadata resolves to a real Metadata so create() can bind the template.
         coEvery { metadataService.getById(metadataId) } returns mockk(relaxed = true) {
             every { id } returns metadataId
@@ -97,6 +101,8 @@ class SpecServiceTest {
     private val programPermissionEvaluator = mockk<ProgramPermissionEvaluator>()
     private val json = Json { ignoreUnknownKeys = true }
     private val metadataService = mockk<bosca.content.metadata.service.MetadataService>(relaxed = true)
+
+    private val completion = mockk<SpecCompletionService>(relaxed = true)
 
     private lateinit var service: SpecServiceImpl
 
@@ -776,13 +782,19 @@ class SpecServiceTest {
         )
         coEvery { specRepository.getActiveById(todoSpec.id) } returns todoSpec
         coEvery { specRepository.getActiveById(doneSpec.id) } returns doneSpec
-        coEvery { specRepository.applyTransition(todoSpec.id, doneStatus.id, principalId, 0) } returns completed
-        coEvery { specRepository.applyTransition(doneSpec.id, todoStatus.id, principalId, 0) } returns reopened
+        coEvery { specRepository.applyTransition(todoSpec.id, doneStatus.id, principalId, 0, any()) } returns completed
+        coEvery { specRepository.applyTransition(doneSpec.id, todoStatus.id, principalId, 0, any()) } returns reopened
         coEvery { specHistoryRepository.add(any(), any(), any(), any(), any()) } returns mockk(relaxed = true)
         coEvery { statusRepository.getAll() } returns listOf(todoStatus, doneStatus)
+        coEvery { statusRepository.getById(doneStatus.id) } returns doneStatus
         coEvery { specRepository.incrementChildDoneCount(parentId) } just Runs
         coEvery { specRepository.decrementChildDoneCount(parentId) } just Runs
 
+        coEvery { completion.issues(todoSpec, any()) } returns listOf("Current validation evidence is missing")
+        assertFailsWith<WorkOpsValidationException> { service.transition(todoSpec.id, complete.id, 0, principalId, profileId, null) }
+        coVerify(exactly = 0) { specRepository.applyTransition(todoSpec.id, any(), any(), any(), any()) }
+        coEvery { completion.issues(todoSpec, any()) } returns emptyList()
+        coEvery { workflowRepository.listTransitions(workflowId) } returnsMany listOf(listOf(complete), listOf(reopen))
         assertEquals(
             completed,
             service.transition(todoSpec.id, complete.id, 0, principalId, profileId, null),
@@ -793,6 +805,57 @@ class SpecServiceTest {
         )
         coVerify(exactly = 1) { specRepository.incrementChildDoneCount(parentId) }
         coVerify(exactly = 1) { specRepository.decrementChildDoneCount(parentId) }
+    }
+
+    @Test
+    fun `completion refuses missing statuses partial duplicated or oversized requirement snapshots`() = runTest {
+        val spec = sampleSpec().copy(parentSpecId = null)
+        val done = todoStatus.copy(id = UUID.random(), category = StatusCategory.DONE)
+        val current = WorkflowState(UUID.random(), workflowId, statusId, 0)
+        val target = WorkflowState(UUID.random(), workflowId, done.id, 1)
+        val transition = WorkflowTransition(UUID.random(), workflowId, "Complete", fromStateIds = listOf("*"), toStateId = target.id)
+        coEvery { specRepository.getActiveById(spec.id) } returns spec
+        coEvery { workflowRepository.getWorkflowById(workflowId) } returns sampleWorkflow
+        coEvery { workflowRepository.listStates(workflowId) } returns listOf(current, target)
+        coEvery { workflowRepository.listTransitions(workflowId) } returns listOf(transition)
+        coEvery { statusRepository.getById(done.id) } returns null
+        assertTrue(assertFailsWith<IllegalStateException> { service.transition(spec.id, transition.id, 0, principalId, null, null) }.message.orEmpty().contains("Target status"))
+        coEvery { statusRepository.getById(done.id) } returns done
+        val requirements = List(101) { mockk<Requirement> { every { id } returns UUID.random() } }
+        for ((count, page) in listOf(1L to emptyList(), 2L to listOf(requirements[0], requirements[0]), 1L to requirements.take(2))) {
+            coEvery { requirementRepository.countByParent(RequirementParent.SPEC, spec.id) } returns count
+            coEvery { requirementRepository.listByParent(RequirementParent.SPEC, spec.id, any(), 100) } returns page
+            assertTrue(assertFailsWith<WorkOpsValidationException> { service.transition(spec.id, transition.id, 0, principalId, null, null) }.message.orEmpty().contains("Requirements changed"))
+        }
+        coEvery { requirementRepository.countByParent(RequirementParent.SPEC, spec.id) } returns 101L
+        coEvery { requirementRepository.listByParent(RequirementParent.SPEC, spec.id, any(), 100) } answers { requirements.drop(thirdArg<Long>().toInt()).take(100) }
+        coEvery { completion.issues(spec, any()) } answers {
+            assertEquals(requirements.map { it.id }, secondArg<List<Requirement>>().map { it.id })
+            listOf("Evidence must cover all 101 requirements")
+        }
+        assertTrue(assertFailsWith<WorkOpsValidationException> { service.transition(spec.id, transition.id, 0, principalId, null, null) }.message.orEmpty().contains("all 101 requirements"))
+        coVerify(exactly = 0) { specRepository.applyTransition(any(), any(), any(), any(), any()) }
+        coVerify(exactly = 0) { specHistoryRepository.add(any(), any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun `parent completion counters remain unchanged for absent statuses and unchanged completion categories`() = runTest {
+        val parent = UUID.random()
+        val spec = sampleSpec().copy(parentSpecId = parent)
+        val state = WorkflowState(UUID.random(), workflowId, statusId, 0)
+        val transition = WorkflowTransition(UUID.random(), workflowId, "Refresh", fromStateIds = listOf("*"), toStateId = state.id)
+        coEvery { specRepository.getActiveById(spec.id) } returns spec
+        coEvery { workflowRepository.getWorkflowById(workflowId) } returns sampleWorkflow
+        coEvery { workflowRepository.listStates(workflowId) } returns listOf(state)
+        coEvery { workflowRepository.listTransitions(workflowId) } returns listOf(transition)
+        coEvery { specRepository.applyTransition(spec.id, statusId, principalId, 0, any()) } returns spec.copy(version = 1)
+        coEvery { specHistoryRepository.add(any(), any(), any(), any(), any()) } returns mockk(relaxed = true)
+        for (statuses in listOf(emptyList(), listOf(todoStatus), listOf(todoStatus.copy(category = StatusCategory.DONE)))) {
+            coEvery { statusRepository.getAll() } returns statuses
+            assertEquals(1, service.transition(spec.id, transition.id, 0, principalId, null, null).version)
+        }
+        coVerify(exactly = 0) { specRepository.incrementChildDoneCount(any()) }
+        coVerify(exactly = 0) { specRepository.decrementChildDoneCount(any()) }
     }
 
     @Test
@@ -811,7 +874,7 @@ class SpecServiceTest {
         coEvery { workflowRepository.getWorkflowById(workflowId) } returns sampleWorkflow
         coEvery { workflowRepository.listStates(workflowId) } returns listOf(state)
         coEvery { workflowRepository.listTransitions(workflowId) } returns listOf(transition)
-        coEvery { specRepository.applyTransition(spec.id, statusId, principalId, 4) } returns updated
+        coEvery { specRepository.applyTransition(spec.id, statusId, principalId, 4, any()) } returns updated
         coEvery { specHistoryRepository.add(any(), any(), any(), any(), any()) } returns mockk(relaxed = true)
 
         assertEquals(updated, service.transition(spec.id, transition.id, 4, principalId, null, null))
@@ -890,7 +953,7 @@ class SpecServiceTest {
             toStateId = targetState.id,
         )
         coEvery { workflowRepository.listTransitions(workflowId) } returns listOf(stale)
-        coEvery { specRepository.applyTransition(spec.id, targetState.statusId, principalId, 9) } returns null
+        coEvery { specRepository.applyTransition(spec.id, targetState.statusId, principalId, 9, any()) } returns null
         assertFailsWith<OptimisticLockFailedException> {
             service.transition(spec.id, stale.id, 9, principalId, profileId, null)
         }

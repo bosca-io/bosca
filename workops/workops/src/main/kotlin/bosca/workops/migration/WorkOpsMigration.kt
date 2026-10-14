@@ -73,5 +73,8 @@ class WorkOpsMigration : Migration {
         "V53__durable_notification_delivery.sql",
         "V54__notification_event_producers.sql",
         "V55__ios_build_number_scopes.sql",
+        "V56__plan_creation.sql",
+        "V57__spec_completion_revision.sql",
+        "V58__deferred_spec_completion.sql",
     )
 }

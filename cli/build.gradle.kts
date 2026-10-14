@@ -36,6 +36,7 @@ kotlin {
 
 dependencies {
     implementation(project(":bosca-core:core"))
+    implementation(project(":workops:core-workops"))
 
     // BML — .bml project compile
     implementation(project(":bml:bml-compiler"))

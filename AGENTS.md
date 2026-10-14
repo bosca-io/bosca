@@ -291,6 +291,35 @@ These rules capture recurring design decisions and failure modes that apply acro
 
 ## Validation expectations
 
+- Start implementation with the interfaces and contracts in the owning module. Include models,
+  method signatures, documented behavior, and representative callers so the proposed API can be
+  understood. Present and iterate on these interfaces before implementing their behavior. Revisit
+  the interface review when scope or contracts change; a plan review alone is not an interface review.
+- Use Test Driven Development for behavioral changes: write a focused behavioral test, run it and
+  observe the intended failure before implementing that behavior, implement the smallest change
+  that passes, then refactor and rerun the relevant tests. Repeat this cycle for each increment.
+  Compilation errors, broken infrastructure, and unrelated failures do not establish the RED step.
+  Do not implement the full behavior first and add tests afterward. Record actual commands and
+  observed RED, GREEN, and REFACTOR results in WorkOps when available; never invent evidence.
+- Aim for complete coverage of changed behavior. The default minimum for affected production
+  code is 99% line coverage and 97% branch coverage; preserve stricter module gates and run the
+  owning module's coverage verification. Define the measured scope and test strategy during
+  interface review, before behavior implementation. Measure all affected production scopes,
+  including the owning module report and changed code, so aggregate percentages cannot hide gaps.
+  Inspect uncovered lines and branches; cover all changed success, boundary, and failure paths.
+  Document remaining gaps precisely. Do not lower gates, narrow the denominator, exclude handwritten
+  production code, or add tests without meaningful assertions just to raise the percentage.
+- High coverage alone does not establish test quality. Tests must assert observable results and
+  enduring contracts, fail when behavior is wrong, and avoid mirroring private implementation.
+  Cover relevant empty/null/boundary inputs, invalid inputs, authorization denial and filtering,
+  exception propagation and cancellation, optimistic conflicts, rollback, retries, and concurrency.
+  Use isolated deterministic fixtures; avoid timing sleeps and tests that only verify mocked calls.
+  Wiring, SQL mapping, transactions, migrations, and cross-module dispatch require real integration
+  tests with the established infrastructure when applicable, alongside focused unit tests.
+- Record test-quality review and coverage evidence in WorkOps: exact commands, report paths,
+  production scopes, measured line and branch counts/percentages, and uncovered paths. Report
+  unavailable infrastructure or coverage as unverified; do not infer coverage from passing test
+  counts or fabricate measurements. Missing evidence or failed quality gates prevent completion.
 - Add or update tests for behavior changes and regressions.
 - Prefer focused tests, KSP tasks, frontend linting, type checks, and code generation for touched modules before broad workspace tasks.
 - Run integration tests only with their required infrastructure available.

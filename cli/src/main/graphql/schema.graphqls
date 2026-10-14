@@ -9315,6 +9315,7 @@ Single entry point for all Work Ops queries. Subsystems hang off
 this type rather than polluting the root Query with 15+ fields.
 """
 type WorkOps {
+  guidance: WorkOpsGuidanceQuery!
     attachments: WorkOpsAttachmentQuery!
     automation: WorkOpsAutomationQuery!
     boards: WorkOpsBoards!
@@ -9827,6 +9828,7 @@ type WorkOpsMultiRepoQuery {
 
 "Single entry point for all Work Ops mutations."
 type WorkOpsMutations {
+  guidance: WorkOpsGuidanceMutation!
     attachments: WorkOpsAttachmentMutation!
     automation: WorkOpsAutomationMutation!
     boards: WorkOpsBoardsMutation!
@@ -10278,6 +10280,8 @@ type WorkOpsRequirements {
 }
 
 type WorkOpsRequirementsMutation {
+    "Explicitly replaces the rich document and independent linked task content atomically."
+    setContent(id: UUID!, input: SetWorkOpsRequirementContentInput!): WorkOpsRequirement!
     create(input: CreateWorkOpsRequirementInput!): WorkOpsRequirement!
     "Move a requirement to a different parent (spec or task)."
     moveToParent(expectedVersion: Long!, id: UUID!, parentId: UUID!, parentType: WorkOpsRequirementParent!): WorkOpsRequirement!
@@ -10447,6 +10451,8 @@ type WorkOpsSpec {
     sortOrder: Int!
     status: WorkOpsStatus!
     taskGenerations(limit: Int! = 50, offset: Long! = 0): [WorkOpsSpecTaskGeneration!]!
+    "Workflow transitions for this spec. With currentOnly, only those reachable from the current state."
+    transitions(currentOnly: Boolean! = true): [WorkOpsWorkflowTransition!]!
     version: Long!
     watcherProfileIds: [UUID!]!
 }
@@ -10535,6 +10541,10 @@ type WorkOpsSpecs {
 }
 
 type WorkOpsSpecsMutation {
+    "Atomically creates a complete plan. Reuse requestId with identical input to retry."
+    createPlan(input: CreateWorkOpsSpecPlanInput!): WorkOpsSpec!
+    "Atomically adds a populated requirement. Requests are scoped to the authenticated principal."
+    addPlanRequirement(specId: UUID!, requestId: UUID!, input: WorkOpsRequirementContentInput!): WorkOpsRequirement!
     addContext(input: CreateWorkOpsSpecContextInput!, specId: UUID!): WorkOpsSpecContext!
     create(input: CreateWorkOpsSpecInput!): WorkOpsSpec!
     "Generate tasks from the spec's requirements. Returns the generation record with task IDs."
@@ -15043,4 +15053,76 @@ input WorkflowStateInput {
     name: String!
     "The lifecycle phase this state belongs to"
     type: WorkflowStateType!
+}
+
+input WorkOpsRequirementContentInput {
+    name: String!
+    markdownContent: String!
+    acceptanceCriteria: [String!]!
+}
+
+input CreateWorkOpsSpecPlanInput {
+    requestId: UUID!
+    projectId: UUID!
+    name: String!
+    markdownContent: String!
+    requirements: [WorkOpsRequirementContentInput!]!
+}
+
+input SetWorkOpsRequirementContentInput {
+    content: WorkOpsRequirementContentInput!
+    expectedVersion: Long!
+    expectedTaskVersion: Long!
+    metadataVersion: Int!
+}
+
+enum WorkOpsGuidancePhase { INVESTIGATION SPECIFICATION INTERFACES IMPLEMENTATION VERIFICATION }
+type WorkOpsGuidancePolicy {
+    requireInterfaceReview: Boolean!
+    requireTdd: Boolean!
+    requireTestQuality: Boolean!
+    minimumLineCoverage: Float!
+    minimumBranchCoverage: Float!
+}
+input WorkOpsGuidancePolicyInput {
+    requireInterfaceReview: Boolean!
+    requireTdd: Boolean!
+    requireTestQuality: Boolean!
+    minimumLineCoverage: Float!
+    minimumBranchCoverage: Float!
+}
+type WorkOpsGuide {
+    phase: WorkOpsGuidancePhase!
+    name: String!
+    description: String!
+    markdown: String!
+    inherited: Boolean!
+    metadataId: UUID
+    documentVersion: Int
+    resourceId: UUID
+}
+input WorkOpsGuideInput {
+    phase: WorkOpsGuidancePhase!
+    name: String!
+    description: String!
+    markdown: String!
+}
+type WorkOpsGuidance {
+    revision: String!
+    policy: WorkOpsGuidancePolicy!
+    policyInherited: Boolean!
+    guides: [WorkOpsGuide!]!
+}
+input WorkOpsGuidanceInput {
+    policy: WorkOpsGuidancePolicyInput
+    guides: [WorkOpsGuideInput!]! = []
+}
+type WorkOpsGuidanceQuery {
+    effective(projectId: UUID): WorkOpsGuidance!
+    exportSkill(projectId: UUID, phase: WorkOpsGuidancePhase!): String!
+    importSkill(phase: WorkOpsGuidancePhase!, skill: String!): WorkOpsGuide!
+}
+type WorkOpsGuidanceMutation {
+    save(projectId: UUID, input: WorkOpsGuidanceInput!, expectedRevision: String!): WorkOpsGuidance!
+    reset(projectId: UUID, expectedRevision: String!): WorkOpsGuidance!
 }

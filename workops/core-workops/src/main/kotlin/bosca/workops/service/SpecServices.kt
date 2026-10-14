@@ -68,6 +68,15 @@ interface SpecService : PermissionService<Spec, UUID> {
 
     suspend fun countChildren(parentSpecId: UUID): Long
 
+    /** Counts active children whose current status category is DONE, independently of stored rollups. */
+    suspend fun countDoneChildren(parentSpecId: UUID): Long
+
+    /**
+     * Applies a reachable workflow transition using [expectedVersion]. Transitions into DONE first
+     * verify current interface review, validation, TDD and coverage evidence under effective guidance.
+     * Missing or stale evidence fails before status, history, parent counters, or events change.
+     * A guarded completion write also rejects contributing mutations committed during validation.
+     */
     suspend fun transition(
         id: UUID,
         transitionId: UUID,
@@ -88,6 +97,17 @@ interface SpecService : PermissionService<Spec, UUID> {
 }
 
 interface RequirementService : PermissionService<Requirement, UUID> {
+
+    /** Creates the requirement, rich body, and linked task description in one transaction. */
+    suspend fun createWithContent(parentType: RequirementParent, parentId: UUID, input: bosca.workops.model.spec.RequirementContentInput, actingPrincipalId: UUID, actingProfileId: UUID?): Requirement
+
+    /**
+     * Explicitly replaces document and linked task content together, enforcing all supplied versions.
+     * Concurrent edits report an optimistic conflict; any failure rolls back the document, task,
+     * requirement, and history changes together.
+     * Content replacement serializes on the requirement before writing its linked task.
+     */
+    suspend fun setContent(id: UUID, input: bosca.workops.model.spec.SetRequirementContentInput, actingPrincipalId: UUID, actingProfileId: UUID?): Requirement
 
     suspend fun getById(id: UUID): Requirement?
 
