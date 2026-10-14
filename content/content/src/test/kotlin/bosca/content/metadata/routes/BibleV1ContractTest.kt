@@ -80,7 +80,7 @@ class BibleV1ContractTest {
     private val attribution = BibleAttribution("Response copyright")
     private val chapter = BibleChapter(id, 1, "default", "JHN", "JHN.1", components.toJson(), 0,
         sourceId = UUID.random(), attribution = attribution, sourceVersion = 9,
-        verseCount = 2, fumsToken = "private-token", created = OffsetDateTime.now(),
+        verseCount = 2, created = OffsetDateTime.now(),
         expires = OffsetDateTime.now().plusDays(1))
     private val json = Json {
         encodeDefaults = true
@@ -139,7 +139,6 @@ class BibleV1ContractTest {
         val old = encode(v1, assertNotNull(execute(v1, call()))).jsonObject
         assertTrue(old.keys.containsAll(chapterFields))
         assertEquals(components.toJson(), old.getValue("components"))
-        assertFalse(old.toString().contains("private-token"))
         coVerify(exactly = 0) { bibles.getChapterContent(any<BibleBook>(), any<String>(), any()) }
 
         coEvery { bibles.getChapterContent(book, "JHN.1", BibleContentUse.DISPLAY) } returns
@@ -171,7 +170,6 @@ class BibleV1ContractTest {
 
         assertTrue(value.keys.containsAll(chapterFields))
         assertEquals(components.toJson(), value.getValue("components"))
-        assertFalse(value.toString().contains("private-token"))
         coVerify(exactly = 1) { bibles.getChapterContent(book, "JHN.1", BibleContentUse.DISPLAY) }
     }
 

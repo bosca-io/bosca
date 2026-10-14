@@ -113,14 +113,13 @@ class BibleChapterTest {
             contextual(OffsetDateTimeSerializer())
         } }
         val chapter = createChapter().copy(
-            sourceId = testId, sourceVersion = 7, verseCount = 2, fumsToken = "private-fums-token",
+            sourceId = testId, sourceVersion = 7, verseCount = 2,
             created = OffsetDateTime.now(), expires = OffsetDateTime.now().plusDays(14),
         )
         val value = json.encodeToString(BibleChapter.serializer(), chapter)
-        for (privateField in listOf("fumsToken", "verseCount", "created", "private-fums-token")) {
+        for (privateField in listOf("verseCount", "created")) {
             assertFalse(value.contains(privateField))
         }
-        assertFalse(chapter.toString().contains("private-fums-token"))
         val cached = json.decodeFromString(BibleChapter.serializer(), value)
         assertEquals(chapter.sourceVersion, cached.sourceVersion)
         assertEquals(chapter.expires, cached.expires)

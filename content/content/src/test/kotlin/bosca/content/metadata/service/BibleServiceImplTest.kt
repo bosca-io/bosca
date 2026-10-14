@@ -31,6 +31,7 @@ class BibleServiceImplTest {
             bibleRepository,
             bibleBookRepository,
             bibleChapterRepository,
+            mockk(relaxed = true),
             bibleLanguageRepository,
             sources,
             mockk(relaxed = true),

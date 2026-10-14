@@ -7,7 +7,7 @@ import bosca.serialization.UUID
 import kotlinx.serialization.Contextual
 import kotlinx.serialization.Serializable
 
-/** One cached recording response; its usage token remains private. */
+/** One recording response retained on a chapter; its usage token is stored separately. */
 @Serializable
 data class BibleChapterAudio(
     @Contextual val id: UUID,
@@ -16,11 +16,13 @@ data class BibleChapterAudio(
     val usfm: String,
     val content: BibleAudioContent,
     val attribution: BibleAttribution,
-    val fumsToken: String?,
     @Contextual val created: OffsetDateTime,
     @Contextual val expires: OffsetDateTime,
-    /** Whether the media is retained; usage metadata survives eviction until [expires]. */
-    val cached: Boolean = true,
+    /**
+     * When the recording was replaced or evicted. Its media remains playable by its exact
+     * identifier for a short grace period before deletion; null while it is the current recording.
+     */
+    @Contextual val evicted: OffsetDateTime? = null,
 ) {
     override fun toString(): String = "BibleChapterAudio(id=$id, sourceId=$sourceId, usfm=$usfm)"
 }

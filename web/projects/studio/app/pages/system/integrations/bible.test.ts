@@ -266,6 +266,21 @@ describe('Bible provider administration', () => {
     expect(mutation).toHaveBeenLastCalledWith(expect.anything(), { sourceId: source.id, expectedVersion: 7 })
   })
 
+  it('warns that removing a text source deletes its Bible variant but not when removing a recording', async () => {
+    sourceData.value = { content: { bibleProviders: { sources: [{ ...source, kind: 'AUDIO', name: 'Recording' }] } } }
+    const audio = mount(BiblePage, { global })
+    await flushPromises()
+    await button(audio, 'Remove source').trigger('click')
+    expect(audio.get('.confirm-modal').text()).toContain('Remove this recording and its cached audio.')
+    audio.unmount()
+
+    sourceData.value = { content: { bibleProviders: { sources: [source] } } }
+    const wrapper = mount(BiblePage, { global })
+    await flushPromises()
+    await button(wrapper, 'Remove source').trigger('click')
+    expect(wrapper.get('.confirm-modal').text()).toContain(`This also deletes the ${source.variant} Bible variant`)
+  })
+
   it('requires a separate explicit confirmation to remove configuration and its sources', async () => {
     const wrapper = mount(BiblePage, { global })
     await button(wrapper, 'Remove configuration').trigger('click')

@@ -86,6 +86,12 @@ class BibleSourceServiceImpl(
             validationCache.remove(it.id)
         }
 
+    override suspend fun deleteByVariant(metadataId: UUID, metadataVersion: Int, variant: String): List<BibleSource> =
+        sources.deleteByVariant(metadataId, metadataVersion, variant).onEach {
+            sourceCache.remove(it.id)
+            validationCache.remove(it.id)
+        }
+
     override suspend fun remove(id: UUID, expectedVersion: Long): BibleSource =
         (sources.remove(id, expectedVersion) ?: error("Bible source was removed or its version changed"))
             .also {

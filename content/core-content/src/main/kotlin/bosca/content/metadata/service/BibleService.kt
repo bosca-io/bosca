@@ -128,10 +128,16 @@ interface BibleService : Service {
     /** Attaches an external text source to the existing chapters of an exact Bible variant. */
     suspend fun setChapterSource(id: UUID, version: Int, variant: String, sourceId: UUID)
 
-    /** Clears retained text or recordings and private response metadata, preserving chapter references; media deletion is queued. */
+    /**
+     * Clears retained text and evicts recordings for a source, preserving chapter references and usage tokens.
+     * Evicted recordings stay playable by their exact identifier until their queued media deletion.
+     */
     suspend fun clearChapterContent(sourceId: UUID): Int
 
-    /** Clears expired provider text and recordings without changing locally imported chapters; media deletion is queued. */
+    /**
+     * Clears expired provider text, recordings and usage tokens, and drops evicted recordings whose grace
+     * period has ended, without changing locally imported chapters; media deletion is queued.
+     */
     suspend fun removeExpiredChapterContent(): Int
 
     /**
@@ -140,7 +146,10 @@ interface BibleService : Service {
      */
     suspend fun limitChapterContent(provider: String, providerBibleId: String): Int
 
-    /** Reads a private token until its original response expiry, including after text eviction, without fetching text. */
+    /**
+     * Reads the newest private text response token until its original expiry, including after text eviction,
+     * a source refresh or source removal, without fetching text.
+     */
     suspend fun getFumsToken(id: UUID, version: Int, variant: String, usfm: String): String?
 
     /** Lists recordings attached to this exact Bible variant without downloading chapter media. */
@@ -154,12 +163,16 @@ interface BibleService : Service {
 
     /**
      * Resolves a recording with playback permission. Its metadata and streams refer to the same file.
-     * When [recordingId] is supplied, returns only that current recording; unavailable recordings are not replaced.
+     * When [recordingId] is supplied, returns only that recording: the current one, or one replaced or evicted
+     * within its media deletion grace period. Unavailable recordings are not replaced.
      * Open and close its streams within the current authorized request.
      */
     suspend fun getAudioPlayback(bible: Bible, audioId: UUID, usfm: String, recordingId: UUID? = null): BibleAudioPlayback
 
-    /** Reads a private token until its original response expiry, including after media eviction, without downloading media. */
+    /**
+     * Reads the private token for a recording's chapter response until its original expiry, including after media
+     * eviction, a source refresh or source removal, without downloading media.
+     */
     suspend fun getAudioFumsToken(id: UUID, version: Int, variant: String, usfm: String, audioId: UUID): String?
 
     /** Trims one upstream recording to 50 retained files across configurations, keeping newest responses first. */
@@ -205,6 +218,15 @@ interface BibleService : Service {
      * @param version the metadata version number
      */
     suspend fun deleteBible(id: UUID, version: Int)
+
+    /**
+     * Deletes one variant of a Bible metadata version with its chapters, recordings and every text or audio
+     * source attached to it. When it was the default variant, the first remaining enabled variant becomes the
+     * default. Usage tokens are retained until their original expiry.
+     *
+     * @return the variants that remain for this metadata version
+     */
+    suspend fun deleteVariant(id: UUID, version: Int, variant: String): List<Bible>
 
     /**
      * Creates or replaces the Bible translation data for a specific metadata version.

@@ -19,16 +19,19 @@ import bosca.content.metadata.model.Bible
 import bosca.content.metadata.model.BibleBook
 import bosca.content.metadata.model.BibleChapter
 import bosca.content.metadata.model.BibleChapterAudio
+import bosca.content.metadata.model.BibleFumsToken
 import bosca.content.metadata.model.BibleInput
 import bosca.content.metadata.model.toJson
 import bosca.content.metadata.repository.BibleBookRepository
 import bosca.content.metadata.repository.BibleChapterRepository
+import bosca.content.metadata.repository.BibleFumsTokenRepository
 import bosca.content.metadata.repository.BibleLanguageRepository
 import bosca.content.metadata.repository.BibleRepository
 import bosca.db.transaction
 import bosca.db.connection
 import bosca.lock.DistributedLockFactory
 import bosca.serialization.OffsetDateTime
+import bosca.serialization.OffsetDateTimeSerializer
 import bosca.serialization.UUID
 import bosca.server.BoscaApplication
 import bosca.service.annotation.ServiceImplementation
@@ -56,6 +59,10 @@ internal fun getBibleAudioPath(id: UUID): ObjectPath = StringObjectPath("bible/a
 
 private val audioDeletionDelay = 5.minutes
 
+/** Whether an evicted recording's media is still inside the grace period before its queued deletion. */
+private fun BibleChapterAudio.isPlayableAfterEviction(now: OffsetDateTime) =
+    evicted?.plusSeconds(audioDeletionDelay.inWholeSeconds)?.isAfter(now) == true
+
 /** API.Bible terms limit retained text per edition and retained files per recording. */
 private const val API_BIBLE = "API_BIBLE"
 private const val API_BIBLE_VERSE_LIMIT = 499
@@ -66,6 +73,7 @@ class BibleServiceImpl(
     private val bibleRepository: BibleRepository,
     private val bibleBookRepository: BibleBookRepository,
     private val bibleChapterRepository: BibleChapterRepository,
+    private val fumsTokens: BibleFumsTokenRepository,
     private val bibleLanguages: BibleLanguageRepository,
     private val sources: BibleSourceService,
     private val locks: DistributedLockFactory,
@@ -113,7 +121,7 @@ class BibleServiceImpl(
         val source = sources.getById(sourceId) ?: return@ServiceCache null
         val chapter = bibleChapterRepository.getAudioChapter(source.metadataId, source.metadataVersion, source.variant, key.substringAfter(':'))
             ?: return@ServiceCache null
-        chapter.audio?.singleOrNull { it.sourceId == sourceId }
+        chapter.audio?.singleOrNull { it.sourceId == sourceId && it.evicted == null }
     }
 
     suspend fun removeFromCache(id: UUID, version: Int) {
@@ -218,11 +226,16 @@ class BibleServiceImpl(
             val fetchedChapter = chapter.copy(
                 components = response.content[response.content.reference]?.toJson(),
                 attribution = response.attribution ?: source.attribution,
-                sourceVersion = source.version, verseCount = count, fumsToken = response.fumsToken,
+                sourceVersion = source.version, verseCount = count,
                 created = created, expires = created.plusDays(14),
             )
             check(lock.renew(60_000)) { "Provider chapter fetch lock expired" }
             transaction {
+                // The fetched text is returned even when it is not retained, so its usage remains reportable.
+                response.fumsToken?.let {
+                    fumsTokens.put(BibleFumsToken(chapter.metadataId, chapter.version, chapter.variant, chapter.usfm,
+                        source.id, false, it, created, created.plusDays(14)))
+                }
                 if (bibleChapterRepository.putContent(fetchedChapter) > 0) {
                     bibleChapterCache.put(fetchedChapter.cacheKey(), fetchedChapter)
                     if (source.provider == API_BIBLE) LimitBibleChaptersJob(source.provider, source.providerBibleId).enqueue()
@@ -259,14 +272,16 @@ class BibleServiceImpl(
 
     override suspend fun clearChapterContent(sourceId: UUID): Int = transaction {
         val removed = invalidate(bibleChapterRepository.clearContent(sourceId))
-        removed + removeAudioResponses(bibleChapterRepository.getAudioBySource(sourceId)
-            .flatMap { it.audio.orEmpty() }.filter { it.sourceId == sourceId })
+        removed + evictAudioResponses(bibleChapterRepository.getAudioBySource(sourceId)
+            .flatMap { it.audio.orEmpty() }.filter { it.sourceId == sourceId && it.evicted == null })
     }
 
     override suspend fun removeExpiredChapterContent(): Int = transaction {
         val now = OffsetDateTime.now()
+        fumsTokens.removeExpired(now)
         invalidate(bibleChapterRepository.removeExpired(now)) + removeAudioResponses(
-            bibleChapterRepository.getRetainedAudio().flatMap { it.audio.orEmpty() }.filter { !it.expires.isAfter(now) })
+            bibleChapterRepository.getRetainedAudio().flatMap { it.audio.orEmpty() }
+                .filter { !it.expires.isAfter(now) || it.evicted != null && !it.isPlayableAfterEviction(now) })
     }
 
     private suspend fun invalidate(chapters: List<BibleChapter>): Int {
@@ -275,7 +290,7 @@ class BibleServiceImpl(
     }
 
     override suspend fun getFumsToken(id: UUID, version: Int, variant: String, usfm: String): String? =
-        bibleChapterRepository.getFumsToken(id, version, variant, usfm, OffsetDateTime.now())
+        fumsTokens.getText(id, version, variant, usfm, OffsetDateTime.now())
 
     override suspend fun getAudio(bible: Bible): List<BibleAudio> =
         sources.getAudio(bible.metadataId, bible.version, bible.variant).map {
@@ -315,10 +330,15 @@ class BibleServiceImpl(
         require(source.kind == BibleSourceKind.AUDIO && source.metadataId == bible.metadataId
             && source.metadataVersion == bible.version && source.variant == bible.variant) { "Recording does not belong to the Bible variant" }
         val key = "$audioId:$usfm"
-        fun BibleChapterAudio.isCurrent() = cached && sourceVersion == source.version && expires.isAfter(OffsetDateTime.now())
+        fun BibleChapterAudio.isCurrent() = evicted == null && sourceVersion == source.version && expires.isAfter(OffsetDateTime.now())
         val current = audioChapterCache.get(key)
         if (recordingId != null) {
-            return current?.takeIf { it.id == recordingId && it.isCurrent() }
+            current?.takeIf { it.id == recordingId && it.isCurrent() }?.let { return it }
+            // A replaced or evicted recording keeps serving requests already playing it until its media is deleted.
+            val now = OffsetDateTime.now()
+            return bibleChapterRepository.getAudioChapter(bible.metadataId, bible.version, bible.variant, usfm)
+                ?.audio?.singleOrNull { it.id == recordingId && it.sourceId == audioId }
+                ?.takeIf { if (it.evicted == null) it.isCurrent() else it.expires.isAfter(now) && it.isPlayableAfterEviction(now) }
                 ?: throw ObjectNotFoundException(getBibleAudioPath(recordingId))
         }
         current?.takeIf { it.isCurrent() }?.let { return it }
@@ -327,7 +347,7 @@ class BibleServiceImpl(
         return lock.withLock(ttlMillis = 300_000, waitTimeoutMillis = 30_000) {
             val chapter = bibleChapterRepository.getAudioChapter(bible.metadataId, bible.version, bible.variant, usfm)
                 ?: error("chapter not found")
-            val previous = chapter.audio?.singleOrNull { it.sourceId == audioId }
+            val previous = chapter.audio?.singleOrNull { it.sourceId == audioId && it.evicted == null }
             previous?.takeIf { it.isCurrent() }?.let { audioChapterCache.put(key, it); return@withLock it }
             val id = UUID.random()
             var temporaryFile: Path? = null
@@ -345,7 +365,7 @@ class BibleServiceImpl(
                 val length = withContext(StorageDispatcher) { Files.size(file) }
                 check(length > 0 && length == response.content.contentLength) { "Provider audio length does not match the downloaded file" }
                 val fetched = BibleChapterAudio(id, source.id, source.version, usfm, response.content,
-                    response.attribution ?: source.attribution, response.fumsToken, created, created.plusDays(14))
+                    response.attribution ?: source.attribution, created, created.plusDays(14))
                 objectCreated = true
                 withContext(StorageDispatcher) {
                     Files.newInputStream(file).use {
@@ -353,13 +373,22 @@ class BibleServiceImpl(
                     }
                 }
                 check(lock.renew(300_000)) { "Provider audio fetch lock expired" }
-                val audio = json.encodeToJsonElement(ListSerializer(BibleChapterAudio.serializer()), listOf(fetched))
+                val now = OffsetDateTime.now()
+                // Earlier recordings of this source stay listed, evicted, while their media awaits deletion.
+                val replaced = chapter.audio.orEmpty().filter { it.sourceId == audioId && it.expires.isAfter(now) }.mapNotNull {
+                    if (it.evicted == null) it.copy(evicted = now) else it.takeIf { retired -> retired.isPlayableAfterEviction(now) }
+                }
+                val audio = json.encodeToJsonElement(ListSerializer(BibleChapterAudio.serializer()), replaced + fetched)
                 retained = transaction {
                     check(bibleChapterRepository.updateAudioContent(bible.metadataId, bible.version, bible.variant, usfm, source.id, source.version, audio) == 1) {
                         "Recording could not be saved for playback"
                     }
+                    response.fumsToken?.let {
+                        fumsTokens.put(BibleFumsToken(bible.metadataId, bible.version, bible.variant, usfm,
+                            source.id, true, it, created, fetched.expires))
+                    }
                     audioChapterCache.put(key, fetched)
-                    previous?.takeIf { it.cached }?.let { DeleteBibleAudioJob(it.id).enqueueLater(audioDeletionDelay) }
+                    previous?.let { DeleteBibleAudioJob(it.id).enqueueLater(audioDeletionDelay) }
                     DeleteBibleAudioJob(id).enqueueLater(14.days + audioDeletionDelay)
                     if (source.provider == API_BIBLE) LimitBibleAudioChaptersJob(source.provider, source.providerBibleId).enqueue()
                     true
@@ -386,31 +415,39 @@ class BibleServiceImpl(
     }
 
     override suspend fun getAudioFumsToken(id: UUID, version: Int, variant: String, usfm: String, audioId: UUID): String? =
-        bibleChapterRepository.getAudioFumsToken(id, version, variant, usfm, audioId, OffsetDateTime.now())
+        fumsTokens.getAudio(id, version, variant, usfm, audioId, OffsetDateTime.now())
 
     override suspend fun limitAudioChapterContent(provider: String, providerBibleId: String): Int = transaction {
         val recordings = bibleChapterRepository.getAudioByEdition(provider, providerBibleId).flatMap { it.audio.orEmpty() }
             .sortedByDescending { it.created }
         val now = OffsetDateTime.now()
-        var removed = removeAudioResponses(recordings.filter { !it.expires.isAfter(now) })
-        for (response in recordings.filter { it.expires.isAfter(now) }.drop(API_BIBLE_RECORDING_LIMIT)) {
-            if (bibleChapterRepository.evictAudioContent(response) > 0) {
-                audioChapterCache.remove("${response.sourceId}:${response.usfm}")
-                DeleteBibleAudioJob(response.id).enqueueLater(audioDeletionDelay)
-                removed++
-            }
-        }
-        removed
+        removeAudioResponses(recordings.filter { !it.expires.isAfter(now) }) +
+            evictAudioResponses(recordings.filter { it.expires.isAfter(now) }.drop(API_BIBLE_RECORDING_LIMIT))
     }
 
     override suspend fun clearAudioChapterContent(id: UUID): Int = transaction {
         removeAudioResponses(bibleChapterRepository.getAudioByBible(id, null, null).flatMap { it.audio.orEmpty() })
     }
 
+    /** Removes responses; media deletion is queued unless an earlier eviction already queued it. */
     private suspend fun removeAudioResponses(responses: List<BibleChapterAudio>): Int {
         var removed = 0
         for (response in responses) {
             if (bibleChapterRepository.removeAudioContent(response) > 0) {
+                audioChapterCache.remove("${response.sourceId}:${response.usfm}")
+                if (response.evicted == null) DeleteBibleAudioJob(response.id).enqueueLater(audioDeletionDelay)
+                removed++
+            }
+        }
+        return removed
+    }
+
+    /** Marks current responses evicted, keeping them playable by identifier until their queued media deletion. */
+    private suspend fun evictAudioResponses(responses: List<BibleChapterAudio>): Int {
+        val evicted = json.encodeToJsonElement(OffsetDateTimeSerializer(), OffsetDateTime.now())
+        var removed = 0
+        for (response in responses) {
+            if (bibleChapterRepository.evictAudioContent(response.id, response.usfm, evicted) > 0) {
                 audioChapterCache.remove("${response.sourceId}:${response.usfm}")
                 DeleteBibleAudioJob(response.id).enqueueLater(audioDeletionDelay)
                 removed++
@@ -442,6 +479,22 @@ class BibleServiceImpl(
         }
         bibleRepository.deleteById(id, version)
         removeFromCache(id, version)
+    }
+
+    override suspend fun deleteVariant(id: UUID, version: Int, variant: String): List<Bible> = transaction {
+        val existing = bibleRepository.getByIdAndVariantIncludingDisabled(id, version, variant)
+            ?: throw NoSuchElementException("Bible variant not found: $variant")
+        removeAudioResponses(bibleChapterRepository.getAudioByBible(id, version, variant).flatMap { it.audio.orEmpty() })
+        for (source in sources.deleteByVariant(id, version, variant)) {
+            audioChapterCache.remove("${source.id}:", keyPrefix = true)
+        }
+        bibleRepository.deleteById(id, version, variant)
+        val remaining = bibleRepository.getVariants(id, version)
+        val promoted = if (existing.defaultVariant) {
+            remaining.firstOrNull { it.enabled }?.let { bibleRepository.setDefault(id, version, it.variant) }
+        } else null
+        removeFromCache(id, version)
+        remaining.map { if (it.variant == promoted?.variant) promoted else it }
     }
 
     override suspend fun setBible(id: UUID, version: Int, bible: BibleInput) = transaction {

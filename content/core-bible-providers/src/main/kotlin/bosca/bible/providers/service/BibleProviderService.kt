@@ -73,12 +73,17 @@ interface BibleProviderService : Service {
     /** Refreshes source descriptions, languages, and chapter references without prefetching bodies. */
     suspend fun refresh(sourceId: UUID)
 
-    /** Soft-deletes a source at [expectedVersion] and removes its cached text or audio content. */
+    /**
+     * Removes a source at [expectedVersion]. A recording's retained media is evicted. Removing a text source
+     * deletes the Bible variant registered from it, including that variant's chapters and attached recordings,
+     * and deletes the Bible metadata when no variant remains. Usage tokens are kept until their original expiry.
+     */
     suspend fun removeSource(sourceId: UUID, expectedVersion: Long)
 
     /**
      * Removes a configuration. Active sources prevent removal unless [purgeSources] is true;
      * callers must explicitly confirm removal of the affected sources at the API boundary.
+     * Each source is removed as by [removeSource], so purged text sources delete their Bible variants.
      */
     suspend fun removeConfiguration(configurationId: UUID, purgeSources: Boolean)
 }

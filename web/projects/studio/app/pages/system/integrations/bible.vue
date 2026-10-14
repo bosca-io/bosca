@@ -415,7 +415,9 @@ onUnmounted(() => { catalogRequest++; targetRequest++ })
     <ConfirmModal
       v-if="removeSource"
       :title="`Remove ${removeSource.name}?`"
-      subtitle="Remove this provider source and its cached content."
+      :subtitle="removeSource.kind === BibleSourceKind.Text
+        ? `This also deletes the ${removeSource.variant} Bible variant, its chapters and its recordings. The Bible is deleted when no other variant remains.`
+        : 'Remove this recording and its cached audio.'"
       confirm-label="Remove"
       :loading="busy"
       @close="!busy && (removeSource = null)"
@@ -427,7 +429,7 @@ onUnmounted(() => { catalogRequest++; targetRequest++ })
       @close="!busy && (removeConfiguration = null)">
       <div class="form-stack">
         <template v-if="removeConfiguration.sources.length">
-          <p>Removing this configuration also removes these {{ removeConfiguration.sources.length }} sources and their cached content:</p>
+          <p>Removing this configuration also removes these {{ removeConfiguration.sources.length }} sources and their cached content. Each text source's Bible variant is deleted with it.</p>
           <ul>
             <li v-for="source in removeConfiguration.sources" :key="source.id">{{ source.name }} · {{ source.variant }} · version {{ source.metadataVersion }}</li>
           </ul>

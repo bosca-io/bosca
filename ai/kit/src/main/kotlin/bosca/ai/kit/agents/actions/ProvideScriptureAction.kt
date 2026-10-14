@@ -5,6 +5,7 @@ import bosca.ai.kit.agents.KitResponse
 import bosca.ai.kit.agents.KitRoute
 import bosca.ai.kit.agents.KitState
 import bosca.ai.kit.tools.bible.ComponentTextRenderer
+import bosca.bible.BibleContentUse
 import bosca.bible.components.filter
 import bosca.content.metadata.model.Bible
 import bosca.content.metadata.service.BibleService
@@ -47,8 +48,8 @@ class ProvideScriptureAction(
 
         val passages = state.references.flatMap { requested ->
             bibleService.getReferences(bible, requested).mapNotNull { reference ->
-                val chapter = bibleService.getChapter(bible, reference)
-                val chapterComponents = chapter.getChapterComponents() ?: return@mapNotNull null
+                val chapter = bibleService.getChapterContent(bible, reference, BibleContentUse.AI_CONTEXT).chapter
+                val chapterComponents = chapter[chapter.reference] ?: return@mapNotNull null
                 val hasVerseNumbers = reference.references.any { it.number.isNotEmpty() }
                 val components = if (hasVerseNumbers) chapterComponents.filter(reference) else chapterComponents
                 val text = components?.let(ComponentTextRenderer::render).orEmpty()

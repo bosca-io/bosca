@@ -28,6 +28,7 @@ import bosca.cache.asCoroutineContext
 import bosca.content.metadata.model.Bible
 import bosca.content.metadata.model.BibleBook
 import bosca.content.metadata.model.BibleChapter
+import bosca.content.metadata.model.BibleFumsToken
 import bosca.content.metadata.model.BibleInput
 import bosca.content.metadata.model.BibleLanguage
 import bosca.content.metadata.model.BibleLanguageInput
@@ -37,6 +38,7 @@ import bosca.content.metadata.model.ReferenceInput
 import bosca.content.metadata.model.toJson
 import bosca.content.metadata.repository.BibleBookRepository
 import bosca.content.metadata.repository.BibleChapterRepository
+import bosca.content.metadata.repository.BibleFumsTokenRepository
 import bosca.content.metadata.repository.BibleLanguageRepository
 import bosca.content.metadata.repository.BibleRepository
 import bosca.content.configuration.JobQueueNames
@@ -108,6 +110,7 @@ class BibleServiceImplCoverageTest {
     private val bibleRepository = mockk<BibleRepository>(relaxed = true)
     private val bibleBookRepository = mockk<BibleBookRepository>(relaxed = true)
     private val bibleChapterRepository = mockk<BibleChapterRepository>(relaxed = true)
+    private val fumsTokens = mockk<BibleFumsTokenRepository>(relaxed = true)
     private val bibleLanguages = mockk<BibleLanguageRepository>(relaxed = true)
 
     private val sources = mockk<BibleSourceService>(relaxed = true)
@@ -138,6 +141,7 @@ class BibleServiceImplCoverageTest {
             bibleRepository,
             bibleBookRepository,
             bibleChapterRepository,
+            fumsTokens,
             bibleLanguages,
             sources,
             locks,
@@ -350,7 +354,7 @@ class BibleServiceImplCoverageTest {
         val (bible, source) = audioFixture()
         val now = OffsetDateTime.now()
         val expired = bosca.content.metadata.model.BibleChapterAudio(UUID.random(), source.id, source.version, "GEN.1",
-            bosca.bible.BibleAudioContent("audio/mpeg", 10), source.attribution, "token", now.minusDays(14), now.minusSeconds(1))
+            bosca.bible.BibleAudioContent("audio/mpeg", 10), source.attribution, now.minusDays(14), now.minusSeconds(1))
         coEvery { bibleChapterRepository.getAudioChapter(bible.metadataId, bible.version, bible.variant, "GEN.1") } returns
             chapter(bible.metadataId).copy(audio = listOf(expired))
         withRequest {
@@ -364,7 +368,7 @@ class BibleServiceImplCoverageTest {
         val (bible, source) = audioFixture()
         val now = OffsetDateTime.now()
         val old = bosca.content.metadata.model.BibleChapterAudio(UUID.random(), source.id, source.version - 1, "GEN.1",
-            bosca.bible.BibleAudioContent("audio/mpeg", 10), source.attribution, "token", now, now.plusDays(14))
+            bosca.bible.BibleAudioContent("audio/mpeg", 10), source.attribution, now, now.plusDays(14))
         coEvery { bibleChapterRepository.getAudioChapter(bible.metadataId, bible.version, bible.variant, "GEN.1") } returns
             chapter(bible.metadataId).copy(audio = listOf(old))
         withRequest {
@@ -406,7 +410,7 @@ class BibleServiceImplCoverageTest {
         val (bible, source) = audioFixture(null)
         val now = bosca.serialization.OffsetDateTime.now()
         val old = bosca.content.metadata.model.BibleChapterAudio(UUID.random(), source.id, source.version, "GEN.1",
-            bosca.bible.BibleAudioContent("audio/mpeg", 15), source.attribution, "old-token", now.minusDays(15), now.minusDays(1))
+            bosca.bible.BibleAudioContent("audio/mpeg", 15), source.attribution, now.minusDays(15), now.minusDays(1))
         coEvery { bibleChapterRepository.getAudioChapter(bible.metadataId, bible.version, bible.variant, "GEN.1") } returns chapter(bible.metadataId).copy(audio = listOf(old))
         withRequest { assertEquals(source.attribution, service.getAudioChapter(bible, source.id, "GEN.1").attribution) }
         coVerify(exactly = 1) { sources.downloadAudioChapter(any(), any(), any()) }
@@ -459,7 +463,7 @@ class BibleServiceImplCoverageTest {
         val (bible, source) = audioFixture()
         val now = bosca.serialization.OffsetDateTime.now()
         val response = bosca.content.metadata.model.BibleChapterAudio(UUID.random(), source.id, source.version, "GEN.1",
-            bosca.bible.BibleAudioContent("audio/mpeg", 15), source.attribution, "token", now, now.plusDays(14))
+            bosca.bible.BibleAudioContent("audio/mpeg", 15), source.attribution, now, now.plusDays(14))
         coEvery { bibleChapterRepository.getAudioByBible(bible.metadataId, null, null) } returns listOf(chapter(bible.metadataId).copy(audio = listOf(response)))
         coEvery { bibleChapterRepository.removeAudioContent(response) } returns 1
         withRequest { assertEquals(1, service.clearAudioChapterContent(bible.metadataId)) }
@@ -471,22 +475,140 @@ class BibleServiceImplCoverageTest {
         val (bible, source) = audioFixture()
         val now = bosca.serialization.OffsetDateTime.now()
         val responses = (0..51).map { index -> bosca.content.metadata.model.BibleChapterAudio(UUID.random(), source.id, source.version, "GEN.${index + 1}",
-            bosca.bible.BibleAudioContent("audio/mpeg", 15), source.attribution, "token", now.minusMinutes(index.toLong()), if (index == 0) now.minusMinutes(1) else now.plusDays(1)) }
+            bosca.bible.BibleAudioContent("audio/mpeg", 15), source.attribution, now.minusMinutes(index.toLong()), if (index == 0) now.minusMinutes(1) else now.plusDays(1)) }
         coEvery { bibleChapterRepository.getAudioByEdition("API_BIBLE", "recording") } returns listOf(chapter(bible.metadataId).copy(audio = responses))
         coEvery { bibleChapterRepository.removeAudioContent(any()) } returns 1
         coEvery { bibleChapterRepository.removeAudioContent(responses[0]) } returns 0
-        coEvery { bibleChapterRepository.evictAudioContent(responses.last()) } returns 1
+        coEvery { bibleChapterRepository.evictAudioContent(responses.last().id, responses.last().usfm, any()) } returns 1
         withRequest { assertEquals(1, service.limitAudioChapterContent("API_BIBLE", "recording")) }
-        coVerify(exactly = 1) { bibleChapterRepository.evictAudioContent(responses.last()) }
+        coVerify(exactly = 1) { bibleChapterRepository.evictAudioContent(responses.last().id, responses.last().usfm, any()) }
         coVerify(exactly = 0) { bibleChapterRepository.removeAudioContent(responses.last()) }
         coEvery { bibleChapterRepository.getRetainedAudio() } returns listOf(chapter(bible.metadataId).copy(audio = responses))
         coEvery { bibleChapterRepository.removeExpired(any()) } returns emptyList()
         withRequest { assertEquals(0, service.removeExpiredChapterContent()) }
         coEvery { bibleChapterRepository.getAudioBySource(source.id) } returns listOf(chapter(bible.metadataId).copy(audio = listOf(responses.last())))
         coEvery { bibleChapterRepository.clearContent(source.id) } returns emptyList()
+        coEvery { bibleChapterRepository.evictAudioContent(responses.last().id, responses.last().usfm, any()) } returns 1
         withRequest { assertEquals(1, service.clearChapterContent(source.id)) }
-        coEvery { bibleChapterRepository.getAudioFumsToken(bible.metadataId, bible.version, bible.variant, "GEN.1", source.id, any()) } returns "token"
+        coVerify(exactly = 2) { bibleChapterRepository.evictAudioContent(responses.last().id, responses.last().usfm, any()) }
+        coVerify(exactly = 0) { bibleChapterRepository.removeAudioContent(responses.last()) }
+        coEvery { fumsTokens.getAudio(bible.metadataId, bible.version, bible.variant, "GEN.1", source.id, any()) } returns "token"
         withRequest { assertEquals("token", service.getAudioFumsToken(bible.metadataId, bible.version, bible.variant, "GEN.1", source.id)) }
+    }
+
+    @Test
+    fun `recording tokens are stored separately from the retained response`() = runTest {
+        val (bible, source) = audioFixture()
+        val token = slot<BibleFumsToken>()
+        coEvery { fumsTokens.put(capture(token)) } returns Unit
+        withRequest { service.getAudioChapter(bible, source.id, "GEN.1") }
+        assertEquals("audio-token", token.captured.token)
+        assertEquals(source.id, token.captured.sourceId)
+        assertTrue(token.captured.audio)
+        assertEquals("GEN.1", token.captured.usfm)
+    }
+
+    @Test
+    fun `replacing a recording keeps the previous one listed as evicted during its grace period`() = runTest {
+        val (bible, source) = audioFixture()
+        val now = OffsetDateTime.now()
+        val previous = bosca.content.metadata.model.BibleChapterAudio(UUID.random(), source.id, source.version - 1, "GEN.1",
+            bosca.bible.BibleAudioContent("audio/mpeg", 10), source.attribution, now.minusDays(1), now.plusDays(13))
+        val retired = previous.copy(id = UUID.random(), evicted = now.minusMinutes(1))
+        val stale = previous.copy(id = UUID.random(), evicted = now.minusMinutes(10))
+        coEvery { bibleChapterRepository.getAudioChapter(bible.metadataId, bible.version, bible.variant, "GEN.1") } returns
+            chapter(bible.metadataId).copy(audio = listOf(previous, retired, stale))
+        val saved = slot<kotlinx.serialization.json.JsonElement>()
+        coEvery { bibleChapterRepository.updateAudioContent(any(), any(), any(), any(), any(), any(), capture(saved)) } returns 1
+        withRequest { service.getAudioChapter(bible, source.id, "GEN.1") }
+        val audio = testJson.decodeFromJsonElement(
+            kotlinx.serialization.builtins.ListSerializer(bosca.content.metadata.model.BibleChapterAudio.serializer()), saved.captured)
+        assertEquals(listOf(previous.id, retired.id), audio.dropLast(1).map { it.id })
+        assertNotNull(audio[0].evicted)
+        assertEquals(retired.evicted, audio[1].evicted)
+        assertNull(audio.last().evicted)
+        coVerify(exactly = 1) { jobQueue.enqueueLater(any(), kotlin.time.Duration.parse("5m")) }
+    }
+
+    @Test
+    fun `pinned playback serves replaced or evicted recordings only during the deletion grace period`() = runTest {
+        val (bible, source) = audioFixture()
+        val now = OffsetDateTime.now()
+        val current = bosca.content.metadata.model.BibleChapterAudio(UUID.random(), source.id, source.version, "GEN.1",
+            bosca.bible.BibleAudioContent("audio/mpeg", 15), source.attribution, now, now.plusDays(14))
+        val replaced = current.copy(id = UUID.random(), sourceVersion = source.version - 1, evicted = now.minusMinutes(1))
+        val deleted = current.copy(id = UUID.random(), evicted = now.minusMinutes(6))
+        val expired = current.copy(id = UUID.random(), expires = now.minusSeconds(1), evicted = now.minusMinutes(1))
+        coEvery { bibleChapterRepository.getAudioChapter(bible.metadataId, bible.version, bible.variant, "GEN.1") } returns
+            chapter(bible.metadataId).copy(audio = listOf(current, replaced, deleted, expired))
+        withRequest {
+            val playback = service.getAudioPlayback(bible, source.id, "GEN.1", replaced.id)
+            assertEquals(replaced.content, playback.content)
+            assertEquals("recording bytes", playback.openStream().use { it.readBytes().decodeToString() })
+            assertFailsWith<bosca.storage.service.ObjectNotFoundException> { service.getAudioPlayback(bible, source.id, "GEN.1", deleted.id) }
+            assertFailsWith<bosca.storage.service.ObjectNotFoundException> { service.getAudioPlayback(bible, source.id, "GEN.1", expired.id) }
+            assertEquals(current.content, service.getAudioPlayback(bible, source.id, "GEN.1", current.id).content)
+        }
+        coVerify(exactly = 0) { sources.downloadAudioChapter(any(), any(), any()) }
+        coVerify(exactly = 1) { audioStorage.getInputStream(match { it.toString() == getBibleAudioPath(replaced.id).toString() }) }
+    }
+
+    @Test
+    fun `expiry maintenance drops evicted recordings after their grace without queueing deletion again`() = runTest {
+        val (bible, source) = audioFixture()
+        val now = OffsetDateTime.now()
+        val base = bosca.content.metadata.model.BibleChapterAudio(UUID.random(), source.id, source.version, "GEN.1",
+            bosca.bible.BibleAudioContent("audio/mpeg", 15), source.attribution, now.minusDays(1), now.plusDays(13))
+        val playing = base.copy(id = UUID.random(), evicted = now.minusMinutes(1))
+        val finished = base.copy(id = UUID.random(), evicted = now.minusMinutes(6))
+        coEvery { bibleChapterRepository.getRetainedAudio() } returns listOf(chapter(bible.metadataId).copy(audio = listOf(base, playing, finished)))
+        coEvery { bibleChapterRepository.removeExpired(any()) } returns emptyList()
+        coEvery { bibleChapterRepository.removeAudioContent(finished) } returns 1
+        withRequest { assertEquals(1, service.removeExpiredChapterContent()) }
+        coVerify(exactly = 0) { bibleChapterRepository.removeAudioContent(base); bibleChapterRepository.removeAudioContent(playing) }
+        coVerify(exactly = 0) { jobQueue.enqueueLater(any(), any()) }
+        coVerify(exactly = 1) { fumsTokens.removeExpired(any()) }
+    }
+
+    @Test
+    fun `deleting a default variant removes its recordings and sources and promotes an enabled variant`() = runTest {
+        val (bible, source) = audioFixture()
+        val now = OffsetDateTime.now()
+        val response = bosca.content.metadata.model.BibleChapterAudio(UUID.random(), source.id, source.version, "GEN.1",
+            bosca.bible.BibleAudioContent("audio/mpeg", 15), source.attribution, now, now.plusDays(14))
+        val disabled = bible.copy(variant = "disabled", defaultVariant = false, enabled = false)
+        val other = bible.copy(variant = "other", defaultVariant = false)
+        coEvery { bibleRepository.getByIdAndVariantIncludingDisabled(bible.metadataId, bible.version, bible.variant) } returns bible
+        coEvery { bibleChapterRepository.getAudioByBible(bible.metadataId, bible.version, bible.variant) } returns
+            listOf(chapter(bible.metadataId).copy(audio = listOf(response)))
+        coEvery { bibleChapterRepository.removeAudioContent(response) } returns 1
+        coEvery { sources.deleteByVariant(bible.metadataId, bible.version, bible.variant) } returns listOf(source)
+        coEvery { bibleRepository.getVariants(bible.metadataId, bible.version) } returns listOf(disabled, other)
+        coEvery { bibleRepository.setDefault(bible.metadataId, bible.version, "other") } returns other.copy(defaultVariant = true)
+        val remaining = withRequest { service.deleteVariant(bible.metadataId, bible.version, bible.variant) }
+        assertEquals(listOf(disabled, other.copy(defaultVariant = true)), remaining)
+        coVerifyOrder {
+            bibleChapterRepository.removeAudioContent(response)
+            sources.deleteByVariant(bible.metadataId, bible.version, bible.variant)
+            bibleRepository.deleteById(bible.metadataId, bible.version, bible.variant)
+            bibleRepository.setDefault(bible.metadataId, bible.version, "other")
+        }
+    }
+
+    @Test
+    fun `deleting a non-default or last variant leaves the default unchanged`() = runTest {
+        val id = UUID.random()
+        val variant = bible(id, variant = "study", defaultVariant = false)
+        coEvery { bibleRepository.getByIdAndVariantIncludingDisabled(id, 1, "study") } returns variant
+        coEvery { bibleRepository.getVariants(id, 1) } returns listOf(bible(id))
+        withRequest { assertEquals(listOf(bible(id)), service.deleteVariant(id, 1, "study")) }
+        val last = bible(id)
+        coEvery { bibleRepository.getByIdAndVariantIncludingDisabled(id, 1, "default") } returns last
+        coEvery { bibleRepository.getVariants(id, 1) } returns emptyList()
+        withRequest { assertEquals(emptyList(), service.deleteVariant(id, 1, "default")) }
+        coVerify(exactly = 0) { bibleRepository.setDefault(any(), any(), any()) }
+        coEvery { bibleRepository.getByIdAndVariantIncludingDisabled(id, 1, "missing") } returns null
+        withRequest { assertFailsWith<NoSuchElementException> { service.deleteVariant(id, 1, "missing") } }
     }
 
     // ── Test data builders ────────────────────────────────────────────────────
@@ -886,14 +1008,20 @@ class BibleServiceImplCoverageTest {
     fun `provider response is stored on the existing chapter with its private token and fixed expiry`() = runTest {
         val (bible, descriptor) = external()
         val saved = slot<BibleChapter>()
+        val token = slot<BibleFumsToken>()
         coEvery { bibleChapterRepository.putContent(capture(saved)) } returns 1
+        coEvery { fumsTokens.put(capture(token)) } returns Unit
         val result = withRequest { service.getChapterContent(bible, Reference("GEN.1"), BibleContentUse.DISPLAY) }
         assertEquals("Provider text", text(assertNotNull(result.chapter[Reference("GEN.1")])))
         assertEquals("Response copyright", result.attribution?.copyright)
         assertEquals(descriptor.sourceId, saved.captured.sourceId)
         assertEquals(0L, saved.captured.sourceVersion)
-        assertEquals("private-token", saved.captured.fumsToken)
         assertEquals(assertNotNull(saved.captured.created).plusDays(14), saved.captured.expires)
+        assertEquals("private-token", token.captured.token)
+        assertEquals(descriptor.sourceId, token.captured.sourceId)
+        assertEquals(false, token.captured.audio)
+        assertEquals(saved.captured.created, token.captured.created)
+        assertEquals(saved.captured.expires, token.captured.expires)
         coEvery { bibleChapterRepository.getContent(assertNotNull(descriptor.sourceId), "GEN.1", any()) } returns saved.captured
         withRequest { service.getChapterContent(bible, Reference("GEN.1"), BibleContentUse.DISPLAY) }
         coVerify(exactly = 1) { sources.getChapter(any(), any()) }
@@ -1086,13 +1214,14 @@ class BibleServiceImplCoverageTest {
         val sourceId = UUID.random()
         coEvery { bibleChapterRepository.clearContent(sourceId) } returns listOf(chapter(id), chapter(id).copy(usfm = "GEN.2"))
         coEvery { bibleChapterRepository.removeExpired(any()) } returns listOf(chapter(id))
-        coEvery { bibleChapterRepository.getFumsToken(id, 1, "study", "GEN.1", any()) } returns "token"
+        coEvery { fumsTokens.getText(id, 1, "study", "GEN.1", any()) } returns "token"
         withRequest {
             service.setChapterSource(id, 1, "study", sourceId)
             assertEquals(2, service.clearChapterContent(sourceId))
             assertEquals(1, service.removeExpiredChapterContent())
             assertEquals("token", service.getFumsToken(id, 1, "study", "GEN.1"))
         }
+        coVerify(exactly = 1) { fumsTokens.removeExpired(any()) }
         coVerify(exactly = 1) { bibleChapterRepository.setSource(id, 1, "study", sourceId) }
     }
 

@@ -221,9 +221,7 @@ class BibleProviderServiceImpl(
     }
 
     override suspend fun removeSource(sourceId: UUID, expectedVersion: Long) = transaction {
-        sources.remove(sourceId, expectedVersion)
-        bibles.clearChapterContent(sourceId)
-        Unit
+        remove(sources.remove(sourceId, expectedVersion))
     }
 
     override suspend fun removeConfiguration(configurationId: UUID, purgeSources: Boolean) = transaction {
@@ -231,12 +229,26 @@ class BibleProviderServiceImpl(
         configurations.getValueForUpdate(configurationId)
         val attached = sources.getByConfiguration(configurationId)
         check(purgeSources || attached.isEmpty()) { "Bible provider configuration has active sources" }
-        for (source in attached) {
-            sources.remove(source.id, source.version)
-            bibles.clearChapterContent(source.id)
+        // Recordings go first: removing a text source deletes its variant along with the recordings attached to it.
+        for (source in attached.sortedBy { it.kind == BibleSourceKind.TEXT }) {
+            remove(sources.remove(source.id, source.version))
         }
         configurations.deleteConfiguration(configuration.key)
         Unit
+    }
+
+    /**
+     * Finishes removing [source]. A recording's retained media is evicted. A text source is the only content of
+     * the variant registered from it, so that variant is deleted, and the Bible metadata too once no variant remains.
+     */
+    private suspend fun remove(source: BibleSource) {
+        if (source.kind == BibleSourceKind.AUDIO) {
+            bibles.clearChapterContent(source.id)
+            return
+        }
+        val remaining = bibles.deleteVariant(source.metadataId, source.metadataVersion, source.variant)
+        if (remaining.isNotEmpty()) return
+        metadata.getById(source.metadataId)?.takeIf { it.version == source.metadataVersion }?.let { metadata.delete(it) }
     }
 
     private suspend fun variant(metadataId: UUID, version: Int, name: String): Bible =

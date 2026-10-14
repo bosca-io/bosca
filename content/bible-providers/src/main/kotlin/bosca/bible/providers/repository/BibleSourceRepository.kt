@@ -65,6 +65,14 @@ interface BibleSourceRepository {
     """)
     suspend fun deleteByBible(metadataId: UUID, metadataVersion: Int): List<BibleSource>
 
+    /** Permanently deletes every source, including removed sources, attached to one Bible variant. */
+    @Query("""
+        delete from bible_providers.sources where metadata_id = :metadataId and metadata_version = :metadataVersion
+            and variant = :variant
+        returning *
+    """)
+    suspend fun deleteByVariant(metadataId: UUID, metadataVersion: Int, variant: String): List<BibleSource>
+
     /** Removes a source only when its version still matches the caller's observation. */
     @Query("""
         update bible_providers.sources set deleted_at = now(), modified = now(), version = version + 1

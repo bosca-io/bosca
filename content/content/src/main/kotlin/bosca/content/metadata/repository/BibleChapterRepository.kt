@@ -16,7 +16,7 @@ interface BibleChapterRepository {
     
     @Query("""
         select metadata_id, version, variant, book_usfm, usfm, null as components, sort, source_id,
-            null as attribution, null as source_version, null as verse_count, null as fums_token,
+            null as attribution, null as source_version, null as verse_count,
             null as created, null as expires, null as audio
         from bible_chapters where metadata_id = :id and version = :version and variant = :variant
             and book_usfm = :usfm order by sort
@@ -38,7 +38,7 @@ interface BibleChapterRepository {
     @Query("""
         select chapter.metadata_id, chapter.version, chapter.variant, chapter.book_usfm, chapter.usfm,
             null as components, chapter.sort, chapter.source_id, null as attribution,
-            null as source_version, null as verse_count, null as fums_token, null as created, null as expires,
+            null as source_version, null as verse_count, null as created, null as expires,
             chapter.audio
         from bible_chapters chapter
         join bibles bible on bible.metadata_id = chapter.metadata_id
@@ -65,7 +65,7 @@ interface BibleChapterRepository {
     /** Saves a whole response only while its source version is still active. */
     @Query("""
         update bible_chapters chapter set components = :components, attribution = :attribution,
-            source_version = :sourceVersion, verse_count = :verseCount, fums_token = :fumsToken,
+            source_version = :sourceVersion, verse_count = :verseCount,
             created = :created, expires = :expires
         from bible_providers.sources source
         where chapter.source_id = :sourceId and chapter.usfm = :usfm
@@ -73,19 +73,19 @@ interface BibleChapterRepository {
     """, returnUpdateCount = true)
     suspend fun putContent(chapter: BibleChapter): Int
 
-    /** Clears responses while preserving the source marker and chapter references. */
+    /** Clears text responses while preserving the source marker and chapter references. */
     @Query("""
         update bible_chapters set components = null, attribution = null, source_version = null,
-            verse_count = null, fums_token = null, created = null, expires = null
+            verse_count = null, created = null, expires = null
         where source_id = :sourceId and expires is not null
         returning *
     """)
     suspend fun clearContent(sourceId: UUID): List<BibleChapter>
 
-    /** Clears expired provider text, attribution and tokens; local chapters have no expiry. */
+    /** Clears expired provider text and attribution; local chapters have no expiry. */
     @Query("""
         update bible_chapters set components = null, attribution = null, source_version = null,
-            verse_count = null, fums_token = null, created = null, expires = null
+            verse_count = null, created = null, expires = null
         where expires <= :now
         returning *
     """)
@@ -95,7 +95,7 @@ interface BibleChapterRepository {
     @Query("""
         select chapter.metadata_id, chapter.version, chapter.variant, chapter.book_usfm, chapter.usfm,
             null as components, chapter.sort, chapter.source_id, null as attribution, null as source_version,
-            chapter.verse_count, null as fums_token, chapter.created, chapter.expires, null as audio
+            chapter.verse_count, chapter.created, chapter.expires, null as audio
         from bible_chapters chapter
         join bible_providers.sources source on source.id = chapter.source_id
         where source.provider = :provider and source.provider_bible_id = :providerBibleId
@@ -105,27 +105,17 @@ interface BibleChapterRepository {
     """)
     suspend fun getByEdition(provider: String, providerBibleId: String, now: OffsetDateTime): List<BibleChapter>
 
-    /** Evicts chapter text and attribution, retaining its usage token and expiry for delayed FUMS delivery. */
+    /** Evicts chapter text and attribution, retaining its expiry; usage tokens are stored separately. */
     @Query("""
         update bible_chapters set components = null, attribution = null, verse_count = null
         where source_id = :sourceId and usfm = :usfm
     """, returnUpdateCount = true)
     suspend fun removeContent(sourceId: UUID, usfm: String): Int
 
-    /** Returns a token only while its exact source and response are current and unexpired. */
-    @Query("""
-        select chapter.fums_token from bible_chapters chapter
-        join bible_providers.sources source on source.id = chapter.source_id
-        where chapter.metadata_id = :id and chapter.version = :version and chapter.variant = :variant
-            and chapter.usfm = :usfm and chapter.expires > :now
-            and chapter.source_version = source.version and source.deleted_at is null
-    """)
-    suspend fun getFumsToken(id: UUID, version: Int, variant: String, usfm: String, now: OffsetDateTime): String?
-
     /** Reads retained recordings for one source from the existing chapters, omitting chapter text. */
     @Query("""
         select metadata_id, version, variant, book_usfm, usfm, null as components, sort, source_id,
-            null as attribution, null as source_version, null as verse_count, null as fums_token,
+            null as attribution, null as source_version, null as verse_count,
             null as created, null as expires, audio
         from bible_chapters
         where audio @> jsonb_build_array(jsonb_build_object('sourceId', :sourceId::text))
@@ -135,7 +125,7 @@ interface BibleChapterRepository {
     /** Lists recording responses affected by replacing or deleting a Bible variant, omitting chapter text. */
     @Query("""
         select metadata_id, version, variant, book_usfm, usfm, null as components, sort, source_id,
-            null as attribution, null as source_version, null as verse_count, null as fums_token,
+            null as attribution, null as source_version, null as verse_count,
             null as created, null as expires, audio
         from bible_chapters
         where metadata_id = :id and (:version::integer is null or version = :version)
@@ -146,7 +136,7 @@ interface BibleChapterRepository {
     /** Lists chapters with retained audio for expiry maintenance, omitting chapter text. */
     @Query("""
         select metadata_id, version, variant, book_usfm, usfm, null as components, sort, source_id,
-            null as attribution, null as source_version, null as verse_count, null as fums_token,
+            null as attribution, null as source_version, null as verse_count,
             null as created, null as expires, audio
         from bible_chapters
         where audio is not null and audio <> '[]'::jsonb
@@ -157,7 +147,7 @@ interface BibleChapterRepository {
     @Query("""
         select chapter.metadata_id, chapter.version, chapter.variant, chapter.book_usfm, chapter.usfm,
             null as components, chapter.sort, chapter.source_id, null as attribution,
-            null as source_version, null as verse_count, null as fums_token, null as created, null as expires,
+            null as source_version, null as verse_count, null as created, null as expires,
             retained.audio
         from bible_providers.sources source
         join bible_chapters chapter on chapter.audio is not null
@@ -165,7 +155,7 @@ interface BibleChapterRepository {
         cross join lateral (
             select jsonb_agg(cached.value) as audio from jsonb_array_elements(chapter.audio) cached
             where cached.value->>'sourceId' = source.id::text
-                and coalesce((cached.value->>'cached')::boolean, true)
+                and cached.value->>'evicted' is null
         ) retained
         where source.provider = :provider and source.provider_bible_id = :providerBibleId
             and source.kind = 'audio' and retained.audio is not null
@@ -173,7 +163,8 @@ interface BibleChapterRepository {
     suspend fun getAudioByEdition(provider: String, providerBibleId: String): List<BibleChapter>
 
     /**
-     * Updates audio on an existing chapter while its source and metadata are active and its variant is enabled.
+     * Replaces every response for [sourceId] on an existing chapter with [audio] while its source and metadata
+     * are active and its variant is enabled.
      * Returns zero if the chapter is missing or those conditions no longer match.
      */
     @Query("""
@@ -201,31 +192,18 @@ interface BibleChapterRepository {
     """, returnUpdateCount = true)
     suspend fun removeAudioContent(audio: BibleChapterAudio): Int
 
-    /** Marks an exact recording evicted while retaining its usage token until expiry. */
+    /**
+     * Marks an exact current recording evicted at [evicted], a JSON timestamp, so it stays playable by its
+     * identifier during the deletion grace period. Returns zero when it is missing or already evicted.
+     */
     @Query("""
         update bible_chapters set audio = (
             select jsonb_agg(case when value->>'id' = :id::text
-                then value || '{"cached": false}'::jsonb else value end)
+                then value || jsonb_build_object('evicted', :evicted) else value end)
             from jsonb_array_elements(audio)
         ) where usfm = :usfm and audio @> jsonb_build_array(jsonb_build_object('id', :id::text))
             and exists (select 1 from jsonb_array_elements(audio)
-                where value->>'id' = :id::text and coalesce((value->>'cached')::boolean, true))
+                where value->>'id' = :id::text and value->>'evicted' is null)
     """, returnUpdateCount = true)
-    suspend fun evictAudioContent(audio: BibleChapterAudio): Int
-
-    /** Reads an exact audio response token only while its source, variant and expiry remain current. */
-    @Query("""
-        select cached.value->>'fumsToken' from bible_chapters chapter
-        cross join lateral jsonb_array_elements(chapter.audio) cached
-        join bible_providers.sources source on source.id::text = cached.value->>'sourceId'
-        join bibles bible on bible.metadata_id = chapter.metadata_id and bible.version = chapter.version
-            and bible.variant = chapter.variant and bible.enabled
-        where chapter.metadata_id = :id and chapter.version = :version and chapter.variant = :variant
-            and chapter.usfm = :usfm and source.id = :audioId and source.kind = 'audio'
-            and source.metadata_id = chapter.metadata_id and source.metadata_version = chapter.version
-            and source.variant = chapter.variant and source.deleted_at is null
-            and source.version = (cached.value->>'sourceVersion')::bigint
-            and (cached.value->>'expires')::timestamptz > :now
-    """)
-    suspend fun getAudioFumsToken(id: UUID, version: Int, variant: String, usfm: String, audioId: UUID, now: OffsetDateTime): String?
+    suspend fun evictAudioContent(id: UUID, usfm: String, evicted: JsonElement): Int
 }

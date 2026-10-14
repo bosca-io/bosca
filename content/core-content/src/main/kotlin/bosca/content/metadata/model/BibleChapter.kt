@@ -36,7 +36,6 @@ data class BibleChapter(
     @property:DbMapper(JsonbMapper::class) val attribution: BibleAttribution? = null,
     @ColumnName("source_version") val sourceVersion: Long? = null,
     @Transient @ColumnName("verse_count") val verseCount: Int? = null,
-    @Transient @ColumnName("fums_token") val fumsToken: String? = null,
     @Transient @Contextual val created: OffsetDateTime? = null,
     @Contextual val expires: OffsetDateTime? = null,
     @Transient @property:DbMapper(JsonbMapper::class)

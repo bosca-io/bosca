@@ -49,4 +49,12 @@ interface BibleSourceService : Service {
      * @return the deleted sources
      */
     suspend fun deleteByBible(metadataId: UUID, metadataVersion: Int): List<BibleSource>
+
+    /**
+     * Permanently deletes every source attached to one Bible variant, including removed sources.
+     * Call within the transaction that deletes that variant.
+     *
+     * @return the deleted sources
+     */
+    suspend fun deleteByVariant(metadataId: UUID, metadataVersion: Int, variant: String): List<BibleSource>
 }

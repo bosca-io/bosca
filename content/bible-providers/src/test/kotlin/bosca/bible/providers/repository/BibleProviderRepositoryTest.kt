@@ -14,9 +14,13 @@ import bosca.bible.components.VerseEnd
 import bosca.bible.components.VerseStart
 import bosca.bible.style.StyleReference
 import bosca.bible.providers.configuration.BibleProvidersMigration
+import bosca.bible.BibleAudioContent
 import bosca.content.metadata.model.BibleChapter
+import bosca.content.metadata.model.BibleChapterAudio
+import bosca.content.metadata.model.BibleFumsToken
 import bosca.content.metadata.model.toJson
 import bosca.content.metadata.repository.BibleChapterRepositoryImpl
+import bosca.content.metadata.repository.BibleFumsTokenRepositoryImpl
 import bosca.bible.providers.model.BibleSource
 import bosca.bible.providers.model.BibleSourceKind
 import bosca.bible.providers.service.BibleProvider
@@ -42,6 +46,7 @@ import bosca.test.resources.SharedPostgreSQLContainer
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.modules.SerializersModule
 import kotlinx.serialization.modules.contextual
@@ -57,7 +62,6 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertSame
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-import kotlin.test.assertFalse
 import kotlin.uuid.toJavaUuid
 
 class BibleProviderRepositoryTest {
@@ -93,6 +97,7 @@ class BibleProviderRepositoryTest {
     }
     private val repository = BibleSourceRepositoryImpl()
     private val chapters = BibleChapterRepositoryImpl()
+    private val tokens = BibleFumsTokenRepositoryImpl()
     private val metadataId = UUID.random()
     private val configurationId = UUID.random()
 
@@ -226,7 +231,7 @@ class BibleProviderRepositoryTest {
         val cache = cache(source)
         caches.putContent(cache)
         assertEquals(source, sources.get(source.id))
-        assertEquals(cache.fumsToken, caches.getContent(source.id, cache.usfm, assertNotNull(cache.created))?.fumsToken)
+        assertEquals(cache.components, caches.getContent(source.id, cache.usfm, assertNotNull(cache.created))?.components)
     }
 
     @Test
@@ -266,29 +271,22 @@ class BibleProviderRepositoryTest {
         assertEquals(cache.components, stored.components)
         assertEquals(cache.attribution, stored.attribution)
         assertEquals(cache.verseCount, stored.verseCount)
-        assertEquals(cache.fumsToken, stored.fumsToken)
         assertEquals(cache.created, stored.created)
         assertEquals(cache.expires, stored.expires)
-        assertEquals(cache.fumsToken, chapters.getFumsToken(metadataId, 2, "default", "JHN.1", assertNotNull(cache.created)))
-        assertNull(chapters.getFumsToken(metadataId, 1, "default", "JHN.1", assertNotNull(cache.created)))
-        assertNull(chapters.getFumsToken(metadataId, 2, "study", "JHN.1", assertNotNull(cache.created)))
-        assertNull(chapters.getFumsToken(metadataId, 2, "default", "JHN.2", assertNotNull(cache.created)))
-        assertFalse(stored.toString().contains("response-token"))
     }
 
     @Test
-    fun `replacing a cached response replaces its content token attribution and expiry together`() = withDb {
+    fun `replacing a cached response replaces its content attribution and expiry together`() = withDb {
         val source = assertNotNull(repository.add(source()))
         val cache = cache(source)
         chapters.putContent(cache)
         val replacement = cache.copy(components = Text("Updated text", null).toJson(),
-            attribution = null, verseCount = 2, fumsToken = "new-response-token",
+            attribution = null, verseCount = 2,
             created = assertNotNull(cache.created).plusDays(1), expires = assertNotNull(cache.expires).plusDays(1))
 
         chapters.putContent(replacement)
 
         val stored = assertNotNull(chapters.getContent(source.id, "JHN.1", assertNotNull(replacement.created)))
-        assertEquals("new-response-token", stored.fumsToken)
         assertNull(stored.attribution)
         assertEquals(2, stored.verseCount)
         assertEquals(replacement.components, stored.components)
@@ -297,7 +295,7 @@ class BibleProviderRepositoryTest {
     }
 
     @Test
-    fun `cache reads never extend expiry and expired tokens cannot be returned`() = withDb {
+    fun `cache reads never extend expiry`() = withDb {
         val source = assertNotNull(repository.add(source()))
         val cache = cache(source)
         chapters.putContent(cache)
@@ -305,14 +303,13 @@ class BibleProviderRepositoryTest {
         assertEquals(cache.expires, chapters.getContent(source.id, "JHN.1", assertNotNull(cache.expires).minusSeconds(1))?.expires)
         assertEquals(cache.expires, chapters.getContent(source.id, "JHN.1", assertNotNull(cache.expires).minusNanos(1000))?.expires)
         assertNull(chapters.getContent(source.id, "JHN.1", assertNotNull(cache.expires)))
-        assertNull(chapters.getFumsToken(metadataId, 1, "default", "JHN.1", assertNotNull(cache.expires)))
         assertNull(chapters.getContent(source.id, "JHN.1", assertNotNull(cache.expires).plusDays(1)))
         assertEquals(1, chapters.removeExpired(assertNotNull(cache.expires)).size)
         assertEquals(0, chapters.removeExpired(assertNotNull(cache.expires)).size)
     }
 
     @Test
-    fun `evicted text keeps its token until the original expiry without remaining readable`() = withDb {
+    fun `evicted text keeps its expiry without remaining readable`() = withDb {
         val source = assertNotNull(repository.add(source()))
         val response = cache(source)
         chapters.putContent(response)
@@ -321,10 +318,8 @@ class BibleProviderRepositoryTest {
         val beforeExpiry = assertNotNull(response.expires).minusSeconds(1)
         assertNull(chapters.getContent(source.id, "JHN.1", beforeExpiry))
         assertTrue(chapters.getByEdition(source.provider, source.providerBibleId, beforeExpiry).isEmpty())
-        assertEquals(response.fumsToken, chapters.getFumsToken(metadataId, 1, "default", "JHN.1", beforeExpiry))
         val cleared = chapters.removeExpired(assertNotNull(response.expires)).single()
-        assertNull(cleared.fumsToken)
-        assertNull(chapters.getFumsToken(metadataId, 1, "default", "JHN.1", assertNotNull(response.expires)))
+        assertNull(cleared.expires)
     }
 
     @Test
@@ -341,14 +336,13 @@ class BibleProviderRepositoryTest {
     }
 
     @Test
-    fun `removed source hides its cached content and token until maintenance purges it`() = withDb {
+    fun `removed source hides its cached content until maintenance purges it`() = withDb {
         val source = assertNotNull(repository.add(source()))
         val cache = cache(source)
         chapters.putContent(cache)
         assertNotNull(repository.remove(source.id, 0))
 
         assertNull(chapters.getContent(source.id, "JHN.1", assertNotNull(cache.created)))
-        assertNull(chapters.getFumsToken(metadataId, 1, "default", "JHN.1", assertNotNull(cache.created)))
         assertEquals(1, chapters.removeExpired(assertNotNull(cache.expires)).size)
     }
 
@@ -390,6 +384,107 @@ class BibleProviderRepositoryTest {
         }
     }
 
+    @Test
+    fun `deleting a Bible variant removes only that variant's active and removed sources`() = withDb {
+        val text = assertNotNull(repository.add(source()))
+        val removed = assertNotNull(repository.add(source(BibleSourceKind.AUDIO)))
+        assertNotNull(repository.remove(removed.id, removed.version))
+        val study = assertNotNull(repository.add(source().copy(variant = "study")))
+        val otherVersion = assertNotNull(repository.add(source().copy(metadataVersion = 2)))
+
+        assertEquals(setOf(text.id, removed.id), repository.deleteByVariant(metadataId, 1, "default").map { it.id }.toSet())
+        connection().useStatement("delete from bibles where metadata_id = ? and version = 1 and variant = 'default'") {
+            it.setObject(1, metadataId.toJavaUuid())
+            assertEquals(1, it.executeUpdate())
+        }
+        assertNull(repository.get(text.id))
+        assertEquals(study, repository.get(study.id))
+        assertEquals(otherVersion, repository.get(otherVersion.id))
+    }
+
+    @Test
+    fun `usage tokens outlive chapter text, source removal and variant replacement until expiry`() = withDb {
+        val source = assertNotNull(repository.add(source()))
+        val response = cache(source)
+        chapters.putContent(response)
+        val created = assertNotNull(response.created)
+        val expires = assertNotNull(response.expires)
+        tokens.put(token(source, created, expires, "response-token"))
+
+        chapters.clearContent(source.id)
+        assertNotNull(repository.remove(source.id, source.version))
+        repository.deleteByVariant(metadataId, 1, "default")
+        connection().useStatement("delete from bibles where metadata_id = ? and version = 1 and variant = 'default'") {
+            it.setObject(1, metadataId.toJavaUuid())
+            it.executeUpdate()
+        }
+
+        assertEquals("response-token", tokens.getText(metadataId, 1, "default", "JHN.1", expires.minusSeconds(1)))
+        assertNull(tokens.getText(metadataId, 1, "default", "JHN.1", expires))
+        assertNull(tokens.getText(metadataId, 1, "study", "JHN.1", created))
+        assertNull(tokens.getText(metadataId, 2, "default", "JHN.1", created))
+        assertNull(tokens.getText(metadataId, 1, "default", "JHN.2", created))
+        assertNull(tokens.getAudio(metadataId, 1, "default", "JHN.1", source.id, created))
+        assertEquals(0, tokens.removeExpired(expires.minusSeconds(1)))
+        assertEquals(1, tokens.removeExpired(expires))
+        assertNull(tokens.getText(metadataId, 1, "default", "JHN.1", created))
+    }
+
+    @Test
+    fun `newer responses replace a source's token and older writes do not overwrite it`() = withDb {
+        val text = assertNotNull(repository.add(source()))
+        val audio = assertNotNull(repository.add(source(BibleSourceKind.AUDIO)))
+        val created = OffsetDateTime.parse("2026-10-01T00:00:00Z")
+        tokens.put(token(text, created, created.plusDays(14), "first"))
+        tokens.put(token(text, created.plusDays(1), created.plusDays(15), "second"))
+        tokens.put(token(text, created.plusHours(1), created.plusDays(14), "late"))
+        tokens.put(token(audio, created.plusDays(2), created.plusDays(16), "audio").copy(audio = true))
+
+        assertEquals("second", tokens.getText(metadataId, 1, "default", "JHN.1", created.plusDays(2)))
+        assertEquals("audio", tokens.getAudio(metadataId, 1, "default", "JHN.1", audio.id, created.plusDays(2)))
+        assertNull(tokens.getAudio(metadataId, 1, "default", "JHN.1", text.id, created.plusDays(2)))
+    }
+
+    @Test
+    fun `usage token retention cannot exceed fourteen days or end before creation`() = withDb {
+        val source = assertNotNull(repository.add(source()))
+        val created = OffsetDateTime.parse("2026-10-01T00:00:00Z")
+        for (expires in listOf(created, created.plusDays(14).plusSeconds(1))) {
+            val error = assertFailsWith<SQLException> { tokens.put(token(source, created, expires, "token")) }
+            assertEquals("23514", error.sqlState)
+        }
+    }
+
+    @Test
+    fun `evicting a recording timestamps only that response and hides it from edition retention`() = withDb {
+        val source = assertNotNull(repository.add(source(BibleSourceKind.AUDIO)))
+        val created = OffsetDateTime.parse("2026-10-01T00:00:00Z")
+        val first = BibleChapterAudio(UUID.random(), source.id, source.version, "JHN.1", BibleAudioContent("audio/mpeg", 10),
+            source.attribution, created, created.plusDays(14))
+        val second = first.copy(id = UUID.random(), created = created.plusMinutes(1))
+        connection().useStatement("update bible_chapters set audio = ?::jsonb where metadata_id = ? and version = 1 and variant = 'default'") {
+            it.setString(1, json.encodeToString(ListSerializer(BibleChapterAudio.serializer()), listOf(first, second)))
+            it.setObject(2, metadataId.toJavaUuid())
+            assertEquals(1, it.executeUpdate())
+        }
+        val evicted = OffsetDateTime.parse("2026-10-02T00:00:00Z")
+        val timestamp = json.encodeToJsonElement(OffsetDateTimeSerializer(), evicted)
+
+        assertEquals(1, chapters.evictAudioContent(first.id, "JHN.1", timestamp))
+        assertEquals(0, chapters.evictAudioContent(first.id, "JHN.1", timestamp))
+
+        val audio = assertNotNull(chapters.getAudioChapter(metadataId, 1, "default", "JHN.1")?.audio)
+        assertEquals(evicted.toInstant(), audio.single { it.id == first.id }.evicted?.toInstant())
+        assertNull(audio.single { it.id == second.id }.evicted)
+        assertEquals(listOf(second.id), chapters.getAudioByEdition(source.provider, source.providerBibleId)
+            .flatMap { it.audio.orEmpty() }.map { it.id })
+    }
+
+    private fun token(source: BibleSource, created: OffsetDateTime, expires: OffsetDateTime, value: String) = BibleFumsToken(
+        source.metadataId, source.metadataVersion, source.variant, "JHN.1", source.id, source.kind == BibleSourceKind.AUDIO,
+        value, created, expires,
+    )
+
     private suspend fun cache(source: BibleSource): BibleChapter {
         chapters.setSource(source.metadataId, source.metadataVersion, source.variant, source.id)
         return BibleChapter(
@@ -398,7 +493,7 @@ class BibleProviderRepositoryTest {
             components = ComponentContainer(ContainerType.PARAGRAPH, listOf(
                 VerseStart(Reference("JHN.1.1")), Text("In the beginning", StyleReference("it")), VerseEnd(),
             ), StyleReference("p")).toJson(),
-            attribution = BibleAttribution("Response copyright"), verseCount = 1, fumsToken = "response-token",
+            attribution = BibleAttribution("Response copyright"), verseCount = 1,
             created = OffsetDateTime.parse("2026-10-01T00:00:00Z"), expires = OffsetDateTime.parse("2026-10-15T00:00:00Z"),
         )
     }
