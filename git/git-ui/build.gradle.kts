@@ -73,7 +73,7 @@ tasks.test {
     systemProperty("workspaceRoot", rootProject.projectDir.absolutePath)
     inputs.files(rootProject.fileTree(rootProject.projectDir) {
         include("**/src/main/resources/**/*.graphqls")
-        exclude("**/build/**", "**/node_modules/**")
+        exclude("**/build/**", "**/node_modules/**", "**/.intellijPlatform/**")
     })
 }
 
