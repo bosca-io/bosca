@@ -15,6 +15,7 @@ import bosca.content.metadata.model.Document
 import bosca.content.metadata.model.DocumentCollaboration
 import bosca.content.metadata.model.DocumentTemplate
 import bosca.content.metadata.model.Guide
+import bosca.content.metadata.model.GuideStep
 import bosca.content.metadata.model.GuideTemplate
 import bosca.content.metadata.model.Media
 import bosca.content.metadata.model.Metadata
@@ -677,6 +678,51 @@ class MetadataControllerCoverageTest {
         coEvery { guideService.addGuidesToBatch(batch) } returns Unit
         controller.guide(batch)
         coVerify { guideService.addGuidesToBatch(batch) }
+    }
+
+    @Test
+    fun `parentGuides resolves multiple search hits and filters inaccessible and missing guides`() = runTest {
+        val stepKeys = listOf(MetadataCacheKeyId(UUID.random(), 2), MetadataCacheKeyId(UUID.random(), 1), MetadataCacheKeyId(UUID.random(), 1))
+        val allowed = metadata(version = 3)
+        val denied = metadata()
+        val missing = metadata()
+        fun step(parent: Metadata, child: MetadataCacheKeyId, id: Long) = GuideStep(
+            id = id, metadataId = parent.id, version = parent.version,
+            stepMetadataId = child.id, stepMetadataVersion = child.version, sort = 0,
+        )
+        coEvery { guideService.addParentGuideStepsToBatch(any()) } coAnswers {
+            firstArg<Batch<MetadataCacheKeyId, List<GuideStep>>>().apply {
+                setData(stepKeys[0], listOf(step(allowed, stepKeys[0], 1), step(allowed, stepKeys[0], 2), step(denied, stepKeys[0], 3)))
+                setData(stepKeys[1], listOf(step(denied, stepKeys[1], 4), step(missing, stepKeys[1], 5)))
+            }
+        }
+        coEvery { metadataService.getByIdBatched(any()) } coAnswers {
+            firstArg<Batch<MetadataCacheKeyId, Metadata>>().apply {
+                assertEquals(listOf(allowed, denied, missing).map { MetadataCacheKeyId(it) }, keys)
+                setData(MetadataCacheKeyId(allowed), allowed)
+                setData(MetadataCacheKeyId(denied), denied)
+            }
+        }
+        coEvery { metadataPermissionEvaluator.filterAllowed(null, listOf(allowed, denied), PermissionAction.VIEW) } returns listOf(allowed)
+        val batch = Batch<MetadataCacheKeyId, List<Metadata>>(stepKeys)
+
+        controller.parentGuides(null, batch)
+
+        assertEquals(listOf(listOf(allowed), emptyList(), emptyList()), batch.getResults())
+        coVerify(exactly = 1) { metadataService.getByIdBatched(any()) }
+    }
+
+    @Test
+    fun `parentGuides returns an empty list for metadata without a guide`() = runTest {
+        val key = MetadataCacheKeyId(UUID.random(), 1)
+        val batch = Batch<MetadataCacheKeyId, List<Metadata>>(listOf(key))
+        coEvery { guideService.addParentGuideStepsToBatch(any()) } returns Unit
+        coEvery { metadataPermissionEvaluator.filterAllowed(authentication, emptyList(), PermissionAction.VIEW) } returns emptyList()
+
+        controller.parentGuides(authentication, batch)
+
+        assertEquals(listOf(emptyList()), batch.getResults())
+        coVerify(exactly = 0) { metadataService.getByIdBatched(any()) }
     }
 
     // ---- timeEvents ----

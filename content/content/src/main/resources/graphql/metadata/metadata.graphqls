@@ -58,6 +58,8 @@ type Metadata {
     name: String!
     "Paginated list of parent collections that contain this metadata item"
     parentCollections(limit: Int!, offset: Long!): [Collection!]!
+    "Accessible current guides that contain this metadata version as a step, including their IDs and slugs"
+    parentGuides: [Metadata!]!
     "ID of the parent metadata item if this is a variant"
     parentId: String
     "Language and content variants of this metadata item"
