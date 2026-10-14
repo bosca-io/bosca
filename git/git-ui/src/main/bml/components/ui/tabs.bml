@@ -1,0 +1,109 @@
+<component tag="ui-tabs">
+  <prop name="label" type="String" required />
+  <prop name="items" type="List<bosca.git.ui.components.NavigationItem>" required />
+  <nav class="tabs" :aria-label="label">
+    <div class="tab-row" ref="row">
+      <for item in items>
+        <a :href="item.href" :aria-current='if (item.selected) "page" else "false"'>
+          { item.label }
+        </a>
+      </for>
+      <button ref="more" class="more" type="button" aria-expanded="false" hidden>
+        More
+        <span class="tab-chevron">
+          <ui-icon name="chevron" :size="12" />
+        </span>
+      </button>
+    </div>
+    <slot />
+    <div ref="menu" class="tabs-menu" hidden></div>
+  </nav>
+  <style scoped>
+    .tabs {
+      position: relative;
+      display: flex;
+      align-items: stretch;
+      gap: 12px;
+      width: 100%;
+      min-width: 0;
+      flex: none;
+      align-self: stretch;
+      margin: 12px 0 20px;
+      border-bottom: 1px solid var(--line);
+    }
+    .tab-row {
+      display: flex;
+      align-items: stretch;
+      gap: 4px;
+      min-width: 0;
+      flex: 1;
+    }
+    .tab-row > a,
+    .more {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 10px 12px;
+      color: var(--fg-3);
+      white-space: nowrap;
+      border: 0;
+      border-bottom: 2px solid transparent;
+      background: transparent;
+      font: inherit;
+      font-size: 12.5px;
+      cursor: pointer;
+      text-decoration: none;
+    }
+    .tab-row > a:hover,
+    .more:hover {
+      color: var(--fg-1);
+    }
+    .tab-row > [aria-current="page"] {
+      color: var(--selected-fg);
+      border-bottom-color: var(--accent);
+      font-weight: 500;
+    }
+    .tab-chevron {
+      display: flex;
+      flex: none;
+      color: var(--fg-3);
+      transition: transform 0.15s;
+    }
+    .more[aria-expanded="true"] .tab-chevron {
+      transform: rotate(180deg);
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .tab-chevron {
+        transition: none;
+      }
+    }
+    .tabs-menu {
+      position: absolute;
+      z-index: 30;
+      right: 0;
+      top: calc(100% + 4px);
+      min-width: 180px;
+      max-width: calc(100vw - 32px);
+      padding: 5px;
+      background: var(--bg-2);
+      border: 1px solid var(--line-2);
+      border-radius: 10px;
+      box-shadow: 0 14px 40px #0006;
+    }
+    .tabs-menu a {
+      display: block;
+      padding: 8px 10px;
+      color: var(--fg-1);
+      border-radius: 6px;
+      text-decoration: none;
+    }
+    .tabs-menu a:hover,
+    .tabs-menu a:focus-visible {
+      background: var(--bg-3);
+    }
+  </style>
+  <script client scoped>
+    import { overflowTabs } from "@client/tabs";
+    overflowTabs(ctx);
+  </script>
+</component>

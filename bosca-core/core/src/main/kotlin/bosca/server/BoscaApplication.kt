@@ -42,11 +42,19 @@ import kotlin.reflect.KClass
  * Implements [CoroutineScope] with a [SupervisorJob] so that background tasks launched
  * during server startup (job runners, schedulers) run in the application's lifecycle
  * without blocking module initialization.
+ *
+ * @param ownsServices Whether this application registers the process-wide application and
+ * serializers and shuts down DI services. Set false for an additional listener whose owning
+ * application manages those services; its own shutdown hooks and coroutine scope still close.
  */
 @OptIn(ExperimentalSerializationApi::class)
 class BoscaApplication(
-    val config: ApplicationConfig
+    val config: ApplicationConfig,
+    private val ownsServices: Boolean,
 ) : CoroutineScope {
+
+    /** Creates the application that registers and owns process-wide services. */
+    constructor(config: ApplicationConfig) : this(config, ownsServices = true)
 
     private val boscaSerializersModules = SerializersModule {
         contextual(UUIDSerializer())
@@ -76,9 +84,11 @@ class BoscaApplication(
     }
 
     init {
-        provides(singleton = true) { this }
-        provides(singleton = true) { json }
-        provides(singleton = true) { protobuf }
+        if (ownsServices) {
+            provides(singleton = true) { this }
+            provides(singleton = true) { json }
+            provides(singleton = true) { protobuf }
+        }
     }
 
     private val job = SupervisorJob()
@@ -194,7 +204,7 @@ class BoscaApplication(
 
     /**
      * Shuts down the application by first gracefully stopping all
-     * registered [bosca.service.Service] instances (draining channels,
+     * registered [bosca.service.Service] instances when it owns them (draining channels,
      * closing background jobs), then running registered cleanup hooks
      * in reverse order, and finally cancelling the coroutine scope.
      */
@@ -202,7 +212,7 @@ class BoscaApplication(
     suspend fun shutdown() {
         // Drain services that hold background resources (channels,
         // coroutine jobs, etc.) before tearing down infrastructure.
-        for (provider in bosca.di.ProviderRegistry.findAll(bosca.service.Service::class)) {
+        for (provider in if (ownsServices) bosca.di.ProviderRegistry.findAll(bosca.service.Service::class) else emptyList()) {
             withContext(NonCancellable) {
                 try {
                     provider.get().shutdown()

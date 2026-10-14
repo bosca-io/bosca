@@ -1,0 +1,89 @@
+{
+  "id": "failed-run",
+  "pipelineId": "pipeline",
+  "repositoryId": "repo",
+  "commitSha": "abc",
+  "ref": "refs/heads/main",
+  "triggerType": "MANUAL",
+  "triggeredBy": "owner",
+  "status": "FAILURE",
+  "number": 3,
+  "concurrencyGroup": "release/main",
+  "parameters": {},
+  "created": "2026-10-09T00:00:00Z",
+  "started": "2026-10-09T00:00:00Z",
+  "finished": "2026-10-09T01:02:00Z",
+  "durationSeconds": 3720,
+  "jobs": [
+    {
+      "id": "job",
+      "pipelineRunId": "failed-run",
+      "name": "Build",
+      "status": "FAILURE",
+      "runnerLabel": "linux",
+      "agentId": "agent",
+      "matrixValues": null,
+      "dependsOn": [],
+      "requirements": [
+        {
+          "type": "maven",
+          "namespace": "io.bosca",
+          "coordinate": "core:1.2.3"
+        }
+      ],
+      "pipelineRequirements": [
+        {
+          "repository": "platform",
+          "pipeline": "Publish",
+          "ref": "refs/heads/main"
+        }
+      ],
+      "requirementsSatisfiedAt": null,
+      "requirementsDeadline": "2026-10-09T00:00:00Z",
+      "awaitingRequirements": false,
+      "requirementsBypassedAt": "2026-10-09T00:00:00Z",
+      "requirementsBypassReason": "Approved <release>",
+      "errorMessage": "Build failed before publishing",
+      "started": "2026-10-09T00:00:00Z",
+      "finished": "2026-10-09T00:01:05Z",
+      "attempt": 1,
+      "agent": {
+        "id": "agent",
+        "name": "Linux runner",
+        "status": "ONLINE"
+      },
+      "steps": [
+        {
+          "id": "step",
+          "pipelineJobId": "job",
+          "name": "Compile",
+          "ordinal": 0,
+          "status": "SUCCESS",
+          "exitCode": 0,
+          "errorMessage": null,
+          "started": "2026-10-09T00:00:00Z",
+          "finished": "2026-10-09T00:00:02Z"
+        },
+        {
+          "id": "failed-step",
+          "pipelineJobId": "job",
+          "name": "Publish",
+          "ordinal": 1,
+          "status": "FAILURE",
+          "exitCode": 1,
+          "errorMessage": "Cannot publish <artifact>",
+          "started": "2026-10-09T00:00:02Z",
+          "finished": "2026-10-09T00:01:05Z"
+        }
+      ]
+    }
+  ],
+  "artifacts": [
+    {
+      "id": "artifact",
+      "name": "build/report #1.zip",
+      "sizeBytes": 1024,
+      "created": "2026-10-09T00:00:00Z"
+    }
+  ]
+}

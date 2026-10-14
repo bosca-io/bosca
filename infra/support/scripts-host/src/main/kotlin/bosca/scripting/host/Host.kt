@@ -4,6 +4,8 @@ package bosca.scripting.host
 
 import bosca.di.ConfigurationProviderRegistrar
 import bosca.di.ContentProviderRegistrar
+import bosca.di.BibleProvidersProviderRegistrar
+import bosca.di.CoreBibleProvidersProviderRegistrar
 import bosca.di.CoreContentProviderRegistrar
 import bosca.di.CoreProviderRegistrar
 import bosca.di.ProviderRegistry.register
@@ -32,6 +34,8 @@ fun main(vararg args: String) {
     register(CoreProviderRegistrar())
     register(CoreContentProviderRegistrar())
     register(ContentProviderRegistrar())
+    register(CoreBibleProvidersProviderRegistrar())
+    register(BibleProvidersProviderRegistrar())
     register(ConfigurationProviderRegistrar())
     provides(singleton = true) {
         Json {

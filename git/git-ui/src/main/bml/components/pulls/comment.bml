@@ -1,0 +1,46 @@
+<component tag="git-pull-comment">
+  <prop name="model" type="bosca.git.ui.PullReviewModel" required />
+  <script server provides="attrs">
+    props.filterKeys { it !in setOf("model", "__bmlAttrs") }
+  </script>
+  <form
+    ref="commentForm"
+    class="comment-form"
+    :data-comment-anchor="model.commentAnchor"
+    :data-open-sequence="model.commentOpenSequence"
+    :data-comment-failed="model.commentFailed"
+    :data-reply="model.isReply"
+    {...attrs}
+  >
+    <ui-comment-editor
+      :id='"pull-comment-" + model.page.pull.id + "-" + bosca.git.ui.encode(model.commentAnchor)'
+      :label='(if (model.isReply) "Reply to comment on " else "Comment on ") + model.commentLocation'
+      :submitLabel='if (model.isReply) "reply" else "comment"'
+      :placeholder='if (model.isReply) "Write a reply…" else "Write a comment…"'
+      :value="model.commentBody"
+      :error='if (model.commentFailed) model.message else ""'
+      :submitDisabled="!model.isReply && model.ownReviews.isEmpty()"
+      :hint='if (!model.isReply && model.ownReviews.isEmpty()) "Submit a review to start commenting." else ""'
+    >
+      <slot />
+    </ui-comment-editor>
+  </form>
+  <style scoped>
+    .comment-form {
+      margin: 0;
+      padding: 10px 12px 12px 128px;
+      border-block: 1px solid var(--line);
+      background: var(--bg-0);
+      min-width: 0;
+      white-space: normal;
+    }
+    @media (max-width: 720px) {
+      .comment-form { padding-left: 12px; }
+    }
+    .comment-form[data-reply] {
+      padding: 0;
+      border: 0;
+      background: transparent;
+    }
+  </style>
+</component>

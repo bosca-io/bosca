@@ -1,0 +1,79 @@
+<component tag="git-markdown-file">
+  <prop name="page" type="bosca.git.ui.RepositoryPage" required />
+  <script server provides="showSource">
+    ctx.query["line"]?.toIntOrNull()?.let { it > 0 } == true || ctx.query["view"] == "source"
+  </script>
+  <section class="markdown-file">
+    <header class="markdown-toolbar">
+      <ui-view-tabs
+        label="Markdown view"
+        :tabs='listOf("Preview", "Source")'
+        :selected='if (showSource) "Source" else "Preview"'
+      />
+      <git-file-toolbar :page="page" inline />
+    </header>
+    <div ref="previewSurface" :hidden="showSource" role="tabpanel" aria-label="Preview">
+      <git-markdown :html="page.markdownHtml" />
+    </div>
+    <div
+      ref="sourceSurface"
+      class="markdown-source"
+      role="tabpanel"
+      aria-label="Source"
+      :hidden="!showSource"
+    >
+      <ui-source-view :content="page.content.orEmpty()" :path="page.file" />
+    </div>
+  </section>
+  <style scoped>
+    .markdown-file {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    .markdown-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      min-height: 46px;
+      padding: 0 16px;
+      border-bottom: 1px solid var(--line);
+    }
+    .markdown-source {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    @media (max-width: 700px) {
+      .markdown-toolbar {
+        padding: 0 4px;
+      }
+    }
+    @media (max-width: 350px) {
+      .markdown-toolbar {
+        flex-wrap: wrap;
+        gap: 0 12px;
+      }
+    }
+  </style>
+  <script client scoped>
+    const previewSurface = ctx.ref<HTMLElement>("previewSurface"),
+      sourceSurface = ctx.ref<HTMLElement>("sourceSurface");
+    for (const tab of ctx.root.querySelectorAll<HTMLButtonElement>("[role=tab]")) {
+      const panel = tab.dataset.tab === "Preview" ? previewSurface : sourceSurface;
+      if (!panel) continue;
+      tab.id = `markdown-tab-${crypto.randomUUID()}`;
+      panel.id = `markdown-panel-${crypto.randomUUID()}`;
+      tab.setAttribute("aria-controls", panel.id);
+      panel.setAttribute("aria-labelledby", tab.id);
+    }
+    ctx.on<CustomEvent<string>>(ctx.root, "viewchange", (event) => {
+      const preview = event.detail === "Preview";
+      if (previewSurface) previewSurface.hidden = !preview;
+      if (sourceSurface) sourceSurface.hidden = preview;
+    });
+  </script>
+</component>

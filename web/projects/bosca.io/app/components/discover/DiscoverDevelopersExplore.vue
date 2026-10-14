@@ -1,8 +1,12 @@
 <script setup lang="ts">
-// The Developers marketing page family. Rendered as link cards on every page in
-// the family; the current route is excluded automatically so each page offers
-// only its siblings.
+// Developer overview pages and documentation, with the current route excluded.
 const PAGES = [
+  {
+    to: '/developers/getting-started',
+    icon: 'book-open',
+    title: 'Developer Documentation',
+    sub: 'Local setup and the platform reference for APIs, services, identity, and runtime behavior.'
+  },
   {
     to: '/discover/developers',
     icon: 'code',

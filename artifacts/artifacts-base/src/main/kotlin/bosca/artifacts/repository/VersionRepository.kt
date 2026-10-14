@@ -23,6 +23,10 @@ interface VersionRepository {
     @Query("UPDATE artifacts.versions SET finalized = true WHERE id = :id RETURNING *")
     suspend fun finalizeVersion(id: UUID): ArtifactVersion?
 
+    /** Records or clears upload completion while the version row lock is held. */
+    @Query("UPDATE artifacts.versions SET completed_commit_sha = :commitSha WHERE id = :id RETURNING *")
+    suspend fun setCompletion(id: UUID, commitSha: String?): ArtifactVersion?
+
     @Query("SELECT * FROM artifacts.versions WHERE repository_id = :repositoryId AND version = :version")
     suspend fun findByRepositoryAndVersion(repositoryId: UUID, version: String): ArtifactVersion?
 

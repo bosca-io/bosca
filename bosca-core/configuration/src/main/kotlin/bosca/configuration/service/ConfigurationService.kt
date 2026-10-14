@@ -1,6 +1,5 @@
 package bosca.configuration.service
 
-import bosca.cache.CacheKey
 import bosca.cache.ServiceCache
 import bosca.cache.serializers.StringKeySerializer
 import bosca.cache.serializers.UUIDKeySerializer
@@ -11,6 +10,7 @@ import bosca.configuration.model.ConfigurationValue
 import bosca.configuration.repository.ConfigurationPermissionRepository
 import bosca.configuration.repository.ConfigurationRepository
 import bosca.configuration.repository.ConfigurationValueRepository
+import bosca.db.connection
 import bosca.db.transaction
 import bosca.graphql.Batch
 import bosca.security.encryption.EncryptionService
@@ -61,12 +61,32 @@ class ConfigurationServiceImpl(
 
     override suspend fun getValue(id: UUID): JsonElement? {
         val value = valueCache.get(id) ?: return null
+        return decrypt(value)
+    }
+
+    override suspend fun getValueForUpdate(id: UUID): JsonElement? {
+        check(connection().inTransaction) { "Configuration locking requires a database transaction" }
+        if (repository.lock(id) == null) {
+            valueCache.remove(id)
+            return null
+        }
+        val value = valueRepository.getById(id)
+        if (value == null) {
+            valueCache.remove(id)
+            return null
+        }
+        valueCache.put(id, value)
+        return decrypt(value)
+    }
+
+    private suspend fun decrypt(value: ConfigurationValue): JsonElement? {
         val encrypted = EncryptionService.Encrypted(value.nonce, value.value ?: return null)
-        val data = encryption.decrypt(encrypted, id)
+        val data = encryption.decrypt(encrypted, value.configurationId)
         return data.decodeToString().parseToJsonElement()
     }
 
     override suspend fun setValue(id: UUID, value: JsonElement) = transaction {
+        repository.lock(id)
         internalSetValue(id, value)
     }
 

@@ -1,0 +1,14 @@
+<component tag="ui-panel">
+  <section class="panel">
+    <slot />
+  </section>
+  <style scoped>
+    .panel {
+      min-width: 0;
+      padding: 20px;
+      background: var(--bg-1);
+      border: 1px solid var(--line);
+      border-radius: var(--r-md);
+    }
+  </style>
+</component>

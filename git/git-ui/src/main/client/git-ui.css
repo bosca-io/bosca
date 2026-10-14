@@ -1,0 +1,1051 @@
+/* Bosca UI — design tokens
+   Whitelabel: change --brand-1 / --brand-2 / --brand-accent */
+:root,
+[data-theme="dark"] {
+  --brand-1: #06b6d4;
+  --brand-2: #3b82f6;
+  --brand-accent: #7c5cff;
+  --brand-grad: linear-gradient(
+    135deg,
+    var(--brand-1) 0%,
+    var(--brand-2) 60%,
+    var(--brand-accent) 100%
+  );
+  --brand-grad-soft: linear-gradient(
+    135deg,
+    color-mix(in oklch, var(--brand-1) 18%, transparent),
+    color-mix(in oklch, var(--brand-2) 16%, transparent),
+    color-mix(in oklch, var(--brand-accent) 16%, transparent)
+  );
+
+  --bg-0: #0a0c12;
+  --bg-1: #10131c;
+  --bg-2: #161a25;
+  --bg-3: #1d2230;
+  --bg-4: #252b3d;
+  --line: #232839;
+  --line-2: #2e3447;
+  --fg-0: #f3f5fb;
+  --fg-1: #cdd2e2;
+  --fg-2: #969cb1;
+  --fg-3: #6c7388;
+  --fg-4: #454b60;
+
+  --ok: #34d99a;
+  --warn: #ffb547;
+  --err: #ff5470;
+  --info: #5ec5ff;
+
+  --r-xs: 6px;
+  --r-sm: 9px;
+  --r-md: 12px;
+  --r-lg: 16px;
+  --r-xl: 22px;
+
+  --font-sans: "Geist", "Inter", -apple-system, system-ui, sans-serif;
+  --font-mono: "Geist Mono", "JetBrains Mono", ui-monospace, monospace;
+}
+
+:root {
+  color-scheme: dark;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.5;
+  background: var(--bg-0);
+  color: var(--fg-0);
+  --accent: #64748b;
+  --muted: var(--fg-2);
+  --control-bg: var(--bg-2);
+  --control-radius: var(--r-sm);
+  --selected-fg: var(--fg-0);
+  --error-fg: var(--err);
+}
+* {
+  box-sizing: border-box;
+}
+[hidden] {
+  display: none !important;
+}
+body {
+  margin: 0;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+form {
+  margin: 0;
+}
+a {
+  color: var(--fg-1);
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
+}
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.muted {
+  color: var(--muted);
+}
+
+/* Authentication follows Studio's local form language, ready for later component extraction. */
+.auth-document {
+  --mark-top: #7c5cff;
+  --mark-right: #9076ff;
+  --mark-left: #634acc;
+  --accent: #a995ff;
+  --line: #ffffff14;
+  --muted: #969cb1;
+  --control-bg: #ffffff0a;
+  --control-radius: 10px;
+  --error-fg: #ff8094;
+  background: #0a0c14;
+  color: #f3f5fb;
+  font-size: 13.5px;
+}
+.auth-layout {
+  display: flex;
+  min-height: 100dvh;
+}
+.auth-content {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 480px;
+  flex-shrink: 0;
+  padding: 36px;
+  background:
+    radial-gradient(80% 60% at 100% 0%, #7c5cff24, transparent 60%), #0a0c14;
+}
+.auth-card {
+  width: 100%;
+  max-width: 380px;
+  padding: 36px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  background: #14182299;
+  border: 1px solid #ffffff14;
+  border-radius: 18px;
+  box-shadow: 0 30px 80px -30px #0009;
+  backdrop-filter: blur(28px) saturate(1.2);
+}
+.auth-flow,
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.auth-document label {
+  font-size: 11.5px;
+  color: #969cb1;
+  font-weight: 600;
+}
+.auth-document input.input {
+  height: 38px;
+  border-color: var(--line);
+  font-size: 13.5px;
+  font-weight: 400;
+  color: #f3f5fb;
+}
+.auth-document button.auth-primary {
+  width: 100%;
+  min-height: 40px;
+  background: linear-gradient(180deg, #6d51e0, #573fb3);
+  border: 1px solid #6d51e0;
+  color: #fff;
+  font-size: 13.5px;
+  font-weight: 550;
+}
+.auth-name-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.auth-footer {
+  text-align: center;
+  color: #969cb1;
+  font-size: 12.5px;
+  margin: 0;
+}
+.auth-copy,
+.password-strength {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: #969cb1;
+}
+.auth-notice {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid #5ec5ff59;
+  border-radius: 10px;
+  background: #5ec5ff14;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+.auth-document [role="alert"] {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid #ff547066;
+  border-radius: 10px;
+  background: #ff547014;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+@media (max-width: 768px) {
+  .auth-layout {
+    flex-direction: column;
+  }
+  .auth-content {
+    flex: 1;
+    width: 100%;
+    padding: 24px 16px;
+  }
+  .auth-card {
+    padding: 28px 24px;
+  }
+}
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 0;
+}
+.toolbar:has(> .field) {
+  align-items: end;
+}
+.form-grid {
+  display: grid;
+  gap: 14px;
+  padding: 16px 0;
+  width: min(100%, 480px);
+}
+.form-grid > .button {
+  justify-self: start;
+}
+.action-panel {
+  min-width: 0;
+}
+.action-panel summary {
+  cursor: pointer;
+  padding: 8px 0;
+}
+select {
+  max-width: 100%;
+  font: inherit;
+  color: inherit;
+  background: var(--control-bg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  height: 32px;
+  padding: 0 10px;
+  font-size: 13px;
+  line-height: normal;
+}
+.status {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.error {
+  color: var(--error-fg);
+}
+.code-widget {
+  flex: 1;
+  min-height: 240px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.code-editor {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+.commit-controls {
+  flex: none;
+  border-top: 1px solid var(--line);
+  padding: 12px;
+}
+.cm-editor {
+  font-size: 13px;
+}
+
+.file-surface > [data-bml-island],
+.markdown-source > [data-bml-island] {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.code-widget > .code-editor {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.code-widget .cm-editor {
+  height: 100%;
+}
+.draft-preview {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 20px;
+}
+
+.file-toolbar {
+  flex: none;
+}
+.file-toolbar [data-bml-island] {
+  display: contents;
+}
+.source-toolbar .file-toolbar {
+  padding: 0;
+  gap: 8px;
+}
+textarea {
+  font: inherit;
+  color: inherit;
+  background: var(--control-bg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px 12px;
+  width: 100%;
+  resize: vertical;
+}
+
+/* Descendants rendered by child components and client widgets have their own scope markers. */
+.git-document {
+  height: 100dvh;
+  overflow: hidden;
+  flex-direction: row;
+  background:
+    radial-gradient(80% 55% at 12% -5%, #64748b47, transparent 60%),
+    radial-gradient(60% 45% at 95% 8%, #7c5cff20, transparent 65%), var(--bg-0);
+}
+.git-main {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+  background: transparent;
+}
+.git-main > [data-bml-island] {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+h2 {
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+h3 {
+  font-size: 14px;
+  font-weight: 600;
+}
+code,
+pre {
+  font-family: var(--font-mono);
+}
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+}
+input[type="checkbox"] {
+  accent-color: var(--accent);
+}
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-2) transparent;
+}
+@media (max-width: 700px) {
+  .git-document {
+    flex-direction: column;
+  }
+}
+
+.table-scroll table {
+  border-collapse: collapse;
+  min-width: 100%;
+  width: max-content;
+}
+.table-scroll th,
+.table-scroll td {
+  padding: 12px 14px;
+  text-align: left;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+.table-scroll td {
+  overflow-wrap: normal;
+}
+.table-scroll th,
+.table-scroll button,
+.table-scroll code {
+  white-space: nowrap;
+}
+/* Log rows arrive from both BML and the live subscription renderer. */
+.step-logs .log-line {
+  display: flex;
+  gap: 12px;
+  padding: 1px 12px;
+  line-height: 1.6;
+}
+.step-logs .line-number {
+  width: 40px;
+  flex-shrink: 0;
+  color: var(--fg-4);
+  text-align: right;
+  user-select: none;
+}
+.step-logs .line-content {
+  min-width: 0;
+  font: inherit;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.step-logs [data-stream="stderr" i] {
+  color: var(--err);
+}
+.step-logs .log-empty {
+  margin: 0;
+  padding: 24px;
+  color: var(--fg-3);
+  font: 12.5px var(--font-sans);
+  text-align: center;
+}
+.repository-workspace > [data-bml-island] {
+  min-height: 0;
+  overflow: auto;
+}
+.markdown .image-error {
+  color: var(--error-fg);
+  display: block;
+  padding: 12px 0;
+}
+.markdown img {
+  max-width: 100%;
+  height: auto;
+}
+.markdown pre {
+  overflow: auto;
+  padding: 12px;
+  background: var(--control-bg);
+}
+.markdown table {
+  border-collapse: collapse;
+  display: block;
+  overflow: auto;
+}
+.markdown th,
+.markdown td {
+  padding: 8px;
+  border: 1px solid var(--line);
+}
+.markdown blockquote {
+  border-left: 3px solid var(--line);
+  padding-left: 16px;
+  margin-left: 0;
+}
+.owner-options li {
+  padding: 10px;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.owner-options li[aria-selected] {
+  background: #7c5cff40;
+}
+.diff-line button {
+  font-size: 11px;
+  padding: 2px 6px;
+  margin-right: 12px;
+}
+@media (max-width: 700px) {
+  .code-editor {
+    min-height: 240px;
+  }
+  .code-widget {
+    min-height: 0;
+  }
+}
+
+.table-scroll {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.table-scroll th {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--fg-3);
+  background: transparent;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.table-scroll td {
+  font-size: 12.5px;
+  color: var(--fg-1);
+}
+.table-scroll tbody tr:hover {
+  background: color-mix(in oklch, var(--bg-3) 40%, transparent);
+}
+.table-scroll tr:last-child td {
+  border-bottom: 0;
+}
+.action-panel {
+  padding: 12px 0;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+}
+.action-panel summary {
+  font-size: 13px;
+  font-weight: 500;
+}
+.auth-document a {
+  color: #a995ff;
+}
+.auth-document .brand-top,
+.auth-document .provider-btn {
+  color: var(--fg-1);
+}
+
+.panel h2:first-child,
+.panel h3:first-child {
+  margin-top: 0;
+}
+.panel .owner-picker {
+  width: min(100%, 300px);
+  flex-shrink: 1;
+}
+.panel .toolbar {
+  align-items: end;
+}
+.panel .owner-label {
+  font-size: 12px;
+  color: var(--fg-2);
+}
+.panel .form-grid {
+  padding-bottom: 0;
+}
+.panel details > summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.page-fill[data-repository-page] .tabs {
+  margin: 4px 0;
+}
+.page-fill[data-repository-page] > .toolbar {
+  margin: 0;
+  padding: 4px 0;
+}
+
+.repository-heading-actions .owner-toolbar {
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+}
+.repository-heading-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+@media (max-width: 1100px) {
+  .repository-heading-actions {
+    justify-content: flex-start;
+  }
+}
+
+.page-fill > :not(.repository-workspace) {
+  flex-shrink: 0;
+}
+
+.ui-section h2:first-child,
+.ui-section h3:first-child {
+  margin-top: 0;
+}
+.ui-section .toolbar {
+  align-items: end;
+}
+.ui-section .toolbar:empty {
+  display: none;
+}
+.ui-section .owner-picker {
+  width: 100%;
+  min-width: 0;
+}
+.ui-section details > summary {
+  cursor: pointer;
+  font-weight: 500;
+}
+.git-document .pull-main .markdown {
+  padding: 0;
+  margin: 0;
+}
+.markdown > :first-child {
+  margin-top: 0;
+}
+.markdown > :last-child {
+  margin-bottom: 0;
+}
+.pull-sidebar h2 {
+  font-size: 13px;
+}
+.pull-sidebar .toolbar {
+  gap: 8px;
+}
+.pull-sidebar .owner-picker,
+.pull-sidebar .field {
+  flex: 1 1 100%;
+}
+.pull-sidebar .owner-label {
+  color: var(--fg-2);
+  font-size: 12px;
+}
+
+/* Dialog contents cross component scopes; their form body scrolls independently of the footer. */
+.modal-form {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  margin: 0;
+}
+.modal-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px;
+  overflow: auto;
+  min-height: 0;
+}
+.modal-footer {
+  flex: none;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 18px;
+  border-top: 1px solid var(--line);
+  background: var(--bg-2);
+}
+.dialog-content .dialog-header .close-button {
+  padding: 5px;
+  min-height: 28px;
+  background: transparent;
+  border-color: transparent;
+}
+.dialog-content .modal-fields .owner-picker {
+  width: 100%;
+}
+.modal-fields > label:not(.field) {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.heading-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.pull-filter .field > span {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+.pull-filter select {
+  max-width: 240px;
+  padding: 6px 10px;
+  min-height: 30px;
+}
+.ui-card h2:first-child {
+  margin-top: 0;
+}
+.ui-card .toolbar {
+  align-items: end;
+}
+.ui-card .owner-picker {
+  width: 100%;
+}
+.ui-card details > summary {
+  cursor: pointer;
+  font-weight: 500;
+}
+
+/* Select options and selected tags are created by the component's client controller. */
+.select-widget > select.enhanced {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+.select-options li {
+  padding: 7px 8px;
+  font-size: 13px;
+  line-height: 1.4;
+  border-radius: 6px;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.select-options li[data-highlighted] {
+  background: var(--bg-3);
+}
+.select-options li[aria-selected="true"] {
+  color: var(--fg-0);
+  background: color-mix(in srgb, var(--accent) 16%, var(--bg-2));
+}
+.select-options li[aria-disabled="true"] {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.select-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--accent) 16%, var(--bg-2));
+  font-size: 11px;
+}
+.select-tag button {
+  padding: 0 2px;
+  border: 0;
+  background: transparent;
+  color: var(--fg-2);
+  cursor: pointer;
+}
+
+.field .select-widget {
+  width: 100%;
+}
+.modal-options > summary {
+  cursor: pointer;
+  color: var(--fg-2);
+  font-size: 12px;
+}
+.modal-options[open] {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* Shared section composition works across BML component and island boundaries. */
+.settings-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+  min-width: 0;
+}
+.info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 18px 24px;
+  margin: 0;
+}
+.info-grid > div {
+  min-width: 0;
+}
+.info-grid dt {
+  color: var(--fg-3);
+  font-size: 11.5px;
+  margin-bottom: 5px;
+}
+.info-grid dd {
+  margin: 0;
+  font-size: 12.5px;
+  overflow-wrap: anywhere;
+}
+.detail-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.detail-fields .full-width {
+  grid-column: 1 / -1;
+}
+.detail-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.detail-heading h3 {
+  margin: 0;
+  font-size: 13px;
+}
+.detail-note {
+  color: var(--fg-3);
+  font-size: 12px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 600px) {
+  .info-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+  }
+  .detail-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.section-body {
+  padding: 18px;
+  min-width: 0;
+}
+.section-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 18px;
+  border-top: 1px solid var(--line);
+  background: var(--bg-2);
+}
+.settings-form {
+  margin: 0;
+}
+.settings-action {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 18px;
+}
+.action-icon,
+.record-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  background: var(--bg-2);
+  color: var(--fg-3);
+  border-radius: 8px;
+}
+.action-icon {
+  width: 38px;
+  height: 38px;
+  border: 1px solid var(--line);
+}
+.record-icon {
+  width: 30px;
+  height: 30px;
+}
+.action-copy {
+  flex: 1;
+  min-width: 0;
+}
+.action-copy h3 {
+  margin: 0 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.action-copy p,
+.form-help {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--fg-3);
+}
+.record-list {
+  display: flex;
+  flex-direction: column;
+}
+.record-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--line);
+}
+.record-row:last-child {
+  border-bottom: 0;
+}
+.record-copy {
+  flex: 1;
+  min-width: 0;
+}
+.record-title {
+  font-size: 12.5px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.record-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--fg-3);
+}
+.identity-cell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  font-size: 12.5px;
+}
+.actions-column {
+  width: 1%;
+  white-space: nowrap;
+  text-align: right;
+}
+.button-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--control-radius);
+  background: var(--control-bg);
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: normal;
+  white-space: nowrap;
+}
+.button-link:hover {
+  background: var(--bg-3);
+}
+.button-link.primary {
+  color: var(--fg-0);
+  border-color: color-mix(in srgb, var(--accent) 60%, transparent);
+}
+@media (max-width: 600px) {
+  .settings-action {
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  .settings-action > .dialog-control,
+  .settings-action > [data-bml-c] {
+    margin-left: 50px;
+  }
+  .settings-action > .action-copy {
+    flex-basis: calc(100% - 50px);
+  }
+  .record-row {
+    flex-wrap: wrap;
+  }
+  .record-copy {
+    flex-basis: calc(100% - 50px);
+  }
+}
+
+.section-filter {
+  padding: 0;
+  gap: 8px;
+}
+.filter-select {
+  width: 200px;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.repository-menu > button.button[role="menuitem"] {
+  display: flex;
+  justify-content: flex-start;
+  width: 100%;
+  height: 32px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  padding: 0 10px;
+  font-size: 12.5px;
+}
+.repository-menu > .button.danger {
+  margin-top: 4px;
+  border-top: 1px solid var(--line);
+  border-radius: 0 0 5px 5px;
+}
+
+.page:not(.page-fill) > .page-heading {
+  margin-bottom: 20px;
+}
+.page:not(.page-fill) > .page-heading:has(+ .tabs, + * > .tabs:first-child) {
+  margin-bottom: 0;
+}
+.run-page > .page-heading {
+  margin-bottom: 20px;
+}
+.page > [data-bml-island] + [data-bml-island] {
+  margin-top: 16px;
+}
+.page > .settings-stack + .settings-stack {
+  margin-top: 16px;
+}
+.tree-loading .tree-error-message,
+.tree-loading .button[data-bml-deferred-retry] {
+  display: none;
+}
+[data-bml-deferred-state="error"] .tree-loading .tree-error-message {
+  display: block;
+}
+[data-bml-deferred-state="error"] .tree-loading .button[data-bml-deferred-retry] {
+  display: inline-flex;
+}
+[data-bml-deferred-state="error"] .tree-loading .tree-loading-message {
+  display: none;
+}
+.tree-loading .button[data-bml-deferred-retry] {
+  align-self: flex-start;
+}
+
+form[data-bml-action-pending] button[type="submit"].button .button-content {
+  opacity: 0;
+}
+form[data-bml-action-pending] button[type="submit"].button .button-progress {
+  display: flex;
+}
+form[data-bml-action-pending] button[type="submit"].button {
+  cursor: progress;
+}
+
+.button-link.icon-only {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  flex: none;
+}
+
+/* Matches the Nuxt Tooltip component's Bosca theme. */
+.ui-tooltip {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  max-width: min(280px, calc(100vw - 16px));
+  padding: 4px 8px;
+  border: 1px solid var(--line-2);
+  border-radius: 6px;
+  background: var(--bg-3);
+  color: var(--fg-0);
+  font-size: 11.5px;
+  font-weight: 500;
+  line-height: 1.5;
+  box-shadow: 0 4px 12px #0005;
+  pointer-events: none;
+}
+
+details[open] > .disclosure-heading > .disclosure-chevron {
+  transform: rotate(0deg);
+}

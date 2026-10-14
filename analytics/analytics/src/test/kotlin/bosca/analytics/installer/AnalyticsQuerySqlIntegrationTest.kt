@@ -25,7 +25,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-/** Runs the seeded metrics against Trino rows with sign-in, duplicate delivery, and bot agents. */
+/** Runs the seeded metrics against Trino rows with sign-in, duplicate delivery, bot, and crawler agents. */
 class AnalyticsQuerySqlIntegrationTest {
     @Test
     fun `seeded event metrics count people sessions and page impressions without obvious bots`() {
@@ -48,15 +48,25 @@ class AnalyticsQuerySqlIntegrationTest {
                     createEvents(connection)
                     fun execute(key: String) = queries.getValue(key).query
                         .replace("warehouse.bosca.events", "memory.default.events")
+                        .replace(":startDate", "current_date")
+                        .replace(":endDate", "current_date")
 
                     connection.createStatement().use { statement ->
+                        // user-a (signed-out start linked through install-a), install-c, and install-d.
                         statement.executeQuery(execute("daily-active-users")).use { rows ->
                             assertTrue(rows.next())
-                            assertEquals(2L, rows.getLong("value"))
+                            assertEquals(3L, rows.getLong("value"))
                         }
                         statement.executeQuery(execute("unique-sessions-per-day")).use { rows ->
                             assertTrue(rows.next())
-                            assertEquals(3L, rows.getLong("value"))
+                            assertEquals(4L, rows.getLong("value"))
+                        }
+                        // session-a spans 30s, session-c's 400s gap is capped at 300s, and heartbeats add nothing.
+                        statement.executeQuery(execute("monthly-users-and-engagement")).use { rows ->
+                            assertTrue(rows.next())
+                            assertEquals(3L, rows.getLong("active_users"))
+                            assertEquals(110.0, rows.getDouble("avg_engagement_seconds"))
+                            assertEquals(1.83, rows.getDouble("avg_engagement_minutes"))
                         }
                         statement.executeQuery(execute("top-50-page-impressions")).use { rows ->
                             val impressions = buildMap {
@@ -106,7 +116,7 @@ class AnalyticsQuerySqlIntegrationTest {
             statement.execute("create schema if not exists memory.default")
             statement.execute("""
                 create table memory.default.events (
-                    id varchar, client_id varchar, type varchar, created timestamp,
+                    id varchar, client_id varchar, type varchar, created timestamp(6),
                     context row(user_id varchar, device row(installation_id varchar),
                         session_id varchar, browser row(agent varchar)),
                     element row(id varchar, type varchar, extras varchar)
@@ -123,12 +133,14 @@ class AnalyticsQuerySqlIntegrationTest {
                 elementType: String,
                 elementId: String,
                 extras: String = "{}",
+                offsetSeconds: Int = 0,
             ) {
                 val client = clientId?.let { "'$it'" } ?: "cast(null as varchar)"
                 val user = userId?.let { "'$it'" } ?: "cast(null as varchar)"
                 statement.execute("""
                     insert into memory.default.events values (
-                        '$id', $client, '$type', localtimestamp,
+                        '$id', $client, '$type',
+                        date_trunc('day', localtimestamp) + interval '1' hour + interval '$offsetSeconds' second,
                         row($user, row('$installationId'), '$sessionId', row('$agent')),
                         row('$elementId', '$elementType', '$extras')
                     )
@@ -137,7 +149,7 @@ class AnalyticsQuerySqlIntegrationTest {
             insert("start-a", "start-a", "Session", null, "install-a", "session-a",
                 "Mozilla/5.0", "session", "session-a", """{"start":"true"}""")
             insert("auth-a", "auth-a", "Interaction", "user-a", "install-a", "session-a",
-                "Mozilla/5.0", "button", "sign-in")
+                "Mozilla/5.0", "button", "sign-in", offsetSeconds = 10)
             insert("start-b", "start-b", "Session", "user-a", "install-a", "session-b",
                 "Mozilla/5.0", "session", "session-b", """{"start":"true"}""")
             insert("start-c", "start-c", "Session", null, "install-c", "session-c",
@@ -147,13 +159,22 @@ class AnalyticsQuerySqlIntegrationTest {
             insert("non-start", "non-start", "Session", null, "install-other", "session-other",
                 "Mozilla/5.0", "session", "session-other", """{"start":"false"}""")
             insert("page-a", "page-a", "Impression", "user-a", "install-a", "session-a",
-                "Mozilla/5.0", "page", "/article?utm_source=mail")
+                "Mozilla/5.0", "page", "/article?utm_source=mail", offsetSeconds = 20)
             insert("page-a-retry", "page-a", "Impression", "user-a", "install-a", "session-a",
-                "Mozilla/5.0", "page", "/article?utm_source=mail")
+                "Mozilla/5.0", "page", "/article?utm_source=mail", offsetSeconds = 20)
             insert("page-b", "page-b", "Impression", "user-a", "install-a", "session-a",
-                "Mozilla/5.0", "page", "/article?utm_campaign=social")
+                "Mozilla/5.0", "page", "/article?utm_campaign=social", offsetSeconds = 30)
             insert("legacy-page", null, "Impression", null, "install-c", "session-c",
-                "Mozilla/5.0", "page", "chapter:one")
+                "Mozilla/5.0", "page", "chapter:one", offsetSeconds = 400)
+            insert("start-d", "start-d", "Session", null, "install-d", "session-d",
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
+                "session", "session-d", """{"start":"true"}""")
+            insert("heartbeat-d", "heartbeat-d", "Heartbeat", null, "install-d", "session-d",
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
+                "session", "session-d", offsetSeconds = 100)
+            insert("crawler-start", "crawler-start", "Session", null, "install-crawler", "session-crawler",
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.7390.37 Safari/537.36",
+                "session", "session-crawler", """{"start":"true"}""")
             insert("bot-page", "bot-page", "Impression", null, "install-bot", "session-bot",
                 "GoogleOther/1.0", "page", "chapter:bot")
         }

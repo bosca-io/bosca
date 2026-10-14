@@ -158,7 +158,7 @@ class GitHubSyncServiceIntegrationTest {
             val refMigration = javaClass.getResource("/db/migrations/V45__github_ref_synchronization.sql")?.readText()
                 ?: error("Missing ref migration")
             connection().useStatement(refMigration) { it.execute() }
-            for (name in listOf("V3__pull_requests.sql", "V46__github_pull_request_synchronization.sql", "V47__github_delivery_problems.sql", "V48__github_branch_filters.sql")) {
+            for (name in listOf("V3__pull_requests.sql", "V46__github_pull_request_synchronization.sql", "V47__github_delivery_problems.sql", "V48__github_branch_filters.sql", "V49__pull_request_merge_base.sql")) {
                 connection().useStatement(javaClass.getResource("/db/migrations/$name")?.readText() ?: error(name)) { it.execute() }
             }
             connection().useStatement("insert into git.repositories(id) values ('$repositoryId')") { it.execute() }

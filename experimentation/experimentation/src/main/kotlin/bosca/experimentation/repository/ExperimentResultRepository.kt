@@ -23,12 +23,12 @@ interface ExperimentResultRepository {
         insert into experimentation.experiment_results (
             experiment_id, variation_key, goal_id, assignments, impressions, observation_count, conversions, conversion_rate,
             confidence_level, lift_over_control, mean, variance,
-            probability_beats_control, expected_loss, adjusted_mean, adjusted_variance
+            probability_beats_control, expected_loss, adjusted_mean, adjusted_variance, goal_analysis
         )
         values (
             :experimentId, :variationKey, :goalId, :assignments, :impressions, :observationCount, :conversions, :conversionRate,
             :confidenceLevel, :liftOverControl, :mean, :variance,
-            :probabilityBeatsControl, :expectedLoss, :adjustedMean, :adjustedVariance
+            :probabilityBeatsControl, :expectedLoss, :adjustedMean, :adjustedVariance, :goalAnalysis::jsonb
         )
         on conflict (experiment_id, variation_key, goal_id)
         do update set assignments = :assignments, impressions = :impressions, observation_count = :observationCount,
@@ -39,6 +39,7 @@ interface ExperimentResultRepository {
                       expected_loss = :expectedLoss,
                       adjusted_mean = :adjustedMean,
                       adjusted_variance = :adjustedVariance,
+                      goal_analysis = :goalAnalysis::jsonb,
                       updated_at = now()
         returning *
     """)

@@ -6,6 +6,7 @@
 export const PUBLIC_ROUTES = [
   '/',
   '/developers/getting-started',
+  '/developers/run-locally',
   '/developers/architecture',
   '/developers/models-and-repositories',
   '/developers/services',

@@ -1,5 +1,10 @@
 <script setup lang="ts">
-useSeoMeta({ title: 'Services' })
+definePageMeta({ layout: 'developers' })
+
+useSeoMeta({
+  title: 'Services',
+  description: 'Business logic, @ServiceImplementation, constructor injection, and the service lifecycle.'
+})
 </script>
 
 <template>
@@ -23,7 +28,7 @@ useSeoMeta({ title: 'Services' })
     </h3>
     <CodeBlock
       lang="kotlin"
-      :code="`interface CategoryService {
+      :code="`interface CategoryService : Service {
     suspend fun getAll(): List<Category>
     suspend fun getAll(ids: List<UUID>): List<Category>
     suspend fun add(input: CategoryInput): Category
@@ -54,6 +59,8 @@ class CategoryServiceImpl(private val repository: CategoryRepository) : Category
     }
 
     override suspend fun getAll() = categoryAll.get(Unit) ?: emptyList()
+
+    override suspend fun getAll(ids: List<UUID>) = categoryIds.getAll(ids).filterNotNull()
 
     override suspend fun add(input: CategoryInput): Category {
         val added = repository.addCategory(Category(name = input.name))
@@ -101,7 +108,9 @@ class CategoryServiceImpl(private val repository: CategoryRepository) : Category
       <li><strong>Business logic</strong> — validation, transformation, orchestration across repositories.</li>
     </ol>
     <Callout type="info">
-      Services should <strong>not</strong> handle authentication or authorization — that belongs in the controller layer via <code>PermissionEvaluator</code> and <code>GroupEvaluator</code>.
+      API authorization belongs in controllers through <code>PermissionEvaluator</code> and
+      <code>GroupEvaluator</code>. Services enforce domain rules and expose reusable operations.
+      Calling a service directly does not perform the controller's access checks.
     </Callout>
 
     <h2 id="events">
@@ -110,13 +119,14 @@ class CategoryServiceImpl(private val repository: CategoryRepository) : Category
     <p>Services dispatch domain events after writes using KSP-generated <code>dispatch()</code> extensions:</p>
     <CodeBlock
       lang="kotlin"
-      :code="`override suspend fun add(input: CollectionInput, parent: Collection?): Collection = transaction {
-    val newCollection = repository.add(collection)
-    CollectionCreated(newCollection).dispatch()
-    newCollection
-}`"
+      title="Inside a transactional collection write (excerpt)"
+      :code="`val newCollection = repository.add(collection)
+CollectionCreated(newCollection).dispatch()
+newCollection`"
     />
     <p>
+      Call the generated <code>dispatch()</code> inside the transaction. Job queues defer enqueueing
+      until commit; direct pub/sub notifications are sent during dispatch.
       See <NuxtLink to="/developers/messaging">
         Messaging &amp; Events
       </NuxtLink> for full details.

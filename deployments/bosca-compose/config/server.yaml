@@ -165,6 +165,7 @@ runners:
     - gitQueueRunner
     - indexQueueRunner
     - contentQueueRunner
+    - fumsQueueRunner
     - profileQueueRunner
     - workopsQueueRunner
     - messagesJobQueueRunner

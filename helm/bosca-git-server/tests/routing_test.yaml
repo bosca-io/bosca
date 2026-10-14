@@ -1,0 +1,72 @@
+suite: Git API and BML UI path routing
+templates:
+  - templates/service.yaml
+  - templates/httproute.yaml
+set:
+  global.domain: example.com
+  gateway.hostnames: [git.example.com]
+release:
+  name: test
+tests:
+  - it: serves API and UI on the existing Git hostname
+    template: templates/httproute.yaml
+    asserts:
+      - equal:
+          path: spec.hostnames
+          value: [git.example.com]
+      - equal:
+          path: spec.rules[0].matches[0].path.type
+          value: RegularExpression
+      - equal:
+          path: spec.rules[0].backendRefs[0]
+          value: {name: test-bosca-git-server, port: 8093}
+      - equal:
+          path: spec.rules[1].backendRefs[0]
+          value: {name: test-bosca-git-server, port: 8093}
+      - lengthEqual:
+          path: spec.rules[0].matches
+          count: 8
+      - lengthEqual:
+          path: spec.rules[1].matches
+          count: 7
+      - equal:
+          path: spec.rules[2].matches[0].path
+          value: {type: PathPrefix, value: /}
+      - equal:
+          path: spec.rules[2].backendRefs[0]
+          value: {name: test-bosca-git-server, port: 8091}
+
+  - it: exposes both internal service ports by listener name
+    template: templates/service.yaml
+    asserts:
+      - contains:
+          path: spec.ports
+          content: {name: http, port: 8091, targetPort: http, protocol: TCP}
+      - contains:
+          path: spec.ports
+          content: {name: ui, port: 8093, targetPort: ui, protocol: TCP}
+
+  - it: customizes the internal UI port without changing the public hostname
+    template: templates/httproute.yaml
+    set:
+      ui.port: 18093
+    asserts:
+      - equal:
+          path: spec.rules[0].backendRefs[0].port
+          value: 18093
+      - equal:
+          path: spec.rules[1].backendRefs[0].port
+          value: 18093
+      - equal:
+          path: spec.hostnames
+          value: [git.example.com]
+
+  - it: uses the existing Gateway for both listeners
+    template: templates/httproute.yaml
+    set:
+      gateway.gatewayName: custom-gateway
+      gateway.gatewayNamespace: ingress
+    asserts:
+      - equal:
+          path: spec.parentRefs[0]
+          value: {name: custom-gateway, namespace: ingress, port: 443}

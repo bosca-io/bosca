@@ -1,5 +1,6 @@
 package bosca.ai.kit.agents.actions
 
+import bosca.bible.BibleContentUse
 import bosca.ai.kit.agents.KitResponse
 import bosca.ai.kit.agents.KitRoute
 import bosca.ai.kit.agents.KitState
@@ -124,7 +125,7 @@ class ProvideScriptureActionTest {
         )
         coEvery { bibleService.getBibles() } returns listOf(bible)
         coEvery { bibleService.getReferences(bible, "James 1") } returns listOf(reference)
-        coEvery { bibleService.getChapter(bible, reference) } returns chapter
+        coEvery { bibleService.getChapterContent(bible, reference, BibleContentUse.AI_CONTEXT) } returns chapter.getContent()
         coEvery { bibleService.getHumanLong(bible, reference) } returns "James 1"
 
         val response = execute(

@@ -6,6 +6,8 @@ import bosca.analytics.transform.AnalyticsScriptTransform
 import bosca.analytics.transform.ErrorFingerprintTransform
 import bosca.analytics.transform.EventPipelineTransform
 import bosca.analytics.transform.SessionHeartbeatTransform
+import bosca.analytics.transform.fums.FumsReporter
+import bosca.analytics.transform.fums.FumsAnalyticsTransform
 import bosca.analytics.livesessions.LiveSessionsService
 import bosca.counter.Counter
 import bosca.analytics.transform.ScriptTransformPipelineTransform
@@ -14,10 +16,12 @@ import bosca.analytics.transform.geo.CloudflareGeoTransform
 import bosca.analytics.transform.geo.GeoPipelineTransform
 import bosca.di.ObjectProvider
 import bosca.di.annotation.Provider
+import bosca.di.annotation.ProviderName
 import bosca.di.annotation.Providers
 import bosca.scripting.service.ScriptExecutionService
 import bosca.scripting.service.ScriptService
 import bosca.security.service.SecurityService
+import bosca.sharedqueue.jobs.JobQueue
 import kotlinx.serialization.json.Json
 
 /**
@@ -43,15 +47,20 @@ class TransformConfiguration {
     @Provider
     fun cloudflare(): GeoPipelineTransform = CloudflareGeoTransform()
 
+    @Provider(singleton = true)
+    fun fumsReporter(): FumsReporter = FumsReporter()
+
     /**
      * Assembles the full pipeline of event transforms.
      *
      * The pipeline ordering is:
      * 1. Geo-enrichment (Cloudflare headers)
-     * 2. Error fingerprinting (assigns stable group identifiers to error events)
-     * 3. Direct script bindings — bound scripts run inline over the batch, bypassing pipelines
-     * 4. Script transform — triggered pipelines run inline over the whole batch
-     * 5. Script trigger — triggered pipelines fire-and-forget over the whole batch
+     * 2. Session heartbeats (publishes, counts and removes heartbeat events)
+     * 3. Error fingerprinting (assigns stable group identifiers to error events)
+     * 4. FUMS delivery jobs (when enabled for this server)
+     * 5. Direct script bindings — bound scripts run inline over the batch, bypassing pipelines
+     * 6. Script transform — triggered pipelines run inline over the whole batch
+     * 7. Script trigger — triggered pipelines fire-and-forget over the whole batch
      *
      * Pipelines bind to the batch-level `analytics.transform` / `analytics.notify` events and filter
      * the batch themselves — there is no per-event-type routing. The script/pipeline stages are
@@ -59,7 +68,7 @@ class TransformConfiguration {
      * chain is safe to wire in both the collector and the processor.
      */
     @Provider
-    fun transforms(
+    suspend fun transforms(
         geo: GeoPipelineTransform,
         bindingService: ObjectProvider<AnalyticsScriptBindingService>,
         scriptService: ObjectProvider<ScriptService>,
@@ -69,6 +78,7 @@ class TransformConfiguration {
         config: EventProcessingConfiguration,
         counter: Counter,
         liveSessions: ObjectProvider<LiveSessionsService>,
+        @ProviderName(JobQueueNames.fumsJobQueue) queue: ObjectProvider<JobQueue>,
     ): EventPipelineTransforms {
         // Ordering: geo enriches lat/lon first; SessionHeartbeatTransform then publishes geo-tagged
         // heartbeats to the live map, counts them into the active-session bucket, and strips them, so no
@@ -78,6 +88,9 @@ class TransformConfiguration {
             SessionHeartbeatTransform(counter, liveSessions),
             ErrorFingerprintTransform(),
         )
+        if (config.fumsEnabled && queue.exists) {
+            transforms.add(FumsAnalyticsTransform(queue.get()))
+        }
         transforms.add(
             AnalyticsScriptTransform(
                 bindingService,

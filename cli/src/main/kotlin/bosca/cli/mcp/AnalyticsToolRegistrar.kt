@@ -49,6 +49,9 @@ object AnalyticsToolRegistrar {
             refresh, grant_permission, revoke_permission. Prefer stable `key` identifiers when known.
             `execute` accepts a JSON object of named parameters and returns bounded structured rows.
             Updates preserve omitted fields; use the explicit clear flags to remove optional values.
+            For user, session, and engagement metrics, execute the standard queries `daily-active-users`,
+            `unique-sessions-per-day`, and `monthly-users-and-engagement` with `startDate`/`endDate`
+            rather than writing new event SQL; the server instructions describe their definitions.
         """.trimIndent(),
         inputSchema = ToolSchema(
             properties = buildJsonObject {

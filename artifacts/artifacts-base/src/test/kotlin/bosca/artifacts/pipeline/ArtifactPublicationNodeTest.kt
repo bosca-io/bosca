@@ -66,19 +66,19 @@ class ArtifactPublicationNodeTest {
         assertEquals(listOf(target, target.copy(destinationId = other.id)), targets)
         coVerify(exactly = 0) { artifacts.finalizeVersion(any()) }
         coVerify(exactly = 0) { publications.prepare(any(), any(), any(), any()) }
-        coVerify(exactly = 0) { publications.publish(any()) }
+        coVerify(exactly = 0) { publications.publish(any(), any()) }
     }
 
-    @Test fun `push publishes only its selected destination and uses normal durable action suspension`() = runBlocking {
+    @Test fun `publication publishes only its selected destination and uses normal durable action suspension`() = runBlocking {
         val publication = ArtifactPublication(UUID.random(), destination.id, version.id, "v1.0.0", completed.commitSha, true, emptyList())
         coEvery { publications.prepare(destination.id, version.id, completed.commitSha, true) } returns publication
-        coEvery { publications.publish(publication.id) } returns Unit
+        coEvery { publications.publish(publication.id, false) } returns Unit
         val node = ArtifactPublicationNode("publish", prerelease = true)
         assertIs<NodeResult.Suspend>(node.run(context(runId = UUID.random()), targetInputs()))
         coVerify(exactly = 0) { publications.prepare(any(), any(), any(), any()) }
         val result = assertIs<NodeResult.Output>(node.run(context(), targetInputs()))
         assertEquals(publication.id.toString(), result.value?.encode(json)?.jsonPrimitive?.content)
-        coVerify(exactly = 1) { publications.publish(publication.id) }
+        coVerify(exactly = 1) { publications.publish(publication.id, false) }
         coVerify(exactly = 0) { publications.destinations(any()) }
         for (original in listOf(node, ArtifactPublicationGetDestinations("destinations"))) {
             val restored = json.decodeFromString(PipelineNode.serializer(), json.encodeToString(PipelineNode.serializer(), original))
@@ -86,11 +86,11 @@ class ArtifactPublicationNodeTest {
         }
     }
 
-    @Test fun `push independently checks permission even when its input bypasses destination lookup`() = runBlocking {
+    @Test fun `publication independently checks permission even when its input bypasses destination lookup`() = runBlocking {
         coEvery { permissions.verify(authentication, "raw", "builds", "tool", "1.0.0", ArtifactAction.PUSH) } throws SecurityException("denied")
         assertFailsWith<SecurityException> { ArtifactPublicationNode("publish").run(context(), targetInputs()) }
         coVerify(exactly = 0) { publications.prepare(any(), any(), any(), any()) }
-        coVerify(exactly = 0) { publications.publish(any()) }
+        coVerify(exactly = 0) { publications.publish(any(), any()) }
     }
 
     @Test fun `get destinations checks permission before looking up destination configuration`() = runBlocking {
@@ -111,12 +111,12 @@ class ArtifactPublicationNodeTest {
         coVerify(exactly = 0) { publications.prepare(any(), any(), any(), any()) }
     }
 
-    @Test fun `deleting a selected artifact cancels its push without preparing a publication`() = runBlocking {
+    @Test fun `deleting a selected artifact cancels its publication without preparing a publication`() = runBlocking {
         coEvery { artifacts.getVersion(version.id) } returns null
         val result = assertIs<NodeResult.Output>(ArtifactPublicationNode("publish").run(context(), targetInputs()))
         assertEquals("DELETED", result.value?.encode(json)?.jsonPrimitive?.content)
         coVerify(exactly = 0) { publications.prepare(any(), any(), any(), any()) }
-        coVerify(exactly = 0) { publications.publish(any()) }
+        coVerify(exactly = 0) { publications.publish(any(), any()) }
     }
 
     @Test fun `dry run requires no input and performs no service calls`() = runBlocking {
@@ -130,7 +130,7 @@ class ArtifactPublicationNodeTest {
         val destinations = assertIs<NodeResult.Output>(ArtifactPublicationGetDestinations("destinations").run(context(dryRun = true), NodeInputs(emptyMap())))
         assertEquals(JsonArray(emptyList()), destinations.value?.encode(json))
         coVerify(exactly = 0) { publications.prepare(any(), any(), any(), any()) }
-        coVerify(exactly = 0) { publications.publish(any()) }
+        coVerify(exactly = 0) { publications.publish(any(), any()) }
         coVerify(exactly = 0) { artifacts.getVersion(any()) }
         coVerify(exactly = 0) { artifacts.findRepository(any(), any(), any()) }
     }

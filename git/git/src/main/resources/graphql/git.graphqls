@@ -73,6 +73,8 @@ type GitRepository {
     "The intended content classification."
     contentType: GitRepositoryContentType
     "Whether the current caller may execute builds in this repository."
+    canEdit: Boolean!
+    canManage: Boolean!
     canExecute: Boolean!
     "Total storage consumed in bytes."
     diskSizeBytes: Long!
@@ -268,6 +270,8 @@ type Git {
     branchProtectionRules(repositoryId: UUID!): [GitBranchProtectionRule!]!
     "Look up a pull request by repository and number."
     pullRequest(repositoryId: UUID!, number: Int!): GitPullRequest
+    "Look up a pull request by its unique ID."
+    pullRequestById(id: UUID!): GitPullRequest
     "List pull requests for a repository with optional filters."
     pullRequests(repositoryId: UUID!, status: GitPullRequestStatus, authorId: UUID, offset: Long, limit: Int): [GitPullRequest!]!
     "List pull requests across all repositories visible to the caller."
@@ -451,6 +455,8 @@ enum GitDiffLineType {
 "A pull request within a repository."
 type GitPullRequest {
     id: UUID!
+    "Version used to reject stale edits and reviews."
+    version: Long!
     "The repository this PR belongs to."
     repositoryId: UUID!
     "Per-repository auto-incrementing number (e.g. #42)."
@@ -471,6 +477,8 @@ type GitPullRequest {
     mergedAt: DateTime
     "The SHA of the merge commit."
     mergeSha: String
+    "Target commit immediately before the completed merge, when its base is known."
+    mergeBaseSha: String
     created: DateTime!
     updated: DateTime!
     "Whether the PR can be cleanly merged."
@@ -566,6 +574,9 @@ input CreateGitPullRequestInput {
 input UpdateGitPullRequestInput {
     title: String
     description: String
+    sourceBranch: String
+    targetBranch: String
+    expectedVersion: Long
 }
 
 "Input for submitting a review."
@@ -573,6 +584,7 @@ input SubmitGitReviewInput {
     pullRequestId: UUID!
     status: GitReviewStatus!
     body: String
+    expectedVersion: Long
 }
 
 "Input for adding a review comment anchored to a diff line."
@@ -584,6 +596,7 @@ input AddGitReviewCommentInput {
     newLineNumber: Int
     commitSha: String!
     content: String!
+    expectedVersion: Long
 }
 
 "State of a CI/CD commit status check."
@@ -752,9 +765,9 @@ type GitMutation {
     "Update a pull request's title or description."
     updatePullRequest(id: UUID!, input: UpdateGitPullRequestInput!): GitPullRequest!
     "Merge a pull request using the specified strategy."
-    mergePullRequest(id: UUID!, strategy: GitMergeStrategy!): GitPullRequest!
+    mergePullRequest(id: UUID!, strategy: GitMergeStrategy!, expectedVersion: Long): GitPullRequest!
     "Merge every unresolved dependency in dependency-first order, then merge the requested pull request."
-    mergePullRequestWithDependencies(id: UUID!, strategy: GitMergeStrategy!): [GitPullRequest!]!
+    mergePullRequestWithDependencies(id: UUID!, strategy: GitMergeStrategy!, expectedVersion: Long): [GitPullRequest!]!
     "Add a pull request that must be merged before this pull request."
     addPullRequestDependency(id: UUID!, dependencyId: UUID!): GitPullRequest!
     "Remove a direct pull request dependency."
@@ -773,6 +786,8 @@ type GitMutation {
     submitReview(input: SubmitGitReviewInput!): GitReview!
     "Add a comment anchored to a specific diff line."
     addReviewComment(input: AddGitReviewCommentInput!): GitReviewComment!
+    "Reply using the original comment's review and line context, including outdated discussions."
+    replyReviewComment(pullRequestId: UUID!, commentId: UUID!, content: String!, expectedVersion: Long): GitReviewComment!
     "Resolve all comments in a thread at the given file and line."
     resolveReviewThread(pullRequestId: UUID!, filePath: String!, lineNumber: Int!): Boolean!
     "Create a webhook. Requires MANAGE permission."

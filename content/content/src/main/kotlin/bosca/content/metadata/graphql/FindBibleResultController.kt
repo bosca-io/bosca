@@ -21,5 +21,8 @@ class FindBibleResultController : GraphQLController<FindBibleResult> {
     fun component(findResult: FindBibleResult) = findResult.component
 
     @Field
+    fun attribution(findResult: FindBibleResult) = findResult.attribution
+
+    @Field
     fun reference(findResult: FindBibleResult) = BibleReference(findResult.reference.usfm, findResult.human, findResult.humanShort)
 }

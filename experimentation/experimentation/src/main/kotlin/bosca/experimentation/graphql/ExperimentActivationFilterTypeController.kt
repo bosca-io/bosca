@@ -30,4 +30,7 @@ class ExperimentActivationFilterTypeController : GraphQLController<ExperimentAct
 
     @Field
     fun itemExtraValue(filter: ExperimentActivationFilter): String? = filter.itemExtraValue
+    @Field fun elementIdContains(filter: ExperimentActivationFilter): String? = filter.elementIdContains
+    @Field fun applicationIds(filter: ExperimentActivationFilter): List<String> = filter.applicationIds
+    @Field fun recommendationCard(filter: ExperimentActivationFilter): Boolean = filter.recommendationCard
 }

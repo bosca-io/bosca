@@ -6,9 +6,9 @@ interface FooterLink {
 }
 
 const columns: { label: string, children: FooterLink[] }[] = [{
-  label: 'Developers',
+  label: 'Documentation',
   children: [{
-    label: 'Getting Started',
+    label: 'Developer Documentation',
     to: '/developers/getting-started'
   }, {
     label: 'Architecture',

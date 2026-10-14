@@ -263,7 +263,8 @@ export class BoscaSink extends AnalyticEventSink {
     const context = {
       ...this.context,
       device: {
-        ...this.context.device,
+        // A beacon can be sent before initializeContext() has described the device.
+        ...(this.context.device.installation_id ? this.context.device : this.describeDevice()),
         installation_id: this.installationId,
       },
     }
@@ -451,6 +452,11 @@ export class BoscaSink extends AnalyticEventSink {
               sent: new Date().getTime(),
               sent_micros: microsNow(),
             }
+            // Events queued before the first flush snapshot an uninitialized device; give them the
+            // device described by initializeContext() so every device field is delivered, not just the ID.
+            if (!events.context.device.installation_id) {
+              events.context.device = { ...this.context.device }
+            }
             if (!events.context.device.installation_id) {
               events.context.device.installation_id = await this.generateInstallationId() || ''
             }
@@ -507,6 +513,14 @@ export class BoscaSink extends AnalyticEventSink {
   }
 
   private async getDeviceInfo(): Promise<Device> {
+    return {
+      ...this.describeDevice(),
+      installation_id: await this.generateInstallationId(),
+    } as Device
+  }
+
+  /** Describes the browser device synchronously; the installation ID is resolved separately. */
+  private describeDevice(): Omit<Device, 'installation_id'> {
     const w = typeof window === 'undefined' ? {
       navigator: {
         userAgent: '',
@@ -540,7 +554,6 @@ export class BoscaSink extends AnalyticEventSink {
     }
 
     return {
-      installation_id: await this.generateInstallationId(),
       manufacturer,
       model,
       platform: platform,
@@ -550,7 +563,7 @@ export class BoscaSink extends AnalyticEventSink {
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       type: isMobile ? 'mobile' : 'desktop',
       version: userAgent.match(/(?:iPhone|CPU|Android|Edge|Chrome|Firefox|Safari|Opera|Version)[\s/:]\s?(\d+[._\d]*)/)?.[1] || 'Unknown',
-    } as Device
+    }
   }
 
   private async getGeo(): Promise<Geo> {

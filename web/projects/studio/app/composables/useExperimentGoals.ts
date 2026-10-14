@@ -14,6 +14,7 @@
 
 import type { SelectOption } from '@bosca/ui'
 import gql from 'graphql-tag'
+import type { GoalActivation, GoalOutcomeScope } from '~/utils/goalActivation'
 
 const ANY_EVENT_TYPE = '__any__'
 
@@ -59,6 +60,8 @@ export interface ConversionGoalFormValues {
   cupedElementId: string
   cupedPagePath: string
   cupedLookbackWindow: string
+  activation?: GoalActivation | null
+  outcomeScope?: GoalOutcomeScope | null
 }
 
 /** Builds and validates the complete GraphQL goal input from modal state. */
@@ -102,10 +105,14 @@ export function buildConversionGoalInput(values: ConversionGoalFormValues) {
     metricType: values.metricType,
     role: values.role,
     cupedCovariate,
+    activation: values.activation ?? null,
+    outcomeScope: values.outcomeScope ?? null,
   }
 }
 
 export interface ConversionGoalSnapshot {
+  activation?: GoalActivation | null
+  outcomeScope?: GoalOutcomeScope | null
   id: string
   name: string
   eventType: string | null
@@ -157,6 +164,8 @@ export function useExperimentGoals(opts: {
   const goalDeleteTarget = ref<ConversionGoalSnapshot | null>(null)
   const goalDeleteLoading = ref(false)
 
+  const goalActivation = ref<GoalActivation | null>(null)
+  const goalOutcomeScope = ref<GoalOutcomeScope | null>(null)
   const goalName = ref('')
   const goalEventType = ref<string>(ANY_EVENT_TYPE)
   const goalElementType = ref('')
@@ -179,6 +188,8 @@ export function useExperimentGoals(opts: {
 
   function resetForm() {
     editingGoalId.value = null
+    goalActivation.value = null
+    goalOutcomeScope.value = null
     goalName.value = ''
     goalEventType.value = ANY_EVENT_TYPE
     goalElementType.value = ''
@@ -205,6 +216,8 @@ export function useExperimentGoals(opts: {
 
   function openEditGoal(goal: ConversionGoalSnapshot) {
     editingGoalId.value = goal.id
+    goalActivation.value = goal.activation ? JSON.parse(JSON.stringify(goal.activation)) : null
+    goalOutcomeScope.value = goal.outcomeScope ? JSON.parse(JSON.stringify(goal.outcomeScope)) : null
     goalName.value = goal.name ?? ''
     goalEventType.value = goal.eventType ?? ANY_EVENT_TYPE
     goalElementType.value = goal.elementType ?? ''
@@ -252,6 +265,8 @@ export function useExperimentGoals(opts: {
     try {
       const goal = buildConversionGoalInput({
         name: goalName.value,
+        activation: goalActivation.value,
+        outcomeScope: goalOutcomeScope.value,
         eventType: goalEventType.value,
         elementType: goalElementType.value,
         elementId: goalElementId.value,
@@ -318,6 +333,8 @@ export function useExperimentGoals(opts: {
     goalDeleteTarget,
     goalDeleteLoading,
     // Form fields
+    goalActivation,
+    goalOutcomeScope,
     goalName,
     goalEventType,
     goalElementType,

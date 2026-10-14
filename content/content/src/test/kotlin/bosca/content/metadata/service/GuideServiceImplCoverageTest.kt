@@ -128,6 +128,29 @@ class GuideServiceImplCoverageTest {
         }
     }
 
+    @Test
+    fun `parent guide steps are grouped by exact step metadata version`() = runTest {
+        val stepId = UUID.random()
+        val first = GuideStep(1, metadataId, 1, stepId, 1, 0)
+        val second = GuideStep(2, UUID.random(), 3, stepId, 2, 0)
+        val shared = GuideStep(3, UUID.random(), 1, stepId, 1, 0)
+        val keys = listOf(MetadataCacheKeyId(stepId, 1), MetadataCacheKeyId(stepId, 2), MetadataCacheKeyId(UUID.random(), 1))
+        coEvery { guideStepRepository.getByStepMetadataIds(listOf(stepId, keys.last().id)) } returns listOf(first, second, shared)
+        val batch = Batch<MetadataCacheKeyId, List<GuideStep>>(keys)
+
+        service.addParentGuideStepsToBatch(batch)
+
+        assertEquals(listOf(listOf(first, shared), listOf(second), emptyList()), batch.getResults())
+        coVerify(exactly = 1) { guideStepRepository.getByStepMetadataIds(any()) }
+    }
+
+    @Test
+    fun `parent guide steps skip the repository for an empty batch`() = runTest {
+        service.addParentGuideStepsToBatch(Batch(emptyList()))
+
+        coVerify(exactly = 0) { guideStepRepository.getByStepMetadataIds(any()) }
+    }
+
     /**
      * Drives the single-key cache path to a `null` result: the remote reports an entry that
      * *exists* but has a `null` payload (a negative cache entry). Because the entry exists,

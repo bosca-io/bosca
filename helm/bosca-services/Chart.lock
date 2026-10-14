@@ -4,25 +4,25 @@ dependencies:
   version: 0.1.0
 - name: bosca-server
   repository: file://../bosca-server
-  version: 0.1.0
+  version: 0.1.1
 - name: bosca-runner
   repository: file://../bosca-runner
-  version: 0.1.0
+  version: 0.1.1
 - name: bosca-studio
   repository: file://../bosca-studio
   version: 0.1.0
 - name: bosca-kubernetes-controller
   repository: file://../bosca-kubernetes-controller
-  version: 0.1.0
+  version: 0.1.1
 - name: bosca-artifacts-server
   repository: file://../bosca-artifacts-server
-  version: 0.1.0
+  version: 0.1.1
 - name: bosca-git-server
   repository: file://../bosca-git-server
-  version: 0.1.1
+  version: 0.1.4
 - name: bosca-collector
   repository: file://../bosca-collector
-  version: 0.1.0
+  version: 0.1.1
 - name: bml-message-server
   repository: file://../bml-message-server
   version: 0.1.0
@@ -50,5 +50,5 @@ dependencies:
 - name: text-embeddings-inference
   repository: file://../text-embeddings-inference
   version: 0.1.2
-digest: sha256:ecc880662884a30fce40aff99e6bd471940c52e6f1e4648374bf727eaac96b4a
-generated: "2026-10-08T13:19:18.49198-05:00"
+digest: sha256:a47b284c6d35b3237014380b9355520602e6b4dc629fab175edc1ac7ec2e08d4
+generated: "2026-10-14T15:41:11.052618-05:00"

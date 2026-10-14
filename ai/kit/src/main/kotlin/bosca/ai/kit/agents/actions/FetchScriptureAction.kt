@@ -3,6 +3,8 @@ package bosca.ai.kit.agents.actions
 import ai.koog.agents.core.agent.context.AIAgentPlannerContext
 import bosca.ai.kit.agents.KitRoute
 import bosca.ai.kit.agents.KitState
+import bosca.bible.BibleContentUse
+import bosca.content.metadata.model.toJson
 import bosca.content.metadata.service.BibleService
 
 /**
@@ -24,7 +26,11 @@ class FetchScriptureAction(
     override suspend fun execute(context: AIAgentPlannerContext, state: KitState, sessionId: String): KitState {
         val source = bibleService.getBibles().first()
         val chapters = state.references.flatMap { human ->
-            bibleService.getReferences(source, human).map { reference -> bibleService.getChapter(source, reference) }
+            bibleService.getReferences(source, human).map { reference ->
+                // Provider chapters carry their text only through a use-checked content read.
+                val content = bibleService.getChapterContent(source, reference, BibleContentUse.AI_CONTEXT).chapter
+                bibleService.getChapter(source, reference).copy(components = content[content.reference]?.toJson())
+            }
         }
         return state.copy(hasScripture = true, scripture = chapters)
     }

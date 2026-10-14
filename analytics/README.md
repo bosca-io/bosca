@@ -50,6 +50,45 @@ docker compose down     # Stop services
 
 The project separates contracts (`core-analytics`) from implementations (`analytics`). Two standalone servers handle the event pipeline: the collector ingests events and the processor transforms and stores them. Both servers support GraalVM native image compilation and fat JAR packaging via the Shadow plugin. The `analytics-ai` module adds AI-powered analysis on top of the core analytics contracts. `analytics-server-client` provides a client library for other services to interact with the analytics API.
 
+## Bible usage reporting
+
+The Analytics pipeline reports API.Bible usage from client-authored events. Text views use
+an `impression` event with `element.type` set to `bible-text`; audio playback uses an
+`interaction` event with `element.type` set to `bible-audio`.
+
+Studio's Bible reader and document reference previews use the existing automatic
+impression tracking, with Bible metadata on their chapter headings. The reader sends an interaction when
+a selected recording starts playing. It displays
+the attribution delivered with each chapter and recording. Loading audio alone does
+not report playback; buffering and pause/resume do not add another report for the
+same loaded recording.
+
+The element's `extras` identifies the content:
+
+| Field | Value |
+|---|---|
+| `bible_id` | Bosca Bible metadata UUID |
+| `bible_version` | Bible version |
+| `bible_variant` | Exact variant |
+| `bible_usfm` | Chapter USFM, such as `JHN.3` |
+| `bible_audio_id` | Recording source UUID, required for audio |
+
+The event context supplies its device installation ID, session ID, and optional user ID.
+Device and user identifiers are hashed before queueing. The collector includes FUMS
+in its normal Analytics transform list and enqueues reference-only jobs on the
+dedicated `fums` queue. `eventProcessing.fumsEnabled` is configured only on the
+collector and runner, through `FUMS_TRANSFORM_ENABLED`: the collector defaults to
+`true` and the runner to `false`. The shared configuration defaults to `false`.
+If the runner handles FUMS event processing instead, enable it there and disable
+it on the collector. This choice is independent of the event storage and job queue
+transports. The `fumsQueueRunner` worker in `bosca-runner` resolves the private token through `BibleProviderService`
+and sends the [manual FUMS report](https://docs.api.bible/guides/fair-use/).
+Tokens never enter client responses, queued usage payloads, or Analytics events. Missing
+or expired tokens are skipped without fetching Scripture content. Pruning cached text or
+audio preserves usage tokens until their original expiry so pending reports can still be delivered.
+The ordinary job queue
+retries delivery failures and completes successful reports.
+
 ## Dependencies
 
 - `io.bosca:core` -- Bosca Core (platform framework)

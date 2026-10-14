@@ -49,6 +49,14 @@ interface ConfigurationService : PermissionService<Configuration, UUID> {
     suspend fun getValue(id: UUID): JsonElement?
 
     /**
+     * Locks the configuration and reads its current value from storage, refreshing the configuration value cache.
+     * Requires an active database transaction; the lock is held until that transaction ends.
+     * Use this when a read and subsequent write or availability check must share the same state.
+     * Returns null when the configuration or its value does not exist.
+     */
+    suspend fun getValueForUpdate(id: UUID): JsonElement?
+
+    /**
      * Sets or replaces the JSON value for an existing configuration entry.
      *
      * @param id the unique identifier of the configuration entry
@@ -87,5 +95,20 @@ interface ConfigurationService : PermissionService<Configuration, UUID> {
 suspend inline fun <reified T> ConfigurationService.getValueAs(key: String, json: Json): T? {
     val configuration = getByKey(key) ?: return null
     val value = getValue(configuration.id) ?: return null
+    return json.decodeFromJsonElement<T>(value)
+}
+
+
+/**
+ * Reads a configuration value by [id] and decodes it as [T] using the supplied [json].
+ * Uses the cached value unless [forUpdate] is true, which locks and reads the current value
+ * through [getValueForUpdate] and requires an active transaction.
+ */
+suspend inline fun <reified T> ConfigurationService.getValueAs(
+    id: UUID,
+    json: Json,
+    forUpdate: Boolean = false,
+): T? {
+    val value = (if (forUpdate) getValueForUpdate(id) else getValue(id)) ?: return null
     return json.decodeFromJsonElement<T>(value)
 }

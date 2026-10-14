@@ -1,0 +1,15 @@
+<page route="/settings/github" requireAuth>
+  <script server provides="model">
+    bosca.git.ui.gitHubUsersPage()
+  </script>
+  <git-layout title="GitHub user mappings">
+    <ui-page>
+      <ui-page-heading title="GitHub user mappings" />
+      <if model.allowed>
+        <git-github-users :initial="model" />
+      <else>
+        <ui-alert>Administrator access is required.</ui-alert>
+      </if>
+    </ui-page>
+  </git-layout>
+</page>

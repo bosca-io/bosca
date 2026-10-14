@@ -1,0 +1,11 @@
+<component tag="git-error-page">
+  <prop name="title" type="String" required />
+  <prop name="message" type="String" required />
+  <git-layout :title="title" :signedIn="false">
+    <ui-page>
+      <ui-page-heading :title="title" />
+      <p>{ message }</p>
+      <a href="/repositories">Browse repositories</a>
+    </ui-page>
+  </git-layout>
+</component>

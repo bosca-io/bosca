@@ -1,0 +1,114 @@
+<component tag="git-pipeline-logs">
+  <prop name="repository" type="String" required />
+  <prop name="step" type="String" required />
+  <script server provides="model">
+    bosca.git.ui.PipelineLogsModel(step, repository).also { it.load(ctx) }
+  </script>
+  <island name="git-pipeline-logs" :key="step">
+    <section class="step-logs" :data-log-step="model.step" :data-repository="model.repository">
+      <div class="log-controls">
+        <span class="log-status" data-bml-ref="logStatus" role="status" hidden />
+        <button type="button" class="log-control-btn" data-bml-ref="pause" aria-pressed="false" hidden>Pause</button>
+        <button type="button" class="log-control-btn" data-bml-ref="follow" aria-pressed="true" hidden>Follow output</button>
+        <button type="button" class="log-control-btn log-refresh" @click="model.refresh(ctx)">Refresh logs</button>
+      </div>
+      <if model.message.isNotBlank()>
+        <ui-alert>{ model.message }</ui-alert>
+      </if>
+      <div class="log-output" data-bml-ref="output" tabindex="0" aria-label="Step log output">
+        <if model.hasEarlier && model.lines.isNotEmpty() && model.lines.first().lineNumber != 1>
+          <button type="button" class="log-load-earlier" @click="model.earlier(ctx)">Load earlier lines</button>
+        </if>
+        <div data-bml-ref="lines">
+          <if model.lines.isEmpty()>
+            <p class="log-empty">No log output.</p>
+          <else>
+            <for line in model.lines>
+              <div class="log-line" :data-line="line.lineNumber" :data-stream="line.stream" :data-timestamp="line.timestamp">
+                <span class="line-number" :title="line.timestamp">{ line.lineNumber }</span>
+                <code class="line-content">{ line.content }</code>
+              </div>
+            </for>
+          </if>
+        </div>
+      </div>
+    </section>
+  </island>
+  <style scoped>
+    .step-logs {
+      min-width: 0;
+      background: var(--bg-0);
+      border-top: 1px solid var(--line);
+    }
+    .log-controls {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+      padding: 6px 12px;
+      border-bottom: 1px solid var(--line);
+      font-size: 11px;
+      color: var(--fg-3);
+    }
+    .log-status {
+      padding: 2px 8px;
+      border-radius: 6px;
+      color: var(--fg-3);
+      background: color-mix(in oklch, var(--fg-3) 10%, transparent);
+      letter-spacing: .03em;
+    }
+    .log-status[data-state="streaming"] {
+      color: var(--ok);
+      background: color-mix(in oklch, var(--ok) 14%, transparent);
+    }
+    .log-status[data-state="connecting"], .log-status[data-state="reconnecting"] {
+      color: var(--warn);
+      background: color-mix(in oklch, var(--warn) 14%, transparent);
+    }
+    .log-status[data-state="error"] {
+      color: var(--err);
+      background: color-mix(in oklch, var(--err) 14%, transparent);
+    }
+    .log-control-btn, .log-load-earlier {
+      background: var(--bg-2);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      color: var(--fg-1);
+      font: inherit;
+      font-size: 11px;
+      padding: 2px 10px;
+      cursor: pointer;
+    }
+    .log-control-btn:hover:not(:disabled), .log-load-earlier:hover:not(:disabled) {
+      color: var(--fg-0);
+      background: var(--bg-3);
+    }
+    .log-control-btn:disabled, .log-load-earlier:disabled {
+      opacity: .6;
+      cursor: default;
+    }
+    .log-refresh {
+      margin-left: auto;
+    }
+    .log-output {
+      max-height: 420px;
+      overflow: auto;
+      overflow-anchor: none;
+      color: var(--fg-1);
+      padding: 8px 0;
+      font: 11.5px/1.6 var(--font-mono);
+    }
+    .log-load-earlier {
+      display: block;
+      width: calc(100% - 24px);
+      margin: 0 12px 6px;
+      padding: 4px 10px;
+      border-style: dashed;
+      color: var(--fg-2);
+    }
+  </style>
+  <script client scoped>
+    import { mountPipelineLogs } from "@client/pipeline-logs";
+    mountPipelineLogs(ctx);
+  </script>
+</component>

@@ -1,6 +1,9 @@
 {
   "reflection": [
     {
+      "type": "bosca.analytics.jobs.FumsDeliveryExecutor"
+    },
+    {
       "type": "android.os.Build$VERSION"
     },
     {
@@ -3093,6 +3096,9 @@
     },
     {
       "glob": "graphql/metadata/bible.graphqls"
+    },
+    {
+      "glob": "graphql/metadata/bible-providers.graphqls"
     },
     {
       "glob": "graphql/metadata/data.graphqls"

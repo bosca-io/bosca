@@ -30,6 +30,8 @@ import bosca.experimentation.model.ExperimentResult
 import bosca.experimentation.model.FeatureFlag
 import bosca.experimentation.model.FlagStatus
 import bosca.experimentation.model.FlagType
+import bosca.experimentation.model.GoalActivation
+import bosca.experimentation.model.GoalOutcomeScope
 import bosca.experimentation.model.GoalMetricType
 import bosca.experimentation.repository.AssignmentRepositoryImpl
 import bosca.experimentation.repository.ConversionGoalRepositoryImpl
@@ -307,6 +309,10 @@ class AggregateExperimentResultsTest {
         every { rs.getString("variation_key") } answers {
             current?.key?.let { if (it.startsWith("c")) "control" else "treatment" }
         }
+        every { rs.getString("subject_id") } answers { current?.key?.let { assignmentSubjectIds[it] ?: it } }
+        every { rs.getString("app_id") } returns "site"
+        every { rs.getString("session_id") } returns "session"
+        every { rs.getLong("event_count") } answers { current?.value?.toLong() ?: 0L }
         every { rs.getString("activated_at") } returns "2026-08-28 10:00:10.123456"
         every { rs.getLong("cnt") } answers {
             trinoCountColumnReads++
@@ -452,6 +458,50 @@ class AggregateExperimentResultsTest {
             trinoCountColumnReads,
             "ordinary UNIQUE_CONVERSION rows contain only client_id and must not read cnt",
         )
+    }
+
+    @Test
+    fun `goal activation uses a captured eligibility cohort and persists conditional summaries atomically`() = withDb {
+        val flag = transaction { insertFlag() }
+        val exp = experimentService.add(ExperimentInput(featureFlagId = flag.id, controlVariationKey = "control", name = "goal activation"))
+        val input = ConversionGoalInput(name = "Cards", eventType = EventType.Interaction,
+            activation = GoalActivation(defaultFilter = ExperimentActivationFilter(eventType = EventType.Impression), applicationIds = listOf("site")))
+        val goal = experimentService.addConversionGoal(exp.id, input)
+        transaction {
+            seedAssignment(exp.id, "control", "cA")
+            seedAssignment(exp.id, "control", "cB")
+            seedAssignment(exp.id, "treatment", "tA")
+            seedAssignment(exp.id, "treatment", "tB")
+        }
+        fun scripts() {
+            trinoScripts.add(mapOf("cA" to 1L, "cB" to 1L, "tA" to 1L, "tB" to 1L)) // captured assignments
+            trinoScripts.add(mapOf("cA" to 1L, "tA" to 1L, "tB" to 1L)) // overall
+            trinoScripts.add(mapOf("cA" to 2L, "tA" to 1L)) // exposures
+            trinoScripts.add(mapOf("cA" to 1L, "tA" to 1L)) // after exposure
+            trinoScripts.add(mapOf("tB" to 1L)) // never exposed
+        }
+        scripts()
+        aggregateExperimentResults(exp.id)
+        val results = experimentResultRepository.getByExperimentId(exp.id)
+        assertEquals(2, results.size)
+        val treatment = assertNotNull(results.single { it.variationKey == "treatment" }.goalAnalysis)
+        assertEquals(2, treatment.overall.subjects)
+        assertEquals(2, treatment.overall.conversions)
+        assertEquals(1, treatment.activated?.subjects)
+        assertEquals(1, treatment.notActivated?.subjects)
+        assertEquals(1, treatment.activated?.conversions)
+        assertEquals(1, treatment.notActivated?.conversions)
+        assertTrue(trinoScripts.isEmpty())
+        val priorQueryCount = trinoQueryCount
+        scripts()
+        trinoFailure = IllegalStateException("warehouse unavailable during conditional results")
+        trinoFailureAfter = priorQueryCount + 3
+        assertFailsWith<IllegalStateException> { aggregateExperimentResults(exp.id) }
+        assertEquals(results, experimentResultRepository.getByExperimentId(exp.id))
+        trinoFailure = null
+        trinoScripts.clear()
+        experimentService.editConversionGoal(goal.id, input.copy(outcomeScope = GoalOutcomeScope(applicationIds = listOf("site"))))
+        assertTrue(experimentResultRepository.getByExperimentId(exp.id).isEmpty())
     }
 
     @Test
@@ -958,7 +1008,7 @@ class AggregateExperimentResultsTest {
         aggregateExperimentResults(exp.id)
         val unbatched = experimentService.getResults(exp.id)
         fun normalized(results: List<ExperimentResult>) = results.associate {
-            (it.variationKey to it.goalId) to it.copy(id = UUID.NIL, updatedAt = java.time.OffsetDateTime.MIN)
+            (it.variationKey to it.goalId) to it.copy(id = UUID.NIL, updatedAt = java.time.OffsetDateTime.MIN, goalAnalysis = it.goalAnalysis?.copy(cutoff = "fixed"))
         }
         assertEquals(normalized(unbatched), normalized(batched), "batch boundaries must not change any statistic")
         assertTrue(trinoScripts.isEmpty())

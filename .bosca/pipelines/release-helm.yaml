@@ -45,6 +45,14 @@ jobs:
           HELM_VERSION: v3.22.0
       - name: Test release script
         run: bash helm/scripts/release-test.sh
+      - name: Test Git gateway routing
+        run: |
+          set -euo pipefail
+          test_env=$(mktemp -d)
+          trap 'rm -rf "$test_env"' EXIT
+          python3 -m venv "$test_env"
+          "$test_env/bin/pip" install -r helm/tests/requirements.txt
+          "$test_env/bin/python" helm/tests/test_git_routes.py
       - name: Package charts
         run: bash helm/scripts/release.sh package --output .helm-release-packages
       - name: Publish and verify both destinations

@@ -6,15 +6,6 @@ import bosca.git.model.PullRequest
 import bosca.git.model.PullRequestStatus
 import bosca.serialization.UUID
 
-/** Parameters for querying pull requests across a permission-filtered repository set. */
-data class PullRequestRepositoryQuery(
-    val repositoryIds: List<UUID>,
-    val status: PullRequestStatus?,
-    val authorId: UUID?,
-    val offset: Long,
-    val limit: Int
-)
-
 /**
  * Database access layer for pull requests in `git.pull_requests`. PR numbers
  * are auto-incremented per-repository via the `next_pr_number` column on
@@ -75,7 +66,9 @@ interface PullRequestRepository {
 
     @Query("""
         update git.pull_requests
-        set title = :title, description = :description, updated = now(), version = version + 1
+        set title = :title, description = :description,
+            source_branch = :sourceBranch, target_branch = :targetBranch,
+            updated = now(), version = version + 1
         where id = :id and version = :version
         returning *
     """)
@@ -84,7 +77,8 @@ interface PullRequestRepository {
     @Query("""
         update git.pull_requests
         set status = :status::git.pull_request_status, merge_strategy = :mergeStrategy::git.merge_strategy,
-            merged_by = :mergedBy, merged_at = :mergedAt, merge_sha = :mergeSha, updated = now(), version = version + 1
+            merged_by = :mergedBy, merged_at = :mergedAt, merge_sha = :mergeSha,
+            merge_base_sha = :mergeBaseSha, updated = now(), version = version + 1
         where id = :id and version = :version
         returning *
     """)

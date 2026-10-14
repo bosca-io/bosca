@@ -1,0 +1,12 @@
+<page route="/pipelines/{id}" requireAuth>
+  <script server provides="model">
+    bosca.git.ui.pipelineRunPage()
+  </script>
+  <if model != null>
+    <git-layout :title="model.title">
+      <ui-page>
+        <git-pipeline-run :initial="model" />
+      </ui-page>
+    </git-layout>
+  </if>
+</page>

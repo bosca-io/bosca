@@ -1,5 +1,9 @@
 package bosca.content.metadata.routes
 
+import bosca.bible.BibleChapterContent
+import bosca.bible.BibleContentUse
+import bosca.bible.Chapter
+import bosca.bible.Reference
 import bosca.bible.bibleJson
 import bosca.bible.components.IComponent
 import bosca.bible.components.Text
@@ -39,11 +43,19 @@ import kotlin.reflect.full.declaredMemberFunctions
 import kotlin.reflect.jvm.isAccessible
 import kotlin.test.AfterTest
 import kotlin.test.Test
+import kotlin.test.BeforeTest
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 class GetDocumentVersesCoverageTest {
+    @BeforeTest
+    fun stubLocalChapterContent() {
+        coEvery { bibleService.getChapterContent(any<Bible>(), any<Reference>(), BibleContentUse.DISPLAY) } coAnswers {
+            val chapter = bibleService.getChapter(firstArg<Bible>(), secondArg<Reference>())
+            BibleChapterContent(Chapter(Reference(chapter.usfm), chapter.getChapterComponents()))
+        }
+    }
 
     private val metadataService = mockk<MetadataService>()
     private val bibleService = mockk<BibleService>()

@@ -11,7 +11,7 @@ import bosca.server.HttpStatusCode
 import bosca.server.ServerCall
 
 /**
- * Redirects a repository's clone URL to its repository page in Studio when the
+ * Redirects a repository's clone URL to its configured browser page when the
  * URL is opened directly instead of being used by a Git smart-HTTP client.
  */
 @RouteController(
@@ -32,6 +32,12 @@ class GitRepositoryRedirectRoute(
 
         val repository = repositoryService.findByOwnerAndSlug(owner, repo)
             ?: return call.respond(HttpStatusCode.NotFound)
+        val gitUiUrl = application.environment.config.propertyOrNull("git.ui.url")
+            ?.getString()?.trimEnd('/')?.takeIf(String::isNotBlank)
+        if (gitUiUrl != null) {
+            call.respondRedirect("$gitUiUrl/repositories/${repository.id}")
+            return
+        }
         val studioUrl = application.environment.config.propertyOrNull("app.url")
             ?.getString()
             ?.trimEnd('/')

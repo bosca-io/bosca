@@ -1,0 +1,18 @@
+<page route="/pipelines" requireAuth>
+  <script server provides="page">
+    bosca.git.ui.pipelinePage()
+  </script>
+  <git-layout title="Pipelines">
+    <ui-page>
+      <ui-page-heading
+        title="Pipelines"
+        :description='page.pipelines.size.toString() + if (page.pipelines.size == 1) " pipeline" else " pipelines"'
+        descriptionBelow
+      >
+        <git-pipeline-owner :page="page" />
+      </ui-page-heading>
+      <git-pipeline-catalog :page="page" />
+      <git-pipeline-trigger :page="page" />
+    </ui-page>
+  </git-layout>
+</page>

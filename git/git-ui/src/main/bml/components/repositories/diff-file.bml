@@ -1,0 +1,67 @@
+<component tag="git-diff-file">
+  <prop name="file" type="bosca.git.ui.DiffView" required />
+  <details class="diff-file" open>
+    <ui-disclosure-heading>
+      { file.changeType.lowercase() + " · " + if (file.oldPath.orEmpty().isNotBlank() && file.newPath.orEmpty().isNotBlank() && file.oldPath != file.newPath) file.oldPath.orEmpty() + " → " + file.newPath.orEmpty() else file.newPath.orEmpty().ifBlank { file.oldPath.orEmpty() } }
+    </ui-disclosure-heading>
+    <if file.hunks.isEmpty()>
+      <p class="muted">No text diff is available for this file.</p>
+    </if>
+    <for hunk in file.hunks>
+      <p class="muted">
+        @@ −
+        { hunk.oldStart }
+        ,
+        { hunk.oldCount }
+        +
+        { hunk.newStart }
+        ,
+        { hunk.newCount }
+        @@
+      </p>
+      <if hunk.totalLineCount != hunk.lines.size>
+        <ui-alert>Showing { hunk.lines.size } of { hunk.totalLineCount } diff lines.</ui-alert>
+      </if>
+      <div class="diff-lines">
+        <for line in hunk.lines>
+          <div :class='"diff-line " + line.type.lowercase()'>
+            <span>{ line.oldLineNumber ?: "" }</span>
+            <span>{ line.newLineNumber ?: "" }</span>
+            <code>{ line.content }</code>
+          </div>
+        </for>
+      </div>
+    </for>
+  </details>
+  <style scoped>
+    .diff-file {
+      margin: 18px 0;
+      border-top: 1px solid var(--line);
+      padding-top: 14px;
+    }
+    .diff-lines {
+      overflow: auto;
+    }
+    .diff-line {
+      display: flex;
+      min-width: max-content;
+      font: 13px/1.7 var(--font-mono);
+    }
+    .diff-line span {
+      display: inline-block;
+      text-align: right;
+      width: 50px;
+      padding-right: 10px;
+      color: var(--muted);
+    }
+    .add {
+      background: #196b3840;
+    }
+    .delete {
+      background: #a52a3540;
+    }
+    code {
+      white-space: pre;
+    }
+  </style>
+</component>

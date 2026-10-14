@@ -1,6 +1,9 @@
 package bosca.content.metadata.graphql
 
 import bosca.bible.Reference
+import bosca.bible.BibleChapterContent
+import bosca.bible.BibleContentUse
+import bosca.bible.Chapter
 import bosca.bible.bibleJson
 import bosca.bible.components.ComponentContainer
 import bosca.bible.components.ContainerType
@@ -21,7 +24,6 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
-import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class BibleChapterControllerCoverageTest {
@@ -54,7 +56,10 @@ class BibleChapterControllerCoverageTest {
         usfm = usfm,
         components = components?.let { bibleJson.encodeToJsonElement<IComponent>(it) },
         sort = 0
-    )
+    ).also {
+        coEvery { bibleService.getChapterContent(book(bookUsfm), usfm, BibleContentUse.DISPLAY) } returns
+            BibleChapterContent(Chapter(Reference(usfm), components))
+    }
 
     @AfterTest
     fun tearDown() {
@@ -90,14 +95,11 @@ class BibleChapterControllerCoverageTest {
         )
         val ch = chapter("GEN", "GEN.1", components)
         val bookChapter = BibleBookChapter(book = genesis, chapter = ch)
-        // The service-returned chapter carries the components element that should be surfaced.
         val serviceChapter = chapter("GEN", "GEN.1", components)
-
-        coEvery { bibleService.getChapter(genesis, "GEN.1") } returns serviceChapter
 
         val result = controller.component(bookChapter)
 
-        assertSame(serviceChapter.components, result)
+        assertEquals(serviceChapter.components, result)
     }
 
     @Test
@@ -105,17 +107,13 @@ class BibleChapterControllerCoverageTest {
         val genesis = book("GEN")
         val ch = chapter("GEN", "GEN.1", null)
         val bookChapter = BibleBookChapter(book = genesis, chapter = ch)
-        val serviceChapter = chapter("GEN", "GEN.1", null)
-
-        coEvery { bibleService.getChapter(genesis, "GEN.1") } returns serviceChapter
-
         assertNull(controller.component(bookChapter))
     }
 
     // ---- verses ----
 
     @Test
-    fun `verses returns empty list when chapter has no components`() {
+    fun `verses returns empty list when chapter has no components`() = runTest {
         val bookChapter = BibleBookChapter(
             book = book("GEN"),
             chapter = chapter("GEN", "GEN.1", null)
@@ -125,7 +123,7 @@ class BibleChapterControllerCoverageTest {
     }
 
     @Test
-    fun `verses maps each found verse to a human readable reference`() {
+    fun `verses maps each found verse to a human readable reference`() = runTest {
         val components: IComponent = ComponentContainer(
             type = ContainerType.DIV,
             components = listOf(
@@ -156,7 +154,7 @@ class BibleChapterControllerCoverageTest {
     }
 
     @Test
-    fun `verses returns empty list when components contain no verse starts`() {
+    fun `verses returns empty list when components contain no verse starts`() = runTest {
         val components: IComponent = ComponentContainer(
             type = ContainerType.DIV,
             components = listOf(Text(text = "No verses here", style = null)),

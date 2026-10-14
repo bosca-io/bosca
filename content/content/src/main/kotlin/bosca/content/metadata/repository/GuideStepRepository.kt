@@ -33,6 +33,9 @@ interface GuideStepRepository {
     @Query("select * from guide_steps where metadata_id = any(:ids)")
     suspend fun getByMetadataIds(ids: List<UUID>): List<GuideStep>
 
+    @Query("select s.* from guide_steps s inner join metadata m on m.id = s.metadata_id and m.version = s.version where s.step_metadata_id = any(:ids) and not m.deleted order by s.metadata_id, s.version, s.sort, s.id")
+    suspend fun getByStepMetadataIds(ids: List<UUID>): List<GuideStep>
+
     @Query("update guide_steps set sort = :sort where metadata_id = :id and version = :version and id = :stepId")
     suspend fun setGuideStepSort(id: UUID, version: Int, stepId: Long, sort: Int)
 

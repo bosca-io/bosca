@@ -264,8 +264,10 @@ class SwarmDeploymentTest {
             assertEquals(site.secrets.initialAdmin, environment["INIT_ADMIN_PASSWORD"], name)
             assertEquals(site.secrets.initialSa, environment["INIT_SA_PASSWORD"], name)
             assertEquals(site.secrets.gatewayProxy, environment["GATEWAY_PROXY_SHARED_TOKEN"], name)
-            assertEquals("https://studio.${site.domain}", environment["OAUTH2_ALLOWED_REDIRECT"], name)
-            assertEquals("https://${site.domain}/oauth2/google/callback", environment["OAUTH2_GOOGLE_REDIRECT"], name)
+            val appHost = if (name == "git") site.hosts.git else site.hosts.studio
+            val callbackHost = if (name == "git") site.hosts.git else site.hosts.root
+            assertEquals("https://$appHost", environment["OAUTH2_ALLOWED_REDIRECT"], name)
+            assertEquals("https://$callbackHost/oauth2/google/callback", environment["OAUTH2_GOOGLE_REDIRECT"], name)
             assertEquals("https://${site.domain}/oauth2/facebook/callback", environment["OAUTH2_FACEBOOK_ADMIN_REDIRECT"], name)
         }
         assertEquals(64, site.secrets.gatewayProxy.length)
@@ -429,6 +431,30 @@ class SwarmDeploymentTest {
     }
 
     @Test
+    fun `Git auth uses its browser origin and API callback without changing Studio`() {
+        val config = SwarmConfig().withSecrets()
+        val site = config.sites.first().copy(gitDomain = "code.example.org")
+        @Suppress("UNCHECKED_CAST")
+        val services = siteStack(config, site)["services"] as Map<String, Map<String, Any>>
+        @Suppress("UNCHECKED_CAST")
+        val git = services.getValue("git")["environment"] as Map<String, String>
+        listOf("APP_URL", "APP_ALLOWED_ORIGIN", "OAUTH2_ALLOWED_REDIRECT", "WEBAUTHN_EXTRA_ORIGIN", "GIT_UI_URL")
+            .forEach { assertEquals("https://code.example.org", git[it], it) }
+        assertEquals("https://code.example.org", git["GIT_URL"])
+        assertEquals("https://code.example.org/oauth2/google/callback", git["OAUTH2_GOOGLE_REDIRECT"])
+        assertEquals(git["OAUTH2_GOOGLE_REDIRECT"], git["OAUTH2_GOOGLE_ADMIN_REDIRECT"])
+        assertEquals("8093", git["GIT_UI_HTTP_PORT"])
+        @Suppress("UNCHECKED_CAST")
+        val server = services.getValue("server")["environment"] as Map<String, String>
+        assertEquals("https://${site.hosts.studio}", server["APP_URL"])
+        assertTrue(caddyfile(config.copy(sites = listOf(site))).contains("reverse_proxy @gitUi ${site.id}-git:8093"))
+        @Suppress("UNCHECKED_CAST")
+        val check = (services.getValue("git")["healthcheck"] as Map<String, Any>)["test"] as List<String>
+        assertTrue(check.last().contains("127.0.0.1/8091"))
+        assertTrue(check.last().contains("127.0.0.1/8093"))
+    }
+
+    @Test
     fun `caddy enables HTTP1 and HTTP2 with full duplex once for every site`() {
         val config = SwarmConfig().withSecrets()
         val caddy = caddyfile(config)
@@ -472,7 +498,9 @@ class SwarmDeploymentTest {
         assertTrue(caddy.contains("a.$d {\n    reverse_proxy site1-collector:8081\n}"))
         assertTrue(caddy.contains("profiles.$d {\n    reverse_proxy site1-profiles-web:9095\n}"))
         assertTrue(caddy.contains("notifications.$d {\n    reverse_proxy site1-notifications-web:9094\n}"))
-        assertTrue(caddy.contains("git.$d {\n    reverse_proxy site1-git:8091\n}"))
+        assertTrue(caddy.contains("git.$d {\n    @gitUi path_regexp"))
+        assertTrue(caddy.contains("reverse_proxy site1-git:8091"))
+        assertTrue(caddy.contains("reverse_proxy @gitUi site1-git:8093"))
         val messages = caddy.substringAfter("messages.$d {").substringBefore("\n}\n")
         assertTrue(messages.contains("@public path /assets /assets/* /c /c/* /o /o/*"))
         assertTrue(messages.contains("reverse_proxy @public site1-bml-message-server:9093"))

@@ -2,6 +2,7 @@
 
 package bosca.server.configuration
 
+import bosca.bible.BibleContentUse
 import bosca.bible.BibleFactory
 import bosca.bible.processor.BibleFactoryImpl
 import bosca.category.service.CategoryService
@@ -152,7 +153,7 @@ class Configuration {
         key = DefaultArtifactSyncPipelinesInstaller.NAME,
         name = "Default Artifact Sync Pipelines",
         versions = listOf(PackageInstallationVersion(
-            version = "1.0.0", installerNames = listOf(DefaultArtifactSyncPipelinesInstaller.NAME),
+            version = "1.1.0", installerNames = listOf(DefaultArtifactSyncPipelinesInstaller.NAME),
         )),
     )
 
@@ -257,7 +258,7 @@ class Configuration {
         metadataService: MetadataService,
         bibleService: BibleService,
         json: Json
-    ): DocumentToTextTransformation = DocumentToTextTransformation(metadataService, bibleService, json)
+    ): DocumentToTextTransformation = DocumentToTextTransformation(metadataService, bibleService, json, BibleContentUse.TEXT_TO_SPEECH)
 
     @Provider(singleton = true)
     fun metadataToSearchDocumentConfiguration(

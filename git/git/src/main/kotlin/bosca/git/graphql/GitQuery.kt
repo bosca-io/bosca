@@ -106,6 +106,15 @@ class GitQuery(
         return pullRequestService.findByNumber(repositoryId, number)
     }
 
+    /** Resolves a pull request by ID under its repository's VIEW permission. */
+    @Field
+    suspend fun pullRequestById(authentication: AuthenticationContext?, id: UUID): PullRequest? {
+        val pullRequest = pullRequestService.findById(id) ?: return null
+        val repository = repositoryService.findById(pullRequest.repositoryId) ?: return null
+        permissionEvaluator.verifyAllowed(authentication, repository, PermissionAction.VIEW)
+        return pullRequest
+    }
+
     @Field
     suspend fun pullRequests(
         authentication: AuthenticationContext?,

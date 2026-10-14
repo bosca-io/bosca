@@ -1,5 +1,6 @@
 package bosca.content.metadata.model
 
+import bosca.bible.BibleAttribution
 import bosca.bible.Reference
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
@@ -11,5 +12,6 @@ data class FindBibleResult(
     val component: JsonElement?,
     val human: String,
     val humanShort: String,
-    val reference: Reference
+    val reference: Reference,
+    val attribution: BibleAttribution? = null,
 )

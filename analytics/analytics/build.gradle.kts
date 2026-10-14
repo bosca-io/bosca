@@ -15,6 +15,7 @@ dependencies {
     api(project(":analytics:analytics-models"))
     implementation(project(":bosca-core:core"))
     implementation(project(":analytics:core-analytics"))
+    implementation(project(":content:core-bible-providers"))
     implementation(project(":git:core-git"))
     implementation(project(":sharedqueue:sharedqueue"))
     implementation(project(":bosca-core:core-security"))
@@ -25,6 +26,8 @@ dependencies {
 
     implementation(libs.kotlinx.datetime)
     implementation(libs.kotlinx.serialization.protobuf)
+    implementation(platform(libs.okhttp.bom))
+    implementation(libs.okhttp)
 
     implementation(libs.iceberg.core)
     implementation(libs.iceberg.data)
@@ -46,6 +49,7 @@ dependencies {
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.kotlin.test.junit)
     testImplementation(libs.mockk)
+    testImplementation(libs.okhttp.mockwebserver)
     testImplementation(libs.testcontainers)
     testImplementation(project(":bosca-core:test-support"))
     testImplementation(project(":ai:kit"))

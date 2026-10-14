@@ -20,7 +20,7 @@ class ArtifactPublicationServiceImplTest {
     private val publication = ArtifactPublication(UUID.random(), UUID.random(), UUID.random(), "v1", "1".repeat(40), false, emptyList())
     private val destination = ArtifactPublicationDestination(publication.destinationId, UUID.random(), "github", 123,
         "acme", "tool", "v", true, "github-token")
-    private val service = ArtifactPublicationServiceImpl(repository, artifacts, mockk(), secrets, github)
+    private val service = ArtifactPublicationServiceImpl(repository, artifacts, mockk(), secrets, github, mockk(), mockk())
 
     @BeforeTest fun setup() {
         mockkStatic("bosca.db.ConnectionManagerKt")
@@ -39,14 +39,14 @@ class ArtifactPublicationServiceImplTest {
         val cancellation = CancellationException("cancelled")
         coEvery { github.publish(destination, "token", publication) } throws cancellation
         assertSame(cancellation, assertFailsWith<CancellationException> { service.publish(publication.id) })
-        coVerify(exactly = 0) { repository.failed(any(), any(), any()) }
+        coVerify(exactly = 0) { repository.failed(any(), any(), any(), any()) }
     }
 
     @Test fun `failure to persist an error retains the original provider failure`() = runTest {
         val failure = GitHubPublicationException("HTTP 503")
         val recordingFailure = IllegalStateException("database unavailable")
         coEvery { github.publish(destination, "token", publication) } throws failure
-        coEvery { repository.failed(publication.id, "HTTP 503", true) } throws recordingFailure
+        coEvery { repository.failed(publication.id, "HTTP 503", publication.attempts, publication.modified) } throws recordingFailure
         assertSame(failure, assertFailsWith<GitHubPublicationException> { service.publish(publication.id) })
         assertEquals(listOf(recordingFailure), failure.suppressed.toList())
     }

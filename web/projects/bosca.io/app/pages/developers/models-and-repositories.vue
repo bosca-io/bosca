@@ -1,5 +1,10 @@
 <script setup lang="ts">
-useSeoMeta({ title: 'Models & Repositories' })
+definePageMeta({ layout: 'developers' })
+
+useSeoMeta({
+  title: 'Models & Repositories',
+  description: 'Data classes, the @Repository annotation, SQL mapping, and query patterns.'
+})
 </script>
 
 <template>
@@ -26,7 +31,7 @@ data class Category(
     />
     <ul>
       <li>Use <code>@Contextual</code> on <code>UUID</code> fields for proper serialization context.</li>
-      <li>Default <code>id</code> to <code>UUID.NIL</code> for new entities — the database generates the real ID on insert.</li>
+      <li>The Category insert omits <code>id</code>, so its database default supplies the ID. Follow the owning table's ID convention when adding a model.</li>
       <li>Keep models in the <code>core-*</code> module, not the implementation module.</li>
     </ul>
 
@@ -46,7 +51,9 @@ data class CategoryInput(
       Repositories
     </h2>
     <p>
-      Repositories are <strong>interfaces</strong> annotated with <code>@Repository</code>. Each method is annotated with <code>@Query</code> containing raw SQL. KSP generates the full JDBC implementation at compile time.
+      Repository interfaces such as <code>CategoryRepository</code> use <code>@Repository</code> and
+      <code>@Query</code> to declare SQL. KSP generates the JDBC implementation. Keep repositories in
+      the implementation module and call them from services.
     </p>
     <CodeBlock
       lang="kotlin"
@@ -78,6 +85,16 @@ interface CategoryRepository {
     </h2>
     <p>
       SQL parameters use <code>:paramName</code> syntax. When passing a model object, parameter names match the object's properties — <code>:name</code> maps to <code>category.name</code>.
+    </p>
+
+    <h2 id="column-mapping">
+      Map database columns explicitly
+    </h2>
+    <p>
+      Result mapping uses model property names. Annotate snake_case columns with
+      <code>@ColumnName</code>; for example, <code>@ColumnName("profile_id") val profileId: UUID</code>.
+      Use a property-level <code>@property:DbMapper</code> with <code>JsonbMapper</code> for typed JSONB values.
+      These annotations belong on the shared model.
     </p>
 
     <h2 id="return-types">
@@ -169,5 +186,18 @@ suspend fun getAll(ids: List<UUID>): List<Category>`"
         </tr>
       </tbody>
     </table>
+    <p>
+      An update or delete that returns an affected-row count must use
+      <code>@Query(..., returnUpdateCount = true)</code>. An integer return type alone does not select this behavior.
+    </p>
+
+    <h2 id="migrations">
+      Register migrations
+    </h2>
+    <p>
+      Add SQL migrations to the owning module and include each resource in its migration provider's
+      list. Give the provider a name, following that module's existing convention. Creating an SQL
+      file alone does not make it run at startup.
+    </p>
   </div>
 </template>

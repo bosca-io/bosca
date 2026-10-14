@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import gql from 'graphql-tag'
 import type { SelectOption } from '@bosca/ui'
+import type { Bible, BibleAudio, BibleAttribution as Attribution } from '~/types/graphql'
+import BibleAttribution from '~/components/bible/BibleAttribution.vue'
+import BibleAudioPlayer from '~/components/bible/BibleAudioPlayer.vue'
 
 const route = useRoute()
 const { accent } = useCurrentSubsystem()
@@ -16,6 +19,10 @@ const bibleGql = gql`
         id
         name
         bible(variant: $variant) {
+          metadataId
+          version
+          variant
+          audio { id name nameLocal }
           name
           nameLocal
           abbreviation
@@ -84,7 +91,8 @@ interface StyleDef {
   textIndent?: { size?: number; unit?: string } | null
 }
 
-interface BibleData {
+interface BibleData extends Pick<Bible, 'metadataId' | 'version' | 'variant'> {
+  audio: Pick<BibleAudio, 'id' | 'name' | 'nameLocal'>[]
   name: string
   nameLocal: string
   abbreviation: string
@@ -174,9 +182,9 @@ const selectedBook = computed<BibleBook | undefined>(() =>
 
 const chapterOptions = computed<SelectOption[]>(() => {
   if (!selectedBook.value) return []
-  return selectedBook.value.chapters.map((ch, i) => ({
+  return selectedBook.value.chapters.map(ch => ({
     value: ch.reference.usfm,
-    label: `Chapter ${i + 1}`,
+    label: ch.reference.human,
   }))
 })
 
@@ -194,11 +202,12 @@ watch(selectedBookUsfm, () => {
 
 // ── Chapter content ──────────────────────────────────────────────────────────
 const chapterGql = gql`
-  query GetBibleChapter($id: UUID!, $usfm: String!, $variant: String) {
+  query GetBibleChapter($id: UUID!, $version: Int!, $usfm: String!, $variant: String!) {
     content {
-      metadata(id: $id) {
+      metadata(id: $id, version: $version) {
         bible(variant: $variant) {
           chapter(usfm: $usfm) {
+            attribution { copyright citation informationUrl }
             reference {
               usfm
               human
@@ -230,6 +239,7 @@ const chapterData = ref<{
   reference: BibleRef
   component: ComponentNode
   verses: BibleRef[]
+  attribution: Attribution | null
 } | null>(null)
 const chapterLoading = ref(false)
 
@@ -240,11 +250,11 @@ const chapterComponents = computed<ComponentNode[]>(() => {
   return [comp]
 })
 
-watch(selectedChapterUsfm, async (usfm) => {
-  if (!usfm) {
-    chapterData.value = null
-    return
-  }
+watch(selectedChapterUsfm, async (usfm, _previous, onCleanup) => {
+  chapterData.value = null
+  if (!usfm || !bible.value) return
+  let active = true
+  onCleanup(() => { active = false })
   chapterLoading.value = true
   try {
     const result = await gqlQuery<{
@@ -255,17 +265,17 @@ watch(selectedChapterUsfm, async (usfm) => {
               reference: BibleRef
               component: ComponentNode
               verses: BibleRef[]
+              attribution: Attribution | null
             } | null
           } | null
         }
       }
-    }>(chapterGql, { id: metadataId, usfm, variant: bibleVariant })
-    chapterData.value = result.content.metadata.bible?.chapter ?? null
+    }>(chapterGql, { id: bible.value.metadataId, version: bible.value.version, usfm, variant: bible.value.variant })
+    if (active) chapterData.value = result.content.metadata.bible?.chapter ?? null
   } catch (e: unknown) {
-    console.error('Failed to load chapter', e)
-    chapterData.value = null
+    if (active) console.error('Failed to load chapter', e)
   } finally {
-    chapterLoading.value = false
+    if (active) chapterLoading.value = false
   }
 })
 
@@ -273,9 +283,9 @@ watch(selectedChapterUsfm, async (usfm) => {
 const searchRef = ref('')
 
 const findGql = gql`
-  query FindBibleRef($id: UUID!, $human: String!, $variant: String) {
+  query FindBibleRef($id: UUID!, $version: Int!, $human: String!, $variant: String!) {
     content {
-      metadata(id: $id) {
+      metadata(id: $id, version: $version) {
         bible(variant: $variant) {
           find(human: $human) {
             reference {
@@ -306,7 +316,7 @@ const findGql = gql`
 
 async function onSearchSubmit() {
   const q = searchRef.value.trim()
-  if (!q) return
+  if (!q || !bible.value) return
   try {
     const result = await gqlQuery<{
       content: {
@@ -321,7 +331,7 @@ async function onSearchSubmit() {
           } | null
         }
       }
-    }>(findGql, { id: metadataId, human: q, variant: bibleVariant })
+    }>(findGql, { id: bible.value.metadataId, version: bible.value.version, human: q, variant: bible.value.variant })
     const results = result.content.metadata.bible?.find
     if (results?.length) {
       const first = results[0]!
@@ -497,12 +507,30 @@ onUnmounted(() => {
           class="scripture-body"
           :dir="scriptDirection"
         >
-          <h2 class="chapter-heading" :style="{ color: accent }">{{ chapterHeading }}</h2>
+          <h2
+            class="chapter-heading"
+            :style="{ color: accent }"
+            data-ba-track="bible-text"
+            data-ba-element-type="bible-text"
+            data-ba-no-text
+            :data-ba-bible-id="bible.metadataId"
+            :data-ba-bible-version="bible.version"
+            :data-ba-bible-variant="bible.variant"
+            :data-ba-bible-usfm="chapterData.reference.usfm"
+          >{{ chapterHeading }}</h2>
+          <BibleAudioPlayer
+            v-if="bible.audio.length"
+            :key="chapterData.reference.usfm"
+            :bible="bible"
+            :recordings="bible.audio"
+            :usfm="chapterData.reference.usfm"
+          />
           <ScriptureRenderer
             :nodes="chapterComponents"
             :styles="styleMap"
             :accent="accent"
           />
+          <BibleAttribution v-if="chapterData.attribution" :attribution="chapterData.attribution" />
           <div class="verse-count">
             {{ chapterData.verses.length }} verse{{ chapterData.verses.length !== 1 ? 's' : '' }}
           </div>

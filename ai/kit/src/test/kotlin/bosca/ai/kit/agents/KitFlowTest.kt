@@ -16,6 +16,7 @@ import bosca.ai.kit.configuration.KitJson
 import bosca.ai.kit.tools.KitToolContext
 import bosca.ai.kit.tools.sql.ExecuteQueryTool
 import bosca.ai.kit.tools.sql.SqlQuery
+import bosca.bible.BibleContentUse
 import bosca.bible.Reference
 import bosca.bible.components.ComponentContainer
 import bosca.bible.components.ContainerType
@@ -144,11 +145,11 @@ class KitFlowTest {
         // Scripture source: one bible, one resolved reference, one chapter the writer quotes.
         val bible = mockk<Bible>(relaxed = true)
         val reference = mockk<Reference>(relaxed = true)
-        val chapter = mockk<BibleChapter>(relaxed = true)
-        every { chapter.usfm } returns "JHN.3"
+        val chapter = BibleChapter(Uuid.parse("650e8400-e29b-41d4-a716-446655440000"), 1, "default", "JHN", "JHN.3", null, 3)
         coEvery { bibleService.getBibles() } returns listOf(bible)
         coEvery { bibleService.getReferences(any(), any()) } returns listOf(reference)
         coEvery { bibleService.getChapter(any<Bible>(), any<Reference>()) } returns chapter
+        coEvery { bibleService.getChapterContent(any<Bible>(), any<Reference>(), BibleContentUse.AI_CONTEXT) } returns chapter.getContent()
 
         // The saved metadata the platform returns; capture what Kit asked it to persist.
         val created = mockk<Metadata>(relaxed = true)
@@ -275,11 +276,11 @@ class KitFlowTest {
 
         val bible = mockk<Bible>(relaxed = true)
         val reference = mockk<Reference>(relaxed = true)
-        val chapter = mockk<BibleChapter>(relaxed = true)
-        every { chapter.usfm } returns "JHN.3"
+        val chapter = BibleChapter(Uuid.parse("650e8400-e29b-41d4-a716-446655440000"), 1, "default", "JHN", "JHN.3", null, 3)
         coEvery { bibleService.getBibles() } returns listOf(bible)
         coEvery { bibleService.getReferences(any(), any()) } returns listOf(reference)
         coEvery { bibleService.getChapter(any<Bible>(), any<Reference>()) } returns chapter
+        coEvery { bibleService.getChapterContent(any<Bible>(), any<Reference>(), BibleContentUse.AI_CONTEXT) } returns chapter.getContent()
 
         val created = mockk<Metadata>(relaxed = true)
         val savedId = Uuid.parse("550e8400-e29b-41d4-a716-446655440000")
@@ -375,7 +376,7 @@ class KitFlowTest {
         val reference = Reference("JAS.1.19")
         coEvery { bibleService.getBibles() } returns listOf(bible)
         coEvery { bibleService.getReferences(bible, "James 1:19") } returns listOf(reference)
-        coEvery { bibleService.getChapter(bible, reference) } returns installedTestChapter()
+        coEvery { bibleService.getChapterContent(bible, reference, BibleContentUse.AI_CONTEXT) } returns installedTestChapter().getContent()
         coEvery { bibleService.getHumanLong(bible, reference) } returns "James 1:19"
 
         val routingJson = Json.encodeToString(
@@ -404,7 +405,7 @@ class KitFlowTest {
                 "Source: Verified Test Bible (VTB), retrieved from Bosca's installed Bible content.",
             text.text,
         )
-        coVerify(exactly = 1) { bibleService.getChapter(bible, reference) }
+        coVerify(exactly = 1) { bibleService.getChapterContent(bible, reference, BibleContentUse.AI_CONTEXT) }
     }
 
     @Test
@@ -416,7 +417,7 @@ class KitFlowTest {
         val reference = Reference("JAS.1.19")
         coEvery { bibleService.getBibles() } returns listOf(bible)
         coEvery { bibleService.getReferences(bible, "James 1:19") } returns listOf(reference)
-        coEvery { bibleService.getChapter(bible, reference) } returns installedTestChapter()
+        coEvery { bibleService.getChapterContent(bible, reference, BibleContentUse.AI_CONTEXT) } returns installedTestChapter().getContent()
         coEvery { bibleService.getHumanLong(bible, reference) } returns "James 1:19"
 
         val routingJson = Json.encodeToString(
@@ -446,7 +447,7 @@ class KitFlowTest {
         assertTrue(text.text.contains(exactScriptureText))
         assertTrue(!text.text.contains(rememberedParaphrase))
         assertTrue(text.text.contains("Source: Verified Test Bible (VTB)"))
-        coVerify(exactly = 1) { bibleService.getChapter(bible, reference) }
+        coVerify(exactly = 1) { bibleService.getChapterContent(bible, reference, BibleContentUse.AI_CONTEXT) }
     }
 
     @Test

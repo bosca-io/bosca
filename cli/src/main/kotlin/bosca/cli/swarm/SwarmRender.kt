@@ -5,6 +5,8 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import org.yaml.snakeyaml.DumperOptions
+import org.yaml.snakeyaml.Yaml
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
@@ -219,7 +221,7 @@ internal fun infraStack(config: SwarmConfig): Map<String, Any> {
 
 /**
  * Nightly backup, present only when a repository is configured: `backup-dump` writes a `pg_dump` of every
- * site database, and `backup` snapshots the dumps plus S3 objects, NATS data, Meilisearch snapshots,
+ * site database, and `backup` snapshots the dumps plus S3 objects, broker data, Meilisearch snapshots,
  * Caddy certificates and configuration to the off-VM restic repository 30 minutes later.
  */
 internal fun backupServices(config: SwarmConfig): Map<String, Any> {
@@ -249,7 +251,9 @@ internal fun backupServices(config: SwarmConfig): Map<String, Any> {
                 "$root/backups:/data/postgres-dumps:ro", "$root/s3:/data/s3:ro", "$root/nats:/data/nats:ro",
                 "$root/meilisearch/snapshots:/data/meilisearch-snapshots:ro", "$root/caddy-data:/data/caddy-data:ro",
                 "$root/config:/data/config:ro", "$root/backup-state:/state",
-            ),
+            ) + if (config.sites.any { it.jobQueueBackend == "redis" || it.counterBackend == "redis" }) {
+                listOf("$root/redis:/data/redis:ro")
+            } else emptyList(),
             "configs" to listOf(mapOf("source" to "backup-snapshot", "target" to "/scripts/backup.sh", "mode" to 365)),
         )),
     )
@@ -275,7 +279,9 @@ internal fun siteEnvironment(config: SwarmConfig, site: SwarmSite): Map<String, 
         "NATS_HOST" to "nats://nats:4222", "NATS_USERNAME" to name, "NATS_PASSWORD" to secret.nats,
         "NATS_MONITORING_URL" to "http://nats:8222",
         "REDIS_HOST" to "redis", "REDIS_PORT" to "6379", "REDIS_DATABASE" to site.redisDatabase.toString(),
-        "REDIS_NAMESPACE" to "${name}_", "CACHE_TYPE" to "nats",
+        "REDIS_NAMESPACE" to "${name}_", "CACHE_TYPE" to site.cacheBackend,
+        "JOB_QUEUE_FACTORY" to site.jobQueueBackend, "PUBSUB_TYPE" to site.pubsubBackend,
+        "DISTRIBUTED_LOCK_TYPE" to site.distributedLockBackend, "COUNTER_TYPE" to site.counterBackend,
         "MEILISEARCH_URL" to "http://meilisearch:7700", "MEILISEARCH_API_KEY" to common.meilisearchKey,
         "MEILISEARCH_INDEX_PREFIX" to "${name}_",
         "STORAGE_TYPE" to "s3", "STORAGE_BUCKET" to "$name-storage", "STORAGE_ENDPOINT" to "http://s3proxy:8000",
@@ -291,7 +297,6 @@ internal fun siteEnvironment(config: SwarmConfig, site: SwarmSite): Map<String, 
         "INIT_ADMIN_PASSWORD" to secret.initialAdmin, "INIT_SA_PASSWORD" to secret.initialSa,
         // The server's development default is public, and the base domain exposes /api/* publicly.
         "GATEWAY_PROXY_SHARED_TOKEN" to secret.gatewayProxy,
-        // Users sign in through Studio; the application files allow one configurable redirect origin.
         "OAUTH2_ALLOWED_REDIRECT" to studio,
         // Passkeys are registered from Studio, whose origin is not one of the server's default WebAuthn origins.
         "WEBAUTHN_EXTRA_ORIGIN" to studio,
@@ -326,6 +331,20 @@ internal fun siteEnvironment(config: SwarmConfig, site: SwarmSite): Map<String, 
     )
 }
 
+/** Uses the applications' bundled defaults and changes only the site's explicit redirect list. */
+private fun siteApplicationConfigs(site: SwarmSite): Map<String, String> {
+    val redirects = site.oauthRedirects ?: return emptyMap()
+    return listOf("server", "runner").associateWith { application ->
+        val yaml = Yaml(DumperOptions().apply { defaultFlowStyle = DumperOptions.FlowStyle.BLOCK })
+        val resource = "/swarm/application-$application.yaml"
+        val config = checkNotNull(SwarmConfig::class.java.getResourceAsStream(resource)) {
+            "Missing Swarm application template: $resource"
+        }.use { checkNotNull(yaml.load<Any>(it) as? Map<*, *>) }
+        val oauth2 = checkNotNull(config["oauth2"] as? Map<*, *>)
+        yaml.dump(config + ("oauth2" to (oauth2 + ("redirects" to redirects))))
+    }
+}
+
 private fun webBrandEnvironment(
     fallbackName: String,
     name: String,
@@ -345,6 +364,7 @@ internal fun siteStack(config: SwarmConfig, site: SwarmSite): Map<String, Any> {
     val images = config.images
     val root = config.dataRoot
     val env = siteEnvironment(config, site)
+    val applicationConfigs = siteApplicationConfigs(site)
     val server = "http://${name}-server:8080"
     val artifacts = "http://${name}-artifacts:8084"
     val studio = "https://${hosts.studio}"
@@ -389,16 +409,34 @@ internal fun siteStack(config: SwarmConfig, site: SwarmSite): Map<String, Any> {
         service(images.getValue(image), deploy(Placement.APPLICATION, limits, rolling = true), mapOf(
             "environment" to environment,
             "healthcheck" to healthcheck(bashHttpCheck(port, "/api/v1/live"), startPeriod),
-        ))
+        ) + (applicationConfigs[image]?.let {
+            mapOf(
+                "command" to listOf("-config=/config/application.yaml"),
+                "configs" to listOf(mapOf("source" to "$image-application", "target" to "/config/application.yaml", "mode" to 292)),
+            )
+        } ?: emptyMap()))
     val services = mapOf(
         // Default memory limits follow the production Helm values; the runner has none there either.
         "server" to bosca("server", env + mapOf("GIT_SYNC_LISTENERS" to "false", "SCHEDULER_ENABLED" to "true"),
             8080, "150s", Limits(site.serverMemory)),
         // The runner binds its port only after migrations and package installs finish.
+        // Its bundled application.yaml enables the FUMS delivery worker.
         "runner" to bosca("runner", env + mapOf("BOSCA_SERVER_PORT" to "8080", "GIT_SYNC_LISTENERS" to "true", "SCHEDULER_ENABLED" to "false",
             "ANALYTICS_PROCESSOR_ENABLED" to "true"), 8080, "300s", null),
-        "collector" to bosca("collector", env + mapOf("BOSCA_SERVER_PORT" to "8081"), 8081, "120s", Limits("512M")),
-        "git" to bosca("git", env, 8091, "120s", Limits("4G")),
+        "collector" to bosca("collector", env + mapOf("BOSCA_SERVER_PORT" to "8081",
+            "FUMS_TRANSFORM_ENABLED" to site.fumsEnabled.toString()), 8081, "120s", Limits("512M")),
+        "git" to bosca("git", env + mapOf(
+            "GIT_HTTP_PORT" to "8091", "GIT_UI_HTTP_PORT" to "8093",
+            "GIT_UI_URL" to "https://${hosts.git}", "APP_URL" to "https://${hosts.git}",
+            "APP_ALLOWED_ORIGIN" to "https://${hosts.git}", "WEBAUTHN_EXTRA_ORIGIN" to "https://${hosts.git}",
+            "OAUTH2_ALLOWED_REDIRECT" to "https://${hosts.git}",
+            "OAUTH2_GOOGLE_REDIRECT" to "https://${hosts.git}/oauth2/google/callback",
+            "OAUTH2_GOOGLE_ADMIN_REDIRECT" to "https://${hosts.git}/oauth2/google/callback",
+        ), 8091, "120s", Limits("4G")).plus(mapOf(
+            "healthcheck" to healthcheck(listOf("CMD", "bash", "-c",
+                bashHttpCheck(8091, "/api/v1/live").last() + " && " +
+                    bashHttpCheck(8093, "/api/v1/ready").last()), "120s"),
+        )),
         "artifacts" to bosca("artifacts", env + mapOf("BOSCA_SERVER_PORT" to "8084", "ANALYTICS_APP_ID" to "bosca-artifacts-server"),
             8084, "120s", Limits("2G")),
         // The message server binds its port only after fetching and validating every seed project.
@@ -454,7 +492,10 @@ internal fun siteStack(config: SwarmConfig, site: SwarmSite): Map<String, Any> {
             definition + ("networks" to mapOf("bosca" to mapOf("aliases" to listOf("$name-$serviceName"))))
         },
         volumes = mapOf("models" to emptyMap<String, Any>()),
-        configs = mapOf(swarmConfig(name, "tf-serving-serve", "$root/config/tf-serving/serve.sh", TF_SERVING_SERVE_SCRIPT)),
+        configs = mapOf(swarmConfig(name, "tf-serving-serve", "$root/config/tf-serving/serve.sh", TF_SERVING_SERVE_SCRIPT)) +
+            applicationConfigs.map { (application, content) ->
+                swarmConfig(name, "$application-application", "$root/config/sites/$name/$application.yaml", content)
+            },
     )
 }
 
@@ -521,7 +562,11 @@ ${hosts.analytics} {
 }
 
 ${hosts.git} {
-    reverse_proxy ${name}-git:8091
+    @gitUi path_regexp git_ui "${gitUiPathPattern()}"
+    route {
+        reverse_proxy @gitUi ${name}-git:8093
+        reverse_proxy ${name}-git:8091
+    }
 }
 
 ${hosts.artifacts} {
@@ -695,7 +740,12 @@ private fun writeBundle(config: SwarmConfig, destination: Path) {
     privateWrite(destination.resolve(".bosca-swarm-generated"), "Generated by bosca swarm. Contains secrets.\n")
     privateWrite(destination.resolve("stacks/infra.yml"), document(infraStack(config)))
     privateWrite(destination.resolve("stacks/edge.yml"), document(edgeStack(config)))
-    config.sites.forEach { privateWrite(destination.resolve("stacks/${it.id}.yml"), document(siteStack(config, it))) }
+    config.sites.forEach { site ->
+        privateWrite(destination.resolve("stacks/${site.id}.yml"), document(siteStack(config, site)))
+        siteApplicationConfigs(site).forEach { (application, content) ->
+            privateWrite(destination.resolve("config/sites/${site.id}/$application.yaml"), content)
+        }
+    }
     privateWrite(destination.resolve("config/Caddyfile"), caddyfile(config))
     privateWrite(destination.resolve("config/nats.conf"), natsConfig(config))
     privateWrite(destination.resolve("config/pgbouncer/userlist.txt"), pgbouncerUserlist(config))

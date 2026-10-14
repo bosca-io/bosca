@@ -1,0 +1,53 @@
+<component tag="git-repository-commits">
+  <prop name="page" type="bosca.git.ui.RepositoryPage" required />
+  <section class="settings-stack">
+    <ui-card :padded="false">
+      <ui-section-heading title="Commits" :subtitle='"History for " + page.ref' />
+      <if page.commits.isEmpty()>
+        <ui-empty-state
+          icon="branch"
+          title="No commits at this ref"
+          message="Push a commit or create an initial file to start this repository's history."
+        />
+      <else>
+        <div class="record-list">
+          <for commit in page.commits>
+            <div class="record-row">
+              <span class="record-icon">
+                <ui-icon name="branch" />
+              </span>
+              <div class="record-copy">
+                <a class="commit-message" :href="page.href(ref = commit.sha)">{ commit.message }</a>
+                <div class="record-meta">
+                  <span>{ commit.author }</span>
+                  <ui-time :value="commit.date" />
+                </div>
+              </div>
+              <a class="button-link" :href="page.href(ref = commit.sha)">
+                <code>{ commit.sha.take(8) }</code>
+              </a>
+            </div>
+          </for>
+        </div>
+      </if>
+      <if page.offset != 0L || page.commits.size == 25>
+        <nav class="section-footer">
+          <if page.offset != 0L>
+            <a class="button-link" :href="page.previousHref">Previous</a>
+          </if>
+          <if page.commits.size == 25>
+            <a class="button-link" :href="page.nextHref">Next</a>
+          </if>
+        </nav>
+      </if>
+    </ui-card>
+  </section>
+  <style scoped>
+    .commit-message {
+      font-size: 13px;
+      font-weight: 500;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+  </style>
+</component>

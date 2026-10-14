@@ -455,6 +455,14 @@ WorkOps migration `V56__plan_creation.sql`. Independent low-level operations kee
 their existing semantics. These tools do not silently fall back to separate writes
 against an older backend.
 
+## Swarm backends
+
+Set each site's `cacheBackend`, `pubsubBackend`, `jobQueueBackend`, `distributedLockBackend`, and `counterBackend` independently to `nats` (the default) or `redis` in the Swarm JSON configuration. For Redis caching with NATS pub/sub, set `"cacheBackend": "redis"` and `"pubsubBackend": "nats"`. See [backend selection](../deployments/bosca-swarm/README.md#backend-selection) for deployment and switching steps.
+
+## Swarm OAuth redirects
+
+Set a site's `oauthRedirects` list in the Swarm JSON configuration to control allowed destinations after sign-in, then render and deploy the configuration. Omitting the setting keeps the existing Studio and local development defaults. See [OAuth redirects](../deployments/bosca-swarm/README.md#oauth-redirects) for the configuration format and image requirements.
+
 ## Deployment image updates
 
 Resolve the highest stable version tag published for each Bosca image directly
@@ -611,7 +619,24 @@ The [CLI release pipeline](../.bosca/pipelines/release-cli.yaml) builds the Linu
 tarball and the signed, notarized macOS installer and publishes both packages and
 `SHA256SUMS` to Bosca Artifacts at
 `<registry>/raw/bosca/bosca-cli/<version>/<filename>`.
-CI publishes to Bosca Artifacts; external forwarding belongs to the artifacts server.
+CI publishes to Bosca Artifacts. To sync completed CLI versions to GitHub, install
+**Default Artifact Sync Pipelines** version **1.1.0** and open the raw
+`bosca/bosca-cli` repository's **Settings** in Studio. Add and enable a GitHub
+release destination for `bosca-io/bosca`, its numeric repository ID, an empty
+tag prefix, and a token secret with Contents read and write permission. The bare
+`<version>` tag, such as `1.3.3`, must already exist on GitHub at the build commit. Completion
+syncs both packages, `SHA256SUMS`, and `install.sh` together through the artifact
+publication pipeline. See [artifact syncing](../artifacts/README.md#github-release-publication)
+for configuration and status.
+
+To forward an existing completed CLI version, use **Publish release** beside its
+enabled GitHub destination in Studio. Select the version and supply its exact
+build commit SHA; the `<version>` tag must already point to that commit.
+The artifacts service queues a durable publication run using the stored files.
+For an older stored version without completion history, review its files and
+use **Confirm completed uploads** in that dialog before publishing. This records
+the build commit without rebuilding; enabled destinations can publish automatically.
+
 One-time certificate, credential, and CI-agent setup is documented in
 [MACOS_SIGNING.md](MACOS_SIGNING.md).
 

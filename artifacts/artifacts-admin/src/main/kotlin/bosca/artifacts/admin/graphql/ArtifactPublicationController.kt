@@ -41,6 +41,9 @@ class ArtifactPublicationController : GraphQLController<ArtifactPublication> {
     fun verified(value: ArtifactPublication) = value.verified
 
     @Field
+    fun verifiedAttempt(value: ArtifactPublication) = value.verifiedAttempt
+
+    @Field
     fun error(value: ArtifactPublication) = value.error
 
     @Field

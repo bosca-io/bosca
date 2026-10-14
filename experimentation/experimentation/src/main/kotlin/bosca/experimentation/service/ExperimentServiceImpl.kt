@@ -22,7 +22,9 @@ import bosca.experimentation.model.ExperimentStatus
 import bosca.experimentation.model.ExperimentUpdateAction
 import bosca.experimentation.model.ExperimentUpdated
 import bosca.experimentation.model.FeatureFlag
+import bosca.experimentation.model.GoalActivation
 import bosca.experimentation.model.GoalMetricType
+import bosca.experimentation.model.GoalOutcomeScope
 import bosca.experimentation.model.RolloutPolicy
 import bosca.experimentation.model.RolloutPolicyMode
 import bosca.experimentation.model.Rollout
@@ -217,6 +219,12 @@ class ExperimentServiceImpl(
             if (withInput == existing) {
                 existing to false
             } else {
+                if (withInput.activationFilter != existing.activationFilter || withInput.targetingRuleId != existing.targetingRuleId) {
+                    val variationKeys = involvedVariationKeys(flag, withInput.targetingRuleId)
+                    for (goal in conversionGoalRepository.getByExperimentId(id)) {
+                        validateGoalContext(withInput.activationFilter, variationKeys, goal.activation, goal.outcomeScope, goal.metricType)
+                    }
+                }
                 experimentRepository.update(withInput).also {
                     if (controlChanged || withInput.excludedPrincipalIds.toSet() != existing.excludedPrincipalIds.toSet() ||
                         withInput.activationFilter != existing.activationFilter
@@ -639,13 +647,17 @@ class ExperimentServiceImpl(
             itemExtraKey = normalized.itemExtraKey,
             itemExtraValue = normalized.itemExtraValue,
             role = normalized.role,
+            activation = normalized.activation,
+            outcomeScope = normalized.outcomeScope,
             cupedCovariate = normalized.cupedCovariate?.let {
                 json.encodeToJsonElement(bosca.experimentation.model.CupedCovariate.serializer(), it)
             },
         )
         return transaction {
             requireMutableExperiment(experimentId)
-            conversionGoalRepository.add(goal).also {
+            val activation = goal.activation?.let { normalizeGoalActivation(it, goalVariationKeys(experimentId)) }
+            validateGoalContext(experimentId, normalized.copy(activation = activation))
+            conversionGoalRepository.add(goal.copy(activation = activation)).also {
                 experimentRepository.touchAnalysisRevision(experimentId)
             }
         }
@@ -657,6 +669,8 @@ class ExperimentServiceImpl(
             val existing = conversionGoalRepository.getById(id)
                 ?: error("Conversion goal not found: $id")
             requireMutableExperiment(existing.experimentId)
+            val activation = normalized.activation?.let { normalizeGoalActivation(it, goalVariationKeys(existing.experimentId)) }
+            validateGoalContext(existing.experimentId, normalized.copy(activation = activation))
             val updated = existing.copy(
                 name = normalized.name,
                 eventType = normalized.eventType,
@@ -668,6 +682,8 @@ class ExperimentServiceImpl(
                 itemExtraKey = normalized.itemExtraKey,
                 itemExtraValue = normalized.itemExtraValue,
                 role = normalized.role,
+                activation = activation,
+                outcomeScope = normalized.outcomeScope,
                 cupedCovariate = normalized.cupedCovariate?.let {
                     json.encodeToJsonElement(bosca.experimentation.model.CupedCovariate.serializer(), it)
                 },
@@ -676,7 +692,12 @@ class ExperimentServiceImpl(
                 existing
             } else {
                 conversionGoalRepository.update(updated)
-                    ?.also { experimentRepository.touchAnalysisRevision(existing.experimentId) }
+                    ?.also {
+                        if (updated.activation != existing.activation || updated.outcomeScope != existing.outcomeScope) {
+                            experimentResultRepository.deleteByExperimentId(existing.experimentId)
+                        }
+                        experimentRepository.touchAnalysisRevision(existing.experimentId)
+                    }
                     ?: error("Conversion goal not found after update: $id")
             }
         }
@@ -768,7 +789,7 @@ class ExperimentServiceImpl(
             ) {
                 "SESSION_DURATION goals do not accept event, element, page, item-extra, or CUPED configuration"
             }
-            return input.copy(pagePathPrefixes = emptyList(), itemExtraKey = null, itemExtraValue = null)
+            return input.copy(pagePathPrefixes = emptyList(), itemExtraKey = null, itemExtraValue = null, outcomeScope = normalizeOutcomeScope(input.outcomeScope))
         }
         val hasNarrowing = input.eventType != null ||
             !input.elementType.isNullOrBlank() ||
@@ -785,6 +806,7 @@ class ExperimentServiceImpl(
             pagePathPrefixes = pagePathPrefixes,
             itemExtraKey = itemExtraKey,
             itemExtraValue = itemExtraValue,
+            outcomeScope = normalizeOutcomeScope(input.outcomeScope),
         )
     }
 
@@ -792,37 +814,57 @@ class ExperimentServiceImpl(
     private fun validateAndNormalizeActivationFilter(
         filter: ExperimentActivationFilter?,
     ): ExperimentActivationFilter? {
-        if (filter == null) return null
-        val elementType = filter.elementType?.trim()?.takeIf(String::isNotEmpty)
-        val elementId = filter.elementId?.trim()?.takeIf(String::isNotEmpty)
-        val pagePath = filter.pagePath?.trim()?.takeIf(String::isNotEmpty)
-        val pagePathPrefixes = normalizePagePathPrefixes(filter.pagePathPrefixes)
-        val itemExtraKey = filter.itemExtraKey?.trim()?.takeIf(String::isNotEmpty)
-        val itemExtraValue = filter.itemExtraValue
-        require(itemExtraValue == null || itemExtraKey != null) {
-            "Activation itemExtraValue requires itemExtraKey"
-        }
-        if (itemExtraKey != null) {
-            require(isValidItemExtraKey(itemExtraKey)) {
-                "Activation itemExtraKey must be 1–128 characters and match [a-z][a-z0-9_]*"
+        return filter?.let(::normalizeEventFilter)
+    }
+
+    private suspend fun validateGoalContext(experimentId: UUID, input: ConversionGoalInput) {
+        if (input.activation == null && input.outcomeScope == null) return
+        val experiment = experimentRepository.getById(experimentId) ?: error("Experiment not found")
+        validateGoalContext(experiment.activationFilter, goalVariationKeys(experimentId),
+            input.activation, input.outcomeScope, input.metricType)
+    }
+
+    /**
+     * Verifies that a goal's activation and outcome scope remain answerable under the
+     * experiment's activation filter and involved variations. Experiment edits re-run this
+     * for every existing goal so aggregation never receives an unsatisfiable goal.
+     */
+    private fun validateGoalContext(
+        activationFilter: ExperimentActivationFilter?,
+        variationKeys: Set<String>,
+        activation: GoalActivation?,
+        outcomeScope: GoalOutcomeScope?,
+        metricType: GoalMetricType,
+    ) {
+        if (activation == null && outcomeScope == null) return
+        activation?.let { normalizeGoalActivation(it, variationKeys) }
+        if (activationFilter == null) {
+            require(activation?.sameSession != true && outcomeScope?.sameSession != true) {
+                "Same-session constraints require experiment activation"
+            }
+            if (activation != null) {
+                val filters = variationKeys.mapNotNull(activation::filterFor)
+                require(filters.all { it.applicationIds.isNotEmpty() || activation.applicationIds.isNotEmpty() }) {
+                    "Goal activation without experiment activation requires an explicit application scope for every event rule"
+                }
+            }
+            val outcomeApplications = outcomeScope?.applicationIds ?: activation?.applicationIds.orEmpty()
+            require(outcomeApplications.isNotEmpty()) {
+                "Outcomes without experiment activation require an explicit application scope"
             }
         }
-        require(itemExtraValue == null || itemExtraValue.length <= 512) {
-            "Activation itemExtraValue must be at most 512 characters"
+        require(outcomeScope?.attributeRecommendationDestination != true || activation != null) {
+            "Recommendation destination attribution requires goal activation"
         }
-        require(
-            filter.eventType != null || elementType != null || elementId != null || pagePath != null ||
-                pagePathPrefixes.isNotEmpty() || itemExtraKey != null
-        ) {
-            "Activation filter must set at least one event, element, page, or item-extra predicate"
+        require(metricType != GoalMetricType.SESSION_DURATION || outcomeScope?.recommendationCard != true) {
+            "Session duration cannot restrict activity to recommendation interactions"
         }
-        return filter.copy(
-            elementType = elementType,
-            elementId = elementId,
-            pagePath = pagePath,
-            pagePathPrefixes = pagePathPrefixes,
-            itemExtraKey = itemExtraKey,
-        )
+    }
+
+    private suspend fun goalVariationKeys(experimentId: UUID): Set<String> {
+        val experiment = experimentRepository.getById(experimentId) ?: error("Experiment not found: $experimentId")
+        val flag = featureFlagRepository.getById(experiment.featureFlagId) ?: error("Feature flag not found")
+        return involvedVariationKeys(flag, experiment.targetingRuleId).toSet()
     }
 
     private fun normalizePagePathPrefixes(prefixes: List<String>): List<String> {

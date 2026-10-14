@@ -1,0 +1,94 @@
+<component tag="git-sidebar-tree">
+  <prop name="page" type="bosca.git.ui.RepositorySidebarContext" required />
+  <script server provides="model">
+    bosca.git.ui.RepositorySidebarModel(page).also { it.load(ctx) }
+  </script>
+  <div class="repository-sidebar" :data-storage-key="model.storageKey">
+    <ui-tree heading="Files" label="Repository files">
+      <island name="git-repository-sidebar" :key="page.id + page.resolvedSha">
+        <section>
+          <if model.message.isNotBlank()>
+            <ui-alert>{ model.message }</ui-alert>
+          </if>
+          <if model.entries.isEmpty()>
+            <p class="tree-empty">No files at this ref.</p>
+          </if>
+          <for entry in model.entries>
+            <if entry.directory>
+              <ui-tree-item
+                :path="entry.path"
+                :label="entry.name"
+                :depth="entry.depth"
+                directory
+                :expanded="entry.expanded"
+                :selected="entry.path == model.page.path && model.page.file.isBlank()"
+                @click="model.expand(entry.path, ctx)"
+              />
+            <else>
+              <ui-tree-item
+                :path="entry.path"
+                :label="entry.name"
+                :href="entry.href"
+                :depth="entry.depth"
+                :selected="entry.path == model.page.file"
+              />
+            </if>
+          </for>
+        </section>
+      </island>
+    </ui-tree>
+  </div>
+  <style scoped>
+    .repository-sidebar {
+      min-width: 0;
+      max-height: 100%;
+      overflow: auto;
+    }
+    .tree-empty {
+      margin: 8px 6px;
+      color: var(--fg-3);
+      font-size: 12px;
+    }
+  </style>
+  <script client scoped>
+    const key = ctx.root.dataset.storageKey ?? "";
+    let restoring = true;
+    ctx.onUpdate(() => {
+      if (restoring) return;
+      try {
+        sessionStorage.setItem(
+          key,
+          JSON.stringify(
+            Array.from(
+              ctx.root.querySelectorAll<HTMLElement>("[data-path][data-expanded]"),
+              (row) => row.dataset.path,
+            ),
+          ),
+        );
+      } catch {
+        /* Optional navigation state. */
+      }
+    });
+    void (async () => {
+      try {
+        const saved: unknown = JSON.parse(sessionStorage.getItem(key) ?? "[]");
+        if (Array.isArray(saved))
+          for (const path of saved
+            .filter((value): value is string => typeof value === "string")
+            .sort((a, b) => a.split("/").length - b.split("/").length))
+            if (
+              ![
+                ...ctx.root.querySelectorAll<HTMLElement>(
+                  "[data-path][data-expanded]",
+                ),
+              ].some((row) => row.dataset.path === path)
+            )
+              await ctx.dispatch("model", "expand", [path]);
+      } catch {
+        /* The current tree remains usable when saved folders were removed. */
+      } finally {
+        restoring = false;
+      }
+    })();
+  </script>
+</component>

@@ -1,10 +1,12 @@
 package bosca.content.transformations
 
+import bosca.bible.BibleContentUse
 import bosca.bible.Reference
 import bosca.content.find.FindQueryInput
 import bosca.content.metadata.model.Document
 import bosca.content.metadata.model.LocaleAwareDocument
 import bosca.content.metadata.model.Metadata
+import bosca.content.metadata.model.toJson
 import bosca.content.metadata.service.BibleService
 import bosca.content.metadata.service.DocumentService
 import bosca.content.metadata.service.MetadataService
@@ -51,7 +53,8 @@ class MetadataDocumentToTextTransformation(
     override suspend fun transform(context: IndexStorageSystem, item: Metadata): String {
         try {
             val document = documentService.getDocument(item.id, item.version)
-            return document?.asText(TextContext(json, configuration, metadataService, bibleService, Locale.forLanguageTag(item.languageTag))) ?: ""
+            return document?.asText(TextContext(json, configuration, metadataService, bibleService,
+                Locale.forLanguageTag(item.languageTag), BibleContentUse.INDEXING)) ?: ""
         } catch (e: Exception) {
             log.error("error: failed to parse document", e)
             return ""
@@ -67,19 +70,21 @@ class IndexableDocumentToTextTransformation(
 ) : Transformation<IndexStorageSystem, LocaleAwareDocument, String> {
 
     override suspend fun transform(context: IndexStorageSystem, item: LocaleAwareDocument): String {
-        return item.document.asText(TextContext(json, configuration, metadataService, bibleService, item.locale))
+        return item.document.asText(TextContext(json, configuration, metadataService, bibleService, item.locale, BibleContentUse.INDEXING))
     }
 }
 
+/** Renders document text for [use]; provider Bible passages are included only when their source permits it. */
 class DocumentToTextTransformation(
     private val metadataService: MetadataService,
     private val bibleService: BibleService,
     private val json: Json,
+    private val use: BibleContentUse,
     private val configuration: DocumentToTextConfiguration = DocumentToTextConfiguration()
 ) : Transformation<Unit, LocaleAwareDocument, String> {
 
     override suspend fun transform(context: Unit, item: LocaleAwareDocument): String {
-        return item.document.asText(TextContext(json, configuration, metadataService, bibleService, item.locale))
+        return item.document.asText(TextContext(json, configuration, metadataService, bibleService, item.locale, use))
     }
 }
 
@@ -177,7 +182,8 @@ private class TextContext(
     val configuration: DocumentToTextConfiguration,
     val metadataService: MetadataService,
     val bibleService: BibleService,
-    val locale: Locale
+    val locale: Locale,
+    val use: BibleContentUse,
 )
 
 @OptIn(ExperimentalAtomicApi::class)
@@ -268,14 +274,14 @@ private suspend fun append(node: DocumentNode, context: TextContext, builder: St
                     }
                     if (metadata != null) {
                         val bible = context.bibleService.getBible(metadata.id, metadata.version, null) ?: continue
-                        val content = context.bibleService.getChapter(bible, reference)
+                        val content = context.bibleService.getChapterContent(bible, reference, context.use).chapter
                         builder.appendText(context.bibleService.getHuman(bible, reference), context, length)
                         if (context.configuration.includeTtsMarkup) {
                             builder.append(" [pause] ")
                         }
                         builder.appendText("\n\n", context, length)
-                        content.components?.let {
-                            append(it, context, null, builder, length)
+                        content[content.reference]?.let {
+                            append(it.toJson(), context, null, builder, length)
                         }
                     }
                     if (context.configuration.includeTtsMarkup) {

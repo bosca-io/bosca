@@ -1,16 +1,16 @@
 package bosca.content.metadata.graphql
 
-import bosca.bible.bibleJson
-import bosca.bible.components.IComponent
+import bosca.bible.BibleContentUse
+import bosca.bible.Reference
 import bosca.bible.components.findVerses
 import bosca.content.metadata.model.BibleBookChapter
 import bosca.content.metadata.model.BibleReference
+import bosca.content.metadata.model.toJson
 import bosca.content.metadata.service.BibleService
 import bosca.graphql.GraphQLController
 import bosca.graphql.annotations.Field
 import bosca.graphql.annotations.TypeController
 import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.decodeFromJsonElement
 
 
 @TypeController("BibleChapter")
@@ -29,14 +29,18 @@ class BibleChapterController(
 
     @Field
     suspend fun component(chapter: BibleBookChapter): JsonElement? {
-        return bibleService.getChapter(chapter.book, chapter.chapter.usfm).components
+        val content = bibleService.getChapterContent(chapter.book, chapter.chapter.usfm, BibleContentUse.DISPLAY)
+        return content.chapter[Reference(chapter.chapter.usfm)]?.toJson()
     }
 
     @Field
-    fun verses(chapter: BibleBookChapter): List<BibleReference> {
-        val components = chapter.chapter.components?.let {
-            bibleJson.decodeFromJsonElement<IComponent>(it)
-        } ?: return emptyList()
+    suspend fun attribution(chapter: BibleBookChapter) =
+        bibleService.getChapterContent(chapter.book, chapter.chapter.usfm, BibleContentUse.DISPLAY).attribution
+
+    @Field
+    suspend fun verses(chapter: BibleBookChapter): List<BibleReference> {
+        val content = bibleService.getChapterContent(chapter.book, chapter.chapter.usfm, BibleContentUse.DISPLAY)
+        val components = content.chapter[Reference(chapter.chapter.usfm)] ?: return emptyList()
         val chapterHumanLong = "${chapter.book.nameLong} ${chapter.chapter.usfm.split('.').last()}"
         val chapterHumanShort = "${chapter.book.nameShort} ${chapter.chapter.usfm.split('.').last()}"
         return components.findVerses().map {

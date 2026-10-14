@@ -1,0 +1,3 @@
+<page route="/404">
+  <git-error-page title="Not found" message="This repository or page could not be found." />
+</page>

@@ -1,0 +1,41 @@
+<component tag="git-markdown">
+  <prop name="html" type="String" required />
+  <article class="markdown">{@ html }</article>
+  <style scoped>
+    .markdown {
+      padding: 24px 28px 32px;
+      width: 100%;
+      margin: 0;
+      line-height: 1.6;
+      overflow-wrap: anywhere;
+    }
+    @media (max-width: 700px) {
+      .markdown {
+        padding: 18px 16px 24px;
+      }
+    }
+  </style>
+  <script client scoped>
+    const failed = (image: HTMLImageElement) => {
+      if (image.dataset.failed) return;
+      image.dataset.failed = "true";
+      const fallback = document.createElement("span");
+      fallback.className = "image-error";
+      fallback.setAttribute("role", "status");
+      fallback.textContent =
+        "Image unavailable" + (image.alt ? ": " + image.alt : "");
+      image.hidden = true;
+      image.after(fallback);
+    };
+    ctx.on<Event>(
+      ctx.root,
+      "error",
+      (event) => {
+        if (event.target instanceof HTMLImageElement) failed(event.target);
+      },
+      true,
+    );
+    for (const image of ctx.root.querySelectorAll<HTMLImageElement>("img"))
+      if (image.complete && image.naturalWidth === 0) failed(image);
+  </script>
+</component>

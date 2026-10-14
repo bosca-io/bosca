@@ -72,6 +72,7 @@ val projects = arrayOf(
     project(":analytics:analytics"),
     project(":analytics:analytics-ai"),
     project(":content:content"),
+    project(":content:bible-providers"),
     project(":content:comments"),
     project(":communications:communications"),
     project(":social:community"),
