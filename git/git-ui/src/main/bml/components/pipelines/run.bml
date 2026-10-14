@@ -28,9 +28,10 @@
         >
           <if model.active && model.canEdit>
             <ui-confirm-dialog
+              :triggerIconOnly="false"
               title="Cancel pipeline run?"
               description="Running jobs will be stopped and pending jobs cancelled."
-              triggerLabel="Cancel run"
+              triggerLabel="Cancel"
               icon="close"
               :forceOpen='model.failed && model.selectedAction == "cancel"'
             >
@@ -44,9 +45,10 @@
           </if>
           <if model.canExecute>
             <ui-confirm-dialog
+              :triggerIconOnly="false"
               title="Rerun pipeline?"
               description="Start a new pipeline run using this run's commit."
-              triggerLabel="Rerun pipeline"
+              triggerLabel="Rerun"
               icon="refresh"
               :forceOpen='model.failed && model.selectedAction == "rerun"'
             >
@@ -59,6 +61,7 @@
             </ui-confirm-dialog>
             <if model.hasMultipleRerunnableJobs>
               <ui-confirm-dialog
+                :triggerIconOnly="false"
                 title="Rerun failed jobs?"
                 description="Retry the failed or cancelled jobs in this run."
                 triggerLabel="Rerun failed jobs"
@@ -76,9 +79,10 @@
           </if>
           <if !model.active && model.canManage>
             <ui-confirm-dialog
+              :triggerIconOnly="false"
               title="Delete pipeline run?"
               description="This permanently removes the run, its logs and artifacts."
-              triggerLabel="Delete run"
+              triggerLabel="Delete"
               :forceOpen='model.failed && model.selectedAction == "delete"'
             >
               <form class="modal-form" @submit='model.action("delete", "", "", true, ctx)'>
@@ -89,7 +93,7 @@
               </form>
             </ui-confirm-dialog>
           </if>
-          <ui-button size="sm" icon="refresh" @click="model.refresh(ctx)">Refresh</ui-button>
+          <ui-button size="sm" icon="pulse" @click="model.refresh(ctx)">Refresh</ui-button>
         </div>
       </ui-page-heading>
       <div class="settings-stack">
@@ -100,7 +104,10 @@
         <dl class="summary-row" aria-label="Run summary">
           <div class="summary-card">
             <dt>Status</dt>
-            <dd><git-status-badge :status="model.run.status.name" /></dd>
+            <dd class="run-status" :data-status="model.run.status.name">
+              <git-run-indicator :status="model.run.status.name" compact />
+              { model.run.status.name }
+            </dd>
           </div>
           <div class="summary-card">
             <dt>Duration</dt>
@@ -139,7 +146,7 @@
                       @click="model.toggleStepLogs(step.id)"
                     >
                       <span class="step-chevron"><ui-icon name="chevron" :size="12" /></span>
-                      <git-run-indicator :status="step.status.name" />
+                      <git-run-indicator :status="step.status.name" compact />
                       <span class="step-name">{ step.name }</span>
                       <if step.exitCode != null>
                         <code class="step-exit" :data-failed="step.exitCode != 0">exit { step.exitCode }</code>
@@ -175,7 +182,7 @@
                   download
                   :href='"/ci/artifacts/" + bosca.git.ui.encode(model.run.repositoryId) + "/" + bosca.git.ui.encode(model.run.id) + "/" + bosca.git.ui.encode(artifact.name)'
                 >
-                  <ui-icon name="file" :size="14" />
+                  <ui-icon name="boxes" :size="14" :strokeWidth="2.0" />
                   <code class="artifact-name">{ artifact.name }</code>
                   <code class="artifact-size">{ bosca.git.ui.formatSize(artifact.sizeBytes) }</code>
                   <ui-time :value="artifact.created" />
@@ -247,6 +254,22 @@
     .commit-sha {
       color: var(--accent);
     }
+    .run-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 10px;
+      border-radius: 8px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: .05em;
+      color: var(--fg-4);
+      background: color-mix(in oklch, currentColor 16%, transparent);
+    }
+    .run-status[data-status="SUCCESS"] { color: var(--ok); }
+    .run-status[data-status="FAILURE"] { color: var(--err); }
+    .run-status[data-status="RUNNING"] { color: var(--brand-2); }
+    .run-status[data-status="QUEUED"] { color: var(--warn); }
     .job-list {
       display: flex;
       flex-direction: column;
@@ -285,10 +308,11 @@
     .step-chevron {
       display: flex;
       flex: none;
-      transform: rotate(-90deg);
+      color: var(--fg-3);
+      transition: transform .15s ease;
     }
     .step-row[aria-expanded="true"] .step-chevron {
-      transform: rotate(0deg);
+      transform: rotate(180deg);
     }
     .step-name {
       flex: 1;

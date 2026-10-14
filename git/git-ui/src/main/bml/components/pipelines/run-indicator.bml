@@ -1,16 +1,18 @@
 <component tag="git-run-indicator">
   <prop name="status" type="String" required />
+  <prop name="compact" type="Boolean" default="false" />
+  <prop name="large" type="Boolean" default="false" />
   <script server provides="icon">
     when (status) {
-        "SUCCESS" -> "check"
-        "FAILURE" -> "close"
-        "RUNNING",
-        "QUEUED" -> "clock"
-        else -> "workflow"
+        "SUCCESS" -> "check-plain"
+        "FAILURE", "CANCELLED" -> "close"
+        "RUNNING" -> "pulse"
+        "SKIPPED" -> "arrows-left-right"
+        else -> "more"
     }
   </script>
-  <span :class='"run-indicator status-" + status.lowercase()' :title="status.lowercase()">
-    <ui-icon :name="icon" :size="14" />
+  <span :class='"run-indicator status-" + status.lowercase()' :data-compact="compact" :data-large="large" :title="status.lowercase()">
+    <ui-icon :name="icon" :size="if (compact) 12 else 14" :strokeWidth="2.0" />
   </span>
   <style scoped>
     .run-indicator {
@@ -22,20 +24,38 @@
       flex: none;
       border-radius: 6px;
       color: var(--fg-3);
-      background: var(--bg-3);
+      background: color-mix(in oklch, var(--fg-3) 16%, transparent);
     }
     .status-success {
       color: var(--ok);
-      background: color-mix(in srgb, var(--ok) 12%, transparent);
+      background: color-mix(in oklch, var(--ok) 16%, transparent);
     }
     .status-failure {
       color: var(--err);
-      background: color-mix(in srgb, var(--err) 12%, transparent);
+      background: color-mix(in oklch, var(--err) 16%, transparent);
     }
-    .status-running,
+    .status-running {
+      color: var(--brand-2);
+      background: color-mix(in oklch, var(--brand-2) 16%, transparent);
+    }
     .status-queued {
-      color: var(--info);
-      background: color-mix(in srgb, var(--info) 12%, transparent);
+      color: var(--warn);
+      background: color-mix(in oklch, var(--warn) 16%, transparent);
+    }
+    .status-cancelled, .status-skipped {
+      color: var(--fg-4);
+      background: color-mix(in oklch, var(--fg-4) 16%, transparent);
+    }
+    .run-indicator[data-compact] {
+      width: 12px;
+      height: 12px;
+      border-radius: 0;
+      background: transparent;
+    }
+    .run-indicator[data-large] {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
     }
   </style>
 </component>

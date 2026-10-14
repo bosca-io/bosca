@@ -19,6 +19,10 @@ export function mountPipelineLogs(ctx: IslandContext) {
   const identity = ctx.root.querySelector<HTMLElement>("[data-log-step]");
   if (!identity) return;
   const lines = new Map<number, LogLine>();
+  const rows = new Map<number, HTMLElement>();
+  const pendingLines = new Set<number>();
+  let frame: number | undefined;
+  let pendingBackfill = false;
   let paused = false,
     follow = true,
     busy = false,
@@ -30,10 +34,16 @@ export function mountPipelineLogs(ctx: IslandContext) {
     generation = 0;
   const output = () => ctx.ref<HTMLElement>("output");
   let statusText = "";
-  const status = (text: string) => {
+  let statusState = "idle";
+  const status = (text: string, state = "error") => {
     statusText = text;
-    const target = ctx.ref<HTMLElement>("logError");
-    if (target) target.textContent = text;
+    statusState = state;
+    const target = ctx.ref<HTMLElement>("logStatus");
+    if (target) {
+      target.textContent = text;
+      target.dataset.state = state;
+      target.hidden = !text;
+    }
   };
   const active = () =>
     ["QUEUED", "RUNNING"].includes(
@@ -43,9 +53,15 @@ export function mountPipelineLogs(ctx: IslandContext) {
   const capture = () => {
     const surface = output();
     const top = surface?.getBoundingClientRect().top ?? 0;
-    const row = Array.from(
-      surface?.querySelectorAll<HTMLElement>("[data-line]") ?? [],
-    ).find((item) => item.getBoundingClientRect().bottom > top);
+    const children = ctx.ref<HTMLElement>("lines")?.children;
+    let first = 0;
+    let end = follow ? 0 : (children?.length ?? 0);
+    while (first < end) {
+      const middle = Math.floor((first + end) / 2);
+      if ((children?.[middle]?.getBoundingClientRect().bottom ?? 0) <= top) first = middle + 1;
+      else end = middle;
+    }
+    const row = follow ? undefined : children?.[first] as HTMLElement | undefined;
     return {
       line: row?.dataset.line,
       delta: row ? row.getBoundingClientRect().top - top : 0,
@@ -55,73 +71,120 @@ export function mountPipelineLogs(ctx: IslandContext) {
   let anchor = capture();
   let earlier = false;
   const seed = () => {
-    for (const row of ctx.root.querySelectorAll<HTMLElement>(
-      ".log-line[data-line]",
-    )) {
+    rows.clear();
+    for (const row of ctx.root.querySelectorAll<HTMLElement>(".log-line[data-line]")) {
       const number = Number(row.dataset.line);
+      rows.set(number, row);
       lines.set(number, {
         lineNumber: number,
-        timestamp: row.querySelector("time")?.dateTime ?? "",
+        timestamp: row.dataset.timestamp ?? "",
         content: row.querySelector("code")?.textContent ?? "",
         stream: row.dataset.stream ?? "STDOUT",
       });
     }
+    for (const number of lines.keys()) pendingLines.add(number);
+  };
+  const updateControls = () => {
+    const pause = ctx.ref<HTMLButtonElement>("pause");
+    if (pause) {
+      pause.hidden = !active();
+      pause.setAttribute("aria-pressed", String(paused));
+      pause.textContent = paused ? "Resume" : "Pause";
+    }
+    const following = ctx.ref<HTMLButtonElement>("follow");
+    if (following) {
+      following.hidden = follow;
+      following.setAttribute("aria-pressed", String(follow));
+    }
   };
   const render = (position = capture()) => {
     const surface = output();
-    if (!surface) return;
-    const ordered = Array.from(lines.values()).sort(
-      (a, b) => a.lineNumber - b.lineNumber,
-    );
-    if (ordered.length > 20000) {
-      for (const line of ordered.splice(0, ordered.length - 20000))
-        lines.delete(line.lineNumber);
+    const contentRoot = ctx.ref<HTMLElement>("lines");
+    if (!surface || !contentRoot) return;
+    if (lines.size > 20000) {
+      const ordered = Array.from(lines.keys()).sort((a, b) => a - b);
+      for (const number of ordered.slice(0, ordered.length - 20000)) {
+        lines.delete(number);
+        pendingLines.delete(number);
+        rows.get(number)?.remove();
+        rows.delete(number);
+      }
     }
-    surface.replaceChildren(
-      ...ordered.map((line) => {
-        const row = document.createElement("div");
+    if (lines.size) contentRoot.querySelector(".log-empty")?.remove();
+    const fragment = document.createDocumentFragment();
+    let last = Number(contentRoot.lastElementChild?.getAttribute("data-line") ?? 0);
+    let reorder = false;
+    for (const number of Array.from(pendingLines).sort((a, b) => a - b)) {
+      const line = lines.get(number);
+      if (!line) continue;
+      let row = rows.get(number);
+      if (!row) {
+        row = document.createElement("div");
         row.className = "log-line";
-        row.dataset.line = String(line.lineNumber);
-        row.dataset.stream = line.stream;
-        const number = document.createElement("span");
-        number.className = "muted";
-        number.textContent = String(line.lineNumber);
-        const time = document.createElement("time");
-        time.dateTime = line.timestamp;
-        time.textContent = line.timestamp;
+        row.dataset.line = String(number);
+        const gutter = document.createElement("span");
+        gutter.className = "line-number";
+        gutter.textContent = String(number);
         const content = document.createElement("code");
-        content.textContent = line.content;
-        row.append(number, time, content);
-        return row;
-      }),
-    );
-    if (!ordered.length) {
-      const waiting = document.createElement("p");
-      waiting.textContent = "Waiting for output.";
-      surface.append(waiting);
+        content.className = "line-content";
+        row.append(gutter, content);
+        rows.set(number, row);
+        fragment.append(row);
+        if (number < last) reorder = true;
+        last = Math.max(last, number);
+      }
+      row.dataset.stream = line.stream;
+      row.dataset.timestamp = line.timestamp;
+      const gutter = row.querySelector<HTMLElement>(".line-number");
+      if (gutter) gutter.title = line.timestamp;
+      const content = row.querySelector("code");
+      if (content && content.textContent !== line.content) content.textContent = line.content;
+    }
+    pendingLines.clear();
+    contentRoot.append(fragment);
+    if (reorder) {
+      let next = contentRoot.firstElementChild;
+      for (const number of Array.from(rows.keys()).sort((a, b) => a - b)) {
+        const row = rows.get(number);
+        if (!row) continue;
+        if (row !== next) contentRoot.insertBefore(row, next);
+        next = row.nextElementSibling;
+      }
+    }
+    if (!lines.size) {
+      let empty = contentRoot.querySelector<HTMLElement>(".log-empty");
+      if (!empty) {
+        empty = document.createElement("p");
+        empty.className = "log-empty";
+        contentRoot.append(empty);
+      }
+      empty.textContent = active() ? "Waiting for output…" : "No log output.";
     }
     if (follow) surface.scrollTop = surface.scrollHeight;
     else {
-      const row = Array.from(
-        surface.querySelectorAll<HTMLElement>("[data-line]"),
-      ).find((item) => item.dataset.line === position.line);
+      const row = position.line ? rows.get(Number(position.line)) : undefined;
       surface.scrollTop = row
-        ? surface.scrollTop +
-          row.getBoundingClientRect().top -
-          surface.getBoundingClientRect().top -
-          position.delta
+        ? surface.scrollTop + row.getBoundingClientRect().top
+          - surface.getBoundingClientRect().top - position.delta
         : position.scroll;
     }
-    const pause = ctx.ref<HTMLButtonElement>("pause"),
-      following = ctx.ref<HTMLButtonElement>("follow");
-    if (pause) {
-      pause.setAttribute("aria-pressed", String(paused));
-      pause.textContent = paused ? "Resume live logs" : "Pause live logs";
-    }
-    following?.setAttribute("aria-pressed", String(follow));
+    updateControls();
+  };
+  // A burst of log messages updates the DOM once per animation frame. Existing
+  // rows stay mounted so streaming does not rebuild the console or its selection.
+  const scheduleRender = () => {
+    if (frame !== undefined) return;
+    frame = requestAnimationFrame(() => {
+      frame = undefined;
+      if (!disposed) render();
+    });
   };
   const backfill = async () => {
-    if (busy || disposed) return;
+    if (disposed) return;
+    if (busy) {
+      pendingBackfill = true;
+      return;
+    }
     busy = true;
     anchor = capture();
     try {
@@ -134,6 +197,10 @@ export function mountPipelineLogs(ctx: IslandContext) {
       );
     } finally {
       busy = false;
+      if (pendingBackfill) {
+        pendingBackfill = false;
+        void backfill();
+      }
     }
   };
   const disconnect = () => {
@@ -148,7 +215,7 @@ export function mountPipelineLogs(ctx: IslandContext) {
   };
   const retry = () => {
     if (disposed || paused || finished || reconnect) return;
-    status("Reconnecting live logs…");
+    status("reconnecting…", "reconnecting");
     reconnect = setTimeout(
       () => {
         reconnect = undefined;
@@ -175,7 +242,7 @@ export function mountPipelineLogs(ctx: IslandContext) {
         "graphql-transport-ws",
       );
       socket = ws;
-      status("Connecting live logs…");
+      status("connecting…", "connecting");
       ws.onopen = () =>
         ws.send(
           JSON.stringify({
@@ -194,7 +261,7 @@ export function mountPipelineLogs(ctx: IslandContext) {
         }
         if (message.type === "connection_ack") {
           attempts = 0;
-          status("Live logs connected.");
+          status("live", "streaming");
           ws.send(
             JSON.stringify({
               id: "logs",
@@ -221,7 +288,8 @@ export function mountPipelineLogs(ctx: IslandContext) {
             typeof line.stream === "string"
           ) {
             lines.set(line.lineNumber, line);
-            render();
+            pendingLines.add(line.lineNumber);
+            scheduleRender();
           } else if (message.payload?.errors?.length) {
             status(
               "Live log access failed. Historical output remains available.",
@@ -266,14 +334,16 @@ export function mountPipelineLogs(ctx: IslandContext) {
       if (button?.dataset.bmlMethod === "earlier") {
         earlier = true;
         paused = true;
+        follow = false;
         disconnect();
-        status("Live logs paused while browsing history.");
+        status(active() ? "paused" : "", "paused");
+        updateControls();
       }
       if (button?.matches("[data-bml-ref=pause]")) {
         paused = !paused;
         if (paused) {
           disconnect();
-          status("Live logs paused.");
+          status("paused", "paused");
         } else {
           void backfill();
           void connect();
@@ -295,28 +365,35 @@ export function mountPipelineLogs(ctx: IslandContext) {
       if (event.target === surface && surface) {
         follow =
           surface.scrollHeight - surface.scrollTop - surface.clientHeight < 24;
-        ctx
-          .ref<HTMLButtonElement>("follow")
-          ?.setAttribute("aria-pressed", String(follow));
+        updateControls();
       }
     },
     true,
   );
   ctx.onUpdate(() => {
+    if (frame !== undefined) cancelAnimationFrame(frame);
+    frame = undefined;
     if (earlier) {
       lines.clear();
+      pendingLines.clear();
       earlier = false;
     }
     seed();
     render(anchor);
-    status(statusText);
+    status(statusText, statusState);
   });
+  finished = !active();
   const timer = setInterval(() => {
     if (!finished && !active()) {
       finished = true;
       disconnect();
-      status("Step finished.");
+      status("", "closed");
+      updateControls();
       void backfill();
+    } else if (finished && active()) {
+      finished = false;
+      updateControls();
+      void connect();
     }
   }, 1000);
   void connect();
@@ -329,6 +406,7 @@ export function mountPipelineLogs(ctx: IslandContext) {
   ctx.onUnmount(() => {
     disposed = true;
     clearInterval(timer);
+    if (frame !== undefined) cancelAnimationFrame(frame);
     disconnect();
     unsubscribe();
   });

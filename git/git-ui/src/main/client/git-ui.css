@@ -397,20 +397,35 @@ input[type="checkbox"] {
 .table-scroll code {
   white-space: nowrap;
 }
-.log-output .log-line {
-  display: grid;
-  grid-template-columns: 50px 200px minmax(0, 1fr);
+/* Log rows arrive from both BML and the live subscription renderer. */
+.step-logs .log-line {
+  display: flex;
   gap: 12px;
+  padding: 1px 12px;
+  line-height: 1.6;
 }
-.log-output code {
+.step-logs .line-number {
+  width: 40px;
+  flex-shrink: 0;
+  color: var(--fg-4);
+  text-align: right;
+  user-select: none;
+}
+.step-logs .line-content {
+  min-width: 0;
+  font: inherit;
   white-space: pre-wrap;
-  overflow-wrap: anywhere;
+  word-break: break-all;
 }
-.log-output [data-stream="STDERR"] code {
-  color: #fca5a5;
+.step-logs [data-stream="stderr" i] {
+  color: var(--err);
 }
-.log-output time {
-  color: #9ca3af;
+.step-logs .log-empty {
+  margin: 0;
+  padding: 24px;
+  color: var(--fg-3);
+  font: 12.5px var(--font-sans);
+  text-align: center;
 }
 .repository-workspace > [data-bml-island] {
   min-height: 0;
@@ -457,14 +472,6 @@ input[type="checkbox"] {
   font-size: 11px;
   padding: 2px 6px;
   margin-right: 12px;
-}
-@media (max-width: 640px) {
-  .log-output .log-line {
-    grid-template-columns: 40px minmax(0, 1fr);
-  }
-  .log-output time {
-    display: none;
-  }
 }
 @media (max-width: 700px) {
   .code-editor {

@@ -4,12 +4,13 @@
   <prop name="triggerLabel" type="String" default="Remove" />
   <prop name="icon" type="String" default="trash" />
   <prop name="forceOpen" type="Boolean" default="false" />
+  <prop name="triggerIconOnly" type="Boolean" default="true" />
   <ui-dialog
     :title="title"
     :triggerLabel="triggerLabel"
     :icon="icon"
     :forceOpen="forceOpen"
-    triggerIconOnly
+    :triggerIconOnly="triggerIconOnly"
     size="sm"
   >
     <p class="confirmation-copy">{ description }</p>

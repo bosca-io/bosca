@@ -1969,7 +1969,7 @@ await until('document.querySelector(".step-row[data-step=step]")');
 assert.equal(await ev('document.querySelector("[data-log-step]")'), null, "Logs stay collapsed until selected");
 await ev('document.querySelector(".step-row[data-step=step]").click()');
 await until(
-  'document.body.innerText.includes("Live logs connected") && document.querySelector(`.log-line[data-line="30"]`)',
+  'document.querySelector(`[data-bml-ref="logStatus"]`)?.dataset.state === "streaming" && document.querySelector(`.log-line[data-line="30"]`)',
 );
 assert.equal(
   await ev(
@@ -1990,11 +1990,11 @@ const paused = await ev("document.querySelectorAll(`.log-line`).length");
 await new Promise((r) => setTimeout(r, 2500));
 assert.equal(await ev("document.querySelectorAll(`.log-line`).length"), paused);
 await ev("document.querySelector(`[data-bml-ref=pause]`).click()");
-await until('document.body.innerText.includes("Live logs connected")');
+await until('document.querySelector(`[data-bml-ref="logStatus"]`)?.dataset.state === "streaming"');
 await until('document.querySelector(`.log-line[data-line="130"]`)');
 assert.equal(
   await ev("getComputedStyle(document.querySelector(`.log-line`)).display"),
-  "grid",
+  "flex",
 );
 assert.equal(
   await ev(
@@ -2019,7 +2019,25 @@ assert.equal(
   await ev(
     'document.querySelector(`.log-line[data-line="9"] code`) ? getComputedStyle(document.querySelector(`.log-line[data-line="9"] code`)).color : null',
   ),
-  "rgb(252, 165, 165)",
+  await ev("(() => { const el = document.createElement('span'); el.style.color = 'var(--err)'; document.body.append(el); const color = getComputedStyle(el).color; el.remove(); return color; })()"),
+);
+assert.equal(
+  await ev('document.querySelector(".log-line time")'),
+  null,
+  "Log timestamps belong in the gutter tooltip instead of a content column",
+);
+assert.equal(
+  await ev('getComputedStyle(document.querySelector(".log-line .line-number")).width'),
+  "40px",
+);
+assert.equal(
+  await ev('getComputedStyle(document.querySelector(".log-output")).maxHeight'),
+  "420px",
+);
+assert.equal(
+  await ev('Math.round(document.querySelector(".run-controls button.button.size-sm:not(.icon-only)").getBoundingClientRect().height)'),
+  28,
+  "Pipeline header actions match Studio's small buttons",
 );
 const lines = await ev(
   "[...document.querySelectorAll(`.log-line`)].map(e=>Number(e.dataset.line))",
