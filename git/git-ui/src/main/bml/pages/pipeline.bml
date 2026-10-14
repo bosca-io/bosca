@@ -3,7 +3,7 @@
     bosca.git.ui.pipelineRunPage()
   </script>
   <if model != null>
-    <git-layout title="Pipeline run">
+    <git-layout :title="model.title">
       <ui-page>
         <git-pipeline-run :initial="model" />
       </ui-page>

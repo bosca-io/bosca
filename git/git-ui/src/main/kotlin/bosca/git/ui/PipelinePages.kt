@@ -114,10 +114,20 @@ suspend fun pipelineRunPage(): PipelineRunModel? {
             .execute(GitUiRepository, GitUiRepository.Variables(run.repositoryId))
             .git
             .repositoryById ?: return null.also { ctx.notFound = true }
-    return PipelineRunModel(run, repository.canExecute, repository.canEdit, repository.canManage)
+    val pipelineName = ctx.gql.execute(GitUiPipelineNames, GitUiPipelineNames.Variables(run.repositoryId))
+        .git.pipelines.firstOrNull { it.id == run.pipelineId }?.name.orEmpty()
+    return PipelineRunModel(
+        run, repository.canExecute, repository.canEdit, repository.canManage,
+        repositoryName = repository.name,
+        pipelineName = pipelineName,
+    ).also { it.expandFailure() }
 }
 
 internal fun pipelineDuration(seconds: Long?): String =
     seconds?.let {
-        if (it >= 60) "${(it / 60).toInt()}m ${(it % 60).toInt()}s" else "${it.toInt()}s"
+        when {
+            it >= 3600 -> "${it / 3600}h ${(it % 3600) / 60}m"
+            it >= 60 -> "${it / 60}m ${it % 60}s"
+            else -> "${it}s"
+        }
     } ?: "—"

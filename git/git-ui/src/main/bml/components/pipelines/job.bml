@@ -1,154 +1,241 @@
 <component tag="git-pipeline-job">
   <prop name="job" type="bosca.git.ui.graphql.GitUiRunData.Git.PipelineRun.Jobs" required />
   <prop name="model" type="bosca.git.ui.PipelineRunModel" required />
-  <details :data-job="job.id" open>
-    <ui-disclosure-heading>
-      <span class="job-name">{ job.name }</span>
-      <git-status-badge :status="job.status.name" />
-      <span class="attempt">{ "Attempt " + job.attempt }</span>
-    </ui-disclosure-heading>
-    <div class="job-content">
-      <p class="detail-note">
-        Runner
-        { job.runnerLabel }
-        <if job.agent != null>
-          ·
-          <a :href='"/ci-agents/" + bosca.git.ui.encode(job.agent.id)'>
-            { job.agent.name }
-            ·
-            <git-status-badge :status="job.agent.status.name" />
-          </a>
-        </if>
-        · Started
-        <if job.started != null>
-          <ui-time :value="job.started" />
-        <else>
-          —
-        </if>
-        · Finished
-        <if job.finished != null>
-          <ui-time :value="job.finished" />
-        <else>
-          —
-        </if>
-      </p>
-      <if job.errorMessage != null>
-        <ui-alert>{ job.errorMessage }</ui-alert>
-      </if>
-      <if job.dependsOn.isNotEmpty()>
-        <p>Depends on { job.dependsOn.joinToString(", ") }</p>
-      </if>
-      <if job.matrixValues != null>
-        <pre>{ job.matrixValues }</pre>
-      </if>
-      <if job.awaitingRequirements>
-        <div class="requirements-note">
-          <strong>Waiting for external requirements</strong>
-          <p>
-            <if job.requirementsDeadline != null>
-              Deadline
-              <ui-time :value="job.requirementsDeadline" />
-            <else>
-              No deadline recorded.
-            </if>
-          </p>
+  <article class="job-card" :data-job="job.id" :aria-label="job.name">
+    <header class="job-header">
+      <git-run-indicator :status="job.status.name" />
+      <div class="job-title">
+        <div class="job-name-row">
+          <h2>{ job.name }</h2>
+          <code class="runner-label">{ job.runnerLabel }</code>
+          <if job.agent != null>
+            <a class="agent-link" :href='"/ci-agents/" + bosca.git.ui.encode(job.agent.id)'>
+              <ui-icon name="server" :size="11" />{ job.agent.name }
+            </a>
+          </if>
+          <span class="attempt">Attempt { job.attempt }</span>
         </div>
-      </if>
-      <if job.requirementsBypassedAt != null>
-        <p class="detail-note">
-          External requirements bypassed at
-          <ui-time :value="job.requirementsBypassedAt" />
-          ·
-          { job.requirementsBypassReason ?: "No reason supplied" }
-        </p>
-      </if>
-      <div :data-bml-preserve='"job-actions-" + job.id + job.status.name + model.run.status.name'>
+        <if job.dependsOn.isNotEmpty()>
+          <span class="job-depends">depends on { job.dependsOn.joinToString(", ") }</span>
+        </if>
+        <if bosca.git.ui.pipelineMatrixLabels(job.matrixValues).isNotEmpty()>
+          <div class="matrix-values">
+            <for value in bosca.git.ui.pipelineMatrixLabels(job.matrixValues)><code>{ value }</code></for>
+          </div>
+        </if>
+      </div>
+      <div class="job-actions" :data-bml-preserve='"job-actions-" + job.id + job.status.name + model.run.status.name + model.buildAnyway(job)'>
         <git-pipeline-job-actions :job="job" :initial="model" />
       </div>
-      <for step in job.steps>
-        <section :data-step-status="step.status.name">
-          <div class="detail-heading step-heading">
-            <h3>{ step.name }</h3>
-            <div class="step-state">
-              <git-status-badge :status="step.status.name" />
-              <if step.exitCode != null>
-                <span class="muted">{ "Exit " + step.exitCode }</span>
-              </if>
-            </div>
+      <code class="job-duration">{ bosca.git.ui.pipelineElapsed(job.started, job.finished) }</code>
+    </header>
+    <if job.errorMessage != null>
+      <div class="job-error"><ui-icon name="close" :size="12" /><span>{ job.errorMessage }</span></div>
+    </if>
+    <if job.requirementsBypassedAt != null>
+      <div class="job-override">
+        <ui-icon name="alert" :size="14" />
+        <div>
+          <strong>External requirements bypassed</strong>
+          <span><ui-time :value="job.requirementsBypassedAt" /></span>
+          <if !job.requirementsBypassReason.isNullOrBlank()><span class="override-reason">{ job.requirementsBypassReason }</span></if>
+        </div>
+      </div>
+    </if>
+    <if job.awaitingRequirements>
+      <div class="job-waiting">
+        <strong class="waiting-heading"><ui-icon name="clock" :size="14" />Waiting for external requirements</strong>
+        <if bosca.git.ui.artifactRequirementLabels(job.requirements).isNotEmpty()>
+          <div class="waiting-group">
+            <span class="waiting-label">Waiting on artifacts</span>
+            <div><for label in bosca.git.ui.artifactRequirementLabels(job.requirements)><code>{ label }</code></for></div>
           </div>
-          <if step.errorMessage != null>
-            <ui-alert>{ step.errorMessage }</ui-alert>
-          </if>
-          <div :data-bml-preserve='"logs-" + step.id'>
-            <git-pipeline-logs :step="step.id" :repository="model.run.repositoryId" />
+        </if>
+        <if bosca.git.ui.pipelineRequirementLabels(job.pipelineRequirements).isNotEmpty()>
+          <div class="waiting-group">
+            <span class="waiting-label">Waiting on repositories</span>
+            <div><for label in bosca.git.ui.pipelineRequirementLabels(job.pipelineRequirements)><code>{ label }</code></for></div>
           </div>
-        </section>
-      </for>
-    </div>
-  </details>
+        </if>
+        <if job.requirementsDeadline != null>
+          <span class="waiting-deadline">Deadline <ui-time :value="job.requirementsDeadline" /></span>
+        </if>
+      </div>
+    </if>
+    <slot />
+  </article>
   <style scoped>
-    details {
+    .job-card {
+      min-width: 0;
+      background: var(--bg-1);
       border: 1px solid var(--line);
       border-radius: 10px;
-      background: var(--bg-1);
       overflow: hidden;
     }
-    summary {
+    .job-header {
       display: flex;
       align-items: center;
-      gap: 10px;
-      padding: 14px 18px;
-      cursor: pointer;
-      list-style: none;
+      gap: 12px;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line);
     }
-    summary::-webkit-details-marker {
-      display: none;
+    .job-title {
+      flex: 1;
+      min-width: 0;
     }
-    .job-name {
-      font-size: 13px;
+    .job-name-row {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    h2 {
+      margin: 0;
+      font-size: 13.5px;
       font-weight: 600;
+      color: var(--fg-0);
+      overflow-wrap: anywhere;
     }
-    .attempt {
+    .runner-label {
+      font-size: 10.5px;
+      padding: 2px 8px;
+      border-radius: 5px;
+      background: var(--bg-3);
+      color: var(--fg-1);
+      overflow-wrap: anywhere;
+    }
+    .agent-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 11px;
+      color: var(--fg-2);
+      padding: 2px 8px;
+      border-radius: 5px;
+      background: color-mix(in srgb, var(--fg-3) 8%, transparent);
+      overflow-wrap: anywhere;
+    }
+    .agent-link:hover {
+      color: var(--fg-0);
+      background: var(--bg-3);
+    }
+    .attempt, .job-depends {
       font-size: 11px;
       color: var(--fg-3);
     }
-    .job-content {
-      padding: 0 18px 18px;
-      border-top: 1px solid var(--line);
+    .job-depends {
+      display: block;
+      margin-top: 2px;
+      overflow-wrap: anywhere;
     }
-    .requirements-note {
-      background: color-mix(in srgb, var(--warn) 8%, transparent);
-      border: 1px solid color-mix(in srgb, var(--warn) 24%, transparent);
-      border-radius: 8px;
-      padding: 12px 14px;
-      margin-bottom: 14px;
-      color: var(--warn);
+    .matrix-values {
+      display: flex;
+      gap: 4px 12px;
+      flex-wrap: wrap;
+      margin-top: 4px;
+      color: var(--fg-2);
+      font-size: 11px;
+      overflow-wrap: anywhere;
+    }
+    .job-actions {
+      flex-shrink: 0;
+    }
+    .job-duration {
+      font-size: 12px;
+      color: var(--fg-2);
+      flex-shrink: 0;
+    }
+    .job-error {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      padding: 8px 16px;
+      border-bottom: 1px solid var(--line);
+      background: color-mix(in srgb, var(--err) 7%, transparent);
+      color: var(--err);
       font-size: 12px;
     }
-    .requirements-note p {
-      margin: 4px 0 0;
+    .job-error span {
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+    .job-override {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      padding: 9px 16px;
       color: var(--fg-2);
+      font-size: 11.5px;
+      border-bottom: 1px solid var(--line);
+      background: color-mix(in srgb, var(--warn) 5%, transparent);
     }
-    .step-heading {
-      margin-bottom: 12px;
+    .job-override > div {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 0;
     }
-    .step-state {
+    .job-override strong {
+      color: var(--fg-0);
+      font-size: 12px;
+    }
+    .override-reason {
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+    .job-waiting {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding: 11px 16px;
+      border-bottom: 1px solid var(--line);
+      background: color-mix(in srgb, var(--warn) 7%, transparent);
+    }
+    .waiting-heading {
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: 7px;
+      color: var(--fg-0);
+      font-size: 12px;
+    }
+    .waiting-group {
+      display: grid;
+      grid-template-columns: minmax(120px, auto) 1fr;
+      gap: 4px 12px;
+      align-items: baseline;
+    }
+    .waiting-label {
+      color: var(--warn);
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .waiting-group > div {
+      display: grid;
+      gap: 4px;
+      min-width: 0;
+    }
+    .waiting-group code {
+      color: var(--fg-1);
+      font-size: 11.5px;
+      overflow-wrap: anywhere;
+    }
+    .waiting-deadline {
+      color: var(--fg-3);
       font-size: 11px;
     }
-    section {
-      margin-top: 18px;
-      padding-top: 16px;
-      border-top: 1px solid var(--line);
-    }
-    pre {
-      overflow: auto;
-    }
-    @media (max-width: 600px) {
-      summary {
+    @media (max-width: 700px) {
+      .job-header {
         flex-wrap: wrap;
+        gap: 8px;
+      }
+      .job-title {
+        flex-basis: calc(100% - 40px);
+      }
+      .job-duration {
+        margin-left: auto;
+      }
+      .waiting-group {
+        grid-template-columns: minmax(0, 1fr);
       }
     }
   </style>

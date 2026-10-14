@@ -1965,6 +1965,9 @@ await until(
   'location.pathname === "/pipelines/new-run" && document.body.innerText.includes("Run #3")',
 );
 await nav("/pipelines/run");
+await until('document.querySelector(".step-row[data-step=step]")');
+assert.equal(await ev('document.querySelector("[data-log-step]")'), null, "Logs stay collapsed until selected");
+await ev('document.querySelector(".step-row[data-step=step]").click()');
 await until(
   'document.body.innerText.includes("Live logs connected") && document.querySelector(`.log-line[data-line="30"]`)',
 );

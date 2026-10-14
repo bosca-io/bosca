@@ -26,10 +26,18 @@
       "dependsOn": [],
       "requirements": [
         {
-          "type": "test"
+          "type": "maven",
+          "namespace": "io.bosca",
+          "coordinate": "core:1.2.3"
         }
       ],
-      "pipelineRequirements": null,
+      "pipelineRequirements": [
+        {
+          "repository": "platform",
+          "pipeline": "Publish",
+          "ref": "refs/heads/main"
+        }
+      ],
       "requirementsSatisfiedAt": null,
       "requirementsDeadline": "2026-10-09T00:00:00Z",
       "awaitingRequirements": true,
