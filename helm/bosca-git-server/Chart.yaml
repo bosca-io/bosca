@@ -2,7 +2,7 @@ apiVersion: v2
 name: bosca-git-server
 description: Bosca Git API and BML UI with DFS (PostgreSQL + S3) backend
 type: application
-version: 0.1.3
+version: 0.1.4
 appVersion: "5.0.21"
 dependencies:
   - name: bosca-common

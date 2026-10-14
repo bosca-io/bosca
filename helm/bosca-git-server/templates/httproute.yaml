@@ -17,13 +17,18 @@ spec:
     {{- toYaml . | nindent 4 }}
   {{- end }}
   rules:
+    {{- /* Gateway API allows at most eight matches per HTTPRoute rule. */}}
+    {{- range chunk 8 (include "bosca-git-server.uiRoutes" . | fromYamlArray) }}
     - matches:
+        {{- range . }}
         - path:
             type: RegularExpression
-            value: {{ include "bosca-git-server.uiRoutes" . | quote }}
+            value: {{ . | quote }}
+        {{- end }}
       backendRefs:
-        - name: {{ include "bosca-common.fullname" . }}
-          port: {{ .Values.ui.port }}
+        - name: {{ include "bosca-common.fullname" $ }}
+          port: {{ $.Values.ui.port }}
+    {{- end }}
     - matches:
         - path:
             type: PathPrefix
