@@ -270,7 +270,7 @@ class PullReviewModel(
             ctx.gql
                 .execute(
                     GitUiPull,
-                    GitUiPull.Variables(page.pull.repositoryId, page.pull.number),
+                    GitUiPull.Variables(page.pull.id),
                 )
                 .git
                 .pullRequest

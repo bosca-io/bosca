@@ -188,6 +188,55 @@ class GitQueryTest {
     // ── pull requests ───────────────────────────────────────────────────
 
     @Test
+    fun `pullRequestById verifies VIEW on the resolved repository`() = runTest {
+        repoFound()
+        val pull = PullRequest(
+            repositoryId = id, number = 7, title = "Pull", authorId = UUID.random(),
+            sourceBranch = "feature", targetBranch = "main",
+        )
+        coEvery { pullRequestService.findById(pull.id) } returns pull
+
+        assertEquals(pull, query.pullRequestById(auth, pull.id))
+        coVerify { permissionEvaluator.verifyAllowed(auth, repo, PermissionAction.VIEW) }
+    }
+
+    @Test
+    fun `pullRequestById returns null for a missing pull request`() = runTest {
+        coEvery { pullRequestService.findById(id) } returns null
+
+        assertNull(query.pullRequestById(auth, id))
+        coVerify(exactly = 0) { repositoryService.findById(any()) }
+        coVerify(exactly = 0) { permissionEvaluator.verifyAllowed(any(), any(), any()) }
+    }
+
+    @Test
+    fun `pullRequestById returns null when its repository no longer exists`() = runTest {
+        val pull = PullRequest(
+            repositoryId = id, number = 7, title = "Pull", authorId = UUID.random(),
+            sourceBranch = "feature", targetBranch = "main",
+        )
+        coEvery { pullRequestService.findById(pull.id) } returns pull
+        coEvery { repositoryService.findById(id) } returns null
+
+        assertNull(query.pullRequestById(auth, pull.id))
+        coVerify(exactly = 0) { permissionEvaluator.verifyAllowed(any(), any(), any()) }
+    }
+
+    @Test
+    fun `pullRequestById preserves permission failures including anonymous access`() = runTest {
+        repoFound()
+        val pull = PullRequest(
+            repositoryId = id, number = 7, title = "Pull", authorId = UUID.random(),
+            sourceBranch = "feature", targetBranch = "main",
+        )
+        coEvery { pullRequestService.findById(pull.id) } returns pull
+        for (authentication in listOf(auth, null)) {
+            coEvery { permissionEvaluator.verifyAllowed(authentication, repo, PermissionAction.VIEW) } throws SecurityException("Denied")
+            assertFailsWith<SecurityException> { query.pullRequestById(authentication, pull.id) }
+        }
+    }
+
+    @Test
     fun `pullRequest and pullRequests verify VIEW and apply paging defaults`() = runTest {
         repoFound()
 
