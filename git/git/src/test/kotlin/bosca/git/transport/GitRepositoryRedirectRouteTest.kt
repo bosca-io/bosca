@@ -62,6 +62,17 @@ class GitRepositoryRedirectRouteTest {
     }
 
     @Test
+    fun `standalone Git UI receives clone URL browser visits`() = runTest {
+        val route = route("app:\n  url: https://studio.example.com\ngit:\n  ui:\n    url: https://git-ui.example.com/\n")
+        val (call, response) = recordedCall(pathParameters = params(repo = "repo.git"))
+
+        runRoute(route, call)
+
+        assertEquals(HttpStatusCode.Found, response.status)
+        assertEquals("https://git-ui.example.com/repositories/${repository.id}", response.headers["Location"])
+    }
+
+    @Test
     fun `missing path parameters return 400`() = runTest {
         val route = route("app:\n  url: https://studio.example.com\n")
 

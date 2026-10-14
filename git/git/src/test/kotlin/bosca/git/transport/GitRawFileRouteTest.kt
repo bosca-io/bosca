@@ -44,7 +44,7 @@ class GitRawFileRouteTest {
     // One file per content-type arm, all committed under refs/heads/main.
     private val files = listOf(
         "index.html", "style.css", "app.js", "data.json", "conf.xml", "readme.md",
-        "pic.png", "photo.jpg", "anim.gif", "icon.svg", "doc.pdf", "blob.bin", "LICENSE",
+        "pic.webp", "pic.avif", "pic.bmp", "pic.png", "photo.jpg", "anim.gif", "icon.svg", "doc.pdf", "blob.bin", "LICENSE",
     )
 
     @BeforeTest
@@ -111,6 +111,18 @@ class GitRawFileRouteTest {
     }
 
     @Test
+    fun `raw content is private and active documents download in a sandbox`() = runTest {
+        for (file in listOf("readme.md", "pic.png", "index.html", "icon.svg", "conf.xml", "doc.pdf")) {
+            val (call, rec) = recordedCall(pathParameters = params(path = file))
+            runRoute(route, call)
+            assertEquals("private, no-store", rec.headers["Cache-Control"])
+            assertEquals("nosniff", rec.headers["X-Content-Type-Options"])
+            assertEquals("sandbox; default-src 'none'", rec.headers["Content-Security-Policy"])
+            assertEquals(if (file in listOf("index.html", "icon.svg", "conf.xml", "doc.pdf")) "attachment" else null, rec.headers["Content-Disposition"])
+        }
+    }
+
+    @Test
     fun `repository reads leave the request thread`() = runTest {
         val requestThread = Thread.currentThread()
         var openThread: Thread? = null
@@ -131,7 +143,7 @@ class GitRawFileRouteTest {
         val expected = mapOf(
             "index.html" to "text/html", "style.css" to "text/css", "app.js" to "text/javascript",
             "data.json" to "application/json", "conf.xml" to "application/xml", "readme.md" to "text/plain",
-            "pic.png" to "image/png", "photo.jpg" to "image/jpeg", "anim.gif" to "image/gif",
+            "pic.webp" to "image/webp", "pic.avif" to "image/avif", "pic.bmp" to "image/bmp", "pic.png" to "image/png", "photo.jpg" to "image/jpeg", "anim.gif" to "image/gif",
             "icon.svg" to "image/svg+xml", "doc.pdf" to "application/pdf",
             "blob.bin" to "application/octet-stream", "LICENSE" to "application/octet-stream",
         )

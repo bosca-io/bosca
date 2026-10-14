@@ -25,7 +25,7 @@ PACKAGE_FILES = (
 DATA_DIRS = (
     "postgres", "nats", "meilisearch", "storage", "server-tmp", "git-tmp", "message-cache",
 )
-PORTS = {"API_PORT": "8080", "GIT_PORT": "8091", "STUDIO_PORT": "3000", "BML_PORT": "9093"}
+PORTS = {"API_PORT": "8080", "GIT_PORT": "8091", "GIT_UI_PORT": "8093", "STUDIO_PORT": "3000", "BML_PORT": "9093"}
 SECRET_KEYS = (
     "DATABASE_PASSWORD", "JWT_SECRET", "SECURITY_ENCRYPTION_KEY",
     "STORAGE_URL_SIGNER_SECRET_KEY", "NATS_TOKEN", "MEILISEARCH_API_KEY",

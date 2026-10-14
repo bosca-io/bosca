@@ -1,0 +1,40 @@
+<component tag="ui-card">
+  <prop name="title" type="String" default="" />
+  <prop name="padded" type="Boolean" default="true" />
+  <section class="ui-card">
+    <if title.isNotBlank()>
+      <header class="card-header">
+        <h2>{ title }</h2>
+      </header>
+    </if>
+    <div :class='if (padded) "card-body" else "card-content"'>
+      <slot />
+    </div>
+  </section>
+  <style scoped>
+    .ui-card {
+      width: 100%;
+      min-width: 0;
+      background: var(--bg-1);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .card-header {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--line);
+    }
+    h2 {
+      margin: 0;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .card-body {
+      padding: 16px 18px;
+      min-width: 0;
+    }
+    .card-content {
+      min-width: 0;
+    }
+  </style>
+</component>

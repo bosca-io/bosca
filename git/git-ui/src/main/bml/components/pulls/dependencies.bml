@@ -1,0 +1,156 @@
+<component tag="git-pull-dependencies">
+  <prop name="page" type="bosca.git.ui.PullPage" required />
+  <script server provides="model">
+    bosca.git.ui.PullActionsModel(page)
+  </script>
+  <island name="git-pull-dependencies" :key="page.pull.id">
+    <section class="dependencies" :data-next-href="model.nextHref">
+      <header class="sidebar-heading">
+        <h2>Depends on</h2>
+        <if model.page.canEdit>
+          <ui-dialog
+            title="Add dependency"
+            triggerLabel="Add dependency"
+            icon="link"
+            triggerIcon="plus"
+            triggerIconOnly
+            :forceOpen='model.failed && model.selectedAction != "remove-dependency"'
+          >
+            <form class="modal-form" @submit="model.dependency(form.dependency, false, ctx)">
+              <div class="modal-fields">
+                <p class="detail-note">Select a pull request that needs to merge before this one.</p>
+                <if model.message.isNotBlank()>
+                  <ui-alert>{ model.message }</ui-alert>
+                </if>
+                <ui-field label="Pull request">
+                  <ui-select searchable name="dependency" required>
+                    <option value="">Choose a pull request</option>
+                    <for pull in model.dependencyCandidates>
+                      <option :value="pull.id">
+                        { "#" + pull.number + " " + pull.title + " · " + model.page.repositoryLabel(pull.repository) + " · " + pull.status.lowercase() }
+                      </option>
+                    </for>
+                  </ui-select>
+                </ui-field>
+                <if model.dependencyCandidates.isEmpty()>
+                  <p class="detail-note">No available pull requests on this page.</p>
+                </if>
+                <nav class="candidate-pages" aria-label="Dependency pages">
+                  <if model.candidateOffset != 0L>
+                    <ui-icon-button icon="arrow-left" label="Previous page" @click="model.loadCandidates(model.candidateOffset - 50, ctx)" />
+                  </if>
+                  <if model.candidateHasNext>
+                    <ui-icon-button icon="arrow-right" label="Next page" @click="model.loadCandidates(model.candidateOffset + 50, ctx)" />
+                  </if>
+                </nav>
+              </div>
+              <footer class="modal-footer">
+                <ui-button ref="cancel">Cancel</ui-button>
+                <ui-button type="submit" primary :disabled="model.dependencyCandidates.isEmpty()">Add dependency</ui-button>
+              </footer>
+            </form>
+          </ui-dialog>
+        </if>
+      </header>
+      <if model.page.pull.dependencies.isEmpty()>
+        <p class="sidebar-empty">No dependencies.</p>
+      <else>
+        <div class="dependency-list">
+          <for pull in model.page.pull.dependencies>
+            <form class="dependency" @submit="model.dependency(pull.id, true, ctx)">
+              <div class="dependency-copy">
+                <a :href="bosca.git.ui.pullHref(pull.id, pull.repositoryId, pull.number)">{ "#" + pull.number + " " + pull.title }</a>
+                <git-pull-status :status="pull.status.name" />
+              </div>
+              <if model.page.canEdit>
+                <ui-icon-button type="submit" icon="close" :label='"Remove dependency #" + pull.number' />
+              </if>
+            </form>
+          </for>
+        </div>
+      </if>
+      <if model.failed && model.selectedAction == "remove-dependency">
+        <ui-alert>{ model.message }</ui-alert>
+      </if>
+      <if model.page.pull.dependents.isNotEmpty()>
+        <div class="dependents">
+          <h3>Required by</h3>
+          <for pull in model.page.pull.dependents>
+            <div class="dependency-copy">
+              <a :href="bosca.git.ui.pullHref(pull.id, pull.repositoryId, pull.number)">{ "#" + pull.number + " " + pull.title }</a>
+              <git-pull-status :status="pull.status.name" />
+            </div>
+          </for>
+        </div>
+      </if>
+    </section>
+  </island>
+  <style scoped>
+    .dependencies {
+      padding: 16px;
+      border-top: 1px solid var(--line);
+    }
+    .sidebar-heading {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    h2,
+    h3 {
+      margin: 0;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .sidebar-empty {
+      margin: 0;
+      color: var(--fg-3);
+      font-size: 12px;
+    }
+    .dependency-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .dependency {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      margin: 0;
+    }
+    .dependency-copy {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 6px;
+      min-width: 0;
+      flex: 1;
+      font-size: 12px;
+      overflow-wrap: anywhere;
+    }
+    .dependents {
+      padding-top: 16px;
+      margin-top: 16px;
+      border-top: 1px solid var(--line);
+    }
+    .dependents h3 {
+      margin-bottom: 12px;
+    }
+    .dependents .dependency-copy + .dependency-copy {
+      margin-top: 12px;
+    }
+    .candidate-pages {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+  </style>
+  <script client scoped>
+    ctx.onUpdate(() => {
+      const next =
+        ctx.root.querySelector<HTMLElement>("[data-next-href]")?.dataset.nextHref;
+      if (next) location.assign(next);
+    });
+  </script>
+</component>

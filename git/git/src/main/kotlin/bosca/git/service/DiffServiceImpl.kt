@@ -7,6 +7,9 @@ import bosca.git.model.DiffFile
 import bosca.git.model.DiffHunk
 import bosca.git.model.DiffLine
 import bosca.git.model.DiffLineType
+import bosca.git.model.MergeStrategy
+import bosca.git.model.PullRequest
+import bosca.git.model.PullRequestStatus
 import bosca.serialization.UUID
 import bosca.service.annotation.ServiceImplementation
 import kotlinx.coroutines.withContext
@@ -35,6 +38,23 @@ class DiffServiceImpl(
     override suspend fun computeDiff(repositoryId: UUID, baseRef: String, headRef: String): List<DiffFile> =
         // JGit's DFS reads are synchronous and bridge to storage with runBlocking: keep them off request threads.
         withContext(GitWorkDispatcher) { computeDiffBlocking(repositoryId, baseRef, headRef) }
+
+    override suspend fun resolveMergedBase(pullRequest: PullRequest): String? {
+        if (pullRequest.status != PullRequestStatus.MERGED) return null
+        pullRequest.mergeBaseSha?.takeIf { it.isNotBlank() }?.let { return it }
+        val sha = pullRequest.mergeSha?.takeIf { it.isNotBlank() } ?: return null
+        if (pullRequest.mergeStrategy == MergeStrategy.REBASE || pullRequest.mergeStrategy == MergeStrategy.FAST_FORWARD) return null
+        return withContext(GitWorkDispatcher) {
+            dfsManager.open(pullRequest.repositoryId).use { repo ->
+                RevWalk(repo).use { walk ->
+                    val commit = walk.parseCommit(ObjectId.fromString(sha))
+                    if (pullRequest.mergeStrategy == MergeStrategy.SQUASH || commit.parentCount > 1)
+                        commit.parents.firstOrNull()?.name()
+                    else null
+                }
+            }
+        }
+    }
 
     private fun computeDiffBlocking(repositoryId: UUID, baseRef: String, headRef: String): List<DiffFile> {
         val dfsRepo = dfsManager.open(repositoryId)

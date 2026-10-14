@@ -425,7 +425,18 @@ internal fun siteStack(config: SwarmConfig, site: SwarmSite): Map<String, Any> {
             "ANALYTICS_PROCESSOR_ENABLED" to "true"), 8080, "300s", null),
         "collector" to bosca("collector", env + mapOf("BOSCA_SERVER_PORT" to "8081",
             "FUMS_TRANSFORM_ENABLED" to site.fumsEnabled.toString()), 8081, "120s", Limits("512M")),
-        "git" to bosca("git", env, 8091, "120s", Limits("4G")),
+        "git" to bosca("git", env + mapOf(
+            "GIT_HTTP_PORT" to "8091", "GIT_UI_HTTP_PORT" to "8093",
+            "GIT_UI_URL" to "https://${hosts.git}", "APP_URL" to "https://${hosts.git}",
+            "APP_ALLOWED_ORIGIN" to "https://${hosts.git}", "WEBAUTHN_EXTRA_ORIGIN" to "https://${hosts.git}",
+            "OAUTH2_ALLOWED_REDIRECT" to "https://${hosts.git}",
+            "OAUTH2_GOOGLE_REDIRECT" to "https://${hosts.git}/oauth2/google/callback",
+            "OAUTH2_GOOGLE_ADMIN_REDIRECT" to "https://${hosts.git}/oauth2/google/callback",
+        ), 8091, "120s", Limits("4G")).plus(mapOf(
+            "healthcheck" to healthcheck(listOf("CMD", "bash", "-c",
+                bashHttpCheck(8091, "/api/v1/live").last() + " && " +
+                    bashHttpCheck(8093, "/api/v1/ready").last()), "120s"),
+        )),
         "artifacts" to bosca("artifacts", env + mapOf("BOSCA_SERVER_PORT" to "8084", "ANALYTICS_APP_ID" to "bosca-artifacts-server"),
             8084, "120s", Limits("2G")),
         // The message server binds its port only after fetching and validating every seed project.
@@ -551,7 +562,11 @@ ${hosts.analytics} {
 }
 
 ${hosts.git} {
-    reverse_proxy ${name}-git:8091
+    @gitUi path_regexp git_ui "${gitUiPathPattern()}"
+    route {
+        reverse_proxy @gitUi ${name}-git:8093
+        reverse_proxy ${name}-git:8091
+    }
 }
 
 ${hosts.artifacts} {

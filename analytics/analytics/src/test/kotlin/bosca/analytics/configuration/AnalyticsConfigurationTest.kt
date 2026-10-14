@@ -88,7 +88,7 @@ class AnalyticsConfigurationTest {
         assertIs<bosca.analytics.installer.RawEventsQueryInstaller>(configuration.analyticsRawEventsQueriesInstaller(queryService, security, app))
         val pkg = configuration.analyticsQueriesPackage()
         assertEquals("analytics-queries", pkg.key)
-        assertEquals(listOf("1.0.0", "1.0.1", "1.0.2", "1.0.3", "1.0.4", "1.0.5", "1.0.6", "1.0.7", "1.0.8", "1.0.9"), pkg.versions.map { it.version })
+        assertEquals(listOf("1.0.0", "1.0.1", "1.0.2", "1.0.3", "1.0.4", "1.0.5", "1.0.6", "1.0.7", "1.0.8", "1.0.9", "1.0.10"), pkg.versions.map { it.version })
         assertEquals(listOf("analytics-queries"), pkg.versions.last().installerNames)
     }
 

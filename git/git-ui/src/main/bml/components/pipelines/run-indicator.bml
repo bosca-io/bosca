@@ -1,0 +1,41 @@
+<component tag="git-run-indicator">
+  <prop name="status" type="String" required />
+  <script server provides="icon">
+    when (status) {
+        "SUCCESS" -> "check"
+        "FAILURE" -> "close"
+        "RUNNING",
+        "QUEUED" -> "clock"
+        else -> "workflow"
+    }
+  </script>
+  <span :class='"run-indicator status-" + status.lowercase()' :title="status.lowercase()">
+    <ui-icon :name="icon" :size="14" />
+  </span>
+  <style scoped>
+    .run-indicator {
+      width: 24px;
+      height: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex: none;
+      border-radius: 6px;
+      color: var(--fg-3);
+      background: var(--bg-3);
+    }
+    .status-success {
+      color: var(--ok);
+      background: color-mix(in srgb, var(--ok) 12%, transparent);
+    }
+    .status-failure {
+      color: var(--err);
+      background: color-mix(in srgb, var(--err) 12%, transparent);
+    }
+    .status-running,
+    .status-queued {
+      color: var(--info);
+      background: color-mix(in srgb, var(--info) 12%, transparent);
+    }
+  </style>
+</component>

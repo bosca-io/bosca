@@ -1,0 +1,58 @@
+<page route="/pulls/{id}" requireAuth>
+  <script server provides="page">
+    bosca.git.ui.pullPage()
+  </script>
+  <if page != null>
+    <git-layout :title="page.pull.title">
+      <ui-page>
+        <git-pull-heading :page="page" />
+        <ui-tabs label="Pull request" :items="page.tabs" />
+        <if page.view == "overview">
+          <div class="pull-workspace">
+            <div class="pull-main">
+              <ui-card title="Description">
+                <if page.descriptionHtml.isNotBlank()>
+                  <git-markdown :html="page.descriptionHtml" />
+                <else>
+                  <p class="muted">No description provided.</p>
+                </if>
+              </ui-card>
+              <ui-card :padded="false">
+                <git-pull-actions :page="page" />
+              </ui-card>
+              <git-pull-review :page="page" />
+            </div>
+            <aside class="pull-sidebar" aria-label="Pull request details">
+              <ui-card :padded="false">
+                <git-pull-assignees :page="page" />
+                <git-pull-dependencies :page="page" />
+              </ui-card>
+            </aside>
+          </div>
+        <else>
+          <git-pull-review :page="page" />
+        </if>
+      </ui-page>
+    </git-layout>
+  </if>
+  <style scoped>
+    .pull-workspace {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 260px;
+      align-items: start;
+      gap: 18px;
+    }
+    .pull-main,
+    .pull-sidebar {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    @media (max-width: 960px) {
+      .pull-workspace {
+        grid-template-columns: minmax(0, 1fr);
+      }
+    }
+  </style>
+</page>

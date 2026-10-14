@@ -162,7 +162,7 @@ data class SwarmConfig(
 /**
  * Public hostnames of one site, laid out like the Kubernetes Gateway routes: the base domain and its
  * `api.`, `upload.` and `ws.` hosts serve bosca-server, `studio.` serves Studio with same-origin API paths,
- * `a.` the analytics collector, `git.` the Git server, `artifacts.` the artifacts registry,
+ * `a.` the analytics collector, `git.` the Git API and BML UI, `artifacts.` the artifacts registry,
  * `notifications.` the preference site, and `messages.` the message server's public assets.
  */
 internal data class SiteHosts(

@@ -1,0 +1,12 @@
+<component tag="ui-table-scroll">
+  <div class="table-scroll" tabindex="0" aria-label="Scrollable table">
+    <slot />
+  </div>
+  <style scoped>
+    .table-scroll {
+      max-width: 100%;
+      min-width: 0;
+      overflow: auto;
+    }
+  </style>
+</component>

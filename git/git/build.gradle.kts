@@ -43,6 +43,7 @@ dependencies {
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.kotlin.test.junit)
     testImplementation(libs.mockk)
+    testImplementation(libs.auth0.jwt)
     // The git-CLI end-to-end suite runs the production BoscaAuthMiddleware against real Basic-auth traffic.
     testImplementation(project(":bosca-core:security"))
     testImplementation(project(":bosca-core:storage"))

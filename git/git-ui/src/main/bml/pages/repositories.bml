@@ -1,0 +1,13 @@
+<page route="/repositories" requireAuth>
+  <contract>
+    interface GitOwnerSearch {
+        suspend fun search(query: String): List<Map<String, String>>
+    }
+  </contract>
+  <script server provides="page">
+    bosca.git.ui.repositoryList()
+  </script>
+  <git-layout title="Repositories">
+    <git-repository-list :page="page" />
+  </git-layout>
+</page>

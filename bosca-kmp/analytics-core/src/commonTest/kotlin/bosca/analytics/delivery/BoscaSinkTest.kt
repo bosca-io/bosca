@@ -13,6 +13,7 @@ import bosca.analytics.api.Geo
 import bosca.analytics.api.Page
 import bosca.analytics.persistence.InMemoryAnalyticsEventStore
 import bosca.analytics.persistence.StoredAnalyticsEvent
+import bosca.analytics.platform.currentDevice
 import bosca.core.analytics.InstallationIdProvider
 import bosca.core.security.model.Principal
 import io.ktor.client.HttpClient
@@ -78,6 +79,8 @@ class BoscaSinkTest {
         assertEquals(sink.sessionId(), request.headers[BoscaRequestHeaders.SESSION_ID])
         assertEquals("app", context.getValue("app_id").jsonPrimitive.content)
         assertEquals("installation-1", context.getValue("device").jsonObject.getValue("installation_id").jsonPrimitive.content)
+        // The event was queued before the first flush described the device; every device field must still arrive.
+        assertEquals(currentDevice("installation-1"), Json.decodeFromJsonElement(Device.serializer(), context.getValue("device")))
         assertEquals("user-1", context.getValue("user_id").jsonPrimitive.content)
         assertEquals("US", context.getValue("geo").jsonObject.getValue("country").jsonPrimitive.content)
         assertEquals("interaction", event.getValue("type").jsonPrimitive.content)

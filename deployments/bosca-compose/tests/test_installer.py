@@ -133,6 +133,7 @@ class InstallerTest(unittest.TestCase):
             {"STUDIO_DOMAIN": "example.com; include /tmp/evil;"},
             {"GIT_DOMAIN": "badexample.com"},
             {"GIT_DOMAIN": "studio.example.com"},
+            {"GIT_UI_PORT": "8091"},
             {"CERT_NAME": "../another-certificate"},
             {"API_PORT": "65536"}, {"API_PORT": "0"}, {"API_PORT": "80"},
             {"API_PORT": "443"}, {"API_PORT": "8091"}, {"API_PORT": "１２３"},
@@ -162,14 +163,14 @@ class InstallerTest(unittest.TestCase):
     def test_custom_domains_ports_and_nginx_variables(self):
         directory = self.install(
             STUDIO_DOMAIN="ADMIN.EXAMPLE.COM", GIT_DOMAIN="code.example.com", CERT_NAME="custom-cert",
-            API_PORT="18080", GIT_PORT="18091", STUDIO_PORT="13000", BML_PORT="19093",
+            API_PORT="18080", GIT_PORT="18091", GIT_UI_PORT="18093", STUDIO_PORT="13000", BML_PORT="19093",
         )
         nginx = (directory / "config/nginx.conf").read_text()
         bootstrap = (directory / "config/nginx-bootstrap.conf").read_text()
         for host in ("admin.example.com", "code.example.com"):
             self.assertIn(host, nginx)
             self.assertIn(host, bootstrap)
-        for port in ("18080", "18091", "13000", "19093"):
+        for port in ("18080", "18091", "18093", "13000", "19093"):
             self.assertIn("127.0.0.1:" + port, nginx)
         self.assertIn("/etc/letsencrypt/live/custom-cert/fullchain.pem", nginx)
         self.assertIn("$http_upgrade", nginx)
@@ -221,7 +222,7 @@ class InstallerTest(unittest.TestCase):
         self.assertNotIn("JWT_SECRET=", result.stdout + result.stderr)
 
     def test_cli_rejects_settings_that_would_otherwise_be_ignored(self):
-        for arguments in (["--git-port", "18091"], ["--render-nginx", "--cert-name", "bosca"]):
+        for arguments in (["--git-port", "18091"], ["--git-ui-domain"], ["--render-nginx", "--cert-name", "bosca"]):
             with self.subTest(arguments=arguments):
                 result = subprocess.run(
                     ["sh", str(ROOT / "install.sh"), "--directory", str(self.destination), *arguments],
@@ -232,7 +233,7 @@ class InstallerTest(unittest.TestCase):
 
     @unittest.skipUnless(shutil.which("docker"), "Docker CLI is unavailable")
     def test_compose_resolves_installed_configuration_without_starting_services(self):
-        directory = self.install(GIT_PORT="18091", GIT_DOMAIN="code.example.com")
+        directory = self.install(GIT_PORT="18091", GIT_DOMAIN="code.example.com", GIT_UI_PORT="18093")
         with (directory / ".env").open("a") as output:
             output.write("BML_MESSAGE_ARTIFACTS_URL=https://artifacts.example.com\n"
                          "BML_MESSAGE_ARTIFACTS_TOKEN=synthetic-test-token\nGIT_VERSION=test-version\n")
@@ -253,6 +254,7 @@ class InstallerTest(unittest.TestCase):
         services = json.loads(result.stdout)["services"]
         self.assertEqual({"postgres", "nats", "meilisearch", "server", "git", "studio", "bml-message-server"}, set(services))
         self.assertEqual("https://code.example.com", services["git"]["environment"]["GIT_URL"])
+        self.assertEqual("https://code.example.com/oauth2/google/callback", services["git"]["environment"]["OAUTH2_GOOGLE_REDIRECT"])
         self.assertEqual("https://studio.example.com", services["server"]["environment"]["APP_URL"])
         self.assertEqual("wss://studio.example.com", services["studio"]["environment"]["NUXT_PUBLIC_WS_URL"])
         self.assertTrue(services["git"]["image"].endswith(":test-version"))
@@ -260,6 +262,8 @@ class InstallerTest(unittest.TestCase):
         self.assertEqual("https://artifacts.example.com",
                          services["bml-message-server"]["environment"]["BML_MESSAGE_ARTIFACTS_URL"])
         self.assertEqual("18091", services["git"]["ports"][0]["published"])
+        self.assertEqual("18093", services["git"]["ports"][1]["published"])
+        self.assertEqual(8093, services["git"]["ports"][1]["target"])
         self.assertEqual(2880 * 1024 * 1024, sum(int(service["mem_limit"]) for service in services.values()))
         self.assertEqual('"' + services["server"]["environment"]["NATS_TOKEN"] + '"', services["nats"]["environment"]["NATS_TOKEN"])
         for service in services.values():

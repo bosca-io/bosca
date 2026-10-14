@@ -1,0 +1,15 @@
+<page route="/search" requireAuth>
+  <script server provides="page">
+    bosca.git.ui.searchPage()
+  </script>
+  <git-layout title="Search">
+    <ui-page>
+      <ui-page-heading
+        title="Search"
+        description="Find content and file paths in your repositories."
+        descriptionBelow
+      />
+      <git-search :page="page" />
+    </ui-page>
+  </git-layout>
+</page>

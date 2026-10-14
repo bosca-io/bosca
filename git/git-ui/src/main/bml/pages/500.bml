@@ -1,0 +1,6 @@
+<page route="/500">
+  <git-error-page
+    title="Unable to load this page"
+    message="Please try again. If the problem continues, check the Git API connection."
+  />
+</page>

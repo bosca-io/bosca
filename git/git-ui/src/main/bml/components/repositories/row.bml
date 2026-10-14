@@ -1,0 +1,220 @@
+<component tag="git-repository-row">
+  <prop name="repository" type="bosca.git.ui.RepositorySummary" required />
+  <prop name="initial" type="bosca.git.ui.RepositoryListModel" required />
+  <script server provides="model">
+    bosca.git.ui.RepositoryRowModel(repository, initial.state, initial.owner)
+  </script>
+  <island name="git-repository-row" :key="model.repository.id">
+    <li class="repository-row" :data-next-href="model.nextHref">
+      <div class="repository-title">
+        <div class="repository-name">
+          <ui-icon name="folder" />
+          <a :href="model.repository.href">{ model.repository.name }</a>
+          <if model.repository.archived>
+            <ui-badge>Archived</ui-badge>
+          </if>
+        </div>
+        <if model.repository.description.isNotBlank()>
+          <p class="repository-description">{ model.repository.description }</p>
+        </if>
+      </div>
+      <div class="repository-visibility">
+        <ui-badge>{ model.repository.visibility.lowercase() }</ui-badge>
+      </div>
+      <span class="repository-type muted">
+        { model.repository.contentType.lowercase().replace('_', ' ') }
+      </span>
+      <code class="repository-branch muted">{ model.repository.defaultBranch }</code>
+      <span class="repository-size muted">{ bosca.git.ui.formatSize(model.repository.size) }</span>
+      <time class="repository-updated muted" :datetime="model.repository.updated">
+        { model.repository.updated.take(10) }
+      </time>
+      <if model.message.isNotBlank()>
+        <ui-alert :tone='if (model.failed) "error" else "success"'>{ model.message }</ui-alert>
+      </if>
+      <if model.repository.canManage>
+        <details class="row-actions" ref="panel">
+          <summary ref="trigger" aria-label="Repository actions" title="Repository actions">
+            ⋯
+          </summary>
+          <div class="repository-menu" role="menu" aria-label="Repository actions">
+            <a
+              role="menuitem"
+              :href='"/repositories/" + bosca.git.ui.encode(model.repository.id) + "/settings"'
+            >
+              <ui-icon name="edit" :size="14" />
+              Settings
+            </a>
+            <if model.repository.archived>
+              <ui-button role="menuitem" icon="refresh" @click='model.prepare("restore")'>
+                Restore repository
+              </ui-button>
+            <else>
+              <ui-button role="menuitem" icon="archive" @click='model.prepare("archive")'>
+                Archive repository
+              </ui-button>
+            </if>
+            <ui-button class="danger" role="menuitem" icon="trash" @click='model.prepare("delete")'>
+              Delete repository
+            </ui-button>
+          </div>
+        </details>
+        <if model.pendingAction.isNotBlank()>
+          <ui-dialog
+            :title='model.pendingAction.replaceFirstChar(Char::uppercase) + " repository?"'
+            triggerLabel="Confirm action"
+            :showTrigger="false"
+            forceOpen
+            icon="folder"
+            returnFocus="[aria-label='Repository actions']"
+          >
+            <form class="modal-form" @submit="model.lifecycle(model.pendingAction, true, ctx)">
+              <div class="modal-fields">
+                <p class="form-help">
+                  { if (model.pendingAction == "delete") "This removes " + model.repository.name + " from the repository list and schedules it for deletion." else if (model.pendingAction == "archive") "Archive " + model.repository.name + " to make it read-only. You can restore it later." else "Restore " + model.repository.name + " to make it active again." }
+                </p>
+                <if model.failed>
+                  <ui-alert :tone='if (model.failed) "error" else "success"'>
+                    { model.message }
+                  </ui-alert>
+                </if>
+              </div>
+              <footer class="modal-footer">
+                <ui-button ref="cancel">Cancel</ui-button>
+                <ui-button
+                  type="submit"
+                  :class='if (model.pendingAction == "delete") "danger" else ""'
+                  :primary='model.pendingAction != "delete"'
+                >
+                  { model.pendingAction.replaceFirstChar(Char::uppercase) + " repository" }
+                </ui-button>
+              </footer>
+            </form>
+          </ui-dialog>
+        </if>
+      </if>
+    </li>
+  </island>
+  <style scoped>
+    .repository-row {
+      display: grid;
+      grid-template-columns: minmax(180px, 1.5fr) 90px 120px 90px 70px 100px 36px;
+      align-items: center;
+      gap: 12px;
+      padding: 14px;
+      border-bottom: 1px solid color-mix(in oklch, var(--line) 35%, transparent);
+      border-radius: var(--r-xs);
+      position: relative;
+    }
+    .repository-row:hover {
+      background: color-mix(in oklch, var(--accent) 8%, transparent);
+    }
+    .repository-title {
+      min-width: 0;
+    }
+    .repository-name {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .repository-name > a {
+      font-size: 13px;
+      font-weight: 500;
+      overflow-wrap: anywhere;
+    }
+    .repository-description {
+      margin: 4px 0 0 24px;
+      color: var(--fg-3);
+      font-size: 12px;
+      overflow-wrap: anywhere;
+    }
+    .repository-type,
+    .repository-branch,
+    .repository-size,
+    .repository-updated {
+      font-size: 12px;
+      overflow-wrap: anywhere;
+    }
+    .row-actions summary {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 30px;
+      height: 30px;
+      border: 1px solid transparent;
+      border-radius: 6px;
+      list-style: none;
+      font-size: 20px;
+      cursor: pointer;
+      text-align: center;
+    }
+    .row-actions summary::-webkit-details-marker {
+      display: none;
+    }
+    .repository-menu {
+      position: absolute;
+      right: 14px;
+      top: 46px;
+      z-index: 15;
+      background: var(--bg-2);
+      border: 1px solid var(--line-2);
+      border-radius: var(--r-sm);
+      padding: 4px;
+      width: 210px;
+      box-shadow: 0 12px 30px #0006;
+    }
+    .repository-menu a {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      height: 32px;
+      padding: 0 10px;
+      font-size: 12.5px;
+    }
+    .repository-menu a:hover {
+      background: var(--bg-3);
+      border-radius: 5px;
+    }
+    @media (max-width: 1100px) {
+      .repository-row {
+        grid-template-columns: minmax(0, 1fr) 90px 36px;
+      }
+      .repository-visibility {
+        grid-column: 2;
+        grid-row: 1;
+      }
+      .row-actions {
+        grid-column: 3;
+        grid-row: 1;
+      }
+      .repository-type {
+        grid-column: 1;
+        grid-row: 2;
+      }
+      .repository-branch {
+        grid-column: 2 / 4;
+        grid-row: 2;
+      }
+      .repository-size {
+        grid-column: 1;
+        grid-row: 3;
+      }
+      .repository-updated {
+        grid-column: 2 / 4;
+        grid-row: 3;
+      }
+    }
+  </style>
+  <script client scoped>
+    import { dismissibleDisclosure } from "@client/disclosure";
+    import { attachTooltip } from "@client/tooltip";
+    dismissibleDisclosure(ctx);
+    const trigger = ctx.ref<HTMLElement>("trigger");
+    if (trigger) attachTooltip(ctx, trigger);
+    ctx.onUpdate(() => {
+      const next =
+        ctx.root.querySelector<HTMLElement>("[data-next-href]")?.dataset.nextHref;
+      if (next) location.assign(next);
+    });
+  </script>
+</component>

@@ -1,0 +1,18 @@
+<component tag="git-layout">
+  <prop name="title" type="String" required />
+  <prop name="signedIn" type="Boolean" default="true" />
+  <html lang="en">
+    <head>
+      <meta charset="utf-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1" />
+      <meta name="robots" content="noindex,nofollow" />
+      <title>{ title } — Bosca Git</title>
+    </head>
+    <body class="git-document" data-theme="dark">
+      <git-header :signedIn="signedIn" />
+      <div class="git-main">
+        <slot />
+      </div>
+    </body>
+  </html>
+</component>

@@ -1,0 +1,20 @@
+<component tag="git-pipeline-owner">
+  <prop name="page" type="bosca.git.ui.PipelinePage" required />
+  <form method="get" class="toolbar owner-toolbar">
+    <git-owner-picker
+      :id="page.owner.id"
+      :label='if (page.owner.id == "all") page.owner.name else page.owner.label'
+      compact
+    />
+    <ui-icon-button type="submit" icon="refresh" label="Refresh pipelines" />
+  </form>
+  <script client scoped>
+    ctx.on(ctx.root, "ownerselected", () =>
+      ctx.root.closest<HTMLFormElement>("form")?.requestSubmit(),
+    );
+    const owner = new URLSearchParams(location.search).get("owner");
+    if (owner)
+      document.cookie =
+        "git_owner=" + encodeURIComponent(owner) + "; Path=/; SameSite=Lax";
+  </script>
+</component>

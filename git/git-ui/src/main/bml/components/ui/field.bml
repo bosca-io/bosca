@@ -1,0 +1,25 @@
+<component tag="ui-field">
+  <prop name="label" type="String" required />
+  <prop name="hint" type="String" default="" />
+  <label class="field">
+    <span>{ label }</span>
+    <slot />
+    <if hint.isNotBlank()>
+      <small class="muted">{ hint }</small>
+    </if>
+  </label>
+  <style scoped>
+    .field > span {
+      font-weight: 550;
+      line-height: 18px;
+    }
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--fg-2);
+      min-width: 0;
+    }
+  </style>
+</component>

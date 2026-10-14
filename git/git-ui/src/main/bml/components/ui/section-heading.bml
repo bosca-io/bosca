@@ -1,0 +1,61 @@
+<component tag="ui-section-heading">
+  <prop name="title" type="String" required />
+  <prop name="subtitle" type="String" default="" />
+  <header class="section-heading">
+    <div class="heading-text">
+      <h2>{ title }</h2>
+      <if subtitle.isNotBlank()>
+        <p>{ subtitle }</p>
+      </if>
+    </div>
+    <div class="heading-actions">
+      <slot />
+    </div>
+  </header>
+  <style scoped>
+    .section-heading {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 16px 18px;
+      border-bottom: 1px solid var(--line);
+    }
+    .heading-text {
+      min-width: 0;
+    }
+    h2 {
+      margin: 0;
+      font-size: 13px;
+      font-weight: 600;
+      line-height: 20px;
+    }
+    p {
+      margin: 3px 0 0;
+      color: var(--fg-3);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+    .heading-actions {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+    .heading-actions:empty {
+      display: none;
+    }
+    @media (max-width: 600px) {
+      .section-heading {
+        align-items: flex-start;
+        flex-wrap: wrap;
+        gap: 12px;
+      }
+      .heading-actions {
+        justify-content: flex-start;
+      }
+    }
+  </style>
+</component>

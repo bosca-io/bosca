@@ -243,6 +243,40 @@ class RepositoryBrowseServiceTest {
     }
 
     @Test
+    fun `empty repository with unborn HEAD has zero stats and can be browsed`() = runTest {
+        inMemoryRepo.close()
+        inMemoryRepo = InMemoryRepository(DfsRepositoryDescription("empty"))
+        every { dfsManager.open(repositoryId) } returns inMemoryRepo
+        inMemoryRepo.refDatabase.newUpdate(Constants.HEAD, true).link("refs/heads/trunk")
+        assertNull(assertNotNull(inMemoryRepo.refDatabase.exactRef(Constants.HEAD)).objectId)
+        coEvery { packRepository.sumPackSizeBytes(repositoryId) } returns 128L
+
+        val stats = service.getStats(repositoryId)
+
+        assertEquals(0L, stats.commitCount)
+        assertEquals(0, stats.branchCount)
+        assertEquals(0, stats.tagCount)
+        assertEquals(0, stats.contributorCount)
+        assertEquals(128L, stats.diskSizeBytes)
+        withCache { assertTrue(service.listTree(repositoryId, "refs/heads/trunk", null).isEmpty()) }
+        assertTrue(service.listCommits(repositoryId, "refs/heads/trunk", null, 10, 0).isEmpty())
+        assertTrue(service.listBranches(repositoryId).isEmpty())
+        assertNull(service.readBlob(repositoryId, "refs/heads/trunk", "README.md"))
+    }
+
+    @Test
+    fun `stats fall back to an existing branch when HEAD is unborn`() = runTest {
+        inMemoryRepo.refDatabase.newUpdate(Constants.HEAD, true).link("refs/heads/trunk")
+        assertNull(assertNotNull(inMemoryRepo.refDatabase.exactRef(Constants.HEAD)).objectId)
+
+        val stats = service.getStats(repositoryId)
+
+        assertEquals(2L, stats.commitCount)
+        assertEquals(2, stats.branchCount)
+        assertEquals(2, stats.contributorCount)
+    }
+
+    @Test
     fun `listTags returns empty when no tags exist`() = runTest {
         val tags = service.listTags(repositoryId)
         assertTrue(tags.isEmpty())

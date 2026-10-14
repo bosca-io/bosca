@@ -358,6 +358,12 @@ class AnalyticsConfiguration {
             PackageInstallationVersion(
                 version = "1.0.9",
                 installerNames = listOf("analytics-queries")
+            ),
+            // Date-range user and session metrics that exclude desktop crawlers and link signed-out
+            // activity per period, plus monthly users and engagement. QueryInstaller 1.0.7 clears its gate.
+            PackageInstallationVersion(
+                version = "1.0.10",
+                installerNames = listOf("analytics-queries")
             )
         )
     )

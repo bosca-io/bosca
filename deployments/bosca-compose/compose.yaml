@@ -156,9 +156,15 @@ services:
     image: ${BOSCA_IMAGE_REGISTRY:-ghcr.io/bosca-io/bosca}/git-server:${GIT_VERSION:-6.27.7}
     mem_limit: 896m
     command: ["-Xms64m", "-Xmx640m", "-config=/app/config/application.yaml"]
-    environment: *bosca-env
+    environment:
+      <<: *bosca-env
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      OAUTH2_GOOGLE_REDIRECT: ${GIT_URL:?Run install.sh first}/oauth2/google/callback
+      OAUTH2_GOOGLE_ADMIN_REDIRECT: ${GIT_URL:?Run install.sh first}/oauth2/google/callback
     ports:
       - "127.0.0.1:${GIT_PORT:-8091}:8091"
+      - "127.0.0.1:${GIT_UI_PORT:-8093}:8093"
     volumes:
       - ./config/git.yaml:/app/config/application.yaml:ro
       - ./data/storage:/storage
@@ -166,7 +172,7 @@ services:
     depends_on:
       server: {condition: service_healthy}
     healthcheck:
-      test: [CMD, bash, -ec, "exec 3<>/dev/tcp/127.0.0.1/8091"]
+      test: [CMD, bash, -ec, "for port in 8091 8093; do exec 3<>/dev/tcp/127.0.0.1/$$port; printf 'GET /api/v1/ready HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n' >&3; read -r protocol status rest <&3; test \"$$status\" = 200 || exit 1; exec 3>&-; done"]
       interval: 10s
       timeout: 5s
       retries: 30

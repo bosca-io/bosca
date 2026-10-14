@@ -1,0 +1,72 @@
+<component tag="git-agent-list">
+  <prop name="page" type="bosca.git.ui.AgentPage" required />
+  <ui-card :padded="false">
+    <ui-section-heading
+      title="Agents"
+      :subtitle='page.agents.size.toString() + (if (page.agents.size == 1) " agent · " else " agents · ") + page.agents.count { it.status.name == "ONLINE" }.toString() + " online · " + page.agents.count { it.status.name == "BUSY" }.toString() + " busy"'
+    >
+      <form method="get" class="toolbar section-filter">
+        <div class="filter-select">
+          <ui-select name="status" label="Status" size="sm">
+            <option value="">All statuses</option>
+            <for status in bosca.git.ui.graphql.GitAgentStatus.entries>
+              <option :value="status.name" :selected="status.name == page.status">
+                { status.name.lowercase().replaceFirstChar(Char::uppercase) }
+              </option>
+            </for>
+          </ui-select>
+        </div>
+        <ui-button type="submit" size="sm">Refresh</ui-button>
+      </form>
+    </ui-section-heading>
+    <if page.agents.isEmpty()>
+      <ui-empty-state
+        icon="server"
+        title="No CI agents"
+        message="Register a runner to execute pipeline jobs, or change the status filter to find an existing agent."
+      />
+    <else>
+      <ui-table-scroll>
+        <table>
+          <thead>
+            <tr>
+              <th>Agent</th>
+              <th>Mode</th>
+              <th>Labels</th>
+              <th>Status</th>
+              <th>Last heartbeat</th>
+            </tr>
+          </thead>
+          <tbody>
+            <for agent in page.agents>
+              <tr>
+                <td>
+                  <a :href='"/ci-agents/" + bosca.git.ui.encode(agent.id)'>{ agent.name }</a>
+                  <if agent.ephemeral>
+                    · Ephemeral
+                  </if>
+                  <if agent.instanceId != null>
+                    <br />
+                    { agent.instanceId }
+                  </if>
+                </td>
+                <td>{ agent.mode.name.lowercase() }</td>
+                <td>{ agent.labels.joinToString(", ") }</td>
+                <td>
+                  <git-status-badge :status="agent.status.name" />
+                </td>
+                <td>
+                  <if agent.lastHeartbeat != null>
+                    <ui-time :value="agent.lastHeartbeat" />
+                  <else>
+                    Never
+                  </if>
+                </td>
+              </tr>
+            </for>
+          </tbody>
+        </table>
+      </ui-table-scroll>
+    </if>
+  </ui-card>
+</component>

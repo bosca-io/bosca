@@ -1,0 +1,158 @@
+<component tag="git-search">
+  <prop name="page" type="bosca.git.ui.SearchModel" required />
+  <script server provides="model">
+    bosca.git.ui.SearchModel(page)
+  </script>
+  <div class="search-workspace">
+    <island name="git-search" :key='"search"'>
+      <section
+        :data-search-query="model.query"
+        :data-search-repo="model.id"
+        :data-search-mode="model.mode"
+        :data-search-ref="model.ref"
+        :data-search-href="model.href"
+      >
+        <form
+          class="search-bar"
+          @submit="model.search(form.repo, form.q, form.mode, form.ref, ctx)"
+          data-bml-coalesce
+          aria-label="Repository search"
+        >
+          <ui-search-input
+            :value="model.query"
+            :placeholder="model.placeholder"
+            label="Search repository content or paths"
+            preserveKey="git-search-query"
+            :disabled="model.repositories.isEmpty()"
+          >
+            <ui-icon-button
+              type="submit"
+              icon="search"
+              label="Search repository"
+              :disabled="model.repositories.isEmpty()"
+            />
+          </ui-search-input>
+          <div class="search-options">
+            <ui-field label="Search">
+              <ui-segmented-control
+                label="Search mode"
+                name="mode"
+                :options='listOf("Content", "Paths")'
+                :values='listOf("content", "paths")'
+                :icons='listOf("code", "file")'
+                :value="model.mode"
+                preserveKey="git-search-mode"
+              />
+            </ui-field>
+            <div class="repository-choice">
+              <ui-field label="Repository">
+                <ui-select
+                  name="repo"
+                  label="Repository"
+                  size="sm"
+                  searchable
+                  :disabled="model.repositories.isEmpty()"
+                >
+                  <option
+                    value=""
+                    disabled
+                    :selected="model.repositories.none { it.id == model.id }"
+                  >
+                    Choose a repository
+                  </option>
+                  <for repository in model.repositories>
+                    <option
+                      :value="repository.id"
+                      :selected="repository.id == model.id"
+                      :data-default-ref="repository.defaultBranch"
+                    >
+                      { model.repositoryLabel(repository) }
+                    </option>
+                  </for>
+                </ui-select>
+              </ui-field>
+            </div>
+            <div class="ref-choice">
+              <ui-field :label='if (model.mode == "paths") "Ref" else "Branch"'>
+                <ui-select
+                  name="ref"
+                  label="Search ref"
+                  size="sm"
+                  searchable
+                  :allowCustom='model.mode == "paths"'
+                  icon="branch"
+                  :disabled="model.id.isBlank()"
+                >
+                  <if model.refChoices.none { model.refValue(it) == model.ref }>
+                    <option :value="model.ref" selected>{ model.ref }</option>
+                  </if>
+                  <for choice in model.refChoices>
+                    <option
+                      :value="model.refValue(choice)"
+                      :data-kind="choice.kind"
+                      :selected="model.refValue(choice) == model.ref"
+                    >
+                      { choice.name + if (choice.kind == "tag") " (tag)" else "" }
+                    </option>
+                  </for>
+                </ui-select>
+              </ui-field>
+            </div>
+          </div>
+        </form>
+        <git-search-results :page="model" />
+      </section>
+    </island>
+    <ui-loading-state ref="loading" label="Searching…" hidden />
+    <p ref="transportError" class="search-error" role="alert" hidden>
+      Search could not be completed. Try again.
+    </p>
+  </div>
+  <style scoped>
+    .search-workspace {
+      min-width: 0;
+    }
+    .search-bar {
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--bg-1);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .search-options {
+      display: flex;
+      align-items: flex-end;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .repository-choice {
+      width: 280px;
+      max-width: 100%;
+    }
+    .ref-choice {
+      width: 210px;
+      max-width: 100%;
+    }
+    .search-error {
+      color: var(--err);
+      padding: 16px 0;
+      font-size: 13px;
+    }
+    @media (max-width: 600px) {
+      .search-bar {
+        padding: 12px;
+      }
+      .repository-choice,
+      .ref-choice {
+        flex: 1 1 180px;
+        width: auto;
+      }
+    }
+  </style>
+  <script client scoped>
+    import { repositorySearch } from "@client/search";
+    repositorySearch(ctx);
+  </script>
+</component>

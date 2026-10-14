@@ -19,7 +19,7 @@ dependencies:
   version: 0.1.0
 - name: bosca-git-server
   repository: file://../bosca-git-server
-  version: 0.1.1
+  version: 0.1.2
 - name: bosca-collector
   repository: file://../bosca-collector
   version: 0.1.0
@@ -50,5 +50,5 @@ dependencies:
 - name: text-embeddings-inference
   repository: file://../text-embeddings-inference
   version: 0.1.2
-digest: sha256:ecc880662884a30fce40aff99e6bd471940c52e6f1e4648374bf727eaac96b4a
-generated: "2026-10-08T13:19:18.49198-05:00"
+digest: sha256:140469167fa87a70b0cf5ce4fe406399be2cbbe447a12cc2832444bf5b930b03
+generated: "2026-10-13T11:08:04.439948-05:00"

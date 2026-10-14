@@ -1,0 +1,196 @@
+<component tag="git-repository-protection">
+  <prop name="page" type="bosca.git.ui.RepositorySettingsPage" required />
+  <script server provides="model">
+    bosca.git.ui.RepositoryProtectionModel(page)
+  </script>
+  <island name="git-repository-protection" :key="page.repository.id">
+    <section class="settings-stack" :data-next-href="model.nextHref">
+      <if model.message.isNotBlank()>
+        <ui-alert :tone='if (model.failed) "error" else "success"'>{ model.message }</ui-alert>
+      </if>
+      <ui-card :padded="false">
+        <ui-section-heading
+          title="Branch protection"
+          subtitle="Define review and history requirements for matching branches."
+        >
+          <ui-button primary size="sm" icon="plus" data-new-rule @click="model.reset()">
+            New rule
+          </ui-button>
+        </ui-section-heading>
+        <if model.page.rules.isEmpty()>
+          <ui-empty-state
+            icon="shield"
+            title="No branch protection rules"
+            message="Add a rule to require pull requests, reviews or status checks on important branches."
+          />
+        <else>
+          <div class="section-body rule-list">
+            <for rule in model.page.rules>
+              <article class="rule-card">
+                <div class="rule-heading">
+                  <div class="rule-pattern">
+                    <ui-icon name="shield" />
+                    <code>{ rule.pattern }</code>
+                  </div>
+                  <div class="toolbar">
+                    <ui-button size="sm" icon="edit" @click="model.edit(rule.id)">
+                      Edit rule
+                    </ui-button>
+                    <ui-confirm-dialog
+                      title="Delete branch protection?"
+                      :description='"Protection for branches matching " + rule.pattern + " will be removed."'
+                      triggerLabel="Delete"
+                    >
+                      <form class="modal-form" @submit="model.delete(rule.id, true, ctx)">
+                        <footer class="modal-footer">
+                          <ui-button ref="cancel">Cancel</ui-button>
+                          <ui-button type="submit" class="danger">Delete rule</ui-button>
+                        </footer>
+                      </form>
+                    </ui-confirm-dialog>
+                  </div>
+                </div>
+                <div class="rule-badges">
+                  <if rule.requirePullRequest>
+                    <ui-badge>Pull request required</ui-badge>
+                  </if>
+                  <if rule.requiredApprovals != 0>
+                    <ui-badge>
+                      { rule.requiredApprovals.toString() + if (rule.requiredApprovals == 1) " approval" else " approvals" }
+                    </ui-badge>
+                  </if>
+                  <if rule.dismissStaleReviews>
+                    <ui-badge>Dismiss stale reviews</ui-badge>
+                  </if>
+                  <if rule.requireCodeOwnerReview>
+                    <ui-badge>Code owner review</ui-badge>
+                  </if>
+                  <if rule.requireLinearHistory>
+                    <ui-badge>Linear history</ui-badge>
+                  </if>
+                  <if !rule.allowForcePush>
+                    <ui-badge>No force push</ui-badge>
+                  </if>
+                  <if !rule.allowDeletion>
+                    <ui-badge>No deletion</ui-badge>
+                  </if>
+                  <for check in rule.requireStatusChecks>
+                    <ui-badge>{ check }</ui-badge>
+                  </for>
+                </div>
+              </article>
+            </for>
+          </div>
+        </if>
+      </ui-card>
+      <if model.editing>
+        <ui-dialog
+          :title='if (model.id.isBlank()) "New branch protection rule" else "Edit branch protection rule"'
+          triggerLabel="Continue editing"
+          :showTrigger="false"
+          icon="shield"
+          returnFocus="[data-new-rule]"
+          forceOpen
+        >
+          <form
+            class="modal-form"
+            @submit="model.save(form.pattern, form.pullRequest, form.approvals, form.stale, form.codeOwner, form.linear, form.force, form.deletion, form.checks, ctx)"
+          >
+            <div class="modal-fields">
+              <if model.failed>
+                <ui-alert :tone='if (model.failed) "error" else "success"'>
+                  { model.message }
+                </ui-alert>
+              </if>
+              <ui-field
+                label="Branch pattern"
+                hint="Use a branch name or a pattern, such as release/*."
+              >
+                <ui-input name="pattern" :value="model.pattern" placeholder="main" required />
+              </ui-field>
+              <ui-switch
+                name="pullRequest"
+                :checked="model.pullRequest"
+                label="Require pull request"
+                description="Changes must be proposed through a pull request."
+              />
+              <ui-field label="Required approvals">
+                <ui-input
+                  name="approvals"
+                  type="number"
+                  min="0"
+                  :value="model.approvals.toString()"
+                  required
+                />
+              </ui-field>
+              <ui-switch
+                name="stale"
+                :checked="model.stale"
+                label="Dismiss stale approvals"
+                description="Request fresh reviews after new commits."
+              />
+              <ui-switch
+                name="codeOwner"
+                :checked="model.codeOwner"
+                label="Require code owner approval"
+              />
+              <ui-switch name="linear" :checked="model.linear" label="Require linear history" />
+              <ui-switch name="force" :checked="model.force" label="Allow force push" />
+              <ui-switch name="deletion" :checked="model.deletion" label="Allow branch deletion" />
+              <ui-field label="Required status checks" hint="Separate check names with commas.">
+                <ui-input name="checks" :value="model.checks" placeholder="build, test" />
+              </ui-field>
+            </div>
+            <footer class="modal-footer">
+              <ui-button ref="cancel">Cancel</ui-button>
+              <ui-button type="submit" primary>Save rule</ui-button>
+            </footer>
+          </form>
+        </ui-dialog>
+      </if>
+    </section>
+  </island>
+  <style scoped>
+    .rule-list {
+      display: grid;
+      gap: 12px;
+    }
+    .rule-card {
+      padding: 14px 16px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--bg-2);
+    }
+    .rule-heading {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .rule-pattern {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }
+    .rule-pattern code {
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .rule-badges {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      margin-top: 12px;
+    }
+  </style>
+  <script client scoped>
+    ctx.onUpdate(() => {
+      const next =
+        ctx.root.querySelector<HTMLElement>("[data-next-href]")?.dataset.nextHref;
+      if (next) location.assign(next);
+    });
+  </script>
+</component>

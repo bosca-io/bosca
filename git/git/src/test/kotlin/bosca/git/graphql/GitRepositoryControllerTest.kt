@@ -103,4 +103,22 @@ class GitRepositoryControllerTest {
         coEvery { permissionEvaluator.isAllowed(null, repo, PermissionAction.EXECUTE) } returns false
         assertEquals(false, controller.canExecute(null, repo))
     }
+    @Test
+    fun `edit and manage capabilities stay independent from execute`() = runTest {
+        coEvery { permissionEvaluator.isAllowed(auth, repo, PermissionAction.EXECUTE) } returns true
+        coEvery { permissionEvaluator.isAllowed(auth, repo, PermissionAction.EDIT) } returns false
+        coEvery { permissionEvaluator.isAllowed(auth, repo, PermissionAction.MANAGE) } returns false
+        assertEquals(true, controller.canExecute(auth, repo))
+        assertEquals(false, controller.canEdit(auth, repo))
+        assertEquals(false, controller.canManage(auth, repo))
+        coEvery { permissionEvaluator.isAllowed(auth, repo, PermissionAction.EDIT) } returns true
+        assertEquals(true, controller.canEdit(auth, repo))
+        assertEquals(false, controller.canManage(auth, repo))
+        coEvery { permissionEvaluator.isAllowed(auth, repo, PermissionAction.MANAGE) } returns true
+        assertEquals(true, controller.canManage(auth, repo))
+        coEvery { permissionEvaluator.isAllowed(null, repo, PermissionAction.EDIT) } returns false
+        coEvery { permissionEvaluator.isAllowed(null, repo, PermissionAction.MANAGE) } returns false
+        assertEquals(false, controller.canEdit(null, repo))
+        assertEquals(false, controller.canManage(null, repo))
+    }
 }

@@ -301,14 +301,21 @@ services:
     image: ${BOSCA_IMAGE_REGISTRY:-ghcr.io/bosca-io}/git-server:${BOSCA_VERSION:-0.0.28}
     environment:
       <<: *bosca-environment
-    ports:
-      - "127.0.0.1:${BOSCA_GIT_PORT:-8091}:8091"
+      GIT_HTTP_PORT: "8091"
+      GIT_UI_HTTP_PORT: "8093"
+      GIT_UI_URL: http://${BOSCA_HOST:-bosca.localhost}:${BOSCA_GIT_PORT:-8091}
+      APP_URL: http://${BOSCA_HOST:-bosca.localhost}:${BOSCA_GIT_PORT:-8091}
+      APP_ALLOWED_ORIGIN: http://${BOSCA_HOST:-bosca.localhost}:${BOSCA_GIT_PORT:-8091}
+      WEBAUTHN_EXTRA_ORIGIN: http://${BOSCA_HOST:-bosca.localhost}:${BOSCA_GIT_PORT:-8091}
+      OAUTH2_ALLOWED_REDIRECT: http://${BOSCA_HOST:-bosca.localhost}:${BOSCA_GIT_PORT:-8091}
+      OAUTH2_GOOGLE_REDIRECT: http://${BOSCA_HOST:-bosca.localhost}:${BOSCA_GIT_PORT:-8091}/oauth2/google/callback
+      OAUTH2_GOOGLE_ADMIN_REDIRECT: http://${BOSCA_HOST:-bosca.localhost}:${BOSCA_GIT_PORT:-8091}/oauth2/google/callback
     depends_on:
       bosca-server:
         condition: service_healthy
     healthcheck:
       <<: *ready
-      test: ["CMD", "bash", "-ec", "exec 3<>/dev/tcp/127.0.0.1/8091"]
+      test: ["CMD", "bash", "-ec", "for port in 8091 8093; do exec 3<>/dev/tcp/127.0.0.1/$$port; printf 'GET /api/v1/ready HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n' >&3; read -r protocol status rest <&3; test \"$$status\" = 200 || exit 1; exec 3>&-; done"]
 
   bml-message-server:
     <<: *bosca-service
@@ -366,6 +373,7 @@ services:
       BOSCA_PORT: ${BOSCA_PORT:-3000}
     ports:
       - "127.0.0.1:${BOSCA_PORT:-3000}:${BOSCA_PORT:-3000}"
+      - "127.0.0.1:${BOSCA_GIT_PORT:-8091}:8091"
     volumes:
       - ./deployments/local/Caddyfile:/etc/caddy/Caddyfile:ro
     networks:
@@ -374,6 +382,8 @@ services:
           - ${BOSCA_HOST:-bosca.localhost}
     depends_on:
       studio:
+        condition: service_healthy
+      git-server:
         condition: service_healthy
       analytics-collector:
         condition: service_healthy

@@ -14,6 +14,7 @@ import bosca.git.model.BranchProtectionRule
 import bosca.git.service.BranchProtectionServiceImpl
 import bosca.git.transport.GitPreReceiveHook
 import bosca.serialization.UUID
+import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.NonCancellable
@@ -27,6 +28,9 @@ import bosca.test.resources.SharedPostgreSQLContainer
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertNull
+import kotlin.test.assertNotNull
 
 /**
  * Exercises branch-protection lookup through the generated JDBC repository and the real
@@ -127,6 +131,57 @@ class BranchProtectionRepositoryIntegrationTest {
         )
         hook.onPreReceive(receivePack, mutableListOf(mainCommand))
         assertEquals(ReceiveCommand.Result.REJECTED_OTHER_REASON, mainCommand.result)
+    }
+
+    @Test
+    fun `API file commits enforce persisted rules and actual identity permissions`() = withDb {
+        val principalId = UUID.random()
+        val authentication = bosca.security.service.ImpersonatedAuthenticationContext(
+            bosca.security.model.Principal(id = principalId, verified = true, anonymous = false),
+            listOf(bosca.security.model.Group(UUID.random(), "editors", "", bosca.security.model.GroupType.SYSTEM)),
+        )
+        val denied = bosca.security.service.ImpersonatedAuthenticationContext(
+            bosca.security.model.Principal(id = UUID.random(), verified = true, anonymous = false), emptyList(),
+        )
+        val repo = bosca.git.model.Repository(id = repositoryId, slug = "r", name = "R", ownerId = UUID.random(), visibility = bosca.git.model.Visibility.PRIVATE)
+        val repoService = mockk<bosca.git.service.RepositoryService>()
+        coEvery { repoService.findById(repositoryId) } returns repo
+        coEvery { repoService.getPermissions(repo) } returns emptyList()
+        coEvery { repoService.isParentAllowed(any(), repo, any()) } returns false
+        val security = mockk<bosca.security.service.SecurityService>()
+        val groups = bosca.security.service.GroupEvaluator(security)
+        val evaluator = bosca.git.security.RepositoryPermissionEvaluator(repoService, security, groups)
+        val git = org.eclipse.jgit.internal.storage.dfs.InMemoryRepository(org.eclipse.jgit.internal.storage.dfs.DfsRepositoryDescription("api-protection"))
+        val manager = mockk<bosca.git.dfs.BoscaDfsRepositoryManager>()
+        every { manager.open(repositoryId) } returns git
+        val lock = mockk<bosca.lock.DistributedLock>(relaxed = true)
+        coEvery { lock.acquire(any(), any(), any()) } returns true
+        coEvery { lock.release() } returns true
+        val locks = mockk<bosca.lock.DistributedLockFactory>()
+        coEvery { locks.create(any()) } returns lock
+        val writes = bosca.git.service.RepositoryWriteServiceImpl(manager, mockk(relaxed = true), locks)
+        val mutation = bosca.git.graphql.GitRepositoryMutation(repoService, evaluator, service, mockk(), mockk(), mockk(), writes, mockk(), mockk(), groups, mockk(), mockk(), mockk())
+        val input = bosca.git.graphql.GraphQLCommitFileInput(repositoryId, "main", "README.md", "# Private\n", "Initial", "Author", "author@example.test")
+        try {
+            val rule = service.create(BranchProtectionRule(repositoryId = repositoryId, pattern = "main", requirePullRequest = true))
+            assertFailsWith<IllegalStateException> { mutation.commitFile(authentication, input) }
+            assertFailsWith<IllegalStateException> { mutation.deleteFile(authentication, repositoryId, "main", "README.md", "Author", "author@example.test") }
+            assertNull(git.resolve("refs/heads/main"))
+            assertFailsWith<bosca.security.service.SecurityException> { mutation.commitFile(denied, input.copy(branch = "feature/new")) }
+            assertNull(git.resolve("refs/heads/feature/new"))
+            val commit = mutation.commitFile(authentication, input.copy(branch = "feature/new"))
+            assertEquals(commit.commitSha, assertNotNull(git.resolve("refs/heads/feature/new")).name())
+            service.update(rule.copy(requirePullRequest = false, restrictPushAccess = listOf(UUID.random())))
+            assertFailsWith<IllegalStateException> { mutation.commitFile(authentication, input) }
+            service.update(rule.copy(requirePullRequest = false, restrictPushAccess = listOf(principalId)))
+            val allowed = mutation.commitFile(authentication, input)
+            assertEquals(allowed.commitSha, assertNotNull(git.resolve("refs/heads/main")).name())
+            mutation.deleteFile(authentication, repositoryId, "main", "README.md", "Author", "author@example.test")
+            org.eclipse.jgit.revwalk.RevWalk(git).use { walk ->
+                val head = walk.parseCommit(git.resolve("refs/heads/main"))
+                assertNull(org.eclipse.jgit.treewalk.TreeWalk.forPath(git, "README.md", head.tree))
+            }
+        } finally { git.close() }
     }
 
     private fun withDb(block: suspend () -> Unit) {

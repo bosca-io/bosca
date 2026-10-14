@@ -92,4 +92,13 @@ class GitRepositoryController(
     @Field
     suspend fun canExecute(authentication: AuthenticationContext?, source: Repository): Boolean =
         permissionEvaluator.isAllowed(authentication, source, PermissionAction.EXECUTE)
+    /** Reports the caller's current edit grant without inferring it from execution permission. */
+    @Field
+    suspend fun canEdit(authentication: AuthenticationContext?, source: Repository): Boolean =
+        permissionEvaluator.isAllowed(authentication, source, PermissionAction.EDIT)
+
+    /** Reports the caller's current management grant for configuration and lifecycle controls. */
+    @Field
+    suspend fun canManage(authentication: AuthenticationContext?, source: Repository): Boolean =
+        permissionEvaluator.isAllowed(authentication, source, PermissionAction.MANAGE)
 }

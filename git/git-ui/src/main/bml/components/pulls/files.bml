@@ -1,0 +1,51 @@
+<component tag="git-pull-files">
+  <prop name="entries" type="List<bosca.git.ui.DiffTreeEntry>" required />
+  <div class="diff-workspace">
+    <aside class="diff-sidebar" aria-label="Changed files">
+      <h2>Files</h2>
+      <git-diff-tree :entries="entries" />
+    </aside>
+    <div class="diff-column"><slot /></div>
+  </div>
+  <style scoped>
+    .diff-workspace {
+      display: grid;
+      grid-template-columns: 220px minmax(0, 1fr);
+      align-items: start;
+      min-width: 0;
+    }
+    .diff-sidebar {
+      min-width: 0;
+      padding-right: 12px;
+    }
+    h2 {
+      margin: 0 14px 6px;
+      color: var(--fg-3);
+      font-size: 11px;
+      font-weight: 600;
+      line-height: 18px;
+    }
+    .diff-column {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      min-width: 0;
+      padding-left: 16px;
+      border-left: 1px solid var(--line);
+    }
+    @media (max-width: 800px) {
+      .diff-workspace {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 12px;
+      }
+      .diff-sidebar {
+        padding: 0;
+      }
+      .diff-column {
+        padding: 12px 0 0;
+        border-left: 0;
+        border-top: 1px solid var(--line);
+      }
+    }
+  </style>
+</component>
