@@ -174,9 +174,9 @@ const selectedBook = computed<BibleBook | undefined>(() =>
 
 const chapterOptions = computed<SelectOption[]>(() => {
   if (!selectedBook.value) return []
-  return selectedBook.value.chapters.map((ch, i) => ({
+  return selectedBook.value.chapters.map(ch => ({
     value: ch.reference.usfm,
-    label: `Chapter ${i + 1}`,
+    label: ch.reference.human,
   }))
 })
 
