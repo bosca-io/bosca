@@ -39,7 +39,7 @@
   >
     <span class="button-content">
       <if icon.isNotBlank()>
-        <ui-icon :name="icon" :size='if (size == "xs") 12 else 14' />
+        <span class="button-icon"><ui-icon :name="icon" :size='if (size == "xs") 12 else 14' :strokeWidth="2.0" /></span>
       </if>
       <slot />
     </span>
@@ -58,12 +58,25 @@
       font-size: 13px;
       height: 32px;
     }
+    .button.size-sm:not(.icon-only) {
+      padding: 6px 10px;
+      font-size: 12.5px;
+      height: 28px;
+      line-height: 1;
+    }
     .button-content {
       display: inline-flex;
       align-items: center;
       justify-content: center;
       gap: 6px;
       min-width: 0;
+    }
+    .button-icon {
+      display: inline-flex;
+      color: var(--fg-2);
+    }
+    .button.primary .button-icon {
+      color: var(--accent);
     }
     .button-progress {
       display: none;
