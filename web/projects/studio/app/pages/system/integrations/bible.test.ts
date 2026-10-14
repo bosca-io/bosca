@@ -76,6 +76,24 @@ beforeEach(() => {
 })
 
 describe('Bible provider administration', () => {
+  it.each(['credentials', 'enablement'])('reloads source versions after changing %s before removal', async change => {
+    mutation.mockResolvedValue({ content: { bibleProviders: { saveConfiguration: config } } })
+    refreshSources.mockImplementation(async () => {
+      sourceData.value = { content: { bibleProviders: { sources: [{ ...source, version: 8 }] } } }
+    })
+    const wrapper = mount(BiblePage, { global })
+    await flushPromises()
+    await button(wrapper, 'Edit configuration').trigger('click')
+    if (change === 'credentials') await wrapper.get('[data-field="API key"]').setValue('replacement-key')
+    else await wrapper.get('[data-field="Enabled"]').setValue(false)
+    await button(wrapper, 'Save').trigger('click')
+    await flushPromises()
+    await button(wrapper, 'Remove source').trigger('click')
+    await button(wrapper, 'Remove').trigger('click')
+    await flushPromises()
+    expect(mutation).toHaveBeenLastCalledWith(expect.anything(), { sourceId: source.id, expectedVersion: 8 })
+  })
+
   it('edits configuration without returning or replacing the saved key', async () => {
     const wrapper = mount(BiblePage, { global })
     await button(wrapper, 'Edit configuration').trigger('click')
@@ -87,7 +105,7 @@ describe('Bible provider administration', () => {
     expect(mutation).toHaveBeenCalledWith(expect.anything(), { input: { id: config.id, name: 'Renamed', provider: 'API_BIBLE', enabled: true, apiKey: null } })
     expect(wrapper.find('.modal').exists()).toBe(false)
     expect(refresh).toHaveBeenCalledOnce()
-    expect(refreshSources).not.toHaveBeenCalled()
+    expect(refreshSources).toHaveBeenCalledOnce()
     expect(query).toHaveBeenLastCalledWith(expect.anything(), { configurationId: config.id, kind: 'TEXT', query: null, offset: 0, limit: 20 })
     expect(query).toHaveBeenCalledTimes(2)
   })

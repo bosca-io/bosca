@@ -863,6 +863,12 @@ class BibleProviderServiceImplTest {
                 }
             }
             coVerify(exactly = 1) { provider.downloadAudioChapter(any(), any(), any(), any()) }
+            request {
+                val replacement = bibles.getAudioChapter(bible, audio.id, "JHN.1")
+                assertNotEquals(stored.id, recordingId(replacement.url))
+                assertEquals("private-audio-token", service.getFumsToken(bible.metadataId, bible.version, bible.variant, "JHN.1", audio.id))
+            }
+            coVerify(exactly = 2) { provider.downloadAudioChapter(any(), any(), any(), any()) }
         }
     }
 
@@ -990,11 +996,24 @@ class BibleProviderServiceImplTest {
             val retained = chapterRepository.getAudioByEdition("API_BIBLE", "recording").flatMap { it.audio.orEmpty() }
             assertEquals(50, retained.size)
             assertEquals((1..50).map { "JHN.$it" }.toSet(), retained.map { it.usfm }.toSet())
+            for (index in 51..53) {
+                val selected = if (index % 2 == 0) source else other
+                assertEquals("token-$index", bibles.getAudioFumsToken(bible.metadataId, bible.version, bible.variant, "JHN.$index", selected.id))
+            }
+            assertEquals(0, bibles.limitAudioChapterContent("API_BIBLE", "recording"))
             val expired = retained.first().copy(expires = now.minusSeconds(1))
             chapterRepository.updateAudioContent(bible.metadataId, bible.version, bible.variant, expired.usfm, expired.sourceId, expired.sourceVersion,
                 json.encodeToJsonElement(kotlinx.serialization.builtins.ListSerializer(bosca.content.metadata.model.BibleChapterAudio.serializer()), listOf(expired)))
             assertEquals(1, bibles.removeExpiredChapterContent())
             assertNull(bibles.getAudioFumsToken(bible.metadataId, bible.version, bible.variant, expired.usfm, expired.sourceId))
+            val evicted = chapterRepository.getAudioBySource(other.id).flatMap { it.audio.orEmpty() }
+                .single { it.usfm == "JHN.51" }.copy(expires = now.minusSeconds(1))
+            assertFalse(evicted.cached)
+            chapterRepository.updateAudioContent(bible.metadataId, bible.version, bible.variant, evicted.usfm, other.id, other.version,
+                json.encodeToJsonElement(kotlinx.serialization.builtins.ListSerializer(bosca.content.metadata.model.BibleChapterAudio.serializer()), listOf(evicted)))
+            assertEquals(1, bibles.removeExpiredChapterContent())
+            assertNull(bibles.getAudioFumsToken(bible.metadataId, bible.version, bible.variant, evicted.usfm, other.id))
+            assertTrue(chapterRepository.getAudioBySource(other.id).flatMap { it.audio.orEmpty() }.none { it.id == evicted.id })
         }
     }
 
@@ -1573,7 +1592,7 @@ class BibleProviderServiceImplTest {
         coVerify(exactly = 0) { chapterRepository.getByEdition(any(), any(), any()) }
         coVerify(exactly = 0) { chapterRepository.removeContent(any(), any()) }
         assertEquals(2, runCleanup(queue))
-        assertNull(service.getFumsToken(bible.metadataId, bible.version, bible.variant, "JHN.1"))
+        assertEquals("chapter-token", service.getFumsToken(bible.metadataId, bible.version, bible.variant, "JHN.1"))
         assertEquals("chapter-token", service.getFumsToken(bible.metadataId, bible.version, "other", "JHN.2"))
         assertEquals(1, countRetained())
         assertEquals(listOf("JHN.1", "JHN.2"), bibles.getChapters(bibles.getBooks(bible).single()).map { it.usfm })
@@ -1654,7 +1673,7 @@ class BibleProviderServiceImplTest {
             assertEquals("chapter-token", service.getFumsToken(bible.metadataId, bible.version, bible.variant, "JHN.1"))
             assertEquals(1, runCleanup(queue))
             assertEquals(0, countRetained())
-            assertNull(service.getFumsToken(bible.metadataId, bible.version, bible.variant, "JHN.1"))
+            assertEquals("chapter-token", service.getFumsToken(bible.metadataId, bible.version, bible.variant, "JHN.1"))
             val chapter = assertNotNull(chapterRepository.getByIdAndVariantAndUsfm(
                 bible.metadataId, bible.version, bible.variant, "JHN.1",
             ))
@@ -1662,8 +1681,8 @@ class BibleProviderServiceImplTest {
             assertNull(chapter.components)
             assertNull(chapter.attribution)
             assertNull(chapter.verseCount)
-            assertNull(chapter.fumsToken)
-            assertNull(chapter.expires)
+            assertEquals("chapter-token", chapter.fumsToken)
+            assertNotNull(chapter.expires)
         }
         coVerify(exactly = 2) { provider.getChapter(configurationId, "edition", "JHN.1") }
         assertEquals(listOf("JHN.1", "JHN.2"), bibles.getChapters(bibles.getBooks(bible).single()).map { it.usfm })
@@ -1803,7 +1822,7 @@ class BibleProviderServiceImplTest {
     private fun response(usfm: String, verseCount: Int = 2, attribution: BibleAttribution? = BibleAttribution("Chapter copyright")) =
         BibleProviderResponse(Chapter(Reference(usfm), Text("Provider chapter", null)), attribution, verseCount, "chapter-token")
 
-    private suspend fun countRetained(): Int = connection().useStatement("select count(*) from bible_chapters where expires is not null") {
+    private suspend fun countRetained(): Int = connection().useStatement("select count(*) from bible_chapters where verse_count is not null") {
         it.executeQuery().use { result -> assertTrue(result.next()); result.getInt(1) }
     }
 

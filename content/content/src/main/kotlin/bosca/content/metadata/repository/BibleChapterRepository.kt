@@ -54,6 +54,7 @@ interface BibleChapterRepository {
         join bible_providers.sources source on source.id = chapter.source_id
         where chapter.source_id = :sourceId and chapter.usfm = :usfm and chapter.expires > :now
             and chapter.source_version = source.version and source.deleted_at is null
+            and chapter.components is not null and chapter.components <> 'null'::jsonb
     """)
     suspend fun getContent(sourceId: UUID, usfm: String, now: OffsetDateTime): BibleChapter?
 
@@ -99,14 +100,14 @@ interface BibleChapterRepository {
         join bible_providers.sources source on source.id = chapter.source_id
         where source.provider = :provider and source.provider_bible_id = :providerBibleId
             and source.kind = 'text' and source.deleted_at is null and chapter.expires > :now
+            and chapter.verse_count is not null
         order by chapter.created desc, chapter.source_id, chapter.usfm
     """)
     suspend fun getByEdition(provider: String, providerBibleId: String, now: OffsetDateTime): List<BibleChapter>
 
-    /** Evicts one complete response without removing the chapter reference. */
+    /** Evicts chapter text and attribution, retaining its usage token and expiry for delayed FUMS delivery. */
     @Query("""
-        update bible_chapters set components = null, attribution = null, source_version = null,
-            verse_count = null, fums_token = null, created = null, expires = null
+        update bible_chapters set components = null, attribution = null, verse_count = null
         where source_id = :sourceId and usfm = :usfm
     """, returnUpdateCount = true)
     suspend fun removeContent(sourceId: UUID, usfm: String): Int
@@ -164,6 +165,7 @@ interface BibleChapterRepository {
         cross join lateral (
             select jsonb_agg(cached.value) as audio from jsonb_array_elements(chapter.audio) cached
             where cached.value->>'sourceId' = source.id::text
+                and coalesce((cached.value->>'cached')::boolean, true)
         ) retained
         where source.provider = :provider and source.provider_bible_id = :providerBibleId
             and source.kind = 'audio' and retained.audio is not null
@@ -198,6 +200,18 @@ interface BibleChapterRepository {
         ) where usfm = :usfm and audio @> jsonb_build_array(jsonb_build_object('id', :id::text))
     """, returnUpdateCount = true)
     suspend fun removeAudioContent(audio: BibleChapterAudio): Int
+
+    /** Marks an exact recording evicted while retaining its usage token until expiry. */
+    @Query("""
+        update bible_chapters set audio = (
+            select jsonb_agg(case when value->>'id' = :id::text
+                then value || '{"cached": false}'::jsonb else value end)
+            from jsonb_array_elements(audio)
+        ) where usfm = :usfm and audio @> jsonb_build_array(jsonb_build_object('id', :id::text))
+            and exists (select 1 from jsonb_array_elements(audio)
+                where value->>'id' = :id::text and coalesce((value->>'cached')::boolean, true))
+    """, returnUpdateCount = true)
+    suspend fun evictAudioContent(audio: BibleChapterAudio): Int
 
     /** Reads an exact audio response token only while its source, variant and expiry remain current. */
     @Query("""

@@ -50,6 +50,7 @@ import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.days
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonNull
 
 internal fun getBibleAudioPath(id: UUID): ObjectPath = StringObjectPath("bible/audio/$id")
 
@@ -198,7 +199,8 @@ class BibleServiceImpl(
         val chapter = bibleChapterCache.get(key) ?: error("chapter not found")
         val sourceId = chapter.sourceId ?: return chapter.getContent()
         val source = sources.getForUse(sourceId, use)
-        if (chapter.sourceVersion == source.version && chapter.expires?.isAfter(OffsetDateTime.now()) == true) {
+        if (chapter.components != null && chapter.components != JsonNull && chapter.sourceVersion == source.version
+            && chapter.expires?.isAfter(OffsetDateTime.now()) == true) {
             return chapter.getContent()
         }
         check(!connection().inTransaction) { "Provider chapter requests must run outside a database transaction" }
@@ -313,7 +315,7 @@ class BibleServiceImpl(
         require(source.kind == BibleSourceKind.AUDIO && source.metadataId == bible.metadataId
             && source.metadataVersion == bible.version && source.variant == bible.variant) { "Recording does not belong to the Bible variant" }
         val key = "$audioId:$usfm"
-        fun BibleChapterAudio.isCurrent() = sourceVersion == source.version && expires.isAfter(OffsetDateTime.now())
+        fun BibleChapterAudio.isCurrent() = cached && sourceVersion == source.version && expires.isAfter(OffsetDateTime.now())
         val current = audioChapterCache.get(key)
         if (recordingId != null) {
             return current?.takeIf { it.id == recordingId && it.isCurrent() }
@@ -357,7 +359,7 @@ class BibleServiceImpl(
                         "Recording could not be saved for playback"
                     }
                     audioChapterCache.put(key, fetched)
-                    previous?.let { DeleteBibleAudioJob(it.id).enqueueLater(audioDeletionDelay) }
+                    previous?.takeIf { it.cached }?.let { DeleteBibleAudioJob(it.id).enqueueLater(audioDeletionDelay) }
                     DeleteBibleAudioJob(id).enqueueLater(14.days + audioDeletionDelay)
                     if (source.provider == API_BIBLE) LimitBibleAudioChaptersJob(source.provider, source.providerBibleId).enqueue()
                     true
@@ -390,7 +392,15 @@ class BibleServiceImpl(
         val recordings = bibleChapterRepository.getAudioByEdition(provider, providerBibleId).flatMap { it.audio.orEmpty() }
             .sortedByDescending { it.created }
         val now = OffsetDateTime.now()
-        removeAudioResponses(recordings.filter { !it.expires.isAfter(now) } + recordings.filter { it.expires.isAfter(now) }.drop(API_BIBLE_RECORDING_LIMIT))
+        var removed = removeAudioResponses(recordings.filter { !it.expires.isAfter(now) })
+        for (response in recordings.filter { it.expires.isAfter(now) }.drop(API_BIBLE_RECORDING_LIMIT)) {
+            if (bibleChapterRepository.evictAudioContent(response) > 0) {
+                audioChapterCache.remove("${response.sourceId}:${response.usfm}")
+                DeleteBibleAudioJob(response.id).enqueueLater(audioDeletionDelay)
+                removed++
+            }
+        }
+        removed
     }
 
     override suspend fun clearAudioChapterContent(id: UUID): Int = transaction {

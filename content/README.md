@@ -36,8 +36,9 @@ Run these commands from the **workspace root**. `content` is part of the root Gr
 API.Bible chapter reads enqueue edition-wide cache cleanup on the content queue after the
 response is stored. The worker keeps the newest responses within 499 verses across
 configurations. This limit is eventual while jobs are pending; the worker evicts whole
-responses, including chapters larger than the cache budget. Reads return the full chapter,
-and cached responses expire after 14 days.
+chapter text, including chapters larger than the cache budget. Reads return the full chapter.
+Usage tokens stay on the existing chapter rows after text eviction so delayed FUMS jobs
+can report usage; both text and usage metadata expire after 14 days.
 
 The existing Bible `/api/v1/content/metadata/` routes retain their response structure.
 Verse responses add attribution when available. The single-chapter `/api/v2/` route
@@ -59,7 +60,8 @@ Recording metadata remains on existing chapter rows, and media uses `ObjectStora
 Warm playback uses the chapter cache, which reads recording metadata from PostgreSQL on a miss.
 Background jobs retain the newest 50 files per upstream recording across configurations
 and delete evicted or expired media. Responses expire
-after 14 days; usage tokens remain private alongside their exact response. Cache entries
+after 14 days; private usage metadata remains on the chapter after media eviction until
+that expiry. Evicted recordings are excluded from playback and the 50-file limit. Cache entries
 are removed immediately, while media deletion has a five-minute grace period so requests
 that already resolved a recording can open it.
 

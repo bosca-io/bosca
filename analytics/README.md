@@ -84,7 +84,9 @@ it on the collector. This choice is independent of the event storage and job que
 transports. The `fumsQueueRunner` worker in `bosca-runner` resolves the private token through `BibleProviderService`
 and sends the [manual FUMS report](https://docs.api.bible/guides/fair-use/).
 Tokens never enter client responses, queued usage payloads, or Analytics events. Missing
-or expired tokens are skipped without fetching Scripture content. The ordinary job queue
+or expired tokens are skipped without fetching Scripture content. Pruning cached text or
+audio preserves usage tokens until their original expiry so pending reports can still be delivered.
+The ordinary job queue
 retries delivery failures and completes successful reports.
 
 ## Dependencies

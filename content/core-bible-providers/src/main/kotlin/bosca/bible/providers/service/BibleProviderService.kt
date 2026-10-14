@@ -46,9 +46,10 @@ interface BibleProviderService : Service {
     suspend fun getSources(configurationId: UUID): List<BibleSource>
 
     /**
-     * Looks up the server-only FUMS token for one cached chapter response in this exact
+     * Looks up the server-only FUMS token for a chapter response in this exact
      * Bible variant. [usfm] identifies the chapter; [audioId] selects a recording, and null
-     * selects text. Returns null for local content or when no unexpired cached token exists.
+     * selects text. Tokens survive text and media eviction until their original expiry.
+     * Returns null for local content or when no unexpired token exists.
      * Never fetches content or emits Analytics events. The token must not enter client
      * responses or analytical storage.
      */

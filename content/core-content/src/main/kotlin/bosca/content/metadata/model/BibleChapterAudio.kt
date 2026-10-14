@@ -19,6 +19,8 @@ data class BibleChapterAudio(
     val fumsToken: String?,
     @Contextual val created: OffsetDateTime,
     @Contextual val expires: OffsetDateTime,
+    /** Whether the media is retained; usage metadata survives eviction until [expires]. */
+    val cached: Boolean = true,
 ) {
     override fun toString(): String = "BibleChapterAudio(id=$id, sourceId=$sourceId, usfm=$usfm)"
 }

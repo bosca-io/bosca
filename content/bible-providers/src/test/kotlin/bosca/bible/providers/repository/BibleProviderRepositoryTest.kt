@@ -56,6 +56,7 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertSame
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 import kotlin.test.assertFalse
 import kotlin.uuid.toJavaUuid
 
@@ -308,6 +309,22 @@ class BibleProviderRepositoryTest {
         assertNull(chapters.getContent(source.id, "JHN.1", assertNotNull(cache.expires).plusDays(1)))
         assertEquals(1, chapters.removeExpired(assertNotNull(cache.expires)).size)
         assertEquals(0, chapters.removeExpired(assertNotNull(cache.expires)).size)
+    }
+
+    @Test
+    fun `evicted text keeps its token until the original expiry without remaining readable`() = withDb {
+        val source = assertNotNull(repository.add(source()))
+        val response = cache(source)
+        chapters.putContent(response)
+        chapters.removeContent(source.id, "JHN.1")
+
+        val beforeExpiry = assertNotNull(response.expires).minusSeconds(1)
+        assertNull(chapters.getContent(source.id, "JHN.1", beforeExpiry))
+        assertTrue(chapters.getByEdition(source.provider, source.providerBibleId, beforeExpiry).isEmpty())
+        assertEquals(response.fumsToken, chapters.getFumsToken(metadataId, 1, "default", "JHN.1", beforeExpiry))
+        val cleared = chapters.removeExpired(assertNotNull(response.expires)).single()
+        assertNull(cleared.fumsToken)
+        assertNull(chapters.getFumsToken(metadataId, 1, "default", "JHN.1", assertNotNull(response.expires)))
     }
 
     @Test

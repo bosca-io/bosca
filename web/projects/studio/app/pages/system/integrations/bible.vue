@@ -82,6 +82,7 @@ async function saveConfiguration() {
   if (result === null) return
   closeConfiguration()
   await refresh()
+  if (!creating) await refreshSources()
   const savedId = result.content.bibleProviders.saveConfiguration.id
   // Selecting a different configuration reloads the catalog through the configuration watcher.
   if (creating && configurationId.value !== savedId) configurationId.value = savedId

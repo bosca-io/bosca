@@ -475,7 +475,10 @@ class BibleServiceImplCoverageTest {
         coEvery { bibleChapterRepository.getAudioByEdition("API_BIBLE", "recording") } returns listOf(chapter(bible.metadataId).copy(audio = responses))
         coEvery { bibleChapterRepository.removeAudioContent(any()) } returns 1
         coEvery { bibleChapterRepository.removeAudioContent(responses[0]) } returns 0
+        coEvery { bibleChapterRepository.evictAudioContent(responses.last()) } returns 1
         withRequest { assertEquals(1, service.limitAudioChapterContent("API_BIBLE", "recording")) }
+        coVerify(exactly = 1) { bibleChapterRepository.evictAudioContent(responses.last()) }
+        coVerify(exactly = 0) { bibleChapterRepository.removeAudioContent(responses.last()) }
         coEvery { bibleChapterRepository.getRetainedAudio() } returns listOf(chapter(bible.metadataId).copy(audio = responses))
         coEvery { bibleChapterRepository.removeExpired(any()) } returns emptyList()
         withRequest { assertEquals(0, service.removeExpiredChapterContent()) }

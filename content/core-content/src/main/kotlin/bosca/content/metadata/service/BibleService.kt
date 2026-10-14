@@ -136,11 +136,11 @@ interface BibleService : Service {
 
     /**
      * Trims an upstream edition to 499 retained verses across configurations, keeping newest responses first.
-     * Called by background maintenance; returns the number of complete chapter responses cleared.
+     * Preserves usage tokens until their original expiry. Returns the number of chapters evicted.
      */
     suspend fun limitChapterContent(provider: String, providerBibleId: String): Int
 
-    /** Reads a private token from an unexpired provider response without fetching chapter text. */
+    /** Reads a private token until its original response expiry, including after text eviction, without fetching text. */
     suspend fun getFumsToken(id: UUID, version: Int, variant: String, usfm: String): String?
 
     /** Lists recordings attached to this exact Bible variant without downloading chapter media. */
@@ -159,7 +159,7 @@ interface BibleService : Service {
      */
     suspend fun getAudioPlayback(bible: Bible, audioId: UUID, usfm: String, recordingId: UUID? = null): BibleAudioPlayback
 
-    /** Reads an unexpired recording response's private usage token without downloading media. */
+    /** Reads a private token until its original response expiry, including after media eviction, without downloading media. */
     suspend fun getAudioFumsToken(id: UUID, version: Int, variant: String, usfm: String, audioId: UUID): String?
 
     /** Trims one upstream recording to 50 retained files across configurations, keeping newest responses first. */
