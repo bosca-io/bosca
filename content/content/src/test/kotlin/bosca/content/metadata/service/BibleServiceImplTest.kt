@@ -1,5 +1,6 @@
 package bosca.content.metadata.service
 
+import bosca.bible.providers.service.BibleSourceService
 import bosca.cache.CacheManager
 import bosca.content.metadata.repository.BibleBookRepository
 import bosca.content.metadata.repository.BibleChapterRepository
@@ -20,6 +21,7 @@ class BibleServiceImplTest {
     private val bibleLanguageRepository = mockk<BibleLanguageRepository>(relaxed = true)
     private val cacheManager = mockk<CacheManager>(relaxed = true)
 
+    private val sources = mockk<BibleSourceService>(relaxed = true)
     private lateinit var service: BibleServiceImpl
 
     @BeforeTest
@@ -29,7 +31,13 @@ class BibleServiceImplTest {
             bibleRepository,
             bibleBookRepository,
             bibleChapterRepository,
-            bibleLanguageRepository
+            mockk(relaxed = true),
+            bibleLanguageRepository,
+            sources,
+            mockk(relaxed = true),
+            mockk(relaxed = true),
+            kotlinx.serialization.json.Json,
+            mockk(relaxed = true),
         )
     }
 

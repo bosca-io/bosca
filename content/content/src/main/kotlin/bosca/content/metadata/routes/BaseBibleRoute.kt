@@ -11,8 +11,8 @@ import bosca.security.model.PermissionAction
 import bosca.security.service.AuthenticationContext
 import bosca.serialization.UUID
 import bosca.server.ServerCall
+import kotlinx.coroutines.CancellationException
 import java.util.Locale
-import kotlin.uuid.toKotlinUuid
 
 abstract class BaseBibleRoute<T>(
     protected val metadataService: MetadataService,
@@ -26,6 +26,8 @@ abstract class BaseBibleRoute<T>(
         val metadata = try {
             val id = UUID.parse(id)
             version?.let { metadataService.getById(id, it) } ?: metadataService.getById(id)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             null
         }?.takeIf { !it.deleted } ?: return null

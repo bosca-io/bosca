@@ -1,5 +1,9 @@
 "A Bible translation or version available in the system, containing books, chapters, and verses with rendering metadata for scripture display"
 type Bible {
+    "Bosca content identity for selecting an exact Bible variant"
+    metadataId: UUID!
+    "Content version containing this Bible variant"
+    version: Int!
     "Unique identifier for this Bible within the external Bible API or system"
     systemId: String!
     "Variant identifier distinguishing different editions or formats of the same Bible (e.g. 'reader', 'study')"
@@ -20,6 +24,10 @@ type Bible {
     abbreviationLocal: String!
     "All books contained in this Bible translation"
     books: [BibleBook!]!
+    "Recordings attached to this exact Bible variant; listing does not download media"
+    audio: [BibleAudio!]!
+    "Authorized chapter recording with its attribution and timing; media is downloaded on demand"
+    audioChapter(audioId: UUID!, usfm: String!): BibleAudioChapter!
     "Human-readable description of this Bible translation"
     description: String!
     "Languages available for this Bible translation"
@@ -32,6 +40,38 @@ type Bible {
     book(usfm: String!): BibleBook
     "Search for scripture by a human-readable reference string (e.g. 'Genesis 1:1' or 'John 3:16-18'). Returns matching books, chapters, and verse ranges."
     find(human: String!): [FindBibleResult!]!
+}
+
+"An attached recording; listing it does not download audio"
+type BibleAudio {
+    id: UUID!
+    name: String!
+    nameLocal: String!
+    abbreviation: String!
+    attribution: BibleAttribution!
+}
+
+"A chapter recording served through an authorized Bosca route"
+type BibleAudioChapter {
+    audio: BibleAudio!
+    usfm: String!
+    url: String!
+    content: BibleAudioContent!
+    attribution: BibleAttribution!
+}
+
+"Format, byte length and verse timing of a downloaded recording"
+type BibleAudioContent {
+    contentType: String!
+    contentLength: Long!
+    timecodes: [BibleAudioTimecode!]!
+}
+
+"A verse's start and end offsets in seconds within a chapter recording"
+type BibleAudioTimecode {
+    usfm: String!
+    start: Float!
+    end: Float!
 }
 
 "A book within a Bible translation, such as Genesis or Matthew"
@@ -50,12 +90,21 @@ type BibleBook {
 
 "A chapter within a Bible book, containing the rendered component tree and verse references"
 type BibleChapter {
+    "Copyright and citation supplied with this chapter's content, when available"
+    attribution: BibleAttribution
     "JSON component tree representing the rendered chapter content, including verses, paragraphs, poetry, and styling"
     component: JSON!
     "USFM reference identifying this chapter (e.g. 'GEN.1')"
     reference: BibleReference!
     "References to all verses contained in this chapter"
     verses: [BibleReference!]!
+}
+
+"Copyright and citation accompanying delivered Scripture content"
+type BibleAttribution {
+    copyright: String!
+    citation: String!
+    informationUrl: String
 }
 
 "A language associated with a Bible translation, including script and directionality information for rendering"
@@ -86,6 +135,8 @@ type BibleReference {
 
 "A result from searching the Bible by a human-readable reference string, containing the matched book, chapter, and verse range"
 type FindBibleResult {
+    "Copyright and citation supplied with the matched content, when available"
+    attribution: BibleAttribution
     "The matched Bible book"
     book: BibleBook!
     "The matched chapter, if the reference specifies a chapter"

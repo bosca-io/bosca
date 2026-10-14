@@ -1,5 +1,6 @@
 package bosca.server.configuration
 
+import bosca.analytics.configuration.AnalyticsConfiguration
 import bosca.analytics.livesessions.LiveSessionsService
 import bosca.db.migrations.CoreMigration
 import bosca.db.migrations.Migration
@@ -26,6 +27,7 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
@@ -37,6 +39,19 @@ class ConfigurationTest {
     @AfterTest
     fun tearDown() {
         ProviderRegistry.clear()
+    }
+
+    @Test
+    fun `packaged server configuration enables the FUMS worker`() {
+        val runners = ApplicationConfig.loadFromClasspath().property("runners.enabled").getList()
+        assertTrue("fumsQueueRunner" in runners)
+    }
+
+    @Test
+    fun `packaged server configuration leaves FUMS ingestion to the collector`() {
+        val config = ApplicationConfig.loadFromClasspath()
+        assertNull(config.propertyOrNull("eventProcessing.fumsEnabled"))
+        assertEquals(false, AnalyticsConfiguration().eventProcessingConfiguration(BoscaApplication(config)).fumsEnabled)
     }
 
     @Test

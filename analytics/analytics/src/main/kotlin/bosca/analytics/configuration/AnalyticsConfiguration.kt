@@ -270,6 +270,16 @@ class AnalyticsConfiguration {
         errorCapture,
     )
 
+    @Provider(singleton = true, name = JobQueueNames.fumsJobQueue)
+    fun fumsJobQueue(factory: JobQueueFactory): JobQueue = factory.create(JobQueueNames.fumsQueue)
+
+    @Provider(name = JobQueueNames.fumsRunner)
+    fun fumsJobQueueRunner(
+        @ProviderName(JobQueueNames.fumsJobQueue) queue: JobQueue,
+        distributedLockFactory: DistributedLockFactory,
+        errorCapture: ObjectProvider<ErrorCapture>,
+    ): JobRunner = JobRunner(queue, 100, distributedLockFactory, errorCapture)
+
     @Provider(name = "analytics-queries")
     fun analyticsQueriesInstaller(
         service: AnalyticsQueryService,

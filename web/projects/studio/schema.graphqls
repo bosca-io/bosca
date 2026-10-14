@@ -120,6 +120,21 @@ input AddGitReviewCommentInput {
   reviewId: UUID!
 }
 
+input AddProviderAudioInput {
+  """Audio sources may permit only PLAYBACK; an empty list grants no use"""
+  allowedUses: [BibleContentUse!]!
+  configurationId: UUID!
+  providerBibleId: String!
+}
+
+input AddProviderBibleInput {
+  """Uses reviewed by an administrator; an empty list grants no use"""
+  allowedUses: [BibleContentUse!]!
+  configurationId: UUID!
+  providerBibleId: String!
+  variant: String!
+}
+
 """Address role: where the bill goes vs. where the goods go."""
 enum AddressType {
   BILLING
@@ -2134,6 +2149,14 @@ type Bible {
   abbreviation: String!
   """Short abbreviation of the Bible translation in its native language"""
   abbreviationLocal: String!
+  """
+  Recordings attached to this exact Bible variant; listing does not download media
+  """
+  audio: [BibleAudio!]!
+  """
+  Authorized chapter recording with its attribution and timing; media is downloaded on demand
+  """
+  audioChapter(audioId: UUID!, usfm: String!): BibleAudioChapter!
   """Look up a specific book by its USFM reference (e.g. 'GEN' for Genesis)"""
   book(usfm: String!): BibleBook
   """All books contained in this Bible translation"""
@@ -2156,6 +2179,8 @@ type Bible {
   find(human: String!): [FindBibleResult!]!
   """Languages available for this Bible translation"""
   languages: [BibleLanguage!]!
+  """Bosca content identity for selecting an exact Bible variant"""
+  metadataId: UUID!
   """
   Display name of the Bible translation in English (e.g. 'English Standard Version')
   """
@@ -2178,6 +2203,47 @@ type Bible {
   Variants stored for the same metadata version. Disabled variants require edit access and includeDisabled: true.
   """
   variants(includeDisabled: Boolean): [Bible!]!
+  """Content version containing this Bible variant"""
+  version: Int!
+}
+
+"""Copyright and citation accompanying delivered Scripture content"""
+type BibleAttribution {
+  citation: String!
+  copyright: String!
+  informationUrl: String
+}
+
+"""An attached recording; listing it does not download audio"""
+type BibleAudio {
+  abbreviation: String!
+  attribution: BibleAttribution!
+  id: UUID!
+  name: String!
+  nameLocal: String!
+}
+
+"""A chapter recording served through an authorized Bosca route"""
+type BibleAudioChapter {
+  attribution: BibleAttribution!
+  audio: BibleAudio!
+  content: BibleAudioContent!
+  url: String!
+  usfm: String!
+}
+
+"""Format, byte length and verse timing of a downloaded recording"""
+type BibleAudioContent {
+  contentLength: Long!
+  contentType: String!
+  timecodes: [BibleAudioTimecode!]!
+}
+
+"""A verse's start and end offsets in seconds within a chapter recording"""
+type BibleAudioTimecode {
+  end: Float!
+  start: Float!
+  usfm: String!
 }
 
 """A book within a Bible translation, such as Genesis or Matthew"""
@@ -2195,9 +2261,30 @@ type BibleBook {
 }
 
 """
+A text Bible or recording available upstream; browsing does not download chapter content
+"""
+type BibleCatalog {
+  abbreviation: String!
+  abbreviationLocal: String!
+  attribution: BibleAttribution!
+  description: String!
+  id: String!
+  kind: BibleSourceKind!
+  languages: [BibleLanguage!]!
+  name: String!
+  nameLocal: String!
+  relatedSystemId: String
+  systemId: String!
+}
+
+"""
 A chapter within a Bible book, containing the rendered component tree and verse references
 """
 type BibleChapter {
+  """
+  Copyright and citation supplied with this chapter's content, when available
+  """
+  attribution: BibleAttribution
   """
   JSON component tree representing the rendered chapter content, including verses, paragraphs, poetry, and styling
   """
@@ -2206,6 +2293,15 @@ type BibleChapter {
   reference: BibleReference!
   """References to all verses contained in this chapter"""
   verses: [BibleReference!]!
+}
+
+enum BibleContentUse {
+  AI_CONTEXT
+  DISPLAY
+  EXPORT
+  INDEXING
+  PLAYBACK
+  TEXT_TO_SPEECH
 }
 
 """
@@ -2272,6 +2368,47 @@ input BibleLanguageInput {
   scriptDirection: String!
 }
 
+"""Saved provider setup without credentials"""
+type BibleProviderConfiguration {
+  enabled: Boolean!
+  hasApiKey: Boolean!
+  id: UUID!
+  name: String!
+  provider: String!
+}
+
+input BibleProviderConfigurationInput {
+  """Omit or send null to preserve the saved key when updating"""
+  apiKey: String
+  enabled: Boolean!
+  id: UUID
+  name: String!
+  provider: String!
+}
+
+"""Administrator queries for Bible provider integration"""
+type BibleProviders {
+  audioTargets(configurationId: UUID!, providerBibleId: String!): [Bible!]!
+  catalog(configurationId: UUID!, kind: BibleSourceKind!, limit: Int! = 20, offset: Int! = 0, query: String): [BibleCatalog!]!
+  configurations: [BibleProviderConfiguration!]!
+  providers: [String!]!
+  sources(configurationId: UUID!): [BibleSource!]!
+}
+
+"""
+Administrator operations for configuring providers and managing their sources
+"""
+type BibleProvidersMutation {
+  addAudio(bibleId: UUID!, input: AddProviderAudioInput!, variant: String!, version: Int!): BibleAudio!
+  addBible(input: AddProviderBibleInput!): Bible!
+  refresh(sourceId: UUID!): Boolean!
+  """Active sources prevent removal unless purgeSources is explicitly true"""
+  removeConfiguration(configurationId: UUID!, purgeSources: Boolean! = false): Boolean!
+  removeSource(expectedVersion: Long!, sourceId: UUID!): Boolean!
+  saveConfiguration(input: BibleProviderConfigurationInput!): BibleProviderConfiguration!
+  test(configurationId: UUID!): Boolean!
+}
+
 """
 A reference to a specific location in a Bible, providing both human-readable and machine-readable formats
 """
@@ -2284,6 +2421,33 @@ type BibleReference {
   USFM (Unified Standard Format Markers) reference identifier (e.g. 'GEN.1.1')
   """
   usfm: String!
+}
+
+"""
+A provider edition attached to an exact Bosca Bible version and variant
+"""
+type BibleSource {
+  abbreviation: String!
+  allowedUses: [BibleContentUse!]!
+  attribution: BibleAttribution!
+  configurationId: UUID!
+  created: DateTime!
+  id: UUID!
+  kind: BibleSourceKind!
+  metadataId: UUID!
+  metadataVersion: Int!
+  modified: DateTime!
+  name: String!
+  nameLocal: String!
+  provider: String!
+  providerBibleId: String!
+  variant: String!
+  version: Long!
+}
+
+enum BibleSourceKind {
+  AUDIO
+  TEXT
 }
 
 """
@@ -5053,6 +5217,7 @@ type ContainersMutation {
 The primary content query type providing access to all content management features — collections, metadata, categories, workflow states, and search
 """
 type Content {
+  bibleProviders: BibleProviders!
   """Access category queries"""
   categories: Categories!
   """
@@ -5234,6 +5399,7 @@ type ContentJobHistory {
 
 """Mutation operations for all content management features"""
 type ContentMutation {
+  bibleProviders: BibleProvidersMutation!
   """Access category mutations"""
   category: CategoryMutation!
   """Access collection mutations"""
@@ -7523,6 +7689,10 @@ input FindAttributesInput {
 A result from searching the Bible by a human-readable reference string, containing the matched book, chapter, and verse range
 """
 type FindBibleResult {
+  """
+  Copyright and citation supplied with the matched content, when available
+  """
+  attribution: BibleAttribution
   """The matched Bible book"""
   book: BibleBook!
   """The matched chapter, if the reference specifies a chapter"""

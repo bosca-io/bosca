@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import gql from 'graphql-tag'
 import { useAuth } from '@bosca/auth-client-browser'
+import type { Bible, BibleAttribution as Attribution } from '~/types/graphql'
+import BibleAttribution from '~/components/bible/BibleAttribution.vue'
 
 const references = defineModel('references', {
   type: Array as () => string[],
@@ -51,6 +53,8 @@ interface StyleDef {
 interface BibleChapter {
   usfm: string
   human: string
+  chapter: Pick<Bible, 'metadataId' | 'version' | 'variant'> & { usfm: string }
+  attribution: Attribution | null
   // Each entry is the root component tree for one matched reference in this chapter.
   content?: ComponentNode[]
 }
@@ -182,7 +186,7 @@ async function loadChapters() {
 
 watch(references, loadChapters, { deep: true })
 watch(metadata, () => { loadStyles(); loadChapters() })
-onMounted(() => { loadBibles(); loadStyles() })
+onMounted(() => { loadBibles(); loadStyles(); loadChapters() })
 </script>
 
 <template>
@@ -207,10 +211,19 @@ onMounted(() => { loadBibles(); loadStyles() })
 
     <div
       v-for="chapter in chapters"
-      :key="chapter.usfm"
+      :key="`${chapter.chapter.metadataId}:${chapter.chapter.version}:${chapter.chapter.variant}:${chapter.usfm}`"
       class="bible-chapter"
     >
-      <div class="bible-chapter-header">
+      <div
+        class="bible-chapter-header"
+        data-ba-track="bible-text"
+        data-ba-element-type="bible-text"
+        data-ba-no-text
+        :data-ba-bible-id="chapter.chapter.metadataId"
+        :data-ba-bible-version="chapter.chapter.version"
+        :data-ba-bible-variant="chapter.chapter.variant"
+        :data-ba-bible-usfm="chapter.chapter.usfm"
+      >
         <span class="bible-chapter-title">{{ chapter.human }}</span>
         <button class="bible-remove-btn" @click="removeReference(chapter.usfm)">
           <Icon name="x" :size="13" color="var(--err)" />
@@ -222,6 +235,7 @@ onMounted(() => { loadBibles(); loadStyles() })
           :styles="styleMap"
           :accent="accent"
         />
+        <BibleAttribution v-if="chapter.attribution" :attribution="chapter.attribution" />
       </div>
     </div>
   </div>

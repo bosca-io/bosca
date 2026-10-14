@@ -1,6 +1,8 @@
 package bosca.content.metadata.routes
 
+import bosca.bible.BibleContentUse
 import bosca.content.metadata.model.BibleChapter
+import bosca.content.metadata.model.toJson
 import bosca.content.metadata.service.BibleService
 import bosca.content.metadata.service.MetadataService
 import bosca.content.security.MetadataPermissionEvaluator
@@ -24,6 +26,10 @@ class GetBibleBookChapter(
         val bookUsfm = call.pathParameters["bookUsfm"].toString()
         val book = books.find { it.usfm == bookUsfm } ?: return null
         val chapterUsfm = call.pathParameters["chapterUsfm"].toString()
-        return bibleService.getChapter(book, chapterUsfm)
+        val chapter = bibleService.getChapter(book, chapterUsfm)
+        if (chapter.sourceId == null) return chapter
+        // Provider chapters keep the v1 shape, with text read under the display use checks.
+        val content = bibleService.getChapterContent(book, chapterUsfm, BibleContentUse.DISPLAY).chapter
+        return chapter.copy(components = content[content.reference]?.toJson())
     }
 }

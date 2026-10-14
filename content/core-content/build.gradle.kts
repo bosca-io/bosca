@@ -25,12 +25,12 @@ kotlin {
 
 dependencies {
     api(project(":bosca-kmp:dom-shared"))
+    api(project(":bosca-kmp:bible-dom-shared"))
 
     implementation(project(":bosca-core:core"))
     implementation(project(":bosca-core:core-security"))
     implementation(project(":bosca-core:core-storage"))
     implementation(project(":bosca-yks:yks"))
-    implementation(project(":bosca-kmp:bible-dom-shared"))
 
     implementation(libs.ical4j)
 

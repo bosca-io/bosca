@@ -176,6 +176,21 @@ export type AddGitReviewCommentInput = {
   reviewId: Scalars['UUID']['input'];
 };
 
+export type AddProviderAudioInput = {
+  /** Audio sources may permit only PLAYBACK; an empty list grants no use */
+  allowedUses: Array<BibleContentUse>;
+  configurationId: Scalars['UUID']['input'];
+  providerBibleId: Scalars['String']['input'];
+};
+
+export type AddProviderBibleInput = {
+  /** Uses reviewed by an administrator; an empty list grants no use */
+  allowedUses: Array<BibleContentUse>;
+  configurationId: Scalars['UUID']['input'];
+  providerBibleId: Scalars['String']['input'];
+  variant: Scalars['String']['input'];
+};
+
 /** Address role: where the bill goes vs. where the goods go. */
 export enum AddressType {
   Billing = 'BILLING',
@@ -2580,6 +2595,10 @@ export type Bible = {
   abbreviation: Scalars['String']['output'];
   /** Short abbreviation of the Bible translation in its native language */
   abbreviationLocal: Scalars['String']['output'];
+  /** Recordings attached to this exact Bible variant; listing does not download media */
+  audio: Array<BibleAudio>;
+  /** Authorized chapter recording with its attribution and timing; media is downloaded on demand */
+  audioChapter: BibleAudioChapter;
   /** Look up a specific book by its USFM reference (e.g. 'GEN' for Genesis) */
   book?: Maybe<BibleBook>;
   /** All books contained in this Bible translation */
@@ -2596,6 +2615,8 @@ export type Bible = {
   find: Array<FindBibleResult>;
   /** Languages available for this Bible translation */
   languages: Array<BibleLanguage>;
+  /** Bosca content identity for selecting an exact Bible variant */
+  metadataId: Scalars['UUID']['output'];
   /** Display name of the Bible translation in English (e.g. 'English Standard Version') */
   name: Scalars['String']['output'];
   /** Display name of the Bible translation in its native language */
@@ -2608,6 +2629,15 @@ export type Bible = {
   variant: Scalars['String']['output'];
   /** Variants stored for the same metadata version. Disabled variants require edit access and includeDisabled: true. */
   variants: Array<Bible>;
+  /** Content version containing this Bible variant */
+  version: Scalars['Int']['output'];
+};
+
+
+/** A Bible translation or version available in the system, containing books, chapters, and verses with rendering metadata for scripture display */
+export type Bible_AudioChapterArgs = {
+  audioId: Scalars['UUID']['input'];
+  usfm: Scalars['String']['input'];
 };
 
 
@@ -2634,6 +2664,50 @@ export type Bible_VariantsArgs = {
   includeDisabled?: InputMaybe<Scalars['Boolean']['input']>;
 };
 
+/** Copyright and citation accompanying delivered Scripture content */
+export type BibleAttribution = {
+  __typename?: 'BibleAttribution';
+  citation: Scalars['String']['output'];
+  copyright: Scalars['String']['output'];
+  informationUrl?: Maybe<Scalars['String']['output']>;
+};
+
+/** An attached recording; listing it does not download audio */
+export type BibleAudio = {
+  __typename?: 'BibleAudio';
+  abbreviation: Scalars['String']['output'];
+  attribution: BibleAttribution;
+  id: Scalars['UUID']['output'];
+  name: Scalars['String']['output'];
+  nameLocal: Scalars['String']['output'];
+};
+
+/** A chapter recording served through an authorized Bosca route */
+export type BibleAudioChapter = {
+  __typename?: 'BibleAudioChapter';
+  attribution: BibleAttribution;
+  audio: BibleAudio;
+  content: BibleAudioContent;
+  url: Scalars['String']['output'];
+  usfm: Scalars['String']['output'];
+};
+
+/** Format, byte length and verse timing of a downloaded recording */
+export type BibleAudioContent = {
+  __typename?: 'BibleAudioContent';
+  contentLength: Scalars['Long']['output'];
+  contentType: Scalars['String']['output'];
+  timecodes: Array<BibleAudioTimecode>;
+};
+
+/** A verse's start and end offsets in seconds within a chapter recording */
+export type BibleAudioTimecode = {
+  __typename?: 'BibleAudioTimecode';
+  end: Scalars['Float']['output'];
+  start: Scalars['Float']['output'];
+  usfm: Scalars['String']['output'];
+};
+
 /** A book within a Bible translation, such as Genesis or Matthew */
 export type BibleBook = {
   __typename?: 'BibleBook';
@@ -2649,9 +2723,27 @@ export type BibleBook = {
   reference: BibleReference;
 };
 
+/** A text Bible or recording available upstream; browsing does not download chapter content */
+export type BibleCatalog = {
+  __typename?: 'BibleCatalog';
+  abbreviation: Scalars['String']['output'];
+  abbreviationLocal: Scalars['String']['output'];
+  attribution: BibleAttribution;
+  description: Scalars['String']['output'];
+  id: Scalars['String']['output'];
+  kind: BibleSourceKind;
+  languages: Array<BibleLanguage>;
+  name: Scalars['String']['output'];
+  nameLocal: Scalars['String']['output'];
+  relatedSystemId?: Maybe<Scalars['String']['output']>;
+  systemId: Scalars['String']['output'];
+};
+
 /** A chapter within a Bible book, containing the rendered component tree and verse references */
 export type BibleChapter = {
   __typename?: 'BibleChapter';
+  /** Copyright and citation supplied with this chapter's content, when available */
+  attribution?: Maybe<BibleAttribution>;
   /** JSON component tree representing the rendered chapter content, including verses, paragraphs, poetry, and styling */
   component: Scalars['JSON']['output'];
   /** USFM reference identifying this chapter (e.g. 'GEN.1') */
@@ -2659,6 +2751,15 @@ export type BibleChapter = {
   /** References to all verses contained in this chapter */
   verses: Array<BibleReference>;
 };
+
+export enum BibleContentUse {
+  AiContext = 'AI_CONTEXT',
+  Display = 'DISPLAY',
+  Export = 'EXPORT',
+  Indexing = 'INDEXING',
+  Playback = 'PLAYBACK',
+  TextToSpeech = 'TEXT_TO_SPEECH'
+}
 
 /** Input for creating or importing a complete Bible translation, including all books, chapters, languages, and styles */
 export type BibleInput = {
@@ -2719,6 +2820,118 @@ export type BibleLanguageInput = {
   scriptDirection: Scalars['String']['input'];
 };
 
+/** Saved provider setup without credentials */
+export type BibleProviderConfiguration = {
+  __typename?: 'BibleProviderConfiguration';
+  enabled: Scalars['Boolean']['output'];
+  hasApiKey: Scalars['Boolean']['output'];
+  id: Scalars['UUID']['output'];
+  name: Scalars['String']['output'];
+  provider: Scalars['String']['output'];
+};
+
+export type BibleProviderConfigurationInput = {
+  /** Omit or send null to preserve the saved key when updating */
+  apiKey?: InputMaybe<Scalars['String']['input']>;
+  enabled: Scalars['Boolean']['input'];
+  id?: InputMaybe<Scalars['UUID']['input']>;
+  name: Scalars['String']['input'];
+  provider: Scalars['String']['input'];
+};
+
+/** Administrator queries for Bible provider integration */
+export type BibleProviders = {
+  __typename?: 'BibleProviders';
+  audioTargets: Array<Bible>;
+  catalog: Array<BibleCatalog>;
+  configurations: Array<BibleProviderConfiguration>;
+  providers: Array<Scalars['String']['output']>;
+  sources: Array<BibleSource>;
+};
+
+
+/** Administrator queries for Bible provider integration */
+export type BibleProviders_AudioTargetsArgs = {
+  configurationId: Scalars['UUID']['input'];
+  providerBibleId: Scalars['String']['input'];
+};
+
+
+/** Administrator queries for Bible provider integration */
+export type BibleProviders_CatalogArgs = {
+  configurationId: Scalars['UUID']['input'];
+  kind: BibleSourceKind;
+  limit?: Scalars['Int']['input'];
+  offset?: Scalars['Int']['input'];
+  query?: InputMaybe<Scalars['String']['input']>;
+};
+
+
+/** Administrator queries for Bible provider integration */
+export type BibleProviders_SourcesArgs = {
+  configurationId: Scalars['UUID']['input'];
+};
+
+/** Administrator operations for configuring providers and managing their sources */
+export type BibleProvidersMutation = {
+  __typename?: 'BibleProvidersMutation';
+  addAudio: BibleAudio;
+  addBible: Bible;
+  refresh: Scalars['Boolean']['output'];
+  /** Active sources prevent removal unless purgeSources is explicitly true */
+  removeConfiguration: Scalars['Boolean']['output'];
+  removeSource: Scalars['Boolean']['output'];
+  saveConfiguration: BibleProviderConfiguration;
+  test: Scalars['Boolean']['output'];
+};
+
+
+/** Administrator operations for configuring providers and managing their sources */
+export type BibleProvidersMutation_AddAudioArgs = {
+  bibleId: Scalars['UUID']['input'];
+  input: AddProviderAudioInput;
+  variant: Scalars['String']['input'];
+  version: Scalars['Int']['input'];
+};
+
+
+/** Administrator operations for configuring providers and managing their sources */
+export type BibleProvidersMutation_AddBibleArgs = {
+  input: AddProviderBibleInput;
+};
+
+
+/** Administrator operations for configuring providers and managing their sources */
+export type BibleProvidersMutation_RefreshArgs = {
+  sourceId: Scalars['UUID']['input'];
+};
+
+
+/** Administrator operations for configuring providers and managing their sources */
+export type BibleProvidersMutation_RemoveConfigurationArgs = {
+  configurationId: Scalars['UUID']['input'];
+  purgeSources?: Scalars['Boolean']['input'];
+};
+
+
+/** Administrator operations for configuring providers and managing their sources */
+export type BibleProvidersMutation_RemoveSourceArgs = {
+  expectedVersion: Scalars['Long']['input'];
+  sourceId: Scalars['UUID']['input'];
+};
+
+
+/** Administrator operations for configuring providers and managing their sources */
+export type BibleProvidersMutation_SaveConfigurationArgs = {
+  input: BibleProviderConfigurationInput;
+};
+
+
+/** Administrator operations for configuring providers and managing their sources */
+export type BibleProvidersMutation_TestArgs = {
+  configurationId: Scalars['UUID']['input'];
+};
+
 /** A reference to a specific location in a Bible, providing both human-readable and machine-readable formats */
 export type BibleReference = {
   __typename?: 'BibleReference';
@@ -2729,6 +2942,32 @@ export type BibleReference = {
   /** USFM (Unified Standard Format Markers) reference identifier (e.g. 'GEN.1.1') */
   usfm: Scalars['String']['output'];
 };
+
+/** A provider edition attached to an exact Bosca Bible version and variant */
+export type BibleSource = {
+  __typename?: 'BibleSource';
+  abbreviation: Scalars['String']['output'];
+  allowedUses: Array<BibleContentUse>;
+  attribution: BibleAttribution;
+  configurationId: Scalars['UUID']['output'];
+  created: Scalars['DateTime']['output'];
+  id: Scalars['UUID']['output'];
+  kind: BibleSourceKind;
+  metadataId: Scalars['UUID']['output'];
+  metadataVersion: Scalars['Int']['output'];
+  modified: Scalars['DateTime']['output'];
+  name: Scalars['String']['output'];
+  nameLocal: Scalars['String']['output'];
+  provider: Scalars['String']['output'];
+  providerBibleId: Scalars['String']['output'];
+  variant: Scalars['String']['output'];
+  version: Scalars['Long']['output'];
+};
+
+export enum BibleSourceKind {
+  Audio = 'AUDIO',
+  Text = 'TEXT'
+}
 
 /**
  * A project the BML Message Server currently hosts: the active (latest published)
@@ -6876,6 +7115,7 @@ export type ContainersMutation_ContainerArgs = {
 /** The primary content query type providing access to all content management features — collections, metadata, categories, workflow states, and search */
 export type Content = {
   __typename?: 'Content';
+  bibleProviders: BibleProviders;
   /** Access category queries */
   categories: Categories;
   /** Check which collection IDs the current user has the specified permission actions on. Returns the subset of IDs where all actions are allowed. */
@@ -7174,6 +7414,7 @@ export type ContentJobHistory = {
 /** Mutation operations for all content management features */
 export type ContentMutation = {
   __typename?: 'ContentMutation';
+  bibleProviders: BibleProvidersMutation;
   /** Access category mutations */
   category: CategoryMutation;
   /** Access collection mutations */
@@ -10158,6 +10399,8 @@ export type FindAttributesInput = {
 /** A result from searching the Bible by a human-readable reference string, containing the matched book, chapter, and verse range */
 export type FindBibleResult = {
   __typename?: 'FindBibleResult';
+  /** Copyright and citation supplied with the matched content, when available */
+  attribution?: Maybe<BibleAttribution>;
   /** The matched Bible book */
   book: BibleBook;
   /** The matched chapter, if the reference specifies a chapter */

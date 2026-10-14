@@ -35,18 +35,6 @@ class FindBibleReferences(
         metadataPermissionEvaluator.verifyAllowed(authenticationContext, metadata, PermissionAction.VIEW)
         val bible = bibleService.getBible(metadata.id, metadata.version, null) ?: error("Bible not found")
         val reference = Reference(bibleService.getReferences(bible, human).joinToString("+") { it.usfm })
-        val verses = GetBibleBookChapterVerses.getChapterVerses(reference, bible, bibleService)
-        if (!content) {
-            return verses.map {
-                ChapterContent(
-                    it.human,
-                    it.humanLong,
-                    it.usfm,
-                    it.chapter,
-                    emptyList()
-                )
-            }
-        }
-        return verses
+        return GetBibleBookChapterVerses.getChapterVerses(reference, bible, bibleService, includeContent = content)
     }
 }

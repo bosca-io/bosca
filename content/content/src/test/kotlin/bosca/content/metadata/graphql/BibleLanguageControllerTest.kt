@@ -1,6 +1,9 @@
 package bosca.content.metadata.graphql
 
 import bosca.content.metadata.model.BibleLanguage
+import bosca.bible.IBibleLanguage
+import io.mockk.every
+import io.mockk.mockk
 import bosca.serialization.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -57,5 +60,13 @@ class BibleLanguageControllerTest {
     @Test
     fun `scriptDirection returns script direction`() {
         assertEquals("RTL", controller.scriptDirection(createLanguage(scriptDirection = "RTL")))
+    }
+
+    @Test
+    fun `shared provider languages use the same controller and fall back to their language name`() {
+        val language = mockk<IBibleLanguage>()
+        every { language.nameLocal } returns null
+        every { language.name } returns "English"
+        assertEquals("English", controller.nameLocal(language))
     }
 }

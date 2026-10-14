@@ -420,9 +420,11 @@ internal fun siteStack(config: SwarmConfig, site: SwarmSite): Map<String, Any> {
         "server" to bosca("server", env + mapOf("GIT_SYNC_LISTENERS" to "false", "SCHEDULER_ENABLED" to "true"),
             8080, "150s", Limits(site.serverMemory)),
         // The runner binds its port only after migrations and package installs finish.
+        // Its bundled application.yaml enables the FUMS delivery worker.
         "runner" to bosca("runner", env + mapOf("BOSCA_SERVER_PORT" to "8080", "GIT_SYNC_LISTENERS" to "true", "SCHEDULER_ENABLED" to "false",
             "ANALYTICS_PROCESSOR_ENABLED" to "true"), 8080, "300s", null),
-        "collector" to bosca("collector", env + mapOf("BOSCA_SERVER_PORT" to "8081"), 8081, "120s", Limits("512M")),
+        "collector" to bosca("collector", env + mapOf("BOSCA_SERVER_PORT" to "8081",
+            "FUMS_TRANSFORM_ENABLED" to site.fumsEnabled.toString()), 8081, "120s", Limits("512M")),
         "git" to bosca("git", env + mapOf(
             "GIT_HTTP_PORT" to "8091", "GIT_UI_HTTP_PORT" to "8093",
             "GIT_UI_URL" to "https://${hosts.git}", "APP_URL" to "https://${hosts.git}",

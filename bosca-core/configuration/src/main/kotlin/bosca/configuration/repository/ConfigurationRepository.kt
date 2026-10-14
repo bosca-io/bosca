@@ -17,6 +17,10 @@ interface ConfigurationRepository {
     @Query("select * from configurations where key = :key")
     suspend fun getConfigurationByKey(key: String): Configuration?
 
+    /** Locks the configuration identity until the current transaction ends. */
+    @Query("select * from configurations where id = :id for update")
+    suspend fun lock(id: UUID): Configuration?
+
     @Query("delete from configurations where key = :key")
     suspend fun deleteConfigurationByKey(key: String)
 

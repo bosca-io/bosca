@@ -108,6 +108,9 @@ class ContentController(
     fun sources() = Sources
 
     @Field
+    fun bibleProviders() = BibleProviders
+
+    @Field
     suspend fun slug(authentication: AuthenticationContext?, slug: String): ContentItem? {
         val slug = slugService.get(slug) ?: return null
         slug.metadataId?.let {

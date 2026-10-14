@@ -277,6 +277,9 @@ iceberg:
 
 packages: [core, security-initial, profiles, languages, search-index, root-collection-installer, bible, community-ai, ai, kit, maintenance, analytics-queries, hubspot]
 
+eventProcessing:
+  fumsEnabled: ${FUMS_TRANSFORM_ENABLED:false}
+
 runners:
   enabled:
     - indexQueueRunner
@@ -288,6 +291,7 @@ runners:
     - gitQueueRunner
     - workopsQueueRunner
     - analyticsQueueRunner
+    - fumsQueueRunner
     - scriptingQueueRunner
     - backupQueueRunner
     - segmentationQueueRunner

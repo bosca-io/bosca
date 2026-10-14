@@ -1,7 +1,8 @@
 package bosca.content.metadata.graphql
 
+import bosca.bible.BibleContentUse
+import bosca.bible.IBibleAudioChapter
 import bosca.bible.Reference
-import bosca.bible.components.filter
 import bosca.content.metadata.model.Bible
 import bosca.content.metadata.model.BibleBook
 import bosca.content.metadata.model.BibleBookChapter
@@ -15,6 +16,7 @@ import bosca.graphql.annotations.Field
 import bosca.graphql.annotations.TypeController
 import bosca.security.model.PermissionAction
 import bosca.security.service.AuthenticationContext
+import bosca.serialization.UUID
 import kotlinx.serialization.json.JsonArray
 
 
@@ -24,6 +26,12 @@ class BibleController(
     private val metadataService: MetadataService,
     private val metadataPermissionEvaluator: MetadataPermissionEvaluator,
 ) : GraphQLController<Bible> {
+
+    @Field
+    fun metadataId(bible: Bible) = bible.metadataId
+
+    @Field
+    fun version(bible: Bible) = bible.version
 
     @Field
     fun systemId(bible: Bible) = bible.systemId
@@ -76,6 +84,17 @@ class BibleController(
     suspend fun books(bible: Bible) = bibleService.getBooks(bible)
 
     @Field
+    suspend fun audio(bible: Bible) = bibleService.getAudio(bible)
+
+    @Field
+    suspend fun audioChapter(authentication: AuthenticationContext?, bible: Bible, audioId: UUID, usfm: String): IBibleAudioChapter {
+        val metadata = metadataService.getById(bible.metadataId)?.takeUnless { it.deleted }
+            ?: throw NoSuchElementException("Bible metadata was not found")
+        metadataPermissionEvaluator.verifyContentAllowed(authentication, metadata, PermissionAction.VIEW)
+        return bibleService.getAudioChapter(bible, audioId, usfm)
+    }
+
+    @Field
     suspend fun chapter(bible: Bible, usfm: String): BibleBookChapter? {
         val reference = Reference(usfm)
         val book = bibleService.getBooks(bible).firstOrNull { it.usfm == reference.bookUsfm } ?: return null
@@ -94,9 +113,10 @@ class BibleController(
         return references.mapNotNull { reference ->
             val book = books.find { it.usfm == reference.bookUsfm } ?: return@mapNotNull null
             val chapter = bibleService.getChapter(book, reference.chapterUsfm)
-            val components = chapter.getChapterComponents() ?: return@mapNotNull null
+            val content = bibleService.getChapterContent(book, reference.chapterUsfm, BibleContentUse.DISPLAY)
+            if (content.chapter[Reference(reference.chapterUsfm)] == null) return@mapNotNull null
             val filtered = references.mapNotNull {
-                components.filter(it)?.toJson()
+                content.chapter[it]?.toJson()
             }
             FindBibleResult(
                 book = book,
@@ -104,7 +124,8 @@ class BibleController(
                 component = JsonArray(filtered),
                 human = bibleService.getHumanLong(bible, reference),
                 humanShort = bibleService.getHuman(bible, reference),
-                reference = reference
+                reference = reference,
+                attribution = content.attribution?.asSerializable(),
             )
         }
     }

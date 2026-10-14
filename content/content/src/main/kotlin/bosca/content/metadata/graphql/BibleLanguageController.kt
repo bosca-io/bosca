@@ -1,29 +1,29 @@
 package bosca.content.metadata.graphql
 
-import bosca.content.metadata.model.BibleLanguage
+import bosca.bible.IBibleLanguage
 import bosca.graphql.GraphQLController
 import bosca.graphql.annotations.Field
 import bosca.graphql.annotations.TypeController
 
 
-@TypeController
-class BibleLanguageController : GraphQLController<BibleLanguage> {
+@TypeController("BibleLanguage")
+class BibleLanguageController : GraphQLController<IBibleLanguage> {
 
     @Field
-    fun iso(language: BibleLanguage) = language.iso
+    fun iso(language: IBibleLanguage) = language.iso
 
     @Field
-    fun name(language: BibleLanguage) = language.name
+    fun name(language: IBibleLanguage) = language.name
 
     @Field
-    fun nameLocal(language: BibleLanguage) = language.nameLocal
+    fun nameLocal(language: IBibleLanguage) = language.nameLocal ?: language.name
 
     @Field
-    fun script(language: BibleLanguage) = language.script
+    fun script(language: IBibleLanguage) = language.script
 
     @Field
-    fun scriptCode(language: BibleLanguage) = language.scriptCode
+    fun scriptCode(language: IBibleLanguage) = language.scriptCode
 
     @Field
-    fun scriptDirection(language: BibleLanguage) = language.scriptDirection
+    fun scriptDirection(language: IBibleLanguage) = language.scriptDirection
 }
