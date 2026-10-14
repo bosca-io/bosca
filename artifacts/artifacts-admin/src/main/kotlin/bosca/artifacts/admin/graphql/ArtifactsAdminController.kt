@@ -59,6 +59,12 @@ class ArtifactsAdminController(
     }
 
     @Field
+    suspend fun version(authorization: AuthenticationContext, id: UUID): ArtifactVersion? {
+        groups.verifyHasAdminGroup(authorization)
+        return repoService.getVersion(id)
+    }
+
+    @Field
     suspend fun namespaces(authorization: AuthenticationContext): List<ArtifactNamespace> {
         val namespaces = repoService.getNamespaces()
         return namespaceEvaluator.filterAllowed(authorization, namespaces, PermissionAction.LIST)

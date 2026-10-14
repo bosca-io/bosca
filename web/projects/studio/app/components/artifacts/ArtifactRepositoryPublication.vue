@@ -12,8 +12,11 @@ interface Destination {
 interface Publication {
   id: string; destinationId: string; tagName: string; commitSha: string; attempts: number
   published: string | null; verified: string | null; error: string | null
+  verifiedAttempt: number | null
   files: { filename: string; digest: string; size: number }[]
 }
+interface Version { id: string; version: string; completed: boolean; finalized: boolean; completedCommitSha: string | null }
+interface StoredFile { digest: string; role: string; filename: string | null; mediaType: string | null; size: number | null }
 const fields = gql`
   fragment ArtifactPublicationDestinationSettings on ArtifactPublicationDestination {
     id key owner githubRepository githubRepositoryId tagPrefix tokenSecretName enabled version
@@ -38,15 +41,34 @@ const updateDocument = gql`
   }
   ${fields}
 `
+const publishDocument = gql`
+  mutation PublishArtifactRelease($destinationId: UUID!, $versionId: UUID!, $commitSha: String!) {
+    artifactsAdmin { publishRelease(destinationId: $destinationId, versionId: $versionId, commitSha: $commitSha) }
+  }
+`
 const versionsDocument = gql`
   query ArtifactPublicationVersions($repositoryId: UUID!, $limit: Int!, $offset: Long!) {
-    artifactsAdmin { repository(id: $repositoryId) { versionCount versions(limit: $limit, offset: $offset) { id version } } }
+    artifactsAdmin { repository(id: $repositoryId) { versionCount versions(limit: $limit, offset: $offset) { id version completed finalized completedCommitSha } } }
+  }
+`
+const versionFilesDocument = gql`
+  query ArtifactPublicationVersionFiles($versionId: UUID!) {
+    artifactsAdmin { version(id: $versionId) {
+      id version completed finalized completedCommitSha blobs { digest role filename mediaType size }
+    } }
+  }
+`
+const completeDocument = gql`
+  mutation CompleteArtifactUploads($versionId: UUID!, $commitSha: String!, $expectedBlobs: [ArtifactVersionBlobInput!]!) {
+    artifactsAdmin { completeVersion(versionId: $versionId, commitSha: $commitSha, expectedBlobs: $expectedBlobs) {
+      id version completed finalized completedCommitSha
+    } }
   }
 `
 const historyDocument = gql`
   query ArtifactPublicationHistory($versionId: UUID!, $limit: Int!, $offset: Long!) {
     artifactsAdmin { publications(versionId: $versionId, limit: $limit, offset: $offset) {
-      id destinationId tagName commitSha attempts published verified error files { filename digest size }
+      id destinationId tagName commitSha attempts published verified verifiedAttempt error files { filename digest size }
     } }
   }
 `
@@ -61,6 +83,18 @@ const selected = ref<Destination | null>(null)
 const saving = ref(false)
 const formError = ref('')
 const form = reactive({ key: '', owner: '', githubRepository: '', githubRepositoryId: '', tagPrefix: '', tokenSecretName: '', enabled: false })
+const publishTarget = ref<Destination | null>(null)
+const publishing = ref(false)
+const publishError = ref('')
+const publishCommitSha = ref('')
+const publishRunId = ref('')
+const storedFiles = ref<StoredFile[]>([])
+const filesLoading = ref(false)
+const filesLoaded = ref(false)
+const filesError = ref('')
+const uploadsConfirmed = ref(false)
+const recordingCompletion = ref(false)
+let filesRequest = 0
 const secretOptions = computed(() => secrets.value.map(name => ({ value: name, label: name })))
 let settingsRequest = 0
 
@@ -131,7 +165,7 @@ async function save() {
 }
 
 const pageSize = 15
-const versions = ref<{ id: string; version: string }[]>([])
+const versions = ref<Version[]>([])
 const versionsOffset = ref(0)
 const versionsTotal = ref(0)
 const versionsLoading = ref(false)
@@ -139,6 +173,8 @@ const versionsLoaded = ref(false)
 const versionsError = ref('')
 const versionId = ref('')
 const versionOptions = computed(() => versions.value.map(version => ({ value: version.id, label: version.version })))
+const selectedVersionCompleted = computed(() => versions.value.find(version => version.id === versionId.value)?.completed === true)
+const selectedVersion = computed(() => versions.value.find(version => version.id === versionId.value))
 const history = ref<Publication[]>([])
 const historyOffset = ref(0)
 const historyLoading = ref(false)
@@ -152,16 +188,15 @@ async function loadVersions() {
   versionsLoading.value = true
   versionsLoaded.value = false
   versionsError.value = ''
-  versionId.value = ''
   try {
-    const result = await query<{ artifactsAdmin: { repository: { versionCount: number; versions: { id: string; version: string }[] } | null } }>(versionsDocument, {
+    const result = await query<{ artifactsAdmin: { repository: { versionCount: number; versions: Version[] } | null } }>(versionsDocument, {
       repositoryId: props.repositoryId, limit: pageSize, offset: versionsOffset.value,
     })
     if (request !== versionsRequest) return
     versions.value = result.artifactsAdmin.repository?.versions ?? []
     versionsTotal.value = result.artifactsAdmin.repository?.versionCount ?? 0
     versionsLoaded.value = true
-    versionId.value = versions.value[0]?.id ?? ''
+    if (!versions.value.some(version => version.id === versionId.value)) versionId.value = versions.value[0]?.id ?? ''
   } catch (e) {
     if (request === versionsRequest) versionsError.value = e instanceof Error ? e.message : 'Could not load versions.'
   } finally { if (request === versionsRequest) versionsLoading.value = false }
@@ -189,14 +224,102 @@ function changeHistoryPage(direction: number) {
   historyOffset.value = Math.max(0, historyOffset.value + direction * pageSize)
   void loadHistory()
 }
-watch(versionId, () => { historyOffset.value = 0; void loadHistory() })
+function openPublish(destination: Destination) {
+  if (!destination.enabled || !secrets.value.includes(destination.tokenSecretName) || !versionsLoaded.value) return
+  publishTarget.value = destination
+  publishError.value = ''
+  publishRunId.value = ''
+  message.value = ''
+  publishCommitSha.value = selectedVersion.value?.completedCommitSha
+    ?? history.value.find(publication => publication.destinationId === destination.id)?.commitSha ?? ''
+  void loadVersionFiles()
+}
+async function loadVersionFiles() {
+  const request = ++filesRequest
+  const id = versionId.value
+  storedFiles.value = []
+  filesLoaded.value = false
+  filesError.value = ''
+  uploadsConfirmed.value = false
+  filesLoading.value = !!id
+  if (!id) return
+  try {
+    const result = await query<{ artifactsAdmin: { version: (Version & { blobs: StoredFile[] }) | null } }>(versionFilesDocument, { versionId: id })
+    if (request !== filesRequest) return
+    const version = result.artifactsAdmin.version
+    if (!version || version.id !== id) throw new Error('Artifact version not found.')
+    versions.value = versions.value.map(item => item.id === id ? version : item)
+    storedFiles.value = version.blobs
+    filesLoaded.value = true
+    if (!publishCommitSha.value) publishCommitSha.value = version.completedCommitSha ?? ''
+  } catch (e) {
+    if (request === filesRequest) filesError.value = e instanceof Error ? e.message : 'Could not load stored files.'
+  } finally { if (request === filesRequest) filesLoading.value = false }
+}
+async function completeUploads() {
+  if (recordingCompletion.value || publishing.value || !uploadsConfirmed.value || !filesLoaded.value || !storedFiles.value.length || selectedVersion.value?.finalized) return
+  const commitSha = publishCommitSha.value.trim().toLowerCase()
+  if (!/^[0-9a-f]{40}$/.test(commitSha)) {
+    publishError.value = 'Enter the exact 40-character build commit SHA.'
+    return
+  }
+  recordingCompletion.value = true
+  publishError.value = ''
+  try {
+    const result = await mutation<{ artifactsAdmin: { completeVersion: Version } }>(completeDocument, {
+      versionId: versionId.value, commitSha,
+      expectedBlobs: storedFiles.value.map(({ digest, role, filename, mediaType }) => ({ versionId: versionId.value, digest, role, filename, mediaType })),
+    })
+    versions.value = versions.value.map(item => item.id === result.artifactsAdmin.completeVersion.id ? result.artifactsAdmin.completeVersion : item)
+    uploadsConfirmed.value = false
+    message.value = 'Upload completion recorded. Enabled destinations can publish this version automatically.'
+    await loadHistory()
+  } catch (e) {
+    publishError.value = e instanceof Error ? e.message : 'Could not record upload completion.'
+    uploadsConfirmed.value = false
+  } finally { recordingCompletion.value = false }
+}
+function publicationStatus(publication: Publication) {
+  if (publication.error) return 'Failed'
+  if (publication.verified && publication.verifiedAttempt === publication.attempts) return 'Verified'
+  return publication.published ? 'Published · awaiting verification' : 'Queued'
+}
+async function publishRelease() {
+  const destination = publishTarget.value
+  if (!destination || !destination.enabled || publishing.value || recordingCompletion.value || versionsLoading.value || !versionsLoaded.value || !versionId.value || !selectedVersionCompleted.value) return
+  const commitSha = publishCommitSha.value.trim().toLowerCase()
+  if (!/^[0-9a-f]{40}$/.test(commitSha)) {
+    publishError.value = 'Enter the exact 40-character build commit SHA.'
+    return
+  }
+  publishing.value = true
+  publishError.value = ''
+  try {
+    const result = await mutation<{ artifactsAdmin: { publishRelease: string } }>(publishDocument, {
+      destinationId: destination.id, versionId: versionId.value, commitSha,
+    })
+    publishRunId.value = result.artifactsAdmin.publishRelease
+    publishTarget.value = null
+    message.value = 'Publication queued.'
+    historyOffset.value = 0
+    await loadHistory()
+  } catch (e) {
+    publishError.value = e instanceof Error ? e.message : 'Could not queue publication.'
+  } finally { publishing.value = false }
+}
+watch(versionId, () => {
+  historyOffset.value = 0
+  publishCommitSha.value = selectedVersion.value?.completedCommitSha ?? ''
+  void loadHistory()
+  if (publishTarget.value) void loadVersionFiles()
+})
 onMounted(() => { void loadSettings(); void loadVersions() })
-onBeforeUnmount(() => { settingsRequest++; versionsRequest++; historyRequest++ })
+onBeforeUnmount(() => { settingsRequest++; versionsRequest++; historyRequest++; filesRequest++ })
 </script>
 
 <template>
   <SectionCard title="GitHub release sync" subtitle="Publish completed raw artifact versions as release assets" padded>
-    <template #right><Button size="sm" :disabled="!loaded || saving" @click="open(null)">Add destination</Button></template>
+    <template #right><Button size="sm" :disabled="!loaded || saving || !!publishTarget" @click="open(null)">Add destination</Button></template>
     <div class="stack">
       <p class="help">Completed builds sync through the Sync Completed Raw Artifacts to GitHub pipeline. Install Default Artifact Sync Pipelines in System → Packages. GitHub tags must already exist and match the build commit.</p>
       <p v-if="loading" class="help">Loading destinations…</p>
@@ -210,8 +333,16 @@ onBeforeUnmount(() => { settingsRequest++; versionsRequest++; historyRequest++ }
           <code>{{ destination.owner }}/{{ destination.githubRepository }}</code>
           <span class="help">{{ destination.enabled ? 'Enabled' : 'Disabled' }} · Tag: {{ destination.tagPrefix }}&lt;version&gt; · Secret: {{ destination.tokenSecretName }}</span>
         </div>
-        <Button size="sm" :disabled="!loaded || saving" @click="open(destination)">Edit destination</Button>
+        <div class="actions">
+          <Button
+            size="sm"
+            :disabled="!loaded || saving || editing || !!publishTarget || !destination.enabled || !secrets.includes(destination.tokenSecretName) || !versionsLoaded || versionsLoading || !versions.length"
+            @click="openPublish(destination)">Publish release</Button>
+          <Button size="sm" :disabled="!loaded || saving || !!publishTarget" @click="open(destination)">Edit destination</Button>
+        </div>
       </div>
+      <p class="help">Use Publish release to publish an existing version to an enabled destination. The existing GitHub tag must point to its build commit.</p>
+      <NuxtLink v-if="publishRunId" :to="{ path: '/pipelines/runs', query: { runId: publishRunId } }">View publication run</NuxtLink>
     </div>
   </SectionCard>
   <SectionCard title="Release sync status" subtitle="Publication and verification results for each version" padded>
@@ -237,10 +368,10 @@ onBeforeUnmount(() => { settingsRequest++; versionsRequest++; historyRequest++ }
         <p v-if="!rows.length" class="help">No publications on this page. Completed builds publish to enabled release destinations.</p>
         <div v-for="publication in rows" :key="publication.id" class="stack publication">
           <strong>{{ destinations.find(destination => destination.id === publication.destinationId)?.key ?? publication.destinationId }} · {{ publication.tagName }}</strong>
-          <span class="help">{{ publication.verified ? 'Verified' : publication.error ? 'Failed' : publication.published ? 'Published · awaiting verification' : 'Queued' }} · {{ publication.attempts }} attempts</span>
+          <span class="help">{{ publicationStatus(publication) }} · {{ publication.attempts }} attempts</span>
           <code>{{ publication.commitSha }}</code>
           <p v-if="publication.published" class="help">Published: {{ new Date(publication.published).toLocaleString() }}</p>
-          <p v-if="publication.verified" class="help">Verified: {{ new Date(publication.verified).toLocaleString() }}</p>
+          <p v-if="publication.verified" class="help">Last verified: {{ new Date(publication.verified).toLocaleString() }}</p>
           <p v-if="publication.error" role="alert" class="error">{{ publication.error }}</p>
           <span v-for="file in publication.files" :key="file.filename" class="help">{{ file.filename }} · {{ file.size }} bytes · <code>{{ file.digest }}</code></span>
         </div>
@@ -252,6 +383,69 @@ onBeforeUnmount(() => { settingsRequest++; versionsRequest++; historyRequest++ }
       <p class="help">Open <NuxtLink to="/pipelines/runs">pipeline run history</NuxtLink> to inspect release runs or replay failures from the Dead Letter tab.</p>
     </div>
   </SectionCard>
+  <Modal
+    v-if="publishTarget"
+    :title="`Publish release to '${publishTarget.key}'`"
+    :accent="accent"
+    @close="!publishing && !recordingCompletion && (publishTarget = null)">
+    <form class="stack" @submit.prevent="publishRelease">
+      <p class="help">Publish the stored files to {{ publishTarget.owner }}/{{ publishTarget.githubRepository }}. GitHub tag {{ publishTarget.tagPrefix }}&lt;version&gt; must already exist at the exact build commit.</p>
+      <Select
+        v-model="versionId"
+        label="Artifact version"
+        :options="versionOptions"
+        :disabled="publishing || recordingCompletion || versionsLoading"
+        :accent="accent" />
+      <div v-if="versionsOffset > 0 || versionsOffset + pageSize < versionsTotal" class="actions">
+        <Button
+          type="button"
+          size="sm"
+          :disabled="publishing || recordingCompletion || versionsLoading || versionsOffset === 0"
+          @click="changeVersionsPage(-1)">Previous versions</Button>
+        <Button
+          type="button"
+          size="sm"
+          :disabled="publishing || recordingCompletion || versionsLoading || versionsOffset + pageSize >= versionsTotal"
+          @click="changeVersionsPage(1)">Next versions</Button>
+      </div>
+      <p v-if="versionsError" role="alert" class="error">{{ versionsError }}</p>
+      <Button v-if="!versionsLoading && !versionsLoaded" type="button" @click="loadVersions">Retry loading versions</Button>
+      <p v-if="versionId && !selectedVersionCompleted" role="alert" class="help">This version has no recorded upload completion. Wait for its producer jobs to finish, or review and confirm the completed files below.</p>
+      <Button
+        v-if="versionId && !selectedVersionCompleted"
+        type="button"
+        :disabled="publishing || recordingCompletion || versionsLoading"
+        @click="loadVersions">Refresh versions</Button>
+      <TextInput v-model="publishCommitSha" label="Build commit SHA" :disabled="publishing || recordingCompletion" />
+      <p v-if="filesLoading" class="help">Loading stored files…</p>
+      <p v-if="filesError" role="alert" class="error">{{ filesError }}</p>
+      <div v-if="filesLoaded" class="stack compact">
+        <strong>Stored files</strong>
+        <span v-for="(file, index) in storedFiles" :key="`${file.digest}:${file.role}:${index}`" class="help">
+          {{ file.filename ?? file.role }} · {{ file.size ?? 'Unknown' }} bytes · <code>{{ file.digest }}</code>
+        </span>
+        <p v-if="!storedFiles.length" class="help">No files stored.</p>
+      </div>
+      <template v-if="!selectedVersion?.finalized">
+        <p class="help">For an existing version without completion history, confirm every file has finished uploading and was built from the commit above. Enabled release destinations can publish automatically after confirmation.</p>
+        <label class="enable"><input v-model="uploadsConfirmed" type="checkbox" :disabled="publishing || recordingCompletion || !filesLoaded || !storedFiles.length"> All files have finished uploading and match this build commit</label>
+        <Button
+          type="button"
+          :disabled="publishing || recordingCompletion || !uploadsConfirmed || !filesLoaded || !storedFiles.length"
+          @click="completeUploads">{{ recordingCompletion ? 'Recording…' : 'Confirm completed uploads' }}</Button>
+      </template>
+      <Button type="button" :disabled="publishing || recordingCompletion || filesLoading" @click="loadVersionFiles">Refresh stored files</Button>
+      <p v-if="publishError" role="alert" class="error">{{ publishError }}</p>
+      <div class="actions">
+        <Button type="button" :disabled="publishing || recordingCompletion" @click="publishTarget = null">Cancel</Button>
+        <Button
+          type="submit"
+          primary
+          :accent="accent"
+          :disabled="publishing || recordingCompletion || versionsLoading || !versionsLoaded || !versionId || !selectedVersionCompleted">{{ publishing ? 'Queuing…' : 'Queue publication' }}</Button>
+      </div>
+    </form>
+  </Modal>
   <Modal
     v-if="editing"
     :title="selected ? 'Edit GitHub release destination' : 'Add GitHub release destination'"
@@ -274,9 +468,8 @@ onBeforeUnmount(() => { settingsRequest++; versionsRequest++; historyRequest++ }
       <TextInput
         v-model="form.tagPrefix"
         label="Tag prefix"
-        placeholder="cli-v"
         :disabled="saving || !!selected" />
-      <p class="help">For the Bosca CLI, use cli-v so version 1.2.3 publishes to cli-v1.2.3. Repository identity and tag prefix are fixed after creation.</p>
+      <p class="help">Optional. The release tag is this prefix followed by the version; leave it empty so version 1.2.3 publishes to tag 1.2.3, as the Bosca CLI does. Repository identity and tag prefix are fixed after creation.</p>
       <GitHubSyncSecret
         v-model="form.tokenSecretName"
         kind="token"

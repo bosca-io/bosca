@@ -407,12 +407,21 @@ tarball and the signed, notarized macOS installer and publishes both packages an
 CI publishes to Bosca Artifacts. To sync completed CLI versions to GitHub, install
 **Default Artifact Sync Pipelines** version **1.1.0** and open the raw
 `bosca/bosca-cli` repository's **Settings** in Studio. Add and enable a GitHub
-release destination for `bosca-io/bosca`, its numeric repository ID, tag prefix
-`cli-v`, and a token secret with Contents read and write permission. The
-`cli-v<version>` tag must already exist on GitHub at the build commit. Completion
+release destination for `bosca-io/bosca`, its numeric repository ID, an empty
+tag prefix, and a token secret with Contents read and write permission. The bare
+`<version>` tag, such as `1.3.3`, must already exist on GitHub at the build commit. Completion
 syncs both packages, `SHA256SUMS`, and `install.sh` together through the artifact
 publication pipeline. See [artifact syncing](../artifacts/README.md#github-release-publication)
 for configuration and status.
+
+To forward an existing completed CLI version, use **Publish release** beside its
+enabled GitHub destination in Studio. Select the version and supply its exact
+build commit SHA; the `<version>` tag must already point to that commit.
+The artifacts service queues a durable publication run using the stored files.
+For an older stored version without completion history, review its files and
+use **Confirm completed uploads** in that dialog before publishing. This records
+the build commit without rebuilding; enabled destinations can publish automatically.
+
 One-time certificate, credential, and CI-agent setup is documented in
 [MACOS_SIGNING.md](MACOS_SIGNING.md).
 

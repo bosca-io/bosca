@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { enableAutoUnmount, flushPromises, shallowMount } from '@vue/test-utils'
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import RepositoryPage from './[id].vue'
 
 enableAutoUnmount(afterEach)
@@ -9,12 +9,16 @@ const repository = ref({
   type: 'docker', versions: [], tags: [], versionCount: 0, tagCount: 0,
 })
 const isAdmin = ref(true)
+const hasRepository = ref(true)
+const status = ref('success')
+const error = ref<Error | null>(null)
 vi.stubGlobal('usePersonas', () => ({ isAdmin }))
 vi.stubGlobal('useRoute', () => ({ params: { id: 'image-1' } }))
 vi.stubGlobal('useCurrentSubsystem', () => ({ accent: '#64748b' }))
 vi.stubGlobal('useGraphQL', () => ({
   useAsyncQuery: () => ({
-    data: ref({ artifactsAdmin: { repository } }), status: ref('success'), error: ref(null), refresh: vi.fn(),
+    data: computed(() => ({ artifactsAdmin: { repository: hasRepository.value ? repository.value : null } })),
+    status, error, refresh: vi.fn(),
   }),
   mutation: vi.fn(),
 }))
@@ -22,6 +26,9 @@ vi.stubGlobal('buildBreadcrumb', (...parts: string[]) => parts)
 beforeEach(() => {
   repository.value = { ...repository.value, id: 'image-1', type: 'docker' }
   isAdmin.value = true
+  hasRepository.value = true
+  status.value = 'success'
+  error.value = null
 })
 const stubs = {
   PageShell: { template: '<main><slot name="header" /><slot /></main>' },
@@ -32,6 +39,27 @@ const stubs = {
 const mocks = { buildBreadcrumb: (...parts: string[]) => parts }
 
 describe('Repository sync settings page', () => {
+  it.each(['idle', 'pending'])('renders the same loading state while the client query is %s', (state) => {
+    hasRepository.value = false
+    status.value = state
+    const wrapper = shallowMount(RepositoryPage, { global: { stubs, mocks } })
+    expect(wrapper.text()).toContain('Loading repository…')
+    expect(wrapper.text()).not.toContain('Repository not found.')
+  })
+  it('reports a missing repository only after its lookup succeeds', () => {
+    hasRepository.value = false
+    const wrapper = shallowMount(RepositoryPage, { global: { stubs, mocks } })
+    expect(wrapper.text()).toContain('Repository not found.')
+    expect(wrapper.text()).not.toContain('Loading repository…')
+  })
+  it('reports a failed lookup without treating the repository as missing', () => {
+    hasRepository.value = false
+    status.value = 'error'
+    error.value = new Error('Access denied')
+    const wrapper = shallowMount(RepositoryPage, { global: { stubs, mocks } })
+    expect(wrapper.text()).toContain('Could not load repository settings.')
+    expect(wrapper.text()).not.toContain('Repository not found.')
+  })
   it.each([
     ['docker', 'ArtifactRepositorySync'], ['raw', 'ArtifactRepositoryPublication'],
   ])('mounts %s controls only in settings and scopes them to the repository', async (type, component) => {

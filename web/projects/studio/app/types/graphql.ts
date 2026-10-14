@@ -1877,6 +1877,63 @@ export type ArtifactNamespaceInfo_RepositoryCountArgs = {
   type?: InputMaybe<ArtifactRegistryType>;
 };
 
+/** A fixed file manifest and independent publication and verification results */
+export type ArtifactPublication = {
+  __typename?: 'ArtifactPublication';
+  attempts: Scalars['Int']['output'];
+  commitSha: Scalars['String']['output'];
+  created?: Maybe<Scalars['DateTime']['output']>;
+  destinationId: Scalars['UUID']['output'];
+  error?: Maybe<Scalars['String']['output']>;
+  files: Array<ArtifactPublicationFile>;
+  id: Scalars['UUID']['output'];
+  modified?: Maybe<Scalars['DateTime']['output']>;
+  prerelease: Scalars['Boolean']['output'];
+  published?: Maybe<Scalars['DateTime']['output']>;
+  releaseId?: Maybe<Scalars['Long']['output']>;
+  tagName: Scalars['String']['output'];
+  verified?: Maybe<Scalars['DateTime']['output']>;
+  /** Attempt number of the last successful verification, when recorded */
+  verifiedAttempt?: Maybe<Scalars['Int']['output']>;
+  versionId: Scalars['UUID']['output'];
+};
+
+/** An immutable GitHub repository target for raw release assets */
+export type ArtifactPublicationDestination = {
+  __typename?: 'ArtifactPublicationDestination';
+  created?: Maybe<Scalars['DateTime']['output']>;
+  enabled: Scalars['Boolean']['output'];
+  githubRepository: Scalars['String']['output'];
+  githubRepositoryId: Scalars['Long']['output'];
+  id: Scalars['UUID']['output'];
+  key: Scalars['String']['output'];
+  modified?: Maybe<Scalars['DateTime']['output']>;
+  owner: Scalars['String']['output'];
+  repositoryId: Scalars['UUID']['output'];
+  tagPrefix: Scalars['String']['output'];
+  tokenSecretName: Scalars['String']['output'];
+  version: Scalars['Long']['output'];
+};
+
+export type ArtifactPublicationDestinationInput = {
+  enabled?: Scalars['Boolean']['input'];
+  githubRepository: Scalars['String']['input'];
+  githubRepositoryId: Scalars['Long']['input'];
+  key: Scalars['String']['input'];
+  owner: Scalars['String']['input'];
+  repositoryId: Scalars['UUID']['input'];
+  tagPrefix?: Scalars['String']['input'];
+  tokenSecretName: Scalars['String']['input'];
+};
+
+export type ArtifactPublicationFile = {
+  __typename?: 'ArtifactPublicationFile';
+  digest: Scalars['String']['output'];
+  filename: Scalars['String']['output'];
+  mediaType: Scalars['String']['output'];
+  size: Scalars['Long']['output'];
+};
+
 /** The registry protocol an artifact repository serves */
 export enum ArtifactRegistryType {
   /** Docker / OCI container images */
@@ -1934,6 +1991,21 @@ export type ArtifactRepoInfo_VersionsArgs = {
   offset?: InputMaybe<Scalars['Long']['input']>;
 };
 
+/** Latest desired manifest and result for one destination/tag. */
+export type ArtifactSync = {
+  __typename?: 'ArtifactSync';
+  attempts: Scalars['Int']['output'];
+  created?: Maybe<Scalars['DateTime']['output']>;
+  destinationId: Scalars['UUID']['output'];
+  error?: Maybe<Scalars['String']['output']>;
+  id: Scalars['UUID']['output'];
+  manifestDigest: Scalars['String']['output'];
+  modified?: Maybe<Scalars['DateTime']['output']>;
+  synced?: Maybe<Scalars['DateTime']['output']>;
+  tagName: Scalars['String']['output'];
+  versionId: Scalars['UUID']['output'];
+};
+
 /** A GHCR image path; each published source tag is preserved. */
 export type ArtifactSyncDestination = {
   __typename?: 'ArtifactSyncDestination';
@@ -1947,6 +2019,15 @@ export type ArtifactSyncDestination = {
   tokenSecretName: Scalars['String']['output'];
   username: Scalars['String']['output'];
   version: Scalars['Long']['output'];
+};
+
+export type ArtifactSyncDestinationInput = {
+  enabled?: Scalars['Boolean']['input'];
+  key: Scalars['String']['input'];
+  remoteRepository: Scalars['String']['input'];
+  repositoryId: Scalars['UUID']['input'];
+  tokenSecretName: Scalars['String']['input'];
+  username: Scalars['String']['input'];
 };
 
 /** A mutable tag pointing to a specific manifest digest (Docker) */
@@ -1981,13 +2062,27 @@ export type ArtifactVersionBlobInfo = {
   size?: Maybe<Scalars['Long']['output']>;
 };
 
+/** Association between a version and a blob with a specific role */
+export type ArtifactVersionBlobInput = {
+  digest: Scalars['String']['input'];
+  filename?: InputMaybe<Scalars['String']['input']>;
+  mediaType?: InputMaybe<Scalars['String']['input']>;
+  role: Scalars['String']['input'];
+  versionId: Scalars['UUID']['input'];
+};
+
 /** A versioned release of an artifact */
 export type ArtifactVersionInfo = {
   __typename?: 'ArtifactVersionInfo';
   /** Blobs associated with this version */
   blobs: Array<ArtifactVersionBlobInfo>;
+  completed: Scalars['Boolean']['output'];
+  /** The build commit recorded when uploads completed */
+  completedCommitSha?: Maybe<Scalars['String']['output']>;
   /** When this version was created */
   created?: Maybe<Scalars['DateTime']['output']>;
+  /** Whether the version's files are fixed for publication */
+  finalized: Scalars['Boolean']['output'];
   /** Unique identifier */
   id: Scalars['UUID']['output'];
   /** Protocol-specific metadata (package.json, POM coords, manifest media type, etc.) */
@@ -2005,12 +2100,22 @@ export type ArtifactsAdmin = {
   namespace?: Maybe<ArtifactNamespaceInfo>;
   /** List all artifact namespaces */
   namespaces: Array<ArtifactNamespaceInfo>;
+  /** Publication destinations for a repository. Requires admin. */
+  publicationDestinations: Array<ArtifactPublicationDestination>;
+  /** Durable publication results for a version. Requires admin. */
+  publications: Array<ArtifactPublication>;
   /** List repositories, optionally filtered by type */
   repositories: Array<ArtifactRepoInfo>;
   /** Get a specific repository by ID */
   repository?: Maybe<ArtifactRepoInfo>;
+  /** GHCR sync destinations for a Docker repository. Requires admin. */
+  syncDestinations: Array<ArtifactSyncDestination>;
+  /** Latest desired tags and their sync results. Requires admin. */
+  syncs: Array<ArtifactSync>;
   /** List tags for a repository */
   tags: Array<ArtifactTagInfo>;
+  /** A stored version and its current file manifest. Requires admin. */
+  version?: Maybe<ArtifactVersionInfo>;
   /** List versions for a repository */
   versions: Array<ArtifactVersionInfo>;
 };
@@ -2019,6 +2124,20 @@ export type ArtifactsAdmin = {
 /** Administrative queries for artifact registry management */
 export type ArtifactsAdmin_NamespaceArgs = {
   id: Scalars['UUID']['input'];
+};
+
+
+/** Administrative queries for artifact registry management */
+export type ArtifactsAdmin_PublicationDestinationsArgs = {
+  repositoryId: Scalars['UUID']['input'];
+};
+
+
+/** Administrative queries for artifact registry management */
+export type ArtifactsAdmin_PublicationsArgs = {
+  limit?: InputMaybe<Scalars['Int']['input']>;
+  offset?: InputMaybe<Scalars['Long']['input']>;
+  versionId: Scalars['UUID']['input'];
 };
 
 
@@ -2038,10 +2157,30 @@ export type ArtifactsAdmin_RepositoryArgs = {
 
 
 /** Administrative queries for artifact registry management */
+export type ArtifactsAdmin_SyncDestinationsArgs = {
+  repositoryId: Scalars['UUID']['input'];
+};
+
+
+/** Administrative queries for artifact registry management */
+export type ArtifactsAdmin_SyncsArgs = {
+  limit?: InputMaybe<Scalars['Int']['input']>;
+  offset?: InputMaybe<Scalars['Long']['input']>;
+  repositoryId: Scalars['UUID']['input'];
+};
+
+
+/** Administrative queries for artifact registry management */
 export type ArtifactsAdmin_TagsArgs = {
   last?: InputMaybe<Scalars['String']['input']>;
   limit?: InputMaybe<Scalars['Int']['input']>;
   repositoryId: Scalars['UUID']['input'];
+};
+
+
+/** Administrative queries for artifact registry management */
+export type ArtifactsAdmin_VersionArgs = {
+  id: Scalars['UUID']['input'];
 };
 
 
@@ -2055,10 +2194,16 @@ export type ArtifactsAdminMutation = {
   __typename?: 'ArtifactsAdminMutation';
   /** Grant a permission action to a group on a namespace. Requires admin. */
   addPermission: Scalars['Boolean']['output'];
+  /** Confirm every reviewed raw file has finished uploading and record its build commit. The current manifest must match expectedBlobs. Enabled destinations may publish automatically. Requires admin. */
+  completeVersion: ArtifactVersionInfo;
   /** Create a new namespace */
   createNamespace: ArtifactNamespaceInfo;
+  /** Configure a GitHub release destination referencing a Pipeline secret. Requires admin. */
+  createPublicationDestination: ArtifactPublicationDestination;
   /** Create a repository within a namespace */
   createRepository: ArtifactRepoInfo;
+  /** Configure a GHCR image destination using a Pipeline secret. Requires admin. */
+  createSyncDestination: ArtifactSyncDestination;
   /** Delete a namespace and all its repositories (admin only) */
   deleteNamespace: Scalars['Boolean']['output'];
   /** Delete a repository and all its versions, tags, and blobs */
@@ -2069,14 +2214,20 @@ export type ArtifactsAdminMutation = {
   deleteTag: Scalars['Boolean']['output'];
   /** Delete a specific version and its blob associations */
   deleteVersion: Scalars['Boolean']['output'];
+  /** Queue an existing raw version for one enabled GitHub release destination under the caller's identity. The exact build commit must match its existing GitHub tag. Returns the durable pipeline run ID. Requires admin. */
+  publishRelease: Scalars['UUID']['output'];
   /** Queue a current Docker tag for one enabled GHCR destination under the caller's identity. Returns the durable pipeline run ID. Requires admin. */
   pushImage: Scalars['UUID']['output'];
   /** Revoke a permission action from a group on a namespace. Requires admin. */
   removePermission: Scalars['Boolean']['output'];
+  /** Requeue a failed sync or explicitly copy and verify its tag again. Requires admin. */
+  retrySync: ArtifactSync;
   /** Set a tag to point at a manifest digest */
   setTag: ArtifactTagInfo;
   /** Update a namespace's public (anonymous pull) visibility */
   updateNamespace: ArtifactNamespaceInfo;
+  /** Enable, disable or change a destination secret reference. Requires admin. */
+  updatePublicationDestination: ArtifactPublicationDestination;
   /** Update destination configuration with optimistic locking. Changing the image path clears its previous sync records. Requires admin. */
   updateSyncDestination: ArtifactSyncDestination;
 };
@@ -2089,9 +2240,23 @@ export type ArtifactsAdminMutation_AddPermissionArgs = {
 
 
 /** Administrative mutations for artifact registry management */
+export type ArtifactsAdminMutation_CompleteVersionArgs = {
+  commitSha: Scalars['String']['input'];
+  expectedBlobs: Array<ArtifactVersionBlobInput>;
+  versionId: Scalars['UUID']['input'];
+};
+
+
+/** Administrative mutations for artifact registry management */
 export type ArtifactsAdminMutation_CreateNamespaceArgs = {
   name: Scalars['String']['input'];
   public?: InputMaybe<Scalars['Boolean']['input']>;
+};
+
+
+/** Administrative mutations for artifact registry management */
+export type ArtifactsAdminMutation_CreatePublicationDestinationArgs = {
+  input: ArtifactPublicationDestinationInput;
 };
 
 
@@ -2100,6 +2265,12 @@ export type ArtifactsAdminMutation_CreateRepositoryArgs = {
   name: Scalars['String']['input'];
   namespaceId: Scalars['UUID']['input'];
   type: ArtifactRegistryType;
+};
+
+
+/** Administrative mutations for artifact registry management */
+export type ArtifactsAdminMutation_CreateSyncDestinationArgs = {
+  input: ArtifactSyncDestinationInput;
 };
 
 
@@ -2136,6 +2307,14 @@ export type ArtifactsAdminMutation_DeleteVersionArgs = {
 
 
 /** Administrative mutations for artifact registry management */
+export type ArtifactsAdminMutation_PublishReleaseArgs = {
+  commitSha: Scalars['String']['input'];
+  destinationId: Scalars['UUID']['input'];
+  versionId: Scalars['UUID']['input'];
+};
+
+
+/** Administrative mutations for artifact registry management */
 export type ArtifactsAdminMutation_PushImageArgs = {
   destinationId: Scalars['UUID']['input'];
   tagName: Scalars['String']['input'];
@@ -2145,6 +2324,12 @@ export type ArtifactsAdminMutation_PushImageArgs = {
 /** Administrative mutations for artifact registry management */
 export type ArtifactsAdminMutation_RemovePermissionArgs = {
   permission: PermissionInput;
+};
+
+
+/** Administrative mutations for artifact registry management */
+export type ArtifactsAdminMutation_RetrySyncArgs = {
+  id: Scalars['UUID']['input'];
 };
 
 
@@ -2160,6 +2345,15 @@ export type ArtifactsAdminMutation_SetTagArgs = {
 export type ArtifactsAdminMutation_UpdateNamespaceArgs = {
   id: Scalars['UUID']['input'];
   public: Scalars['Boolean']['input'];
+};
+
+
+/** Administrative mutations for artifact registry management */
+export type ArtifactsAdminMutation_UpdatePublicationDestinationArgs = {
+  enabled: Scalars['Boolean']['input'];
+  id: Scalars['UUID']['input'];
+  tokenSecretName?: InputMaybe<Scalars['String']['input']>;
+  version: Scalars['Long']['input'];
 };
 
 

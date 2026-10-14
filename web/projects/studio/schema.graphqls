@@ -1640,6 +1640,62 @@ type ArtifactNamespaceInfo {
   repositoryCount(type: ArtifactRegistryType): Long!
 }
 
+"""
+A fixed file manifest and independent publication and verification results
+"""
+type ArtifactPublication {
+  attempts: Int!
+  commitSha: String!
+  created: DateTime
+  destinationId: UUID!
+  error: String
+  files: [ArtifactPublicationFile!]!
+  id: UUID!
+  modified: DateTime
+  prerelease: Boolean!
+  published: DateTime
+  releaseId: Long
+  tagName: String!
+  verified: DateTime
+  """Attempt number of the last successful verification, when recorded"""
+  verifiedAttempt: Int
+  versionId: UUID!
+}
+
+"""An immutable GitHub repository target for raw release assets"""
+type ArtifactPublicationDestination {
+  created: DateTime
+  enabled: Boolean!
+  githubRepository: String!
+  githubRepositoryId: Long!
+  id: UUID!
+  key: String!
+  modified: DateTime
+  owner: String!
+  repositoryId: UUID!
+  tagPrefix: String!
+  tokenSecretName: String!
+  version: Long!
+}
+
+input ArtifactPublicationDestinationInput {
+  enabled: Boolean! = false
+  githubRepository: String!
+  githubRepositoryId: Long!
+  key: String!
+  owner: String!
+  repositoryId: UUID!
+  tagPrefix: String! = ""
+  tokenSecretName: String!
+}
+
+type ArtifactPublicationFile {
+  digest: String!
+  filename: String!
+  mediaType: String!
+  size: Long!
+}
+
 """The registry protocol an artifact repository serves"""
 enum ArtifactRegistryType {
   """Docker / OCI container images"""
@@ -1684,6 +1740,20 @@ type ArtifactRepoInfo {
   versions(limit: Int, offset: Long): [ArtifactVersionInfo!]!
 }
 
+"""Latest desired manifest and result for one destination/tag."""
+type ArtifactSync {
+  attempts: Int!
+  created: DateTime
+  destinationId: UUID!
+  error: String
+  id: UUID!
+  manifestDigest: String!
+  modified: DateTime
+  synced: DateTime
+  tagName: String!
+  versionId: UUID!
+}
+
 """A GHCR image path; each published source tag is preserved."""
 type ArtifactSyncDestination {
   created: DateTime
@@ -1696,6 +1766,15 @@ type ArtifactSyncDestination {
   tokenSecretName: String!
   username: String!
   version: Long!
+}
+
+input ArtifactSyncDestinationInput {
+  enabled: Boolean! = false
+  key: String!
+  remoteRepository: String!
+  repositoryId: UUID!
+  tokenSecretName: String!
+  username: String!
 }
 
 """A mutable tag pointing to a specific manifest digest (Docker)"""
@@ -1730,12 +1809,26 @@ type ArtifactVersionBlobInfo {
   size: Long
 }
 
+"""Association between a version and a blob with a specific role"""
+input ArtifactVersionBlobInput {
+  digest: String!
+  filename: String
+  mediaType: String
+  role: String!
+  versionId: UUID!
+}
+
 """A versioned release of an artifact"""
 type ArtifactVersionInfo {
   """Blobs associated with this version"""
   blobs: [ArtifactVersionBlobInfo!]!
+  completed: Boolean!
+  """The build commit recorded when uploads completed"""
+  completedCommitSha: String
   """When this version was created"""
   created: DateTime
+  """Whether the version's files are fixed for publication"""
+  finalized: Boolean!
   """Unique identifier"""
   id: UUID!
   """
@@ -1754,12 +1847,22 @@ type ArtifactsAdmin {
   namespace(id: UUID!): ArtifactNamespaceInfo
   """List all artifact namespaces"""
   namespaces: [ArtifactNamespaceInfo!]!
+  """Publication destinations for a repository. Requires admin."""
+  publicationDestinations(repositoryId: UUID!): [ArtifactPublicationDestination!]!
+  """Durable publication results for a version. Requires admin."""
+  publications(limit: Int, offset: Long, versionId: UUID!): [ArtifactPublication!]!
   """List repositories, optionally filtered by type"""
   repositories(limit: Int, namespaceId: UUID, offset: Long, type: ArtifactRegistryType): [ArtifactRepoInfo!]!
   """Get a specific repository by ID"""
   repository(id: UUID!): ArtifactRepoInfo
+  """GHCR sync destinations for a Docker repository. Requires admin."""
+  syncDestinations(repositoryId: UUID!): [ArtifactSyncDestination!]!
+  """Latest desired tags and their sync results. Requires admin."""
+  syncs(limit: Int, offset: Long, repositoryId: UUID!): [ArtifactSync!]!
   """List tags for a repository"""
   tags(last: String, limit: Int, repositoryId: UUID!): [ArtifactTagInfo!]!
+  """A stored version and its current file manifest. Requires admin."""
+  version(id: UUID!): ArtifactVersionInfo
   """List versions for a repository"""
   versions(repositoryId: UUID!): [ArtifactVersionInfo!]!
 }
@@ -1768,10 +1871,22 @@ type ArtifactsAdmin {
 type ArtifactsAdminMutation {
   """Grant a permission action to a group on a namespace. Requires admin."""
   addPermission(permission: PermissionInput!): Boolean!
+  """
+  Confirm every reviewed raw file has finished uploading and record its build commit. The current manifest must match expectedBlobs. Enabled destinations may publish automatically. Requires admin.
+  """
+  completeVersion(commitSha: String!, expectedBlobs: [ArtifactVersionBlobInput!]!, versionId: UUID!): ArtifactVersionInfo!
   """Create a new namespace"""
   createNamespace(name: String!, public: Boolean): ArtifactNamespaceInfo!
+  """
+  Configure a GitHub release destination referencing a Pipeline secret. Requires admin.
+  """
+  createPublicationDestination(input: ArtifactPublicationDestinationInput!): ArtifactPublicationDestination!
   """Create a repository within a namespace"""
   createRepository(name: String!, namespaceId: UUID!, type: ArtifactRegistryType!): ArtifactRepoInfo!
+  """
+  Configure a GHCR image destination using a Pipeline secret. Requires admin.
+  """
+  createSyncDestination(input: ArtifactSyncDestinationInput!): ArtifactSyncDestination!
   """Delete a namespace and all its repositories (admin only)"""
   deleteNamespace(id: UUID!): Boolean!
   """Delete a repository and all its versions, tags, and blobs"""
@@ -1785,6 +1900,10 @@ type ArtifactsAdminMutation {
   """Delete a specific version and its blob associations"""
   deleteVersion(id: UUID!): Boolean!
   """
+  Queue an existing raw version for one enabled GitHub release destination under the caller's identity. The exact build commit must match its existing GitHub tag. Returns the durable pipeline run ID. Requires admin.
+  """
+  publishRelease(commitSha: String!, destinationId: UUID!, versionId: UUID!): UUID!
+  """
   Queue a current Docker tag for one enabled GHCR destination under the caller's identity. Returns the durable pipeline run ID. Requires admin.
   """
   pushImage(destinationId: UUID!, tagName: String!): UUID!
@@ -1792,10 +1911,18 @@ type ArtifactsAdminMutation {
   Revoke a permission action from a group on a namespace. Requires admin.
   """
   removePermission(permission: PermissionInput!): Boolean!
+  """
+  Requeue a failed sync or explicitly copy and verify its tag again. Requires admin.
+  """
+  retrySync(id: UUID!): ArtifactSync!
   """Set a tag to point at a manifest digest"""
   setTag(manifestDigest: String!, name: String!, repositoryId: UUID!): ArtifactTagInfo!
   """Update a namespace's public (anonymous pull) visibility"""
   updateNamespace(id: UUID!, public: Boolean!): ArtifactNamespaceInfo!
+  """
+  Enable, disable or change a destination secret reference. Requires admin.
+  """
+  updatePublicationDestination(enabled: Boolean!, id: UUID!, tokenSecretName: String, version: Long!): ArtifactPublicationDestination!
   """
   Update destination configuration with optimistic locking. Changing the image path clears its previous sync records. Requires admin.
   """

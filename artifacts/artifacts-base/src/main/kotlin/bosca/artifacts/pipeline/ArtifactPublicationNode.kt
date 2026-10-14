@@ -19,7 +19,7 @@ import kotlinx.serialization.json.put
 /** Publishes one selected artifact/destination pair using ordinary pipeline retries. */
 @PipelineNodeType(
     category = NodeCategory.ACTION, label = "Publish GitHub Release",
-    description = "Push a completed artifact to one selected GitHub release destination.",
+    description = "Publish a completed artifact to one selected GitHub release destination.",
     group = "Artifacts", subgroup = "Publication",
     inputs = [InputSlot(name = "target", kind = SlotKind.OBJECT, type = ArtifactPublicationTarget::class)],
     outputs = [OutputSlot(name = "out", kind = SlotKind.STRING, description = "Publication ID")],
@@ -46,8 +46,11 @@ class ArtifactPublicationNode(
         provide<ArtifactPermissionEvaluator>().verify(context.authentication, repository.type,
             namespace.name, repository.name, version.version, ArtifactAction.PUSH)
         val publications = provide<ArtifactPublicationService>()
-        val publication = publications.prepare(target.destinationId, version.id, target.commitSha, prerelease)
-        publications.publish(publication.id)
+        val choice = if (target.reverify) {
+            publications.publications(version.id, 1, 0).firstOrNull()?.prerelease ?: prerelease
+        } else prerelease
+        val publication = publications.prepare(target.destinationId, version.id, target.commitSha, choice)
+        publications.publish(publication.id, target.reverify)
         return ArtifactPublicationNodeSerializer.serialize(publication.id.toString())
     }
 
