@@ -75,6 +75,25 @@ internal val MCP_SERVER_INSTRUCTIONS = """
     6. LET THE SERVER MINT DOCUMENTS. On create, pass `name` and let auto-create build and template-
        bind the backing document (which also tags it with the right document `type`). Only supply your
        own `metadataId` when attaching a document you have deliberately prepared.
+
+    ── When you answer user, session, or engagement questions from analytics events ──
+    7. USE THE STANDARD METRIC QUERIES. Execute them by key with `startDate`/`endDate` instead of writing
+       new SQL: `daily-active-users`, `unique-sessions-per-day`, and `monthly-users-and-engagement`
+       (monthly active users and average engagement time per active user; use whole months).
+
+    8. KEEP THEIR DEFINITIONS WHEN YOU WRITE NEW EVENT SQL.
+       • An active user has a `Session` event with `extras.start = 'true'`. Identity is `user_id`, else
+         `installation_id`; signed-out activity counts as the installation's user when exactly one user
+         signed in on it within the same reporting period.
+       • Exclude the bot agent pattern and desktop Chrome agents with a full build number
+         (`Chrome/N.0.<non-zero>` on Windows, Mac, or Linux desktop), which are scrapers.
+       • Count sessions as distinct `session_id`, never start events: each page load re-sends a start
+         for the session it continues. Sessions end after 5 minutes without activity, so session counts
+         run higher than tools that use a 30-minute timeout.
+       • Engagement time is estimated from gaps between consecutive events in a session, each capped at
+         5 minutes; audio and video progress events count playback as activity. The estimate shifts when
+         event instrumentation changes, so compare only periods with the same instrumentation.
+       • `created` is the device time of the event, stored in UTC.
 """.trimIndent()
 
 /**

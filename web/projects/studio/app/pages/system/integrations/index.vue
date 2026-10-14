@@ -18,6 +18,7 @@ const configsGql = gql`
     hubspot: configurations { configuration(key: "hubspot") { id key value } }
     mux: configurations { configuration(key: "mux") { id key value } }
     federation: collaboration { federation { peers { id } } }
+    content { bibleProviders { configurations { enabled hasApiKey } } }
   }
 `
 
@@ -28,6 +29,7 @@ const { data } = useAsyncQuery<{
   hubspot: { configuration: IntegrationConfig | null }
   mux: { configuration: IntegrationConfig | null }
   federation: { federation: { peers: Array<{ id: string }> } }
+  content: { bibleProviders: { configurations: Array<{ enabled: boolean; hasApiKey: boolean }> } }
 }>('integration-configs', configsGql, {}, { server: false })
 
 interface IntegrationCard {
@@ -41,6 +43,15 @@ interface IntegrationCard {
 }
 
 const integrations: IntegrationCard[] = [
+  {
+    id: 'bible',
+    name: 'Bible Providers',
+    description: 'Text Bibles and recordings from external providers',
+    icon: 'book-open',
+    route: '/system/integrations/bible',
+    config: () => null,
+    connected: () => data.value?.content?.bibleProviders.configurations.some(config => config.enabled && config.hasApiKey) ?? false,
+  },
   {
     id: 'sendgrid',
     name: 'SendGrid',

@@ -10,4 +10,6 @@ data class ArtifactPublicationTarget(
     @Contextual val destinationId: UUID,
     @Contextual val versionId: UUID,
     val commitSha: String,
+    /** An explicit publication request verifies the original publication again. */
+    val reverify: Boolean = false,
 )

@@ -18,7 +18,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 @RouteController(
-    path = "/ci/artifacts/{repositoryId}/{runId}/{name}",
+    path = "/ci/artifacts/{repositoryId}/{runId}/{name...}",
     method = RouteMethod.GET,
     authentication = RouteAuthentication.REQUIRED
 )
@@ -39,6 +39,7 @@ class ArtifactDownloadRoute(
         permissionEvaluator.verifyAllowed(authenticationContext, repository, PermissionAction.VIEW)
 
         val run = runService.findById(runId) ?: return call.respond(HttpStatusCode.NotFound)
+        if (run.repositoryId != repositoryId) return call.respond(HttpStatusCode.NotFound)
 
         // Closing the storage stream can block, so the exchange stays off the event loop. Opening is
         // cancellation-safe: storage closes a stream it cannot hand back, and nothing suspends between
@@ -47,6 +48,9 @@ class ArtifactDownloadRoute(
             val stream = artifactService.download(repositoryId, run.number, name)
                 ?: return@withContext call.respond(HttpStatusCode.NotFound)
             stream.use { input ->
+                call.response.header("Cache-Control", "private, no-store")
+                call.response.header("X-Content-Type-Options", "nosniff")
+                call.response.header("Content-Disposition", "attachment")
                 // No time limit: a large artifact on a slow link may take long; a client that stops
                 // reading altogether is ended by the streaming response's stall timeout.
                 call.respondStreaming(ContentType.Application.OctetStream, HttpStatusCode.OK, timeLimit = null) { response ->

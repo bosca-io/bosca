@@ -6,7 +6,6 @@ import bosca.content.metadata.service.DocumentService
 import bosca.content.metadata.service.MetadataService
 import bosca.content.security.MetadataPermissionEvaluator
 import bosca.documents.ContainerNode
-import bosca.documents.Content
 import bosca.routes.annotations.RouteController
 import bosca.security.service.AuthenticationContext
 import bosca.serialization.UUID
@@ -14,7 +13,6 @@ import bosca.server.ServerCall
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.decodeFromJsonElement
 
 @RouteController("/api/v1/content/metadata/{id}/document/verses")
 class GetDocumentVerses(

@@ -27,37 +27,28 @@ beforeEach(() => {
 const stubs = {
   PageShell: { template: '<main><slot name="header" /><slot /></main>' },
   PageHeader: { props: ['breadcrumb', 'title', 'subtitle', 'accent'], template: '<header><slot name="actions" /></header>' },
+  Button: { template: '<button><slot /></button>' },
   SectionCard: { template: '<section><slot /></section>' },
 }
 const mocks = { buildBreadcrumb: (...parts: string[]) => parts }
 
-describe('Artifact detail sync controls', () => {
-  it('keeps ordinary repository viewing available without mounting admin sync controls', async () => {
-    isAdmin.value = false
-    const wrapper = shallowMount(RepositoryPage, { global: { stubs, mocks } })
-    await flushPromises()
-    expect(wrapper.text()).toContain('server')
-    expect(wrapper.findComponent({ name: 'ArtifactRepositorySync' }).exists()).toBe(false)
-    isAdmin.value = true
-    await flushPromises()
-    expect(wrapper.findComponent({ name: 'ArtifactRepositorySync' }).exists()).toBe(true)
-  })
-  it('scopes sync controls to the Docker image and remounts them when navigating to another artifact', async () => {
-    const wrapper = shallowMount(RepositoryPage, { global: { stubs, mocks } })
-    await flushPromises()
-    const original = wrapper.getComponent({ name: 'ArtifactRepositorySync' })
-    expect(original.props('repositoryId')).toBe('image-1')
-    repository.value = { ...repository.value, id: 'image-2' }
-    await flushPromises()
-    const next = wrapper.getComponent({ name: 'ArtifactRepositorySync' })
-    expect(next.props('repositoryId')).toBe('image-2')
-    expect(next.vm).not.toBe(original.vm)
-  })
-
-  it.each(['maven', 'npm', 'raw', 'helm', 'ml'])('does not offer Docker syncing for %s artifacts', async (type) => {
+describe('Artifact detail settings', () => {
+  it.each(['docker', 'raw'])('offers settings for %s without mounting sync controls on the detail page', async type => {
     repository.value.type = type
     const wrapper = shallowMount(RepositoryPage, { global: { stubs, mocks } })
     await flushPromises()
     expect(wrapper.findComponent({ name: 'ArtifactRepositorySync' }).exists()).toBe(false)
+    expect(wrapper.findComponent({ name: 'ArtifactRepositoryPublication' }).exists()).toBe(false)
+    expect(wrapper.text()).toContain('Settings')
+    isAdmin.value = false
+    await flushPromises()
+    expect(wrapper.text()).not.toContain('Settings')
+  })
+
+  it.each(['maven', 'npm', 'helm', 'ml'])('does not offer GitHub settings for %s artifacts', async type => {
+    repository.value.type = type
+    const wrapper = shallowMount(RepositoryPage, { global: { stubs, mocks } })
+    await flushPromises()
+    expect(wrapper.text()).not.toContain('Settings')
   })
 })

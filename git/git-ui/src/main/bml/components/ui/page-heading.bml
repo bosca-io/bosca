@@ -1,0 +1,137 @@
+<component tag="ui-page-heading">
+  <prop name="title" type="String" required />
+  <prop name="icon" type="String" default="" />
+  <prop name="badge" type="String" default="" />
+  <prop name="description" type="String" default="" />
+  <prop name="descriptionBelow" type="Boolean" default="false" />
+  <prop name="titleAlignedActions" type="Boolean" default="false" />
+  <prop name="backHref" type="String" default="" />
+  <prop name="backLabel" type="String" default="" />
+  <header class="page-heading" :data-title-aligned="titleAlignedActions">
+    <div class="heading-copy">
+      <div class="breadcrumb">
+        <if backHref.isBlank()>
+          <span>Git</span>
+          <span>/</span>
+          <span>{ title }</span>
+        </if>
+        <if backHref.isNotBlank()>
+          <a :href="backHref">{ backLabel }</a>
+        </if>
+      </div>
+      <div class="heading-title">
+        <if icon.isNotBlank()>
+          <ui-icon :name="icon" />
+        </if>
+        <h1>{ title }</h1>
+        <if badge.isNotBlank()>
+          <ui-badge>{ badge }</ui-badge>
+        </if>
+        <if description.isNotBlank()>
+          <p
+            :class='"muted heading-description" + if (descriptionBelow) " description-below" else ""'
+          >
+            { description }
+          </p>
+        </if>
+      </div>
+    </div>
+    <if titleAlignedActions>
+      <div class="heading-actions"><slot /></div>
+    <else>
+      <slot />
+    </if>
+  </header>
+  <style scoped>
+    .page-heading {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+    }
+    .heading-copy {
+      min-width: 0;
+    }
+    .breadcrumb {
+      display: flex;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--fg-3);
+      margin-bottom: 4px;
+    }
+    .breadcrumb a {
+      color: var(--fg-3);
+    }
+    .heading-description {
+      margin: 0;
+      font-size: 13px;
+      color: var(--fg-3);
+      overflow-wrap: anywhere;
+    }
+    .description-below {
+      flex-basis: 100%;
+    }
+    .heading-title {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 4px 12px;
+    }
+    h1 {
+      font-size: 22px;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      margin: 0;
+    }
+    .page-heading[data-title-aligned] {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 4px 16px;
+    }
+    .page-heading[data-title-aligned] .heading-copy {
+      display: contents;
+    }
+    .page-heading[data-title-aligned] .breadcrumb {
+      grid-column: 1 / -1;
+      margin: 0;
+    }
+    .page-heading[data-title-aligned] .heading-title {
+      grid-column: 1;
+      grid-row: 2;
+      min-width: 0;
+    }
+    .page-heading[data-title-aligned] h1 {
+      min-width: 0;
+      max-width: 100%;
+      overflow-wrap: anywhere;
+    }
+    .heading-actions {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      grid-column: 2;
+      grid-row: 2;
+      min-width: 0;
+      max-width: 100%;
+    }
+    @media (max-width: 600px) {
+      .page-heading {
+        flex-wrap: wrap;
+      }
+      .page-heading[data-title-aligned] {
+        display: flex;
+        gap: 8px;
+      }
+      .page-heading[data-title-aligned] .heading-copy {
+        display: block;
+        width: 100%;
+      }
+      .page-heading[data-title-aligned] .breadcrumb {
+        margin-bottom: 4px;
+      }
+      .heading-actions {
+        justify-content: flex-start;
+      }
+    }
+  </style>
+</component>

@@ -232,6 +232,23 @@ describe('VisibilityTracker', () => {
     expect(observedElements.length).toBeGreaterThan(initialCount)
   })
 
+  it('observes elements added while an earlier mutation batch is pending', () => {
+    tracker = new VisibilityTracker()
+    tracker.start()
+    const first = document.createElement('div')
+    first.setAttribute('data-ba-track', 'first')
+    document.body.appendChild(first)
+    mutationCallback?.([{ addedNodes: [first] } as unknown as MutationRecord], {} as MutationObserver)
+    vi.advanceTimersByTime(50)
+    const second = document.createElement('h2')
+    second.setAttribute('data-ba-track', 'bible-text')
+    document.body.appendChild(second)
+    mutationCallback?.([{ addedNodes: [second] } as unknown as MutationRecord], {} as MutationObserver)
+    vi.advanceTimersByTime(100)
+    expect(observedElements).toContain(first)
+    expect(observedElements).toContain(second)
+  })
+
   it('should use custom selector', () => {
     setTestBody('<section class="track-me">Section</section>')
     tracker = new VisibilityTracker({ selector: '.track-me' })

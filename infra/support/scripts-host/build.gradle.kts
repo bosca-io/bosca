@@ -19,6 +19,7 @@ dependencies {
     implementation(project(":scripting:core-scripting"))
     implementation(project(":content:core-content"))
     implementation(project(":content:content"))
+    implementation(project(":content:bible-providers"))
     implementation(project(":bosca-core:configuration"))
 
     implementation(libs.kotlin.scripting.common)

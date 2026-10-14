@@ -17,7 +17,18 @@ spec:
     {{- toYaml . | nindent 4 }}
   {{- end }}
   rules:
-    - backendRefs:
+    - matches:
+        - path:
+            type: RegularExpression
+            value: {{ include "bosca-git-server.uiRoutes" . | quote }}
+      backendRefs:
+        - name: {{ include "bosca-common.fullname" . }}
+          port: {{ .Values.ui.port }}
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
         - name: {{ include "bosca-common.fullname" . }}
           port: {{ .Values.service.port }}
 {{- end }}

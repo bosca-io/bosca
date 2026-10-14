@@ -1,0 +1,214 @@
+<component tag="git-header">
+  <prop name="signedIn" type="Boolean" default="true" />
+  <script server provides="path">
+    ctx.requestPath
+  </script>
+  <ui-app-header brand="Bosca" product="Git" href="/repositories">
+    <if signedIn>
+      <div class="git-subsystem">
+        <span class="subsystem-icon">
+          <ui-icon name="branch" />
+        </span>
+        <div>
+          <strong>Git</strong>
+          <p>Browse repositories, review pull requests, and search code</p>
+        </div>
+      </div>
+      <nav class="git-navigation" aria-label="Git">
+        <span class="nav-label">Code</span>
+        <a
+          href="/repositories"
+          :aria-current='if (path.startsWith("/repositories")) "page" else "false"'
+        >
+          <ui-icon name="folder" />
+          Repositories
+        </a>
+        <a href="/pulls" :aria-current='if (path.startsWith("/pulls")) "page" else "false"'>
+          <ui-icon name="branch" />
+          Pull requests
+        </a>
+        <a href="/pipelines" :aria-current='if (path.startsWith("/pipelines")) "page" else "false"'>
+          <ui-icon name="workflow" />
+          Pipelines
+        </a>
+        <a href="/search" :aria-current='if (path == "/search") "page" else "false"'>
+          <ui-icon name="search" />
+          Search
+        </a>
+        <span class="nav-label">Tools</span>
+        <a href="/compare" :aria-current='if (path == "/compare") "page" else "false"'>
+          <ui-icon name="compare" />
+          Compare
+        </a>
+        <a href="/statuses" :aria-current='if (path == "/statuses") "page" else "false"'>
+          <ui-icon name="check" />
+          Statuses
+        </a>
+        <details
+          class="nav-settings"
+          :open='path.startsWith("/ci-agents") || path.startsWith("/settings/")'
+        >
+          <summary>
+            <ui-icon name="settings" />
+            Settings
+            <ui-icon name="chevron" :size="12" />
+          </summary>
+          <a
+            href="/ci-agents"
+            :aria-current='if (path.startsWith("/ci-agents")) "page" else "false"'
+          >
+            <ui-icon name="server" />
+            CI agents
+          </a>
+          <a
+            href="/settings/github"
+            :aria-current='if (path == "/settings/github") "page" else "false"'
+          >
+            <ui-icon name="users" />
+            GitHub mappings
+          </a>
+        </details>
+      </nav>
+      <div class="session-control">
+        <git-session-button />
+      </div>
+    </if>
+  </ui-app-header>
+  <style scoped>
+    .git-subsystem {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 18px 4px 24px;
+    }
+    .subsystem-icon {
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      color: var(--accent);
+      background: color-mix(in oklch, var(--accent) 18%, transparent);
+      border: 1px solid color-mix(in oklch, var(--accent) 35%, transparent);
+    }
+    .git-subsystem strong {
+      font-size: 14px;
+      font-weight: 600;
+    }
+    .git-subsystem p {
+      margin: 0;
+      font-size: 11px;
+      line-height: 1.4;
+      color: var(--fg-3);
+    }
+
+    .git-navigation {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .nav-label {
+      padding: 20px 10px 8px;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--fg-3);
+    }
+    .git-navigation a {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 10px;
+      border-radius: var(--r-sm);
+      color: var(--fg-2);
+      font-size: 12.5px;
+      text-decoration: none;
+      border-left: 2px solid transparent;
+    }
+    .git-navigation a:hover {
+      background: var(--bg-3);
+      color: var(--fg-0);
+    }
+    .git-navigation a[aria-current="page"] {
+      color: var(--fg-0);
+      background: color-mix(in oklch, var(--accent) 16%, transparent);
+      border-left-color: var(--accent);
+      font-weight: 500;
+    }
+    .nav-settings {
+      margin-top: 14px;
+    }
+    .nav-settings summary {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 12px;
+      font-size: 12.5px;
+      color: var(--fg-3);
+      cursor: pointer;
+      list-style: none;
+      border-radius: var(--r-sm);
+    }
+    .nav-settings summary::-webkit-details-marker {
+      display: none;
+    }
+    .nav-settings summary:hover {
+      color: var(--fg-0);
+      background: var(--bg-3);
+    }
+    .nav-settings summary svg:last-child {
+      margin-left: auto;
+    }
+    .nav-settings[open] summary {
+      color: var(--fg-2);
+    }
+    .nav-settings a {
+      padding-left: 18px;
+    }
+    .session-control {
+      margin-top: auto;
+      padding: 24px 10px 0;
+    }
+    @media (max-width: 700px) {
+      .git-subsystem {
+        display: none;
+      }
+      .git-navigation {
+        flex-direction: row;
+        order: 3;
+        width: 100%;
+        overflow-x: auto;
+        padding-bottom: 8px;
+        gap: 4px;
+      }
+      .git-navigation a {
+        white-space: nowrap;
+        flex-shrink: 0;
+        padding: 7px 10px;
+      }
+      .nav-settings {
+        margin-top: 0;
+        flex: none;
+      }
+      .nav-settings[open] {
+        position: relative;
+      }
+      .nav-settings summary {
+        white-space: nowrap;
+      }
+      .nav-settings summary svg:last-child {
+        display: none;
+      }
+      .nav-label {
+        display: none;
+      }
+      .session-control {
+        margin: 0 0 0 auto;
+        padding: 0;
+      }
+    }
+  </style>
+</component>

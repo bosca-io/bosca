@@ -31,4 +31,6 @@ data class PullRequest(
     @Contextual val created: OffsetDateTime = OffsetDateTime.now(),
     @Contextual val updated: OffsetDateTime = OffsetDateTime.now(),
     val version: Long = 0,
+    /** Target tip immediately before merging, retained for the completed comparison. */
+    @ColumnName("merge_base_sha") val mergeBaseSha: String? = null,
 )

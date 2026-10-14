@@ -1,0 +1,98 @@
+<component tag="git-repository-utilities">
+  <prop name="page" type="bosca.git.ui.RepositorySettingsPage" required />
+  <script server provides="model">
+    bosca.git.ui.RepositoryUtilitiesModel(page)
+  </script>
+  <island name="git-repository-utilities" :key="page.repository.id">
+    <div class="settings-stack">
+      <if model.message.isNotBlank()>
+        <ui-alert :tone='if (model.failed) "error" else "success"'>{ model.message }</ui-alert>
+      </if>
+      <ui-card :padded="false">
+        <ui-section-heading title="Storage" subtitle="Current repository object storage." />
+        <div class="storage-row">
+          <div class="identity-cell">
+            <span class="record-icon">
+              <ui-icon name="folder" />
+            </span>
+            <strong>{ model.page.repository.name }</strong>
+          </div>
+          <div class="storage-value">
+            <span>Disk usage</span>
+            <code>{ bosca.git.ui.formatSize(model.size) }</code>
+          </div>
+        </div>
+      </ui-card>
+      <ui-card :padded="false">
+        <div class="settings-action">
+          <span class="action-icon">
+            <ui-icon name="refresh" :size="20" />
+          </span>
+          <div class="action-copy">
+            <h3>Garbage collection</h3>
+            <p>Compact loose objects and remove unreachable objects to reclaim storage.</p>
+          </div>
+          <ui-confirm-dialog
+            title="Run garbage collection?"
+            description="The repository's loose objects will be compacted and unreachable objects removed."
+            triggerLabel="Run GC"
+            icon="refresh"
+          >
+            <form class="modal-form" @submit='model.run("gc", true, ctx)'>
+              <footer class="modal-footer">
+                <ui-button ref="cancel">Cancel</ui-button>
+                <ui-button type="submit" primary>Run garbage collection</ui-button>
+              </footer>
+            </form>
+          </ui-confirm-dialog>
+        </div>
+      </ui-card>
+      <ui-card :padded="false">
+        <div class="settings-action">
+          <span class="action-icon">
+            <ui-icon name="server" :size="20" />
+          </span>
+          <div class="action-copy">
+            <h3>Repair repository</h3>
+            <p>Rebuild repository packs without bitmaps when object storage needs repair.</p>
+          </div>
+          <ui-confirm-dialog
+            title="Repair repository?"
+            description="Repository packs will be rebuilt without bitmaps. This may take time for larger repositories."
+            triggerLabel="Run repair"
+            icon="server"
+          >
+            <form class="modal-form" @submit='model.run("repair", true, ctx)'>
+              <footer class="modal-footer">
+                <ui-button ref="cancel">Cancel</ui-button>
+                <ui-button type="submit" primary>Run repair</ui-button>
+              </footer>
+            </form>
+          </ui-confirm-dialog>
+        </div>
+      </ui-card>
+    </div>
+  </island>
+  <style scoped>
+    .storage-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 18px;
+    }
+    .storage-value {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      text-align: right;
+    }
+    .storage-value span {
+      color: var(--fg-3);
+      font-size: 11px;
+    }
+    .storage-value code {
+      font-size: 14px;
+    }
+  </style>
+</component>

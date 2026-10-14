@@ -1,0 +1,12 @@
+<page route="/compare" requireAuth>
+  <script server provides="page">
+    bosca.git.ui.explorePage("compare")
+  </script>
+  <git-layout title="Compare">
+    <ui-page>
+      <ui-page-heading title="Compare" />
+      <git-explore-picker :page="page" />
+      <git-compare-results :page="page" />
+    </ui-page>
+  </git-layout>
+</page>

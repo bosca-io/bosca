@@ -6,6 +6,7 @@ import java.net.InetSocketAddress
 import java.net.URI
 import java.nio.file.Files
 import java.nio.file.Path
+import org.yaml.snakeyaml.Yaml
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -30,6 +31,78 @@ class SwarmServicesTest {
     private fun allServices(config: SwarmConfig) =
         services(infraStack(config)) + services(edgeStack(config)) +
             config.sites.flatMap { services(siteStack(config, it)).entries }.associate { it.key to it.value }
+
+    @Test
+    fun `FUMS is enabled explicitly on the collector only by default`() {
+        val stack = services(siteStack(config, site))
+        assertEquals("true", environment(stack.getValue("collector"))["FUMS_TRANSFORM_ENABLED"])
+        stack.filterKeys { it != "collector" }.forEach { (name, service) ->
+            assertNull(environment(service)["FUMS_TRANSFORM_ENABLED"], name)
+        }
+    }
+
+    @Test
+    fun `saved FUMS settings control each site's rendered collector`() {
+        val directory = Files.createTempDirectory("bosca-swarm-fums-")
+        try {
+            val path = directory.resolve("swarm.local.json")
+            val configured = config.copy(sites = listOf(
+                site.copy(fumsEnabled = false),
+                config.sites[1].copy(fumsEnabled = true),
+            ))
+            saveConfig(path, configured)
+            val loaded = loadConfig(path)
+            assertEquals(configured, loaded)
+
+            val destination = directory.resolve("output")
+            renderSwarm(loaded, destination)
+            for ((site, enabled) in loaded.sites.zip(listOf("false", "true"))) {
+                val rendered = Yaml().load<Map<String, Any>>(
+                    Files.readString(destination.resolve("stacks/${site.id}.yml")),
+                )
+                val stack = services(rendered)
+                assertEquals(enabled, environment(stack.getValue("collector"))["FUMS_TRANSFORM_ENABLED"], site.id)
+                stack.filterKeys { it != "collector" }.forEach { (name, service) ->
+                    assertNull(environment(service)["FUMS_TRANSFORM_ENABLED"], name)
+                }
+            }
+        } finally {
+            Files.walk(directory).use { paths -> paths.sorted(Comparator.reverseOrder()).forEach(Files::delete) }
+        }
+    }
+
+    @Test
+    fun `swarm runner uses the bundled configuration with the FUMS worker`() {
+        val runner = services(siteStack(config, site)).getValue("runner")
+        assertEquals(config.images.getValue("runner"), runner["image"])
+        assertNull(runner["command"])
+        assertNull(runner["configs"])
+        assertEquals("true", environment(runner)["ANALYTICS_PROCESSOR_ENABLED"])
+        val application = generateSequence(Path.of("").toAbsolutePath()) { it.parent }
+            .map { it.resolve("server/bosca-runner/src/main/resources/application.yaml") }
+            .firstOrNull(Files::isRegularFile)
+        if (application != null) {
+            val config = Yaml().load<Map<String, Any>>(Files.readString(application))
+            val runners = config.getValue("runners") as Map<String, List<String>>
+            assertTrue("fumsQueueRunner" in runners.getValue("enabled"))
+        }
+    }
+
+    @Test
+    fun `only collector and runner configurations expose FUMS transform placement`() {
+        for ((relativePath, enabled) in listOf(
+            "server/bosca-server/src/main/resources/application.yaml" to null,
+            "analytics/analytics-processor/src/main/resources/application.yaml" to null,
+            "analytics/analytics-collector/src/main/resources/application.yaml" to "true",
+            "server/bosca-runner/src/main/resources/application.yaml" to "false",
+        )) {
+            val application = generateSequence(Path.of("").toAbsolutePath()) { it.parent }
+                .map { it.resolve(relativePath) }.first(Files::isRegularFile)
+            val config = Yaml().load<Map<String, Any>>(Files.readString(application))
+            val processing = config["eventProcessing"] as Map<String, Any>?
+            assertEquals(enabled?.let { "\${FUMS_TRANSFORM_ENABLED:$it}" }, processing?.get("fumsEnabled"), relativePath)
+        }
+    }
 
     @Test
     fun `stateful services stay on the manager and application services on the workers`() {
@@ -179,8 +252,10 @@ class SwarmServicesTest {
     @Test
     fun `the bash HTTP check passes only on a 200 response`() {
         val server = HttpServer.create(InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0)
+        val uiStatus = java.util.concurrent.atomic.AtomicInteger(200)
         server.createContext("/api/v1/live") { exchange -> exchange.sendResponseHeaders(200, -1); exchange.close() }
         server.createContext("/api/v1/down") { exchange -> exchange.sendResponseHeaders(503, -1); exchange.close() }
+        server.createContext("/api/v1/ready") { exchange -> exchange.sendResponseHeaders(uiStatus.get(), -1); exchange.close() }
         server.start()
         try {
             fun run(check: List<String>) = ProcessBuilder(check.drop(1)).redirectErrorStream(true).start().waitFor()
@@ -188,6 +263,14 @@ class SwarmServicesTest {
             assertEquals(0, run(bashHttpCheck(port, "/api/v1/live")))
             assertNotEquals(0, run(bashHttpCheck(port, "/api/v1/down")))
             assertEquals(0, run(bashTcpCheck(port)))
+            val git = services(siteStack(config, site)).getValue("git")
+            val test = (git["healthcheck"] as Map<String, Any>)["test"] as List<String>
+            val combined = test.dropLast(1) + test.last()
+                .replace("127.0.0.1/8091", "127.0.0.1/$port")
+                .replace("127.0.0.1/8093", "127.0.0.1/$port")
+            assertEquals(0, run(combined))
+            uiStatus.set(503)
+            assertNotEquals(0, run(combined), "API liveness alone must not mark the Git host healthy")
         } finally {
             server.stop(0)
         }

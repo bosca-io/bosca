@@ -49,6 +49,7 @@ export class VisibilityTracker {
   private trackedElements: Map<Element, ExtractedAttributes> = new Map()
   private mutationObserver: MutationObserver | null = null
   private pendingMutation: ReturnType<typeof setTimeout> | null = null
+  private pendingElements = new Set<Element>()
   private visibleElements = new Set<Element>()
   private visibilityHandler: (() => void) | null = null
 
@@ -90,23 +91,22 @@ export class VisibilityTracker {
           }
         }
       }
-      if (this.pendingMutation) return
-      const added: Element[] = []
       for (const mutation of mutations) {
         for (let i = 0; i < mutation.addedNodes.length; i++) {
           const node = mutation.addedNodes[i]!
           if (node.nodeType === Node.ELEMENT_NODE) {
-            added.push(node as Element)
+            this.pendingElements.add(node as Element)
           }
         }
       }
-      if (added.length === 0) return
+      if (this.pendingMutation || this.pendingElements.size === 0) return
       this.pendingMutation = setTimeout(() => {
         this.pendingMutation = null
         this.evictDisconnected()
-        for (const root of added) {
+        for (const root of this.pendingElements) {
           if (root.isConnected) this.observeMatchingElements(root)
         }
+        this.pendingElements.clear()
       }, 100)
     })
     this.mutationObserver.observe(document.body, {
@@ -134,6 +134,7 @@ export class VisibilityTracker {
     }
     this.dwellTimers.clear()
     this.trackedElements.clear()
+    this.pendingElements.clear()
     this.visibleElements.clear()
     if (this.visibilityHandler) {
       document.removeEventListener('visibilitychange', this.visibilityHandler)

@@ -1,0 +1,71 @@
+<component tag="git-file-actions">
+  <prop name="page" type="bosca.git.ui.RepositoryPage" required />
+  <script server provides="model">
+    bosca.git.ui.RepositoryEditorModel(
+        page,
+        page.id,
+        page.ref,
+        page.file,
+        page.file.ifBlank { page.path.takeIf(String::isNotBlank)?.plus("/").orEmpty() },
+        page.content.orEmpty(),
+        page.listHref,
+    )
+  </script>
+  <island name="git-file-actions" :key="model.page.id + model.page.ref + model.page.file">
+    <div :data-next-href="model.nextHref">
+      <if model.message.isNotBlank()>
+        <ui-alert :tone='if (model.failed) "error" else "success"'>{ model.message }</ui-alert>
+      </if>
+      <if model.page.file.isNotBlank()>
+        <ui-confirm-dialog
+          title="Delete file?"
+          :description='"A commit removing " + model.page.file + " will be added to " + model.page.ref + "."'
+          triggerLabel="Delete file"
+        >
+          <form class="modal-form" @submit="model.delete(true, ctx)">
+            <footer class="modal-footer">
+              <ui-button ref="cancel">Cancel</ui-button>
+              <ui-button type="submit" class="danger">Delete file</ui-button>
+            </footer>
+          </form>
+        </ui-confirm-dialog>
+      <else>
+        <ui-dialog
+          title="New folder"
+          triggerLabel="New folder"
+          triggerIconOnly
+          triggerIcon="folder-plus"
+          icon="folder"
+          :forceOpen="model.failed"
+        >
+          <form class="modal-form" @submit="model.folder(form.path, ctx)">
+            <div class="modal-fields">
+              <if model.failed>
+                <ui-alert :tone='if (model.failed) "error" else "success"'>
+                  { model.message }
+                </ui-alert>
+              </if>
+              <ui-field
+                label="Folder path"
+                hint="A .gitkeep file will be committed so Git can store the folder."
+              >
+                <ui-input name="path" :value="model.draftPath" required />
+              </ui-field>
+            </div>
+            <footer class="modal-footer">
+              <ui-button ref="cancel">Cancel</ui-button>
+              <ui-button type="submit" primary>Create folder</ui-button>
+            </footer>
+          </form>
+        </ui-dialog>
+      </if>
+    </div>
+  </island>
+  <script client scoped>
+    ctx.onUpdate(() => {
+      const next =
+        ctx.root.querySelector<HTMLElement>("[data-next-href]")?.dataset.nextHref;
+      if (next) location.assign(next);
+    });
+  </script>
+</component>

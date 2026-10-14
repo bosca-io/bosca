@@ -19,6 +19,10 @@ application {
     applicationDefaultJvmArgs = listOf("--enable-native-access=ALL-UNNAMED", "-XX:+UseG1GC")
 }
 
+tasks.named<JavaExec>("run") {
+    outputs.upToDateWhen { false }
+}
+
 val projects = arrayOf(
     project(":bosca-core:core"),
     project(":pipelines:core-pipelines"),
@@ -34,6 +38,7 @@ val projects = arrayOf(
     project(":bosca-core:core-storage"),
     project(":bosca-core:storage"),
     project(":content:core-content"),
+    project(":content:content"),
     project(":search:core-search"),
     project(":search:search"),
     project(":content:slugs"),
@@ -55,6 +60,7 @@ dependencies {
     projects.forEach { implementation(it) }
 
     implementation(project(":sharedqueue:sharedqueue"))
+    implementation(project(":git:git-ui-server"))
     implementation(libs.jgit)
     implementation(libs.logback.classic)
     api(libs.postgresql)
@@ -62,10 +68,19 @@ dependencies {
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.kotlin.test.junit)
     testImplementation(libs.mockk)
+    testImplementation(project(":bosca-core:test-support"))
+    testImplementation(project(":bml:core-bml"))
+    testImplementation(project(":bml:bml-server"))
 
     "ksp"(project(":bosca-core:core-ksp"))
     "ksp"(project(":services-di:service-ksp"))
     "ksp"(project(":services-di:di-ksp"))
+}
+
+tasks.test {
+    val serverClasspath = sourceSets.main.get().runtimeClasspath
+    doFirst { systemProperty("apiServerClasspath", serverClasspath.asPath) }
+    systemProperty("workspaceRoot", rootProject.projectDir.absolutePath)
 }
 
 ksp {

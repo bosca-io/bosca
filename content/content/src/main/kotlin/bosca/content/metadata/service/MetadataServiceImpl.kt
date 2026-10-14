@@ -1313,6 +1313,7 @@ class MetadataServiceImpl(
     override suspend fun delete(metadata: Metadata) {
         videoService.delete(metadata)
         transaction {
+            bibleService.clearAudioChapterContent(metadata.id)
             repository.deleteById(metadata.id)
             removeFromCache(metadata)
             val supplementary = getSupplementary(metadata.id)

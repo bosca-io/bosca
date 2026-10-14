@@ -38,6 +38,12 @@ class ArtifactVersionInfoController(
     fun finalized(version: ArtifactVersion) = version.finalized
 
     @Field
+    fun completed(version: ArtifactVersion) = version.completedCommitSha != null || version.finalized
+
+    @Field
+    fun completedCommitSha(version: ArtifactVersion) = version.completedCommitSha
+
+    @Field
     suspend fun blobs(authorization: AuthenticationContext, version: ArtifactVersion): List<ArtifactVersionBlob> {
         groupEvaluator.verifyHasAdminGroup(authorization)
         return repoService.getVersionBlobs(version.id)

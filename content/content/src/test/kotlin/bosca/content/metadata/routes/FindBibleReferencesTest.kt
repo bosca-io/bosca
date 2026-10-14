@@ -1,6 +1,9 @@
 package bosca.content.metadata.routes
 
 import bosca.bible.Reference
+import bosca.bible.BibleChapterContent
+import bosca.bible.BibleContentUse
+import bosca.bible.Chapter
 import bosca.bible.bibleJson
 import bosca.bible.components.Text
 import bosca.content.find.FindQueryInput
@@ -30,11 +33,20 @@ import kotlin.reflect.full.callSuspend
 import kotlin.reflect.full.declaredMemberFunctions
 import kotlin.reflect.jvm.isAccessible
 import kotlin.test.Test
+import kotlin.test.BeforeTest
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 class FindBibleReferencesTest {
+
+    @BeforeTest
+    fun stubLocalChapterContent() {
+        coEvery { bibleService.getChapterContent(any<Bible>(), any<Reference>(), BibleContentUse.DISPLAY) } coAnswers {
+            val chapter = bibleService.getChapter(firstArg<Bible>(), secondArg<Reference>())
+            BibleChapterContent(Chapter(Reference(chapter.usfm), chapter.getChapterComponents()))
+        }
+    }
 
     private val metadataService = mockk<MetadataService>()
     private val bibleService = mockk<BibleService>()
@@ -164,6 +176,7 @@ class FindBibleReferencesTest {
 
         assertEquals(1, result.size)
         assertTrue(result[0].content.isEmpty())
+        coVerify(exactly = 0) { bibleService.getChapterContent(any<Bible>(), any<Reference>(), any()) }
     }
 
     @Test

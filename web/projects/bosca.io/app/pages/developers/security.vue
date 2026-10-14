@@ -1,219 +1,122 @@
 <script setup lang="ts">
-useSeoMeta({ title: 'Security' })
+definePageMeta({ layout: 'developers' })
+useSeoMeta({ title: 'Security', description: 'Authenticate accounts, manage credentials, and understand access tokens and sign-in sessions.' })
+const login = 'mutation Login($identifier: String!, $password: String!) {\n  security {\n    login {\n      password(identifier: $identifier, password: $password) {\n        principal { id primaryProfileId }\n        token { token expiresAt }\n        refreshToken\n      }\n    }\n  }\n}'
+const refresh = 'mutation Refresh($refreshToken: String!) {\n  security {\n    login {\n      refreshToken(refreshToken: $refreshToken) {\n        token { token expiresAt }\n        refreshToken\n      }\n    }\n  }\n}'
+const sessions = 'query SignIns {\n  security {\n    principals {\n      current {\n        id\n        loginHistory(offset: 0, limit: 25) { id method created revokedAt current }\n      }\n    }\n  }\n}\n\nmutation SignOut {\n  security { login { signOut } }\n}'
 </script>
 
 <template>
   <div class="doc-content article">
     <h1>Security</h1>
     <p class="subtitle">
-      Authentication, credentials, token lifecycle, and session management —
-      <code>SecurityService</code>, JWT token versioning, OAuth2, passkeys, and API tokens.
+      Authenticate accounts, manage credentials, and understand access tokens and sign-in sessions.
     </p>
-
     <h2 id="overview">
-      Overview
+      Principals and profiles
     </h2>
     <p>
-      Bosca's security layer is built around <strong>Principals</strong> (user accounts) and
-      <strong>Credentials</strong> (authentication methods). A single Principal can have multiple
-      credentials — password, OAuth2, API tokens, and WebAuthn passkeys — all managed through
-      the <code>SecurityService</code>.
+      A <strong>Principal</strong> is an account's security identity. It owns credentials, sign-in
+      sessions, and group memberships. A <NuxtLink to="/developers/profile">Profile</NuxtLink>
+      stores social and contact information and has a separate ID. A principal can own multiple profiles.
     </p>
-
-    <h2 id="principal">
-      Principal
-    </h2>
-    <p>The core identity record. Every authenticated user is a Principal.</p>
-    <CodeBlock
-      lang="kotlin"
-      :code="`@Serializable
-data class Principal(
-    val id: UUID = UUID.NIL,
-    val created: OffsetDateTime,
-    val modified: OffsetDateTime,
-    val verified: Boolean = false,
-    val anonymous: Boolean = true,
-    val attributes: JsonElement? = null,
-    val verificationToken: String? = null,
-    val primaryProfileId: UUID? = null,
-    val tokenVersion: Int = 0,    // monotonic counter — bumped to invalidate sessions
-)`"
-    />
-    <Callout type="info">
-      <code>tokenVersion</code> is central to session security — every JWT includes a <code>tver</code> claim
-      that must match the Principal's current version, or the token is rejected.
-    </Callout>
-
     <h2 id="credentials">
-      Credential Types
+      Authentication methods
     </h2>
-    <p>
-      Credentials are polymorphic — each type stores its data in a JSON <code>attributes</code> field
-      on <code>PrincipalCredential</code>.
-    </p>
-    <table>
-      <thead>
-        <tr>
-          <th>Type</th>
-          <th>Storage</th>
-          <th>Notes</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td><code>PASSWORD</code></td>
-          <td>Argon2 hash</td>
-          <td>Primary login method</td>
-        </tr>
-        <tr>
-          <td><code>PASSWORD_SCRYPT</code></td>
-          <td>Scrypt hash</td>
-          <td>Legacy support — migrated on next login</td>
-        </tr>
-        <tr>
-          <td><code>OAUTH2</code></td>
-          <td>Provider token</td>
-          <td>Google, Facebook, Apple</td>
-        </tr>
-        <tr>
-          <td><code>API_TOKEN</code></td>
-          <td>SHA-256 hash</td>
-          <td>Scoped tokens with group restrictions</td>
-        </tr>
-        <tr>
-          <td><code>PASSKEY</code></td>
-          <td>WebAuthn public key</td>
-          <td>FIDO2 with sign-count anti-cloning</td>
-        </tr>
-      </tbody>
-    </table>
-
-    <h2 id="authentication-flows">
-      Authentication Flows
-    </h2>
-
-    <h3>Password Login</h3>
-    <CodeBlock
-      lang="graphql"
-      :code="`mutation Login($identifier: String!, $password: String!) {
-  security {
-    login {
-      password(identifier: $identifier, password: $password) {
-        token { token, expiresAt }
-        refreshToken
-      }
-    }
-  }
-}`"
-    />
-    <p>
-      Returns a short-lived JWT (<code>token</code>) and a long-lived <code>refreshToken</code>.
-      The refresh token is single-use — exchanging it atomically deletes the old one and issues a new pair.
-    </p>
-
-    <h3>OAuth2 / Third-Party</h3>
-    <p>
-      Supports <code>GOOGLE</code>, <code>FACEBOOK</code>, and <code>APPLE</code>. The client obtains a
-      provider token and exchanges it via the <code>signupThirdParty</code> or <code>loginThirdParty</code>
-      mutations. Bosca validates the token with the provider and creates or links the credential.
-    </p>
-
-    <h3>Passkeys (WebAuthn)</h3>
-    <p>
-      FIDO2/WebAuthn passkeys for passwordless authentication. The server tracks the
-      <code>signCount</code> to detect cloned authenticators.
-    </p>
-
-    <h3>API Tokens</h3>
-    <p>
-      Long-lived tokens for programmatic access. Each token has optional <strong>scopes</strong> and
-      <strong>allowed groups</strong> to restrict what it can do. The raw token is shown once at creation;
-      only the SHA-256 hash is stored.
-    </p>
-
-    <h2 id="token-versioning">
-      Token Versioning
-    </h2>
-    <p>
-      Every JWT includes a <code>tver</code> (token version) claim. The Principal's <code>tokenVersion</code>
-      is a monotonic counter that increments on security-sensitive events:
-    </p>
     <ul>
-      <li>Password change</li>
-      <li>Identifier (email) change</li>
-      <li>Credential deletion</li>
-      <li>Explicit logout (all sessions)</li>
+      <li><strong>Passwords:</strong> stored as Argon2 hashes. Existing Scrypt password credentials are supported.</li>
+      <li><strong>OAuth2:</strong> configured third-party providers can sign in or link credentials to an account.</li>
+      <li><strong>Passkeys:</strong> WebAuthn credentials use public keys and authenticator sign counters.</li>
+      <li><strong>API tokens:</strong> separate programmatic access records, stored as SHA-256 hashes with optional scopes and allowed groups.</li>
     </ul>
     <p>
-      When <code>tver</code> in the JWT doesn't match the current <code>tokenVersion</code>, the token
-      is rejected — effectively invalidating all outstanding sessions without maintaining a token blacklist.
+      Enable OAuth2 providers in the deployment configuration. Query <code>security.thirdPartyProviders</code>
+      for the enabled providers. Email verification and password recovery require a configured mailer.
     </p>
-
-    <h2 id="groups">
-      Groups &amp; Roles
+    <h2 id="authentication-flows">
+      Password login
     </h2>
     <p>
-      Groups are the foundation of authorization. Every <code>Group</code> carries a
-      <code>GroupType</code>:
+      Send this operation to <code>/graphql</code> with the account's identifier and password as
+      GraphQL variables. On the local Compose instance, the initial identifier is <code>admin</code>.
     </p>
-    <table>
-      <thead>
-        <tr>
-          <th>GroupType</th>
-          <th>Purpose</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td><code>SYSTEM</code></td>
-          <td>Built-in roles (SA, admin, editor, manager) plus user-defined groups for team/project access control</td>
-        </tr>
-        <tr>
-          <td><code>PRINCIPAL</code></td>
-          <td>Auto-created per user, used for personal entity permissions</td>
-        </tr>
-      </tbody>
-    </table>
-    <Callout type="tip">
-      See the <NuxtLink to="/developers/permissions">Permissions</NuxtLink> page for how groups
-      interact with <code>PermissionEvaluator</code> to control entity access.
-    </Callout>
-
-    <h2 id="security-service">
-      SecurityService
-    </h2>
-    <p>The central interface for all authentication and credential management:</p>
     <CodeBlock
-      lang="kotlin"
-      :code="`interface SecurityService {
-    suspend fun loginWithCredential(identifier: String, password: String): LoginResponse
-    suspend fun authenticateWithPayload(payload: JWTPayload): AuthenticationContext
-    suspend fun createToken(principal: Principal): Token
-    suspend fun refreshToken(refreshToken: String): LoginResponse
-    suspend fun addCredential(principalId: UUID, credential: PrincipalCredentialInput)
-    suspend fun deleteCredential(principalId: UUID, credentialId: Long)
-    suspend fun resetPassword(token: String, password: String)
-    suspend fun verifyEmail(token: String): Principal
-    // ... group management, principal CRUD, API tokens, passkeys
-}`"
+      lang="graphql"
+      :code="login"
     />
-
-    <h2 id="email-verification">
-      Email Verification
-    </h2>
     <p>
-      New accounts can optionally require email verification. A <code>verificationToken</code> is generated
-      on signup and sent via email. The <code>verify</code> mutation validates the token and marks
-      the Principal as <code>verified</code>.
+      The access token is the string at <code>data.security.login.password.token.token</code>.
+      Send it in <code>Authorization: Bearer TOKEN</code> for subsequent programmatic requests.
+      <code>expiresAt</code> is a Unix timestamp in seconds. A refresh token is returned when enabled.
     </p>
-
-    <h2 id="password-reset">
-      Password Reset
+    <h2 id="refresh">
+      Refresh the session
+    </h2>
+    <CodeBlock
+      lang="graphql"
+      :code="refresh"
+    />
+    <p>
+      Refresh tokens are single-use. Store the newly returned refresh token along with the access
+      token; retrying with the consumed token fails. A revoked sign-in cannot refresh.
+    </p>
+    <h2 id="sessions">
+      Sign-in history and sign-out
+    </h2>
+    <CodeBlock
+      lang="graphql"
+      :code="sessions"
+    />
+    <p>
+      <code>signOut</code> revokes the current recorded sign-in and clears its session cookie, leaving
+      other recorded sign-ins active. <code>security.principal.revokeLogin(loginId: ...)</code>
+      revokes a selected sign-in owned by the current principal.
+    </p>
+    <p>
+      JWTs also carry a <code>tver</code> claim checked against <code>Principal.tokenVersion</code>.
+      Password changes, resets, identifier changes, and account deletion can invalidate all sessions.
+      Signing out a token without a recorded login uses account-wide revocation.
+    </p>
+    <h2 id="signup">
+      Signup and account linking
     </h2>
     <p>
-      The forgot-password flow generates a time-limited reset token sent via email. The
-      <code>resetPassword</code> mutation validates the token, updates the password hash, and bumps
-      <code>tokenVersion</code> to invalidate all existing sessions.
+      New clients should use <code>security.signup.passwordV2</code>,
+      <code>thirdpartyV2</code>, and <code>passwordVerifyV2</code>. Their <code>SignupResult</code>
+      can contain a principal, a login response, or a link challenge. If signup encounters an existing
+      verified account, complete the challenge through <code>security.link</code> using password
+      proof or email proof.
+    </p>
+    <p>
+      Third-party token exchange is available through <code>security.signup.thirdpartyV2</code>;
+      connecting an additional method uses <code>security.connectThirdParty</code>.
+      Browser OAuth2 flows use the configured provider routes.
+    </p>
+    <h2 id="api-tokens">
+      Programmatic access
+    </h2>
+    <p>
+      Create and manage tokens through Studio, <code>security.apiTokens</code>, or the
+      <NuxtLink to="/developers/cli">CLI</NuxtLink>. The raw token is returned once at creation.
+      Scopes and allowed groups restrict the account's authority; they do not grant access
+      the account does not already hold.
+    </p>
+    <h2 id="browser-auth">
+      Browser applications
+    </h2>
+    <p>
+      Bosca's Nuxt applications use <code>@bosca/auth-client-browser</code> and the existing
+      same-origin proxy routes. Reuse the auth plugin and middleware for SSR and client navigation.
+      The library manages browser-readable tokens and refresh scheduling; avoid implementing a
+      separate cookie parser or token lifecycle.
+    </p>
+    <h2 id="source">
+      Where to look in the workspace
+    </h2>
+    <p>
+      GraphQL fields are defined in <code>bosca-core/security/src/main/resources/graphql/security/</code>.
+      Authentication behavior lives in <code>SecurityServiceImpl</code>; API authorization is covered by
+      <NuxtLink to="/developers/permissions">Permissions</NuxtLink>.
     </p>
   </div>
 </template>

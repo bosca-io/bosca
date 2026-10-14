@@ -33,6 +33,12 @@ class SwarmEncryptionTest {
                             password = "root-password"),
                         ml = SwarmSiteMl("bosca-token", "push-token", "pull-token"),
                         google = SwarmSiteGoogle("google-client-id", "google-client-secret"),
+                        oauthRedirects = listOf("https://accounts.example.org"),
+                        cacheBackend = "redis",
+                        pubsubBackend = "nats",
+                        jobQueueBackend = "redis",
+                        distributedLockBackend = "redis",
+                        counterBackend = "redis",
                     ) else site
                 })
             }
@@ -48,6 +54,9 @@ class SwarmEncryptionTest {
                 "push-token", "pull-token", "google-client-secret", original.sites[0].secrets.initialAdmin, original.secrets.postgresAdmin)
                 .forEach { assertFalse(encryptedText.contains(it), "Plaintext credential remained in config") }
             assertTrue(encryptedText.contains("google-client-id"), "Google client id is public and stays readable")
+            assertTrue(encryptedText.contains("https://accounts.example.org"), "OAuth redirects stay readable")
+            assertEquals("redis", document.getValue("sites").jsonArray[0].jsonObject.getValue("cacheBackend").jsonPrimitive.content)
+            assertEquals("nats", document.getValue("sites").jsonArray[0].jsonObject.getValue("pubsubBackend").jsonPrimitive.content)
             assertTrue(document.getValue("registryAuth").jsonObject.getValue("password").jsonPrimitive.content.startsWith("ENC[v1:"))
 
             SwarmConfigFile(path) { passphrase.copyOf() }.use { file ->

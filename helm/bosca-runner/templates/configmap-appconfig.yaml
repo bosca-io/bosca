@@ -55,6 +55,9 @@ data:
         development: false
         compression-enabled: {{ .Values.appConfig.compressionEnabled }}
 
+    eventProcessing:
+      fumsEnabled: ${FUMS_TRANSFORM_ENABLED:{{ .Values.appConfig.fumsTransformEnabled }}}
+
     runners:
       enabled:
         {{- range .Values.appConfig.runners }}

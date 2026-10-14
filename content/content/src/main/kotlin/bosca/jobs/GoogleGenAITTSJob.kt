@@ -2,6 +2,7 @@ package bosca.jobs
 
 import bosca.ai.models.service.ModelService
 import bosca.ai.prompts.service.PromptService
+import bosca.bible.BibleContentUse
 import bosca.content.configuration.JobQueueNames
 import bosca.content.metadata.model.LocaleAwareDocument
 import bosca.content.metadata.model.MetadataSupplementaryInput
@@ -79,6 +80,7 @@ class GoogleGenAITTSExecutor(
                 metadataService = metadataService,
                 bibleService = bibleService,
                 json = json,
+                use = BibleContentUse.TEXT_TO_SPEECH,
                 configuration = job.configuration
             )
             val text = transform.transform(Unit, LocaleAwareDocument(Locale.forLanguageTag(metadata.languageTag), document))

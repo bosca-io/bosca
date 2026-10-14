@@ -203,6 +203,9 @@ natsMonitoring:
 cache:
   type: "$CACHE_TYPE:nats"
 
+counter:
+  type: "$COUNTER_TYPE:redis"
+
 experimentation:
   eventsTable: "$EXPERIMENTATION_EVENTS_TABLE:warehouse.bosca.events"
   assignmentsTable: "$EXPERIMENTATION_ASSIGNMENTS_TABLE:bosca.experimentation.assignments"
@@ -308,6 +311,7 @@ runners:
     - gitQueueRunner
     - workopsQueueRunner
     - analyticsQueueRunner
+    - fumsQueueRunner
     - scriptingQueueRunner
     - backupQueueRunner
     - segmentationQueueRunner

@@ -1,0 +1,81 @@
+{
+  "id": "pull",
+  "version": 0,
+  "repositoryId": "repo",
+  "number": 1,
+  "title": "Fix image",
+  "description": "Fix Markdown previews so repository images resolve from the reviewed commit.\n\nThe preview and source views now share the same file context.\n\n![Logo](images/logo.png)",
+  "status": "OPEN",
+  "sourceBranch": "feature/one",
+  "targetBranch": "main",
+  "authorId": "owner",
+  "mergeable": true,
+  "created": "2026-10-09T00:00:00Z",
+  "updated": "2026-10-09T00:00:00Z",
+  "sourceRepositoryId": null,
+  "mergeStrategy": null,
+  "mergedBy": null,
+  "mergedAt": null,
+  "mergeSha": null,
+  "mergeBaseSha": null,
+  "conflictingFiles": [],
+  "assignees": [],
+  "dependencies": [],
+  "dependents": [],
+  "reviews": [
+    {
+      "id": "review",
+      "reviewerId": "owner",
+      "status": "COMMENT_ONLY",
+      "body": "Existing review",
+      "created": "2026-10-09T00:00:00Z",
+      "dismissedAt": null,
+      "dismissReason": null,
+      "comments": [
+        {
+          "id": "comment",
+          "authorId": "owner",
+          "content": "Existing line comment",
+          "filePath": "a.txt",
+          "oldLineNumber": null,
+          "newLineNumber": 1,
+          "commitSha": "abc",
+          "outdated": false,
+          "resolved": false,
+          "created": "2026-10-09T00:00:00Z",
+          "updated": "2026-10-09T00:00:00Z"
+        }
+      ]
+    }
+  ],
+  "diff": [
+    {
+      "oldPath": "a.txt",
+      "newPath": "a.txt",
+      "changeType": "MODIFY",
+      "hunks": [
+        {
+          "oldStart": 1,
+          "oldCount": 0,
+          "newStart": 1,
+          "newCount": 2,
+          "totalLineCount": 2,
+          "lines": [
+            {
+              "content": "<script>diff</script>",
+              "type": "ADD",
+              "oldLineNumber": null,
+              "newLineNumber": 1
+            },
+            {
+              "content": "Second diff line",
+              "type": "ADD",
+              "oldLineNumber": null,
+              "newLineNumber": 2
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

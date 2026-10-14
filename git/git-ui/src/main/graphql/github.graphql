@@ -1,0 +1,180 @@
+query GitUiGitHubPair($id: UUID!) {
+  github {
+    pair(repositoryId: $id) {
+      repositoryId
+      githubRepositoryId
+      owner
+      name
+      webhookSecretName
+      tokenSecretName
+      enabled
+      version
+      created
+      modified
+      pushBranchIncludes
+      pushBranchExcludes
+      pullBranchIncludes
+      pullBranchExcludes
+    }
+  }
+  pipelines {
+    secrets {
+      name
+    }
+  }
+}
+query GitUiGitHubRefs($id: UUID!, $offset: Long!) {
+  github {
+    refStates(repositoryId: $id, offset: $offset, limit: 26) {
+      repositoryId
+      ref
+      sha
+      synchronized
+      boscaSha
+      githubSha
+      conflict
+      modified
+    }
+  }
+}
+query GitUiGitHubPullStates($id: UUID!, $offset: Long!) {
+  github {
+    pullRequestStates(repositoryId: $id, offset: $offset, limit: 26) {
+      repositoryId
+      pullRequestId
+      githubId
+      githubNumber
+      problem
+      modified
+      snapshot {
+        title
+        description
+        sourceBranch
+        targetBranch
+        status
+        mergeSha
+      }
+      bosca {
+        title
+        description
+        sourceBranch
+        targetBranch
+        status
+        mergeSha
+      }
+      github {
+        title
+        description
+        sourceBranch
+        targetBranch
+        status
+        mergeSha
+      }
+    }
+  }
+}
+query GitUiGitHubDeliveries($id: UUID!, $offset: Long!) {
+  github {
+    deliveries(repositoryId: $id, offset: $offset, limit: 26) {
+      deliveryId
+      event
+      principalId
+      githubUserId
+      ignored
+      created
+      problem
+      importProblem
+    }
+  }
+}
+mutation GitUiSavePair($input: GitHubRepositoryPairInput!) {
+  github {
+    savePair(input: $input) {
+      version
+    }
+  }
+}
+mutation GitUiSharedSecret($name: String!, $value: String!) {
+  pipelines {
+    setSecret(name: $name, value: $value) {
+      name
+    }
+  }
+}
+mutation GitUiReconcileRefs($id: UUID!) {
+  github {
+    reconcileRefs(repositoryId: $id) {
+      ref
+    }
+  }
+}
+mutation GitUiPullRefs($id: UUID!) {
+  github {
+    pullRefs(repositoryId: $id) {
+      ref
+    }
+  }
+}
+mutation GitUiPushRefs($id: UUID!) {
+  github {
+    pushRefs(repositoryId: $id) {
+      ref
+    }
+  }
+}
+mutation GitUiReconcilePulls($id: UUID!) {
+  github {
+    reconcilePullRequests(repositoryId: $id) {
+      pullRequestId
+    }
+  }
+}
+mutation GitUiResolveRef($input: GitHubRefResolutionInput!) {
+  github {
+    resolveRef(input: $input) {
+      ref
+      conflict
+    }
+  }
+}
+query GitUiGitHubUsers($offset: Long!) {
+  github {
+    users(offset: $offset, limit: 26) {
+      githubUserId
+      githubUsername
+      principalId
+      created
+      modified
+    }
+  }
+}
+query GitUiPrincipals($offset: Long!) {
+  security {
+    principals {
+      all(offset: $offset, limit: 26, includeDeleted: false) {
+        id
+        primaryProfileId
+        profiles {
+          id
+          name
+          slug
+        }
+        credentials {
+          identifier
+        }
+      }
+    }
+  }
+}
+mutation GitUiMapUser($username: String!, $principal: UUID!) {
+  github {
+    mapUserByUsername(username: $username, principalId: $principal) {
+      githubUserId
+    }
+  }
+}
+mutation GitUiUnmapUser($id: Long!) {
+  github {
+    unmapUser(githubUserId: $id)
+  }
+}

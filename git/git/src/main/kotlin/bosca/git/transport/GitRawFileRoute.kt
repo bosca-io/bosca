@@ -25,7 +25,7 @@ import org.eclipse.jgit.treewalk.TreeWalk
  * where {path} captures the remaining segments after {ref}.
  */
 @RouteController(
-    path = "/{owner}/{repo}/raw/{ref}/{path}",
+    path = "/{owner}/{repo}/raw/{ref}/{path...}",
     method = RouteMethod.GET,
     authentication = RouteAuthentication.OPTIONAL
 )
@@ -57,6 +57,12 @@ class GitRawFileRoute(
 
                 val loader = it.objectDatabase.open(objectId)
                 call.response.header("Content-Length", loader.size.toString())
+                call.response.header("Cache-Control", "private, no-store")
+                call.response.header("X-Content-Type-Options", "nosniff")
+                call.response.header("Content-Security-Policy", "sandbox; default-src 'none'")
+                if (path.substringAfterLast('.', "").lowercase() in setOf("html", "htm", "svg", "xml", "pdf")) {
+                    call.response.header("Content-Disposition", "attachment")
+                }
                 // A read failure propagates so the response is aborted rather than silently truncated.
                 loader.openStream().use { input ->
                     // No time limit: a large file on a slow link may take long; a client that stops
@@ -83,6 +89,9 @@ class GitRawFileRoute(
                 "png" -> ContentType.Image.Png
                 "jpg", "jpeg" -> ContentType.Image.Jpeg
                 "gif" -> ContentType.Image.Gif
+                "webp" -> ContentType("image", "webp")
+                "avif" -> ContentType("image", "avif")
+                "bmp" -> ContentType("image", "bmp")
                 "svg" -> ContentType("image", "svg+xml")
                 "pdf" -> ContentType("application", "pdf")
                 else -> ContentType.Application.OctetStream

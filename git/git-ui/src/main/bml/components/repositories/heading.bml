@@ -1,0 +1,76 @@
+<component tag="git-repository-heading">
+  <prop name="page" type="bosca.git.ui.RepositoryPage" required />
+  <div class="repository-heading">
+    <ui-page-heading
+      icon="folder"
+      :badge="page.visibility.lowercase()"
+      :description="page.slug"
+      :title="page.name"
+      :backHref="page.listHref"
+      backLabel="Repositories"
+      titleAlignedActions
+    >
+      <div class="repository-controls">
+        <if page.tab == "code" || page.tab == "commits" || page.tab == "statuses">
+          <git-ref-selector :page="page" />
+        </if>
+        <if page.pulls != null>
+          <git-pull-create :page="page.pulls" />
+        </if>
+        <ui-popover label="Clone repository" icon="download" iconOnly :width="420">
+          <ui-copy-field :value="page.cloneUrl" label="Clone URL" copyLabel="Copy clone URL" />
+        </ui-popover>
+      </div>
+    </ui-page-heading>
+    <div class="repository-details-row">
+      <if page.description.isNotBlank()>
+        <p class="repository-description">{ page.description }</p>
+      </if>
+      <p class="repository-summary">{ page.stats }</p>
+    </div>
+  </div>
+  <style scoped>
+    .repository-heading {
+      min-width: 0;
+    }
+    .repository-controls {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+      min-width: 0;
+      max-width: 100%;
+    }
+    .repository-details-row {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      gap: 6px 20px;
+      margin-top: 6px;
+      color: var(--fg-3);
+      font-size: 12px;
+    }
+    .repository-description,
+    .repository-summary {
+      margin: 0;
+      min-width: 0;
+      max-width: 100%;
+      overflow-wrap: anywhere;
+    }
+    .repository-description {
+      flex: 1;
+    }
+    .repository-summary {
+      margin-left: auto;
+    }
+    @media (max-width: 600px) {
+      .repository-description {
+        flex-basis: 100%;
+      }
+      .repository-summary {
+        margin-left: 0;
+      }
+    }
+  </style>
+</component>

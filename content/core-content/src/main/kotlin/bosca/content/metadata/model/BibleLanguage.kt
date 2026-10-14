@@ -1,5 +1,6 @@
 package bosca.content.metadata.model
 
+import bosca.bible.IBibleLanguage
 import bosca.db.annotation.ColumnName
 import bosca.serialization.UUID
 import kotlinx.serialization.Contextual
@@ -12,14 +13,14 @@ class BibleLanguage(
     val metadataId: UUID,
     val version: Int,
     val variant: String,
-    val iso: String,
-    val name: String,
+    override val iso: String,
+    override val name: String,
     @ColumnName("name_local")
-    val nameLocal: String,
-    val script: String,
+    override val nameLocal: String,
+    override val script: String,
     @ColumnName("script_code")
-    val scriptCode: String,
+    override val scriptCode: String,
     @ColumnName("script_direction")
-    val scriptDirection: String,
+    override val scriptDirection: String,
     val sort: Int
-)
+) : IBibleLanguage

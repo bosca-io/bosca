@@ -145,6 +145,8 @@ includeComponent("bosca-kmp", listOf(
 
 includeComponent("content", listOf(
     "core-content",
+    "core-bible-providers",
+    "bible-providers",
     "content",
     "core-languages",
     "languages",
@@ -251,6 +253,8 @@ includeComponent("git", listOf(
     "git",
     "git-ci",
     "git-jobs",
+    "git-ui",
+    "git-ui-server",
     "git-server",
 ))
 

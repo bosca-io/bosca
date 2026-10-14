@@ -12,6 +12,7 @@ Top-level directories share this Git repository. This file covers workspace-wide
 - Use Bosca Work Ops for specifications and planning when that integration is available, and keep the work item current.
 - Preserve unrelated changes. Check workspace Git status before and after editing.
 - Do not commit, push, switch branches, or rewrite history unless the user explicitly requests it.
+- Agents are not responsible parties, they are tools that responsible parties use. Never list an agent or model as a Git author, co-author, or committer, or add attribution trailers crediting an agent (such as `Co-Authored-By`). Only the human working on the project may be the committer; use that human's Git identity for explicitly authorized commits.
 - Keep changes in the directory that owns the code. Cross-module source changes belong in their respective component directories and are tracked by the same repository.
 - Never edit or commit generated output such as `build/`, `.gradle/`, `.nuxt/`, `.output/`, or `build/generated/ksp/`.
 - Finish all in-scope implementation and validation. Do not leave avoidable stubs, TODOs, or known failures.
@@ -135,6 +136,7 @@ Operational data belongs in PostgreSQL; analytical data belongs in Iceberg and T
 
 ## Cross-module conventions
 
+- Put each hand-written top-level Kotlin class, data class, enum, and interface in its own file named after the type. Keep page loaders and shared functions in focused files.
 - I/O boundaries are async-first and should be `suspend` functions.
 - Avoid `!!`; prefer safe calls, `let`, Elvis expressions, or restructuring so non-nullability is evident to the compiler.
 - Never use `GlobalScope` and never catch or swallow `CancellationException`.
@@ -157,7 +159,7 @@ These rules capture recurring design decisions and failure modes that apply acro
 - When terminology is ambiguous, check the existing vocabulary and code. If one interpretation duplicates an existing feature, investigate the missing type-level or domain-level meaning instead of building the duplicate.
 - Read the actual framework, DI, configuration, or generated-code source before explaining its behavior. Do not invent plausible internals, incidents, usage statistics, version behavior, or operational facts.
 - Documentation and marketing material describe functionality verified in the current code. Do not add roadmap claims, speculative limitations, WorkOps IDs, or unverified failure stories.
-- Public distribution uses GitHub: CLI releases from `github.com/bosca-io/bosca` (tags `cli-v<version>`) and images from `ghcr.io/bosca-io/bosca/<name>`. Otherwise, do not introduce GitHub links, comparisons, or named references into Bosca UI, documentation copy, examples, or generated content.
+- Public distribution uses GitHub: CLI releases from `github.com/bosca-io/bosca` (tags are the bare `<major>.<minor>.<patch>` version) and images from `ghcr.io/bosca-io/bosca/<name>`. Otherwise, do not introduce GitHub links, comparisons, or named references into Bosca UI, documentation copy, examples, or generated content.
 - Recommendations must preserve valid workflows such as local development, intentionally long sessions, and the existing browser auth model. If disruption is warranted, include a concrete migration or operational path.
 - Add KDoc when adding or changing interface methods. Keep implementation comments about the code's enduring contract; put bug-history narratives in change history rather than inline comments.
 - Preserve published SDK signatures. Extend them additively with overloads or new entry points instead of removing or changing existing forms.

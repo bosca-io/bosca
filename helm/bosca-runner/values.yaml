@@ -35,6 +35,8 @@ workers:
         memory: 2Gi
 
 appConfig:
+  # Includes FUMS enqueueing in this application's Analytics transform list.
+  fumsTransformEnabled: false
   domain: ""
   realm: ""
   # Runner HTTP traffic is limited to health endpoints, so compression defaults off.
@@ -58,6 +60,7 @@ appConfig:
     - communityRunner
     - commonQueueRunner
     - analyticsQueueRunner
+    - fumsQueueRunner
     - backupQueueRunner
     - segmentationQueueRunner
     - scriptingQueueRunner

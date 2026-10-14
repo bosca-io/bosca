@@ -7,6 +7,7 @@ metadata:
 data:
   application.yaml: |
     packages:
+      - "security-initial"
       - "git-search-index"
 
     bosca:
@@ -42,23 +43,67 @@ data:
       token: $NATS_TOKEN
 
     jwt:
-      domain: {{ .Values.appConfig.domain | quote }}
-      admin-domain: admin.{{ .Values.appConfig.domain }}
-      audience: {{ .Values.appConfig.domain | quote }}
-      realm: {{ .Values.appConfig.realm | default .Values.appConfig.domain | quote }}
-      issuer: {{ .Values.appConfig.domain | quote }}
+      domain: {{ include "bosca-common.domain" . | quote }}
+      admin-domain: admin.{{ include "bosca-common.domain" . }}
+      audience: {{ include "bosca-common.domain" . | quote }}
+      realm: {{ .Values.appConfig.realm | default (include "bosca-common.domain" .) | quote }}
+      issuer: {{ include "bosca-common.domain" . | quote }}
       secret: $JWT_SECRET
       expiration-time: 2592000
+      cookie-secure: true
+      cookie-prefixes:
+        {{- toYaml .Values.appConfig.authCookiePrefixes | nindent 8 }}
+
+    initialization:
+      password:
+        admin: $INITIAL_ADMIN_PASSWORD
+
+    security:
+      autoVerify: {{ .Values.appConfig.autoVerify }}
 
     analyticsServer:
       appId: bosca-git-server
       url: http://{{ .Release.Name }}-bosca-collector.{{ .Release.Namespace }}.svc.cluster.local:8080
 
     app:
-      url: {{ .Values.appConfig.studioUrl | default (printf "https://studio.%s" .Values.appConfig.domain) | quote }}
+      url: {{ include "bosca-git-server.gitUrl" . | quote }}
+      welcome-url: "${WELCOME_EMAIL_URL:}"
+      allowed-origins:
+        {{- range (prepend .Values.appConfig.appAllowedOrigins (include "bosca-git-server.gitUrl" .) | uniq) }}
+        - {{ . | quote }}
+        {{- end }}
+
+    oauth2:
+      providers:
+        - type: google
+          clientId: ${GOOGLE_CLIENT_ID:}
+          clientSecret: ${GOOGLE_CLIENT_SECRET:}
+          callback: {{ printf "%s/oauth2/google/callback" (include "bosca-git-server.gitUrl" .) | quote }}
+          adminCallback: {{ printf "%s/oauth2/google/callback" (include "bosca-git-server.gitUrl" .) | quote }}
+          authorizeUrl: https://accounts.google.com/o/oauth2/auth
+          accessTokenUrl: https://accounts.google.com/o/oauth2/token
+          userInfoUrl: https://www.googleapis.com/oauth2/v1/userinfo
+          scopes:
+            - https://www.googleapis.com/auth/userinfo.profile
+            - https://www.googleapis.com/auth/userinfo.email
+          enabled: {{ .Values.appConfig.googleEnabled }}
+      redirects:
+        {{- range (prepend .Values.appConfig.oauth2Redirects (include "bosca-git-server.gitUrl" .) | uniq) }}
+        - {{ . | quote }}
+        {{- end }}
+
+    webauthn:
+      extraOrigins:
+        - {{ include "bosca-git-server.gitUrl" . | quote }}
 
     git:
-      url: {{ .Values.appConfig.gitUrl | default (printf "https://git.%s" .Values.appConfig.domain) | quote }}
+      url: {{ include "bosca-git-server.gitUrl" . | quote }}
+      ui:
+        url: {{ include "bosca-git-server.gitUrl" . | quote }}
+        auth-cookie-prefix: {{ .Values.ui.authCookiePrefix | quote }}
+        server:
+          port: {{ .Values.ui.port }}
+          development: false
       push:
         rate-limit:
           enabled: {{ .Values.appConfig.pushRateLimit.enabled }}

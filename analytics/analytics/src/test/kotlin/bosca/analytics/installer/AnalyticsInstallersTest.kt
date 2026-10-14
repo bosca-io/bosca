@@ -2,6 +2,7 @@ package bosca.analytics.installer
 
 import bosca.analytics.model.AnalyticsQuery
 import bosca.analytics.model.AnalyticsQueryInput
+import bosca.analytics.model.QueryParameterType
 import bosca.analytics.service.AnalyticsQueryService
 import bosca.installer.model.PackageInstallation
 import bosca.installer.model.PackageInstallationVersion
@@ -55,30 +56,48 @@ class AnalyticsInstallersTest {
 
         installer.install(installation, version)
 
-        assertEquals("1.0.6", installer.version)
-        coVerify(exactly = 6) { service.addQuery(any()) }
-        coVerify(exactly = 12) { service.addPermission(any()) }
+        assertEquals("1.0.7", installer.version)
+        coVerify(exactly = 7) { service.addQuery(any()) }
+        coVerify(exactly = 14) { service.addPermission(any()) }
         coVerify(exactly = 0) { service.editQuery(any()) }
-        listOf("daily-active-users", "unique-sessions-per-day").forEach { key ->
-            val sql = addedQueries.single { it.key == key }.query
-            assertTrue(sql.contains("type = 'Session'"), key)
-            assertTrue(sql.contains("json_extract_scalar(json_parse("), key)
-            assertTrue(sql.contains("'$.start') = 'true'"), key)
+        val metrics = listOf("daily-active-users", "unique-sessions-per-day", "monthly-users-and-engagement")
+        metrics.forEach { key ->
+            val input = addedQueries.single { it.key == key }
+            assertTrue(input.query.contains("type = 'Session'"), key)
+            assertTrue(input.query.contains("json_extract_scalar(json_parse("), key)
+            assertTrue(input.query.contains("'$.start') = 'true'"), key)
+            assertTrue(input.query.contains("created >= :startDate"), key)
+            assertTrue(input.query.contains("created < :endDate + interval '1' day"), key)
+            assertTrue(input.query.contains("""'Chrome/[0-9]+\.0\.[1-9]'"""), key)
+            assertTrue(input.query.contains("'Windows NT|Macintosh|X11'"), key)
+            assertEquals(listOf("startDate", "endDate"), input.parameters.map { it.parameter }, key)
+            assertTrue(input.parameters.all { it.type == QueryParameterType.DATE && it.required }, key)
+            assertEquals(43_200, input.refreshIntervalSeconds, key)
         }
         val dailyUsers = addedQueries.single { it.key == "daily-active-users" }.query
-        assertTrue(dailyUsers.contains("session_users as ("))
         assertTrue(dailyUsers.contains("installation_users as ("))
-        assertTrue(dailyUsers.contains("coalesce(s.user_id, su.user_id, iu.user_id)"))
-        assertTrue(dailyUsers.contains("'user:' || resolved_user_id"))
+        assertTrue(dailyUsers.contains("having count(distinct user_id) = 1"))
+        assertTrue(dailyUsers.contains("iu.date = s.date and iu.installation_id = s.installation_id"))
+        assertTrue(dailyUsers.contains("count(distinct coalesce(s.user_id, iu.user_id, s.installation_id))"))
+        assertTrue(dailyUsers.contains("where s.is_start and not s.crawler"))
         val sessions = addedQueries.single { it.key == "unique-sessions-per-day" }.query
         assertTrue(sessions.contains("count(distinct nullif(context.session_id, ''))"))
+        val monthly = addedQueries.single { it.key == "monthly-users-and-engagement" }.query
+        assertTrue(monthly.contains("iu.month = e.month and iu.installation_id = e.installation_id"))
+        assertTrue(monthly.contains("lead(e.created) over (partition by e.installation_id, e.session_id order by e.created)"))
+        assertTrue(monthly.contains("0), 300000) as engaged_ms"))
+        assertTrue(monthly.contains("type not in ('Heartbeat', 'Installation', 'Assignment')"))
+        assertTrue(monthly.contains("where active"))
+        listOf("total-organizations", "total-profiles").forEach { key ->
+            assertEquals(43_200, addedQueries.single { it.key == key }.refreshIntervalSeconds, key)
+        }
         val pageImpressions = addedQueries.single { it.key == "top-50-page-impressions" }.query
         assertTrue(pageImpressions.contains("and type = 'Impression'"))
         assertTrue(pageImpressions.contains("and element.type = 'page'"))
         assertTrue(pageImpressions.contains("count(distinct impression_id)"))
         assertTrue(pageImpressions.contains("coalesce(nullif(client_id, ''), cast(id as varchar))"))
         assertTrue(pageImpressions.contains("group by date, page_id"))
-        listOf("daily-active-users", "unique-sessions-per-day", "top-50-page-impressions").forEach { key ->
+        (metrics + "top-50-page-impressions").forEach { key ->
             val sql = addedQueries.single { it.key == key }.query
             assertTrue(sql.contains("context.browser.agent"), key)
             assertTrue(sql.contains("facebookexternalhit|chatgpt-user"), key)
@@ -90,6 +109,7 @@ class AnalyticsInstallersTest {
         val existing = listOf(
             "daily-active-users",
             "unique-sessions-per-day",
+            "monthly-users-and-engagement",
             "total-organizations",
             "total-profiles",
             "top-50-page-impressions",

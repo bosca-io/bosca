@@ -1,4 +1,4 @@
-packages: [git-search-index]
+packages: [security-initial, git-search-index]
 
 bosca:
   server:
@@ -36,15 +36,47 @@ jwt:
   secret: $JWT_SECRET
   expiration-time: 2592000
   cookie-secure: ${JWT_COOKIE_SECURE:false}
+  cookie-prefixes: []
 
 security:
+  autoVerify: ${SECURITY_AUTO_VERIFY:false}
   encryption:
     key: $SECURITY_ENCRYPTION_KEY
 
 app:
-  url: $APP_URL
+  url: $GIT_URL
+  allowed-origins:
+    - $GIT_URL
+  welcome-url: "${WELCOME_EMAIL_URL:}"
+
+oauth2:
+  providers:
+    - type: google
+      clientId: ${GOOGLE_CLIENT_ID:}
+      clientSecret: ${GOOGLE_CLIENT_SECRET:}
+      callback: $OAUTH2_GOOGLE_REDIRECT
+      adminCallback: $OAUTH2_GOOGLE_ADMIN_REDIRECT
+      authorizeUrl: https://accounts.google.com/o/oauth2/auth
+      accessTokenUrl: https://accounts.google.com/o/oauth2/token
+      userInfoUrl: https://www.googleapis.com/oauth2/v1/userinfo
+      scopes:
+        - https://www.googleapis.com/auth/userinfo.profile
+        - https://www.googleapis.com/auth/userinfo.email
+      enabled: ${GOOGLE_ENABLED:true}
+  redirects:
+    - $GIT_URL
+
+webauthn:
+  extraOrigins:
+    - $GIT_URL
+
 git:
   url: $GIT_URL
+  ui:
+    url: $GIT_URL
+    server:
+      port: 8093
+      development: false
 pipeline:
   secretKey: $PIPELINE_SECRET_KEY
 

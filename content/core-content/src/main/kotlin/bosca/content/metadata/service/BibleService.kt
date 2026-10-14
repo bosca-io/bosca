@@ -1,5 +1,9 @@
 package bosca.content.metadata.service
 
+import bosca.bible.BibleContentUse
+import bosca.bible.IBibleAudio
+import bosca.bible.IBibleAudioChapter
+import bosca.bible.IBibleChapterContent
 import bosca.bible.Reference
 import bosca.content.metadata.model.Bible
 import bosca.content.metadata.model.BibleBook
@@ -86,6 +90,8 @@ interface BibleService : Service {
 
     /**
      * Retrieves a specific chapter of a Bible book by its USFM identifier.
+     * Provider chapters include their reference and source identity; use [getChapterContent]
+     * to read their content with the requested use checks.
      *
      * @param book the Bible book containing the chapter
      * @param usfm the USFM (Unified Standard Format Marker) identifier for the chapter
@@ -95,12 +101,85 @@ interface BibleService : Service {
 
     /**
      * Retrieves a specific chapter of a Bible using a structured Scripture reference.
+     * Provider chapter bodies and cache metadata are omitted; use [getChapterContent] to read them.
      *
      * @param bible the Bible translation to look up
      * @param reference the structured reference identifying the chapter
      * @return the matching Bible chapter
      */
     suspend fun getChapter(bible: Bible, reference: Reference): BibleChapter
+
+    /**
+     * Reads chapter content and attribution for this exact Bible variant. External content
+     * must permit the requested [use]; local DBL content has no provider restriction.
+     * Provider attribution comes from the exact content response, falling back to its source.
+     * Reads use the service caches and reject expired provider responses without extending expiry.
+     * A skipped cache write still returns the fetched response.
+     * Complete chapters are returned regardless of size; background maintenance enforces retention limits.
+     */
+    suspend fun getChapterContent(book: BibleBook, usfm: String, use: BibleContentUse): IBibleChapterContent
+
+    /**
+     * Reads the chapter containing [reference] with the same use checks and attribution as
+     * the book-based overload. The returned chapter supports selecting individual verses.
+     */
+    suspend fun getChapterContent(bible: Bible, reference: Reference, use: BibleContentUse): IBibleChapterContent
+
+    /** Attaches an external text source to the existing chapters of an exact Bible variant. */
+    suspend fun setChapterSource(id: UUID, version: Int, variant: String, sourceId: UUID)
+
+    /**
+     * Clears retained text and evicts recordings for a source, preserving chapter references and usage tokens.
+     * Evicted recordings stay playable by their exact identifier until their queued media deletion.
+     */
+    suspend fun clearChapterContent(sourceId: UUID): Int
+
+    /**
+     * Clears expired provider text, recordings and usage tokens, and drops evicted recordings whose grace
+     * period has ended, without changing locally imported chapters; media deletion is queued.
+     */
+    suspend fun removeExpiredChapterContent(): Int
+
+    /**
+     * Trims an upstream edition to 499 retained verses across configurations, keeping newest responses first.
+     * Preserves usage tokens until their original expiry. Returns the number of chapters evicted.
+     */
+    suspend fun limitChapterContent(provider: String, providerBibleId: String): Int
+
+    /**
+     * Reads the newest private text response token until its original expiry, including after text eviction,
+     * a source refresh or source removal, without fetching text.
+     */
+    suspend fun getFumsToken(id: UUID, version: Int, variant: String, usfm: String): String?
+
+    /** Lists recordings attached to this exact Bible variant without downloading chapter media. */
+    suspend fun getAudio(bible: Bible): List<IBibleAudio>
+
+    /**
+     * Reads a chapter recording with playback permission, attribution and timing.
+     * Returns an absolute Bosca playback URL only after that exact recording is retained.
+     */
+    suspend fun getAudioChapter(bible: Bible, audioId: UUID, usfm: String): IBibleAudioChapter
+
+    /**
+     * Resolves a recording with playback permission. Its metadata and streams refer to the same file.
+     * When [recordingId] is supplied, returns only that recording: the current one, or one replaced or evicted
+     * within its media deletion grace period. Unavailable recordings are not replaced.
+     * Open and close its streams within the current authorized request.
+     */
+    suspend fun getAudioPlayback(bible: Bible, audioId: UUID, usfm: String, recordingId: UUID? = null): BibleAudioPlayback
+
+    /**
+     * Reads the private token for a recording's chapter response until its original expiry, including after media
+     * eviction, a source refresh or source removal, without downloading media.
+     */
+    suspend fun getAudioFumsToken(id: UUID, version: Int, variant: String, usfm: String, audioId: UUID): String?
+
+    /** Trims one upstream recording to 50 retained files across configurations, keeping newest responses first. */
+    suspend fun limitAudioChapterContent(provider: String, providerBibleId: String): Int
+
+    /** Clears recordings for every version of metadata before its owning content is deleted; media deletion is queued. */
+    suspend fun clearAudioChapterContent(id: UUID): Int
 
     /**
      * Converts a structured Scripture reference into a short human-readable citation string
@@ -139,6 +218,15 @@ interface BibleService : Service {
      * @param version the metadata version number
      */
     suspend fun deleteBible(id: UUID, version: Int)
+
+    /**
+     * Deletes one variant of a Bible metadata version with its chapters, recordings and every text or audio
+     * source attached to it. When it was the default variant, the first remaining enabled variant becomes the
+     * default. Usage tokens are retained until their original expiry.
+     *
+     * @return the variants that remain for this metadata version
+     */
+    suspend fun deleteVariant(id: UUID, version: Int, variant: String): List<Bible>
 
     /**
      * Creates or replaces the Bible translation data for a specific metadata version.

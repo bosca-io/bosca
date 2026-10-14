@@ -1,10 +1,17 @@
 package bosca.content.transformations
 
+import bosca.bible.BibleChapterContent
+import bosca.bible.BibleContentUse
+import bosca.bible.Chapter
 import bosca.bible.Reference
+import bosca.bible.components.ComponentContainer
+import bosca.bible.components.ContainerType
+import bosca.bible.components.IComponent
+import bosca.bible.components.Text
+import bosca.bible.components.VerseStart
 import bosca.content.find.FindQueryInput
 import bosca.content.metadata.model.Bible
 import bosca.content.metadata.model.BibleBook
-import bosca.content.metadata.model.BibleChapter
 import bosca.content.metadata.model.Document
 import bosca.content.metadata.model.LocaleAwareDocument
 import bosca.content.metadata.model.Metadata
@@ -33,6 +40,7 @@ import bosca.serialization.OffsetDateTime
 import bosca.serialization.UUID
 import io.mockk.clearAllMocks
 import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.mockk
 import io.mockk.unmockkAll
 import kotlinx.coroutines.test.runTest
@@ -135,15 +143,9 @@ class DocumentToTextConfigurationCoverageTest {
             sort = 0,
         )
 
-    private fun chapter(components: kotlinx.serialization.json.JsonElement?) = BibleChapter(
-        metadataId = UUID.random(),
-        version = 1,
-        variant = "default",
-        bookUsfm = "GEN",
-        usfm = "GEN.1",
-        components = components,
-        sort = 0,
-    )
+    private fun chapter(component: IComponent?) = BibleChapterContent(Chapter(Reference("GEN.1"), component))
+
+    private fun verseText(value: String) = Text(value, null)
 
     // ---------- MetadataDocumentToTextTransformation ----------
 
@@ -222,7 +224,7 @@ class DocumentToTextConfigurationCoverageTest {
         val doc = document(content(paragraph(text("Unit context text"))))
         val item = LocaleAwareDocument(Locale.ENGLISH, doc)
 
-        val transformer = DocumentToTextTransformation(metadataService, bibleService, json)
+        val transformer = DocumentToTextTransformation(metadataService, bibleService, json, BibleContentUse.TEXT_TO_SPEECH)
         val result = transformer.transform(Unit, item)
 
         assertTrue(result.contains("Unit context text"))
@@ -241,7 +243,7 @@ class DocumentToTextConfigurationCoverageTest {
         val item = LocaleAwareDocument(Locale.ENGLISH, doc)
         val config = DocumentToTextConfiguration(includeTitle = false)
 
-        val transformer = DocumentToTextTransformation(metadataService, bibleService, json, config)
+        val transformer = DocumentToTextTransformation(metadataService, bibleService, json, BibleContentUse.TEXT_TO_SPEECH, config)
         val result = transformer.transform(Unit, item)
 
         assertTrue(result.contains("Body content"))
@@ -259,7 +261,7 @@ class DocumentToTextConfigurationCoverageTest {
         val item = LocaleAwareDocument(Locale.ENGLISH, doc)
         val config = DocumentToTextConfiguration(includeTtsMarkup = true)
 
-        val transformer = DocumentToTextTransformation(metadataService, bibleService, json, config)
+        val transformer = DocumentToTextTransformation(metadataService, bibleService, json, BibleContentUse.TEXT_TO_SPEECH, config)
         val result = transformer.transform(Unit, item)
 
         assertTrue(result.contains("Chapter Title"))
@@ -274,7 +276,7 @@ class DocumentToTextConfigurationCoverageTest {
         val item = LocaleAwareDocument(Locale.ENGLISH, doc)
         val config = DocumentToTextConfiguration(includeTtsMarkup = true)
 
-        val transformer = DocumentToTextTransformation(metadataService, bibleService, json, config)
+        val transformer = DocumentToTextTransformation(metadataService, bibleService, json, BibleContentUse.TEXT_TO_SPEECH, config)
         val result = transformer.transform(Unit, item)
 
         assertTrue(result.contains("No title body"))
@@ -288,7 +290,7 @@ class DocumentToTextConfigurationCoverageTest {
         val item = LocaleAwareDocument(Locale.ENGLISH, doc)
         val config = DocumentToTextConfiguration(includeTtsMarkup = true)
 
-        val transformer = DocumentToTextTransformation(metadataService, bibleService, json, config)
+        val transformer = DocumentToTextTransformation(metadataService, bibleService, json, BibleContentUse.TEXT_TO_SPEECH, config)
         val result = transformer.transform(Unit, item)
 
         assertTrue(result.contains("[split]"))
@@ -310,7 +312,7 @@ class DocumentToTextConfigurationCoverageTest {
         )
         val item = LocaleAwareDocument(Locale.ENGLISH, doc)
 
-        val transformer = DocumentToTextTransformation(metadataService, bibleService, json)
+        val transformer = DocumentToTextTransformation(metadataService, bibleService, json, BibleContentUse.TEXT_TO_SPEECH)
         val result = transformer.transform(Unit, item)
 
         // apostrophe normalized from curly to straight
@@ -324,7 +326,7 @@ class DocumentToTextConfigurationCoverageTest {
         val item = LocaleAwareDocument(Locale.ENGLISH, doc)
         val config = DocumentToTextConfiguration(includeTtsMarkup = true)
 
-        val transformer = DocumentToTextTransformation(metadataService, bibleService, json, config)
+        val transformer = DocumentToTextTransformation(metadataService, bibleService, json, BibleContentUse.TEXT_TO_SPEECH, config)
         val result = transformer.transform(Unit, item)
 
         assertTrue(result.contains("Section"))
@@ -343,7 +345,7 @@ class DocumentToTextConfigurationCoverageTest {
         val item = LocaleAwareDocument(Locale.ENGLISH, doc)
         val config = DocumentToTextConfiguration(excludeContainers = setOf("NOTES"))
 
-        val transformer = DocumentToTextTransformation(metadataService, bibleService, json, config)
+        val transformer = DocumentToTextTransformation(metadataService, bibleService, json, BibleContentUse.TEXT_TO_SPEECH, config)
         val result = transformer.transform(Unit, item)
 
         assertTrue(result.contains("visible"))
@@ -367,12 +369,10 @@ class DocumentToTextConfigurationCoverageTest {
         coEvery { metadataService.getById(bibleId) } returns resolved
         val bib = bible(bibleId)
         coEvery { bibleService.getBible(resolved.id, resolved.version, null) } returns bib
-        coEvery { bibleService.getChapter(bib, any()) } returns chapter(
-            JsonObject(mapOf("text" to JsonPrimitive("In the beginning")))
-        )
+        coEvery { bibleService.getChapterContent(bib, any(), BibleContentUse.TEXT_TO_SPEECH) } returns chapter(verseText("In the beginning"))
         coEvery { bibleService.getHuman(bib, any()) } returns "Genesis 1:1"
 
-        val transformer = DocumentToTextTransformation(metadataService, bibleService, json)
+        val transformer = DocumentToTextTransformation(metadataService, bibleService, json, BibleContentUse.TEXT_TO_SPEECH)
         val result = transformer.transform(Unit, item)
 
         assertTrue(result.contains("Genesis 1:1"))
@@ -399,12 +399,12 @@ class DocumentToTextConfigurationCoverageTest {
         coEvery { metadataService.find(any()) } returns listOf(found)
         val bib = bible(found.id)
         coEvery { bibleService.getBible(found.id, found.version, null) } returns bib
-        coEvery { bibleService.getChapter(bib, any()) } returns chapter(
-            JsonArray(listOf(JsonObject(mapOf("text" to JsonPrimitive("verse text")))))
+        coEvery { bibleService.getChapterContent(bib, any(), BibleContentUse.TEXT_TO_SPEECH) } returns chapter(
+            ComponentContainer(ContainerType.PARAGRAPH, listOf(verseText("verse text")), null)
         )
         coEvery { bibleService.getHuman(bib, any()) } returns "Gen 1:1"
 
-        val transformer = DocumentToTextTransformation(metadataService, bibleService, json)
+        val transformer = DocumentToTextTransformation(metadataService, bibleService, json, BibleContentUse.TEXT_TO_SPEECH)
         val result = transformer.transform(Unit, item)
 
         assertTrue(result.contains("Gen 1:1"))
@@ -430,10 +430,10 @@ class DocumentToTextConfigurationCoverageTest {
         val bib = bible(bibleId)
         coEvery { bibleService.getBible(resolved.id, resolved.version, null) } returns bib
         // components null -> the ?.let is skipped
-        coEvery { bibleService.getChapter(bib, any()) } returns chapter(null)
+        coEvery { bibleService.getChapterContent(bib, any(), BibleContentUse.TEXT_TO_SPEECH) } returns chapter(null)
         coEvery { bibleService.getHuman(bib, any()) } returns "Genesis 1:1"
 
-        val transformer = DocumentToTextTransformation(metadataService, bibleService, json, config)
+        val transformer = DocumentToTextTransformation(metadataService, bibleService, json, BibleContentUse.TEXT_TO_SPEECH, config)
         val result = transformer.transform(Unit, item)
 
         assertTrue(result.contains("Genesis 1:1"))
@@ -457,7 +457,7 @@ class DocumentToTextConfigurationCoverageTest {
         coEvery { metadataService.getById(bibleId) } returns resolved
         coEvery { bibleService.getBible(resolved.id, resolved.version, null) } returns null
 
-        val transformer = DocumentToTextTransformation(metadataService, bibleService, json)
+        val transformer = DocumentToTextTransformation(metadataService, bibleService, json, BibleContentUse.TEXT_TO_SPEECH)
         val result = transformer.transform(Unit, item)
 
         assertTrue(result.contains("after"))
@@ -479,7 +479,7 @@ class DocumentToTextConfigurationCoverageTest {
         coEvery { metadataService.getById(bibleId) } returns null
         coEvery { metadataService.find(any()) } returns emptyList()
 
-        val transformer = DocumentToTextTransformation(metadataService, bibleService, json)
+        val transformer = DocumentToTextTransformation(metadataService, bibleService, json, BibleContentUse.TEXT_TO_SPEECH)
         val result = transformer.transform(Unit, item)
 
         assertTrue(result.contains("tail"))
@@ -495,7 +495,7 @@ class DocumentToTextConfigurationCoverageTest {
         val doc = document(content(container))
         val item = LocaleAwareDocument(Locale.ENGLISH, doc)
 
-        val transformer = DocumentToTextTransformation(metadataService, bibleService, json)
+        val transformer = DocumentToTextTransformation(metadataService, bibleService, json, BibleContentUse.TEXT_TO_SPEECH)
         val result = transformer.transform(Unit, item)
 
         assertTrue(result.contains("plain container body"))
@@ -518,10 +518,10 @@ class DocumentToTextConfigurationCoverageTest {
         coEvery { metadataService.getById(bibleId) } returns resolved
         val bib = bible(bibleId)
         coEvery { bibleService.getBible(resolved.id, resolved.version, null) } returns bib
-        coEvery { bibleService.getChapter(bib, any()) } throws RuntimeException("no chapter")
+        coEvery { bibleService.getChapterContent(bib, any(), BibleContentUse.TEXT_TO_SPEECH) } throws RuntimeException("no chapter")
         coEvery { bibleService.getHuman(bib, any()) } throws RuntimeException("no human")
 
-        val transformer = DocumentToTextTransformation(metadataService, bibleService, json)
+        val transformer = DocumentToTextTransformation(metadataService, bibleService, json, BibleContentUse.TEXT_TO_SPEECH)
         val result = transformer.transform(Unit, item)
 
         assertTrue(result.contains("recovered"))
@@ -695,27 +695,64 @@ class DocumentToTextConfigurationCoverageTest {
         coEvery { metadataService.getById(bibleId) } returns resolved
         val bib = bible(bibleId)
         coEvery { bibleService.getBible(resolved.id, resolved.version, null) } returns bib
-        // components: object holding a non-text primitive (else branch) and an array with a text object
-        val components = JsonObject(
-            mapOf(
-                "type" to JsonPrimitive("verse"),
-                "children" to JsonArray(
-                    listOf(
-                        JsonObject(mapOf("text" to JsonPrimitive("nested verse"))),
-                        JsonPrimitive(42),
-                    )
-                ),
-            )
-        )
-        coEvery { bibleService.getChapter(bib, any()) } returns chapter(components)
+        // A container with a verse marker: its type, discriminator and reference primitives are not text.
+        val components = ComponentContainer(ContainerType.PARAGRAPH, listOf(
+            VerseStart(Reference("GEN.1.42")),
+            ComponentContainer(ContainerType.SPAN, listOf(verseText("nested verse")), null),
+        ), null)
+        coEvery { bibleService.getChapterContent(bib, any(), BibleContentUse.TEXT_TO_SPEECH) } returns chapter(components)
         coEvery { bibleService.getHuman(bib, any()) } returns "Genesis 1:1"
 
-        val transformer = DocumentToTextTransformation(metadataService, bibleService, json)
+        val transformer = DocumentToTextTransformation(metadataService, bibleService, json, BibleContentUse.TEXT_TO_SPEECH)
         val result = transformer.transform(Unit, item)
 
         assertTrue(result.contains("nested verse"))
-        // the non-text primitive "verse" and the numeric 42 are not emitted as text
         assertTrue(!result.contains("42"))
+        assertTrue(!result.contains("PARAGRAPH"))
+    }
+
+    @Test
+    fun `bible passages are read with the transformation's content use`() = runTest {
+        val bibleId = UUID.random()
+        val doc = document(content(ContainerNode(
+            attributes = ContainerAttributes(name = "BIBLE", metadataId = bibleId, references = listOf("GEN.1.1")),
+        )))
+        val resolved = metadata(id = bibleId, languageTag = "en")
+        coEvery { metadataService.getById(bibleId) } returns resolved
+        val bib = bible(bibleId)
+        coEvery { bibleService.getBible(resolved.id, resolved.version, null) } returns bib
+        coEvery { bibleService.getChapterContent(bib, any(), BibleContentUse.AI_CONTEXT) } returns chapter(verseText("AI passage"))
+        coEvery { bibleService.getHuman(bib, any()) } returns "Genesis 1:1"
+
+        val result = DocumentToTextTransformation(metadataService, bibleService, json, BibleContentUse.AI_CONTEXT)
+            .transform(Unit, LocaleAwareDocument(Locale.ENGLISH, doc))
+
+        assertTrue(result.contains("AI passage"))
+        coVerify(exactly = 0) { bibleService.getChapter(any<Bible>(), any()) }
+    }
+
+    @Test
+    fun `indexing transformations read bible passages for indexing`() = runTest {
+        val bibleId = UUID.random()
+        val doc = document(content(ContainerNode(
+            attributes = ContainerAttributes(name = "BIBLE", metadataId = bibleId, references = listOf("GEN.1.1")),
+        )))
+        val resolved = metadata(id = bibleId, languageTag = "en")
+        coEvery { metadataService.getById(bibleId) } returns resolved
+        val bib = bible(bibleId)
+        coEvery { bibleService.getBible(resolved.id, resolved.version, null) } returns bib
+        coEvery { bibleService.getChapterContent(bib, any(), BibleContentUse.INDEXING) } returns chapter(verseText("indexed passage"))
+        coEvery { bibleService.getHuman(bib, any()) } returns "Genesis 1:1"
+        val meta = metadata()
+        coEvery { documentService.getDocument(meta.id, meta.version) } returns doc
+
+        val indexable = IndexableDocumentToTextTransformation(metadataService, bibleService, json)
+            .transform(context, LocaleAwareDocument(Locale.ENGLISH, doc))
+        val fromMetadata = MetadataDocumentToTextTransformation(metadataService, documentService, bibleService, json)
+            .transform(context, meta)
+
+        assertTrue(indexable.contains("indexed passage"))
+        assertTrue(fromMetadata.contains("indexed passage"))
     }
 
     // ---------- References data class round trip ----------
@@ -737,7 +774,7 @@ class DocumentToTextConfigurationCoverageTest {
         val doc = document(content())
         val item = LocaleAwareDocument(Locale.ENGLISH, doc)
 
-        val transformer = DocumentToTextTransformation(metadataService, bibleService, json)
+        val transformer = DocumentToTextTransformation(metadataService, bibleService, json, BibleContentUse.TEXT_TO_SPEECH)
         val result = transformer.transform(Unit, item)
 
         assertEquals("", result)
@@ -752,7 +789,7 @@ class DocumentToTextConfigurationCoverageTest {
         val doc = document(Content(document = innerDoc))
         val item = LocaleAwareDocument(Locale.ENGLISH, doc)
 
-        val transformer = DocumentToTextTransformation(metadataService, bibleService, json)
+        val transformer = DocumentToTextTransformation(metadataService, bibleService, json, BibleContentUse.TEXT_TO_SPEECH)
         val result = transformer.transform(Unit, item)
 
         assertTrue(result.contains("attr body"))

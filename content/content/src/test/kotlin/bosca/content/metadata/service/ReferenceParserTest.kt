@@ -66,13 +66,17 @@ class ReferenceParserTest {
     private val exodus = createBook("EXO", "Exod", "Exodus", "Exod", sort = 1)
     private val psalm = createBook("PSA", "Ps", "Psalms", "Ps", sort = 18)
     private val firstJohn = createBook("1JN", "1 John", "1 John", "1Jn", sort = 61)
+    private val judges = createBook("JDG", "Judges", "Judges", "Judg", sort = 6)
+    private val jude = createBook("JUD", "Jude", "Jude", "Jud", sort = 64)
 
     private val genesisChapters = (1..50).map { createChapter("GEN", "GEN.$it", it) }
     private val exodusChapters = (1..40).map { createChapter("EXO", "EXO.$it", it) }
     private val psalmChapters = (1..150).map { createChapter("PSA", "PSA.$it", it) }
     private val firstJohnChapters = (1..5).map { createChapter("1JN", "1JN.$it", it) }
+    private val judgesChapters = (1..21).map { createChapter("JDG", "JDG.$it", it) }
+    private val judeChapters = listOf(createChapter("JUD", "JUD.1", 1))
 
-    private val allBooks = listOf(genesis, exodus, psalm, firstJohn)
+    private val allBooks = listOf(genesis, exodus, judges, psalm, firstJohn, jude)
 
     private fun setupBooks() {
         coEvery { bibleService.getBooks(bible) } returns allBooks
@@ -80,6 +84,8 @@ class ReferenceParserTest {
         coEvery { bibleService.getChapters(exodus) } returns exodusChapters
         coEvery { bibleService.getChapters(psalm) } returns psalmChapters
         coEvery { bibleService.getChapters(firstJohn) } returns firstJohnChapters
+        coEvery { bibleService.getChapters(judges) } returns judgesChapters
+        coEvery { bibleService.getChapters(jude) } returns judeChapters
     }
 
     @Test
@@ -224,5 +230,48 @@ class ReferenceParserTest {
         val result = ReferenceParser.parse(bibleService, bible, "Genesis 1:5-5")
         assertEquals(1, result.size)
         assertEquals("GEN.1.5", result[0].usfm)
+    }
+
+    @Test
+    fun `parse keeps the same chapter of different books apart`() = runTest {
+        setupBooks()
+        val result = ReferenceParser.parse(bibleService, bible, "Genesis 3:15, Exodus 3:14")
+        assertEquals(listOf("GEN.3.15", "EXO.3.14"), result.map { it.usfm })
+    }
+
+    @Test
+    fun `parse keeps different whole books apart`() = runTest {
+        setupBooks()
+        val result = ReferenceParser.parse(bibleService, bible, "Genesis, Exodus")
+        assertEquals(listOf("GEN", "EXO"), result.map { it.usfm })
+    }
+
+    @Test
+    fun `parse matches a whole name, not a shorter name that begins it`() = runTest {
+        setupBooks()
+        // Jude's abbreviation "Jud" begins "Judges", and Jude comes later in the canon.
+        val result = ReferenceParser.parse(bibleService, bible, "Judges 5:1")
+        assertEquals(listOf("JDG.5.1"), result.map { it.usfm })
+    }
+
+    @Test
+    fun `parse needs a name to end where a word ends`() = runTest {
+        setupBooks()
+        // "Ps" begins "Psst" but isn't the word.
+        assertTrue(ReferenceParser.parse(bibleService, bible, "Psst 23").isEmpty())
+    }
+
+    @Test
+    fun `parse accepts the singular of a plural name`() = runTest {
+        setupBooks()
+        val result = ReferenceParser.parse(bibleService, bible, "Psalm 23")
+        assertEquals(listOf("PSA.23"), result.map { it.usfm })
+    }
+
+    @Test
+    fun `parse still accepts a name followed directly by its chapter`() = runTest {
+        setupBooks()
+        val result = ReferenceParser.parse(bibleService, bible, "Gen1:1")
+        assertEquals(listOf("GEN.1.1"), result.map { it.usfm })
     }
 }

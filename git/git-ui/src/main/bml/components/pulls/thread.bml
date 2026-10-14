@@ -1,0 +1,110 @@
+<component tag="git-pull-thread">
+  <prop name="page" type="bosca.git.ui.PullPage" required />
+  <prop name="thread" type="bosca.git.ui.PullReviewThread" required />
+  <prop name="inline" type="Boolean" default="false" />
+  <article
+    :class='if (inline) "review-thread inline-thread" else "review-thread"'
+    :id="thread.anchor"
+    :data-inline="inline"
+    :data-thread="thread.id"
+    :aria-label='"Discussion on " + thread.location'
+    tabindex="-1"
+  >
+    <if !inline || thread.outdated || thread.resolved>
+      <header class="thread-location">
+        <if !inline>
+          <a ref="locationLink" :href="page.discussionHref(thread)" :title='"View discussion on " + thread.location + " in Files Changed"'>
+            <ui-icon name="file" :size="13" />
+            <span>{ thread.location }</span>
+            <ui-icon name="arrow-right" :size="12" />
+          </a>
+        </if>
+        <span class="thread-state">
+          <if thread.outdated><ui-badge>Outdated</ui-badge></if>
+          <if !thread.outdated && thread.first.commitSha != page.headSha><ui-badge>Earlier revision</ui-badge></if>
+          <if thread.resolved><ui-badge tone="success">Resolved</ui-badge></if>
+          <if thread.outdated || thread.first.commitSha != page.headSha>
+            <ui-icon-link icon="code" :label='"View " + thread.location + " at the original commit"' :href="page.discussionSourceHref(thread)" data-thread-source />
+          </if>
+        </span>
+      </header>
+    </if>
+    <for comment in thread.comments>
+      <div class="thread-comment" :data-comment-id="comment.id">
+        <header class="comment-heading">
+          <strong>{ page.identity(comment.authorId) }</strong>
+          <span class="comment-time"><ui-time :value="comment.created" relative ago inheritTypography /></span>
+        </header>
+        <p>{ comment.content }</p>
+      </div>
+    </for>
+    <slot />
+  </article>
+  <style scoped>
+    .review-thread {
+      padding: 14px 16px;
+      border-top: 1px solid var(--line);
+      white-space: normal;
+      min-width: 0;
+      scroll-margin-block: 16px;
+    }
+    .review-thread:target {
+      background: color-mix(in srgb, var(--accent) 6%, transparent);
+      box-shadow: inset 3px 0 var(--accent);
+    }
+    .review-thread:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: -2px;
+    }
+    .review-thread[data-inline] {
+      padding: 12px;
+      border: 0;
+      border-left: 3px solid var(--accent);
+      border-radius: 0;
+    }
+    .thread-location,
+    .thread-location a,
+    .comment-heading {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 6px;
+      min-width: 0;
+    }
+    .thread-location {
+      margin-bottom: 10px;
+      color: var(--fg-3);
+      font-size: 12px;
+      overflow-wrap: anywhere;
+    }
+    .thread-location a { color: var(--fg-2); }
+    .thread-location a:hover { color: var(--fg-0); }
+    .thread-state {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-left: auto;
+    }
+    .comment-heading { font-size: 12px; line-height: 18px; }
+    .comment-time { margin-left: auto; color: var(--fg-3); font-size: 11px; }
+    .thread-comment + .thread-comment {
+      border-top: 1px solid var(--line);
+      margin-top: 10px;
+      padding-top: 10px;
+    }
+    p {
+      margin: 6px 0 8px;
+      color: var(--fg-1);
+      font-size: 13px;
+      line-height: 20px;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+  </style>
+  <script client scoped>
+    import { attachTooltip } from "@client/tooltip";
+    const link = ctx.ref("locationLink");
+    if (link) attachTooltip(ctx, link);
+  </script>
+</component>

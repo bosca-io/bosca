@@ -1,0 +1,23 @@
+<page route="/ci-agents" requireAuth>
+  <script server provides="page">
+    bosca.git.ui.agentPage()
+  </script>
+  <git-layout title="CI agents">
+    <ui-page>
+      <ui-page-heading
+        title="CI agents"
+        description="Runners and orchestrators that execute pipeline jobs."
+        descriptionBelow
+      >
+        <if page.allowed>
+          <git-agent-register :page="page" />
+        </if>
+      </ui-page-heading>
+      <if !page.allowed>
+        <ui-alert>Administrator access is required.</ui-alert>
+      <else>
+        <git-agent-list :page="page" />
+      </if>
+    </ui-page>
+  </git-layout>
+</page>

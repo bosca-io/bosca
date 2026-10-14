@@ -11,7 +11,9 @@ Native git hosting platform with WorkOps integration, source ref management for 
 | `git` | Full implementation — DFS, services, transport, GraphQL, repositories |
 | `git-ci` | CI implementation |
 | `git-jobs` | Background job workers (GC, purge, webhooks, maintenance) |
-| `git-server` | Executable server — composes modules into a GraalVM native binary |
+| `git-server` | One process hosting API/transport and a separate UI listener |
+| `git-ui` | Componentized BML UI library |
+| `git-ui-server` | BML host module with HTTP and subscription proxies to Git server |
 
 ## Prerequisites
 
@@ -26,9 +28,13 @@ Run these commands from the **workspace root**. `git` is part of the root Gradle
 
 ```bash
 ./gradlew :git:test  # Test Git modules
-./gradlew :git:git-server:run  # Run the Git server
+./gradlew :git:git-server:run  # API/transport on 8091 and BML UI on 8093 in one process
 ./gradlew :git:git-server:nativeCompile  # Build a native image
 ```
+
+Migration `V49__pull_request_merge_base.sql` records the target commit before each merge. Completed PR diffs compare that commit with the recorded merge result, so later branch changes and source deletion do not replace their history. Existing merge and squash commit parents can supply the original base; older rebase/fast-forward records without it report unavailable comparison history. The Git migration provider applies this migration at server startup.
+
+The embedded UI host proxies over loopback HTTP to the API’s actual bound port and performs no local authentication or GraphQL execution. `GIT_HTTP_PORT` and `GIT_UI_HTTP_PORT` select the two listeners. See [Git UI server](git-ui-server/README.md) for origin, OAuth and cookie configuration.
 
 ## Local Infrastructure
 

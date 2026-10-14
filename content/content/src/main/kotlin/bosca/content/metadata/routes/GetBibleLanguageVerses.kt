@@ -1,10 +1,9 @@
 package bosca.content.metadata.routes
 
+import bosca.bible.BibleContentUse
 import bosca.bible.Reference
-import bosca.bible.bibleJson
-import bosca.bible.components.IComponent
 import bosca.bible.components.filter
-import bosca.content.metadata.model.BibleChapter
+import bosca.content.metadata.model.toJson
 import bosca.content.metadata.service.BibleService
 import bosca.content.metadata.service.MetadataService
 import bosca.content.security.MetadataPermissionEvaluator
@@ -12,11 +11,8 @@ import bosca.routes.annotations.RouteController
 import bosca.security.service.AuthenticationContext
 import bosca.server.ServerCall
 import kotlinx.serialization.KSerializer
-import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
-import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.decodeFromJsonElement
-import kotlinx.serialization.json.encodeToJsonElement
+import kotlinx.serialization.json.JsonNull
 
 @RouteController("/api/v1/content/metadata/bible/contents")
 class GetBibleLanguageVerses(
@@ -35,12 +31,9 @@ class GetBibleLanguageVerses(
         val books = bibleService.getBooks(bible).associateBy { it.usfm }
         for ((chapterUsfm, references) in mapping) {
             val chapter = bibleService.getChapter(bible, Reference(chapterUsfm))
-            val components = chapter.components?.let {
-                bibleJson.decodeFromJsonElement<IComponent>(it)
-            } ?: continue
-            val filtered = references.map {
-                bibleJson.encodeToJsonElement(components.filter(it))
-            }
+            val content = bibleService.getChapterContent(bible, Reference(chapterUsfm), BibleContentUse.DISPLAY)
+            val components = content.chapter[content.chapter.reference] ?: continue
+            val filtered = references.map { components.filter(it)?.toJson() ?: JsonNull }
             val fullReference = Reference(references.joinToString("+") { it.usfm })
             val book = books.getValue(fullReference.bookUsfm)
             chapters.add(
@@ -49,7 +42,8 @@ class GetBibleLanguageVerses(
                     fullReference.toHuman(book.nameLong ?: book.abbreviation),
                     fullReference.usfm,
                     chapter.copy(components = null),
-                    filtered
+                    filtered,
+                    content.attribution?.asSerializable(),
                 )
             )
         }

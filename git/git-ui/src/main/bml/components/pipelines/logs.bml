@@ -1,0 +1,64 @@
+<component tag="git-pipeline-logs">
+  <prop name="repository" type="String" required />
+  <prop name="step" type="String" required />
+  <script server provides="model">
+    bosca.git.ui.PipelineLogsModel(step, repository).also { it.load(ctx) }
+  </script>
+  <island name="git-pipeline-logs" :key="step">
+    <section class="step-logs" :data-log-step="model.step" :data-repository="model.repository">
+      <div class="log-controls">
+        <if model.hasEarlier>
+          <ui-button size="xs" @click="model.earlier(ctx)">Load earlier</ui-button>
+        </if>
+        <ui-button size="xs" @click="model.refresh(ctx)">Refresh logs</ui-button>
+        <ui-button size="xs" ref="pause" aria-pressed="false">Pause live logs</ui-button>
+        <ui-button size="xs" ref="follow" aria-pressed="true">Follow output</ui-button>
+        <span data-bml-ref="logError" role="status" />
+      </div>
+      <if model.message.isNotBlank()>
+        <ui-alert>{ model.message }</ui-alert>
+      </if>
+      <div class="log-output" data-bml-ref="output" tabindex="0" aria-label="Step log output">
+        <if model.lines.isEmpty()>
+          <p>Waiting for output.</p>
+        <else>
+          <for line in model.lines>
+            <div class="log-line" :data-line="line.lineNumber" :data-stream="line.stream">
+              <span class="muted">{ line.lineNumber }</span>
+              <time :datetime="line.timestamp">{ line.timestamp }</time>
+              <code>{ line.content }</code>
+            </div>
+          </for>
+        </if>
+      </div>
+    </section>
+  </island>
+  <style scoped>
+    .step-logs {
+      background: var(--bg-0);
+      border-top: 1px solid var(--line);
+    }
+    .log-controls {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+      padding: 6px 12px;
+      border-bottom: 1px solid var(--line);
+      font-size: 11px;
+      color: var(--fg-3);
+    }
+    .log-output {
+      max-height: 420px;
+      overflow: auto;
+      background: var(--bg-0);
+      color: var(--fg-1);
+      padding: 12px;
+      font: 11.5px/1.6 var(--font-mono);
+    }
+  </style>
+  <script client scoped>
+    import { mountPipelineLogs } from "@client/pipeline-logs";
+    mountPipelineLogs(ctx);
+  </script>
+</component>

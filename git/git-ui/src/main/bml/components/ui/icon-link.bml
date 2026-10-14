@@ -1,0 +1,21 @@
+<component tag="ui-icon-link">
+  <prop name="icon" type="String" required />
+  <prop name="label" type="String" required />
+  <prop name="href" type="String" required />
+  <script server provides="attrs">
+    props.filterKeys { it !in setOf("icon", "label", "href", "class", "__bmlAttrs") }
+  </script>
+  <a
+    :class='"button-link icon-only " + (props["class"] as? String).orEmpty()'
+    :href="href"
+    :aria-label="label"
+    :title="label"
+    {...attrs}
+  >
+    <ui-icon :name="icon" :size="14" />
+  </a>
+  <script client scoped>
+    import { attachTooltip } from "@client/tooltip";
+    attachTooltip(ctx);
+  </script>
+</component>

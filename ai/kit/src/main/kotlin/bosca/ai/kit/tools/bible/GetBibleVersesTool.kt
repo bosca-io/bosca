@@ -2,6 +2,7 @@ package bosca.ai.kit.tools.bible
 
 import ai.koog.agents.core.tools.annotations.LLMDescription
 import bosca.ai.kit.tools.KitTool
+import bosca.bible.BibleContentUse
 import bosca.bible.components.filter
 import bosca.content.metadata.service.BibleService
 import bosca.content.metadata.service.MetadataService
@@ -64,11 +65,11 @@ class GetBibleVersesTool(
 
         for (ref in references) {
             val chapter = try {
-                bibleService.getChapter(bible, ref)
+                bibleService.getChapterContent(bible, ref, BibleContentUse.AI_CONTEXT).chapter
             } catch (e: Exception) {
-                return Output(reference = input.reference, text = "", error = "Chapter not found for reference: ${ref.usfm}")
+                return Output(reference = input.reference, text = "", error = "Chapter text is unavailable for reference ${ref.usfm}: ${e.message}")
             }
-            val chapterComponents = chapter.getChapterComponents() ?: continue
+            val chapterComponents = chapter[chapter.reference] ?: continue
 
             val hasVerseNumbers = ref.references.any { it.number.isNotEmpty() }
             val components = if (hasVerseNumbers) {

@@ -2,6 +2,7 @@
 
 package bosca.git.service
 
+import bosca.db.withConnectionManager
 import bosca.di.ProviderRegistry
 import bosca.di.provides
 import bosca.git.dfs.BoscaDfsRepositoryManager
@@ -272,8 +273,128 @@ class PullRequestServiceTest {
         coEvery { prRepository.findById(prId) } returns existing
         coEvery { prRepository.update(any()) } answers { firstArg() }
 
-        val updated = service.update(prId, UpdatePullRequestInput(title = "New Title"))
+        val updated = withConnectionManager { service.update(prId, UpdatePullRequestInput(title = "New Title")) }
         assertEquals("New Title", updated.title)
+        coVerify(exactly = 0) { reviewRepository.dismissByPullRequest(any(), any()) }
+        coVerify(exactly = 0) { reviewCommentRepository.markAllOutdatedByPullRequest(any()) }
+    }
+
+    @Test
+    fun `retargeting dismisses decisions and invalidates comments even with unchanged source SHA`() = runTest {
+        val repo = seedMergeableRepo()
+        io.mockk.every { dfsManager.open(repositoryId) } returns repo
+        val main = requireNotNull(repo.resolve("refs/heads/main"))
+        repo.updateRef("refs/heads/release").apply { setNewObjectId(main); update() }
+        coEvery { prRepository.findById(prId) } returns testPr()
+        coEvery { prRepository.update(any()) } answers { firstArg<PullRequest>().copy(version = 1) }
+        val updated = withConnectionManager {
+            service.update(prId, UpdatePullRequestInput(targetBranch = "release", expectedVersion = 0))
+        }
+        assertEquals("feature", updated.sourceBranch)
+        assertEquals("release", updated.targetBranch)
+        assertEquals(1, updated.number)
+        coVerify { reviewRepository.dismissByPullRequest(prId, "branches_updated") }
+        coVerify { reviewCommentRepository.markAllOutdatedByPullRequest(prId) }
+    }
+
+    @Test
+    fun `source changes validate the owning repository and preserve PR identity`() = runTest {
+        val repo = seedMergeableRepo()
+        io.mockk.every { dfsManager.open(repositoryId) } returns repo
+        repo.updateRef("refs/heads/feature-two").apply {
+            setNewObjectId(requireNotNull(repo.resolve("refs/heads/feature"))); update()
+        }
+        coEvery { prRepository.findById(prId) } returns testPr(status = PullRequestStatus.DRAFT)
+        coEvery { prRepository.update(any()) } answers { firstArg() }
+        val updated = withConnectionManager {
+            service.update(prId, UpdatePullRequestInput(sourceBranch = "feature-two", description = "", expectedVersion = 0))
+        }
+        assertEquals(prId, updated.id)
+        assertEquals(authorId, updated.authorId)
+        assertEquals("feature-two", updated.sourceBranch)
+        assertEquals("", updated.description)
+    }
+
+    @Test
+    fun `fork branch edits resolve the source in its own repository and allow matching branch names`() = runTest {
+        val sourceRepositoryId = UUID.random()
+        io.mockk.every { dfsManager.open(sourceRepositoryId) } returns seedMergeableRepo()
+        io.mockk.every { dfsManager.open(repositoryId) } returns seedMergeableRepo()
+        coEvery { prRepository.findById(prId) } returns testPr().copy(sourceRepositoryId = sourceRepositoryId)
+        coEvery { prRepository.update(any()) } answers { firstArg() }
+        val updated = withConnectionManager {
+            service.update(prId, UpdatePullRequestInput(sourceBranch = "main", expectedVersion = 0))
+        }
+        assertEquals("main", updated.sourceBranch)
+        assertEquals("main", updated.targetBranch)
+        coVerify { dfsManager.open(sourceRepositoryId) }
+        coVerify { dfsManager.open(repositoryId) }
+    }
+
+    @Test
+    fun `edits reject stale versions invalid or missing branches and identical branches`() = runTest {
+        coEvery { prRepository.findById(prId) } returns testPr()
+        val repo = seedMergeableRepo()
+        io.mockk.every { dfsManager.open(repositoryId) } returns repo
+        withConnectionManager {
+            assertFailsWith<IllegalStateException> {
+                service.update(prId, UpdatePullRequestInput(title = "Stale", expectedVersion = 1))
+            }
+            for (input in listOf(
+                UpdatePullRequestInput(sourceBranch = "bad..branch"),
+                UpdatePullRequestInput(sourceBranch = "missing"),
+                UpdatePullRequestInput(targetBranch = "missing"),
+                UpdatePullRequestInput(sourceBranch = "main"),
+            )) {
+                assertFailsWith<IllegalArgumentException> { service.update(prId, input) }
+            }
+        }
+        coVerify(exactly = 0) { prRepository.update(any()) }
+        coVerify(exactly = 0) { reviewRepository.dismissByPullRequest(any(), any()) }
+    }
+
+    @Test
+    fun `completed requests allow metadata edits but reject branch changes`() = runTest {
+        coEvery { prRepository.update(any()) } answers { firstArg() }
+        withConnectionManager {
+            for (state in listOf(PullRequestStatus.CLOSED, PullRequestStatus.MERGED)) {
+                coEvery { prRepository.findById(prId) } returns testPr(status = state)
+                assertEquals("Updated", service.update(prId, UpdatePullRequestInput(title = "Updated")).title)
+                assertFailsWith<IllegalArgumentException> {
+                    service.update(prId, UpdatePullRequestInput(targetBranch = "release"))
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `a branch edit invalidates stale review and comment submissions before persistence`() = runTest {
+        coEvery { prRepository.findById(prId) } returns testPr().copy(version = 1)
+        withConnectionManager {
+            assertFailsWith<IllegalStateException> {
+                service.submitReview(SubmitReviewInput(prId, ReviewStatus.APPROVED, expectedVersion = 0), authorId)
+            }
+            assertFailsWith<IllegalStateException> {
+                service.addReviewComment(UUID.random(), prId, authorId, "a.txt", null, 1, "abc", "Stale", 0)
+            }
+        }
+        coVerify(exactly = 0) { reviewRepository.create(any()) }
+        coVerify(exactly = 0) { reviewCommentRepository.create(any()) }
+    }
+
+    @Test
+    fun `an old PR page cannot merge a changed comparison or start its dependency plan`() = runTest {
+        val current = testPr().copy(version = 1)
+        coEvery { prRepository.findById(prId) } returns current
+        coEvery { dependencyRepository.findDependencies(prId) } returns emptyList()
+        assertFailsWith<IllegalStateException> {
+            service.merge(prId, MergeStrategy.MERGE_COMMIT, authorId, "Reviewer", "reviewer@x", 0)
+        }
+        assertFailsWith<IllegalStateException> {
+            service.mergeWithDependencies(prId, MergeStrategy.MERGE_COMMIT, authorId, "Reviewer", "reviewer@x", listOf(prId), 0)
+        }
+        coVerify(exactly = 0) { dfsManager.open(any()) }
+        coVerify(exactly = 0) { prRepository.updateMergeState(any()) }
     }
 
     @Test
@@ -337,7 +458,7 @@ class PullRequestServiceTest {
 
         val reviewerId = UUID.random()
         val input = SubmitReviewInput(pullRequestId = prId, status = ReviewStatus.APPROVED, body = "LGTM")
-        val review = service.submitReview(input, reviewerId)
+        val review = withConnectionManager { service.submitReview(input, reviewerId) }
 
         assertEquals(ReviewStatus.APPROVED, review.status)
         assertEquals("LGTM", review.body)
@@ -348,7 +469,7 @@ class PullRequestServiceTest {
     fun `submitReview rejects review on non-OPEN PR`() = runTest {
         coEvery { prRepository.findById(prId) } returns testPr(status = PullRequestStatus.MERGED)
         assertFailsWith<IllegalArgumentException> {
-            service.submitReview(SubmitReviewInput(prId, ReviewStatus.APPROVED), UUID.random())
+            withConnectionManager { service.submitReview(SubmitReviewInput(prId, ReviewStatus.APPROVED), UUID.random()) }
         }
     }
 
@@ -361,7 +482,7 @@ class PullRequestServiceTest {
             firstArg<bosca.git.model.ReviewComment>().copy(id = UUID.random())
         }
 
-        val comment = service.addReviewComment(
+        val comment = withConnectionManager { service.addReviewComment(
             reviewId = reviewId,
             pullRequestId = prId,
             authorId = authorId,
@@ -370,7 +491,7 @@ class PullRequestServiceTest {
             newLineNumber = 42,
             commitSha = commitSha,
             content = "Consider renaming this"
-        )
+        ) }
         assertEquals("src/Main.kt", comment.filePath)
         assertEquals(42, comment.newLineNumber)
         assertEquals(commitSha, comment.commitSha)
@@ -391,6 +512,70 @@ class PullRequestServiceTest {
     }
 
     @Test
+    fun `replies retain original context and reopen discussions across PR states`() = runTest {
+        val original = bosca.git.model.ReviewComment(
+            id = UUID.random(), reviewId = UUID.random(), pullRequestId = prId,
+            authorId = UUID.random(), filePath = "old path.kt", oldLineNumber = 17,
+            newLineNumber = null, commitSha = "original-sha", content = "Original", resolved = true,
+        )
+        coEvery { reviewCommentRepository.create(any()) } answers {
+            firstArg<bosca.git.model.ReviewComment>().copy(id = UUID.random())
+        }
+        for (status in PullRequestStatus.entries) {
+            coEvery { prRepository.findById(prId) } returns testPr().copy(status = status)
+            for (outdated in listOf(false, true)) {
+                coEvery { reviewCommentRepository.findById(original.id) } returns original.copy(outdated = outdated)
+                val reply = withConnectionManager {
+                    service.replyReviewComment(prId, original.id, authorId, "Response", 0)
+                }
+                assertEquals(original.reviewId, reply.reviewId)
+                assertEquals(original.pullRequestId, reply.pullRequestId)
+                assertEquals(authorId, reply.authorId)
+                assertEquals(original.filePath, reply.filePath)
+                assertEquals(original.oldLineNumber, reply.oldLineNumber)
+                assertEquals(original.newLineNumber, reply.newLineNumber)
+                assertEquals(original.commitSha, reply.commitSha)
+                assertEquals(outdated, reply.outdated)
+                assertEquals(false, reply.resolved)
+                assertTrue(reply.id != original.id)
+            }
+        }
+        coVerify {
+            pubSub.publish("bosca.git.pull_request", any<kotlinx.serialization.SerializationStrategy<PullRequestEvent>>(),
+                match<PullRequestEvent> { it.action == PullRequestEventAction.COMMENTED && it.actorId == authorId &&
+                    it.body == "Response" && it.filePath == original.filePath && it.lineNumber == 17 })
+        }
+    }
+
+    @Test
+    fun `replies reject missing PRs comments foreign discussions blank bodies and stale versions`() = runTest {
+        val original = bosca.git.model.ReviewComment(
+            id = UUID.random(), reviewId = UUID.random(), pullRequestId = prId,
+            authorId = authorId, filePath = "a.kt", newLineNumber = 1, commitSha = "sha", content = "Original",
+        )
+        coEvery { prRepository.findById(prId) } returns null
+        assertFailsWith<NoSuchElementException> { withConnectionManager { service.replyReviewComment(prId, original.id, authorId, "Reply", null) } }
+        coEvery { prRepository.findById(prId) } returns testPr().copy(version = 1)
+        assertFailsWith<IllegalStateException> { withConnectionManager { service.replyReviewComment(prId, original.id, authorId, "Reply", 0) } }
+        assertFailsWith<IllegalArgumentException> { withConnectionManager { service.replyReviewComment(prId, original.id, authorId, " \n", 1) } }
+        coEvery { reviewCommentRepository.findById(original.id) } returns null
+        assertFailsWith<NoSuchElementException> { withConnectionManager { service.replyReviewComment(prId, original.id, authorId, "Reply", 1) } }
+        coEvery { reviewCommentRepository.findById(original.id) } returns original.copy(pullRequestId = UUID.random())
+        assertFailsWith<IllegalArgumentException> { withConnectionManager { service.replyReviewComment(prId, original.id, authorId, "Reply", 1) } }
+        coVerify(exactly = 0) { reviewCommentRepository.create(any()) }
+        coEvery { reviewCommentRepository.findById(original.id) } returns original
+        coEvery { reviewCommentRepository.create(any()) } answers { firstArg() }
+        withConnectionManager { service.replyReviewComment(prId, original.id, authorId, "Reply", null) }
+    }
+
+    @Test
+    fun `reply creation preserves cancellation`() = runTest {
+        coEvery { prRepository.lockById(prId) } throws CancellationException("cancelled")
+        assertFailsWith<CancellationException> { withConnectionManager { service.replyReviewComment(prId, UUID.random(), authorId, "Reply", 0) } }
+        coVerify(exactly = 0) { reviewCommentRepository.create(any()) }
+    }
+
+    @Test
     fun `addReviewComment uses the old line when the new line is absent`() = runTest {
         val reviewId = UUID.random()
         coEvery { prRepository.findById(prId) } returns testPr()
@@ -398,7 +583,7 @@ class PullRequestServiceTest {
             firstArg<bosca.git.model.ReviewComment>().copy(id = UUID.random())
         }
 
-        service.addReviewComment(
+        withConnectionManager { service.addReviewComment(
             reviewId = reviewId,
             pullRequestId = prId,
             authorId = authorId,
@@ -407,7 +592,7 @@ class PullRequestServiceTest {
             newLineNumber = null,
             commitSha = "b".repeat(40),
             content = "This line was removed",
-        )
+        ) }
 
         coVerify {
             pubSub.publish(
@@ -425,7 +610,7 @@ class PullRequestServiceTest {
         coEvery { prRepository.findById(prId) } returns null
 
         assertFailsWith<NoSuchElementException> {
-            service.addReviewComment(
+            withConnectionManager { service.addReviewComment(
                 reviewId = UUID.random(),
                 pullRequestId = prId,
                 authorId = authorId,
@@ -434,7 +619,7 @@ class PullRequestServiceTest {
                 newLineNumber = 1,
                 commitSha = "c".repeat(40),
                 content = "Comment",
-            )
+            ) }
         }
         assertFailsWith<NoSuchElementException> {
             service.resolveThread(prId, "src/Main.kt", 1)
@@ -575,7 +760,7 @@ class PullRequestServiceTest {
     fun `update throws when the pull request is missing`() = runTest {
         coEvery { prRepository.findById(prId) } returns null
         assertFailsWith<NoSuchElementException> {
-            service.update(prId, UpdatePullRequestInput(title = "t"))
+            withConnectionManager { service.update(prId, UpdatePullRequestInput(title = "t")) }
         }
     }
 
@@ -972,22 +1157,26 @@ class PullRequestServiceTest {
     }
 
     @Test
-    fun `merge performs a real merge, advances the target ref, and records merge state`() = runTest {
-        val repo = seedMergeableRepo()
-        io.mockk.every { dfsManager.open(repositoryId) } returns repo
-        val pr = testPr()
-        coEvery { prRepository.findById(prId) } returns pr
-        coEvery { branchProtectionService.findMatchingRule(repositoryId, "main") } returns null
-        coEvery { prRepository.updateMergeState(any()) } answers { firstArg() }
+    fun `every merge strategy records the pre-merge target before advancing its ref`() = runTest {
+        for (strategy in MergeStrategy.entries) {
+            val repo = seedMergeableRepo()
+            io.mockk.every { dfsManager.open(repositoryId) } returns repo
+            val before = repo.refDatabase.findRef("refs/heads/main").objectId.name()
+            val pr = testPr()
+            coEvery { prRepository.findById(prId) } returns pr
+            coEvery { branchProtectionService.findMatchingRule(repositoryId, "main") } returns null
+            coEvery { prRepository.updateMergeState(any()) } answers { firstArg() }
 
-        val merged = service.merge(prId, MergeStrategy.MERGE_COMMIT, authorId, "Merger", "m@x")
+            val merged = service.merge(prId, strategy, authorId, "Merger", "m@x")
 
-        assertEquals(PullRequestStatus.MERGED, merged.status)
-        assertEquals(MergeStrategy.MERGE_COMMIT, merged.mergeStrategy)
-        val mergeSha = merged.mergeSha
-        kotlin.test.assertNotNull(mergeSha)
-        assertEquals(mergeSha, repo.refDatabase.findRef("refs/heads/main")?.objectId?.name())
-        repo.close()
+            assertEquals(PullRequestStatus.MERGED, merged.status)
+            assertEquals(strategy, merged.mergeStrategy)
+            assertEquals(before, merged.mergeBaseSha)
+            val mergeSha = kotlin.test.assertNotNull(merged.mergeSha)
+            assertEquals(mergeSha, repo.refDatabase.findRef("refs/heads/main")?.objectId?.name())
+            coVerify { prRepository.updateMergeState(match { it.mergeStrategy == strategy && it.mergeBaseSha == before }) }
+            repo.close()
+        }
     }
 
     @Test
@@ -1171,13 +1360,13 @@ class PullRequestServiceTest {
     fun `every pr-scoped operation throws when the pull request is missing`() = runTest {
         coEvery { prRepository.findById(prId) } returns null
         val ops: List<suspend () -> Any?> = listOf(
-            { service.update(prId, UpdatePullRequestInput(title = "t")) },
+            { withConnectionManager { service.update(prId, UpdatePullRequestInput(title = "t")) } },
             { service.merge(prId, MergeStrategy.MERGE_COMMIT, authorId, "n", "e") },
             { service.checkMergeability(prId) },
             { service.close(prId) },
             { service.reopen(prId) },
             { service.markReady(prId) },
-            { service.submitReview(SubmitReviewInput(pullRequestId = prId, status = ReviewStatus.APPROVED, body = null), authorId) },
+            { withConnectionManager { service.submitReview(SubmitReviewInput(pullRequestId = prId, status = ReviewStatus.APPROVED, body = null), authorId) } },
         )
         for ((i, op) in ops.withIndex()) {
             try { op(); kotlin.test.fail("op #$i should throw") }
@@ -1200,7 +1389,7 @@ class PullRequestServiceTest {
 
         coEvery { prRepository.findById(prId) } returns testPr()
         coEvery { prRepository.update(any()) } returns null
-        try { service.update(prId, UpdatePullRequestInput(title = null, description = null)); kotlin.test.fail() }
+        try { withConnectionManager { service.update(prId, UpdatePullRequestInput(title = null, description = null)) }; kotlin.test.fail() }
         catch (_: IllegalStateException) {}
     }
 
@@ -1230,7 +1419,7 @@ class PullRequestServiceTest {
         val pr = testPr()
         coEvery { prRepository.findById(prId) } returns pr
         coEvery { prRepository.update(any()) } answers { firstArg() }
-        val updated = service.update(prId, UpdatePullRequestInput(title = null, description = "new desc"))
+        val updated = withConnectionManager { service.update(prId, UpdatePullRequestInput(title = null, description = "new desc")) }
         assertEquals("Test PR", updated.title)
         assertEquals("new desc", updated.description)
 

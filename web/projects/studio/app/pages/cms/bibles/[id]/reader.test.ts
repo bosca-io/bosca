@@ -3,6 +3,7 @@ import { print, type DocumentNode } from 'graphql'
 import { defineComponent, h, nextTick, type PropType } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import BibleReaderPage from './reader.vue'
+import { extractAttributes, getElementType } from '@bosca/analytics-client-browser'
 
 enableAutoUnmount(afterEach)
 
@@ -12,7 +13,7 @@ function chapterReference(chapter: string) {
 
 let chapterReferences = [chapterReference('1')]
 
-const gqlQuery = vi.fn(async (document: DocumentNode, variables?: Record<string, unknown>) => {
+const defaultQuery = async (document: DocumentNode, variables?: Record<string, unknown>) => {
   const operation = print(document)
   if (operation.includes('GetBibleReader')) {
     return {
@@ -21,6 +22,7 @@ const gqlQuery = vi.fn(async (document: DocumentNode, variables?: Record<string,
           id: 'bible-1',
           name: 'Bible',
           bible: {
+            metadataId: 'bible-1', version: 2, variant: 'p1', audio: [],
             name: 'Bible',
             nameLocal: 'Bible',
             abbreviation: 'B',
@@ -41,14 +43,17 @@ const gqlQuery = vi.fn(async (document: DocumentNode, variables?: Record<string,
     }
   }
   if (operation.includes('GetBibleChapter')) {
+    const reference = chapterReferences.find(reference => reference.usfm === variables?.usfm)
+    if (!reference) throw new Error(`Unknown chapter: ${variables?.usfm}`)
     return {
       content: {
         metadata: {
           bible: {
             chapter: {
-              reference: chapterReferences.find(reference => reference.usfm === variables?.usfm),
+              reference,
               component: { _: 'cc', type: 'DIV', components: [] },
               verses: [],
+              attribution: { copyright: 'Provider copyright', citation: 'Provider citation', informationUrl: 'https://example.com/bible' },
             },
           },
         },
@@ -56,7 +61,8 @@ const gqlQuery = vi.fn(async (document: DocumentNode, variables?: Record<string,
     }
   }
   return { content: { metadata: { bible: { find: [] } } } }
-})
+}
+const gqlQuery = vi.fn(defaultQuery)
 
 vi.stubGlobal('useRoute', () => ({ params: { id: 'bible-1' }, query: { variant: 'p1' } }))
 vi.stubGlobal('useCurrentSubsystem', () => ({ accent: '#ff7ac6' }))
@@ -122,8 +128,61 @@ async function mountReader() {
 
 describe('Bible reader page', () => {
   beforeEach(() => {
-    gqlQuery.mockClear()
+    vi.clearAllMocks()
+    gqlQuery.mockReset().mockImplementation(defaultQuery)
     chapterReferences = [chapterReference('1')]
+  })
+
+  it('reports the displayed chapter with its exact Bible identity', async () => {
+    const wrapper = mount(BibleReaderPage, { global: { stubs, mocks: { buildBreadcrumb: (...parts: string[]) => parts } } })
+    await flushPromises()
+    const heading = wrapper.get('[data-ba-track="bible-text"]').element
+    expect(getElementType(heading)).toBe('bible-text')
+    expect(extractAttributes(heading).extras).toMatchObject({
+      bible_id: 'bible-1', bible_version: '2', bible_variant: 'p1', bible_usfm: 'GEN.1',
+    })
+    expect(heading.hasAttribute('data-ba-no-text')).toBe(true)
+    expect(wrapper.text()).toContain('Provider copyright')
+    expect(wrapper.text()).toContain('Provider citation')
+    wrapper.unmount()
+  })
+
+  it('does not report a chapter that failed to load', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    gqlQuery.mockImplementation(async (document, variables) => {
+      if (print(document).includes('GetBibleChapter')) throw new Error('Unavailable')
+      return defaultQuery(document, variables)
+    })
+    const wrapper = mount(BibleReaderPage, { global: { stubs, mocks: { buildBreadcrumb: (...parts: string[]) => parts } } })
+    await flushPromises()
+    expect(wrapper.find('[data-ba-track="bible-text"]').exists()).toBe(false)
+    expect(wrapper.find('.scripture-body').exists()).toBe(false)
+    wrapper.unmount()
+    error.mockRestore()
+  })
+
+  it('ignores a chapter response after the user selects another chapter', async () => {
+    chapterReferences = ['1', '2'].map(chapterReference)
+    let finish!: (value: Awaited<ReturnType<typeof defaultQuery>>) => void
+    gqlQuery.mockImplementation(async (document, variables) => {
+      if (print(document).includes('GetBibleChapter')) {
+        if (variables?.usfm === 'GEN.1') return new Promise(resolve => { finish = resolve })
+      }
+      return defaultQuery(document, variables)
+    })
+    const wrapper = mount(BibleReaderPage, { global: { stubs, mocks: { buildBreadcrumb: (...parts: string[]) => parts } } })
+    await flushPromises()
+    expect(wrapper.find('[data-ba-track="bible-text"]').exists()).toBe(false)
+    await wrapper.get('select[aria-label="Chapter"]').setValue('GEN.2')
+    await flushPromises()
+    expect(wrapper.get('[data-ba-track="bible-text"]').attributes('data-ba-bible-usfm')).toBe('GEN.2')
+    finish(await defaultQuery(
+      gqlQuery.mock.calls.find(([document]) => print(document).includes('GetBibleChapter'))![0],
+      { usfm: 'GEN.1' },
+    ))
+    await flushPromises()
+    expect(wrapper.get('[data-ba-track="bible-text"]').attributes('data-ba-bible-usfm')).toBe('GEN.2')
+    wrapper.unmount()
   })
 
   it('uses the selected Bible variant for chapter loading and reference search', async () => {
@@ -131,7 +190,7 @@ describe('Bible reader page', () => {
     const chapterCall = gqlQuery.mock.calls.find(([document]) => print(document).includes('GetBibleChapter'))
     expect(chapterCall).toBeDefined()
     if (!chapterCall) throw new Error('Expected the chapter query to run')
-    expect(chapterCall[1]).toEqual({ id: 'bible-1', usfm: 'GEN.1', variant: 'p1' })
+    expect(chapterCall[1]).toEqual({ id: 'bible-1', version: 2, usfm: 'GEN.1', variant: 'p1' })
     expect(print(chapterCall[0])).toContain('bible(variant: $variant)')
 
     await wrapper.get('.reference-search').setValue('Genesis 1:1')
@@ -141,7 +200,7 @@ describe('Bible reader page', () => {
     const findCall = gqlQuery.mock.calls.find(([document]) => print(document).includes('FindBibleRef'))
     expect(findCall).toBeDefined()
     if (!findCall) throw new Error('Expected the reference search query to run')
-    expect(findCall[1]).toEqual({ id: 'bible-1', human: 'Genesis 1:1', variant: 'p1' })
+    expect(findCall[1]).toEqual({ id: 'bible-1', version: 2, human: 'Genesis 1:1', variant: 'p1' })
     expect(print(findCall[0])).toContain('bible(variant: $variant)')
   })
 
@@ -164,7 +223,7 @@ describe('Bible reader page', () => {
     await flushPromises()
 
     expect(gqlQuery).toHaveBeenLastCalledWith(expect.anything(), {
-      id: 'bible-1', usfm: 'GEN.1', variant: 'p1',
+      id: 'bible-1', version: 2, usfm: 'GEN.1', variant: 'p1',
     })
     expect(wrapper.get('.chapter-heading').text()).toBe('Genesis 1')
   })
@@ -190,7 +249,7 @@ describe('Bible reader page', () => {
     expect(wrapper.get<HTMLSelectElement>('select[aria-label="Chapter"]').element.value).toBe('GEN.1')
     expect(wrapper.get('.chapter-heading').text()).toBe('Genesis 1')
 
-    await previous.trigger('click')
+    await wrapper.get('.bottom-nav button').trigger('click')
     await flushPromises()
 
     expect(wrapper.get<HTMLSelectElement>('select[aria-label="Chapter"]').element.value).toBe('GEN.intro')

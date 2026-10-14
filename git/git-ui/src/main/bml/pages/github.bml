@@ -1,0 +1,48 @@
+<page route="/repositories/{id}/github" requireAuth>
+  <script server provides="page">
+    bosca.git.ui.gitHubPage()
+  </script>
+  <if page != null>
+    <git-layout :title='page.name + " GitHub synchronization"'>
+      <ui-page>
+        <ui-page-heading
+          :title='page.name + " GitHub synchronization"'
+          :backHref='"/repositories/" + bosca.git.ui.encode(page.id)'
+          backLabel="Repository"
+        />
+        <if !page.allowed>
+          <ui-alert>Administrator access is required.</ui-alert>
+        <else>
+          <git-github-history :page="page" />
+          <details class="github-configuration" :open="page.pair == null">
+            <ui-disclosure-heading>Pairing and secrets</ui-disclosure-heading>
+            <div class="configuration-body">
+              <git-github-pair :page="page" />
+              <git-github-secret :page="page" />
+            </div>
+          </details>
+        </if>
+      </ui-page>
+    </git-layout>
+  </if>
+  <style scoped>
+    .github-configuration {
+      margin-top: 24px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--bg-1);
+      max-width: 1100px;
+    }
+    summary {
+      padding: 14px 18px;
+      cursor: pointer;
+      font-weight: 500;
+    }
+    .configuration-body {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      padding: 0 18px 18px;
+    }
+  </style>
+</page>

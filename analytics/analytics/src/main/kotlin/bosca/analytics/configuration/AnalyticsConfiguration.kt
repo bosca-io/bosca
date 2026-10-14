@@ -270,6 +270,16 @@ class AnalyticsConfiguration {
         errorCapture,
     )
 
+    @Provider(singleton = true, name = JobQueueNames.fumsJobQueue)
+    fun fumsJobQueue(factory: JobQueueFactory): JobQueue = factory.create(JobQueueNames.fumsQueue)
+
+    @Provider(name = JobQueueNames.fumsRunner)
+    fun fumsJobQueueRunner(
+        @ProviderName(JobQueueNames.fumsJobQueue) queue: JobQueue,
+        distributedLockFactory: DistributedLockFactory,
+        errorCapture: ObjectProvider<ErrorCapture>,
+    ): JobRunner = JobRunner(queue, 100, distributedLockFactory, errorCapture)
+
     @Provider(name = "analytics-queries")
     fun analyticsQueriesInstaller(
         service: AnalyticsQueryService,
@@ -347,6 +357,12 @@ class AnalyticsConfiguration {
             // QueryInstaller 1.0.6 clears the per-installer gate for existing installations.
             PackageInstallationVersion(
                 version = "1.0.9",
+                installerNames = listOf("analytics-queries")
+            ),
+            // Date-range user and session metrics that exclude desktop crawlers and link signed-out
+            // activity per period, plus monthly users and engagement. QueryInstaller 1.0.7 clears its gate.
+            PackageInstallationVersion(
+                version = "1.0.10",
                 installerNames = listOf("analytics-queries")
             )
         )

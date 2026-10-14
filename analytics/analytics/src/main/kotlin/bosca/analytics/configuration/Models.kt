@@ -3,8 +3,7 @@ package bosca.analytics.configuration
 import kotlinx.serialization.Serializable
 
 /**
- * Tuning knobs for the in-memory event processing pipeline that sits between
- * the HTTP ingestion endpoint and the downstream [EventRepository][bosca.analytics.repository.EventRepository].
+ * Configures Analytics transforms, ingestion workers, and downstream event processing.
  */
 @Serializable
 class EventProcessingConfiguration(
@@ -21,6 +20,8 @@ class EventProcessingConfiguration(
      * runs bound scripts (see [AnalyticsScriptTransform][bosca.analytics.transform.AnalyticsScriptTransform]).
      */
     val scriptServiceAccount: String = "sa",
+    /** Enables FUMS enqueueing on the collector or runner handling Bible usage events. */
+    val fumsEnabled: Boolean = false,
 )
 
 /**

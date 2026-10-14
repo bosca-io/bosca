@@ -38,6 +38,9 @@ interface SchemaRegistrar {
     @Schema("metadata/bible.graphqls")
     val bible: String
 
+    @Schema("metadata/bible-providers.graphqls")
+    val bibleProviders: String
+
     @Schema("metadata/documents.graphqls")
     val documents: String
 
