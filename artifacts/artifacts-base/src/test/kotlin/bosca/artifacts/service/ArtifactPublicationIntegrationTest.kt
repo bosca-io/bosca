@@ -59,6 +59,7 @@ import bosca.pipelines.node.PipelineValue
 import bosca.security.service.AuthenticationContext
 import bosca.storage.service.ObjectStorageService
 import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.mockk
 import io.mockk.every
 import java.util.concurrent.ConcurrentHashMap
@@ -880,13 +881,17 @@ class ArtifactPublicationIntegrationTest {
     }
 
     @Test fun `finalized versions without a recorded commit record it on completion and then keep it`() = withDb {
+        val dispatcher = mockk<PipelineEventDispatcher>(relaxed = true)
+        provides<PipelineEventDispatcher> { dispatcher }
         publications.prepare(destination.id, version.id, commit)
         connection().useStatement("UPDATE artifacts.versions SET completed_commit_sha = NULL") { it.execute() }
         artifacts.completeVersion(version.id, commit, emptyList(), null)
         assertEquals(commit, assertNotNull(artifacts.getVersion(version.id)).completedCommitSha)
         artifacts.completeVersion(version.id, commit, emptyList(), null)
-        assertFailsWith<IllegalArgumentException> { artifacts.completeVersion(version.id, "2".repeat(40), emptyList(), null) }
+        coVerify(exactly = 2) { dispatcher.dispatch(any(), any<ArtifactCompleted>(), any()) }
+        artifacts.completeVersion(version.id, "2".repeat(40), listOf(UUID.random()), null)
         assertEquals(commit, assertNotNull(artifacts.getVersion(version.id)).completedCommitSha)
+        coVerify(exactly = 2) { dispatcher.dispatch(any(), any<ArtifactCompleted>(), any()) }
     }
 
     @Test fun `completion rollback restores readiness and the original manifest`() = withDb {

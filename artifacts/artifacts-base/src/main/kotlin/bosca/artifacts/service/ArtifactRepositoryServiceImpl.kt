@@ -191,8 +191,11 @@ class ArtifactRepositoryServiceImpl(
         val version = versionRepo.lockById(id) ?: throw NoSuchElementException("Artifact version not found")
         require(versionRepo.getVersionBlobs(version.id).isNotEmpty()) { "An empty artifact version cannot complete" }
         // A version finalized before completion was tracked has no recorded commit; its first completion records one.
-        require(!version.finalized || version.completedCommitSha == null || version.completedCommitSha == commitSha) {
-            "A finalized artifact version cannot change its build commit"
+        // A finalized version keeps its recorded build: a later producer of identical files leaves it unchanged.
+        val recorded = version.completedCommitSha
+        if (version.finalized && recorded != null && recorded != commitSha) {
+            log.info("Artifact version {} is finalized at commit {}; ignoring completion at commit {}", id, recorded, commitSha)
+            return@transaction
         }
         versionRepo.setCompletion(id, commitSha) ?: error("Artifact version disappeared")
         ArtifactCompleted(UUID.random(), version.id, jobIds, commitSha, principalId).dispatch()

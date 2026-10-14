@@ -81,6 +81,7 @@ interface ArtifactRepositoryService : PermissionService<ArtifactNamespace, UUID>
     /**
      * Records the exact build commit and announces [ArtifactCompleted] after every file upload finishes.
      * A subsequent manifest change clears completion until the producer completes the version again.
+     * A finalized version keeps its recorded commit; completing it under another commit records and announces nothing.
      * CI calls this when all associated producer jobs succeed; no publication is prepared here.
      * Dispatch participates in the caller's transaction and ordinary pipelines own processing/retries.
      */
