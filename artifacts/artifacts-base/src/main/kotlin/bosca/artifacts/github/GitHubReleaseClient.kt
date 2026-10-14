@@ -36,9 +36,14 @@ class GitHubReleaseClient(
         requireRemote(remote.id == destination.githubRepositoryId, "GitHub repository no longer matches the destination")
     }
 
-    suspend fun publish(destination: ArtifactPublicationDestination, token: String, publication: ArtifactPublication): Long {
+    /** Checks the immutable repository identity and existing tag before fixing publication input. */
+    suspend fun verifyTarget(destination: ArtifactPublicationDestination, token: String, tagName: String, commitSha: String) {
         verifyRepository(destination, token)
-        verifyTag(destination, token, publication)
+        verifyTag(destination, token, tagName, commitSha)
+    }
+
+    suspend fun publish(destination: ArtifactPublicationDestination, token: String, publication: ArtifactPublication): Long {
+        verifyTarget(destination, token, publication.tagName, publication.commitSha)
         val marker = "<!-- bosca-artifact-publication:${publication.id} -->"
         val existing = findRelease(destination, token, publication.tagName)
         val release = existing ?: json.decodeFromString(GitHubRelease.serializer(), execute(
@@ -73,8 +78,7 @@ class GitHubReleaseClient(
     }
 
     suspend fun verify(destination: ArtifactPublicationDestination, token: String, publication: ArtifactPublication) {
-        verifyRepository(destination, token)
-        verifyTag(destination, token, publication)
+        verifyTarget(destination, token, publication.tagName, publication.commitSha)
         val release = findRelease(destination, token, publication.tagName)
             ?: throw GitHubPublicationException("Published GitHub release is missing")
         requireRemote(release.id == publication.releaseId && !release.draft && release.prerelease == publication.prerelease,
@@ -92,9 +96,9 @@ class GitHubReleaseClient(
             "GitHub asset content differs from the stored artifact")
     }
 
-    private suspend fun verifyTag(destination: ArtifactPublicationDestination, token: String, publication: ArtifactPublication) {
+    private suspend fun verifyTag(destination: ArtifactPublicationDestination, token: String, tagName: String, commitSha: String) {
         val ref = json.decodeFromString(GitHubTagRef.serializer(), execute(request(destination, token,
-            "git", "ref", "tags", publication.tagName).build()))
+            "git", "ref", "tags", tagName).build()))
         var target = ref.target
         val seen = mutableSetOf<String>()
         while (target.type == "tag") {
@@ -102,7 +106,7 @@ class GitHubReleaseClient(
             target = json.decodeFromString(GitHubAnnotatedTag.serializer(), execute(request(destination, token,
                 "git", "tags", target.sha).build())).target
         }
-        requireRemote(target.type == "commit" && target.sha == publication.commitSha, "GitHub tag does not point to the requested commit")
+        requireRemote(target.type == "commit" && target.sha == commitSha, "GitHub tag does not point to the requested commit")
     }
 
     private suspend fun findRelease(destination: ArtifactPublicationDestination, token: String, tag: String): GitHubRelease? {

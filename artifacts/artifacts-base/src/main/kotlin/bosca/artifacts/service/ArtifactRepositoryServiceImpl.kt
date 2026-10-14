@@ -187,18 +187,44 @@ class ArtifactRepositoryServiceImpl(
     }
 
     override suspend fun completeVersion(id: UUID, commitSha: String, jobIds: List<UUID>, principalId: UUID?) = transaction {
-        val version = versionRepo.findById(id) ?: throw NoSuchElementException("Artifact version not found")
+        require(commitSha.matches(Regex("[0-9a-f]{40}"))) { "Completion requires the exact Git commit SHA" }
+        val version = versionRepo.lockById(id) ?: throw NoSuchElementException("Artifact version not found")
         require(versionRepo.getVersionBlobs(version.id).isNotEmpty()) { "An empty artifact version cannot complete" }
+        // A version finalized before completion was tracked has no recorded commit; its first completion records one.
+        // A finalized version keeps its recorded build: a later producer of identical files leaves it unchanged.
+        val recorded = version.completedCommitSha
+        if (version.finalized && recorded != null && recorded != commitSha) {
+            log.info("Artifact version {} is finalized at commit {}; ignoring completion at commit {}", id, recorded, commitSha)
+            return@transaction
+        }
+        versionRepo.setCompletion(id, commitSha) ?: error("Artifact version disappeared")
         ArtifactCompleted(UUID.random(), version.id, jobIds, commitSha, principalId).dispatch()
+    }
+
+    override suspend fun confirmVersionCompletion(id: UUID, commitSha: String, expectedBlobs: List<ArtifactVersionBlob>, principalId: UUID?): ArtifactVersion = transaction {
+        val version = versionRepo.lockById(id) ?: throw NoSuchElementException("Artifact version not found")
+        val repository = repoRepo.findById(version.repositoryId) ?: throw NoSuchElementException("Artifact repository not found")
+        require(repository.type == ArtifactType.RAW.value) { "Manual upload completion requires a raw artifact repository" }
+        require(!version.finalized || version.completedCommitSha == commitSha) { "A finalized artifact version cannot change its build commit" }
+        val current = versionRepo.getVersionBlobs(id)
+        require(expectedBlobs.isNotEmpty() && expectedBlobs.size == expectedBlobs.toSet().size && current.toSet() == expectedBlobs.toSet()) {
+            "Artifact files changed; reload and review the complete file list"
+        }
+        completeVersion(id, commitSha, emptyList<UUID>(), principalId)
+        versionRepo.findById(id) ?: error("Artifact version disappeared")
     }
 
     private suspend fun verifyBlobChange(versionId: UUID, digest: String, role: String, filename: String?, mediaType: String?) {
         val version = versionRepo.lockById(versionId) ?: throw NoSuchElementException("Artifact version not found")
+        if (!version.finalized && version.completedCommitSha == null) return
+        val existing = versionRepo.findVersionBlob(versionId, digest, role)
+        val identical = existing != null && existing.filename == filename && existing.mediaType == mediaType
         if (version.finalized) {
-            val existing = versionRepo.findVersionBlob(versionId, digest, role)
-            require(existing != null && existing.filename == filename && existing.mediaType == mediaType) {
+            require(identical) {
                 "A finalized artifact version cannot change its files"
             }
+        } else if (!identical && version.completedCommitSha != null) {
+            versionRepo.setCompletion(versionId, null) ?: error("Artifact version disappeared")
         }
     }
 

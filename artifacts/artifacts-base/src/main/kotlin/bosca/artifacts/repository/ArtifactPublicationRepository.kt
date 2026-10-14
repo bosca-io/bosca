@@ -5,6 +5,7 @@ import bosca.artifacts.model.ArtifactPublicationDestination
 import bosca.db.annotation.Query
 import bosca.db.annotation.Repository
 import bosca.serialization.UUID
+import bosca.serialization.OffsetDateTime
 
 /** Durable publication manifests, target identities and independent attempt results. */
 @Repository
@@ -53,7 +54,7 @@ interface ArtifactPublicationRepository {
         :commitSha, :prerelease, :files::jsonb) RETURNING *""")
     suspend fun create(publication: ArtifactPublication): ArtifactPublication
 
-    /** Starts an attempt and clears its previous error. */
+    /** Allocates the next attempt number and clears its previous error; commit before provider work. */
     @Query("""UPDATE artifacts.publications SET attempts = attempts + 1, error = null, modified = now()
         WHERE id = :id RETURNING *""")
     suspend fun attempt(id: UUID): ArtifactPublication?
@@ -63,12 +64,13 @@ interface ArtifactPublicationRepository {
         modified = now() WHERE id = :id RETURNING *""")
     suspend fun published(id: UUID, releaseId: Long): ArtifactPublication?
 
-    /** Records successful verification independently of publication. */
-    @Query("UPDATE artifacts.publications SET verified = now(), error = null, modified = now() WHERE id = :id RETURNING *")
+    /** Records successful verification and its attempt number independently of publication. */
+    @Query("""UPDATE artifacts.publications SET verified = now(), verified_attempt = attempts,
+        error = null, modified = now() WHERE id = :id RETURNING *""")
     suspend fun verified(id: UUID): ArtifactPublication?
 
-    /** Records an unverified failure, optionally accounting for a rolled-back attempt. */
-    @Query("""UPDATE artifacts.publications SET error = :error, attempts = attempts + CASE WHEN :incrementAttempt THEN 1 ELSE 0 END,
-        modified = now() WHERE id = :id AND verified IS NULL""", returnUpdateCount = true)
-    suspend fun failed(id: UUID, error: String, incrementAttempt: Boolean): Int
+    /** Records a failed attempt while retaining earlier success and refusing to overwrite newer attempt results. */
+    @Query("""UPDATE artifacts.publications SET error = :error,
+        modified = now() WHERE id = :id AND attempts = :expectedAttempts AND modified IS NOT DISTINCT FROM :expectedModified""", returnUpdateCount = true)
+    suspend fun failed(id: UUID, error: String, expectedAttempts: Int, expectedModified: OffsetDateTime?): Int
 }

@@ -10,13 +10,12 @@
 #
 # How "latest" is resolved
 # ------------------------
-# CLI releases are tagged `cli-v<version>` in a repository whose releases are
-# shared with other independently versioned components. The releases listing is
-# ordered newest-first, so the first stable `cli-v<major>.<minor>.<patch>` tag is
-# the most recent CLI release. Its assets are named
-# `bosca-<version>-<platform>.<ext>`; the asset for this OS/arch is read from the
-# release itself rather than guessed, and verified against the release's
-# SHA256SUMS asset.
+# CLI releases are tagged with the bare `<major>.<minor>.<patch>` version. The
+# releases listing is ordered newest-first, so the first stable version tag is
+# the most recent CLI release; prefixed tags from other components never match.
+# Its assets are named `bosca-<version>-<platform>.<ext>`; the asset for this
+# OS/arch is read from the release itself rather than guessed, and verified
+# against the release's SHA256SUMS asset.
 # Bosca raw repositories list versions newest-first. The first stable numeric
 # version is selected and verified against its SHA256SUMS file.
 #
@@ -42,7 +41,6 @@ set -eu
 
 # ── Configuration ───────────────────────────────────────────────────────────
 REPOSITORY="${BOSCA_CLI_REPOSITORY:-bosca-io/bosca}"
-TAG_PREFIX="cli-v"
 API_URL="https://api.github.com/repos/${REPOSITORY}"
 DOWNLOAD_BASE="https://github.com/${REPOSITORY}/releases/download"
 ARTIFACTS_BASE="${BOSCA_CLI_ARTIFACTS_URL:-}"
@@ -139,7 +137,7 @@ info "Detected platform: ${PLATFORM}"
 
 # ── Resolve the version ─────────────────────────────────────────────────────
 if [ -n "${BOSCA_VERSION:-}" ]; then
-  VERSION="${BOSCA_VERSION#"$TAG_PREFIX"}"
+  VERSION="$BOSCA_VERSION"
 elif [ -n "$ARTIFACTS_BASE" ]; then
   info "Querying ${ARTIFACTS_API_URL}"
   LISTING="$(http_get "$ARTIFACTS_API_URL")" || die "failed to list CLI versions in ${ARTIFACTS_BASE}"
@@ -155,18 +153,17 @@ else
   LIST_URL="${API_URL}/releases?per_page=100"
   info "Querying ${LIST_URL}"
   LISTING="$(http_get "$LIST_URL")" || die "failed to list releases of ${REPOSITORY} (set GITHUB_TOKEN if rate limited)"
-  # Releases are listed newest-first. Stable CLI tags are cli-v<major>.<minor>.<patch>;
+  # Releases are listed newest-first. Stable CLI tags are <major>.<minor>.<patch>;
   # drafts are invisible anonymously and prerelease versions carry a suffix.
   VERSION="$(printf '%s' "$LISTING" \
     | grep -o '"tag_name": *"[^"]*"' \
     | sed 's/.*"tag_name": *"//; s/"$//' \
-    | grep -E "^${TAG_PREFIX}[0-9]+\.[0-9]+\.[0-9]+\$" \
+    | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' \
     | head -1 \
-    | sed "s/^${TAG_PREFIX}//" \
   || true)"
 fi
-[ -n "$VERSION" ] || die "could not find a CLI release (${TAG_PREFIX}<version>) in ${REPOSITORY}"
-TAG="${TAG_PREFIX}${VERSION}"
+[ -n "$VERSION" ] || die "could not find a stable CLI release (<major>.<minor>.<patch>) in ${REPOSITORY}"
+TAG="$VERSION"
 info "Installing version: ${VERSION}"
 
 # ── Find the asset filename for this platform/version ───────────────────────

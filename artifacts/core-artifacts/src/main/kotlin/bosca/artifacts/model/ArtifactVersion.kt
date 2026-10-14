@@ -31,6 +31,9 @@ data class ArtifactVersion(
     val created: OffsetDateTime? = null,
     /** Publication finalization prevents later changes to this version's blob manifest. */
     val finalized: Boolean = false,
+    /** Exact build commit recorded when all uploads complete; a manifest edit clears it. */
+    @ColumnName("completed_commit_sha")
+    val completedCommitSha: String? = null,
 ) {
     init {
         require(version.isNotBlank()) { "Version string must not be blank" }
