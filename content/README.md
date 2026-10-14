@@ -84,6 +84,31 @@ In CI (`CI=true`), missing bundle configuration or a failed download fails the b
 
 The project follows a core/impl split where `core-*` modules define contracts (interfaces, models, annotations) and implementation modules provide PostgreSQL-backed repositories with GraphQL exposure. Content items move through states via a workflow engine with permission-gated transitions and job history tracking. Collections and metadata support supplementary attachments with source tracking. All content is language-tagged with localization as a first-class concern. The Bible compiler is a specialized module for parsing and compiling Bible text into the platform's content model.
 
+## Finding a guide from a step
+
+When a search result contains a step's metadata ID, query `Metadata.parentGuides`
+to retrieve the guides' IDs, names, slugs, or attributes for navigation:
+
+```graphql
+query StepGuides($stepMetadataId: UUID!) {
+    content {
+        metadata(id: $stepMetadataId) {
+            parentGuides {
+                id
+                name
+                slug
+            }
+        }
+    }
+}
+```
+
+This returns accessible current guides that reference that metadata version as a step.
+It returns an empty list when there are no accessible parents and includes each guide
+once if it uses the same content more than once. Content can belong to multiple guides.
+When already querying a `GuideStep`, use `guide { id name slug }` to retrieve its parent;
+that field returns null if the parent is missing or inaccessible.
+
 ## Dependencies
 
 - `io.bosca:core`, `io.bosca:core-security`, `io.bosca:core-storage`, `io.bosca:core-scheduler` -- from bosca-core

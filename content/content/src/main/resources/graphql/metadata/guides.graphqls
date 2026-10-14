@@ -34,6 +34,8 @@ type Guide {
 type GuideStep {
     "The assigned date for this step in calendar-based guides, null for linear guides"
     date: DateTime
+    "The parent guide's metadata, including its ID and slug; null when the caller cannot view it"
+    guide: Metadata
     "Unique identifier for this step within the guide"
     id: Int!
     "The metadata item containing the content for this step"

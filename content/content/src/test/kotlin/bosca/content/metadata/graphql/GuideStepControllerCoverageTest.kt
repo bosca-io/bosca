@@ -14,6 +14,7 @@ import bosca.content.security.MetadataPermissionEvaluator
 import bosca.graphql.Batch
 import bosca.graphql.BatchContext
 import bosca.graphql.BatchLoaderEnvironment
+import bosca.security.model.PermissionAction
 import bosca.security.service.AuthenticationContext
 import bosca.serialization.UUID
 import io.mockk.clearAllMocks
@@ -130,6 +131,77 @@ class GuideStepControllerCoverageTest {
     fun `date returns null when context has no date`() {
         val ctx = context(date = null)
         assertNull(controller.date(ctx))
+    }
+
+    @Test
+    fun `guide batches distinct parents and maps them back to every step`() = runTest {
+        val first = metadata(version = 3)
+        val second = metadata(version = 2)
+        val contexts = listOf(
+            context(guide(first.id, first.version), step(id = 1, stepMetadataId = UUID.random())),
+            context(guide(second.id, second.version), step(id = 7, stepMetadataId = UUID.random())),
+            context(guide(first.id, first.version), step(id = 2, stepMetadataId = UUID.random())),
+        )
+        val batch = Batch<MetadataCacheKeyId, Metadata>(contexts.map { MetadataCacheKeyId(it) })
+        coEvery { metadataService.getByIdBatched(any()) } coAnswers {
+            firstArg<Batch<MetadataCacheKeyId, Metadata>>().apply {
+                assertEquals(listOf(MetadataCacheKeyId(first), MetadataCacheKeyId(second)), keys)
+                setData(MetadataCacheKeyId(first), first)
+                setData(MetadataCacheKeyId(second), second)
+            }
+        }
+        coEvery { permissionEvaluator.filterAllowed(authentication, listOf(first, second), PermissionAction.VIEW) } returns listOf(first, second)
+
+        controller.guide(authentication, batch)
+
+        assertEquals(listOf(first, second, first), batch.getResults())
+        coVerify(exactly = 1) { metadataService.getByIdBatched(any()) }
+        coVerify(exactly = 1) { permissionEvaluator.filterAllowed(authentication, listOf(first, second), PermissionAction.VIEW) }
+        coVerify(exactly = 0) { metadataService.getById(any(), any()) }
+    }
+
+    @Test
+    fun `guide preserves null results for missing and inaccessible parents`() = runTest {
+        val allowed = metadata()
+        val denied = metadata()
+        val missing = metadata()
+        val keys = listOf(denied, allowed, missing, denied).mapIndexed { index, parent ->
+            MetadataCacheKeyId(parent.id, parent.version, stepId = index.toLong())
+        }
+        val batch = Batch<MetadataCacheKeyId, Metadata>(keys)
+        coEvery { metadataService.getByIdBatched(any()) } coAnswers {
+            firstArg<Batch<MetadataCacheKeyId, Metadata>>().apply {
+                setData(MetadataCacheKeyId(allowed), allowed)
+                setData(MetadataCacheKeyId(denied), denied)
+            }
+        }
+        coEvery { permissionEvaluator.filterAllowed(null, listOf(denied, allowed), PermissionAction.VIEW) } returns listOf(allowed)
+
+        controller.guide(null, batch)
+
+        assertEquals(listOf(null, allowed, null, null), batch.getResults())
+    }
+
+    @Test
+    fun `guide keeps parent versions distinct when batching and filtering`() = runTest {
+        val first = metadata(version = 1)
+        val second = metadata(id = first.id, version = 2)
+        val batch = Batch<MetadataCacheKeyId, Metadata>(listOf(
+            MetadataCacheKeyId(first.id, 1, stepId = 1),
+            MetadataCacheKeyId(first.id, 2, stepId = 1),
+        ))
+        coEvery { metadataService.getByIdBatched(any()) } coAnswers {
+            firstArg<Batch<MetadataCacheKeyId, Metadata>>().apply {
+                assertEquals(listOf(MetadataCacheKeyId(first), MetadataCacheKeyId(second)), keys)
+                setData(MetadataCacheKeyId(first), first)
+                setData(MetadataCacheKeyId(second), second)
+            }
+        }
+        coEvery { permissionEvaluator.filterAllowed(authentication, listOf(first, second), PermissionAction.VIEW) } returns listOf(second)
+
+        controller.guide(authentication, batch)
+
+        assertEquals(listOf(null, second), batch.getResults())
     }
 
     // ---------- metadata ----------

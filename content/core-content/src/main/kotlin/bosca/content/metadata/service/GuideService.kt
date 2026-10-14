@@ -77,6 +77,13 @@ interface GuideService : Service {
     suspend fun addGuideStepsToBatch(batch: Batch<MetadataCacheKeyId, List<GuideStep>>)
 
     /**
+     * Loads steps in current guide versions that reference each step metadata ID and version.
+     * Keys identify the step's content, rather than the guide. Missing memberships produce an
+     * empty list; callers must check access to the parent guide before exposing it.
+     */
+    suspend fun addParentGuideStepsToBatch(batch: Batch<MetadataCacheKeyId, List<GuideStep>>)
+
+    /**
      * Retrieves the steps within a guide, with optional pagination.
      *
      * @param id the parent metadata identifier
