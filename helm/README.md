@@ -93,6 +93,8 @@ to 8093. Other paths stay on 8091: smart HTTP, LFS, raw files, GraphQL/WebSocket
 OAuth callbacks, webhooks and CI artifacts. Matching UI repository IDs explicitly
 keeps clone URLs such as `/repositories/project.git/info/refs` on the API.
 The route uses regular-expression matching supported by the chart's Cilium Gateway.
+Git and services chart version `0.1.4` splits the matchers to fit Envoy's default
+RE2 program-size limit of 100 and Gateway API's limit of eight matches per rule.
 
 Custom public origins use `appConfig.gitUrl`. It also configures Git UI links,
 auth returns and passkey origins; defaults derive from `appConfig.domain`, falling
@@ -157,10 +159,14 @@ writing the same versions while a release runs.
 
 Prerequisites: Bash, Helm 3 with OCI support, curl and standard shell utilities.
 SHA-256 checks use `sha256sum` or `shasum`. The release pipeline
-uses Helm 3.22.0. From the workspace root:
+uses Helm 3.22.0. The Git routing regression test also requires Python 3 and
+checks the rendered paths with RE2. From the workspace root:
 
 ```bash
 bash helm/scripts/release-test.sh
+python3 -m venv /tmp/bosca-helm-tests
+/tmp/bosca-helm-tests/bin/pip install -r helm/tests/requirements.txt
+/tmp/bosca-helm-tests/bin/python helm/tests/test_git_routes.py
 bash helm/scripts/release.sh package --output /tmp/bosca-helm-packages
 
 : "${BOSCA_REGISTRY_URL:?Set the maintainer publishing registry URL}"

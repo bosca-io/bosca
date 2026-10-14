@@ -21,10 +21,19 @@ tests:
           path: spec.rules[0].backendRefs[0]
           value: {name: test-bosca-git-server, port: 8093}
       - equal:
-          path: spec.rules[1].matches[0].path
+          path: spec.rules[1].backendRefs[0]
+          value: {name: test-bosca-git-server, port: 8093}
+      - lengthEqual:
+          path: spec.rules[0].matches
+          count: 8
+      - lengthEqual:
+          path: spec.rules[1].matches
+          count: 7
+      - equal:
+          path: spec.rules[2].matches[0].path
           value: {type: PathPrefix, value: /}
       - equal:
-          path: spec.rules[1].backendRefs[0]
+          path: spec.rules[2].backendRefs[0]
           value: {name: test-bosca-git-server, port: 8091}
 
   - it: exposes both internal service ports by listener name
@@ -44,6 +53,9 @@ tests:
     asserts:
       - equal:
           path: spec.rules[0].backendRefs[0].port
+          value: 18093
+      - equal:
+          path: spec.rules[1].backendRefs[0].port
           value: 18093
       - equal:
           path: spec.hostnames
