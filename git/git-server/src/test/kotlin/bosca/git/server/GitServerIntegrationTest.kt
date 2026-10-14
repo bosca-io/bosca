@@ -83,6 +83,7 @@ class GitServerIntegrationTest {
         val postgres = SharedPostgreSQLContainer().withDatabaseName("git_http_ui")
         val nats = SharedNatsContainer()
         val directory = kotlin.io.path.createTempDirectory("git-http-ui").toFile()
+        val storageDirectory = File(directory, "storage")
         var process: Process? = null
         var apiPort: Int? = null
         var uiListenerPort: Int? = null
@@ -103,7 +104,13 @@ class GitServerIntegrationTest {
                         "git/git-server/src/main/resources/application.yaml",
                     )
                     .readText()
-            val cookieConfig = if (cookiePrefix == "_bat") template else template.replace(
+            val storageType = "    type: \"\$STORAGE_TYPE:s3\""
+            require(storageType in template) { "Missing content storage configuration in Git server template." }
+            val isolatedTemplate = template.replace(
+                storageType,
+                "    type: fs\n    basePath: ${JsonPrimitive(storageDirectory.absolutePath)}",
+            )
+            val cookieConfig = if (cookiePrefix == "_bat") isolatedTemplate else isolatedTemplate.replace(
                 "cookie-prefixes: []", "cookie-prefixes:\n    - prefix: $cookiePrefix\n      domains: [localhost]"
             )
             config.writeText(
@@ -344,6 +351,10 @@ class GitServerIntegrationTest {
                     adminToken,
                 )
             val repositoryId = created.at("git", "createRepository", "id").jsonPrimitive.content
+            assertTrue(
+                storageDirectory.walkTopDown().any { it.isFile && it.length() > 0 },
+                "Repository initialization must persist objects in this test's isolated storage",
+            )
             val apiToken = graphql(
                 "mutation { security { apiTokens { create(input: { name: \"Read-only review\", scopes: [\"git:read\"] }) { rawToken } } } }",
                 token = adminToken,
