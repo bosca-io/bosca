@@ -56,6 +56,8 @@ data class ConversionGoalInput(
     val itemExtraValue: String? = null,
     val role: ConversionGoalRole = ConversionGoalRole.PRIMARY,
     val cupedCovariate: CupedCovariateInput? = null,
+    val activation: GoalActivationInput? = null,
+    val outcomeScope: bosca.experimentation.model.GoalOutcomeScope? = null,
 )
 
 /** Translate to the service-layer input. */
@@ -72,4 +74,6 @@ fun ConversionGoalInput.toServiceInput(): bosca.experimentation.model.Conversion
         itemExtraValue = itemExtraValue,
         role = role,
         cupedCovariate = cupedCovariate?.toModel(),
+        activation = activation?.toModel(),
+        outcomeScope = outcomeScope,
     )

@@ -86,6 +86,8 @@ kover {
                     "bosca.experimentation.graphql.AnalyticsDeviceInput",
                     "bosca.experimentation.graphql.CupedCovariateInput",
                     "bosca.experimentation.graphql.ConversionGoalInput",
+                    "bosca.experimentation.graphql.GoalActivationInput",
+                    "bosca.experimentation.graphql.GoalActivationRuleInput",
                     "bosca.experimentation.graphql.ExperimentActivationFilterInput",
                     "bosca.experimentation.graphql.ExperimentInput",
                     "bosca.experimentation.jobs.AnalysisReportDetails",

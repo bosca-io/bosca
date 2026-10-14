@@ -141,6 +141,9 @@ input ExperimentActivationFilterInput {
     pagePathPrefixes: [String!]
     itemExtraKey: String
     itemExtraValue: String
+    elementIdContains: String
+    applicationIds: [String!]
+    recommendationCard: Boolean! = false
 }
 
 "Configured analytics event filter that activates an assigned experiment subject."
@@ -152,6 +155,9 @@ type ExperimentActivationFilter {
     pagePathPrefixes: [String!]!
     itemExtraKey: String
     itemExtraValue: String
+    elementIdContains: String
+    applicationIds: [String!]!
+    recommendationCard: Boolean!
 }
 
 """
@@ -339,6 +345,8 @@ input ConversionGoalInput {
     role: ConversionGoalRole
     "Optional CUPED covariate configuration for variance reduction."
     cupedCovariate: CupedCovariateInput
+    activation: GoalActivationInput
+    outcomeScope: GoalOutcomeScopeInput
 }
 
 "Input for creating or updating a mutual exclusion layer."
@@ -493,6 +501,8 @@ type ConversionGoal {
     "CUPED covariate for variance reduction. Null when no adjustment is configured."
     cupedCovariate: CupedCovariate
     created: DateTime!
+    activation: GoalActivation
+    outcomeScope: GoalOutcomeScope
 }
 
 "Aggregated metrics for a specific variation and conversion goal within an experiment."
@@ -528,6 +538,7 @@ type ExperimentResult {
     "CUPED-adjusted per-user variance. Strictly smaller than `variance` when the covariate explains any post-period variation."
     adjustedVariance: Float
     updatedAt: DateTime!
+    goalAnalysis: GoalPopulationAnalysis
 }
 
 """
@@ -700,4 +711,121 @@ extend type Mutation {
 extend type Subscription {
     "Subscribe to real-time feature flag update events."
     flagUpdated: FlagUpdated!
+}
+
+enum GoalActivationMode { EVENT INHERIT NOT_APPLICABLE }
+
+type GoalActivation {
+    defaultFilter: ExperimentActivationFilter
+    variationRules: [GoalActivationRule!]!
+    sameSession: Boolean!
+    maxDelaySeconds: Int
+    applicationIds: [String!]!
+}
+
+input GoalActivationInput {
+    defaultFilter: ExperimentActivationFilterInput
+    variationRules: [GoalActivationRuleInput!] = []
+    sameSession: Boolean! = false
+    maxDelaySeconds: Int
+    applicationIds: [String!]! = []
+}
+
+type GoalActivationRule {
+    variationKey: String!
+    mode: GoalActivationMode!
+    filter: ExperimentActivationFilter
+}
+
+input GoalActivationRuleInput {
+    variationKey: String!
+    mode: GoalActivationMode!
+    filter: ExperimentActivationFilterInput
+}
+
+type GoalOutcomeScope {
+    applicationIds: [String!]!
+    sameSession: Boolean!
+    maxDelaySeconds: Int
+    recommendationCard: Boolean!
+    attributeRecommendationDestination: Boolean!
+}
+
+input GoalOutcomeScopeInput {
+    applicationIds: [String!]! = []
+    sameSession: Boolean! = false
+    maxDelaySeconds: Int
+    recommendationCard: Boolean! = false
+    attributeRecommendationDestination: Boolean! = false
+}
+
+type MetricInterval {
+    lower: Float!
+    upper: Float!
+}
+
+type MetricDistribution {
+    count: Long!
+    mean: Float!
+    standardDeviation: Float!
+    p50: Float!
+    p75: Float!
+    p90: Float!
+    p95: Float!
+    p99: Float!
+    maximum: Float!
+}
+
+type GoalPopulation {
+    subjects: Long!
+    conversions: Long!
+    observationCount: Long!
+    estimate: Float
+    variance: Float
+    interval: MetricInterval
+    distribution: MetricDistribution
+}
+
+type PlacementIntegrity {
+    expectedOnly: Long!
+    unexpectedOnly: Long!
+    both: Long!
+    neither: Long!
+}
+
+type DestinationAttribution {
+    engagedSubjects: Long!
+    interactions: Long!
+    attributedSubjects: Long!
+    attributedInteractions: Long!
+    interval: MetricInterval
+    unresolvedTargets: Long!
+    unsupportedTypes: Long!
+    missingSlugs: Long!
+    missingSessions: Long!
+    unmatchedDestinations: Long!
+}
+
+type GoalDiagnostics {
+    excludedPrincipals: Long!
+    excludedInstallations: Long!
+    duplicateDeliveries: Long!
+    outsideApplication: Long!
+    missingApplication: Long!
+}
+
+type GoalPopulationAnalysis {
+    cutoff: String!
+    activationConfigured: Boolean!
+    notApplicable: Boolean!
+    overall: GoalPopulation!
+    activated: GoalPopulation
+    notActivated: GoalPopulation
+    reach: Float
+    reachInterval: MetricInterval
+    placement: PlacementIntegrity
+    exposureEvents: Long
+    exposureIntensity: MetricDistribution
+    attribution: DestinationAttribution
+    diagnostics: GoalDiagnostics!
 }

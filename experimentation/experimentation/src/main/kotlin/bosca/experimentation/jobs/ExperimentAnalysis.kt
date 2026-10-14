@@ -59,8 +59,8 @@ data class DeterministicAnalysis(
      * Bonferroni multiple-testing correction applied to per-test alphas.
      *
      * `numComparisons` is the number of independent (variation, goal)
-     * treatment-vs-control comparisons in this experiment, i.e.
-     * `goalCount * (variationCount - 1)`. When it exceeds 1, the per-test
+     * pairwise comparisons in this experiment, i.e.
+     * `goalCount * variationCount * (variationCount - 1) / 2`. When it exceeds 1, the per-test
      * alpha is divided by it (and the per-test confidence threshold raised
      * to `1 - α/n`) so the family-wise false-positive rate stays at
      * [BASE_ALPHA] across the whole experiment, not per individual test.
@@ -80,6 +80,7 @@ data class DeterministicAnalysis(
      * consumers should surface this as a data-quality warning.
      */
     val srmImpressionInconsistency: Boolean = false,
+    val plannedComparisons: List<PlannedComparison> = emptyList(),
 )
 
 /**
@@ -312,7 +313,7 @@ fun runDeterministicAnalysis(
     // `1 - effectiveAlpha/2`, so the CI bounds widen alongside the
     // decision threshold rather than stating a tighter precision than the
     // significance call actually used.
-    val numComparisons = goals.size * maxOf(0, variations.size - 1)
+    val numComparisons = goals.size * variations.size * maxOf(0, variations.size - 1) / 2
     // Bonferroni is a frequentist family-wise error control. Under a
     // Bayesian analysis the per-test "confidence" is a posterior
     // probability, which has no family-wise error rate to adjust —
@@ -357,6 +358,7 @@ fun runDeterministicAnalysis(
     // the (potentially tighter) guardrailMinRegressionPercent so
     // variance-heavy safety metrics can trip HALT on smaller movements,
     // while primary/secondary goals use the standard practical floor.
+    val comparisons = plannedComparisons(experiment, goals, currentResults, effectiveAlpha, thresholds, null)
     val goalAnalyses = goals.map { goal ->
         val practical = when (goal.role) {
             ConversionGoalRole.GUARDRAIL -> thresholds.guardrailMinRegressionPercent
@@ -371,6 +373,7 @@ fun runDeterministicAnalysis(
             alpha = effectiveAlpha,
             practicalLiftPercent = practical,
             analysisMethod = analysisMethod,
+            comparisons = comparisons.filter { it.goalId == goal.id.toString() },
         )
     }
 
@@ -378,11 +381,16 @@ fun runDeterministicAnalysis(
     //   1. SRM_FAILED   — bucketing broken, a distinct branch.
     //   2. HALT         — any guardrail loser; the controller reverts.
     //   3. DO_NOT_SHIP  — any PRIMARY loser; controller holds.
-    //   4. INCONCLUSIVE — any SECONDARY loser (downgrades SHIP, per R1).
-    //   5. SHIP         — a PRIMARY winner with no loser of any role.
-    //   6. KEEP_RUNNING — something approaching significance.
-    //   7. NO_DATA      — every goal is INSUFFICIENT_DATA.
-    //   8. INCONCLUSIVE — everything else.
+    //   4. INCONCLUSIVE — inconsistent impressions or imbalanced session coverage.
+    //   5. INCONCLUSIVE — any SECONDARY loser (downgrades SHIP, per R1).
+    //   6. KEEP_RUNNING — a PRIMARY winner before the configured sample target.
+    //   7. SHIP         — a PRIMARY winner with no loser of any role.
+    //   8. KEEP_RUNNING — something approaching significance.
+    //   9. NO_DATA      — every goal is INSUFFICIENT_DATA.
+    //  10. INCONCLUSIVE — everything else.
+    // Data-quality and sample-target checks only withhold SHIP; they never
+    // delay the safety stops above them. Per-arm observation minimums are
+    // enforced by each planned comparison with the goal's own denominator.
     val anyGuardrailLoser = goalAnalyses.any {
         it.role == ConversionGoalRole.GUARDRAIL && it.verdict == GoalVerdict.LOSER
     }
@@ -395,12 +403,16 @@ fun runDeterministicAnalysis(
     val anyPrimaryWinner = goalAnalyses.any {
         it.role == ConversionGoalRole.PRIMARY && it.verdict == GoalVerdict.WINNER
     }
+    val coverageImbalanceDetected = goalAnalyses.any { it.coverageImbalanced }
+    val sampleTargetMet = totalImpressions >= (experiment.targetSampleSize ?: 0L)
     val verdict = when {
         srm?.failed == true -> Verdict.SRM_FAILED
         anyGuardrailLoser -> Verdict.HALT
         anyPrimaryLoser -> Verdict.DO_NOT_SHIP
-        anyPrimaryWinner && !anySecondaryLoser -> Verdict.SHIP
+        impressionInconsistencyDetected || coverageImbalanceDetected -> Verdict.INCONCLUSIVE
         anyPrimaryWinner && anySecondaryLoser -> Verdict.INCONCLUSIVE
+        anyPrimaryWinner && !sampleTargetMet -> Verdict.KEEP_RUNNING
+        anyPrimaryWinner -> Verdict.SHIP
         goalAnalyses.any { it.verdict == GoalVerdict.NEEDS_MORE_DATA } -> Verdict.KEEP_RUNNING
         goalAnalyses.all { it.verdict == GoalVerdict.INSUFFICIENT_DATA } -> Verdict.NO_DATA
         else -> Verdict.INCONCLUSIVE
@@ -408,6 +420,7 @@ fun runDeterministicAnalysis(
 
     val (summary, recommendation, confidence) = renderVerdict(
         experiment, verdict, goalAnalyses, srm, totalImpressions, effectiveAlpha, numComparisons,
+        anyPrimaryWinner,
     )
 
     return DeterministicAnalysis(
@@ -426,6 +439,22 @@ fun runDeterministicAnalysis(
         confidence = confidence,
         numComparisons = numComparisons,
         effectiveAlpha = effectiveAlpha,
+        plannedComparisons = comparisons.map { comparison ->
+            val blocked = when {
+                srm?.failed == true -> "Assignment counts failed the sample-ratio or consistency checks."
+                anyGuardrailLoser -> "An overall guardrail regressed."
+                impressionInconsistencyDetected -> "Assignment counts failed the sample-ratio or consistency checks."
+                coverageImbalanceDetected -> "Session-duration observation coverage is imbalanced."
+                else -> null
+            }
+            when {
+                blocked != null -> comparison.copy(conclusion = "DATA_QUALITY_BLOCKED", reason = blocked)
+                // The sample target guards against early ship decisions; a primary regression stays visible.
+                !sampleTargetMet && verdict != Verdict.DO_NOT_SHIP && comparison.conclusion in SAMPLE_TARGET_HELD_CONCLUSIONS ->
+                    comparison.copy(conclusion = "INSUFFICIENT_DATA", reason = "The configured sample target has not been reached.")
+                else -> comparison
+            }
+        },
         srmImpressionInconsistency = impressionInconsistencyDetected,
     )
 }
@@ -438,6 +467,7 @@ private fun analyzeGoal(
     alpha: Double,
     practicalLiftPercent: Double,
     analysisMethod: AnalysisMethod = AnalysisMethod.FREQUENTIST,
+    comparisons: List<PlannedComparison>,
 ): GoalAnalysis {
     // Per-test confidence threshold and "approaching" threshold derived
     // from the (already-Bonferroni-corrected) alpha. Doing the derivation
@@ -460,6 +490,9 @@ private fun analyzeGoal(
     }
 
     val controlResult = goalResults.find { it.variationKey == controlKey }
+    fun comparisonAgainstControl(key: String) = comparisons.find {
+        setOf(it.leftVariationKey, it.rightVariationKey) == setOf(key, controlKey)
+    }
     // Note: the control base (conversionRate / mean) is intentionally
     // not pre-computed here. The delta-method lift CI in
     // [computeLiftWithCi] reads control.conversionRate / control.mean
@@ -476,15 +509,18 @@ private fun analyzeGoal(
         } else {
             computeLiftWithCi(goal.metricType, controlResult, r, alpha)
         }
-        // Under Bayesian analysis, the controller/promotion gate
-        // reads `probabilityBeatsControl` out of the "confidence"
-        // field on VariationRow so downstream consumers (UI,
-        // rollout controller) can stay method-agnostic. The
-        // frequentist path still reports `confidenceLevel`.
-        val reportedConfidence = when (analysisMethod) {
-            AnalysisMethod.FREQUENTIST -> r.confidenceLevel
-            AnalysisMethod.BAYESIAN -> r.probabilityBeatsControl
-        }
+        // Verdicts and reports use the same test as the planned comparison,
+        // including Fisher evidence for sparse binary goals and CUPED moments.
+        // Bayesian confidence is oriented as P(treatment > control).
+        val reportedConfidence = if (!isControl) {
+            comparisonAgainstControl(r.variationKey)?.let { comparison ->
+                comparison.evidence?.let { evidence ->
+                    if (analysisMethod == AnalysisMethod.BAYESIAN && comparison.rightVariationKey == r.variationKey) {
+                        1.0 - evidence
+                    } else evidence
+                }
+            }
+        } else null
         VariationRow(
             variationKey = r.variationKey,
             variationName = variation.name,
@@ -494,8 +530,8 @@ private fun analyzeGoal(
             coverage = if (r.impressions > 0L) r.observationCount.toDouble() / r.impressions else 0.0,
             conversions = r.conversions,
             rate = r.conversionRate,
-            mean = r.mean,
-            variance = r.variance,
+            mean = r.adjustedMean ?: r.mean,
+            variance = r.adjustedVariance ?: r.variance,
             liftPercent = lift,
             liftCiLowerPercent = ciLower,
             liftCiUpperPercent = ciUpper,
@@ -506,8 +542,15 @@ private fun analyzeGoal(
     // Winner = the non-control row with the highest *positive* lift that
     // also clears the confidence threshold and the practical-significance
     // threshold. If no such row exists, no winner.
+    fun conclusiveAgainstControl(key: String, improvement: Boolean): Boolean {
+        val comparison = comparisonAgainstControl(key) ?: return false
+        if (comparison.conclusion != "CONCLUSIVE") return false
+        val difference = comparison.difference ?: return false
+        val treatmentDifference = if (comparison.leftVariationKey == key) difference else -difference
+        return if (improvement) treatmentDifference > 0.0 else treatmentDifference < 0.0
+    }
     val candidate = rows
-        .filter { !it.isControl }
+        .filter { !it.isControl && conclusiveAgainstControl(it.variationKey, improvement = true) }
         .filter { (it.liftPercent ?: 0.0) > 0.0 }
         .filter { (it.confidence ?: 0.0) >= confidenceThreshold }
         .filter { (it.liftPercent ?: 0.0) >= practicalLiftPercent }
@@ -528,7 +571,7 @@ private fun analyzeGoal(
     // than for primaries — the caller passes in the role-appropriate
     // cutoff.
     val significantLoser = rows
-        .filter { !it.isControl }
+        .filter { !it.isControl && conclusiveAgainstControl(it.variationKey, improvement = false) }
         .filter { r ->
             val conf = r.confidence ?: 0.0
             when (analysisMethod) {
@@ -551,6 +594,8 @@ private fun analyzeGoal(
         }
     val verdict = when {
         coverageImbalanced -> GoalVerdict.INCONCLUSIVE_LIFT
+        comparisons.none { (it.leftVariationKey == controlKey || it.rightVariationKey == controlKey) &&
+            it.conclusion != "INSUFFICIENT_DATA" } -> GoalVerdict.INSUFFICIENT_DATA
         candidate != null -> GoalVerdict.WINNER
         significantLoser -> GoalVerdict.LOSER
         rows.any { r ->
@@ -653,6 +698,8 @@ internal fun welchSatterthwaiteDf(vC: Double, nC: Long, vT: Double, nT: Long): D
  *
  * For both types, when the control base is zero (no conversions on the
  * control side) the percent-lift is undefined and we return null bounds.
+ * Continuous metrics use CUPED-adjusted means and variances when available,
+ * matching the planned comparisons while leaving persisted raw results intact.
  */
 internal fun computeLiftWithCi(
     metricType: GoalMetricType,
@@ -691,14 +738,10 @@ internal fun computeLiftWithCi(
         }
         GoalMetricType.EVENT_COUNT,
         GoalMetricType.SESSION_DURATION -> {
-            // Prefer CUPED-adjusted variance when the goal has a
-            // covariate and the aggregator populated the adjusted
-            // columns. The point lift stays tied to the RAW control
-            // mean so operators see the same business number
-            // regardless of whether CUPED ran — only the CI width
-            // (computed from the adjusted variance) tightens.
-            val mC = control.mean ?: return Triple(null, null, null)
-            val mT = treatment.mean ?: return Triple(null, null, null)
+            // Report and decide on the same adjusted estimates as the planned comparisons.
+            // The persisted result retains the raw mean and lift alongside its CUPED moments.
+            val mC = control.adjustedMean ?: control.mean ?: return Triple(null, null, null)
+            val mT = treatment.adjustedMean ?: treatment.mean ?: return Triple(null, null, null)
             val vC = control.adjustedVariance ?: control.variance ?: 0.0
             val vT = treatment.adjustedVariance ?: treatment.variance ?: 0.0
             val nC = if (metricType == GoalMetricType.SESSION_DURATION) control.observationCount else control.impressions
@@ -735,6 +778,9 @@ internal fun computeLiftWithCi(
  * reused across all analysis calls.
  */
 private val SRM_CHI_SQUARE_TEST = ChiSquareTest()
+
+/** Planned-comparison conclusions reported as insufficient until the configured sample target is reached. */
+private val SAMPLE_TARGET_HELD_CONCLUSIONS = setOf("CONCLUSIVE", "EQUIVALENT", "INCONCLUSIVE")
 
 /**
  * Chi-squared goodness-of-fit test for sample ratio mismatch (SRM),
@@ -797,6 +843,7 @@ private fun renderVerdict(
     totalImpressions: Long,
     effectiveAlpha: Double,
     numComparisons: Int,
+    anyPrimaryWinner: Boolean,
 ): Triple<String, String, Double> {
     val maxConfidence = goalAnalyses
         .flatMap { it.variationRows }
@@ -877,7 +924,14 @@ private fun renderVerdict(
                 maxConfidence,
             )
         }
-        Verdict.KEEP_RUNNING -> {
+        Verdict.KEEP_RUNNING -> if (anyPrimaryWinner) {
+            Triple(
+                "A primary goal cleared the ${"%.2f".format(perTestConfidencePct)}% threshold$correctionNote, but only " +
+                    "$totalImpressions of the configured ${experiment.targetSampleSize} outcome-eligible subjects have been observed.",
+                "Keep the experiment running until the configured sample target is reached, then re-aggregate.",
+                maxConfidence,
+            )
+        } else {
             val approaching = goalAnalyses.filter { it.verdict == GoalVerdict.NEEDS_MORE_DATA }
             Triple(
                 "Results are approaching significance on ${approaching.size} goal(s) but no goal has reached " +
@@ -907,7 +961,7 @@ private fun renderVerdict(
 /**
  * Family-wise base alpha for hypothesis tests. 0.05 is the conventional
  * A/B-testing default. The per-test alpha is this value divided by the
- * number of (variation, goal) treatment-vs-control comparisons in the
+ * number of planned pairwise goal comparisons in the
  * experiment (Bonferroni); see [DeterministicAnalysis.effectiveAlpha].
  *
  * Making this per-experiment is intentionally deferred until there's

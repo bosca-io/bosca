@@ -1,6 +1,8 @@
 package bosca.experimentation.model
 
 import bosca.analytics.model.EventType
+import bosca.db.annotation.DbMapper
+import bosca.db.mapper.JsonbMapper
 import bosca.db.annotation.ColumnName
 import bosca.graphql.annotations.BatchKey
 import bosca.serialization.OffsetDateTime
@@ -127,6 +129,12 @@ data class ConversionGoal(
     @ColumnName("cuped_covariate")
     @Contextual
     val cupedCovariate: kotlinx.serialization.json.JsonElement? = null,
+    /** Optional descriptive activation stage, resolved independently for each assigned variation. */
+    @property:DbMapper(JsonbMapper::class)
+    val activation: GoalActivation? = null,
+    @ColumnName("outcome_scope")
+    @property:DbMapper(JsonbMapper::class)
+    val outcomeScope: GoalOutcomeScope? = null,
     @Contextual
     val created: OffsetDateTime = OffsetDateTime.now()
 )
@@ -148,4 +156,6 @@ data class ConversionGoalInput(
     val role: ConversionGoalRole = ConversionGoalRole.PRIMARY,
     /** Typed CUPED configuration. Null = no pre-period adjustment. */
     val cupedCovariate: CupedCovariate? = null,
+    val activation: GoalActivation? = null,
+    val outcomeScope: GoalOutcomeScope? = null,
 )

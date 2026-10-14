@@ -4,6 +4,7 @@ import bosca.di.provide
 import bosca.experimentation.configuration.JobQueueNames
 import bosca.experimentation.model.AiInsights
 import bosca.experimentation.model.AnalysisReport
+import bosca.experimentation.model.ExperimentResult
 import bosca.experimentation.model.ExperimentStatus
 import bosca.experimentation.model.TargetingRule
 import bosca.experimentation.model.Variation
@@ -186,7 +187,7 @@ suspend fun runExperimentAnalysis(
     // repository boundary. The consumer side
     // ([RolloutPolicyJobExecutor.runRolloutPolicy]) decodes
     // the same typed shape on read.
-    val detailsTyped = buildAnalysisDetailsFor(analysis, experiment.analysisRevision)
+    val detailsTyped = buildAnalysisDetailsFor(analysis, experiment.analysisRevision, results)
     val detailsJson: JsonElement = json.encodeToJsonElement(
         AnalysisReportDetails.serializer(),
         detailsTyped,
@@ -252,10 +253,13 @@ private fun parseRulesForAnalysis(json: Json, rulesJson: JsonElement?): List<Tar
  * [bosca.experimentation.jobs.readLatestAnalysisDetails] in the
  * rollout controller — the same typed shape round-trips through
  * the JSONB column, so consumers never touch raw JSON.
+ * [results] records the exact rows analyzed, even if another aggregation finishes
+ * before this report is persisted.
  */
 internal fun buildAnalysisDetailsFor(
     analysis: DeterministicAnalysis,
     experimentRevision: Long,
+    results: List<ExperimentResult>,
 ): AnalysisReportDetails =
         AnalysisReportDetails(
             experimentName = analysis.experimentName,
@@ -267,6 +271,7 @@ internal fun buildAnalysisDetailsFor(
             totalConversions = analysis.totalConversions,
             controlVariationKey = analysis.controlKey,
             experimentRevision = experimentRevision,
+            resultUpdatedAt = results.associate { "${it.goalId}:${it.variationKey}" to it.updatedAt.toString() },
             // Always emitted so the admin UI can show "1 comparison,
             // no correction" vs "N comparisons, Bonferroni corrected
             // to per-test alpha α/N" without re-deriving the state.
@@ -285,6 +290,7 @@ internal fun buildAnalysisDetailsFor(
                     expected = srm.expected,
                 )
             },
+            plannedComparisons = analysis.plannedComparisons,
             goals = analysis.goalAnalyses.map { goal ->
                 GoalDetails(
                     goalId = goal.goalId,

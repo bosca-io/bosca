@@ -1,5 +1,7 @@
 package bosca.experimentation.model
 
+import bosca.db.annotation.DbMapper
+import bosca.db.mapper.JsonbMapper
 import bosca.db.annotation.ColumnName
 import bosca.graphql.annotations.BatchKey
 import bosca.serialization.OffsetDateTime
@@ -76,11 +78,9 @@ data class ExperimentResult(
      * CUPED-adjusted per-user mean for `EVENT_COUNT` goals. Populated
      * only when the goal carries a `cupedCovariate` configuration and
      * the pre-period query produced a valid covariate. `adjustedMean`
-     * is the residual mean after the θ × (x - x̄) adjustment and is
-     * what [bosca.experimentation.jobs.computeLiftWithCi] feeds into
-     * Welch's formula for the confidence. The unadjusted [mean]
-     * remains the "number operators see" — only the CI width uses
-     * the adjusted variance.
+     * is the residual mean after the θ × (x - x̄) adjustment. The unadjusted [mean]
+     * remains available for descriptive display. Planned comparisons and
+     * analysis reports use the adjusted mean and variance together.
      */
     @ColumnName("adjusted_mean")
     val adjustedMean: Double? = null,
@@ -92,6 +92,10 @@ data class ExperimentResult(
      */
     @ColumnName("adjusted_variance")
     val adjustedVariance: Double? = null,
+    /** Descriptive goal populations; automatic analysis consumes only the existing overall fields. */
+    @ColumnName("goal_analysis")
+    @property:DbMapper(JsonbMapper::class)
+    val goalAnalysis: GoalPopulationAnalysis? = null,
     @ColumnName("updated_at")
     @Contextual
     val updatedAt: OffsetDateTime = OffsetDateTime.now()
