@@ -47,10 +47,9 @@ bosca-server:
 ```
 
 `redisHost` names a Service in the release namespace. Apply the same backend and
-Redis endpoint settings to every service sharing caches or locks. Server,
-runner, collector, artifacts, and Git default to NATS for both backends; the
-Kubernetes controller defaults to Redis caching and NATS locks. These settings
-do not change job queues, pub/sub, or counters.
+Redis endpoint settings to every service sharing caches or locks. All six charts
+default to NATS for both backends. These settings do not change job queues,
+pub/sub, or counters.
 
 When changing an existing deployment's lock backend, stop all consumers of the
 shared locks before starting them with the new configuration. NATS and Redis

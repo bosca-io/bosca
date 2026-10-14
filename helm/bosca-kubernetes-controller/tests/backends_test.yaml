@@ -7,11 +7,11 @@ release:
   name: test
   namespace: backend-test
 tests:
-  - it: keeps Redis caching and NATS locks as defaults
+  - it: defaults caching and distributed locks to NATS
     asserts:
       - matchRegex:
           path: data["application.yaml"]
-          pattern: 'cache:\s*\n\s*type: redis'
+          pattern: 'cache:\s*\n\s*type: nats'
       - matchRegex:
           path: data["application.yaml"]
           pattern: 'distributedLock:\s*\n\s*type: nats'
@@ -42,13 +42,13 @@ tests:
           path: data["application.yaml"]
           pattern: 'pubsub:\s*\n\s*type: nats'
 
-  - it: can select NATS caching
+  - it: can select Redis caching while retaining NATS locks
     set:
-      appConfig.cacheType: nats
+      appConfig.cacheType: redis
     asserts:
       - matchRegex:
           path: data["application.yaml"]
-          pattern: 'cache:\s*\n\s*type: nats'
+          pattern: 'cache:\s*\n\s*type: redis'
       - matchRegex:
           path: data["application.yaml"]
           pattern: 'distributedLock:\s*\n\s*type: nats'
