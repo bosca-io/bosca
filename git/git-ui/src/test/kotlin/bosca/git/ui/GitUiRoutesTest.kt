@@ -1200,7 +1200,16 @@ class GitUiRoutesTest {
             html,
         )
         assertTrue("/ci/artifacts/repo/run/build%2Freport%20%231.zip" in html, html)
-        assertTrue("&lt;script&gt;log&lt;/script&gt;" in html, html)
+        assertTrue("Build · Run #3" in html, html)
+        assertTrue("/repositories/repo?tab=pipelines" in html, html)
+        assertTrue("io.bosca / core:1.2.3 (maven)" in html, html)
+        assertTrue("platform / Publish @ refs/heads/main" in html, html)
+        assertTrue("Pipeline ID" in html && "Repository ID" in html && "Created" in html, html)
+        assertFalse("data-log-step=" in html, html)
+        val expanded = action("/pipelines/run", "git-pipeline-run.model", "toggleStepLogs", listOf("step"))
+        val expandedHtml = Json.parseToJsonElement(expanded.body()).jsonObject.getValue("html").jsonPrimitive.content
+        assertEquals("step", actionState(expanded)["expandedStepId"]?.jsonPrimitive?.content)
+        assertTrue("&lt;script&gt;log&lt;/script&gt;" in expandedHtml, expandedHtml)
         val before = requests.count { it.operation == "GitUiCancelRun" }
         val denied =
             action(
@@ -1247,12 +1256,45 @@ class GitUiRoutesTest {
                 ?.jsonPrimitive
                 ?.content,
         )
-        val logs = action("/pipelines/run", "git-pipeline-logs.model", "earlier", emptyList())
+        val logs = action("/pipelines/run", "git-pipeline-logs.model", "earlier", emptyList(), sourceHtml = expandedHtml)
         assertEquals(false, actionState(logs)["hasEarlier"]?.jsonPrimitive?.boolean, logs.body())
         assertEquals(
             4,
             requests.last { it.operation == "GitUiLogs" }.variables["before"]?.jsonPrimitive?.int,
         )
+    }
+
+    @Test
+    fun `failed run shows diagnostics durations and only the first failed steps logs`() {
+        val html = get("/pipelines/failed-run").body()
+        assertTrue("Build · Run #3" in html, html)
+        assertTrue("1h 2m" in html && "1m 5s" in html && "1m 3s" in html, html)
+        assertTrue("Cannot publish &lt;artifact&gt;" in html, html)
+        assertTrue("Approved &lt;release&gt;" in html, html)
+        assertTrue("Build failed before publishing" in html, html)
+        assertTrue("release/main" in html && "Concurrency Group" in html, html)
+        assertTrue("Rerun job" in html && "Delete run" in html, html)
+        assertEquals(listOf("failed-step"), Regex("data-log-step=\"([^\"]+)\"").findAll(html).map { it.groupValues[1] }.toList())
+        val collapsed = action("/pipelines/failed-run", "git-pipeline-run.model", "toggleStepLogs", listOf("failed-step"))
+        val refreshed = continueAction("/pipelines/failed-run", "git-pipeline-run.model:failed-run", "refresh", actionState(collapsed), emptyList())
+        val refreshedHtml = Json.parseToJsonElement(refreshed.body()).jsonObject.getValue("html").jsonPrimitive.content
+        assertFalse("data-log-step=" in refreshedHtml, refreshedHtml)
+        assertTrue("Cannot publish &lt;artifact&gt;" in refreshedHtml, refreshedHtml)
+    }
+
+    @Test
+    fun `step logs load on demand and selection survives polling and collapse`() {
+        val before = requests.count { it.operation == "GitUiLogs" }
+        val html = get("/pipelines/run").body()
+        assertFalse("data-log-step=" in html, html)
+        assertEquals(before, requests.count { it.operation == "GitUiLogs" })
+        val expanded = action("/pipelines/run", "git-pipeline-run.model", "toggleStepLogs", listOf("step"))
+        val refreshed = continueAction("/pipelines/run", "git-pipeline-run.model:run", "refresh", actionState(expanded), emptyList())
+        assertEquals("step", actionState(refreshed)["expandedStepId"]?.jsonPrimitive?.content)
+        val collapsed = continueAction("/pipelines/run", "git-pipeline-run.model:run", "toggleStepLogs", actionState(refreshed), listOf("step"))
+        val collapsedHtml = Json.parseToJsonElement(collapsed.body()).jsonObject.getValue("html").jsonPrimitive.content
+        assertFalse("data-log-step=" in collapsedHtml, collapsedHtml)
+        assertTrue("aria-expanded=\"false\"" in collapsedHtml, collapsedHtml)
     }
 
     @Test
@@ -1831,10 +1873,12 @@ class GitUiRoutesTest {
         args: List<Any>,
         sourcePath: String = path,
         token: String = "ui-test-token",
+        sourceHtml: String? = null,
     ): HttpResponse<String> {
-        val html =
+        val html = sourceHtml ?: run {
             if (prefix == "git-sidebar-tree.model") deferredSidebar(sourcePath).body()
             else get(sourcePath, token = token).body()
+        }
         val marker =
             Regex(
                     "<script type=\"application/json\" data-bml-state-key=\"($prefix[^\"]*)\"[^>]*>(.*?)</script>",
@@ -2116,12 +2160,16 @@ class GitUiRoutesTest {
                         operation == "GitUiPipelineRuns" &&
                             variables["repo"]?.jsonPrimitive?.content == "empty" ->
                             """{"data":{"git":{"pipelineRuns":[]}}}"""
+                        operation == "GitUiPipelineNames" ->
+                            """{"data":{"git":{"pipelines":[{"id":"pipeline","name":"Build"}]}}}"""
                         operation == "GitUiPipelines" ->
                             """{"data":{"git":{"pipelines":[{"id":"pipeline","repositoryId":"repo","filePath":".bosca/pipelines/build.yml","name":"Build","updated":"2026-10-09T00:00:00Z","triggerTypes":["MANUAL"],"runs":[$run]}]}}}"""
                         operation == "GitUiPipelineRuns" ->
                             """{"data":{"git":{"pipelineRuns":[$run]}}}"""
                         operation == "GitUiPipelineInputs" ->
                             """{"data":{"git":{"pipelineInputs":[{"name":"version","type":"STRING","defaultValue":null,"description":"Version","options":[],"required":true}]}}}"""
+                        operation == "GitUiRun" && id == "failed-run" ->
+                            """{"data":{"git":{"pipelineRun":${fixture("run-failed")}}}}"""
                         operation == "GitUiRun" -> """{"data":{"git":{"pipelineRun":$run}}}"""
                         operation == "GitUiLogs" ->
                             """{"data":{"git":{"pipelineLogs":${if (variables["before"] != null) "[]" else "[{\"lineNumber\":4,\"timestamp\":\"2026-10-09T00:00:00Z\",\"content\":\"<script>log</script>\",\"stream\":\"STDOUT\"}]"}}}}"""

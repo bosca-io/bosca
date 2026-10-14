@@ -32,7 +32,7 @@
             </form>
           </ui-confirm-dialog>
         </if>
-        <if model.canExecute && (model.job.status.name == "FAILURE" || model.job.status.name == "CANCELLED")>
+        <if model.canRerunJob(model.job)>
           <ui-confirm-dialog
             title="Rerun job?"
             description="Retry this job using the existing run's commit."

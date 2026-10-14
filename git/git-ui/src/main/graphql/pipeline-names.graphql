@@ -1,0 +1,8 @@
+query GitUiPipelineNames($repo: UUID!) {
+  git {
+    pipelines(repositoryId: $repo) {
+      id
+      name
+    }
+  }
+}

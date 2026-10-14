@@ -19,7 +19,46 @@ class PipelineRunModel(
     var nextHref: String = "",
     var reason: String = "",
     var selectedAction: String = "",
+    val repositoryName: String = "",
+    val pipelineName: String = "",
+    var expandedStepId: String? = null,
+    var autoExpandedFailure: Boolean = false,
 ) {
+    val title: String
+        get() = pipelineName.takeIf { it.isNotBlank() }?.let { "$it · Run #${run.number}" }
+            ?: "Run #${run.number}"
+
+    val repositoryHref: String
+        get() = "/repositories/${encode(run.repositoryId)}?tab=pipelines"
+
+    val rerunnableJobCount: Int
+        get() =
+            if (run.status in terminalFailures) run.jobs.count { it.status in terminalFailures }
+            else 0
+
+    val hasMultipleRerunnableJobs: Boolean
+        get() = rerunnableJobCount > 1
+
+    fun canRerunJob(job: GitUiRunData.Git.PipelineRun.Jobs): Boolean =
+        canExecute && run.status in terminalFailures && job.status in terminalFailures
+
+    fun toggleStepLogs(stepId: String) {
+        require(run.jobs.any { job -> job.steps.any { it.id == stepId } }) {
+            "Step does not belong to this run."
+        }
+        expandedStepId = stepId.takeUnless { it == expandedStepId }
+        autoExpandedFailure = true
+    }
+
+    fun expandFailure() {
+        if (autoExpandedFailure || expandedStepId != null || run.status != GitPipelineRunStatus.FAILURE)
+            return
+        expandedStepId =
+            run.jobs.asSequence().flatMap { it.steps }
+                .firstOrNull { it.status == GitPipelineRunStatus.FAILURE }?.id
+        if (expandedStepId != null) autoExpandedFailure = true
+    }
+
     val job: GitUiRunData.Git.PipelineRun.Jobs
         get() = run.jobs.first { it.id == jobId }
 
@@ -43,6 +82,7 @@ class PipelineRunModel(
         run =
             ctx.gql.execute(GitUiRun, GitUiRun.Variables(run.id)).git.pipelineRun
                 ?: error("Pipeline run no longer exists.")
+        expandFailure()
     }
 
     suspend fun action(
@@ -94,10 +134,15 @@ class PipelineRunModel(
                 ) {
                     "Run was not deleted."
                 }
-                nextHref = "/pipelines?repo=${encode(run.repositoryId)}"
+                nextHref = repositoryHref
             }
             "cancelJob" -> ctx.gql.execute(GitUiCancelJob, GitUiCancelJob.Variables(job))
-            "rerunJob" -> ctx.gql.execute(GitUiRerunJob, GitUiRerunJob.Variables(job))
+            "rerunJob" -> {
+                require(canRerunJob(current.jobs.first { it.id == job })) {
+                    "Wait for the pipeline run to finish before rerunning this job."
+                }
+                ctx.gql.execute(GitUiRerunJob, GitUiRerunJob.Variables(job))
+            }
             "buildAnyway" -> {
                 require(reason.length <= 1000 && buildAnyway(current.jobs.first { it.id == job })) {
                     "This job is not eligible to bypass external requirements."
@@ -123,5 +168,9 @@ class PipelineRunModel(
             failed = true
             message = e.message ?: "Pipeline action failed."
         }
+    }
+
+    companion object {
+        private val terminalFailures = setOf(GitPipelineRunStatus.FAILURE, GitPipelineRunStatus.CANCELLED)
     }
 }
