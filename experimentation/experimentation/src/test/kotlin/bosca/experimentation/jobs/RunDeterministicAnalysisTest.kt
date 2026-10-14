@@ -1,6 +1,7 @@
 package bosca.experimentation.jobs
 
 import bosca.experimentation.model.ConversionGoal
+import bosca.experimentation.model.AnalysisMethod
 import bosca.experimentation.model.ConversionGoalRole
 import bosca.experimentation.model.Experiment
 import bosca.experimentation.model.ExperimentActivationFilter
@@ -121,6 +122,104 @@ class RunDeterministicAnalysisTest {
     )
 
     @Test
+    fun `a sparse binary guardrail regression halts a winning primary in either arm order`() {
+        for (treatment in listOf("a_treatment", "z_treatment")) {
+            val analysis = runDeterministicAnalysis(
+                experiment(), listOf(variation("control"), variation(treatment)),
+                mapOf("control" to .5, treatment to .5),
+                listOf(goal(goalA, "Primary"), goal(goalB, "Guardrail", role = ConversionGoalRole.GUARDRAIL)),
+                listOf(
+                    proportionRow("control", goalA, 100, 20, null),
+                    proportionRow(treatment, goalA, 100, 40, confidenceVsControl(100, 20, 100, 40)),
+                    proportionRow("control", goalB, 100, 7, null),
+                    proportionRow(treatment, goalB, 100, 0, confidenceVsControl(100, 7, 100, 0)),
+                ),
+            )
+            assertEquals(Verdict.HALT, analysis.verdict)
+            val guardrail = analysis.goalAnalyses.single { it.role == ConversionGoalRole.GUARDRAIL }
+            assertEquals(GoalVerdict.LOSER, guardrail.verdict)
+            val confidence = assertNotNull(guardrail.variationRows.single { !it.isControl }.confidence)
+            assertEquals(1 - fisherExactPValue(7, 100, 0, 100), confidence, 1e-12)
+            assertTrue(confidence >= 1 - analysis.effectiveAlpha)
+        }
+    }
+
+    @Test
+    fun `practical lift verdict uses the control baseline in either arm order`() {
+        for (method in AnalysisMethod.entries) {
+            for (treatment in listOf("a_treatment", "z_treatment")) {
+                val analysis = runDeterministicAnalysis(
+                    experiment().copy(analysisMethod = method),
+                    listOf(variation("control"), variation(treatment)),
+                    mapOf("control" to .5, treatment to .5),
+                    listOf(goal(goalA, "Events", GoalMetricType.EVENT_COUNT)),
+                    listOf(
+                        continuousRow("control", goalA, 10_000, 10_000, 100.0, 1.0, null),
+                        continuousRow(treatment, goalA, 10_000, 10_000, 105.1, 1.0, 1.0),
+                    ),
+                    AnalysisThresholds(minPracticalLiftPercent = 5.0),
+                )
+                assertEquals("CONCLUSIVE", analysis.plannedComparisons.single().conclusion)
+                assertEquals(Verdict.SHIP, analysis.verdict)
+            }
+        }
+    }
+
+    @Test
+    fun `CUPED verdict and reported statistics follow the planned comparison in either arm order`() {
+        for (method in AnalysisMethod.entries) {
+            for (treatmentKey in listOf("a_treatment", "z_treatment")) {
+                for (improves in listOf(false, true)) {
+                    val controlMean = if (improves) 10.0 else 12.0
+                    val treatmentMean = if (improves) 12.0 else 10.0
+                    val results = listOf(
+                        continuousRow("control", goalA, 1000, 1000, treatmentMean, 4.0, null)
+                            .copy(adjustedMean = controlMean, adjustedVariance = 1.0),
+                        continuousRow(treatmentKey, goalA, 1000, 1000, controlMean, 4.0, 1.0)
+                            .copy(adjustedMean = treatmentMean, adjustedVariance = 1.0,
+                                probabilityBeatsControl = if (improves) .001 else .999),
+                    )
+                    val analysis = runDeterministicAnalysis(
+                        experiment().copy(analysisMethod = method),
+                        listOf(variation("control"), variation(treatmentKey)),
+                        mapOf("control" to .5, treatmentKey to .5),
+                        listOf(goal(goalA, "Events", GoalMetricType.EVENT_COUNT)), results,
+                    )
+                    val comparison = analysis.plannedComparisons.single()
+                    val row = analysis.goalAnalyses.single().variationRows.single { !it.isControl }
+                    assertEquals("CONCLUSIVE", comparison.conclusion)
+                    assertEquals(if (improves) Verdict.SHIP else Verdict.DO_NOT_SHIP, analysis.verdict)
+                    assertEquals(treatmentMean, row.mean)
+                    assertEquals(1.0, row.variance)
+                    assertEquals((treatmentMean / controlMean - 1) * 100, row.liftPercent)
+                    val expectedEvidence = checkNotNull(comparison.evidence).let {
+                        if (method == AnalysisMethod.BAYESIAN && comparison.rightVariationKey == treatmentKey) 1 - it else it
+                    }
+                    assertEquals(expectedEvidence, row.confidence)
+                    assertEquals(controlMean, results.last().mean, "Raw aggregate remains descriptive")
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `a CUPED guardrail regression halts despite positive raw lift`() {
+        val analysis = runDeterministicAnalysis(
+            experiment(), listOf(variation("control"), variation("treatment")),
+            mapOf("control" to .5, "treatment" to .5),
+            listOf(goal(goalA, "Guardrail", GoalMetricType.EVENT_COUNT, ConversionGoalRole.GUARDRAIL)),
+            listOf(
+                continuousRow("control", goalA, 1000, 1000, 10.0, 4.0, null)
+                    .copy(adjustedMean = 12.0, adjustedVariance = 1.0),
+                continuousRow("treatment", goalA, 1000, 1000, 12.0, 4.0, 1.0)
+                    .copy(adjustedMean = 10.0, adjustedVariance = 1.0),
+            ),
+        )
+        assertEquals(Verdict.HALT, analysis.verdict)
+        assertEquals(GoalVerdict.LOSER, analysis.goalAnalyses.single().verdict)
+    }
+
+    @Test
     fun `explicit control is used even when it sorts after treatment`() {
         val explicitControl = "z_control"
         val treatment = "a_treatment"
@@ -231,19 +330,20 @@ class RunDeterministicAnalysisTest {
     }
 
     @Test
-    fun `SHIP summary tolerates a winning row without confidence interval bounds`() {
+    fun `raw winning confidence cannot ship without enough observations`() {
         val analysis = runDeterministicAnalysis(
             experiment = experiment(),
             variations = listOf(variation("control"), variation("treatment", "Treatment")),
             expectedRolloutWeights = emptyMap(),
             goals = listOf(goal(goalA, "Signups")),
             results = listOf(
-                proportionRow("control", goalA, 1, 1, null).copy(conversionRate = 0.5),
-                proportionRow("treatment", goalA, 1, 1, 0.99).copy(conversionRate = 0.6),
+                proportionRow("control", goalA, 1, 0, null),
+                proportionRow("treatment", goalA, 1, 1, 0.99),
             ),
         )
 
-        assertEquals(Verdict.SHIP, analysis.verdict)
+        assertEquals(Verdict.NO_DATA, analysis.verdict)
+        assertEquals("INSUFFICIENT_DATA", analysis.plannedComparisons.single().conclusion)
         assertTrue("95% CI" !in analysis.summary)
     }
 
@@ -266,6 +366,86 @@ class RunDeterministicAnalysisTest {
         assertNull(goalAnalysis.winner)
         assertEquals(Verdict.INCONCLUSIVE, analysis.verdict)
         assertEquals(0.5, goalAnalysis.variationRows.single { it.variationKey == "treatment" }.coverage)
+    }
+
+    @Test
+    fun `a guardrail regression halts despite imbalanced session coverage`() {
+        val analysis = runDeterministicAnalysis(
+            experiment(), listOf(variation("control"), variation("treatment")),
+            mapOf("control" to .5, "treatment" to .5),
+            listOf(
+                goal(goalA, "Session duration", GoalMetricType.SESSION_DURATION, ConversionGoalRole.SECONDARY),
+                goal(goalB, "Guardrail", GoalMetricType.EVENT_COUNT, ConversionGoalRole.GUARDRAIL),
+            ),
+            listOf(
+                continuousRow("control", goalA, 1000, 1000, 10.0, 4.0, null),
+                continuousRow("treatment", goalA, 1000, 500, 10.0, 4.0, 0.5),
+                continuousRow("control", goalB, 1000, 1000, 12.0, 1.0, null),
+                continuousRow("treatment", goalB, 1000, 1000, 10.0, 1.0, 1.0),
+            ),
+        )
+        assertTrue(analysis.goalAnalyses.first().coverageImbalanced)
+        assertEquals(Verdict.HALT, analysis.verdict)
+        assertTrue(analysis.plannedComparisons.all { it.reason == "An overall guardrail regressed." })
+    }
+
+    @Test
+    fun `the sample target withholds ship but not safety stops`() {
+        val target = experiment().copy(targetSampleSize = 10_000)
+        fun analyze(role: ConversionGoalRole, controlMean: Double, treatmentMean: Double) = runDeterministicAnalysis(
+            target, listOf(variation("control"), variation("treatment")),
+            mapOf("control" to .5, "treatment" to .5),
+            listOf(goal(goalA, "Events", GoalMetricType.EVENT_COUNT, role)),
+            listOf(
+                continuousRow("control", goalA, 1000, 1000, controlMean, 1.0, null),
+                continuousRow("treatment", goalA, 1000, 1000, treatmentMean, 1.0, 1.0),
+            ),
+        )
+        val guardrail = analyze(ConversionGoalRole.GUARDRAIL, 12.0, 10.0)
+        assertEquals(Verdict.HALT, guardrail.verdict)
+        assertEquals(GoalVerdict.LOSER, guardrail.goalAnalyses.single().verdict)
+
+        val primaryLoser = analyze(ConversionGoalRole.PRIMARY, 12.0, 10.0)
+        assertEquals(Verdict.DO_NOT_SHIP, primaryLoser.verdict)
+        assertEquals("CONCLUSIVE", primaryLoser.plannedComparisons.single().conclusion)
+
+        val primaryWinner = analyze(ConversionGoalRole.PRIMARY, 10.0, 12.0)
+        assertEquals(GoalVerdict.WINNER, primaryWinner.goalAnalyses.single().verdict)
+        assertEquals(Verdict.KEEP_RUNNING, primaryWinner.verdict)
+        assertTrue("sample target" in primaryWinner.recommendation)
+        val held = primaryWinner.plannedComparisons.single()
+        assertEquals("INSUFFICIENT_DATA", held.conclusion)
+        assertEquals("The configured sample target has not been reached.", held.reason)
+
+        assertEquals(Verdict.SHIP, runDeterministicAnalysis(
+            target.copy(targetSampleSize = 2000), listOf(variation("control"), variation("treatment")),
+            mapOf("control" to .5, "treatment" to .5),
+            listOf(goal(goalA, "Events", GoalMetricType.EVENT_COUNT)),
+            listOf(
+                continuousRow("control", goalA, 1000, 1000, 10.0, 1.0, null),
+                continuousRow("treatment", goalA, 1000, 1000, 12.0, 1.0, 1.0),
+            ),
+        ).verdict)
+    }
+
+    @Test
+    fun `a sparse secondary session goal does not block a conclusive primary winner`() {
+        val analysis = runDeterministicAnalysis(
+            experiment(), listOf(variation("control"), variation("treatment")),
+            mapOf("control" to .5, "treatment" to .5),
+            listOf(
+                goal(goalA, "Events", GoalMetricType.EVENT_COUNT),
+                goal(goalB, "Session duration", GoalMetricType.SESSION_DURATION, ConversionGoalRole.SECONDARY),
+            ),
+            listOf(
+                continuousRow("control", goalA, 1000, 1000, 10.0, 1.0, null),
+                continuousRow("treatment", goalA, 1000, 1000, 12.0, 1.0, 1.0),
+                continuousRow("control", goalB, 1000, 10, 60.0, 4.0, null),
+                continuousRow("treatment", goalB, 1000, 10, 60.0, 4.0, 0.5),
+            ),
+        )
+        assertEquals(GoalVerdict.WINNER, analysis.goalAnalyses.first().verdict)
+        assertEquals(Verdict.SHIP, analysis.verdict)
     }
 
     @Test
@@ -435,11 +615,7 @@ class RunDeterministicAnalysisTest {
     }
 
     @Test
-    fun `null confidence on every row produces INSUFFICIENT_DATA goal verdicts and NO_DATA`() {
-        // Confidence-null rows simulate a goal that hasn't accumulated
-        // enough conversions for chi-squared to apply (min expected
-        // cell < 5). The goal verdict should be INSUFFICIENT_DATA, the
-        // overall verdict should be NO_DATA, and we must NOT see SHIP.
+    fun `observations below the per-arm minimum produce INSUFFICIENT_DATA and NO_DATA`() {
         val variations = listOf(variation("control"), variation("treatment"))
         val goals = listOf(goal(goalA, "Signups"))
         val results = listOf(
@@ -495,8 +671,7 @@ class RunDeterministicAnalysisTest {
             goal(goalA, "Signups"),
             goal(goalB, "Purchases"),
         )
-        // Family = goals (2) × (variations - 1) (2) = 4 comparisons.
-        // Effective alpha = 0.05 / 4 = 0.0125, per-test confidence = 0.9875.
+        // Two goals with all three arm pairs produce six planned comparisons.
         val analysis = runDeterministicAnalysis(
             experiment(), variations,
             expectedRolloutWeights = mapOf("control" to 1.0/3, "a" to 1.0/3, "b" to 1.0/3),
@@ -510,8 +685,8 @@ class RunDeterministicAnalysisTest {
                 proportionRow("b",       goalB, 2000, 200, 0.0),
             ),
         )
-        assertEquals(4, analysis.numComparisons)
-        assertEquals(0.0125, analysis.effectiveAlpha, 1e-12)
+        assertEquals(6, analysis.numComparisons)
+        assertEquals(BASE_ALPHA / 6, analysis.effectiveAlpha, 1e-12)
     }
 
     @Test
@@ -856,8 +1031,8 @@ class RunDeterministicAnalysisTest {
         val variations = listOf(variation("control"), variation("treatment"))
         val guardrail = goal(goalA, "Sensitive-guardrail", role = ConversionGoalRole.GUARDRAIL)
         val results = listOf(
-            fixedConfidenceRow("control",   goalA, n = 100_000, conversions = 30_100, confidence = 0.99),
-            fixedConfidenceRow("treatment", goalA, n = 100_000, conversions = 30_000, confidence = 0.99),
+            fixedConfidenceRow("control",   goalA, n = 10_000_000, conversions = 3_010_000, confidence = 0.99),
+            fixedConfidenceRow("treatment", goalA, n = 10_000_000, conversions = 3_000_000, confidence = 0.99),
         )
         val analysis = runDeterministicAnalysis(
             experiment(), variations,
@@ -937,15 +1112,13 @@ class RunDeterministicAnalysisTest {
     }
 
     @Test
-    fun `Bayesian hold when probabilityBeatsControl is between thresholds`() {
-        // 0.93 is below the per-test threshold (1 - BASE_ALPHA = 0.95)
-        // but above the "approaching" threshold (1 - 2*alpha = 0.90),
-        // so the verdict should route through KEEP_RUNNING, not SHIP.
+    fun `Bayesian hold when posterior evidence is between thresholds`() {
+        // These counts yield P(treatment > control) between .90 and .95.
         val variations = listOf(variation("control"), variation("treatment"))
         val goals = listOf(goal(goalA, "Signups"))
         val results = listOf(
             bayesianRow("control",   goalA, n = 2000, conversions = 240, probabilityBeatsControl = null),
-            bayesianRow("treatment", goalA, n = 2000, conversions = 300, probabilityBeatsControl = 0.93),
+            bayesianRow("treatment", goalA, n = 2000, conversions = 270, probabilityBeatsControl = 0.99),
         )
         val analysis = runDeterministicAnalysis(
             bayesianExperiment(), variations,
@@ -953,8 +1126,9 @@ class RunDeterministicAnalysisTest {
             goals = goals,
             results = results,
         )
-        assertTrue(analysis.verdict != Verdict.SHIP,
-            "sub-threshold Bayesian posterior must not SHIP, got ${analysis.verdict}")
+        val evidence = assertNotNull(analysis.goalAnalyses.single().variationRows.single { !it.isControl }.confidence)
+        assertTrue(evidence in .90..<.95)
+        assertEquals(Verdict.KEEP_RUNNING, analysis.verdict)
     }
 
     @Test
@@ -1047,7 +1221,7 @@ class RunDeterministicAnalysisTest {
         // 0.05/2 = 0.025. Under BAYESIAN it must stay at 0.05.
         val variations = listOf(variation("control"), variation("a"), variation("b"))
         val goals = listOf(goal(goalA, "Signups"), goal(goalB, "Purchases"))
-        // 3 variations × 2 goals = 4 comparisons for frequentist.
+        // Three pairs × two goals = six comparisons for frequentist.
 
         val frequentistResults = listOf(
             proportionRow("control", goalA, 2000, 200, null),
@@ -1063,8 +1237,8 @@ class RunDeterministicAnalysisTest {
             goals = goals,
             results = frequentistResults,
         )
-        assertEquals(4, freqAnalysis.numComparisons)
-        assertEquals(BASE_ALPHA / 4, freqAnalysis.effectiveAlpha, 1e-12,
+        assertEquals(6, freqAnalysis.numComparisons)
+        assertEquals(BASE_ALPHA / 6, freqAnalysis.effectiveAlpha, 1e-12,
             "frequentist must apply Bonferroni: alpha / numComparisons")
 
         val bayesianResults = listOf(
@@ -1081,7 +1255,7 @@ class RunDeterministicAnalysisTest {
             goals = goals,
             results = bayesianResults,
         )
-        assertEquals(4, bayesAnalysis.numComparisons)
+        assertEquals(6, bayesAnalysis.numComparisons)
         assertEquals(BASE_ALPHA, bayesAnalysis.effectiveAlpha, 1e-12,
             "Bayesian must NOT apply Bonferroni: effectiveAlpha == BASE_ALPHA regardless of family size")
     }
@@ -1135,26 +1309,12 @@ class RunDeterministicAnalysisTest {
 
     @Test
     fun `Bayesian NEEDS_MORE_DATA when approaching loser symmetrically`() {
-        // Treatment converts at 14% vs control 16% on n=2000 each.
-        // probabilityBeatsControl = 0.12 — the inverse is 0.88 which
-        // is above the "near significance" threshold (1 - 2*alpha =
-        // 0.90? No: 0.88 < 0.90) but let's use 0.08 so 1-0.08=0.92
-        // is >= 0.90. This is the symmetric "approaching loser" case
-        // that should produce NEEDS_MORE_DATA, not INCONCLUSIVE_LIFT.
-        //
-        // With probabilityBeatsControl = 0.08:
-        //   conf (0.08) < confidenceThreshold (0.95) → not a winner
-        //   (1 - 0.08) = 0.92 < confidenceThreshold (0.95) → not a loser
-        //   conf (0.08) < nearSignificanceThreshold (0.90) → not approaching winner
-        //   (1 - 0.08) = 0.92 >= nearSignificanceThreshold (0.90) → approaching loser ✓
-        //
-        // Without the symmetric Bayesian NEEDS_MORE_DATA check this
-        // would fall through to INCONCLUSIVE_LIFT.
+        // These counts yield P(control > treatment) between .90 and .95.
         val variations = listOf(variation("control"), variation("treatment"))
         val goals = listOf(goal(goalA, "Signups"))
         val results = listOf(
             bayesianRow("control",   goalA, n = 2000, conversions = 320, probabilityBeatsControl = null),
-            bayesianRow("treatment", goalA, n = 2000, conversions = 280, probabilityBeatsControl = 0.08),
+            bayesianRow("treatment", goalA, n = 2000, conversions = 288, probabilityBeatsControl = 0.01),
         )
         val analysis = runDeterministicAnalysis(
             bayesianExperiment(), variations,
@@ -1162,9 +1322,9 @@ class RunDeterministicAnalysisTest {
             goals = goals,
             results = results,
         )
-        assertEquals(GoalVerdict.NEEDS_MORE_DATA, analysis.goalAnalyses.single().verdict,
-            "approaching-loser with pBC=0.08 must be NEEDS_MORE_DATA (symmetric check), " +
-                "got ${analysis.goalAnalyses.single().verdict}")
+        val evidence = assertNotNull(analysis.goalAnalyses.single().variationRows.single { !it.isControl }.confidence)
+        assertTrue(1 - evidence in .90..<.95)
+        assertEquals(GoalVerdict.NEEDS_MORE_DATA, analysis.goalAnalyses.single().verdict)
         assertEquals(Verdict.KEEP_RUNNING, analysis.verdict,
             "NEEDS_MORE_DATA goal must produce KEEP_RUNNING overall, got ${analysis.verdict}")
     }
@@ -1320,11 +1480,11 @@ class RunDeterministicAnalysisTest {
 
         val treatment = analysis.goalAnalyses.single().variationRows.single()
         assertNull(treatment.liftPercent)
-        assertEquals(GoalVerdict.NEEDS_MORE_DATA, analysis.goalAnalyses.single().verdict)
+        assertEquals(GoalVerdict.INSUFFICIENT_DATA, analysis.goalAnalyses.single().verdict)
     }
 
     @Test
-    fun `positive lift with absent confidence remains insufficient data`() {
+    fun `positive lift with absent stored confidence uses planned evidence`() {
         val analysis = runDeterministicAnalysis(
             experiment(),
             listOf(variation("control"), variation("treatment")),
@@ -1336,7 +1496,8 @@ class RunDeterministicAnalysisTest {
             ),
         )
 
-        assertEquals(GoalVerdict.INSUFFICIENT_DATA, analysis.goalAnalyses.single().verdict)
+        assertEquals(GoalVerdict.WINNER, analysis.goalAnalyses.single().verdict)
+        assertEquals(Verdict.SHIP, analysis.verdict)
     }
 
     @Test
@@ -1347,8 +1508,8 @@ class RunDeterministicAnalysisTest {
             expectedRolloutWeights = emptyMap(),
             goals = listOf(goal(goalA, "Signups")),
             results = listOf(
-                proportionRow("control", goalA, 10_000, 1_000, null),
-                proportionRow("treatment", goalA, 10_000, 1_005, 0.99),
+                proportionRow("control", goalA, 10_000_000, 1_000_000, null),
+                proportionRow("treatment", goalA, 10_000_000, 1_005_000, null),
             ),
         )
 

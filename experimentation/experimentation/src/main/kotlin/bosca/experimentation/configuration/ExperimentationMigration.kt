@@ -20,5 +20,6 @@ class ExperimentationMigration : Migration {
         "V7__feature_flag_assignments.sql",
         "V8__experiment_excluded_principals.sql",
         "V9__experiment_activation.sql",
+        "V10__goal_activation.sql",
     )
 }

@@ -79,5 +79,11 @@ class ConversionGoalTypeController(
     }
 
     @Field
+    fun activation(goal: ConversionGoal): bosca.experimentation.model.GoalActivation? = goal.activation
+
+    @Field
+    fun outcomeScope(goal: ConversionGoal): bosca.experimentation.model.GoalOutcomeScope? = goal.outcomeScope
+
+    @Field
     fun created(goal: ConversionGoal): OffsetDateTime = goal.created
 }

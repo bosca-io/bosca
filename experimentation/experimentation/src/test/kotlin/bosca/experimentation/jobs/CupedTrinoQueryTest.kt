@@ -461,7 +461,7 @@ class CupedTrinoQueryTest {
         )
 
         assertTrue(built.sql.contains("activation_candidates AS"))
-        assertTrue(built.sql.contains("min(created) AS activated_at"))
+        assertTrue(built.sql.contains("PARTITION BY subject_id, variation_key ORDER BY created, event_key"))
         assertTrue(built.sql.contains("starts_with(page.path, ?) OR starts_with(page.path, ?)"))
         assertTrue(built.sql.contains("candidates.created >= subjects.assigned_at"))
         assertEquals(

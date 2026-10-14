@@ -120,7 +120,7 @@ internal fun betaExpectedLoss(
  * beats control" and "expected loss" from the same draws sees a
  * consistent view of the posterior overlap.
  */
-private fun drawPaired(
+internal fun drawPaired(
     control: BetaDistribution,
     treatment: BetaDistribution,
     seed: Long,

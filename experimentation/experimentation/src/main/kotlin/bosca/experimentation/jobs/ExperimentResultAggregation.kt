@@ -43,13 +43,13 @@ private val log = LoggerFactory.getLogger("bosca.experimentation.jobs.Experiment
  * Authenticated identity takes precedence over installation identity. This is deliberately NOT the
  * events table's top-level `client_id`, which is a per-event dedup key.
  */
-private const val CONVERTING_SUBJECT =
+internal const val CONVERTING_SUBJECT =
     "CASE WHEN context.user_id IS NOT NULL " +
         "THEN CONCAT('principal:', context.user_id) " +
         "ELSE CONCAT('installation:', context.device.installation_id) END"
 
 /** Browser event ids are stable across delivery retries; the Iceberg id covers clients without one. */
-private const val EVENT_DEDUPLICATION_KEY = "coalesce(client_id, CAST(id AS VARCHAR))"
+internal const val EVENT_DEDUPLICATION_KEY = "coalesce(client_id, CAST(id AS VARCHAR))"
 
 /** Mirrors the browser and BML analytics session timeout. */
 private const val SESSION_INACTIVITY_TIMEOUT_MILLISECONDS = 300_000L
@@ -129,7 +129,11 @@ suspend fun aggregateExperimentResults(experimentId: UUID) {
     }
 
     val variations = parseVariations(json, flag.variations)
-    val goals = experimentService.getConversionGoals(experimentId)
+    val goals = experimentService.getConversionGoals(experimentId).map { goal ->
+        if (goal.activation != null && goal.outcomeScope == null) goal.copy(
+            outcomeScope = bosca.experimentation.model.GoalOutcomeScope(applicationIds = checkNotNull(goal.activation).applicationIds),
+        ) else goal
+    }
     if (variations.isEmpty() || goals.isEmpty()) {
         log.info("No variations or goals defined for experiment: {}", experimentId)
         return
@@ -185,17 +189,22 @@ suspend fun aggregateExperimentResults(experimentId: UUID) {
             effectiveEndDate,
         )
     }
+    val needsGoalCohort = goals.any { it.activation != null || it.outcomeScope != null }
     val activatedCohort = experiment.activationFilter?.let { filter ->
         queryActivatedCohort(
             config = config,
             experimentId = experimentId,
             activationFilter = filter,
+            captureContext = needsGoalCohort,
             startDate = effectiveStartDate,
             endDate = effectiveEndDate,
             excludedPrincipalIds = excludedPrincipalIds,
             excludedInstallationIds = excludedInstallationIds,
         )
     }
+    val goalCohort = if (needsGoalCohort) activatedCohort ?: queryAssignmentCohort(
+        config, experimentId, effectiveEndDate, excludedPrincipalIds, excludedInstallationIds,
+    ) else null
     val impressionsByVariation = if (activatedCohort == null) {
         assignmentsByVariation
     } else {
@@ -213,6 +222,11 @@ suspend fun aggregateExperimentResults(experimentId: UUID) {
         errorCapture = errorCapture,
     )
 
+    val goalAnalyses = goals.associate { goal ->
+        goal.id to aggregateGoalPopulationAnalysis(experimentId, goal, sortedVariations, config,
+            effectiveStartDate, effectiveEndDate, goalCohort, impressionsByVariation, conversionsByVariationGoal,
+            excludedPrincipalIds, excludedInstallationIds, errorCapture)
+    }
     val controlImpressions = impressionsByVariation[controlKey] ?: 0L
     val controlStatsByGoal = goals.associate { goal ->
         goal.id to (conversionsByVariationGoal[controlKey to goal.id] ?: GoalCountStats.ZERO)
@@ -324,7 +338,7 @@ suspend fun aggregateExperimentResults(experimentId: UUID) {
                     adjustedVariance = cupedForArm.adjustedVariance,
                 )
             } else bayesianAugmented
-            results.add(result)
+            results.add(result.copy(goalAnalysis = goalAnalyses[goal.id]?.get(variation.key)))
         }
     }
 
@@ -519,14 +533,8 @@ internal fun cupedAdjustForGoal(
  */
 internal data class PerUserQuery(val sql: String, val params: List<String>)
 
-private data class SubjectCohortSql(
-    val ctes: String,
-    val params: List<String>,
-    val hasActivation: Boolean,
-)
-
 /** Builds assignment identities and joins the captured activation cohort for outcome queries. */
-private fun buildSubjectCohortSql(
+internal fun buildSubjectCohortSql(
     assignmentsTable: String,
     experimentId: UUID,
     excludedPrincipalIds: Collection<UUID>,
@@ -582,13 +590,13 @@ private fun buildSubjectCohortSql(
     val ctes = """
         $base, activated_subjects AS (
             SELECT CAST(subject_id AS UUID) AS subject_id, variation_key,
-                   CAST(activated_at AS TIMESTAMP(6)) AS activated_at
+                   CAST(activated_at AS TIMESTAMP(6)) AS activated_at, app_id, session_id
             FROM UNNEST(CAST(json_parse(?) AS ARRAY(ROW(
-                subject_id VARCHAR, variation_key VARCHAR, activated_at VARCHAR
-            )))) AS frozen(subject_id, variation_key, activated_at)
+                subject_id VARCHAR, variation_key VARCHAR, activated_at VARCHAR, app_id VARCHAR, session_id VARCHAR
+            )))) AS frozen(subject_id, variation_key, activated_at, app_id, session_id)
         ), eligible_subjects AS (
             SELECT subjects.subject_id, subjects.client_id, subjects.variation_key,
-                   subjects.installation_id, activated.activated_at
+                   subjects.installation_id, activated.activated_at, activated.app_id, activated.session_id
             FROM experiment_subjects subjects
             INNER JOIN activated_subjects activated
               ON activated.subject_id = subjects.subject_id
@@ -608,12 +616,47 @@ internal fun buildActivatedCohortQuery(
     endDate: OffsetDateTime?,
     excludedPrincipalIds: Collection<UUID> = emptyList(),
     excludedInstallationIds: Collection<String> = emptyList(),
+    captureContext: Boolean = false,
 ): PerUserQuery {
     val cohort = buildSubjectCohortSql(
         assignmentsTable, experimentId, excludedPrincipalIds, excludedInstallationIds,
     )
     val params = cohort.params.toMutableList()
 
+    val conditions = activationEventConditions(activationFilter, startDate, endDate, params)
+    val activationWhere = conditions.joinToString(" AND ")
+    val ctes = """
+        WITH ${cohort.ctes}, activation_candidates AS (
+            SELECT $CONVERTING_SUBJECT AS client_id, created,
+                   ${if (captureContext) "context.app_id" else "CAST(NULL AS VARCHAR)"} AS app_id,
+                   ${if (captureContext) "context.session_id" else "CAST(NULL AS VARCHAR)"} AS session_id,
+                   $EVENT_DEDUPLICATION_KEY AS event_key
+            FROM $eventsTable
+            WHERE $activationWhere
+        ), activation_matches AS (
+            SELECT subjects.subject_id, subjects.variation_key, candidates.created,
+                   candidates.app_id, candidates.session_id, candidates.event_key
+            FROM activation_candidates candidates
+            INNER JOIN experiment_subjects subjects ON subjects.client_id = candidates.client_id
+            WHERE candidates.created >= subjects.assigned_at
+        ), activated_subjects AS (
+            SELECT subject_id, variation_key, created AS activated_at, app_id, session_id
+            FROM (
+                SELECT *, row_number() OVER (PARTITION BY subject_id, variation_key ORDER BY created, event_key) AS rn
+                FROM activation_matches
+            ) WHERE rn = 1
+        )
+        SELECT CAST(subject_id AS VARCHAR) AS client_id, variation_key,
+               CAST(activated_at AS VARCHAR) AS activated_at, app_id, session_id FROM activated_subjects
+    """.trimIndent().trimStart()
+    return PerUserQuery(ctes, params)
+}
+
+/** Shared bounded event predicates for experiment and per-goal activation. */
+internal fun activationEventConditions(
+    activationFilter: ExperimentActivationFilter,
+    startDate: OffsetDateTime?, endDate: OffsetDateTime?, params: MutableList<String>,
+): List<String> {
     val conditions = mutableListOf<String>()
     activationFilter.eventType?.let {
         conditions.add("type = ?")
@@ -664,6 +707,7 @@ internal fun buildActivatedCohortQuery(
     } ?: require(activationFilter.itemExtraValue == null) {
         "Activation itemExtraValue requires itemExtraKey"
     }
+    appendExtendedEventFilter(activationFilter, conditions, params)
     startDate?.let {
         conditions.add("created >= CAST(? AS TIMESTAMP)")
         params.add(it.atZoneSameInstant(java.time.ZoneOffset.UTC).format(TRINO_TIMESTAMP_FORMAT))
@@ -673,26 +717,7 @@ internal fun buildActivatedCohortQuery(
         params.add(it.atZoneSameInstant(java.time.ZoneOffset.UTC).format(TRINO_TIMESTAMP_FORMAT))
     }
     require(conditions.isNotEmpty()) { "Activation filter must contain a narrowing predicate" }
-    val activationWhere = conditions.joinToString(" AND ")
-    val ctes = """
-        WITH ${cohort.ctes}, activation_candidates AS (
-            SELECT $CONVERTING_SUBJECT AS client_id, created
-            FROM $eventsTable
-            WHERE $activationWhere
-        ), activation_matches AS (
-            SELECT subjects.subject_id, subjects.variation_key, candidates.created
-            FROM activation_candidates candidates
-            INNER JOIN experiment_subjects subjects ON subjects.client_id = candidates.client_id
-            WHERE candidates.created >= subjects.assigned_at
-        ), activated_subjects AS (
-            SELECT subject_id, variation_key, min(created) AS activated_at
-            FROM activation_matches
-            GROUP BY subject_id, variation_key
-        )
-        SELECT CAST(subject_id AS VARCHAR) AS client_id, variation_key,
-               CAST(activated_at AS VARCHAR) AS activated_at FROM activated_subjects
-    """.trimIndent().trimStart()
-    return PerUserQuery(ctes, params)
+    return conditions
 }
 
 /**
@@ -784,6 +809,7 @@ internal fun buildConversionCountQuery(
     if (itemExtraKey != null) {
         conditions.add("cardinality(element.content) > 0")
     }
+    appendOutcomeEventFilter(goal.outcomeScope, conditions, eventParams)
     val whereClause = conditions.joinToString(" AND ")
     val cohort = buildSubjectCohortSql(
         assignmentsTable, experimentId, excludedPrincipalIds, excludedInstallationIds, activatedCohort,
@@ -800,12 +826,15 @@ internal fun buildConversionCountQuery(
     } else {
         "candidates.created >= subjects.assigned_at"
     }
+    val scopePredicate = outcomeScopePredicate(goal.outcomeScope, cohort.hasActivation, "candidates")
     val commonCtes = """
         WITH ${cohort.ctes}, event_candidates AS (
             SELECT $EVENT_DEDUPLICATION_KEY AS event_key,
                    $CONVERTING_SUBJECT AS client_id,
                    created,
-                   element.extras AS raw_extras
+                   element.extras AS raw_extras,
+                   ${if (goal.outcomeScope != null) "context.app_id" else "CAST(NULL AS VARCHAR)"} AS app_id,
+                   ${if (goal.outcomeScope != null) "context.session_id" else "CAST(NULL AS VARCHAR)"} AS session_id
             FROM $eventsTable
             $candidateWhere
         ), attributed AS (
@@ -816,7 +845,7 @@ internal fun buildConversionCountQuery(
             FROM event_candidates candidates
             INNER JOIN ${if (cohort.hasActivation) "eligible_subjects" else "experiment_subjects"} subjects
               ON subjects.client_id = candidates.client_id
-            WHERE $attributionLowerBound
+            WHERE $attributionLowerBound $scopePredicate
         )
     """.trimIndent().trimStart()
 
@@ -910,6 +939,8 @@ internal fun buildSessionDurationQuery(
     excludedPrincipalIds: Collection<UUID> = emptyList(),
     excludedInstallationIds: Collection<String> = emptyList(),
     activatedCohort: ActivatedCohortBatch? = null,
+    outcomeScope: bosca.experimentation.model.GoalOutcomeScope? = null,
+    strictlyAfterActivation: Boolean = false,
 ): PerUserQuery {
     require(startDate != null) { "Session-duration aggregation requires a lower time bound" }
     val conditions = mutableListOf(
@@ -930,6 +961,8 @@ internal fun buildSessionDurationQuery(
         conditions.add("created <= CAST(? AS TIMESTAMP)")
         params.add(it.atZoneSameInstant(java.time.ZoneOffset.UTC).format(TRINO_TIMESTAMP_FORMAT))
     }
+    appendOutcomeEventFilter(outcomeScope, conditions, params)
+    val scopePredicate = outcomeScopePredicate(outcomeScope, cohort.hasActivation, "events", nestedContext = true)
     val where = conditions.joinToString(" AND ")
     val playbackCutoff = if (endDate == null) "predicted_end" else {
         params.add(endDate.atZoneSameInstant(java.time.ZoneOffset.UTC).format(TRINO_TIMESTAMP_FORMAT))
@@ -950,8 +983,8 @@ internal fun buildSessionDurationQuery(
             FROM $eventsTable events
             INNER JOIN ${if (cohort.hasActivation) "eligible_subjects" else "experiment_subjects"} subjects
               ON subjects.client_id = $CONVERTING_SUBJECT
-            WHERE events.created >= subjects.${if (cohort.hasActivation) "activated_at" else "assigned_at"}
-              AND $where
+            WHERE events.created ${if (strictlyAfterActivation) ">" else ">="} subjects.${if (cohort.hasActivation) "activated_at" else "assigned_at"}
+              AND $where $scopePredicate
         ), media_events AS (
             SELECT *,
                    json_extract_scalar(extras, '$.audio') AS is_audio,
@@ -1253,10 +1286,12 @@ internal data class ActivatedSubject(
     @SerialName("subject_id") val subjectId: String,
     @SerialName("variation_key") val variationKey: String,
     @SerialName("activated_at") val activatedAt: String,
+    @SerialName("app_id") val appId: String? = null,
+    @SerialName("session_id") val sessionId: String? = null,
 )
 
 /** Immutable cohort reused by denominators, outcome queries, and CUPED within one aggregation. */
-internal class ActivatedCohort(subjects: List<ActivatedSubject>) {
+internal class ActivatedCohort(val subjects: List<ActivatedSubject>) {
     val countsByVariation: Map<String, Long> = subjects.groupingBy { it.variationKey }.eachCount()
         .mapValues { it.value.toLong() }
     val subjectIds: Set<String> = subjects.mapTo(mutableSetOf()) { it.subjectId }
@@ -1301,6 +1336,7 @@ private suspend fun queryActivatedCohort(
     activationFilter: ExperimentActivationFilter,
     startDate: OffsetDateTime?,
     endDate: OffsetDateTime?,
+    captureContext: Boolean,
     excludedPrincipalIds: Collection<UUID>,
     excludedInstallationIds: Collection<String>,
 ): ActivatedCohort {
@@ -1309,6 +1345,7 @@ private suspend fun queryActivatedCohort(
         assignmentsTable = config.safeAssignmentsTable,
         experimentId = experimentId,
         activationFilter = activationFilter,
+        captureContext = captureContext,
         startDate = startDate,
         endDate = endDate,
         excludedPrincipalIds = excludedPrincipalIds,
@@ -1324,7 +1361,9 @@ private suspend fun queryActivatedCohort(
             while (rows.next()) {
                 val subjectId = rows.getString("client_id") ?: continue
                 val variationKey = rows.getString("variation_key") ?: continue
-                subjects.add(ActivatedSubject(subjectId, variationKey, checkNotNull(rows.getString("activated_at"))))
+                subjects.add(ActivatedSubject(subjectId, variationKey, checkNotNull(rows.getString("activated_at")),
+                    if (captureContext) rows.getString("app_id") else null,
+                    if (captureContext) rows.getString("session_id") else null))
             }
         }
     }
@@ -1508,6 +1547,7 @@ internal data class GoalCountStats(
     val observationCount: Long = convertedUsers,
     val sumValues: Double = sumEvents.toDouble(),
     val sumSquaredValues: Double = sumSquaredEvents,
+    val values: List<Double> = emptyList(),
 ) {
     companion object {
         val ZERO = GoalCountStats(0L, 0L, 0.0)
@@ -1616,7 +1656,7 @@ private suspend fun loadAssignmentsForConverters(
  * Assignment timestamps are enforced in SQL, and every query failure propagates so a partial run
  * cannot replace the prior aggregate.
  */
-private suspend fun countConversions(
+internal suspend fun countConversions(
     experimentId: UUID,
     variations: List<Variation>,
     goals: List<ConversionGoal>,
@@ -1627,14 +1667,17 @@ private suspend fun countConversions(
     excludedInstallationIds: Set<String>,
     activatedCohort: ActivatedCohort?,
     errorCapture: ErrorCapture,
+    strictlyAfterActivation: Boolean = false,
 ): Map<Pair<String, UUID>, GoalCountStats> {
     val result = mutableMapOf<Pair<String, UUID>, GoalCountStats>()
     val trinoPool: ConnectionPool = provide(name = "trino-readonly")
 
     val batches = activatedCohort?.batches ?: listOf(null)
     val sessionGoals = goals.filter { it.metricType == GoalMetricType.SESSION_DURATION }
-    if (sessionGoals.isNotEmpty()) {
+    for (sessionGroup in sessionGoals.groupBy { it.outcomeScope }.values) {
+        val sessionGoal = sessionGroup.first()
         val statsByVariation = mutableMapOf<String, GoalCountStats>()
+        val valuesByVariation = mutableMapOf<String, MutableList<Double>>()
         trinoPool.connection().use { connection ->
             for (batch in batches) {
                 val built = buildSessionDurationQuery(
@@ -1646,6 +1689,8 @@ private suspend fun countConversions(
                     excludedPrincipalIds = excludedPrincipalIds,
                     excludedInstallationIds = excludedInstallationIds,
                     activatedCohort = batch,
+                    outcomeScope = sessionGoal.outcomeScope,
+                    strictlyAfterActivation = strictlyAfterActivation,
                 )
                 connection.useStatement(built.sql) { stmt ->
                     stmt.queryTimeout = TRINO_QUERY_TIMEOUT_SECONDS
@@ -1660,12 +1705,13 @@ private suspend fun countConversions(
                             observationCount = prior.observationCount + 1,
                             sumValues = prior.sumValues + value,
                             sumSquaredValues = prior.sumSquaredValues + value * value,
+                            values = valuesByVariation.getOrPut(variationKey) { mutableListOf() }.apply { add(value) },
                         )
                     }
                 }
             }
         }
-        for (goal in sessionGoals) {
+        for (goal in sessionGroup) {
             for (variation in variations) {
                 result[variation.key to goal.id] = statsByVariation[variation.key] ?: GoalCountStats.ZERO
             }
@@ -1678,6 +1724,7 @@ private suspend fun countConversions(
         // For EVENT_COUNT goals we need each user's per-user event count so
         // that the caller can derive a per-user mean and variance.
         val statsByVariation = mutableMapOf<String, GoalCountStats>()
+        val valuesByVariation = mutableMapOf<String, MutableList<Double>>()
         var invalidItemExtras = 0L
         var missingItemExtraValues = 0L
         trinoPool.connection().use { connection ->
@@ -1734,6 +1781,7 @@ private suspend fun countConversions(
                             convertedUsers = prior.convertedUsers + 1L,
                             sumEvents = prior.sumEvents + count,
                             sumSquaredEvents = prior.sumSquaredEvents + (count.toDouble() * count.toDouble()),
+                            values = valuesByVariation.getOrPut(variationKey) { mutableListOf() }.apply { add(count.toDouble()) },
                         )
                     }
                 }
