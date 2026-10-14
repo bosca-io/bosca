@@ -220,7 +220,7 @@ data:
       token: $HUBSPOT_TOKEN
 
     cache:
-      type: nats
+      type: {{ .Values.appConfig.cacheType }}
 
     jobQueue:
       factory: nats
@@ -229,7 +229,13 @@ data:
       type: nats
 
     distributedLock:
-      type: nats
+      type: {{ .Values.appConfig.distributedLockType }}
+
+    {{- if or (eq .Values.appConfig.cacheType "redis") (eq .Values.appConfig.distributedLockType "redis") }}
+    redis:
+      host: {{ .Values.appConfig.redisHost }}.{{ .Release.Namespace }}.svc.cluster.local
+      port: {{ .Values.appConfig.redisPort }}
+    {{- end }}
 
     counter:
       type: nats

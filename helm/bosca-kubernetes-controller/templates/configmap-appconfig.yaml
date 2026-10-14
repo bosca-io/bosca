@@ -26,7 +26,10 @@ data:
       type: nats
 
     distributedLock:
-      type: nats
+      type: {{ .Values.appConfig.distributedLockType }}
+
+    cache:
+      type: {{ .Values.appConfig.cacheType }}
 
     jobQueue:
       factory: {{ .Values.appConfig.jobQueueFactory | default "nats" }}

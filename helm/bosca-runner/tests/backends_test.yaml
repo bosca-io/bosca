@@ -1,0 +1,74 @@
+suite: bosca-runner distributed backends
+templates:
+  - templates/configmap-appconfig.yaml
+set:
+  global.domain: example.com
+release:
+  name: test
+  namespace: backend-test
+tests:
+  - it: keeps the default NATS backends without a Redis connection
+    asserts:
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: 'cache:\s*\n\s*type: nats'
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: 'distributedLock:\s*\n\s*type: nats'
+      - notMatchRegex:
+          path: data["application.yaml"]
+          pattern: '(?m)^redis:'
+
+  - it: configures Redis when only caching uses it
+    set:
+      appConfig.cacheType: redis
+    asserts:
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: 'cache:\s*\n\s*type: redis'
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: 'distributedLock:\s*\n\s*type: nats'
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: 'redis:\s*\n\s*host: redis.backend-test.svc.cluster.local\s*\n\s*port: 6379'
+
+  - it: configures Redis when only distributed locking uses it
+    set:
+      appConfig.distributedLockType: redis
+    asserts:
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: 'cache:\s*\n\s*type: nats'
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: 'distributedLock:\s*\n\s*type: redis'
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: 'redis:\s*\n\s*host: redis.backend-test.svc.cluster.local\s*\n\s*port: 6379'
+
+  - it: uses a custom Redis endpoint for both backends while retaining NATS messaging
+    set:
+      appConfig.cacheType: redis
+      appConfig.distributedLockType: redis
+      appConfig.redisHost: shared-redis
+      appConfig.redisPort: 6381
+    asserts:
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: 'cache:\s*\n\s*type: redis'
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: 'distributedLock:\s*\n\s*type: redis'
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: 'redis:\s*\n\s*host: shared-redis.backend-test.svc.cluster.local\s*\n\s*port: 6381'
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: 'jobQueue:\s*\n\s*factory: nats'
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: 'pubsub:\s*\n\s*type: nats'
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: 'counter:\s*\n\s*type: nats'

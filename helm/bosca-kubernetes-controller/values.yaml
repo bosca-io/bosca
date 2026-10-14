@@ -36,6 +36,10 @@ appConfig:
   realm: ""
   databaseUrl: ""
   natsHost: nats
+  # Distributed cache and lock backends: nats or redis.
+  cacheType: redis
+  distributedLockType: nats
+  # Redis Service in the release namespace.
   redisHost: redis
   redisPort: 6380
   analyticsServerUrl: ""

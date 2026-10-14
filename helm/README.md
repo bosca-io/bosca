@@ -30,6 +30,32 @@ charts expose `appConfig.fumsTransformEnabled`; the runner defaults to `false`.
 Enable it on the runner only when it handles FUMS event processing instead of the
 collector. `FUMS_TRANSFORM_ENABLED` overrides this setting on those applications.
 
+## Distributed cache and locks
+
+Starting with services chart `0.1.3`, server, runner, collector, artifacts server,
+Git server, and Kubernetes controller charts expose `appConfig.cacheType` and
+`appConfig.distributedLockType`, each accepting `nats` or `redis`. In the services
+umbrella, set these under each service's values. For example:
+
+```yaml
+bosca-server:
+  appConfig:
+    cacheType: redis
+    distributedLockType: redis
+    redisHost: redis
+    redisPort: 6379
+```
+
+`redisHost` names a Service in the release namespace. Apply the same backend and
+Redis endpoint settings to every service sharing caches or locks. Server,
+runner, collector, artifacts, and Git default to NATS for both backends; the
+Kubernetes controller defaults to Redis caching and NATS locks. These settings
+do not change job queues, pub/sub, or counters.
+
+When changing an existing deployment's lock backend, stop all consumers of the
+shared locks before starting them with the new configuration. NATS and Redis
+locks do not coordinate with each other during a rolling transition.
+
 ## Pipeline encryption key
 
 The server, runner and Git server inherit `PIPELINE_SECRET_KEY` from their shared

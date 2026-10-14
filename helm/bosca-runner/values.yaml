@@ -85,6 +85,12 @@ appConfig:
   # Fully qualified Trino events table used by experiment result aggregation.
   experimentationEventsTable: warehouse.bosca.events
   natsHost: nats
+  # Distributed cache and lock backends: nats or redis.
+  cacheType: nats
+  distributedLockType: nats
+  # Redis Service in the release namespace, used when either backend is redis.
+  redisHost: redis
+  redisPort: 6379
   meilisearchHost: meilisearch
   # Email provider implementation: sendgrid or mailgun. Credentials live in encrypted
   # platform configuration under the provider's key.

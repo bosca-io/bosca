@@ -67,6 +67,12 @@ appConfig:
   databaseUrl: ""
   databaseMaxConnections: 20
   natsHost: nats
+  # Distributed cache and lock backends: nats or redis.
+  cacheType: nats
+  distributedLockType: nats
+  # Redis Service in the release namespace, used when either backend is redis.
+  redisHost: redis
+  redisPort: 6379
   meilisearchHost: meilisearch
   gitUrl: ""
   autoVerify: false
