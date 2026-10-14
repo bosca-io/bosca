@@ -19,6 +19,17 @@ import kotlin.test.assertTrue
 class AnalyticsToolRegistrarTest {
 
     @Test
+    fun `analytics guidance names the standard metric queries`() {
+        val standardKeys = listOf("daily-active-users", "unique-sessions-per-day", "monthly-users-and-engagement")
+        val description = requireNotNull(AnalyticsToolRegistrar.queryTool.description)
+        standardKeys.forEach { key ->
+            assertTrue("`$key`" in description, key)
+            assertTrue("`$key`" in MCP_SERVER_INSTRUCTIONS, key)
+        }
+        assertTrue("distinct `session_id`" in MCP_SERVER_INSTRUCTIONS)
+    }
+
+    @Test
     fun `analytics MCP tools have compact agent-oriented names and action schemas`() {
         assertEquals("analytics_query", AnalyticsToolRegistrar.queryTool.name)
         assertEquals("analytics_visualization", AnalyticsToolRegistrar.visualizationTool.name)
