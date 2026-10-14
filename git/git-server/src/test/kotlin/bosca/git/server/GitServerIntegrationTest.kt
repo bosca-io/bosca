@@ -752,7 +752,17 @@ class GitServerIntegrationTest {
                 "mutation Comment(\$id: UUID!, \$review: UUID!, \$sha: String!) { git { addReviewComment(input: { pullRequestId: \$id, reviewId: \$review, filePath: \"review.txt\", newLineNumber: 1, commitSha: \$sha, content: \"Original line comment\", expectedVersion: 0 }) { id } } }",
                 buildJsonObject { put("id", pullId); put("review", reviewId); put("sha", sourceSha) }, adminToken,
             ).at("git", "addReviewComment", "id").jsonPrimitive.content
-            val pullPath = "/pulls/$pullId?repo=$emptyId&number=$pullNumber&view=files"
+            val pullById = graphql(
+                "query PullById(\$id: UUID!) { git { pullRequestById(id: \$id) { id repositoryId number } } }",
+                buildJsonObject { put("id", pullId) }, adminToken,
+            ).at("git", "pullRequestById")
+            assertEquals(emptyId, pullById.at("repositoryId").jsonPrimitive.content)
+            assertEquals(pullNumber, pullById.at("number").jsonPrimitive.int)
+            val directPull = request("/pulls/$pullId", cookie = "$cookiePrefix=$adminToken")
+            assertEquals(200, directPull.statusCode(), directPull.body())
+            assertTrue("Original PR" in directPull.body(), directPull.body())
+            assertEquals(404, request("/pulls/${java.util.UUID.randomUUID()}", cookie = "$cookiePrefix=$adminToken").statusCode())
+            val pullPath = "/pulls/$pullId?view=files"
             val pullHtml = request(pullPath, cookie = "$cookiePrefix=$adminToken").body()
             assertTrue("Before retarget" in pullHtml, pullHtml)
             val editState = Regex("<script type=\"application/json\" data-bml-state-key=\"(git-pull-edit.model[^\"]*)\"[^>]*>(.*?)</script>", RegexOption.DOT_MATCHES_ALL)

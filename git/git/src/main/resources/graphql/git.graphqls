@@ -270,6 +270,8 @@ type Git {
     branchProtectionRules(repositoryId: UUID!): [GitBranchProtectionRule!]!
     "Look up a pull request by repository and number."
     pullRequest(repositoryId: UUID!, number: Int!): GitPullRequest
+    "Look up a pull request by its unique ID."
+    pullRequestById(id: UUID!): GitPullRequest
     "List pull requests for a repository with optional filters."
     pullRequests(repositoryId: UUID!, status: GitPullRequestStatus, authorId: UUID, offset: Long, limit: Int): [GitPullRequest!]!
     "List pull requests across all repositories visible to the caller."

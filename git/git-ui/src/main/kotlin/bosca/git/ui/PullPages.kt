@@ -127,14 +127,15 @@ suspend fun pullListPage(repositoryId: String = "", baseHref: String = ""): Pull
 
 suspend fun pullPage(): PullPage? {
     val ctx = currentRenderContext()
-    val repository = ctx.query["repo"] ?: return null.also { ctx.notFound = true }
-    val number = ctx.query["number"]?.toIntOrNull() ?: return null.also { ctx.notFound = true }
+    val id = ctx.params["id"] ?: return null.also { ctx.notFound = true }
     val pull =
         ctx.gql
-            .execute(GitUiPull, GitUiPull.Variables(repository, number))
+            .execute(GitUiPull, GitUiPull.Variables(id))
             .git
             .pullRequest
-            ?.takeIf { it.id == ctx.params["id"] } ?: return null.also { ctx.notFound = true }
+            ?.takeIf { it.id == id } ?: return null.also { ctx.notFound = true }
+    val repository = pull.repositoryId
+    val number = pull.number
     val merged = pull.status == GitPullRequestStatus.MERGED
     val repo =
         ctx.gql

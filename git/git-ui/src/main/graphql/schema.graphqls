@@ -58,6 +58,7 @@ type Git {
     limit: Int
   ): [GitPullRequest!]!
   pullRequest(repositoryId: UUID!, number: Int!): GitPullRequest
+  pullRequestById(id: UUID!): GitPullRequest
   pullRequestMergePlan(id: UUID!): [GitPullRequest!]!
 
   compare(

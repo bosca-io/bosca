@@ -43,9 +43,9 @@ query GitUiRepositoryPullList(
     }
   }
 }
-query GitUiPull($repo: UUID!, $number: Int!) {
+query GitUiPull($id: UUID!) {
   git {
-    pullRequest(repositoryId: $repo, number: $number) {
+    pullRequest: pullRequestById(id: $id) {
       id
       version
       repositoryId

@@ -761,7 +761,19 @@ class GitUiRoutesTest {
         assertFalse("diff-lines" in reviews.body(), "Reviews must not render the full inline diff")
         assertTrue("/owner/repo/raw/abc/images/logo.png" in page.body(), page.body())
         assertEquals(404, get("/pulls/other?repo=repo&number=1").statusCode())
-        assertEquals(404, get("/pulls/pull").statusCode())
+        assertEquals(404, get("/pulls/missing").statusCode())
+    }
+
+    @Test
+    fun `pull detail resolves its path ID without repository and number parameters`() {
+        for (suffix in listOf("", "?view=files", "?view=reviews", "?repo=other&number=99")) {
+            val response = get("/pulls/pull$suffix")
+            assertEquals(200, response.statusCode(), response.body())
+            assertTrue("Alice · @alice" in response.body(), response.body())
+            val lookup = requests.last { it.operation == "GitUiPull" }
+            assertEquals(buildJsonObject { put("id", "pull") }, lookup.variables)
+        }
+        assertEquals(404, get("/pulls/missing?repo=repo&number=1").statusCode())
     }
 
     @Test
@@ -2067,9 +2079,9 @@ class GitUiRoutesTest {
                             """{"data":{"git":{"allPullRequests":[$pull]}}}"""
                         operation == "GitUiRepositoryPullList" ->
                             """{"data":{"git":{"pullRequests":[$pull]}}}"""
-                        operation == "GitUiPull" && variables["number"]?.jsonPrimitive?.int == 7 ->
+                        operation == "GitUiPull" && id == "pull-edit" ->
                             """{"data":{"git":{"pullRequest":$editedPull}}}"""
-                        operation == "GitUiPull" && variables["number"]?.jsonPrimitive?.int == 10 ->
+                        operation == "GitUiPull" && id == "pull-replies" ->
                             """{"data":{"git":{"pullRequest":$replyPull}}}"""
                         operation == "GitUiPullDiffPage" -> {
                             val number = variables.getValue("number").jsonPrimitive.int
@@ -2082,8 +2094,11 @@ class GitUiRoutesTest {
                                 else JsonObject(current + ("version" to JsonPrimitive(current.getValue("version").jsonPrimitive.long + 1)))
                             """{"data":{"git":{"pullRequest":$result}}}"""
                         }
-                        operation == "GitUiPull" ->
-                            """{"data":{"git":{"pullRequest":${pullStateFixture(pull, variables["number"]?.jsonPrimitive?.int ?: 1)}}}}"""
+                        operation == "GitUiPull" -> {
+                            val result = (1..11).asSequence().map { pullStateFixture(pull, it) }
+                                .firstOrNull { Json.parseToJsonElement(it).jsonObject.getValue("id").jsonPrimitive.content == id }
+                            """{"data":{"git":{"pullRequest":$result}}}"""
+                        }
                         operation == "GitUiUpdatePull" && variables["input"]?.jsonObject?.get("title")?.jsonPrimitive?.content == "Reject edit" ->
                             """{"errors":[{"message":"Rejected pull request edit"}]}"""
                         operation == "GitUiUpdatePull" -> {
