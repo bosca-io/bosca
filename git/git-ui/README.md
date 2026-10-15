@@ -28,6 +28,8 @@ Client imports use the project alias, for example `import { attachTooltip } from
 
 Client behavior uses `<script client scoped>` at component scope, outside islands. BML initializes each component on its DOM root and manages cleanup. Islands retain the live server-state views used by declarative actions; authentication and other client-only controls use their component roots directly. `src/main/client/auth.ts` shares SDK operations and return navigation.
 
+Pipeline run status refreshes every two seconds while active. Expanded step logs stream through the same-origin WebSocket subscription and retain their viewer across run refreshes. History loads when a panel opens, with backfill on subscription connection, resume and completion, or through the log controls. Run refreshes skip history queries for the retained panel; a newly expanded failed step still loads its history.
+
 From the workspace root:
 
 ```bash
