@@ -67,6 +67,18 @@ interface SearchService : Service {
     suspend fun index(system: IndexStorageSystem, document: List<JsonElement>)
 
     /**
+     * Adds or partially updates a batch of documents and waits for indexing to complete.
+     * Each document must contain its `id`. Supplied top-level fields replace those fields;
+     * omitted fields are preserved. Arrays and objects are replaced as whole values.
+     * A missing document is created from the supplied fields, so callers must include its
+     * full content when creating it. An empty batch does nothing.
+     *
+     * @param system the target index storage system
+     * @param documents the document fields to add or update
+     */
+    suspend fun update(system: IndexStorageSystem, documents: List<JsonElement>)
+
+    /**
      * Fetches a single raw JSON document from the specified index by its primary key, or
      * returns `null` if no document with that key exists. Use this for read-modify-write
      * flows where the caller needs to mutate an existing document's fields and write it
@@ -76,6 +88,17 @@ interface SearchService : Service {
      * @param id the primary key of the document to fetch
      */
     suspend fun fetch(system: IndexStorageSystem, id: String): JsonElement?
+
+    /**
+     * Fetches only the requested top-level fields of a document, or `null` if it is absent.
+     * An empty [fields] list retrieves all fields. Field selection does not change the
+     * stored document and can avoid transferring large content during metadata updates.
+     *
+     * @param system the index storage system to read from
+     * @param id the document's primary key
+     * @param fields the fields to include in the response
+     */
+    suspend fun fetch(system: IndexStorageSystem, id: String, fields: List<String>): JsonElement?
 
     /**
      * Deletes a single document from the specified index by its primary key.
