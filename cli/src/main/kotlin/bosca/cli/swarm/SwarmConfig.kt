@@ -99,7 +99,7 @@ data class SwarmConfig(
     val ml: SwarmSiteMl = SwarmSiteMl(),
     /** Optional Google sign-in client; blank values leave Google sign-in unconfigured. */
     val google: SwarmSiteGoogle = SwarmSiteGoogle(),
-    /** Allowed sign-in redirect URLs; null keeps application defaults, and an empty list disables redirects. */
+    /** Allowed sign-in HTTP(S) URLs or custom-scheme URIs; null keeps defaults, and an empty list disables redirects. */
     val oauthRedirects: List<String>? = null,
     /** Optional website image for the root and www hosts; it listens on [rootPort]. */
     val rootImage: String = "",
@@ -368,7 +368,7 @@ internal fun SwarmConfig.validate(deploy: Boolean = false) {
             "Set both or neither of google.clientId and google.clientSecret for ${site.id}"
         }
         require(site.oauthRedirects.orEmpty().all(::validRedirectUrl)) {
-            "oauthRedirects for ${site.id} must contain absolute HTTP or HTTPS URLs without credentials"
+            "oauthRedirects for ${site.id} must contain absolute HTTP(S) URLs or custom-scheme URIs without credentials"
         }
         if (deploy) {
             require(site.hosts.all.none { it.endsWith(".invalid") }) { "Replace example domains for ${site.id}" }
@@ -412,9 +412,14 @@ private val HEX_COLOR = Regex("^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}
 private fun singleLine(value: String) = !value.contains('\n') && !value.contains('\r')
 
 private fun validRedirectUrl(value: String): Boolean = try {
-    val uri = URI(value)
-    value == value.trim() && singleLine(value) && uri.scheme in setOf("http", "https") &&
-        uri.host != null && uri.rawUserInfo == null && (uri.port == -1 || uri.port in 1..65535)
+    // A bare app scheme is an allow-list entry; URI requires a path after an empty authority.
+    val uri = URI(if (value.endsWith("://")) "$value/" else value)
+    val scheme = uri.scheme?.lowercase()
+    val requiresHost = scheme in setOf("http", "https") || uri.rawAuthority != null
+    value == value.trim() && singleLine(value) && uri.isAbsolute && !uri.isOpaque &&
+        scheme !in setOf("data", "file", "ftp", "javascript", "vbscript") &&
+        (!requiresHost || uri.host != null) && uri.rawUserInfo == null &&
+        (uri.port == -1 || uri.port in 1..65535)
 } catch (_: java.net.URISyntaxException) {
     false
 }
