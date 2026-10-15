@@ -557,9 +557,31 @@ class GitServerIntegrationTest {
             assertEquals(200, emptyPage.statusCode(), emptyPage.body())
             assertTrue("Empty Repository" in emptyPage.body(), emptyPage.body())
             assertTrue("Start this repository" in emptyPage.body(), emptyPage.body())
+            val statsProps =
+                Regex(
+                        "data-bml-deferred=\"component:git-repository-stats:statistics\"\\s+data-bml-props=\"([^\"]+)\""
+                    )
+                    .find(emptyPage.body())
+                    ?.groupValues
+                    ?.get(1)
+                    ?.replace("&quot;", "\"")
+                    ?.replace("&amp;", "&")
+                    ?: error("Missing deferred repository statistics: ${emptyPage.body()}")
+            val statsRequest = buildJsonObject {
+                put("page", "/repositories/{id}")
+                put("path", "/repositories/$emptyId")
+                put("query", buildJsonObject {})
+                put("props", Json.parseToJsonElement(statsProps))
+            }.toString()
+            val statsEndpoint = "/_bml/deferred/component%3Agit-repository-stats%3Astatistics"
+            val deniedStats = request(statsEndpoint, statsRequest)
+            assertEquals(401, deniedStats.statusCode(), deniedStats.body())
+            val emptyStats = request(statsEndpoint, statsRequest, cookie = "$cookiePrefix=$token")
+            assertEquals(200, emptyStats.statusCode(), emptyStats.body())
+            assertEquals("private, no-store", emptyStats.headers().firstValue("Cache-Control").orElse(""))
             assertTrue(
-                "0 commits · 0 branches · 0 tags · 0 contributors" in emptyPage.body(),
-                emptyPage.body(),
+                "0 commits · 0 branches · 0 tags · 0 contributors" in emptyStats.body(),
+                emptyStats.body(),
             )
             val emptyCommits = request("/repositories/$emptyId?tab=commits", cookie = "$cookiePrefix=$token")
             assertEquals(200, emptyCommits.statusCode(), emptyCommits.body())
