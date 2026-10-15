@@ -32,11 +32,18 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -190,9 +197,9 @@ class AnalyticsRoutesTest {
     }
 
     @Test
-    fun `event routes queue bodies and select legacy versus modern status`() = runTest {
+    fun `event routes await storage and select legacy versus modern status`() = runTest {
         val processing = mockk<EventProcessingService>()
-        coJustRun { processing.queue(any(), any()) }
+        coJustRun { processing.queueAndWait(any(), any()) }
         val events = Events(events = listOf(Event(1, type = EventType.Session)), sent = 2, sentMicros = 3)
         val body = Json.encodeToString(Events.serializer(), events)
         val route = AddEvent(processing)
@@ -207,6 +214,41 @@ class AnalyticsRoutesTest {
         verify { legacyResponse.status(HttpStatusCode.OK) }
         assertNull(route.serializer())
         assertNull(legacy.serializer())
+    }
+
+    @Test
+    fun `event response waits for storage and returns retryable failures and timeouts`() = runTest {
+        val processing = mockk<EventProcessingService>()
+        val stored = CompletableDeferred<Unit>()
+        coEvery { processing.queueAndWait(any(), any()) } coAnswers { stored.await() }
+        val body = Json.encodeToString(Events.serializer(), Events(events = emptyList(), sent = 1, sentMicros = 0))
+        val route = AddEvent(processing)
+        val (request, response) = call(body = body)
+        val pending = async { route.execute(request, authentication) }
+        runCurrent()
+        assertFalse(pending.isCompleted)
+        verify(exactly = 0) { response.status(any()) }
+        stored.complete(Unit)
+        pending.await()
+        verify { response.status(HttpStatusCode.Accepted) }
+
+        coEvery { processing.queueAndWait(any(), any()) } throws java.io.IOException("NATS unavailable")
+        val (failed, failedResponse) = call(body = body)
+        route.execute(failed, authentication)
+        verify { failedResponse.status(HttpStatusCode.ServiceUnavailable) }
+
+        coEvery { processing.queueAndWait(any(), any()) } coAnswers { awaitCancellation() }
+        val (timeout, timeoutResponse) = call(body = body)
+        route.execute(timeout, authentication)
+        verify { timeoutResponse.status(HttpStatusCode.ServiceUnavailable) }
+        assertEquals(15_000L, testScheduler.currentTime)
+
+        val (cancelled, cancelledResponse) = call(body = body)
+        val disconnected = async { route.execute(cancelled, authentication) }
+        runCurrent()
+        disconnected.cancelAndJoin()
+        assertTrue(disconnected.isCancelled)
+        verify(exactly = 0) { cancelledResponse.status(any()) }
     }
 
     @Test

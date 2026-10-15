@@ -5,12 +5,15 @@ package bosca.server
 import bosca.analytics.configuration.EventPipelineTransforms
 import bosca.analytics.configuration.EventProcessingConfiguration
 import bosca.analytics.model.Event
-import bosca.analytics.model.EventPipelineContext
+import bosca.analytics.model.EventContext
+import bosca.analytics.model.Device
 import bosca.analytics.model.EventType
 import bosca.analytics.model.Events
 import bosca.analytics.service.ErrorGroupService
 import bosca.analytics.service.EventProcessingHealth
 import bosca.analytics.service.EventProcessingService
+import bosca.analytics.routes.AddEvent
+import bosca.analytics.repository.nats.NatsEventRepository
 import bosca.cache.CacheManager
 import bosca.cache.RequestCacheSerializer
 import bosca.db.ConnectionManager
@@ -26,10 +29,7 @@ import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
-import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeout
 import org.testcontainers.containers.GenericContainer
 import java.time.Duration
 import kotlin.test.AfterTest
@@ -52,6 +52,19 @@ class CollectorHealthTest {
         val call = ServerCall(mockk<ServerRequest>(relaxed = true), response, Parameters.Empty, application)
         requireNotNull(application.router.resolve(HttpMethod.Get, "/api/v1/collector/$path"))
             .handler(RoutingContext(call, application))
+        return status.captured.value
+    }
+
+    private suspend fun ingest(application: BoscaApplication, service: EventProcessingService, events: Events): Int {
+        val status = slot<HttpStatusCode>()
+        val response = mockk<ServerResponse>(relaxed = true)
+        every { response.status(capture(status)) } returns Unit
+        val request = mockk<ServerRequest>(relaxed = true)
+        every { request.path } returns "/api/v1/events"
+        every { request.contentType() } returns null
+        coEvery { request.bodyText() } returns application.json.encodeToString(Events.serializer(), events)
+        val call = ServerCall(request, response, Parameters.Empty, application)
+        AddEvent(service).execute(call, mockk())
         return status.captured.value
     }
 
@@ -94,27 +107,25 @@ class CollectorHealthTest {
             val pool = mockk<ConnectionPool>()
             every { pool.connection() } answers { ConnectionManager(pool) }
             provides<ConnectionPool> { pool }
-            var processed = CompletableDeferred<Unit>()
             val errors = mockk<ErrorGroupService>()
-            coEvery { errors.recordBatch(any()) } coAnswers { processed.complete(Unit) }
+            coEvery { errors.recordBatch(any()) } returns Unit
             provides<ErrorGroupService>(overrideExisting = true) { errors }
             application.configureCollectorHealth()
 
             try {
                 val service = provide<EventProcessingService>()
-                val context = EventPipelineContext(Headers.Empty)
-                val events = Events(events = listOf(Event(1, type = EventType.Session)), sent = 1, sentMicros = 0)
+                val context = EventContext(appId = "app", appVersion = "1", sessionId = "session", userId = "user",
+                    device = Device("installation", "test", "test", "JVM", "en", "test", "UTC", "server", "1"))
+                val events = Events(context = context, events = listOf(Event(1, type = EventType.Session, clientId = "first")), sent = 1, sentMicros = 0)
+                val retry = events.copy(events = listOf(events.events.single().copy(clientId = "second")), sent = 2)
                 assertEquals(200, status(application, "ready"))
-                service.queue(context, events)
-                withTimeout(15_000) { processed.await() }
-                processed = CompletableDeferred()
+                assertEquals(202, ingest(application, service, events))
+                val connection = nats.systemConnection()
+                assertEquals(1L, connection.jetStreamManagement().getStreamInfo(NatsEventRepository.STREAM_NAME).streamState.msgCount)
 
                 server.dockerClient.pauseContainerCmd(server.containerId).exec()
                 try {
-                    service.queue(context, events.copy(sent = 2))
-                    // The composite still runs the error sink after the NATS publish fails.
-                    withTimeout(15_000) { processed.await() }
-                    withTimeout(5_000) { while (health.isReady) delay(10) }
+                    assertEquals(503, ingest(application, service, retry))
                     assertEquals(503, status(application, "ready"))
                     now = 59.seconds.inWholeNanoseconds
                     assertEquals(200, status(application, "live"))
@@ -127,6 +138,9 @@ class CollectorHealthTest {
                 nats.systemConnection().flush(Duration.ofSeconds(10))
                 assertEquals(200, status(application, "ready"))
                 assertEquals(200, status(application, "live"))
+                assertEquals(202, ingest(application, service, retry.copy(sent = 3)))
+                assertEquals(202, ingest(application, service, retry.copy(sent = 4)))
+                assertEquals(2L, connection.jetStreamManagement().getStreamInfo(NatsEventRepository.STREAM_NAME).streamState.msgCount)
             } finally {
                 application.shutdown()
                 nats.close()

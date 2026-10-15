@@ -3,7 +3,6 @@ package bosca.analytics.repository.iceberg
 import bosca.analytics.model.Events
 import bosca.analytics.repository.EventRepository
 import bosca.analytics.transform.EventsTransform
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -98,15 +97,9 @@ class IcebergEventRepository(
     }
 
     override suspend fun process(events: Events) {
-        try {
-            fileMutex.withLock {
-                val current = file ?: newLocalEventFile().also { file = it }
-                current.addEvents(events)
-            }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            log.error("Failed to process events", e)
+        fileMutex.withLock {
+            val current = file ?: newLocalEventFile().also { file = it }
+            current.addEvents(events)
         }
     }
 

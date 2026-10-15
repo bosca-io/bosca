@@ -268,7 +268,7 @@ class IcebergRepositoryIntegrationTest {
     }
 
     @Test
-    fun `repository creates its staging directory and contains protobuf encoding failures`() = runTest {
+    fun `repository creates its staging directory and propagates protobuf encoding failures`() = runTest {
         val root = root()
         val table = table(root)
         val local = root.resolve("missing").resolve("buffer")
@@ -293,6 +293,6 @@ class IcebergRepositoryIntegrationTest {
             )
         }
 
-        repository.process(invalid)
+        kotlin.test.assertFailsWith<IllegalStateException> { repository.process(invalid) }
     }
 }

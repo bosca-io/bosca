@@ -5,11 +5,13 @@ import bosca.analytics.configuration.EventProcessingConfiguration
 import bosca.analytics.model.EventPipelineContext
 import bosca.analytics.model.Events
 import bosca.analytics.repository.EventRepository
+import bosca.analytics.repository.nats.NatsPublishException
 import bosca.cache.withRequestCache
 import bosca.db.withConnectionManager
 import bosca.server.BoscaApplication
 import bosca.service.annotation.ServiceImplementation
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -41,11 +43,15 @@ class EventProcessingServiceImpl(
                     try {
                         processRequest(request.context, request.events)
                         health.processingRecovered()
+                        request.completion?.complete(Unit)
                     } catch (e: CancellationException) {
                         health.processingFailed()
+                        request.completion?.completeExceptionally(e)
                         throw e
                     } catch (e: Exception) {
-                        health.processingFailed()
+                        // NATS failures have their own health state and independent recovery probe.
+                        if (e !is NatsPublishException) health.processingFailed()
+                        request.completion?.completeExceptionally(e)
                         // Request-context cleanup can fail after the repository has stored the batch.
                         log.error("Analytics event processing failed", e)
                     }
@@ -62,13 +68,24 @@ class EventProcessingServiceImpl(
     }
 
     override suspend fun queue(context: EventPipelineContext, events: Events) {
+        enqueue(context, events, null)
+    }
+
+    override suspend fun queueAndWait(context: EventPipelineContext, events: Events) {
+        val completion = CompletableDeferred<Unit>()
+        enqueue(context, events, completion)
+        completion.await()
+    }
+
+    private suspend fun enqueue(context: EventPipelineContext, events: Events, completion: CompletableDeferred<Unit>?) {
         val now = Instant.now()
         val request = EventProcessingRequest(
             context,
             events.copy(
                 received = now.toEpochMilli(),
                 receivedMicros = ((now.nano / 1000) % 1000).toLong()
-            )
+            ),
+            completion,
         )
         channel.send(request)
     }
@@ -95,7 +112,8 @@ class EventProcessingServiceImpl(
 
     private data class EventProcessingRequest(
         val context: EventPipelineContext,
-        val events: Events
+        val events: Events,
+        val completion: CompletableDeferred<Unit>?,
     )
 
     companion object {

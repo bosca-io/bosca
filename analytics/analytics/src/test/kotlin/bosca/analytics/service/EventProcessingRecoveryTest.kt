@@ -9,6 +9,7 @@ import bosca.analytics.model.EventPipelineContext
 import bosca.analytics.model.EventType
 import bosca.analytics.model.Events
 import bosca.analytics.repository.EventRepository
+import bosca.analytics.repository.nats.NatsPublishException
 import bosca.analytics.transform.EventPipelineTransform
 import bosca.cache.CacheManager
 import bosca.cache.RequestCacheSerializer
@@ -24,6 +25,10 @@ import bosca.server.config.ApplicationConfig
 import io.mockk.coEvery
 import io.mockk.mockk
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -36,6 +41,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlin.test.assertFailsWith
 
 class EventProcessingRecoveryTest {
     private val health = EventProcessingHealth()
@@ -66,6 +72,100 @@ class EventProcessingRecoveryTest {
         EventProcessingConfiguration(workerCount = 1, channelCapacity = 1), health)
 
     @Test
+    fun `asynchronous callers retain failure recovery and cancellation behavior`() = runBlocking {
+        val processing = service(object : EventRepository {
+            override suspend fun process(events: Events) {
+                when (events.sent) {
+                    1L -> throw IOException("storage unavailable")
+                    2L -> throw CancellationException("stop worker")
+                }
+            }
+            override suspend fun flush() = Unit
+        })
+        processing.queue(context, events)
+        withTimeout(5000) { while (health.isReady) delay(10) }
+        processing.queueAndWait(context, events.copy(sent = 3))
+        assertTrue(health.isReady)
+        processing.queue(context, events.copy(sent = 2))
+        withTimeout(5000) { while (health.isReady) delay(10) }
+        assertFalse(health.isReady)
+    }
+
+    @Test
+    fun `NATS publish failure reaches the caller and recovers independently of request processing`() = runBlocking {
+        val processing = service(object : EventRepository {
+            override suspend fun process(events: Events) {
+                health.natsFailed()
+                throw NatsPublishException(IOException("NATS unavailable"))
+            }
+            override suspend fun flush() = Unit
+        })
+        assertFailsWith<NatsPublishException> { processing.queueAndWait(context, events) }
+        assertFalse(health.isReady)
+        health.natsRecovered()
+        assertTrue(health.isReady)
+    }
+
+    @Test
+    fun `waiting caller receives storage failure and the worker handles the next request`() = runBlocking {
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val failure = IOException("storage unavailable")
+        val processing = service(object : EventRepository {
+            override suspend fun process(events: Events) {
+                if (events.sent == 1L) {
+                    entered.complete(Unit)
+                    release.await()
+                    throw failure
+                }
+            }
+            override suspend fun flush() = Unit
+        })
+        supervisorScope {
+            val pending = async { processing.queueAndWait(context, events) }
+            withTimeout(5000) { entered.await() }
+            assertFalse(pending.isCompleted)
+            release.complete(Unit)
+            assertEquals(failure.message, assertFailsWith<IOException> { pending.await() }.message)
+        }
+        assertFalse(health.isReady)
+        processing.queueAndWait(context, events.copy(sent = 2))
+        assertTrue(health.isReady)
+    }
+
+    @Test
+    fun `cancelling a waiting caller does not cancel the worker`() = runBlocking {
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val stored = CopyOnWriteArrayList<Long>()
+        val processing = service(object : EventRepository {
+            override suspend fun process(events: Events) {
+                entered.complete(Unit)
+                release.await()
+                stored += events.sent
+            }
+            override suspend fun flush() = Unit
+        })
+        val pending = async { processing.queueAndWait(context, events) }
+        withTimeout(5000) { entered.await() }
+        pending.cancelAndJoin()
+        release.complete(Unit)
+        withTimeout(5000) { processing.queueAndWait(context, events.copy(sent = 2)) }
+        assertEquals(listOf(1L, 2L), stored)
+        assertTrue(health.isReady)
+    }
+
+    @Test
+    fun `worker cancellation reaches its waiting caller`() = runBlocking {
+        val processing = service(object : EventRepository {
+            override suspend fun process(events: Events): Unit = throw CancellationException("stop")
+            override suspend fun flush() = Unit
+        })
+        assertEquals("stop", assertFailsWith<CancellationException> { withTimeout(5000) { processing.queueAndWait(context, events) } }.message)
+        assertFalse(health.isReady)
+    }
+
+    @Test
     fun `cache cleanup failure does not kill worker or replay stored batch`() = runBlocking {
         val stored = CopyOnWriteArrayList<Long>()
         val cleanup = CompletableDeferred<Unit>()
@@ -86,7 +186,7 @@ class EventProcessingRecoveryTest {
             override suspend fun process(events: Events) { stored += events.sent }
             override suspend fun flush() = Unit
         }, listOf(transform))
-        processing.queue(context, events)
+        assertFailsWith<IOException> { processing.queueAndWait(context, events) }
         withTimeout(5000) { cleanup.await() }
         withTimeout(5000) { while (health.isReady) delay(10) }
         assertFalse(health.isReady)

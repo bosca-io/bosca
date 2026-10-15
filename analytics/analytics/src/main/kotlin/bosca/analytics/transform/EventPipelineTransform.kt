@@ -14,9 +14,9 @@ import bosca.analytics.model.Events
  * stable identity so a replay is a no-op). A transform whose side effects cannot be made idempotent
  * must instead absorb its own failures so it never triggers a redelivery.
  *
- * The collector (`EventProcessingServiceImpl`) is best-effort and does **not** redeliver — it logs and
- * continues past a failing transform — but transforms should still be written to the processor's
- * replay semantics, since the same chain runs in both.
+ * The collector (`EventProcessingServiceImpl`) logs and continues past a failing transform.
+ * HTTP clients can retry a batch when publishing or the response fails, so collector transforms
+ * must also tolerate repeated execution for the same event IDs.
  */
 interface EventPipelineTransform {
 

@@ -222,12 +222,10 @@ class AnalyticsConfiguration {
     ): EventsTransform<List<Record>> = IcebergEventsToRecordTransform(schema)
 
     /**
-     * Builds a composite [EventRepository] that fans out each [EventRepository.process]
-     * call to the primary storage backend (NATS or Iceberg) **and** the error-group
-     * aggregation service. This keeps the event consumer decoupled from the number
-     * and identity of downstream sinks.
+     * Stores events in the configured backend before updating error groups. Storage must
+     * succeed for delivery to succeed; error-group aggregation is optional and logs failures.
      *
-     * The primary storage backend is selected by the `eventRepository.type` config:
+     * The storage backend is selected by the `eventRepository.type` config:
      * - `nats` — forwards events to a NATS JetStream stream for downstream processing
      * - unset / anything else — writes events directly to an Apache Iceberg table
      */
@@ -255,7 +253,8 @@ class AnalyticsConfiguration {
             }
         }
         return CompositeEventRepository(
-            listOf(storageRepository, ErrorGroupEventRepository(errorGroupService))
+            storageRepository = storageRepository,
+            optionalRepositories = listOf(ErrorGroupEventRepository(errorGroupService)),
         )
     }
 
