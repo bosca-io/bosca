@@ -96,6 +96,36 @@ class GitPipelineQueryTest {
     }
 
     @Test
+    fun `pipeline id lookup enforces repository permission and ownership`() = runTest {
+        val pipeline = Pipeline(id = UUID.random(), repositoryId = repoId, filePath = "a.yaml", name = "A", configHash = "h")
+        coEvery { pipelineService.findById(pipeline.id) } returns pipeline
+        assertEquals(listOf(pipeline), query.pipelines(authentication, repoId, pipeline.id))
+        coVerify(exactly = 0) { pipelineService.findByRepository(any()) }
+        coEvery { pipelineService.findById(pipeline.id) } returns pipeline.copy(deletedAt = bosca.serialization.OffsetDateTime.now())
+        assertTrue(query.pipelines(authentication, repoId, pipeline.id).isEmpty())
+        coEvery { pipelineService.findById(pipeline.id) } returns pipeline.copy(repositoryId = UUID.random())
+        assertTrue(query.pipelines(authentication, repoId, pipeline.id).isEmpty())
+        coEvery { permissionEvaluator.verifyAllowed(authentication, any(), PermissionAction.VIEW) } throws SecurityException("denied")
+        assertFailsWith<SecurityException> { query.pipelines(authentication, repoId, pipeline.id) }
+        coVerify(exactly = 3) { pipelineService.findById(pipeline.id) }
+    }
+
+    @Test
+    fun `agent id lookup reads one record after management authorization`() = runTest {
+        every { authentication.principal() } returns null
+        val agent = PipelineAgent(id = UUID.random(), name = "selected", tokenHash = "h", status = AgentStatus.ONLINE)
+        coEvery { agentService.findById(agent.id) } returns agent
+        assertEquals(listOf(agent), query.pipelineAgents(authentication, null, agent.id))
+        assertTrue(query.pipelineAgents(authentication, AgentStatus.OFFLINE, agent.id).isEmpty())
+        coEvery { agentService.findById(agent.id) } returns null
+        assertTrue(query.pipelineAgents(authentication, null, agent.id).isEmpty())
+        coVerify(exactly = 0) { agentService.listAgents(any()) }
+        coEvery { permissionEvaluator.verifyAllowed(authentication, PermissionAction.MANAGE) } throws SecurityException("denied")
+        assertFailsWith<SecurityException> { query.pipelineAgents(authentication, null, agent.id) }
+        coVerify(exactly = 3) { agentService.findById(agent.id) }
+    }
+
+    @Test
     fun `pipelineInputs reads manual declarations at the selected ref after VIEW authorization`() = runTest {
         val pipeline = Pipeline(id = UUID.random(), repositoryId = repoId, filePath = "image.yaml", name = "Image", configHash = "hash")
         coEvery { pipelineService.findById(pipeline.id) } returns pipeline
@@ -365,6 +395,8 @@ class GitPipelineQueryTest {
         val result = query.pipelineAgents(authentication, null)
 
         assertEquals(listOf(caller, child), result)
+        assertEquals(listOf(child), query.pipelineAgents(authentication, null, child.id))
+        assertTrue(query.pipelineAgents(authentication, null, unrelated.id).isEmpty())
         coVerify { permissionEvaluator.verifyAllowed(authentication, PermissionAction.EXECUTE) }
     }
 

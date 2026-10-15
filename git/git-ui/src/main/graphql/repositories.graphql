@@ -14,6 +14,7 @@ query GitUiRepositories($includeArchived: Boolean!, $owner: UUID) {
       deleted
       visibility
       canManage
+      canExecute
     }
   }
 }
@@ -274,4 +275,15 @@ mutation GitUiDeleteTag($id: UUID!, $name: String!) {
   git {
     deleteTag(repositoryId: $id, tag: $name)
   }
+}
+
+query GitUiRefs($id: UUID!) {
+  git {
+    branches(repositoryId: $id) { name sha }
+    tags(repositoryId: $id) { name sha targetSha isAnnotated message }
+  }
+}
+
+query GitUiOwnerProfiles {
+  profiles { current { id name slug isPrimary } }
 }

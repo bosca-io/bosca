@@ -85,7 +85,8 @@ export function createAuthFlow(
       link(challenge.token, challenge.methods);
       return;
     }
-    await auth.initialize();
+    const needsIdentity = location.pathname === "/login" || location.pathname.startsWith("/auth/");
+    await auth.initialize(needsIdentity);
     if (await auth.handleRedirectResult()) finish();
     const providerError = params.get("error");
     if (providerError) throw new Error("OAuth sign-in was not completed");

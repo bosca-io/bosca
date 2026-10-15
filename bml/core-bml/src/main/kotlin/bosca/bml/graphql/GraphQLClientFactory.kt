@@ -2,11 +2,13 @@ package bosca.bml.graphql
 
 import bosca.server.http.await
 import kotlinx.serialization.json.Json
+import okhttp3.ConnectionPool
 import okhttp3.Dispatcher
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import java.util.concurrent.TimeUnit
 
 /**
  * An upstream GraphQL response passed through untouched: HTTP status, raw JSON body, and the
@@ -42,13 +44,17 @@ internal fun defaultGraphQLHttpClient(appId: String?, appVersion: String?): OkHt
     val dispatcher = Dispatcher()
     dispatcher.maxRequests = 1024
     dispatcher.maxRequestsPerHost = dispatcher.maxRequests
-    return OkHttpClient.Builder().dispatcher(dispatcher).addInterceptor { chain ->
-        val request = chain.request().newBuilder().apply {
-            appId?.takeIf(String::isNotBlank)?.let { header("X-App-ID", it) }
-            appVersion?.takeIf(String::isNotBlank)?.let { header("X-App-Version", it) }
+    return OkHttpClient.Builder()
+        .dispatcher(dispatcher)
+        // Retain connections between page bursts, including concurrent per-page reads.
+        .connectionPool(ConnectionPool(50, 5, TimeUnit.MINUTES))
+        .addInterceptor { chain ->
+            val request = chain.request().newBuilder().apply {
+                appId?.takeIf(String::isNotBlank)?.let { header("X-App-ID", it) }
+                appVersion?.takeIf(String::isNotBlank)?.let { header("X-App-Version", it) }
+            }.build()
+            chain.proceed(request)
         }.build()
-        chain.proceed(request)
-    }.build()
 }
 
 /**

@@ -23,7 +23,7 @@ type Git {
   webhooks(repositoryId: UUID!): [GitWebhook!]!
   branchProtectionRules(repositoryId: UUID!): [GitBranchProtectionRule!]!
 
-  pipelines(repositoryId: UUID!): [GitPipeline!]!
+  pipelines(repositoryId: UUID!, id: UUID): [GitPipeline!]!
   pipelineInputs(
     pipelineId: UUID!
     ref: String!
@@ -41,7 +41,7 @@ type Git {
     tail: Boolean
     beforeLine: Int
   ): [GitPipelineLogLine!]!
-  pipelineAgents(status: GitAgentStatus): [GitPipelineAgent!]!
+  pipelineAgents(status: GitAgentStatus, id: UUID): [GitPipelineAgent!]!
   pipelineSecrets(repositoryId: UUID!): [GitPipelineSecretInfo!]!
 
   pullRequests(

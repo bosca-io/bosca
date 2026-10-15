@@ -7,8 +7,62 @@ import kotlinx.serialization.json.jsonPrimitive
 import java.net.InetSocketAddress
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
+import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 
 class GraphQLClientFactoryTest {
+
+    @Test
+    fun `concurrent page bursts reuse connections after an idle gap`() = runBlocking {
+        val ports = CopyOnWriteArrayList<Int>()
+        val barrier = AtomicReference(CountDownLatch(12))
+        val executor = Executors.newVirtualThreadPerTaskExecutor()
+        val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        server.executor = executor
+        server.createContext("/graphql") { exchange ->
+            try {
+                exchange.requestBody.readAllBytes()
+                ports.add(exchange.remoteAddress.port)
+                val gate = barrier.get()
+                gate.countDown()
+                check(gate.await(5, TimeUnit.SECONDS)) { "Requests did not overlap" }
+                val bytes = """{"data":{"ok":true}}""".toByteArray()
+                exchange.sendResponseHeaders(200, bytes.size.toLong())
+                exchange.responseBody.use { it.write(bytes) }
+            } finally {
+                exchange.close()
+            }
+        }
+        server.start()
+        val http = defaultGraphQLHttpClient(null, null)
+        try {
+            val factory = GraphQLClientFactory("http://127.0.0.1:${server.address.port}/graphql", http)
+            suspend fun burst() = coroutineScope {
+                (1..12).map { async { factory.forToken("caller-$it").execute("query { ok }") } }.awaitAll()
+            }
+            burst()
+            val first = ports.toSet()
+            assertEquals(12, first.size)
+            ports.clear()
+            delay(250)
+            barrier.set(CountDownLatch(12))
+            burst()
+            assertTrue(ports.all { it in first }, "The second burst opened new connections")
+        } finally {
+            server.stop(0)
+            executor.close()
+            http.connectionPool.evictAll()
+            http.dispatcher.executorService.shutdown()
+        }
+    }
 
     @Test
     fun `shared factory keeps analytics sessions scoped to each request and omits missing sessions`() {

@@ -86,3 +86,14 @@ tasks.register<JavaExec>("runBrowserFixture") {
     jvmArgs("--enable-native-access=ALL-UNNAMED", "--add-opens", "java.base/jdk.internal.misc=ALL-UNNAMED")
     outputs.upToDateWhen { false }
 }
+
+
+tasks.register<JavaExec>("probePageLoading") {
+    group = "verification"
+    description = "Measure isolated Git page loading at zero and 50 ms API latency and check burst connection reuse."
+    dependsOn(tasks.testClasses)
+    classpath = sourceSets.test.get().runtimeClasspath
+    mainClass.set("bosca.git.ui.GitUiPageLoadingProbe")
+    jvmArgs("--enable-native-access=ALL-UNNAMED", "--add-opens", "java.base/jdk.internal.misc=ALL-UNNAMED")
+    outputs.upToDateWhen { false }
+}

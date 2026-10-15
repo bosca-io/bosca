@@ -16,4 +16,5 @@ internal fun repositorySummary(repo: GitUiRepositoryData.Git.RepositoryById): Re
         repo.updated,
         "/repositories",
         repo.canManage,
+        repo.canExecute,
     )

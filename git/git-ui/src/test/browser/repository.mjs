@@ -75,7 +75,7 @@ await call("Emulation.setDeviceMetricsOverride", {
 // Navigate through actual file rows, including the deferred tree's action boundary.
 await call("Page.navigate", { url: base + "/repositories/repo" });
 await until(
-  'document.querySelector("[data-bml-deferred]")?.dataset.bmlDeferredState === "loaded" && document.querySelector("a.ui-tree-row[aria-label=\\"README.md\\"]")',
+  'document.querySelector(".repository-workspace [data-bml-deferred]")?.dataset.bmlDeferredState === "loaded" && document.querySelector("a.ui-tree-row[aria-label=\\"README.md\\"]")',
 );
 const readmeRow = await ev(`(() => {
   const link = document.querySelector('a.ui-tree-row[aria-label="README.md"]');
@@ -126,7 +126,7 @@ assert.equal(
 );
 assert.deepEqual(treeActions, [], "File links never invoke the folder action");
 await until(
-  'document.querySelector("[data-bml-deferred]")?.dataset.bmlDeferredState === "loaded" && document.querySelector(".markdown-file")',
+  'document.querySelector(".repository-workspace [data-bml-deferred]")?.dataset.bmlDeferredState === "loaded" && document.querySelector(".markdown-file")',
 );
 await ev(
   'document.querySelector("button.ui-tree-row[aria-label=\\"Expand docs\\"]").click()',
@@ -150,7 +150,7 @@ for (const type of ["keyDown", "keyUp"])
     windowsVirtualKeyCode: 13,
   });
 await until(
-  'new URLSearchParams(location.search).get("file") === "docs/guide.md" && document.querySelector("[data-bml-deferred]")?.dataset.bmlDeferredState === "loaded"',
+  'new URLSearchParams(location.search).get("file") === "docs/guide.md" && document.querySelector(".repository-workspace [data-bml-deferred]")?.dataset.bmlDeferredState === "loaded"',
 );
 assert.equal(
   await ev(

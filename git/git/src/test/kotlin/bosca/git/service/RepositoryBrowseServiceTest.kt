@@ -17,6 +17,10 @@ import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
+import io.mockk.spyk
+import io.mockk.verify
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.put
 import kotlinx.coroutines.withContext
@@ -240,6 +244,76 @@ class RepositoryBrowseServiceTest {
         assertEquals(2, stats.branchCount)
         assertEquals(0, stats.tagCount)
         assertEquals(1, stats.contributorCount)
+    }
+
+    @Test
+    fun `stats reuse history while ref counts and pack sizes remain fresh`() = runTest {
+        val repo = spyk(inMemoryRepo)
+        every { dfsManager.open(repositoryId) } returns repo
+        coEvery { packRepository.sumPackSizeBytes(repositoryId) } returnsMany listOf(100L, 200L)
+        val first = service.getStats(repositoryId)
+        inMemoryRepo.refDatabase.newUpdate("refs/tags/v1", true).apply {
+            setNewObjectId(firstCommitId)
+            update()
+        }
+        inMemoryRepo.refDatabase.newUpdate("refs/heads/extra", true).apply {
+            setNewObjectId(secondCommitId)
+            update()
+        }
+        val second = service.getStats(repositoryId)
+        assertEquals(first.commitCount, second.commitCount)
+        assertEquals(first.contributorCount, second.contributorCount)
+        assertEquals(3, second.branchCount)
+        assertEquals(1, second.tagCount)
+        assertEquals(200L, second.diskSizeBytes)
+        verify(exactly = 1) { repo.newObjectReader() }
+    }
+
+    @Test
+    fun `stats follow pushes force pushes and default branch changes`() = runTest {
+        assertEquals(1L, service.getStats(repositoryId).commitCount)
+        inMemoryRepo.refDatabase.newUpdate("refs/heads/main", true).apply {
+            setNewObjectId(secondCommitId)
+            update()
+        }
+        val pushed = service.getStats(repositoryId)
+        assertEquals(2L, pushed.commitCount)
+        assertEquals(2, pushed.contributorCount)
+        inMemoryRepo.refDatabase.newUpdate("refs/heads/main", true).apply {
+            setNewObjectId(firstCommitId)
+            setForceUpdate(true)
+            update()
+        }
+        assertEquals(1L, service.getStats(repositoryId).commitCount)
+        inMemoryRepo.refDatabase.newUpdate(Constants.HEAD, true).link("refs/heads/feature")
+        assertEquals(2L, service.getStats(repositoryId).commitCount)
+    }
+
+    @Test
+    fun `stats cache distinguishes shallow boundaries at the same head`() = runTest {
+        val repo = spyk(inMemoryRepo)
+        every { dfsManager.open(repositoryId) } returns repo
+        // DfsReader ignores shallow boundaries; adapt the in-memory reader to exercise the
+        // same semantics as a repository whose object reader supports shallow history.
+        every { repo.newObjectReader() } answers {
+            spyk(inMemoryRepo.newObjectReader()).also { reader ->
+                every { reader.shallowCommits } answers { inMemoryRepo.objectDatabase.shallowCommits }
+            }
+        }
+        inMemoryRepo.refDatabase.newUpdate(Constants.HEAD, true).link("refs/heads/feature")
+        inMemoryRepo.objectDatabase.setShallowCommits(setOf(secondCommitId))
+        assertEquals(1L, service.getStats(repositoryId).commitCount)
+        inMemoryRepo.objectDatabase.setShallowCommits(emptySet())
+        assertEquals(2L, service.getStats(repositoryId).commitCount)
+    }
+
+    @Test
+    fun `concurrent stats reads share one history walk`() = runTest {
+        val repo = spyk(inMemoryRepo)
+        every { dfsManager.open(repositoryId) } answers { repo.incrementOpen(); repo }
+        val results = (1..12).map { async { service.getStats(repositoryId) } }.awaitAll()
+        assertTrue(results.all { it.commitCount == 1L })
+        verify(exactly = 1) { repo.newObjectReader() }
     }
 
     @Test

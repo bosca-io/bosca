@@ -1089,7 +1089,7 @@ type GitCreateTagResult {
 
 extend type Git {
     "List pipelines for a repository."
-    pipelines(repositoryId: UUID!): [GitPipeline!]!
+    pipelines(repositoryId: UUID!, id: UUID): [GitPipeline!]!
     "Manual input declarations read from the pipeline definition at the selected ref. Requires VIEW permission."
     pipelineInputs(pipelineId: UUID!, ref: String!): [GitPipelineInputDefinition!]!
     "Every pipeline across all repositories — the author-time picker for release relays."
@@ -1105,7 +1105,7 @@ extend type Git {
     "Get log output for a pipeline step. With tail: true, returns the last `limit` lines (offset is ignored). With beforeLine, returns the last `limit` lines whose line number is below it (offset and tail are ignored) — use this to page backwards, since stored line numbers can have gaps."
     pipelineLogs(stepId: UUID!, offset: Int, limit: Int, tail: Boolean, beforeLine: Int): [GitPipelineLogLine!]!
     "List registered build agents. System admins see all agents; agent credentials see only themselves and their direct children."
-    pipelineAgents(status: GitAgentStatus): [GitPipelineAgent!]!
+    pipelineAgents(status: GitAgentStatus, id: UUID): [GitPipelineAgent!]!
     "List secrets for a repository (names only). Requires MANAGE permission."
     pipelineSecrets(repositoryId: UUID!): [GitPipelineSecretInfo!]!
     "The uses:verify-deployment gate's observation: the current deployment's health for an environment (probed once), or NONE when nothing is deployed. Agents poll this until HEALTHY or timeout."

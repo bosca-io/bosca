@@ -1,5 +1,7 @@
 package bosca.git.service
 
+import com.github.benmanes.caffeine.cache.Caffeine
+import java.time.Duration
 import bosca.cache.ServiceCache
 import bosca.cache.serializers.StringKeySerializer
 import bosca.git.dfs.BoscaDfsRepositoryManager
@@ -49,6 +51,17 @@ class RepositoryBrowseServiceImpl(
     private val packRepository: bosca.git.repository.DfsPackRepository,
     private val searchService: SearchService
 ) : RepositoryBrowseService {
+
+    private data class HistoryKey(val repositoryId: UUID, val head: ObjectId, val shallow: Set<ObjectId>)
+    private data class HistoryStats(val commits: Long, val contributors: Int)
+
+    // History is immutable at a commit, except when shallow boundaries change. Cache only that
+    // work: refs and physical pack size are read fresh so pushes, deletes and GC stay visible.
+    // Atomic loading coalesces concurrent requests for the same history snapshot.
+    private val historyStats = Caffeine.newBuilder()
+        .maximumSize(4096)
+        .expireAfterAccess(Duration.ofMinutes(30))
+        .build<HistoryKey, HistoryStats>()
 
     private val treeCache = ServiceCache<String, List<TreeEntry>>(
         cacheName = "git:tree",
@@ -258,25 +271,28 @@ class RepositoryBrowseServiceImpl(
             val headId = it.refDatabase.findRef(Constants.HEAD)?.objectId
                 ?: branches.firstNotNullOfOrNull { branch -> branch.objectId }
 
-            var commitCount = 0L
-            val contributors = mutableSetOf<String>()
-
-            if (headId != null) {
-                RevWalk(it).use { revWalk ->
-                    revWalk.markStart(revWalk.parseCommit(headId))
-                    for (commit in revWalk) {
-                        commitCount++
-                        contributors.add(commit.authorIdent.emailAddress)
-                        if (commitCount > 10000) break
+            val history = if (headId == null) HistoryStats(0, 0) else {
+                val key = HistoryKey(repositoryId, headId, it.objectDatabase.shallowCommits.toSet())
+                historyStats.get(key) { _ ->
+                    var commits = 0L
+                    val contributors = mutableSetOf<String>()
+                    RevWalk(it).use { revWalk ->
+                        revWalk.markStart(revWalk.parseCommit(headId))
+                        for (commit in revWalk) {
+                            commits++
+                            contributors.add(commit.authorIdent.emailAddress)
+                            if (commits > 10000) break
+                        }
                     }
+                    HistoryStats(commits, contributors.size)
                 }
             }
 
             RepoStats(
-                commitCount = commitCount,
+                commitCount = history.commits,
                 branchCount = branches.size,
                 tagCount = tags.size,
-                contributorCount = contributors.size,
+                contributorCount = history.contributors,
                 diskSizeBytes = 0,
             )
         }

@@ -18,17 +18,19 @@ suspend fun agentPage(): AgentPage {
             ?.takeIf { value -> GitAgentStatus.entries.any { it.name == value } }
             .orEmpty()
     if (!isGitAdministrator(ctx)) return AgentPage(false, status, emptyList(), null, null)
+    val id = ctx.params["id"]
     val agents =
         ctx.gql
             .execute(
                 GitUiAgents,
                 GitUiAgents.Variables(
-                    status.takeIf(String::isNotBlank)?.let(GitAgentStatus::valueOf)
+                    status.takeIf(String::isNotBlank)?.let(GitAgentStatus::valueOf),
+                    id != null,
+                    id,
                 ),
             )
             .git
             .pipelineAgents
-    val id = ctx.params["id"]
     val selected = agents.firstOrNull { it.id == id }
     if (id != null && selected == null) ctx.notFound = true
     val config =

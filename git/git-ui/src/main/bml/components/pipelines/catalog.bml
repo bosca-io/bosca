@@ -88,97 +88,15 @@
                 <p class="no-run-message">No runs yet</p>
               </if>
               <if page.repositoryContext && pipeline.runs.isNotEmpty()>
-                <div class="recent-runs">
-                  <for run in pipeline.runs>
-                    <a class="run-row" :href="bosca.git.ui.runHref(run.id)">
-                      <git-run-indicator :status="run.status.name" />
-                      <code class="run-number">#{ run.number }</code>
-                      <code class="run-ref">
-                        { run.ref.removePrefix("refs/heads/").removePrefix("refs/tags/") }
-                      </code>
-                      <code class="muted">{ run.commitSha.take(8) }</code>
-                      <span class="run-trigger">{ run.triggerType.name.lowercase() }</span>
-                      <div class="job-dots" aria-label="Jobs">
-                        <for job in run.jobs>
-                          <span
-                            :class='"job-dot status-" + job.status.name.lowercase()'
-                            :title='job.name + ": " + job.status.name'
-                            :aria-label='job.name + ": " + job.status.name'
-                          ></span>
-                        </for>
-                      </div>
-                      <span class="run-duration">
-                        { bosca.git.ui.pipelineDuration(run.durationSeconds) }
-                      </span>
-                      <ui-time :value="run.created" relative />
-                      <git-status-badge :status="run.status.name" />
-                    </a>
-                  </for>
-                </div>
+                <git-pipeline-recent :repository="repository.id" :pipeline="pipeline" />
               </if>
             </for>
           </div>
         </section>
       </for>
     </if>
-    <if page.repository.isNotBlank() && page.runs.isNotEmpty()>
-      <details class="history-disclosure" :open="!page.repositoryContext">
-        <summary>
-          <ui-icon name="clock" :size="14" />
-          Run history
-          <ui-icon name="chevron" :size="12" />
-        </summary>
-        <section class="run-history">
-          <div class="catalog-toolbar">
-            <h2>Run history</h2>
-            <span class="muted">{ page.runs.size } runs</span>
-          </div>
-          <ui-table-scroll>
-            <table>
-              <thead>
-                <tr>
-                  <th>Run</th>
-                  <th>Status</th>
-                  <th>Ref / commit</th>
-                  <th>Started</th>
-                  <th>Duration</th>
-                </tr>
-              </thead>
-              <tbody>
-                <for run in page.runs>
-                  <tr>
-                    <td>
-                      <a :href="bosca.git.ui.runHref(run.id)">#{ run.number }</a>
-                    </td>
-                    <td>
-                      <git-status-badge :status="run.status.name" />
-                    </td>
-                    <td>
-                      <code>
-                        { run.ref.removePrefix("refs/heads/") }
-                        ·
-                        { run.commitSha.take(8) }
-                      </code>
-                    </td>
-                    <td>
-                      <ui-time :value="run.started ?: run.created" />
-                    </td>
-                    <td>{ bosca.git.ui.pipelineDuration(run.durationSeconds) }</td>
-                  </tr>
-                </for>
-              </tbody>
-            </table>
-          </ui-table-scroll>
-          <nav class="toolbar">
-            <if page.offset != 0L>
-              <a :href="page.href((page.offset - 50).coerceAtLeast(0))">Previous</a>
-            </if>
-            <if page.runs.size == 50>
-              <a :href="page.href(page.offset + 50)">Next</a>
-            </if>
-          </nav>
-        </section>
-      </details>
+    <if page.repository.isNotBlank()>
+      <git-pipeline-history :repository="page.repository" :offset="page.offset" :runs="page.runs" />
     </if>
   </div>
   <style scoped>
@@ -298,82 +216,8 @@
     .no-runs {
       font-size: 11px;
     }
-    .run-row {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      padding: 10px 14px;
-      border-bottom: 1px solid var(--line);
-      font-size: 11.5px;
-    }
-    .run-row:hover {
-      background: var(--bg-2);
-    }
-    .run-number {
-      width: 40px;
-      flex: none;
-    }
-    .run-ref {
-      min-width: 0;
-      flex: 1;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-    .pipeline-updated {
-      color: var(--fg-3);
-      font-size: 11px;
-    }
-    .run-trigger {
-      color: var(--fg-3);
-      font-size: 11px;
-    }
-    .job-dots {
-      display: flex;
-      align-items: center;
-      gap: 4px;
-    }
-    .job-dot {
-      width: 6px;
-      height: 6px;
-      border-radius: 50%;
-      background: var(--fg-3);
-    }
-    .job-dot.status-success {
-      background: var(--ok);
-    }
-    .job-dot.status-failure {
-      background: var(--err);
-    }
-    .job-dot.status-running,
-    .job-dot.status-queued {
-      background: var(--info);
-    }
-    .run-duration {
-      color: var(--fg-2);
-    }
-    .history-disclosure > summary {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      cursor: pointer;
-      padding: 10px 0;
-      color: var(--fg-2);
-      font-size: 12px;
-      list-style: none;
-    }
-    .history-disclosure > summary::-webkit-details-marker {
-      display: none;
-    }
-    .history-disclosure[open] > summary svg:last-child {
-      transform: rotate(180deg);
-    }
-    .run-history {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      margin-top: 8px;
-    }
+    .pipeline-updated { color: var(--fg-3); font-size: 11px; }
+    .run-duration { color: var(--fg-2); }
     @media (max-width: 700px) {
       .pipeline-copy {
         flex-direction: column;
@@ -390,13 +234,6 @@
       }
       .latest-run time {
         display: none;
-      }
-      .run-row {
-        flex-wrap: wrap;
-        gap: 8px;
-      }
-      .run-ref {
-        flex-basis: 50%;
       }
     }
     @media (max-width: 440px) {

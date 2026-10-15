@@ -1,0 +1,96 @@
+<component tag="git-pipeline-recent">
+  <prop name="repository" type="String" required />
+  <prop name="pipeline" type="bosca.git.ui.graphql.GitUiPipelinesData.Git.Pipelines" required />
+  <script server provides="model">bosca.git.ui.PipelineRecentRunsModel(repository, pipeline.id, pipeline.runs)</script>
+  <island name="git-pipeline-recent" :key="pipeline.id">
+    <div class="recent-runs">
+      <for run in model.runs>
+        <a class="run-row" :href="bosca.git.ui.runHref(run.id)">
+          <git-run-indicator :status="run.status.name" />
+          <code class="run-number">#{ run.number }</code>
+          <code class="run-ref">
+            { run.ref.removePrefix("refs/heads/").removePrefix("refs/tags/") }
+          </code>
+          <code class="muted">{ run.commitSha.take(8) }</code>
+          <span class="run-trigger">{ run.triggerType.name.lowercase() }</span>
+          <div class="job-dots" aria-label="Jobs">
+            <for job in run.jobs.orEmpty()>
+              <span
+                :class='"job-dot status-" + job.status.name.lowercase()'
+                :title='job.name + ": " + job.status.name'
+                :aria-label='job.name + ": " + job.status.name'
+              ></span>
+            </for>
+          </div>
+          <span class="run-duration">
+            { bosca.git.ui.pipelineDuration(run.durationSeconds) }
+          </span>
+          <ui-time :value="run.created" relative />
+          <git-status-badge :status="run.status.name" />
+        </a>
+      </for>
+    </div>
+
+    <if model.loaded && model.runs.isEmpty()><p class="muted">No runs yet.</p></if>
+    <if model.message.isNotBlank()><ui-alert>{ model.message }</ui-alert></if>
+    <if !model.loaded>
+      <ui-button size="sm" icon="clock" @click="model.load(ctx)">Show recent runs</ui-button>
+    </if>
+  </island>
+  <style scoped>
+    .run-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--line);
+      font-size: 11.5px;
+    }
+    .run-row:hover {
+      background: var(--bg-2);
+    }
+    .run-number {
+      width: 40px;
+      flex: none;
+    }
+    .run-ref {
+      min-width: 0;
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .run-trigger {
+      color: var(--fg-3);
+      font-size: 11px;
+    }
+    .job-dots {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .job-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--fg-3);
+    }
+    .job-dot.status-success {
+      background: var(--ok);
+    }
+    .job-dot.status-failure {
+      background: var(--err);
+    }
+    .job-dot.status-running,
+    .job-dot.status-queued {
+      background: var(--info);
+    }
+    .run-duration {
+      color: var(--fg-2);
+    }
+    @media (max-width: 700px) {
+      .run-row { flex-wrap: wrap; gap: 8px; }
+      .run-ref { flex-basis: 50%; }
+    }
+  </style>
+</component>

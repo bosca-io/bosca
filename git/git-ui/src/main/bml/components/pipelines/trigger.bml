@@ -1,7 +1,7 @@
 <component tag="git-pipeline-trigger">
   <prop name="page" type="bosca.git.ui.PipelinePage" required />
   <script server provides="model">
-    bosca.git.ui.PipelineTriggerModel(page)
+    bosca.git.ui.PipelineTriggerModel(page.triggerContext())
   </script>
   <div class="pipeline-trigger">
     <if page.selected.isNotBlank()>

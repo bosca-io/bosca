@@ -16,7 +16,7 @@ class AgentStatusModel(var agent: GitUiAgentsData.Git.PipelineAgents, var messag
         try {
             agent =
                 ctx.gql
-                    .execute(GitUiAgents, GitUiAgents.Variables(null))
+                    .execute(GitUiAgents, GitUiAgents.Variables(null, true, agent.id))
                     .git
                     .pipelineAgents
                     .firstOrNull { it.id == agent.id } ?: error("Agent no longer exists.")

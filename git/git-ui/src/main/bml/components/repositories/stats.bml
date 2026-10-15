@@ -1,0 +1,13 @@
+<component tag="git-repository-stats">
+  <prop name="id" type="String" required />
+  <island name="statistics" render="deferred" :id="id">
+    <prop name="id" type="String" />
+    <fallback>
+      <span class="stats-loading">Loading statistics…</span>
+      <span class="stats-error" role="alert">Statistics could not be loaded.</span>
+      <button class="stats-retry" type="button" data-bml-deferred-retry>Retry</button>
+    </fallback>
+    <script server provides="summary">bosca.git.ui.repositoryStats(id)</script>
+    <span>{ summary }</span>
+  </island>
+</component>

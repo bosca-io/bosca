@@ -13,6 +13,10 @@ import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.concurrent.thread
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -36,6 +40,7 @@ class GitUiRoutesTest {
         userMappings.clear()
         treeRetries.clear()
         commitSha = "abc"
+        requestProbe = null
     }
 
     @Test
@@ -87,7 +92,7 @@ class GitUiRoutesTest {
     @Test
     fun `repository browsing preserves and encodes refs and file paths`() {
         val response = get("/repositories/repo?ref=feature%2Fone&path=docs")
-        assertTrue("2 commits · 2 branches · 1 tag · 1 contributor" in response.body(), response.body())
+        assertTrue("Loading statistics" in response.body(), response.body())
         assertEquals(200, response.statusCode(), response.body())
         assertTrue(
             "ref=feature%2Fone&amp;path=docs&amp;file=docs%2Fa%20%23%20b.txt" in response.body(),
@@ -734,6 +739,10 @@ class GitUiRoutesTest {
             )
         assertEquals(200, changed.statusCode(), changed.body())
         val state = actionState(changed)
+        val triggerPage = state.getValue("page").jsonObject
+        assertEquals(0, triggerPage.getValue("runs").jsonArray.size)
+        assertEquals(0, triggerPage.getValue("repositories").jsonArray.size)
+        assertTrue(triggerPage.getValue("pipelines").jsonArray.all { it.jsonObject.getValue("runs").jsonArray.isEmpty() })
         assertEquals(false, state["failed"]?.jsonPrimitive?.boolean, changed.body())
         assertEquals(
             "refs/heads/feature/one",
@@ -1823,6 +1832,226 @@ class GitUiRoutesTest {
         assertTrue(userMappings.isEmpty())
     }
 
+    @Test
+    fun `independent page reads overlap over HTTP`() {
+        for ((path, operations) in listOf(
+            "/repositories/repo?file=README.md&edit=true" to setOf("GitUiBranches", "GitUiTags", "GitUiProfiles"),
+            "/repositories/repo?tab=pipelines" to setOf("GitUiRepository", "GitUiRefs", "GitUiPipelines"),
+            "/repositories/repo?tab=commits" to setOf("GitUiBranches", "GitUiTags", "GitUiCommits"),
+            "/repositories?owner=owner" to setOf("GitUiProfile", "GitUiRepositories"),
+            "/repositories/repo/github" to setOf("GitUiRepository", "GitUiAccess"),
+            "/repositories/repo/github" to setOf("GitUiGitHubPair", "GitUiGitHubRefs"),
+            "/settings/github" to setOf("GitUiGitHubUsers", "GitUiPrincipals"),
+            "/repositories/repo?tab=settings&panel=permissions" to setOf("GitUiPermissions", "GitUiGroups"),
+            "/repositories/repo?tab=statuses&sha=abc" to setOf("GitUiStatuses", "GitUiCommits"),
+            "/pulls/pull" to setOf("GitUiRepository", "GitUiBranches", "GitUiProfiles", "GitUiPullList", "GitUiRepositories"),
+        )) {
+            val arrived = CountDownLatch(operations.size)
+            val timeouts = AtomicInteger()
+            requestProbe = { operation ->
+                if (operation in operations) {
+                    arrived.countDown()
+                    if (!arrived.await(3, TimeUnit.SECONDS)) timeouts.incrementAndGet()
+                }
+            }
+            try {
+                val response = get(path)
+                assertEquals(200, response.statusCode(), response.body())
+                assertEquals(0L, arrived.count, path)
+                assertEquals(0, timeouts.get(), "Independent reads were serialized: $path")
+            } finally { requestProbe = null }
+        }
+    }
+
+    @Test
+    fun `repository tabs reuse metadata and omit unrelated code and stats reads`() {
+        for ((tab, expected) in mapOf(
+            "pipelines" to setOf("GitUiRepository", "GitUiRefs", "GitUiPipelines"),
+            "pulls" to setOf("GitUiRepository", "GitUiRepositories", "GitUiRepositoryPullList", "GitUiBranches"),
+            "settings" to setOf("GitUiRepository"),
+            "secrets" to setOf("GitUiRepository", "GitUiSecrets"),
+            "statuses" to setOf("GitUiRepository", "GitUiBranches", "GitUiTags", "GitUiCommits"),
+        )) {
+            val before = requests.size
+            val response = get("/repositories/repo?tab=$tab")
+            assertEquals(200, response.statusCode(), response.body())
+            val operations = requests.drop(before).map { it.operation }
+            assertEquals(expected, operations.toSet(), tab)
+            assertEquals(expected.size, operations.size, "Duplicate query in $tab: $operations")
+        }
+    }
+
+    @Test
+    fun `repository statistics load privately after the shell`() {
+        val before = requests.size
+        val shell = get("/repositories/repo")
+        assertEquals(200, shell.statusCode(), shell.body())
+        assertTrue("component:git-repository-stats:statistics" in shell.body(), shell.body())
+        assertTrue(requests.drop(before).none { it.operation == "GitUiStats" })
+        val payload = buildJsonObject {
+            put("page", "/repositories/{id}")
+            put("path", "/repositories/repo")
+            put("query", buildJsonObject {})
+            put("props", buildJsonObject { put("id", "repo") })
+        }.toString()
+        val endpoint = "/_bml/deferred/component%3Agit-repository-stats%3Astatistics"
+        val denied = post(endpoint, payload, authenticated = false)
+        assertEquals(401, denied.statusCode(), denied.body())
+        assertTrue(requests.drop(before).none { it.operation == "GitUiStats" })
+        val response = post(endpoint, payload)
+        assertEquals(200, response.statusCode(), response.body())
+        assertTrue("2 commits · 2 branches · 1 tag · 1 contributor" in response.body(), response.body())
+        assertEquals("private, no-store", response.headers().firstValue("Cache-Control").orElse(""))
+        assertEquals("Bearer ui-test-token", requests.last { it.operation == "GitUiStats" }.authorization)
+    }
+
+    @Test
+    fun `global pipeline catalog avoids a metadata request per repository`() {
+        val before = requests.size
+        val response = get("/pipelines")
+        assertEquals(200, response.statusCode(), response.body())
+        val operations = requests.drop(before).map { it.operation }
+        assertEquals(2, operations.count { it == "GitUiPipelines" })
+        assertEquals(0, operations.count { it == "GitUiRepository" || it == "GitUiProfile" })
+    }
+
+    @Test
+    fun `missing repository stays a not found response when parallel reads fail`() {
+        for (suffix in listOf("", "?tab=pipelines", "?tab=commits")) {
+            assertEquals(404, get("/repositories/missing$suffix").statusCode(), suffix)
+        }
+    }
+
+    @Test
+    fun `all data page routes avoid duplicate GraphQL reads`() {
+        for (path in graphqlPageAuditPaths) {
+            val before = requests.size
+            val response = get(path)
+            assertEquals(200, response.statusCode(), path + response.body())
+            val reads = requests.drop(before)
+            assertTrue(reads.isNotEmpty(), path)
+            val duplicates = reads.groupBy { it.operation to it.variables }.filterValues { it.size > 1 }
+            assertTrue(duplicates.isEmpty(), "Repeated GraphQL read in $path: ${duplicates.keys}")
+        }
+    }
+
+    @Test
+    fun `markdown preview reuses ref lookup including an unborn default branch`() {
+        for ((id, expected) in listOf("repo" to setOf("GitUiRepository", "GitUiRefs", "GitUiCommit"), "empty" to setOf("GitUiRepository", "GitUiRefs"))) {
+            val before = requests.size
+            val args = JsonArray(listOf(id, "main", "README.md", "# Draft").map(::JsonPrimitive)).toString()
+            val response = post("/_bml/contract/GitMarkdownPreview/render", args)
+            assertEquals(200, response.statusCode(), response.body())
+            assertTrue("Draft" in response.body(), response.body())
+            val operations = requests.drop(before).map { it.operation }
+            assertEquals(expected, operations.toSet())
+            assertEquals(expected.size, operations.size)
+        }
+    }
+
+    @Test
+    fun `all owners listing skips profile reads`() {
+        val before = requests.size
+        assertEquals(200, get("/repositories?owner=all").statusCode())
+        assertEquals(listOf("GitUiRepositories"), requests.drop(before).map { it.operation })
+    }
+
+    @Test
+    fun `read only browsing does not fetch commit author profiles`() {
+        val before = requests.size
+        assertEquals(200, get("/repositories/repo?file=README.md").statusCode())
+        assertTrue(requests.drop(before).none { it.operation == "GitUiProfiles" })
+    }
+
+    @Test
+    fun `search typing reuses choices and repository changes refresh them`() {
+        val path = "/search?repo=repo&q=snippet"
+        val shell = get(path)
+        var before = requests.size
+        val typed = action(path, "git-search.model:search", "search", listOf("repo", "new query", "content", "main"), sourceHtml = shell.body())
+        assertEquals(false, actionState(typed)["failed"]?.jsonPrimitive?.boolean)
+        assertEquals(listOf("GitUiSearchContent"), requests.drop(before).map { it.operation })
+        before = requests.size
+        val changed = action(path, "git-search.model:search", "search", listOf("empty", "new query", "content", "main"), sourceHtml = shell.body())
+        assertEquals(false, actionState(changed)["failed"]?.jsonPrimitive?.boolean)
+        assertEquals(listOf("GitUiRepositories", "GitUiRefs"), requests.drop(before).map { it.operation })
+    }
+
+    @Test
+    fun `pipeline lists request only the visible latest run`() {
+        for ((path, limit, details) in listOf(Triple("/pipelines", 1, false), Triple("/repositories/repo?tab=pipelines", 1, true))) {
+            val before = requests.size
+            assertEquals(200, get(path).statusCode())
+            val queries = requests.drop(before).filter { it.operation == "GitUiPipelines" }
+            assertTrue(queries.isNotEmpty())
+            for (request in queries) {
+                assertEquals(limit, request.variables["runLimit"]?.jsonPrimitive?.int)
+                assertEquals(details, request.variables["jobDetails"]?.jsonPrimitive?.boolean)
+            }
+        }
+    }
+
+    @Test
+    fun `selected repository pipeline pages skip the unused owner repository listing`() {
+        for (owner in listOf("", "&owner=owner", "&owner=all")) {
+            val before = requests.size
+            val response = get("/pipelines?repo=repo$owner")
+            assertEquals(200, response.statusCode(), response.body())
+            assertTrue(requests.drop(before).none { it.operation == "GitUiRepositories" })
+        }
+    }
+
+    @Test
+    fun `pipeline history and older runs load only on demand`() {
+        val path = "/repositories/repo?tab=pipelines"
+        val before = requests.size
+        val shell = get(path)
+        assertTrue(requests.drop(before).none { it.operation == "GitUiPipelineRuns" })
+        assertTrue("Run history" in shell.body())
+        var start = requests.size
+        val history = action(path, "git-pipeline-history.model:repo", "load", listOf(0), sourceHtml = shell.body())
+        assertEquals(true, actionState(history)["loaded"]?.jsonPrimitive?.boolean, history.body())
+        assertEquals(listOf("GitUiPipelineRuns"), requests.drop(start).map { it.operation })
+        start = requests.size
+        val next = continueAction(path, "git-pipeline-history.model:repo", "load", actionState(history), listOf(50))
+        assertEquals(50L, actionState(next)["offset"]?.jsonPrimitive?.long, next.body())
+        assertEquals(listOf("GitUiPipelineRuns"), requests.drop(start).map { it.operation })
+        val failed = continueAction(path, "git-pipeline-history.model:repo", "load", actionState(history), listOf(100))
+        assertTrue(actionState(failed)["message"]?.jsonPrimitive?.content.orEmpty().contains("History unavailable"), failed.body())
+        assertEquals(0L, actionState(failed)["offset"]?.jsonPrimitive?.long)
+        assertEquals(50, actionState(failed)["runs"]?.jsonArray?.size)
+        val retried = continueAction(path, "git-pipeline-history.model:repo", "load", actionState(failed), listOf(50))
+        assertEquals("", actionState(retried)["message"]?.jsonPrimitive?.content)
+        start = requests.size
+        val recent = action(path, "git-pipeline-recent.model:pipeline", "load", emptyList(), sourceHtml = shell.body())
+        assertEquals(true, actionState(recent)["loaded"]?.jsonPrimitive?.boolean, recent.body())
+        val request = requests.drop(start).single()
+        assertEquals("GitUiPipelines", request.operation)
+        assertEquals("pipeline", request.variables["id"]?.jsonPrimitive?.content)
+        assertEquals(10, request.variables["runLimit"]?.jsonPrimitive?.int)
+    }
+
+    @Test
+    fun `agent detail and refresh select only the requested agent`() {
+        val path = "/ci-agents/agent"
+        var before = requests.size
+        val shell = get(path)
+        assertEquals("agent", requests.drop(before).single { it.operation == "GitUiAgents" }.variables["id"]?.jsonPrimitive?.content)
+        before = requests.size
+        val response = action(path, "git-agent-status.model:agent", "refresh", emptyList(), sourceHtml = shell.body())
+        assertEquals("", actionState(response)["message"]?.jsonPrimitive?.content, response.body())
+        assertEquals("agent", requests.drop(before).single().variables["id"]?.jsonPrimitive?.content)
+    }
+
+    @Test
+    fun `agent lists omit job details and detail views retain them`() {
+        for ((path, expected) in listOf("/ci-agents" to false, "/ci-agents/agent" to true)) {
+            val before = requests.size
+            assertEquals(200, get(path).statusCode())
+            assertEquals(expected, requests.drop(before).single { it.operation == "GitUiAgents" }.variables["details"]?.jsonPrimitive?.boolean)
+        }
+    }
+
     private fun deferredSidebar(path: String, authenticated: Boolean = true): HttpResponse<String> {
         val file =
             java.net.URLDecoder.decode(
@@ -2012,15 +2241,19 @@ class GitUiRoutesTest {
         @Volatile private var commitSha = "abc"
         private var port = 0
         private lateinit var upstream: HttpServer
+        private val upstreamExecutor = Executors.newVirtualThreadPerTaskExecutor()
+        @Volatile private var requestProbe: ((String) -> Unit)? = null
         private lateinit var engine: NettyServerEngine
         private lateinit var subscriptionEngine: NettyServerEngine
 
         @JvmStatic fun browserFixturePort(): Int = port
+        @JvmStatic fun browserFixtureApiPort(): Int = upstream.address.port
 
         @JvmStatic
         @BeforeClass
         fun start() {
             upstream = HttpServer.create(InetSocketAddress("localhost", 0), 0)
+            upstream.executor = upstreamExecutor
             upstream.createContext("/graphql") { exchange ->
                 val input =
                     Json.parseToJsonElement(exchange.requestBody.readAllBytes().decodeToString())
@@ -2033,6 +2266,7 @@ class GitUiRoutesTest {
                             ?.get(1)
                             .orEmpty()
                 val variables = input["variables"]?.jsonObject ?: JsonObject(emptyMap())
+                requestProbe?.invoke(operation)
                 requests.add(
                     ApiRequest(
                         operation,
@@ -2041,7 +2275,7 @@ class GitUiRoutesTest {
                         exchange.requestHeaders.getFirst("Origin"),
                     )
                 )
-                val id = variables["id"]?.jsonPrimitive?.content
+                val id = variables["id"]?.jsonPrimitive?.contentOrNull
                 val path = variables["path"]?.jsonPrimitive?.content
                 val token =
                     exchange.requestHeaders.getFirst("Authorization")?.removePrefix("Bearer ")
@@ -2197,10 +2431,16 @@ class GitUiRoutesTest {
                             """{"data":{"git":{"pipelineRuns":[]}}}"""
                         operation == "GitUiPipelineNames" ->
                             """{"data":{"git":{"pipelines":[{"id":"pipeline","name":"Build"}]}}}"""
+                        operation == "GitUiPipelineTriggers" ->
+                            """{"data":{"git":{"pipelines":[{"id":"pipeline","triggerTypes":["MANUAL"]}]}}}"""
                         operation == "GitUiPipelines" ->
                             """{"data":{"git":{"pipelines":[{"id":"pipeline","repositoryId":"repo","filePath":".bosca/pipelines/build.yml","name":"Build","updated":"2026-10-09T00:00:00Z","triggerTypes":["MANUAL"],"runs":[$run]}]}}}"""
-                        operation == "GitUiPipelineRuns" ->
-                            """{"data":{"git":{"pipelineRuns":[$run]}}}"""
+                        operation == "GitUiPipelineRuns" && variables["offset"]?.jsonPrimitive?.long == 100L ->
+                            """{"errors":[{"message":"History unavailable"}]}"""
+                        operation == "GitUiPipelineRuns" -> {
+                            val runs = if (variables["offset"]?.jsonPrimitive?.long == 0L) List(50) { run }.joinToString(",") else ""
+                            """{"data":{"git":{"pipelineRuns":[$runs]}}}"""
+                        }
                         operation == "GitUiPipelineInputs" ->
                             """{"data":{"git":{"pipelineInputs":[{"name":"version","type":"STRING","defaultValue":null,"description":"Version","options":[],"required":true}]}}}"""
                         operation == "GitUiRun" && id == "failed-run" ->
@@ -2252,8 +2492,10 @@ class GitUiRoutesTest {
                         operation == "GitUiAgents" &&
                             variables["status"]?.jsonPrimitive?.content == "OFFLINE" ->
                             """{"data":{"git":{"pipelineAgents":[]}}}"""
-                        operation == "GitUiAgents" ->
-                            """{"data":{"git":{"pipelineAgents":$agents}}}"""
+                        operation == "GitUiAgents" -> {
+                            val selected = if (id == null) agents else JsonArray(Json.parseToJsonElement(agents).jsonArray.filter { it.jsonObject["id"]?.jsonPrimitive?.content == id }).toString()
+                            """{"data":{"git":{"pipelineAgents":$selected}}}"""
+                        }
                         operation == "GitUiRegisterAgent" ->
                             """{"data":{"git":{"registerAgent":{"agent":{"id":"agent"},"token":"one-time-agent-token"}}}}"""
                         operation == "GitUiUpdateAgent" ->
@@ -2300,9 +2542,9 @@ class GitUiRoutesTest {
                             """{"data":{"git":{"repositoryById":${if (id == "missing") "null" else if (id == "archived") capabilities(archived) else if (id == "empty") capabilities(active.replace("\"id\":\"repo\"", "\"id\":\"empty\"").replace("Active project", "Empty project")) else capabilities(active)}}}}"""
                         operation == "GitUiBranches" && id == "missing" ->
                             """{"errors":[{"message":"Repository not found"}]}"""
-                        operation == "GitUiProfiles" && token == "bootstrap-token" ->
+                        operation in setOf("GitUiProfiles", "GitUiOwnerProfiles") && token == "bootstrap-token" ->
                             """{"data":{"profiles":{"current":[{"id":"admin-profile","name":"admin","slug":null,"isPrimary":true,"attributes":[]}]}}}"""
-                        operation == "GitUiProfiles" ->
+                        operation in setOf("GitUiProfiles", "GitUiOwnerProfiles") ->
                             """{"data":{"profiles":{"current":[$profile]}}}"""
                         operation == "GitUiProfile" ->
                             """{"data":{"profiles":{"profile":${if (id == "other") profile.replace("\"id\":\"owner\"", "\"id\":\"other\"").replace("Alice", "Bob").replace("alice", "bob") else profile}}}}"""
@@ -2330,6 +2572,12 @@ class GitUiRoutesTest {
                             """{"data":{"git":{"commit":${if (variables["sha"]?.jsonPrimitive?.content == "invalid") "null" else "{\"sha\":\"$commitSha\",\"message\":\"Initial\"}"}}}}"""
                         operation == "GitUiCommits" ->
                             """{"data":{"git":{"commits":[{"sha":"abc","message":"Initial","authorName":"Alice","authorEmail":"alice@example.test","authorDate":"2026-10-09T00:00:00Z","parentShas":[]}]}}}"""
+                        operation == "GitUiRefs" && id == "missing" ->
+                            """{"errors":[{"message":"Repository not found"}]}"""
+                        operation == "GitUiRefs" && id == "empty" ->
+                            """{"data":{"git":{"branches":[],"tags":[]}}}"""
+                        operation == "GitUiRefs" ->
+                            """{"data":{"git":{"branches":[{"name":"main","sha":"abc"},{"name":"feature/one","sha":"abc"}],"tags":[{"name":"v1","sha":"abc","targetSha":null,"isAnnotated":false,"message":null}]}}}"""
                         operation == "GitUiBranches" && id == "empty" ->
                             """{"data":{"git":{"branches":[]}}}"""
                         operation == "GitUiBranches" ->
@@ -2613,6 +2861,7 @@ class GitUiRoutesTest {
             if (::engine.isInitialized) engine.stopWithoutHalting()
             if (::subscriptionEngine.isInitialized) subscriptionEngine.stopWithoutHalting()
             if (::upstream.isInitialized) upstream.stop(0)
+            upstreamExecutor.close()
         }
 
         private fun fixture(name: String): String =

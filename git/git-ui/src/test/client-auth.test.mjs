@@ -24,10 +24,11 @@ const {
   `data:text/javascript;base64,${Buffer.from(result.outputFiles[0].text).toString("base64")}`
 );
 
-function setup(search = "", overrides = {}) {
+function setup(search = "", overrides = {}, pathname = "/login") {
   const navigations = [];
   globalThis.location = {
     origin: "https://git.test",
+    pathname,
     search,
     assign: (url) => navigations.push(url),
     replace: (url) => navigations.push(url),
@@ -53,6 +54,15 @@ function setup(search = "", overrides = {}) {
 
 const email = " Person@Example.test ";
 const password = "correct-password-123!";
+
+test("data pages restore tokens without refetching identity while auth pages restore identity", async () => {
+  for (const [path, expected] of [["/repositories/repo", false], ["/pipelines/run", false], ["/login", true], ["/auth/signup", true]]) {
+    const initialized = [];
+    const fixture = setup("", { initialize: async (fetchProfile) => initialized.push(fetchProfile) }, path);
+    await fixture.flow.ready;
+    assert.deepEqual(initialized, [expected], path);
+  }
+});
 
 test("friendly authentication errors and password feedback", () => {
   assert.match(

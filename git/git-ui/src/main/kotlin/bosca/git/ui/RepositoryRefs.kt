@@ -2,9 +2,8 @@ package bosca.git.ui
 
 import bosca.bml.graphql.GraphQLClient
 import bosca.bml.graphql.execute
-import bosca.git.ui.graphql.GitUiBranches
+import bosca.git.ui.graphql.GitUiRefs
 import bosca.git.ui.graphql.GitUiCommit
-import bosca.git.ui.graphql.GitUiTags
 
 /**
  * Resolves named refs before calling the SHA-only commit API; missing and unborn refs return null.
@@ -17,9 +16,9 @@ internal suspend fun GraphQLClient.commitShaForRef(
     val refs =
         knownRefs
             ?: run {
-                val branches =
-                    execute(GitUiBranches, GitUiBranches.Variables(repositoryId)).git.branches
-                val tags = execute(GitUiTags, GitUiTags.Variables(repositoryId)).git.tags
+                val data = execute(GitUiRefs, GitUiRefs.Variables(repositoryId)).git
+                val branches = data.branches
+                val tags = data.tags
                 tags.associate { it.name to (it.targetSha ?: it.sha) } +
                     branches.associate { it.name to it.sha }
             }
