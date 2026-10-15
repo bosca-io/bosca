@@ -8,6 +8,8 @@ import bosca.events.catalog.EventCatalogRegistrar
 import bosca.events.catalog.EventDescriptor
 import bosca.pipelines.model.Pipeline
 import bosca.pipelines.model.PipelineRun
+import bosca.pipelines.node.PipelineResumeCorrelation
+import bosca.pipelines.node.PipelineRunDriveListener
 import bosca.pipelines.service.PipelineRunService
 import bosca.pipelines.service.PipelineService
 import bosca.serialization.OffsetDateTimeSerializer
@@ -15,9 +17,13 @@ import bosca.serialization.UUID
 import bosca.serialization.UUIDSerializer
 import bosca.sharedqueue.jobs.InternalJobConstructor
 import bosca.sharedqueue.jobs.DelayException
+import bosca.sharedqueue.jobs.Job
 import bosca.sharedqueue.jobs.JobExecutor
 import bosca.sharedqueue.jobs.JobQueue
+import bosca.sharedqueue.jobs.JobStatus
 import bosca.sharedqueue.jobs.asCoroutineContext
+import bosca.sharedqueue.jobs.deserialize
+import bosca.sharedqueue.jobs.serialize
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
@@ -77,9 +83,15 @@ class PipelineJobExecutorsTest {
         }
     }
 
-    private suspend fun <T> run(executor: JobExecutor, type: KClass<out JobExecutor>, serializer: SerializationStrategy<T>, jobDef: T) {
+    private suspend fun <T> run(
+        executor: JobExecutor,
+        type: KClass<out JobExecutor>,
+        serializer: SerializationStrategy<T>,
+        jobDef: T,
+    ): Job {
         val job = InternalJobConstructor(definition = json.encodeToJsonElement(serializer, jobDef), executor = type)
         withContext(mockk<JobQueue>(relaxed = true).asCoroutineContext(job)) { executor.execute() }
+        return job
     }
 
     // --- PipelineRunJobExecutor -------------------------------------------------------------------
@@ -144,15 +156,17 @@ class PipelineJobExecutorsTest {
     // --- PipelineScheduledRunExecutor -------------------------------------------------------------
 
     @Test
-    fun `scheduled-run executor starts and drives the run`() = runTest {
+    fun `scheduled-run executor starts the run and persists its backing completion listener`() = runTest {
         val pipelineService = mockk<PipelineService>()
         val runService = mockk<PipelineRunService>(relaxed = true)
         val pipeline = Pipeline(id = UUID.random(), name = "p", acceptedInputType = "JSON")
         val started = PipelineRun(id = UUID.random(), pipelineId = pipeline.id, graphSnapshot = JsonObject(emptyMap()))
         coEvery { pipelineService.get(pipeline.id) } returns pipeline
         coEvery { runService.start(pipeline, any(), "schedule", any()) } returns started
+        provides<PipelineRunService> { runService }
+        provides<PipelineRunDriveListener> { PipelineRunDriveListenerImpl(json) }
 
-        run(
+        val runJob = run(
             PipelineScheduledRunExecutor(pipelineService, runService),
             PipelineScheduledRunExecutor::class,
             PipelineScheduledRunJob.serializer(),
@@ -160,6 +174,13 @@ class PipelineJobExecutorsTest {
         )
 
         coVerify(exactly = 1) { runService.start(pipeline, any(), "schedule", any()) }
+        val backingJob = InternalJobConstructor(JsonObject(emptyMap()), ExecuteNodeInJobExecutor::class).apply {
+            setContext(json, PipelineResumeCorrelation(started.id, "sync"))
+        }
+        for (callback in runJob.serialize().callbacks) {
+            callback.deserialize().newListener().onChildStatusChanged(runJob, backingJob, JobStatus.COMPLETE, null)
+        }
+        coVerify(exactly = 1) { runService.resume(started.id, "sync", true, null, runJob = runJob) }
     }
 
     @Test
