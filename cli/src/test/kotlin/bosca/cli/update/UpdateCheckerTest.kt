@@ -2,6 +2,7 @@ package bosca.cli.update
 
 import bosca.cli.Version
 import com.github.ajalt.clikt.testing.test
+import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -15,6 +16,11 @@ import kotlin.test.assertTrue
  * helpers and the offline `bosca version` output are exercised.
  */
 class UpdateCheckerTest {
+
+    @AfterTest
+    fun resetPassiveCheck() {
+        UpdateChecker.suppressPassive = false
+    }
 
     @Test
     fun `isNewer is true for a higher patch, minor, and major`() {
@@ -56,6 +62,41 @@ class UpdateCheckerTest {
         assertFalse(UpdateChecker.isNewer("5.9.0-rc1", "5.9.0"))
         // A later pre-release still beats an earlier one of the same core.
         assertTrue(UpdateChecker.isNewer("5.9.0-rc2", "5.9.0-rc1"))
+    }
+
+    @Test
+    fun `build metadata never changes version precedence`() {
+        assertFalse(UpdateChecker.isNewer("5.9.0", "5.9.0+build.1"))
+        assertFalse(UpdateChecker.isNewer("5.9.0+build.2", "5.9.0"))
+        assertFalse(UpdateChecker.isNewer("5.9.0+build.2", "5.9.0+build.1"))
+        assertFalse(UpdateChecker.isNewer("5.9.0-rc.1+build.2", "5.9.0-rc.1+build.1"))
+        assertTrue(UpdateChecker.isNewer("5.9.0+build.1", "5.9.0-rc.1+build.2"))
+    }
+
+    @Test
+    fun `prerelease identifiers follow numeric and lexical precedence`() {
+        val versions = listOf(
+            "5.9.0-alpha", "5.9.0-alpha.1", "5.9.0-alpha.beta", "5.9.0-beta",
+            "5.9.0-beta.2", "5.9.0-beta.11", "5.9.0-rc.1", "5.9.0",
+        )
+        versions.zipWithNext().forEach { (older, newer) ->
+            assertTrue(UpdateChecker.isNewer(newer, older), "$newer should be newer than $older")
+            assertFalse(UpdateChecker.isNewer(older, newer), "$older should not be newer than $newer")
+        }
+    }
+
+    @Test
+    fun `invalid versions never produce an update`() {
+        listOf("dev", "latest", "", "5..9", "5.9.0-", "5.9.0+", "5.9.0-rc..1").forEach { invalid ->
+            assertFalse(UpdateChecker.isNewer(invalid, "5.9.0"), invalid)
+            assertFalse(UpdateChecker.isNewer("5.9.0", invalid), invalid)
+        }
+    }
+
+    @Test
+    fun `large numeric components do not overflow`() {
+        assertTrue(UpdateChecker.isNewer("5.9.2147483648", "5.9.2147483647"))
+        assertFalse(UpdateChecker.isNewer("5.9.0-rc.2147483647", "5.9.0-rc.2147483648"))
     }
 
     private fun release(tag: String, draft: Boolean = false, prerelease: Boolean = false) =
