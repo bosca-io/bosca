@@ -6,6 +6,7 @@
   <prop name="expanded" type="Boolean" default="false" />
   <prop name="selected" type="Boolean" default="false" />
   <prop name="depth" type="Int" default="0" />
+  <prop name="wrap" type="Boolean" default="false" />
   <script server provides="attrs">
     props.filterKeys {
         it !in
@@ -17,12 +18,13 @@
                 "expanded",
                 "selected",
                 "depth",
+                "wrap",
                 "__bmlAttrs",
             )
     }
   </script>
   <div
-    :class='"ui-tree-item depth-" + depth.coerceAtMost(12)'
+    :class='"ui-tree-item depth-" + depth.coerceAtMost(12) + if (wrap) " wrap" else ""'
     role="treeitem"
     :aria-level="depth + 1"
     :aria-expanded='if (directory) expanded.toString() else null'
@@ -60,7 +62,7 @@
         :aria-current='if (selected) "page" else null'
       >
         <span class="tree-spacer" aria-hidden="true"></span>
-        <ui-icon name="file" :size="13" />
+        <span class="tree-file-icon"><ui-icon name="file" :size="13" /></span>
         <span class="tree-label">{ label }</span>
       </a>
     </if>
@@ -109,6 +111,21 @@
       overflow: hidden;
       text-overflow: ellipsis;
     }
+    /* Wrapped labels keep long names readable instead of truncating them. */
+    .wrap .ui-tree-row {
+      align-items: flex-start;
+    }
+    .wrap .tree-label {
+      white-space: normal;
+      overflow-wrap: anywhere;
+      line-height: 16px;
+    }
+    .wrap .tree-file-icon,
+    .wrap .tree-chevron,
+    .wrap .folder-open,
+    .wrap .folder-closed {
+      margin-top: 1.5px;
+    }
     .tree-chevron {
       display: flex;
       width: 11px;
@@ -119,8 +136,10 @@
       flex: none;
     }
     .folder-open,
-    .folder-closed {
+    .folder-closed,
+    .tree-file-icon {
       display: flex;
+      flex: none;
     }
     .ui-tree-item[aria-expanded="false"] .tree-chevron {
       transform: rotate(-90deg);

@@ -10,14 +10,9 @@
           :depth="entry.depth"
           :directory="entry.directory"
           :expanded="entry.directory"
+          wrap
         />
       </for>
     </ui-tree>
   </nav>
-  <style scoped>
-    nav {
-      max-height: 320px;
-      overflow: auto;
-    }
-  </style>
 </component>

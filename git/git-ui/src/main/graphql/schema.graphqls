@@ -393,6 +393,7 @@ type GitDiffFile {
   newPath: String
   changeType: GitDiffChangeType!
   hunks: [GitDiffHunk!]!
+  newLineCount: Int!
 }
 
 type GitDiffHunk {

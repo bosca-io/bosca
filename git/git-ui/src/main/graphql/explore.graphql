@@ -38,6 +38,7 @@ query GitUiCompare($id: UUID!, $base: String!, $head: String!) {
         oldPath
         newPath
         changeType
+        newLineCount
         hunks {
           totalLineCount
           oldStart

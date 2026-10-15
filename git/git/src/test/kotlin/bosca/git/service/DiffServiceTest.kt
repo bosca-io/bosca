@@ -276,6 +276,109 @@ class DiffServiceTest {
         assertEquals(1, hunk.lines[1].newLineNumber)
     }
 
+    private fun commitFiles(parent: ObjectId?, ref: String, vararg files: Pair<String, ByteArray>): ObjectId {
+        val person = PersonIdent("Test", "test@example.com")
+        return inMemoryRepo.objectDatabase.newInserter().use { inserter ->
+            val tree = TreeFormatter().apply {
+                for ((name, bytes) in files.sortedBy { it.first }) {
+                    append(name, FileMode.REGULAR_FILE, inserter.insert(Constants.OBJ_BLOB, bytes))
+                }
+            }
+            val commit = CommitBuilder().apply {
+                setTreeId(inserter.insert(tree)); setAuthor(person); setCommitter(person); setMessage(ref)
+                parent?.let { setParentId(it) }
+            }
+            inserter.insert(commit).also { id ->
+                inserter.flush()
+                inMemoryRepo.refDatabase.newUpdate("refs/heads/$ref", true).apply {
+                    setNewObjectId(id); setForceUpdate(true); update()
+                }
+            }
+        }
+    }
+
+    private fun numbered(count: Int, change: (Int) -> String? = { "line $it" }): ByteArray =
+        (1..count).mapNotNull(change).joinToString("") { "$it\n" }.toByteArray()
+
+    @Test
+    fun `computeDiff windows distant changes into separate hunks with three lines of context`() = runTest {
+        val base = commitFiles(null, "window-base", "long.txt" to numbered(40))
+        commitFiles(base, "window-head", "long.txt" to numbered(40) { if (it == 5 || it == 30) "changed $it" else "line $it" })
+
+        val file = service.computeDiff(repositoryId, "refs/heads/window-base", "refs/heads/window-head").single()
+
+        assertEquals(40, file.newLineCount)
+        assertEquals(2, file.hunks.size)
+        val (first, second) = file.hunks
+        assertEquals(listOf(2, 7, 2, 7), listOf(first.oldStart, first.oldCount, first.newStart, first.newCount))
+        assertEquals(listOf(27, 7, 27, 7), listOf(second.oldStart, second.oldCount, second.newStart, second.newCount))
+        assertEquals(
+            listOf("CONTEXT 2 2", "CONTEXT 3 3", "CONTEXT 4 4", "DELETE 5 null", "ADD null 5", "CONTEXT 6 6", "CONTEXT 7 7", "CONTEXT 8 8"),
+            first.lines.map { "${it.type} ${it.oldLineNumber} ${it.newLineNumber}" },
+        )
+        assertEquals("line 2", first.lines.first().content)
+        assertEquals("changed 5", first.lines[4].content)
+        assertEquals("line 33", second.lines.last().content)
+        assertTrue(file.hunks.flatMap { it.lines }.none { it.newLineNumber in 9..26 }, "Unchanged lines between hunks stay hidden")
+    }
+
+    @Test
+    fun `computeDiff merges nearby changes and clips context at file boundaries`() = runTest {
+        val base = commitFiles(null, "merge-base", "short.txt" to numbered(12))
+        commitFiles(base, "merge-head", "short.txt" to numbered(13) {
+            when (it) {
+                1 -> "first changed"
+                8 -> null
+                else -> "line $it"
+            }
+        } + "appended\n".toByteArray())
+
+        val file = service.computeDiff(repositoryId, "refs/heads/merge-base", "refs/heads/merge-head").single()
+
+        val hunk = file.hunks.single()
+        assertEquals(listOf(1, 12, 1, 13), listOf(hunk.oldStart, hunk.oldCount, hunk.newStart, hunk.newCount))
+        assertEquals("DELETE", hunk.lines.first().type.name)
+        assertEquals("appended", hunk.lines.last().content)
+        assertEquals(13, file.newLineCount)
+        assertEquals(hunk.lines.count { it.type != bosca.git.model.DiffLineType.ADD }, hunk.oldCount)
+        assertEquals(hunk.lines.count { it.type != bosca.git.model.DiffLineType.DELETE }, hunk.newCount)
+    }
+
+    @Test
+    fun `computeDiff keeps empty text changes distinct from binary files`() = runTest {
+        val binary = byteArrayOf(0, 1, 2, 3, 0, 5)
+        val base = commitFiles(null, "kinds-base", "image.bin" to binary, "same.txt" to numbered(3))
+        commitFiles(
+            base, "kinds-head",
+            "empty.txt" to ByteArray(0),
+            "image.bin" to byteArrayOf(0, 9, 9, 9, 0, 5),
+            "same.txt" to numbered(3),
+        )
+
+        val files = service.computeDiff(repositoryId, "refs/heads/kinds-base", "refs/heads/kinds-head").associateBy { it.newPath }
+
+        val empty = files.getValue("empty.txt")
+        assertEquals(listOf(bosca.git.model.DiffHunk(0, 0, 0, 0, emptyList())), empty.hunks)
+        assertEquals(0, empty.newLineCount)
+        val image = files.getValue("image.bin")
+        assertTrue(image.hunks.isEmpty())
+        assertEquals(0, image.newLineCount)
+        assertNull(files["same.txt"])
+    }
+
+    @Test
+    fun `computeDiff numbers added files from the first line`() = runTest {
+        val diff = service.computeDiff(repositoryId, "refs/heads/main", "refs/heads/feature")
+        val added = diff.single { it.newPath == "new.txt" }.hunks.single()
+        assertEquals(listOf(0, 0, 1, 1), listOf(added.oldStart, added.oldCount, added.newStart, added.newCount))
+        val modified = diff.single { it.newPath == "file.txt" }
+        assertEquals(4, modified.newLineCount)
+        assertEquals(
+            listOf("CONTEXT 1 1", "DELETE 2 null", "ADD null 2", "CONTEXT 3 3", "ADD null 4"),
+            modified.hunks.single().lines.map { "${it.type} ${it.oldLineNumber} ${it.newLineNumber}" },
+        )
+    }
+
     // ── appended coverage: delete arm, unknown refs, orphan histories ────
 
     @Test

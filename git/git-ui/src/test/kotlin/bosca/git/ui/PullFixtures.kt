@@ -9,10 +9,60 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.put
 
+/** A long, deeply nested path whose name must stay readable in the changed-file tree. */
+internal const val CONTEXT_FILE = "src/main/kotlin/bosca/git/ui/review/expansion/ContextExpansionReviewFixtureWithAVeryLongName.kt"
+
+/** New version of [CONTEXT_FILE]: line 5 changed and a line inserted after old line 59. */
+internal val contextFileLines: List<String> = (1..101).map {
+    when {
+        it == 5 -> "changed 5"
+        it == 60 -> "inserted"
+        it < 60 -> "line $it"
+        else -> "line ${it - 1}"
+    }
+}
+
+/** The two windowed hunks the API returns for [CONTEXT_FILE]. */
+private fun contextDiff(): JsonObject {
+    fun line(type: String, old: Int?, new: Int?, content: String) = buildJsonObject {
+        put("content", content)
+        put("type", type)
+        put("oldLineNumber", old?.let(::JsonPrimitive) ?: JsonNull)
+        put("newLineNumber", new?.let(::JsonPrimitive) ?: JsonNull)
+    }
+    fun context(old: Int, new: Int) = line("CONTEXT", old, new, contextFileLines[new - 1])
+    fun hunk(oldStart: Int, oldCount: Int, newStart: Int, newCount: Int, lines: List<JsonObject>) = buildJsonObject {
+        put("oldStart", oldStart)
+        put("oldCount", oldCount)
+        put("newStart", newStart)
+        put("newCount", newCount)
+        put("totalLineCount", lines.size)
+        put("lines", JsonArray(lines))
+    }
+    return buildJsonObject {
+        put("oldPath", CONTEXT_FILE)
+        put("newPath", CONTEXT_FILE)
+        put("changeType", "MODIFY")
+        put("newLineCount", contextFileLines.size)
+        put(
+            "hunks",
+            JsonArray(
+                listOf(
+                    hunk(2, 7, 2, 7, listOf(context(2, 2), context(3, 3), context(4, 4),
+                        line("DELETE", 5, null, "line 5"), line("ADD", null, 5, "changed 5"),
+                        context(6, 6), context(7, 7), context(8, 8))),
+                    hunk(57, 6, 57, 7, listOf(context(57, 57), context(58, 58), context(59, 59),
+                        line("ADD", null, 60, "inserted"), context(60, 61), context(61, 62), context(62, 63))),
+                )
+            ),
+        )
+    }
+}
+
 internal fun pullStateFixture(base: String, number: Int): String {
-    if (number !in 2..11) return base
-    val state = listOf("DRAFT", "MERGED", "CLOSED", "OPEN", "OPEN", "OPEN", "OPEN", "OPEN", "OPEN", "MERGED")[number - 2]
-    val id = listOf("pull-draft", "pull-merged", "pull-closed", "pull-conflicts", "pull-empty", "pull-edit", "pull-missing-branch", "pull-first-comment", "pull-replies", "pull-merged-no-base")[number - 2]
+    if (number !in 2..12) return base
+    val state = listOf("DRAFT", "MERGED", "CLOSED", "OPEN", "OPEN", "OPEN", "OPEN", "OPEN", "OPEN", "MERGED", "OPEN")[number - 2]
+    val id = listOf("pull-draft", "pull-merged", "pull-closed", "pull-conflicts", "pull-empty", "pull-edit", "pull-missing-branch", "pull-first-comment", "pull-replies", "pull-merged-no-base", "pull-context")[number - 2]
     val changes = buildJsonObject {
         put("id", id)
         put("number", number)
@@ -29,6 +79,7 @@ internal fun pullStateFixture(base: String, number: Int): String {
                 8 -> "Repair missing source branch"
                 9 -> "Start commenting"
                 10 -> "Review discussion"
+                12 -> "Expand review context"
                 else -> "Resolve Markdown conflicts"
             },
         )
@@ -50,6 +101,17 @@ internal fun pullStateFixture(base: String, number: Int): String {
                 "content" to JsonPrimitive("File-level discussion")))
             put("reviews", JsonArray(listOf(JsonObject(review + mapOf("reviewerId" to JsonPrimitive("other"),
                 "comments" to JsonArray(listOf(current, outdated, fileComment)))))))
+        }
+        if (number == 12) {
+            val review = Json.parseToJsonElement(base).jsonObject.getValue("reviews").let { it as JsonArray }.first().jsonObject
+            val comment = (review.getValue("comments") as JsonArray).first().jsonObject
+            val discussion = JsonObject(comment + mapOf("id" to JsonPrimitive("context-comment"),
+                "authorId" to JsonPrimitive("other"), "filePath" to JsonPrimitive(CONTEXT_FILE),
+                "oldLineNumber" to JsonPrimitive(40), "newLineNumber" to JsonPrimitive(40),
+                "content" to JsonPrimitive("Context discussion"), "outdated" to JsonPrimitive(false)))
+            put("reviews", JsonArray(listOf(JsonObject(review + mapOf("reviewerId" to JsonPrimitive("other"),
+                "comments" to JsonArray(listOf(discussion)))))))
+            put("diff", JsonArray(listOf(contextDiff())))
         }
         if (number == 3 || number == 11) {
             put("mergedAt", "2026-10-11T09:00:00Z")
@@ -97,6 +159,7 @@ internal fun pullStateFixture(base: String, number: Int): String {
                 put("newPath", "Test/.gitkeep")
                 put("changeType", "ADD")
                 put("hunks", JsonArray(listOf(hunk)))
+                put("newLineCount", 0)
             }
             put("diff", JsonArray(listOf(file)))
         }

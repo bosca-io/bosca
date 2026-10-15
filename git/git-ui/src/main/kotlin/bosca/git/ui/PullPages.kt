@@ -249,5 +249,5 @@ suspend fun pullPage(): PullPage? = supervisorScope {
         repositoriesRequest.await(),
         diff,
         diffUnavailable,
-    )
+    ).withDiscussionContext(ctx.gql)
 }
