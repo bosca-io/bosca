@@ -10,14 +10,14 @@ Deploy infrastructure first, then application services, using your deployment's
 values files:
 
 ```bash
-helm upgrade --install bosca-infra oci://ghcr.io/bosca-io/bosca/charts/bosca-infra --version 0.1.0 -f infra-values.yaml
-helm upgrade --install bosca-services oci://ghcr.io/bosca-io/bosca/charts/bosca-services --version 0.1.0 -f services-values.yaml
+: "${BOSCA_VERSION:?Set the published Git release tag to install}"
+helm upgrade --install bosca-infra oci://ghcr.io/bosca-io/bosca/charts/bosca-infra --version "$BOSCA_VERSION" -f infra-values.yaml
+helm upgrade --install bosca-services oci://ghcr.io/bosca-io/bosca/charts/bosca-services --version "$BOSCA_VERSION" -f services-values.yaml
 ```
 
 For an existing deployment, use its current release names, namespaces and values
-files. Update the chart source to the public GitHub location. Moving from a 6.x
-or 7.x version to 0.1.0 requires an explicit version selection; existing semver
-ranges do not automatically select the smaller version.
+files. Chart versions follow the selected Git release tag. Update any version
+constraints that still select the former independent `0.1.x` chart releases.
 
 ## Bible usage worker
 
@@ -117,9 +117,18 @@ admitting traffic. A failed listener stops the combined host.
 
 `.bosca/pipelines/release-helm.yaml` publishes each chart to Bosca Artifacts' HTTP
 Helm repository and OCI registry in namespace `bosca-charts`. Run it against an
-existing Git tag. Chart versions
-come from each `Chart.yaml`, independently of the Git tag and `appVersion`; the
-pipeline does not change version numbers.
+existing Git tag. Packaging requires that tag's bare semantic version, such as
+`6.31.0` or `6.31.0-rc.1`, and applies it to every chart and bundled local
+dependency. The same version identifies the HTTP Helm package and OCI tag;
+checked-in chart versions are only development defaults.
+
+Bosca application `appVersion` defaults and explicit Bosca image tags (including
+the model loader sidecar) also use the release tag. Bosca images are identified
+by their default `image.registry: ghcr.io/bosca-io/bosca`. Publish the image
+releases for that tag before deploying the charts. Deployment values can still
+override image tags. Upstream images such as TensorFlow Serving and Text
+Embeddings Inference keep their own versions. Tags with build metadata (`+...`)
+are rejected because container image tags cannot contain `+`.
 
 Both destinations use the registry URL and agent token supplied by
 `setup-registry`. Traditional Helm packages and OCI-packaged charts share the
@@ -132,8 +141,12 @@ controls with GHCR destination `bosca-io/bosca/charts/<chart-name>`. Enable publ
 package visibility and verify the chart's tag on GHCR before announcing the
 release. This release pipeline does not configure those destinations.
 
-The publisher builds dependencies from checked-in locks in a temporary copy,
-lints and renders every application chart, then packages each chart once.
+The publisher validates the checked-in dependency locks with Helm before stamping
+chart metadata in a temporary copy. Stale locks fail the release. It pins local
+dependencies to the release tag and third-party dependencies to their checked-in
+locked versions. Helm rebuilds the staged dependency locks; their original timestamps
+are retained so rebuilding the same release does not change chart contents.
+The publisher lints and renders every application chart, then packages each chart once.
 Dependencies are included in the packages; development `file://` references are
 retained in their metadata.
 Consumers install the complete packages without rebuilding dependencies. The
@@ -151,23 +164,26 @@ archive bytes must match.
 The package directory contains the archives and a `release.tsv` checksum
 manifest. A failure between destinations can leave a partial release: retain
 that directory and rerun `publish` with those exact archives to finish it.
-Changed charts need a new version rather than replacing an existing release.
+Changed charts need a new release tag rather than replacing an existing release.
 Publication across the two registries is not atomic; keep other publishers from
 writing the same versions while a release runs.
 
 ## Local packaging and publishing
 
-Prerequisites: Bash, Helm 3 with OCI support, curl and standard shell utilities.
+Prerequisites: Bash, Helm 3 with OCI support, Python 3 with PyYAML, curl and standard shell utilities.
 SHA-256 checks use `sha256sum` or `shasum`. The release pipeline
 uses Helm 3.22.0. The Git routing regression test also requires Python 3 and
 checks the rendered paths with RE2. From the workspace root:
 
 ```bash
-bash helm/scripts/release-test.sh
 python3 -m venv /tmp/bosca-helm-tests
 /tmp/bosca-helm-tests/bin/pip install -r helm/tests/requirements.txt
-/tmp/bosca-helm-tests/bin/python helm/tests/test_git_routes.py
-bash helm/scripts/release.sh package --output /tmp/bosca-helm-packages
+export PATH="/tmp/bosca-helm-tests/bin:$PATH"
+bash helm/scripts/release-test.sh
+python3 helm/tests/test_release_versions.py
+python3 helm/tests/test_git_routes.py
+: "${BOSCA_VERSION:?Set the Git release tag being packaged}"
+bash helm/scripts/release.sh package --version "$BOSCA_VERSION" --output /tmp/bosca-helm-packages
 
 : "${BOSCA_REGISTRY_URL:?Set the maintainer publishing registry URL}"
 export HELM_REPO_URL="${BOSCA_REGISTRY_URL%/}/helm/bosca-charts"
@@ -187,6 +203,8 @@ localhost registry in the integration test.
 
 The shell tests exercise conflict handling and partial-release retries using
 isolated command fixtures. They also package a chart with a local dependency
-using Helm and check that source files and chart versions remain untouched.
+using Helm and check release versions, image defaults, explicit overrides and
+source preservation. The version tests cover upstream dependency pins and
+third-party image defaults.
 Rebuilt releases and retries with only one populated destination reuse the
 published bytes; changed templates and bundled dependencies are rejected.

@@ -2,15 +2,18 @@
 # Package charts once, then publish those archives through HTTP Helm and OCI.
 set -euo pipefail
 
-CHART_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CHART_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 COMMAND="${1:-}"
 [[ $# -gt 0 ]] && shift
 OUTPUT=""
+VERSION=""
 REPO="${HELM_REPO_URL:-}"
 OCI="${HELM_OCI_URL:-}"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --output) OUTPUT="${2:?Missing output directory}" ;;
+    --version) VERSION="${2:?Missing release version}" ;;
     --charts) CHART_ROOT="${2:?Missing chart directory}" ;;
     --repo) REPO="${2:?Missing HTTP repository URL}" ;;
     --oci) OCI="${2:?Missing OCI registry URL}" ;;
@@ -20,8 +23,13 @@ while [[ $# -gt 0 ]]; do
 done
 
 fail() { echo "Release failed: $*" >&2; exit 1; }
-[[ "$COMMAND" == package || "$COMMAND" == publish ]] || fail "Usage: bash release.sh package|publish --output DIRECTORY [--charts DIRECTORY] [--repo URL] [--oci URL]"
+[[ "$COMMAND" == package || "$COMMAND" == publish ]] || fail "Usage: bash release.sh package --version VERSION --output DIRECTORY [--charts DIRECTORY] | publish --output DIRECTORY [--repo URL] [--oci URL]"
 [[ -n "$OUTPUT" ]] || fail "Set --output"
+if [[ "$COMMAND" == package ]]; then
+  [[ -n "$VERSION" ]] || fail "Set --version to the Git release tag"
+else
+  [[ -z "$VERSION" ]] || fail "publish uses the versions in release.tsv; --version is only for package"
+fi
 command -v helm >/dev/null || fail "Helm is required"
 TEMP="$(mktemp -d)"
 trap 'rm -rf "$TEMP"' EXIT
@@ -53,7 +61,7 @@ package_chart() {
     fi
   done < <(repositories "$metadata")
   if grep -q '^dependencies:' "$metadata"; then
-    helm dependency build "$chart" --skip-refresh
+    python3 "$SCRIPT_DIR/release-metadata.py" dependencies "$chart" "$CHART_ROOT/$key"
   fi
   name="$(field "$metadata" name)"
   version="$(field "$metadata" version)"
@@ -70,6 +78,7 @@ package_chart() {
 }
 
 package_charts() {
+  command -v python3 >/dev/null || fail "Python 3 with PyYAML is required"
   mkdir -p "$OUTPUT"
   OUTPUT="$(cd "$OUTPUT" && pwd)"
   shopt -s nullglob dotglob
@@ -102,6 +111,22 @@ package_charts() {
       http://*|https://*) helm repo add "release-$index" "$repository"; index=$((index + 1)) ;;
     esac
   done < "$TEMP/repositories"
+  # Validate source locks before stamping constraints so a stale lock cannot
+  # silently replace a requested upstream version with its older pinned version.
+  for chart_yaml in "$TEMP/charts"/*/Chart.yaml; do
+    key="${chart_yaml%/Chart.yaml}"
+    if grep -q '^dependencies:' "$TEMP/metadata/${key##*/}.yaml"; then
+      helm dependency build "$key" --skip-refresh
+    fi
+  done
+  for chart_yaml in "$TEMP/charts"/*/Chart.yaml; do
+    rm -rf "${chart_yaml%/Chart.yaml}/charts"
+  done
+  python3 "$SCRIPT_DIR/release-metadata.py" stage "$TEMP/charts" "$VERSION"
+  for chart_yaml in "$TEMP/charts"/*/Chart.yaml; do
+    key="${chart_yaml%/Chart.yaml}"
+    helm show chart "$key" > "$TEMP/metadata/${key##*/}.yaml"
+  done
   for chart_yaml in "$TEMP/charts"/*/Chart.yaml; do
     package_chart "${chart_yaml%/Chart.yaml}"
   done
@@ -175,7 +200,7 @@ same_chart_files() {
 reuse_archive() {
   local published="$1" candidate="$2" destination="$3" archive="$4"
   if [[ "$(sha256 "$published")" != "$(sha256 "$candidate")" ]]; then
-    same_chart_files "$published" "$candidate" || fail "$destination chart version has different contents: $archive; bump the chart version"
+    same_chart_files "$published" "$candidate" || fail "$destination chart version has different contents: $archive; use a new release tag"
     cp "$published" "$candidate"
   fi
 }
