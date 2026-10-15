@@ -1,0 +1,13 @@
+type Query { git: Git! node: Node }
+type Git { pipelines: [Pipeline!]! }
+type Pipeline { runs: [Run!]! }
+type Run {
+  id: ID!
+  jobs: [Job!]!
+  summary: String!
+  note: String
+  latestJob: Job!
+  labels: [[String]!]!
+}
+interface Node { id: ID! }
+type Job implements Node { id: ID! name: String! }

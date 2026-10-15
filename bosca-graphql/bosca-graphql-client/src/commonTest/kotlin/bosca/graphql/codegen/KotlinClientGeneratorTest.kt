@@ -163,6 +163,39 @@ class KotlinClientGeneratorTest {
     // ---- fragments + aliases ----
 
     @Test
+    fun `include and skip fields are optional without changing unconditional fields`() {
+        val src = generate(
+            "query Conditional(\$details: Boolean!) { user(id: \"1\") { " +
+                "id name @include(if: \$details) contact: email @skip(if: \$details) } }",
+        )
+        assertTrue("val id: String," in src, src)
+        assertTrue("val name: String? = null," in src, src)
+        assertTrue("val contact: String? = null," in src, src)
+    }
+
+    @Test
+    fun `repeated field is required when any occurrence is unconditional`() {
+        for (fields in listOf(
+            "name @include(if: \$details) name",
+            "name name @include(if: \$details)",
+        )) {
+            val src = generate("query Q(\$details: Boolean!) { user(id: \"1\") { $fields } }")
+            assertTrue("val name: String," in src, src)
+        }
+        val conditional = generate(
+            "query Q(\$details: Boolean!) { user(id: \"1\") { " +
+                "name @include(if: \$details) name @skip(if: \$details) } }",
+        )
+        assertTrue("val name: String? = null," in conditional, conditional)
+    }
+
+    @Test
+    fun `other field directives do not make a required field optional`() {
+        val src = generate("query Q { user(id: \"1\") { id @custom } }")
+        assertTrue("val id: String," in src, src)
+    }
+
+    @Test
     fun `aliases name properties and a named fragment is flattened into the consuming type`() {
         val src = generate(
             "query GetAccount(\$id: ID!) { account: user(id: \$id) { ...UserFields contact: email } }\n" +
