@@ -2,12 +2,15 @@ package bosca.pipelines.trigger
 
 import bosca.pipelines.configuration.PipelinesJobQueueNames
 import bosca.pipelines.model.PipelineRunLog
+import bosca.pipelines.node.PipelineRunDriveListener
 import bosca.pipelines.node.PipelineValue
 import bosca.pipelines.service.PipelineRunService
 import bosca.pipelines.service.PipelineService
 import bosca.queue.annotations.JobDefinition
 import bosca.serialization.OffsetDateTime
 import bosca.sharedqueue.jobs.AbstractJobExecutor
+import bosca.sharedqueue.jobs.JobCallback
+import bosca.sharedqueue.jobs.job
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -41,6 +44,9 @@ class PipelineScheduledRunExecutor(
         val now = OffsetDateTime.now()
         val startNanos = System.nanoTime()
         try {
+            // Backing-job completion resumes the scheduled run through this parent job's listener.
+            job().addCallback(JobCallback(listener = PipelineRunDriveListener::class))
+
             val pipeline = pipelineService.get(jobDef.pipelineId)
                 ?: error("Pipeline not found: ${jobDef.pipelineId}")
             val input = PipelineValue.ofJson(buildJsonObject { put("scheduledAt", now.toString()) })
