@@ -516,8 +516,8 @@ fun main(args: Array<String>) {
     .main(args)
 
     // After a command completes successfully, surface a throttled, best-effort
-    // "update available" notice (interactive terminals only; never blocks or
-    // fails the command). Help/version/error paths exit inside .main() above and
-    // never reach here, which is intentional — no nudge on those.
+    // "update available" notice (interactive terminals only, with bounded network
+    // timeouts). Lookup failures do not fail the command. Help/version/error paths
+    // exit inside .main() above and never reach here, which is intentional — no nudge on those.
     UpdateChecker.maybeNotify()
 }

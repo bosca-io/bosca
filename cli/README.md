@@ -49,15 +49,22 @@ configured automatically. Publish the updated `cli/install.sh` at that URL first
 ```bash
 bosca --version            # print the installed version and exit
 bosca version              # same, as a subcommand
-bosca version --check      # check the website's configured CLI release source
+bosca version --check      # check public GitHub releases for a newer version
 ```
 
-The CLI also prints a one-line "update available" notice (at most once per day,
-interactive terminals only) when a newer release is published. Disable it with
-`BOSCA_NO_UPDATE_CHECK=1` (or `BOSCA_UPDATE_CHECK=0`).
+Rerun the install command to upgrade, or use the command printed by the update
+check. `version --check` always makes a fresh request and exits with a nonzero
+status if the release source cannot be checked.
 
-Release checks default to `https://bosca.io/cli/releases.json`, which uses the
-same repository as the website's configured installer. `BOSCA_CLI_ARTIFACTS_URL`
+After successful interactive commands, the CLI checks for updates at most once
+per day and prints an "update available" notice to standard error when a newer
+release is available. Automatic checks have a short network timeout; unavailable
+release sources do not fail your command. Disable automatic checks with
+`BOSCA_NO_UPDATE_CHECK=1` (or `BOSCA_UPDATE_CHECK=0`). Explicit `version --check`
+requests still run. Release comparisons ignore build metadata and order numeric
+version components and prerelease identifiers numerically.
+
+Release checks query GitHub's API for `bosca-io/bosca` directly. `BOSCA_CLI_ARTIFACTS_URL`
 (or `bosca version --check --artifacts-url <raw-repository-url>`) checks an
 explicit Bosca repository directly. `BOSCA_CLI_REPOSITORY` selects an explicit
 GitHub repository. Cached notices are scoped to the selected release source.

@@ -9,7 +9,38 @@ prove what works.
 
 Learn more at [bosca.io](https://bosca.io)
 
-NOTE: CLI tool will be published soon.
+## Install the CLI
+
+Install the latest Bosca CLI release on macOS (Apple Silicon) or Linux (x86_64):
+
+```bash
+curl -fsSL https://bosca.io/cli/install.sh | sh
+bosca --version
+bosca --help
+```
+
+The installer downloads the package for your platform and checks it against the
+release's `SHA256SUMS` using `shasum` or `sha256sum`. macOS uses a signed, notarized
+package; Linux uses a tarball. Both install to `/usr/local/bin` by default and may
+prompt for your password through `sudo`. The installed binary does not require Java.
+
+On Linux, you can choose a directory you own:
+
+```bash
+curl -fsSL https://bosca.io/cli/install.sh | BOSCA_INSTALL_DIR="$HOME/.local/bin" sh
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+Add that `PATH` setting to your shell configuration to keep it for future sessions.
+
+Check public GitHub releases for updates with `bosca version --check`. To upgrade,
+rerun the installation command above, or use the command printed by the update
+check. Interactive commands also check for updates at most once a day and print a
+notice when a newer release is available. Set `BOSCA_NO_UPDATE_CHECK=1` to disable
+automatic checks; explicit `bosca version --check` requests still run.
+
+See the [CLI README](cli/README.md) for installation overrides, server login,
+profiles, and commands.
 
 ## Run Bosca locally
 

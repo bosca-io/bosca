@@ -2,13 +2,14 @@ package bosca.cli.update
 
 import bosca.cli.BoscaCliCommand
 import bosca.cli.Version
+import com.github.ajalt.clikt.core.CliktError
 import com.github.ajalt.clikt.core.Context
 import com.github.ajalt.clikt.parameters.options.flag
 import com.github.ajalt.clikt.parameters.options.option
 
 /**
  * Prints the installed CLI version and, with `--check`, reports whether a newer
- * release is published in the installer's release source.
+ * release is published in the selected GitHub or artifact repository.
  */
 class VersionCommand : BoscaCliCommand(name = "version") {
     override fun help(context: Context) =
@@ -16,7 +17,7 @@ class VersionCommand : BoscaCliCommand(name = "version") {
 
     private val check by option(
         "--check",
-        help = "Check the installer's release source for a newer release",
+        help = "Check GitHub releases or the configured artifact repository for a newer release",
     ).flag()
 
     private val artifactsUrl by option(
@@ -33,17 +34,20 @@ class VersionCommand : BoscaCliCommand(name = "version") {
         echo("bosca ${Version.current}")
         if (!check) return
 
-        val source = UpdateChecker.releaseSource(artifactsUrl)
+        val source = try {
+            UpdateChecker.releaseSource(artifactsUrl)
+        } catch (e: IllegalArgumentException) {
+            throw CliktError(e.message ?: "Invalid CLI release source.")
+        }
         val release = UpdateChecker.fetchLatestRelease(source)
         if (release == null) {
-            echo("Could not find a bosca release at ${source.listingUrl} to check for updates.", err = true)
-            return
+            throw CliktError("Could not find a bosca release at ${source.listingUrl} to check for updates.")
         }
         if (UpdateChecker.isNewer(release.version, Version.current)) {
             echo("A new release is available: ${Version.current} → ${release.version}")
             echo("  Update: ${UpdateChecker.installCommand(release)}")
         } else {
-            echo("You are on the latest release (${release.version}).")
+            echo("No newer release is available (latest published: ${release.version}).")
         }
     }
 }
