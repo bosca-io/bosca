@@ -35,12 +35,15 @@ import io.nats.client.Message
 import io.nats.client.PullSubscribeOptions
 import io.nats.client.api.PublishAck
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
+import java.io.IOException
 import java.time.Duration
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CountDownLatch
@@ -50,6 +53,7 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertFailsWith
 import kotlin.test.assertSame
+import kotlin.test.assertTrue
 
 class NatsAnalyticsPipelineTest {
     private val json = Json { encodeDefaults = true }
@@ -105,6 +109,40 @@ class NatsAnalyticsPipelineTest {
 
         verify(exactly = 3) { jetStream.publishAsync(NatsEventRepository.STREAM_SUBJECT, any<ByteArray>()) }
         verify(exactly = 1) { connection.jetStreamManagement() }
+    }
+
+    @Test
+    fun `publisher reports NATS future cancellation as a failure and publishes subsequent batches`() = runTest {
+        every { management.getStreamInfo(NatsEventRepository.STREAM_NAME) } returns mockk()
+        val response = CompletableFuture<PublishAck>()
+        val cancelled = response.thenApply { it }
+        response.cancel(false)
+        every { jetStream.publishAsync(any(), any<ByteArray>()) } returns cancelled andThen
+            CompletableFuture.completedFuture(mockk<PublishAck>())
+        val repository = NatsEventRepository(nats, json)
+        val batch = events.copy(events = events.events.take(1))
+
+        assertFailsWith<IOException> { repository.process(batch) }
+        repository.process(batch)
+
+        verify(exactly = 2) { jetStream.publishAsync(NatsEventRepository.STREAM_SUBJECT, any<ByteArray>()) }
+    }
+
+    @Test
+    fun `publisher preserves caller cancellation while awaiting NATS`() = runTest {
+        every { management.getStreamInfo(NatsEventRepository.STREAM_NAME) } returns mockk()
+        val published = CompletableDeferred<Unit>()
+        every { jetStream.publishAsync(any(), any<ByteArray>()) } answers {
+            published.complete(Unit)
+            CompletableFuture<PublishAck>()
+        }
+        val repository = NatsEventRepository(nats, json)
+        val pending = async { repository.process(events) }
+
+        published.await()
+        pending.cancelAndJoin()
+
+        assertTrue(pending.isCancelled)
     }
 
     @Test

@@ -37,7 +37,14 @@ class EventProcessingServiceImpl(
         workers = List(configuration.workerCount) {
             processingScope.launch {
                 for (request in channel) {
-                    processRequest(request.context, request.events)
+                    try {
+                        processRequest(request.context, request.events)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        // Request-context cleanup can fail after the repository has stored the batch.
+                        log.error("Analytics event processing failed", e)
+                    }
                 }
             }
         }

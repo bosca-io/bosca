@@ -3,6 +3,7 @@ package bosca.analytics.repository.nats
 import bosca.analytics.model.Events
 import bosca.analytics.repository.EventRepository
 import bosca.nats.NatsConnectionPool
+import io.nats.client.Connection
 import io.nats.client.JetStream
 import io.nats.client.JetStreamApiException
 import io.nats.client.api.RetentionPolicy
@@ -14,6 +15,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import org.slf4j.LoggerFactory
+import java.io.IOException
 
 /**
  * [EventRepository] implementation that publishes processed analytics events to a
@@ -31,7 +33,7 @@ class NatsEventRepository(
 ) : EventRepository {
 
     @Volatile
-    private var js: JetStream? = null
+    private var js: Pair<Connection, JetStream>? = null
     private val initMutex = Mutex()
 
     override suspend fun process(events: Events) {
@@ -41,6 +43,8 @@ class NatsEventRepository(
                 val message = events.copy(events = listOf(event))
                 val payload = json.encodeToString(Events.serializer(), message)
                 jetStream.publishAsync(STREAM_SUBJECT, payload.toByteArray(Charsets.UTF_8))
+                    // A cancelled NATS future is a publish failure, not coroutine cancellation.
+                    .exceptionally { throw IOException("Failed to publish analytics event to NATS", it) }
             }
         }
         for (future in futures) {
@@ -53,13 +57,13 @@ class NatsEventRepository(
     }
 
     private suspend fun ensureInitialized(): JetStream {
-        js?.let { return it }
+        val connection = nats.systemConnection()
+        js?.takeIf { it.first === connection }?.let { return it.second }
         return initMutex.withLock {
-            js?.let { return@withLock it }
+            js?.takeIf { it.first === connection }?.let { return@withLock it.second }
             withContext(Dispatchers.IO) {
-                val connection = nats.systemConnection()
                 ensureStream(connection.jetStreamManagement())
-                connection.jetStream().also { js = it }
+                connection.jetStream().also { js = connection to it }
             }
         }
     }
