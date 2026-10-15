@@ -24,7 +24,10 @@ class SwarmOAuthRedirectsTest {
         val directory = Files.createTempDirectory("swarm-oauth-test-")
         try {
             val defaults = SwarmConfig().withSecrets()
-            val redirects = listOf("https://studio.example.org", "https://accounts.example.org/login?next=a,b", "http://localhost:3000")
+            val redirects = listOf(
+                "https://studio.example.org", "https://accounts.example.org/login?next=a,b", "http://localhost:3000",
+                "thepursuit://", "thepursuit://oauth/callback", "io.example.app:/oauth/callback",
+            )
             val config = defaults.copy(sites = defaults.sites.mapIndexed { index, site ->
                 if (index == 0) site.copy(oauthRedirects = redirects) else site
             })
@@ -110,10 +113,27 @@ class SwarmOAuthRedirectsTest {
     }
 
     @Test
+    fun `custom schemes and HTTP URLs pass redirect validation`() {
+        val config = SwarmConfig().withSecrets()
+        listOf(
+            "thepursuit://", "thepursuit://oauth/callback", "thepursuit:///oauth/callback",
+            "io.example.app:/oauth/callback", "example-app+oauth://callback?source=login",
+            "THEPURSUIT://", "HTTPS://example.org/callback", "http://localhost:3000",
+        ).forEach { redirect ->
+            config.copy(sites = listOf(config.sites[0].copy(oauthRedirects = listOf(redirect))) + config.sites.drop(1)).validate()
+        }
+    }
+
+    @Test
     fun `invalid redirect URLs fail validation before deployment`() {
         val config = SwarmConfig().withSecrets()
         listOf("", "/login", "//example.org", "ftp://example.org", "https://user:password@example.org",
-            "https://", "https://example.org:0", "https://example.org:65536", " https://example.org", "https://example.org\n")
+            "https://", "https:///callback", "https:/callback", "https://example.org:0", "https://example.org:65536",
+            " https://example.org", "https://example.org\n", " thepursuit://", "thepursuit://\n",
+            "thepursuit://user:password@callback", "thepursuit://user@invalid_host", "thepursuit://callback:invalid",
+            "thepursuit://callback:0", "thepursuit://callback:65536", "thepursuit://callback/%zz",
+            "1invalid://", "thepursuit:", "thepursuit:callback", "javascript://callback", "data://callback",
+            "file:///callback", "vbscript://callback")
             .forEach { redirect ->
                 val failure = assertFailsWith<IllegalArgumentException> {
                     config.copy(sites = listOf(config.sites[0].copy(oauthRedirects = listOf(redirect))) + config.sites.drop(1)).validate()
