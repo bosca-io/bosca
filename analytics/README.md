@@ -50,6 +50,22 @@ docker compose down     # Stop services
 
 The project separates contracts (`core-analytics`) from implementations (`analytics`). Two standalone servers handle the event pipeline: the collector ingests events and the processor transforms and stores them. Both servers support GraalVM native image compilation and fat JAR packaging via the Shadow plugin. The `analytics-ai` module adds AI-powered analysis on top of the core analytics contracts. `analytics-server-client` provides a client library for other services to interact with the analytics API.
 
+## Collector health
+
+The collector exposes `/api/v1/collector/ready` and `/api/v1/collector/live` on
+its HTTP port. A failed NATS publish or request-processing failure makes readiness
+return 503. Liveness returns 503 after either failure persists for 60 seconds.
+Repeated failures do not reset that grace period.
+
+Readiness checks JetStream with a bounded timeout so NATS recovery can restore
+readiness without incoming events. A processing failure clears after a subsequent
+request completes successfully; otherwise the liveness probe requests a restart.
+Workers log failed batches and continue with the next request. Failed batches are
+not replayed because a failure can occur after storage has already succeeded.
+
+Deploy the collector image and Helm probes together. Collector chart `0.1.2`
+(services chart `0.1.5`) uses these endpoints with a five-second probe interval.
+
 ## Bible usage reporting
 
 The Analytics pipeline reports API.Bible usage from client-authored events. Text views use

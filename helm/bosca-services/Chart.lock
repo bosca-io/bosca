@@ -22,7 +22,7 @@ dependencies:
   version: 0.1.4
 - name: bosca-collector
   repository: file://../bosca-collector
-  version: 0.1.1
+  version: 0.1.2
 - name: bml-message-server
   repository: file://../bml-message-server
   version: 0.1.0
@@ -50,5 +50,5 @@ dependencies:
 - name: text-embeddings-inference
   repository: file://../text-embeddings-inference
   version: 0.1.2
-digest: sha256:a47b284c6d35b3237014380b9355520602e6b4dc629fab175edc1ac7ec2e08d4
-generated: "2026-10-14T15:41:11.052618-05:00"
+digest: sha256:ea833468238232af6809cd4e25f40457927da0e7a0fc97e067d9dc6d65f15ad7
+generated: "2026-10-15T10:40:37.909254-05:00"

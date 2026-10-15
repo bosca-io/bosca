@@ -170,7 +170,7 @@ class EventProcessingServiceEndToEndTest {
         val application = mockk<BoscaApplication> {
             every { onShutdown(any()) } just runs
         }
-        val service = EventProcessingServiceImpl(application, eventRepository, EventPipelineTransforms(transforms), EventProcessingConfiguration())
+        val service = EventProcessingServiceImpl(application, eventRepository, EventPipelineTransforms(transforms), EventProcessingConfiguration(), EventProcessingHealth())
         // Give the collector coroutine time to start on Dispatchers.IO
         Thread.sleep(200)
         return service
@@ -258,7 +258,7 @@ class EventProcessingServiceEndToEndTest {
         val application = mockk<BoscaApplication> {
             every { onShutdown(any()) } just runs
         }
-        val service = EventProcessingServiceImpl(application, wrappedRepo, EventPipelineTransforms(createPipeline()), EventProcessingConfiguration())
+        val service = EventProcessingServiceImpl(application, wrappedRepo, EventPipelineTransforms(createPipeline()), EventProcessingConfiguration(), EventProcessingHealth())
         Thread.sleep(200)
 
         repeat(batchCount) {

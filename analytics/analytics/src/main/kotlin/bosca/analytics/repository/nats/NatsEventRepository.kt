@@ -2,18 +2,27 @@ package bosca.analytics.repository.nats
 
 import bosca.analytics.model.Events
 import bosca.analytics.repository.EventRepository
+import bosca.analytics.service.EventProcessingHealth
 import bosca.nats.NatsConnectionPool
+import io.nats.client.Connection
 import io.nats.client.JetStream
 import io.nats.client.JetStreamApiException
+import io.nats.client.JetStreamOptions
 import io.nats.client.api.RetentionPolicy
 import io.nats.client.api.StreamConfiguration
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.future.await
+import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
 import org.slf4j.LoggerFactory
+import java.io.IOException
+import java.time.Duration
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * [EventRepository] implementation that publishes processed analytics events to a
@@ -28,19 +37,34 @@ import org.slf4j.LoggerFactory
 class NatsEventRepository(
     private val nats: NatsConnectionPool,
     private val json: Json,
+    private val health: EventProcessingHealth,
 ) : EventRepository {
 
     @Volatile
-    private var js: JetStream? = null
+    private var js: Pair<Connection, JetStream>? = null
     private val initMutex = Mutex()
 
     override suspend fun process(events: Events) {
+        try {
+            publish(events)
+            health.natsRecovered()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            health.natsFailed()
+            throw e
+        }
+    }
+
+    private suspend fun publish(events: Events) {
         val jetStream = ensureInitialized()
         val futures = withContext(Dispatchers.IO) {
             events.events.map { event ->
                 val message = events.copy(events = listOf(event))
                 val payload = json.encodeToString(Events.serializer(), message)
                 jetStream.publishAsync(STREAM_SUBJECT, payload.toByteArray(Charsets.UTF_8))
+                    // A cancelled NATS future is a publish failure, not coroutine cancellation.
+                    .exceptionally { throw IOException("Failed to publish analytics event to NATS", it) }
             }
         }
         for (future in futures) {
@@ -53,13 +77,13 @@ class NatsEventRepository(
     }
 
     private suspend fun ensureInitialized(): JetStream {
-        js?.let { return it }
+        val connection = nats.systemConnection()
+        js?.takeIf { it.first === connection }?.let { return it.second }
         return initMutex.withLock {
-            js?.let { return@withLock it }
+            js?.takeIf { it.first === connection }?.let { return@withLock it.second }
             withContext(Dispatchers.IO) {
-                val connection = nats.systemConnection()
                 ensureStream(connection.jetStreamManagement())
-                connection.jetStream().also { js = it }
+                connection.jetStream().also { js = connection to it }
             }
         }
     }
@@ -69,6 +93,26 @@ class NatsEventRepository(
         const val STREAM_SUBJECT = "analytics.events-strm"
 
         private val log = LoggerFactory.getLogger(NatsEventRepository::class.java)
+
+        /** Checks JetStream independently of incoming events so readiness can recover after traffic stops. */
+        suspend fun checkReadiness(nats: NatsConnectionPool, health: EventProcessingHealth) {
+            try {
+                val ready = withTimeoutOrNull(2.seconds) {
+                    val connection = nats.systemConnection()
+                    runInterruptible(Dispatchers.IO) {
+                        val options = JetStreamOptions.builder().requestTimeout(Duration.ofSeconds(1)).build()
+                        ensureStream(connection.jetStreamManagement(options))
+                    }
+                    true
+                } == true
+                if (ready) health.natsRecovered() else health.natsFailed()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                health.natsFailed()
+                log.warn("NATS readiness check failed", e)
+            }
+        }
 
         /**
          * Creates the JetStream stream for analytics event forwarding if it does

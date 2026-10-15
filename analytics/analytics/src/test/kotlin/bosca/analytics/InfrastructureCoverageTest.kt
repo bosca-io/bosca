@@ -2,6 +2,7 @@
 
 package bosca.analytics
 
+import bosca.analytics.service.EventProcessingHealth
 import bosca.analytics.configuration.EventPipelineTransforms
 import bosca.analytics.configuration.EventProcessingConfiguration
 import bosca.analytics.jobs.SqlJob
@@ -104,6 +105,7 @@ class InfrastructureCoverageTest {
             repository,
             EventPipelineTransforms(listOf(cancellation)),
             EventProcessingConfiguration(workerCount = 1),
+            EventProcessingHealth(),
         )
 
         assertFailsWith<CancellationException> {
