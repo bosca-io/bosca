@@ -71,9 +71,10 @@ class MailerConfigurationTest {
     @Test
     fun mailerType_containsSupportedProviders() {
         val values = MailerType.entries
-        assertEquals(2, values.size)
+        assertEquals(3, values.size)
         assertTrue(values.contains(MailerType.SENDGRID))
         assertTrue(values.contains(MailerType.MAILGUN))
+        assertTrue(values.contains(MailerType.SMTP))
     }
 
     /**

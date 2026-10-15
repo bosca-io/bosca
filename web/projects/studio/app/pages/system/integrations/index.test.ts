@@ -17,7 +17,7 @@ const globalConfig = {
   },
   stubs: {
     PageShell: { template: '<main><slot name="header" /><slot /></main>' },
-    PageHeader: { template: '<header />' },
+    PageHeader: { template: '<header><slot name="actions" /></header>' },
     NuxtLink: {
       props: ['to'],
       template: '<a :data-to="to"><slot /></a>',
@@ -45,6 +45,16 @@ beforeEach(() => {
 })
 
 describe('Integrations Page', () => {
+  it('links to email provider selection and SMTP settings', () => {
+    configurations.value = {
+      ...(configurations.value as Record<string, unknown>),
+      smtp: { configuration: { id: 'smtp', key: 'smtp', value: { host: 'relay.internal', port: 25 } } },
+    }
+    const wrapper = mount(IntegrationsPage, { global: globalConfig })
+    expect(wrapper.get('[data-to="/system/integrations/email"]').text()).toContain('Choose email provider')
+    expect(wrapper.get('[data-to="/system/integrations/smtp"]').text()).toContain('Connected')
+  })
+
   it('links to Bible provider administration using credential presence without reading the key', () => {
     configurations.value = {
       ...(configurations.value as Record<string, unknown>),
