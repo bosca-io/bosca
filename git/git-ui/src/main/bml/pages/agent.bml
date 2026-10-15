@@ -7,10 +7,100 @@
       <if !page.allowed>
         <ui-alert>Administrator access is required.</ui-alert>
       <else-if page.selected != null>
-        <ui-page-heading :title="page.selected.name" backHref="/ci-agents" backLabel="CI agents" />
-        <git-agent-status :agent="page.selected" />
-        <git-agent-settings :page="page" />
+        <ui-page-heading
+          :title="page.selected.name"
+          :subtitle='page.selected.mode.toString() + " · " + page.selected.status.toString()'
+          :trail='listOf(bosca.git.ui.components.NavigationItem("CI Agents", "/ci-agents", false))'
+        >
+          <ui-button size="sm" type="submit" form="agent-form" primary icon="save">Save</ui-button>
+          <if page.selected.mode.name == "ORCHESTRATOR">
+            <ui-button size="sm" type="submit" form="orchestrator-form" icon="save">Save Config</ui-button>
+          </if>
+          <a class="button-link" :href='"/ci-agents/" + bosca.git.ui.encode(page.selected.id)'>
+            <span class="action-icon-muted"><ui-icon name="pulse" :size="14" /></span>
+            Refresh
+          </a>
+          <git-agent-deregister :page="page" />
+        </ui-page-heading>
+        <div class="detail-layout">
+          <div class="agent-main">
+            <git-agent-status :agent="page.selected" />
+            <git-agent-settings :page="page" />
+          </div>
+          <aside class="agent-sidebar" aria-label="Agent information">
+            <ui-card title="Info" :padded="false">
+              <dl class="info-items">
+                <div><dt>Type</dt><dd>{ if (page.selected.mode.name == "ORCHESTRATOR") "Orchestrator" else "Runner" }</dd></div>
+                <div><dt>Ephemeral</dt><dd>{ if (page.selected.ephemeral) "Yes" else "No" }</dd></div>
+                <div><dt>Labels</dt><dd>{ page.selected.labels.size }</dd></div>
+                <div>
+                  <dt>Status</dt>
+                  <dd :style='"color: " + bosca.git.ui.statusColor(page.selected.status.name)'>{ page.selected.status.name }</dd>
+                </div>
+              </dl>
+            </ui-card>
+            <ui-card title="ID" :padded="false">
+              <code class="id-box">{ page.selected.id }</code>
+            </ui-card>
+          </aside>
+        </div>
       </if>
     </ui-page>
   </git-layout>
+  <style scoped>
+    /* Studio agent detail: main cards with an Info and ID sidebar. */
+    .detail-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 280px;
+      align-items: start;
+      gap: 18px;
+    }
+    .agent-main,
+    .agent-sidebar {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      min-width: 0;
+    }
+    .action-icon-muted {
+      display: inline-flex;
+      color: var(--fg-2);
+    }
+    .info-items {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin: 0;
+      padding: 14px 16px;
+    }
+    .info-items > div {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .info-items dt {
+      color: var(--fg-3);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .info-items dd {
+      margin: 0;
+      color: var(--fg-1);
+      font-size: 12px;
+    }
+    .id-box {
+      display: block;
+      padding: 14px 16px;
+      color: var(--fg-2);
+      font-size: 11px;
+      word-break: break-all;
+    }
+    @media (max-width: 900px) {
+      .detail-layout {
+        grid-template-columns: minmax(0, 1fr);
+      }
+    }
+  </style>
 </page>

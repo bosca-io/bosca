@@ -4,59 +4,62 @@
     bosca.git.ui.PullActionsModel(page)
   </script>
   <island name="git-pull-actions" :key="page.pull.id">
-    <section :data-next-href="model.nextHref" class="merge-panel">
-      <div class="merge-summary">
-        <span
-          class="merge-icon"
-          :data-status="model.page.pull.status.name"
-          :data-blocked="model.page.hasMergeBlockers"
-        >
-          <ui-icon :name="model.page.mergeIcon" :size="18" />
-        </span>
-        <div>
-          <h2>{ model.page.mergeHeading }</h2>
-          <p>{ model.page.mergeDescription }</p>
-        </div>
-      </div>
-      <if model.page.pull.conflictingFiles.isNotEmpty()>
-        <ul class="conflict-files">
-          <for file in model.page.pull.conflictingFiles>
-            <li><ui-icon name="file" :size="13" /><code>{ file }</code></li>
-          </for>
-        </ul>
-      </if>
-      <if model.page.canEdit>
-        <div class="pull-actions">
-          <if model.page.pull.status.name == "OPEN">
-            <ui-dialog
-              title="Merge pull request"
-              triggerLabel="Merge pull request"
-              icon="merge"
-              primary
-              :triggerDisabled="model.page.hasMergeBlockers"
-              :forceOpen='model.selectedAction == "merge"'
-            >
-              <if model.plan.isEmpty()>
-                <form class="modal-form" @submit="model.prepare(form.strategy, ctx)">
+    <section :data-next-href="model.nextHref">
+      <if model.page.canEdit && (model.page.pull.status.name == "OPEN" || model.page.pull.status.name == "DRAFT" || model.page.pull.status.name == "CLOSED")>
+        <div class="side-card">
+          <h2 class="side-card-title">Actions</h2>
+          <div class="action-stack">
+            <if model.page.pull.status.name == "DRAFT">
+              <ui-dialog
+                title="Ready for review"
+                triggerLabel="Mark Ready for Review"
+                icon="eye"
+                primary
+                triggerStyle="block"
+                :forceOpen='model.failed && model.selectedAction == "ready"'
+              >
+                <form class="modal-form" @submit='model.lifecycle("ready", true, ctx)'>
                   <div class="modal-fields">
+                    <p class="detail-note">Reviewers will be able to approve or request changes.</p>
                     <if model.message.isNotBlank()><ui-alert>{ model.message }</ui-alert></if>
-                    <p class="detail-note">Choose how these changes should be merged into { model.page.pull.targetBranch }.</p>
-                    <ui-field label="Merge method">
-                      <ui-select name="strategy">
-                        <for strategy in listOf("MERGE_COMMIT", "SQUASH", "REBASE", "FAST_FORWARD")>
-                          <option :value="strategy" :selected="model.strategy == strategy">
-                            { bosca.git.ui.mergeStrategyLabel(strategy) }
-                          </option>
-                        </for>
-                      </ui-select>
-                    </ui-field>
                   </div>
                   <footer class="modal-footer">
                     <ui-button ref="cancel">Cancel</ui-button>
-                    <ui-button type="submit" primary>Review merge</ui-button>
+                    <ui-button type="submit" primary>Ready for review</ui-button>
                   </footer>
                 </form>
-              <else>
+              </ui-dialog>
+            </if>
+            <if model.page.pull.status.name == "OPEN">
+              <form class="merge-form" @submit="model.prepare(form.strategy, ctx)">
+                <div class="merge-row">
+                  <ui-select name="strategy" size="sm" label="Merge method">
+                    <for strategy in listOf("MERGE_COMMIT", "SQUASH", "REBASE", "FAST_FORWARD")>
+                      <option :value="strategy" :selected="model.strategy == strategy">
+                        { bosca.git.ui.mergeStrategyOptionLabel(strategy) }
+                      </option>
+                    </for>
+                  </ui-select>
+                </div>
+                <ui-button type="submit" size="sm" primary class="block" :disabled="model.page.hasMergeBlockers">
+                  Merge Pull Request
+                </ui-button>
+              </form>
+              <if model.page.hasMergeBlockers>
+                <p class="action-note" data-tone="error">Cannot merge — conflicts detected.</p>
+              <else-if model.page.pull.dependencies.any { it.status.name != "MERGED" }>
+                <p class="action-note">Open dependencies will be included in the merge confirmation.</p>
+              </if>
+              <if model.failed && model.selectedAction == "merge" && model.plan.isEmpty()>
+                <ui-alert>{ model.message }</ui-alert>
+              </if>
+              <ui-dialog
+                title="Merge pull request"
+                triggerLabel="Merge pull request"
+                icon="merge"
+                :showTrigger="false"
+                :openRequest="model.mergeDialogRequest"
+              >
                 <form class="modal-form" @submit="model.merge(true, ctx)">
                   <div class="modal-fields">
                     <if model.message.isNotBlank()><ui-alert>{ model.message }</ui-alert></if>
@@ -85,7 +88,6 @@
                     <if model.mergeBlocked>
                       <ui-alert>Resolve the blocked pull requests before merging.</ui-alert>
                     </if>
-                    <ui-button size="sm" icon="arrow-left" @click="model.resetMerge()">Change method</ui-button>
                   </div>
                   <footer class="modal-footer">
                     <ui-button ref="cancel">Cancel</ui-button>
@@ -94,137 +96,65 @@
                     </ui-button>
                   </footer>
                 </form>
-              </if>
-            </ui-dialog>
-          </if>
-          <if model.page.pull.status.name == "DRAFT">
-            <ui-dialog
-              title="Ready for review"
-              triggerLabel="Ready for review"
-              icon="eye"
-              primary
-              :forceOpen='model.failed && model.selectedAction == "ready"'
-            >
-              <form class="modal-form" @submit='model.lifecycle("ready", true, ctx)'>
-                <div class="modal-fields">
-                  <p class="detail-note">Reviewers will be able to approve or request changes.</p>
-                  <if model.message.isNotBlank()><ui-alert>{ model.message }</ui-alert></if>
-                </div>
-                <footer class="modal-footer">
-                  <ui-button ref="cancel">Cancel</ui-button>
-                  <ui-button type="submit" primary>Ready for review</ui-button>
-                </footer>
-              </form>
-            </ui-dialog>
-          </if>
-          <if model.page.pull.status.name == "CLOSED">
-            <ui-dialog
-              title="Reopen pull request"
-              triggerLabel="Reopen pull request"
-              icon="pull"
-              primary
-              :forceOpen='model.failed && model.selectedAction == "reopen"'
-            >
-              <form class="modal-form" @submit='model.lifecycle("reopen", true, ctx)'>
-                <div class="modal-fields">
-                  <p class="detail-note">Reopen this pull request to continue reviewing its changes.</p>
-                  <if model.message.isNotBlank()><ui-alert>{ model.message }</ui-alert></if>
-                </div>
-                <footer class="modal-footer">
-                  <ui-button ref="cancel">Cancel</ui-button>
-                  <ui-button type="submit" primary>Reopen pull request</ui-button>
-                </footer>
-              </form>
-            </ui-dialog>
-          </if>
-          <if model.page.pull.status.name == "OPEN" || model.page.pull.status.name == "DRAFT">
-            <ui-dialog
-              title="Close pull request"
-              triggerLabel="Close pull request"
-              icon="close"
-              size="sm"
-              :forceOpen='model.failed && model.selectedAction == "close"'
-            >
-              <form class="modal-form" @submit='model.lifecycle("close", true, ctx)'>
-                <div class="modal-fields">
-                  <p class="detail-note">Close without merging these changes. You can reopen it later.</p>
-                  <if model.message.isNotBlank()><ui-alert>{ model.message }</ui-alert></if>
-                </div>
-                <footer class="modal-footer">
-                  <ui-button ref="cancel">Cancel</ui-button>
-                  <ui-button type="submit" class="danger">Close pull request</ui-button>
-                </footer>
-              </form>
-            </ui-dialog>
-          </if>
+              </ui-dialog>
+            </if>
+            <if model.page.pull.status.name == "CLOSED">
+              <ui-dialog
+                title="Reopen pull request"
+                triggerLabel="Reopen"
+                icon="pull"
+                primary
+                triggerStyle="block"
+                :forceOpen='model.failed && model.selectedAction == "reopen"'
+              >
+                <form class="modal-form" @submit='model.lifecycle("reopen", true, ctx)'>
+                  <div class="modal-fields">
+                    <p class="detail-note">Reopen this pull request to continue reviewing its changes.</p>
+                    <if model.message.isNotBlank()><ui-alert>{ model.message }</ui-alert></if>
+                  </div>
+                  <footer class="modal-footer">
+                    <ui-button ref="cancel">Cancel</ui-button>
+                    <ui-button type="submit" primary>Reopen pull request</ui-button>
+                  </footer>
+                </form>
+              </ui-dialog>
+            </if>
+            <if model.page.pull.status.name == "OPEN" || model.page.pull.status.name == "DRAFT">
+              <ui-dialog
+                title="Close pull request"
+                triggerLabel="Close"
+                icon="close"
+                size="sm"
+                triggerStyle="block"
+                :forceOpen='model.failed && model.selectedAction == "close"'
+              >
+                <form class="modal-form" @submit='model.lifecycle("close", true, ctx)'>
+                  <div class="modal-fields">
+                    <p class="detail-note">Close without merging these changes. You can reopen it later.</p>
+                    <if model.message.isNotBlank()><ui-alert>{ model.message }</ui-alert></if>
+                  </div>
+                  <footer class="modal-footer">
+                    <ui-button ref="cancel">Cancel</ui-button>
+                    <ui-button type="submit" class="danger">Close pull request</ui-button>
+                  </footer>
+                </form>
+              </ui-dialog>
+            </if>
+          </div>
         </div>
-      </if>
-      <if model.page.pull.status.name == "OPEN" || model.page.pull.status.name == "DRAFT">
-        <git-pull-checks :page="model.page" />
       </if>
     </section>
   </island>
   <style scoped>
-    .merge-summary {
+    .merge-form {
       display: flex;
-      align-items: flex-start;
-      gap: 12px;
-      padding: 18px 18px 12px;
-    }
-    .merge-icon {
-      display: flex;
-      flex: none;
-      align-items: center;
-      justify-content: center;
-      width: 32px;
-      height: 32px;
-      border-radius: 8px;
-      color: var(--ok);
-      background: color-mix(in srgb, var(--ok) 10%, transparent);
-    }
-    .merge-icon[data-blocked] {
-      color: var(--err);
-      background: color-mix(in srgb, var(--err) 10%, transparent);
-    }
-    .merge-icon[data-status="MERGED"] {
-      color: #a78bff;
-      background: #a78bff18;
-    }
-    .merge-icon[data-status="DRAFT"],
-    .merge-icon[data-status="CLOSED"] {
-      color: var(--fg-3);
-      background: var(--bg-3);
-    }
-    h2 {
+      flex-direction: column;
+      gap: 10px;
       margin: 0;
-      font-size: 13px;
-      font-weight: 600;
     }
-    .merge-summary p {
-      margin: 5px 0 0;
-      color: var(--fg-3);
-      font-size: 12px;
-      line-height: 1.6;
-    }
-    .pull-actions {
+    .merge-row {
       display: flex;
-      flex-wrap: wrap;
       gap: 8px;
-      padding: 0 18px 18px 62px;
-    }
-    .conflict-files {
-      padding: 0 18px 12px 62px;
-      margin: 0;
-      list-style: none;
-      color: var(--err);
-    }
-    .conflict-files li {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      margin-bottom: 6px;
-      font-size: 12px;
-      overflow-wrap: anywhere;
     }
     .merge-plan {
       margin: 0;
@@ -246,12 +176,6 @@
       margin: 6px 0 0;
       color: var(--err);
       font-size: 12px;
-    }
-    @media (max-width: 600px) {
-      .pull-actions,
-      .conflict-files {
-        padding-left: 18px;
-      }
     }
   </style>
   <script client scoped>

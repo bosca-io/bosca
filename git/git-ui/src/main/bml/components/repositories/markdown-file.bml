@@ -10,7 +10,6 @@
         :tabs='listOf("Preview", "Source")'
         :selected='if (showSource) "Source" else "Preview"'
       />
-      <git-file-toolbar :page="page" inline />
     </header>
     <div ref="previewSurface" :hidden="showSource" role="tabpanel" aria-label="Preview">
       <git-markdown :html="page.markdownHtml" />
@@ -22,24 +21,21 @@
       aria-label="Source"
       :hidden="!showSource"
     >
-      <ui-source-view :content="page.content.orEmpty()" :path="page.file" />
+      <ui-source-view :content="page.content.orEmpty()" :path="page.file" bare />
     </div>
   </section>
   <style scoped>
     .markdown-file {
-      flex: 1;
-      min-height: 0;
       display: flex;
       flex-direction: column;
+      min-width: 0;
     }
     .markdown-toolbar {
       display: flex;
       align-items: center;
-      justify-content: space-between;
       gap: 12px;
-      min-height: 46px;
       padding: 0 16px;
-      border-bottom: 1px solid var(--line);
+      border-bottom: 1px solid color-mix(in oklch, var(--line) 55%, transparent);
     }
     .markdown-source {
       flex: 1;

@@ -33,6 +33,7 @@ data class RepositoryPage(
     val slug: String,
     val visibility: String,
     val contentType: String,
+    val defaultBranch: String,
     val canEdit: Boolean,
     val canManage: Boolean,
     val editing: Boolean,
@@ -42,9 +43,19 @@ data class RepositoryPage(
     val statuses: ExplorePage? = null,
     val secrets: RepositorySecretsPage? = null,
     val settings: RepositorySettingsPage? = null,
+    val branchRefs: List<RefOption> = emptyList(),
 ) {
-    val sidebar: RepositorySidebarContext
-        get() = RepositorySidebarContext(id, ref, resolvedSha, file, path, listHref)
+    /** Whether the viewer can commit to the selected ref, as the file actions require. */
+    val canWriteRef: Boolean
+        get() = canEdit && !archived && (branches.contains(ref) || branches.isEmpty())
+
+    /** The README shown below the root listing, when the folder has one. */
+    val readmeEntry: RepositoryEntry?
+        get() =
+            entries
+                .filter { !it.directory }
+                .sortedBy { it.name.lowercase() }
+                .firstOrNull { it.name.lowercase() in setOf("readme.md", "readme.markdown", "readme") }
 
     val rootHref: String
         get() = href()
@@ -68,14 +79,14 @@ data class RepositoryPage(
                     "Commits",
                     "Branches",
                     "Tags",
-                    "Pull requests",
+                    "Pull Requests",
                     "Pipelines",
                     "Statuses",
                     "Secrets",
                     "Settings",
                 )
                 .map {
-                    val key = if (it == "Pull requests") "pulls" else it.lowercase()
+                    val key = if (it == "Pull Requests") "pulls" else it.lowercase()
                     NavigationItem(it, href(tab = key, path = path), tab == key)
                 }
 

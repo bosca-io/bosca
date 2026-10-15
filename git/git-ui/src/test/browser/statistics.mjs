@@ -158,7 +158,7 @@ for (const width of [1920, 1024, 390]) {
   await ev("document.querySelector('.stats-retry').click()");
   await until("document.querySelector('.repository-summary [data-bml-deferred]')?.dataset.bmlDeferredState==='loaded'");
   assert.ok(
-    await ev("document.querySelector('.repository-summary').innerText.includes('1 contributor') && !document.querySelector('.stats-error')"),
+    await ev("[...document.querySelectorAll('.repository-summary .stat-tile')].some(tile => tile.textContent.includes('Contributors') && tile.querySelector('.stat-value')?.textContent.trim() === '1') && !document.querySelector('.stats-error')"),
     "Retry replaces the statistics error with the loaded summary",
   );
 

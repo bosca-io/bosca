@@ -11,6 +11,14 @@ class AgentStatusModel(var agent: GitUiAgentsData.Git.PipelineAgents, var messag
     val active: Boolean
         get() = agent.status == GitAgentStatus.ONLINE || agent.status == GitAgentStatus.BUSY
 
+    /** The running step of the current job, as Studio's Current Command card shows it. */
+    val currentStep: GitUiAgentsData.Git.PipelineAgents.CurrentJob.Steps?
+        get() = agent.currentJob?.steps?.sortedBy { it.ordinal }?.firstOrNull { it.status.name == "RUNNING" }
+
+    /** The running step's command and whether it is an action reference rather than a shell script. */
+    val currentCommand: Pair<String, Boolean>?
+        get() = currentStep?.let { step -> step.run?.let { it to false } ?: step.uses?.let { it to true } }
+
     suspend fun refresh(ctx: RenderContext) {
         message = ""
         try {

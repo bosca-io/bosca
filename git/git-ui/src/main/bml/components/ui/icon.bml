@@ -1,7 +1,7 @@
 <component tag="ui-icon">
   <prop name="size" type="Int" default="16" />
   <prop name="name" type="String" required />
-  <prop name="strokeWidth" type="Double" default="1.75" />
+  <prop name="strokeWidth" type="Double" default="2.0" />
   <!-- Lucide, ISC license: src/main/resources/git-ui/licenses/lucide.txt -->
   <svg
     :width="size"
@@ -51,6 +51,39 @@
       <rect width="8" height="8" x="3" y="3" rx="2" />
       <path d="M7 11v4a2 2 0 0 0 2 2h4" />
       <rect width="8" height="8" x="13" y="13" rx="2" />
+    <else-if name == "book-open">
+      <path d="M12 7v14" />
+      <path
+        d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"
+      />
+    <else-if name == "upload">
+      <path d="M12 3v12" />
+      <path d="m17 8-5-5-5 5" />
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+    <else-if name == "save">
+      <path
+        d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"
+      />
+      <path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7" />
+      <path d="M7 3v4a1 1 0 0 0 1 1h7" />
+    <else-if name == "list">
+      <path d="M3 12h.01" />
+      <path d="M3 18h.01" />
+      <path d="M3 6h.01" />
+      <path d="M8 12h13" />
+      <path d="M8 18h13" />
+      <path d="M8 6h13" />
+    <else-if name == "wand">
+      <path
+        d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72"
+      />
+      <path d="m14 7 3 3" />
+      <path d="M5 6v4" />
+      <path d="M19 14v4" />
+      <path d="M10 2v2" />
+      <path d="M7 8H3" />
+      <path d="M21 16h-4" />
+      <path d="M11 3H9" />
     <else-if name == "compare">
       <path d="m21 16-4 4-4-4" />
       <path d="M17 20V4" />
@@ -99,9 +132,6 @@
         d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"
       />
       <path d="M14 2v5a1 1 0 0 0 1 1h5" />
-      <path d="M10 9H8" />
-      <path d="M16 13H8" />
-      <path d="M16 17H8" />
     <else-if name == "trash">
       <path d="M10 11v6" />
       <path d="M14 11v6" />

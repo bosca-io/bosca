@@ -7,7 +7,7 @@
     <div class="agent-actions" :data-next-href="model.nextHref">
       <ui-dialog
         title="Register CI agent"
-        triggerLabel="Register agent"
+        triggerLabel="Register Agent"
         triggerIcon="plus"
         icon="server"
         primary
@@ -64,43 +64,6 @@
           </form>
         </if>
       </ui-dialog>
-      <if model.page.agents.isNotEmpty()>
-        <ui-dialog
-          title="Deregister CI agent"
-          triggerLabel="Deregister agent"
-          icon="trash"
-          :forceOpen="model.failed && !model.registering"
-        >
-          <form class="modal-form" @submit="model.deregister(form.id, true, ctx)">
-            <div class="modal-fields">
-              <if model.failed && !model.registering>
-                <ui-alert :tone='if (model.failed) "error" else "success"'>
-                  { model.message }
-                </ui-alert>
-              </if>
-              <p class="form-help">
-                The agent's token will be revoked and it will no longer accept jobs.
-              </p>
-              <ui-field label="Agent">
-                <ui-select name="id" searchable required>
-                  <option value="">Choose an agent</option>
-                  <for agent in model.page.agents>
-                    <option :value="agent.id">
-                      { agent.name }
-                      ·
-                      { agent.mode.name.lowercase() }
-                    </option>
-                  </for>
-                </ui-select>
-              </ui-field>
-            </div>
-            <footer class="modal-footer">
-              <ui-button ref="cancel">Cancel</ui-button>
-              <ui-button type="submit" class="danger">Deregister agent</ui-button>
-            </footer>
-          </form>
-        </ui-dialog>
-      </if>
     </div>
   </island>
   <style scoped>

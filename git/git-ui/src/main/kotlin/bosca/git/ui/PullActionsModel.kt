@@ -18,7 +18,12 @@ class PullActionsModel(
     var strategy: String = "MERGE_COMMIT",
     var selectedAction: String = "",
     var plan: List<GitUiMergePlanData.Git.PullRequestMergePlan> = emptyList(),
+    var mergeRequest: Int = 0,
 ) {
+    /** Changes whenever a prepared merge plan should open its confirmation dialog. */
+    val mergeDialogRequest: String
+        get() = if (plan.isNotEmpty()) mergeRequest.toString() else ""
+
     val mergeBlocked: Boolean
         get() = plan.any { it.status.name != "OPEN" || !it.mergeable }
 
@@ -66,6 +71,7 @@ class PullActionsModel(
                 .pullRequestMergePlan
         require(plan.isNotEmpty()) { "No merge plan is available." }
         require(plan.last().version == page.pull.version) { "Pull request changed. Reload it before merging." }
+        mergeRequest++
     }
 
     suspend fun merge(confirmed: Boolean, ctx: RenderContext) = perform {
@@ -96,12 +102,6 @@ class PullActionsModel(
                 ),
             )
         nextHref = page.href
-    }
-
-    fun resetMerge() {
-        plan = emptyList()
-        message = ""
-        failed = false
     }
 
     private suspend fun requireReviewedHead(ctx: RenderContext) {

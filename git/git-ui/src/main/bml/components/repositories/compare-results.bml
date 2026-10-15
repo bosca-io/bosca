@@ -41,13 +41,16 @@
         <git-diff-file :file="bosca.git.ui.diffView(file)" />
       </for>
     <else>
-      <ui-card :padded="false">
-        <ui-empty-state
-          icon="compare"
-          title="Choose refs to compare"
-          message="Choose a repository and two refs to compare."
-        />
-      </ui-card>
+      <p class="empty-msg">Select two branches or refs and click Compare to see the differences.</p>
     </if>
   </div>
+  <style scoped>
+    .empty-msg {
+      margin: 0;
+      padding: 48px 0;
+      text-align: center;
+      color: var(--fg-3);
+      font-size: 13.5px;
+    }
+  </style>
 </component>

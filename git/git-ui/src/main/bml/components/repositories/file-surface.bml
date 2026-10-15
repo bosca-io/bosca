@@ -1,121 +1,115 @@
 <component tag="git-file-surface">
   <prop name="page" type="bosca.git.ui.RepositoryPage" required />
-  <section
-    :class='"file-surface" + if (page.branches.isEmpty() && page.tags.isEmpty()) " file-surface-empty" else ""'
-  >
-    <if (page.branches.isNotEmpty() || page.tags.isNotEmpty() || page.editing || page.creating) && !page.editing && !page.creating && !(page.file.isNotBlank() && page.isMarkdown && page.fileMessage.isBlank()) && !(page.file.isNotBlank() && page.content != null && page.fileMessage.isBlank() && !page.isImage && !page.isMarkdown)>
-      <git-file-toolbar :page="page" />
-    </if>
-    <if page.editing || page.creating>
-      <git-file-editor :page="page" />
-    <else-if page.fileMessage.isNotBlank()>
-      <ui-empty-state :message="page.fileMessage" />
-      <if page.rawHref.isNotBlank() && page.branches.isEmpty() && page.tags.isEmpty()>
-        <ui-icon-link icon="download" label="Download file" :href="page.rawHref" download />
+  <section class="file-viewer file-surface" :aria-label="page.file">
+    <header class="file-header">
+      <a class="back-button" :href="page.href(path = page.path)" aria-label="Back to folder" title="Back to folder">
+        <ui-icon name="arrow-left" :size="14" />
+      </a>
+      <span class="file-icon"><ui-icon name="file" :size="14" /></span>
+      <span class="file-path">{ page.file }</span>
+      <if page.content != null>
+        <code class="file-size">{ bosca.git.ui.formatSize(page.content.orEmpty().encodeToByteArray().size.toLong()) }</code>
       </if>
-    <else-if page.file.isNotBlank()>
-      <if page.isImage>
+      <span class="file-header-spacer"></span>
+      <div class="file-header-actions toolbar file-toolbar" role="group" aria-label="File actions">
+        <if page.canWriteRef && page.content != null && page.fileMessage.isBlank()>
+          <a class="button-link" :href='page.href(path = page.path, file = page.file) + "&edit=true"'>Rename</a>
+          <git-file-actions :page="page" />
+          <a class="button-link primary" :href='page.href(path = page.path, file = page.file) + "&edit=true"'>
+            <span class="edit-icon"><ui-icon name="edit" :size="14" /></span>
+            Edit
+          </a>
+        </if>
+        <if page.rawHref.isNotBlank()>
+          <ui-icon-link icon="download" label="Download file" :href="page.rawHref" download />
+        </if>
+      </div>
+    </header>
+    <if page.fileMessage.isNotBlank()>
+      <p class="file-state">{ page.fileMessage }</p>
+    <else-if page.isImage>
+      <div class="image-view">
         <img class="repository-image" :src="page.rawHref" :alt="page.file" />
-      <else-if page.isMarkdown>
-        <git-markdown-file :page="page" />
-      <else-if page.content != null>
-        <ui-source-view :content="page.content" :path="page.file">
-          <git-file-toolbar :page="page" inline />
-        </ui-source-view>
-      </if>
-    <else>
-      <if page.branches.isEmpty() && page.tags.isEmpty()>
-        <div class="empty-setup">
-          <ui-empty-state
-            icon="folder"
-            title="Start this repository"
-            message="Create your first file here, or clone the repository and push an existing project."
-          >
-            <if page.canEdit && !page.archived>
-              <a class="button-link primary" :href='page.href() + "&new=true"'>
-                <ui-icon name="plus" :size="14" />
-                Create first file
-              </a>
-            </if>
-          </ui-empty-state>
-          <div class="clone-setup">
-            <span>Clone this repository</span>
-            <div>
-              <code>git clone { page.cloneUrl }</code>
-              <ui-copy :value='"git clone " + page.cloneUrl' label="Copy clone command" />
-            </div>
-          </div>
-        </div>
-      <else>
-        <git-repository-tree :entries="page.entries" />
-      </if>
-      <if page.readmeHtml.isNotBlank()>
-        <git-markdown :html="page.readmeHtml" />
-      </if>
+      </div>
+    <else-if page.isMarkdown>
+      <git-markdown-file :page="page" />
+    <else-if page.content != null>
+      <ui-source-view :content="page.content" :path="page.file" bare />
     </if>
   </section>
   <style scoped>
-    .file-surface {
-      flex: 1;
-      min-height: 0;
-      min-width: 0;
+    /* Studio repository file viewer card. */
+    .file-viewer {
       display: flex;
       flex-direction: column;
-      overflow: auto;
-      border-left: 1px solid var(--line);
+      min-width: 0;
+      overflow: hidden;
+      background: var(--bg-1);
+      border: 1px solid var(--line);
+      border-radius: 10px;
     }
-    .file-surface-empty {
-      border-left: 0;
+    .file-header {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--line);
+    }
+    .back-button {
+      display: flex;
+      padding: 4px;
+      border-radius: 4px;
+      color: var(--fg-2);
+    }
+    .back-button:hover {
+      background: var(--bg-3);
+    }
+    .file-icon {
+      display: inline-flex;
+      color: var(--accent);
+    }
+    .file-path {
+      min-width: 0;
+      font-family: var(--font-mono);
+      font-size: 13px;
+      color: var(--fg-1);
+      overflow-wrap: anywhere;
+    }
+    .file-size {
+      font-size: 11px;
+      color: var(--fg-3);
+    }
+    .file-header-spacer {
+      flex: 1;
+    }
+    .file-header-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin: 0;
+      padding: 0;
+    }
+    .edit-icon {
+      display: inline-flex;
+      color: var(--accent);
+    }
+    .file-state {
+      margin: 0;
+      padding: 48px 0;
+      text-align: center;
+      color: var(--fg-3);
+      font-size: 13px;
+    }
+    .image-view {
+      display: flex;
+      justify-content: center;
+      padding: 16px;
     }
     .repository-image {
       max-width: 100%;
-      max-height: 100%;
+      max-height: 70vh;
       object-fit: contain;
-    }
-    .empty-setup {
-      max-width: 640px;
-      width: 100%;
-      margin: 24px auto;
-    }
-    .clone-setup {
-      margin: 0 24px 24px;
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      background: var(--bg-1);
-      overflow: hidden;
-    }
-    .clone-setup > span {
-      display: block;
-      padding: 12px 16px;
-      border-bottom: 1px solid var(--line);
-      font-size: 12px;
-      font-weight: 500;
-    }
-    .clone-setup > div {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      padding: 14px 16px;
-    }
-    .clone-setup code {
-      min-width: 0;
-      overflow-wrap: anywhere;
-      font-size: 12px;
-    }
-    .empty-setup pre {
-      overflow: auto;
-    }
-    @media (max-width: 700px) {
-      .clone-setup > div {
-        flex-direction: column;
-        align-items: flex-start;
-      }
-      .file-surface {
-        flex: none;
-        height: max(360px, calc(100dvh - 180px));
-        min-height: 360px;
-      }
     }
   </style>
 </component>

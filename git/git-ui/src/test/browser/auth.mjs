@@ -164,7 +164,7 @@ assert.equal(
 await fill({ identifier: "new@example.test", password: "long-password-123!" });
 await submit();
 await until(
-  'location.pathname === "/repositories/repo" && document.querySelector(".tree")',
+  'location.pathname === "/repositories/repo" && document.querySelector(".tree-list")',
 );
 await signout();
 await navigate("/auth/signup?redirect=%2Frepositories");

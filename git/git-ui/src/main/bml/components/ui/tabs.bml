@@ -1,7 +1,8 @@
 <component tag="ui-tabs">
   <prop name="label" type="String" required />
   <prop name="items" type="List<bosca.git.ui.components.NavigationItem>" required />
-  <nav class="tabs" :aria-label="label">
+  <prop name="header" type="Boolean" default="false" />
+  <nav :class='if (header) "tabs header-tabs" else "tabs"' :aria-label="label">
     <div class="tab-row" ref="row">
       <for item in items>
         <a :href="item.href" :aria-current='if (item.selected) "page" else "false"'>
@@ -24,12 +25,16 @@
       display: flex;
       align-items: stretch;
       gap: 12px;
-      width: 100%;
       min-width: 0;
       flex: none;
       align-self: stretch;
-      margin: 12px 0 20px;
-      border-bottom: 1px solid var(--line);
+      margin: 0 0 20px;
+      border-bottom: 1px solid color-mix(in oklch, var(--line) 55%, transparent);
+    }
+    /* Page-header tabs span the main column, as in Studio's PageHeader. */
+    .header-tabs {
+      margin: -22px -22px 22px;
+      padding: 0 22px;
     }
     .tab-row {
       display: flex;
@@ -43,6 +48,7 @@
       display: inline-flex;
       align-items: center;
       gap: 6px;
+      margin-bottom: -1px;
       padding: 10px 12px;
       color: var(--fg-3);
       white-space: nowrap;
@@ -50,16 +56,18 @@
       border-bottom: 2px solid transparent;
       background: transparent;
       font: inherit;
-      font-size: 12.5px;
+      font-size: 13px;
       cursor: pointer;
       text-decoration: none;
+      transition: color 0.15s, border-color 0.15s;
     }
     .tab-row > a:hover,
     .more:hover {
       color: var(--fg-1);
+      text-decoration: none;
     }
     .tab-row > [aria-current="page"] {
-      color: var(--selected-fg);
+      color: var(--fg-0);
       border-bottom-color: var(--accent);
       font-weight: 500;
     }
@@ -71,6 +79,12 @@
     }
     .more[aria-expanded="true"] .tab-chevron {
       transform: rotate(180deg);
+    }
+    @media (max-width: 600px) {
+      .header-tabs {
+        margin: -22px -16px 20px;
+        padding: 0 16px;
+      }
     }
     @media (prefers-reduced-motion: reduce) {
       .tab-chevron {

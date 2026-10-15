@@ -4,34 +4,43 @@
     <ui-page-heading
       icon="folder"
       :badge="page.visibility.lowercase()"
-      :description="page.slug"
+      :badgeTone='when (page.visibility) { "PUBLIC" -> "success"; "INTERNAL" -> "warning"; else -> "neutral" }'
+      :subtitle='page.slug + " · " + page.visibility.lowercase() + " · " + page.defaultBranch'
       :title="page.name"
-      :backHref="page.listHref"
-      backLabel="Repositories"
-      titleAlignedActions
+      :trail='listOf(bosca.git.ui.components.NavigationItem("Repositories", page.listHref, false))'
     >
       <div class="repository-controls">
         <if page.tab == "code" || page.tab == "commits" || page.tab == "statuses">
           <git-ref-selector :page="page" />
         </if>
+        <if page.tab == "branches" && page.canEdit && !page.archived && page.resolvedSha.isNotBlank()>
+          <git-branch-create :page="page" />
+        </if>
         <if page.pulls != null>
           <git-pull-create :page="page.pulls" />
+        </if>
+        <if page.secrets != null && page.secrets.allowed>
+          <git-secret-create :page="page.secrets" />
+        </if>
+        <if page.tab == "pipelines" || page.tab == "statuses" || page.tab == "secrets">
+          <a class="button-link" :href="page.href(tab = page.tab)">
+            <span class="refresh-icon"><ui-icon name="pulse" :size="14" /></span>
+            Refresh
+          </a>
         </if>
         <ui-popover label="Clone repository" icon="download" iconOnly :width="420">
           <ui-copy-field :value="page.cloneUrl" label="Clone URL" copyLabel="Copy clone URL" />
         </ui-popover>
       </div>
     </ui-page-heading>
-    <div class="repository-details-row">
-      <if page.description.isNotBlank()>
-        <p class="repository-description">{ page.description }</p>
-      </if>
-      <div class="repository-summary"><git-repository-stats :id="page.id" /></div>
-    </div>
   </div>
   <style scoped>
     .repository-heading {
       min-width: 0;
+    }
+    .refresh-icon {
+      display: inline-flex;
+      color: var(--fg-2);
     }
     .repository-controls {
       display: flex;
@@ -40,37 +49,6 @@
       gap: 8px;
       min-width: 0;
       max-width: 100%;
-    }
-    .repository-details-row {
-      display: flex;
-      align-items: center;
-      flex-wrap: wrap;
-      justify-content: space-between;
-      gap: 6px 20px;
-      margin-top: 6px;
-      color: var(--fg-3);
-      font-size: 12px;
-    }
-    .repository-description,
-    .repository-summary {
-      margin: 0;
-      min-width: 0;
-      max-width: 100%;
-      overflow-wrap: anywhere;
-    }
-    .repository-description {
-      flex: 1;
-    }
-    .repository-summary {
-      margin-left: auto;
-    }
-    @media (max-width: 600px) {
-      .repository-description {
-        flex-basis: 100%;
-      }
-      .repository-summary {
-        margin-left: 0;
-      }
     }
   </style>
 </component>

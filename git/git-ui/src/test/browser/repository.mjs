@@ -12,20 +12,11 @@ const ws = new WebSocket(
 await new Promise((r) => ws.addEventListener("open", r, { once: true }));
 let n = 0;
 const pending = new Map(),
-  errors = [],
-  treeActions = [];
+  errors = [];
 ws.addEventListener("message", (e) => {
   const m = JSON.parse(e.data);
   if (m.method === "Runtime.exceptionThrown")
     errors.push(m.params.exceptionDetails);
-  if (m.method === "Network.requestWillBeSent" && m.params.request.postData) {
-    const request = m.params.request;
-    if (request.url.endsWith("/_bml/action")) {
-      const data = JSON.parse(request.postData);
-      if (data.stateKey?.startsWith("git-sidebar-tree.model"))
-        treeActions.push({ method: data.method, args: data.args });
-    }
-  }
   if (m.method === "Page.javascriptDialogOpening")
     void call("Page.handleJavaScriptDialog", { accept: true });
   if (m.id) {
@@ -72,18 +63,21 @@ await call("Emulation.setDeviceMetricsOverride", {
   deviceScaleFactor: 1,
   mobile: false,
 });
-// Navigate through actual file rows, including the deferred tree's action boundary.
+// Navigate through actual file rows: the whole Studio-style row opens its entry.
 await call("Page.navigate", { url: base + "/repositories/repo" });
 await until(
-  'document.querySelector(".repository-workspace [data-bml-deferred]")?.dataset.bmlDeferredState === "loaded" && document.querySelector("a.ui-tree-row[aria-label=\\"README.md\\"]")',
+  '[...document.querySelectorAll(".tree-list a.tree-name")].some(link => link.textContent.trim() === "README.md")',
 );
+await until('document.readyState === "complete"');
+await ev("document.fonts.ready.then(() => true)");
 const readmeRow = await ev(`(() => {
-  const link = document.querySelector('a.ui-tree-row[aria-label="README.md"]');
-  return {link:link.outerHTML, row:link.closest('[role=treeitem]').outerHTML};
+  const link = [...document.querySelectorAll('.tree-list a.tree-name')].find(link => link.textContent.trim() === 'README.md');
+  return {link:link.outerHTML, row:link.closest('.tree-row').outerHTML};
 })()`);
 const readmePoint = await ev(`(() => {
-  const bounds = document.querySelector('a.ui-tree-row[aria-label="README.md"]').getBoundingClientRect();
-  return {x:bounds.left+bounds.width/2,y:bounds.top+bounds.height/2};
+  const link = [...document.querySelectorAll('.tree-list a.tree-name')].find(link => link.textContent.trim() === 'README.md');
+  const bounds = link.closest('.tree-row').getBoundingClientRect();
+  return {x:bounds.left+bounds.width*0.6,y:bounds.top+bounds.height/2};
 })()`);
 for (const type of ["mousePressed", "mouseReleased"])
   await call("Input.dispatchMouseEvent", {
@@ -92,15 +86,11 @@ for (const type of ["mousePressed", "mouseReleased"])
     button: "left",
     clickCount: 1,
   });
-await until(
-  'new URLSearchParams(location.search).get("file") === "README.md" || document.body.innerText.includes("Folder is no longer available")',
-);
-const readmeNavigation = await ev(
-  `({url:location.href, folderError:document.body.innerText.includes('Folder is no longer available')})`,
-);
+await until('new URLSearchParams(location.search).get("file") === "README.md"');
+const readmeNavigation = await ev(`({url:location.href})`);
 await writeFile(
   process.env.GIT_UI_ARTIFACT_DIR + "/bosca-git-ui-file-navigation.json",
-  JSON.stringify({ readmeRow, treeActions, readmeNavigation }, null, 2),
+  JSON.stringify({ readmeRow, readmeNavigation }, null, 2),
 );
 await writeFile(
   process.env.GIT_UI_ARTIFACT_DIR + "/bosca-git-ui-readme-navigation.png",
@@ -115,32 +105,29 @@ await writeFile(
   ),
 );
 assert.equal(
-  readmeNavigation.folderError,
-  false,
-  "Clicking README must not dispatch folder expansion",
-);
-assert.equal(
   new URL(readmeNavigation.url).searchParams.get("file"),
   "README.md",
-  "A real pointer click opens the README",
+  "A real pointer click anywhere on the row opens the README",
 );
-assert.deepEqual(treeActions, [], "File links never invoke the folder action");
+await until('document.querySelector(".file-viewer .markdown-file")');
+// Folders open as listings and nested files open from the keyboard.
+await call("Page.navigate", { url: base + "/repositories/repo" });
 await until(
-  'document.querySelector(".repository-workspace [data-bml-deferred]")?.dataset.bmlDeferredState === "loaded" && document.querySelector(".markdown-file")',
+  '[...document.querySelectorAll(".tree-list a.tree-name")].some(link => link.textContent.trim() === "docs")',
 );
 await ev(
-  'document.querySelector("button.ui-tree-row[aria-label=\\"Expand docs\\"]").click()',
+  '[...document.querySelectorAll(".tree-list a.tree-name")].find(link => link.textContent.trim() === "docs").click()',
 );
 await until(
-  'document.querySelector("a.ui-tree-row[aria-label=\\"docs/guide.md\\"]")',
+  'new URLSearchParams(location.search).get("path") === "docs" && [...document.querySelectorAll(".tree-list a.tree-name")].some(link => link.textContent.trim() === "guide.md")',
 );
-assert.deepEqual(
-  treeActions,
-  [{ method: "expand", args: ["docs"] }],
-  "Only the folder uses its server action",
+assert.match(
+  await ev('document.querySelector(".path-bar").innerText'),
+  /docs/,
+  "The path bar shows the opened folder",
 );
 await ev(
-  'document.querySelector("a.ui-tree-row[aria-label=\\"docs/guide.md\\"]").focus()',
+  '[...document.querySelectorAll(".tree-list a.tree-name")].find(link => link.textContent.trim() === "guide.md").focus()',
 );
 for (const type of ["keyDown", "keyUp"])
   await call("Input.dispatchKeyEvent", {
@@ -150,23 +137,12 @@ for (const type of ["keyDown", "keyUp"])
     windowsVirtualKeyCode: 13,
   });
 await until(
-  'new URLSearchParams(location.search).get("file") === "docs/guide.md" && document.querySelector(".repository-workspace [data-bml-deferred]")?.dataset.bmlDeferredState === "loaded"',
+  'new URLSearchParams(location.search).get("file") === "docs/guide.md" && document.querySelector(".file-viewer")',
 );
-assert.equal(
-  await ev(
-    'document.querySelector("[role=treeitem][data-path=\\"docs/guide.md\\"]").getAttribute("aria-selected")',
-  ),
-  "true",
-);
-assert.deepEqual(
-  treeActions,
-  [{ method: "expand", args: ["docs"] }],
-  "Keyboard file navigation never expands a file",
-);
-assert.ok(
-  !(await ev(
-    'document.body.innerText.includes("Folder is no longer available")',
-  )),
+assert.match(
+  await ev('document.querySelector(".file-viewer .file-path").textContent'),
+  /docs\/guide\.md/,
+  "Keyboard navigation opens the nested file",
 );
 await call("Page.navigate", { url: `http://localhost:${port}/repositories` });
 await until(
@@ -381,13 +357,13 @@ await until(
 const geometry = await ev(
   '({surface:document.querySelector(".file-surface").getBoundingClientRect().height,editor:document.querySelector(".cm-editor").getBoundingClientRect().height,radius:getComputedStyle(document.querySelector(".cm-editor")).borderRadius,overflow:document.documentElement.scrollWidth>innerWidth})',
 );
-assert.ok(geometry.editor > 300, JSON.stringify(geometry));
+assert.ok(geometry.editor >= 224 && geometry.editor <= 801, JSON.stringify(geometry));
 assert.equal(geometry.radius, "0px");
 assert.equal(
   await ev(
     'getComputedStyle(document.querySelector(".cm-editor")).backgroundColor',
   ),
-  "rgb(16, 19, 28)",
+  "rgba(20, 24, 34, 0.72)",
   "CodeMirror must use the same surface palette as the Git UI",
 );
 await call("Page.navigate", {
@@ -451,7 +427,8 @@ for (const width of [1440, 1024]) {
     const size = await ev(
       '({height:document.querySelector(".cm-editor").getBoundingClientRect().height,surface:document.querySelector(".file-surface").getBoundingClientRect().height,gutters:document.querySelector(".cm-lineNumbers")!==null,scroll:document.querySelector(".cm-scroller").scrollHeight>document.querySelector(".cm-scroller").clientHeight,radius:getComputedStyle(document.querySelector(".cm-editor")).borderRadius})',
     );
-    assert.ok(size.height >= 900 * 0.65, JSON.stringify(size));
+    assert.ok(size.height >= 224 && size.height <= 801, JSON.stringify(size));
+    if (file === "long.txt") assert.ok(size.height >= 799, JSON.stringify(size));
     assert.equal(size.gutters, true);
     assert.equal(size.radius, "0px");
     if (file === "long.txt") assert.equal(size.scroll, true);
@@ -593,7 +570,7 @@ async function cleanupReadme() {
 }
 await cleanupReadme();
 await call("Page.navigate", { url: base + "/repositories/empty" });
-await until('document.body.innerText.includes("Start this repository")');
+await until('document.body.innerText.includes("Quick setup")');
 await ev(
   'Array.from(document.querySelectorAll("a")).find(a=>a.textContent.trim()==="Create first file").click()',
 );

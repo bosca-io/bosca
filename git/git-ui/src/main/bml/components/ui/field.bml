@@ -1,8 +1,9 @@
 <component tag="ui-field">
   <prop name="label" type="String" required />
   <prop name="hint" type="String" default="" />
+  <prop name="hideLabel" type="Boolean" default="false" />
   <label class="field">
-    <span>{ label }</span>
+    <span :class='if (hideLabel) "visually-hidden" else null'>{ label }</span>
     <slot />
     <if hint.isNotBlank()>
       <small class="muted">{ hint }</small>
@@ -12,6 +13,14 @@
     .field > span {
       font-weight: 550;
       line-height: 18px;
+    }
+    .visually-hidden {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
     }
     .field {
       display: flex;

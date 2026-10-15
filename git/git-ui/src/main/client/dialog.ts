@@ -5,12 +5,17 @@ export function modalDialog(ctx: ClientContext) {
   let visible = false;
   let requested = false;
   let completed = false;
+  let openRequest = "";
   const dialog = () => ctx.ref<HTMLDialogElement>("dialog");
   const sync = () => {
     const nextCompleted = ctx.root.hasAttribute("data-completed");
     const nextRequested = ctx.root.hasAttribute("data-force-open");
+    const nextOpenRequest = ctx.root.dataset.openRequest ?? "";
     if (nextRequested && !requested) visible = true;
+    // Each new server-issued request reopens the dialog, even after the viewer dismissed it.
+    if (nextOpenRequest && nextOpenRequest !== openRequest) visible = true;
     requested = nextRequested;
+    openRequest = nextOpenRequest;
     const finished = nextCompleted && !completed;
     completed = nextCompleted;
     if (finished) {

@@ -1,0 +1,88 @@
+<component tag="git-pull-details">
+  <prop name="page" type="bosca.git.ui.PullPage" required />
+  <section class="side-card" aria-label="Pull request details">
+    <h2 class="side-card-title">Details</h2>
+    <dl class="info-list">
+      <div class="info-row">
+        <dt class="info-label">Status</dt>
+        <dd class="info-value"><git-pull-status :status="page.pull.status.name" /></dd>
+      </div>
+      <div class="info-row">
+        <dt class="info-label">Mergeable</dt>
+        <dd class="info-value">
+          <ui-badge :color='if (page.pull.mergeable) "#34d99a" else "#ff5d6c"'>
+            { if (page.pull.mergeable) "Yes" else "No" }
+          </ui-badge>
+        </dd>
+      </div>
+      <div class="info-row">
+        <dt class="info-label">Author</dt>
+        <dd class="info-value">{ page.identity(page.pull.authorId) }</dd>
+      </div>
+      <div class="info-row">
+        <dt class="info-label">Source</dt>
+        <dd class="info-value">
+          <code :title="page.pull.sourceBranch">
+            { if (page.sourceRepository != page.pull.repositoryId) page.sourceRepositoryName + ":" else "" }{ page.pull.sourceBranch }
+          </code>
+        </dd>
+      </div>
+      <div class="info-row">
+        <dt class="info-label">Target</dt>
+        <dd class="info-value"><code>{ page.pull.targetBranch }</code></dd>
+      </div>
+      <if page.repositoryName.isNotBlank()>
+        <div class="info-row">
+          <dt class="info-label">Repository</dt>
+          <dd class="info-value">
+            <a class="info-link" :href='"/repositories/" + bosca.git.ui.encode(page.pull.repositoryId)'>
+              { page.repositoryName }
+            </a>
+          </dd>
+        </div>
+      </if>
+      <div class="info-row">
+        <dt class="info-label">Files</dt>
+        <dd class="info-value">{ page.diff.size } changed</dd>
+      </div>
+      <div class="info-row">
+        <dt class="info-label">Created</dt>
+        <dd class="info-value"><ui-time :value="page.pull.created" format="MMM d, yyyy" inheritTypography /></dd>
+      </div>
+      <if page.pull.mergedAt != null>
+        <div class="info-row">
+          <dt class="info-label">Merged</dt>
+          <dd class="info-value"><ui-time :value="page.pull.mergedAt.orEmpty()" format="MMM d, yyyy" inheritTypography /></dd>
+        </div>
+      </if>
+      <if page.pull.mergeStrategy != null>
+        <div class="info-row">
+          <dt class="info-label">Strategy</dt>
+          <dd class="info-value">{ page.pull.mergeStrategy.toString().replace('_', ' ').lowercase() }</dd>
+        </div>
+      </if>
+      <if page.pull.mergeSha.orEmpty().isNotBlank()>
+        <div class="info-row">
+          <dt class="info-label">Merge commit</dt>
+          <dd class="info-value">
+            <a
+              class="info-link"
+              :href='"/repositories/" + bosca.git.ui.encode(page.pull.repositoryId) + "?ref=" + bosca.git.ui.encode(page.pull.mergeSha.orEmpty()) + "&tab=commits"'
+            >
+              <code>{ page.pull.mergeSha.orEmpty().take(12) }</code>
+            </a>
+          </dd>
+        </div>
+      </if>
+    </dl>
+  </section>
+  <style scoped>
+    .info-link {
+      color: var(--accent);
+      text-decoration: none;
+    }
+    .info-link:hover {
+      text-decoration: underline;
+    }
+  </style>
+</component>

@@ -2,6 +2,7 @@ package bosca.git.ui
 
 import bosca.bml.graphql.execute
 import bosca.bml.render.RenderContext
+import bosca.git.ui.components.NavigationItem
 import bosca.git.ui.graphql.*
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.serialization.Serializable
@@ -30,6 +31,22 @@ class PipelineRunModel(
 
     val repositoryHref: String
         get() = "/repositories/${encode(run.repositoryId)}?tab=pipelines"
+
+    /** Breadcrumb links between the Git root and this run, as in Studio's run header. */
+    val trail: List<NavigationItem>
+        get() = buildList {
+            add(NavigationItem("Repositories", "/repositories", false))
+            add(
+                NavigationItem(
+                    repositoryName.ifBlank { "Repository" },
+                    "/repositories/${encode(run.repositoryId)}",
+                    false,
+                )
+            )
+            add(NavigationItem("Pipelines", repositoryHref, false))
+            if (pipelineName.isNotBlank())
+                add(NavigationItem(pipelineName, "$repositoryHref&pipeline=${encode(run.pipelineId)}", false))
+        }
 
     val rerunnableJobCount: Int
         get() =

@@ -1,96 +1,113 @@
 <component tag="git-pipeline-recent">
   <prop name="repository" type="String" required />
   <prop name="pipeline" type="bosca.git.ui.graphql.GitUiPipelinesData.Git.Pipelines" required />
-  <script server provides="model">bosca.git.ui.PipelineRecentRunsModel(repository, pipeline.id, pipeline.runs)</script>
-  <island name="git-pipeline-recent" :key="pipeline.id">
-    <div class="recent-runs">
-      <for run in model.runs>
-        <a class="run-row" :href="bosca.git.ui.runHref(run.id)">
-          <git-run-indicator :status="run.status.name" />
-          <code class="run-number">#{ run.number }</code>
-          <code class="run-ref">
-            { run.ref.removePrefix("refs/heads/").removePrefix("refs/tags/") }
-          </code>
-          <code class="muted">{ run.commitSha.take(8) }</code>
-          <span class="run-trigger">{ run.triggerType.name.lowercase() }</span>
-          <div class="job-dots" aria-label="Jobs">
-            <for job in run.jobs.orEmpty()>
-              <span
-                :class='"job-dot status-" + job.status.name.lowercase()'
-                :title='job.name + ": " + job.status.name'
-                :aria-label='job.name + ": " + job.status.name'
-              ></span>
-            </for>
-          </div>
-          <span class="run-duration">
-            { bosca.git.ui.pipelineDuration(run.durationSeconds) }
-          </span>
-          <ui-time :value="run.created" relative />
-          <git-status-badge :status="run.status.name" />
-        </a>
-      </for>
-    </div>
-
-    <if model.loaded && model.runs.isEmpty()><p class="muted">No runs yet.</p></if>
-    <if model.message.isNotBlank()><ui-alert>{ model.message }</ui-alert></if>
-    <if !model.loaded>
-      <ui-button size="sm" icon="clock" @click="model.load(ctx)">Show recent runs</ui-button>
-    </if>
-  </island>
+  <div class="recent-runs">
+    <for run in pipeline.runs>
+      <a class="run-row" :href="bosca.git.ui.runHref(run.id)">
+        <git-run-indicator :status="run.status.name" />
+        <code class="run-number">#{ run.number }</code>
+        <code class="run-ref">{ run.ref }</code>
+        <span class="run-trigger">
+          <span class="trigger-icon"><ui-icon name="branch" :size="10" /></span>
+          { run.triggerType.name.lowercase().split('_').joinToString(" ") { it.replaceFirstChar(Char::uppercase) } }
+        </span>
+        <code class="run-sha">{ run.commitSha.take(8) }</code>
+        <div class="job-dots" aria-label="Jobs">
+          <for job in run.jobs.orEmpty()>
+            <span
+              class="job-dot"
+              :style='"background: " + bosca.git.ui.statusColor(job.status.name)'
+              :title='job.name + ": " + job.status.name'
+              :aria-label='job.name + ": " + job.status.name'
+            ></span>
+          </for>
+        </div>
+        <code class="run-duration">{ bosca.git.ui.pipelineDuration(run.durationSeconds) }</code>
+        <span class="run-time"><ui-time :value="run.created" relative ago inheritTypography /></span>
+        <git-status-badge :status="run.status.name" run />
+      </a>
+    </for>
+  </div>
   <style scoped>
+    /* Studio repository pipeline run rows. */
     .run-row {
       display: flex;
       align-items: center;
       gap: 12px;
-      padding: 10px 14px;
+      padding: 10px 16px;
       border-bottom: 1px solid var(--line);
-      font-size: 11.5px;
+      color: inherit;
+      text-decoration: none;
+      transition: background 0.12s;
+    }
+    .recent-runs > .run-row:last-child {
+      border-bottom: 0;
     }
     .run-row:hover {
       background: var(--bg-2);
+      text-decoration: none;
     }
     .run-number {
-      width: 40px;
       flex: none;
+      width: 40px;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--fg-1);
     }
     .run-ref {
-      min-width: 0;
-      flex: 1;
+      max-width: 140px;
       overflow: hidden;
+      font-size: 11px;
+      color: var(--fg-2);
       text-overflow: ellipsis;
       white-space: nowrap;
     }
     .run-trigger {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      font-size: 10.5px;
       color: var(--fg-3);
+    }
+    .trigger-icon {
+      display: inline-flex;
+    }
+    .run-sha {
       font-size: 11px;
+      color: var(--accent);
     }
     .job-dots {
       display: flex;
+      flex: 1;
       align-items: center;
-      gap: 4px;
+      gap: 3px;
     }
     .job-dot {
-      width: 6px;
-      height: 6px;
+      width: 8px;
+      height: 8px;
       border-radius: 50%;
-      background: var(--fg-3);
-    }
-    .job-dot.status-success {
-      background: var(--ok);
-    }
-    .job-dot.status-failure {
-      background: var(--err);
-    }
-    .job-dot.status-running,
-    .job-dot.status-queued {
-      background: var(--info);
     }
     .run-duration {
+      width: 60px;
+      font-size: 11px;
       color: var(--fg-2);
+      text-align: right;
+    }
+    .run-time {
+      width: 80px;
+      font-size: 11px;
+      color: var(--fg-3);
+      text-align: right;
     }
     @media (max-width: 700px) {
-      .run-row { flex-wrap: wrap; gap: 8px; }
-      .run-ref { flex-basis: 50%; }
+      .run-row {
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .job-dots {
+        flex-basis: 100%;
+        order: 9;
+      }
     }
   </style>
 </component>

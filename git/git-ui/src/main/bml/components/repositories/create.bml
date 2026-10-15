@@ -6,8 +6,8 @@
   <island name="git-repository-create" :key="initial.owner.id">
     <div :data-next-href="model.nextHref">
       <ui-dialog
-        title="New repository"
-        triggerLabel="New repository"
+        title="New Repository"
+        triggerLabel="New Repository"
         icon="folder"
         triggerIcon="plus"
         :primary="true"

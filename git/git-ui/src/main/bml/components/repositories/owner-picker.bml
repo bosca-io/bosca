@@ -43,8 +43,8 @@
       line-height: 18px;
     }
     .compact {
-      width: 240px;
-      max-width: 100%;
+      width: auto;
+      max-width: min(100%, 280px);
     }
     .compact .owner-caption {
       position: absolute;

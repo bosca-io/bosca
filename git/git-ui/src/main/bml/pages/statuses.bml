@@ -4,8 +4,9 @@
   </script>
   <git-layout title="Commit statuses">
     <ui-page>
-      <ui-page-heading title="Commit statuses" />
-      <git-explore-picker :page="page" />
+      <ui-page-heading title="Commit Statuses" subtitle="CI/CD status checks reported for commits">
+        <git-explore-picker :page="page" />
+      </ui-page-heading>
       <git-statuses-results :page="page" />
     </ui-page>
   </git-layout>

@@ -5,10 +5,13 @@
   <git-layout title="CI agents">
     <ui-page>
       <ui-page-heading
-        title="CI agents"
-        description="Runners and orchestrators that execute pipeline jobs."
-        descriptionBelow
+        title="CI Agents"
+        :subtitle='page.agents.size.toString() + " agents · " + page.agents.count { it.status.toString() == "ONLINE" } + " online · " + page.agents.count { it.status.toString() == "BUSY" } + " busy"'
       >
+        <a class="button-link" :href='"/ci-agents" + if (page.status.isNotBlank()) "?status=" + bosca.git.ui.encode(page.status) else ""'>
+          <span class="refresh-icon"><ui-icon name="pulse" :size="14" /></span>
+          Refresh
+        </a>
         <if page.allowed>
           <git-agent-register :page="page" />
         </if>
@@ -20,4 +23,10 @@
       </if>
     </ui-page>
   </git-layout>
+  <style scoped>
+    .refresh-icon {
+      display: inline-flex;
+      color: var(--fg-2);
+    }
+  </style>
 </page>

@@ -14,6 +14,7 @@
               triggerLabel="Review changes"
               icon="eye"
               primary
+              :showTrigger="false"
               :forceOpen="model.page.reviewing || model.reviewFailed || model.reviewing"
               :completed="model.reviewSubmitted"
               :returnFocus='if (model.commentFile.isNotBlank()) ".comment-form textarea" else ""'
@@ -125,39 +126,37 @@
       </if>
       <if model.page.view == "overview">
         <ui-card :padded="false">
-          <ui-section-heading title="Reviews" :subtitle="model.reviewSummary">
-            <ui-icon-link icon="arrow-right" label="View all reviews" :href='model.page.href + "&view=reviews"' />
+          <ui-section-heading title="Reviews">
+            <code class="section-meta">{ model.reviews.size } reviews</code>
           </ui-section-heading>
           <if model.reviews.isEmpty()>
             <p class="summary-empty">No reviews yet.</p>
           <else>
             <div class="review-summary-list">
-              <for review in model.reviews.sortedByDescending { it.created }.take(3)>
-                <article class="review-summary-row">
-                  <span class="summary-review-icon"><ui-icon name="eye" :size="15" /></span>
+              <for review in model.reviews.sortedByDescending { it.created }>
+                <article
+                  class="review-summary-row"
+                  :style='"--review-color: " + bosca.git.ui.reviewStatusColor(if (review.dismissedAt != null) "" else review.status.name)'
+                >
+                  <span class="summary-review-icon"><ui-icon name="eye" :size="13" /></span>
                   <div class="review-summary-copy">
                     <div class="review-summary-title">
                       <strong>{ model.page.identity(review.reviewerId) }</strong>
-                      <git-pull-review-status :status="review.status.name" :dismissed="review.dismissedAt != null" />
+                      <ui-badge :color='bosca.git.ui.reviewStatusColor(if (review.dismissedAt != null) "" else review.status.name)'>
+                        { if (review.dismissedAt != null) "dismissed" else review.status.name.replace('_', ' ').lowercase() }
+                      </ui-badge>
+                      <if review.comments.isNotEmpty()>
+                        <code class="review-comment-count">{ review.comments.size } comments</code>
+                      </if>
                     </div>
                     <if review.body.orEmpty().isNotBlank()>
                       <p>{ review.body.orEmpty() }</p>
                     </if>
                   </div>
-                  <ui-time :value="review.created" relative />
+                  <code class="review-time"><ui-time :value="review.created" relative ago inheritTypography /></code>
                 </article>
               </for>
             </div>
-          </if>
-        </ui-card>
-        <ui-card :padded="false">
-          <ui-section-heading title="Files changed" :subtitle='if (model.page.diffUnavailableMessage.isBlank()) model.fileSummary else "Comparison unavailable"'>
-            <ui-icon-link icon="arrow-right" label="View file changes" :href='model.page.href + "&view=files"' />
-          </ui-section-heading>
-          <if model.page.diffUnavailableMessage.isNotBlank()>
-            <p class="summary-empty">{ model.page.diffUnavailableMessage }</p>
-          <else>
-            <div class="changed-file-summary"><git-diff-tree :entries="model.files" /></div>
           </if>
         </ui-card>
       </if>
@@ -175,9 +174,8 @@
             <for file in model.diff>
               <details class="diff-file" :id="file.anchor" open>
                 <ui-disclosure-heading framed>
-                  <ui-icon name="file" :size="14" />
+                  <ui-badge :color="bosca.git.ui.pullFileChangeColor(file.changeType)">{ bosca.git.ui.pullFileChangeLabel(file.changeType) }</ui-badge>
                   <code class="diff-path">{ file.displayPath }</code>
-                  <ui-badge>{ bosca.git.ui.pullFileChangeLabel(file.changeType) }</ui-badge>
                 </ui-disclosure-heading>
                 <if file.emptyTextChange>
                   <p class="diff-notice">{ file.emptyTextLabel }</p>
@@ -360,9 +358,10 @@
     }
     .diff-file {
       margin: 0;
-      border: 1px solid var(--line);
-      border-radius: 8px;
       overflow: hidden;
+      background: var(--bg-1);
+      border: 1px solid var(--line);
+      border-radius: 10px;
     }
     .diff-notice {
       margin: 0;
@@ -371,9 +370,10 @@
       font-size: 12px;
     }
     .diff-hunk-heading {
-      padding: 8px 14px;
+      padding: 4px 16px;
       color: var(--fg-3);
-      background: var(--bg-1);
+      background: var(--bg-2);
+      border-top: 1px solid var(--line);
       border-bottom: 1px solid var(--line);
       font: 11px/18px var(--font-mono);
     }
@@ -386,7 +386,8 @@
       width: 100%;
       min-width: max-content;
       align-items: center;
-      font: 12px/26px var(--font-mono);
+      font: 12px/1.7 var(--font-mono);
+      color: var(--fg-2);
     }
     .line-number {
       text-align: right;
@@ -407,17 +408,20 @@
     .line-action:focus-within {
       opacity: 1;
     }
+    /* Studio diff colours. */
     .add {
-      background: color-mix(in srgb, var(--ok) 12%, transparent);
+      background: color-mix(in oklch, #34d99a 8%, transparent);
+      color: #34d99a;
     }
     .delete {
-      background: color-mix(in srgb, var(--err) 12%, transparent);
+      background: color-mix(in oklch, #ff5d6c 8%, transparent);
+      color: #ff5d6c;
     }
     .add .line-mark {
-      color: var(--ok);
+      color: #34d99a;
     }
     .delete .line-mark {
-      color: var(--err);
+      color: #ff5d6c;
     }
     .diff-path {
       flex: 1;
@@ -425,27 +429,37 @@
       overflow-wrap: anywhere;
       white-space: normal;
     }
+    .section-meta {
+      font-size: 11px;
+      color: var(--fg-3);
+    }
     .review-summary-list {
-      padding: 0 18px;
+      padding: 4px 0;
     }
     .review-summary-row {
       display: flex;
-      align-items: flex-start;
-      gap: 10px;
-      padding: 14px 0;
-    }
-    .review-summary-row + .review-summary-row {
+      align-items: center;
+      gap: 12px;
+      padding: 10px 16px;
       border-top: 1px solid var(--line);
+    }
+    .review-summary-list > :first-child {
+      border-top: 0;
     }
     .summary-review-icon {
       display: flex;
-      color: var(--fg-3);
-      padding-top: 3px;
+      flex: none;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      color: var(--review-color);
+      background: color-mix(in oklch, var(--review-color) 14%, transparent);
     }
     .review-summary-copy {
       flex: 1;
       min-width: 0;
-      font-size: 12px;
     }
     .review-summary-title {
       display: flex;
@@ -454,27 +468,28 @@
       gap: 8px;
     }
     .review-summary-title strong {
+      font-size: 12.5px;
       font-weight: 500;
     }
+    .review-comment-count,
+    .review-time {
+      flex: none;
+      font-size: 11px;
+      color: var(--fg-3);
+    }
     .review-summary-copy p {
-      display: -webkit-box;
-      -webkit-line-clamp: 3;
-      -webkit-box-orient: vertical;
-      overflow: hidden;
-      margin: 6px 0 0;
+      margin: 4px 0 0;
+      font-size: 12.5px;
       color: var(--fg-2);
-      line-height: 1.6;
       white-space: pre-wrap;
       overflow-wrap: anywhere;
     }
     .summary-empty {
-      padding: 16px 18px;
+      padding: 48px 0;
       margin: 0;
+      text-align: center;
       color: var(--fg-3);
-      font-size: 12px;
-    }
-    .changed-file-summary {
-      padding: 8px 12px;
+      font-size: 13.5px;
     }
     @media (hover: none) {
       .line-action {

@@ -6,8 +6,7 @@
     <ui-page>
       <ui-page-heading
         title="Pipelines"
-        :description='page.pipelines.size.toString() + if (page.pipelines.size == 1) " pipeline" else " pipelines"'
-        descriptionBelow
+        :subtitle='page.pipelines.size.toString() + " pipelines"'
       >
         <git-pipeline-owner :page="page" />
       </ui-page-heading>

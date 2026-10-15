@@ -16,11 +16,9 @@
     <section class="run-page" :data-next-href="model.nextHref" :data-run-active="model.active">
       <ui-page-heading
         :title="model.title"
-        :description='model.run.status.name + " · " + bosca.git.ui.pipelineDuration(model.run.durationSeconds)'
-        descriptionBelow
-        titleAlignedActions
-        :backHref="model.repositoryHref"
-        :backLabel='model.repositoryName.ifBlank { "Repository" } + " / Pipelines"'
+        :subtitle='model.run.status.name + " · " + bosca.git.ui.pipelineDuration(model.run.durationSeconds)'
+        :trail="model.trail"
+        :crumb='"Run #" + model.run.number'
       >
         <div
           class="toolbar run-controls"
@@ -100,7 +98,7 @@
         <if model.message.isNotBlank()>
           <ui-alert :tone='if (model.failed) "error" else "success"'>{ model.message }</ui-alert>
         </if>
-        <span data-bml-ref="pollError" role="status" />
+        <span class="poll-status" data-bml-ref="pollError" role="status" />
         <dl class="summary-row" aria-label="Run summary">
           <div class="summary-card">
             <dt>Status</dt>
@@ -213,6 +211,13 @@
     .run-page {
       width: 100%;
       min-width: 0;
+    }
+    .poll-status:empty {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
     }
     .run-controls {
       padding: 0;

@@ -1,40 +1,131 @@
 <component tag="git-repository-tree">
   <prop name="entries" type="List<bosca.git.ui.RepositoryEntry>" required />
-  <if entries.isEmpty()>
-    <ui-empty-state message="This folder is empty." />
-  <else>
-    <ul class="tree">
-      <for entry in entries>
-        <li>
-          <a :href="entry.href">
-            <ui-icon :name='if (entry.directory) "folder" else "file"' :size="16" />
-            { entry.name }
-          </a>
-        </li>
-      </for>
-    </ul>
-  </if>
+  <prop name="editable" type="Boolean" default="false" />
+  <div class="tree-list">
+    <if entries.isEmpty()>
+      <p class="tree-empty">This folder is empty.</p>
+    <else>
+      <ul class="tree-rows">
+        <for entry in entries>
+          <li class="tree-row" :data-directory="entry.directory">
+            <span class="tree-icon"><ui-icon :name='if (entry.directory) "folder" else "file"' :size="14" /></span>
+            <a class="tree-name" :href="entry.href">{ entry.name }</a>
+            <if entry.size != null>
+              <code class="tree-size">{ bosca.git.ui.formatSize(entry.size) }</code>
+            </if>
+            <if editable && entry.editHref.isNotBlank()>
+              <a
+                class="row-action"
+                :href="entry.editHref"
+                :aria-label='"Rename " + entry.name'
+                title="Rename"
+              >
+                <ui-icon name="edit" :size="12" />
+              </a>
+            </if>
+          </li>
+        </for>
+      </ul>
+    </if>
+  </div>
   <style scoped>
-    .tree {
-      list-style: none;
+    /* Studio repository tree listing. */
+    .tree-list {
+      min-width: 0;
+      overflow: hidden;
+      background: var(--bg-1);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+    }
+    .tree-rows {
       margin: 0;
       padding: 0;
+      list-style: none;
     }
-    .tree li {
-      border-bottom: 1px solid var(--line);
-    }
-    .tree a {
+    .tree-row {
+      position: relative;
       display: flex;
-      gap: 10px;
       align-items: center;
-      font-size: 12.5px;
-      padding: 12px 18px;
+      gap: 10px;
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--line);
+      transition: background 0.1s;
+    }
+    .tree-row:last-child {
+      border-bottom: 0;
+    }
+    .tree-row:hover {
+      background: var(--bg-2);
+    }
+    .tree-icon {
+      display: inline-flex;
+      flex: none;
+      color: var(--fg-3);
+    }
+    .tree-row[data-directory] .tree-icon {
+      color: var(--accent);
+    }
+    .tree-name {
+      flex: 1;
+      min-width: 0;
+      color: var(--fg-0);
+      font-size: 13.5px;
+      text-decoration: none;
       overflow-wrap: anywhere;
     }
-    .tree span {
-      min-width: 70px;
-      color: var(--muted);
-      font-size: 12px;
+    .tree-row[data-directory] .tree-name {
+      font-weight: 500;
+    }
+    /* The name link covers the row so a click anywhere opens the entry, as in Studio. */
+    .tree-name::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+    }
+    .tree-name:hover {
+      text-decoration: none;
+    }
+    .tree-name:focus-visible {
+      outline: none;
+    }
+    .tree-row:has(.tree-name:focus-visible) {
+      outline: 2px solid var(--accent);
+      outline-offset: -2px;
+    }
+    .tree-size {
+      font-size: 11px;
+      color: var(--fg-3);
+    }
+    .row-action {
+      position: relative;
+      z-index: 1;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 4px;
+      border-radius: 4px;
+      color: var(--fg-2);
+      opacity: 0;
+      transition: opacity 0.1s, background 0.1s;
+    }
+    .tree-row:hover .row-action,
+    .row-action:focus-visible {
+      opacity: 1;
+    }
+    .row-action:hover {
+      background: var(--bg-3);
+    }
+    .tree-empty {
+      margin: 0;
+      padding: 48px 0;
+      text-align: center;
+      color: var(--fg-3);
+      font-size: 13.5px;
+    }
+    @media (hover: none) {
+      .row-action {
+        opacity: 1;
+      }
     }
   </style>
 </component>

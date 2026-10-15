@@ -29,25 +29,3 @@ class PipelineHistoryModel(
         }
     }
 }
-
-@Serializable
-class PipelineRecentRunsModel(
-    val repository: String,
-    val pipeline: String,
-    var runs: List<GitUiPipelinesData.Git.Pipelines.Runs>,
-    var loaded: Boolean = false,
-    var message: String = "",
-) {
-    suspend fun load(ctx: RenderContext) {
-        message = ""
-        try {
-            runs = ctx.gql.execute(GitUiPipelines, GitUiPipelines.Variables(repository, 10, true, pipeline))
-                .git.pipelines.firstOrNull { it.id == pipeline }?.runs.orEmpty()
-            loaded = true
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            message = e.message ?: "Could not load recent runs."
-        }
-    }
-}

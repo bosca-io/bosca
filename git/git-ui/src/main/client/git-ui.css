@@ -49,8 +49,10 @@
 :root {
   color-scheme: dark;
   font-family: var(--font-sans);
-  font-size: 13px;
-  line-height: 1.5;
+  font-size: 14px;
+  font-feature-settings: "cv11", "ss01";
+  -webkit-font-smoothing: antialiased;
+  letter-spacing: -0.005em;
   background: var(--bg-0);
   color: var(--fg-0);
   --accent: #64748b;
@@ -322,13 +324,48 @@ textarea {
 }
 
 /* Descendants rendered by child components and client widgets have their own scope markers. */
+/* Studio's glass sidebar-layout tokens and ambient background for the Git subsystem accent. */
 .git-document {
+  --r-xs: 8px;
+  --r-sm: 12px;
+  --r-md: 16px;
+  --r-lg: 20px;
+  --r-xl: 26px;
+  --line: color-mix(in oklch, #3b4258 50%, transparent);
+  --line-2: color-mix(in oklch, #3b4258 70%, transparent);
+  --bg-0: transparent;
+  --bg-1: rgba(20, 24, 34, 0.72);
+  --bg-2: rgba(28, 32, 44, 0.78);
+  --control-bg: var(--bg-2);
+  --control-radius: var(--r-sm);
   height: 100dvh;
   overflow: hidden;
   flex-direction: row;
   background:
-    radial-gradient(80% 55% at 12% -5%, #64748b47, transparent 60%),
-    radial-gradient(60% 45% at 95% 8%, #7c5cff20, transparent 65%), var(--bg-0);
+    radial-gradient(80% 55% at 12% -5%, color-mix(in oklch, var(--accent) 28%, transparent), transparent 60%),
+    radial-gradient(60% 45% at 95% 8%, color-mix(in oklch, var(--brand-accent) 18%, transparent), transparent 65%),
+    radial-gradient(70% 50% at 100% 100%, color-mix(in oklch, var(--accent) 12%, transparent), transparent 70%),
+    linear-gradient(180deg, color-mix(in oklch, var(--accent) 6%, transparent) 0%, transparent 40%),
+    #0a0c12;
+}
+/* Studio modals, menus and popovers render outside the glass layout and keep the base surface tokens. */
+.git-document dialog,
+.git-document [popover]:not(.ui-tooltip),
+.git-document .select-popup,
+.git-document .tabs-menu,
+.git-document .repository-menu {
+  --r-xs: 6px;
+  --r-sm: 9px;
+  --r-md: 12px;
+  --r-lg: 16px;
+  --r-xl: 22px;
+  --line: #232839;
+  --line-2: #2e3447;
+  --bg-0: #0a0c12;
+  --bg-1: #10131c;
+  --bg-2: #161a25;
+  --control-bg: var(--bg-2);
+  --control-radius: var(--r-sm);
 }
 .git-main {
   flex: 1;
@@ -426,10 +463,6 @@ input[type="checkbox"] {
   color: var(--fg-3);
   font: 12.5px var(--font-sans);
   text-align: center;
-}
-.repository-workspace > [data-bml-island] {
-  min-height: 0;
-  overflow: auto;
 }
 .markdown .image-error {
   color: var(--error-fg);
@@ -546,35 +579,7 @@ input[type="checkbox"] {
   cursor: pointer;
   font-weight: 600;
 }
-.page-fill[data-repository-page] .tabs {
-  margin: 4px 0;
-}
-.page-fill[data-repository-page] > .toolbar {
-  margin: 0;
-  padding: 4px 0;
-}
 
-.repository-heading-actions .owner-toolbar {
-  gap: 8px;
-  margin: 0;
-  padding: 0;
-}
-.repository-heading-actions {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-@media (max-width: 1100px) {
-  .repository-heading-actions {
-    justify-content: flex-start;
-  }
-}
-
-.page-fill > :not(.repository-workspace) {
-  flex-shrink: 0;
-}
 
 .ui-section h2:first-child,
 .ui-section h3:first-child {
@@ -603,20 +608,6 @@ input[type="checkbox"] {
 }
 .markdown > :last-child {
   margin-bottom: 0;
-}
-.pull-sidebar h2 {
-  font-size: 13px;
-}
-.pull-sidebar .toolbar {
-  gap: 8px;
-}
-.pull-sidebar .owner-picker,
-.pull-sidebar .field {
-  flex: 1 1 100%;
-}
-.pull-sidebar .owner-label {
-  color: var(--fg-2);
-  font-size: 12px;
 }
 
 /* Dialog contents cross component scopes; their form body scrolls independently of the footer. */
@@ -979,24 +970,11 @@ input[type="checkbox"] {
   border-radius: 0 0 5px 5px;
 }
 
-.page:not(.page-fill) > .page-heading {
-  margin-bottom: 20px;
-}
-.page:not(.page-fill) > .page-heading:has(+ .tabs, + * > .tabs:first-child) {
-  margin-bottom: 0;
-}
-.run-page > .page-heading {
-  margin-bottom: 20px;
-}
 .page > [data-bml-island] + [data-bml-island] {
   margin-top: 16px;
 }
 .page > .settings-stack + .settings-stack {
   margin-top: 16px;
-}
-.tree-loading .tree-error-message,
-.tree-loading .button[data-bml-deferred-retry] {
-  display: none;
 }
 .stats-error,
 .stats-retry {
@@ -1017,18 +995,6 @@ input[type="checkbox"] {
   padding: 0;
   font: inherit;
   cursor: pointer;
-}
-[data-bml-deferred-state="error"] .tree-loading .tree-error-message {
-  display: block;
-}
-[data-bml-deferred-state="error"] .tree-loading .button[data-bml-deferred-retry] {
-  display: inline-flex;
-}
-[data-bml-deferred-state="error"] .tree-loading .tree-loading-message {
-  display: none;
-}
-.tree-loading .button[data-bml-deferred-retry] {
-  align-self: flex-start;
 }
 
 form[data-bml-action-pending] button[type="submit"].button .button-content {
@@ -1068,4 +1034,283 @@ form[data-bml-action-pending] button[type="submit"].button {
 
 details[open] > .disclosure-heading > .disclosure-chevron {
   transform: rotate(0deg);
+}
+
+/* Studio GlassTable. Rows are separate islands, so the table language is shared globally. */
+.glass-table {
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 6px;
+  min-width: 0;
+}
+.gt-header,
+.gt-row {
+  display: grid;
+  align-items: center;
+  gap: 4px;
+}
+.gt-header {
+  padding: 10px 16px;
+  font-size: 10.5px;
+  color: var(--fg-3);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  border-bottom: 1px solid color-mix(in oklch, var(--line) 42%, transparent);
+}
+.gt-header > * {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gt-rows {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.gt-row {
+  position: relative;
+  margin: 1px 6px;
+  padding: 11px 10px;
+  border-radius: var(--r-xs);
+  border-bottom: 1px solid color-mix(in oklch, var(--line) 35%, transparent);
+  cursor: pointer;
+  transition: background 0.15s ease, box-shadow 0.15s ease;
+}
+.gt-rows > :last-child .gt-row,
+.gt-rows > .gt-row:last-child {
+  border-bottom-color: transparent;
+}
+.gt-row:hover {
+  background: color-mix(in oklch, var(--brand-2) 6%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--brand-2) 12%, transparent);
+  border-bottom-color: transparent;
+}
+.gt-cell {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+.gt-muted {
+  color: var(--fg-2);
+  font-size: 12px;
+}
+/* The primary link covers the row so the whole row opens it, as Studio's row click does. */
+.gt-row-link {
+  color: inherit;
+  text-decoration: none;
+}
+.gt-row-link::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+}
+.gt-row-link:hover {
+  text-decoration: none;
+}
+.gt-row-link:focus-visible {
+  outline: none;
+}
+.gt-row:has(.gt-row-link:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.gt-actions {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.gt-row:hover .gt-actions,
+.gt-actions:focus-within,
+.gt-actions:has([open]) {
+  opacity: 1;
+}
+.gt-state {
+  padding: 40px;
+  text-align: center;
+  color: var(--fg-3);
+  font-size: 13px;
+}
+@media (hover: none) {
+  .gt-actions {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .gt-row,
+  .gt-actions {
+    transition: none;
+  }
+}
+
+/* Studio detail-page sidebar cards. Each card is a separate island, so their language is shared. */
+.side-card {
+  min-width: 0;
+  padding: 16px;
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.side-card-title {
+  margin: 0 0 10px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--fg-3);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.info-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+}
+.info-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+.info-label {
+  flex: none;
+  font-size: 12px;
+  color: var(--fg-3);
+}
+.info-value {
+  min-width: 0;
+  margin: 0;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--fg-0);
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+a.info-value {
+  color: var(--accent);
+}
+.side-empty {
+  margin: 0;
+  padding: 2px 0;
+  font-size: 12px;
+  color: var(--fg-3);
+}
+.side-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.side-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  padding: 4px 0;
+}
+.side-row-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  color: var(--fg-0);
+  overflow-wrap: anywhere;
+}
+.side-row-link {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  color: var(--fg-1);
+  font-size: 12px;
+  text-decoration: none;
+}
+.side-row-link > :first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.side-row-link:hover > :first-child {
+  color: var(--accent);
+  text-decoration: underline;
+}
+.side-row-remove {
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.side-row:hover .side-row-remove,
+.side-row-remove:focus-within {
+  opacity: 1;
+}
+.side-divider {
+  margin: 12px 0;
+  border-top: 1px solid var(--line);
+}
+.avatar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #ff9b5c;
+  color: #fff;
+  font-size: 8px;
+  font-weight: 600;
+}
+.action-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.action-note {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--fg-3);
+}
+.action-note[data-tone="error"] {
+  color: #ff5d6c;
+}
+@media (hover: none) {
+  .side-row-remove {
+    opacity: 1;
+  }
+}
+
+/* File-card source views size like Studio's file viewer: at least ten lines, scrolling past 800px. */
+.bare-code .cm-editor {
+  min-height: 225px;
+  max-height: 800px;
+}
+.bare-code .cm-scroller {
+  overflow: auto;
+}
+form.code-widget .cm-editor {
+  min-height: 320px;
+  max-height: 800px;
+}
+@media (max-width: 600px) {
+  .bare-code .cm-editor {
+    max-height: calc(100dvh - 160px);
+  }
+}
+
+/* Agent detail islands contribute cards directly to the page's ordered column. */
+.agent-main > [data-bml-island] {
+  display: contents;
 }

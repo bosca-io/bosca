@@ -12,7 +12,7 @@
     )
   </script>
   <island name="git-file-actions" :key="model.page.id + model.page.ref + model.page.file">
-    <div :data-next-href="model.nextHref">
+    <div class="file-actions" :data-next-href="model.nextHref">
       <if model.message.isNotBlank()>
         <ui-alert :tone='if (model.failed) "error" else "success"'>{ model.message }</ui-alert>
       </if>
@@ -20,7 +20,9 @@
         <ui-confirm-dialog
           title="Delete file?"
           :description='"A commit removing " + model.page.file + " will be added to " + model.page.ref + "."'
-          triggerLabel="Delete file"
+          triggerLabel="Delete"
+          :triggerIconOnly="false"
+          triggerStyle="plain"
         >
           <form class="modal-form" @submit="model.delete(true, ctx)">
             <footer class="modal-footer">
@@ -33,8 +35,7 @@
         <ui-dialog
           title="New folder"
           triggerLabel="New folder"
-          triggerIconOnly
-          triggerIcon="folder-plus"
+          triggerIcon="folder"
           icon="folder"
           :forceOpen="model.failed"
         >

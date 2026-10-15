@@ -287,7 +287,7 @@ assert.equal(await ev(() => document.querySelectorAll(".path-row").length), 3);
 assert.ok(
   await ev(() =>
     [...document.querySelectorAll(".result-size")].some(
-      (e) => e.textContent === "1.5 KiB",
+      (e) => e.textContent === "1.5 KB",
     ),
   ),
 );

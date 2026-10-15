@@ -4,11 +4,12 @@
   </script>
   <git-layout title="Pull requests">
     <ui-page>
-      <ui-page-heading title="Pull requests" icon="branch">
-        <div class="heading-actions">
-          <git-pull-filter :page="page" />
-          <git-pull-create :page="page" />
-        </div>
+      <ui-page-heading
+        title="Pull Requests"
+        :subtitle='page.rows.size.toString() + " " + page.status.lowercase().ifBlank { "total" } + " across " + page.repositories.size + " repositories"'
+      >
+        <git-pull-filter :page="page" />
+        <git-pull-create :page="page" />
       </ui-page-heading>
       <git-pull-list :page="page" />
     </ui-page>

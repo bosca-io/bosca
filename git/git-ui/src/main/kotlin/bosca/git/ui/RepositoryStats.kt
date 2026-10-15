@@ -4,15 +4,14 @@ import bosca.bml.graphql.execute
 import bosca.bml.render.currentRenderContext
 import bosca.git.ui.graphql.GitUiStats
 
-/** Loads history-based statistics for the private deferred repository summary. */
-suspend fun repositoryStats(id: String): String {
+/** Loads history-based statistics for the private deferred repository summary tiles. */
+suspend fun repositoryStats(id: String): List<RepositoryStatistic> {
     val stats = currentRenderContext().gql.execute(GitUiStats, GitUiStats.Variables(id)).git.stats
     return listOf(
-        Triple(stats.commitCount, "commit", "commits"),
-        Triple(stats.branchCount, "branch", "branches"),
-        Triple(stats.tagCount, "tag", "tags"),
-        Triple(stats.contributorCount, "contributor", "contributors"),
-    ).joinToString(" · ") { (count, singular, plural) ->
-        "$count " + if (count.toLong() == 1L) singular else plural
-    } + " · ${formatSize(stats.diskSizeBytes)}"
+        RepositoryStatistic("Commits", stats.commitCount.toString()),
+        RepositoryStatistic("Branches", stats.branchCount.toString()),
+        RepositoryStatistic("Tags", stats.tagCount.toString()),
+        RepositoryStatistic("Contributors", stats.contributorCount.toString()),
+        RepositoryStatistic("Size", formatSize(stats.diskSizeBytes)),
+    )
 }

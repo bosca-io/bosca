@@ -4,11 +4,7 @@
   </script>
   <git-layout title="Search">
     <ui-page>
-      <ui-page-heading
-        title="Search"
-        description="Find content and file paths in your repositories."
-        descriptionBelow
-      />
+      <ui-page-heading title="Search" subtitle="Search file content and paths across repositories" />
       <git-search :page="page" />
     </ui-page>
   </git-layout>
