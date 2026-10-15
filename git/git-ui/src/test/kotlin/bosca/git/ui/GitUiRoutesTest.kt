@@ -122,6 +122,26 @@ class GitUiRoutesTest {
     }
 
     @Test
+    fun `repository directory listings put folders first and sort names ignoring case`() {
+        for (path in listOf("", "beta")) {
+            val response = get("/repositories/ordering?ref=main&path=$path")
+            assertEquals(200, response.statusCode(), response.body())
+            val tree =
+                Regex("<ul[^>]*class=\"tree\"[^>]*>(.*?)</ul>", RegexOption.DOT_MATCHES_ALL)
+                    .find(response.body())
+                    ?.groupValues
+                    ?.get(1)
+            assertNotNull(tree, response.body())
+            val names =
+                Regex("<a\\b[^>]*>(.*?)</a>", RegexOption.DOT_MATCHES_ALL)
+                    .findAll(tree)
+                    .map { it.groupValues[1].replace(Regex("<[^>]+>"), "").trim() }
+                    .toList()
+            assertEquals(listOf("beta", "Gamma", "apple.txt", "Zebra.txt"), names, "Path: $path")
+        }
+    }
+
+    @Test
     fun `missing repository and unavailable files have distinct states`() {
         assertEquals(404, get("/repositories/missing").statusCode())
         assertTrue("File not found at this ref." in get("/repositories/repo?file=missing").body())
@@ -2408,6 +2428,10 @@ class GitUiRoutesTest {
                             """{"errors":[{"message":"Tree temporarily unavailable"}]}"""
                         operation == "GitUiTree" && id == "empty" ->
                             """{"data":{"git":{"tree":[]}}}"""
+                        operation == "GitUiTree" && id == "ordering" -> {
+                            val prefix = path?.takeIf { it.isNotBlank() }?.let { "$it/" }.orEmpty()
+                            """{"data":{"git":{"tree":[{"name":"Zebra.txt","path":"${prefix}Zebra.txt","type":"BLOB","sha":"abc","size":12},{"name":"Gamma","path":"${prefix}Gamma","type":"TREE","sha":"abc","size":0},{"name":"apple.txt","path":"${prefix}apple.txt","type":"BLOB","sha":"abc","size":12},{"name":"beta","path":"${prefix}beta","type":"TREE","sha":"abc","size":0}]}}}"""
+                        }
                         operation == "GitUiTree" && path == "docs" ->
                             """{"data":{"git":{"tree":[{"name":"a # b.txt","path":"docs/a # b.txt","type":"BLOB","sha":"abc","size":12},{"name":"guide.md","path":"docs/guide.md","type":"BLOB","sha":"abc","size":12}]}}}"""
                         operation == "GitUiTree" ->

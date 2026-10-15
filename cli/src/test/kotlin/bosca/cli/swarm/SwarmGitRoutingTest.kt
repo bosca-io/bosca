@@ -57,8 +57,8 @@ class SwarmGitRoutingTest {
         }
         uiPaths.forEach { assertTrue(pattern.matches(URI(it).path), it) }
         apiPaths.forEach { assertFalse(pattern.matches(URI(it).path), it) }
+        // Helm uses split matchers to fit Envoy's RE2 limit; helm/tests/test_git_routes.py validates them.
         listOf(
-            "helm/bosca-git-server/templates/_routes.tpl",
             "deployments/bosca-compose/config/nginx.conf.template",
             "deployments/local/Caddyfile",
         ).forEach { assertTrue(Files.readString(workspace.resolve(it)).contains(gitUiPathPattern()), it) }

@@ -9,8 +9,11 @@ import bosca.db.asCoroutineContext
 import bosca.db.connection
 import bosca.db.migrations.FlywayMigration
 import bosca.db.transaction
+import bosca.cache.CacheManager
+import bosca.cache.RequestCacheSerializer
 import bosca.di.ProviderRegistry
 import bosca.di.provides
+import bosca.lock.nats.NatsDistributedLockFactory
 import bosca.graphql.Batch
 import bosca.pipelines.configuration.PipelinesRuntimeConfiguration
 import bosca.pipelines.model.Pipeline
@@ -46,11 +49,18 @@ import bosca.pipelines.service.PipelineRunResultStore
 import bosca.pipelines.service.PipelineRunResultStoreImpl
 import bosca.pipelines.service.PipelineRunService
 import bosca.pipelines.node.PipelineResumeCorrelation
+import bosca.pipelines.node.PipelineRunDriveListener
+import bosca.pipelines.service.NodeSuspensionService
+import bosca.pipelines.service.NodeSuspensionServiceImpl
 import bosca.pipelines.service.PipelineRunServiceImpl
 import bosca.pipelines.service.PipelineService
 import bosca.pipelines.trigger.PipelineChildRunJobExecutor
 import bosca.pipelines.trigger.PipelineManualRunJobExecutor
 import bosca.pipelines.trigger.PipelineDelayJob
+import bosca.pipelines.trigger.ExecuteNodeInJobExecutor
+import bosca.pipelines.trigger.PipelineRunDriveListenerImpl
+import bosca.pipelines.trigger.PipelineScheduledRunExecutor
+import bosca.pipelines.trigger.PipelineScheduledRunJob
 import bosca.pipelines.configuration.PipelinesJobQueueNames
 import bosca.security.model.EntityPermission
 import bosca.security.model.PermissionAction
@@ -60,6 +70,9 @@ import bosca.sharedqueue.jobs.Job
 import bosca.sharedqueue.jobs.JobConfigurationEnqueuer
 import bosca.sharedqueue.jobs.JobExecutor
 import bosca.sharedqueue.jobs.JobQueue
+import bosca.sharedqueue.jobs.asCoroutineContext
+import bosca.sharedqueue.jobs.configuration.RegisterJobsConfiguration
+import bosca.sharedqueue.jobs.nats.NatsJobQueueFactory
 import bosca.serialization.OffsetDateTimeSerializer
 import bosca.pubsub.PubSubService
 import bosca.serialization.UUID
@@ -83,10 +96,12 @@ import kotlinx.serialization.json.put
 import kotlinx.serialization.modules.SerializersModule
 import kotlinx.serialization.modules.polymorphic
 import bosca.test.resources.SharedPostgreSQLContainer
+import bosca.test.resources.SharedNatsContainer
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 import kotlin.time.Duration
 import kotlin.uuid.ExperimentalUuidApi
@@ -99,7 +114,8 @@ import kotlin.uuid.ExperimentalUuidApi
  * `pipeline_run_status` enum cast, jsonb columns, optimistic-locked `updateState`, the result-store
  * upsert). The backing job's completion is driven directly via `service.resume`, exactly as the
  * run job's drive listener does when a backing child bubbles up to terminal status (the queue's
- * at-least-once delivery is covered by sharedqueue's own e2e tests).
+ * at-least-once delivery is covered by sharedqueue's own e2e tests). Scheduled-run regressions also
+ * drive the generic backing jobs through real NATS completion callbacks to verify resume wiring.
  */
 class PipelineDurableExecutionEndToEndTest {
 
@@ -113,6 +129,24 @@ class PipelineDurableExecutionEndToEndTest {
         override val position: NodePosition = NodePosition(),
     ) : bosca.pipelines.node.TransformNode() {
         override suspend fun execute(context: PipelineContext, inputs: NodeInputs): PipelineValue? = inputs.first
+    }
+
+    /** Uses the same generic backing job as the GitHub synchronization nodes. */
+    @Serializable
+    @SerialName("e2eDeferred")
+    class DeferredNode(
+        override val id: String,
+        override val name: String = "",
+        override val description: String = "",
+        override val position: NodePosition = NodePosition(),
+        val fail: Boolean = false,
+    ) : ActionNode() {
+        override val willSuspend: Boolean = true
+
+        override suspend fun execute(context: PipelineContext, inputs: NodeInputs): PipelineValue? {
+            check(!fail) { "backing work failed" }
+            return inputs.first
+        }
     }
 
     /** A node that fails until [FlakyNode.succeedOnAttempt] — for exercising durable retry. */
@@ -217,6 +251,7 @@ class PipelineDurableExecutionEndToEndTest {
                 subclass(InputNode::class, InputNode.serializer())
                 subclass(OutputNode::class, OutputNode.serializer())
                 subclass(PassThroughNode::class, PassThroughNode.serializer())
+                subclass(DeferredNode::class, DeferredNode.serializer())
                 subclass(SuspendingNode::class, SuspendingNode.serializer())
                 subclass(FlakyNode::class, FlakyNode.serializer())
                 subclass(DelayNode::class, DelayNode.serializer())
@@ -300,6 +335,87 @@ class PipelineDurableExecutionEndToEndTest {
 
     @AfterTest
     fun teardown() = ProviderRegistry.clear()
+
+    @Test
+    fun `scheduled run resumes through successive backing jobs on the real queue`() = scheduledBackingJobs(fail = false)
+
+    @Test
+    fun `scheduled run leaves suspended state when backing work terminally fails`() = scheduledBackingJobs(fail = true)
+
+    private fun scheduledBackingJobs(fail: Boolean) {
+        val nats = SharedNatsContainer()
+        nats.start()
+        try {
+            val natsPool = nats.newConnectionPool(1)
+            val queue = NatsJobQueueFactory(
+                natsPool, json, NatsDistributedLockFactory(natsPool), null, emptyList(), processExpiredJobs = false,
+            ).create("scheduled-pipeline-${UUID.random()}")
+            RegisterJobsConfiguration()
+            provides<CacheManager> { mockk(relaxed = true) }
+            provides<RequestCacheSerializer> { mockk(relaxed = true) }
+            provides<JobQueue>(name = PipelinesJobQueueNames.jobQueue) { queue }
+            provides<NodeSuspensionService> { NodeSuspensionServiceImpl() }
+            provides<PipelineRunService> { service }
+            provides<PipelineRunDriveListener> { PipelineRunDriveListenerImpl(json) }
+
+            val (pipelineId, _) = persistPipeline(
+                "scheduled-backing-work",
+                listOf(InputNode("in", acceptedType = "JSON"), DeferredNode("first", fail = fail), DeferredNode("second"), OutputNode("out")),
+                listOf(
+                    PipelineEdge("e1", source = "in", target = "first"),
+                    PipelineEdge("e2", source = "first", target = "second"),
+                    PipelineEdge("e3", source = "second", target = "out"),
+                ),
+                register = true,
+            )
+            val runJobId = withResult {
+                queue.enqueue(InternalJobConstructor(
+                    json.encodeToJsonElement(PipelineScheduledRunJob.serializer(), PipelineScheduledRunJob(pipelineId)),
+                    PipelineScheduledRunExecutor::class,
+                ))
+            }
+            withDb {
+                val job = queue.dequeue() ?: error("scheduled job missing")
+                assertEquals(runJobId, job.getId())
+                withContext(queue.asCoroutineContext(job)) {
+                    PipelineScheduledRunExecutor(testPipelineService, service).execute()
+                    queue.markComplete(job)
+                }
+            }
+            val run = withResult { service.listActive(0, 50).single { it.pipelineId == pipelineId } }
+            assertEquals(PipelineRunStatus.SUSPENDED, run.status)
+            assertEquals(runJobId, run.runJobId)
+            val backingExecutor = ExecuteNodeInJobExecutor(service, testPipelineService, resultStore, securityService, PipelinesRuntimeConfiguration())
+            repeat(if (fail) 1 else 2) { index ->
+                withDb {
+                    val child = queue.dequeue() ?: error("backing job $index missing")
+                    assertEquals(runJobId, child.getParentId())
+                    withContext(queue.asCoroutineContext(child)) {
+                        if (fail) {
+                            val failure = assertFailsWith<IllegalStateException> { backingExecutor.execute() }
+                            queue.markFailed(child, failure, retry = false)
+                        } else {
+                            backingExecutor.execute()
+                            queue.markComplete(child)
+                        }
+                    }
+                }
+                if (!fail && index == 0) {
+                    val parked = withResult { service.get(run.id) } ?: error("run missing")
+                    assertEquals(PipelineRunStatus.SUSPENDED, parked.status)
+                    assertEquals(listOf("second"), json.decodeFromJsonElement(ListSerializer(PipelineRunAwait.serializer()), parked.awaiting).map { it.nodeId })
+                }
+            }
+            val completed = withResult { service.get(run.id) } ?: error("run missing")
+            val expected = if (fail) PipelineRunStatus.FAILED else PipelineRunStatus.OK
+            assertEquals(expected, completed.status)
+            if (fail) assertEquals("backing work failed", completed.error)
+            assertTrue(withResult { service.listActive(0, 50) }.none { it.id == run.id })
+            assertEquals(expected, withResult { runLogRepository.listForPipeline(pipelineId, 0, 10) }.single().outcome)
+        } finally {
+            nats.stop()
+        }
+    }
 
     @Test
     fun `a pipeline with no parking node runs straight through to OK in one pass`() {

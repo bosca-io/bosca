@@ -147,6 +147,9 @@ suspend fun repositoryPage(): RepositoryPage? = coroutineScope {
                         )
                         .git
                         .tree
+                        .sortedWith(
+                            compareBy({ it.type != GitTreeEntryType.TREE }, { it.name.lowercase() })
+                        )
                 val readme =
                     tree
                         .filter { it.type == GitTreeEntryType.BLOB }
