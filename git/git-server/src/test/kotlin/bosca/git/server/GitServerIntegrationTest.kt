@@ -870,8 +870,9 @@ class GitServerIntegrationTest {
             assertTrue(Json.parseToJsonElement(deniedReply.body()).jsonObject.containsKey("errors"), deniedReply.body())
             val currentDiffHtml = request(pullPath, cookie = "$cookiePrefix=$adminToken").body()
                 .replace(Regex("<script\\b[^>]*>.*?</script>", RegexOption.DOT_MATCHES_ALL), "")
-            val displayedDiff = Regex("<details[^>]*class=\"diff-file\"[^>]*>.*?</details>", RegexOption.DOT_MATCHES_ALL)
+            val displayedDiff = Regex("<section[^>]*class=\"diff-file\"[^>]*>.*?</section>", RegexOption.DOT_MATCHES_ALL)
                 .findAll(currentDiffHtml).joinToString("\n") { it.value }
+            assertTrue("After retarget" in displayedDiff, currentDiffHtml)
             assertFalse("Response to the original discussion" in displayedDiff)
             assertTrue("Response to the original discussion" in currentDiffHtml && "Discussions outside this diff" in currentDiffHtml)
             val deniedApiEdit = request("/graphql", buildJsonObject {
@@ -995,8 +996,9 @@ class GitServerIntegrationTest {
                 assertEquals(200, files.statusCode(), files.body())
                 assertTrue("first-change.txt" in files.body() && "second-change.txt" in files.body() && "Retained merged change" in files.body(), files.body())
                 assertFalse("Comparison unavailable" in files.body() || "No files changed" in files.body(), files.body())
-                val mergedFiles = Regex("<details[^>]*class=\"diff-file\"[^>]*>.*?</details>", RegexOption.DOT_MATCHES_ALL)
+                val mergedFiles = Regex("<section[^>]*class=\"diff-file\"[^>]*>.*?</section>", RegexOption.DOT_MATCHES_ALL)
                     .findAll(files.body()).joinToString("\n") { it.value }
+                assertTrue("first-change.txt" in mergedFiles && "second-change.txt" in mergedFiles && "Retained merged change" in mergedFiles, files.body())
                 if (strategy == "FAST_FORWARD") {
                     assertTrue("Retained source discussion" in mergedFiles, files.body())
                 } else {
