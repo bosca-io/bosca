@@ -63,6 +63,7 @@ try {
   const available = [
     "auth.mjs",
     "repository.mjs",
+    "statistics.mjs",
     "pulls.mjs",
     "search.mjs",
     "screens.mjs",

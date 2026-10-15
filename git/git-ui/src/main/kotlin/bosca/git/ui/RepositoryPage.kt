@@ -30,7 +30,6 @@ data class RepositoryPage(
     val listHref: String,
     val authorName: String,
     val authorEmail: String,
-    val stats: String,
     val slug: String,
     val visibility: String,
     val contentType: String,

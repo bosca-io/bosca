@@ -395,7 +395,7 @@ async function inspectLoadingStates(width) {
     await releaseRequests();
   }
   await until(
-    "document.querySelector('[data-bml-deferred]')?.dataset.bmlDeferredState==='loaded'",
+    "document.querySelector('.repository-workspace [data-bml-deferred]')?.dataset.bmlDeferredState==='loaded'",
   );
   assert.equal(
     await ev("Boolean(document.querySelector('.tree-loading'))"),
@@ -581,6 +581,9 @@ for (const width of [1920, 1440, 1024, 390]) {
   await call("Emulation.setScriptExecutionDisabled", { value: false });
   for (const path of paths) {
     await nav(path);
+    if (await ev("Boolean(document.querySelector('.repository-summary [data-bml-deferred]'))")) {
+      await until("document.querySelector('.repository-summary [data-bml-deferred]')?.dataset.bmlDeferredState==='loaded'");
+    }
     if (path === "/pulls") {
       const title = await ev(`(() => {
         const row = document.querySelector('.pull-row strong');

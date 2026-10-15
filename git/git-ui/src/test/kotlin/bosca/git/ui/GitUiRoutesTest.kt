@@ -13,6 +13,10 @@ import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.concurrent.thread
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -36,6 +40,7 @@ class GitUiRoutesTest {
         userMappings.clear()
         treeRetries.clear()
         commitSha = "abc"
+        requestProbe = null
     }
 
     @Test
@@ -87,7 +92,7 @@ class GitUiRoutesTest {
     @Test
     fun `repository browsing preserves and encodes refs and file paths`() {
         val response = get("/repositories/repo?ref=feature%2Fone&path=docs")
-        assertTrue("2 commits · 2 branches · 1 tag · 1 contributor" in response.body(), response.body())
+        assertTrue("Loading statistics" in response.body(), response.body())
         assertEquals(200, response.statusCode(), response.body())
         assertTrue(
             "ref=feature%2Fone&amp;path=docs&amp;file=docs%2Fa%20%23%20b.txt" in response.body(),
@@ -1803,6 +1808,83 @@ class GitUiRoutesTest {
         assertTrue(userMappings.isEmpty())
     }
 
+    @Test
+    fun `independent page reads overlap over HTTP`() {
+        for ((path, operations) in listOf(
+            "/repositories/repo?file=README.md" to setOf("GitUiBranches", "GitUiTags", "GitUiProfiles"),
+            "/repositories/repo?tab=pipelines" to setOf("GitUiBranches", "GitUiTags", "GitUiPipelines", "GitUiPipelineRuns"),
+            "/repositories/repo?tab=statuses&sha=abc" to setOf("GitUiStatuses", "GitUiCommits"),
+            "/pulls/pull" to setOf("GitUiProfiles", "GitUiPullList", "GitUiRepositories"),
+        )) {
+            val arrived = CountDownLatch(operations.size)
+            val timeouts = AtomicInteger()
+            requestProbe = { operation ->
+                if (operation in operations) {
+                    arrived.countDown()
+                    if (!arrived.await(3, TimeUnit.SECONDS)) timeouts.incrementAndGet()
+                }
+            }
+            try {
+                val response = get(path)
+                assertEquals(200, response.statusCode(), response.body())
+                assertEquals(0L, arrived.count, path)
+                assertEquals(0, timeouts.get(), "Independent reads were serialized: $path")
+            } finally { requestProbe = null }
+        }
+    }
+
+    @Test
+    fun `repository tabs reuse metadata and omit unrelated code and stats reads`() {
+        for ((tab, expected) in mapOf(
+            "pipelines" to setOf("GitUiRepository", "GitUiBranches", "GitUiTags", "GitUiPipelines", "GitUiPipelineRuns"),
+            "pulls" to setOf("GitUiRepository", "GitUiRepositories", "GitUiRepositoryPullList", "GitUiBranches"),
+            "settings" to setOf("GitUiRepository"),
+            "secrets" to setOf("GitUiRepository", "GitUiSecrets"),
+            "statuses" to setOf("GitUiRepository", "GitUiBranches", "GitUiTags", "GitUiCommits"),
+        )) {
+            val before = requests.size
+            val response = get("/repositories/repo?tab=$tab")
+            assertEquals(200, response.statusCode(), response.body())
+            val operations = requests.drop(before).map { it.operation }
+            assertEquals(expected, operations.toSet(), tab)
+            assertEquals(expected.size, operations.size, "Duplicate query in $tab: $operations")
+        }
+    }
+
+    @Test
+    fun `repository statistics load privately after the shell`() {
+        val before = requests.size
+        val shell = get("/repositories/repo")
+        assertEquals(200, shell.statusCode(), shell.body())
+        assertTrue("component:git-repository-stats:statistics" in shell.body(), shell.body())
+        assertTrue(requests.drop(before).none { it.operation == "GitUiStats" })
+        val payload = buildJsonObject {
+            put("page", "/repositories/{id}")
+            put("path", "/repositories/repo")
+            put("query", buildJsonObject {})
+            put("props", buildJsonObject { put("id", "repo") })
+        }.toString()
+        val endpoint = "/_bml/deferred/component%3Agit-repository-stats%3Astatistics"
+        val denied = post(endpoint, payload, authenticated = false)
+        assertEquals(401, denied.statusCode(), denied.body())
+        assertTrue(requests.drop(before).none { it.operation == "GitUiStats" })
+        val response = post(endpoint, payload)
+        assertEquals(200, response.statusCode(), response.body())
+        assertTrue("2 commits · 2 branches · 1 tag · 1 contributor" in response.body(), response.body())
+        assertEquals("private, no-store", response.headers().firstValue("Cache-Control").orElse(""))
+        assertEquals("Bearer ui-test-token", requests.last { it.operation == "GitUiStats" }.authorization)
+    }
+
+    @Test
+    fun `global pipeline catalog avoids a metadata request per repository`() {
+        val before = requests.size
+        val response = get("/pipelines")
+        assertEquals(200, response.statusCode(), response.body())
+        val operations = requests.drop(before).map { it.operation }
+        assertEquals(2, operations.count { it == "GitUiPipelines" })
+        assertEquals(0, operations.count { it == "GitUiRepository" || it == "GitUiProfile" })
+    }
+
     private fun deferredSidebar(path: String, authenticated: Boolean = true): HttpResponse<String> {
         val file =
             java.net.URLDecoder.decode(
@@ -1992,6 +2074,8 @@ class GitUiRoutesTest {
         @Volatile private var commitSha = "abc"
         private var port = 0
         private lateinit var upstream: HttpServer
+        private val upstreamExecutor = Executors.newVirtualThreadPerTaskExecutor()
+        @Volatile private var requestProbe: ((String) -> Unit)? = null
         private lateinit var engine: NettyServerEngine
         private lateinit var subscriptionEngine: NettyServerEngine
 
@@ -2001,6 +2085,7 @@ class GitUiRoutesTest {
         @BeforeClass
         fun start() {
             upstream = HttpServer.create(InetSocketAddress("localhost", 0), 0)
+            upstream.executor = upstreamExecutor
             upstream.createContext("/graphql") { exchange ->
                 val input =
                     Json.parseToJsonElement(exchange.requestBody.readAllBytes().decodeToString())
@@ -2013,6 +2098,7 @@ class GitUiRoutesTest {
                             ?.get(1)
                             .orEmpty()
                 val variables = input["variables"]?.jsonObject ?: JsonObject(emptyMap())
+                requestProbe?.invoke(operation)
                 requests.add(
                     ApiRequest(
                         operation,
@@ -2589,6 +2675,7 @@ class GitUiRoutesTest {
             if (::engine.isInitialized) engine.stopWithoutHalting()
             if (::subscriptionEngine.isInitialized) subscriptionEngine.stopWithoutHalting()
             if (::upstream.isInitialized) upstream.stop(0)
+            upstreamExecutor.close()
         }
 
         private fun fixture(name: String): String =

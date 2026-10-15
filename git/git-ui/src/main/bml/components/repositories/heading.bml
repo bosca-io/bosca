@@ -26,7 +26,7 @@
       <if page.description.isNotBlank()>
         <p class="repository-description">{ page.description }</p>
       </if>
-      <p class="repository-summary">{ page.stats }</p>
+      <div class="repository-summary"><git-repository-stats :id="page.id" /></div>
     </div>
   </div>
   <style scoped>

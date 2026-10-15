@@ -998,6 +998,26 @@ input[type="checkbox"] {
 .tree-loading .button[data-bml-deferred-retry] {
   display: none;
 }
+.stats-error,
+.stats-retry {
+  display: none;
+}
+[data-bml-deferred-state="error"] .stats-error,
+[data-bml-deferred-state="error"] .stats-retry {
+  display: inline;
+}
+[data-bml-deferred-state="error"] .stats-loading {
+  display: none;
+}
+.stats-retry {
+  margin-left: 8px;
+  color: var(--accent);
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
+}
 [data-bml-deferred-state="error"] .tree-loading .tree-error-message {
   display: block;
 }

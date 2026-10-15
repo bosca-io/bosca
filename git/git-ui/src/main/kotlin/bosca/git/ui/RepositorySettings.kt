@@ -11,10 +11,13 @@ internal fun commaValues(value: String): List<String> =
     value.split(',').map(String::trim).filter(String::isNotEmpty).distinct()
 
 /** Loads only the selected settings panel, keeping all actions tied to one repository. */
-suspend fun repositorySettingsPage(baseHref: String = ""): RepositorySettingsPage? {
+suspend fun repositorySettingsPage(
+    baseHref: String = "",
+    repository: GitUiRepositoryData.Git.RepositoryById? = null,
+): RepositorySettingsPage? {
     val ctx = currentRenderContext()
     val id = ctx.params["id"].orEmpty()
-    val repo =
+    val repo = repository ?:
         ctx.gql.execute(GitUiRepository, GitUiRepository.Variables(id)).git.repositoryById
             ?: return null.also { ctx.notFound = true }
     val panel =
@@ -54,10 +57,13 @@ suspend fun repositorySettingsPage(baseHref: String = ""): RepositorySettingsPag
     return RepositorySettingsPage(repo, panel, webhooks, rules, permissions, groups, baseHref)
 }
 
-suspend fun repositorySecretsPage(baseHref: String = ""): RepositorySecretsPage? {
+suspend fun repositorySecretsPage(
+    baseHref: String = "",
+    repository: GitUiRepositoryData.Git.RepositoryById? = null,
+): RepositorySecretsPage? {
     val ctx = currentRenderContext()
     val id = ctx.params["id"].orEmpty()
-    val repo =
+    val repo = repository ?:
         ctx.gql.execute(GitUiRepository, GitUiRepository.Variables(id)).git.repositoryById
             ?: return null.also { ctx.notFound = true }
     return RepositorySecretsPage(

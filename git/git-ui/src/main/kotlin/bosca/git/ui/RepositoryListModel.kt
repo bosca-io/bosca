@@ -61,6 +61,7 @@ class RepositoryListModel(
                         it.updated,
                         href,
                         it.canManage,
+                        it.canExecute,
                     )
                 }
     }

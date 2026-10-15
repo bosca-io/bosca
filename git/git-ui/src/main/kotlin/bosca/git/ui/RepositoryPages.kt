@@ -3,6 +3,8 @@ package bosca.git.ui
 import bosca.bml.graphql.execute
 import bosca.bml.render.currentRenderContext
 import bosca.git.ui.graphql.*
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 
@@ -19,28 +21,25 @@ suspend fun repositoryList(): RepositoryListModel {
     val owner =
         if (selected == "all") OwnerOption("all", "All accessible repositories", "")
         else {
-            val profile =
-                ctx.gql.execute(GitUiProfile, GitUiProfile.Variables(selected)).profiles.profile
+            profiles.firstOrNull { it.id == selected }?.let {
+                OwnerOption(it.id, it.name, it.slug.orEmpty())
+            } ?: run {
+                val profile = ctx.gql.execute(GitUiProfile, GitUiProfile.Variables(selected)).profiles.profile
                     ?: error("The selected repository owner is unavailable.")
-            OwnerOption(profile.id, profile.name, profile.slug.orEmpty())
+                OwnerOption(profile.id, profile.name, profile.slug.orEmpty())
+            }
         }
     val model = RepositoryListModel(state, owner)
     model.reload(ctx)
     return model
 }
 
-suspend fun repositoryPage(): RepositoryPage? {
+suspend fun repositoryPage(): RepositoryPage? = coroutineScope {
     val ctx = currentRenderContext()
-    val id = ctx.params["id"] ?: return null.also { ctx.notFound = true }
+    val id = ctx.params["id"] ?: return@coroutineScope null.also { ctx.notFound = true }
     val repo =
         ctx.gql.execute(GitUiRepository, GitUiRepository.Variables(id)).git.repositoryById
-            ?: return null.also { ctx.notFound = true }
-    val branchRefs = ctx.gql.execute(GitUiBranches, GitUiBranches.Variables(id)).git.branches
-    val branches = branchRefs.map { it.name }
-    val tags =
-        ctx.gql.execute(GitUiTags, GitUiTags.Variables(id)).git.tags.map {
-            RefOption(it.name, "tag", it.targetSha ?: it.sha, it.message.orEmpty())
-        }
+            ?: return@coroutineScope null.also { ctx.notFound = true }
     val ref = ctx.query["ref"]?.takeIf(String::isNotBlank) ?: repo.defaultBranch
     val path = ctx.query["path"].orEmpty()
     val file = ctx.query["file"].orEmpty()
@@ -61,19 +60,35 @@ suspend fun repositoryPage(): RepositoryPage? {
         } ?: "code"
     val offset = ctx.query["offset"]?.toLongOrNull()?.coerceAtLeast(0) ?: 0
     val listHref = safeListHref(ctx.query["return"])
-    val author = resolveGitCommitAuthor(ctx.gql.execute(GitUiProfiles, Unit).profiles.current)
-    val resolvedSha =
-        ctx.gql
-            .commitShaForRef(
-                id,
-                ref,
-                tags.associate { it.name to it.sha } + branchRefs.associate { it.name to it.sha },
-            )
-            .orEmpty()
+    val needsRefs = tab in setOf("code", "commits", "branches", "tags", "statuses")
+    val branchesRequest = async {
+        if (needsRefs) ctx.gql.execute(GitUiBranches, GitUiBranches.Variables(id)).git.branches
+        else emptyList()
+    }
+    val tagsRequest = async {
+        if (needsRefs) ctx.gql.execute(GitUiTags, GitUiTags.Variables(id)).git.tags.map {
+            RefOption(it.name, "tag", it.targetSha ?: it.sha, it.message.orEmpty())
+        } else emptyList()
+    }
+    val authorRequest = async {
+        resolveGitCommitAuthor(
+            if (tab == "code" && repo.canEdit)
+                ctx.gql.execute(GitUiProfiles, Unit).profiles.current
+            else null
+        )
+    }
+    val branchRefs = branchesRequest.await()
+    val branches = branchRefs.map { it.name }
+    val tags = tagsRequest.await()
+    val resolvedSha = if (tab == "code" || tab == "branches") {
+        ctx.gql.commitShaForRef(
+            id, ref, tags.associate { it.name to it.sha } + branchRefs.associate { it.name to it.sha },
+        ).orEmpty()
+    } else ""
     val emptyRepository = branches.isEmpty() && tags.isEmpty()
     var content: String? = null
     var fileMessage =
-        if (!emptyRepository && resolvedSha.isBlank()) "The selected ref does not exist." else ""
+        if (tab == "code" && !emptyRepository && resolvedSha.isBlank()) "The selected ref does not exist." else ""
     var rawHref = ""
     var isImage = false
     var markdownHtml = ""
@@ -194,8 +209,8 @@ suspend fun repositoryPage(): RepositoryPage? {
                     )
                 }
         else emptyList()
-    val stats = ctx.gql.execute(GitUiStats, GitUiStats.Variables(id)).git.stats
-    return RepositoryPage(
+    val author = authorRequest.await()
+    RepositoryPage(
         id,
         repo.name,
         repo.description.orEmpty(),
@@ -221,15 +236,6 @@ suspend fun repositoryPage(): RepositoryPage? {
         listHref,
         author.first,
         author.second,
-        listOf(
-                Triple(stats.commitCount, "commit", "commits"),
-                Triple(stats.branchCount, "branch", "branches"),
-                Triple(stats.tagCount, "tag", "tags"),
-                Triple(stats.contributorCount, "contributor", "contributors"),
-            )
-            .joinToString(" · ") { (count, singular, plural) ->
-                "$count " + if (count.toLong() == 1L) singular else plural
-            } + " · ${formatSize(stats.diskSizeBytes)}",
         repo.slug,
         repo.visibility.name,
         repo.contentType?.name ?: "GENERAL",
@@ -246,23 +252,23 @@ suspend fun repositoryPage(): RepositoryPage? {
             ctx.query["new"] == "true",
         pulls =
             if (tab == "pulls")
-                pullListPage(id, repositoryHref(id, ref, listHref = listHref, tab = tab))
+                pullListPage(id, repositoryHref(id, ref, listHref = listHref, tab = tab), repo)
             else null,
         pipelines =
             if (tab == "pipelines")
-                pipelinePage(id, repositoryHref(id, ref, listHref = listHref, tab = tab))
+                pipelinePage(id, repositoryHref(id, ref, listHref = listHref, tab = tab), repo)
             else null,
         statuses =
             if (tab == "statuses")
-                explorePage("statuses", id, repositoryHref(id, ref, listHref = listHref, tab = tab))
+                explorePage("statuses", id, repositoryHref(id, ref, listHref = listHref, tab = tab), repo, branches)
             else null,
         secrets =
             if (tab == "secrets")
-                repositorySecretsPage(repositoryHref(id, ref, listHref = listHref, tab = tab))
+                repositorySecretsPage(repositoryHref(id, ref, listHref = listHref, tab = tab), repo)
             else null,
         settings =
             if (tab == "settings")
-                repositorySettingsPage(repositoryHref(id, ref, listHref = listHref, tab = tab))
+                repositorySettingsPage(repositoryHref(id, ref, listHref = listHref, tab = tab), repo)
             else null,
     )
 }

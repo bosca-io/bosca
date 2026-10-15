@@ -3,17 +3,25 @@ package bosca.git.ui
 import bosca.bml.graphql.execute
 import bosca.bml.render.currentRenderContext
 import bosca.git.ui.graphql.*
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 
 internal fun pullHref(id: String, repo: String, number: Int): String =
     "/pulls/${encode(id)}?repo=${encode(repo)}&number=$number"
 
-suspend fun pullListPage(repositoryId: String = "", baseHref: String = ""): PullListPage {
+suspend fun pullListPage(
+    repositoryId: String = "",
+    baseHref: String = "",
+    repositoryMetadata: GitUiRepositoryData.Git.RepositoryById? = null,
+): PullListPage = coroutineScope {
     val ctx = currentRenderContext()
-    val allRepositories =
-        ctx.gql
-            .execute(GitUiRepositories, GitUiRepositories.Variables(false, null))
-            .git
-            .repositories
+    val repositoriesRequest = async {
+        ctx.gql.execute(GitUiRepositories, GitUiRepositories.Variables(false, null)).git.repositories
+    }
+    val requested = repositoryId.ifBlank { ctx.query["repo"].orEmpty() }
+    val metadata = repositoryMetadata ?: if (requested.isBlank()) null
+        else ctx.gql.execute(GitUiRepository, GitUiRepository.Variables(requested)).git.repositoryById
+    val allRepositories = repositoriesRequest.await()
     var repositories =
         allRepositories
             .filter { !it.deleted && !it.archived }
@@ -31,16 +39,9 @@ suspend fun pullListPage(repositoryId: String = "", baseHref: String = ""): Pull
                     it.updated,
                     "/repositories",
                     it.canManage,
+                    it.canExecute,
                 )
             }
-    val requested = repositoryId.ifBlank { ctx.query["repo"].orEmpty() }
-    val metadata =
-        if (requested.isBlank()) null
-        else
-            ctx.gql
-                .execute(GitUiRepository, GitUiRepository.Variables(requested))
-                .git
-                .repositoryById
     val repository = metadata?.id.orEmpty()
     if (metadata != null && repositories.none { it.id == metadata.id })
         repositories = repositories + repositorySummary(metadata)
@@ -51,7 +52,7 @@ suspend fun pullListPage(repositoryId: String = "", baseHref: String = ""): Pull
         } ?: "OPEN"
     val offset = ctx.query["offset"]?.toLongOrNull()?.coerceAtLeast(0) ?: 0
     val filter = status.takeUnless { it == "ALL" }?.let(GitPullRequestStatus::valueOf)
-    val rows =
+    val rowsRequest = async {
         if (repository.isBlank())
             ctx.gql
                 .execute(GitUiPullList, GitUiPullList.Variables(filter, offset))
@@ -89,9 +90,10 @@ suspend fun pullListPage(repositoryId: String = "", baseHref: String = ""): Pull
                         it.updated,
                     )
                 }
+    }
     val sourceRepository =
         ctx.query["sourceRepo"]?.takeIf { id -> repositories.any { it.id == id } } ?: repository
-    val branches =
+    val branchesRequest = async {
         if (sourceRepository.isBlank()) emptyList()
         else
             ctx.gql
@@ -99,41 +101,40 @@ suspend fun pullListPage(repositoryId: String = "", baseHref: String = ""): Pull
                 .git
                 .branches
                 .map { it.name }
-    return PullListPage(
+    }
+    val targetBranchesRequest = async {
+        if (sourceRepository == repository) branchesRequest.await()
+        else if (repository.isNotBlank())
+            ctx.gql.execute(GitUiBranches, GitUiBranches.Variables(repository)).git.branches.map { it.name }
+        else emptyList()
+    }
+    PullListPage(
         repositories,
         repository,
         status,
         offset,
-        rows,
+        rowsRequest.await(),
         ctx.query["head"].orEmpty(),
         ctx.query["base"] ?: selected?.defaultBranch ?: "main",
         sourceRepository,
-        branches,
+        branchesRequest.await(),
         ctx.query["new"] == "true",
         metadata?.canEdit == true && !metadata.archived,
-        targetBranches =
-            if (sourceRepository == repository) branches
-            else if (repository.isNotBlank())
-                ctx.gql
-                    .execute(GitUiBranches, GitUiBranches.Variables(repository))
-                    .git
-                    .branches
-                    .map { it.name }
-            else emptyList(),
+        targetBranches = targetBranchesRequest.await(),
         baseHref = baseHref,
         repositoryNames = allRepositories.filterNot { it.deleted }.associate { it.id to it.name },
     )
 }
 
-suspend fun pullPage(): PullPage? {
+suspend fun pullPage(): PullPage? = coroutineScope {
     val ctx = currentRenderContext()
-    val id = ctx.params["id"] ?: return null.also { ctx.notFound = true }
+    val id = ctx.params["id"] ?: return@coroutineScope null.also { ctx.notFound = true }
     val pull =
         ctx.gql
             .execute(GitUiPull, GitUiPull.Variables(id))
             .git
             .pullRequest
-            ?.takeIf { it.id == id } ?: return null.also { ctx.notFound = true }
+            ?.takeIf { it.id == id } ?: return@coroutineScope null.also { ctx.notFound = true }
     val repository = pull.repositoryId
     val number = pull.number
     val merged = pull.status == GitPullRequestStatus.MERGED
@@ -144,13 +145,49 @@ suspend fun pullPage(): PullPage? {
                 GitUiRepository.Variables(if (merged) repository else pull.sourceRepositoryId ?: repository),
             )
             .git
-            .repositoryById ?: return null.also { ctx.notFound = true }
-    val sourceRefs = if (merged) emptyMap()
+            .repositoryById ?: return@coroutineScope null.also { ctx.notFound = true }
+    val profilesRequest = async { ctx.gql.execute(GitUiProfiles, Unit).profiles.current.orEmpty() }
+    val candidatesRequest = async { ctx.gql.execute(GitUiPullList, GitUiPullList.Variables(null, 0)).git.allPullRequests }
+    val repositoriesRequest = async {
+        ctx.gql.execute(GitUiRepositories, GitUiRepositories.Variables(false, null)).git.repositories
+            .filterNot { it.deleted }.associate { it.id to it.name }
+    }
+    val targetRepositoryRequest = async {
+        if (repo.id == repository) repo
+        else ctx.gql.execute(GitUiRepository, GitUiRepository.Variables(repository)).git.repositoryById
+    }
+    val sourceNameRequest = async {
+        if (merged && pull.sourceRepositoryId != null && pull.sourceRepositoryId != repository)
+            ctx.gql.execute(GitUiRepository, GitUiRepository.Variables(pull.sourceRepositoryId.orEmpty()))
+                .git.repositoryById?.name.orEmpty()
+        else repo.name
+    }
+    val identitiesRequest = async {
+        val ownProfiles = profilesRequest.await().associate { it.id to OwnerOption(it.id, it.name, it.slug.orEmpty()).label }
+        (listOf(pull.authorId) + pull.reviews.map { it.reviewerId } +
+            pull.reviews.flatMap { it.comments.map { comment -> comment.authorId } })
+            .distinct().loadConcurrently { profileId ->
+                val label = ownProfiles[profileId] ?: ctx.gql.execute(GitUiProfile, GitUiProfile.Variables(profileId))
+                    .profiles.profile?.let { OwnerOption(it.id, it.name, it.slug.orEmpty()).label }
+                label?.let { profileId to it }
+            }.filterNotNull().toMap()
+    }
+    val sourceRefsRequest = async {
+        if (merged) emptyMap()
         else ctx.gql.execute(GitUiBranches, GitUiBranches.Variables(repo.id)).git.branches.associate { it.name to it.sha }
-    val targetRefs = if (merged || repo.id == repository) sourceRefs
+    }
+    val targetRefsRequest = async {
+        if (merged || repo.id == repository) sourceRefsRequest.await()
         else ctx.gql.execute(GitUiBranches, GitUiBranches.Variables(repository)).git.branches.associate { it.name to it.sha }
+    }
+    val sourceRefs = sourceRefsRequest.await()
     val sha = if (merged) pull.mergeSha.orEmpty()
         else ctx.gql.commitShaForRef(repo.id, pull.sourceBranch, sourceRefs).orEmpty()
+    val checksRequest = async {
+        if (sha.isBlank()) emptyList()
+        else ctx.gql.execute(GitUiStatuses, GitUiStatuses.Variables(repo.id, sha)).git.commitStatuses
+    }
+    val targetRefs = targetRefsRequest.await()
     val diffUnavailable = when {
         merged && sha.isBlank() -> "The completed merge commit is not recorded."
         merged && pull.mergeBaseSha.isNullOrBlank() -> "The original target commit for this merge is not recorded."
@@ -165,19 +202,9 @@ suspend fun pullPage(): PullPage? {
         require(comparison.version == pull.version) { "Pull request changed. Reload it before continuing." }
         comparison.diff.map { it.view() }
     } else emptyList()
-    val ownProfiles = ctx.gql.execute(GitUiProfiles, Unit).profiles.current.orEmpty().map { it.id }
-    val identities = mutableMapOf<String, String>()
-    for (id in
-        (listOf(pull.authorId) +
-                pull.reviews.map { it.reviewerId } +
-                pull.reviews.flatMap { it.comments.map { comment -> comment.authorId } })
-            .distinct()) {
-        ctx.gql.execute(GitUiProfile, GitUiProfile.Variables(id)).profiles.profile?.let {
-            identities[id] = OwnerOption(it.id, it.name, it.slug.orEmpty()).label
-        }
-    }
-    val candidateResults =
-        ctx.gql.execute(GitUiPullList, GitUiPullList.Variables(null, 0)).git.allPullRequests
+    val ownProfiles = profilesRequest.await().map { it.id }
+    val identities = identitiesRequest.await()
+    val candidateResults = candidatesRequest.await()
     val candidates =
         candidateResults
             .filter { it.id != pull.id }
@@ -193,14 +220,9 @@ suspend fun pullPage(): PullPage? {
                     it.updated,
                 )
             }
-    val checks =
-        if (sha.isBlank()) emptyList()
-        else
-            ctx.gql.execute(GitUiStatuses, GitUiStatuses.Variables(repo.id, sha)).git.commitStatuses
-    val targetRepository =
-        if (repo.id == repository) repo
-        else ctx.gql.execute(GitUiRepository, GitUiRepository.Variables(repository)).git.repositoryById
-    return PullPage(
+    val checks = checksRequest.await()
+    val targetRepository = targetRepositoryRequest.await()
+    PullPage(
         pull,
         pullHref(pull.id, repository, number),
         repo.cloneUrl,
@@ -222,12 +244,8 @@ suspend fun pullPage(): PullPage? {
         ctx.query["view"]?.takeIf { it in setOf("overview", "files", "reviews") } ?: "overview",
         ctx.query["review"] == "true",
         targetRepository?.name.orEmpty(),
-        if (merged && pull.sourceRepositoryId != null && pull.sourceRepositoryId != repository)
-            ctx.gql.execute(GitUiRepository, GitUiRepository.Variables(pull.sourceRepositoryId.orEmpty()))
-                .git.repositoryById?.name.orEmpty()
-        else repo.name,
-        ctx.gql.execute(GitUiRepositories, GitUiRepositories.Variables(false, null))
-            .git.repositories.filterNot { it.deleted }.associate { it.id to it.name },
+        sourceNameRequest.await(),
+        repositoriesRequest.await(),
         diff,
         diffUnavailable,
     )

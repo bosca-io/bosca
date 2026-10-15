@@ -16,6 +16,7 @@ data class RepositorySummary(
     val updated: String,
     val listHref: String,
     val canManage: Boolean,
+    val canExecute: Boolean,
 ) {
     val href: String
         get() = "/repositories/${encode(id)}?return=${encode(listHref)}"
