@@ -74,12 +74,12 @@ storage, success requires a JetStream acknowledgment for every event. A storage
 failure or a wait longer than 15 seconds returns 503, allowing clients to keep and
 retry their events. The normal browser delivery path already does this using its
 local event queue. In-process analytics capture continues to enqueue asynchronously.
+Publishes for a batch are sent asynchronously before waiting for acknowledgments.
 
 NATS publications use message IDs derived from the app ID and each event's
 `client_id`. Keep those event IDs unchanged when retrying, including after a lost
-HTTP response or a partially published batch. Events without IDs use a hash of
-their envelope and batch position, excluding collector receipt timestamps; those
-retries must retain the same envelope and order. Deduplication lasts for the
+HTTP response or a partially published batch. Events without IDs are published
+without deduplication, so retries can produce duplicates. Deduplication lasts for the
 stream's configured duplicate window. This does not provide unlimited deduplication
 or prevent repeated transform and optional-sink side effects.
 

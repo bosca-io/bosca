@@ -23,8 +23,6 @@ import kotlinx.serialization.json.Json
 import org.slf4j.LoggerFactory
 import java.io.IOException
 import java.time.Duration
-import java.security.MessageDigest
-import java.util.HexFormat
 import kotlin.time.Duration.Companion.seconds
 
 /**
@@ -62,15 +60,11 @@ class NatsEventRepository(
     private suspend fun publish(events: Events) {
         val jetStream = ensureInitialized()
         val futures = withContext(Dispatchers.IO) {
-            events.events.mapIndexed { index, event ->
+            val appId = events.context?.appId.orEmpty()
+            events.events.map { event ->
                 val message = events.copy(events = listOf(event))
                 val payload = json.encodeToString(Events.serializer(), message)
-                // Client event IDs survive HTTP retries and changes to sent/received timestamps.
-                // ID-less producers can deduplicate retries of the same envelope and event position.
-                val identity = event.clientId?.takeIf { it.isNotBlank() }?.let { "id:$it" }
-                    ?: "envelope:$index:${json.encodeToString(Events.serializer(), message.copy(received = null, receivedMicros = null))}"
-                val key = "${events.context?.appId.orEmpty().length}:${events.context?.appId.orEmpty()}:$identity"
-                val messageId = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(key.toByteArray(Charsets.UTF_8)))
+                val messageId = event.clientId?.takeIf { it.isNotBlank() }?.let { "${appId.length}:$appId:$it" }
                 val options = PublishOptions.builder().messageId(messageId).build()
                 jetStream.publishAsync(STREAM_SUBJECT, payload.toByteArray(Charsets.UTF_8), options)
                     // A cancelled NATS future is a publish failure, not coroutine cancellation.

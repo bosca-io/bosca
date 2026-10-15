@@ -45,6 +45,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
 import java.io.IOException
 import java.time.Duration
@@ -59,6 +61,7 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertSame
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import kotlin.test.assertNull
 
 class NatsAnalyticsPipelineTest {
     private val health = EventProcessingHealth()
@@ -133,7 +136,7 @@ class NatsAnalyticsPipelineTest {
     }
 
     @Test
-    fun `publisher uses stable IDs across retries and distinguishes ID-less event positions`() = runTest {
+    fun `publisher reuses client IDs across retries and leaves ID-less events undeduplicated`() = runTest {
         val options = mutableListOf<io.nats.client.PublishOptions>()
         every { management.getStreamInfo(NatsEventRepository.STREAM_NAME) } returns mockk()
         every { jetStream.publishAsync(any(), any<ByteArray>(), capture(options)) } returns CompletableFuture.completedFuture(mockk<PublishAck>())
@@ -142,13 +145,12 @@ class NatsAnalyticsPipelineTest {
         repository.process(batch)
         repository.process(batch.copy(sent = 100, sentMicros = 20, received = 200, receivedMicros = 30))
         assertEquals(options[0].messageId, options[1].messageId)
+        assertEquals("0::one", options[0].messageId)
 
         val anonymous = batch.copy(events = listOf(batch.events.first().copy(clientId = null), batch.events.first().copy(clientId = "")))
         repository.process(anonymous)
         repository.process(anonymous.copy(received = 500, receivedMicros = 12))
-        assertEquals(options[2].messageId, options[4].messageId)
-        assertEquals(options[3].messageId, options[5].messageId)
-        assertTrue(options[2].messageId != options[3].messageId)
+        options.drop(2).forEach { assertNull(it.messageId) }
     }
 
     @Test
@@ -182,6 +184,27 @@ class NatsAnalyticsPipelineTest {
 
         verify(exactly = 3) { jetStream.publishAsync(NatsEventRepository.STREAM_SUBJECT, any<ByteArray>(), any<io.nats.client.PublishOptions>()) }
         verify(exactly = 1) { connection.jetStreamManagement() }
+    }
+
+    @Test
+    fun `publisher sends the whole batch before waiting and requires every acknowledgment`() = runBlocking {
+        every { management.getStreamInfo(NatsEventRepository.STREAM_NAME) } returns mockk()
+        val responses = events.events.map { CompletableFuture<PublishAck>() }
+        val published = CompletableDeferred<Unit>()
+        var count = 0
+        every { jetStream.publishAsync(any(), any<ByteArray>(), any<io.nats.client.PublishOptions>()) } answers {
+            responses[count++].also { if (count == responses.size) published.complete(Unit) }
+        }
+        val repository = NatsEventRepository(nats, json, health)
+        val pending = async { repository.process(events) }
+
+        withTimeout(5000) { published.await() }
+        assertFalse(pending.isCompleted)
+        responses.first().complete(mockk<PublishAck>())
+        assertNull(withTimeoutOrNull(100) { pending.await() })
+        responses.last().complete(mockk<PublishAck>())
+        withTimeout(5000) { pending.await() }
+        assertTrue(health.isReady)
     }
 
     @Test

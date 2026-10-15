@@ -43,7 +43,7 @@ import kotlin.test.assertNotSame
 
 class NatsEventRepositoryEndToEndTest {
     @Test
-    fun `JetStream deduplicates client IDs and ID-less retries without collapsing batch positions`() = runBlocking {
+    fun `JetStream deduplicates client IDs per app and preserves every ID-less event`() = runBlocking {
         GenericContainer("nats:2.12-alpine").withExposedPorts(4222).withCommand("-js").use { server ->
             server.start()
             val pool = NatsConnectionPool("nats://${server.host}:${server.getMappedPort(4222)}", "")
@@ -61,7 +61,7 @@ class NatsEventRepositoryEndToEndTest {
                 repository.process(batch.copy(context = context))
                 repository.process(batch.copy(context = context.copy(appId = "app-two")))
                 val info = pool.systemConnection().jetStreamManagement().getStreamInfo(NatsEventRepository.STREAM_NAME)
-                assertEquals(5L, info.streamState.msgCount)
+                assertEquals(7L, info.streamState.msgCount)
             } finally {
                 pool.close()
             }
