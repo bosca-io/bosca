@@ -23,7 +23,7 @@ suspend fun pipelinePage(
     val ctx = currentRenderContext()
     val repo = repositoryId.ifBlank { ctx.query["repo"].orEmpty() }
     val listRequest = async {
-        if (repo.isBlank() || baseHref.isBlank()) repositoryList()
+        if (repo.isBlank() || baseHref.isBlank()) repositoryList(loadRepositories = repo.isBlank())
         else RepositoryListModel(RepositoryState.ACTIVE, OwnerOption("all", "All accessible repositories", ""))
     }
     val metadataRequest = async {
@@ -36,7 +36,7 @@ suspend fun pipelinePage(
     }
     val catalogRequest = if (repo.isBlank()) null else async {
         try {
-            Result.success(ctx.gql.execute(GitUiPipelines, GitUiPipelines.Variables(repo, if (baseHref.isBlank()) 1 else 10, baseHref.isNotBlank())).git.pipelines)
+            Result.success(ctx.gql.execute(GitUiPipelines, GitUiPipelines.Variables(repo, 1, baseHref.isNotBlank())).git.pipelines)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -52,7 +52,7 @@ suspend fun pipelinePage(
     }
     val offset = ctx.query["offset"]?.toLongOrNull()?.coerceAtLeast(0) ?: 0
     val runsRequest = async {
-        if (repo.isBlank()) emptyList()
+        if (repo.isBlank() || offset == 0L) emptyList()
         else ctx.gql.execute(GitUiPipelineRuns, GitUiPipelineRuns.Variables(repo, offset)).git.pipelineRuns
     }
     val metadata = metadataRequest.await()

@@ -39,10 +39,15 @@ class GitPipelineQuery(
 ) : GraphQLController<bosca.git.graphql.Git> {
 
     @Field
-    suspend fun pipelines(authentication: AuthenticationContext?, repositoryId: UUID): List<Pipeline> {
+    suspend fun pipelines(authentication: AuthenticationContext?, repositoryId: UUID, id: UUID? = null): List<Pipeline> {
         val repository = repositoryService.findById(repositoryId)
             ?: throw NoSuchElementException("Repository not found: $repositoryId")
         permissionEvaluator.verifyAllowed(authentication, repository, PermissionAction.VIEW)
+        if (id != null) {
+            return listOfNotNull(pipelineService.findById(id)?.takeIf {
+                it.repositoryId == repositoryId && it.deletedAt == null
+            })
+        }
         return pipelineService.findByRepository(repositoryId)
     }
 
@@ -156,12 +161,15 @@ class GitPipelineQuery(
     }
 
     @Field
-    suspend fun pipelineAgents(authentication: AuthenticationContext, status: AgentStatus?): List<PipelineAgent> {
+    suspend fun pipelineAgents(authentication: AuthenticationContext, status: AgentStatus?, id: UUID? = null): List<PipelineAgent> {
         val scoped = authentication.principal() as? ScopedAuthenticatedPrincipal
         val hasManagementScope = scoped == null || scoped.scopes == null ||
             scoped.hasScope("ci:manage") || scoped.hasScope("git:manage")
         if (hasManagementScope) {
             permissionEvaluator.verifyAllowed(authentication, PermissionAction.MANAGE)
+            if (id != null) {
+                return listOfNotNull(agentService.findById(id)?.takeIf { status == null || it.status == status })
+            }
             return agentService.listAgents(status)
         }
 
@@ -175,7 +183,7 @@ class GitPipelineQuery(
             ?: throw SecurityException("API token is not assigned to a pipeline agent")
         return agents.filter {
             (it.id == caller.id || it.parentAgentId == caller.id) &&
-                (status == null || it.status == status)
+                (status == null || it.status == status) && (id == null || it.id == id)
         }
     }
 

@@ -1,6 +1,6 @@
-query GitUiPipelines($repo: UUID!, $runLimit: Int! = 10, $jobDetails: Boolean! = true) {
+query GitUiPipelines($repo: UUID!, $runLimit: Int! = 10, $jobDetails: Boolean! = true, $id: UUID) {
   git {
-    pipelines(repositoryId: $repo) {
+    pipelines(repositoryId: $repo, id: $id) {
       id
       repositoryId
       filePath

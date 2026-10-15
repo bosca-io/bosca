@@ -1836,7 +1836,7 @@ class GitUiRoutesTest {
     fun `independent page reads overlap over HTTP`() {
         for ((path, operations) in listOf(
             "/repositories/repo?file=README.md&edit=true" to setOf("GitUiBranches", "GitUiTags", "GitUiProfiles"),
-            "/repositories/repo?tab=pipelines" to setOf("GitUiRepository", "GitUiRefs", "GitUiPipelines", "GitUiPipelineRuns"),
+            "/repositories/repo?tab=pipelines" to setOf("GitUiRepository", "GitUiRefs", "GitUiPipelines"),
             "/repositories/repo?tab=commits" to setOf("GitUiBranches", "GitUiTags", "GitUiCommits"),
             "/repositories?owner=owner" to setOf("GitUiProfile", "GitUiRepositories"),
             "/repositories/repo/github" to setOf("GitUiRepository", "GitUiAccess"),
@@ -1866,7 +1866,7 @@ class GitUiRoutesTest {
     @Test
     fun `repository tabs reuse metadata and omit unrelated code and stats reads`() {
         for ((tab, expected) in mapOf(
-            "pipelines" to setOf("GitUiRepository", "GitUiRefs", "GitUiPipelines", "GitUiPipelineRuns"),
+            "pipelines" to setOf("GitUiRepository", "GitUiRefs", "GitUiPipelines"),
             "pulls" to setOf("GitUiRepository", "GitUiRepositories", "GitUiRepositoryPullList", "GitUiBranches"),
             "settings" to setOf("GitUiRepository"),
             "secrets" to setOf("GitUiRepository", "GitUiSecrets"),
@@ -1978,8 +1978,8 @@ class GitUiRoutesTest {
     }
 
     @Test
-    fun `global pipeline lists request only the visible latest run without job details`() {
-        for ((path, limit, details) in listOf(Triple("/pipelines", 1, false), Triple("/repositories/repo?tab=pipelines", 10, true))) {
+    fun `pipeline lists request only the visible latest run`() {
+        for ((path, limit, details) in listOf(Triple("/pipelines", 1, false), Triple("/repositories/repo?tab=pipelines", 1, true))) {
             val before = requests.size
             assertEquals(200, get(path).statusCode())
             val queries = requests.drop(before).filter { it.operation == "GitUiPipelines" }
@@ -1989,6 +1989,58 @@ class GitUiRoutesTest {
                 assertEquals(details, request.variables["jobDetails"]?.jsonPrimitive?.boolean)
             }
         }
+    }
+
+    @Test
+    fun `selected repository pipeline pages skip the unused owner repository listing`() {
+        for (owner in listOf("", "&owner=owner", "&owner=all")) {
+            val before = requests.size
+            val response = get("/pipelines?repo=repo$owner")
+            assertEquals(200, response.statusCode(), response.body())
+            assertTrue(requests.drop(before).none { it.operation == "GitUiRepositories" })
+        }
+    }
+
+    @Test
+    fun `pipeline history and older runs load only on demand`() {
+        val path = "/repositories/repo?tab=pipelines"
+        val before = requests.size
+        val shell = get(path)
+        assertTrue(requests.drop(before).none { it.operation == "GitUiPipelineRuns" })
+        assertTrue("Run history" in shell.body())
+        var start = requests.size
+        val history = action(path, "git-pipeline-history.model:repo", "load", listOf(0), sourceHtml = shell.body())
+        assertEquals(true, actionState(history)["loaded"]?.jsonPrimitive?.boolean, history.body())
+        assertEquals(listOf("GitUiPipelineRuns"), requests.drop(start).map { it.operation })
+        start = requests.size
+        val next = continueAction(path, "git-pipeline-history.model:repo", "load", actionState(history), listOf(50))
+        assertEquals(50L, actionState(next)["offset"]?.jsonPrimitive?.long, next.body())
+        assertEquals(listOf("GitUiPipelineRuns"), requests.drop(start).map { it.operation })
+        val failed = continueAction(path, "git-pipeline-history.model:repo", "load", actionState(history), listOf(100))
+        assertTrue(actionState(failed)["message"]?.jsonPrimitive?.content.orEmpty().contains("History unavailable"), failed.body())
+        assertEquals(0L, actionState(failed)["offset"]?.jsonPrimitive?.long)
+        assertEquals(50, actionState(failed)["runs"]?.jsonArray?.size)
+        val retried = continueAction(path, "git-pipeline-history.model:repo", "load", actionState(failed), listOf(50))
+        assertEquals("", actionState(retried)["message"]?.jsonPrimitive?.content)
+        start = requests.size
+        val recent = action(path, "git-pipeline-recent.model:pipeline", "load", emptyList(), sourceHtml = shell.body())
+        assertEquals(true, actionState(recent)["loaded"]?.jsonPrimitive?.boolean, recent.body())
+        val request = requests.drop(start).single()
+        assertEquals("GitUiPipelines", request.operation)
+        assertEquals("pipeline", request.variables["id"]?.jsonPrimitive?.content)
+        assertEquals(10, request.variables["runLimit"]?.jsonPrimitive?.int)
+    }
+
+    @Test
+    fun `agent detail and refresh select only the requested agent`() {
+        val path = "/ci-agents/agent"
+        var before = requests.size
+        val shell = get(path)
+        assertEquals("agent", requests.drop(before).single { it.operation == "GitUiAgents" }.variables["id"]?.jsonPrimitive?.content)
+        before = requests.size
+        val response = action(path, "git-agent-status.model:agent", "refresh", emptyList(), sourceHtml = shell.body())
+        assertEquals("", actionState(response)["message"]?.jsonPrimitive?.content, response.body())
+        assertEquals("agent", requests.drop(before).single().variables["id"]?.jsonPrimitive?.content)
     }
 
     @Test
@@ -2223,7 +2275,7 @@ class GitUiRoutesTest {
                         exchange.requestHeaders.getFirst("Origin"),
                     )
                 )
-                val id = variables["id"]?.jsonPrimitive?.content
+                val id = variables["id"]?.jsonPrimitive?.contentOrNull
                 val path = variables["path"]?.jsonPrimitive?.content
                 val token =
                     exchange.requestHeaders.getFirst("Authorization")?.removePrefix("Bearer ")
@@ -2383,8 +2435,12 @@ class GitUiRoutesTest {
                             """{"data":{"git":{"pipelines":[{"id":"pipeline","triggerTypes":["MANUAL"]}]}}}"""
                         operation == "GitUiPipelines" ->
                             """{"data":{"git":{"pipelines":[{"id":"pipeline","repositoryId":"repo","filePath":".bosca/pipelines/build.yml","name":"Build","updated":"2026-10-09T00:00:00Z","triggerTypes":["MANUAL"],"runs":[$run]}]}}}"""
-                        operation == "GitUiPipelineRuns" ->
-                            """{"data":{"git":{"pipelineRuns":[$run]}}}"""
+                        operation == "GitUiPipelineRuns" && variables["offset"]?.jsonPrimitive?.long == 100L ->
+                            """{"errors":[{"message":"History unavailable"}]}"""
+                        operation == "GitUiPipelineRuns" -> {
+                            val runs = if (variables["offset"]?.jsonPrimitive?.long == 0L) List(50) { run }.joinToString(",") else ""
+                            """{"data":{"git":{"pipelineRuns":[$runs]}}}"""
+                        }
                         operation == "GitUiPipelineInputs" ->
                             """{"data":{"git":{"pipelineInputs":[{"name":"version","type":"STRING","defaultValue":null,"description":"Version","options":[],"required":true}]}}}"""
                         operation == "GitUiRun" && id == "failed-run" ->
@@ -2436,8 +2492,10 @@ class GitUiRoutesTest {
                         operation == "GitUiAgents" &&
                             variables["status"]?.jsonPrimitive?.content == "OFFLINE" ->
                             """{"data":{"git":{"pipelineAgents":[]}}}"""
-                        operation == "GitUiAgents" ->
-                            """{"data":{"git":{"pipelineAgents":$agents}}}"""
+                        operation == "GitUiAgents" -> {
+                            val selected = if (id == null) agents else JsonArray(Json.parseToJsonElement(agents).jsonArray.filter { it.jsonObject["id"]?.jsonPrimitive?.content == id }).toString()
+                            """{"data":{"git":{"pipelineAgents":$selected}}}"""
+                        }
                         operation == "GitUiRegisterAgent" ->
                             """{"data":{"git":{"registerAgent":{"agent":{"id":"agent"},"token":"one-time-agent-token"}}}}"""
                         operation == "GitUiUpdateAgent" ->

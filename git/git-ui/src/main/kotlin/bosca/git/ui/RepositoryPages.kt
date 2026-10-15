@@ -9,13 +9,13 @@ import kotlinx.coroutines.supervisorScope
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 
-suspend fun repositoryList(): RepositoryListModel = coroutineScope {
+suspend fun repositoryList(loadRepositories: Boolean = true): RepositoryListModel = coroutineScope {
     val ctx = currentRenderContext()
     val state = RepositoryState.fromQuery(ctx.query["state"])
     val explicit = ctx.query["owner"] ?: ctx.cookies["git_owner"]
     if (explicit != null) {
         val listRequest = async {
-            RepositoryListModel(state, OwnerOption(explicit, "", "")).also { it.reload(ctx) }
+            RepositoryListModel(state, OwnerOption(explicit, "", "")).also { if (loadRepositories) it.reload(ctx) }
         }
         val owner = if (explicit == "all") OwnerOption("all", "All accessible repositories", "")
         else {
@@ -29,7 +29,7 @@ suspend fun repositoryList(): RepositoryListModel = coroutineScope {
     val selected = profiles.firstOrNull { it.isPrimary } ?: profiles.firstOrNull()
     val owner = selected?.let { OwnerOption(it.id, it.name, it.slug.orEmpty()) }
         ?: OwnerOption("all", "All accessible repositories", "")
-    RepositoryListModel(state, owner).also { it.reload(ctx) }
+    RepositoryListModel(state, owner).also { if (loadRepositories) it.reload(ctx) }
 }
 
 suspend fun repositoryPage(): RepositoryPage? = supervisorScope {

@@ -27,7 +27,7 @@
         "agentPage"
       ],
       "strategy": [
-        "Administrator check precedes agent queries. List excludes current/recent job details. Detail retains job data; orchestrator configuration depends on selected mode."
+        "Administrator check precedes agent reads. The list excludes job detail; detail and polling select one authorized agent by id. Orchestrator configuration follows the selected mode."
       ]
     },
     {
@@ -39,7 +39,7 @@
         "agentPage"
       ],
       "strategy": [
-        "Administrator check precedes agent queries. List excludes current/recent job details. Detail retains job data; orchestrator configuration depends on selected mode."
+        "Administrator check precedes agent reads. The list excludes job detail; detail and polling select one authorized agent by id. Orchestrator configuration follows the selected mode."
       ]
     },
     {
@@ -131,7 +131,7 @@
         "pipelinePage"
       ],
       "strategy": [
-        "Known-repository reads overlap; global catalogs use at most four concurrent repository calls and request only the visible latest run without job detail. Input definitions require the selected pipeline/ref."
+        "Metadata, owner identity, refs and catalog overlap. A selected repository skips the unused owner repository listing. Catalogs initially select one run; per-pipeline older runs and repository history load on demand. Existing nonzero-offset links still load that history page."
       ]
     },
     {
@@ -528,7 +528,10 @@
       "Minimal manual-trigger island state",
       "Agent list omits job detail",
       "Default owner profile projection",
-      "Unsubscribe validates link without catalog"
+      "Unsubscribe validates link without catalog",
+      "Repository pipeline catalogs show one run with job indicators; older runs fetch only the selected pipeline",
+      "Run history and pagination load through isolated actions",
+      "Agent detail and polling select the requested agent"
     ],
     "browserAuth": "Data pages and log reconnects use initialize(false); auth pages retain full restoration; SDK token refresh, OAuth exchange and sign-out remain enabled.",
     "orderedReads": [
@@ -552,28 +555,14 @@
   "sharedInfrastructure": {
     "http": "GraphQLClientFactory shares one OkHttp client/pool across per-caller clients and proxies. The default retains up to 50 idle connections for five minutes; active request dispatcher ceilings are unchanged.",
     "database": "ConnectionPool is bounded by factory.maxConnections; ConnectionManager borrows lazily and returns connections. Concurrent work added here is HTTP requests, not sibling JDBC operations on one request handle. Production pool contention has not been traced.",
-    "optionalServices": "Localization has a TTL/stale cache and paginated catalogs; feature flags cache per render and expose evaluateAll. Authored production pages do not issue feature-flag calls on load."
+    "optionalServices": "Localization has a TTL/stale cache and paginated catalogs; feature flags cache per render and expose evaluateAll. Authored production pages do not issue feature-flag calls on load.",
+    "statistics": "Bounded process cache (4096 entries, 30-minute idle expiry) atomically coalesces history walks by repository, commit and shallow boundary set. Ref counts and pack size are always fresh; pushes and force pushes select the new key. Cached values contain only two counts."
   },
   "remainingOpportunities": [
     {
-      "area": "Repository statistics",
-      "evidence": "RepositoryBrowseServiceImpl.getStats walks up to 10001 commits per read and queries pack size. Deferred UI removes it from initial HTML, but backend work remains.",
-      "next": "Cache summaries by repository history/ref state with explicit invalidation; profile real repository costs first."
-    },
-    {
-      "area": "Pipeline context history and HTML",
-      "evidence": "Repository pipeline pages display ten runs per pipeline and include a collapsed 50-run history. The deployed page measured about 375 KB of HTML.",
-      "next": "Load the collapsed history on demand or paginate it without losing current history access."
-    },
-    {
-      "area": "Agent detail API",
-      "evidence": "The API exposes pipelineAgents(status) but no single-agent query; selecting one agent still requests full detail through that list.",
-      "next": "A dedicated authorized single-agent field would avoid fetching other agents’ job histories."
-    },
-    {
       "area": "Dependent page reads",
-      "evidence": "Default-owner selection, commit-pinned content, PR snapshot/version checks, and mode-specific orchestrator config have real result dependencies.",
-      "next": "Page-oriented GraphQL selection fields could consolidate these chains; do not remove consistency or authorization checks to save requests."
+      "evidence": "Default-owner identity, commit-pinned content, PR snapshot/version checks and mode-specific orchestrator configuration still have result dependencies.",
+      "next": "Further round-trip reduction would require snapshot-aware API fields that preserve these checks. The redundant selected-repository listing has been removed."
     }
   ],
   "measurementNotes": "Fixture timings include deliberate 50 ms upstream delay; production read-only baselines and catalog projection measurements are separate. This branch has not been deployed. Public-origin measurements include transport overhead from this workstation and use a fresh urllib connection per request. The catalog comparison executes both projections against the same deployed API. Full-screen geometry validation retains the reported 28 px / 30 px Import-button assertion disagreement.",
@@ -621,6 +610,24 @@
         "pipelines": 22,
         "runsReturned": 22
       }
+    ],
+    "repositoryCatalogFollowup": [
+      {
+        "runLimit": 10,
+        "jobDetails": true,
+        "pipelines": 22,
+        "runs": 177,
+        "jsonBytes": 96745,
+        "medianMs": 298.3
+      },
+      {
+        "runLimit": 1,
+        "jobDetails": true,
+        "pipelines": 22,
+        "runs": 22,
+        "jsonBytes": 17276,
+        "medianMs": 175.3
+      }
     ]
   },
   "fixtureMeasurements": [
@@ -633,9 +640,10 @@
         "peak": 1
       },
       "after": {
-        "medianMs": 3.0,
+        "medianMs": 5.1,
         "calls": 2,
-        "peak": 1
+        "peak": 1,
+        "htmlBytes": 53076
       }
     },
     {
@@ -643,9 +651,10 @@
       "path": "/repositories?owner=all",
       "before": null,
       "after": {
-        "medianMs": 2.2,
+        "medianMs": 3.1,
         "calls": 1,
-        "peak": 1
+        "peak": 1,
+        "htmlBytes": 53048
       }
     },
     {
@@ -653,9 +662,10 @@
       "path": "/repositories?owner=owner",
       "before": null,
       "after": {
-        "medianMs": 2.5,
+        "medianMs": 3.0,
         "calls": 2,
-        "peak": 2
+        "peak": 2,
+        "htmlBytes": 53076
       }
     },
     {
@@ -667,9 +677,10 @@
         "peak": 3
       },
       "after": {
-        "medianMs": 4.5,
+        "medianMs": 4.7,
         "calls": 6,
-        "peak": 3
+        "peak": 3,
+        "htmlBytes": 30660
       }
     },
     {
@@ -681,9 +692,10 @@
         "peak": 3
       },
       "after": {
-        "medianMs": 3.4,
+        "medianMs": 4.4,
         "calls": 5,
-        "peak": 3
+        "peak": 3,
+        "htmlBytes": 32300
       }
     },
     {
@@ -695,9 +707,10 @@
         "peak": 3
       },
       "after": {
-        "medianMs": 3.7,
+        "medianMs": 4.4,
         "calls": 6,
-        "peak": 3
+        "peak": 3,
+        "htmlBytes": 29823
       }
     },
     {
@@ -709,9 +722,10 @@
         "peak": 2
       },
       "after": {
-        "medianMs": 2.3,
+        "medianMs": 2.6,
         "calls": 4,
-        "peak": 3
+        "peak": 3,
+        "htmlBytes": 20672
       }
     },
     {
@@ -723,9 +737,10 @@
         "peak": 2
       },
       "after": {
-        "medianMs": 2.2,
+        "medianMs": 3.3,
         "calls": 4,
-        "peak": 3
+        "peak": 3,
+        "htmlBytes": 31363
       }
     },
     {
@@ -739,7 +754,8 @@
       "after": {
         "medianMs": 1.9,
         "calls": 3,
-        "peak": 3
+        "peak": 3,
+        "htmlBytes": 22308
       }
     },
     {
@@ -751,9 +767,10 @@
         "peak": 2
       },
       "after": {
-        "medianMs": 2.9,
+        "medianMs": 3.7,
         "calls": 4,
-        "peak": 2
+        "peak": 2,
+        "htmlBytes": 37339
       }
     },
     {
@@ -765,9 +782,10 @@
         "peak": 4
       },
       "after": {
-        "medianMs": 2.3,
-        "calls": 4,
-        "peak": 4
+        "medianMs": 2.4,
+        "calls": 3,
+        "peak": 3,
+        "htmlBytes": 22534
       }
     },
     {
@@ -779,9 +797,10 @@
         "peak": 2
       },
       "after": {
-        "medianMs": 3.0,
+        "medianMs": 5.0,
         "calls": 5,
-        "peak": 3
+        "peak": 3,
+        "htmlBytes": 21019
       }
     },
     {
@@ -793,9 +812,10 @@
         "peak": 1
       },
       "after": {
-        "medianMs": 1.8,
+        "medianMs": 2.2,
         "calls": 1,
-        "peak": 1
+        "peak": 1,
+        "htmlBytes": 36566
       }
     },
     {
@@ -807,9 +827,10 @@
         "peak": 1
       },
       "after": {
-        "medianMs": 2.0,
+        "medianMs": 2.4,
         "calls": 2,
-        "peak": 1
+        "peak": 1,
+        "htmlBytes": 26945
       }
     },
     {
@@ -821,9 +842,10 @@
         "peak": 1
       },
       "after": {
-        "medianMs": 1.5,
+        "medianMs": 2.0,
         "calls": 1,
-        "peak": 1
+        "peak": 1,
+        "htmlBytes": 29971
       }
     },
     {
@@ -835,9 +857,10 @@
         "peak": 1
       },
       "after": {
-        "medianMs": 2.2,
+        "medianMs": 2.7,
         "calls": 2,
-        "peak": 1
+        "peak": 1,
+        "htmlBytes": 25480
       }
     },
     {
@@ -849,9 +872,10 @@
         "peak": 1
       },
       "after": {
-        "medianMs": 2.1,
+        "medianMs": 2.7,
         "calls": 2,
-        "peak": 1
+        "peak": 1,
+        "htmlBytes": 20413
       }
     },
     {
@@ -863,9 +887,10 @@
         "peak": 1
       },
       "after": {
-        "medianMs": 2.4,
+        "medianMs": 2.7,
         "calls": 3,
-        "peak": 2
+        "peak": 2,
+        "htmlBytes": 26232
       }
     },
     {
@@ -877,9 +902,10 @@
         "peak": 1
       },
       "after": {
-        "medianMs": 1.7,
+        "medianMs": 1.8,
         "calls": 1,
-        "peak": 1
+        "peak": 1,
+        "htmlBytes": 23621
       }
     },
     {
@@ -891,9 +917,10 @@
         "peak": 1
       },
       "after": {
-        "medianMs": 1.8,
+        "medianMs": 2.2,
         "calls": 2,
-        "peak": 1
+        "peak": 1,
+        "htmlBytes": 20450
       }
     },
     {
@@ -905,9 +932,10 @@
         "peak": 1
       },
       "after": {
-        "medianMs": 2.1,
+        "medianMs": 2.4,
         "calls": 2,
-        "peak": 1
+        "peak": 1,
+        "htmlBytes": 33558
       }
     },
     {
@@ -919,9 +947,10 @@
         "peak": 2
       },
       "after": {
-        "medianMs": 2.2,
+        "medianMs": 2.8,
         "calls": 4,
-        "peak": 2
+        "peak": 2,
+        "htmlBytes": 33913
       }
     },
     {
@@ -933,9 +962,10 @@
         "peak": 4
       },
       "after": {
-        "medianMs": 4.3,
+        "medianMs": 5.2,
         "calls": 9,
-        "peak": 5
+        "peak": 5,
+        "htmlBytes": 75556
       }
     },
     {
@@ -947,9 +977,10 @@
         "peak": 2
       },
       "after": {
-        "medianMs": 2.7,
+        "medianMs": 3.0,
         "calls": 4,
-        "peak": 2
+        "peak": 2,
+        "htmlBytes": 16649
       }
     },
     {
@@ -961,9 +992,10 @@
         "peak": 4
       },
       "after": {
-        "medianMs": 2.6,
-        "calls": 6,
-        "peak": 5
+        "medianMs": 1.9,
+        "calls": 4,
+        "peak": 4,
+        "htmlBytes": 17774
       }
     },
     {
@@ -975,9 +1007,10 @@
         "peak": 4
       },
       "after": {
-        "medianMs": 3.1,
-        "calls": 7,
-        "peak": 5
+        "medianMs": 3.9,
+        "calls": 5,
+        "peak": 4,
+        "htmlBytes": 25889
       }
     },
     {
@@ -989,9 +1022,10 @@
         "peak": 2
       },
       "after": {
-        "medianMs": 2.6,
+        "medianMs": 3.3,
         "calls": 3,
-        "peak": 2
+        "peak": 2,
+        "htmlBytes": 40873
       }
     },
     {
@@ -1003,9 +1037,10 @@
         "peak": 1
       },
       "after": {
-        "medianMs": 2.5,
+        "medianMs": 3.0,
         "calls": 3,
-        "peak": 1
+        "peak": 1,
+        "htmlBytes": 24114
       }
     },
     {
@@ -1017,9 +1052,10 @@
         "peak": 1
       },
       "after": {
-        "medianMs": 2.5,
+        "medianMs": 3.9,
         "calls": 4,
-        "peak": 1
+        "peak": 1,
+        "htmlBytes": 27029
       }
     },
     {
@@ -1031,9 +1067,10 @@
         "peak": 2
       },
       "after": {
-        "medianMs": 2.1,
+        "medianMs": 2.9,
         "calls": 4,
-        "peak": 2
+        "peak": 2,
+        "htmlBytes": 19899
       }
     },
     {
@@ -1045,9 +1082,10 @@
         "peak": 3
       },
       "after": {
-        "medianMs": 2.3,
+        "medianMs": 2.5,
         "calls": 5,
-        "peak": 3
+        "peak": 3,
+        "htmlBytes": 18002
       }
     },
     {
@@ -1059,9 +1097,10 @@
         "peak": 1
       },
       "after": {
-        "medianMs": 1.8,
+        "medianMs": 2.1,
         "calls": 2,
-        "peak": 1
+        "peak": 1,
+        "htmlBytes": 29139
       }
     },
     {
@@ -1073,9 +1112,10 @@
         "peak": 1
       },
       "after": {
-        "medianMs": 1.7,
+        "medianMs": 2.6,
         "calls": 2,
-        "peak": 1
+        "peak": 1,
+        "htmlBytes": 21634
       }
     },
     {
@@ -1087,9 +1127,10 @@
         "peak": 1
       },
       "after": {
-        "medianMs": 2.4,
+        "medianMs": 2.7,
         "calls": 3,
-        "peak": 1
+        "peak": 1,
+        "htmlBytes": 23313
       }
     },
     {
@@ -1101,9 +1142,10 @@
         "peak": 1
       },
       "after": {
-        "medianMs": 2.3,
+        "medianMs": 2.6,
         "calls": 4,
-        "peak": 2
+        "peak": 2,
+        "htmlBytes": 36153
       }
     },
     {
@@ -1115,9 +1157,10 @@
         "peak": 1
       },
       "after": {
-        "medianMs": 2.9,
+        "medianMs": 2.6,
         "calls": 4,
-        "peak": 2
+        "peak": 2,
+        "htmlBytes": 34742
       }
     },
     {
@@ -1129,9 +1172,10 @@
         "peak": 1
       },
       "after": {
-        "medianMs": 2.2,
+        "medianMs": 2.5,
         "calls": 4,
-        "peak": 2
+        "peak": 2,
+        "htmlBytes": 28185
       }
     },
     {
@@ -1143,9 +1187,10 @@
         "peak": 1
       },
       "after": {
-        "medianMs": 1.7,
+        "medianMs": 2.3,
         "calls": 3,
-        "peak": 2
+        "peak": 2,
+        "htmlBytes": 15899
       }
     },
     {
@@ -1157,7 +1202,7 @@
         "peak": 1
       },
       "after": {
-        "medianMs": 2.3,
+        "medianMs": 2.6,
         "calls": 1,
         "peak": 1
       }
@@ -1171,9 +1216,10 @@
         "peak": 1
       },
       "after": {
-        "medianMs": 114.6,
+        "medianMs": 110.2,
         "calls": 2,
-        "peak": 1
+        "peak": 1,
+        "htmlBytes": 53076
       }
     },
     {
@@ -1181,9 +1227,10 @@
       "path": "/repositories?owner=all",
       "before": null,
       "after": {
-        "medianMs": 61.2,
+        "medianMs": 56.3,
         "calls": 1,
-        "peak": 1
+        "peak": 1,
+        "htmlBytes": 53048
       }
     },
     {
@@ -1191,9 +1238,10 @@
       "path": "/repositories?owner=owner",
       "before": null,
       "after": {
-        "medianMs": 59.7,
+        "medianMs": 56.6,
         "calls": 2,
-        "peak": 2
+        "peak": 2,
+        "htmlBytes": 53076
       }
     },
     {
@@ -1205,9 +1253,10 @@
         "peak": 3
       },
       "after": {
-        "medianMs": 230.1,
+        "medianMs": 224.5,
         "calls": 6,
-        "peak": 3
+        "peak": 3,
+        "htmlBytes": 30660
       }
     },
     {
@@ -1219,9 +1268,10 @@
         "peak": 3
       },
       "after": {
-        "medianMs": 181.8,
+        "medianMs": 162.0,
         "calls": 5,
-        "peak": 3
+        "peak": 3,
+        "htmlBytes": 32300
       }
     },
     {
@@ -1233,9 +1283,10 @@
         "peak": 3
       },
       "after": {
-        "medianMs": 237.5,
+        "medianMs": 227.4,
         "calls": 6,
-        "peak": 3
+        "peak": 3,
+        "htmlBytes": 29823
       }
     },
     {
@@ -1247,9 +1298,10 @@
         "peak": 2
       },
       "after": {
-        "medianMs": 119.3,
+        "medianMs": 114.1,
         "calls": 4,
-        "peak": 3
+        "peak": 3,
+        "htmlBytes": 20672
       }
     },
     {
@@ -1261,9 +1313,10 @@
         "peak": 2
       },
       "after": {
-        "medianMs": 124.7,
+        "medianMs": 117.8,
         "calls": 4,
-        "peak": 3
+        "peak": 3,
+        "htmlBytes": 31363
       }
     },
     {
@@ -1277,7 +1330,8 @@
       "after": {
         "medianMs": 61.2,
         "calls": 3,
-        "peak": 3
+        "peak": 3,
+        "htmlBytes": 22308
       }
     },
     {
@@ -1289,9 +1343,10 @@
         "peak": 2
       },
       "after": {
-        "medianMs": 175.3,
+        "medianMs": 172.1,
         "calls": 4,
-        "peak": 2
+        "peak": 2,
+        "htmlBytes": 37339
       }
     },
     {
@@ -1303,9 +1358,10 @@
         "peak": 4
       },
       "after": {
-        "medianMs": 65.7,
-        "calls": 4,
-        "peak": 4
+        "medianMs": 56.9,
+        "calls": 3,
+        "peak": 3,
+        "htmlBytes": 22534
       }
     },
     {
@@ -1317,9 +1373,10 @@
         "peak": 2
       },
       "after": {
-        "medianMs": 122.2,
+        "medianMs": 116.5,
         "calls": 5,
-        "peak": 3
+        "peak": 3,
+        "htmlBytes": 21019
       }
     },
     {
@@ -1331,9 +1388,10 @@
         "peak": 1
       },
       "after": {
-        "medianMs": 58.0,
+        "medianMs": 56.9,
         "calls": 1,
-        "peak": 1
+        "peak": 1,
+        "htmlBytes": 36566
       }
     },
     {
@@ -1345,9 +1403,10 @@
         "peak": 1
       },
       "after": {
-        "medianMs": 115.9,
+        "medianMs": 114.7,
         "calls": 2,
-        "peak": 1
+        "peak": 1,
+        "htmlBytes": 26945
       }
     },
     {
@@ -1359,9 +1418,10 @@
         "peak": 1
       },
       "after": {
-        "medianMs": 60.1,
+        "medianMs": 57.8,
         "calls": 1,
-        "peak": 1
+        "peak": 1,
+        "htmlBytes": 29971
       }
     },
     {
@@ -1373,9 +1433,10 @@
         "peak": 1
       },
       "after": {
-        "medianMs": 119.4,
+        "medianMs": 115.4,
         "calls": 2,
-        "peak": 1
+        "peak": 1,
+        "htmlBytes": 25480
       }
     },
     {
@@ -1387,9 +1448,10 @@
         "peak": 1
       },
       "after": {
-        "medianMs": 124.3,
+        "medianMs": 114.8,
         "calls": 2,
-        "peak": 1
+        "peak": 1,
+        "htmlBytes": 20413
       }
     },
     {
@@ -1401,9 +1463,10 @@
         "peak": 1
       },
       "after": {
-        "medianMs": 117.0,
+        "medianMs": 115.0,
         "calls": 3,
-        "peak": 2
+        "peak": 2,
+        "htmlBytes": 26232
       }
     },
     {
@@ -1415,9 +1478,10 @@
         "peak": 1
       },
       "after": {
-        "medianMs": 59.1,
+        "medianMs": 58.3,
         "calls": 1,
-        "peak": 1
+        "peak": 1,
+        "htmlBytes": 23621
       }
     },
     {
@@ -1429,9 +1493,10 @@
         "peak": 1
       },
       "after": {
-        "medianMs": 122.1,
+        "medianMs": 115.0,
         "calls": 2,
-        "peak": 1
+        "peak": 1,
+        "htmlBytes": 20450
       }
     },
     {
@@ -1443,9 +1508,10 @@
         "peak": 1
       },
       "after": {
-        "medianMs": 114.1,
+        "medianMs": 111.7,
         "calls": 2,
-        "peak": 1
+        "peak": 1,
+        "htmlBytes": 33558
       }
     },
     {
@@ -1457,9 +1523,10 @@
         "peak": 2
       },
       "after": {
-        "medianMs": 118.6,
+        "medianMs": 112.6,
         "calls": 4,
-        "peak": 2
+        "peak": 2,
+        "htmlBytes": 33913
       }
     },
     {
@@ -1471,9 +1538,10 @@
         "peak": 4
       },
       "after": {
-        "medianMs": 241.4,
+        "medianMs": 222.4,
         "calls": 9,
-        "peak": 5
+        "peak": 5,
+        "htmlBytes": 75556
       }
     },
     {
@@ -1485,9 +1553,10 @@
         "peak": 2
       },
       "after": {
-        "medianMs": 177.9,
+        "medianMs": 167.3,
         "calls": 4,
-        "peak": 2
+        "peak": 2,
+        "htmlBytes": 16649
       }
     },
     {
@@ -1499,9 +1568,10 @@
         "peak": 4
       },
       "after": {
-        "medianMs": 112.3,
-        "calls": 6,
-        "peak": 5
+        "medianMs": 59.4,
+        "calls": 4,
+        "peak": 4,
+        "htmlBytes": 17774
       }
     },
     {
@@ -1513,9 +1583,10 @@
         "peak": 4
       },
       "after": {
-        "medianMs": 182.2,
-        "calls": 7,
-        "peak": 5
+        "medianMs": 114.6,
+        "calls": 5,
+        "peak": 4,
+        "htmlBytes": 25889
       }
     },
     {
@@ -1527,9 +1598,10 @@
         "peak": 2
       },
       "after": {
-        "medianMs": 119.6,
+        "medianMs": 115.9,
         "calls": 3,
-        "peak": 2
+        "peak": 2,
+        "htmlBytes": 40873
       }
     },
     {
@@ -1541,9 +1613,10 @@
         "peak": 1
       },
       "after": {
-        "medianMs": 169.5,
+        "medianMs": 171.1,
         "calls": 3,
-        "peak": 1
+        "peak": 1,
+        "htmlBytes": 24114
       }
     },
     {
@@ -1555,9 +1628,10 @@
         "peak": 1
       },
       "after": {
-        "medianMs": 237.6,
+        "medianMs": 227.2,
         "calls": 4,
-        "peak": 1
+        "peak": 1,
+        "htmlBytes": 27029
       }
     },
     {
@@ -1569,9 +1643,10 @@
         "peak": 2
       },
       "after": {
-        "medianMs": 183.4,
+        "medianMs": 169.5,
         "calls": 4,
-        "peak": 2
+        "peak": 2,
+        "htmlBytes": 19899
       }
     },
     {
@@ -1583,9 +1658,10 @@
         "peak": 3
       },
       "after": {
-        "medianMs": 176.2,
+        "medianMs": 168.5,
         "calls": 5,
-        "peak": 3
+        "peak": 3,
+        "htmlBytes": 18002
       }
     },
     {
@@ -1597,9 +1673,10 @@
         "peak": 1
       },
       "after": {
-        "medianMs": 122.7,
+        "medianMs": 109.0,
         "calls": 2,
-        "peak": 1
+        "peak": 1,
+        "htmlBytes": 29139
       }
     },
     {
@@ -1611,9 +1688,10 @@
         "peak": 1
       },
       "after": {
-        "medianMs": 123.3,
+        "medianMs": 115.2,
         "calls": 2,
-        "peak": 1
+        "peak": 1,
+        "htmlBytes": 21634
       }
     },
     {
@@ -1625,9 +1703,10 @@
         "peak": 1
       },
       "after": {
-        "medianMs": 166.2,
+        "medianMs": 161.8,
         "calls": 3,
-        "peak": 1
+        "peak": 1,
+        "htmlBytes": 23313
       }
     },
     {
@@ -1639,9 +1718,10 @@
         "peak": 1
       },
       "after": {
-        "medianMs": 114.7,
+        "medianMs": 107.1,
         "calls": 4,
-        "peak": 2
+        "peak": 2,
+        "htmlBytes": 36153
       }
     },
     {
@@ -1653,9 +1733,10 @@
         "peak": 1
       },
       "after": {
-        "medianMs": 122.6,
+        "medianMs": 114.9,
         "calls": 4,
-        "peak": 2
+        "peak": 2,
+        "htmlBytes": 34742
       }
     },
     {
@@ -1667,9 +1748,10 @@
         "peak": 1
       },
       "after": {
-        "medianMs": 122.6,
+        "medianMs": 116.2,
         "calls": 4,
-        "peak": 2
+        "peak": 2,
+        "htmlBytes": 28185
       }
     },
     {
@@ -1681,9 +1763,10 @@
         "peak": 1
       },
       "after": {
-        "medianMs": 116.6,
+        "medianMs": 109.8,
         "calls": 3,
-        "peak": 2
+        "peak": 2,
+        "htmlBytes": 15899
       }
     },
     {
@@ -1695,7 +1778,7 @@
         "peak": 1
       },
       "after": {
-        "medianMs": 58.3,
+        "medianMs": 56.5,
         "calls": 1,
         "peak": 1
       }
@@ -1709,7 +1792,7 @@
   },
   "reproduction": "./gradlew :git:git-ui:probePageLoading --no-configuration-cache --no-build-cache",
   "validation": {
-    "jvmTests": 370,
+    "jvmTests": 593,
     "clientTests": 23,
     "typescript": "passed",
     "schemaContracts": "passed",
@@ -1722,6 +1805,35 @@
       "search",
       "statistics/private identity reuse"
     ],
-    "broaderScreenMatrix": "Existing Import button CSS 28 px versus assertion 30 px; unchanged."
-  }
+    "broaderScreenMatrix": "Existing Import button CSS 28 px versus assertion 30 px; unchanged.",
+    "followupBackend": "85 Git browsing/query tests and 135 Git CI GraphQL tests passed; focused cache and selector regressions included.",
+    "jvmScope": "593 distinct JVM tests across this PR: the previous 370 plus three Git UI regressions, 85 Git browsing/query tests and 135 Git CI GraphQL tests. The final selector adjustment reran the 28 query tests.",
+    "followupBrowserFlows": [
+      "pipeline history and pagination at 1440/390px",
+      "pipeline triggers/ref changes/logs/reconnect/polling",
+      "repository editing/navigation",
+      "statistics failure/retry/layout"
+    ]
+  },
+  "resolvedOpportunities": [
+    {
+      "area": "Repository statistics",
+      "implementation": "Immutable history cache with atomic loading, bounded retention and fresh ref/pack counts. Regression tests cover concurrent requests, pushes, force pushes, HEAD changes, shallow history and changed pack size."
+    },
+    {
+      "area": "Pipeline history and HTML",
+      "implementation": "Initial repository catalog selects one run per pipeline. Recent runs select one pipeline by id on demand; the 50-run history table loads on demand with isolated pagination and retry. Selected-repository pages no longer load an unused owner repository list."
+    },
+    {
+      "area": "Agent detail API",
+      "implementation": "Optional id selector on the authorized pipelineAgents field. Management callers use findById; machine credentials retain caller/child scoping before applying the selector. Detail and polling use that id."
+    }
+  ],
+  "retainedDependencies": [
+    "Default-owner identity precedes a listing when no repository is selected.",
+    "Commit-pinned content and PR version/head checks preserve snapshot consistency.",
+    "Orchestrator configuration is read after verifying the selected agent mode."
+  ],
+  "deployment": "Backend API must be deployed with or before the UI: queries use new optional id arguments on pipelines and pipelineAgents. This branch has not been deployed.",
+  "followupReproduction": "./gradlew :git:git-ui:check :git:git-ui-server:test :git:git:test --tests bosca.git.service.RepositoryBrowseServiceTest --tests bosca.git.graphql.GitQueryTest :git:git-ci:test --tests 'bosca.git.ci.graphql.*' --no-configuration-cache --no-build-cache"
 }

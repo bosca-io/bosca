@@ -85,6 +85,7 @@ object GitUiPageLoadingProbe {
             delayMs.set(latency)
             for (path in paths) {
                 val durations = mutableListOf<Double>()
+                var bytes = 0
                 var count = 0
                 var sequence: List<String> = emptyList()
                 calls.clear(); connections.clear(); peak.set(0)
@@ -94,10 +95,11 @@ object GitUiPageLoadingProbe {
                     val response = get(path)
                     durations.add((System.nanoTime() - start) / 1_000_000.0)
                     check(response.statusCode() == 200) { "Failed ${response.statusCode()}: $path" }
+                    bytes = response.body().toByteArray().size
                     count = calls.size - before
                     sequence = calls.drop(before)
                 }
-                println("PROBE latency=$latency path=$path medianMs=${"%.1f".format(durations.sorted()[1])} calls=$count peak=${peak.get()} connectionsAcross3Renders=${connections.distinct().size} sequence=${sequence.joinToString(",")}")
+                println("PROBE latency=$latency path=$path medianMs=${"%.1f".format(durations.sorted()[1])} htmlBytes=$bytes calls=$count peak=${peak.get()} connectionsAcross3Renders=${connections.distinct().size} sequence=${sequence.joinToString(",")}")
             }
             val shell = get("/search?repo=repo&q=snippet").body()
             val marker = Regex("""<script type="application/json" data-bml-state-key="(git-search.model:search[^"]*)"[^>]*>(.*?)</script>""", RegexOption.DOT_MATCHES_ALL).find(shell) ?: error("No search state")

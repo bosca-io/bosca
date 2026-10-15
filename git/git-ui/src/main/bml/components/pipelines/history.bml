@@ -1,0 +1,70 @@
+<component tag="git-pipeline-history">
+  <prop name="repository" type="String" required />
+  <prop name="offset" type="Long" default="0L" />
+  <prop name="runs" type="List<bosca.git.ui.graphql.GitUiPipelineRunsData.Git.PipelineRuns>" required />
+  <script server provides="model">bosca.git.ui.PipelineHistoryModel(repository, offset, runs, offset > 0L)</script>
+  <island name="git-pipeline-history" :key="repository">
+    <if model.message.isNotBlank()><ui-alert>{ model.message }</ui-alert></if>
+    <if !model.loaded>
+      <ui-button icon="clock" @click="model.load(0L, ctx)">Run history</ui-button>
+    <else>
+      <section class="run-history">
+        <div class="catalog-toolbar">
+          <h2>Run history</h2>
+          <span class="muted">{ model.runs.size } runs</span>
+        </div>
+        <ui-table-scroll>
+          <table>
+            <thead>
+              <tr>
+                <th>Run</th>
+                <th>Status</th>
+                <th>Ref / commit</th>
+                <th>Started</th>
+                <th>Duration</th>
+              </tr>
+            </thead>
+            <tbody>
+              <for run in model.runs>
+                <tr>
+                  <td>
+                    <a :href="bosca.git.ui.runHref(run.id)">#{ run.number }</a>
+                  </td>
+                  <td>
+                    <git-status-badge :status="run.status.name" />
+                  </td>
+                  <td>
+                    <code>
+                      { run.ref.removePrefix("refs/heads/") }
+                      ·
+                      { run.commitSha.take(8) }
+                    </code>
+                  </td>
+                  <td>
+                    <ui-time :value="run.started ?: run.created" />
+                  </td>
+                  <td>{ bosca.git.ui.pipelineDuration(run.durationSeconds) }</td>
+                </tr>
+              </for>
+            </tbody>
+          </table>
+        </ui-table-scroll>
+        <nav class="toolbar">
+          <if model.offset != 0L>
+            <ui-button size="sm" @click="model.load((model.offset - 50).coerceAtLeast(0), ctx)">Previous</ui-button>
+          </if>
+          <if model.runs.size == 50>
+            <ui-button size="sm" @click="model.load(model.offset + 50, ctx)">Next</ui-button>
+          </if>
+        </nav>
+      </section>
+
+      <if model.runs.isEmpty()><p class="muted">No runs yet.</p></if>
+    </if>
+  </island>
+  <style scoped>
+    .catalog-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 12px; }
+    .catalog-toolbar h2 { font-size: 14px; margin: 0; }
+    .run-history { display: flex; flex-direction: column; gap: 12px; }
+  </style>
+</component>

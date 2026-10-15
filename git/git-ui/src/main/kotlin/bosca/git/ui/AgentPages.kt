@@ -26,6 +26,7 @@ suspend fun agentPage(): AgentPage {
                 GitUiAgents.Variables(
                     status.takeIf(String::isNotBlank)?.let(GitAgentStatus::valueOf),
                     id != null,
+                    id,
                 ),
             )
             .git

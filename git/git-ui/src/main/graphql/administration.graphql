@@ -161,9 +161,9 @@ mutation GitUiDeleteSecret($id: UUID!, $name: String!) {
     deletePipelineSecret(repositoryId: $id, name: $name)
   }
 }
-query GitUiAgents($status: GitAgentStatus, $details: Boolean! = true) {
+query GitUiAgents($status: GitAgentStatus, $details: Boolean! = true, $id: UUID) {
   git {
-    pipelineAgents(status: $status) {
+    pipelineAgents(status: $status, id: $id) {
       id
       name
       labels

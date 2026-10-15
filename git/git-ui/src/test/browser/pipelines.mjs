@@ -127,6 +127,25 @@ await call("Network.setCookie", {
 await call("Emulation.setDeviceMetricsOverride", {
   width: 1440, height: 900, deviceScaleFactor: 1, mobile: false,
 });
+// Older histories load through isolated actions, leaving the latest run visible immediately.
+for (const width of [1440, 390]) {
+  await call("Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: false });
+  await nav("/repositories/repo?tab=pipelines");
+  await until('document.querySelector("[data-bml-island*=git-pipeline-history] button")');
+  assert.equal(await ev('document.querySelector(".run-history table")'), null);
+  assert.equal(await ev('document.querySelectorAll(".recent-runs .run-row").length'), 1);
+  await ev('document.querySelector("[data-bml-island*=git-pipeline-recent] button").click()');
+  await until('!document.querySelector("[data-bml-island*=git-pipeline-recent] button") && !document.querySelector("[data-bml-action-pending]")');
+  await ev('document.querySelector("[data-bml-island*=git-pipeline-history] button").click()');
+  await until('document.querySelectorAll(".run-history tbody tr").length === 50 && !document.querySelector("[data-bml-action-pending]")');
+  await ev('[...document.querySelectorAll(".run-history button")].find(b => b.textContent.trim() === "Next").click()');
+  await until('document.querySelector("[data-bml-island*=git-pipeline-history]").textContent.includes("No runs yet.") && !document.querySelector("[data-bml-action-pending]")');
+  await ev('[...document.querySelectorAll(".run-history button")].find(b => b.textContent.trim() === "Previous").click()');
+  await until('document.querySelectorAll(".run-history tbody tr").length === 50 && !document.querySelector("[data-bml-action-pending]")');
+  assert.ok(await ev('document.documentElement.scrollWidth <= innerWidth + 1'), "Pipeline history overflows the page");
+  await writeFile(`${process.env.GIT_UI_ARTIFACT_DIR}/pipeline-history-${width}.png`, Buffer.from((await call("Page.captureScreenshot", { format: "png", captureBeyondViewport: false })).data, "base64"));
+}
+await call("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
 await nav(
   "/pipelines?owner=owner&repo=repo&pipeline=pipeline&ref=refs%2Fheads%2Fmain",
 );
@@ -307,5 +326,5 @@ await writeFile(
   ),
 );
 assert.deepEqual(errors, [], "Pipeline flow raised browser exceptions");
-console.log("Pipeline trigger, ref changes, live logs, reconnect and polling checks passed.");
+console.log("Pipeline lazy histories, pagination, trigger, ref changes, live logs, reconnect and polling checks passed.");
 ws.close();
