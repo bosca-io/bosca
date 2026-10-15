@@ -8,6 +8,7 @@ import io.nats.client.Connection
 import io.nats.client.JetStream
 import io.nats.client.JetStreamApiException
 import io.nats.client.JetStreamOptions
+import io.nats.client.PublishOptions
 import io.nats.client.api.RetentionPolicy
 import io.nats.client.api.StreamConfiguration
 import kotlinx.coroutines.Dispatchers
@@ -22,6 +23,8 @@ import kotlinx.serialization.json.Json
 import org.slf4j.LoggerFactory
 import java.io.IOException
 import java.time.Duration
+import java.security.MessageDigest
+import java.util.HexFormat
 import kotlin.time.Duration.Companion.seconds
 
 /**
@@ -52,17 +55,24 @@ class NatsEventRepository(
             throw e
         } catch (e: Exception) {
             health.natsFailed()
-            throw e
+            throw NatsPublishException(e)
         }
     }
 
     private suspend fun publish(events: Events) {
         val jetStream = ensureInitialized()
         val futures = withContext(Dispatchers.IO) {
-            events.events.map { event ->
+            events.events.mapIndexed { index, event ->
                 val message = events.copy(events = listOf(event))
                 val payload = json.encodeToString(Events.serializer(), message)
-                jetStream.publishAsync(STREAM_SUBJECT, payload.toByteArray(Charsets.UTF_8))
+                // Client event IDs survive HTTP retries and changes to sent/received timestamps.
+                // ID-less producers can deduplicate retries of the same envelope and event position.
+                val identity = event.clientId?.takeIf { it.isNotBlank() }?.let { "id:$it" }
+                    ?: "envelope:$index:${json.encodeToString(Events.serializer(), message.copy(received = null, receivedMicros = null))}"
+                val key = "${events.context?.appId.orEmpty().length}:${events.context?.appId.orEmpty()}:$identity"
+                val messageId = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(key.toByteArray(Charsets.UTF_8)))
+                val options = PublishOptions.builder().messageId(messageId).build()
+                jetStream.publishAsync(STREAM_SUBJECT, payload.toByteArray(Charsets.UTF_8), options)
                     // A cancelled NATS future is a publish failure, not coroutine cancellation.
                     .exceptionally { throw IOException("Failed to publish analytics event to NATS", it) }
             }

@@ -5,6 +5,7 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import kotlin.test.assertFailsWith
 
 class CompositeEventRepositoryTest {
 
@@ -27,10 +28,21 @@ class CompositeEventRepositoryTest {
     private val emptyEvents = Events(context = null, events = emptyList(), sent = 0L, sentMicros = 0L)
 
     @Test
+    fun `primary process and flush failures propagate before optional sinks run`() = runTest {
+        val primary = TrackingRepository().apply { shouldThrow = true }
+        val secondary = TrackingRepository()
+        val composite = CompositeEventRepository(primary, listOf(secondary))
+        assertFailsWith<IllegalStateException> { composite.process(emptyEvents) }
+        assertFailsWith<IllegalStateException> { composite.flush() }
+        assertEquals(0, secondary.processCount)
+        assertEquals(0, secondary.flushCount)
+    }
+
+    @Test
     fun `process delegates to all repositories`() = runTest {
         val repo1 = TrackingRepository()
         val repo2 = TrackingRepository()
-        val composite = CompositeEventRepository(listOf(repo1, repo2))
+        val composite = CompositeEventRepository(repo1, listOf(repo2))
         composite.process(emptyEvents)
         assertEquals(1, repo1.processCount)
         assertEquals(1, repo2.processCount)
@@ -40,7 +52,7 @@ class CompositeEventRepositoryTest {
     fun `process isolates sink failures so subsequent sinks still run`() = runTest {
         val failing = TrackingRepository().apply { shouldThrow = true }
         val healthy = TrackingRepository()
-        val composite = CompositeEventRepository(listOf(failing, healthy))
+        val composite = CompositeEventRepository(TrackingRepository(), listOf(failing, healthy))
         composite.process(emptyEvents)
         assertEquals(1, failing.processCount)
         assertEquals(1, healthy.processCount)
@@ -50,15 +62,15 @@ class CompositeEventRepositoryTest {
     fun `flush isolates sink failures so subsequent sinks still flush`() = runTest {
         val failing = TrackingRepository().apply { shouldThrow = true }
         val healthy = TrackingRepository()
-        val composite = CompositeEventRepository(listOf(failing, healthy))
+        val composite = CompositeEventRepository(TrackingRepository(), listOf(failing, healthy))
         composite.flush()
         assertEquals(1, failing.flushCount)
         assertEquals(1, healthy.flushCount)
     }
 
     @Test
-    fun `process with no repositories is a no-op`() = runTest {
-        val composite = CompositeEventRepository(emptyList())
+    fun `process supports a primary without additional repositories`() = runTest {
+        val composite = CompositeEventRepository(TrackingRepository(), emptyList())
         composite.process(emptyEvents)
     }
 
@@ -73,7 +85,7 @@ class CompositeEventRepositoryTest {
             override suspend fun process(events: Events) { received.add(events) }
             override suspend fun flush() {}
         }
-        val composite = CompositeEventRepository(listOf(repo1, repo2))
+        val composite = CompositeEventRepository(repo1, listOf(repo2))
         composite.process(emptyEvents)
         assertEquals(2, received.size)
         assertTrue(received[0] === received[1])

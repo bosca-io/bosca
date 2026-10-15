@@ -255,7 +255,8 @@ class AnalyticsConfiguration {
             }
         }
         return CompositeEventRepository(
-            listOf(storageRepository, ErrorGroupEventRepository(errorGroupService))
+            storageRepository,
+            listOf(ErrorGroupEventRepository(errorGroupService)),
         )
     }
 

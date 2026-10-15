@@ -9,6 +9,7 @@ import bosca.analytics.model.EventPipelineContext
 import bosca.analytics.model.EventType
 import bosca.analytics.model.Events
 import bosca.analytics.repository.EventRepository
+import bosca.analytics.repository.CompositeEventRepository
 import bosca.analytics.repository.nats.NatsEventRepository
 import bosca.analytics.transform.EventPipelineTransform
 import bosca.cache.CacheManager
@@ -56,6 +57,7 @@ import kotlin.test.Test
 import kotlin.test.assertFalse
 import kotlin.test.assertFailsWith
 import kotlin.test.assertSame
+import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class NatsAnalyticsPipelineTest {
@@ -131,16 +133,54 @@ class NatsAnalyticsPipelineTest {
     }
 
     @Test
+    fun `publisher uses stable IDs across retries and distinguishes ID-less event positions`() = runTest {
+        val options = mutableListOf<io.nats.client.PublishOptions>()
+        every { management.getStreamInfo(NatsEventRepository.STREAM_NAME) } returns mockk()
+        every { jetStream.publishAsync(any(), any<ByteArray>(), capture(options)) } returns CompletableFuture.completedFuture(mockk<PublishAck>())
+        val repository = NatsEventRepository(nats, json, health)
+        val batch = events.copy(events = listOf(events.events.first()))
+        repository.process(batch)
+        repository.process(batch.copy(sent = 100, sentMicros = 20, received = 200, receivedMicros = 30))
+        assertEquals(options[0].messageId, options[1].messageId)
+
+        val anonymous = batch.copy(events = listOf(batch.events.first().copy(clientId = null), batch.events.first().copy(clientId = "")))
+        repository.process(anonymous)
+        repository.process(anonymous.copy(received = 500, receivedMicros = 12))
+        assertEquals(options[2].messageId, options[4].messageId)
+        assertEquals(options[3].messageId, options[5].messageId)
+        assertTrue(options[2].messageId != options[3].messageId)
+    }
+
+    @Test
+    fun `consumer does not acknowledge primary storage or request cleanup failures`() = runTest {
+        val primary = mockk<EventRepository>()
+        coEvery { primary.process(any()) } throws IOException("disk unavailable")
+        val composite = CompositeEventRepository(primary, emptyList())
+        val consumer = NatsEventConsumer(nats, json, composite, EventPipelineTransforms(emptyList()), EventProcessingConfiguration())
+        val failedStorage = message()
+        consumer.processMessage(failedStorage)
+        verify(exactly = 0) { failedStorage.ack() }
+        verify(exactly = 1) { failedStorage.nak() }
+
+        coJustRun { primary.process(any()) }
+        coEvery { connectionManager.release() } throws IOException("cleanup unavailable")
+        val failedCleanup = message()
+        consumer.processMessage(failedCleanup)
+        verify(exactly = 0) { failedCleanup.ack() }
+        verify(exactly = 1) { failedCleanup.nak() }
+    }
+
+    @Test
     fun `publisher initializes stream once and publishes one envelope per event`() = runTest {
         every { management.getStreamInfo(NatsEventRepository.STREAM_NAME) } returns mockk()
-        every { jetStream.publishAsync(any(), any<ByteArray>()) } returns CompletableFuture.completedFuture(mockk<PublishAck>())
+        every { jetStream.publishAsync(any(), any<ByteArray>(), any<io.nats.client.PublishOptions>()) } returns CompletableFuture.completedFuture(mockk<PublishAck>())
         val repository = NatsEventRepository(nats, json, health)
 
         repository.process(events)
         repository.process(events.copy(events = listOf(events.events.first())))
         repository.flush()
 
-        verify(exactly = 3) { jetStream.publishAsync(NatsEventRepository.STREAM_SUBJECT, any<ByteArray>()) }
+        verify(exactly = 3) { jetStream.publishAsync(NatsEventRepository.STREAM_SUBJECT, any<ByteArray>(), any<io.nats.client.PublishOptions>()) }
         verify(exactly = 1) { connection.jetStreamManagement() }
     }
 
@@ -150,7 +190,7 @@ class NatsAnalyticsPipelineTest {
         val response = CompletableFuture<PublishAck>()
         val cancelled = response.thenApply { it }
         response.cancel(false)
-        every { jetStream.publishAsync(any(), any<ByteArray>()) } returns cancelled andThen
+        every { jetStream.publishAsync(any(), any<ByteArray>(), any<io.nats.client.PublishOptions>()) } returns cancelled andThen
             CompletableFuture.completedFuture(mockk<PublishAck>())
         val repository = NatsEventRepository(nats, json, health)
         val batch = events.copy(events = events.events.take(1))
@@ -160,14 +200,14 @@ class NatsAnalyticsPipelineTest {
         repository.process(batch)
         assertTrue(health.isReady)
 
-        verify(exactly = 2) { jetStream.publishAsync(NatsEventRepository.STREAM_SUBJECT, any<ByteArray>()) }
+        verify(exactly = 2) { jetStream.publishAsync(NatsEventRepository.STREAM_SUBJECT, any<ByteArray>(), any<io.nats.client.PublishOptions>()) }
     }
 
     @Test
     fun `publisher preserves caller cancellation while awaiting NATS`() = runTest {
         every { management.getStreamInfo(NatsEventRepository.STREAM_NAME) } returns mockk()
         val published = CompletableDeferred<Unit>()
-        every { jetStream.publishAsync(any(), any<ByteArray>()) } answers {
+        every { jetStream.publishAsync(any(), any<ByteArray>(), any<io.nats.client.PublishOptions>()) } answers {
             published.complete(Unit)
             CompletableFuture<PublishAck>()
         }

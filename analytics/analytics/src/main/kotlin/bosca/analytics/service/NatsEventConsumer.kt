@@ -89,26 +89,28 @@ class NatsEventConsumer(
         log.info("Analytics event consumer stopped")
     }
 
-    internal suspend fun processMessage(message: io.nats.client.Message) = withRequestCache {
-        withConnectionManager {
-            try {
-                val payload = message.data.toString(Charsets.UTF_8)
-                var events = json.decodeFromString(Events.serializer(), payload)
-                val context = EventPipelineContext(Headers.Empty)
-                // A transform failure propagates to the outer catch below, which NAKs the message so
-                // NATS redelivers it — rather than silently storing an un-transformed batch. The whole
-                // chain re-runs on redelivery, so transforms must be idempotent (see EventPipelineTransform).
-                for (transform in eventTransforms.transforms) {
-                    events = transform.transform(context, events)
+    internal suspend fun processMessage(message: io.nats.client.Message) {
+        try {
+            withRequestCache {
+                withConnectionManager {
+                    val payload = message.data.toString(Charsets.UTF_8)
+                    var events = json.decodeFromString(Events.serializer(), payload)
+                    val context = EventPipelineContext(Headers.Empty)
+                    // A transform failure propagates to the outer catch below, which NAKs the message so
+                    // NATS redelivers it — rather than silently storing an un-transformed batch. The whole
+                    // chain re-runs on redelivery, so transforms must be idempotent (see EventPipelineTransform).
+                    for (transform in eventTransforms.transforms) {
+                        events = transform.transform(context, events)
+                    }
+                    eventRepository.process(events)
                 }
-                eventRepository.process(events)
-                message.ack()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                log.error("Failed to process analytics event message: {}", e.message, e)
-                message.nak()
             }
+            message.ack()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            log.error("Failed to process analytics event message: {}", e.message, e)
+            message.nak()
         }
     }
 

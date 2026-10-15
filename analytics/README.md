@@ -66,6 +66,28 @@ not replayed because a failure can occur after storage has already succeeded.
 Deploy the collector image and Helm probes together. Collector chart `0.1.2`
 (services chart `0.1.5`) uses these endpoints with a five-second probe interval.
 
+## Event delivery
+
+`POST /api/v1/events` and its `/events` alias wait for the queued batch's primary
+storage operation and request cleanup before returning 202 or 200. With NATS
+storage, success requires a JetStream acknowledgment for every event. A storage
+failure or a wait longer than 15 seconds returns 503, allowing clients to keep and
+retry their events. The normal browser delivery path already does this using its
+local event queue. In-process analytics capture continues to enqueue asynchronously.
+
+NATS publications use message IDs derived from the app ID and each event's
+`client_id`. Keep those event IDs unchanged when retrying, including after a lost
+HTTP response or a partially published batch. Events without IDs use a hash of
+their envelope and batch position, excluding collector receipt timestamps; those
+retries must retain the same envelope and order. Deduplication lasts for the
+stream's configured duplicate window. This does not provide unlimited deduplication
+or prevent repeated transform and optional-sink side effects.
+
+The processor acknowledges messages after primary storage and request cleanup
+succeed. Primary Iceberg staging failures propagate, leaving messages eligible for
+NATS redelivery. The existing local staging and later Iceberg commit behavior is
+unchanged; staging storage must survive pod replacement to preserve staged data.
+
 ## Bible usage reporting
 
 The Analytics pipeline reports API.Bible usage from client-authored events. Text views use

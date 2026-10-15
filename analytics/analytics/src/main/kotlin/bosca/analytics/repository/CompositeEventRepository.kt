@@ -5,18 +5,17 @@ import kotlinx.coroutines.CancellationException
 import org.slf4j.LoggerFactory
 
 /**
- * Delegates [process] and [flush] calls to every repository in [repositories],
- * in order. Each sink is isolated: a failure in one sink is logged and does not
- * prevent subsequent sinks from running. This allows the event pipeline to write
- * to multiple sinks (e.g., Iceberg storage and error group aggregation) through
- * a single [EventRepository] reference, keeping the consumer decoupled from
- * individual sink concerns.
+ * Writes to [primary] before optional [repositories]. Primary storage failures propagate
+ * so callers cannot acknowledge unstored events. Additional sink failures are logged
+ * independently and do not turn successful storage into a failed delivery.
  */
 class CompositeEventRepository(
+    private val primary: EventRepository,
     private val repositories: List<EventRepository>,
 ) : EventRepository {
 
     override suspend fun process(events: Events) {
+        primary.process(events)
         for (repository in repositories) {
             try {
                 repository.process(events)
@@ -30,6 +29,7 @@ class CompositeEventRepository(
     }
 
     override suspend fun flush() {
+        primary.flush()
         for (repository in repositories) {
             try {
                 repository.flush()
