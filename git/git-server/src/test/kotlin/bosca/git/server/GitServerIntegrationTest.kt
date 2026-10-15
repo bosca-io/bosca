@@ -650,6 +650,55 @@ class GitServerIntegrationTest {
             )
             assertEquals("admin", initialCommit["authorName"]?.jsonPrimitive?.content)
             assertEquals("studio@bosca.io", initialCommit["authorEmail"]?.jsonPrimitive?.content)
+            val tagPage = request("/repositories/$emptyId?tab=tags", cookie = "$cookiePrefix=$adminToken")
+            assertEquals(200, tagPage.statusCode(), tagPage.body())
+            assertTrue("New Tag" in tagPage.body(), tagPage.body())
+            val tagState = Regex(
+                "<script type=\"application/json\" data-bml-state-key=\"(git-tag-create.model[^\"]*)\"[^>]*>(.*?)</script>",
+                RegexOption.DOT_MATCHES_ALL,
+            ).find(tagPage.body()) ?: error("Tag creation state missing: ${tagPage.body()}")
+            fun createTag(name: String, target: String = "trunk", actorToken: String = adminToken): JsonObject {
+                val response = request("/_bml/action", buildJsonObject {
+                    put("page", "/repositories/{id}")
+                    put("path", "/repositories/$emptyId")
+                    put("stateKey", tagState.groupValues[1])
+                    put("state", tagState.groupValues[2])
+                    put("method", "createTag")
+                    put("args", buildJsonArray { add(name); add(target); add("First release\nRelease notes") })
+                }.toString(), cookie = "$cookiePrefix=$actorToken")
+                assertEquals(200, response.statusCode(), response.body())
+                return Json.parseToJsonElement(Json.parseToJsonElement(response.body()).at("state").jsonPrimitive.content).jsonObject
+            }
+            val createdTag = createTag("release/1.0")
+            assertEquals(false, createdTag["failed"]?.jsonPrimitive?.boolean, createdTag.toString())
+            assertTrue(createdTag["nextHref"]?.jsonPrimitive?.content.orEmpty().contains("tab=tags"))
+            val tags = graphql(
+                """
+                query Tags(${'$'}id: UUID!) {
+                  git {
+                    tags(repositoryId: ${'$'}id) { name sha targetSha isAnnotated taggerName taggerEmail message }
+                    blob(repositoryId: ${'$'}id, ref: "refs/tags/release/1.0", path: "README.md") { content }
+                  }
+                }
+                """.trimIndent(), buildJsonObject { put("id", emptyId) }, adminToken,
+            )
+            val tag = tags.at("git", "tags").jsonArray.single()
+            assertEquals("release/1.0", tag.at("name").jsonPrimitive.content)
+            assertEquals(true, tag.at("isAnnotated").jsonPrimitive.boolean)
+            assertEquals("admin", tag.at("taggerName").jsonPrimitive.content)
+            assertEquals("studio@bosca.io", tag.at("taggerEmail").jsonPrimitive.content)
+            assertEquals("First release\nRelease notes", tag.at("message").jsonPrimitive.content)
+            assertTrue(tag.at("sha") != tag.at("targetSha"))
+            assertEquals(readmeContent, tags.at("git", "blob", "content").jsonPrimitive.content)
+            val duplicateTag = createTag("release/1.0")
+            assertEquals(true, duplicateTag["failed"]?.jsonPrimitive?.boolean, duplicateTag.toString())
+            assertTrue("already exists" in duplicateTag["message"]?.jsonPrimitive?.content.orEmpty())
+            for (failedTag in listOf(createTag("invalid tag"), createTag("missing-target", "missing"), createTag("denied", actorToken = apiToken))) {
+                assertEquals(true, failedTag["failed"]?.jsonPrimitive?.boolean, failedTag.toString())
+            }
+            val tagsPage = request("/repositories/$emptyId?tab=tags", cookie = "$cookiePrefix=$adminToken")
+            assertTrue("release/1.0" in tagsPage.body(), tagsPage.body())
+            assertTrue("First release" in tagsPage.body(), tagsPage.body())
             val readmePage =
                 request("/repositories/$emptyId?file=README.md", cookie = "$cookiePrefix=$adminToken")
             assertEquals(200, readmePage.statusCode(), readmePage.body())

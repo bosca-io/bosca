@@ -22,6 +22,8 @@ Search follows Studio's query-first layout with compact Content/Paths, repositor
 
 The Code tab follows Studio: statistics tiles, a path bar with file actions, a file list, the README and the repository description. Files open in a file card with Rename, Delete and Edit; Markdown files offer Preview and Source. File rows are native links that cover the row. Browser checks open README with a real pointer click and nested files with Enter. Clone controls use a selectable URL and inline copy icon, show stable check-icon feedback, and offer a manual-copy fallback when clipboard access fails. The popover follows its trigger and fits the viewport.
 
+The repository's Tags tab offers **New Tag** to editors of active repositories with commits. Enter a tag name, a target branch/tag/commit SHA, and an optional annotation. Creation uses the current profile's author metadata and returns to the Tags tab. Existing tags are not replaced, and failures retain the draft. Deploy the API's `git.createTag` mutation with or before this UI.
+
 Client imports use the project alias, for example `import { attachTooltip } from "@client/tooltip"`. `tsconfig.json` maps `@client/*` to `src/main/client/*` for type checking and esbuild, including generated BML scripts. The bundle task tracks that configuration so alias changes rebuild the assets.
 
 Client behavior uses `<script client scoped>` at component scope, outside islands. BML initializes each component on its DOM root and manages cleanup. Islands retain the live server-state views used by declarative actions; authentication and other client-only controls use their component roots directly. `src/main/client/auth.ts` shares SDK operations and return navigation.

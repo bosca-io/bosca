@@ -292,6 +292,9 @@ class RepositoryWriteServiceImpl(
     }
 
     override suspend fun createTag(input: CreateTagInput): CreateTagResult = withContext(GitWorkDispatcher) {
+        require(org.eclipse.jgit.lib.Repository.isValidRefName("refs/tags/${input.tag}")) {
+            "Invalid tag name '${input.tag}'"
+        }
         lockFactory.withRepositoryWriteLock(
             input.repositoryId, RepositoryWriteLock.API_WRITE_WAIT_MILLIS
         ) { lockHandle ->

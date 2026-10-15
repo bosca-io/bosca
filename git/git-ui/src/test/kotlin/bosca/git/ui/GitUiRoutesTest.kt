@@ -429,6 +429,58 @@ class GitUiRoutesTest {
     }
 
     @Test
+    fun `tag creation is available only on editable nonempty active repositories`() {
+        assertTrue("New Tag" in get("/repositories/repo?tab=tags").body())
+        assertFalse("New Tag" in get("/repositories/repo?tab=branches").body())
+        assertFalse("New Tag" in get("/repositories/repo?tab=tags", token = "reader-token").body())
+        assertFalse("New Tag" in get("/repositories/archived?tab=tags").body())
+        assertFalse("New Tag" in get("/repositories/empty?tab=tags").body())
+    }
+
+    @Test
+    fun `tag creation forwards the draft and profile identity then returns to tags`() {
+        val response = action(
+            "/repositories/repo?tab=tags&ref=feature%2Fone&return=%2Frepositories%3Fowner%3Dall",
+            "git-tag-create.model", "createTag", listOf(" release/1.0 ", " feature/one ", "Release notes\nSecond line"),
+            token = "bootstrap-token",
+        )
+        val state = actionState(response)
+        assertEquals(false, state["failed"]?.jsonPrimitive?.boolean, response.body())
+        val request = requests.last { it.operation == "GitUiCreateTag" }
+        assertEquals("Bearer bootstrap-token", request.authorization)
+        assertEquals("repo", request.variables["id"]?.jsonPrimitive?.content)
+        assertEquals("release/1.0", request.variables["name"]?.jsonPrimitive?.content)
+        assertEquals("feature/one", request.variables["source"]?.jsonPrimitive?.content)
+        assertEquals("Release notes\nSecond line", request.variables["message"]?.jsonPrimitive?.content)
+        assertEquals("admin", request.variables["taggerName"]?.jsonPrimitive?.content)
+        assertEquals("studio@bosca.io", request.variables["taggerEmail"]?.jsonPrimitive?.content)
+        assertEquals(repositoryHref("repo", "release/1.0", listHref = "/repositories?owner=all", tab = "tags"), state["nextHref"]?.jsonPrimitive?.content)
+    }
+
+    @Test
+    fun `tag creation failures retain the draft and blank inputs do not write`() {
+        val path = "/repositories/repo?tab=tags"
+        val shell = get(path).body()
+        assertTrue("value=\"main\"" in shell, shell)
+        for ((name, source) in listOf("v1" to "main", "1.0" to "missing")) {
+            val failed = action(path, "git-tag-create.model", "createTag", listOf(name, source, "Keep annotation"), sourceHtml = shell)
+            val state = actionState(failed)
+            assertEquals(true, state["failed"]?.jsonPrimitive?.boolean, failed.body())
+            assertEquals(name, state["name"]?.jsonPrimitive?.content)
+            assertEquals(source, state["source"]?.jsonPrimitive?.content)
+            assertEquals("Keep annotation", state["tagMessage"]?.jsonPrimitive?.content)
+            assertEquals("", state["nextHref"]?.jsonPrimitive?.content)
+            assertTrue("Keep annotation" in failed.body(), failed.body())
+        }
+        val before = requests.count { it.operation == "GitUiCreateTag" }
+        for ((name, source) in listOf(" " to "main", "1.0" to " ")) {
+            val failed = action(path, "git-tag-create.model", "createTag", listOf(name, source, ""), sourceHtml = shell)
+            assertEquals(true, actionState(failed)["failed"]?.jsonPrimitive?.boolean, failed.body())
+        }
+        assertEquals(before, requests.count { it.operation == "GitUiCreateTag" })
+    }
+
+    @Test
     fun `create and import fail visibly with all posted fields retained`() {
         val failed =
             action(
@@ -2536,6 +2588,12 @@ class GitUiRoutesTest {
                         "binary" -> """{"content":null,"size":12,"sha":"abc","isBinary":true}"""
                         else -> """{"content":"<script>source</script>","size":23,"sha":"abc","isBinary":false}"""
                     }}}}}"""
+                        operation == "GitUiCreateTag" && variables["name"]?.jsonPrimitive?.content == "v1" ->
+                            """{"errors":[{"message":"Tag 'v1' already exists"}]}"""
+                        operation == "GitUiCreateTag" && variables["source"]?.jsonPrimitive?.content == "missing" ->
+                            """{"errors":[{"message":"Target ref 'missing' not found"}]}"""
+                        operation == "GitUiCreateTag" ->
+                            """{"data":{"git":{"createTag":{"name":${variables.getValue("name")},"sha":"tag-sha","targetSha":"abc"}}}}"""
                         operation == "GitUiCommitFile" &&
                             variables["input"]?.jsonObject?.get("path")?.jsonPrimitive?.content ==
                                 "protected.txt" ->

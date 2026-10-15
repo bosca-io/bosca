@@ -1,0 +1,51 @@
+<component tag="git-tag-create">
+  <prop name="page" type="bosca.git.ui.RepositoryPage" required />
+  <script server provides="model">
+    bosca.git.ui.RepositoryRefModel(page, page.id, page.ref, page.listHref)
+  </script>
+  <island name="git-tag-create" :key="model.page.id + model.page.ref">
+    <div class="tag-create" :data-next-href="model.nextHref">
+      <ui-dialog
+        title="New Tag"
+        triggerLabel="New Tag"
+        triggerIcon="plus"
+        icon="tag"
+        primary
+        :forceOpen="model.failed"
+      >
+        <form class="modal-form" @submit="model.createTag(form.name, form.source, form.tagMessage, ctx)">
+          <div class="modal-fields">
+            <if model.failed>
+              <ui-alert tone="error">{ model.message }</ui-alert>
+            </if>
+            <ui-field label="Tag name">
+              <ui-input name="name" :value="model.name" placeholder="1.0.0" required />
+            </ui-field>
+            <ui-field label="Target ref" hint="Branch name, tag name, or commit SHA.">
+              <ui-input name="source" :value="model.source" required />
+            </ui-field>
+            <ui-field label="Message" hint="Optional annotation for this tag.">
+              <textarea name="tagMessage" rows="3">{ model.tagMessage }</textarea>
+            </ui-field>
+          </div>
+          <footer class="modal-footer">
+            <ui-button ref="cancel">Cancel</ui-button>
+            <ui-button type="submit" primary>Create tag</ui-button>
+          </footer>
+        </form>
+      </ui-dialog>
+    </div>
+  </island>
+  <style scoped>
+    .tag-create {
+      display: contents;
+    }
+  </style>
+  <script client scoped>
+    ctx.onUpdate(() => {
+      const next =
+        ctx.root.querySelector<HTMLElement>("[data-next-href]")?.dataset.nextHref;
+      if (next) location.assign(next);
+    });
+  </script>
+</component>

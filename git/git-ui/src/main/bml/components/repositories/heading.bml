@@ -16,6 +16,9 @@
         <if page.tab == "branches" && page.canEdit && !page.archived && page.resolvedSha.isNotBlank()>
           <git-branch-create :page="page" />
         </if>
+        <if page.tab == "tags" && page.canEdit && !page.archived && (page.branches.isNotEmpty() || page.tags.isNotEmpty())>
+          <git-tag-create :page="page" />
+        </if>
         <if page.pulls != null>
           <git-pull-create :page="page.pulls" />
         </if>
