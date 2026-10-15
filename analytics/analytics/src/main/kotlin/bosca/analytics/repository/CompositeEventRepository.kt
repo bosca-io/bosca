@@ -5,38 +5,43 @@ import kotlinx.coroutines.CancellationException
 import org.slf4j.LoggerFactory
 
 /**
- * Writes to [primary] before optional [repositories]. Primary storage failures propagate
- * so callers cannot acknowledge unstored events. Additional sink failures are logged
- * independently and do not turn successful storage into a failed delivery.
+ * Stores events in [storageRepository] (NATS or Iceberg), then runs [optionalRepositories],
+ * such as error-group aggregation.
+ *
+ * Storage failures must reach the caller so HTTP clients retain their events or the NATS
+ * consumer requests redelivery. Optional repository failures are logged because the events
+ * are already stored; failing delivery at that point would ask the caller to send them again.
  */
 class CompositeEventRepository(
-    private val primary: EventRepository,
-    private val repositories: List<EventRepository>,
+    private val storageRepository: EventRepository,
+    private val optionalRepositories: List<EventRepository>,
 ) : EventRepository {
 
     override suspend fun process(events: Events) {
-        primary.process(events)
-        for (repository in repositories) {
+        // Keep storage outside the catch below: a failed write must fail the delivery.
+        storageRepository.process(events)
+        for (optionalRepository in optionalRepositories) {
             try {
-                repository.process(events)
+                optionalRepository.process(events)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                log.error("Sink {} failed to process batch of {} events",
-                    repository::class.simpleName, events.events.size, e)
+                log.error("Optional repository {} failed to process batch of {} events",
+                    optionalRepository::class.simpleName, events.events.size, e)
             }
         }
     }
 
     override suspend fun flush() {
-        primary.flush()
-        for (repository in repositories) {
+        // Buffered storage writes must succeed too; optional aggregation cannot hide a failure.
+        storageRepository.flush()
+        for (optionalRepository in optionalRepositories) {
             try {
-                repository.flush()
+                optionalRepository.flush()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                log.error("Sink {} failed to flush", repository::class.simpleName, e)
+                log.error("Optional repository {} failed to flush", optionalRepository::class.simpleName, e)
             }
         }
     }

@@ -28,14 +28,14 @@ class CompositeEventRepositoryTest {
     private val emptyEvents = Events(context = null, events = emptyList(), sent = 0L, sentMicros = 0L)
 
     @Test
-    fun `primary process and flush failures propagate before optional sinks run`() = runTest {
-        val primary = TrackingRepository().apply { shouldThrow = true }
-        val secondary = TrackingRepository()
-        val composite = CompositeEventRepository(primary, listOf(secondary))
+    fun `storage process and flush failures propagate before optional repositories run`() = runTest {
+        val storageRepository = TrackingRepository().apply { shouldThrow = true }
+        val optionalRepository = TrackingRepository()
+        val composite = CompositeEventRepository(storageRepository, listOf(optionalRepository))
         assertFailsWith<IllegalStateException> { composite.process(emptyEvents) }
         assertFailsWith<IllegalStateException> { composite.flush() }
-        assertEquals(0, secondary.processCount)
-        assertEquals(0, secondary.flushCount)
+        assertEquals(0, optionalRepository.processCount)
+        assertEquals(0, optionalRepository.flushCount)
     }
 
     @Test
@@ -69,7 +69,7 @@ class CompositeEventRepositoryTest {
     }
 
     @Test
-    fun `process supports a primary without additional repositories`() = runTest {
+    fun `process supports storage without optional repositories`() = runTest {
         val composite = CompositeEventRepository(TrackingRepository(), emptyList())
         composite.process(emptyEvents)
     }
