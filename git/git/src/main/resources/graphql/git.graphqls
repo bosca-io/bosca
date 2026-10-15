@@ -537,6 +537,8 @@ type GitDiffFile {
     newPath: String
     changeType: GitDiffChangeType!
     hunks: [GitDiffHunk!]!
+    "Number of text lines in the new version; zero when the file was deleted or is binary."
+    newLineCount: Int!
 }
 
 "A contiguous region of changed lines."

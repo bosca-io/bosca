@@ -234,6 +234,7 @@ query GitUiPullDiffPage($repo: UUID!, $number: Int!, $offset: Int!) {
         oldPath
         newPath
         changeType
+        newLineCount
         hunks {
           oldStart
           oldCount

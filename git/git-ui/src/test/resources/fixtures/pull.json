@@ -53,6 +53,7 @@
       "oldPath": "a.txt",
       "newPath": "a.txt",
       "changeType": "MODIFY",
+      "newLineCount": 2,
       "hunks": [
         {
           "oldStart": 1,

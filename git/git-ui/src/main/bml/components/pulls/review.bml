@@ -170,33 +170,50 @@
             message="The source and target have no file changes."
           />
         <else>
-          <git-pull-files :entries="model.files">
+          <git-diff-workspace :entries="model.files">
             <for file in model.diff>
-              <details class="diff-file" :id="file.anchor" open>
-                <ui-disclosure-heading framed>
-                  <ui-badge :color="bosca.git.ui.pullFileChangeColor(file.changeType)">{ bosca.git.ui.pullFileChangeLabel(file.changeType) }</ui-badge>
-                  <code class="diff-path">{ file.displayPath }</code>
-                </ui-disclosure-heading>
-                <if file.emptyTextChange>
-                  <p class="diff-notice">{ file.emptyTextLabel }</p>
-                <else>
-                  <if file.hunks.isEmpty()>
-                    <p class="diff-notice">No text diff is available for this file.</p>
+              <section class="diff-file" :id="file.anchor" :data-path="file.path">
+                <git-diff-file-header :file="file">
+                  <if file.hasHiddenLines>
+                    <ui-icon-button icon="unfold" size="xs" label="Show all lines" @click="model.expandFile(file.path, ctx)" />
                   </if>
-                  <for hunk in file.hunks>
-                    <div class="diff-hunk-heading"><code>{ hunk.heading }</code></div>
-                    <if hunk.totalLineCount != hunk.lines.size>
-                      <ui-alert>Showing { hunk.lines.size } of { hunk.totalLineCount } lines.</ui-alert>
-                    </if>
+                  <if file.hasRevealedLines>
+                    <ui-icon-button icon="fold" size="xs" label="Hide unchanged lines" @click="model.collapseContext(file.path)" />
+                  </if>
+                  <if file.newPath != null>
+                    <ui-icon-link icon="external" label="View file" :href="model.page.fileHref(file.path, null)" />
+                  </if>
+                </git-diff-file-header>
+                <div class="diff-file-body" :id='file.anchor + "-body"'>
+                  <if model.contextFile == file.path && model.contextMessage.isNotBlank()>
+                    <ui-alert>{ model.contextMessage }</ui-alert>
+                  </if>
+                  <if file.emptyTextChange>
+                    <p class="diff-notice">{ file.emptyTextLabel }</p>
+                  <else-if file.hunks.isEmpty()>
+                    <p class="diff-notice">No text diff is available for this file.</p>
+                  <else>
                     <div class="diff-lines">
-                      <for line in hunk.lines>
-                        <div
-                          :class='"diff-line " + line.type.lowercase()'
-                          :data-comment-anchor='file.path + ":" + (line.oldLineNumber ?: 0) + ":" + (line.newLineNumber ?: 0)'
-                        >
-                          <span class="line-number">{ line.oldLineNumber ?: "" }</span>
-                          <span class="line-number">{ line.newLineNumber ?: "" }</span>
-                          <span class="line-action">
+                      <for section in file.sections>
+                        <for gap in listOfNotNull(section.gap)>
+                          <git-diff-gap :gap="gap">
+                            <if gap.expandsAtOnce>
+                              <git-diff-expander icon="unfold" :label='"Show " + gap.label' @click='model.expandContext(file.path, gap.index, "all", ctx)' />
+                            <else>
+                              <if gap.canExpandDown>
+                                <git-diff-expander icon="chevrons-down" label="Show 20 more lines below" @click='model.expandContext(file.path, gap.index, "down", ctx)' />
+                              </if>
+                              <if gap.canExpandUp>
+                                <git-diff-expander icon="chevrons-up" label="Show 20 more lines above" @click='model.expandContext(file.path, gap.index, "up", ctx)' />
+                              </if>
+                            </if>
+                          </git-diff-gap>
+                        </for>
+                        <if !section.hunk.complete>
+                          <ui-alert>Showing { section.hunk.lines.size } of { section.hunk.totalLineCount } lines.</ui-alert>
+                        </if>
+                        <for line in section.hunk.displayLines>
+                          <git-diff-line :line="line" :anchor='file.path + ":" + (line.oldLineNumber ?: 0) + ":" + (line.newLineNumber ?: 0)'>
                             <if model.page.canReview>
                               <ui-icon-button
                                 size="xs"
@@ -205,52 +222,59 @@
                                 @click="model.select(file.path, line.oldLineNumber ?: 0, line.newLineNumber ?: 0)"
                               />
                             </if>
-                          </span>
-                          <span class="line-mark" aria-hidden="true">{ if (line.type == "ADD") "+" else if (line.type == "DELETE") "−" else " " }</span>
-                          <code>{ line.content }</code>
-                        </div>
-                        <for thread in model.lineThreads(file.path, line.oldLineNumber, line.newLineNumber)>
-                          <git-pull-thread :page="model.page" :thread="thread" inline>
-                            <if model.replyToCommentId != thread.id>
-                              <div class="thread-actions">
-                                <ui-button size="sm" icon="reply" :data-comment-anchor="thread.replyAnchor" @click="model.reply(thread.id)">Reply</ui-button>
-                                <if !thread.resolved && thread.hasLine && model.page.canReview>
-                                  <form @submit="model.resolve(thread.first.filePath, thread.line, ctx)">
-                                    <ui-button type="submit" size="sm" icon="check">Resolve thread</ui-button>
-                                  </form>
-                                </if>
-                              </div>
-                            </if>
-                            <if model.replyToCommentId == thread.id>
-                              <git-pull-comment :model="model" @submit="model.comment(form.body, ctx)">
-                                <ui-button size="sm" aria-label="Cancel reply" @click="model.cancelComment()">Cancel</ui-button>
-                                <ui-button ref="commentSubmit" size="sm" type="submit" primary :disabled="model.commentBody.isBlank()">Reply</ui-button>
-                              </git-pull-comment>
-                            </if>
-                          </git-pull-thread>
+                          </git-diff-line>
+                          <for thread in model.lineThreads(file.path, line.oldLineNumber, line.newLineNumber)>
+                            <git-pull-thread :page="model.page" :thread="thread" inline>
+                              <if model.replyToCommentId != thread.id>
+                                <div class="thread-actions">
+                                  <ui-button size="sm" icon="reply" :data-comment-anchor="thread.replyAnchor" @click="model.reply(thread.id)">Reply</ui-button>
+                                  <if !thread.resolved && thread.hasLine && model.page.canReview>
+                                    <form @submit="model.resolve(thread.first.filePath, thread.line, ctx)">
+                                      <ui-button type="submit" size="sm" icon="check">Resolve thread</ui-button>
+                                    </form>
+                                  </if>
+                                </div>
+                              </if>
+                              <if model.replyToCommentId == thread.id>
+                                <git-pull-comment :model="model" @submit="model.comment(form.body, ctx)">
+                                  <ui-button size="sm" aria-label="Cancel reply" @click="model.cancelComment()">Cancel</ui-button>
+                                  <ui-button ref="commentSubmit" size="sm" type="submit" primary :disabled="model.commentBody.isBlank()">Reply</ui-button>
+                                </git-pull-comment>
+                              </if>
+                            </git-pull-thread>
+                          </for>
+                          <if !model.isReply && model.commentFile == file.path && model.oldLine == line.oldLineNumber && model.newLine == line.newLineNumber>
+                            <git-pull-comment :model="model" @submit="model.comment(form.body, ctx)">
+                              <ui-button size="sm" aria-label="Cancel line comment" @click="model.cancelComment()">Cancel</ui-button>
+                              <if model.ownReviews.isEmpty()>
+                                <ui-button size="sm" icon="eye" @click="model.openReview()">Review changes</ui-button>
+                              <else>
+                                <ui-button ref="commentSubmit" size="sm" type="submit" primary :disabled="model.commentBody.isBlank()">Comment</ui-button>
+                              </if>
+                            </git-pull-comment>
+                          </if>
                         </for>
-                        <if !model.isReply && model.commentFile == file.path && model.oldLine == line.oldLineNumber && model.newLine == line.newLineNumber>
-                          <git-pull-comment :model="model" @submit="model.comment(form.body, ctx)">
-                            <ui-button size="sm" aria-label="Cancel line comment" @click="model.cancelComment()">Cancel</ui-button>
-                            <if model.ownReviews.isEmpty()>
-                              <ui-button size="sm" icon="eye" @click="model.openReview()">Review changes</ui-button>
-                            <else>
-                              <ui-button ref="commentSubmit" size="sm" type="submit" primary :disabled="model.commentBody.isBlank()">Comment</ui-button>
-                            </if>
-                          </git-pull-comment>
-                        </if>
+                      </for>
+                      <for gap in listOfNotNull(file.bottomGap)>
+                        <git-diff-gap :gap="gap">
+                          <if gap.expandsAtOnce>
+                            <git-diff-expander icon="unfold" :label='"Show " + gap.label' @click='model.expandContext(file.path, gap.index, "all", ctx)' />
+                          <else>
+                            <git-diff-expander icon="chevrons-down" label="Show 20 more lines below" @click='model.expandContext(file.path, gap.index, "down", ctx)' />
+                          </if>
+                        </git-diff-gap>
                       </for>
                     </div>
-                  </for>
-                </if>
-              </details>
+                  </if>
+                </div>
+              </section>
             </for>
             <if model.truncated>
               <form @submit="model.expand(ctx)">
                 <ui-button type="submit">Load more diff lines</ui-button>
               </form>
             </if>
-          </git-pull-files>
+          </git-diff-workspace>
         </if>
         <if model.detachedThreads.isNotEmpty()>
           <section class="detached-discussions" aria-label="Discussions outside this diff">
@@ -358,7 +382,8 @@
     }
     .diff-file {
       margin: 0;
-      overflow: hidden;
+      overflow: clip;
+      scroll-margin-top: 8px;
       background: var(--bg-1);
       border: 1px solid var(--line);
       border-radius: 10px;
@@ -369,65 +394,11 @@
       color: var(--fg-3);
       font-size: 12px;
     }
-    .diff-hunk-heading {
-      padding: 4px 16px;
-      color: var(--fg-3);
-      background: var(--bg-2);
-      border-top: 1px solid var(--line);
-      border-bottom: 1px solid var(--line);
-      font: 11px/18px var(--font-mono);
-    }
+    /* Lines, gaps and inline discussions scroll together so long lines stay aligned. */
     .diff-lines {
-      overflow: auto;
-    }
-    .diff-line {
       display: grid;
-      grid-template-columns: 42px 42px 28px 16px minmax(max-content, 1fr);
-      width: 100%;
-      min-width: max-content;
-      align-items: center;
-      font: 12px/1.7 var(--font-mono);
-      color: var(--fg-2);
-    }
-    .line-number {
-      text-align: right;
-      padding-right: 10px;
-      color: var(--fg-3);
-      user-select: none;
-    }
-    .line-mark {
-      color: var(--fg-3);
-      user-select: none;
-    }
-    .line-action {
-      display: flex;
-      align-items: center;
-      opacity: 0;
-    }
-    .diff-line:hover .line-action,
-    .line-action:focus-within {
-      opacity: 1;
-    }
-    /* Studio diff colours. */
-    .add {
-      background: color-mix(in oklch, #34d99a 8%, transparent);
-      color: #34d99a;
-    }
-    .delete {
-      background: color-mix(in oklch, #ff5d6c 8%, transparent);
-      color: #ff5d6c;
-    }
-    .add .line-mark {
-      color: #34d99a;
-    }
-    .delete .line-mark {
-      color: #ff5d6c;
-    }
-    .diff-path {
-      flex: 1;
-      min-width: 0;
-      overflow-wrap: anywhere;
-      white-space: normal;
+      grid-template-columns: minmax(0, 1fr);
+      overflow-x: auto;
     }
     .section-meta {
       font-size: 11px;
@@ -490,11 +461,6 @@
       text-align: center;
       color: var(--fg-3);
       font-size: 13.5px;
-    }
-    @media (hover: none) {
-      .line-action {
-        opacity: 1;
-      }
     }
     code {
       white-space: pre;

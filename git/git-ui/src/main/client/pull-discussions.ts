@@ -20,6 +20,8 @@ export function pullDiscussions(ctx: ClientContext) {
       parent = parent.parentElement
     ) {
       if (parent instanceof HTMLDetailsElement) parent.open = true;
+      if (parent.matches(".diff-file[data-collapsed]"))
+        parent.querySelector<HTMLElement>(".diff-file-toggle")?.click();
     }
     thread.scrollIntoView({ block: "center" });
     thread.focus({ preventScroll: true });

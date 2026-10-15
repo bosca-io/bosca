@@ -858,6 +858,59 @@ class GitUiRoutesTest {
     }
 
     @Test
+    fun `pull files show only changes and reveal unchanged lines on request`() {
+        val path = "/pulls/pull-context?repo=repo&number=12&view=files"
+        val page = get(path)
+        assertEquals(200, page.statusCode(), page.body())
+        val body = page.body()
+        assertTrue("1 hidden line" in body && "@@ -2,7 +2,7 @@" in body, body)
+        assertTrue("Show 20 more lines below" in body && "Show 20 more lines above" in body, body)
+        assertTrue(">line 20<" !in body && ">line 30<" !in body, "Unchanged lines between hunks start hidden")
+        assertTrue(">line 40<" in body && "Context discussion" in body, "A discussion on a hidden line opens beside its context")
+        assertFalse("Discussions outside this diff" in body, body)
+        assertTrue("title=\"$CONTEXT_FILE\"" in body, "The full path is available on the file header")
+        assertTrue("Copy file path" in body && "Show all lines" in body, body)
+
+        val down = action(path, "git-pull-review.model", "expandContext", listOf(CONTEXT_FILE, 1, "down"), sourceHtml = body)
+        val state = actionState(down)
+        assertEquals("", state.getValue("contextMessage").jsonPrimitive.content, down.body())
+        val hunks = state.getValue("diff").jsonArray.single().jsonObject.getValue("hunks").jsonArray.map { it.jsonObject }
+        assertEquals((9..28).toList(), hunks.first().getValue("after").jsonArray.map { it.jsonObject.getValue("newLineNumber").jsonPrimitive.int })
+        assertTrue(">line 20<" in down.body() && "Hide unchanged lines" in down.body(), down.body())
+        assertEquals(CONTEXT_FILE, requests.last { it.operation == "GitUiBlob" }.variables["path"]?.jsonPrimitive?.content)
+
+        val all = action(path, "git-pull-review.model", "expandFile", listOf(CONTEXT_FILE), sourceHtml = body)
+        assertTrue((1..100).all { ">line $it<" in all.body() || it == 5 }, "Show all lines reveals the whole file")
+        assertFalse("hidden line" in all.body(), all.body())
+
+        // Expanded lines are ordinary diff lines, so reviewers can comment on them.
+        val key = Regex("data-bml-state-key=\"(git-pull-review\\.model[^\"]*)\"").find(body)?.groupValues?.get(1) ?: error(body)
+        val expandedHtml = "<script type=\"application/json\" data-bml-state-key=\"$key\">$state</script>"
+        val comment = action(path, "git-pull-review.model", "select", listOf(CONTEXT_FILE, 20, 20), sourceHtml = expandedHtml)
+        assertFalse(actionState(comment)["failed"]?.jsonPrimitive?.boolean == true, comment.body())
+        assertEquals(CONTEXT_FILE, actionState(comment).getValue("commentFile").jsonPrimitive.content, comment.body())
+    }
+
+    @Test
+    fun `revealing unchanged lines reports unavailable source beside the file`() {
+        val path = "/pulls/pull-context?repo=repo&number=12&view=files"
+        val response = action(path, "git-pull-review.model", "expandContext", listOf(CONTEXT_FILE, 0, "down"))
+        val state = actionState(response)
+        assertEquals(CONTEXT_FILE, state.getValue("contextFile").jsonPrimitive.content)
+        assertTrue("Nothing to show below this change" in state.getValue("contextMessage").jsonPrimitive.content, response.body())
+        assertTrue("Nothing to show below this change" in response.body(), response.body())
+    }
+
+    @Test
+    fun `compared files reveal unchanged lines from the head ref`() {
+        val compare = get("/compare?repo=repo&base=main&head=feature%2Fone")
+        assertEquals(200, compare.statusCode(), compare.body())
+        assertTrue("Changed files" in compare.body() && "diff-file-header" in compare.body(), compare.body())
+        val response = action("/compare?repo=repo&base=main&head=feature%2Fone", "git-compare-files.model", "collapseContext", listOf("a.txt"))
+        assertEquals("feature/one", actionState(response).getValue("ref").jsonPrimitive.content)
+    }
+
+    @Test
     fun `diff pagination rejects a retargeted PR instead of mixing comparisons`() {
         val response = action("/pulls/pull?repo=repo&number=1&view=files", "git-pull-review.model", "expand", emptyList())
         val state = actionState(response)
@@ -2218,7 +2271,7 @@ class GitUiRoutesTest {
                             """{"data":{"git":{"pullRequest":$result}}}"""
                         }
                         operation == "GitUiPull" -> {
-                            val result = (1..11).asSequence().map { pullStateFixture(pull, it) }
+                            val result = (1..12).asSequence().map { pullStateFixture(pull, it) }
                                 .firstOrNull { Json.parseToJsonElement(it).jsonObject.getValue("id").jsonPrimitive.content == id }
                             """{"data":{"git":{"pullRequest":$result}}}"""
                         }
@@ -2467,6 +2520,20 @@ class GitUiRoutesTest {
                             """{"data":{"git":{"tree":[{"name":"a # b.txt","path":"docs/a # b.txt","type":"BLOB","sha":"abc","size":12},{"name":"guide.md","path":"docs/guide.md","type":"BLOB","sha":"abc","size":12}]}}}"""
                         operation == "GitUiTree" ->
                             """{"data":{"git":{"tree":[{"name":"docs","path":"docs","type":"TREE","sha":"abc","size":0},{"name":"README.md","path":"README.md","type":"BLOB","sha":"abc","size":34},{"name":"a # b.txt","path":"docs/a # b.txt","type":"BLOB","sha":"abc","size":12}]}}}"""
+                        operation == "GitUiBlob" && path == CONTEXT_FILE ->
+                            buildJsonObject {
+                                put("data", buildJsonObject {
+                                    put("git", buildJsonObject {
+                                        put("blob", buildJsonObject {
+                                            val content = contextFileLines.joinToString("\n", postfix = "\n")
+                                            put("content", content)
+                                            put("size", content.length)
+                                            put("sha", "context")
+                                            put("isBinary", false)
+                                        })
+                                    })
+                                })
+                            }.toString()
                         operation == "GitUiBlob" && path == "search-result.md" ->
                             """{"data":{"git":{"blob":{"content":"# Title\nmatching line\nlast line","size":31,"sha":"abc","isBinary":false}}}}"""
                         operation == "GitUiBlob" && path in setOf("empty.txt", "long.txt") ->
