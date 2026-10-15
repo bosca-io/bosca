@@ -7,17 +7,16 @@ import bosca.cli.documents.DocumentNode
 import bosca.cli.documents.DocumentSerializers
 import bosca.cli.documents.TextNode
 import bosca.graphql.gen.*
-import kotlin.uuid.Uuid
 import bosca.workops.model.spec.ReviewContext
 import bosca.workops.model.spec.ReviewDocument
 import bosca.workops.model.spec.ReviewRequirement
-
+import bosca.workops.model.spec.ReviewedInterface
+import bosca.workops.model.spec.SpecReviewRecord
+import bosca.workops.model.spec.SpecReviewSnapshot
+import kotlin.uuid.Uuid
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.*
-
-private typealias ReviewRecord = bosca.workops.model.spec.SpecReviewRecord
-private typealias Snapshot = bosca.workops.model.spec.SpecReviewSnapshot
 
 /** Review baselines and dependency-aware recommendations over existing WorkOps records. */
 internal object WorkOpsPlanReview {
@@ -30,8 +29,8 @@ internal object WorkOpsPlanReview {
         require(interfaces.all { it.path.isNotBlank() && it.declaration.isNotBlank() }) { "Each reviewed interface needs a path and declaration" }
         require(interfaces.isEmpty() || !note.isNullOrBlank()) { "Interface review needs reviewNote describing the review and representative callers" }
         val snapshot = snapshot(api, content, id)
-        val record = ReviewRecord(specId = id.toString(), note = note, snapshot = snapshot, interfaces = interfaces)
-        val comment = api.addSpecComment(id, WorkOpsSpecCommentInput(content = PREFIX + json.encodeToString(ReviewRecord.serializer(), record) + SUFFIX))
+        val record = SpecReviewRecord(specId = id.toString(), note = note, snapshot = snapshot, interfaces = interfaces)
+        val comment = api.addSpecComment(id, WorkOpsSpecCommentInput(content = PREFIX + json.encodeToString(SpecReviewRecord.serializer(), record) + SUFFIX))
         return buildJsonObject {
             put("specId", id.toString()); put("reviewId", comment.id); put("reviewNote", note)
             put("requirementCount", snapshot.requirements.size)
@@ -65,7 +64,7 @@ internal object WorkOpsPlanReview {
         return diffResult(id, baseline, current)
     }
 
-    private fun diffResult(id: Uuid, baseline: Baseline?, current: Snapshot): JsonObject = buildJsonObject {
+    private fun diffResult(id: Uuid, baseline: Baseline?, current: SpecReviewSnapshot): JsonObject = buildJsonObject {
         put("specId", id.toString()); put("reviewId", baseline?.id); put("reviewedAt", baseline?.created)
         put("hasReview", baseline != null)
         val changes = baseline?.let { changes(it.record.snapshot, current) }.orEmpty()
@@ -184,7 +183,7 @@ internal object WorkOpsPlanReview {
         return result
     }
 
-    private suspend fun snapshot(api: WorkOpsApi, content: ContentApi, id: Uuid): Snapshot {
+    private suspend fun snapshot(api: WorkOpsApi, content: ContentApi, id: Uuid): SpecReviewSnapshot {
         val spec = api.getPlanContext(id) ?: error("Spec not found")
         suspend fun document(metadataId: Uuid): ReviewDocument {
             val doc = content.metadata.getDocumentContext(metadataId)?.document ?: error("Document $metadataId is inaccessible; cannot compare plan scope")
@@ -197,7 +196,7 @@ internal object WorkOpsPlanReview {
         }
         val final = api.getPlanContext(id) ?: error("Spec disappeared")
         check(final.version == spec.version && final.requirementCount == requirements.size.toLong()) { "Plan changed while reading; retry" }
-        return Snapshot(spec.projectId?.toString(), specDocument, requirements,
+        return SpecReviewSnapshot(spec.projectId?.toString(), specDocument, requirements,
             spec.programId?.toString(), spec.parentSpecId?.toString(), spec.gitRepositoryId?.toString(), spec.gitPath,
             spec.contexts.map { ReviewContext(it.contextType.name, it.targetId, it.label, it.attributes) }
                 .sortedWith(compareBy<ReviewContext> { it.type }.thenBy { it.targetId }.thenBy { it.label }),
@@ -221,15 +220,15 @@ internal object WorkOpsPlanReview {
         return records.maxWithOrNull(compareBy<Baseline> { it.instant }.thenBy { it.id })
     }
 
-    private fun decode(value: String): ReviewRecord? {
+    private fun decode(value: String): SpecReviewRecord? {
         if (!value.startsWith(PREFIX) || !value.endsWith(SUFFIX)) return null
         return try {
-            json.decodeFromString(ReviewRecord.serializer(), value.removePrefix(PREFIX).removeSuffix(SUFFIX))
+            json.decodeFromString(SpecReviewRecord.serializer(), value.removePrefix(PREFIX).removeSuffix(SUFFIX))
                 .takeIf { it.schema == "bosca.workops.review.v1" && it.interfaces.all { declaration -> declaration.path.isNotBlank() && declaration.declaration.isNotBlank() } && (it.interfaces.isEmpty() || !it.note.isNullOrBlank()) }
         } catch (_: SerializationException) { null }
     }
 
-    private fun changes(before: Snapshot, after: Snapshot): List<JsonObject> = buildList {
+    private fun changes(before: SpecReviewSnapshot, after: SpecReviewSnapshot): List<JsonObject> = buildList {
         if (before.guidanceRevision != after.guidanceRevision) add(change("guidance", "revision", before.guidanceRevision, after.guidanceRevision))
         if (before.projectId != after.projectId) add(change("scope", "project", before.projectId, after.projectId))
         for ((field, values) in mapOf("program" to (before.programId to after.programId), "parentSpec" to (before.parentSpecId to after.parentSpecId),
@@ -286,5 +285,5 @@ internal object WorkOpsPlanReview {
         .joinToString("\n") { it.text() }
     private fun DocumentNode.text(): String = if (this is TextNode) text else content.joinToString(if (content.any { it !is TextNode }) "\n" else "") { it.text() }
 
-    private data class Baseline(val id: Long, val created: String, val record: ReviewRecord, val instant: java.time.Instant)
+    private data class Baseline(val id: Long, val created: String, val record: SpecReviewRecord, val instant: java.time.Instant)
 }

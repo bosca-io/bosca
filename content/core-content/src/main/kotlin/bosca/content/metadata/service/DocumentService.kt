@@ -68,14 +68,6 @@ interface DocumentService : Service {
     suspend fun getDocument(id: UUID, version: Int): Document?
 
     /**
-     * Reads the current stored body at [version] without request or distributed caches.
-     * Use inside transactions that must validate current content. Returns null for an absent
-     * document, preserves the normal legacy-content recovery contract, and propagates failures.
-     * Callers remain responsible for boundary authorization.
-     */
-    suspend fun getDocumentFresh(id: UUID, version: Int): Document?
-
-    /**
      * Registers a batch loader for efficiently fetching documents by metadata cache key.
      *
      * @param batch the batch accumulator to populate with document data

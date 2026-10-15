@@ -12,6 +12,7 @@ interface SpecCompletionService : Service {
      * requirements and generated tasks, active child statuses (not stored rollup counters), current interface review,
      * and passing validation bound to current documents, task versions, and guidance.
      * Missing or soft-deleted specification and requirement metadata cannot supply a document.
+     * Document checks use the content services' ordinary reads and cache semantics.
      * Evidence records caller observations; this method does not run tests or establish phase order.
      * Call within the transition transaction before changing the specification status. The caller must
      * guard the final write with the completion revision read before validation; a contributing

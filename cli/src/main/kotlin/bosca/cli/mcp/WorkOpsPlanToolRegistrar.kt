@@ -10,16 +10,21 @@ import bosca.cli.documents.HeadingNode
 import bosca.cli.documents.OrderedListNode
 import bosca.cli.documents.TextNode
 import bosca.graphql.gen.*
+import bosca.workops.model.spec.ReviewedInterface
+import bosca.workops.model.spec.RequirementContentInput
+import bosca.workops.model.spec.TestQualityEvidence
+import bosca.workops.model.spec.ValidationCheck
+import bosca.workops.model.spec.ValidationOutcome
+import bosca.workops.model.spec.ValidationRecord
+import bosca.workops.model.spec.fingerprint
 import io.modelcontextprotocol.kotlin.sdk.server.Server
 import io.modelcontextprotocol.kotlin.sdk.types.CallToolResult
 import io.modelcontextprotocol.kotlin.sdk.types.TextContent
 import io.modelcontextprotocol.kotlin.sdk.types.Tool
 import io.modelcontextprotocol.kotlin.sdk.types.ToolSchema
-import bosca.workops.model.spec.fingerprint
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.uuid.Uuid
 import kotlinx.serialization.KSerializer
-import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.*
@@ -242,7 +247,7 @@ object WorkOpsPlanToolRegistrar {
         val name = args.string("name").also { require(it.isNotBlank()) { "name must not be blank" } }
         val body = args.string("markdownContent").also { require(it.isNotBlank()) { "markdownContent must not be blank" } }
         val requestId = Uuid.parse(args.string("requestId"))
-        val requirements = json.decodeFromJsonElement(ListSerializer(RequirementInput.serializer()), args.getValue("requirements"))
+        val requirements = json.decodeFromJsonElement(ListSerializer(RequirementContentInput.serializer()), args.getValue("requirements"))
         require(requirements.isNotEmpty()) { "A plan needs at least one requirement" }
         requirements.forEach { it.validate() }
         val projectId = args.projectId(api) ?: error("Provide projectId or projectKey")
@@ -259,10 +264,10 @@ object WorkOpsPlanToolRegistrar {
         put("metadataId", requirement.metadataId.toString()); put("taskId", requirement.taskId?.toString()); put("atomic", true)
     }
 
-    private fun RequirementInput.toGraphql() = WorkOpsRequirementContentInput(name, markdownContent, acceptanceCriteria)
+    private fun RequirementContentInput.toGraphql() = WorkOpsRequirementContentInput(name, markdownContent, acceptanceCriteria)
 
     /** Explicitly replaces a requirement document and the independently stored linked task description. */
-    internal suspend fun writeRequirementContent(api: WorkOpsApi, content: ContentApi, id: Uuid, input: RequirementInput): JsonObject {
+    internal suspend fun writeRequirementContent(api: WorkOpsApi, content: ContentApi, id: Uuid, input: RequirementContentInput): JsonObject {
         input.validate()
         val requirement = api.getRequirement(id) ?: error("Requirement not found: $id")
         val taskId = requirement.taskId ?: error("Requirement has no linked task")
@@ -499,7 +504,7 @@ object WorkOpsPlanToolRegistrar {
         put("toStatus", transition.toState.status.name); put("toStatusCategory", transition.toState.status.category.name)
     }
 
-    private fun requirementInput(args: Map<String, JsonElement>) = json.decodeFromJsonElement(RequirementInput.serializer(), buildJsonObject {
+    private fun requirementInput(args: Map<String, JsonElement>) = json.decodeFromJsonElement(RequirementContentInput.serializer(), buildJsonObject {
         put("name", args.string("name")); put("markdownContent", args.string("markdownContent")); put("acceptanceCriteria", args.getValue("acceptanceCriteria"))
     }).also { it.validate() }
 
@@ -520,14 +525,6 @@ object WorkOpsPlanToolRegistrar {
     }
     private fun Map<String, JsonElement>.offset(key: String): Long = (get(key)?.let { it.jsonPrimitive.long } ?: 0).also { require(it >= 0 && it <= Int.MAX_VALUE) { "$key is out of range" } }
     private fun Map<String, JsonElement>.limit(): Int = (get("limit")?.let { it.jsonPrimitive.int } ?: 50).also { require(it in 1..PAGE_SIZE) { "limit must be between 1 and $PAGE_SIZE" } }
-
-    @Serializable
-    internal data class RequirementInput(val name: String, val markdownContent: String, val acceptanceCriteria: List<String>) {
-        fun validate() {
-            bosca.workops.model.spec.RequirementContentInput(name, markdownContent, acceptanceCriteria).validate()
-        }
-
-    }
 
     internal val INSTRUCTIONS = "Load effective guides and policy with workops_plan action=instructions and the projectId or projectKey before planning or implementation. Context, review, next_action, and verification load the current project configuration. Edit guides and policy in Studio → WorkOps → Settings → Guidance."
 }

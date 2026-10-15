@@ -64,8 +64,6 @@ class SpecCompletionServiceTest {
         coEvery { guidance.effective(any()) } answers { WorkOpsGuidance("guide-1", policy, false, emptyList()) }
         coEvery { metadata.getById(any<UUID>()) } answers { mockk<Metadata> { every { id } returns firstArg<UUID>(); every { version } returns 1; every { deleted } returns false } }
         coEvery { documents.getDocument(any(), any()) } answers { bodies[firstArg()] }
-        coEvery { documents.getDocumentFresh(any(), any()) } answers { bodies[firstArg()] }
-        coEvery { metadata.getByIds(any()) } coAnswers { firstArg<List<UUID>>().mapNotNull { metadata.getById(it) } }
         coEvery { tasks.getById(taskId) } returns task
         coEvery { statuses.getById(done.id) } returns done
         coEvery { comments.listManager(any(), any(), any()) } answers { records.drop(secondArg<Long>().toInt()).take(thirdArg<Long>().toInt()) }
@@ -100,17 +98,26 @@ class SpecCompletionServiceTest {
 
     @Test fun `deleted spec and requirement documents cannot supply completion evidence`() = runTest {
         for (id in listOf(specMetadata, requirementMetadata)) {
-            coEvery { metadata.getByIds(listOf(id)) } returns listOf(mockk { every { version } returns 1; every { deleted } returns true })
+            coEvery { metadata.getById(id) } returns mockk { every { version } returns 1; every { deleted } returns true }
             assertTrue(service.issues(spec, listOf(requirement)).any { "document is missing" in it.lowercase() })
-            coEvery { metadata.getByIds(listOf(id)) } returns listOf(mockk { every { version } returns 1; every { deleted } returns false })
+            coEvery { metadata.getById(id) } returns mockk { every { version } returns 1; every { deleted } returns false }
             assertTrue(service.issues(spec, listOf(requirement)).isEmpty())
         }
     }
 
-    @Test fun `completion reads current metadata versions and fresh bodies instead of cached documents`() = runTest {
-        coEvery { metadata.getByIds(listOf(specMetadata)) } returns listOf(mockk { every { version } returns 2; every { deleted } returns false })
-        coEvery { documents.getDocumentFresh(specMetadata, 2) } returns Document(specMetadata, 2, title = "Changed current plan", content = bodies.getValue(specMetadata).content)
+    @Test fun `completion uses the document at the version returned by the metadata service`() = runTest {
+        coEvery { metadata.getById(specMetadata) } returns mockk { every { version } returns 2; every { deleted } returns false }
+        coEvery { documents.getDocument(specMetadata, 2) } returns Document(specMetadata, 2, title = "Changed current plan", content = bodies.getValue(specMetadata).content)
         assertTrue(service.issues(spec, listOf(requirement)).any { "stale" in it })
+    }
+
+    @Test fun `completion respects missing documents returned by the document service`() = runTest {
+        for (id in listOf(specMetadata, requirementMetadata)) {
+            coEvery { documents.getDocument(id, 1) } returns null
+            assertTrue(service.issues(spec, listOf(requirement)).any { "document is missing" in it.lowercase() })
+            coEvery { documents.getDocument(id, 1) } answers { bodies[id] }
+            assertTrue(service.issues(spec, listOf(requirement)).isEmpty())
+        }
     }
     @Test fun `completion requires current reviewed interfaces passing TDD and measured coverage`() = runTest {
         assertTrue(service.issues(spec, listOf(requirement)).isEmpty())
@@ -198,7 +205,6 @@ class SpecCompletionServiceTest {
         assertTrue(service.issues(spec, listOf(requirement)).any { "linked task must both be done" in it })
         val cancellation = kotlinx.coroutines.CancellationException("cancelled")
         coEvery { documents.getDocument(any(), any()) } throws cancellation
-        coEvery { documents.getDocumentFresh(any(), any()) } throws cancellation
         assertSame(cancellation, assertFailsWith<kotlinx.coroutines.CancellationException> { service.issues(spec, listOf(requirement)) })
     }
     @Test fun `generated tasks are assessed across every generation page including cancellation and missing tasks`() = runTest {

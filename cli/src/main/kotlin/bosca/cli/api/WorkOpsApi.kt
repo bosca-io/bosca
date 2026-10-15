@@ -311,10 +311,6 @@ class WorkOpsApi(network: NetworkClient) : Api(network) {
     suspend fun getPlanTask(taskId: Uuid): IWorkOpsPlanTask? =
         gql.execute(GetWorkOpsPlanTask, GetWorkOpsPlanTask.Variables(taskId)).workOps.tasks.task
 
-    /** Replaces linked task content with optimistic locking when explicitly editing a requirement body. */
-    suspend fun updatePlanTaskContent(taskId: Uuid, input: UpdateWorkOpsTaskInput): IWorkOpsPlanTask =
-        gql.execute(UpdateWorkOpsPlanTaskContent, UpdateWorkOpsPlanTaskContent.Variables(taskId, input)).workOps.tasks.update
-
     /** Returns a page of task generations so plan verification can inspect additional tasks. */
     suspend fun getPlanGenerations(specId: Uuid, offset: Long = 0, limit: Int = 50): List<GetWorkOpsPlanGenerationsData.WorkOps.Specs.Spec.TaskGenerations> {
         val spec = gql.execute(GetWorkOpsPlanGenerations, GetWorkOpsPlanGenerations.Variables(specId, offset, limit)).workOps.specs.spec

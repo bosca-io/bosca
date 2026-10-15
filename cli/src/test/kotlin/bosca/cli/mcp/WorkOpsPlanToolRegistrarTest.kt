@@ -1,5 +1,8 @@
 package bosca.cli.mcp
 
+import bosca.workops.model.spec.RequirementContentInput
+import bosca.workops.model.spec.ReviewedInterface
+
 import bosca.cli.api.ContentApi
 import bosca.cli.api.NetworkClient
 import bosca.cli.api.WorkOpsApi
@@ -21,9 +24,9 @@ import kotlinx.serialization.json.*
 class WorkOpsPlanToolRegistrarTest {
     @Test fun `requirement input shares parsed heading validation with the backend`() {
         for (body in listOf("## Acceptance criteria ##", "Acceptance criteria\n---", "## ~~Acceptance~~ criteria")) {
-            assertFailsWith<IllegalArgumentException> { WorkOpsPlanToolRegistrar.RequirementInput("Title", body, listOf("Pass")).validate() }
+            assertFailsWith<IllegalArgumentException> { RequirementContentInput("Title", body, listOf("Pass")).validate() }
         }
-        WorkOpsPlanToolRegistrar.RequirementInput("Title", "```markdown\n## Acceptance criteria\n```", listOf("Pass")).validate()
+        RequirementContentInput("Title", "```markdown\n## Acceptance criteria\n```", listOf("Pass")).validate()
     }
 
     @Test
@@ -269,7 +272,7 @@ class WorkOpsPlanToolRegistrarTest {
                 assertEquals(requirement.body, requirement.description)
                 assertTrue(plan.output().getValue("atomic").jsonPrimitive.boolean)
                 assertEquals(1, fixture.requests.count { it.operation() == "CreateWorkOpsSpecPlan" })
-                assertTrue(fixture.requests.none { it.operation() in listOf("SetMetadataMarkdown", "UpdateWorkOpsPlanTaskContent") })
+                assertTrue(fixture.requests.none { it.operation() in listOf("SetMetadataMarkdown", "UpdateWorkOpsTask") })
 
                 val transitions = transport.call("workops_spec", obj("action" to "transitions", "id" to SPEC_ID))
                 assertFalse(transitions.isError == true, transitions.text())
@@ -678,7 +681,7 @@ class WorkOpsPlanToolRegistrarTest {
             for (args in invalid) assertFailsWith<Exception> { fixture.handle(args) }
             assertTrue(fixture.requests.none { it.operation().startsWith("Create") || it.operation().startsWith("Add") || it.operation().startsWith("Set") })
             for (key in listOf("name", "markdownContent", "acceptanceCriteria")) assertFailsWith<kotlinx.serialization.SerializationException> {
-                Json.decodeFromJsonElement(WorkOpsPlanToolRegistrar.RequirementInput.serializer(), JsonObject(requirement - key))
+                Json.decodeFromJsonElement(RequirementContentInput.serializer(), JsonObject(requirement - key))
             }
         }
     }
@@ -844,9 +847,9 @@ class WorkOpsPlanToolRegistrarTest {
             fixture.transformResponse = { request, value -> if (request.operation() == "GetMetadataDocumentContext") obj("content" to obj("metadata" to null)) else value }
             assertFailsWith<IllegalStateException> { fixture.handle(obj("action" to "update", "id" to SPEC_ID, "markdownContent" to "Body")) }
             assertFalse(fixture.verify().ready())
-            assertFailsWith<IllegalStateException> { WorkOpsPlanToolRegistrar.writeRequirementContent(fixture.api, fixture.content, kotlin.uuid.Uuid.parse(fixture.requirements.single().id), WorkOpsPlanToolRegistrar.RequirementInput("Requirement", "Body", listOf(CRITERION))) }
+            assertFailsWith<IllegalStateException> { WorkOpsPlanToolRegistrar.writeRequirementContent(fixture.api, fixture.content, kotlin.uuid.Uuid.parse(fixture.requirements.single().id), RequirementContentInput("Requirement", "Body", listOf(CRITERION))) }
             fixture.transformResponse = { request, value -> if (request.operation() == "GetWorkOpsRequirement") obj("workOps" to obj("requirements" to obj("requirement" to null))) else value }
-            assertFailsWith<IllegalStateException> { WorkOpsPlanToolRegistrar.writeRequirementContent(fixture.api, fixture.content, kotlin.uuid.Uuid.parse(fixture.requirements.single().id), WorkOpsPlanToolRegistrar.RequirementInput("Requirement", "Body", listOf(CRITERION))) }
+            assertFailsWith<IllegalStateException> { WorkOpsPlanToolRegistrar.writeRequirementContent(fixture.api, fixture.content, kotlin.uuid.Uuid.parse(fixture.requirements.single().id), RequirementContentInput("Requirement", "Body", listOf(CRITERION))) }
         }
     }
 
@@ -1038,7 +1041,7 @@ class WorkOpsPlanToolRegistrarTest {
             fixture.record()
             val requirement = fixture.requirements.single()
             val document = requirement.body
-            val updated = fixture.api.updatePlanTaskContent(kotlin.uuid.Uuid.parse(requirement.taskId), bosca.graphql.gen.UpdateWorkOpsTaskInput(summary = "Task revision", descriptionMarkdown = "Independent task draft", expectedVersion = requirement.taskVersion))
+            val updated = fixture.api.updateTask(kotlin.uuid.Uuid.parse(requirement.taskId), bosca.graphql.gen.UpdateWorkOpsTaskInput(summary = "Task revision", descriptionMarkdown = "Independent task draft", expectedVersion = requirement.taskVersion))
             assertEquals("Task revision", updated.summary); assertEquals("Independent task draft", updated.descriptionMarkdown)
             assertEquals(document, requirement.body)
             assertTrue(fixture.verify().issues().any { "stale" in it })
@@ -1237,14 +1240,28 @@ class WorkOpsPlanToolRegistrarTest {
                     val task = if (id == GENERATED_TASK_ID) generatedTask else taskJson(requirements.first { it.taskId == id })
                     obj("workOps" to obj("tasks" to obj("task" to task)))
                 }
-                "UpdateWorkOpsPlanTaskContent" -> {
+                "UpdateWorkOpsTask" -> {
                     val state = requirements.first { it.taskId == variables.getValue("id").jsonPrimitive.content }
                     val input = variables.getValue("input").jsonObject
                     check(input.getValue("expectedVersion").jsonPrimitive.long == state.taskVersion)
                     state.summary = input.getValue("summary").jsonPrimitive.content
                     state.description = input.getValue("descriptionMarkdown").jsonPrimitive.content
                     state.taskVersion++
-                    obj("workOps" to obj("tasks" to obj("update" to taskJson(state))))
+                    val task = JsonObject(taskJson(state) + obj(
+                        "reporterProfileId" to PRINCIPAL_ID, "assigneeProfileId" to null, "sprintId" to null, "milestoneId" to null,
+                        "labelIds" to array(), "componentIds" to array(), "affectsVersionIds" to array(), "fixVersionIds" to array(),
+                        "originalEstimateSeconds" to null, "remainingEstimateSeconds" to null, "timeSpentSeconds" to 0,
+                        "dueDate" to null, "startDate" to null, "resolutionAt" to null, "slaDueAt" to null,
+                        "contentItemId" to null, "collectionId" to null, "epicTotalEstimateSeconds" to 0,
+                        "epicTotalRemainingSeconds" to 0, "epicTotalSpentSeconds" to 0, "epicChildCount" to 0, "epicChildDoneCount" to 0,
+                        "watcherProfileIds" to array(), "voteCount" to 0, "deletedAt" to null,
+                        "createdAt" to "2026-10-09T12:00:00Z", "modifiedAt" to "2026-10-09T12:00:00Z",
+                        "createdByPrincipalId" to PRINCIPAL_ID, "modifiedByPrincipalId" to PRINCIPAL_ID, "customFields" to obj(),
+                        "project" to obj("id" to PROJECT_ID, "key" to "WORK", "name" to "Work"), "affectedProjects" to array(),
+                        "taskType" to obj("id" to uuid(700), "name" to "Task", "hierarchyLevel" to "STANDARD"),
+                        "priority" to obj("id" to uuid(500), "name" to "Normal", "displayOrder" to 0), "parentTask" to null, "epicTask" to null,
+                    ))
+                    obj("workOps" to obj("tasks" to obj("update" to task)))
                 }
                 "GetWorkOpsPlanContext" -> obj("workOps" to obj("specs" to obj("spec" to obj(
                     "id" to SPEC_ID, "key" to "SPEC-1", "metadataId" to SPEC_METADATA_ID, "version" to 1, "projectId" to PROJECT_ID, "programId" to null, "parentSpecId" to null, "gitRepositoryId" to null, "gitPath" to null,

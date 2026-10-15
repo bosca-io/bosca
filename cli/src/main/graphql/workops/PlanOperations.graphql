@@ -75,10 +75,6 @@ query GetWorkOpsPlanTask($taskId: UUID!) {
     workOps { tasks { task(id: $taskId) { ...WorkOpsPlanTask } } }
 }
 
-mutation UpdateWorkOpsPlanTaskContent($id: UUID!, $input: UpdateWorkOpsTaskInput!) {
-    workOps { tasks { update(id: $id, input: $input) { ...WorkOpsPlanTask } } }
-}
-
 query GetWorkOpsPlanGenerations($specId: UUID!, $offset: Long! = 0, $limit: Int! = 50) {
     workOps {
         specs {

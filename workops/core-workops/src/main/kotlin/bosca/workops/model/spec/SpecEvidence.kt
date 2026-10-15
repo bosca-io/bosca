@@ -84,11 +84,6 @@ data class CoverageEvidence(
         val total = covered.toDouble() + missed.toDouble()
         return if (total == 0.0) null else covered.toDouble() * 100.0 / total
     }
-
-    companion object {
-        const val MIN_LINE_PERCENT = 99
-        const val MIN_BRANCH_PERCENT = 97
-    }
 }
 
 /** Outcomes recorded by the caller for a criterion or test run. */

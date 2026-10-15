@@ -1,5 +1,6 @@
 package bosca.cli.mcp
 
+import bosca.workops.model.spec.RequirementContentInput
 import bosca.cli.api.ContentApi
 import bosca.cli.api.WorkOpsApi
 import bosca.graphql.gen.*
@@ -842,7 +843,7 @@ object McpToolRegistrar {
                         val requirement = api.getRequirementByKey(key) ?: error("Requirement not found")
                         requirement.id
                     }
-                    val input = WorkOpsPlanToolRegistrar.RequirementInput(
+                    val input = RequirementContentInput(
                         name = args.str("name"), markdownContent = args.str("markdownContent"),
                         acceptanceCriteria = json.decodeFromJsonElement(kotlinx.serialization.builtins.ListSerializer(String.serializer()), args.getValue("acceptanceCriteria")),
                     )

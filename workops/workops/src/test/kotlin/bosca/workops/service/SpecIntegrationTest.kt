@@ -381,8 +381,6 @@ class SpecIntegrationTest {
                 }
             }
         }
-        coEvery { metadataService.getByIds(any()) } coAnswers { firstArg<List<UUID>>().mapNotNull { metadataService.getById(it) } }
-        coEvery { documentService.getDocumentFresh(any(), any()) } coAnswers { documentService.getDocument(firstArg(), secondArg()) }
         coEvery { metadataService.setDocument(any(), any(), any()) } coAnswers {
             writeDocument(firstArg(), arg(1)); Unit
         }

@@ -96,9 +96,9 @@ class SpecCompletionServiceImpl(
     }
 
     private suspend fun document(id: UUID): ReviewDocument? {
-        val current = metadata.getByIds(listOf(id)).singleOrNull() ?: return null
+        val current = metadata.getById(id) ?: return null
         if (current.deleted) return null
-        val document = documents.getDocumentFresh(id, current.version) ?: return null
+        val document = documents.getDocument(id, current.version) ?: return null
         val body = document.content ?: return null
         return ReviewDocument(document.title, json.encodeToJsonElement(Content.serializer(), body))
     }

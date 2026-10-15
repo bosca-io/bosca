@@ -1,5 +1,7 @@
 package bosca.cli.mcp
 
+import bosca.workops.model.spec.CoverageEvidence
+import bosca.workops.model.spec.TestQualityEvidence
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue

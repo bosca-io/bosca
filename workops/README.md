@@ -99,7 +99,7 @@ direct GraphQL and MCP transitions. Completion requires current evidence for eve
 requirement, completed linked tasks and active child specifications, and finished or cancelled
 generated tasks. Invalid or stale evidence leaves the specification and its history unchanged. An internal completion
 revision advances atomically when contributing mutations commit and guards the final DONE write. Child checks and GraphQL child counts read current active children and status categories, independently of stored rollups. Document
-checks bypass caches and reject soft-deleted metadata; a concurrently committed edit rejects completion and rolls it back. Requirement
+checks use the ordinary content service caches and reject soft-deleted metadata; a concurrently committed edit rejects completion and rolls it back. Requirement
 ordering uses stored positions and stable creation/identity tie-breakers, so task progress does not
 invalidate interface review. `V57__spec_completion_revision.sql` introduces the revision;
 `V58__deferred_spec_completion.sql` defers contributing-row triggers until commit and includes
