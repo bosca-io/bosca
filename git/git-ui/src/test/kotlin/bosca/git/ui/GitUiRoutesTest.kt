@@ -1022,8 +1022,9 @@ class GitUiRoutesTest {
         val html = get(path).body()
         assertTrue("Existing line comment" in html && "Second diff line" in html, html)
         assertTrue("Earlier revision" in html && "Discussions outside this diff" in html, html)
-        val displayedDiff = Regex("<details[^>]*class=\"diff-file\"[^>]*>.*?</details>", RegexOption.DOT_MATCHES_ALL)
+        val displayedDiff = Regex("<section[^>]*class=\"diff-file\"[^>]*>.*?</section>", RegexOption.DOT_MATCHES_ALL)
             .findAll(html).joinToString("\n") { it.value }
+        assertTrue("Second diff line" in displayedDiff, html)
         assertFalse("Existing line comment" in displayedDiff, displayedDiff)
         assertFalse("Comparison unavailable" in html || "No files changed" in html, html)
         assertTrue(requests.drop(before).none { it.operation == "GitUiBranches" })
