@@ -13,6 +13,8 @@ import java.io.IOException
 import java.time.Duration
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertNotSame
@@ -27,7 +29,8 @@ class NatsEventRepositoryEndToEndTest {
                 server.start()
                 val pool = NatsConnectionPool("nats://${server.host}:${server.getMappedPort(4222)}", "")
                 try {
-                    val repository = NatsEventRepository(pool, Json)
+                    val health = EventProcessingHealth()
+                    val repository = NatsEventRepository(pool, Json, health)
                     val events = Events(events = listOf(Event(1, type = EventType.Session)), sent = 1, sentMicros = 0)
                     repository.process(events)
                     val connection = pool.systemConnection()
@@ -42,7 +45,10 @@ class NatsEventRepositoryEndToEndTest {
                         server.dockerClient.unpauseContainerCmd(server.containerId).exec()
                     }
 
+                    assertFalse(health.isReady)
                     connection.flush(Duration.ofSeconds(10))
+                    NatsEventRepository.checkReadiness(pool, health)
+                    assertTrue(health.isReady)
                     withTimeout(15_000) { repository.process(events.copy(sent = 3)) }
                     val recovered = connection.jetStreamManagement()
                         .getLastMessage(NatsEventRepository.STREAM_NAME, NatsEventRepository.STREAM_SUBJECT)

@@ -38,8 +38,10 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -51,11 +53,13 @@ import java.util.concurrent.TimeUnit
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
+import kotlin.test.assertFalse
 import kotlin.test.assertFailsWith
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class NatsAnalyticsPipelineTest {
+    private val health = EventProcessingHealth()
     private val json = Json { encodeDefaults = true }
     private val connection = mockk<Connection>()
     private val management = mockk<JetStreamManagement>()
@@ -84,6 +88,7 @@ class NatsAnalyticsPipelineTest {
         provides<ConnectionPool> { connectionPool }
         coEvery { connectionPool.connection() } returns connectionManager
         every { connection.jetStreamManagement() } returns management
+        every { connection.jetStreamManagement(any<io.nats.client.JetStreamOptions>()) } returns management
         every { connection.jetStream() } returns jetStream
     }
 
@@ -98,10 +103,38 @@ class NatsAnalyticsPipelineTest {
         }
 
     @Test
+    fun `readiness records connection failures and recovers after JetStream responds`() = runBlocking {
+        every { management.getStreamInfo(NatsEventRepository.STREAM_NAME) } throws IOException("NATS unavailable")
+        NatsEventRepository.checkReadiness(nats, health)
+        assertFalse(health.isReady)
+
+        every { management.getStreamInfo(NatsEventRepository.STREAM_NAME) } returns mockk()
+        NatsEventRepository.checkReadiness(nats, health)
+        assertTrue(health.isReady)
+    }
+
+    @Test
+    fun `readiness times out connection acquisition but preserves caller cancellation`() = runTest {
+        val pool = mockk<NatsConnectionPool>()
+        coEvery { pool.systemConnection() } coAnswers { awaitCancellation() }
+        NatsEventRepository.checkReadiness(pool, health)
+        assertFalse(health.isReady)
+
+        health.natsRecovered()
+        val started = CompletableDeferred<Unit>()
+        coEvery { pool.systemConnection() } coAnswers { started.complete(Unit); awaitCancellation() }
+        val request = async { NatsEventRepository.checkReadiness(pool, health) }
+        started.await()
+        request.cancelAndJoin()
+        assertTrue(request.isCancelled)
+        assertTrue(health.isReady)
+    }
+
+    @Test
     fun `publisher initializes stream once and publishes one envelope per event`() = runTest {
         every { management.getStreamInfo(NatsEventRepository.STREAM_NAME) } returns mockk()
         every { jetStream.publishAsync(any(), any<ByteArray>()) } returns CompletableFuture.completedFuture(mockk<PublishAck>())
-        val repository = NatsEventRepository(nats, json)
+        val repository = NatsEventRepository(nats, json, health)
 
         repository.process(events)
         repository.process(events.copy(events = listOf(events.events.first())))
@@ -119,11 +152,13 @@ class NatsAnalyticsPipelineTest {
         response.cancel(false)
         every { jetStream.publishAsync(any(), any<ByteArray>()) } returns cancelled andThen
             CompletableFuture.completedFuture(mockk<PublishAck>())
-        val repository = NatsEventRepository(nats, json)
+        val repository = NatsEventRepository(nats, json, health)
         val batch = events.copy(events = events.events.take(1))
 
         assertFailsWith<IOException> { repository.process(batch) }
+        assertFalse(health.isReady)
         repository.process(batch)
+        assertTrue(health.isReady)
 
         verify(exactly = 2) { jetStream.publishAsync(NatsEventRepository.STREAM_SUBJECT, any<ByteArray>()) }
     }
@@ -136,7 +171,7 @@ class NatsAnalyticsPipelineTest {
             published.complete(Unit)
             CompletableFuture<PublishAck>()
         }
-        val repository = NatsEventRepository(nats, json)
+        val repository = NatsEventRepository(nats, json, health)
         val pending = async { repository.process(events) }
 
         published.await()
@@ -154,7 +189,7 @@ class NatsAnalyticsPipelineTest {
             check(allowInitialization.await(10, TimeUnit.SECONDS))
             mockk()
         }
-        val repository = NatsEventRepository(nats, json)
+        val repository = NatsEventRepository(nats, json, health)
         val noEvents = events.copy(events = emptyList())
 
         val first = async(Dispatchers.Default) { repository.process(noEvents) }

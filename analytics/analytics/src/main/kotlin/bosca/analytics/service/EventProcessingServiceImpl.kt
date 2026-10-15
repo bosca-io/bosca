@@ -25,7 +25,8 @@ class EventProcessingServiceImpl(
     application: BoscaApplication,
     private val eventRepository: EventRepository,
     private val eventTransforms: EventPipelineTransforms,
-    configuration: EventProcessingConfiguration
+    configuration: EventProcessingConfiguration,
+    private val health: EventProcessingHealth,
 ) : EventProcessingService {
     private val processingScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -39,9 +40,12 @@ class EventProcessingServiceImpl(
                 for (request in channel) {
                     try {
                         processRequest(request.context, request.events)
+                        health.processingRecovered()
                     } catch (e: CancellationException) {
+                        health.processingFailed()
                         throw e
                     } catch (e: Exception) {
+                        health.processingFailed()
                         // Request-context cleanup can fail after the repository has stored the batch.
                         log.error("Analytics event processing failed", e)
                     }

@@ -116,24 +116,24 @@ spec:
             - name: app-config
               mountPath: /app/config
               readOnly: true
-          # Liveness only restarts a wedged process: it hits the cheap /api/v1/live endpoint
-          # (no DB/cache/pool access) so a load spike or slow database can't trigger a restart
-          # storm. NOTE: /api/v1/live exists only in images rebuilt from this workspace's
-          # bosca-core — ship this chart change together with a rebuilt image.
+          # The collector's liveness endpoint allows 60 seconds of continued failure before
+          # requesting a restart. Deploy these probes with an image providing the collector endpoints.
           livenessProbe:
             httpGet:
-              path: /api/v1/live
-              port: management
+              path: /api/v1/collector/live
+              port: http
             initialDelaySeconds: 15
-            periodSeconds: 10
+            periodSeconds: 5
             timeoutSeconds: 5
-            failureThreshold: 6
+            failureThreshold: 1
           readinessProbe:
             httpGet:
-              path: /api/v1/ready
+              path: /api/v1/collector/ready
               port: http
             initialDelaySeconds: 5
             periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 1
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
       volumes:

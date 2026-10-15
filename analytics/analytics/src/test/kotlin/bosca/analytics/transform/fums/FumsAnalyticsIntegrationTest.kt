@@ -2,6 +2,7 @@
 
 package bosca.analytics.transform.fums
 
+import bosca.analytics.service.EventProcessingHealth
 import bosca.analytics.jobs.FumsDeliveryJob
 import bosca.analytics.repository.EventRepository
 import bosca.analytics.repository.nats.NatsEventRepository
@@ -124,8 +125,9 @@ class FumsAnalyticsIntegrationTest {
                 mockk(relaxed = true), json, EventProcessingConfiguration(fumsEnabled = enabled),
                 mockk<Counter>(relaxed = true), mockk(relaxed = true), queue.asProvider(),
             )
-            val ingest = EventProcessingServiceImpl(app, NatsEventRepository(natsPool, json),
-                transforms(ingestion), EventProcessingConfiguration(workerCount = 1))
+            val health = EventProcessingHealth()
+            val ingest = EventProcessingServiceImpl(app, NatsEventRepository(natsPool, json, health),
+                transforms(ingestion), EventProcessingConfiguration(workerCount = 1), health)
             val storage = mockk<EventRepository>()
             coJustRun { storage.process(any()) }
             val consumer = NatsEventConsumer(natsPool, json, storage,

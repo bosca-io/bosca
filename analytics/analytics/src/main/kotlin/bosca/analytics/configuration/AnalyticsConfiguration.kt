@@ -10,6 +10,7 @@ import bosca.analytics.repository.iceberg.IcebergEventRepository
 import bosca.analytics.repository.nats.NatsEventRepository
 import bosca.analytics.service.ErrorGroupService
 import bosca.analytics.service.AnalyticsQueryService
+import bosca.analytics.service.EventProcessingHealth
 import bosca.analytics.transform.EventsTransform
 import bosca.analytics.transform.iceberg.IcebergEventsToRecordTransform
 import bosca.db.migrations.Migration
@@ -47,6 +48,9 @@ import org.slf4j.LoggerFactory
 class AnalyticsConfiguration {
 
     private val log = LoggerFactory.getLogger(AnalyticsConfiguration::class.java)
+
+    @Provider(singleton = true)
+    fun eventProcessingHealth(): EventProcessingHealth = EventProcessingHealth()
 
     @Provider(name = "analytics-migrations")
     fun migration(): Migration = AnalyticsMigration()
@@ -237,9 +241,10 @@ class AnalyticsConfiguration {
         @ProviderName(name = "icebergEventTransform") icebergTransform: ObjectProvider<EventsTransform<List<Record>>>,
         protoBuf: ObjectProvider<ProtoBuf>,
         errorGroupService: ErrorGroupService,
+        health: EventProcessingHealth,
     ): EventRepository {
         val storageRepository = when (application.environment.config.propertyOrNull("eventRepository.type")?.getString()) {
-            "nats" -> NatsEventRepository(natsConnectionPool.get(), json.get())
+            "nats" -> NatsEventRepository(natsConnectionPool.get(), json.get(), health)
             else -> IcebergEventRepository(
                 icebergTable.get(),
                 icebergTransform.get(),

@@ -24,6 +24,7 @@ import bosca.server.config.ApplicationConfig
 import io.mockk.coEvery
 import io.mockk.mockk
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import java.io.IOException
@@ -33,8 +34,11 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 class EventProcessingRecoveryTest {
+    private val health = EventProcessingHealth()
     private val application = BoscaApplication(ApplicationConfig.load("bosca: {}".byteInputStream()))
     private val context = EventPipelineContext(Headers.Empty)
     private val events = Events(events = listOf(Event(1, type = EventType.Session)), sent = 1, sentMicros = 0)
@@ -59,7 +63,7 @@ class EventProcessingRecoveryTest {
         repository: EventRepository,
         transforms: List<EventPipelineTransform> = emptyList(),
     ) = EventProcessingServiceImpl(application, repository, EventPipelineTransforms(transforms),
-        EventProcessingConfiguration(workerCount = 1, channelCapacity = 1))
+        EventProcessingConfiguration(workerCount = 1, channelCapacity = 1), health)
 
     @Test
     fun `cache cleanup failure does not kill worker or replay stored batch`() = runBlocking {
@@ -84,8 +88,12 @@ class EventProcessingRecoveryTest {
         }, listOf(transform))
         processing.queue(context, events)
         withTimeout(5000) { cleanup.await() }
+        withTimeout(5000) { while (health.isReady) delay(10) }
+        assertFalse(health.isReady)
+        assertTrue(health.isLive)
         processing.queue(context, events.copy(sent = 2))
         application.shutdown()
+        assertTrue(health.isReady)
         assertEquals(listOf(1L, 2L), stored)
         assertEquals(2, transforms.get())
     }

@@ -322,6 +322,7 @@ class AnalyticsConfigurationTest {
         val transform = mockk<EventsTransform<List<Record>>>()
         val protoBuf = ProtoBuf
         val errors = mockk<ErrorGroupService>()
+        val health = configuration.eventProcessingHealth()
         val natsApplication = application(
             """
             eventRepository:
@@ -340,6 +341,7 @@ class AnalyticsConfigurationTest {
                 transform.asProvider(),
                 protoBuf.asProvider(),
                 errors,
+                health,
             ),
         )
         assertIs<CompositeEventRepository>(
@@ -352,6 +354,7 @@ class AnalyticsConfigurationTest {
                 transform.asProvider(),
                 protoBuf.asProvider(),
                 errors,
+                health,
             ),
         )
         icebergApplication.shutdown()
