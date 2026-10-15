@@ -33,7 +33,6 @@ class WorkOpsGuidanceServiceTest {
         coEvery { bosca.db.transaction(any<suspend () -> Any?>()) } coAnswers { firstArg<suspend () -> Any?>().invoke() }
         coEvery { configurations.getByKey(any()) } answers { settings[firstArg()]?.first }
         coEvery { configurations.getValue(any()) } answers { settings.values.first { it.first.id == firstArg<UUID>() }.second }
-        coEvery { configurations.getFreshValue(any()) } coAnswers { settings[firstArg()]?.first?.let { configurations.getValue(it.id) ?: error("Configuration value missing") } }
         coEvery { configurations.setConfiguration(any()) } answers {
             val input = firstArg<ConfigurationInput>()
             val record = Configuration(UUID.random(), input.key, input.description, input.public)

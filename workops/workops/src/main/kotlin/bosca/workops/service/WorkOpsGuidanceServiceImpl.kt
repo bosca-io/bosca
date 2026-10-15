@@ -135,7 +135,9 @@ class WorkOpsGuidanceServiceImpl(
         WorkOpsSkillCodec.encode(effective(projectId).guides.single { it.phase == phase })
 
     private suspend fun stored(projectId: UUID?): StoredGuidance? {
-        val value = configurations.getFreshValue(key(projectId)) ?: return null
+        val configuration = configurations.getByKey(key(projectId)) ?: return null
+        val value = configurations.getValue(configuration.id)
+            ?: error("Configuration value is missing: ${configuration.key}")
         return json.decodeFromJsonElement(StoredGuidance.serializer(), value)
     }
 

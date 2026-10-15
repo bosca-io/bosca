@@ -71,6 +71,7 @@ permission. Project reads require view permission.
 
 Guide bodies are content-system ProseMirror documents with document-backed AgentResources.
 Configuration stores their references and typed policy, not plain-text document bodies.
+Guidance reads use the configuration service's standard cache.
 Changed guides create document snapshots that preserve previous bodies. Identical saves retain
 the existing documents, resources, and revision; hidden platform edits do not invalidate overridden
 parts of a project's guidance. The bundled defaults are standalone

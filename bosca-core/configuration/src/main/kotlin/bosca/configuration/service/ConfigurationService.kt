@@ -46,13 +46,6 @@ class ConfigurationServiceImpl(
         permissionsCache.remove(id)
     }
 
-    override suspend fun getFreshValue(key: String): JsonElement? {
-        val configuration = repository.getConfigurationByKey(key) ?: return null
-        val value = valueRepository.getById(configuration.id) ?: error("Configuration value is missing: $key")
-        val encrypted = EncryptionService.Encrypted(value.nonce, value.value ?: error("Configuration value is empty: $key"))
-        return encryption.decrypt(encrypted, configuration.id).decodeToString().parseToJsonElement()
-    }
-
     override suspend fun getAll(): List<Configuration> {
         return repository.getAll()
     }

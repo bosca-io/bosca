@@ -82,6 +82,7 @@ import bosca.test.resources.SharedPostgreSQLContainer
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
@@ -453,6 +454,30 @@ class SpecIntegrationTest {
         } }
         assertEquals(baseline.revision, inConnection { bosca.cache.withRequestCache { service.resetCurrent(project) } }.revision)
         inConnection { assertNull(resourceService.getByKey("workops.guidance.$project.implementation")) }
+    }
+
+    @Test
+    fun `guidance uses configuration request caching and reloads saved changes in a new request`() = runBlocking {
+        val service = realGuidance()
+        val configurations = bosca.di.provide<bosca.configuration.service.ConfigurationService>()
+        val project = UUID.random()
+        val originalInput = bosca.workops.model.guidance.WorkOpsGuidanceInput(
+            policy = bosca.workops.model.guidance.WorkOpsGuidancePolicy(minimumLineCoverage = 100.0))
+        val original = inConnection { bosca.cache.withRequestCache { service.saveCurrent(project, originalInput) } }
+
+        val updated = inConnection { bosca.cache.withRequestCache {
+            val configuration = requireNotNull(configurations.getByKey("workops.guidance.$project"))
+            val cachedValue = requireNotNull(configurations.getValue(configuration.id))
+            val saved = bosca.cache.withRequestCache {
+                service.save(project, originalInput.copy(policy = original.policy.copy(minimumLineCoverage = 99.0)), original.revision)
+            }
+            assertNotEquals(original.revision, saved.revision)
+            assertEquals(cachedValue, configurations.getValue(configuration.id))
+            assertEquals(original, service.effective(project))
+            saved
+        } }
+
+        assertEquals(updated, inConnection { bosca.cache.withRequestCache { service.effective(project) } })
     }
 
     private suspend fun realGuidance(): WorkOpsGuidanceService {

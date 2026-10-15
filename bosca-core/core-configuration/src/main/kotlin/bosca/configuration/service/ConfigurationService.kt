@@ -19,13 +19,6 @@ import kotlinx.serialization.json.decodeFromJsonElement
 interface ConfigurationService : PermissionService<Configuration, UUID> {
 
     /**
-     * Reads the current stored value without caches, for transactional conflict checks.
-     * Returns null for an absent configuration and fails when an existing configuration has no value.
-     * Does not perform boundary authorization; callers must authorize access before using this method.
-     */
-    suspend fun getFreshValue(key: String): JsonElement?
-
-    /**
      * Retrieves all configuration entries in the system.
      *
      * @return a list of all [Configuration] metadata records (values are not included)
@@ -97,7 +90,6 @@ suspend inline fun <reified T> ConfigurationService.getValueAs(key: String, json
     val value = getValue(configuration.id) ?: return null
     return json.decodeFromJsonElement<T>(value)
 }
-
 
 /**
  * Reads a configuration value by [id] and decodes it as [T] using the supplied [json].

@@ -7,6 +7,7 @@ import bosca.workops.model.guidance.*
 interface WorkOpsGuidanceService : Service {
     /**
      * Resolves bundled defaults, platform settings, and the optional project's overrides.
+     * Settings use the configuration service's standard caching behavior.
      * Revisions include effective content and override choices, excluding hidden upstream changes.
      */
     suspend fun effective(projectId: UUID? = null): WorkOpsGuidance
