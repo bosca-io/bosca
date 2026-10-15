@@ -16,6 +16,7 @@ import bosca.git.model.ReviewComment
 import bosca.git.model.ScriptSourceRef
 import bosca.git.model.SourceRefInput
 import bosca.git.model.SubmitReviewInput
+import bosca.git.model.TagInfo
 import bosca.git.model.UpdatePullRequestInput
 import bosca.git.model.UpdateRepositoryInput
 import bosca.git.model.Webhook
@@ -26,6 +27,7 @@ import bosca.profile.profile.service.ProfileService
 import bosca.profile.security.ProfilePermissionEvaluator
 import bosca.git.service.CommitFileInput
 import bosca.git.service.CommitFileResult
+import bosca.git.service.CreateTagInput
 import bosca.git.service.DeleteFileInput
 import bosca.git.service.PullRequestService
 import bosca.git.service.QuerySourceBackfill
@@ -204,6 +206,46 @@ class GitRepositoryMutation(
         val principalId = authentication.principal()?.id
             ?: throw SecurityException("Authentication required")
         return repositoryService.createBranch(repositoryId, branchName, sourceRef, principalId)
+    }
+
+    @Field
+    suspend fun createTag(
+        authentication: AuthenticationContext,
+        repositoryId: UUID,
+        tag: String,
+        targetRef: String,
+        message: String,
+        taggerName: String,
+        taggerEmail: String,
+    ): TagInfo {
+        val repository = repositoryService.findById(repositoryId)
+            ?: throw NoSuchElementException("Repository not found: $repositoryId")
+        permissionEvaluator.verifyAllowed(authentication, repository, PermissionAction.EDIT)
+        val principalId = authentication.principal()?.id
+            ?: throw SecurityException("Authentication required")
+        require(!repository.archived && !repository.deleted) { "Repository is not available for editing." }
+        require(targetRef.isNotBlank()) { "Enter a target ref." }
+        require(taggerName.isNotBlank() && taggerEmail.isNotBlank()) { "Tagger name and email are required." }
+        val result = writeService.createTag(
+            CreateTagInput(
+                repositoryId = repositoryId,
+                tag = tag,
+                targetRef = targetRef,
+                message = message,
+                taggerName = taggerName,
+                taggerEmail = taggerEmail,
+                pusherPrincipalId = principalId,
+            )
+        )
+        return TagInfo(
+            name = result.tag,
+            sha = result.tagSha,
+            targetSha = result.commitSha,
+            taggerName = taggerName,
+            taggerEmail = taggerEmail,
+            message = message,
+            isAnnotated = true,
+        )
     }
 
     @Field

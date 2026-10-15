@@ -343,6 +343,7 @@ type GitMutation {
   ): GitBranchInfo!
   deleteBranch(repositoryId: UUID!, branchName: String!): Boolean!
   deleteTag(repositoryId: UUID!, tag: String!): Boolean!
+  createTag(repositoryId: UUID!, tag: String!, targetRef: String!, message: String! = "", taggerName: String!, taggerEmail: String!): GitTagInfo!
   renameRepository(id: UUID!, newSlug: String!): GitRepository!
 }
 type Profiles {

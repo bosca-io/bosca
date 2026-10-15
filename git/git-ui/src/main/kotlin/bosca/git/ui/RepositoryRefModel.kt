@@ -17,7 +17,26 @@ class RepositoryRefModel(
     var nextHref: String = "",
     var name: String = "",
     var source: String = ref,
+    var tagMessage: String = "",
 ) {
+    suspend fun createTag(name: String, source: String, tagMessage: String, ctx: RenderContext) {
+        this.name = name
+        this.source = source
+        this.tagMessage = tagMessage
+        act {
+            require(name.isNotBlank() && source.isNotBlank()) {
+                "Enter a tag name and target ref."
+            }
+            val (taggerName, taggerEmail) =
+                resolveGitCommitAuthor(ctx.gql.execute(GitUiProfiles, Unit).profiles.current)
+            val tag = ctx.gql.execute(
+                GitUiCreateTag,
+                GitUiCreateTag.Variables(id, name.trim(), source.trim(), tagMessage, taggerName, taggerEmail),
+            ).git.createTag
+            nextHref = repositoryHref(id, tag.name, listHref = listHref, tab = "tags")
+        }
+    }
+
     suspend fun create(name: String, source: String, ctx: RenderContext) {
         this.name = name
         this.source = source

@@ -9,6 +9,8 @@ import bosca.git.model.Repository
 import bosca.git.model.UpdateRepositoryInput
 import bosca.git.security.RepositoryPermissionEvaluator
 import bosca.git.service.BranchProtectionService
+import bosca.git.service.CreateTagInput
+import bosca.git.service.CreateTagResult
 import bosca.git.service.PullRequestService
 import bosca.git.service.QuerySourceBackfill
 import bosca.git.service.RepositoryLifecycleService
@@ -31,6 +33,7 @@ import io.mockk.coVerify
 import io.mockk.mockk
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
@@ -762,6 +765,63 @@ class GitRepositoryMutationTest {
             mutation.createBranch(auth, id, "feature", "main")
         }
         coVerify(exactly = 0) { repositoryService.createBranch(any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun `createTag verifies EDIT and retains the authenticated initiating principal`() = runTest {
+        repoFound()
+        val principalId = principal()
+        coEvery { writeService.createTag(any()) } returns CreateTagResult("release/1.0", "refs/tags/release/1.0", "commit", "tag")
+
+        val result = mutation.createTag(auth, id, "release/1.0", "main", "Release notes", "Alice", "alice@example.test")
+
+        coVerify { permissionEvaluator.verifyAllowed(auth, repo, PermissionAction.EDIT) }
+        coVerify {
+            writeService.createTag(CreateTagInput(id, "release/1.0", "main", "Release notes", "Alice", "alice@example.test", principalId))
+        }
+        assertEquals("release/1.0", result.name)
+        assertEquals("commit", result.targetSha)
+        assertEquals("tag", result.sha)
+        assertEquals("Alice", result.taggerName)
+        assertEquals("alice@example.test", result.taggerEmail)
+        assertEquals("Release notes", result.message)
+        assertTrue(result.isAnnotated)
+    }
+
+    @Test
+    fun `createTag rejects missing archived and deleted repositories`() = runTest {
+        principal()
+        coEvery { repositoryService.findById(id) } returns null
+        assertFailsWith<NoSuchElementException> { mutation.createTag(auth, id, "1.0", "main", "", "n", "e") }
+        for (unavailable in listOf(repo.copy(archived = true), repo.copy(deleted = true))) {
+            coEvery { repositoryService.findById(id) } returns unavailable
+            assertFailsWith<IllegalArgumentException> { mutation.createTag(auth, id, "1.0", "main", "", "n", "e") }
+        }
+        coVerify(exactly = 0) { writeService.createTag(any()) }
+    }
+
+    @Test
+    fun `createTag rejects anonymous and unauthorized callers`() = runTest {
+        repoFound()
+        io.mockk.every { auth.principal() } returns null
+        assertFailsWith<SecurityException> { mutation.createTag(auth, id, "1.0", "main", "", "n", "e") }
+        principal()
+        coEvery { permissionEvaluator.verifyAllowed(auth, repo, PermissionAction.EDIT) } throws SecurityException("Denied")
+        assertFailsWith<SecurityException> { mutation.createTag(auth, id, "1.0", "main", "", "n", "e") }
+        coVerify(exactly = 0) { writeService.createTag(any()) }
+    }
+
+    @Test
+    fun `createTag rejects blank target or tagger metadata and preserves write failures`() = runTest {
+        repoFound()
+        principal()
+        for ((target, name, email) in listOf(Triple(" ", "n", "e"), Triple("main", " ", "e"), Triple("main", "n", " "))) {
+            assertFailsWith<IllegalArgumentException> { mutation.createTag(auth, id, "1.0", target, "", name, email) }
+        }
+        coVerify(exactly = 0) { writeService.createTag(any()) }
+        coEvery { writeService.createTag(any()) } throws IllegalArgumentException("Tag '1.0' already exists")
+        val error = assertFailsWith<IllegalArgumentException> { mutation.createTag(auth, id, "1.0", "main", "", "n", "e") }
+        assertEquals("Tag '1.0' already exists", error.message)
     }
 
     @Test

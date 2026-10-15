@@ -277,6 +277,16 @@ mutation GitUiDeleteTag($id: UUID!, $name: String!) {
   }
 }
 
+mutation GitUiCreateTag($id: UUID!, $name: String!, $source: String!, $message: String!, $taggerName: String!, $taggerEmail: String!) {
+  git {
+    createTag(repositoryId: $id, tag: $name, targetRef: $source, message: $message, taggerName: $taggerName, taggerEmail: $taggerEmail) {
+      name
+      sha
+      targetSha
+    }
+  }
+}
+
 query GitUiRefs($id: UUID!) {
   git {
     branches(repositoryId: $id) { name sha }

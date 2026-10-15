@@ -750,6 +750,8 @@ type GitMutation {
     removePermission(permission: PermissionInput!): Boolean!
     "Create a branch from a source ref (branch name, tag name, or SHA). Requires EDIT permission."
     createBranch(repositoryId: UUID!, branchName: String!, sourceRef: String!): GitBranchInfo!
+    "Create an annotated tag from a branch, tag, or commit SHA. Existing tags are never replaced. Requires EDIT permission on an active repository."
+    createTag(repositoryId: UUID!, tag: String!, targetRef: String!, message: String! = "", taggerName: String!, taggerEmail: String!): GitTagInfo!
     "Delete a tag (name without the refs/tags/ prefix). Fires TAG_DELETED webhooks. Requires EDIT permission."
     deleteTag(repositoryId: UUID!, tag: String!): Boolean!
     "Delete a branch. Refuses the default branch and branches matching a protection rule. Fires BRANCH_DELETED webhooks. Requires EDIT permission."

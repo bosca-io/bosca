@@ -63,6 +63,47 @@ await call("Emulation.setDeviceMetricsOverride", {
   deviceScaleFactor: 1,
   mobile: false,
 });
+const tagCreate = '[data-bml-component="git-tag-create"]';
+for (const width of [1440, 390]) {
+  await call("Emulation.setDeviceMetricsOverride", {
+    width, height: 900, deviceScaleFactor: 1, mobile: width === 390,
+  });
+  await call("Page.navigate", { url: base + "/repositories/repo?tab=tags&ref=feature%2Fone" });
+  await until(`document.querySelector('${tagCreate} [data-bml-ref=trigger]') && document.readyState === 'complete'`);
+  await ev(`document.querySelector('${tagCreate} [data-bml-ref=trigger]').click()`);
+  await until(`document.querySelector('${tagCreate} dialog').matches(':modal')`);
+  assert.equal(await ev("document.activeElement?.name"), "name");
+  assert.equal(await ev(`document.querySelector('${tagCreate} [name=source]').value`), "feature/one");
+  await ev(`
+    document.querySelector('${tagCreate} [name=name]').value = 'v1';
+    document.querySelector('${tagCreate} [name=tagMessage]').value = 'Keep my release notes';
+    document.querySelector('${tagCreate} button[type=submit]').click();
+  `);
+  await until(`document.querySelector('${tagCreate} [role=alert]')?.textContent.includes('already exists')`);
+  assert.ok(await ev(`document.querySelector('${tagCreate} dialog').matches(':modal')`));
+  assert.equal(await ev(`document.querySelector('${tagCreate} [name=name]').value`), "v1");
+  assert.equal(await ev(`document.querySelector('${tagCreate} [name=source]').value`), "feature/one");
+  assert.equal(await ev(`document.querySelector('${tagCreate} [name=tagMessage]').value`), "Keep my release notes");
+  assert.equal(await ev("document.documentElement.scrollWidth > innerWidth"), false);
+  await writeFile(
+    `${process.env.GIT_UI_ARTIFACT_DIR}/bosca-git-ui-tag-${width}.png`,
+    Buffer.from((await call("Page.captureScreenshot", { format: "png" })).data, "base64"),
+  );
+  await ev(`document.querySelector('${tagCreate} [data-bml-ref=cancel]').click()`);
+  await until(`!document.querySelector('${tagCreate} dialog').open`);
+  await ev(`document.querySelector('${tagCreate} [data-bml-ref=trigger]').click()`);
+  const tagName = `release/browser-${width}`;
+  await ev(`
+    document.querySelector('${tagCreate} [name=name]').value = ${JSON.stringify(tagName)};
+    document.querySelector('${tagCreate} button[type=submit]').click();
+  `);
+  await until(`new URLSearchParams(location.search).get('ref') === ${JSON.stringify(tagName)} && document.readyState === 'complete'`);
+  assert.equal(await ev("new URLSearchParams(location.search).get('tab')"), "tags");
+}
+console.log("Tag creation: target defaults, duplicate errors, retained drafts, modal retry, navigation and mobile fit.");
+await call("Emulation.setDeviceMetricsOverride", {
+  width: 1440, height: 900, deviceScaleFactor: 1, mobile: false,
+});
 // Navigate through actual file rows: the whole Studio-style row opens its entry.
 await call("Page.navigate", { url: base + "/repositories/repo" });
 await until(
