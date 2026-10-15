@@ -5,6 +5,8 @@ import bosca.bml.render.RenderContext
 import bosca.git.ui.graphql.*
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.serialization.Serializable
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 
 @Serializable
 class PullEditModel(
@@ -32,10 +34,15 @@ class PullEditModel(
         perform {
             require(page.canEdit) { "Repository edit access is required." }
             if (canChangeBranches) {
-                targetBranches = branches(page.pull.repositoryId, ctx)
-                sourceBranches =
-                    if (page.sourceRepository == page.pull.repositoryId) targetBranches
-                    else branches(page.sourceRepository, ctx)
+                coroutineScope {
+                    val targetRequest = async { branches(page.pull.repositoryId, ctx) }
+                    val sourceRequest = async {
+                        if (page.sourceRepository == page.pull.repositoryId) targetRequest.await()
+                        else branches(page.sourceRepository, ctx)
+                    }
+                    targetBranches = targetRequest.await()
+                    sourceBranches = sourceRequest.await()
+                }
             }
         }
     }

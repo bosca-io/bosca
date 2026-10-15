@@ -5,6 +5,8 @@ import bosca.bml.render.RenderContext
 import bosca.git.ui.graphql.*
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.serialization.Serializable
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 
 @Serializable
 class RepositoryEditorModel(
@@ -107,19 +109,25 @@ class RepositoryEditorModel(
         nextHref = repositoryHref(id, ref, folder, "", listHref)
     }
 
-    private suspend fun writer(ctx: RenderContext): Pair<String, String> {
-        val branches = ctx.gql.execute(GitUiBranches, GitUiBranches.Variables(id)).git.branches
+    private suspend fun writer(ctx: RenderContext): Pair<String, String> = coroutineScope {
+        val branchesRequest = async {
+            ctx.gql.execute(GitUiBranches, GitUiBranches.Variables(id)).git.branches
+        }
+        val authorRequest = async {
+            resolveGitCommitAuthor(ctx.gql.execute(GitUiProfiles, Unit).profiles.current)
+        }
         val repository =
             ctx.gql.execute(GitUiRepository, GitUiRepository.Variables(id)).git.repositoryById
                 ?: error("Repository unavailable.")
         require(!repository.archived) { "Restore this repository before writing." }
+        val branches = branchesRequest.await()
         require(
             branches.any { it.name == ref } ||
                 (branches.isEmpty() && repository.defaultBranch == ref)
         ) {
             "Choose a branch before writing. Tags and commit SHAs are read-only."
         }
-        return resolveGitCommitAuthor(ctx.gql.execute(GitUiProfiles, Unit).profiles.current)
+        authorRequest.await()
     }
 
     private suspend fun act(block: suspend () -> Unit) {

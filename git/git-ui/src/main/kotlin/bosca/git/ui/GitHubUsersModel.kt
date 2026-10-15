@@ -5,6 +5,8 @@ import bosca.bml.render.RenderContext
 import bosca.git.ui.graphql.*
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.serialization.Serializable
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 
 @Serializable
 class GitHubUsersModel(
@@ -31,15 +33,15 @@ class GitHubUsersModel(
             .joinToString(" · ")
     }
 
-    suspend fun reload(ctx: RenderContext) {
-        mappings =
+    suspend fun reload(ctx: RenderContext) = coroutineScope {
+        val mappingsRequest = async {
             ctx.gql.execute(GitUiGitHubUsers, GitUiGitHubUsers.Variables(offset)).github.users
-        principals =
-            ctx.gql
-                .execute(GitUiPrincipals, GitUiPrincipals.Variables(principalOffset))
-                .security
-                .principals
-                .all
+        }
+        val principalsRequest = async {
+            ctx.gql.execute(GitUiPrincipals, GitUiPrincipals.Variables(principalOffset)).security.principals.all
+        }
+        mappings = mappingsRequest.await()
+        principals = principalsRequest.await()
     }
 
     suspend fun move(

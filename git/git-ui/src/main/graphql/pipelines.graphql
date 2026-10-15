@@ -1,4 +1,4 @@
-query GitUiPipelines($repo: UUID!) {
+query GitUiPipelines($repo: UUID!, $runLimit: Int! = 10, $jobDetails: Boolean! = true) {
   git {
     pipelines(repositoryId: $repo) {
       id
@@ -7,12 +7,12 @@ query GitUiPipelines($repo: UUID!) {
       name
       updated
       triggerTypes
-      runs(limit: 10) {
+      runs(limit: $runLimit) {
         id
         number
         status
         triggerType
-        jobs {
+        jobs @include(if: $jobDetails) {
           id
           name
           status
@@ -198,4 +198,8 @@ mutation GitUiBuildAnyway($id: UUID!, $reason: String) {
       status
     }
   }
+}
+
+query GitUiPipelineTriggers($repo: UUID!) {
+  git { pipelines(repositoryId: $repo) { id triggerTypes } }
 }

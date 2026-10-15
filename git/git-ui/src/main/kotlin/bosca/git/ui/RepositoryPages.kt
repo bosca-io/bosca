@@ -5,42 +5,36 @@ import bosca.bml.render.currentRenderContext
 import bosca.git.ui.graphql.*
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.supervisorScope
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 
-suspend fun repositoryList(): RepositoryListModel {
+suspend fun repositoryList(): RepositoryListModel = coroutineScope {
     val ctx = currentRenderContext()
     val state = RepositoryState.fromQuery(ctx.query["state"])
-    val profiles = ctx.gql.execute(GitUiProfiles, Unit).profiles.current.orEmpty()
-    val selected =
-        ctx.query["owner"]
-            ?: ctx.cookies["git_owner"]
-            ?: profiles.firstOrNull { it.isPrimary }?.id
-            ?: profiles.firstOrNull()?.id
-            ?: "all"
-    val owner =
-        if (selected == "all") OwnerOption("all", "All accessible repositories", "")
-        else {
-            profiles.firstOrNull { it.id == selected }?.let {
-                OwnerOption(it.id, it.name, it.slug.orEmpty())
-            } ?: run {
-                val profile = ctx.gql.execute(GitUiProfile, GitUiProfile.Variables(selected)).profiles.profile
-                    ?: error("The selected repository owner is unavailable.")
-                OwnerOption(profile.id, profile.name, profile.slug.orEmpty())
-            }
+    val explicit = ctx.query["owner"] ?: ctx.cookies["git_owner"]
+    if (explicit != null) {
+        val listRequest = async {
+            RepositoryListModel(state, OwnerOption(explicit, "", "")).also { it.reload(ctx) }
         }
-    val model = RepositoryListModel(state, owner)
-    model.reload(ctx)
-    return model
+        val owner = if (explicit == "all") OwnerOption("all", "All accessible repositories", "")
+        else {
+            val profile = ctx.gql.execute(GitUiProfile, GitUiProfile.Variables(explicit)).profiles.profile
+                ?: error("The selected repository owner is unavailable.")
+            OwnerOption(profile.id, profile.name, profile.slug.orEmpty())
+        }
+        return@coroutineScope RepositoryListModel(state, owner, repositories = listRequest.await().repositories)
+    }
+    val profiles = ctx.gql.execute(GitUiOwnerProfiles, Unit).profiles.current.orEmpty()
+    val selected = profiles.firstOrNull { it.isPrimary } ?: profiles.firstOrNull()
+    val owner = selected?.let { OwnerOption(it.id, it.name, it.slug.orEmpty()) }
+        ?: OwnerOption("all", "All accessible repositories", "")
+    RepositoryListModel(state, owner).also { it.reload(ctx) }
 }
 
-suspend fun repositoryPage(): RepositoryPage? = coroutineScope {
+suspend fun repositoryPage(): RepositoryPage? = supervisorScope {
     val ctx = currentRenderContext()
-    val id = ctx.params["id"] ?: return@coroutineScope null.also { ctx.notFound = true }
-    val repo =
-        ctx.gql.execute(GitUiRepository, GitUiRepository.Variables(id)).git.repositoryById
-            ?: return@coroutineScope null.also { ctx.notFound = true }
-    val ref = ctx.query["ref"]?.takeIf(String::isNotBlank) ?: repo.defaultBranch
+    val id = ctx.params["id"] ?: return@supervisorScope null.also { ctx.notFound = true }
     val path = ctx.query["path"].orEmpty()
     val file = ctx.query["file"].orEmpty()
     val tab =
@@ -70,12 +64,44 @@ suspend fun repositoryPage(): RepositoryPage? = coroutineScope {
             RefOption(it.name, "tag", it.targetSha ?: it.sha, it.message.orEmpty())
         } else emptyList()
     }
+    val repositoryRequest = async {
+        ctx.gql.execute(GitUiRepository, GitUiRepository.Variables(id)).git.repositoryById
+    }
+    val pipelineRequest = if (tab == "pipelines") async {
+        pipelinePage(id, repositoryHref(id, "", listHref = listHref, tab = tab), repositoryRequest = repositoryRequest)
+    } else null
+    val repo = repositoryRequest.await() ?: run {
+        branchesRequest.cancel()
+        tagsRequest.cancel()
+        pipelineRequest?.cancel()
+        return@supervisorScope null.also { ctx.notFound = true }
+    }
+    val ref = ctx.query["ref"]?.takeIf(String::isNotBlank) ?: repo.defaultBranch
     val authorRequest = async {
         resolveGitCommitAuthor(
-            if (tab == "code" && repo.canEdit)
+            if (tab == "code" && repo.canEdit && (ctx.query["edit"] == "true" || ctx.query["new"] == "true"))
                 ctx.gql.execute(GitUiProfiles, Unit).profiles.current
             else null
         )
+    }
+    val commitsRequest = async {
+        if (tab == "commits")
+            ctx.gql
+                .execute(
+                    GitUiCommits,
+                    GitUiCommits.Variables(id, ref, path.ifBlank { null }, offset),
+                )
+                .git
+                .commits
+                .map {
+                    CommitSummary(
+                        it.sha,
+                        it.message,
+                        "${it.authorName} <${it.authorEmail}>",
+                        it.authorDate,
+                    )
+                }
+        else emptyList()
     }
     val branchRefs = branchesRequest.await()
     val branches = branchRefs.map { it.name }
@@ -194,24 +220,7 @@ suspend fun repositoryPage(): RepositoryPage? = coroutineScope {
                 }
             }
         }
-    val commits =
-        if (tab == "commits")
-            ctx.gql
-                .execute(
-                    GitUiCommits,
-                    GitUiCommits.Variables(id, ref, path.ifBlank { null }, offset),
-                )
-                .git
-                .commits
-                .map {
-                    CommitSummary(
-                        it.sha,
-                        it.message,
-                        "${it.authorName} <${it.authorEmail}>",
-                        it.authorDate,
-                    )
-                }
-        else emptyList()
+    val commits = commitsRequest.await()
     val author = authorRequest.await()
     RepositoryPage(
         id,
@@ -259,7 +268,7 @@ suspend fun repositoryPage(): RepositoryPage? = coroutineScope {
             else null,
         pipelines =
             if (tab == "pipelines")
-                pipelinePage(id, repositoryHref(id, ref, listHref = listHref, tab = tab), repo)
+                pipelineRequest?.await()?.copy(baseHref = repositoryHref(id, ref, listHref = listHref, tab = tab))
             else null,
         statuses =
             if (tab == "statuses")

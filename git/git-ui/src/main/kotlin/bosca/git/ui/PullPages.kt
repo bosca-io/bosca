@@ -5,6 +5,7 @@ import bosca.bml.render.currentRenderContext
 import bosca.git.ui.graphql.*
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.supervisorScope
 
 internal fun pullHref(id: String, repo: String, number: Int): String =
     "/pulls/${encode(id)}?repo=${encode(repo)}&number=$number"
@@ -126,41 +127,27 @@ suspend fun pullListPage(
     )
 }
 
-suspend fun pullPage(): PullPage? = coroutineScope {
+suspend fun pullPage(): PullPage? = supervisorScope {
     val ctx = currentRenderContext()
-    val id = ctx.params["id"] ?: return@coroutineScope null.also { ctx.notFound = true }
+    val id = ctx.params["id"] ?: return@supervisorScope null.also { ctx.notFound = true }
     val pull =
         ctx.gql
             .execute(GitUiPull, GitUiPull.Variables(id))
             .git
             .pullRequest
-            ?.takeIf { it.id == id } ?: return@coroutineScope null.also { ctx.notFound = true }
+            ?.takeIf { it.id == id } ?: return@supervisorScope null.also { ctx.notFound = true }
     val repository = pull.repositoryId
     val number = pull.number
     val merged = pull.status == GitPullRequestStatus.MERGED
-    val repo =
-        ctx.gql
-            .execute(
-                GitUiRepository,
-                GitUiRepository.Variables(if (merged) repository else pull.sourceRepositoryId ?: repository),
-            )
-            .git
-            .repositoryById ?: return@coroutineScope null.also { ctx.notFound = true }
+    val sourceId = if (merged) repository else pull.sourceRepositoryId ?: repository
+    val repositoryRequest = async {
+        ctx.gql.execute(GitUiRepository, GitUiRepository.Variables(sourceId)).git.repositoryById
+    }
     val profilesRequest = async { ctx.gql.execute(GitUiProfiles, Unit).profiles.current.orEmpty() }
     val candidatesRequest = async { ctx.gql.execute(GitUiPullList, GitUiPullList.Variables(null, 0)).git.allPullRequests }
     val repositoriesRequest = async {
         ctx.gql.execute(GitUiRepositories, GitUiRepositories.Variables(false, null)).git.repositories
             .filterNot { it.deleted }.associate { it.id to it.name }
-    }
-    val targetRepositoryRequest = async {
-        if (repo.id == repository) repo
-        else ctx.gql.execute(GitUiRepository, GitUiRepository.Variables(repository)).git.repositoryById
-    }
-    val sourceNameRequest = async {
-        if (merged && pull.sourceRepositoryId != null && pull.sourceRepositoryId != repository)
-            ctx.gql.execute(GitUiRepository, GitUiRepository.Variables(pull.sourceRepositoryId.orEmpty()))
-                .git.repositoryById?.name.orEmpty()
-        else repo.name
     }
     val identitiesRequest = async {
         val ownProfiles = profilesRequest.await().associate { it.id to OwnerOption(it.id, it.name, it.slug.orEmpty()).label }
@@ -174,11 +161,25 @@ suspend fun pullPage(): PullPage? = coroutineScope {
     }
     val sourceRefsRequest = async {
         if (merged) emptyMap()
-        else ctx.gql.execute(GitUiBranches, GitUiBranches.Variables(repo.id)).git.branches.associate { it.name to it.sha }
+        else ctx.gql.execute(GitUiBranches, GitUiBranches.Variables(sourceId)).git.branches.associate { it.name to it.sha }
     }
     val targetRefsRequest = async {
-        if (merged || repo.id == repository) sourceRefsRequest.await()
+        if (merged || sourceId == repository) sourceRefsRequest.await()
         else ctx.gql.execute(GitUiBranches, GitUiBranches.Variables(repository)).git.branches.associate { it.name to it.sha }
+    }
+    val repo = repositoryRequest.await() ?: run {
+        listOf(profilesRequest, candidatesRequest, repositoriesRequest, identitiesRequest, sourceRefsRequest, targetRefsRequest).forEach { it.cancel() }
+        return@supervisorScope null.also { ctx.notFound = true }
+    }
+    val targetRepositoryRequest = async {
+        if (repo.id == repository) repo
+        else ctx.gql.execute(GitUiRepository, GitUiRepository.Variables(repository)).git.repositoryById
+    }
+    val sourceNameRequest = async {
+        if (merged && pull.sourceRepositoryId != null && pull.sourceRepositoryId != repository)
+            ctx.gql.execute(GitUiRepository, GitUiRepository.Variables(pull.sourceRepositoryId.orEmpty()))
+                .git.repositoryById?.name.orEmpty()
+        else repo.name
     }
     val sourceRefs = sourceRefsRequest.await()
     val sha = if (merged) pull.mergeSha.orEmpty()

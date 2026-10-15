@@ -145,7 +145,7 @@
       </ui-card>
       <ui-card :padded="false">
         <ui-section-heading title="Recent jobs" subtitle="Previous assignments for this agent." />
-        <if model.agent.recentJobs.isEmpty()>
+        <if model.agent.recentJobs.orEmpty().isEmpty()>
           <ui-empty-state
             icon="workflow"
             title="No recent jobs"
@@ -163,7 +163,7 @@
                 </tr>
               </thead>
               <tbody>
-                <for job in model.agent.recentJobs>
+                <for job in model.agent.recentJobs.orEmpty()>
                   <tr>
                     <td>
                       <a :href="bosca.git.ui.runHref(job.pipelineRunId)">{ job.name }</a>

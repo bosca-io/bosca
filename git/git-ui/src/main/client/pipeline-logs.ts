@@ -229,7 +229,7 @@ export function mountPipelineLogs(ctx: IslandContext) {
     const current = generation;
     if (disposed || paused || finished || !active()) return;
     try {
-      await gitAuth.initialize();
+      await gitAuth.initialize(false);
       const headers = await gitAuth.getAuthHeaders();
       const token = headers.Authorization?.replace(/^Bearer /, "");
       if (!token) {

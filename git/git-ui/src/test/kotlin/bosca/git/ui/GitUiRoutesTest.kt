@@ -739,6 +739,10 @@ class GitUiRoutesTest {
             )
         assertEquals(200, changed.statusCode(), changed.body())
         val state = actionState(changed)
+        val triggerPage = state.getValue("page").jsonObject
+        assertEquals(0, triggerPage.getValue("runs").jsonArray.size)
+        assertEquals(0, triggerPage.getValue("repositories").jsonArray.size)
+        assertTrue(triggerPage.getValue("pipelines").jsonArray.all { it.jsonObject.getValue("runs").jsonArray.isEmpty() })
         assertEquals(false, state["failed"]?.jsonPrimitive?.boolean, changed.body())
         assertEquals(
             "refs/heads/feature/one",
@@ -1831,10 +1835,16 @@ class GitUiRoutesTest {
     @Test
     fun `independent page reads overlap over HTTP`() {
         for ((path, operations) in listOf(
-            "/repositories/repo?file=README.md" to setOf("GitUiBranches", "GitUiTags", "GitUiProfiles"),
-            "/repositories/repo?tab=pipelines" to setOf("GitUiBranches", "GitUiTags", "GitUiPipelines", "GitUiPipelineRuns"),
+            "/repositories/repo?file=README.md&edit=true" to setOf("GitUiBranches", "GitUiTags", "GitUiProfiles"),
+            "/repositories/repo?tab=pipelines" to setOf("GitUiRepository", "GitUiRefs", "GitUiPipelines", "GitUiPipelineRuns"),
+            "/repositories/repo?tab=commits" to setOf("GitUiBranches", "GitUiTags", "GitUiCommits"),
+            "/repositories?owner=owner" to setOf("GitUiProfile", "GitUiRepositories"),
+            "/repositories/repo/github" to setOf("GitUiRepository", "GitUiAccess"),
+            "/repositories/repo/github" to setOf("GitUiGitHubPair", "GitUiGitHubRefs"),
+            "/settings/github" to setOf("GitUiGitHubUsers", "GitUiPrincipals"),
+            "/repositories/repo?tab=settings&panel=permissions" to setOf("GitUiPermissions", "GitUiGroups"),
             "/repositories/repo?tab=statuses&sha=abc" to setOf("GitUiStatuses", "GitUiCommits"),
-            "/pulls/pull" to setOf("GitUiProfiles", "GitUiPullList", "GitUiRepositories"),
+            "/pulls/pull" to setOf("GitUiRepository", "GitUiBranches", "GitUiProfiles", "GitUiPullList", "GitUiRepositories"),
         )) {
             val arrived = CountDownLatch(operations.size)
             val timeouts = AtomicInteger()
@@ -1856,7 +1866,7 @@ class GitUiRoutesTest {
     @Test
     fun `repository tabs reuse metadata and omit unrelated code and stats reads`() {
         for ((tab, expected) in mapOf(
-            "pipelines" to setOf("GitUiRepository", "GitUiBranches", "GitUiTags", "GitUiPipelines", "GitUiPipelineRuns"),
+            "pipelines" to setOf("GitUiRepository", "GitUiRefs", "GitUiPipelines", "GitUiPipelineRuns"),
             "pulls" to setOf("GitUiRepository", "GitUiRepositories", "GitUiRepositoryPullList", "GitUiBranches"),
             "settings" to setOf("GitUiRepository"),
             "secrets" to setOf("GitUiRepository", "GitUiSecrets"),
@@ -1903,6 +1913,91 @@ class GitUiRoutesTest {
         val operations = requests.drop(before).map { it.operation }
         assertEquals(2, operations.count { it == "GitUiPipelines" })
         assertEquals(0, operations.count { it == "GitUiRepository" || it == "GitUiProfile" })
+    }
+
+    @Test
+    fun `missing repository stays a not found response when parallel reads fail`() {
+        for (suffix in listOf("", "?tab=pipelines", "?tab=commits")) {
+            assertEquals(404, get("/repositories/missing$suffix").statusCode(), suffix)
+        }
+    }
+
+    @Test
+    fun `all data page routes avoid duplicate GraphQL reads`() {
+        for (path in graphqlPageAuditPaths) {
+            val before = requests.size
+            val response = get(path)
+            assertEquals(200, response.statusCode(), path + response.body())
+            val reads = requests.drop(before)
+            assertTrue(reads.isNotEmpty(), path)
+            val duplicates = reads.groupBy { it.operation to it.variables }.filterValues { it.size > 1 }
+            assertTrue(duplicates.isEmpty(), "Repeated GraphQL read in $path: ${duplicates.keys}")
+        }
+    }
+
+    @Test
+    fun `markdown preview reuses ref lookup including an unborn default branch`() {
+        for ((id, expected) in listOf("repo" to setOf("GitUiRepository", "GitUiRefs", "GitUiCommit"), "empty" to setOf("GitUiRepository", "GitUiRefs"))) {
+            val before = requests.size
+            val args = JsonArray(listOf(id, "main", "README.md", "# Draft").map(::JsonPrimitive)).toString()
+            val response = post("/_bml/contract/GitMarkdownPreview/render", args)
+            assertEquals(200, response.statusCode(), response.body())
+            assertTrue("Draft" in response.body(), response.body())
+            val operations = requests.drop(before).map { it.operation }
+            assertEquals(expected, operations.toSet())
+            assertEquals(expected.size, operations.size)
+        }
+    }
+
+    @Test
+    fun `all owners listing skips profile reads`() {
+        val before = requests.size
+        assertEquals(200, get("/repositories?owner=all").statusCode())
+        assertEquals(listOf("GitUiRepositories"), requests.drop(before).map { it.operation })
+    }
+
+    @Test
+    fun `read only browsing does not fetch commit author profiles`() {
+        val before = requests.size
+        assertEquals(200, get("/repositories/repo?file=README.md").statusCode())
+        assertTrue(requests.drop(before).none { it.operation == "GitUiProfiles" })
+    }
+
+    @Test
+    fun `search typing reuses choices and repository changes refresh them`() {
+        val path = "/search?repo=repo&q=snippet"
+        val shell = get(path)
+        var before = requests.size
+        val typed = action(path, "git-search.model:search", "search", listOf("repo", "new query", "content", "main"), sourceHtml = shell.body())
+        assertEquals(false, actionState(typed)["failed"]?.jsonPrimitive?.boolean)
+        assertEquals(listOf("GitUiSearchContent"), requests.drop(before).map { it.operation })
+        before = requests.size
+        val changed = action(path, "git-search.model:search", "search", listOf("empty", "new query", "content", "main"), sourceHtml = shell.body())
+        assertEquals(false, actionState(changed)["failed"]?.jsonPrimitive?.boolean)
+        assertEquals(listOf("GitUiRepositories", "GitUiRefs"), requests.drop(before).map { it.operation })
+    }
+
+    @Test
+    fun `global pipeline lists request only the visible latest run without job details`() {
+        for ((path, limit, details) in listOf(Triple("/pipelines", 1, false), Triple("/repositories/repo?tab=pipelines", 10, true))) {
+            val before = requests.size
+            assertEquals(200, get(path).statusCode())
+            val queries = requests.drop(before).filter { it.operation == "GitUiPipelines" }
+            assertTrue(queries.isNotEmpty())
+            for (request in queries) {
+                assertEquals(limit, request.variables["runLimit"]?.jsonPrimitive?.int)
+                assertEquals(details, request.variables["jobDetails"]?.jsonPrimitive?.boolean)
+            }
+        }
+    }
+
+    @Test
+    fun `agent lists omit job details and detail views retain them`() {
+        for ((path, expected) in listOf("/ci-agents" to false, "/ci-agents/agent" to true)) {
+            val before = requests.size
+            assertEquals(200, get(path).statusCode())
+            assertEquals(expected, requests.drop(before).single { it.operation == "GitUiAgents" }.variables["details"]?.jsonPrimitive?.boolean)
+        }
     }
 
     private fun deferredSidebar(path: String, authenticated: Boolean = true): HttpResponse<String> {
@@ -2100,6 +2195,7 @@ class GitUiRoutesTest {
         private lateinit var subscriptionEngine: NettyServerEngine
 
         @JvmStatic fun browserFixturePort(): Int = port
+        @JvmStatic fun browserFixtureApiPort(): Int = upstream.address.port
 
         @JvmStatic
         @BeforeClass
@@ -2283,6 +2379,8 @@ class GitUiRoutesTest {
                             """{"data":{"git":{"pipelineRuns":[]}}}"""
                         operation == "GitUiPipelineNames" ->
                             """{"data":{"git":{"pipelines":[{"id":"pipeline","name":"Build"}]}}}"""
+                        operation == "GitUiPipelineTriggers" ->
+                            """{"data":{"git":{"pipelines":[{"id":"pipeline","triggerTypes":["MANUAL"]}]}}}"""
                         operation == "GitUiPipelines" ->
                             """{"data":{"git":{"pipelines":[{"id":"pipeline","repositoryId":"repo","filePath":".bosca/pipelines/build.yml","name":"Build","updated":"2026-10-09T00:00:00Z","triggerTypes":["MANUAL"],"runs":[$run]}]}}}"""
                         operation == "GitUiPipelineRuns" ->
@@ -2386,9 +2484,9 @@ class GitUiRoutesTest {
                             """{"data":{"git":{"repositoryById":${if (id == "missing") "null" else if (id == "archived") capabilities(archived) else if (id == "empty") capabilities(active.replace("\"id\":\"repo\"", "\"id\":\"empty\"").replace("Active project", "Empty project")) else capabilities(active)}}}}"""
                         operation == "GitUiBranches" && id == "missing" ->
                             """{"errors":[{"message":"Repository not found"}]}"""
-                        operation == "GitUiProfiles" && token == "bootstrap-token" ->
+                        operation in setOf("GitUiProfiles", "GitUiOwnerProfiles") && token == "bootstrap-token" ->
                             """{"data":{"profiles":{"current":[{"id":"admin-profile","name":"admin","slug":null,"isPrimary":true,"attributes":[]}]}}}"""
-                        operation == "GitUiProfiles" ->
+                        operation in setOf("GitUiProfiles", "GitUiOwnerProfiles") ->
                             """{"data":{"profiles":{"current":[$profile]}}}"""
                         operation == "GitUiProfile" ->
                             """{"data":{"profiles":{"profile":${if (id == "other") profile.replace("\"id\":\"owner\"", "\"id\":\"other\"").replace("Alice", "Bob").replace("alice", "bob") else profile}}}}"""
@@ -2416,6 +2514,12 @@ class GitUiRoutesTest {
                             """{"data":{"git":{"commit":${if (variables["sha"]?.jsonPrimitive?.content == "invalid") "null" else "{\"sha\":\"$commitSha\",\"message\":\"Initial\"}"}}}}"""
                         operation == "GitUiCommits" ->
                             """{"data":{"git":{"commits":[{"sha":"abc","message":"Initial","authorName":"Alice","authorEmail":"alice@example.test","authorDate":"2026-10-09T00:00:00Z","parentShas":[]}]}}}"""
+                        operation == "GitUiRefs" && id == "missing" ->
+                            """{"errors":[{"message":"Repository not found"}]}"""
+                        operation == "GitUiRefs" && id == "empty" ->
+                            """{"data":{"git":{"branches":[],"tags":[]}}}"""
+                        operation == "GitUiRefs" ->
+                            """{"data":{"git":{"branches":[{"name":"main","sha":"abc"},{"name":"feature/one","sha":"abc"}],"tags":[{"name":"v1","sha":"abc","targetSha":null,"isAnnotated":false,"message":null}]}}}"""
                         operation == "GitUiBranches" && id == "empty" ->
                             """{"data":{"git":{"branches":[]}}}"""
                         operation == "GitUiBranches" ->

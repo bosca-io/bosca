@@ -5,6 +5,8 @@ import bosca.bml.render.RenderContext
 import bosca.git.ui.graphql.*
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.serialization.Serializable
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.serialization.json.Json
 
 @Serializable
@@ -52,23 +54,20 @@ class PipelineTriggerModel(
         try {
             values = Json.decodeFromString(inputs)
             require(page.canExecute) { "Execute permission is required." }
-            val pipeline =
-                ctx.gql
-                    .execute(GitUiPipelines, GitUiPipelines.Variables(page.repository))
-                    .git
-                    .pipelines
-                    .firstOrNull { it.id == page.selected } ?: error("Pipeline no longer exists.")
-            require(GitPipelineTriggerType.MANUAL in pipeline.triggerTypes) {
-                "This pipeline has no manual trigger."
+            val definitions = coroutineScope {
+                val pipelineRequest = async {
+                    ctx.gql.execute(GitUiPipelineTriggers, GitUiPipelineTriggers.Variables(page.repository))
+                        .git.pipelines.firstOrNull { it.id == page.selected } ?: error("Pipeline no longer exists.")
+                }
+                val inputsRequest = async {
+                    ctx.gql.execute(GitUiPipelineInputs, GitUiPipelineInputs.Variables(page.selected, page.ref))
+                        .git.pipelineInputs
+                }
+                require(GitPipelineTriggerType.MANUAL in pipelineRequest.await().triggerTypes) {
+                    "This pipeline has no manual trigger."
+                }
+                inputsRequest.await()
             }
-            val definitions =
-                ctx.gql
-                    .execute(
-                        GitUiPipelineInputs,
-                        GitUiPipelineInputs.Variables(page.selected, page.ref),
-                    )
-                    .git
-                    .pipelineInputs
             require(
                 values.map { it.name }.distinct().size == values.size &&
                     values.all { value -> definitions.any { it.name == value.name } }

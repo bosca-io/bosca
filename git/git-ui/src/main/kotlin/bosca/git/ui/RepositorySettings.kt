@@ -3,6 +3,8 @@ package bosca.git.ui
 import bosca.bml.graphql.execute
 import bosca.bml.render.currentRenderContext
 import bosca.git.ui.graphql.*
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 
 internal fun settingsHref(id: String, panel: String): String =
     "/repositories/${encode(id)}/settings?panel=$panel"
@@ -14,12 +16,12 @@ internal fun commaValues(value: String): List<String> =
 suspend fun repositorySettingsPage(
     baseHref: String = "",
     repository: GitUiRepositoryData.Git.RepositoryById? = null,
-): RepositorySettingsPage? {
+): RepositorySettingsPage? = coroutineScope {
     val ctx = currentRenderContext()
     val id = ctx.params["id"].orEmpty()
     val repo = repository ?:
         ctx.gql.execute(GitUiRepository, GitUiRepository.Variables(id)).git.repositoryById
-            ?: return null.also { ctx.notFound = true }
+            ?: return@coroutineScope null.also { ctx.notFound = true }
     val panel =
         ctx.query["panel"]?.takeIf {
             it in setOf("metadata", "webhooks", "protection", "permissions", "utilities")
@@ -35,7 +37,7 @@ suspend fun repositorySettingsPage(
                 .git
                 .branchProtectionRules
         else emptyList()
-    val permissions =
+    val permissionsRequest = async {
         if (panel == "permissions" && repo.canManage)
             ctx.gql
                 .execute(GitUiPermissions, GitUiPermissions.Variables(id))
@@ -44,6 +46,7 @@ suspend fun repositorySettingsPage(
                 ?.permissions
                 .orEmpty()
         else emptyList()
+    }
     val groups = mutableListOf<GitUiGroupsData.Security.Groups.All>()
     if (panel == "permissions" && repo.canManage) {
         var offset = 0L
@@ -54,7 +57,7 @@ suspend fun repositorySettingsPage(
             offset += batch.size
         } while (batch.size == 100)
     }
-    return RepositorySettingsPage(repo, panel, webhooks, rules, permissions, groups, baseHref)
+    RepositorySettingsPage(repo, panel, webhooks, rules, permissionsRequest.await(), groups, baseHref)
 }
 
 suspend fun repositorySecretsPage(

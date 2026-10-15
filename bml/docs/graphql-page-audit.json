@@ -1,0 +1,1727 @@
+{
+  "baselineCommit": "ce855a80",
+  "scope": "Every authored BML page route in the repository, plus its GraphQL-bearing components/actions, browser auth, message content lookups and shared transport.",
+  "pages": [
+    {
+      "module": "git/git-ui",
+      "route": "/404",
+      "source": "git/git-ui/src/main/bml/pages/404.bml",
+      "kind": "static_or_redirect",
+      "loaders": [],
+      "strategy": []
+    },
+    {
+      "module": "git/git-ui",
+      "route": "/500",
+      "source": "git/git-ui/src/main/bml/pages/500.bml",
+      "kind": "static_or_redirect",
+      "loaders": [],
+      "strategy": []
+    },
+    {
+      "module": "git/git-ui",
+      "route": "/ci-agents/{id}",
+      "source": "git/git-ui/src/main/bml/pages/agent.bml",
+      "kind": "server_graphql",
+      "loaders": [
+        "agentPage"
+      ],
+      "strategy": [
+        "Administrator check precedes agent queries. List excludes current/recent job details. Detail retains job data; orchestrator configuration depends on selected mode."
+      ]
+    },
+    {
+      "module": "git/git-ui",
+      "route": "/ci-agents",
+      "source": "git/git-ui/src/main/bml/pages/agents.bml",
+      "kind": "server_graphql",
+      "loaders": [
+        "agentPage"
+      ],
+      "strategy": [
+        "Administrator check precedes agent queries. List excludes current/recent job details. Detail retains job data; orchestrator configuration depends on selected mode."
+      ]
+    },
+    {
+      "module": "git/git-ui",
+      "route": "/compare",
+      "source": "git/git-ui/src/main/bml/pages/compare.bml",
+      "kind": "server_graphql",
+      "loaders": [
+        "explorePage"
+      ],
+      "strategy": [
+        "Repository selection resolves first; branch choices, comparison/statuses and recent commits overlap. Parent metadata/branches are reused in repository tabs."
+      ]
+    },
+    {
+      "module": "git/git-ui",
+      "route": "/auth/forgot",
+      "source": "git/git-ui/src/main/bml/pages/forgot.bml",
+      "kind": "browser_auth",
+      "loaders": [],
+      "strategy": []
+    },
+    {
+      "module": "git/git-ui",
+      "route": "/settings/github",
+      "source": "git/git-ui/src/main/bml/pages/github-users.bml",
+      "kind": "server_graphql",
+      "loaders": [
+        "gitHubUsersPage"
+      ],
+      "strategy": [
+        "Administrator check precedes concurrent mapping and principal reads."
+      ]
+    },
+    {
+      "module": "git/git-ui",
+      "route": "/repositories/{id}/github",
+      "source": "git/git-ui/src/main/bml/pages/github.bml",
+      "kind": "server_graphql",
+      "loaders": [
+        "gitHubPage"
+      ],
+      "strategy": [
+        "Repository and administrator checks overlap; pairing/shared-secret names and the chosen history view overlap after authorization."
+      ]
+    },
+    {
+      "module": "git/git-ui",
+      "route": "/",
+      "source": "git/git-ui/src/main/bml/pages/index.bml",
+      "kind": "static_or_redirect",
+      "loaders": [],
+      "strategy": []
+    },
+    {
+      "module": "git/git-ui",
+      "route": "/auth/link/confirm",
+      "source": "git/git-ui/src/main/bml/pages/link.bml",
+      "kind": "browser_auth",
+      "loaders": [],
+      "strategy": []
+    },
+    {
+      "module": "git/git-ui",
+      "route": "/login",
+      "source": "git/git-ui/src/main/bml/pages/login.bml",
+      "kind": "browser_auth",
+      "loaders": [],
+      "strategy": []
+    },
+    {
+      "module": "git/git-ui",
+      "route": "/pipelines/{id}",
+      "source": "git/git-ui/src/main/bml/pages/pipeline.bml",
+      "kind": "server_graphql",
+      "loaders": [
+        "pipelineRunPage"
+      ],
+      "strategy": [
+        "Run identity first; repository capability and pipeline-name lookup overlap. Logs load on demand."
+      ]
+    },
+    {
+      "module": "git/git-ui",
+      "route": "/pipelines",
+      "source": "git/git-ui/src/main/bml/pages/pipelines.bml",
+      "kind": "server_graphql",
+      "loaders": [
+        "pipelinePage"
+      ],
+      "strategy": [
+        "Known-repository reads overlap; global catalogs use at most four concurrent repository calls and request only the visible latest run without job detail. Input definitions require the selected pipeline/ref."
+      ]
+    },
+    {
+      "module": "git/git-ui",
+      "route": "/pulls/{id}",
+      "source": "git/git-ui/src/main/bml/pages/pull.bml",
+      "kind": "server_graphql",
+      "loaders": [
+        "pullPage"
+      ],
+      "strategy": [
+        "Pull identity first; repository metadata, refs, identities, candidate pulls and labels overlap. Snapshot and version checks remain ordered."
+      ]
+    },
+    {
+      "module": "git/git-ui",
+      "route": "/pulls",
+      "source": "git/git-ui/src/main/bml/pages/pulls.bml",
+      "kind": "server_graphql",
+      "loaders": [
+        "pullListPage"
+      ],
+      "strategy": [
+        "Repository choices and selected metadata overlap; rows and source/target refs overlap after selection."
+      ]
+    },
+    {
+      "module": "git/git-ui",
+      "route": "/repositories",
+      "source": "git/git-ui/src/main/bml/pages/repositories.bml",
+      "kind": "server_graphql",
+      "loaders": [
+        "repositoryList"
+      ],
+      "strategy": [
+        "Explicit owner metadata and listing overlap; All owners skips profile lookup; default owner uses a minimal profile projection before filtering repositories."
+      ]
+    },
+    {
+      "module": "git/git-ui",
+      "route": "/repositories/{id}/settings",
+      "source": "git/git-ui/src/main/bml/pages/repository-settings.bml",
+      "kind": "server_graphql",
+      "loaders": [
+        "repositorySettingsPage"
+      ],
+      "strategy": [
+        "Only the selected authorized panel loads. Permissions and group lookup overlap; subsequent group pages depend on the previous batch size."
+      ]
+    },
+    {
+      "module": "git/git-ui",
+      "route": "/repositories/{id}",
+      "source": "git/git-ui/src/main/bml/pages/repository.bml",
+      "kind": "server_graphql",
+      "loaders": [
+        "repositoryPage"
+      ],
+      "strategy": [
+        "Metadata and refs overlap; pipeline tab shares metadata while all independent reads overlap. Commit validation, tree existence and README discovery retain their data dependencies. Stats are private/deferred. Author profiles load only for editing."
+      ]
+    },
+    {
+      "module": "git/git-ui",
+      "route": "/auth/reset-password",
+      "source": "git/git-ui/src/main/bml/pages/reset.bml",
+      "kind": "browser_auth",
+      "loaders": [],
+      "strategy": []
+    },
+    {
+      "module": "git/git-ui",
+      "route": "/search",
+      "source": "git/git-ui/src/main/bml/pages/search.bml",
+      "kind": "server_graphql",
+      "loaders": [
+        "searchPage"
+      ],
+      "strategy": [
+        "Initial choices use one combined refs operation; typing within a repository queries only results. Repository changes/failures refresh choices. Path searches validate the commit before querying."
+      ]
+    },
+    {
+      "module": "git/git-ui",
+      "route": "/repositories/{id}/secrets",
+      "source": "git/git-ui/src/main/bml/pages/secrets.bml",
+      "kind": "server_graphql",
+      "loaders": [
+        "repositorySecretsPage"
+      ],
+      "strategy": [
+        "Read repository capability before requesting secret names."
+      ]
+    },
+    {
+      "module": "git/git-ui",
+      "route": "/auth/signup",
+      "source": "git/git-ui/src/main/bml/pages/signup.bml",
+      "kind": "browser_auth",
+      "loaders": [],
+      "strategy": []
+    },
+    {
+      "module": "git/git-ui",
+      "route": "/statuses",
+      "source": "git/git-ui/src/main/bml/pages/statuses.bml",
+      "kind": "server_graphql",
+      "loaders": [
+        "explorePage"
+      ],
+      "strategy": [
+        "Repository selection resolves first; branch choices, comparison/statuses and recent commits overlap. Parent metadata/branches are reused in repository tabs."
+      ]
+    },
+    {
+      "module": "git/git-ui",
+      "route": "/auth/verify",
+      "source": "git/git-ui/src/main/bml/pages/verify.bml",
+      "kind": "browser_auth",
+      "loaders": [],
+      "strategy": []
+    },
+    {
+      "module": "apps/profiles-web",
+      "route": "/404",
+      "source": "apps/profiles-web/src/main/bml/pages/404.bml",
+      "kind": "static_or_redirect",
+      "loaders": [],
+      "strategy": []
+    },
+    {
+      "module": "apps/profiles-web",
+      "route": "/500",
+      "source": "apps/profiles-web/src/main/bml/pages/500.bml",
+      "kind": "static_or_redirect",
+      "loaders": [],
+      "strategy": []
+    },
+    {
+      "module": "apps/profiles-web",
+      "route": "/communications",
+      "source": "apps/profiles-web/src/main/bml/pages/communications.bml",
+      "kind": "server_graphql",
+      "loaders": [
+        "communicationsModel"
+      ],
+      "strategy": [
+        "One combined GraphQL operation for notification types, preferences and settings."
+      ]
+    },
+    {
+      "module": "apps/profiles-web",
+      "route": "/devices",
+      "source": "apps/profiles-web/src/main/bml/pages/devices.bml",
+      "kind": "server_graphql",
+      "loaders": [
+        "devicesModel"
+      ],
+      "strategy": [
+        "One combined GraphQL operation. Both lists supply visible tab counts."
+      ]
+    },
+    {
+      "module": "apps/profiles-web",
+      "route": "/",
+      "source": "apps/profiles-web/src/main/bml/pages/index.bml",
+      "kind": "server_graphql",
+      "loaders": [
+        "dashboard"
+      ],
+      "strategy": [
+        "One combined GraphQL operation for profile, account and device data."
+      ]
+    },
+    {
+      "module": "apps/profiles-web",
+      "route": "/login",
+      "source": "apps/profiles-web/src/main/bml/pages/login.bml",
+      "kind": "server_graphql",
+      "loaders": [
+        "loginProviders"
+      ],
+      "strategy": [
+        "One provider-catalog operation; full SDK identity restoration is retained on login/OAuth flows."
+      ]
+    },
+    {
+      "module": "apps/profiles-web",
+      "route": "/profile",
+      "source": "apps/profiles-web/src/main/bml/pages/profile.bml",
+      "kind": "server_graphql",
+      "loaders": [
+        "profileEditor"
+      ],
+      "strategy": [
+        "One combined GraphQL operation for profiles, attributes and attribute-type catalog."
+      ]
+    },
+    {
+      "module": "apps/profiles-web",
+      "route": "/relationships",
+      "source": "apps/profiles-web/src/main/bml/pages/relationships.bml",
+      "kind": "server_graphql",
+      "loaders": [
+        "relationshipsModel"
+      ],
+      "strategy": [
+        "One combined GraphQL operation for relationships and requests."
+      ]
+    },
+    {
+      "module": "apps/profiles-web",
+      "route": "/security",
+      "source": "apps/profiles-web/src/main/bml/pages/security.bml",
+      "kind": "server_graphql",
+      "loaders": [
+        "securityModel"
+      ],
+      "strategy": [
+        "One combined GraphQL operation. Other-tab collections also supply visible counts."
+      ]
+    },
+    {
+      "module": "apps/notifications-web",
+      "route": "/404",
+      "source": "apps/notifications-web/src/main/bml/pages/404.bml",
+      "kind": "static_or_redirect",
+      "loaders": [],
+      "strategy": []
+    },
+    {
+      "module": "apps/notifications-web",
+      "route": "/500",
+      "source": "apps/notifications-web/src/main/bml/pages/500.bml",
+      "kind": "static_or_redirect",
+      "loaders": [],
+      "strategy": []
+    },
+    {
+      "module": "apps/notifications-web",
+      "route": "/",
+      "source": "apps/notifications-web/src/main/bml/pages/index.bml",
+      "kind": "static_or_redirect",
+      "loaders": [],
+      "strategy": []
+    },
+    {
+      "module": "apps/notifications-web",
+      "route": "/preferences",
+      "source": "apps/notifications-web/src/main/bml/pages/preferences.bml",
+      "kind": "server_graphql",
+      "loaders": [
+        "preferences"
+      ],
+      "strategy": [
+        "One token-scoped operation combining catalog and preferences."
+      ]
+    },
+    {
+      "module": "apps/notifications-web",
+      "route": "/unsubscribe",
+      "source": "apps/notifications-web/src/main/bml/pages/unsubscribe.bml",
+      "kind": "server_graphql",
+      "loaders": [
+        "unsubscribe"
+      ],
+      "strategy": [
+        "One narrow token-validation operation; no notification catalog."
+      ]
+    },
+    {
+      "module": "apps/bosca-messages",
+      "route": "/",
+      "source": "apps/bosca-messages/src/main/bml/pages/index.bml",
+      "kind": "sample_preview",
+      "loaders": [],
+      "strategy": []
+    },
+    {
+      "module": "apps/bosca-messages",
+      "route": "/preview/{slug}",
+      "source": "apps/bosca-messages/src/main/bml/pages/preview.bml",
+      "kind": "sample_preview",
+      "loaders": [],
+      "strategy": []
+    },
+    {
+      "module": "bml/bml-sample",
+      "route": "/cart",
+      "source": "bml/bml-sample/src/main/bml/cart.bml",
+      "kind": "static_or_redirect",
+      "loaders": [],
+      "strategy": []
+    },
+    {
+      "module": "bml/bml-sample",
+      "route": "/dashboard",
+      "source": "bml/bml-sample/src/main/bml/dashboard.bml",
+      "kind": "sample_graphql",
+      "loaders": [],
+      "strategy": []
+    },
+    {
+      "module": "bml/bml-sample",
+      "route": "/",
+      "source": "bml/bml-sample/src/main/bml/home.bml",
+      "kind": "static_or_redirect",
+      "loaders": [],
+      "strategy": []
+    },
+    {
+      "module": "bml/bml-sample",
+      "route": "/scenario/{mode}",
+      "source": "bml/bml-sample/src/main/bml/scenario.bml",
+      "kind": "static_or_redirect",
+      "loaders": [],
+      "strategy": []
+    },
+    {
+      "module": "bml/examples/site",
+      "route": "/",
+      "source": "bml/examples/site/src/main/bml/home.bml",
+      "kind": "static_or_redirect",
+      "loaders": [],
+      "strategy": []
+    },
+    {
+      "module": "bml/bml-benchmarks",
+      "route": "/benchmark",
+      "source": "bml/bml-benchmarks/src/main/bml/benchmark.bml",
+      "kind": "benchmark",
+      "loaders": [],
+      "strategy": [
+        "Example or benchmark, outside deployed application routing. GraphQL list examples contain one read and ordered mutation operations."
+      ]
+    },
+    {
+      "module": "bml/docs",
+      "route": "/lists/{id:UUID}",
+      "source": "bml/docs/examples/lists.bml",
+      "kind": "documentation_example",
+      "loaders": [],
+      "strategy": [
+        "Example or benchmark, outside deployed application routing. GraphQL list examples contain one read and ordered mutation operations."
+      ]
+    },
+    {
+      "module": "bml/docs",
+      "route": "/tasks",
+      "source": "bml/docs/examples/task-list.bml",
+      "kind": "documentation_example",
+      "loaders": [],
+      "strategy": [
+        "Example or benchmark, outside deployed application routing. GraphQL list examples contain one read and ordered mutation operations."
+      ]
+    },
+    {
+      "module": "web/projects",
+      "route": "/lists/{id:UUID}",
+      "source": "web/projects/bosca.io/app/data/bml-reference/examples/lists.bml",
+      "kind": "documentation_example",
+      "loaders": [],
+      "strategy": [
+        "Example or benchmark, outside deployed application routing. GraphQL list examples contain one read and ordered mutation operations."
+      ]
+    },
+    {
+      "module": "web/projects",
+      "route": "/tasks",
+      "source": "web/projects/bosca.io/app/data/bml-reference/examples/task-list.bml",
+      "kind": "documentation_example",
+      "loaders": [],
+      "strategy": [
+        "Example or benchmark, outside deployed application routing. GraphQL list examples contain one read and ordered mutation operations."
+      ]
+    }
+  ],
+  "routeCoverage": {
+    "gitPageViewCases": 38,
+    "profilesPageLoaders": 7,
+    "notificationsPageLoaders": 2
+  },
+  "componentsAndActions": {
+    "readConcurrency": [
+      "Repository file writer identity/ref/capability checks",
+      "Pull creation/editing source and target choices",
+      "Pipeline trigger capability/input reads",
+      "Markdown preview metadata/ref reads",
+      "Repository permissions/groups",
+      "GitHub mapping/principal reload"
+    ],
+    "payloadReduction": [
+      "Global pipeline latest-run projection without unused jobs",
+      "Minimal manual-trigger island state",
+      "Agent list omits job detail",
+      "Default owner profile projection",
+      "Unsubscribe validates link without catalog"
+    ],
+    "browserAuth": "Data pages and log reconnects use initialize(false); auth pages retain full restoration; SDK token refresh, OAuth exchange and sign-out remain enabled.",
+    "orderedReads": [
+      "Mutation then canonical refresh",
+      "Before/after source-head checks around expanded PR diff",
+      "Commit and pull-version validation",
+      "Paged group listing and historical log backfill",
+      "Administrator/capability-gated reads"
+    ]
+  },
+  "messageRenderers": [
+    {
+      "source": "apps/bosca-messages/src/main/kotlin/bosca/messages/ChatMessageContent.kt",
+      "queriesPerRender": 1
+    },
+    {
+      "source": "apps/bosca-messages/src/main/kotlin/bosca/messages/ChatReactionContent.kt",
+      "queriesPerRender": 1
+    }
+  ],
+  "sharedInfrastructure": {
+    "http": "GraphQLClientFactory shares one OkHttp client/pool across per-caller clients and proxies. The default retains up to 50 idle connections for five minutes; active request dispatcher ceilings are unchanged.",
+    "database": "ConnectionPool is bounded by factory.maxConnections; ConnectionManager borrows lazily and returns connections. Concurrent work added here is HTTP requests, not sibling JDBC operations on one request handle. Production pool contention has not been traced.",
+    "optionalServices": "Localization has a TTL/stale cache and paginated catalogs; feature flags cache per render and expose evaluateAll. Authored production pages do not issue feature-flag calls on load."
+  },
+  "remainingOpportunities": [
+    {
+      "area": "Repository statistics",
+      "evidence": "RepositoryBrowseServiceImpl.getStats walks up to 10001 commits per read and queries pack size. Deferred UI removes it from initial HTML, but backend work remains.",
+      "next": "Cache summaries by repository history/ref state with explicit invalidation; profile real repository costs first."
+    },
+    {
+      "area": "Pipeline context history and HTML",
+      "evidence": "Repository pipeline pages display ten runs per pipeline and include a collapsed 50-run history. The deployed page measured about 375 KB of HTML.",
+      "next": "Load the collapsed history on demand or paginate it without losing current history access."
+    },
+    {
+      "area": "Agent detail API",
+      "evidence": "The API exposes pipelineAgents(status) but no single-agent query; selecting one agent still requests full detail through that list.",
+      "next": "A dedicated authorized single-agent field would avoid fetching other agents’ job histories."
+    },
+    {
+      "area": "Dependent page reads",
+      "evidence": "Default-owner selection, commit-pinned content, PR snapshot/version checks, and mode-specific orchestrator config have real result dependencies.",
+      "next": "Page-oriented GraphQL selection fields could consolidate these chains; do not remove consistency or authorization checks to save requests."
+    }
+  ],
+  "measurementNotes": "Fixture timings include deliberate 50 ms upstream delay; production read-only baselines and catalog projection measurements are separate. This branch has not been deployed. Public-origin measurements include transport overhead from this workstation and use a fresh urllib connection per request. The catalog comparison executes both projections against the same deployed API. Full-screen geometry validation retains the reported 28 px / 30 px Import-button assertion disagreement.",
+  "poolBurstBefore": {
+    "rendersPerBurst": 8,
+    "connectionsPerBurst": 24,
+    "newConnectionsInSecondBurst": 19,
+    "newConnectionsInThirdBurst": 19
+  },
+  "liveReadOnlyMeasurements": {
+    "deployedInitialHtml": [
+      {
+        "path": "/repositories/{repositoryId}?tab=pipelines",
+        "medianMs": 639.9,
+        "minMs": 629.5,
+        "bytes": 374549
+      },
+      {
+        "path": "/repositories/{repositoryId}?tab=settings",
+        "medianMs": 348.7,
+        "minMs": 345.3,
+        "bytes": 36704
+      },
+      {
+        "path": "/repositories/{repositoryId}?file=README.md",
+        "medianMs": 389.1,
+        "minMs": 386.3,
+        "bytes": 58959
+      }
+    ],
+    "catalogQuery": [
+      {
+        "runLimit": 10,
+        "jobDetails": true,
+        "medianMs": 533.0,
+        "bytes": 96199,
+        "pipelines": 22,
+        "runsReturned": 177
+      },
+      {
+        "runLimit": 1,
+        "jobDetails": false,
+        "medianMs": 219.7,
+        "bytes": 12679,
+        "pipelines": 22,
+        "runsReturned": 22
+      }
+    ]
+  },
+  "fixtureMeasurements": [
+    {
+      "artificialApiDelayMs": 0,
+      "path": "/repositories",
+      "before": {
+        "medianMs": 3.0,
+        "calls": 2,
+        "peak": 1
+      },
+      "after": {
+        "medianMs": 3.0,
+        "calls": 2,
+        "peak": 1
+      }
+    },
+    {
+      "artificialApiDelayMs": 0,
+      "path": "/repositories?owner=all",
+      "before": null,
+      "after": {
+        "medianMs": 2.2,
+        "calls": 1,
+        "peak": 1
+      }
+    },
+    {
+      "artificialApiDelayMs": 0,
+      "path": "/repositories?owner=owner",
+      "before": null,
+      "after": {
+        "medianMs": 2.5,
+        "calls": 2,
+        "peak": 2
+      }
+    },
+    {
+      "artificialApiDelayMs": 0,
+      "path": "/repositories/repo",
+      "before": {
+        "medianMs": 4.6,
+        "calls": 7,
+        "peak": 3
+      },
+      "after": {
+        "medianMs": 4.5,
+        "calls": 6,
+        "peak": 3
+      }
+    },
+    {
+      "artificialApiDelayMs": 0,
+      "path": "/repositories/repo?file=README.md",
+      "before": {
+        "medianMs": 4.3,
+        "calls": 6,
+        "peak": 3
+      },
+      "after": {
+        "medianMs": 3.4,
+        "calls": 5,
+        "peak": 3
+      }
+    },
+    {
+      "artificialApiDelayMs": 0,
+      "path": "/repositories/repo?path=docs",
+      "before": {
+        "medianMs": 4.6,
+        "calls": 7,
+        "peak": 3
+      },
+      "after": {
+        "medianMs": 3.7,
+        "calls": 6,
+        "peak": 3
+      }
+    },
+    {
+      "artificialApiDelayMs": 0,
+      "path": "/repositories/repo?tab=commits",
+      "before": {
+        "medianMs": 2.6,
+        "calls": 4,
+        "peak": 2
+      },
+      "after": {
+        "medianMs": 2.3,
+        "calls": 4,
+        "peak": 3
+      }
+    },
+    {
+      "artificialApiDelayMs": 0,
+      "path": "/repositories/repo?tab=branches",
+      "before": {
+        "medianMs": 2.8,
+        "calls": 4,
+        "peak": 2
+      },
+      "after": {
+        "medianMs": 2.2,
+        "calls": 4,
+        "peak": 3
+      }
+    },
+    {
+      "artificialApiDelayMs": 0,
+      "path": "/repositories/repo?tab=tags",
+      "before": {
+        "medianMs": 2.2,
+        "calls": 3,
+        "peak": 2
+      },
+      "after": {
+        "medianMs": 1.9,
+        "calls": 3,
+        "peak": 3
+      }
+    },
+    {
+      "artificialApiDelayMs": 0,
+      "path": "/repositories/repo?tab=pulls",
+      "before": {
+        "medianMs": 3.0,
+        "calls": 4,
+        "peak": 2
+      },
+      "after": {
+        "medianMs": 2.9,
+        "calls": 4,
+        "peak": 2
+      }
+    },
+    {
+      "artificialApiDelayMs": 0,
+      "path": "/repositories/repo?tab=pipelines",
+      "before": {
+        "medianMs": 3.0,
+        "calls": 5,
+        "peak": 4
+      },
+      "after": {
+        "medianMs": 2.3,
+        "calls": 4,
+        "peak": 4
+      }
+    },
+    {
+      "artificialApiDelayMs": 0,
+      "path": "/repositories/repo?tab=statuses&sha=abc",
+      "before": {
+        "medianMs": 3.6,
+        "calls": 5,
+        "peak": 2
+      },
+      "after": {
+        "medianMs": 3.0,
+        "calls": 5,
+        "peak": 3
+      }
+    },
+    {
+      "artificialApiDelayMs": 0,
+      "path": "/repositories/repo?tab=settings",
+      "before": {
+        "medianMs": 2.2,
+        "calls": 1,
+        "peak": 1
+      },
+      "after": {
+        "medianMs": 1.8,
+        "calls": 1,
+        "peak": 1
+      }
+    },
+    {
+      "artificialApiDelayMs": 0,
+      "path": "/repositories/repo?tab=secrets",
+      "before": {
+        "medianMs": 2.6,
+        "calls": 2,
+        "peak": 1
+      },
+      "after": {
+        "medianMs": 2.0,
+        "calls": 2,
+        "peak": 1
+      }
+    },
+    {
+      "artificialApiDelayMs": 0,
+      "path": "/repositories/repo/settings?panel=metadata",
+      "before": {
+        "medianMs": 1.6,
+        "calls": 1,
+        "peak": 1
+      },
+      "after": {
+        "medianMs": 1.5,
+        "calls": 1,
+        "peak": 1
+      }
+    },
+    {
+      "artificialApiDelayMs": 0,
+      "path": "/repositories/repo/settings?panel=webhooks",
+      "before": {
+        "medianMs": 2.2,
+        "calls": 2,
+        "peak": 1
+      },
+      "after": {
+        "medianMs": 2.2,
+        "calls": 2,
+        "peak": 1
+      }
+    },
+    {
+      "artificialApiDelayMs": 0,
+      "path": "/repositories/repo/settings?panel=protection",
+      "before": {
+        "medianMs": 1.9,
+        "calls": 2,
+        "peak": 1
+      },
+      "after": {
+        "medianMs": 2.1,
+        "calls": 2,
+        "peak": 1
+      }
+    },
+    {
+      "artificialApiDelayMs": 0,
+      "path": "/repositories/repo/settings?panel=permissions",
+      "before": {
+        "medianMs": 2.4,
+        "calls": 3,
+        "peak": 1
+      },
+      "after": {
+        "medianMs": 2.4,
+        "calls": 3,
+        "peak": 2
+      }
+    },
+    {
+      "artificialApiDelayMs": 0,
+      "path": "/repositories/repo/settings?panel=utilities",
+      "before": {
+        "medianMs": 1.5,
+        "calls": 1,
+        "peak": 1
+      },
+      "after": {
+        "medianMs": 1.7,
+        "calls": 1,
+        "peak": 1
+      }
+    },
+    {
+      "artificialApiDelayMs": 0,
+      "path": "/repositories/repo/secrets",
+      "before": {
+        "medianMs": 2.1,
+        "calls": 2,
+        "peak": 1
+      },
+      "after": {
+        "medianMs": 1.8,
+        "calls": 2,
+        "peak": 1
+      }
+    },
+    {
+      "artificialApiDelayMs": 0,
+      "path": "/pulls",
+      "before": {
+        "medianMs": 2.9,
+        "calls": 2,
+        "peak": 1
+      },
+      "after": {
+        "medianMs": 2.1,
+        "calls": 2,
+        "peak": 1
+      }
+    },
+    {
+      "artificialApiDelayMs": 0,
+      "path": "/pulls?repo=repo&new=true",
+      "before": {
+        "medianMs": 2.2,
+        "calls": 4,
+        "peak": 2
+      },
+      "after": {
+        "medianMs": 2.2,
+        "calls": 4,
+        "peak": 2
+      }
+    },
+    {
+      "artificialApiDelayMs": 0,
+      "path": "/pulls/pull",
+      "before": {
+        "medianMs": 4.6,
+        "calls": 9,
+        "peak": 4
+      },
+      "after": {
+        "medianMs": 4.3,
+        "calls": 9,
+        "peak": 5
+      }
+    },
+    {
+      "artificialApiDelayMs": 0,
+      "path": "/pipelines",
+      "before": {
+        "medianMs": 3.1,
+        "calls": 4,
+        "peak": 2
+      },
+      "after": {
+        "medianMs": 2.7,
+        "calls": 4,
+        "peak": 2
+      }
+    },
+    {
+      "artificialApiDelayMs": 0,
+      "path": "/pipelines?repo=repo",
+      "before": {
+        "medianMs": 2.5,
+        "calls": 7,
+        "peak": 4
+      },
+      "after": {
+        "medianMs": 2.6,
+        "calls": 6,
+        "peak": 5
+      }
+    },
+    {
+      "artificialApiDelayMs": 0,
+      "path": "/pipelines?repo=repo&pipeline=pipeline&ref=refs%2Fheads%2Fmain",
+      "before": {
+        "medianMs": 3.6,
+        "calls": 8,
+        "peak": 4
+      },
+      "after": {
+        "medianMs": 3.1,
+        "calls": 7,
+        "peak": 5
+      }
+    },
+    {
+      "artificialApiDelayMs": 0,
+      "path": "/pipelines/run",
+      "before": {
+        "medianMs": 2.3,
+        "calls": 3,
+        "peak": 2
+      },
+      "after": {
+        "medianMs": 2.6,
+        "calls": 3,
+        "peak": 2
+      }
+    },
+    {
+      "artificialApiDelayMs": 0,
+      "path": "/search?repo=repo&q=snippet",
+      "before": {
+        "medianMs": 2.7,
+        "calls": 4,
+        "peak": 1
+      },
+      "after": {
+        "medianMs": 2.5,
+        "calls": 3,
+        "peak": 1
+      }
+    },
+    {
+      "artificialApiDelayMs": 0,
+      "path": "/search?repo=repo&q=paths&mode=paths",
+      "before": {
+        "medianMs": 3.3,
+        "calls": 5,
+        "peak": 1
+      },
+      "after": {
+        "medianMs": 2.5,
+        "calls": 4,
+        "peak": 1
+      }
+    },
+    {
+      "artificialApiDelayMs": 0,
+      "path": "/compare?repo=repo&base=main&head=feature%2Fone",
+      "before": {
+        "medianMs": 2.4,
+        "calls": 4,
+        "peak": 2
+      },
+      "after": {
+        "medianMs": 2.1,
+        "calls": 4,
+        "peak": 2
+      }
+    },
+    {
+      "artificialApiDelayMs": 0,
+      "path": "/statuses?repo=repo&sha=abc",
+      "before": {
+        "medianMs": 2.4,
+        "calls": 5,
+        "peak": 3
+      },
+      "after": {
+        "medianMs": 2.3,
+        "calls": 5,
+        "peak": 3
+      }
+    },
+    {
+      "artificialApiDelayMs": 0,
+      "path": "/ci-agents",
+      "before": {
+        "medianMs": 1.7,
+        "calls": 2,
+        "peak": 1
+      },
+      "after": {
+        "medianMs": 1.8,
+        "calls": 2,
+        "peak": 1
+      }
+    },
+    {
+      "artificialApiDelayMs": 0,
+      "path": "/ci-agents/agent",
+      "before": {
+        "medianMs": 1.8,
+        "calls": 2,
+        "peak": 1
+      },
+      "after": {
+        "medianMs": 1.7,
+        "calls": 2,
+        "peak": 1
+      }
+    },
+    {
+      "artificialApiDelayMs": 0,
+      "path": "/ci-agents/orchestrator",
+      "before": {
+        "medianMs": 5.3,
+        "calls": 3,
+        "peak": 1
+      },
+      "after": {
+        "medianMs": 2.4,
+        "calls": 3,
+        "peak": 1
+      }
+    },
+    {
+      "artificialApiDelayMs": 0,
+      "path": "/repositories/repo/github",
+      "before": {
+        "medianMs": 3.4,
+        "calls": 4,
+        "peak": 1
+      },
+      "after": {
+        "medianMs": 2.3,
+        "calls": 4,
+        "peak": 2
+      }
+    },
+    {
+      "artificialApiDelayMs": 0,
+      "path": "/repositories/repo/github?view=pulls",
+      "before": {
+        "medianMs": 2.5,
+        "calls": 4,
+        "peak": 1
+      },
+      "after": {
+        "medianMs": 2.9,
+        "calls": 4,
+        "peak": 2
+      }
+    },
+    {
+      "artificialApiDelayMs": 0,
+      "path": "/repositories/repo/github?view=deliveries",
+      "before": {
+        "medianMs": 2.1,
+        "calls": 4,
+        "peak": 1
+      },
+      "after": {
+        "medianMs": 2.2,
+        "calls": 4,
+        "peak": 2
+      }
+    },
+    {
+      "artificialApiDelayMs": 0,
+      "path": "/settings/github",
+      "before": {
+        "medianMs": 1.7,
+        "calls": 3,
+        "peak": 1
+      },
+      "after": {
+        "medianMs": 1.7,
+        "calls": 3,
+        "peak": 2
+      }
+    },
+    {
+      "artificialApiDelayMs": 0,
+      "path": "search-action",
+      "before": {
+        "medianMs": 3.1,
+        "calls": 4,
+        "peak": 1
+      },
+      "after": {
+        "medianMs": 2.3,
+        "calls": 1,
+        "peak": 1
+      }
+    },
+    {
+      "artificialApiDelayMs": 50,
+      "path": "/repositories",
+      "before": {
+        "medianMs": 113.3,
+        "calls": 2,
+        "peak": 1
+      },
+      "after": {
+        "medianMs": 114.6,
+        "calls": 2,
+        "peak": 1
+      }
+    },
+    {
+      "artificialApiDelayMs": 50,
+      "path": "/repositories?owner=all",
+      "before": null,
+      "after": {
+        "medianMs": 61.2,
+        "calls": 1,
+        "peak": 1
+      }
+    },
+    {
+      "artificialApiDelayMs": 50,
+      "path": "/repositories?owner=owner",
+      "before": null,
+      "after": {
+        "medianMs": 59.7,
+        "calls": 2,
+        "peak": 2
+      }
+    },
+    {
+      "artificialApiDelayMs": 50,
+      "path": "/repositories/repo",
+      "before": {
+        "medianMs": 281.2,
+        "calls": 7,
+        "peak": 3
+      },
+      "after": {
+        "medianMs": 230.1,
+        "calls": 6,
+        "peak": 3
+      }
+    },
+    {
+      "artificialApiDelayMs": 50,
+      "path": "/repositories/repo?file=README.md",
+      "before": {
+        "medianMs": 223.0,
+        "calls": 6,
+        "peak": 3
+      },
+      "after": {
+        "medianMs": 181.8,
+        "calls": 5,
+        "peak": 3
+      }
+    },
+    {
+      "artificialApiDelayMs": 50,
+      "path": "/repositories/repo?path=docs",
+      "before": {
+        "medianMs": 279.8,
+        "calls": 7,
+        "peak": 3
+      },
+      "after": {
+        "medianMs": 237.5,
+        "calls": 6,
+        "peak": 3
+      }
+    },
+    {
+      "artificialApiDelayMs": 50,
+      "path": "/repositories/repo?tab=commits",
+      "before": {
+        "medianMs": 163.7,
+        "calls": 4,
+        "peak": 2
+      },
+      "after": {
+        "medianMs": 119.3,
+        "calls": 4,
+        "peak": 3
+      }
+    },
+    {
+      "artificialApiDelayMs": 50,
+      "path": "/repositories/repo?tab=branches",
+      "before": {
+        "medianMs": 165.7,
+        "calls": 4,
+        "peak": 2
+      },
+      "after": {
+        "medianMs": 124.7,
+        "calls": 4,
+        "peak": 3
+      }
+    },
+    {
+      "artificialApiDelayMs": 50,
+      "path": "/repositories/repo?tab=tags",
+      "before": {
+        "medianMs": 112.3,
+        "calls": 3,
+        "peak": 2
+      },
+      "after": {
+        "medianMs": 61.2,
+        "calls": 3,
+        "peak": 3
+      }
+    },
+    {
+      "artificialApiDelayMs": 50,
+      "path": "/repositories/repo?tab=pulls",
+      "before": {
+        "medianMs": 169.2,
+        "calls": 4,
+        "peak": 2
+      },
+      "after": {
+        "medianMs": 175.3,
+        "calls": 4,
+        "peak": 2
+      }
+    },
+    {
+      "artificialApiDelayMs": 50,
+      "path": "/repositories/repo?tab=pipelines",
+      "before": {
+        "medianMs": 112.6,
+        "calls": 5,
+        "peak": 4
+      },
+      "after": {
+        "medianMs": 65.7,
+        "calls": 4,
+        "peak": 4
+      }
+    },
+    {
+      "artificialApiDelayMs": 50,
+      "path": "/repositories/repo?tab=statuses&sha=abc",
+      "before": {
+        "medianMs": 167.3,
+        "calls": 5,
+        "peak": 2
+      },
+      "after": {
+        "medianMs": 122.2,
+        "calls": 5,
+        "peak": 3
+      }
+    },
+    {
+      "artificialApiDelayMs": 50,
+      "path": "/repositories/repo?tab=settings",
+      "before": {
+        "medianMs": 57.7,
+        "calls": 1,
+        "peak": 1
+      },
+      "after": {
+        "medianMs": 58.0,
+        "calls": 1,
+        "peak": 1
+      }
+    },
+    {
+      "artificialApiDelayMs": 50,
+      "path": "/repositories/repo?tab=secrets",
+      "before": {
+        "medianMs": 105.5,
+        "calls": 2,
+        "peak": 1
+      },
+      "after": {
+        "medianMs": 115.9,
+        "calls": 2,
+        "peak": 1
+      }
+    },
+    {
+      "artificialApiDelayMs": 50,
+      "path": "/repositories/repo/settings?panel=metadata",
+      "before": {
+        "medianMs": 55.8,
+        "calls": 1,
+        "peak": 1
+      },
+      "after": {
+        "medianMs": 60.1,
+        "calls": 1,
+        "peak": 1
+      }
+    },
+    {
+      "artificialApiDelayMs": 50,
+      "path": "/repositories/repo/settings?panel=webhooks",
+      "before": {
+        "medianMs": 111.0,
+        "calls": 2,
+        "peak": 1
+      },
+      "after": {
+        "medianMs": 119.4,
+        "calls": 2,
+        "peak": 1
+      }
+    },
+    {
+      "artificialApiDelayMs": 50,
+      "path": "/repositories/repo/settings?panel=protection",
+      "before": {
+        "medianMs": 110.4,
+        "calls": 2,
+        "peak": 1
+      },
+      "after": {
+        "medianMs": 124.3,
+        "calls": 2,
+        "peak": 1
+      }
+    },
+    {
+      "artificialApiDelayMs": 50,
+      "path": "/repositories/repo/settings?panel=permissions",
+      "before": {
+        "medianMs": 167.3,
+        "calls": 3,
+        "peak": 1
+      },
+      "after": {
+        "medianMs": 117.0,
+        "calls": 3,
+        "peak": 2
+      }
+    },
+    {
+      "artificialApiDelayMs": 50,
+      "path": "/repositories/repo/settings?panel=utilities",
+      "before": {
+        "medianMs": 57.8,
+        "calls": 1,
+        "peak": 1
+      },
+      "after": {
+        "medianMs": 59.1,
+        "calls": 1,
+        "peak": 1
+      }
+    },
+    {
+      "artificialApiDelayMs": 50,
+      "path": "/repositories/repo/secrets",
+      "before": {
+        "medianMs": 112.5,
+        "calls": 2,
+        "peak": 1
+      },
+      "after": {
+        "medianMs": 122.1,
+        "calls": 2,
+        "peak": 1
+      }
+    },
+    {
+      "artificialApiDelayMs": 50,
+      "path": "/pulls",
+      "before": {
+        "medianMs": 112.4,
+        "calls": 2,
+        "peak": 1
+      },
+      "after": {
+        "medianMs": 114.1,
+        "calls": 2,
+        "peak": 1
+      }
+    },
+    {
+      "artificialApiDelayMs": 50,
+      "path": "/pulls?repo=repo&new=true",
+      "before": {
+        "medianMs": 112.9,
+        "calls": 4,
+        "peak": 2
+      },
+      "after": {
+        "medianMs": 118.6,
+        "calls": 4,
+        "peak": 2
+      }
+    },
+    {
+      "artificialApiDelayMs": 50,
+      "path": "/pulls/pull",
+      "before": {
+        "medianMs": 280.3,
+        "calls": 9,
+        "peak": 4
+      },
+      "after": {
+        "medianMs": 241.4,
+        "calls": 9,
+        "peak": 5
+      }
+    },
+    {
+      "artificialApiDelayMs": 50,
+      "path": "/pipelines",
+      "before": {
+        "medianMs": 174.0,
+        "calls": 4,
+        "peak": 2
+      },
+      "after": {
+        "medianMs": 177.9,
+        "calls": 4,
+        "peak": 2
+      }
+    },
+    {
+      "artificialApiDelayMs": 50,
+      "path": "/pipelines?repo=repo",
+      "before": {
+        "medianMs": 174.7,
+        "calls": 7,
+        "peak": 4
+      },
+      "after": {
+        "medianMs": 112.3,
+        "calls": 6,
+        "peak": 5
+      }
+    },
+    {
+      "artificialApiDelayMs": 50,
+      "path": "/pipelines?repo=repo&pipeline=pipeline&ref=refs%2Fheads%2Fmain",
+      "before": {
+        "medianMs": 225.2,
+        "calls": 8,
+        "peak": 4
+      },
+      "after": {
+        "medianMs": 182.2,
+        "calls": 7,
+        "peak": 5
+      }
+    },
+    {
+      "artificialApiDelayMs": 50,
+      "path": "/pipelines/run",
+      "before": {
+        "medianMs": 116.6,
+        "calls": 3,
+        "peak": 2
+      },
+      "after": {
+        "medianMs": 119.6,
+        "calls": 3,
+        "peak": 2
+      }
+    },
+    {
+      "artificialApiDelayMs": 50,
+      "path": "/search?repo=repo&q=snippet",
+      "before": {
+        "medianMs": 224.1,
+        "calls": 4,
+        "peak": 1
+      },
+      "after": {
+        "medianMs": 169.5,
+        "calls": 3,
+        "peak": 1
+      }
+    },
+    {
+      "artificialApiDelayMs": 50,
+      "path": "/search?repo=repo&q=paths&mode=paths",
+      "before": {
+        "medianMs": 276.3,
+        "calls": 5,
+        "peak": 1
+      },
+      "after": {
+        "medianMs": 237.6,
+        "calls": 4,
+        "peak": 1
+      }
+    },
+    {
+      "artificialApiDelayMs": 50,
+      "path": "/compare?repo=repo&base=main&head=feature%2Fone",
+      "before": {
+        "medianMs": 165.4,
+        "calls": 4,
+        "peak": 2
+      },
+      "after": {
+        "medianMs": 183.4,
+        "calls": 4,
+        "peak": 2
+      }
+    },
+    {
+      "artificialApiDelayMs": 50,
+      "path": "/statuses?repo=repo&sha=abc",
+      "before": {
+        "medianMs": 165.5,
+        "calls": 5,
+        "peak": 3
+      },
+      "after": {
+        "medianMs": 176.2,
+        "calls": 5,
+        "peak": 3
+      }
+    },
+    {
+      "artificialApiDelayMs": 50,
+      "path": "/ci-agents",
+      "before": {
+        "medianMs": 111.8,
+        "calls": 2,
+        "peak": 1
+      },
+      "after": {
+        "medianMs": 122.7,
+        "calls": 2,
+        "peak": 1
+      }
+    },
+    {
+      "artificialApiDelayMs": 50,
+      "path": "/ci-agents/agent",
+      "before": {
+        "medianMs": 112.9,
+        "calls": 2,
+        "peak": 1
+      },
+      "after": {
+        "medianMs": 123.3,
+        "calls": 2,
+        "peak": 1
+      }
+    },
+    {
+      "artificialApiDelayMs": 50,
+      "path": "/ci-agents/orchestrator",
+      "before": {
+        "medianMs": 165.7,
+        "calls": 3,
+        "peak": 1
+      },
+      "after": {
+        "medianMs": 166.2,
+        "calls": 3,
+        "peak": 1
+      }
+    },
+    {
+      "artificialApiDelayMs": 50,
+      "path": "/repositories/repo/github",
+      "before": {
+        "medianMs": 219.4,
+        "calls": 4,
+        "peak": 1
+      },
+      "after": {
+        "medianMs": 114.7,
+        "calls": 4,
+        "peak": 2
+      }
+    },
+    {
+      "artificialApiDelayMs": 50,
+      "path": "/repositories/repo/github?view=pulls",
+      "before": {
+        "medianMs": 222.2,
+        "calls": 4,
+        "peak": 1
+      },
+      "after": {
+        "medianMs": 122.6,
+        "calls": 4,
+        "peak": 2
+      }
+    },
+    {
+      "artificialApiDelayMs": 50,
+      "path": "/repositories/repo/github?view=deliveries",
+      "before": {
+        "medianMs": 227.4,
+        "calls": 4,
+        "peak": 1
+      },
+      "after": {
+        "medianMs": 122.6,
+        "calls": 4,
+        "peak": 2
+      }
+    },
+    {
+      "artificialApiDelayMs": 50,
+      "path": "/settings/github",
+      "before": {
+        "medianMs": 170.8,
+        "calls": 3,
+        "peak": 1
+      },
+      "after": {
+        "medianMs": 116.6,
+        "calls": 3,
+        "peak": 2
+      }
+    },
+    {
+      "artificialApiDelayMs": 50,
+      "path": "search-action",
+      "before": {
+        "medianMs": 228.2,
+        "calls": 4,
+        "peak": 1
+      },
+      "after": {
+        "medianMs": 58.3,
+        "calls": 1,
+        "peak": 1
+      }
+    }
+  ],
+  "poolBurstAfter": {
+    "rendersPerBurst": 8,
+    "connectionsPerBurst": 24,
+    "newConnectionsInSecondBurst": 0,
+    "newConnectionsInThirdBurst": 0
+  },
+  "reproduction": "./gradlew :git:git-ui:probePageLoading --no-configuration-cache --no-build-cache",
+  "validation": {
+    "jvmTests": 370,
+    "clientTests": 23,
+    "typescript": "passed",
+    "schemaContracts": "passed",
+    "accountClientBundles": "passed using already installed dependencies and the workspace runtime",
+    "focusedBrowserFlows": [
+      "auth",
+      "repository",
+      "pulls",
+      "pipelines/live logs",
+      "search",
+      "statistics/private identity reuse"
+    ],
+    "broaderScreenMatrix": "Existing Import button CSS 28 px versus assertion 30 px; unchanged."
+  }
+}

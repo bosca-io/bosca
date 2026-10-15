@@ -64,6 +64,7 @@ try {
     "auth.mjs",
     "repository.mjs",
     "statistics.mjs",
+    "pipelines.mjs",
     "pulls.mjs",
     "search.mjs",
     "screens.mjs",

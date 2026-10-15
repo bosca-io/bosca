@@ -161,7 +161,7 @@ mutation GitUiDeleteSecret($id: UUID!, $name: String!) {
     deletePipelineSecret(repositoryId: $id, name: $name)
   }
 }
-query GitUiAgents($status: GitAgentStatus) {
+query GitUiAgents($status: GitAgentStatus, $details: Boolean! = true) {
   git {
     pipelineAgents(status: $status) {
       id
@@ -176,7 +176,7 @@ query GitUiAgents($status: GitAgentStatus) {
       lastHeartbeat
       expiresAt
       created
-      currentJob {
+      currentJob @include(if: $details) {
         id
         pipelineRunId
         name
@@ -202,7 +202,7 @@ query GitUiAgents($status: GitAgentStatus) {
           finished
         }
       }
-      recentJobs(limit: 10) {
+      recentJobs(limit: 10) @include(if: $details) {
         id
         pipelineRunId
         name

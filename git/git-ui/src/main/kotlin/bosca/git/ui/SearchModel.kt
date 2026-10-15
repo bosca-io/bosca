@@ -87,6 +87,7 @@ class SearchModel(
     ) {
         val changedRepository = repository != id
         val changedMode = selectedMode != mode
+        val refreshChoices = changedRepository || failed || repositories.isEmpty() || refs.isEmpty()
         id = repository
         query = text
         mode = if (selectedMode == "paths") "paths" else "content"
@@ -99,23 +100,24 @@ class SearchModel(
             )
                 ""
             else selectedRef
-        perform(ctx, initial = false)
+        perform(ctx, initial = false, refreshChoices = refreshChoices)
     }
 
-    private suspend fun perform(ctx: RenderContext, initial: Boolean) {
+    private suspend fun perform(ctx: RenderContext, initial: Boolean, refreshChoices: Boolean = true) {
         failed = false
         message = ""
         notice = ""
         hits = emptyList()
-        refs = emptyList()
+        if (refreshChoices) refs = emptyList()
         try {
-            val list =
-                RepositoryListModel(
+            if (refreshChoices) {
+                val list = RepositoryListModel(
                     RepositoryState.ACTIVE,
                     OwnerOption("all", "All accessible repositories", ""),
                 )
-            list.reload(ctx)
-            repositories = list.repositories
+                list.reload(ctx)
+                repositories = list.repositories
+            }
             if (initial && id.isBlank()) id = repositories.firstOrNull()?.id.orEmpty()
             if (id.isBlank()) return
             if (repositories.none { it.id == id }) {
@@ -130,18 +132,18 @@ class SearchModel(
             val repository = repositories.first { it.id == id }
             if (ref.isBlank()) ref = repository.defaultBranch
             ref = ref.removePrefix("refs/heads/")
-            val branches = ctx.gql.execute(GitUiBranches, GitUiBranches.Variables(id)).git.branches
-            val tags = ctx.gql.execute(GitUiTags, GitUiTags.Variables(id)).git.tags
-            refs =
-                branches.map { RefOption(it.name, "branch", it.sha) } +
-                    tags.map { RefOption(it.name, "tag", it.targetSha ?: it.sha) }
+            if (refreshChoices) {
+                val data = ctx.gql.execute(GitUiRefs, GitUiRefs.Variables(id)).git
+                refs = data.branches.map { RefOption(it.name, "branch", it.sha) } +
+                    data.tags.map { RefOption(it.name, "tag", it.targetSha ?: it.sha) }
+            }
             if (query.isBlank()) return
             if (refs.isEmpty()) {
                 notice = "This repository has no commits yet."
                 return
             }
             if (mode == "content") {
-                if (branches.none { it.name == ref }) {
+                if (refs.none { it.kind == "branch" && it.name == ref }) {
                     notice =
                         "Content search is available on branches. Choose a branch, or use Paths to search a tag or commit."
                     return
@@ -168,10 +170,9 @@ class SearchModel(
                             )
                         }
             } else {
-                val known =
-                    tags.associate { "refs/tags/${it.name}" to (it.targetSha ?: it.sha) } +
-                        tags.associate { it.name to (it.targetSha ?: it.sha) } +
-                        branches.associate { it.name to it.sha }
+                val known = refs.filter { it.kind == "tag" }.associate { it.name to it.sha } +
+                    refs.filter { it.kind == "tag" }.associate { "refs/tags/${it.name}" to it.sha } +
+                    refs.filter { it.kind == "branch" }.associate { it.name to it.sha }
                 val sha = ctx.gql.commitShaForRef(id, ref, known)
                 require(!sha.isNullOrBlank()) { "The selected ref does not exist." }
                 hits =

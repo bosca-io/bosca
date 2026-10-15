@@ -5,6 +5,8 @@ import bosca.bml.render.RenderContext
 import bosca.git.ui.graphql.*
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.serialization.Serializable
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 
 @Serializable
 class PullCreateModel(
@@ -52,20 +54,16 @@ class PullCreateModel(
             require(page.repositories.any { it.id == sourceId }) {
                 "Choose an available source repository."
             }
-            val targetBranches =
-                ctx.gql
-                    .execute(GitUiBranches, GitUiBranches.Variables(repository))
-                    .git
-                    .branches
-                    .map { it.name }
-            val branches =
-                if (sourceId == repository) targetBranches
-                else
-                    ctx.gql
-                        .execute(GitUiBranches, GitUiBranches.Variables(sourceId))
-                        .git
-                        .branches
-                        .map { it.name }
+            val (targetBranches, branches) = coroutineScope {
+                val targetRequest = async {
+                    ctx.gql.execute(GitUiBranches, GitUiBranches.Variables(repository)).git.branches.map { it.name }
+                }
+                val sourceRequest = async {
+                    if (sourceId == repository) targetRequest.await()
+                    else ctx.gql.execute(GitUiBranches, GitUiBranches.Variables(sourceId)).git.branches.map { it.name }
+                }
+                targetRequest.await() to sourceRequest.await()
+            }
             this.source = source.takeIf { it in branches }.orEmpty()
             this.target =
                 target.takeIf { it in targetBranches }

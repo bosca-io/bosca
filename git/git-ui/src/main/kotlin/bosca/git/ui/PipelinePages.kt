@@ -4,6 +4,7 @@ import bosca.bml.graphql.execute
 import bosca.bml.render.currentRenderContext
 import bosca.git.ui.graphql.*
 import kotlin.coroutines.cancellation.CancellationException
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 
@@ -17,6 +18,7 @@ suspend fun pipelinePage(
     repositoryId: String = "",
     baseHref: String = "",
     repository: GitUiRepositoryData.Git.RepositoryById? = null,
+    repositoryRequest: Deferred<GitUiRepositoryData.Git.RepositoryById?>? = null,
 ): PipelinePage = coroutineScope {
     val ctx = currentRenderContext()
     val repo = repositoryId.ifBlank { ctx.query["repo"].orEmpty() }
@@ -24,15 +26,28 @@ suspend fun pipelinePage(
         if (repo.isBlank() || baseHref.isBlank()) repositoryList()
         else RepositoryListModel(RepositoryState.ACTIVE, OwnerOption("all", "All accessible repositories", ""))
     }
-    val metadata = repository ?: if (repo.isBlank()) null
-        else ctx.gql.execute(GitUiRepository, GitUiRepository.Variables(repo)).git.repositoryById
-    require(repo.isBlank() || metadata != null) { "Repository unavailable." }
+    val metadataRequest = async {
+        when {
+            repository != null -> repository
+            repositoryRequest != null -> repositoryRequest.await()
+            repo.isBlank() -> null
+            else -> ctx.gql.execute(GitUiRepository, GitUiRepository.Variables(repo)).git.repositoryById
+        }
+    }
+    val catalogRequest = if (repo.isBlank()) null else async {
+        try {
+            Result.success(ctx.gql.execute(GitUiPipelines, GitUiPipelines.Variables(repo, if (baseHref.isBlank()) 1 else 10, baseHref.isNotBlank())).git.pipelines)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Result.failure<List<GitUiPipelinesData.Git.Pipelines>>(e)
+        }
+    }
     val refsRequest = async {
         if (repo.isBlank()) emptyList()
-        else coroutineScope {
-            val branches = async { ctx.gql.execute(GitUiBranches, GitUiBranches.Variables(repo)).git.branches }
-            val tags = async { ctx.gql.execute(GitUiTags, GitUiTags.Variables(repo)).git.tags }
-            branches.await().map { "refs/heads/${it.name}" } + tags.await().map { "refs/tags/${it.name}" }
+        else {
+            val refs = ctx.gql.execute(GitUiRefs, GitUiRefs.Variables(repo)).git
+            refs.branches.map { "refs/heads/${it.name}" } + refs.tags.map { "refs/tags/${it.name}" }
         }
     }
     val offset = ctx.query["offset"]?.toLongOrNull()?.coerceAtLeast(0) ?: 0
@@ -40,12 +55,15 @@ suspend fun pipelinePage(
         if (repo.isBlank()) emptyList()
         else ctx.gql.execute(GitUiPipelineRuns, GitUiPipelineRuns.Variables(repo, offset)).git.pipelineRuns
     }
+    val metadata = metadataRequest.await()
+    require(repo.isBlank() || metadata != null) { "Repository unavailable." }
     val list = listRequest.await()
     if (metadata != null) list.repositories = listOf(repositorySummary(metadata))
     val catalogs = list.repositories.filter { repo.isBlank() || it.id == repo }.loadConcurrently { item ->
         try {
             Triple(
-                ctx.gql.execute(GitUiPipelines, GitUiPipelines.Variables(item.id)).git.pipelines,
+                catalogRequest?.await()?.getOrThrow()
+                    ?: ctx.gql.execute(GitUiPipelines, GitUiPipelines.Variables(item.id, 1, false)).git.pipelines,
                 item.id.takeIf { item.canExecute },
                 null,
             )

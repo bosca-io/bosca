@@ -99,7 +99,7 @@
                       <code class="muted">{ run.commitSha.take(8) }</code>
                       <span class="run-trigger">{ run.triggerType.name.lowercase() }</span>
                       <div class="job-dots" aria-label="Jobs">
-                        <for job in run.jobs>
+                        <for job in run.jobs.orEmpty()>
                           <span
                             :class='"job-dot status-" + job.status.name.lowercase()'
                             :title='job.name + ": " + job.status.name'

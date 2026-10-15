@@ -31,6 +31,15 @@ data class PipelinePage(
     val selectedName: String
         get() = pipelines.firstOrNull { it.id == selected }?.name.orEmpty()
 
+    /** Keeps only the catalog entry and inputs needed by the manual-run island. */
+    fun triggerContext(): PipelinePage = copy(
+        repositories = emptyList(),
+        pipelines = pipelines.filter { it.id == selected }.map { it.copy(runs = emptyList()) },
+        runs = emptyList(),
+        executableRepositories = emptyList(),
+        failures = emptyList(),
+    )
+
     fun href(offset: Long = 0): String =
         if (repositoryContext) "$baseHref&offset=$offset"
         else "/pipelines?owner=${encode(owner.id)}&repo=${encode(repository)}&offset=$offset"

@@ -33,3 +33,10 @@ mutation UnsubscribeAll($token: String!) {
         unsubscribe(token: $token)
     }
 }
+
+# Link validation needs only the nullable preference result, not the notification catalog.
+query TokenPreferenceLink($token: String!) {
+    communications {
+        tokenNotificationPreferences(token: $token) { type }
+    }
+}

@@ -16,9 +16,11 @@ await new Promise((r) => ws.addEventListener("open", r, { once: true }));
 let n = 0;
 const pending = new Map(),
   errors = [],
-  pausedRequests = [];
+  pausedRequests = [],
+  graphqlRequests = [];
 ws.addEventListener("message", (e) => {
   const m = JSON.parse(e.data);
+  if (m.method === "Network.requestWillBeSent" && m.params.request.url === base + "/graphql") graphqlRequests.push(m.params.request.postData);
   if (m.method === "Fetch.requestPaused") pausedRequests.push(m.params);
   if (m.method === "Runtime.exceptionThrown")
     errors.push(m.params.exceptionDetails);
@@ -89,6 +91,7 @@ async function nav(path) {
   await ev("document.fonts.ready");
   await new Promise((r) => setTimeout(r, 180));
 }
+await call("Network.enable");
 await call("Runtime.enable");
 await call("Page.enable");
 await call("Page.bringToFront");
@@ -174,5 +177,6 @@ for (const width of [1920, 1024, 390]) {
   );
   console.log(`Statistics loading, failure, retry and layout passed at ${width}px`);
 }
+assert.deepEqual(graphqlRequests, [], "Server-rendered data pages do not refetch browser identity");
 assert.deepEqual(errors, [], "Statistics raised browser exceptions");
 ws.close();
