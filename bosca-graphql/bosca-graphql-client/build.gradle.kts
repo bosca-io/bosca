@@ -68,6 +68,23 @@ java {
     }
 }
 
+val generatedTestClients = layout.buildDirectory.dir("generated/test-graphql/kotlin")
+val generateTestClients = tasks.register<JavaExec>("generateTestClients") {
+    description = "Generate GraphQL regression fixtures with the current client generator."
+    classpath = files(tasks.named("jvmJar"), configurations.named("jvmRuntimeClasspath"))
+    mainClass.set("bosca.graphql.codegen.cli.BoscaGraphqlCodegenCliKt")
+    val queries = layout.projectDirectory.dir("src/commonTest/graphql")
+    inputs.dir(queries).withPathSensitivity(PathSensitivity.RELATIVE)
+    outputs.dir(generatedTestClients)
+    args(
+        "generate", "--schema", queries.file("schema.graphqls").asFile.absolutePath,
+        "--queries", queries.asFile.absolutePath,
+        "--out", generatedTestClients.get().asFile.absolutePath,
+        "--package", "bosca.graphql.client.conditional",
+    )
+}
+kotlin.sourceSets.commonTest { kotlin.srcDir(generateTestClients) }
+
 kover {
     reports {
         // No exclusions — all hand-written (no @Generated code). Achieved: line 100.0%, branch 98.9%. Every reachable

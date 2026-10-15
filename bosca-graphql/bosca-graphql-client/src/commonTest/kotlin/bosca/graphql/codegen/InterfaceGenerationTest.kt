@@ -1,5 +1,7 @@
 package bosca.graphql.codegen
 
+import bosca.graphql.language.FragmentDefinition
+import bosca.graphql.parser.Parser
 import bosca.graphql.schema.GraphQLSchema
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -173,6 +175,17 @@ class InterfaceGenerationTest {
         kotlin.test.assertFailsWith<IllegalStateException> {
             KotlinClientGenerator(schema).emitFragmentInterfaceFile("DoesNotExist", "gen")
         }
+    }
+
+    @Test
+    fun `a conditional fragment field missing from the schema fails generation`() {
+        val generator = KotlinClientGenerator(schema)
+        generator.useFragments(Parser.parse("fragment F on Spec { missing @include(if: true) }")
+            .definitions.filterIsInstance<FragmentDefinition>().associateBy { it.name })
+        val error = kotlin.test.assertFailsWith<IllegalStateException> {
+            generator.emitFragmentInterfaceFile("F", "gen")
+        }
+        assertEquals("Field 'missing' does not exist on type 'Spec'.", error.message)
     }
 
     @Test

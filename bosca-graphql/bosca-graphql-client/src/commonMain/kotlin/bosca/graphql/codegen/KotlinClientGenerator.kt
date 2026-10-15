@@ -249,6 +249,7 @@ class KotlinClientGenerator(
             val fieldDef = schema.field(graphqlType, field.name)
                 ?: error("Field '${field.name}' does not exist on type '$graphqlType'.")
             val modifier = if (responseName in overrides || responseName in fragmentFieldNames) "override " else ""
+            val default = if (field.isConditional()) " = null" else ""
 
             if (field.selectionSet != null) {
                 val nestedName = pascalCase(responseName)
@@ -259,10 +260,10 @@ class KotlinClientGenerator(
                 // No per-property serializer annotation: a nested object is `@Serializable` and a polymorphic type
                 // carries `@Serializable(with = …)` on its own declaration, so kotlinx resolves it automatically —
                 // including inside `List<…>` (which a per-property annotation cannot express).
-                properties += "$padField$modifier" + "val $responseName: ${kotlinTypeRef(fieldDef.type, nestedName)}"
+                properties += "$padField$modifier" + "val $responseName: ${outputTypeRef(field, fieldDef.type, nestedName)}$default"
             } else {
                 val leaf = outputLeafType(underlyingTypeName(fieldDef.type))
-                properties += "$padField$modifier" + "val $responseName: ${kotlinTypeRef(fieldDef.type, leaf.kotlinType)}"
+                properties += "$padField$modifier" + "val $responseName: ${outputTypeRef(field, fieldDef.type, leaf.kotlinType)}$default"
             }
         }
 
@@ -309,7 +310,7 @@ class KotlinClientGenerator(
                 "Object-typed common field '${field.name}' on a polymorphic selection is not supported yet."
             }
             val leaf = outputLeafType(underlyingTypeName(fieldDef.type))
-            "${padMember}val ${field.alias ?: field.name}: ${kotlinTypeRef(fieldDef.type, leaf.kotlinType)}"
+            "${padMember}val ${field.alias ?: field.name}: ${outputTypeRef(field, fieldDef.type, leaf.kotlinType)}"
         }
 
         val subtypes = analysis.branches.map { (concreteType, branchSelections) ->
@@ -418,7 +419,13 @@ class KotlinClientGenerator(
             when (selection) {
                 is Field -> {
                     val responseName = selection.alias ?: selection.name
-                    if (responseName !in byResponseName) byResponseName[responseName] = selection
+                    val existing = byResponseName[responseName]
+                    if (existing == null) {
+                        byResponseName[responseName] = selection
+                    } else if (existing.isConditional() && !selection.isConditional()) {
+                        // An unconditional occurrence guarantees this response field is present.
+                        byResponseName[responseName] = existing.copy(directives = selection.directives)
+                    }
                 }
                 is FragmentSpread -> {
                     val fragment = fragments[selection.name] ?: error("Unknown fragment '...${selection.name}'.")
@@ -543,7 +550,7 @@ class KotlinClientGenerator(
                 outputLeafType(graphqlLeaf).kotlinType
             }
             fieldNames += responseName
-            declarations += "val $responseName: ${kotlinTypeRef(fieldDef.type, base)}"
+            declarations += "val $responseName: ${outputTypeRef(field, fieldDef.type, base)}"
         }
         return FragmentInterface(simpleName, qualifiedName, fieldNames, declarations, imports, children)
     }
@@ -698,6 +705,14 @@ class KotlinClientGenerator(
     }
 
     // ---- type-reference rendering ----
+
+    private fun Field.isConditional(): Boolean = directives.any { it.name == "include" || it.name == "skip" }
+
+    /** Conditional fields can be absent even when non-null in SDL; list elements keep their schema nullability. */
+    private fun outputTypeRef(field: Field, type: Type, base: String): String {
+        val rendered = kotlinTypeRef(type, base)
+        return if (field.isConditional()) rendered.removeSuffix("?") + "?" else rendered
+    }
 
     private fun kotlinTypeRef(type: Type, base: String): String = when (type) {
         is NonNullType -> renderNonNull(type.type, base)
