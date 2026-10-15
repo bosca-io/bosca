@@ -76,11 +76,13 @@ retry their events. The normal browser delivery path already does this using its
 local event queue. In-process analytics capture continues to enqueue asynchronously.
 Publishes for a batch are sent asynchronously before waiting for acknowledgments.
 
-NATS publications use message IDs derived from the app ID and each event's
-`client_id`. Keep those event IDs unchanged when retrying, including after a lost
-HTTP response or a partially published batch. Events without IDs are published
-without deduplication, so retries can produce duplicates. Deduplication lasts for the
-stream's configured duplicate window. This does not provide unlimited deduplication
+NATS publications use message IDs derived from the app ID, device `installation_id`,
+context `user_id`, and each event's `client_id`. Keep those values unchanged when
+retrying, including after a lost HTTP response or a partially published batch.
+Anonymous users can still deduplicate within their installation. Events without
+an installation or event ID are published without deduplication, so retries can
+produce duplicates. Deduplication lasts for the stream's configured duplicate window.
+This does not provide unlimited deduplication
 or prevent repeated transform and optional-sink side effects.
 
 The processor acknowledges messages after primary storage and request cleanup

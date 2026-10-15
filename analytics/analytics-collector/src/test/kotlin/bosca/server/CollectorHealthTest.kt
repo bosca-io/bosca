@@ -5,6 +5,8 @@ package bosca.server
 import bosca.analytics.configuration.EventPipelineTransforms
 import bosca.analytics.configuration.EventProcessingConfiguration
 import bosca.analytics.model.Event
+import bosca.analytics.model.EventContext
+import bosca.analytics.model.Device
 import bosca.analytics.model.EventType
 import bosca.analytics.model.Events
 import bosca.analytics.service.ErrorGroupService
@@ -112,7 +114,9 @@ class CollectorHealthTest {
 
             try {
                 val service = provide<EventProcessingService>()
-                val events = Events(events = listOf(Event(1, type = EventType.Session, clientId = "first")), sent = 1, sentMicros = 0)
+                val context = EventContext(appId = "app", appVersion = "1", sessionId = "session", userId = "user",
+                    device = Device("installation", "test", "test", "JVM", "en", "test", "UTC", "server", "1"))
+                val events = Events(context = context, events = listOf(Event(1, type = EventType.Session, clientId = "first")), sent = 1, sentMicros = 0)
                 val retry = events.copy(events = listOf(events.events.single().copy(clientId = "second")), sent = 2)
                 assertEquals(200, status(application, "ready"))
                 assertEquals(202, ingest(application, service, events))

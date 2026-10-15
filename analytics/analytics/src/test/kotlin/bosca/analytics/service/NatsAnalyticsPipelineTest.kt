@@ -5,6 +5,8 @@ package bosca.analytics.service
 import bosca.analytics.configuration.EventPipelineTransforms
 import bosca.analytics.configuration.EventProcessingConfiguration
 import bosca.analytics.model.Event
+import bosca.analytics.model.EventContext
+import bosca.analytics.model.Device
 import bosca.analytics.model.EventPipelineContext
 import bosca.analytics.model.EventType
 import bosca.analytics.model.Events
@@ -84,6 +86,10 @@ class NatsAnalyticsPipelineTest {
         sent = 3,
         sentMicros = 4,
     )
+    private val eventContext = EventContext(
+        appId = "app", appVersion = "1", sessionId = "session", userId = "user",
+        device = Device("installation", "test", "test", "JVM", "en", "test", "UTC", "server", "1"),
+    )
 
     @BeforeTest
     fun setUp() {
@@ -136,21 +142,54 @@ class NatsAnalyticsPipelineTest {
     }
 
     @Test
-    fun `publisher reuses client IDs across retries and leaves ID-less events undeduplicated`() = runTest {
+    fun `publisher deduplicates retries only with an installation and event ID`() = runTest {
         val options = mutableListOf<io.nats.client.PublishOptions>()
         every { management.getStreamInfo(NatsEventRepository.STREAM_NAME) } returns mockk()
         every { jetStream.publishAsync(any(), any<ByteArray>(), capture(options)) } returns CompletableFuture.completedFuture(mockk<PublishAck>())
         val repository = NatsEventRepository(nats, json, health)
-        val batch = events.copy(events = listOf(events.events.first()))
+        val batch = events.copy(context = eventContext, events = listOf(events.events.first()))
         repository.process(batch)
         repository.process(batch.copy(sent = 100, sentMicros = 20, received = 200, receivedMicros = 30))
         assertEquals(options[0].messageId, options[1].messageId)
-        assertEquals("0::one", options[0].messageId)
+        assertTrue(options[0].messageId.isNotBlank())
 
         val anonymous = batch.copy(events = listOf(batch.events.first().copy(clientId = null), batch.events.first().copy(clientId = "")))
         repository.process(anonymous)
         repository.process(anonymous.copy(received = 500, receivedMicros = 12))
+        repository.process(batch.copy(events = listOf(batch.events.first().copy(clientId = " "))))
+        repository.process(batch.copy(context = null))
+        repository.process(batch.copy(context = eventContext.copy(device = eventContext.device.copy(installationId = " "))))
         options.drop(2).forEach { assertNull(it.messageId) }
+    }
+
+    @Test
+    fun `publisher scopes IDs by app installation user and event without separator collisions`() = runTest {
+        val options = mutableListOf<io.nats.client.PublishOptions>()
+        every { management.getStreamInfo(NatsEventRepository.STREAM_NAME) } returns mockk()
+        every { jetStream.publishAsync(any(), any<ByteArray>(), capture(options)) } returns CompletableFuture.completedFuture(mockk<PublishAck>())
+        val repository = NatsEventRepository(nats, json, health)
+        val batch = events.copy(context = eventContext, events = listOf(events.events.first()))
+        val distinctBatches = listOf(
+            batch,
+            batch.copy(context = eventContext.copy(appId = "other-app")),
+            batch.copy(context = eventContext.copy(device = eventContext.device.copy(installationId = "other-installation"))),
+            batch.copy(context = eventContext.copy(userId = "other-user")),
+            batch.copy(context = eventContext.copy(userId = null)),
+            batch.copy(context = eventContext.copy(userId = "")),
+            batch.copy(events = listOf(events.events.last())),
+            batch.copy(context = eventContext.copy(appId = "a:b", device = eventContext.device.copy(installationId = "c"))),
+            batch.copy(context = eventContext.copy(appId = "a", device = eventContext.device.copy(installationId = "b:c"))),
+            batch.copy(context = eventContext.copy(device = eventContext.device.copy(installationId = "installation:user"), userId = "id")),
+            batch.copy(context = eventContext.copy(userId = "user:id")),
+            batch.copy(context = eventContext.copy(userId = "user:event"), events = listOf(events.events.first().copy(clientId = "id"))),
+            batch.copy(events = listOf(events.events.first().copy(clientId = "event:id"))),
+        )
+        distinctBatches.forEach { repository.process(it) }
+        val messageIds = options.map { requireNotNull(it.messageId) }
+        assertEquals(distinctBatches.size, messageIds.toSet().size)
+
+        distinctBatches.forEach { repository.process(it.copy(sent = 100, received = 200, receivedMicros = 30)) }
+        assertEquals(messageIds, options.drop(distinctBatches.size).map { it.messageId })
     }
 
     @Test

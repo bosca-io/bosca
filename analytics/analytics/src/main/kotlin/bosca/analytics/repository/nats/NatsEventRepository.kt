@@ -60,11 +60,22 @@ class NatsEventRepository(
     private suspend fun publish(events: Events) {
         val jetStream = ensureInitialized()
         val futures = withContext(Dispatchers.IO) {
-            val appId = events.context?.appId.orEmpty()
+            // Client event IDs are scoped to an installation and user within an app.
+            // Compute that scope once per batch; lengths keep ':' inside IDs unambiguous.
+            val messageIdPrefix = events.context?.takeIf { it.device.installationId.isNotBlank() }?.let { context ->
+                val appId = context.appId
+                val installationId = context.device.installationId
+                val userId = context.userId
+                // A missing user ID (anonymous) is distinct from an empty user ID.
+                "${appId.length}:$appId:${installationId.length}:$installationId:" +
+                    "${userId?.length ?: -1}:${userId.orEmpty()}:"
+            }
             events.events.map { event ->
                 val message = events.copy(events = listOf(event))
                 val payload = json.encodeToString(Events.serializer(), message)
-                val messageId = event.clientId?.takeIf { it.isNotBlank() }?.let { "${appId.length}:$appId:$it" }
+                // Without an installation or event ID, deduplication could discard unrelated events.
+                val clientId = event.clientId
+                val messageId = if (messageIdPrefix != null && !clientId.isNullOrBlank()) "$messageIdPrefix$clientId" else null
                 val options = PublishOptions.builder().messageId(messageId).build()
                 jetStream.publishAsync(STREAM_SUBJECT, payload.toByteArray(Charsets.UTF_8), options)
                     // A cancelled NATS future is a publish failure, not coroutine cancellation.

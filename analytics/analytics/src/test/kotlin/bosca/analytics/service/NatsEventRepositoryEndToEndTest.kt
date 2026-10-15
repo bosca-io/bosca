@@ -43,25 +43,37 @@ import kotlin.test.assertNotSame
 
 class NatsEventRepositoryEndToEndTest {
     @Test
-    fun `JetStream deduplicates client IDs per app and preserves every ID-less event`() = runBlocking {
+    fun `JetStream deduplicates retries within each app installation and user`() = runBlocking {
         GenericContainer("nats:2.12-alpine").withExposedPorts(4222).withCommand("-js").use { server ->
             server.start()
             val pool = NatsConnectionPool("nats://${server.host}:${server.getMappedPort(4222)}", "")
             try {
                 val repository = NatsEventRepository(pool, Json, EventProcessingHealth())
                 val event = Event(1, type = EventType.Session, clientId = "stable-event-id")
-                val batch = Events(events = listOf(event), sent = 1, sentMicros = 0)
-                repository.process(batch)
-                repository.process(batch.copy(sent = 2, received = 20))
+                val context = EventContext(appId = "app-one", appVersion = "1", sessionId = "session", userId = "user-one",
+                    device = Device("installation", "test", "test", "JVM", "en", "test", "UTC", "server", "1"))
+                val batch = Events(context = context, events = listOf(event), sent = 1, sentMicros = 0)
+                val contexts = listOf(
+                    context,
+                    context.copy(appId = "app-two"),
+                    context.copy(device = context.device.copy(installationId = "another-installation")),
+                    context.copy(userId = "user-two"),
+                    context.copy(userId = null),
+                    context.copy(userId = ""),
+                )
+                val management = pool.systemConnection().jetStreamManagement()
+                for ((index, scope) in contexts.withIndex()) {
+                    repository.process(batch.copy(context = scope))
+                    repository.process(batch.copy(context = scope, sent = 2, received = 20))
+                    assertEquals(index + 1L, management.getStreamInfo(NatsEventRepository.STREAM_NAME).streamState.msgCount)
+                }
+                repository.process(batch.copy(events = listOf(event.copy(clientId = "another-event"))))
                 val anonymous = batch.copy(events = listOf(event.copy(clientId = null), event.copy(clientId = null)))
                 repository.process(anonymous)
                 repository.process(anonymous.copy(received = 40, receivedMicros = 1))
-                val context = EventContext(appId = "app-one", appVersion = "1", sessionId = "session",
-                    device = Device("installation", "test", "test", "JVM", "en", "test", "UTC", "server", "1"))
-                repository.process(batch.copy(context = context))
-                repository.process(batch.copy(context = context.copy(appId = "app-two")))
-                val info = pool.systemConnection().jetStreamManagement().getStreamInfo(NatsEventRepository.STREAM_NAME)
-                assertEquals(7L, info.streamState.msgCount)
+                repository.process(batch.copy(context = null))
+                repository.process(batch.copy(context = null, sent = 3))
+                assertEquals(contexts.size + 7L, management.getStreamInfo(NatsEventRepository.STREAM_NAME).streamState.msgCount)
             } finally {
                 pool.close()
             }
