@@ -4,67 +4,159 @@
   <prop name="runs" type="List<bosca.git.ui.graphql.GitUiPipelineRunsData.Git.PipelineRuns>" required />
   <script server provides="model">bosca.git.ui.PipelineHistoryModel(repository, offset, runs, offset > 0L)</script>
   <island name="git-pipeline-history" :key="repository">
-    <if model.message.isNotBlank()><ui-alert>{ model.message }</ui-alert></if>
-    <if !model.loaded>
-      <ui-button icon="clock" @click="model.load(0L, ctx)">Run history</ui-button>
-    <else>
-      <section class="run-history">
-        <div class="catalog-toolbar">
-          <h2>Run history</h2>
-          <span class="muted">{ model.runs.size } runs</span>
-        </div>
-        <ui-table-scroll>
-          <table>
-            <thead>
-              <tr>
-                <th>Run</th>
-                <th>Status</th>
-                <th>Ref / commit</th>
-                <th>Started</th>
-                <th>Duration</th>
-              </tr>
-            </thead>
-            <tbody>
-              <for run in model.runs>
-                <tr>
-                  <td>
-                    <a :href="bosca.git.ui.runHref(run.id)">#{ run.number }</a>
-                  </td>
-                  <td>
-                    <git-status-badge :status="run.status.name" />
-                  </td>
-                  <td>
-                    <code>
-                      { run.ref.removePrefix("refs/heads/") }
-                      ·
-                      { run.commitSha.take(8) }
-                    </code>
-                  </td>
-                  <td>
-                    <ui-time :value="run.started ?: run.created" />
-                  </td>
-                  <td>{ bosca.git.ui.pipelineDuration(run.durationSeconds) }</td>
-                </tr>
-              </for>
-            </tbody>
-          </table>
-        </ui-table-scroll>
-        <nav class="toolbar">
-          <if model.offset != 0L>
-            <ui-button size="sm" @click="model.load((model.offset - 50).coerceAtLeast(0), ctx)">Previous</ui-button>
-          </if>
-          <if model.runs.size == 50>
-            <ui-button size="sm" @click="model.load(model.offset + 50, ctx)">Next</ui-button>
-          </if>
-        </nav>
-      </section>
-
-      <if model.runs.isEmpty()><p class="muted">No runs yet.</p></if>
-    </if>
+    <section class="run-history">
+      <header class="history-header">
+        <h2>Run History</h2>
+        <if model.loaded>
+          <code class="history-meta">{ model.runs.size } runs</code>
+        <else>
+          <ui-button size="sm" class="ghost" icon="clock" @click="model.load(0L, ctx)">Show history</ui-button>
+        </if>
+      </header>
+      <if model.message.isNotBlank()>
+        <div class="history-alert"><ui-alert>{ model.message }</ui-alert></div>
+      </if>
+      <if model.loaded>
+        <if model.runs.isEmpty()>
+          <p class="no-runs">No runs yet.</p>
+        <else>
+          <div class="history-rows">
+            <for run in model.runs>
+              <a class="run-row" :href="bosca.git.ui.runHref(run.id)">
+                <git-run-indicator :status="run.status.name" />
+                <code class="run-number">#{ run.number }</code>
+                <code class="run-ref">{ run.ref }</code>
+                <span class="run-trigger">
+                  { run.triggerType.name.lowercase().split('_').joinToString(" ") { it.replaceFirstChar(Char::uppercase) } }
+                </span>
+                <code class="run-sha">{ run.commitSha.take(8) }</code>
+                <span class="run-spacer"></span>
+                <code class="run-duration">{ bosca.git.ui.pipelineDuration(run.durationSeconds) }</code>
+                <span class="run-time"><ui-time :value="run.started ?: run.created" relative ago inheritTypography /></span>
+                <git-status-badge :status="run.status.name" run />
+              </a>
+            </for>
+          </div>
+        </if>
+        <if model.offset != 0L || model.runs.size == 50>
+          <nav class="history-pages" aria-label="Run history pages">
+            <if model.offset != 0L>
+              <ui-button size="sm" @click="model.load((model.offset - 50).coerceAtLeast(0), ctx)">Previous</ui-button>
+            </if>
+            <if model.runs.size == 50>
+              <ui-button size="sm" @click="model.load(model.offset + 50, ctx)">Next</ui-button>
+            </if>
+          </nav>
+        </if>
+      </if>
+    </section>
   </island>
   <style scoped>
-    .catalog-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 12px; }
-    .catalog-toolbar h2 { font-size: 14px; margin: 0; }
-    .run-history { display: flex; flex-direction: column; gap: 12px; }
+    /* Run history in Studio's pipeline card language. */
+    .run-history {
+      overflow: hidden;
+      background: var(--bg-1);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+    }
+    .history-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      min-height: 50px;
+      padding: 10px 16px;
+    }
+    .run-history:has(.history-rows, .no-runs, .history-alert) .history-header {
+      border-bottom: 1px solid var(--line);
+    }
+    h2 {
+      margin: 0;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--fg-0);
+    }
+    .history-meta {
+      font-size: 11px;
+      color: var(--fg-3);
+    }
+    .history-alert {
+      padding: 12px 16px 0;
+    }
+    .run-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--line);
+      color: inherit;
+      text-decoration: none;
+      transition: background 0.12s;
+    }
+    .history-rows > .run-row:last-child {
+      border-bottom: 0;
+    }
+    .run-row:hover {
+      background: var(--bg-2);
+      text-decoration: none;
+    }
+    .run-number {
+      flex: none;
+      width: 40px;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--fg-1);
+    }
+    .run-ref {
+      max-width: 140px;
+      overflow: hidden;
+      font-size: 11px;
+      color: var(--fg-2);
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .run-trigger {
+      font-size: 10.5px;
+      color: var(--fg-3);
+    }
+    .run-sha {
+      font-size: 11px;
+      color: var(--accent);
+    }
+    .run-spacer {
+      flex: 1;
+    }
+    .run-duration {
+      width: 60px;
+      font-size: 11px;
+      color: var(--fg-2);
+      text-align: right;
+    }
+    .run-time {
+      width: 80px;
+      font-size: 11px;
+      color: var(--fg-3);
+      text-align: right;
+    }
+    .no-runs {
+      margin: 0;
+      padding: 20px 16px;
+      text-align: center;
+      color: var(--fg-4);
+      font-size: 12px;
+    }
+    .history-pages {
+      display: flex;
+      justify-content: center;
+      gap: 8px;
+      padding: 12px 16px;
+      border-top: 1px solid var(--line);
+    }
+    @media (max-width: 700px) {
+      .run-row {
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+    }
   </style>
 </component>

@@ -59,10 +59,10 @@
       height: 32px;
     }
     .button.size-sm:not(.icon-only) {
-      padding: 6px 10px;
+      padding: 0 10px;
       font-size: 12.5px;
-      height: 28px;
-      line-height: 1;
+      height: 30px;
+      line-height: normal;
     }
     .button-content {
       display: inline-flex;
@@ -127,6 +127,20 @@
     .button.danger {
       color: var(--err);
       border-color: color-mix(in srgb, var(--err) 40%, var(--line));
+    }
+    .button.ghost {
+      background: transparent;
+      border-color: transparent;
+    }
+    .button.ghost:hover:not(:disabled) {
+      background: var(--bg-3);
+    }
+    .button.icon-only.size-xs.ghost {
+      border-radius: 4px;
+    }
+    .button.block {
+      width: 100%;
+      justify-content: flex-start;
     }
     .button.icon-only {
       width: 30px;

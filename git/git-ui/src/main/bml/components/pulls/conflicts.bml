@@ -1,0 +1,130 @@
+<component tag="git-pull-conflicts">
+  <prop name="page" type="bosca.git.ui.PullPage" required />
+  <ui-card :padded="false">
+    <ui-section-heading title="Merge Conflicts">
+      <ui-badge color="#ff5d6c">
+        { page.pull.conflictingFiles.size.toString() + if (page.pull.conflictingFiles.size == 1) " conflict" else " conflicts" }
+      </ui-badge>
+    </ui-section-heading>
+    <div class="conflict-body">
+      <div class="conflict-banner">
+        <span class="conflict-icon"><ui-icon name="alert" :size="16" /></span>
+        <div>
+          <p class="conflict-title">This branch has conflicts that must be resolved</p>
+          <p class="conflict-subtitle">
+            The following files have conflicting changes between
+            <code>{ page.pull.sourceBranch }</code>
+            and
+            <code>{ page.pull.targetBranch }</code>.
+            Resolve conflicts locally and push to update this pull request.
+          </p>
+        </div>
+      </div>
+      <ul class="conflict-files">
+        <for file in page.pull.conflictingFiles>
+          <li>
+            <span class="conflict-icon"><ui-icon name="alert" :size="13" /></span>
+            <code>{ file }</code>
+          </li>
+        </for>
+      </ul>
+      <div class="conflict-instructions">
+        <div class="instructions-heading">
+          <span class="instructions-icon"><ui-icon name="code" :size="14" /></span>
+          Resolve via command line
+        </div>
+        <pre>{ "git fetch origin\ngit checkout " + page.pull.sourceBranch + "\ngit merge origin/" + page.pull.targetBranch + "\n# Resolve conflicts in your editor, then:\ngit add .\ngit commit\ngit push origin " + page.pull.sourceBranch }</pre>
+      </div>
+    </div>
+  </ui-card>
+  <style scoped>
+    .conflict-body {
+      padding: 16px 0 0;
+    }
+    .conflict-banner {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      margin: 0 16px;
+      padding: 14px 16px;
+      border: 1px solid color-mix(in oklch, #ff5d6c 18%, transparent);
+      border-radius: 8px;
+      background: color-mix(in oklch, #ff5d6c 6%, transparent);
+    }
+    .conflict-icon {
+      display: inline-flex;
+      flex: none;
+      color: #ff5d6c;
+    }
+    .conflict-title {
+      margin: 0;
+      font-size: 13.5px;
+      font-weight: 600;
+      color: #ff5d6c;
+    }
+    .conflict-subtitle {
+      margin: 6px 0 0;
+      font-size: 12.5px;
+      line-height: 1.5;
+      color: var(--fg-2);
+    }
+    .conflict-subtitle code {
+      padding: 1px 5px;
+      border-radius: 3px;
+      background: var(--bg-2);
+      color: var(--fg-1);
+      font-size: 11px;
+    }
+    .conflict-files {
+      margin: 0;
+      padding: 8px 16px;
+      list-style: none;
+    }
+    .conflict-files li {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--line);
+    }
+    .conflict-files li:last-child {
+      border-bottom: 0;
+    }
+    .conflict-files code {
+      font-size: 12.5px;
+      color: #ff5d6c;
+      overflow-wrap: anywhere;
+    }
+    .conflict-instructions {
+      margin: 0 16px 16px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--bg-0);
+    }
+    .instructions-heading {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--line);
+      font-size: 12.5px;
+      font-weight: 500;
+      color: var(--fg-1);
+    }
+    .instructions-icon {
+      display: inline-flex;
+      color: var(--accent);
+    }
+    pre {
+      margin: 0;
+      padding: 12px 14px;
+      overflow-x: auto;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      line-height: 1.7;
+      color: var(--fg-2);
+      white-space: pre;
+    }
+  </style>
+</component>

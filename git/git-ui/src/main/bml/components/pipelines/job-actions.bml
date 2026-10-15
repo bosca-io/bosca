@@ -13,6 +13,38 @@
   <island name="git-pipeline-job-actions" :key="job.id">
     <section :data-next-href="model.nextHref">
       <div class="toolbar job-controls">
+        <if model.canExecute && model.buildAnyway(model.job)>
+          <ui-dialog
+            title="Build anyway?"
+            triggerLabel="Build anyway"
+            icon="play"
+            :forceOpen='model.failed && model.selectedAction == "buildAnyway"'
+          >
+            <form
+              class="modal-form"
+              @submit='model.action("buildAnyway", model.job.id, form.reason, true, ctx)'
+            >
+              <div class="modal-fields">
+                <p class="form-help">
+                  Build anyway bypasses external requirements. Dependencies, conditions and approvals still apply.
+                </p>
+                <if model.failed>
+                  <ui-alert>{ model.message }</ui-alert>
+                </if>
+                <ui-field
+                  label="Reason"
+                  hint="Record why this job should bypass its external requirements."
+                >
+                  <ui-input name="reason" :value="model.reason" maxlength="1000" />
+                </ui-field>
+              </div>
+              <footer class="modal-footer">
+                <ui-button ref="cancel">Cancel</ui-button>
+                <ui-button type="submit" primary>Build anyway</ui-button>
+              </footer>
+            </form>
+          </ui-dialog>
+        </if>
         <if bosca.git.ui.activeRun(model.job.status) && model.canEdit>
           <ui-confirm-dialog
             :triggerIconOnly="false"
@@ -52,38 +84,6 @@
               </footer>
             </form>
           </ui-confirm-dialog>
-        </if>
-        <if model.canExecute && model.buildAnyway(model.job)>
-          <ui-dialog
-            title="Build anyway?"
-            triggerLabel="Build anyway"
-            icon="workflow"
-            :forceOpen='model.failed && model.selectedAction == "buildAnyway"'
-          >
-            <form
-              class="modal-form"
-              @submit='model.action("buildAnyway", model.job.id, form.reason, true, ctx)'
-            >
-              <div class="modal-fields">
-                <p class="form-help">
-                  Build anyway bypasses external requirements. Dependencies, conditions and approvals still apply.
-                </p>
-                <if model.failed>
-                  <ui-alert>{ model.message }</ui-alert>
-                </if>
-                <ui-field
-                  label="Reason"
-                  hint="Record why this job should bypass its external requirements."
-                >
-                  <ui-input name="reason" :value="model.reason" maxlength="1000" />
-                </ui-field>
-              </div>
-              <footer class="modal-footer">
-                <ui-button ref="cancel">Cancel</ui-button>
-                <ui-button type="submit" primary>Build anyway</ui-button>
-              </footer>
-            </form>
-          </ui-dialog>
         </if>
       </div>
       <if model.message.isNotBlank()>

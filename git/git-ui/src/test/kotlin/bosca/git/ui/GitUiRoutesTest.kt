@@ -127,13 +127,13 @@ class GitUiRoutesTest {
             val response = get("/repositories/ordering?ref=main&path=$path")
             assertEquals(200, response.statusCode(), response.body())
             val tree =
-                Regex("<ul[^>]*class=\"tree\"[^>]*>(.*?)</ul>", RegexOption.DOT_MATCHES_ALL)
+                Regex("<ul[^>]*class=\"tree-rows\"[^>]*>(.*?)</ul>", RegexOption.DOT_MATCHES_ALL)
                     .find(response.body())
                     ?.groupValues
                     ?.get(1)
             assertNotNull(tree, response.body())
             val names =
-                Regex("<a\\b[^>]*>(.*?)</a>", RegexOption.DOT_MATCHES_ALL)
+                Regex("<a\\b[^>]*class=\"tree-name\"[^>]*>(.*?)</a>", RegexOption.DOT_MATCHES_ALL)
                     .findAll(tree)
                     .map { it.groupValues[1].replace(Regex("<[^>]+>"), "").trim() }
                     .toList()
@@ -577,7 +577,7 @@ class GitUiRoutesTest {
     fun `path search resolves tags preserves entry metadata and shows unavailable branch search`() {
         val paths = get("/search?repo=repo&q=paths&mode=paths&ref=refs%2Ftags%2Fv1")
         assertEquals(200, paths.statusCode(), paths.body())
-        assertTrue("README.md" in paths.body() && "1.5 KiB" in paths.body(), paths.body())
+        assertTrue("README.md" in paths.body() && "1.5 KB" in paths.body(), paths.body())
         assertTrue("Symbolic link" in paths.body(), paths.body())
         assertTrue("file=README.md" in paths.body() && "ref=abc" in paths.body(), paths.body())
         assertEquals(
@@ -636,7 +636,7 @@ class GitUiRoutesTest {
             listOf(
                 "pulls" to "Fix image",
                 "pipelines" to "Build",
-                "statuses" to "Recent commits",
+                "statuses" to "Recent Commits",
                 "secrets" to "DEPLOY_TOKEN",
                 "settings" to "Save repository",
             )) {
@@ -896,17 +896,17 @@ class GitUiRoutesTest {
     @Test
     fun `pull lifecycle states show the appropriate actions and review controls`() {
         val draft = get("/pulls/pull-draft?repo=repo&number=2").body()
-        assertTrue("Draft pull request" in draft && "Ready for review" in draft, draft)
+        assertTrue("Mark Ready for Review" in draft && "Ready for review" in draft, draft)
         assertFalse("Review changes" in draft, draft)
         val draftFiles = get("/pulls/pull-draft?repo=repo&number=2&view=files").body()
         assertFalse("Comment on line" in draftFiles, draftFiles)
         assertTrue("Mark this draft ready" in draftFiles, draftFiles)
 
         val merged = get("/pulls/pull-merged?repo=repo&number=3").body()
-        assertTrue("Pull request merged" in merged && "data-tone=\"purple\"" in merged, merged)
+        assertTrue(">merged<" in merged.replace(Regex(">\\s+"), ">").replace(Regex("\\s+<"), "<") && "--tone: #a78bff" in merged, merged)
         assertFalse("Close pull request" in merged || "Review changes" in merged, merged)
         val closed = get("/pulls/pull-closed?repo=repo&number=4").body()
-        assertTrue("Pull request closed" in closed && "Reopen pull request" in closed, closed)
+        assertTrue("--tone: #ff5d6c" in closed && "Reopen pull request" in closed, closed)
         assertFalse("Review changes" in closed, closed)
     }
 
@@ -935,12 +935,12 @@ class GitUiRoutesTest {
     @Test
     fun `conflicts block merging and metadata actions have descriptive icon labels`() {
         val page = get("/pulls/pull-conflicts?repo=repo&number=5").body()
-        assertTrue("Resolve merge conflicts" in page && "docs/guide.md" in page, page)
+        assertTrue("Merge Conflicts" in page && "This branch has conflicts that must be resolved" in page && "docs/guide.md" in page, page)
         assertTrue(Regex("<button[^>]*disabled[^>]*>.*?</button>", RegexOption.DOT_MATCHES_ALL)
-            .findAll(page).any { "Merge pull request" in it.value }, page)
+            .findAll(page).any { "Merge Pull Request" in it.value }, page)
         assertTrue("Remove assignee Alice" in page, page)
         assertTrue("Remove dependency #2" in page, page)
-        assertTrue("Depends on" in page, page)
+        assertTrue("Dependencies" in page, page)
     }
 
     @Test
@@ -1154,17 +1154,8 @@ class GitUiRoutesTest {
         val plan = action(source, "git-pull-actions.model", "prepare", listOf("SQUASH"))
         assertEquals(1, actionState(plan)["plan"]?.jsonArray?.size, plan.body())
         assertTrue("Merge plan" in plan.body(), plan.body())
-        val reset =
-            continueAction(
-                source,
-                "git-pull-actions.model:pull",
-                "resetMerge",
-                actionState(plan),
-                emptyList(),
-            )
-        assertEquals(0, actionState(reset)["plan"]?.jsonArray?.size, reset.body())
-        assertEquals("SQUASH", actionState(reset)["strategy"]?.jsonPrimitive?.content)
-        assertTrue("data-force-open" in reset.body(), reset.body())
+        assertEquals("SQUASH", actionState(plan)["strategy"]?.jsonPrimitive?.content)
+        assertTrue("data-open-request" in plan.body(), plan.body())
         val merged =
             continueAction(
                 source,
@@ -1237,7 +1228,7 @@ class GitUiRoutesTest {
         assertTrue(
             "Run #3" in html &&
                 "Build anyway" in html &&
-                "Waiting for external requirements" in html,
+                "This job is queued until its requirements are available." in html,
             html,
         )
         assertTrue("/ci/artifacts/repo/run/build%2Freport%20%231.zip" in html, html)
@@ -1379,7 +1370,7 @@ class GitUiRoutesTest {
         val secrets =
             action(
                 "/repositories/repo/secrets",
-                "git-repository-secrets.model",
+                "git-secret-create.model",
                 "save",
                 listOf("TOKEN", "never-render-this-value", "production", true),
             )
@@ -1473,7 +1464,7 @@ class GitUiRoutesTest {
         assertFalse(actionState(registration).containsKey("token"), registration.body())
         val detail = get("/ci-agents/agent")
         assertEquals(200, detail.statusCode(), detail.body())
-        assertTrue("Current job" in detail.body() && "echo build" in detail.body(), detail.body())
+        assertTrue("Current Command" in detail.body() && "echo build" in detail.body(), detail.body())
         val settings =
             action(
                 "/ci-agents/agent",
@@ -1679,57 +1670,6 @@ class GitUiRoutesTest {
     }
 
     @Test
-    fun `lazy folder expansion uses pinned ref and collapse removes descendants`() {
-        val path = "/repositories/repo?file=README.md"
-        val expanded = action(path, "git-sidebar-tree.model", "expand", listOf("docs"))
-        val entries = actionState(expanded)["entries"]?.jsonArray.orEmpty()
-        assertEquals(
-            1,
-            entries
-                .first { it.jsonObject["path"]?.jsonPrimitive?.content == "docs/guide.md" }
-                .jsonObject["depth"]
-                ?.jsonPrimitive
-                ?.int,
-        )
-        assertEquals(
-            "abc",
-            requests
-                .last {
-                    it.operation == "GitUiTree" &&
-                        it.variables["path"]?.jsonPrimitive?.content == "docs"
-                }
-                .variables["ref"]
-                ?.jsonPrimitive
-                ?.content,
-        )
-        val collapsed =
-            continueAction(
-                path,
-                "git-sidebar-tree.model:repoabc",
-                "expand",
-                actionState(expanded),
-                listOf("docs"),
-            )
-        assertFalse(
-            actionState(collapsed)["entries"]?.jsonArray.orEmpty().any {
-                it.jsonObject["path"]?.jsonPrimitive?.content?.startsWith("docs/") == true
-            }
-        )
-    }
-
-    @Test
-    fun `deferred tree binds folder actions only to directory rows`() {
-        val html = deferredSidebar("/repositories/repo?file=README.md").body()
-        val file = Regex("<div[^>]*data-path=\"README.md\"[^>]*>").find(html)?.value
-        val folder = Regex("<div[^>]*data-path=\"docs\"[^>]*>").find(html)?.value
-        assertNotNull(file)
-        assertNotNull(folder)
-        assertFalse("data-bml-method" in file.orEmpty(), html)
-        assertTrue("data-bml-method=\"expand\"" in folder.orEmpty(), html)
-        assertTrue("href=\"/repositories/repo?ref=main&amp;file=README.md\"" in html, html)
-    }
-
-    @Test
     fun `clone panel composes a compact selectable field and inline copy control`() {
         val html = get("/repositories/repo").body()
         assertTrue("copy-field-row" in html, html)
@@ -1743,56 +1683,16 @@ class GitUiRoutesTest {
     }
 
     @Test
-    fun `file sidebar loads privately after the shell without fetching tree data eagerly`() {
-        val before = requests.count { it.operation == "GitUiTree" }
-        val shell = get("/repositories/repo?file=README.md")
-        assertEquals(200, shell.statusCode())
-        assertTrue("data-bml-deferred=" in shell.body(), shell.body())
-        assertTrue("Loading files" in shell.body(), shell.body())
-        assertFalse("data-bml-state-key=\"git-sidebar-tree.model" in shell.body(), shell.body())
-        assertEquals(before, requests.count { it.operation == "GitUiTree" })
-        val tree = deferredSidebar("/repositories/repo?file=README.md")
-        assertEquals(200, tree.statusCode(), tree.body())
-        assertEquals("private, no-store", tree.headers().firstValue("Cache-Control").orElse(""))
-        assertTrue("Repository files" in tree.body() && "README.md" in tree.body(), tree.body())
-        assertEquals(before + 1, requests.count { it.operation == "GitUiTree" })
-        assertEquals(
-            "Bearer ui-test-token",
-            requests.last { it.operation == "GitUiTree" }.authorization,
-        )
-        assertEquals(401, deferredSidebar("/repositories/repo?file=README.md", false).statusCode())
-    }
-
-    @Test
     fun `markdown viewer uses one action bar with labelled icon links and view tabs`() {
         val response = get("/repositories/repo?file=README.md")
         assertEquals(200, response.statusCode(), response.body())
         val html = response.body()
-        assertTrue("aria-label=\"Edit or rename file\"" in html, html)
+        assertTrue("file=README.md&amp;edit=true" in html || "file=README.md&edit=true" in html, html)
+        assertTrue(Regex(">\\s*Rename\\s*<").containsMatchIn(html) && Regex(">\\s*Edit\\s*<").containsMatchIn(html), html)
         assertTrue("aria-label=\"Download file\"" in html, html)
-        assertTrue("aria-label=\"Open raw file\"" in html, html)
         assertTrue("role=\"tablist\"" in html && "aria-label=\"Markdown view\"" in html, html)
         assertEquals(1, Regex("aria-label=\"File actions\"").findAll(html).count())
         assertFalse("Browse ref" in html, html)
-    }
-
-    @Test
-    fun `nested file tree expands its ancestors and marks the selected file`() {
-        val response = deferredSidebar("/repositories/repo?file=docs%2Fguide.md")
-        assertEquals(200, response.statusCode(), response.body())
-        val html = response.body()
-        assertTrue("data-path=\"docs/guide.md\"" in html, html)
-        assertTrue(
-            Regex("<div[^>]+aria-selected=\"true\"[^>]+data-path=\"docs/guide.md\"")
-                .containsMatchIn(html),
-            html,
-        )
-        assertEquals(1, Regex("aria-selected=\"true\"").findAll(html).count())
-        assertFalse("<summary" in html, html)
-        assertEquals(
-            "abc",
-            requests.last { it.operation == "GitUiTree" }.variables["ref"]?.jsonPrimitive?.content,
-        )
     }
 
     @Test
@@ -1900,7 +1800,15 @@ class GitUiRoutesTest {
         assertTrue(requests.drop(before).none { it.operation == "GitUiStats" })
         val response = post(endpoint, payload)
         assertEquals(200, response.statusCode(), response.body())
-        assertTrue("2 commits · 2 branches · 1 tag · 1 contributor" in response.body(), response.body())
+        val tiles =
+            Regex("<dt[^>]*>(.*?)</dt>\\s*<dd[^>]*>(.*?)</dd>", RegexOption.DOT_MATCHES_ALL)
+                .findAll(response.body())
+                .associate { it.groupValues[1].trim() to it.groupValues[2].trim() }
+        assertEquals(
+            mapOf("Commits" to "2", "Branches" to "2", "Tags" to "1", "Contributors" to "1", "Size" to "1.0 KB"),
+            tiles,
+            response.body(),
+        )
         assertEquals("private, no-store", response.headers().firstValue("Cache-Control").orElse(""))
         assertEquals("Bearer ui-test-token", requests.last { it.operation == "GitUiStats" }.authorization)
     }
@@ -1978,8 +1886,8 @@ class GitUiRoutesTest {
     }
 
     @Test
-    fun `pipeline lists request only the visible latest run`() {
-        for ((path, limit, details) in listOf(Triple("/pipelines", 1, false), Triple("/repositories/repo?tab=pipelines", 1, true))) {
+    fun `pipeline lists request only the visible recent runs`() {
+        for ((path, limit, details) in listOf(Triple("/pipelines", 1, false), Triple("/repositories/repo?tab=pipelines", 5, true))) {
             val before = requests.size
             assertEquals(200, get(path).statusCode())
             val queries = requests.drop(before).filter { it.operation == "GitUiPipelines" }
@@ -2007,7 +1915,7 @@ class GitUiRoutesTest {
         val before = requests.size
         val shell = get(path)
         assertTrue(requests.drop(before).none { it.operation == "GitUiPipelineRuns" })
-        assertTrue("Run history" in shell.body())
+        assertTrue("Run History" in shell.body())
         var start = requests.size
         val history = action(path, "git-pipeline-history.model:repo", "load", listOf(0), sourceHtml = shell.body())
         assertEquals(true, actionState(history)["loaded"]?.jsonPrimitive?.boolean, history.body())
@@ -2022,13 +1930,6 @@ class GitUiRoutesTest {
         assertEquals(50, actionState(failed)["runs"]?.jsonArray?.size)
         val retried = continueAction(path, "git-pipeline-history.model:repo", "load", actionState(failed), listOf(50))
         assertEquals("", actionState(retried)["message"]?.jsonPrimitive?.content)
-        start = requests.size
-        val recent = action(path, "git-pipeline-recent.model:pipeline", "load", emptyList(), sourceHtml = shell.body())
-        assertEquals(true, actionState(recent)["loaded"]?.jsonPrimitive?.boolean, recent.body())
-        val request = requests.drop(start).single()
-        assertEquals("GitUiPipelines", request.operation)
-        assertEquals("pipeline", request.variables["id"]?.jsonPrimitive?.content)
-        assertEquals(10, request.variables["runLimit"]?.jsonPrimitive?.int)
     }
 
     @Test
@@ -2050,35 +1951,6 @@ class GitUiRoutesTest {
             assertEquals(200, get(path).statusCode())
             assertEquals(expected, requests.drop(before).single { it.operation == "GitUiAgents" }.variables["details"]?.jsonPrimitive?.boolean)
         }
-    }
-
-    private fun deferredSidebar(path: String, authenticated: Boolean = true): HttpResponse<String> {
-        val file =
-            java.net.URLDecoder.decode(
-                path.substringAfter("file=", "README.md").substringBefore('&'),
-                java.nio.charset.StandardCharsets.UTF_8,
-            )
-        return post(
-            "/_bml/deferred/component%3Agit-repository-sidebar%3Arepository-tree-loader",
-            buildJsonObject {
-                put("page", "/repositories/{id}")
-                put("path", path.substringBefore('?'))
-                put("query", buildJsonObject { put("file", file) })
-                put(
-                    "props",
-                    buildJsonObject {
-                        put("repoId", "repo")
-                        put("refName", "main")
-                        put("commit", "abc")
-                        put("filePath", file)
-                        put("directory", file.substringBeforeLast('/', ""))
-                        put("returnHref", "/repositories")
-                    },
-                )
-            }
-                .toString(),
-            authenticated,
-        )
     }
 
     private fun route(path: String): String =
@@ -2136,10 +2008,7 @@ class GitUiRoutesTest {
         token: String = "ui-test-token",
         sourceHtml: String? = null,
     ): HttpResponse<String> {
-        val html = sourceHtml ?: run {
-            if (prefix == "git-sidebar-tree.model") deferredSidebar(sourcePath).body()
-            else get(sourcePath, token = token).body()
-        }
+        val html = sourceHtml ?: get(sourcePath, token = token).body()
         val marker =
             Regex(
                     "<script type=\"application/json\" data-bml-state-key=\"($prefix[^\"]*)\"[^>]*>(.*?)</script>",

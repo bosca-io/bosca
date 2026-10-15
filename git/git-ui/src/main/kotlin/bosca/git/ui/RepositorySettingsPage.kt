@@ -24,7 +24,7 @@ data class RepositorySettingsPage(
         get() =
             listOf("metadata", "webhooks", "protection", "permissions", "utilities").map {
                 NavigationItem(
-                    it.replaceFirstChar(Char::uppercase),
+                    if (it == "protection") "Branch Protection" else it.replaceFirstChar(Char::uppercase),
                     panelHref(it),
                     panel == it,
                 )

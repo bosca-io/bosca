@@ -22,13 +22,25 @@ class RepositoryListModel(
 
     val tabs: List<NavigationItem>
         get() =
-            RepositoryState.entries.map {
+            listOf(RepositoryState.ALL, RepositoryState.ACTIVE, RepositoryState.ARCHIVED).map {
                 NavigationItem(
                     it.label,
                     "/repositories?state=${it.queryValue}&owner=${encode(owner.id)}",
                     it == state,
                 )
             }
+
+    /** Studio's repository counts, limited to the states loaded for the selected tab. */
+    val subtitle: String
+        get() {
+            val active = repositories.count { !it.archived }
+            val archived = repositories.count { it.archived }
+            return when (state) {
+                RepositoryState.ALL -> "$active active · $archived archived"
+                RepositoryState.ACTIVE -> "$active active"
+                RepositoryState.ARCHIVED -> "$archived archived"
+            }
+        }
 
     suspend fun reload(ctx: RenderContext) {
         repositories =

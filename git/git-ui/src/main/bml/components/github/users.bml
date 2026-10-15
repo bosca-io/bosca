@@ -11,168 +11,169 @@
   </script>
   <island name="git-github-users" :key='"shared"'>
     <section class="settings-stack">
-      <if model.message.isNotBlank()>
-        <ui-alert :tone='if (model.failed) "error" else "success"'>{ model.message }</ui-alert>
-      </if>
-      <ui-card :padded="false">
-        <ui-section-heading
-          title="Add user mapping"
-          subtitle="Associate a GitHub username with the same person's Bosca identity."
-        />
-        <div class="section-body">
-          <p class="mapping-help">
-            Mappings apply to all paired repositories and grant no permissions. Repository edit
-            access comes from Bosca groups. Pull request imports also need the author's primary
-            profile.
-          </p>
-          <form class="mapping-form" @submit="model.save(form.username, form.principal, ctx)">
-            <ui-field label="GitHub username">
-              <ui-input name="username" :value="model.username" required />
-            </ui-field>
-            <ui-field label="Bosca principal">
-              <ui-select searchable name="principal" required>
-                <option value="">Choose the same person's Bosca principal</option>
-                <if model.principal.isNotBlank() && model.principals.none { it.id == model.principal }>
-                  <option :value="model.principal" selected>
-                    { model.principal }
-                    (selected on another page)
-                  </option>
-                </if>
-                <for principal in model.principals.take(25)>
-                  <option :value="principal.id" :selected="principal.id == model.principal">
-                    { model.label(principal) }
-                  </option>
-                </for>
-              </ui-select>
-            </ui-field>
-            <ui-button primary type="submit">Save mapping</ui-button>
-            <div class="toolbar mapping-paging">
-              <if model.principalOffset != 0L>
-                <ui-button
-                  @click="model.move(model.offset, model.principalOffset - 25, form.username, form.principal, ctx)"
-                >
-                  Previous principals
-                </ui-button>
+      <ui-card title="GitHub user mappings">
+        <p class="help">
+          Enter a GitHub username and choose the same person's Bosca user. Bosca looks up the account
+          automatically. Mappings apply to all paired repositories; repository Edit comes from the user's
+          Bosca groups. PR imports also require the original author's primary profile.
+        </p>
+        <if model.failed && model.message.isNotBlank()>
+          <p role="alert" class="error">{ model.message }</p>
+        </if>
+        <form class="mapping-form" @submit="model.save(form.username, form.principal, ctx)">
+          <div class="mapping-field"><ui-field label="GitHub username">
+            <ui-input name="username" :value="model.username" placeholder="octocat" mono required />
+          </ui-field></div>
+          <div class="mapping-field"><ui-field label="Bosca user">
+            <ui-select searchable name="principal" required>
+              <option value="">Select…</option>
+              <if model.principal.isNotBlank() && model.principals.none { it.id == model.principal }>
+                <option :value="model.principal" selected>
+                  { model.principal }
+                  (selected on another page)
+                </option>
               </if>
-              <if model.principalOffset != 0L || model.principals.size == 26>
-                <span class="muted">Users page { model.principalOffset / 25 + 1 }</span>
-              </if>
-              <if model.principals.size == 26>
-                <ui-button
-                  @click="model.move(model.offset, model.principalOffset + 25, form.username, form.principal, ctx)"
-                >
-                  Next principals
-                </ui-button>
-              </if>
-              <if model.offset != 0L>
-                <ui-button
-                  @click="model.move(model.offset - 25, model.principalOffset, form.username, form.principal, ctx)"
-                >
-                  Previous mappings
-                </ui-button>
-              </if>
-              <if model.offset != 0L || model.mappings.size == 26>
-                <span class="muted">Mappings page { model.offset / 25 + 1 }</span>
-              </if>
-              <if model.mappings.size == 26>
-                <ui-button
-                  @click="model.move(model.offset + 25, model.principalOffset, form.username, form.principal, ctx)"
-                >
-                  Next mappings
-                </ui-button>
-              </if>
-              <ui-button
-                @click="model.move(model.offset, model.principalOffset, form.username, form.principal, ctx)"
-              >
-                Refresh
-              </ui-button>
+              <for principal in model.principals.take(25)>
+                <option :value="principal.id" :selected="principal.id == model.principal">
+                  { model.label(principal) }
+                </option>
+              </for>
+            </ui-select>
+          </ui-field></div>
+          <ui-button primary type="submit">Save mapping</ui-button>
+          <div class="pager">
+            <ui-button
+              :disabled="model.principalOffset == 0L"
+              @click="model.move(model.offset, model.principalOffset - 25, form.username, form.principal, ctx)"
+            >
+              Previous principals
+            </ui-button>
+            <span>Principals page { model.principalOffset / 25 + 1 }</span>
+            <ui-button
+              :disabled="model.principals.size != 26"
+              @click="model.move(model.offset, model.principalOffset + 25, form.username, form.principal, ctx)"
+            >
+              Next principals
+            </ui-button>
+          </div>
+          <if !model.failed && model.message.isNotBlank()>
+            <p role="status" class="status-message">{ model.message }</p>
+          </if>
+          <div class="glass-table mapping-table">
+            <div class="gt-header mapping-columns" aria-hidden="true">
+              <span>GitHub user</span>
+              <span>Bosca user</span>
+              <span></span>
             </div>
-          </form>
-        </div>
-      </ui-card>
-      <ui-card :padded="false">
-        <ui-section-heading
-          title="User mappings"
-          :subtitle='model.mappings.take(25).size.toString() + (if (model.mappings.take(25).size == 1) " mapping" else " mappings") + " on this page."'
-        />
-        <if model.mappings.isEmpty()>
-          <ui-empty-state
-            icon="users"
-            title="No user mappings"
-            message="Add a mapping above to attribute synchronized changes to the right Bosca user."
-          />
-        <else>
-          <ui-table-scroll>
-            <table>
-              <thead>
-                <tr>
-                  <th>GitHub user</th>
-                  <th>Bosca identity</th>
-                  <th class="actions-column"></th>
-                </tr>
-              </thead>
-              <tbody>
+            <if model.mappings.isEmpty()>
+              <p class="gt-state empty-state">No user mappings on this page.</p>
+            <else>
+              <div class="gt-rows">
                 <for mapping in model.mappings.take(25)>
-                  <tr>
-                    <td>
-                      <strong>
-                        { mapping.githubUsername?.let { "@$it" } ?: mapping.githubUserId.toString() }
-                      </strong>
-                    </td>
-                    <td>
+                  <div class="gt-row mapping-row">
+                    <span class="gt-cell">
+                      { mapping.githubUsername?.let { "@$it" } ?: "GitHub user " + mapping.githubUserId }
+                    </span>
+                    <span class="gt-cell">
                       { model.principals.firstOrNull { it.id == mapping.principalId }?.let { model.label(it) } ?: mapping.principalId }
-                    </td>
-                    <td class="actions-column">
+                    </span>
+                    <span class="gt-cell mapping-action">
                       <ui-confirm-dialog
                         title="Remove user mapping?"
                         description="Future synchronized changes will no longer use this identity. Previous deliveries retain their attribution."
                         triggerLabel="Remove mapping"
+                        :triggerIconOnly="false"
+                        triggerStyle="plain"
                       >
-                        <form
-                          class="modal-form"
-                          @submit="model.remove(mapping.githubUserId, true, ctx)"
-                        >
+                        <div class="modal-form">
                           <footer class="modal-footer">
                             <ui-button ref="cancel">Cancel</ui-button>
-                            <ui-button type="submit" class="danger">Remove mapping</ui-button>
+                            <ui-button class="danger" @click="model.remove(mapping.githubUserId, true, ctx)">
+                              Remove mapping
+                            </ui-button>
                           </footer>
-                        </form>
+                        </div>
                       </ui-confirm-dialog>
-                    </td>
-                  </tr>
+                    </span>
+                  </div>
                 </for>
-              </tbody>
-            </table>
-          </ui-table-scroll>
-        </if>
+              </div>
+            </if>
+          </div>
+          <div class="pager">
+            <ui-button
+              :disabled="model.offset == 0L"
+              @click="model.move(model.offset - 25, model.principalOffset, form.username, form.principal, ctx)"
+            >
+              Previous mappings
+            </ui-button>
+            <span>Mappings page { model.offset / 25 + 1 }</span>
+            <ui-button
+              :disabled="model.mappings.size != 26"
+              @click="model.move(model.offset + 25, model.principalOffset, form.username, form.principal, ctx)"
+            >
+              Next mappings
+            </ui-button>
+            <ui-button
+              @click="model.move(model.offset, model.principalOffset, form.username, form.principal, ctx)"
+            >
+              Refresh mappings
+            </ui-button>
+          </div>
+        </form>
       </ui-card>
     </section>
   </island>
   <style scoped>
-    .mapping-help {
-      max-width: 680px;
-      margin: 0 0 18px;
-      font-size: 12.5px;
+    /* Studio's GitHub user mapping card. */
+    .help {
+      margin: 0 0 13px;
+      color: var(--fg-2);
+      font-size: 13px;
       line-height: 1.6;
-      color: var(--fg-3);
+    }
+    .error {
+      color: var(--err);
     }
     .mapping-form {
-      display: grid;
-      grid-template-columns: minmax(0, 220px) minmax(0, 1fr) auto;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-end;
+      gap: 16px;
+      margin: 0;
+    }
+    .mapping-field {
+      flex: 1 1 220px;
+      min-width: 0;
+    }
+    .pager {
+      display: flex;
+      flex: 1 1 100%;
+      flex-wrap: wrap;
+      align-items: center;
       gap: 12px;
-      align-items: end;
+      padding: 0;
+      color: var(--fg-2);
+      font-size: 12px;
     }
-    .mapping-paging {
-      grid-column: 1 / -1;
-      margin-top: 6px;
+    .status-message {
+      flex: 1 1 100%;
+      margin: 0;
+      font-size: 13px;
     }
-    @media (max-width: 700px) {
-      .mapping-form {
-        grid-template-columns: minmax(0, 1fr);
-      }
-      .mapping-form > button {
-        justify-self: start;
-      }
+    .mapping-table {
+      flex: 1 1 100%;
+      min-width: 0;
+    }
+    .mapping-columns,
+    .mapping-row {
+      grid-template-columns: 1fr 1fr 1fr;
+    }
+    .mapping-row {
+      cursor: default;
+    }
+    .mapping-action {
+      overflow: visible;
     }
   </style>
 </component>

@@ -13,7 +13,9 @@
               <ui-icon name="monitor" :size="11" />{ job.agent.name }
             </a>
           </if>
-          <span class="attempt">Attempt { job.attempt }</span>
+          <if job.attempt != 1>
+            <span class="attempt">Attempt { job.attempt }</span>
+          </if>
         </div>
         <if job.dependsOn.isNotEmpty()>
           <span class="job-depends">depends on { job.dependsOn.joinToString(", ") }</span>
@@ -44,21 +46,24 @@
     </if>
     <if job.awaitingRequirements>
       <div class="job-waiting">
-        <strong class="waiting-heading"><ui-icon name="clock" :size="14" />Waiting for external requirements</strong>
+        <strong class="waiting-heading"><ui-icon name="clock" :size="14" />This job is queued until its requirements are available.</strong>
         <if bosca.git.ui.artifactRequirementLabels(job.requirements).isNotEmpty()>
           <div class="waiting-group">
-            <span class="waiting-label">Waiting on artifacts</span>
+            <span class="waiting-label">{ if (bosca.git.ui.artifactRequirementLabels(job.requirements).size == 1) "Waiting on artifact" else "Waiting on artifacts" }</span>
             <div><for label in bosca.git.ui.artifactRequirementLabels(job.requirements)><code>{ label }</code></for></div>
           </div>
         </if>
         <if bosca.git.ui.pipelineRequirementLabels(job.pipelineRequirements).isNotEmpty()>
           <div class="waiting-group">
-            <span class="waiting-label">Waiting on repositories</span>
+            <span class="waiting-label">{ if (bosca.git.ui.pipelineRequirementLabels(job.pipelineRequirements).size == 1) "Waiting on repository" else "Waiting on repositories" }</span>
             <div><for label in bosca.git.ui.pipelineRequirementLabels(job.pipelineRequirements)><code>{ label }</code></for></div>
           </div>
         </if>
+        <if bosca.git.ui.artifactRequirementLabels(job.requirements).isEmpty() && bosca.git.ui.pipelineRequirementLabels(job.pipelineRequirements).isEmpty()>
+          <span class="waiting-label">Waiting on requirements</span>
+        </if>
         <if job.requirementsDeadline != null>
-          <span class="waiting-deadline">Deadline <ui-time :value="job.requirementsDeadline" /></span>
+          <span class="waiting-deadline">Requirement deadline: <ui-time :value="job.requirementsDeadline" inheritTypography /></span>
         </if>
       </div>
     </if>

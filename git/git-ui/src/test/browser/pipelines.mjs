@@ -127,21 +127,19 @@ await call("Network.setCookie", {
 await call("Emulation.setDeviceMetricsOverride", {
   width: 1440, height: 900, deviceScaleFactor: 1, mobile: false,
 });
-// Older histories load through isolated actions, leaving the latest run visible immediately.
+// Recent runs render with the pipeline; the paginated history loads through its own action.
 for (const width of [1440, 390]) {
   await call("Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: false });
   await nav("/repositories/repo?tab=pipelines");
   await until('document.querySelector("[data-bml-island*=git-pipeline-history] button")');
-  assert.equal(await ev('document.querySelector(".run-history table")'), null);
-  assert.equal(await ev('document.querySelectorAll(".recent-runs .run-row").length'), 1);
-  await ev('document.querySelector("[data-bml-island*=git-pipeline-recent] button").click()');
-  await until('!document.querySelector("[data-bml-island*=git-pipeline-recent] button") && !document.querySelector("[data-bml-action-pending]")');
+  assert.equal(await ev('document.querySelector(".run-history .history-rows")'), null);
+  assert.ok(await ev('document.querySelectorAll(".recent-runs .run-row").length >= 1'), "Recent runs show without another request");
   await ev('document.querySelector("[data-bml-island*=git-pipeline-history] button").click()');
-  await until('document.querySelectorAll(".run-history tbody tr").length === 50 && !document.querySelector("[data-bml-action-pending]")');
+  await until('document.querySelectorAll(".run-history .history-rows .run-row").length === 50 && !document.querySelector("[data-bml-action-pending]")');
   await ev('[...document.querySelectorAll(".run-history button")].find(b => b.textContent.trim() === "Next").click()');
   await until('document.querySelector("[data-bml-island*=git-pipeline-history]").textContent.includes("No runs yet.") && !document.querySelector("[data-bml-action-pending]")');
   await ev('[...document.querySelectorAll(".run-history button")].find(b => b.textContent.trim() === "Previous").click()');
-  await until('document.querySelectorAll(".run-history tbody tr").length === 50 && !document.querySelector("[data-bml-action-pending]")');
+  await until('document.querySelectorAll(".run-history .history-rows .run-row").length === 50 && !document.querySelector("[data-bml-action-pending]")');
   assert.ok(await ev('document.documentElement.scrollWidth <= innerWidth + 1'), "Pipeline history overflows the page");
   await writeFile(`${process.env.GIT_UI_ARTIFACT_DIR}/pipeline-history-${width}.png`, Buffer.from((await call("Page.captureScreenshot", { format: "png", captureBeyondViewport: false })).data, "base64"));
 }
@@ -265,7 +263,7 @@ assert.equal(
 );
 assert.equal(
   await ev('Math.round(document.querySelector(".run-controls button.button.size-sm:not(.icon-only)").getBoundingClientRect().height)'),
-  28,
+  30,
   "Pipeline header actions match Studio's small buttons",
 );
 const lines = await ev(

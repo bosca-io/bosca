@@ -5,12 +5,14 @@
   <prop name="icon" type="String" default="trash" />
   <prop name="forceOpen" type="Boolean" default="false" />
   <prop name="triggerIconOnly" type="Boolean" default="true" />
+  <prop name="triggerStyle" type="String" default="button" />
   <ui-dialog
     :title="title"
     :triggerLabel="triggerLabel"
     :icon="icon"
     :forceOpen="forceOpen"
     :triggerIconOnly="triggerIconOnly"
+    :triggerStyle="triggerStyle"
     size="sm"
   >
     <p class="confirmation-copy">{ description }</p>

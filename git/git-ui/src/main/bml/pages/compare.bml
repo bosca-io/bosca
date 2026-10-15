@@ -4,9 +4,18 @@
   </script>
   <git-layout title="Compare">
     <ui-page>
-      <ui-page-heading title="Compare" />
-      <git-explore-picker :page="page" />
-      <git-compare-results :page="page" />
+      <ui-page-heading title="Compare" subtitle="Compare branches, tags, or commits" />
+      <div class="compare-layout">
+        <git-compare-bar :page="page" />
+        <git-compare-results :page="page" />
+      </div>
     </ui-page>
   </git-layout>
+  <style scoped>
+    .compare-layout {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+  </style>
 </page>

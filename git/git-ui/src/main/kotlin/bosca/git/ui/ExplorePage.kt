@@ -22,6 +22,25 @@ data class ExplorePage(
         if (baseHref.isNotBlank()) "$baseHref&sha=${encode(commit)}"
         else "/statuses?repo=${encode(id)}&owner=${encode(list.owner.id)}&sha=${encode(commit)}"
 
+    /** Path that the commit SHA lookup form submits to. */
+    val shaFormAction: String
+        get() = statusHref("").substringBefore('?')
+
+    /** Query parameters the commit SHA lookup form keeps, excluding the SHA itself. */
+    val shaFormFields: List<Pair<String, String>>
+        get() =
+            statusHref("")
+                .substringAfter('?', "")
+                .split('&')
+                .filter { it.isNotBlank() }
+                .map { it.substringBefore('=') to java.net.URLDecoder.decode(it.substringAfter('=', ""), Charsets.UTF_8) }
+                .filter { it.first != "sha" }
+
+    /** The same comparison with base and head exchanged. */
+    val swapHref: String
+        get() =
+            "/compare?owner=${encode(list.owner.id)}&repo=${encode(id)}&base=${encode(head)}&head=${encode(base)}"
+
     fun browseHref(commit: String): String = repositoryHref(id, commit)
 
     val createPullHref: String

@@ -1,0 +1,131 @@
+<component tag="git-compare-bar">
+  <prop name="page" type="bosca.git.ui.ExplorePage" required />
+  <form method="get" action="/compare" class="compare-bar">
+    <div class="ref-selector">
+      <div class="ref-group">
+        <span class="ref-label">Base</span>
+        <ui-select name="base" label="Base" size="sm" searchable allowCustom required>
+          <if page.base.isNotBlank() && page.base !in page.branches>
+            <option :value="page.base" selected>{ page.base }</option>
+          </if>
+          <for branch in page.branches>
+            <option :value="branch" :selected="branch == page.base">{ branch }</option>
+          </for>
+        </ui-select>
+      </div>
+      <a class="swap-button" :href="page.swapHref" title="Swap base and head" aria-label="Swap base and head">
+        <ui-icon name="arrows-left-right" :size="14" />
+      </a>
+      <div class="ref-group">
+        <span class="ref-label">Compare</span>
+        <ui-select name="head" label="Compare" placeholder="head ref" size="sm" searchable allowCustom required>
+          <option value="" :selected="page.head.isBlank()">head ref</option>
+          <if page.head.isNotBlank() && page.head !in page.branches>
+            <option :value="page.head" selected>{ page.head }</option>
+          </if>
+          <for branch in page.branches>
+            <option :value="branch" :selected="branch == page.head">{ branch }</option>
+          </for>
+        </ui-select>
+      </div>
+    </div>
+    <div class="compare-actions">
+      <div class="owner-choice">
+        <git-owner-picker compact :id="page.list.owner.id" :label="page.list.owner.label" />
+      </div>
+      <div class="repository-choice">
+        <ui-select searchable name="repo" label="Repository" size="sm">
+          <for option in page.list.repositories>
+            <option :value="option.id" :selected="option.id == page.id">{ option.name }</option>
+          </for>
+        </ui-select>
+      </div>
+      <ui-button type="submit" size="sm" primary ref="compare" :disabled="page.head.isBlank()">Compare</ui-button>
+    </div>
+  </form>
+  <style scoped>
+    /* Studio compare bar. */
+    .compare-bar {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin: 0;
+      padding: 16px;
+      background: var(--bg-1);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+    }
+    .ref-selector {
+      display: flex;
+      align-items: flex-end;
+      gap: 10px;
+    }
+    .ref-group {
+      display: flex;
+      flex: 1;
+      flex-direction: column;
+      gap: 4px;
+      min-width: 0;
+    }
+    .ref-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--fg-3);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    .swap-button {
+      display: flex;
+      flex: 0 0 auto;
+      align-items: center;
+      justify-content: center;
+      width: 32px;
+      height: 32px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--bg-2);
+      color: var(--fg-2);
+    }
+    .swap-button:hover {
+      background: var(--bg-3);
+    }
+    .compare-actions {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 10px;
+    }
+    .owner-choice {
+      min-width: 0;
+    }
+    .repository-choice {
+      width: auto;
+      min-width: 120px;
+      max-width: 240px;
+    }
+    @media (max-width: 600px) {
+      .ref-selector {
+        flex-wrap: wrap;
+      }
+      .ref-group {
+        flex-basis: 100%;
+      }
+    }
+  </style>
+  <script client scoped>
+    // As in Studio, comparing needs two different refs.
+    const updateCompare = () => {
+      const base = ctx.root.querySelector<HTMLSelectElement>("select[name=base]")?.value ?? "";
+      const head = ctx.root.querySelector<HTMLSelectElement>("select[name=head]")?.value ?? "";
+      const button = ctx.ref<HTMLButtonElement>("compare");
+      if (button) button.disabled = !base || !head || base === head;
+    };
+    ctx.on(ctx.root, "change", updateCompare);
+    updateCompare();
+        // A new owner changes the repository choices, so reload Compare for that owner.
+    ctx.on(ctx.root, "ownerselected", () => {
+      const owner = ctx.root.querySelector<HTMLSelectElement>("select[name=owner]")?.value;
+      if (owner) location.assign("/compare?owner=" + encodeURIComponent(owner));
+    });
+  </script>
+</component>

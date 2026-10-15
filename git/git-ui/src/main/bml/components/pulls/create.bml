@@ -6,8 +6,8 @@
   <island name="git-pull-create" :key="page.repository">
     <section :data-next-href="model.nextHref">
       <ui-dialog
-        title="New pull request"
-        triggerLabel="New pull request"
+        title="New Pull Request"
+        triggerLabel="New Pull Request"
         icon="pull"
         triggerIcon="plus"
         primary

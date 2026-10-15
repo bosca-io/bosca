@@ -1,177 +1,29 @@
 <component tag="git-pull-heading">
   <prop name="page" type="bosca.git.ui.PullPage" required />
-  <header class="pull-heading">
-    <nav class="pull-breadcrumb" aria-label="Breadcrumb">
-      <a href="/pulls">Pull requests</a>
-      <if page.repositoryName.isNotBlank()>
-        <span aria-hidden="true">/</span>
-        <a :href='"/repositories/" + bosca.git.ui.encode(page.pull.repositoryId) + "?tab=pulls"'>
-          { page.repositoryName }
-        </a>
-      </if>
-      <span aria-hidden="true">/</span>
-      <span>#{ page.pull.number }</span>
-    </nav>
-    <div class="pull-title-row">
-      <div class="pull-title">
-        <h1>{ page.pull.title } <span class="pull-number">#{ page.pull.number }</span></h1>
-        <git-pull-status :status="page.pull.status.name" />
-      </div>
-      <div class="heading-actions">
-        <if page.canEdit>
-          <git-pull-edit :page="page" />
-        </if>
-        <if page.canReview && page.view == "overview">
-          <a class="button-link" :href='page.href + "&view=reviews&review=true"'>
-            <ui-icon name="eye" :size="14" />
-            Review changes
-          </a>
-        </if>
-      </div>
-    </div>
-    <div class="pull-details-row">
-      <div class="pull-meta">
-        <span>{ page.identity(page.pull.authorId) }</span>
-        <span class="muted">{ if (page.pull.status.name == "MERGED") "merged" else if (page.pull.status.name == "CLOSED") "proposed" else "wants to merge" }</span>
-        <code :title="page.pull.sourceBranch">
-          { if (page.sourceRepository != page.pull.repositoryId) page.sourceRepositoryName + ":" else "" }{ page.pull.sourceBranch }
-        </code>
-        <ui-icon name="arrow-right" :size="12" />
-        <code :title="page.pull.targetBranch">{ page.pull.targetBranch }</code>
-      </div>
-      <div class="pull-dates">
-        <span>
-          <span>Opened</span>
-          <ui-time :value="page.pull.created" relative ago inheritTypography />
-        </span>
-        <span>
-          <span>Updated</span>
-          <ui-time :value="page.pull.updated" relative ago inheritTypography />
-        </span>
-        <if page.pull.mergedAt != null>
-          <span>
-            <span>Merged</span>
-            <ui-time :value="page.pull.mergedAt.orEmpty()" relative ago inheritTypography />
-          </span>
-          <if page.pull.mergeSha.orEmpty().isNotBlank()>
-            <a :href='"/repositories/" + bosca.git.ui.encode(page.pull.repositoryId) + "?ref=" + bosca.git.ui.encode(page.pull.mergeSha.orEmpty()) + "&tab=commits"'>
-              <code>{ page.pull.mergeSha.orEmpty().take(12) }</code>
-            </a>
-          </if>
-        </if>
-      </div>
-    </div>
-  </header>
+  <ui-page-heading
+    :title="page.pull.title"
+    icon="pull"
+    :iconColor="bosca.git.ui.pullStatusColor(page.pull.status.name)"
+    :badge="page.pull.status.name.lowercase()"
+    :badgeColor="bosca.git.ui.pullStatusColor(page.pull.status.name)"
+    :subtitle='"#" + page.pull.number + " · " + page.pull.sourceBranch + " → " + page.pull.targetBranch'
+    :trail='listOf(bosca.git.ui.components.NavigationItem("Pull Requests", "/pulls", false))'
+    :crumb='"#" + page.pull.number'
+  >
+    <if page.canEdit>
+      <git-pull-edit :page="page" />
+    </if>
+    <if page.canReview>
+      <a class="button-link" :href='page.href + "&view=reviews&review=true"'>
+        <span class="review-icon"><ui-icon name="eye" :size="14" /></span>
+        Review
+      </a>
+    </if>
+  </ui-page-heading>
   <style scoped>
-    .pull-heading {
-      min-width: 0;
-    }
-    .pull-breadcrumb {
-      display: flex;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: 6px;
-      color: var(--fg-3);
-      font-size: 12px;
-      margin-bottom: 8px;
-    }
-    .pull-breadcrumb a {
-      color: var(--fg-3);
-      overflow-wrap: anywhere;
-    }
-    .pull-title-row,
-    .pull-title {
-      display: flex;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: 10px;
-    }
-    .pull-title-row {
-      justify-content: space-between;
-      gap: 12px;
-    }
-    .pull-title {
-      min-width: 0;
-      flex: 1;
-    }
-    .heading-actions {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-    h1 {
-      max-width: 100%;
-      margin: 0;
-      font-size: 23px;
-      font-weight: 600;
-      letter-spacing: -0.02em;
-      line-height: 1.35;
-      overflow-wrap: anywhere;
-    }
-    .pull-number {
-      margin-left: 8px;
-      font-weight: 400;
-      color: var(--fg-3);
-    }
-    .pull-details-row {
-      display: flex;
-      align-items: center;
-      flex-wrap: wrap;
-      justify-content: space-between;
-      gap: 6px 20px;
-      margin-top: 8px;
-    }
-    .pull-meta {
-      display: flex;
-      align-items: center;
-      flex-wrap: wrap;
-      min-width: 0;
-      max-width: 100%;
-      flex: 1;
-      gap: 6px;
-      font-size: 12px;
-      color: var(--fg-2);
-    }
-    .pull-meta code {
-      max-width: 100%;
-      padding: 2px 6px;
-      border-radius: 4px;
-      background: var(--bg-3);
-      color: var(--fg-1);
-      font-size: 11px;
-      overflow-wrap: anywhere;
-    }
-    .pull-dates {
-      display: flex;
-      align-items: center;
-      flex-wrap: wrap;
-      justify-content: flex-end;
-      max-width: 100%;
-      margin-left: auto;
-      gap: 12px;
-      font-size: 12px;
-      line-height: 18px;
-      color: var(--fg-3);
-    }
-    .pull-dates > span {
+    .review-icon {
       display: inline-flex;
-      align-items: baseline;
-      gap: 4px;
-    }
-    @media (max-width: 600px) {
-      .pull-title {
-        flex-basis: 100%;
-      }
-      h1 {
-        font-size: 21px;
-      }
-      .pull-meta {
-        flex-basis: 100%;
-      }
-      .pull-dates {
-        justify-content: flex-start;
-        margin-left: 0;
-      }
+      color: var(--fg-2);
     }
   </style>
 </component>

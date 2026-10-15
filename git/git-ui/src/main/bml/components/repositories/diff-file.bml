@@ -1,67 +1,107 @@
 <component tag="git-diff-file">
   <prop name="file" type="bosca.git.ui.DiffView" required />
   <details class="diff-file" open>
-    <ui-disclosure-heading>
-      { file.changeType.lowercase() + " · " + if (file.oldPath.orEmpty().isNotBlank() && file.newPath.orEmpty().isNotBlank() && file.oldPath != file.newPath) file.oldPath.orEmpty() + " → " + file.newPath.orEmpty() else file.newPath.orEmpty().ifBlank { file.oldPath.orEmpty() } }
+    <ui-disclosure-heading framed>
+      <span class="file-heading">
+        <ui-badge :color="bosca.git.ui.pullFileChangeColor(file.changeType)">{ bosca.git.ui.pullFileChangeLabel(file.changeType) }</ui-badge>
+        <code class="file-path">{ file.newPath.orEmpty().ifBlank { file.oldPath.orEmpty() } }</code>
+        <if file.changeType == "RENAME" && file.oldPath.orEmpty().isNotBlank()>
+          <code class="old-path">← { file.oldPath.orEmpty() }</code>
+        </if>
+      </span>
     </ui-disclosure-heading>
-    <if file.hunks.isEmpty()>
-      <p class="muted">No text diff is available for this file.</p>
-    </if>
-    <for hunk in file.hunks>
-      <p class="muted">
-        @@ −
-        { hunk.oldStart }
-        ,
-        { hunk.oldCount }
-        +
-        { hunk.newStart }
-        ,
-        { hunk.newCount }
-        @@
-      </p>
-      <if hunk.totalLineCount != hunk.lines.size>
-        <ui-alert>Showing { hunk.lines.size } of { hunk.totalLineCount } diff lines.</ui-alert>
+    <div class="diff-hunks">
+      <if file.hunks.isEmpty()>
+        <p class="diff-notice">No text diff is available for this file.</p>
       </if>
-      <div class="diff-lines">
-        <for line in hunk.lines>
-          <div :class='"diff-line " + line.type.lowercase()'>
-            <span>{ line.oldLineNumber ?: "" }</span>
-            <span>{ line.newLineNumber ?: "" }</span>
-            <code>{ line.content }</code>
-          </div>
-        </for>
-      </div>
-    </for>
+      <for hunk in file.hunks>
+        <div class="hunk-heading"><code>{ hunk.heading }</code></div>
+        <if hunk.totalLineCount != hunk.lines.size>
+          <ui-alert>Showing { hunk.lines.size } of { hunk.totalLineCount } diff lines.</ui-alert>
+        </if>
+        <div class="diff-lines">
+          <for line in hunk.lines>
+            <div :class='"diff-line " + line.type.lowercase()'>
+              <span class="line-number">{ line.oldLineNumber ?: "" }</span>
+              <span class="line-number">{ line.newLineNumber ?: "" }</span>
+              <span class="line-mark" aria-hidden="true">{ if (line.type == "ADD") "+" else if (line.type == "DELETE") "−" else " " }</span>
+              <code>{ line.content }</code>
+            </div>
+          </for>
+        </div>
+      </for>
+    </div>
   </details>
   <style scoped>
+    /* Studio compare diff file card. */
     .diff-file {
-      margin: 18px 0;
-      border-top: 1px solid var(--line);
-      padding-top: 14px;
+      overflow: hidden;
+      background: var(--bg-1);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+    }
+    .file-heading {
+      display: flex;
+      flex: 1;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+    .file-path {
+      flex: 1;
+      min-width: 0;
+      font-size: 13px;
+      color: var(--fg-0);
+      overflow-wrap: anywhere;
+    }
+    .old-path {
+      font-size: 11px;
+      color: var(--fg-3);
+    }
+    .diff-notice {
+      margin: 0;
+      padding: 14px 16px;
+      color: var(--fg-3);
+      font-size: 12px;
+    }
+    .hunk-heading {
+      padding: 4px 16px;
+      color: var(--fg-3);
+      background: var(--bg-2);
+      border-bottom: 1px solid var(--line);
+      font: 11px/18px var(--font-mono);
     }
     .diff-lines {
-      overflow: auto;
+      overflow-x: auto;
     }
     .diff-line {
-      display: flex;
+      display: grid;
+      grid-template-columns: 48px 48px 16px minmax(max-content, 1fr);
       min-width: max-content;
-      font: 13px/1.7 var(--font-mono);
+      font: 12px/1.7 var(--font-mono);
+      color: var(--fg-2);
     }
-    .diff-line span {
-      display: inline-block;
+    .line-number {
+      padding: 0 6px;
       text-align: right;
-      width: 50px;
-      padding-right: 10px;
-      color: var(--muted);
+      color: var(--fg-3);
+      user-select: none;
     }
-    .add {
-      background: #196b3840;
-    }
-    .delete {
-      background: #a52a3540;
+    .line-mark {
+      text-align: center;
+      user-select: none;
     }
     code {
       white-space: pre;
+      padding-right: 16px;
+    }
+    .add {
+      background: color-mix(in oklch, #34d99a 8%, transparent);
+      color: #34d99a;
+    }
+    .delete {
+      background: color-mix(in oklch, #ff5d6c 8%, transparent);
+      color: #ff5d6c;
     }
   </style>
 </component>

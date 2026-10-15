@@ -1,30 +1,75 @@
 <component tag="git-repository-path">
   <prop name="page" type="bosca.git.ui.RepositoryPage" required />
-  <nav class="path" aria-label="Repository path">
-    <a :href="page.rootHref">Root</a>
+  <nav class="path-bar" aria-label="Repository path">
+    <a class="path-segment root" :href="page.rootHref">
+      <span class="path-icon"><ui-icon name="folder" :size="13" /></span>
+      { page.name }
+    </a>
     <for crumb in page.breadcrumbs>
-      <span class="separator" aria-hidden="true">/</span>
-      <a :href="crumb.href">{ crumb.label }</a>
+      <span class="path-separator" aria-hidden="true">/</span>
+      <a class="path-segment" :href="crumb.href">{ crumb.label }</a>
     </for>
-    <if page.file.isNotBlank()>
-      <span class="separator" aria-hidden="true">/</span>
-      <span aria-current="page">{ page.file.substringAfterLast('/') }</span>
+    <span class="path-spacer"></span>
+    <if page.file.isBlank() && !page.editing && !page.creating && page.canWriteRef>
+      <div class="path-actions">
+        <a class="button-link" :href='page.href(path = page.path) + "&new=true"'>
+          <span class="link-icon"><ui-icon name="plus" :size="14" /></span>
+          New file
+        </a>
+        <git-file-actions :page="page" />
+      </div>
     </if>
   </nav>
   <style scoped>
-    .path {
+    /* Studio repository path bar. */
+    .path-bar {
       display: flex;
-      flex-wrap: wrap;
       align-items: center;
-      gap: 12px;
-      padding: 6px 0;
-      font-size: 12px;
+      flex-wrap: wrap;
+      gap: 2px;
+      min-width: 0;
+      padding: 10px 16px;
+      background: var(--bg-1);
+      border: 1px solid var(--line);
+      border-radius: 8px;
     }
-    .separator {
-      color: var(--fg-4);
-    }
-    .path span {
+    .path-segment {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 8px;
+      border-radius: 4px;
+      color: var(--fg-1);
+      font-size: 13px;
+      text-decoration: none;
       overflow-wrap: anywhere;
+    }
+    .path-segment:hover {
+      background: var(--bg-2);
+      text-decoration: none;
+    }
+    .root {
+      font-weight: 600;
+    }
+    .path-icon {
+      display: inline-flex;
+      color: var(--accent);
+    }
+    .path-separator {
+      color: var(--fg-3);
+      font-size: 13px;
+    }
+    .path-spacer {
+      flex: 1;
+    }
+    .path-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .link-icon {
+      display: inline-flex;
+      color: var(--fg-2);
     }
   </style>
 </component>

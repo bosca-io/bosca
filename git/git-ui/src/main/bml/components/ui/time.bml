@@ -1,12 +1,17 @@
 <component tag="ui-time">
   <prop name="relative" type="Boolean" default="false" />
   <prop name="ago" type="Boolean" default="false" />
+  <prop name="format" type="String" default="" />
   <prop name="inheritTypography" type="Boolean" default="false" />
   <prop name="value" type="String" required />
   <script server provides="label">
     try {
         val timestamp = java.time.OffsetDateTime.parse(value)
-        if (relative) {
+        if (format.isNotBlank()) {
+            timestamp.format(
+                java.time.format.DateTimeFormatter.ofPattern(format, java.util.Locale.ENGLISH)
+            )
+        } else if (relative) {
             val seconds =
                 java.time.Duration.between(timestamp.toInstant(), java.time.Instant.now()).seconds
             val age = kotlin.math.abs(seconds)

@@ -2,49 +2,71 @@
   <prop name="entries" type="List<bosca.git.ui.DiffTreeEntry>" required />
   <div class="diff-workspace">
     <aside class="diff-sidebar" aria-label="Changed files">
-      <h2>Files</h2>
-      <git-diff-tree :entries="entries" />
+      <header class="sidebar-header">
+        <h2>Changed files</h2>
+        <span class="file-count">{ entries.count { !it.directory } }</span>
+      </header>
+      <div class="sidebar-tree"><git-diff-tree :entries="entries" /></div>
     </aside>
     <div class="diff-column"><slot /></div>
   </div>
   <style scoped>
+    /* Studio pull request review workspace. */
     .diff-workspace {
       display: grid;
-      grid-template-columns: 220px minmax(0, 1fr);
+      grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
       align-items: start;
+      gap: 14px;
       min-width: 0;
     }
     .diff-sidebar {
+      position: sticky;
+      top: 0;
+      display: flex;
+      flex-direction: column;
       min-width: 0;
-      padding-right: 12px;
+      max-height: calc(100dvh - 94px);
+      overflow: hidden;
+      background: var(--bg-1);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+    }
+    .sidebar-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 12px;
+      border-bottom: 1px solid var(--line);
     }
     h2 {
-      margin: 0 14px 6px;
-      color: var(--fg-3);
-      font-size: 11px;
+      margin: 0;
+      color: var(--fg-1);
+      font-size: 12.5px;
       font-weight: 600;
-      line-height: 18px;
+    }
+    .file-count {
+      color: var(--fg-3);
+      font-size: 10.5px;
+    }
+    .sidebar-tree {
+      min-height: 0;
+      overflow: auto;
+      padding: 6px;
     }
     .diff-column {
       display: flex;
       flex-direction: column;
-      gap: 12px;
+      gap: 8px;
       min-width: 0;
-      padding-left: 16px;
-      border-left: 1px solid var(--line);
     }
-    @media (max-width: 800px) {
+    @media (max-width: 980px) {
       .diff-workspace {
         grid-template-columns: minmax(0, 1fr);
-        gap: 12px;
       }
       .diff-sidebar {
-        padding: 0;
-      }
-      .diff-column {
-        padding: 12px 0 0;
-        border-left: 0;
-        border-top: 1px solid var(--line);
+        position: static;
+        max-height: 280px;
       }
     }
   </style>

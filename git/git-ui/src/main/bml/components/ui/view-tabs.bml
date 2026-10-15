@@ -30,11 +30,10 @@
       justify-content: center;
       border: 0;
       background: transparent;
-      padding: 0 12px;
-      min-height: 46px;
+      padding: 10px 12px;
       color: var(--fg-3);
       font: inherit;
-      font-size: 12.5px;
+      font-size: 13px;
       line-height: normal;
       white-space: nowrap;
       cursor: pointer;

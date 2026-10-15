@@ -36,7 +36,7 @@ suspend fun pipelinePage(
     }
     val catalogRequest = if (repo.isBlank()) null else async {
         try {
-            Result.success(ctx.gql.execute(GitUiPipelines, GitUiPipelines.Variables(repo, 1, baseHref.isNotBlank())).git.pipelines)
+            Result.success(ctx.gql.execute(GitUiPipelines, GitUiPipelines.Variables(repo, if (baseHref.isNotBlank()) 5 else 1, baseHref.isNotBlank())).git.pipelines)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {

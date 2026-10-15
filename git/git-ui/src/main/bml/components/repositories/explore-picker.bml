@@ -1,49 +1,37 @@
 <component tag="git-explore-picker">
   <prop name="page" type="bosca.git.ui.ExplorePage" required />
-  <div class="settings-stack">
-    <ui-card :padded="false">
-      <ui-section-heading
-        :title='if (page.section == "compare") "Compare refs" else "Choose a commit"'
-        :subtitle='if (page.section == "compare") "Review the difference between two branches, tags or commits." else "Inspect the checks reported for a repository commit."'
-      />
-      <form method="get" class="toolbar explore-controls">
-        <git-owner-picker :id="page.list.owner.id" :label="page.list.owner.label" />
-        <ui-field label="Repository">
-          <ui-select searchable name="repo">
-            <for repository in page.list.repositories>
-              <option :value="repository.id" :selected="repository.id == page.id">
-                { repository.name + " · " + repository.slug }
-              </option>
-            </for>
-          </ui-select>
-        </ui-field>
-        <if page.section == "compare">
-          <ui-field label="Base">
-            <ui-input name="base" :value="page.base" list="explore-refs" required />
-          </ui-field>
-          <ui-field label="Head">
-            <ui-input name="head" :value="page.head" list="explore-refs" required />
-          </ui-field>
-          <datalist id="explore-refs">
-            <for branch in page.branches>
-              <option :value="branch" />
-            </for>
-          </datalist>
-        <else>
-          <ui-field label="Commit SHA">
-            <ui-input name="sha" :value="page.sha" />
-          </ui-field>
-        </if>
-        <ui-button type="submit" primary>
-          { if (page.section == "compare") "Compare" else "Load statuses" }
-        </ui-button>
-      </form>
-    </ui-card>
-  </div>
+  <prop name="repository" type="Boolean" default="true" />
+  <form method="get" class="explore-filters">
+    <git-owner-picker compact :id="page.list.owner.id" :label="page.list.owner.label" />
+    <if repository>
+      <div class="repository-filter">
+        <ui-select searchable name="repo" label="Repository" size="sm">
+          <for option in page.list.repositories>
+            <option :value="option.id" :selected="option.id == page.id">{ option.name }</option>
+          </for>
+        </ui-select>
+      </div>
+    </if>
+  </form>
   <style scoped>
-    .explore-controls {
-      padding: 18px;
+    /* Studio header filters: compact selects that apply immediately. */
+    .explore-filters {
+      display: flex;
+      align-items: center;
+      gap: 8px;
       margin: 0;
     }
+    .repository-filter {
+      width: auto;
+      min-width: 120px;
+      max-width: 240px;
+    }
   </style>
+  <script client scoped>
+    const submit = () => ctx.root.closest<HTMLFormElement>("form")?.requestSubmit();
+    ctx.on(ctx.root, "ownerselected", submit);
+    ctx.on<Event>(ctx.root, "change", (event) => {
+      if (event.target instanceof HTMLSelectElement && event.target.name === "repo") submit();
+    });
+  </script>
 </component>

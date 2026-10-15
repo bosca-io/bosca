@@ -216,6 +216,10 @@ suspend fun repositoryPage(): RepositoryPage? = supervisorScope {
                             listHref,
                         ),
                         entry.type.name.lowercase(),
+                        entry.size.takeIf { entry.type != GitTreeEntryType.TREE },
+                        entry.path,
+                        if (entry.type == GitTreeEntryType.TREE) ""
+                        else repositoryHref(id, ref, path, entry.path, listHref) + "&edit=true",
                     )
                 }
             }
@@ -251,6 +255,7 @@ suspend fun repositoryPage(): RepositoryPage? = supervisorScope {
         repo.slug,
         repo.visibility.name,
         repo.contentType?.name ?: "GENERAL",
+        repo.defaultBranch,
         repo.canEdit,
         repo.canManage,
         repo.canEdit &&
@@ -262,6 +267,7 @@ suspend fun repositoryPage(): RepositoryPage? = supervisorScope {
             !repo.archived &&
             (branches.contains(ref) || (emptyRepository && ref == repo.defaultBranch)) &&
             ctx.query["new"] == "true",
+        branchRefs = branchRefs.map { RefOption(it.name, "branch", it.sha) },
         pulls =
             if (tab == "pulls")
                 pullListPage(id, repositoryHref(id, ref, listHref = listHref, tab = tab), repo)
@@ -309,13 +315,12 @@ internal fun repositoryHref(
 internal fun encode(value: String): String =
     URLEncoder.encode(value, StandardCharsets.UTF_8).replace("+", "%20")
 
-internal fun formatSize(bytes: Long): String {
-    val unit = if (bytes >= 1024 * 1024) 1024 * 1024 else 1024
-    if (bytes < unit) return "$bytes B"
-    val size =
-        String.format(java.util.Locale.ROOT, "%.1f", bytes.toDouble() / unit).removeSuffix(".0")
-    return "$size ${if (unit == 1024) "KiB" else "MiB"}"
-}
+internal fun formatSize(bytes: Long): String =
+    when {
+        bytes < 1024 -> "$bytes B"
+        bytes < 1024 * 1024 -> String.format(java.util.Locale.ROOT, "%.1f KB", bytes / 1024.0)
+        else -> String.format(java.util.Locale.ROOT, "%.1f MB", bytes / (1024.0 * 1024.0))
+    }
 
 internal fun isMarkdownPath(path: String): Boolean =
     path.substringAfterLast('.').lowercase() in setOf("md", "markdown") ||

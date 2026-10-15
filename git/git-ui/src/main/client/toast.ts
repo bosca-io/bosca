@@ -24,7 +24,16 @@ export function toast(ctx: ClientContext) {
     if (focused) {
       const target = returnFocus?.isConnected
         ? returnFocus
-        : ctx.root.closest("[data-bml-island]")?.querySelector<HTMLElement>("button, a[href]");
+        : [
+            ...(ctx.root
+              .closest("[data-bml-island]")
+              ?.querySelectorAll<HTMLElement>("button, a[href]") ?? []),
+          ].find(
+            (element) =>
+              !ctx.root.contains(element) &&
+              !element.matches(":disabled") &&
+              element.checkVisibility(),
+          );
       target?.focus({ preventScroll: true });
     }
   };

@@ -369,7 +369,7 @@ async function captureLoading(name, width, selector) {
 async function inspectLoadingStates(width) {
   await holdRequests("/_bml/deferred/*");
   try {
-    await nav("/repositories/repo?file=README.md");
+    await nav("/repositories/repo");
     await waitForHeldRequest();
     await until(
       "document.querySelector('[data-bml-deferred][aria-busy=true] .loading-state')",
@@ -380,13 +380,13 @@ async function inspectLoadingStates(width) {
       ),
       "Retry is shown only after a failed load",
     );
-    await captureLoading("files", width, ".tree-loading .loading-state");
+    await captureLoading("statistics", width, ".stats-state .loading-state");
     await call("Emulation.setEmulatedMedia", {
       features: [{ name: "prefers-reduced-motion", value: "reduce" }],
     });
     assert.equal(
       await ev(
-        "getComputedStyle(document.querySelector('.tree-loading .spinner')).animationName",
+        "getComputedStyle(document.querySelector('.stats-state .spinner')).animationName",
       ),
       "none",
     );
@@ -395,12 +395,12 @@ async function inspectLoadingStates(width) {
     await releaseRequests();
   }
   await until(
-    "document.querySelector('.repository-workspace [data-bml-deferred]')?.dataset.bmlDeferredState==='loaded'",
+    "document.querySelector('.repository-summary [data-bml-deferred]')?.dataset.bmlDeferredState==='loaded'",
   );
   assert.equal(
-    await ev("Boolean(document.querySelector('.tree-loading'))"),
+    await ev("Boolean(document.querySelector('.stats-state'))"),
     false,
-    "Loaded files replace their progress state",
+    "Loaded statistics replace their progress state",
   );
 
   await nav("/repositories");
@@ -443,7 +443,7 @@ async function inspectLoadingStates(width) {
 
   await nav("/repositories/repo?tab=branches");
   await ev(
-    "[...document.querySelectorAll('main [data-bml-ref=trigger]')].find(button=>button.textContent.trim()==='Create branch').click()",
+    "[...document.querySelectorAll('main [data-bml-ref=trigger]')].find(button=>button.textContent.trim()==='New Branch').click()",
   );
   await until("document.querySelector('dialog[open]')?.matches(':modal')");
   await ev(
@@ -589,14 +589,14 @@ for (const width of [1920, 1440, 1024, 390]) {
         const row = document.querySelector('.pull-row strong');
         const number = row.querySelector('code').getBoundingClientRect();
         const title = row.querySelector('span').getBoundingClientRect();
-        return {gap:title.left-number.right, count:document.querySelector('.result-count').textContent.trim()};
+        return {gap:title.left-number.right, count:document.querySelector('.heading-subtitle').textContent.trim()};
       })()`);
       assert.equal(
         title.gap,
         6,
         "Pull numbers and titles use Studio's 6px gap",
       );
-      assert.equal(title.count, "1 pull request");
+      assert.match(title.count, /^1 open across \d+ repositories$/);
     }
     await writeFile(
       `${process.env.GIT_UI_ARTIFACT_DIR}/bosca-git-ui-initial-${path.replace(/[^a-zA-Z0-9]+/g, "-")}-${width}.png`,
@@ -623,47 +623,30 @@ for (const width of [1920, 1440, 1024, 390]) {
     if (await ev("Boolean(document.querySelector('.repository-heading'))")) {
       const header = await ev(`(() => {
         const bounds = document.querySelector('.repository-heading').getBoundingClientRect();
-        const title = document.querySelector('.heading-title').getBoundingClientRect();
+        const copy = document.querySelector('.repository-heading .heading-copy').getBoundingClientRect();
         const controls = document.querySelector('.repository-controls').getBoundingClientRect();
-        const description = document.querySelector('.repository-description')?.getBoundingClientRect();
-        const stats = document.querySelector('.repository-summary').getBoundingClientRect();
         const tabs = document.querySelector('nav[aria-label="Repository section"]').getBoundingClientRect();
+        const stats = [...document.querySelectorAll('.repository-summary .stat-tile')].map(tile => tile.textContent.replace(/\\s+/g, ' ').trim());
         return {
           height: bounds.height,
-          gap: parseFloat(getComputedStyle(document.querySelector('main')).gap),
           controlsCenter: controls.top + controls.height / 2,
-          titleCenter: title.top + title.height / 2,
-          descriptionCenter: description ? description.top + description.height / 2 : null,
-          statsCenter: stats.top + stats.height / 2,
-          right: bounds.right,
-          statsRight: stats.right,
+          copyCenter: copy.top + copy.height / 2,
           tabGap: tabs.top - bounds.bottom,
-          stats: document.querySelector('.repository-summary').innerText,
+          stats,
         };
       })()`);
       results.at(-1).repositoryHeader = header;
-      assert.equal(header.gap, 8, "Repository pages apply their compact spacing");
-      assert.equal(header.tabGap, 12, "Repository headers use the shared 12px tab spacing");
+      assert.ok(Math.abs(header.tabGap) <= 1, "Repository tabs sit directly below Studio's page header");
       if (width >= 1024) {
         assert.ok(header.height <= 90, "Desktop repository headers stay compact");
         assert.ok(
-          Math.abs(header.controlsCenter - header.titleCenter) <= 1,
-          "Branch and clone controls align with the repository title",
+          Math.abs(header.controlsCenter - header.copyCenter) <= 1,
+          "Header controls center on the breadcrumb and title block, as in Studio",
         );
-        assert.ok(
-          Math.abs(header.statsRight - header.right) <= 1,
-          "Repository stats fill the header's right edge",
-        );
-        if (header.descriptionCenter !== null) {
-          assert.ok(
-            Math.abs(header.descriptionCenter - header.statsCenter) <= 1,
-            "Description and stats share a desktop centerline",
-          );
-        }
       }
-      if (!path.startsWith('/repositories/empty')) {
-        assert.ok(header.stats.includes('1 tag') && !header.stats.includes('1 tags'));
-        assert.ok(header.stats.includes('1 contributor') && !header.stats.includes('1 contributors'));
+      if (header.stats.length) {
+        assert.ok(header.stats.some(tile => tile.includes('Tags') && tile.endsWith('1')), JSON.stringify(header.stats));
+        assert.ok(header.stats.some(tile => tile.includes('Contributors') && tile.endsWith('1')), JSON.stringify(header.stats));
       }
     }
     const panelWidths =
@@ -718,9 +701,12 @@ for (const width of [1920, 1440, 1024, 390]) {
         const parent = tabs.parentElement;
         const bounds = parent.getBoundingClientRect();
         const style = getComputedStyle(parent);
+        // Studio page-header tabs span the full page column; other tab rows fill the content box.
+        const header = tabs.classList.contains('header-tabs');
+        const page = tabs.closest('main').getBoundingClientRect();
         return {label:tabs.getAttribute('aria-label'), left:rect.left, right:rect.right,
-          expectedLeft:bounds.left+parseFloat(style.paddingLeft)+parseFloat(style.borderLeftWidth),
-          expectedRight:bounds.left+parseFloat(style.borderLeftWidth)+parent.clientWidth-parseFloat(style.paddingRight),
+          expectedLeft:header ? page.left : bounds.left+parseFloat(style.paddingLeft)+parseFloat(style.borderLeftWidth),
+          expectedRight:header ? page.left + tabs.closest('main').clientWidth : bounds.left+parseFloat(style.borderLeftWidth)+parent.clientWidth-parseFloat(style.paddingRight),
           parentWidth:bounds.width, clientWidth:parent.clientWidth,
           border:getComputedStyle(tabs).borderBottomWidth};
       })()`);
@@ -740,10 +726,9 @@ for (const width of [1920, 1440, 1024, 390]) {
           return document.querySelector('${selector}').getBoundingClientRect().top-heading.bottom;
         })()`);
         results.at(-1).tabHeadingGap = headingGap;
-        assert.equal(
-          headingGap,
-          12,
-          "Repository and PR state tabs share the same header spacing",
+        assert.ok(
+          Math.abs(headingGap) <= 1,
+          "Repository and PR state tabs follow the page header directly, as in Studio",
         );
       }
       assert.ok(
@@ -900,16 +885,15 @@ for (const width of [1920, 1440, 1024, 390]) {
       );
       const pullActions = '[data-bml-component="git-pull-actions"]';
       await ev(
-        `[...document.querySelectorAll('${pullActions} [data-bml-ref=trigger]')].find(e => (e.getAttribute('aria-label') || e.textContent).includes('Close pull request')).click()`,
+        `[...document.querySelectorAll('${pullActions} [data-bml-ref=trigger]')].find(e => e.textContent.trim() === 'Close').click()`,
       );
       await inspectDialog("pull-close-dialog", width);
-      await ev(`(() => {
-        const trigger = [...document.querySelectorAll('${pullActions} [data-bml-ref=trigger]')].find(e => e.textContent.includes('Merge pull request'));
-        trigger.click();
-        const select = document.querySelector('${pullActions} dialog[open] select[name=strategy]');
+      const prepareMerge = () => ev(`(() => {
+        const select = document.querySelector('${pullActions} .merge-form select[name=strategy]');
         select.value = 'SQUASH'; select.dispatchEvent(new Event('change',{bubbles:true}));
-        document.querySelector('${pullActions} dialog[open] button[type=submit]').click();
+        document.querySelector('${pullActions} .merge-form button[type=submit]').click();
       })()`);
+      await prepareMerge();
       await until(
         `document.querySelector('${pullActions} dialog[open] .merge-plan') && document.querySelector('${pullActions} dialog[open]').matches(':modal')`,
       );
@@ -919,42 +903,26 @@ for (const width of [1920, 1440, 1024, 390]) {
         ),
         "Merge plan shows the reviewed strategy",
       );
-      await ev(`(() => {
-        const button = [...document.querySelectorAll('${pullActions} dialog[open] button')].find(e => e.textContent.includes('Change method'));
-        button.click();
-      })()`);
+      await ev(`document.querySelector('${pullActions} dialog[open] [data-bml-ref=cancel]').click()`);
+      await until(`!document.querySelector('${pullActions} dialog[open]')`);
+      await prepareMerge();
       await until(
-        `document.querySelector('${pullActions} dialog[open] select[name=strategy]')?.value === 'SQUASH'`,
-      );
-      assert.ok(
-        await ev(
-          `document.querySelector('${pullActions} dialog[open]').matches(':modal')`,
-        ),
-        "Changing merge strategy keeps the dialog modal",
-      );
-      await ev(
-        `document.querySelector('${pullActions} dialog[open] button[type=submit]').click()`,
-      );
-      await until(
-        `document.querySelector('${pullActions} dialog[open] .merge-plan')`,
+        `document.querySelector('${pullActions} dialog[open] .merge-plan') && document.querySelector('${pullActions} dialog[open]').matches(':modal')`,
       );
       await inspectDialog("pull-merge-plan", width);
       await nav(path);
     }
     if (path === "/repositories/empty") {
-      assert.equal(
-        await ev(
-          'getComputedStyle(document.querySelector(".file-surface")).borderLeftWidth',
-        ),
-        "0px",
-        "An empty repository has no file-tree divider",
+      assert.ok(
+        await ev('document.body.innerText.includes("Quick setup")'),
+        "An empty repository shows Studio's quick setup",
       );
       if (width === 390)
         assert.ok(
           await ev(
-            'document.querySelector(".clone-setup code").getBoundingClientRect().width > 240',
+            'document.querySelector(".clone-url-input").getBoundingClientRect().width > 240',
           ),
-          "The mobile clone command uses the available card width",
+          "The mobile clone URL uses the available card width",
         );
     }
     if (path.endsWith("&view=files")) {
@@ -1119,9 +1087,9 @@ for (const width of [1920, 1440, 1024, 390]) {
     if (path === "/ci-agents") {
       assert.ok(
         await ev(
-          '[...document.querySelectorAll("time")].some(e => e.textContent === "Oct 9, 00:00 UTC" && e.dateTime === "2026-10-09T00:00:00Z")',
+          '[...document.querySelectorAll(".heartbeat time")].some(e => /^\\d+[smh] ago$/.test(e.textContent.trim()) && e.dateTime === "2026-10-09T00:00:00Z")',
         ),
-        "Heartbeat displays a readable UTC time and retains its full timestamp",
+        "Heartbeat displays Studio's relative age and retains its full timestamp",
       );
     }
     if (path === "/repositories") {
@@ -1232,10 +1200,9 @@ for (const width of [1920, 1440, 1024, 390]) {
         ownerWidth,
         "Opening a select preserves its trigger width",
       );
-      assert.equal(
-        menu.width,
-        ownerWidth,
-        "The owner menu matches its trigger width",
+      assert.ok(
+        menu.width >= ownerWidth - 1 && menu.width <= Math.max(ownerWidth, 220) + 1,
+        "The owner menu is at least as wide as its compact trigger",
       );
       assert.equal(
         menu.queryHeight,
@@ -1458,9 +1425,14 @@ for (const width of [1920, 1440, 1024, 390]) {
     if (path === "/ci-agents/agent") {
       assert.ok(
         await ev(
-          `document.querySelector('.compact-code')?.getBoundingClientRect().height <= 120`,
+          `document.querySelector('.command-code')?.textContent.includes('echo build') && document.querySelector('.command-code').getBoundingClientRect().right <= innerWidth`,
         ),
-        "Command snippets have a bounded height",
+        "The current command shows within the viewport",
+      );
+      assert.equal(
+        await ev(`document.querySelector('.page-heading button[form=agent-form]')?.form?.id`),
+        "agent-form",
+        "The header Save button submits the agent card's form",
       );
     }
     if (
@@ -1524,11 +1496,11 @@ for (const width of [1920, 1440, 1024, 390]) {
         `document.querySelector('${mappings} input[name=username]').value='alice'; document.querySelector('${mappings} select[name=principal]').value='principal'; document.querySelector('${mappings} select[name=principal]').dispatchEvent(new Event('change',{bubbles:true})); document.querySelector('${mappings} .mapping-form button[type=submit]').click()`,
       );
       await until(
-        `document.querySelector('${mappings} table')?.innerText.includes('@alice')`,
+        `document.querySelector('${mappings} .mapping-table')?.innerText.includes('@alice')`,
       );
       assert.ok(
         await ev(
-          `document.querySelector('${mappings} table').innerText.includes('alice@example.test')`,
+          `document.querySelector('${mappings} .mapping-table').innerText.includes('alice@example.test')`,
         ),
         "Mapping rows show the identity name and identifier",
       );
@@ -1545,19 +1517,19 @@ for (const width of [1920, 1440, 1024, 390]) {
         ),
       );
       await ev(
-        `document.querySelector('${mappings} [data-bml-component="ui-dialog"] [data-bml-ref=trigger]').click()`,
+        `document.querySelector('${mappings} .mapping-table [data-bml-component="ui-dialog"] [data-bml-ref=trigger]').click()`,
       );
       assert.ok(
         await ev(
-          `document.querySelector('${mappings} dialog').matches(':modal')`,
+          `document.querySelector('${mappings} dialog[open]').matches(':modal')`,
         ),
         "Mapping removal requires a modal confirmation",
       );
       await ev(
-        `document.querySelector('${mappings} dialog button[type=submit]').click()`,
+        `document.querySelector('${mappings} dialog[open] .button.danger').click()`,
       );
       await until(
-        `document.querySelector('${mappings} .empty-state') && document.querySelector('${mappings} [role=alert]')?.textContent.includes('Mapping removed')`,
+        `document.querySelector('${mappings} .empty-state') && document.querySelector('${mappings} .status-message[role=status]')?.textContent.includes('Mapping removed')`,
       );
     }
     if (path === "/repositories/repo?file=README.md") {
@@ -1566,12 +1538,12 @@ for (const width of [1920, 1440, 1024, 390]) {
         const tab=toolbar.querySelector('[role=tab]');
         const title=document.querySelector('.markdown h1');
         const text=document.createRange();text.selectNodeContents(tab);
-        const tabText=text.getBoundingClientRect(), action=toolbar.querySelector('.file-toolbar a').getBoundingClientRect();
+        const tabText=text.getBoundingClientRect();
         const header=toolbar.getBoundingClientRect(), content=document.querySelector('.markdown').getBoundingClientRect();
+        const card=document.querySelector('.file-viewer').getBoundingClientRect();
         const item=tab.getBoundingClientRect(), indicator=getComputedStyle(tab,'::after');
         return {titleLeft:title.getBoundingClientRect().left,tabTextLeft:tabText.left,
-          tabCenter:tabText.top+tabText.height/2,actionCenter:action.top+action.height/2,
-          contentWidth:content.width,toolbarWidth:header.width,
+          contentWidth:content.width,toolbarWidth:header.width,cardWidth:card.width,
           indicatorBottom:item.bottom-parseFloat(indicator.bottom),dividerBottom:header.bottom};
       })()`);
       results.at(-1).markdownAlignment = markdown;
@@ -1580,53 +1552,34 @@ for (const width of [1920, 1440, 1024, 390]) {
         "Markdown content and view labels share a left inset",
       );
       assert.ok(
-        Math.abs(markdown.tabCenter - markdown.actionCenter) <= 0.5,
-        "Markdown view labels and file actions align vertically",
-      );
-      assert.ok(
-        Math.abs(markdown.contentWidth - markdown.toolbarWidth) < 1,
-        "Markdown fills its file surface",
+        Math.abs(markdown.contentWidth - markdown.toolbarWidth) < 1 && markdown.toolbarWidth <= markdown.cardWidth,
+        "Markdown fills its file card",
       );
       assert.ok(
         Math.abs(markdown.indicatorBottom - markdown.dividerBottom) < 1,
         "The active view underline meets the toolbar divider",
       );
-      assert.ok(
-        await ev(
-          `document.querySelector('[data-bml-deferred]')?.dataset.bmlDeferredState === 'loaded'`,
-        ),
-        "Deferred sidebar loads after the page",
-      );
-      assert.ok(
-        await ev(`!document.querySelector('.repository-sidebar summary')`),
-        "Files heading has no native disclosure triangle",
-      );
-      assert.ok(
-        await ev(
-          `[...document.querySelectorAll('.file-toolbar a')].every(a => !a.textContent.trim() && a.getAttribute('aria-label'))`,
-        ),
-        "File actions are labelled icons",
-      );
       assert.equal(
         await ev(`document.querySelectorAll('.file-toolbar').length`),
         1,
-        "Markdown has one action toolbar",
+        "The file card has one action group",
       );
-      const editBounds = await ev(
-        `(() => { const box = document.querySelector('.file-toolbar [aria-label="Edit or rename file"]').getBoundingClientRect(); return {x:box.left+box.width/2,y:box.top+box.height/2}; })()`,
+      assert.ok(
+        await ev(`(() => {
+          const labels = [...document.querySelectorAll('.file-toolbar a.button-link, .file-toolbar button')].map(e => e.textContent.trim()).filter(Boolean);
+          return ['Rename', 'Delete', 'Edit'].every(label => labels.includes(label));
+        })()`),
+        "File actions use Studio's labelled Rename, Delete and Edit buttons",
+      );
+      const downloadBounds = await ev(
+        `(() => { const box = document.querySelector('.file-toolbar [aria-label="Download file"]').getBoundingClientRect(); return {x:box.left+box.width/2,y:box.top+box.height/2}; })()`,
       );
       await call("Input.dispatchMouseEvent", {
         type: "mouseMoved",
-        ...editBounds,
+        ...downloadBounds,
       });
       await until(
-        `[...document.querySelectorAll('[role=tooltip]')].some(t => t.matches(':popover-open') && t.textContent === 'Edit or rename file')`,
-      );
-      assert.ok(
-        await ev(
-          `document.querySelector('.file-toolbar [aria-label="Edit or rename file"]').getAttribute('aria-describedby')`,
-        ),
-        "Hover tooltip describes the icon action",
+        `[...document.querySelectorAll('[role=tooltip]')].some(t => t.matches(':popover-open') && t.textContent === 'Download file')`,
       );
       await writeFile(
         `${process.env.GIT_UI_ARTIFACT_DIR}/bosca-git-ui-file-action-tooltip-${width}.png`,
@@ -1647,6 +1600,7 @@ for (const width of [1920, 1440, 1024, 390]) {
         ),
         "Escape dismisses tooltips",
       );
+      await call("Input.dispatchMouseEvent", { type: "mouseMoved", x: 4, y: 4 });
       await ev(
         `document.querySelector('.file-toolbar [aria-label="Download file"]').focus()`,
       );
@@ -1670,117 +1624,6 @@ for (const width of [1920, 1440, 1024, 390]) {
         ),
         "Markdown tabs support keyboard switching",
       );
-      const tree = '[data-bml-component="git-sidebar-tree"]';
-      // Earlier navigation may have retained an expanded folder for this commit.
-      if (
-        await ev(
-          `Boolean(document.querySelector('${tree} button[aria-label="Collapse docs"]'))`,
-        )
-      ) {
-        await ev(
-          `document.querySelector('${tree} button[aria-label="Collapse docs"]').click()`,
-        );
-        await until(
-          `document.querySelector('${tree} button[aria-label="Expand docs"]')`,
-        );
-      }
-      await ev(
-        `document.querySelector('${tree} button[aria-label="Expand docs"]').click()`,
-      );
-      await until(
-        `document.querySelector('${tree} [data-path="docs/guide.md"]')`,
-      );
-      await ev(
-        `document.querySelector('${tree} button[aria-label="Collapse docs"]').click()`,
-      );
-      await until(
-        `!document.querySelector('${tree} [data-path="docs/guide.md"]')`,
-      );
-      await ev(
-        `document.querySelector('${tree} button[aria-label="Expand docs"]').focus()`,
-      );
-      await pressKey("ArrowRight");
-      await until(
-        `document.activeElement?.closest('[role=treeitem]')?.dataset.path === 'docs/a # b.txt'`,
-      );
-      await pressKey("ArrowLeft");
-      assert.equal(
-        await ev(
-          `document.activeElement.closest('[role=treeitem]').dataset.path`,
-        ),
-        "docs",
-        "Left moves to the parent folder",
-      );
-      await pressKey("ArrowLeft");
-      await until(
-        `document.querySelector('${tree} [data-path="docs"]').getAttribute('aria-expanded') === 'false' && document.activeElement?.closest('[role=treeitem]')?.dataset.path === 'docs'`,
-      );
-      await pressKey("End");
-      assert.ok(
-        await ev(`document.activeElement.matches('a.ui-tree-row')`),
-        "End moves to the final visible file",
-      );
-      await pressKey("Home");
-      assert.equal(
-        await ev(
-          `document.activeElement.closest('[role=treeitem]').dataset.path`,
-        ),
-        "docs",
-        "Home moves to the first row",
-      );
-      await nav("/repositories/repo?file=docs%2Fguide.md&path=docs");
-      await until(
-        `document.querySelector('${tree} [data-path="docs/guide.md"][aria-selected="true"]')`,
-      );
-      assert.equal(
-        await ev(
-          `document.querySelectorAll('${tree} [aria-selected="true"]').length`,
-        ),
-        1,
-        "Only the current file is highlighted",
-      );
-      assert.ok(
-        await ev(
-          `document.querySelector('${tree} [data-path="docs"]').getAttribute('aria-expanded') === 'true'`,
-        ),
-        "Navigation opens the selected file's ancestors",
-      );
-      await nav(
-        "/repositories/retry-" + runId + "-" + width + "?file=README.md",
-      );
-      await until(
-        `document.querySelector('[data-bml-deferred]')?.dataset.bmlDeferredState === 'error'`,
-      );
-      assert.ok(
-        await ev(
-          `getComputedStyle(document.querySelector('[data-bml-deferred-retry]')).display !== 'none'`,
-        ),
-        "Failed tree loading offers a visible retry",
-      );
-      assert.ok(
-        await ev(
-          "!document.querySelector('.tree-loading-message').checkVisibility() && !document.querySelector('.tree-loading .spinner').checkVisibility()",
-        ),
-        "An error replaces the loading indicator",
-      );
-      await checkControlLayout(".tree-loading");
-      await writeFile(
-        `${process.env.GIT_UI_ARTIFACT_DIR}/bosca-git-ui-loading-files-error-${width}.png`,
-        Buffer.from(
-          (
-            await call("Page.captureScreenshot", {
-              format: "png",
-              captureBeyondViewport: false,
-            })
-          ).data,
-          "base64",
-        ),
-      );
-      await ev(`document.querySelector('[data-bml-deferred-retry]').click()`);
-      await until(
-        `document.querySelector('[data-bml-deferred]')?.dataset.bmlDeferredState === 'loaded' && document.querySelector('${tree} [data-path="README.md"]')`,
-      );
-      await nav(path);
     }
     const captures = new Map(
       paths.map((path) => [
@@ -1819,7 +1662,7 @@ await ev(
   `[...document.querySelectorAll('nav[aria-label="Repository section"] a')].find(a => a.textContent.trim() === 'Pipelines').click()`,
 );
 await until(
-  `location.pathname === '/repositories/repo' && new URLSearchParams(location.search).get('tab') === 'pipelines' && document.querySelector('.pipeline-table')`,
+  `location.pathname === '/repositories/repo' && new URLSearchParams(location.search).get('tab') === 'pipelines' && document.querySelector('.pipeline-card')`,
 );
 assert.ok(
   await ev(
@@ -1828,13 +1671,13 @@ assert.ok(
   "The pipeline tab stays selected in the repository",
 );
 const repositoryPipelinesPath = await ev("location.pathname + location.search");
-await ev(`document.querySelector('.pipeline-title').click()`);
+await ev(`document.querySelector('.pipeline-card a.run-row').click()`);
 await until(
   `location.pathname === '/pipelines/run' && document.querySelector('h1')?.textContent.includes('Run #3')`,
 );
 await nav(repositoryPipelinesPath);
 await ev(
-  `document.querySelector('.pipeline-table a[aria-label="Run Build"]').click()`,
+  `[...document.querySelectorAll('.pipeline-card a.button-link')].find(a => a.textContent.trim() === 'Run').click()`,
 );
 await until(
   `location.pathname === '/repositories/repo' && document.querySelector('.pipeline-trigger dialog')?.matches(':modal')`,
@@ -2039,7 +1882,7 @@ assert.equal(
 );
 assert.equal(
   await ev('Math.round(document.querySelector(".run-controls button.button.size-sm:not(.icon-only)").getBoundingClientRect().height)'),
-  28,
+  30,
   "Pipeline header actions match Studio's small buttons",
 );
 const lines = await ev(

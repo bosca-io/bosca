@@ -4,208 +4,331 @@
     bosca.git.ui.AgentStatusModel(agent)
   </script>
   <island name="git-agent-status" :key="agent.id">
-    <section class="settings-stack" :data-agent-active="model.active">
+    <section class="agent-status" :data-agent-active="model.active">
+      <span class="poll-error" ref="error" role="status"></span>
       <if model.message.isNotBlank()>
-        <ui-alert>{ model.message }</ui-alert>
+        <div class="order-alert"><ui-alert>{ model.message }</ui-alert></div>
       </if>
-      <ui-card :padded="false">
-        <ui-section-heading title="Agent status" subtitle="Connection and lifecycle details.">
-          <ui-button size="sm" icon="refresh" @click="model.refresh(ctx)">Refresh status</ui-button>
-        </ui-section-heading>
-        <div class="section-body">
-          <span ref="error" role="status" />
-          <dl class="info-grid">
-            <div>
-              <dt>Status</dt>
-              <dd>
-                <git-status-badge :status="model.agent.status.name" />
-              </dd>
+      <if model.agent.currentJob != null>
+        <for current in listOfNotNull(model.agent.currentJob)>
+          <div class="order-current">
+            <ui-card title="Current Command" :padded="false">
+              <div class="current-command">
+                <div class="command-header">
+                  <div class="command-job-info">
+                    <span class="command-job-name">{ current.name }</span>
+                    <a class="command-run-link" :href="bosca.git.ui.runHref(current.pipelineRunId)">
+                      Run { current.pipelineRunId.take(8) }
+                    </a>
+                  </div>
+                  <code class="command-elapsed">{ bosca.git.ui.pipelineElapsed(current.started, null) }</code>
+                </div>
+                <if model.currentStep != null && model.currentCommand != null>
+                  <div class="command-block">
+                    <div class="command-step-label">
+                      <git-run-indicator status="RUNNING" compact />
+                      <span>{ model.currentStep?.name.orEmpty() }</span>
+                      <if model.currentCommand?.second == true>
+                        <span class="command-type-badge">action</span>
+                      </if>
+                    </div>
+                    <pre class="command-code">{ model.currentCommand?.first.orEmpty() }</pre>
+                  </div>
+                </if>
+                <div class="step-progress" aria-label="Step progress">
+                  <for step in current.steps.sortedBy { it.ordinal }>
+                    <span
+                      class="step-pip"
+                      :style='"background: " + bosca.git.ui.statusColor(step.status.name)'
+                      :title='step.name + ": " + step.status.name'
+                    ></span>
+                  </for>
+                </div>
+              </div>
+            </ui-card>
+          </div>
+        </for>
+      <else-if model.agent.status.name == "ONLINE" || model.agent.status.name == "OFFLINE">
+        <div class="order-current">
+          <ui-card title="Current Command" :padded="false">
+            <div class="idle-state">
+              <span class="idle-icon"><ui-icon :name='if (model.agent.status.name == "ONLINE") "more" else "close"' :size="16" /></span>
+              { if (model.agent.status.name == "ONLINE") "Idle — waiting for jobs" else "Offline" }
             </div>
-            <div>
+          </ui-card>
+        </div>
+      </if>
+      <if model.agent.recentJobs.orEmpty().isNotEmpty()>
+        <div class="order-recent">
+          <ui-card title="Recent Jobs" :padded="false">
+            <div class="recent-jobs">
+              <for job in model.agent.recentJobs.orEmpty()>
+                <a class="recent-job-row" :href="bosca.git.ui.runHref(job.pipelineRunId)">
+                  <git-run-indicator :status="job.status.name" />
+                  <span class="recent-job-name">{ job.name }</span>
+                  <code class="recent-job-label">{ job.runnerLabel }</code>
+                  <code class="recent-job-duration">{ bosca.git.ui.pipelineElapsed(job.started, job.finished) }</code>
+                  <span class="recent-job-time">
+                    <if job.started != null>
+                      <ui-time :value="job.started.orEmpty()" inheritTypography />
+                    <else>
+                      —
+                    </if>
+                  </span>
+                </a>
+              </for>
+            </div>
+          </ui-card>
+        </div>
+      </if>
+      <div class="order-status">
+        <ui-card title="Status" :padded="false">
+          <dl class="agent-grid">
+            <div class="field-ro">
               <dt>Mode</dt>
-              <dd>{ model.agent.mode.name.lowercase().replaceFirstChar(Char::uppercase) }</dd>
+              <dd><code>{ model.agent.mode.name }</code></dd>
             </div>
-            <div>
-              <dt>Last heartbeat</dt>
+            <div class="field-ro">
+              <dt>Status</dt>
+              <dd><git-status-badge :status="model.agent.status.name" /></dd>
+            </div>
+            <div class="field-ro">
+              <dt>Last Heartbeat</dt>
               <dd>
                 <if model.agent.lastHeartbeat != null>
-                  <ui-time :value="model.agent.lastHeartbeat.orEmpty()" />
+                  <time :datetime="model.agent.lastHeartbeat.orEmpty()" :title="model.agent.lastHeartbeat.orEmpty()">{ bosca.git.ui.heartbeatAge(model.agent.lastHeartbeat) }</time>
                 <else>
-                  Never
+                  never
                 </if>
               </dd>
             </div>
-            <div>
+            <div class="field-ro">
               <dt>Created</dt>
-              <dd>
-                <ui-time :value="model.agent.created" />
-              </dd>
-            </div>
-            <div>
-              <dt>Expires</dt>
-              <dd>
-                <if model.agent.expiresAt != null>
-                  <ui-time :value="model.agent.expiresAt.orEmpty()" />
-                <else>
-                  —
-                </if>
-              </dd>
-            </div>
-            <div>
-              <dt>Ephemeral</dt>
-              <dd>{ if (model.agent.ephemeral) "Yes" else "No" }</dd>
-            </div>
-            <div>
-              <dt>Agent ID</dt>
-              <dd>
-                <code>{ model.agent.id }</code>
-              </dd>
+              <dd><ui-time :value="model.agent.created" inheritTypography /></dd>
             </div>
             <if model.agent.instanceId != null>
-              <div>
-                <dt>Instance</dt>
-                <dd>
-                  <code>{ model.agent.instanceId }</code>
-                </dd>
+              <div class="field-ro">
+                <dt>Instance ID</dt>
+                <dd><code>{ model.agent.instanceId }</code></dd>
               </div>
             </if>
             <if model.agent.parentAgentId != null>
-              <div>
-                <dt>Parent agent</dt>
+              <div class="field-ro">
+                <dt>Parent Agent</dt>
                 <dd>
-                  <a
-                    :href='"/ci-agents/" + bosca.git.ui.encode(model.agent.parentAgentId.orEmpty())'
-                  >
-                    { model.agent.parentAgentId }
+                  <a class="field-ro-link" :href='"/ci-agents/" + bosca.git.ui.encode(model.agent.parentAgentId.orEmpty())'>
+                    <code>{ model.agent.parentAgentId }</code>
                   </a>
                 </dd>
               </div>
             </if>
-          </dl>
-        </div>
-      </ui-card>
-      <ui-card :padded="false">
-        <ui-section-heading title="Current job" subtitle="Commands assigned to this agent." />
-        <if model.agent.currentJob == null>
-          <ui-empty-state
-            icon="workflow"
-            title="No current job"
-            message="An assigned job and its commands will appear here."
-          />
-        <else>
-          <for current in listOfNotNull(model.agent.currentJob)>
-            <div class="section-body current-job">
-              <div class="detail-heading">
-                <h3>
-                  <a :href="bosca.git.ui.runHref(current.pipelineRunId)">{ current.name }</a>
-                </h3>
-                <git-status-badge :status="current.status.name" />
+            <if model.agent.expiresAt != null>
+              <div class="field-ro">
+                <dt>Expires</dt>
+                <dd><ui-time :value="model.agent.expiresAt.orEmpty()" inheritTypography /></dd>
               </div>
-              <p class="detail-note">
-                { "Runner " + current.runnerLabel + " · Timeout " + (current.timeoutMinutes?.toString() ?: "—") + " minutes" }
-              </p>
-              <if current.dependsOn.isNotEmpty()>
-                <p class="detail-note">{ "Depends on " + current.dependsOn.joinToString(", ") }</p>
-              </if>
-              <if current.matrixValues != null>
-                <pre>{ current.matrixValues }</pre>
-              </if>
-              <for step in current.steps>
-                <article class="command-step">
-                  <div class="detail-heading">
-                    <h3>{ step.name }</h3>
-                    <git-status-badge :status="step.status.name" />
-                  </div>
-                  <if step.exitCode != null>
-                    <p class="detail-note">{ "Exit code " + step.exitCode }</p>
-                  </if>
-                  <if step.run != null>
-                    <ui-source-view :content="step.run" path="command.sh" compact />
-                  </if>
-                  <if step.uses != null>
-                    <p class="detail-note">Uses <code>{ step.uses }</code></p>
-                  </if>
-                  <if step.image != null>
-                    <p class="detail-note">Image <code>{ step.image }</code></p>
-                  </if>
-                  <if step.condition != null>
-                    <p class="detail-note">Condition <code>{ step.condition }</code></p>
-                  </if>
-                  <if step.workingDirectory != null>
-                    <p class="detail-note">
-                      Working directory
-                      <code>{ step.workingDirectory }</code>
-                    </p>
-                  </if>
-                </article>
-              </for>
-            </div>
-          </for>
-        </if>
-      </ui-card>
-      <ui-card :padded="false">
-        <ui-section-heading title="Recent jobs" subtitle="Previous assignments for this agent." />
-        <if model.agent.recentJobs.orEmpty().isEmpty()>
-          <ui-empty-state
-            icon="workflow"
-            title="No recent jobs"
-            message="Completed assignments will appear here."
-          />
-        <else>
-          <ui-table-scroll>
-            <table>
-              <thead>
-                <tr>
-                  <th>Job</th>
-                  <th>Status</th>
-                  <th>Started</th>
-                  <th>Finished</th>
-                </tr>
-              </thead>
-              <tbody>
-                <for job in model.agent.recentJobs.orEmpty()>
-                  <tr>
-                    <td>
-                      <a :href="bosca.git.ui.runHref(job.pipelineRunId)">{ job.name }</a>
-                    </td>
-                    <td>
-                      <git-status-badge :status="job.status.name" />
-                    </td>
-                    <td>
-                      <if job.started != null>
-                        <ui-time :value="job.started" />
-                      <else>
-                        —
-                      </if>
-                    </td>
-                    <td>
-                      <if job.finished != null>
-                        <ui-time :value="job.finished" />
-                      <else>
-                        —
-                      </if>
-                    </td>
-                  </tr>
-                </for>
-              </tbody>
-            </table>
-          </ui-table-scroll>
-        </if>
-      </ui-card>
+            </if>
+          </dl>
+        </ui-card>
+      </div>
     </section>
   </island>
   <style scoped>
-    .command-step {
-      margin-top: 18px;
-      padding-top: 16px;
-      border-top: 1px solid var(--line);
+    /* Studio agent detail cards; the page orders them with the settings cards. */
+    .agent-status {
+      display: contents;
     }
-    .command-step .detail-heading {
-      margin-bottom: 12px;
+    .order-alert {
+      order: 0;
     }
-    pre {
-      overflow: auto;
+    .order-current {
+      order: 1;
+    }
+    .order-recent {
+      order: 2;
+    }
+    .order-status {
+      order: 4;
+    }
+    .poll-error:empty {
+      display: none;
+    }
+    .current-command {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      padding: 16px;
+    }
+    .command-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .command-job-info {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .command-job-name {
+      font-size: 13.5px;
+      font-weight: 600;
+      color: var(--fg-0);
+    }
+    .command-run-link {
+      padding: 2px 7px;
+      border-radius: 4px;
+      background: color-mix(in oklch, var(--accent) 10%, transparent);
+      color: var(--accent);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      text-decoration: none;
+    }
+    .command-run-link:hover {
+      text-decoration: underline;
+    }
+    .command-elapsed {
       font-size: 12px;
+      color: var(--fg-2);
+    }
+    .command-block {
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--bg-0);
+    }
+    .command-step-label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--line);
+      color: var(--fg-1);
+      font-size: 12px;
+      font-weight: 500;
+    }
+    .command-type-badge {
+      padding: 1px 6px;
+      border-radius: 3px;
+      background: var(--bg-3);
+      color: var(--fg-3);
+      font-size: 9.5px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+    .command-code {
+      margin: 0;
+      padding: 10px 12px;
+      color: var(--fg-0);
+      font-family: var(--font-mono);
+      font-size: 12px;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    .step-progress {
+      display: flex;
+      gap: 3px;
+    }
+    .step-pip {
+      flex: 1;
+      min-width: 8px;
+      height: 4px;
+      border-radius: 2px;
+      transition: background 0.2s;
+    }
+    .idle-state {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 20px 16px;
+      color: var(--fg-3);
+      font-size: 13px;
+    }
+    .idle-icon {
+      display: inline-flex;
+    }
+    .recent-jobs {
+      display: flex;
+      flex-direction: column;
+    }
+    .recent-job-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 16px;
+      border-bottom: 1px solid var(--line);
+      color: inherit;
+      text-decoration: none;
+      transition: background 0.12s;
+    }
+    .recent-job-row:last-child {
+      border-bottom: 0;
+    }
+    .recent-job-row:hover {
+      background: var(--bg-2);
+      text-decoration: none;
+    }
+    .recent-job-name {
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      color: var(--fg-0);
+      font-size: 12.5px;
+      font-weight: 500;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .recent-job-label {
+      padding: 2px 6px;
+      border-radius: 3px;
+      background: var(--bg-3);
+      color: var(--fg-3);
+      font-size: 10.5px;
+    }
+    .recent-job-duration {
+      width: 60px;
+      color: var(--fg-2);
+      font-size: 11px;
+      text-align: right;
+    }
+    .recent-job-time {
+      width: 120px;
+      color: var(--fg-3);
+      font-size: 11px;
+      text-align: right;
+    }
+    .agent-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+      margin: 0;
+      padding: 16px;
+    }
+    .field-ro {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      min-width: 0;
+    }
+    .field-ro dt {
+      color: var(--fg-2);
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .field-ro dd {
+      margin: 0;
+      color: var(--fg-1);
+      font-size: 13px;
+      overflow-wrap: anywhere;
+    }
+    .field-ro-link {
+      color: var(--accent);
+    }
+    @media (max-width: 600px) {
+      .agent-grid {
+        grid-template-columns: minmax(0, 1fr);
+      }
     }
   </style>
   <script client scoped>
@@ -216,7 +339,7 @@
         return;
       busy = true;
       try {
-        await ctx.dispatch("model", "refresh");
+        await ctx.dispatch(model.refresh(ctx));
       } catch (error) {
         const target = ctx.ref<HTMLElement>("error");
         if (target)

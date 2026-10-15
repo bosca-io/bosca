@@ -414,50 +414,11 @@ class GitServerIntegrationTest {
             val page = request("/repositories/$repositoryId", cookie = "$cookiePrefix=$token")
             assertEquals(200, page.statusCode(), page.body())
             assertTrue("Local Repository" in page.body(), page.body())
-            val treeProps =
-                Regex(
-                        "data-bml-deferred=\"component:git-repository-sidebar:repository-tree-loader\"\\s+data-bml-props=\"([^\"]+)\""
-                    )
-                    .find(page.body())
-                    ?.groupValues
-                    ?.get(1)
-                    ?.replace("&quot;", "\"")
-                    ?.replace("&amp;", "&")
-                    ?: error("Missing deferred repository tree: ${page.body()}")
-            val treeRequest = buildJsonObject {
-                put("page", "/repositories/{id}")
-                put("path", "/repositories/$repositoryId")
-                put("query", buildJsonObject {})
-                put("props", Json.parseToJsonElement(treeProps))
-            }
-                .toString()
-            val tree =
-                request(
-                    "/_bml/deferred/component%3Agit-repository-sidebar%3Arepository-tree-loader",
-                    treeRequest,
-                    cookie = "$cookiePrefix=$token",
-                )
-            assertEquals(200, tree.statusCode(), tree.body())
-            assertEquals("private, no-store", tree.headers().firstValue("Cache-Control").orElse(""))
-            assertTrue("README.md" in tree.body(), tree.body())
-            val readmeRow =
-                Regex("<div[^>]*data-path=\"README.md\"[^>]*>").find(tree.body())?.value
-                    ?: error("Missing real README tree row")
-            assertFalse("data-bml-method" in readmeRow, tree.body())
-            assertTrue("file=README.md" in tree.body(), tree.body())
+            assertTrue("tree-list" in page.body() && "file=README.md" in page.body(), page.body())
             val filePage =
                 request("/repositories/$repositoryId?file=README.md", cookie = "$cookiePrefix=$token")
             assertEquals(200, filePage.statusCode(), filePage.body())
             assertTrue("markdown-file" in filePage.body(), filePage.body())
-            assertEquals(
-                401,
-                request(
-                        "/_bml/deferred/component%3Agit-repository-sidebar%3Arepository-tree-loader",
-                        treeRequest,
-                    )
-                    .statusCode(),
-            )
-
             val list = request("/repositories", cookie = "$cookiePrefix=$token")
             assertEquals(200, list.statusCode(), list.body())
             val marker =
@@ -556,17 +517,9 @@ class GitServerIntegrationTest {
             val emptyPage = request("/repositories/$emptyId", cookie = "$cookiePrefix=$token")
             assertEquals(200, emptyPage.statusCode(), emptyPage.body())
             assertTrue("Empty Repository" in emptyPage.body(), emptyPage.body())
-            assertTrue("Start this repository" in emptyPage.body(), emptyPage.body())
-            val statsProps =
-                Regex(
-                        "data-bml-deferred=\"component:git-repository-stats:statistics\"\\s+data-bml-props=\"([^\"]+)\""
-                    )
-                    .find(emptyPage.body())
-                    ?.groupValues
-                    ?.get(1)
-                    ?.replace("&quot;", "\"")
-                    ?.replace("&amp;", "&")
-                    ?: error("Missing deferred repository statistics: ${emptyPage.body()}")
+            assertTrue("Quick setup" in emptyPage.body(), emptyPage.body())
+            // Empty repositories show quick setup instead of statistics; the private endpoint still serves them.
+            val statsProps = buildJsonObject { put("id", emptyId) }.toString()
             val statsRequest = buildJsonObject {
                 put("page", "/repositories/{id}")
                 put("path", "/repositories/$emptyId")
@@ -579,13 +532,18 @@ class GitServerIntegrationTest {
             val emptyStats = request(statsEndpoint, statsRequest, cookie = "$cookiePrefix=$token")
             assertEquals(200, emptyStats.statusCode(), emptyStats.body())
             assertEquals("private, no-store", emptyStats.headers().firstValue("Cache-Control").orElse(""))
-            assertTrue(
-                "0 commits · 0 branches · 0 tags · 0 contributors" in emptyStats.body(),
+            val emptyTiles =
+                Regex("<dt[^>]*>(.*?)</dt>\\s*<dd[^>]*>(.*?)</dd>", RegexOption.DOT_MATCHES_ALL)
+                    .findAll(emptyStats.body())
+                    .associate { it.groupValues[1].trim() to it.groupValues[2].trim() }
+            assertEquals(
+                listOf("0", "0", "0", "0"),
+                listOf("Commits", "Branches", "Tags", "Contributors").map { emptyTiles[it] },
                 emptyStats.body(),
             )
             val emptyCommits = request("/repositories/$emptyId?tab=commits", cookie = "$cookiePrefix=$token")
             assertEquals(200, emptyCommits.statusCode(), emptyCommits.body())
-            assertTrue("No commits at this ref" in emptyCommits.body(), emptyCommits.body())
+            assertTrue("No commits found." in emptyCommits.body(), emptyCommits.body())
 
             val adminProfiles =
                 graphql(
@@ -677,8 +635,8 @@ class GitServerIntegrationTest {
                 listOf(
                     "pulls" to "No open pull requests",
                     "pipelines" to "No pipelines",
-                    "statuses" to "Recent commits",
-                    "secrets" to "Pipeline secrets",
+                    "statuses" to "Recent Commits",
+                    "secrets" to "No pipeline secrets configured",
                     "settings" to "Save repository",
                 )) {
                 val panel = request("/repositories/$emptyId?tab=$tab", cookie = "$cookiePrefix=$adminToken")

@@ -6,9 +6,10 @@
     <git-layout :title='page.repository.name + " settings"'>
       <ui-page>
         <ui-page-heading
-          :title='page.repository.name + " settings"'
-          :backHref='"/repositories/" + bosca.git.ui.encode(page.repository.id)'
-          backLabel="Repository"
+          :title='page.repository.name'
+          crumb="Settings"
+          icon="folder"
+          :trail='listOf(bosca.git.ui.components.NavigationItem("Repositories", "/repositories", false), bosca.git.ui.components.NavigationItem(page.repository.name, "/repositories/" + bosca.git.ui.encode(page.repository.id), false))'
         />
         <git-repository-settings :page="page" />
       </ui-page>

@@ -5,37 +5,38 @@
     bosca.git.ui.RepositoryRowModel(repository, initial.state, initial.owner)
   </script>
   <island name="git-repository-row" :key="model.repository.id">
-    <li class="repository-row" :data-next-href="model.nextHref">
-      <div class="repository-title">
-        <div class="repository-name">
-          <ui-icon name="folder" />
-          <a :href="model.repository.href">{ model.repository.name }</a>
-          <if model.repository.archived>
-            <ui-badge>Archived</ui-badge>
-          </if>
-        </div>
-        <if model.repository.description.isNotBlank()>
-          <p class="repository-description">{ model.repository.description }</p>
+    <li class="gt-row repository-row" :data-next-href="model.nextHref">
+      <span class="gt-cell repository-name">
+        <span class="repository-icon"><ui-icon name="folder" :size="14" /></span>
+        <a
+          class="gt-row-link"
+          :href="model.repository.href"
+          :title="model.repository.description.takeIf(String::isNotBlank)"
+        >
+          { model.repository.name }
+        </a>
+        <if model.repository.archived>
+          <ui-badge>Archived</ui-badge>
         </if>
-      </div>
-      <div class="repository-visibility">
-        <ui-badge>{ model.repository.visibility.lowercase() }</ui-badge>
-      </div>
-      <span class="repository-type muted">
-        { model.repository.contentType.lowercase().replace('_', ' ') }
       </span>
-      <code class="repository-branch muted">{ model.repository.defaultBranch }</code>
-      <span class="repository-size muted">{ bosca.git.ui.formatSize(model.repository.size) }</span>
-      <time class="repository-updated muted" :datetime="model.repository.updated">
-        { model.repository.updated.take(10) }
-      </time>
-      <if model.message.isNotBlank()>
-        <ui-alert :tone='if (model.failed) "error" else "success"'>{ model.message }</ui-alert>
-      </if>
+      <span class="gt-cell repository-visibility">
+        <ui-badge :tone="model.repository.visibilityTone">
+          { model.repository.visibility.lowercase() }
+        </ui-badge>
+      </span>
+      <span class="gt-cell repository-type">{ model.repository.contentTypeLabel }</span>
+      <code class="gt-cell repository-branch">{ model.repository.defaultBranch }</code>
+      <code class="gt-cell gt-muted repository-size">
+        { bosca.git.ui.formatSize(model.repository.size) }
+      </code>
+      <span class="gt-cell gt-muted repository-updated">
+        <ui-time :value="model.repository.updated" format="MMM d" inheritTypography />
+      </span>
+      <span class="gt-actions">
       <if model.repository.canManage>
         <details class="row-actions" ref="panel">
           <summary ref="trigger" aria-label="Repository actions" title="Repository actions">
-            ⋯
+            <span class="row-menu-icon"><ui-icon name="list" :size="14" /></span>
           </summary>
           <div class="repository-menu" role="menu" aria-label="Repository actions">
             <a
@@ -93,68 +94,70 @@
           </ui-dialog>
         </if>
       </if>
+      </span>
+      <if model.message.isNotBlank()>
+        <div class="row-message">
+          <ui-alert :tone='if (model.failed) "error" else "success"'>{ model.message }</ui-alert>
+        </div>
+      </if>
     </li>
   </island>
   <style scoped>
     .repository-row {
-      display: grid;
-      grid-template-columns: minmax(180px, 1.5fr) 90px 120px 90px 70px 100px 36px;
-      align-items: center;
-      gap: 12px;
-      padding: 14px;
-      border-bottom: 1px solid color-mix(in oklch, var(--line) 35%, transparent);
-      border-radius: var(--r-xs);
-      position: relative;
-    }
-    .repository-row:hover {
-      background: color-mix(in oklch, var(--accent) 8%, transparent);
-    }
-    .repository-title {
-      min-width: 0;
+      grid-template-columns: 1.5fr 100px 120px 100px 80px 120px 28px;
     }
     .repository-name {
       display: flex;
       align-items: center;
       gap: 8px;
     }
+    .repository-icon {
+      display: inline-flex;
+      flex: none;
+      color: var(--accent);
+    }
     .repository-name > a {
-      font-size: 13px;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
       font-weight: 500;
-      overflow-wrap: anywhere;
     }
-    .repository-description {
-      margin: 4px 0 0 24px;
-      color: var(--fg-3);
-      font-size: 12px;
-      overflow-wrap: anywhere;
+    .repository-type {
+      color: var(--fg-2);
     }
-    .repository-type,
-    .repository-branch,
-    .repository-size,
-    .repository-updated {
+    .repository-branch {
       font-size: 12px;
-      overflow-wrap: anywhere;
+      color: var(--fg-2);
+    }
+    .row-message {
+      grid-column: 1 / -1;
+      position: relative;
+      z-index: 1;
     }
     .row-actions summary {
       display: flex;
       align-items: center;
       justify-content: center;
-      width: 30px;
-      height: 30px;
-      border: 1px solid transparent;
-      border-radius: 6px;
+      padding: 4px;
+      border-radius: 4px;
+      color: var(--fg-3);
       list-style: none;
-      font-size: 20px;
       cursor: pointer;
-      text-align: center;
+    }
+    .row-menu-icon {
+      display: inline-flex;
+    }
+    .row-actions summary:hover,
+    .row-actions[open] summary {
+      background: var(--bg-3);
     }
     .row-actions summary::-webkit-details-marker {
       display: none;
     }
     .repository-menu {
       position: absolute;
-      right: 14px;
-      top: 46px;
+      right: 4px;
+      top: calc(100% - 6px);
       z-index: 15;
       background: var(--bg-2);
       border: 1px solid var(--line-2);
@@ -169,7 +172,9 @@
       gap: 6px;
       height: 32px;
       padding: 0 10px;
+      color: var(--fg-1);
       font-size: 12.5px;
+      text-decoration: none;
     }
     .repository-menu a:hover {
       background: var(--bg-3);
@@ -177,13 +182,14 @@
     }
     @media (max-width: 1100px) {
       .repository-row {
-        grid-template-columns: minmax(0, 1fr) 90px 36px;
+        grid-template-columns: minmax(0, 1fr) 90px 28px;
+        row-gap: 6px;
       }
       .repository-visibility {
         grid-column: 2;
         grid-row: 1;
       }
-      .row-actions {
+      .gt-actions {
         grid-column: 3;
         grid-row: 1;
       }

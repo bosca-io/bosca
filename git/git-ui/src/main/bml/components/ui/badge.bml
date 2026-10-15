@@ -1,46 +1,51 @@
 <component tag="ui-badge">
   <prop name="tone" type="String" default="neutral" />
+  <prop name="color" type="String" default="" />
   <script server provides="attrs">
-    props.filterKeys { it !in setOf("tone", "__bmlAttrs") }
+    props.filterKeys { it !in setOf("tone", "color", "__bmlAttrs") }
   </script>
-  <span class="badge" :data-tone="tone" {...attrs}>
+  <span
+    class="badge"
+    :data-tone="tone"
+    :style='if (color.isNotBlank()) "--tone: " + color else null'
+    {...attrs}
+  >
     <slot />
   </span>
   <style scoped>
+    /* Studio Badge: tone-coloured text with a 14% fill and 30% border. */
+    .badge {
+      --tone: var(--fg-3);
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      border: 1px solid color-mix(in srgb, var(--tone) 30%, transparent);
+      background: color-mix(in srgb, var(--tone) 14%, transparent);
+      color: var(--tone);
+      font-size: 11.5px;
+      font-weight: 530;
+      line-height: 1.4;
+      white-space: nowrap;
+    }
     .badge[data-tone="purple"] {
-      color: #a78bff;
-      border-color: #a78bff4d;
-      background: #a78bff1a;
+      --tone: #a78bff;
     }
     .badge[data-tone="info"] {
-      color: var(--info);
-      border-color: color-mix(in srgb, var(--info) 30%, transparent);
-      background: color-mix(in srgb, var(--info) 10%, transparent);
+      --tone: var(--info);
     }
     .badge[data-tone="success"] {
-      color: var(--ok);
-      border-color: color-mix(in srgb, var(--ok) 30%, transparent);
-      background: color-mix(in srgb, var(--ok) 10%, transparent);
+      --tone: var(--ok);
     }
     .badge[data-tone="warning"] {
-      color: var(--warn);
-      border-color: color-mix(in srgb, var(--warn) 30%, transparent);
-      background: color-mix(in srgb, var(--warn) 10%, transparent);
+      --tone: var(--warn);
     }
     .badge[data-tone="error"] {
-      color: var(--err);
-      border-color: color-mix(in srgb, var(--err) 30%, transparent);
-      background: color-mix(in srgb, var(--err) 10%, transparent);
+      --tone: var(--err);
     }
-    .badge {
-      border: 1px solid color-mix(in oklch, var(--fg-3) 30%, transparent);
-      background: color-mix(in oklch, var(--fg-3) 12%, transparent);
-      color: var(--fg-2);
-      padding: 2px 7px;
-      border-radius: var(--control-radius);
-      font-size: 10.5px;
-      font-weight: 500;
-      white-space: nowrap;
+    .badge[data-tone="accent"] {
+      --tone: var(--accent);
     }
   </style>
 </component>

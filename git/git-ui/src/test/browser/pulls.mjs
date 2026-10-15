@@ -169,32 +169,6 @@ async function submitCommentShortcut() {
   }
 }
 const headerLayouts = [];
-const timestampLayouts = [];
-async function checkTimestampText(width, state) {
-  const pairs = await ev(`(() => [...document.querySelectorAll('.pull-dates > span')].map(pair => {
-    const label = pair.querySelector('span');
-    const time = pair.querySelector('time');
-    const textBounds = node => {
-      const range = document.createRange();
-      range.selectNodeContents(node);
-      const rect = range.getBoundingClientRect();
-      return { top: rect.top, bottom: rect.bottom };
-    };
-    const a = getComputedStyle(label), b = getComputedStyle(time);
-    return { label: label.innerText, value: time.innerText,
-      labelFont: a.font, timeFont: b.font,
-      labelText: textBounds(label), timeText: textBounds(time) };
-  }))()`);
-  for (const pair of pairs) {
-    assert.equal(pair.labelFont, pair.timeFont, "Timestamp labels and values share typography");
-    assert.ok(
-      Math.abs(pair.labelText.top - pair.timeText.top) < 0.1
-        && Math.abs(pair.labelText.bottom - pair.timeText.bottom) < 0.1,
-      "Timestamp text aligns, including fresh 'just now' values",
-    );
-  }
-  timestampLayouts.push({ width, state, pairs });
-}
 for (const width of [1920, 1440, 1024, 390]) {
   await call("Emulation.setDeviceMetricsOverride", { width, height: 1000, deviceScaleFactor: 1, mobile: false });
   await nav("/pulls");
@@ -205,79 +179,49 @@ for (const width of [1920, 1440, 1024, 390]) {
   );
   await screenshot("list", width);
   await nav("/pulls/pull?repo=repo&number=1");
-  assert.equal(await ev(`getComputedStyle(document.querySelector('.pull-title .badge')).color`), "rgb(52, 217, 154)", "Open PRs use Studio's green status badge");
-  assert.ok(await ev(`document.querySelector('.pull-number').getBoundingClientRect().left - (() => { const range=document.createRange(); range.selectNodeContents(document.querySelector('h1').firstChild); return range.getBoundingClientRect().right; })() >= 7`), "PR number has space after the title");
-  assert.ok(
-    await ev(`(() => {
-      const label = document.querySelector('.pull-dates > span');
-      const range = document.createRange();
-      range.selectNodeContents(label.firstChild);
-      return label.querySelector('time').getBoundingClientRect().left
-        - range.getBoundingClientRect().right >= 3;
-    })()`),
-    "Date labels have space before their timestamps",
-  );
-  assert.ok(await ev(`document.querySelector('.merge-panel .pull-checks') && !document.querySelector('.pull-sidebar .merge-panel')`), "Checks and merge readiness are grouped in the main column");
-  assert.ok(await ev(`document.querySelector('.review-summary-row')?.innerText.includes('Commented')`), "Overview shows recent review outcomes");
+  assert.equal(await ev(`getComputedStyle(document.querySelector('.page-heading .badge')).color`), "rgb(52, 217, 154)", "Open PRs use Studio's green status badge");
+  assert.ok(await ev(`document.querySelector('.heading-subtitle').textContent.includes('#1 · feature/one → main')`), "The subtitle names the number and branches");
+  assert.ok(await ev(`(() => {
+    const sidebar = document.querySelector('.pull-sidebar');
+    return sidebar.innerText.includes('Mergeable') && sidebar.querySelector('.merge-form')
+      && document.querySelector('.pull-main .pull-checks') && !sidebar.querySelector('.pull-checks');
+  })()`), "Details and actions use Studio's sidebar while checks stay in the main column");
+  assert.ok(await ev(`document.querySelector('.review-summary-row')?.innerText.includes('comment only')`), "Overview shows recent review outcomes");
   assert.ok(await ev(`document.documentElement.scrollWidth <= innerWidth`), "PR overview fits the viewport");
-  await checkTimestampText(width, "open");
-  const header = await ev(`(() => {
-    const heading = document.querySelector('.pull-heading').getBoundingClientRect();
-    const context = document.querySelector('.pull-meta').getBoundingClientRect();
-    const dates = document.querySelector('.pull-dates').getBoundingClientRect();
-    return {
-      height: heading.height,
-      contextCenter: context.top + context.height / 2,
-      datesCenter: dates.top + dates.height / 2,
-      contextBottom: context.bottom,
-      datesTop: dates.top,
-      datesRight: dates.right,
-      right: heading.right,
-    };
+  const overview = await ev(`(() => {
+    const main = document.querySelector('.pull-main').getBoundingClientRect();
+    const side = document.querySelector('.pull-sidebar').getBoundingClientRect();
+    return { mainRight: main.right, sideLeft: side.left, sideWidth: side.width, mainBottom: main.bottom, sideTop: side.top };
   })()`);
-  headerLayouts.push({ width, ...header });
+  headerLayouts.push({ width, ...overview });
   if (width >= 1024) {
-    assert.ok(header.height <= 90, "Desktop PR headers use two compact content rows");
-    assert.ok(
-      Math.abs(header.contextCenter - header.datesCenter) <= 1,
-      "Author/branch context and timestamps share a desktop centerline",
-    );
-    assert.ok(
-      Math.abs(header.datesRight - header.right) <= 1,
-      "Timestamps align with the header's right edge",
-    );
+    assert.ok(overview.sideLeft > overview.mainRight && Math.abs(overview.sideWidth - 320) < 1, "Desktop overview uses Studio's 320px sidebar");
   } else {
-    assert.ok(
-      header.datesTop >= header.contextBottom && header.datesTop - header.contextBottom <= 8,
-      "Phone metadata wraps with compact spacing",
-    );
+    assert.ok(overview.sideTop >= overview.mainBottom, "Phone overview stacks the sidebar below the main column");
   }
   await screenshot("overview", width);
 
-  const trigger = `${actionRoot} [data-bml-component="ui-dialog"] [data-bml-ref="trigger"]`;
-  await click(trigger);
-  await until(`document.querySelector('${actionRoot} dialog[open]')?.matches(':modal')`);
   await ev(`(() => {
-    const select = document.querySelector('${actionRoot} dialog[open] select[name=strategy]');
+    const select = document.querySelector('${actionRoot} .merge-form select[name=strategy]');
     select.value = 'SQUASH'; select.dispatchEvent(new Event('change', { bubbles: true }));
   })()`);
-  await click(`${actionRoot} dialog[open] button[type=submit]`);
-  await until(`document.querySelector('${actionRoot} .merge-plan')`);
+  await click(`${actionRoot} .merge-form button[type=submit]`);
+  await until(`document.querySelector('${actionRoot} dialog[open]')?.matches(':modal') && document.querySelector('${actionRoot} .merge-plan')`);
   assert.ok(await ev(`document.querySelector('${actionRoot} dialog[open]').innerText.includes('Squash and merge')`), "Merge confirmation names the chosen method");
   await screenshot("merge-confirmation", width);
   await pressKey("Escape");
 
   await ev(`(() => {
-    document.querySelector('.pull-title h1').firstChild.textContent =
+    document.querySelector('.page-heading h1').textContent =
       'Improve pull request reviews, dependency merge plans, and repository status checks';
-    document.querySelector('.pull-meta code').textContent =
-      'feature/improve-pull-request-review-controls-and-status-layout';
+    document.querySelector('.heading-subtitle').textContent =
+      '#1 · feature/improve-pull-request-review-controls-and-status-layout → main';
     window.scrollTo(0, 0);
     document.querySelector('main').scrollTop = 0;
   })()`);
   assert.ok(
     await ev(`document.documentElement.scrollWidth <= innerWidth
-      && document.querySelector('.pull-heading').scrollWidth <= document.querySelector('.pull-heading').clientWidth`),
+      && document.querySelector('.page-heading').scrollWidth <= document.querySelector('.page-heading').clientWidth`),
     "Long titles and branch names stay within the header",
   );
   await screenshot("header-long-content", width);
@@ -292,7 +236,7 @@ for (const width of [1920, 1440, 1024, 390]) {
   })()`);
   assert.ok(workspace.toolbarHeight <= 32, "Files use one compact review toolbar");
   if (width >= 1024) {
-    assert.equal(workspace.treeWidth, 220, "Changed-file navigation has a bounded sidebar");
+    assert.ok(workspace.treeWidth >= 220 && workspace.treeWidth <= 280, "Changed-file navigation has a bounded sidebar");
     assert.ok(Math.abs(workspace.treeTop - workspace.panelTop) < 1, "Tree and diff start together");
     assert.ok(workspace.panelLeft > workspace.treeRight, "Diff is beside the file navigation");
   } else {
@@ -448,8 +392,8 @@ for (const width of [1920, 1440, 1024, 390]) {
 
   await nav("/pulls/pull?repo=repo&number=1&view=reviews");
   const reviewDialog = '[data-bml-component="git-pull-review"] dialog[open]';
-  await click('[data-bml-component="git-pull-review"] button[data-bml-ref="trigger"]');
-  await until(`document.querySelector('${reviewDialog}')`);
+  await click('.page-heading a[href*="review=true"]');
+  await until(`document.querySelector('${reviewDialog}')?.matches(':modal')`);
   await ev(`document.querySelector('${reviewDialog} textarea[name="body"]').value = 'Review accepted'`);
   await click(`${reviewDialog} button[type="submit"]`);
   await until(`!document.querySelector('${reviewDialog}') && document.querySelector('${toast}').matches(':popover-open')
@@ -615,7 +559,7 @@ for (const width of [1920, 1440, 1024, 390]) {
   await until(`!document.querySelector('.comment-form')`);
 
   await nav("/pulls/pull-draft?repo=repo&number=2");
-  assert.ok(await ev(`document.body.innerText.includes('Ready for review') && !document.body.innerText.includes('Review changes')`), "Drafts offer readiness rather than unavailable review actions");
+  assert.ok(await ev(`document.body.innerText.includes('Mark Ready for Review') && !document.querySelector('.page-heading a[href*="review=true"]')`), "Drafts offer readiness rather than unavailable review actions");
   await screenshot("draft", width);
   await openEdit();
   assert.ok(await ev(`!document.querySelector(${JSON.stringify(editDialog + ' select[name="source"]')}).disabled`), "Draft branches can be edited");
@@ -634,7 +578,7 @@ for (const width of [1920, 1440, 1024, 390]) {
   assert.ok(await ev(`document.querySelector('main').innerText.includes('The original target commit for this merge is not recorded.')
     && !document.querySelector('main').innerText.includes('No files changed')`), "An unavailable historical base is distinguished from an empty merge");
   await nav("/pulls/pull-merged?repo=repo&number=3");
-  assert.equal(await ev(`getComputedStyle(document.querySelector('.pull-title .badge')).color`), "rgb(167, 139, 255)", "Merged PRs use Studio's purple status badge");
+  assert.equal(await ev(`getComputedStyle(document.querySelector('.page-heading .badge')).color`), "rgb(167, 139, 255)", "Merged PRs use Studio's purple status badge");
   assert.ok(await ev(`!document.body.innerText.includes('Close pull request')`), "Merged PRs have no close action");
   await screenshot("merged", width);
   await openEdit();
@@ -643,15 +587,14 @@ for (const width of [1920, 1440, 1024, 390]) {
   await screenshot("edit-merged", width);
   await pressKey("Escape");
   await nav("/pulls/pull-closed?repo=repo&number=4");
-  assert.ok(await ev(`document.body.innerText.includes('Reopen pull request')`), "Closed PRs can be reopened");
+  assert.ok(await ev(`[...document.querySelectorAll('.pull-sidebar button')].some(b => b.textContent.trim() === 'Reopen')`), "Closed PRs can be reopened");
   await screenshot("closed", width);
   await nav("/pulls/pull-conflicts?repo=repo&number=5");
-  assert.ok(await ev(`document.querySelector('${actionRoot} [data-bml-ref=trigger]').disabled`), "Known conflicts disable the merge trigger");
+  assert.ok(await ev(`document.querySelector('${actionRoot} .merge-form button[type=submit]').disabled`), "Known conflicts disable the merge trigger");
   assert.ok(await ev(`document.querySelector('[aria-label^="Remove assignee Alice"]') && document.querySelector('[aria-label="Remove dependency #2"]')`), "Metadata actions have specific labels");
   await screenshot("conflicts", width);
 
   await nav("/pulls/pull-empty?repo=repo&number=6&view=files");
-  await checkTimestampText(width, "fresh-empty-file");
   assert.ok(
     await ev(`document.querySelector('.diff-notice').innerText === 'Empty file added.'
       && !document.querySelector('.diff-hunk-heading')
@@ -708,8 +651,8 @@ for (const width of [1920, 1440, 1024, 390]) {
   await ev(`document.querySelector(${JSON.stringify(editDialog + ' input[name="title"]')}).value = 'Edited PR at ${width}px';
     document.querySelector(${JSON.stringify(editDialog + ' textarea[name="description"]')}).value = '';`);
   await click(`${editDialog} button[type="submit"]`);
-  await until(`location.href === ${JSON.stringify(base + editPath)} && document.querySelector('.pull-title h1')?.innerText.startsWith('Edited PR at ${width}px') && !document.querySelector(${JSON.stringify(editDialog)})`);
-  assert.ok(await ev(`document.querySelector('.pull-meta').innerText.includes('main') && document.querySelector('.pull-meta').innerText.includes('feature/one')`), "Saved branch context refreshes");
+  await until(`location.href === ${JSON.stringify(base + editPath)} && document.querySelector('.page-heading h1')?.innerText.startsWith('Edited PR at ${width}px') && !document.querySelector(${JSON.stringify(editDialog)})`);
+  assert.ok(await ev(`document.querySelector('.heading-subtitle').innerText.includes('main') && document.querySelector('.heading-subtitle').innerText.includes('feature/one')`), "Saved branch context refreshes");
   await nav(editPath.replace("view=files", "view=overview"));
   assert.ok(await ev(`document.querySelector('main').innerText.includes('No description provided.')`), "A description can be cleared");
   await nav(editPath);
@@ -719,13 +662,12 @@ for (const width of [1920, 1440, 1024, 390]) {
   await chooseEditBranch("source");
   await chooseEditBranch("target");
   await click(`${editDialog} button[type="submit"]`);
-  await until(`document.querySelector('.pull-title h1')?.innerText.startsWith(${JSON.stringify(original.title)}) && !document.querySelector(${JSON.stringify(editDialog)})`);
+  await until(`document.querySelector('.page-heading h1')?.innerText.startsWith(${JSON.stringify(original.title)}) && !document.querySelector(${JSON.stringify(editDialog)})`);
 }
 assert.deepEqual(errors, [], "No browser exceptions on PR pages");
 await writeFile(
   `${artifacts}/pull-header-layout.json`,
   JSON.stringify(headerLayouts, null, 2),
 );
-await writeFile(`${artifacts}/pull-timestamp-layout.json`, JSON.stringify(timestampLayouts, null, 2));
 console.log("PR browser checks passed at 1920, 1440, 1024 and 390px.");
 ws.close();

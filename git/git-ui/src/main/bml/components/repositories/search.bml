@@ -33,7 +33,7 @@
             />
           </ui-search-input>
           <div class="search-options">
-            <ui-field label="Search">
+            <ui-field label="Search" hideLabel>
               <ui-segmented-control
                 label="Search mode"
                 name="mode"
@@ -45,7 +45,7 @@
               />
             </ui-field>
             <div class="repository-choice">
-              <ui-field label="Repository">
+              <ui-field label="Repository" hideLabel>
                 <ui-select
                   name="repo"
                   label="Repository"
@@ -73,7 +73,7 @@
               </ui-field>
             </div>
             <div class="ref-choice">
-              <ui-field :label='if (model.mode == "paths") "Ref" else "Branch"'>
+              <ui-field :label='if (model.mode == "paths") "Ref" else "Branch"' hideLabel>
                 <ui-select
                   name="ref"
                   label="Search ref"
@@ -123,16 +123,18 @@
     }
     .search-options {
       display: flex;
-      align-items: flex-end;
+      align-items: center;
       gap: 10px;
       flex-wrap: wrap;
     }
     .repository-choice {
-      width: 280px;
+      width: auto;
+      min-width: 120px;
+      max-width: 280px;
       max-width: 100%;
     }
     .ref-choice {
-      width: 210px;
+      width: 175px;
       max-width: 100%;
     }
     .search-error {

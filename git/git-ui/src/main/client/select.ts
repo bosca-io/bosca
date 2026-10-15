@@ -124,6 +124,8 @@ export function richSelect(ctx: ClientContext) {
         ? `${values.length} selected`
         : placeholder
       : labels[0] || placeholder;
+    // Studio shows an unset choice in its muted placeholder colour.
+    ctx.root.toggleAttribute("data-empty", !values.some((value) => value !== ""));
     trigger.disabled = native.disabled || ctx.root.hasAttribute("data-loading");
     tags.replaceChildren();
     tags.hidden = !native.multiple || !values.length;

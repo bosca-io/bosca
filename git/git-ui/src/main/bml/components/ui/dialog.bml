@@ -10,19 +10,41 @@
   <prop name="triggerIcon" type="String" default="" />
   <prop name="icon" type="String" default="" />
   <prop name="primary" type="Boolean" default="false" />
+  <prop name="triggerStyle" type="String" default="button" />
   <prop name="forceOpen" type="Boolean" default="false" />
+  <prop name="openRequest" type="String" default="" />
   <prop name="completed" type="Boolean" default="false" />
   <div
     :class='"dialog-control" + if (showTrigger) "" else " programmatic-dialog"'
     :data-force-open="forceOpen"
+    :data-open-request="openRequest.takeIf(String::isNotBlank)"
     :data-completed="completed"
     :data-return-focus="returnFocus"
   >
     <if showTrigger>
       <if triggerIconOnly>
-        <ui-icon-button ref="trigger" :icon="triggerIcon.ifBlank { icon }" :label="triggerLabel" :disabled="triggerDisabled" />
+        <ui-icon-button
+          ref="trigger"
+          :icon="triggerIcon.ifBlank { icon }"
+          :label="triggerLabel"
+          :disabled="triggerDisabled"
+          :size='if (triggerStyle == "ghost") "xs" else "sm"'
+          :class='if (triggerStyle == "ghost") "ghost" else ""'
+        />
+      <else-if triggerStyle == "link">
+        <button type="button" class="link-trigger" ref="trigger" :disabled="triggerDisabled">
+          <span class="link-trigger-icon"><ui-icon :name='triggerIcon.ifBlank { "plus" }' :size="12" /></span>
+          { triggerLabel }
+        </button>
       <else>
-        <ui-button size="sm" ref="trigger" :primary="primary" :icon="triggerIcon.ifBlank { icon }" :disabled="triggerDisabled">
+        <ui-button
+          size="sm"
+          ref="trigger"
+          :class='if (triggerStyle == "block") "block" else ""'
+          :primary="primary"
+          :icon='if (triggerStyle == "block" || triggerStyle == "plain") triggerIcon else triggerIcon.ifBlank { icon }'
+          :disabled="triggerDisabled"
+        >
           { triggerLabel }
         </ui-button>
       </if>
@@ -52,6 +74,30 @@
   <style scoped>
     .programmatic-dialog {
       display: contents;
+    }
+    /* Studio's inline "+ Add …" sidebar action. */
+    .link-trigger {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 0 0;
+      border: 0;
+      background: none;
+      color: var(--accent);
+      font: inherit;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+    }
+    .link-trigger:hover {
+      text-decoration: underline;
+    }
+    .link-trigger:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+    .link-trigger-icon {
+      display: inline-flex;
     }
     dialog.size-lg {
       width: 760px;
