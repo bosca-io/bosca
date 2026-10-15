@@ -6,6 +6,7 @@ import bosca.git.ui.components.NavigationItem
 import bosca.git.ui.graphql.*
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
 import kotlinx.serialization.json.JsonArray
 
 @Serializable
@@ -25,6 +26,11 @@ class PipelineRunModel(
     var expandedStepId: String? = null,
     var autoExpandedFailure: Boolean = false,
 ) {
+    /** The browser preserves this log panel while the run refreshes; its client owns backfill. */
+    @Transient
+    var retainedLogStepId: String? = null
+        private set
+
     val title: String
         get() = pipelineName.takeIf { it.isNotBlank() }?.let { "$it · Run #${run.number}" }
             ?: "Run #${run.number}"
@@ -175,6 +181,7 @@ class PipelineRunModel(
     }
 
     private suspend fun perform(block: suspend () -> Unit) {
+        retainedLogStepId = expandedStepId
         message = ""
         failed = false
         try {

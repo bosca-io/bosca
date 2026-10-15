@@ -1421,18 +1421,53 @@ class GitUiRoutesTest {
     }
 
     @Test
-    fun `step logs load on demand and selection survives polling and collapse`() {
+    fun `step logs load on demand without reloading history during run polling`() {
         val before = requests.count { it.operation == "GitUiLogs" }
         val html = get("/pipelines/run").body()
         assertFalse("data-log-step=" in html, html)
         assertEquals(before, requests.count { it.operation == "GitUiLogs" })
         val expanded = action("/pipelines/run", "git-pipeline-run.model", "toggleStepLogs", listOf("step"))
+        assertEquals(before + 1, requests.count { it.operation == "GitUiLogs" })
         val refreshed = continueAction("/pipelines/run", "git-pipeline-run.model:run", "refresh", actionState(expanded), emptyList())
         assertEquals("step", actionState(refreshed)["expandedStepId"]?.jsonPrimitive?.content)
-        val collapsed = continueAction("/pipelines/run", "git-pipeline-run.model:run", "toggleStepLogs", actionState(refreshed), listOf("step"))
+        assertEquals(before + 1, requests.count { it.operation == "GitUiLogs" })
+        val polled = continueAction("/pipelines/run", "git-pipeline-run.model:run", "refresh", actionState(refreshed), emptyList())
+        assertEquals("step", actionState(polled)["expandedStepId"]?.jsonPrimitive?.content)
+        assertEquals(before + 1, requests.count { it.operation == "GitUiLogs" })
+        val polledHtml = Json.parseToJsonElement(polled.body()).jsonObject.getValue("html").jsonPrimitive.content
+        assertTrue("data-bml-preserve=\"logs-step\"" in polledHtml, polledHtml)
+        val expandedHtml = Json.parseToJsonElement(expanded.body()).jsonObject.getValue("html").jsonPrimitive.content
+        val logs = action("/pipelines/run", "git-pipeline-logs.model", "refresh", emptyList(), sourceHtml = expandedHtml)
+        assertEquals(1, actionState(logs).getValue("lines").jsonArray.size)
+        assertEquals(before + 2, requests.count { it.operation == "GitUiLogs" })
+        val collapsed = continueAction("/pipelines/run", "git-pipeline-run.model:run", "toggleStepLogs", actionState(polled), listOf("step"))
         val collapsedHtml = Json.parseToJsonElement(collapsed.body()).jsonObject.getValue("html").jsonPrimitive.content
         assertFalse("data-log-step=" in collapsedHtml, collapsedHtml)
         assertTrue("aria-expanded=\"false\"" in collapsedHtml, collapsedHtml)
+        assertEquals(before + 2, requests.count { it.operation == "GitUiLogs" })
+        val reopened = continueAction("/pipelines/run", "git-pipeline-run.model:run", "toggleStepLogs", actionState(collapsed), listOf("step"))
+        assertEquals("step", actionState(reopened)["expandedStepId"]?.jsonPrimitive?.content)
+        assertEquals(before + 3, requests.count { it.operation == "GitUiLogs" })
+    }
+
+    @Test
+    fun `run refresh loads history when it first expands a failed step`() {
+        val run = Json.decodeFromString(
+            bosca.git.ui.graphql.GitUiRunData.Git.PipelineRun.serializer(),
+            requireNotNull(javaClass.getResource("/fixtures/run-failed.json")).readText(),
+        ).copy(status = bosca.git.ui.graphql.GitPipelineRunStatus.RUNNING)
+        val state = Json.encodeToJsonElement(
+            PipelineRunModel.serializer(), PipelineRunModel(run, true, true, true),
+        ).jsonObject
+        val before = requests.count { it.operation == "GitUiLogs" }
+        val refreshed = continueAction("/pipelines/failed-run", "git-pipeline-run.model:failed-run", "refresh", state, emptyList())
+        assertEquals("failed-step", actionState(refreshed)["expandedStepId"]?.jsonPrimitive?.content)
+        assertEquals(before + 1, requests.count { it.operation == "GitUiLogs" })
+        val html = Json.parseToJsonElement(refreshed.body()).jsonObject.getValue("html").jsonPrimitive.content
+        assertTrue("&lt;script&gt;log&lt;/script&gt;" in html, html)
+        val polled = continueAction("/pipelines/failed-run", "git-pipeline-run.model:failed-run", "refresh", actionState(refreshed), emptyList())
+        assertEquals("failed-step", actionState(polled)["expandedStepId"]?.jsonPrimitive?.content)
+        assertEquals(before + 1, requests.count { it.operation == "GitUiLogs" })
     }
 
     @Test

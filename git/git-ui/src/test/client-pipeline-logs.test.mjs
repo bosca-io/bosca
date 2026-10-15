@@ -241,6 +241,46 @@ test("completion queues a final backfill behind an in-flight historical request"
   assert.deepEqual(f.numbers(), [1, 2]);
 });
 
+test("run polling keeps the stream and only reconnect and completion backfill history", async (t) => {
+  const f = setup(t);
+  await settle();
+  const socket = f.sockets[0];
+  socket.receive({ type: "connection_ack" });
+  await settle();
+  assert.equal(f.dispatches.length, 1);
+  for (let i = 0; i < 5; i++) {
+    f.refreshRun();
+    f.tick();
+  }
+  await settle();
+  assert.equal(f.sockets.length, 1);
+  assert.equal(socket.readyState, 1);
+  assert.equal(f.dispatches.length, 1);
+  f.emit(line(2));
+  f.flush();
+  assert.deepEqual(f.numbers(), [1, 2]);
+
+  socket.close();
+  const callbacks = [...f.timers.values()];
+  f.timers.clear();
+  callbacks.forEach((callback) => callback());
+  await settle();
+  assert.equal(f.sockets.length, 2);
+  f.sockets[1].receive({ type: "connection_ack" });
+  await settle();
+  assert.equal(f.dispatches.length, 2);
+
+  f.finish();
+  f.refreshRun();
+  f.tick();
+  await settle();
+  assert.equal(f.sockets[1].readyState, 3);
+  assert.equal(f.dispatches.length, 3);
+  f.tick();
+  await settle();
+  assert.equal(f.dispatches.length, 3);
+});
+
 test("terminal steps have no live subscription and unmount cancels scheduled rendering", async (t) => {
   const terminal = setup(t, { active: false });
   await settle();
