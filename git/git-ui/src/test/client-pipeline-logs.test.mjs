@@ -112,6 +112,15 @@ function setup(t, { initial = [line(1)], active = true, refresh } = {}) {
     emit: (value, socket = sockets.at(-1)) => socket.receive({ type: "next", payload: { data: { pipelineStepLogs: value } } }),
     numbers: () => Array.from(ref("lines").children).filter((row) => row.dataset.line).map((row) => Number(row.dataset.line)),
     scroll: (top) => { output.scrollTop = top; output.dispatchEvent(new window.Event("scroll")); },
+    refreshRun: () => {
+      // Browsers reset the scroll position when a retained panel is reinserted.
+      output.scrollTop = 0;
+      const target = root.parentElement;
+      target.dispatchEvent(new window.CustomEvent("bml:update", {
+        bubbles: true, detail: { target, added: [], retained: [root] },
+      }));
+      output.dispatchEvent(new window.Event("scroll"));
+    },
   };
 }
 
@@ -188,6 +197,31 @@ test("pause ignores stale sockets and resume backfills before continuing", async
   f.emit(line(4), old);
   f.emit(line(3)); f.flush();
   assert.deepEqual(f.numbers(), [1, 2, 3]);
+});
+
+test("run refreshes preserve following and subsequent live output stays at the tail", async (t) => {
+  const f = setup(t, { initial: Array.from({ length: 50 }, (_, i) => line(i + 1)) });
+  await settle();
+  f.refreshRun();
+  assert.equal(f.output.scrollTop, f.output.scrollHeight);
+  assert.equal(f.ref("follow").hidden, true);
+  f.emit(line(51));
+  f.flush();
+  assert.equal(f.output.scrollTop, f.output.scrollHeight);
+});
+
+test("run refreshes preserve the reader's position without resuming following", async (t) => {
+  const f = setup(t, { initial: Array.from({ length: 50 }, (_, i) => line(i + 1)) });
+  await settle();
+  f.scroll(100);
+  f.refreshRun();
+  assert.equal(f.output.scrollTop, 100);
+  assert.equal(f.ref("follow").getAttribute("aria-pressed"), "false");
+  f.emit(line(51));
+  f.flush();
+  f.refreshRun();
+  assert.equal(f.output.scrollTop, 100);
+  assert.equal(f.ref("follow").hidden, false);
 });
 
 test("completion queues a final backfill behind an in-flight historical request", async (t) => {

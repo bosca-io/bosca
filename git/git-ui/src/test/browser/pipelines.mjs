@@ -219,6 +219,19 @@ assert.equal(await ev("document.querySelectorAll(`.log-line`).length"), paused);
 await ev("document.querySelector(`[data-bml-ref=pause]`).click()");
 await until('document.querySelector(`[data-bml-ref="logStatus"]`)?.dataset.state === "streaming"');
 await until('document.querySelector(`.log-line[data-line="130"]`)');
+const atLogTail = `(() => {
+  const output = document.querySelector(".log-output");
+  return output.scrollHeight - output.scrollTop - output.clientHeight < 2;
+})()`;
+assert.ok(await ev(atLogTail), "Live output keeps following through run polling");
+await ev(`document.querySelector(".run-controls [data-bml-method=refresh]").click()`);
+await until('!document.querySelector("[data-bml-action-pending]")');
+assert.ok(await ev(atLogTail), "Refreshing the run keeps the log viewport at the tail");
+assert.equal(
+  await ev('document.querySelector("[data-bml-ref=follow]").hidden'),
+  true,
+  "Refreshing the run does not disable following",
+);
 assert.equal(
   await ev("getComputedStyle(document.querySelector(`.log-line`)).display"),
   "flex",
@@ -281,6 +294,18 @@ assert.equal(
     'document.querySelector(`[data-bml-ref=follow]`).getAttribute("aria-pressed")',
   ),
   "false",
+);
+await ev('document.querySelector(".run-controls [data-bml-method=refresh]").click()');
+await until('!document.querySelector("[data-bml-action-pending]")');
+assert.equal(
+  await ev('document.querySelector(".log-output").scrollTop'),
+  100,
+  "Refreshing the run preserves the position while reading earlier output",
+);
+assert.equal(
+  await ev('document.querySelector("[data-bml-ref=follow]").getAttribute("aria-pressed")'),
+  "false",
+  "Refreshing the run does not resume following earlier output",
 );
 await ev("document.querySelector(`[data-bml-ref=follow]`).click()");
 assert.ok(await ev("document.querySelector(`.log-output`).scrollTop>100"));

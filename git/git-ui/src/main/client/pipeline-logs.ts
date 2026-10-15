@@ -1,4 +1,4 @@
-import type { IslandContext } from "@bosca/bml";
+import type { IslandContext, IslandUpdate } from "@bosca/bml";
 
 interface LogLine {
   lineNumber: number;
@@ -169,6 +169,7 @@ export function mountPipelineLogs(ctx: IslandContext) {
         : position.scroll;
     }
     updateControls();
+    anchor = capture();
   };
   // A burst of log messages updates the DOM once per animation frame. Existing
   // rows stay mounted so streaming does not rebuild the console or its selection.
@@ -365,6 +366,7 @@ export function mountPipelineLogs(ctx: IslandContext) {
       if (event.target === surface && surface) {
         follow =
           surface.scrollHeight - surface.scrollTop - surface.clientHeight < 24;
+        anchor = capture();
         updateControls();
       }
     },
@@ -381,6 +383,13 @@ export function mountPipelineLogs(ctx: IslandContext) {
     seed();
     render(anchor);
     status(statusText, statusState);
+  });
+  // Parent run updates retain this component but detach its scroll container.
+  // Restore its viewport before the resulting scroll event changes follow mode.
+  ctx.on<CustomEvent<IslandUpdate>>(document, "bml:update", (event) => {
+    if (event.detail.retained.some((region) => region.contains(ctx.root))) {
+      render(anchor);
+    }
   });
   finished = !active();
   const timer = setInterval(() => {
