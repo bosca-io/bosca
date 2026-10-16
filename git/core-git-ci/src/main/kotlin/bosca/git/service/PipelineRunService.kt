@@ -117,7 +117,8 @@ interface PipelineRunService : Service {
     /**
      * Permanently deletes a terminal pipeline run and its persisted logs and artifacts. The latest
      * explicit retry cannot be deleted while its original run exists, because that would restore an
-     * earlier attempt's CI result. Older retries can be deleted. Database
+     * earlier attempt's CI result. Older retries can be deleted. Deleting an original run makes its
+     * latest retry the root of the remaining retries and moves the original's CI selection to it. Database
      * relationships cascade the run deletion to its jobs, steps, and artifact records. Active
      * queued or running runs must be cancelled before deletion.
      *

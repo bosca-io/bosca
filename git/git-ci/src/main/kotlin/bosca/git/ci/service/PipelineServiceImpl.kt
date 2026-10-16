@@ -67,6 +67,10 @@ class PipelineServiceImpl(
     override suspend fun findEvaluationsChangedSince(repositoryId: UUID, since: bosca.serialization.OffsetDateTime, offset: Long, limit: Int): List<PipelineEvaluation> =
         evaluations.findChangedSince(repositoryId, since, offset, limit)
 
+    override suspend fun replaceEvaluationRun(repositoryId: UUID, commitSha: String, previousRunId: UUID, runId: UUID) {
+        evaluations.replaceRun(repositoryId, commitSha, previousRunId, runId)
+    }
+
     override suspend fun refreshEvaluations(repositoryId: UUID, commitSha: String) {
         evaluations.refreshByCommit(repositoryId, commitSha).forEach { PipelineEvaluationEvent(it.repositoryId, it.id, it.modified).dispatch() }
     }

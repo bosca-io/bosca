@@ -210,6 +210,7 @@ class PipelineRunServiceImplTest {
         coEvery { jobService.findByRun(runId) } returns listOf(job)
         coEvery { jobService.getSteps(job.id) } returns listOf(step)
         coEvery { artifactService.listByRun(runId) } returns listOf(artifact)
+        coEvery { runRepository.findLatestRetry(runId) } returns null
         coEvery { runRepository.delete(runId) } returns run
 
         assertEquals(run, service.delete(runId))
@@ -217,6 +218,28 @@ class PipelineRunServiceImplTest {
         coVerify { logService.deleteStepLog(repoId, runId, job.id, step.id) }
         coVerify { artifactService.delete(repoId, run.number, artifact.name) }
         coVerify { runRepository.delete(runId) }
+        coVerify(exactly = 0) { runRepository.reparentRetries(any(), any()) }
+        coVerify(exactly = 0) { pipelineService.replaceEvaluationRun(any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun `deleting an original promotes its latest retry before removing the row`() = runTest {
+        val original = PipelineRun(id = UUID.random(), pipelineId = pipelineId, repositoryId = repoId,
+            commitSha = "abc123", ref = "refs/heads/main", triggerType = PipelineTriggerType.PUSH,
+            status = PipelineRunStatus.FAILURE, number = 1)
+        val retry = original.copy(id = UUID.random(), status = PipelineRunStatus.SUCCESS, number = 2, rerunOf = original.id)
+        coEvery { runRepository.findByIdForUpdate(original.id) } returns original
+        coEvery { runRepository.findLatestRetry(original.id) } returns retry
+        coEvery { runRepository.delete(original.id) } returns original
+
+        assertEquals(original, service.delete(original.id))
+
+        io.mockk.coVerifyOrder {
+            runRepository.reparentRetries(original.id, retry.id)
+            pipelineService.replaceEvaluationRun(repoId, "abc123", original.id, retry.id)
+            runRepository.delete(original.id)
+            pipelineService.refreshEvaluations(repoId, "abc123")
+        }
     }
 
     @Test

@@ -68,6 +68,24 @@ interface PipelineRunRepository {
     """)
     suspend fun findLatestAttempt(runId: UUID): PipelineRun?
 
+    /** Latest explicit retry of a root run, excluding the root's own in-place attempts. */
+    @Query("""
+        select * from git.pipeline_runs
+        where rerun_of = :runId
+        order by attempt_order desc
+        limit 1
+    """)
+    suspend fun findLatestRetry(runId: UUID): PipelineRun?
+
+    /** Moves a root's retries under [rootId], which becomes a root itself. */
+    @Query("""
+        update git.pipeline_runs
+        set modified = clock_timestamp(),
+            rerun_of = case when id = :rootId::uuid then null else :rootId::uuid end
+        where rerun_of = :previousRootId
+    """, returnUpdateCount = true)
+    suspend fun reparentRetries(previousRootId: UUID, rootId: UUID): Int
+
     /** Recent source changes and active runs, in stable pages for recovery. */
     @Query("""
         select * from git.pipeline_runs where repository_id = :repositoryId

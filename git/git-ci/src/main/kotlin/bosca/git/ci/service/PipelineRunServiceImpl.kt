@@ -320,6 +320,13 @@ class PipelineRunServiceImpl(
             artifactService.delete(run.repositoryId, run.number, artifact.name)
         }
 
+        // A deleted root's latest retry becomes the root, so its selection keeps the latest attempt's result.
+        if (originalId == null) {
+            runRepository.findLatestRetry(run.id)?.let { root ->
+                runRepository.reparentRetries(run.id, root.id)
+                pipelineService.replaceEvaluationRun(run.repositoryId, run.commitSha, run.id, root.id)
+            }
+        }
         val deleted = runRepository.delete(runId)
             ?: throw IllegalStateException("Pipeline run $runId could not be deleted")
         pipelineService.refreshEvaluations(run.repositoryId, run.commitSha)

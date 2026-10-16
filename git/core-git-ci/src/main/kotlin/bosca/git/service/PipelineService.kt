@@ -31,6 +31,12 @@ interface PipelineService : Service {
     /** Pages recent decisions and incomplete evaluations for export recovery. */
     suspend fun findEvaluationsChangedSince(repositoryId: UUID, since: bosca.serialization.OffsetDateTime, offset: Long, limit: Int): List<bosca.git.model.PipelineEvaluation>
 
+    /**
+     * Moves every selection of [previousRunId] on this commit to [runId] when a deleted root's
+     * retry becomes the new root. Callers announce the change with [refreshEvaluations].
+     */
+    suspend fun replaceEvaluationRun(repositoryId: UUID, commitSha: String, previousRunId: UUID, runId: UUID)
+
     /** Refreshes and announces aggregate checks after a run for this commit is deleted. */
     suspend fun refreshEvaluations(repositoryId: UUID, commitSha: String)
 

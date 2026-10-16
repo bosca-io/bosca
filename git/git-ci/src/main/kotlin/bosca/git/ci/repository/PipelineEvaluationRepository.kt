@@ -39,6 +39,20 @@ interface PipelineEvaluationRepository {
     @Query("update git.pipeline_evaluations set modified = clock_timestamp() where repository_id = :repositoryId and commit_sha = :commitSha returning *")
     suspend fun refreshByCommit(repositoryId: UUID, commitSha: String): List<PipelineEvaluation>
 
+    /** Moves selections of [previousRunId] to [runId], including on completed decisions. */
+    @Query("""
+        update git.pipeline_evaluations
+        set modified = clock_timestamp(), selections = (
+            select jsonb_agg(case when entry.selection->>'runId' = :previousRunId::text
+                then jsonb_set(entry.selection, '{runId}', to_jsonb(:runId::text)) else entry.selection end
+                order by entry.position)
+            from jsonb_array_elements(selections) with ordinality as entry(selection, position)
+        )
+        where repository_id = :repositoryId and commit_sha = :commitSha
+          and selections @> jsonb_build_array(jsonb_build_object('runId', :previousRunId::text))
+    """, returnUpdateCount = true)
+    suspend fun replaceRun(repositoryId: UUID, commitSha: String, previousRunId: UUID, runId: UUID): Int
+
     /** Adds or replaces one file's selection atomically while evaluation remains open. */
     @Query("""
         update git.pipeline_evaluations

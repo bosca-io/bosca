@@ -357,8 +357,42 @@ class CiPipelineRepositoryIntegrationTest {
         assertTrue(refreshed.modified.isAfter(beforeDeletion))
         assertEquals(refreshed.modified, events.filterIsInstance<bosca.git.model.PipelineEvaluationEvent>()
             .last { it.evaluationId == replacement.id }.modified)
+        // The surviving latest retry becomes the root and keeps the selection.
+        assertEquals(successfulRetry.id, refreshed.selections.single { it.filePath == path }.runId)
+        assertNull(assertNotNull(runs.findById(successfulRetry.id)).rerunOf)
+        assertEquals(successfulRetry.id, runs.findLatestAttempt(successfulRetry.id)?.id)
         exportAll()
-        assertEquals("error", published.getValue("active" to "bosca/ci").state)
+        assertEquals("success", published.getValue("active" to "bosca/ci").state)
+        assertEquals("success", published.getValue("active" to "bosca/ci/test.yaml").state)
+    }
+
+    @Test
+    fun `promoting a retry moves sibling retries and completed selections to the new root`() = withDb {
+        val pipeline = pipelineRepo.create(Pipeline(repositoryId = repositoryId, filePath = "ci.yaml", name = "CI", configHash = "h"))
+        fun attempt(number: Int, rerunOf: UUID?) = PipelineRun(pipelineId = pipeline.id, repositoryId = repositoryId,
+            commitSha = "promote", ref = "main", triggerType = PipelineTriggerType.PUSH, number = number, rerunOf = rerunOf)
+        val root = runRepo.create(attempt(1, null))
+        val first = runRepo.create(attempt(2, root.id))
+        val second = runRepo.create(attempt(3, root.id))
+        val evaluations = PipelineEvaluationRepositoryImpl()
+        val evaluation = bosca.git.model.PipelineEvaluation(id = UUID.random(), repositoryId = repositoryId, commitSha = "promote", ref = "main")
+        evaluations.create(evaluation)
+        evaluations.recordRun(evaluation.id, "a.yaml", root.id)
+        evaluations.recordRun(evaluation.id, "b.yaml", null)
+        evaluations.finish(evaluation.id, true, null)
+
+        assertEquals(second.id, runRepo.findLatestRetry(root.id)?.id)
+        assertEquals(2, runRepo.reparentRetries(root.id, second.id))
+        assertEquals(1, evaluations.replaceRun(repositoryId, "promote", root.id, second.id))
+
+        assertNull(assertNotNull(runRepo.findById(second.id)).rerunOf)
+        assertEquals(second.id, assertNotNull(runRepo.findById(first.id)).rerunOf)
+        assertNull(runRepo.findLatestRetry(root.id))
+        assertEquals(second.id, runRepo.findLatestAttempt(second.id)?.id)
+        val moved = assertNotNull(evaluations.findById(evaluation.id))
+        assertTrue(moved.completed)
+        assertEquals(listOf("a.yaml" to second.id, "b.yaml" to null), moved.selections.map { it.filePath to it.runId })
+        assertEquals(0, evaluations.replaceRun(repositoryId, "promote", root.id, second.id))
     }
 
     @Test
