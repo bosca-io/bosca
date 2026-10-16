@@ -1,0 +1,27 @@
+package bosca.backup
+
+import bosca.db.annotation.ColumnName
+import bosca.db.annotation.DbMapper
+import bosca.db.mapper.JsonbMapper
+import java.time.OffsetDateTime
+
+/** Durable intent and the latest verified outcome for one source revision and destination. */
+data class ObjectBackupProgress(
+    val key: String,
+    @ColumnName("source_id")
+    val sourceId: String,
+    @ColumnName("destination_id")
+    val destinationId: String,
+    val scope: String,
+    @property:DbMapper(JsonbMapper::class)
+    val payload: BackupObject,
+    /** One of pending, running, completed or failed. */
+    val status: String = "pending",
+    val attempts: Int = 0,
+    @ColumnName("verified_bytes")
+    val verifiedBytes: Long = 0,
+    val error: String? = null,
+    val version: Long = 0,
+    val created: OffsetDateTime = OffsetDateTime.now(),
+    val modified: OffsetDateTime = created,
+)

@@ -4,6 +4,7 @@ import bosca.di.annotation.Provider
 import bosca.di.annotation.ProviderName
 import bosca.di.annotation.Providers
 import bosca.di.ObjectProvider
+import bosca.db.migrations.Migration
 import bosca.lock.DistributedLockFactory
 import bosca.observability.ErrorCapture
 import bosca.sharedqueue.jobs.JobQueue
@@ -27,6 +28,15 @@ object BackupJobQueueNames {
  */
 @Providers
 class BackupConfiguration {
+
+    /** Registers backup-owned migration resources in every composition root using this module. */
+    @Provider(name = "backup-migrations")
+    fun migration(): Migration = BackupMigration()
+
+    /** Provides the per-object transfer progress service and its owning repository. */
+    @Provider(singleton = true)
+    fun objectBackupProgressService(repository: ObjectBackupProgressRepository): ObjectBackupProgressService =
+        ObjectBackupProgressService(repository)
 
     /** Provides the job queue used to dispatch backup and restore jobs. */
     @Provider(singleton = true, name = BackupJobQueueNames.backupJobQueue)

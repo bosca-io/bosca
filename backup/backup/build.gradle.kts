@@ -1,3 +1,6 @@
+import com.google.devtools.ksp.gradle.KspAATask
+import org.gradle.process.CommandLineArgumentProvider
+
 plugins {
     id("org.jetbrains.kotlin.jvm")
     alias(libs.plugins.kotlin.ksp)
@@ -49,4 +52,13 @@ dependencies {
 
 ksp {
     arg("ProviderRegistrarPrefix", "Backup")
+}
+
+// Test registrars must not shadow the production providers exercised by integration tests.
+tasks.withType<KspAATask>().configureEach {
+    if (name == "kspTestKotlin") {
+        commandLineArgumentProviders.add(CommandLineArgumentProvider {
+            listOf("ProviderRegistrarPrefix=BackupTest")
+        })
+    }
 }
