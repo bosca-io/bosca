@@ -40,6 +40,21 @@ class DfsReadAheadTest {
     }
 
     @Test
+    fun `cold missing object count recovery shares the index with object reads`() {
+        val contents = listOf("first".toByteArray(), "second".toByteArray())
+        withPackedObjects(contents, recordObjectCount = false) { repo, ids, ranges, _ ->
+            val pack = repo.objectDatabase.packs.single().packDescription
+            assertEquals(2L, pack.objectCount)
+            assertEquals(1, ranges.getValue("idx").size, "Cold metadata recovery must load the index once")
+
+            repo.newObjectReader().use { reader ->
+                ids.forEachIndexed { index, id -> assertContentEquals(contents[index], reader.open(id).bytes) }
+            }
+            assertEquals(1, ranges.getValue("idx").size, "Object reads must reuse the recovered index")
+        }
+    }
+
+    @Test
     fun `loading an index larger than a cache block uses one range request`() {
         val contents = List(20_000) { ByteBuffer.allocate(4).putInt(it).array() }
         withPackedObjects(contents) { repo, ids, ranges, _ ->
@@ -56,6 +71,7 @@ class DfsReadAheadTest {
 
     private fun withPackedObjects(
         contents: List<ByteArray>,
+        recordObjectCount: Boolean = true,
         block: (BoscaDfsRepository, List<ObjectId>, Map<String, List<LongRange>>, Int) -> Unit,
     ) {
         val repositoryId = UUID.random()
@@ -80,7 +96,10 @@ class DfsReadAheadTest {
                 val index = ByteArrayOutputStream().also { writer.writeIndex(it) }.toByteArray()
                 storage.writeFile(info, "pack", pack)
                 storage.writeFile(info, "idx", index)
-                storage.commitPacks(listOf(info.copy(objectCount = ids.size.toLong(), fileSize = pack.size.toLong())), emptyList())
+                storage.commitPacks(listOf(info.copy(
+                    objectCount = if (recordObjectCount) ids.size.toLong() else 0L,
+                    fileSize = pack.size.toLong(),
+                )), emptyList())
 
                 BoscaDfsRepositoryBuilder().apply {
                     this.repositoryId = repositoryId

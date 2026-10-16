@@ -147,6 +147,10 @@ class GitQueryTest {
 
         query.branches(auth, id)
         coVerify { browseService.listBranches(id) }
+        query.branches(auth, id, false)
+        coVerify { browseService.listBranches(id, false) }
+        query.branches(auth, id, true)
+        coVerify(exactly = 2) { browseService.listBranches(id, true) }
 
         query.tags(auth, id)
         coVerify { browseService.listTags(id) }
@@ -466,6 +470,16 @@ class GitQueryTest {
     }
 
     @Test
+    fun `branches without history still require repository view permission`() = runTest {
+        repoFound()
+        coEvery { permissionEvaluator.verifyAllowed(auth, repo, PermissionAction.VIEW) } throws SecurityException("Denied")
+
+        assertFailsWith<SecurityException> { query.branches(auth, id, false) }
+
+        coVerify(exactly = 0) { browseService.listBranches(any(), any()) }
+    }
+
+    @Test
     fun `every repository-scoped query throws when the repository is missing`() = runTest {
         coEvery { repositoryService.findById(id) } returns null
         val scriptId = UUID.random()
@@ -481,6 +495,7 @@ class GitQueryTest {
             "blob" to { query.blob(auth, id, "main", "a") },
             "commit" to { query.commit(auth, id, "abc") },
             "branches" to { query.branches(auth, id) },
+            "branches without history" to { query.branches(auth, id, false) },
             "tags" to { query.tags(auth, id) },
             "tag" to { query.tag(auth, id, "v1") },
             "blame" to { query.blame(auth, id, "main", "a") },

@@ -763,6 +763,18 @@ class GitServerIntegrationTest {
                     buildJsonObject { put("repo", emptyId); put("branch", branch); put("content", content) }, adminToken,
                 )
             }
+            for (counts in listOf(null, "true", "null", "false")) {
+                val argument = counts?.let { ", includeAheadBehind: $it" }.orEmpty()
+                val branches = graphql(
+                    "query Branches(\$repo: UUID!) { git { branches(repositoryId: \$repo$argument) { name sha ahead behind } } }",
+                    buildJsonObject { put("repo", emptyId) }, adminToken,
+                ).at("git", "branches").jsonArray
+                assertEquals(setOf("trunk", "feature", "feature-two", "release"), branches.map { it.at("name").jsonPrimitive.content }.toSet())
+                val feature = branches.single { it.at("name").jsonPrimitive.content == "feature" }
+                assertEquals(40, feature.at("sha").jsonPrimitive.content.length)
+                assertEquals(if (counts == "false") 0 else 1, feature.at("ahead").jsonPrimitive.int)
+                assertEquals(0, feature.at("behind").jsonPrimitive.int)
+            }
             val editable = graphql(
                 "mutation Pull(\$repo: UUID!) { git { createPullRequest(input: { repositoryId: \$repo, title: \"Original PR\", description: \"Original description\", sourceBranch: \"feature\", targetBranch: \"trunk\" }) { id number version } } }",
                 buildJsonObject { put("repo", emptyId) }, adminToken,

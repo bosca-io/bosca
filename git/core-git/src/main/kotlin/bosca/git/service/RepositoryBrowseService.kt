@@ -52,8 +52,9 @@ interface RepositoryBrowseService : Service {
 
     /**
      * Lists all branches in the repository with ahead/behind counts relative to HEAD.
+     * When [includeAheadBehind] is false, reads only refs and leaves both counts at zero.
      */
-    suspend fun listBranches(repositoryId: UUID): List<BranchInfo>
+    suspend fun listBranches(repositoryId: UUID, includeAheadBehind: Boolean = true): List<BranchInfo>
 
     /**
      * Lists tags newest first using Git tagger dates, or committer dates for lightweight tags.
