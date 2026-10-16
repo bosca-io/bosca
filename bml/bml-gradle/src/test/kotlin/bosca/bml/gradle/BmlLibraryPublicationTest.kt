@@ -152,7 +152,8 @@ class BmlLibraryPublicationTest {
             assertEquals(TaskOutcome.SUCCESS, published.task(":mavenBmlValidatePublication")?.outcome)
             val republished = runner(producer, "publishMavenPublicationToFixtureRepository").build()
             assertTrue("Reusing configuration cache" in republished.output, republished.output)
-            assertEquals(TaskOutcome.SUCCESS, republished.task(":mavenBmlValidatePublication")?.outcome)
+            // Identical archives were already validated; publication still depends on that result.
+            assertEquals(TaskOutcome.UP_TO_DATE, republished.task(":mavenBmlValidatePublication")?.outcome)
             val artifacts = File(repository, "example/design/1.2.3")
             JarFile(File(artifacts, "design-1.2.3.jar")).use { jar ->
                 assertTrue(jar.getJarEntry("example/design/generated/ButtonComponent.class") != null)
@@ -288,7 +289,8 @@ class BmlLibraryPublicationTest {
             """.trimIndent())
             val replacedSources = runner(producer, "publishMavenPublicationToFixtureRepository").buildAndFail()
             assertTrue("Sources archive is missing Kotlin source" in replacedSources.output, replacedSources.output)
-            assertEquals(TaskOutcome.SUCCESS, replacedSources.task(":bmlValidateLibrary")?.outcome)
+            // The standard archives are unchanged and already valid; only the replacement publication fails.
+            assertEquals(TaskOutcome.UP_TO_DATE, replacedSources.task(":bmlValidateLibrary")?.outcome)
             assertEquals(TaskOutcome.FAILED, replacedSources.task(":mavenBmlValidatePublication")?.outcome)
             assertEquals(null, replacedSources.task(":publishMavenPublicationToFixtureRepository"))
             assertTrue(publishedSources.contentEquals(File(artifacts, "design-1.2.3-sources.jar").readBytes()))

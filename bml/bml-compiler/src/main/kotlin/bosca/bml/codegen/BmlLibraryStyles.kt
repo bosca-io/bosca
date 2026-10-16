@@ -30,15 +30,29 @@ object BmlLibraryStyles {
         File(args[1]).apply { parentFile.mkdirs(); writeText(JsonArray(entries).toString()) }
     }
 
-    /** Replaces only parsed style bodies; script text and source locations remain unchanged. */
-    fun prepare(document: Document, relative: String, styles: JsonObject): Document = map(document) { node ->
-        val prepared = styles[key(relative, node)]?.jsonObject
-            ?: error("Missing bundled library CSS for $relative:${node.span.startLine}; run bmlBundleLibraryStyles")
-        require(prepared.getValue("digest").jsonPrimitive.content == ContentDigest.sha256(node.content)) {
-            "Stale bundled library CSS for $relative:${node.span.startLine}"
+    /**
+     * Replaces only parsed style bodies; script text and source locations remain unchanged. A missing
+     * or stale bundled body is passed to [report] with its style span, and that body is left unchanged.
+     */
+    fun prepare(document: Document, relative: String, styles: JsonObject, report: (String, Span) -> Unit): Document =
+        map(document) { node ->
+            val prepared = styles[key(relative, node)]?.jsonObject
+            when {
+                prepared == null -> {
+                    report("Missing bundled library CSS for $relative:${node.span.startLine}; run bmlBundleLibraryStyles", node.span)
+                    node
+                }
+                prepared.getValue("digest").jsonPrimitive.content != ContentDigest.sha256(node.content) -> {
+                    report("Stale bundled library CSS for $relative:${node.span.startLine}; run bmlBundleLibraryStyles", node.span)
+                    node
+                }
+                else -> node.copy(content = prepared.getValue("css").jsonPrimitive.content)
+            }
         }
-        node.copy(content = prepared.getValue("css").jsonPrimitive.content)
-    }
+
+    /** The bundled stylesheet entries that belong to the BML file at [relative]. */
+    fun forSource(styles: JsonObject, relative: String): Map<String, JsonElement> =
+        styles.filterKeys { it.substringBeforeLast(':') == relative }
 
     private fun key(relative: String, node: RawTextNode): String = "$relative:${node.span.startOffset}"
 

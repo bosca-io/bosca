@@ -42,6 +42,8 @@ class BmlLibrarySourcesTest {
             val model = File(project, "src/main/kotlin/example/ButtonModel.kt").apply {
                 parentFile.mkdirs(); writeText("package example\nclass ButtonModel(val label: String)")
             }
+            // Kotlin beside BML is a Kotlin source root file, archived once at its source-root path.
+            File(project, "markup/components/ButtonTone.kt").writeText("package example.design\nenum class ButtonTone { PRIMARY }")
             for (path in listOf("markup/components/button.ts", "src/main/client/nested/start.ts", "public/theme.css")) {
                 File(project, path).apply { parentFile.mkdirs(); writeText("/* authored source */") }
             }
@@ -60,6 +62,7 @@ class BmlLibrarySourcesTest {
                 assertEquals(1, entries.count { it.endsWith("button.bml") }, entries.toString())
                 assertTrue("bml/imports.bml" in entries)
                 assertTrue("example/ButtonModel.kt" in entries)
+                assertEquals(listOf("components/ButtonTone.kt"), entries.filter { it.endsWith("ButtonTone.kt") }, entries.toString())
                 assertTrue(entries.containsAll(listOf("bml/components/button.ts", "client/nested/start.ts", "public/theme.css")))
                 assertFalse(entries.any { "node_modules" in it.split('/') }, entries.toString())
                 assertEquals(model.readText(), jar.getInputStream(jar.getJarEntry("example/ButtonModel.kt")).reader().readText())

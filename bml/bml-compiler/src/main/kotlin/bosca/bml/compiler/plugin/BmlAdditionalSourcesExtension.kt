@@ -77,7 +77,7 @@ class BmlAdditionalSourcesExtension : CollectAdditionalSourceFilesExtension() {
         val i18nFunctionKeys = mutableListOf<BmlI18nEntry>()
         val messages = configuration.get(CommonConfigurationKeys.MESSAGE_COLLECTOR_KEY)
         var hasErrors = false
-        fun error(message: String, file: File? = null, span: Span? = null) {
+        fun reportError(message: String, file: File? = null, span: Span? = null) {
             hasErrors = true
             messages?.report(
                 CompilerMessageSeverity.ERROR, "bml: $message",
@@ -91,16 +91,16 @@ class BmlAdditionalSourcesExtension : CollectAdditionalSourceFilesExtension() {
             ?.let { File(it, BmlLibraryArtifacts.MANIFEST_PATH) }
         // An invalid rebuild, a removed library block, or removed exports must not retain old metadata.
         libraryManifest?.delete()
-        if (!BmlLibraryArtifacts.isPackageName(packageName)) error("Invalid generated package '$packageName'")
+        if (!BmlLibraryArtifacts.isPackageName(packageName)) reportError("Invalid generated package '$packageName'")
         if (libraryId != null) {
-            if (!BmlLibraryArtifacts.isLibraryId(libraryId)) error("Invalid library identity '$libraryId'; expected group:artifact")
-            if (libraryVersion.isNullOrBlank() || libraryVersion.any(Char::isISOControl)) error("Library '$libraryId' requires an artifact version")
-            if (packageName == "bml.generated") error("Library '$libraryId' requires its own bml.packageName")
-            if (libraryManifest == null) error("Library '$libraryId' requires bmlResourcesOutputDir")
-            if (exports.isEmpty()) error("Library '$libraryId' must declare at least one exported component")
-            if (exports.distinct().size != exports.size) error("Duplicate exports in library '$libraryId'")
+            if (!BmlLibraryArtifacts.isLibraryId(libraryId)) reportError("Invalid library identity '$libraryId'; expected group:artifact")
+            if (libraryVersion.isNullOrBlank() || libraryVersion.any(Char::isISOControl)) reportError("Library '$libraryId' requires an artifact version")
+            if (packageName == "bml.generated") reportError("Library '$libraryId' requires its own bml.packageName")
+            if (libraryManifest == null) reportError("Library '$libraryId' requires bmlResourcesOutputDir")
+            if (exports.isEmpty()) reportError("Library '$libraryId' must declare at least one exported component")
+            if (exports.distinct().size != exports.size) reportError("Duplicate exports in library '$libraryId'")
         } else if (libraryVersion != null || exports.isNotEmpty()) {
-            error("Library version and exports require bmlLibraryId")
+            reportError("Library version and exports require bmlLibraryId")
         }
         if (hasErrors) return sources.filterNot { it.name.endsWith(".bml") }
         // Client TypeScript (`<script client>` / islands) is emitted to disk for esbuild — TS is not a
@@ -151,18 +151,22 @@ class BmlAdditionalSourcesExtension : CollectAdditionalSourceFilesExtension() {
                     val text = try {
                         file.readText()
                     } catch (failure: IOException) {
-                        error("Cannot read BML source: ${failure.message}", file)
+                        reportError("Cannot read BML source: ${failure.message}", file)
                         return@forEach
                     }
                     val parsed = BmlParser.parse(text)
                     parsed.diagnostics.forEach { diagnostic ->
-                        if (diagnostic.severity == Severity.Error) error(diagnostic.message, file, diagnostic.span)
+                        if (diagnostic.severity == Severity.Error) reportError(diagnostic.message, file, diagnostic.span)
                     }
                     val rel = file.relativeTo(dir).invariantSeparatorsPath
                     val document = if (libraryId != null && preparedStyles != null) {
-                        BmlLibraryStyles.prepare(parsed.document, rel, preparedStyles)
+                        BmlLibraryStyles.prepare(parsed.document, rel, preparedStyles) { message, span ->
+                            reportError(message, file, span)
+                        }
                     } else parsed.document
-                    val revisionText = if (preparedStyles == null) text else text + "\n" + preparedStyles.toString()
+                    // Only this file's bundled CSS affects its renderers.
+                    val fileStyles = preparedStyles?.let { BmlLibraryStyles.forSource(it, rel) }
+                    val revisionText = if (fileStyles.isNullOrEmpty()) text else text + "\n" + JsonObject(fileStyles)
                     parsedFiles += ParsedBml(file, rel, document, bmlRenderRevision(revisionText), ContentDigest.sha256(text))
                     // Static t("key") calls (server scripts, interpolations, client TS) feed the
                     // i18n manifest too, so the CLI can create their keys.
@@ -183,25 +187,25 @@ class BmlAdditionalSourcesExtension : CollectAdditionalSourceFilesExtension() {
             if (p.document.nodes.any { it is ElementNode && it.namespace == null && it.name in ROUTABLE_TAGS + setOf("message", "component") }) {
                 val outputName = objectNameFor(p.rel, suffix)
                 val previousFile = fileLocations.putIfAbsent(outputName, p.file.absolutePath)
-                if (previousFile != null) error("Generated file '$outputName.kt' collides between $previousFile and ${p.file}", p.file, p.document.span)
+                if (previousFile != null) reportError("Generated file '$outputName.kt' collides between $previousFile and ${p.file}", p.file, p.document.span)
             }
             if (libraryId != null) {
                 p.document.nodes.filterIsInstance<ElementNode>()
                     .filter { it.namespace == null && it.name in ROUTABLE_TAGS + "message" }
-                    .forEach { error("Component library '$libraryId' cannot declare <${it.name}>; use a separate application", p.file, it.span) }
+                    .forEach { reportError("Component library '$libraryId' cannot declare <${it.name}>; use a separate application", p.file, it.span) }
             }
             topLevelComponents(p.document).forEach { decl ->
                 componentTag(decl)?.let { tag ->
                     val location = "${p.file}:${decl.span.startLine}"
                     componentLocations.putIfAbsent(tag, location)?.let { previous ->
-                        error("Duplicate component '$tag' in $previous and $location", p.file, decl.span)
+                        reportError("Duplicate component '$tag' in $previous and $location", p.file, decl.span)
                     }
                     val objectName = BmlCodeGenerator.componentObjectName(tag)
                     objectLocations.putIfAbsent(objectName, location)?.let { previous ->
-                        error("Generated component '$objectName' collides between $previous and $location", p.file, decl.span)
+                        reportError("Generated component '$objectName' collides between $previous and $location", p.file, decl.span)
                     }
                     if (libraryId != null && !BmlLibraryArtifacts.isComponentTag(tag)) {
-                        error("Invalid or protected library component tag '$tag'", p.file, decl.span)
+                        reportError("Invalid or protected library component tag '$tag'", p.file, decl.span)
                     }
                     componentTags[tag] = objectName
                     componentDeclarations[tag] = decl
@@ -211,7 +215,7 @@ class BmlAdditionalSourcesExtension : CollectAdditionalSourceFilesExtension() {
                 }
             }
         }
-        exports.filter { it !in componentTags }.forEach { error("Export '$it' has no component declaration in library '$libraryId'") }
+        exports.filter { it !in componentTags }.forEach { reportError("Export '$it' has no component declaration in library '$libraryId'") }
         if (hasErrors) return sources.filterNot { it.name.endsWith(".bml") }
         val deferredComponentTags = BmlCodeGenerator.componentsUsingDeferredIslands(componentDeclarations)
         val clientBehaviorComponentTags = BmlCodeGenerator.componentsUsingClientBehavior(componentDeclarations)
@@ -438,7 +442,7 @@ class BmlAdditionalSourcesExtension : CollectAdditionalSourceFilesExtension() {
                 libraryManifest.parentFile.mkdirs()
                 libraryManifest.writeText(content)
             } catch (invalid: IllegalArgumentException) {
-                error("Invalid library metadata: ${invalid.message}")
+                reportError("Invalid library metadata: ${invalid.message}")
             }
         }
         // applyFirProcessSourcesExtension folds our return into the source list. Keep any incoming

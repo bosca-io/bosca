@@ -278,7 +278,10 @@ class BmlLibraryAssetsTest {
                 val manifest = inspect(binary, sources)
                 val paths = (manifest["sources"] as List<*>).map { source -> (source as Map<*, *>)["path"] }
                 assertTrue(paths.containsAll(listOf("bml/button.bml", "client/start.ts", "client/nested/helper.ts", "public/theme.css")))
-                JarFile(sources).use { jar -> assertTrue(jar.getJarEntry("AuthoredModel.kt") != null) }
+                JarFile(sources).use { jar ->
+                    assertTrue(jar.getJarEntry("AuthoredModel.kt") != null)
+                    assertEquals(null, jar.getJarEntry("bml/AuthoredModel.kt"), "Kotlin beside BML is archived once")
+                }
                 for (archive in listOf(binary, sources)) JarFile(archive).use { jar ->
                     assertFalse(jar.entries().asSequence().any { entry -> "node_modules" in entry.name.split('/') }, archive.path)
                 }

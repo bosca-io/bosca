@@ -8,13 +8,15 @@ A BML project can publish reusable components as a versioned library. Another BM
 
 The first library is the Bosca BML Design Library, proposed Maven coordinate io.bosca:bml-design. It supplies the shared Bosca visual language and UI building blocks extracted from the Git UI. Applications own their routes, data loading, authentication, permissions, and business actions.
 
-## Implementation progress
+## Implementation status
 
 The first producer foundation is implemented: configured Kotlin package names, explicit library mode and exports, component/source manifests, original BML and Kotlin source attachments, and validation of declarations and artifact contents. The compiler, metadata, Gradle source/publication, and existing sample application tests validate this first implementation. The publication fixture consumes compiled renderers and Kotlin models from an isolated Maven repository after deleting the producer checkout; it does not yet consume library components through BML import declarations. Consumer import resolution (including module-wide `imports.bml`), canonical runtime identities, consumer asset loading, development reloads, and IDE navigation remain to be implemented under the requirements below. The complete library feature is not yet available to BML consumers.
 
 The manifest currently records authored Kotlin prop types and default presence. Resolving public prop type identities across producer imports and dependency boundaries remains part of the component-contract work. The initial binary fixture uses an ordinary Kotlin model and a compiled renderer; serializer/action/DI and native acceptance cases remain outstanding.
 
-The real Gradle fixture established that Kotlin 2.4’s incremental frontend does not invoke the additional-source hook used by BML. BML main JVM compilations use the whole-module frontend; Gradle up-to-date checks and build caching remain available. Changes within a BML module currently recompile its main Kotlin sources together. Kotlin test compilations retain their incremental behavior and consume the compiled main renderers without rewriting their metadata. Compiler resources, TypeScript, metrics/CSS, and optional Kotlin/source maps are declared compilation outputs. Compiler TypeScript and GraphQL TypeScript have separate output directories; `bmlPrepareClient` assembles them under `build/generated/bml/ts` before bundling, preserving `./graphql/...` imports. Custom source directories are resolved lazily, and source archives are ordered after compilation during publication. These build constraints also apply to the development-reload work.
+Compiler resources, TypeScript, metrics/CSS, and optional Kotlin/source maps are declared `compileKotlin` outputs. Compiler TypeScript (`build/generated/bml/compiler-ts`) and GraphQL TypeScript (`build/generated/bml/graphql`) have separate output directories; `bmlPrepareClient` assembles them under `build/generated/bml/ts` before bundling, preserving `./graphql/...` imports. Custom source directories are resolved lazily, and source archives are ordered after compilation during publication. These build constraints also apply to the development-reload work.
+
+Kotlin incremental compilation remains enabled with the default `daemon` compiler execution strategy: the BML plugin regenerates every page and component on each compilation, and a `.bml` edit forces a full rebuild through the tracked BML source input. With `kotlin.compiler.execution.strategy=in-process`, Kotlin's incremental path does not invoke the BML compiler plugin at all, so the plugin disables incremental compilation for that strategy's main compilation. Test compilations have no BML sources and keep incremental compilation.
 
 ### Library asset packaging
 
@@ -27,6 +29,8 @@ Inline TypeScript is loaded at the canonical BML source path, so esbuild applies
 Linked npm packages work with both project-local and ancestor `node_modules` installations. Source ownership uses the canonical roots of all installed package directories, including ordinary packages beneath a linked `node_modules` or `@scope` directory. External package stores remain valid dependencies, and stores inside the project do not enter the authored-source inventory. The producer's own sources remain attached when the workspace also installs a link to the producer. Gradle tracks the installed links' targets for rebuilding JavaScript and inline CSS after dependency edits. Standalone stylesheets use `styles/` within the library namespace; scripts and their emitted CSS use `client/`, so `theme.ts` importing CSS can coexist with an independent `theme.css`.
 
 Dependency discovery walks authored sources and installed package trees, follows nested file/directory links, and includes ancestor `node_modules` directories for their canonical targets. This covers external source roots, linked component subdirectories, and dependencies hoisted above linked npm packages. Discovery visits each canonical directory once and skips build/cache directories. Lookup directories and link targets are explicit task inputs, so retargeting a link updates dependency resolution even when both destination trees are already tracked and the linked files are identical. Unchanged builds retain configuration-cache reuse and up-to-date bundling.
+
+Project files outside the authored roots are tracked only when a bundle read them. The BML source and `public/` trees, and `src/main/client` for client bundling, are always bundling inputs. Each bundling stage records the files it read. After a successful run, the plugin stores content digests of the recorded files outside those roots, installed packages, and build output, together with every file in the same directories, so a new sibling that could change import resolution also invalidates the bundle. A file therefore leaves bundling up to date only when no bundle read it or a file beside it; a project-root import makes every root-level file, such as `README.md`, a bundling input. A missing or damaged record or snapshot makes the stage run. Library validation records its result, so unchanged archives are not validated again.
 
 Both bundling stages track ancestor `package.json`, `tsconfig.json`, and `jsconfig.json` files, including missing candidates so that configuration creation and removal invalidate output. Configuration discovery follows JSONC `extends` chains, including arrays, relative files, and package configuration targets. Configuration paths and contents are inputs; inherited settings outside the producer and source root participate in rebuilding.
 
@@ -42,89 +46,25 @@ CSS scoping preserves source and license comments between rules. Conditional at-
 
 This completes producer packaging. Automatic extraction, selection, linking, and serving of these assets by a BML application still depend on the consumer import and registry work. Current publication tests explicitly read the archive and invoke the existing consumer bundler; they do not establish working `<import>` declarations or automatic server asset loading.
 
-### Library asset validation
+### Archive validation
+
+Library validation reads the manifest and renderer classes from the packaged binary JAR and checks the matching original sources archive. The ordinary `jar` and `check` paths run validation. Each Maven publication also validates its selected binary and sources JARs before publishing, including custom replacement artifacts. Regression cases exclude the renderer, exclude the manifest, replace the publication JAR, remove source attachments, and change publication coordinates. Invalid publication attempts leave the previously published fixture artifact intact. Normal publication and configuration-cache reuse continue to pass.
+
+Binary validation compares the presence and exact bytes of the selected JAR's entries with the library's main compilation outputs, including model classes, nested classes, generated renderer helpers, and Kotlin module metadata. Both ordinary archive validation and publication-specific validation use this inventory, so replacement publication artifacts must include the current outputs. A stale class with the same entry name fails validation before publication. Dependency JAR contents are not part of the producer's inventory.
+
+Sources validation checks the presence and exact contents of original Kotlin files from the configured main Kotlin source set. It preserves source-relative paths, supports custom roots, honors compilation include/exclude rules, and excludes BML's generated source mirrors. The expected inventory is independent of source JAR filtering and replacement, so removing or altering an original Kotlin file fails publication.
+
+### IDE tag folding
+
+Tag folding is implemented for multiline paired HTML/BML tags, bare and namespaced components, native escapes, and script/style bodies. Opening and closing tags remain visible, regions start expanded, and nested regions support individual and all-region Collapse/Expand actions. Folding uses syntax alone, including in original read-only BML sources from a library sources JAR. Single-line and self-closing tags create no body fold; tag-like text in embedded bodies, attributes, and comments is ignored. Closing-tag edits invalidate the fold ranges.
+
+### Regression coverage
 
 The real Gradle fixture publishes a library containing scoped/unscoped inline styles, inline client code, relative and project-level TypeScript helpers, nested standalone CSS/TypeScript, a font, and SVG resources. It verifies checksums in the binary and sources JARs, uses custom BML source and build directories, reuses the configuration cache, edits nested dependencies, removes an entry point, checks clean rebuilding, and rejects missing JS/font/source entries before publication. After deleting the producer checkout, a separate Kotlin consumer renders the published component and a browser bundler consumes only its archived ESM plus the consumer runtime. A second regression rejects client-library publication without a bundler. Standalone sources-JAR builds remain usable without compiling or resolving the compiler toolchain.
 
-Five browser bundler regressions cover inline CSS imports and URL suffixes, remote references, nested files, private npm code, shared chunks executing once, rebundling without producer sources/npm dependencies, CSS-only input, distinct coordinate/version namespaces, stale-output cleanup, and missing declared modules.
+Browser bundler regressions cover inline CSS imports and URL suffixes, remote references, nested files, private npm code, shared chunks executing once, rebundling without producer sources/npm dependencies, CSS-only input, distinct coordinate/version namespaces, stale-output cleanup, and missing declared modules.
 
-Ran successfully from the workspace root:
-
-```bash
-./gradlew :bml:core-bml:test --tests 'bosca.bml.library.*' :bml:bml-compiler:test :bml:bml-gradle:test :bml:bml-sample:test :bml:bml-ide:test :bml:bml-ide:buildPlugin --rerun-tasks --no-build-cache --console=plain
-```
-
-Results: 4 library metadata tests, 357 compiler tests, 26 Gradle tests, 33 sample tests, and 117 IDE tests passed (537 total; no failures, errors, or skips). All 91 scheduled tasks executed, and IDE plugin packaging succeeded. From `bml/bml-runtime`, `npm test` passed all 233 tests across 15 files and `npm run typecheck` passed. `git diff --check` passed. Focused archive and source regressions also passed after correcting the standalone sources-JAR dependency. No coverage report, native smoke test, full imported-component server/browser integration, plugin compatibility verifier, or manual IDE UI check was run.
-
-### Library asset review fix validation
-
-The publication fixture now covers inline and imported conditional CSS, a font definition at the beginning of an imported stylesheet, standalone CSS sharing a basename with a script that imports different CSS, and a hoisted scoped npm workspace package. It verifies separate JavaScript and CSS edits in that package invalidate their outputs with configuration-cache reuse. A workspace link back to the producer preserves its original source attachment and does not introduce its build outputs as dependency inputs. The published component renders and its archived browser module executes after both the producer and linked dependency are removed.
-
-Two additional compiler regressions cover comments before conditional rules, font definitions, keyframes, and licenses. Browser tests now include the CSS output collision and both local and hoisted linked packages, their CSS/image dependencies, and consumption after removal of the producer and dependency sources.
-
-Ran successfully from the workspace root:
-
-```bash
-./gradlew :bml:bml-compiler:test :bml:bml-gradle:test :bml:bml-sample:test --rerun-tasks --no-build-cache --console=plain
-```
-
-Results: 359 compiler tests, 26 Gradle tests, and 33 sample tests passed (418 total; no failures, errors, or skips). All 71 scheduled tasks executed. From `bml/bml-runtime`, `npm test` passed 236 tests across 15 files and `npm run typecheck` passed. The original isolated Node reproductions now pass, and `git diff --check` passed. Native, full imported-component server/browser acceptance, coverage, and IDE checks were not rerun for these fixes.
-
-### Browser-disabled dependency validation
-
-Two runtime regressions verify `browser` mappings to `false` for relative JavaScript imports, a Node built-in import, and CSS imports, plus failure when a real stylesheet disappears after preparation. The disabled-module regression failed before the fix. The real publication fixture now includes a linked npm package with disabled JavaScript and CSS files, validates the published archives, and executes the archived browser module after deleting the producer and dependency.
-
-Ran `./gradlew :bml:bml-gradle:test --rerun-tasks --no-build-cache --console=plain` from the workspace root: all 26 Gradle tests passed with no failures, errors, or skips, and all 56 scheduled tasks executed. From `bml/bml-runtime`, `npm test` passed all 238 tests across 15 files, including 10 library asset cases, and `npm run typecheck` passed. `git diff --check` passed. Compiler, sample, IDE, native, coverage, and full imported-component server/browser acceptance checks were not rerun for this bundler fix.
-
-### Source inventory and binary consistency validation
-
-Five additional runtime cases cover JavaScript/CSS data URLs, physical stylesheet imports with query suffixes, symlinked public files/directories with multiple authored aliases, a symlinked BML root with adjacent client/CSS dependencies, and cyclic/dangling links. Existing disabled-module coverage also checks a mapping whose target file does not exist. Archived modules execute after removing their original sources, and a real missing stylesheet still fails packaging.
-
-The publication fixture uses an external symlinked BML root, linked public resources, inline JavaScript/CSS data URLs, and a linked npm dependency together. It checks archive hashes, rejects omission of a linked public font, and consumes the artifacts after deleting all producer/source/asset/dependency directories. A separate regression rejects a stale replacement binary after changing a Kotlin model, verifies the previous publication remains intact, then publishes a replacement built from current outputs and executes its updated implementation.
-
-Ran `./gradlew :bml:bml-gradle:test --rerun-tasks --no-build-cache --console=plain` from the workspace root: all 27 Gradle tests passed with no failures, errors, or skips, and all 56 scheduled tasks executed. From `bml/bml-runtime`, `npm test` passed all 243 tests across 15 files, including 15 library asset cases; `npm run typecheck` passed. The original isolated asset reproductions and `git diff --check` also passed. Compiler, sample, IDE, native, coverage, and full imported-component server/browser acceptance checks were not rerun for these fixes.
-
-### Symlinked dependency tracking validation
-
-A new real Gradle publication regression verifies separate JavaScript and CSS edits in an npm package beside an external symlinked BML source tree. It checks configuration-cache reuse, published JavaScript and scoped CSS contents, archive inventories, retargeting the source symlink with identical authored files, and unchanged builds remaining up to date. The regression failed against the original implementation because the changed JavaScript left bundling up to date.
-
-Ran `./gradlew :bml:bml-gradle:test --rerun-tasks --no-build-cache --console=plain` from the workspace root: all 28 Gradle tests passed with no failures, errors, or skips, and all 56 scheduled tasks executed. The focused new regression and `git diff --check` also passed. Runtime, compiler, sample, IDE, native, coverage, and full imported-component acceptance test suites were not rerun for this Gradle input-tracking fix.
-
-### Nested source and package dependency validation
-
-The dependency publication fixture now covers a symlinked source root, a linked component subdirectory, and a linked npm package with dependencies hoisted above its canonical package location. Each case independently edits JavaScript and CSS, checks the published archive, reuses the configuration cache, and retargets the link while both destination trees are already installed. Link changes rebuild the assets even when the lookup-directory set and linked file contents remain unchanged; subsequent unchanged builds remain up to date. Both newly added layouts reproduced stale publication before the fix.
-
-Ran `./gradlew :bml:bml-gradle:test --rerun-tasks --no-build-cache --console=plain` from the workspace root: all 30 Gradle tests passed with no failures, errors, or skips, and all 56 scheduled tasks executed. All five focused asset tests passed. Both original review fixtures now publish dependency edits without forced rebuilding and reuse the configuration cache. `git diff --check` and whitespace checks of the edited untracked files passed. Runtime, compiler, sample, IDE, native, coverage, and full imported-component acceptance test suites were not rerun for this Gradle fix.
-
-### Resolver configuration and inline import validation
-
-Two publication regressions verify parent package import mappings, shared `jsconfig.json` inheritance, JSONC comments/trailing commas and `extends` arrays, configuration package exports, and creation/removal of an overriding `tsconfig.json`. They cover an ordinary subproject and an external symlinked BML tree, execute the published JavaScript through the consumer bundler, and check configuration-cache reuse and unchanged builds. Two browser regressions verify direct npm and package imports select the source-side dependency with and without a different producer-side package installed, while generated contract imports and the external runtime remain usable. Both browser cases failed before the fix.
-
-Ran `./gradlew :bml:bml-gradle:test --rerun-tasks --no-build-cache --console=plain` from the workspace root: all 32 Gradle tests passed with no failures, errors, or skips, and all 56 scheduled tasks executed. From `bml/bml-runtime`, `npm test` passed all 245 tests across 15 files, including 17 library asset cases; `npm run typecheck` passed. The original package/TypeScript configuration reproductions now publish updated JavaScript after configuration-only edits without forced rebuilding, and the original inline-import reproduction selects the source-side package. `git diff --check` and whitespace checks passed. Compiler, sample, IDE, native, coverage, and full imported-component acceptance suites were not rerun for these fixes.
-
-### Inline source-context validation
-
-Four browser regressions verify direct inline CSS imports use the canonical BML location, with and without a competing producer-side package, and inline TypeScript uses source-local inherited compiler settings in ordinary and linked source trees. They cover simultaneous components with different settings, distinct generated modules for source aliases, a BML link targeting a file with another extension, generated contract imports, and execution after removing original sources. All four reproduced the reported source-context failures before the fix.
-
-The real publication fixtures now import package CSS directly from linked BML roots and component directories while a competing producer-side package is installed. Two configuration fixtures publish a component with source-local class-field settings, execute both inline and adjacent helper code from its archive, change those settings, and verify the new behavior with configuration-cache reuse. Unchanged bundling remains up to date.
-
-Ran `./gradlew :bml:bml-gradle:test --rerun-tasks --no-build-cache --console=plain` from the workspace root: all 32 Gradle tests passed with no failures, errors, or skips, and all 56 scheduled tasks executed. The seven focused publication tests also passed. After the final loader adjustment, `./gradlew :bml:bml-gradle:test --no-build-cache --console=plain` executed the test task again and all 32 tests passed. From `bml/bml-runtime`, `npm test` passed all 249 tests across 15 files, including 21 library asset cases; `npm run typecheck` passed. The original direct-CSS reproduction publishes the source-side stylesheet, and the original TypeScript reproduction now executes the same `raw/raw` result as the source-location control. Compiler, sample, IDE, native, coverage, and full imported-component acceptance suites were not rerun for these fixes.
-
-### Nested npm dependency packaging validation
-
-Two browser regressions reproduce unused Node utilities and invalid CSS being treated as standalone entries when packages are installed directly under the client directory or a nested client directory. Both now bundle only imported dependency code, CSS, and images and execute after removing the producer sources and npm installation. A standalone sources-JAR regression reproduces dependency source leakage through inherited and explicit inputs, then verifies nested dependency trees are excluded while original BML, Kotlin, TypeScript, and CSS remain available without compilation. Dependency-only edits leave that source archive up to date.
-
-A real publication regression combines inline BML and nested client imports from source-local npm installations. It checks source inventories and both archives, edits dependency JavaScript and CSS, verifies updated output with configuration-cache reuse, and checks unchanged bundling stays up to date. It then deletes the producer and executes the archived browser modules in a separate consumer.
-
-Ran `./gradlew :bml:bml-gradle:test --rerun-tasks --no-build-cache --console=plain` from the workspace root: all 33 Gradle tests passed with no failures, errors, or skips, and all 56 scheduled tasks executed. Three focused source/publication tests also passed. From `bml/bml-runtime`, `npm test` passed all 251 tests across 15 files, including 23 library asset cases; `npm run typecheck` passed. The original isolated failing project now publishes successfully, and direct archive inspection confirms imported dependency code/styles and original sources remain while installed dependency source trees are absent. `git diff --check` and untracked-file whitespace checks passed. Compiler, sample, IDE, native, coverage, and full imported-component acceptance suites were not rerun for this fix.
-
-### Dependency Kotlin and BML source exclusion validation
-
-Two compiler/extractor regressions and the expanded real publication fixture reproduced dependency BML examples entering compilation and stylesheet preparation before the fix. Main Kotlin source discovery, BML declaration discovery, and stylesheet extraction now exclude installed dependency directories consistently with archive packaging. Source validation inherits the main Kotlin source-set exclusion. The fixture retains an authored Kotlin model beside its BML component while excluding dependency Kotlin classes, Kotlin build scripts, and BML examples from the binary, manifests, and source attachment. Imported browser code, CSS, and images remain usable after removing the producer; dependency edits still rebuild, with configuration-cache reuse. Edits to unused native/BML dependency sources leave stylesheet extraction and the source archive up to date.
-
-Ran `./gradlew :bml:bml-compiler:test :bml:bml-gradle:test :bml:bml-sample:test --rerun-tasks --no-build-cache --console=plain` from the workspace root: 361 compiler tests, 33 Gradle tests, and 33 sample tests passed (427 total; no failures, errors, or skips), and all 71 scheduled tasks executed. The three focused regressions also passed with forced execution and no build cache. The original isolated reproduction now publishes successfully with both dependency Kotlin and BML sources present; archive inspection confirms their classes/components/sources are absent while authored sources and imported JavaScript/CSS remain. `git diff --check` and untracked-file whitespace checks passed. The standalone runtime suite, IDE, native, coverage, and full imported-component acceptance checks were not rerun for this source-discovery fix.
-
-### Remaining implementation audit
+### Remaining implementation
 
 - File-local imports and module-root `imports.bml`, optional aliases, unqualified lookup/overrides, cross-library collision/version/cycle diagnostics, and equivalent CLI generation are not implemented. The compiler and project generator still resolve components from local declarations.
 - Manifest props retain authored type strings; resolved Kotlin type contracts and canonical component/DOM/client identities across library boundaries are not implemented.
@@ -134,88 +74,6 @@ Ran `./gradlew :bml:bml-compiler:test :bml:bml-gradle:test :bml:bml-sample:test 
 - Dependency-aware IDE completion and Command-click navigation into the correct original BML and Kotlin sources are not implemented. Source attachments and tag folding are implemented.
 - The Bosca BML Design Library, source inventory, component catalog, and independent BML application's import-based adoption are not implemented. This checkout has Studio Vue Git components; the intended extraction source still needs to be identified before claiming BML source parity.
 - Full imported-component server/browser integration and native resource/serializer smoke acceptance have not run. Named slots/fallbacks and document layouts remain existing language limitations, not completed prerequisites.
-
-### Initial producer validation
-
-Ran successfully from the workspace root:
-
-```bash
-./gradlew :bml:core-bml:test --tests 'bosca.bml.library.*' :bml:bml-compiler:test :bml:bml-gradle:test :bml:bml-sample:test --console=plain
-```
-
-Results: 4 library metadata tests, 356 compiler tests, 20 Gradle tests, and 33 sample application tests passed (413 total; no failures or skips). The Gradle fixtures cover original source archives, custom source roots, configuration-cache reuse, an isolated Maven publication, regeneration after metadata deletion, rejection of missing source targets, and a separate binary consumer after removing the producer checkout. The sample validates existing pages and Kotlin state models. The locked runtime development dependencies were installed with `npm ci --no-audit --no-fund` for its client bundling.
-
-These results validate the producer foundation only. IDE dependency navigation, library browser/runtime composition, action/serializer/DI integration, design-library parity, and native smoke acceptance are outstanding. No coverage report or coverage gate was run; test counts are not coverage. No release artifacts were published outside the temporary fixture repository.
-
-### IDE tag folding validation
-
-Tag folding is implemented for multiline paired HTML/BML tags, bare and namespaced components, native escapes, and script/style bodies. Opening and closing tags remain visible, regions start expanded, and nested regions support individual and all-region Collapse/Expand actions. Folding uses syntax alone, including in original read-only BML sources from a library sources JAR. Single-line and self-closing tags create no body fold; tag-like text in embedded bodies, attributes, and comments is ignored. Closing-tag edits invalidate the fold ranges.
-
-Ran successfully from the workspace root:
-
-```bash
-./gradlew :bml:bml-ide:test :bml:bml-ide:buildPlugin --console=plain
-```
-
-Results: all 117 IDE tests passed, including 9 new folding tests (no failures or skips), and the plugin ZIP was built. The tests exercise the registered builder through IntelliJ's editor, standard folding actions, malformed markup, editing, and a real read-only sources JAR. No manual installation or live IDE UI check was performed. Library-aware completion/navigation remains outstanding; these folding tests do not establish that behavior.
-
-### Code review and regression validation
-
-Reviewed the current library producer, manifest, Gradle publication/source archive, and IDE folding changes. Fixed library manifest emission after module-level localization errors: both conflicting markup translations and conflicting function defaults now prevent new component metadata from surviving the failed BML compilation. Restricted the whole-module compilation workaround to the main BML source set so ordinary Kotlin test compilation retains its incremental behavior.
-
-Extended the real Gradle publication fixture to verify that test compilation reuses the main renderer without overwriting its metadata, and that removing the sources attachment fails publication through Gradle's existing module-metadata validation. The compiler regression reproduces the localization failure before the fix and checks both localization paths after it.
-
-Ran successfully from the workspace root:
-
-```bash
-./gradlew :bml:core-bml:test --tests 'bosca.bml.library.*' :bml:bml-compiler:test :bml:bml-gradle:test :bml:bml-sample:test :bml:bml-ide:test :bml:bml-ide:buildPlugin --rerun-tasks --no-build-cache --console=plain
-```
-
-Results: 4 library metadata tests, 357 compiler tests, 21 Gradle tests, 33 sample tests, and 117 IDE tests passed (532 total; no failures or skips). All 86 scheduled tasks executed, and plugin packaging succeeded. `git diff --check` passed. No coverage report, native smoke test, plugin compatibility verifier, or manual IDE installation/UI check was run. The outstanding import, runtime/browser composition, library-aware navigation, and design-library extraction work remains unchanged.
-
-### Cache and publication review fixes
-
-Fixed the clean-build cache gap: compiler-owned TypeScript now lives in `build/generated/bml/compiler-ts`, GraphQL TypeScript defaults to `build/generated/bml/graphql`, and each generator owns its output tree. Cache restoration includes compiler resources, TypeScript, metrics/CSS, and optional Kotlin/source maps. A real Gradle fixture restores `compileKotlin` from cache after cleaning, changes a GraphQL query independently, and verifies the resulting production browser bundle contains the updated query. It also repeats the clean build with configuration-cache reuse.
-
-Library validation now reads the manifest and renderer classes from the packaged binary JAR and checks the matching original sources archive. The ordinary `jar` and `check` paths run validation. Each Maven publication also validates its selected binary and sources JARs before publishing, including custom replacement artifacts. Regression cases exclude the renderer, exclude the manifest, replace the publication JAR, remove source attachments, and change publication coordinates. Invalid publication attempts leave the previously published fixture artifact intact. Normal publication and configuration-cache reuse continue to pass.
-
-Ran successfully from the workspace root:
-
-```bash
-./gradlew :bml:core-bml:test --tests 'bosca.bml.library.*' :bml:bml-compiler:test :bml:bml-gradle:test :bml:bml-sample:test :bml:bml-ide:test :bml:bml-ide:buildPlugin --rerun-tasks --no-build-cache --console=plain
-```
-
-Results: 4 library metadata tests, 357 compiler tests, 22 Gradle tests, 33 sample tests, and 117 IDE tests passed (533 total; zero failures, errors, or skips). All 91 scheduled tasks executed, plugin packaging succeeded, and `git diff --check` passed. The cache regression explicitly enables build-cache reuse inside its isolated fixture; the root invocation disables reuse of test results. No coverage report, native smoke test, plugin compatibility verifier, or manual IDE UI check was run. The broader import, runtime/browser composition, library-aware navigation, and design-library extraction work remains outstanding.
-
-### Kotlin archive validation review fixes
-
-Binary validation compares the presence and exact bytes of the selected JAR's entries with the library's main compilation outputs, including model classes, nested classes, generated renderer helpers, and Kotlin module metadata. Both ordinary archive validation and publication-specific validation use this inventory, so replacement publication artifacts must include the current outputs. A stale class with the same entry name fails validation before publication. Dependency JAR contents are not part of the producer's inventory.
-
-Sources validation checks the presence and exact contents of original Kotlin files from the configured main Kotlin source set. It preserves source-relative paths, supports custom roots, honors compilation include/exclude rules, and excludes BML's generated source mirrors. The expected inventory is independent of source JAR filtering and replacement, so removing or altering an original Kotlin file fails publication.
-
-The expanded publication fixture rejects missing models, helpers, nested classes, renderer support classes, module metadata, all Kotlin sources, individual custom-root sources, and altered source contents. Replacement binary and sources artifacts are checked independently. Valid publication, source edits with configuration-cache reuse, intentional source exclusions, and a consumer rendering after the producer checkout is deleted all pass.
-
-Ran successfully from the workspace root:
-
-```bash
-./gradlew :bml:core-bml:test --tests 'bosca.bml.library.*' :bml:bml-compiler:test :bml:bml-gradle:test :bml:bml-sample:test :bml:bml-ide:test :bml:bml-ide:buildPlugin --rerun-tasks --no-build-cache --console=plain
-```
-
-Results: 4 library metadata tests, 357 compiler tests, 22 Gradle tests, 33 sample tests, and 117 IDE tests passed (533 total; zero failures, errors, or skips). All 91 scheduled tasks executed, and plugin packaging succeeded. The focused publication regression also passed separately. `git diff --check` passed. No coverage report, native smoke test, plugin compatibility verifier, or manual IDE UI check was run. Consumer imports, runtime/browser composition, library-aware navigation, and design-library extraction remain outstanding.
-
-### Empty client-input build fix
-
-The bundling task tracks prepared TypeScript as a file collection, allowing the preparation task to leave the directory absent when there are no client modules. Global assets still run through optimization and packaging, and removing the final client script still runs bundle cleanup. Adding client code back invalidates the empty input collection and rebuilds its bundles.
-
-Two real Gradle regressions reproduced the missing-directory failure before the fix and pass afterward. They cover fresh and clean CSS-only JAR builds, optimized CSS contents inside the JAR, CSS edits, removal of the last client script with no global assets or GraphQL output, cleanup of development/production bundles and source maps, and adding client code back. Repeated builds reuse the configuration cache and retain up-to-date bundling when inputs are unchanged.
-
-Ran successfully from the workspace root:
-
-```bash
-./gradlew :bml:core-bml:test --tests 'bosca.bml.library.*' :bml:bml-compiler:test :bml:bml-gradle:test :bml:bml-sample:test :bml:bml-ide:test :bml:bml-ide:buildPlugin --rerun-tasks --no-build-cache --console=plain
-```
-
-Results: 4 library metadata tests, 357 compiler tests, 24 Gradle tests, 33 sample tests, and 117 IDE tests passed (535 total; zero failures, errors, or skips). All 91 scheduled tasks executed, plugin packaging succeeded, and `git diff --check` passed. The two new regressions also passed in a focused run. No coverage report, native smoke test, plugin compatibility verifier, or manual IDE UI check was run. The remaining library import, composition, navigation, and extraction requirements are still pending.
 
 ## Verified planning baseline
 

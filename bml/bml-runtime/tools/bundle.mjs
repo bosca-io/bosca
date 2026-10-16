@@ -206,7 +206,8 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   if (libraryManifest) {
     await bundleLibraryAssets({ manifestPath: libraryManifest, inDir, sourceRoot: argOf("--source-root"),
       buildDir: argOf("--build-dir"), clientDir: assetsIn, publicDir: argOf("--public-in"), projectDir: argOf("--project-dir"),
-      stylesDir: argOf("--library-styles"), outdir: argOf("--library-out"), sourcesOut: argOf("--library-sources-out") })
+      stylesDir: argOf("--library-styles"), outdir: argOf("--library-out"), sourcesOut: argOf("--library-sources-out"),
+      inputsOut: argOf("--library-inputs-out") })
     process.exit(0)
   }
   const entryPoints = existsSync(inDir)

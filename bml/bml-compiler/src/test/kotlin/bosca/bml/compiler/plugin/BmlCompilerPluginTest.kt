@@ -295,6 +295,64 @@ class BmlCompilerPluginTest {
     }
 
     @Test
+    fun `missing or stale bundled library CSS fails with source context`() {
+        for ((styles, expected) in listOf(
+            "{}" to "Missing bundled library CSS for card.bml:1",
+            """{"card.bml:22": {"digest": "sha256:stale", "css": ".card { color: red; }"}}""" to "Stale bundled library CSS for card.bml:1",
+        )) {
+            val work = newWorkDir()
+            val root = File(work, "bml").apply { mkdirs() }
+            File(root, "card.bml").writeText("""<component tag="card"><style scoped>.card { color: red; }</style><span class="card"/></component>""")
+            val stylesFile = File(work, "styles.json").apply { writeText(styles) }
+            val (exit, messages) = compileWithBmlPlugin(File(work, "classes"), listOf(
+                "bmlSourceRoot=$root", "bmlPackageName=example.design", "bmlLibraryId=example:design",
+                "bmlLibraryVersion=1", "bmlLibraryExport=card", "bmlResourcesOutputDir=${File(work, "resources")}",
+                "bmlLibraryStyles=$stylesFile",
+            ), work)
+            assertEquals(ExitCode.COMPILATION_ERROR, exit, messages)
+            assertTrue(expected in messages && "card.bml" in messages, messages)
+            assertFalse("Exception" in messages, "Bundled CSS problems are diagnostics, not compiler crashes: $messages")
+        }
+    }
+
+    @Test
+    fun `bundled CSS changes only invalidate renderers from the same source file`() {
+        val work = newWorkDir()
+        val root = File(work, "bml").apply { mkdirs() }
+        File(root, "card.bml").writeText("""<component tag="card"><style scoped>.card { color: red; }</style><span class="card"/></component>""")
+        File(root, "chip.bml").writeText("""<component tag="chip"><style scoped>.chip { color: blue; }</style><span class="chip"/></component>""")
+        val inputs = File(work, "inputs.json")
+        val stylesFile = File(work, "styles.json")
+        val resources = File(work, "resources")
+        fun revisions(chipCss: String): Map<String, String> {
+            bosca.bml.codegen.BmlLibraryStyles.main(arrayOf(root.absolutePath, inputs.absolutePath))
+            val prepared = kotlinx.serialization.json.Json.parseToJsonElement(inputs.readText()).let { it as kotlinx.serialization.json.JsonArray }
+                .associate { entry ->
+                    val fields = entry as kotlinx.serialization.json.JsonObject
+                    val source = (fields.getValue("source") as kotlinx.serialization.json.JsonPrimitive).content
+                    val css = (fields.getValue("css") as kotlinx.serialization.json.JsonPrimitive).content
+                    (fields.getValue("key") as kotlinx.serialization.json.JsonPrimitive).content to kotlinx.serialization.json.JsonObject(mapOf(
+                        "digest" to fields.getValue("digest"),
+                        "css" to kotlinx.serialization.json.JsonPrimitive(if (source == "chip.bml") chipCss else css),
+                    ))
+                }
+            stylesFile.writeText(kotlinx.serialization.json.JsonObject(prepared).toString())
+            val (exit, messages) = compileWithBmlPlugin(File(work, "classes"), listOf(
+                "bmlSourceRoot=$root", "bmlPackageName=example.design", "bmlLibraryId=example:design",
+                "bmlLibraryVersion=1", "bmlLibraryExport=card", "bmlLibraryExport=chip",
+                "bmlResourcesOutputDir=$resources", "bmlLibraryStyles=$stylesFile",
+            ), work)
+            assertEquals(ExitCode.OK, exit, messages)
+            val manifest = BmlLibraryArtifacts.decode(File(resources, BmlLibraryArtifacts.MANIFEST_PATH).readText())
+            return manifest.components.associate { it.tag to it.renderRevision }
+        }
+        val first = revisions(".chip { color: blue; }")
+        val second = revisions(".chip { color: green; }")
+        assertEquals(first.getValue("card"), second.getValue("card"), "Another file's CSS must not change this renderer")
+        assertTrue(first.getValue("chip") != second.getValue("chip"), "The file's own bundled CSS participates in its revision")
+    }
+
+    @Test
     fun `the K2 plugin lowers a directory of bml files to in-memory Kotlin that compiles and renders`() {
         val work = newWorkDir()
         val srcRoot = File(work, "bml").apply { mkdirs() }

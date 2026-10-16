@@ -118,7 +118,7 @@ export async function bundleLibraryStyles({ input, sourceRoot, publicDir, projec
 }
 
 /** Bundle and inventory a library's browser assets without embedding another copy of @bosca/bml. */
-export async function bundleLibraryAssets({ manifestPath, inDir, sourceRoot, clientDir, publicDir, projectDir, stylesDir, outdir, sourcesOut, buildDir = join(projectDir, "build") }) {
+export async function bundleLibraryAssets({ manifestPath, inDir, sourceRoot, clientDir, publicDir, projectDir, stylesDir, outdir, sourcesOut, inputsOut, buildDir = join(projectDir, "build") }) {
   const manifest = readJson(manifestPath)
   const { library, version } = manifest
   const resourcePrefix = prefix(library, version)
@@ -215,6 +215,8 @@ export async function bundleLibraryAssets({ manifestPath, inDir, sourceRoot, cli
   const originals = new Map()
   for (const [dir, prefix] of [[sourceRoot, "bml"], [clientDir, "client"], [publicDir, "public"]]) {
     for (const file of files(dir)) {
+      // Kotlin beside BML is a Kotlin source-set file; the source attachment keeps it at its source-root path.
+      if (prefix === "bml" && /\.kts?$/.test(file)) continue
       const path = resolve(file)
       if (!originals.has(path)) originals.set(path, `${prefix}/${slash(relative(resolve(dir), path))}`)
       inputs.add(path)
@@ -248,10 +250,16 @@ export async function bundleLibraryAssets({ manifestPath, inDir, sourceRoot, cli
     formatVersion: 1, library, version, resourcePrefix, urlPrefix: publicPath(library, version),
     modules, globalScripts, globalStyles: [...new Set(globalStyles)], files: inventory, sources,
   }, null, 2))
+  // Every file this build read, so the build tool can track exactly these (plus their siblings).
+  if (inputsOut) write(inputsOut, JSON.stringify([...inputs].sort()))
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const arg = (flag) => process.argv[process.argv.indexOf(flag) + 1]
+  const arg = (flag) => {
+    const index = process.argv.indexOf(flag)
+    if (index < 0 || index + 1 >= process.argv.length) throw new Error(`Missing required argument ${flag}`)
+    return process.argv[index + 1]
+  }
   bundleLibraryStyles({ input: arg("--input"), sourceRoot: arg("--source-root"), publicDir: arg("--public-in"),
     projectDir: arg("--project-dir"), outdir: arg("--out"), library: arg("--library-id"), version: arg("--library-version") })
     .catch((error) => { console.error(error); process.exitCode = 1 })

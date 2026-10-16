@@ -73,9 +73,11 @@ class BmlGradlePlugin : KotlinCompilerPluginSupportPlugin {
             // up-to-date / cache-restorable and the change silently doesn't take effect. Declare the `.bml`
             // dir as a content-tracked input so editing a `.bml` correctly invalidates the compilation.
             target.tasks.named("compileKotlin", org.jetbrains.kotlin.gradle.tasks.KotlinCompile::class.java).configure { task ->
-                // Only main owns BML sources. K2's incremental frontend bypasses the additional-source
-                // extension; test compilations consume main's compiled renderers normally.
-                task.incremental = false
+                // In-process incremental compilation never invokes the BML compiler plugin, so it would
+                // silently produce no pages. Daemon compilation runs it, incrementally or not.
+                if (task.compilerExecutionStrategy.get() == org.jetbrains.kotlin.gradle.tasks.KotlinCompilerExecutionStrategy.IN_PROCESS) {
+                    task.incremental = false
+                }
                 task.inputs.dir(ext.sourceDir)
                     .withPropertyName("bmlSources")
                     .withPathSensitivity(org.gradle.api.tasks.PathSensitivity.RELATIVE)
@@ -128,12 +130,8 @@ class BmlGradlePlugin : KotlinCompilerPluginSupportPlugin {
     /** Attaches original BML and Kotlin sources to library publications using the Java source variant. */
     private fun configureLibrarySources(target: Project, ext: BmlExtension, kotlinSources: org.gradle.api.file.SourceDirectorySet) {
         target.afterEvaluate {
-            if (!ext.library.enabled.get()) {
-                target.tasks.named("processResources", org.gradle.language.jvm.tasks.ProcessResources::class.java).configure {
-                    it.exclude("META-INF/bml/library-manifest.json")
-                }
-                return@afterEvaluate
-            }
+            // The compiler deletes the library manifest whenever library mode is off.
+            if (!ext.library.enabled.get()) return@afterEvaluate
             require(!target.plugins.hasPlugin("application")) {
                 "BML component libraries cannot apply the application plugin; put pages and examples in a separate project"
             }
@@ -144,6 +142,7 @@ class BmlGradlePlugin : KotlinCompilerPluginSupportPlugin {
                 sources.exclude { it.file.toPath().startsWith(generatedRoot) }
             }
             target.tasks.withType(BmlValidateLibraryTask::class.java).configureEach { task ->
+                task.result.set(target.layout.buildDirectory.file("bml/validation/${task.name}.txt"))
                 task.compiledOutputs.from(main.output.classesDirs)
                 task.kotlinSources.from(originalKotlinSources)
                 task.assetOutputs.from(target.layout.buildDirectory.dir(BmlLibraryAssets.OUTPUT))
@@ -159,7 +158,8 @@ class BmlGradlePlugin : KotlinCompilerPluginSupportPlugin {
             target.tasks.named("sourcesJar", org.gradle.jvm.tasks.Jar::class.java).configure { task ->
                 // Apply to inherited source-set inputs as well as the explicit asset copies below.
                 task.exclude("**/node_modules/**")
-                task.from(ext.sourceDir) { it.into("bml") }
+                // Kotlin under the BML root is already archived from the Kotlin source set at its root-relative path.
+                task.from(ext.sourceDir) { it.into("bml"); it.exclude("**/*.kt", "**/*.kts") }
                 task.from(target.layout.projectDirectory.dir("src/main/client")) { it.into("client") }
                 task.from(target.layout.projectDirectory.dir("public")) { it.into("public") }
                 // Extra project-local imports discovered by bundling keep their project-relative
@@ -446,6 +446,7 @@ class BmlGradlePlugin : KotlinCompilerPluginSupportPlugin {
                         add("--library-styles"); add(libraryStylesDir.get().asFile.absolutePath)
                         add("--library-out"); add(libraryOutputDir.get().asFile.absolutePath)
                         add("--library-sources-out"); add(librarySourcesDir.get().asFile.absolutePath)
+                        add("--library-inputs-out"); add(buildDir.get().file(BmlLibraryAssets.INPUTS).asFile.absolutePath)
                     }
                     if (ext.clientRuntime.isPresent) {
                         add("--runtime"); add(ext.clientRuntime.get().asFile.absolutePath)

@@ -9,6 +9,7 @@ import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputFile
 import org.gradle.api.tasks.InputFiles
+import org.gradle.api.tasks.OutputFile
 import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
@@ -46,10 +47,13 @@ abstract class BmlValidateLibraryTask : DefaultTask() {
     @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val clientAssetInputs: ConfigurableFileCollection
 
+    /** Written after a successful check so unchanged archives are not validated again. */
+    @get:OutputFile abstract val result: RegularFileProperty
+
     /** Fails validation before publication if the packaged metadata, bytecode, and sources disagree. */
     @TaskAction
     fun validate() {
-        JarFile(binaryArchive.get().asFile).use { binary ->
+        val componentCount = JarFile(binaryArchive.get().asFile).use { binary ->
             val manifest = binary.getJarEntry("META-INF/bml/library-manifest.json")
                 ?: error("Binary archive is missing the BML library manifest for ${libraryId.get()}")
             val metadata = binary.getInputStream(manifest).use { JsonSlurper().parse(it) } as? Map<*, *>
@@ -106,7 +110,10 @@ abstract class BmlValidateLibraryTask : DefaultTask() {
                     }
                 }
             }
+            components.size
         }
+        result.get().asFile.apply { parentFile.mkdirs() }
+            .writeText("Validated ${libraryId.get()}:${artifactVersion.get()} ($componentCount components)\n")
     }
 
     private fun verifyAssets(archive: JarFile, expected: ConfigurableFileCollection, kind: String) {

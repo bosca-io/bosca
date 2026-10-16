@@ -34,14 +34,19 @@ class BmlGradlePluginTest {
     }
 
     @Test
-    fun `whole module compilation is limited to the main BML source set`() {
-        val project = ProjectBuilder.builder().build()
-        project.pluginManager.apply("org.jetbrains.kotlin.jvm")
-        project.pluginManager.apply(BmlGradlePlugin::class.java)
-        val main = project.tasks.named("compileKotlin", org.jetbrains.kotlin.gradle.tasks.KotlinCompile::class.java).get()
-        val tests = project.tasks.named("compileTestKotlin", org.jetbrains.kotlin.gradle.tasks.KotlinCompile::class.java).get()
-        assertFalse(main.incremental)
-        assertTrue(tests.incremental, "Kotlin tests have no BML source input and should retain incremental compilation")
+    fun `incremental compilation is disabled only for in-process main compilation`() {
+        fun compileTasks(strategy: String?): Pair<Boolean, Boolean> {
+            val project = ProjectBuilder.builder().build()
+            strategy?.let { project.extensions.extraProperties["kotlin.compiler.execution.strategy"] = it }
+            project.pluginManager.apply("org.jetbrains.kotlin.jvm")
+            project.pluginManager.apply(BmlGradlePlugin::class.java)
+            val main = project.tasks.named("compileKotlin", org.jetbrains.kotlin.gradle.tasks.KotlinCompile::class.java).get()
+            val tests = project.tasks.named("compileTestKotlin", org.jetbrains.kotlin.gradle.tasks.KotlinCompile::class.java).get()
+            return main.incremental to tests.incremental
+        }
+        assertEquals(true to true, compileTasks(null), "The default daemon strategy runs the BML plugin incrementally")
+        assertEquals(true to true, compileTasks("daemon"))
+        assertEquals(false to true, compileTasks("in-process"), "In-process IC skips the BML plugin; tests have no BML sources")
     }
 
     @Test

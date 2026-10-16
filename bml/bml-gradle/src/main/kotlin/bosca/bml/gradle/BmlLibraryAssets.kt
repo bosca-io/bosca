@@ -5,24 +5,22 @@ import org.gradle.api.Project
 import org.gradle.api.attributes.Category
 import org.gradle.api.attributes.LibraryElements
 import org.gradle.api.attributes.Usage
-import org.gradle.api.file.DirectoryProperty
-import org.gradle.api.provider.ListProperty
-import org.gradle.api.provider.ValueSource
-import org.gradle.api.provider.ValueSourceParameters
+import org.gradle.api.file.RegularFile
+import org.gradle.api.provider.Provider
 import org.gradle.api.tasks.Exec
 import org.gradle.api.tasks.JavaExec
 import org.gradle.api.tasks.PathSensitivity
 import org.gradle.process.CommandLineArgumentProvider
-import java.io.File
-import java.io.Serializable
-import java.nio.file.Files
-import java.nio.file.LinkOption
 
 /** Prepares inline CSS before compilation; browser modules are packaged after compilation. */
 internal object BmlLibraryAssets {
     const val OUTPUT = "generated/bml/library-assets"
     const val SOURCES = "generated/bml/library-asset-sources"
     const val STYLES = "generated/bml/library-styles"
+    /** Files read by the last library asset bundle, written by the bundler. */
+    const val INPUTS = "generated/bml/library-asset-inputs.json"
+    const val STYLE_TRACKING = "bml/tracking/library-styles.json"
+    const val ASSET_TRACKING = "bml/tracking/library-assets.json"
 
     fun configure(project: Project, ext: BmlExtension) {
         project.afterEvaluate {
@@ -74,16 +72,32 @@ internal object BmlLibraryAssets {
                         it.file.canonicalFile.toPath().startsWith(buildDir.toFile().canonicalFile.toPath()))
                 }
             }
-            val sourceFiles = project.fileTree(projectDir) {
-                it.exclude(".gradle/**", ".kotlin/**", "node_modules/**", ".git", ".git/**")
-                it.exclude { entry -> entry.file.toPath().startsWith(buildDir) }
+            // Authored roots are always tracked whole; other project files only when a bundle read them.
+            val authoredFiles = project.files(
+                project.fileTree(ext.sourceDir) { it.exclude("**/node_modules/**") },
+                project.fileTree(projectDir.resolve("public")) { it.exclude("**/node_modules/**") },
+            )
+            val buildDirectory = project.layout.buildDirectory
+            val sourceDir = ext.sourceDir
+            // [otherRoots] must be trees the task already declares as inputs in full.
+            fun trackRecordedFiles(task: org.gradle.api.Task, record: Provider<RegularFile>, stored: Provider<RegularFile>, otherRoots: List<java.io.File>) {
+                fun roots() = listOf(sourceDir.get().asFile) + otherRoots
+                task.outputs.file(stored).withPropertyName("trackedProjectFiles")
+                task.outputs.upToDateWhen {
+                    BmlLibraryTrackedFiles.isCurrent(stored.get().asFile, record.get().asFile, buildDirectory.get().asFile, roots())
+                }
+                // A failed run must not leave a snapshot that matches the previous record.
+                task.doFirst { stored.get().asFile.delete() }
+                task.doLast { BmlLibraryTrackedFiles.store(stored.get().asFile, record.get().asFile, buildDirectory.get().asFile, roots()) }
             }
             val bundle = project.tasks.register("bmlBundleLibraryStyles", Exec::class.java) { task ->
                 task.group = "bml"
                 task.description = "Bundle inline library CSS and referenced resources before scoping."
                 task.dependsOn(extract, "bmlInstallClientDependencies")
                 task.inputs.file(inputs).withPathSensitivity(PathSensitivity.NONE)
-                task.inputs.files(sourceFiles, project.fileTree(ext.sourceDir)).withPathSensitivity(PathSensitivity.RELATIVE)
+                task.inputs.files(authoredFiles).withPropertyName("libraryStyleSources").withPathSensitivity(PathSensitivity.RELATIVE)
+                trackRecordedFiles(task, styles.map { it.file("inputs.json") }, buildDirectory.file(STYLE_TRACKING),
+                    listOf(projectDir.resolve("public")))
                 task.inputs.files(dependencyFiles).withPropertyName("clientDependencies").withPathSensitivity(PathSensitivity.RELATIVE)
                 task.inputs.files(dependencyPaths.map { it.configurations }).withPropertyName("clientResolverConfigurations")
                     .withPathSensitivity(PathSensitivity.ABSOLUTE)
@@ -123,74 +137,15 @@ internal object BmlLibraryAssets {
                     .withPathSensitivity(PathSensitivity.ABSOLUTE)
                 task.inputs.property("libraryClientDependencyDirectories", dependencyPaths.map { it.directories.map { directory -> directory.path } })
                 task.inputs.property("libraryClientDependencyLinks", dependencyPaths.map { it.links })
-                task.inputs.files(sourceFiles, project.fileTree(ext.sourceDir)).withPropertyName("libraryAssetSources").withPathSensitivity(PathSensitivity.RELATIVE)
+                task.inputs.files(authoredFiles).withPropertyName("libraryAssetSources").withPathSensitivity(PathSensitivity.RELATIVE)
+                task.outputs.file(buildDirectory.file(INPUTS)).withPropertyName("libraryAssetInputRecord")
+                // src/main/client is tracked in full by the bundle task's global client asset input.
+                trackRecordedFiles(task, buildDirectory.file(INPUTS), buildDirectory.file(ASSET_TRACKING),
+                    listOf(projectDir.resolve("public"), projectDir.resolve("src/main/client")))
                 task.inputs.files(project.fileTree(styles)).withPropertyName("libraryStyleAssets").withPathSensitivity(PathSensitivity.RELATIVE)
                 task.outputs.dir(project.layout.buildDirectory.dir(OUTPUT)).withPropertyName("libraryAssets")
                 task.outputs.dir(project.layout.buildDirectory.dir(SOURCES)).withPropertyName("libraryAssetSources")
             }
         }
-    }
-}
-
-/** Dependency trees, link identities, and configuration candidates used by browser module resolution. */
-internal data class BmlLibraryDependencyPaths(
-    val directories: List<File>,
-    val links: Map<String, String>,
-    val configurations: List<File>,
-) : Serializable
-
-/** Discovers nested source/package links without recursing through directory cycles or build output. */
-internal abstract class BmlLibraryDependencyLocations : ValueSource<BmlLibraryDependencyPaths, BmlLibraryDependencyLocations.Parameters> {
-    interface Parameters : ValueSourceParameters {
-        val sourceDirectories: ListProperty<File>
-        val buildDirectory: DirectoryProperty
-    }
-
-    /** Follows source and installed-package links until no further lookup directories are found. */
-    override fun obtain(): BmlLibraryDependencyPaths {
-        val buildRoot = parameters.buildDirectory.get().asFile.canonicalFile.toPath()
-        val directories = sortedSetOf<String>()
-        val links = sortedMapOf<String, String>()
-        val pending = ArrayDeque<File>()
-        val visited = mutableSetOf<File>()
-        val ignored = setOf(".git", ".gradle", ".kotlin")
-
-        fun dependencyLookup(source: File) {
-            generateSequence(source) { it.parentFile }.forEach { directory ->
-                val modules = directory.resolve("node_modules")
-                if (directories.add(modules.path)) pending.add(modules)
-            }
-        }
-        val configurations = BmlLibraryConfigurations(::dependencyLookup)
-        fun lookupFrom(source: File) {
-            dependencyLookup(source)
-            configurations.ancestors(source)
-        }
-        parameters.sourceDirectories.get().forEach { source ->
-            val root = source.absoluteFile.normalize()
-            lookupFrom(root)
-            pending.add(root)
-        }
-        while (pending.isNotEmpty()) {
-            val path = pending.removeFirst()
-            val real = path.canonicalFile
-            if (real.toPath().startsWith(buildRoot)) continue
-            if (path != real) {
-                links[path.path] = real.path
-                lookupFrom(if (real.isFile) real.parentFile else real)
-            }
-            if (!real.isDirectory) continue
-            if (path.name == "node_modules") directories.add(path.path)
-            if (!visited.add(real)) continue
-            configurations.local(real, includeMissing = false)
-            Files.newDirectoryStream(real.toPath()).use { entries ->
-                entries.sortedBy { it.fileName.toString() }.forEach { entry ->
-                    if (entry.fileName.toString() !in ignored &&
-                        (Files.isSymbolicLink(entry) || Files.isDirectory(entry, LinkOption.NOFOLLOW_LINKS))
-                    ) pending.add(entry.toFile())
-                }
-            }
-        }
-        return BmlLibraryDependencyPaths(directories.map(::File), links, configurations.files)
     }
 }

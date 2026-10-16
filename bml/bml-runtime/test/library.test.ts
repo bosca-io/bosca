@@ -3,6 +3,8 @@ import { createHash } from "node:crypto"
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
+import { spawnSync } from "node:child_process"
+import { fileURLToPath } from "node:url"
 import { afterEach, describe, expect, it } from "vitest"
 // @ts-expect-error - plain .mjs build helper
 import { bundleLibraryAssets, bundleLibraryStyles, libraryAssetNamespace } from "../tools/library.mjs"
@@ -98,6 +100,7 @@ describe("published library assets", () => {
     f.write(join(f.clientDir, "nested/tokens.css"), `:root { --design-accent: #123456; }`)
     f.write(join(f.clientDir, "startup.ts"), `import { value } from './nested/helper'; globalThis.libraryValue = value;`)
     f.write(join(f.clientDir, "nested/helper.ts"), `export const value = 'nested-helper';`)
+    f.write(join(f.sourceRoot, "controls/ButtonModel.kt"), "package example\nobject ButtonModel")
     await bundleLibraryAssets(f)
     const metadata = JSON.parse(readFileSync(join(f.outdir, "META-INF/bml/client-manifest.json"), "utf8"))
     const module = join(f.outdir, metadata.resourcePrefix, metadata.modules["ButtonPage.js"].path)
@@ -109,6 +112,9 @@ describe("published library assets", () => {
     expect(readFileSync(join(f.outdir, metadata.resourcePrefix, "styles/theme.css"), "utf8")).toContain("--design-accent")
     expect(existsSync(join(f.sourcesOut, "bml/controls/button.ts"))).toBe(true)
     expect(existsSync(join(f.sourcesOut, "client/nested/helper.ts"))).toBe(true)
+    // Kotlin beside BML belongs to the Kotlin source attachment, not the asset-source mirror.
+    expect(existsSync(join(f.sourcesOut, "bml/controls/ButtonModel.kt"))).toBe(false)
+    expect(metadata.sources.some((source: { path: string }) => source.path.endsWith(".kt"))).toBe(false)
     rmSync(join(f.projectDir, "src"), { recursive: true })
     rmSync(join(f.projectDir, "node_modules"), { recursive: true })
     const runtime = join(f.projectDir, "consumer/runtime.ts")
@@ -497,5 +503,26 @@ describe("published library assets", () => {
     expect(metadata.sources).toEqual([])
     f.write(f.manifestPath, JSON.stringify({ library: "example:design", version: "1.0", components: [{ clientModule: "Missing.js" }] }))
     await expect(bundleLibraryAssets(f)).rejects.toThrow("Missing generated client module")
+  })
+
+  it("records every file the asset build read for build-tool input tracking", async () => {
+    const f = fixture()
+    f.write(join(f.projectDir, "shared/tokens.css"), `:root { --shared: 1; }`)
+    f.write(join(f.clientDir, "theme.css"), `@import '../../../shared/tokens.css';`)
+    const inputsOut = join(f.projectDir, "build/library-inputs.json")
+    await bundleLibraryAssets({ ...f, inputsOut })
+    const recorded: string[] = JSON.parse(readFileSync(inputsOut, "utf8"))
+    const real = (path: string) => realpathSync(path)
+    expect(recorded).toEqual([...recorded].sort())
+    expect(recorded).toContain(real(join(f.projectDir, "shared/tokens.css")))
+    expect(recorded).toContain(real(join(f.sourceRoot, "controls/button.ts")))
+    expect(recorded).toContain(real(join(f.projectDir, "node_modules/private-label/index.js")))
+  })
+
+  it("rejects a missing command-line argument instead of reading another argument", () => {
+    const script = fileURLToPath(new URL("../tools/library.mjs", import.meta.url))
+    const result = spawnSync(process.execPath, [script, "--input", "inputs.json", "--source-root"], { encoding: "utf8" })
+    expect(result.status).not.toBe(0)
+    expect(result.stderr).toContain("Missing required argument --source-root")
   })
 })
