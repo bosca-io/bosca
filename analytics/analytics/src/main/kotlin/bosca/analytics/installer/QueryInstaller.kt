@@ -22,6 +22,40 @@ private const val BOT_USER_AGENT_PREDICATE =
 private const val SESSION_START_PREDICATE =
     "type = 'Session' and json_extract_scalar(json_parse(element.extras), '$.start') = 'true'"
 
+/**
+ * Matches desktop Chrome agents that report a full build number. Desktop Chrome reports a reduced
+ * `X.0.0.0` version, so a full build number on desktop identifies a scraper presenting a browser agent.
+ */
+private const val DESKTOP_CRAWLER_AGENT =
+    """(regexp_like(coalesce(context.browser.agent, ''), 'Chrome/[0-9]+\.0\.[1-9]')""" +
+        " and regexp_like(coalesce(context.browser.agent, ''), 'Windows NT|Macintosh|X11')" +
+        " and not regexp_like(coalesce(context.browser.agent, ''), 'Android'))"
+
+/** Inclusive `startDate`/`endDate` DATE parameters shared by the activity metric queries. */
+private fun dateRangeParameters(daysBack: Int) = listOf(
+    AnalyticsQueryParameterInput(
+        parameter = "startDate",
+        name = "Start Date",
+        description = "First day included",
+        type = QueryParameterType.DATE,
+        arrayType = null,
+        defaultValue = JsonObject(mapOf("now" to JsonPrimitive(true), "nowDayOffset" to JsonPrimitive(daysBack))),
+        required = true,
+    ),
+    AnalyticsQueryParameterInput(
+        parameter = "endDate",
+        name = "End Date",
+        description = "Last day included",
+        type = QueryParameterType.DATE,
+        arrayType = null,
+        defaultValue = JsonObject(mapOf("now" to JsonPrimitive(true))),
+        required = true,
+    ),
+)
+
+/** Twelve hours, the cadence the metric queries are refreshed on. */
+private const val METRIC_REFRESH_INTERVAL_SECONDS = 43_200
+
 internal const val DEFAULT_EVENTS_TABLE = "warehouse.bosca.events"
 internal const val DEFAULT_POSTGRES_CATALOG = "bosca"
 private val TABLE_NAME = Regex("[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*){0,2}")
@@ -53,7 +87,7 @@ class QueryInstaller(
 ) : PackageInstaller {
     private val eventsTable = safeEventsTable(eventsTable)
     private val postgresCatalog = safePostgresCatalog(postgresCatalog)
-    override val version: String = "1.0.6"
+    override val version: String = "1.0.7"
 
     override suspend fun install(installation: PackageInstallation, version: PackageInstallationVersion) {
         val current = service.getQueries(0, Int.MAX_VALUE).associateBy { it.key }
@@ -61,60 +95,43 @@ class QueryInstaller(
             AnalyticsQueryInput(
                 key = "daily-active-users",
                 name = "Daily Active Users",
-                description = "Distinct users with a session start each day over the last 30 days, with daily growth. Anonymous starts are matched to a signed-in user when the session or installation supplies an unambiguous identity; recognizable bot agents are excluded.",
+                description = "Distinct users with a session start each day, with daily growth. Signed-out starts count as the installation's signed-in user when exactly one user signed in on it that day; recognizable bots and desktop crawlers are excluded.",
                 query = """
-                    with events_in_range as (
+                    with events as (
                         select date_trunc('day', created) as date,
                                nullif(context.user_id, '') as user_id,
                                nullif(context.device.installation_id, '') as installation_id,
-                               nullif(context.session_id, '') as session_id,
-                               type,
-                               element.extras as extras
+                               $SESSION_START_PREDICATE as is_start,
+                               $DESKTOP_CRAWLER_AGENT as crawler
                         from $eventsTable
-                        where created >= current_date - interval '30' day
+                        where created >= :startDate
+                          and created < :endDate + interval '1' day
                           and $BOT_USER_AGENT_PREDICATE
                     ),
-                    session_users as (
-                        select date, session_id, max(user_id) as user_id
-                        from events_in_range
-                        where session_id is not null and user_id is not null
-                        group by date, session_id
-                        having count(distinct user_id) = 1
-                    ),
                     installation_users as (
-                        select date, installation_id, max(user_id) as user_id
-                        from events_in_range
+                        select date, installation_id, arbitrary(user_id) as user_id
+                        from events
                         where installation_id is not null and user_id is not null
-                        group by date, installation_id
+                        group by 1, 2
                         having count(distinct user_id) = 1
-                    ),
-                    identified_starts as (
-                        select s.date,
-                               s.installation_id,
-                               coalesce(s.user_id, su.user_id, iu.user_id) as resolved_user_id
-                        from events_in_range s
-                        left join session_users su on su.date = s.date and su.session_id = s.session_id
-                        left join installation_users iu on iu.date = s.date and iu.installation_id = s.installation_id
-                        where s.type = 'Session'
-                          and json_extract_scalar(json_parse(s.extras), '$.start') = 'true'
                     ),
                     daily_users as (
-                        select date,
-                               count(distinct case
-                                   when resolved_user_id is not null then 'user:' || resolved_user_id
-                                   when installation_id is not null then 'installation:' || installation_id
-                               end) as value
-                        from identified_starts
-                        group by date
+                        select s.date,
+                               count(distinct coalesce(s.user_id, iu.user_id, s.installation_id)) as value
+                        from events s
+                        left join installation_users iu on iu.date = s.date and iu.installation_id = s.installation_id
+                        where s.is_start and not s.crawler
+                        group by 1
                     )
                     select date,
                            value,
-                           lag(value) over (order by date) as previous_value,
-                        round(cast((value - lag(value) over (order by date)) as double) / nullif(lag(value) over(order by date), 0) * 100) as change
-                    from daily_users
-                    order by date desc
+                           previous_value,
+                           round(cast(value - previous_value as double) / nullif(previous_value, 0) * 100) as change
+                    from (select *, lag(value) over (order by date) as previous_value from daily_users)
+                    order by date
                 """.trimIndent(),
-                parameters = listOf(),
+                parameters = dateRangeParameters(-30),
+                refreshIntervalSeconds = METRIC_REFRESH_INTERVAL_SECONDS,
                 configuration = JsonObject(
                     mapOf(
                         "jsOptions" to JsonPrimitive(
@@ -142,17 +159,21 @@ class QueryInstaller(
             AnalyticsQueryInput(
                 key = "unique-sessions-per-day",
                 name = "Unique Sessions Per Day",
-                description = "Distinct session starts per day, excluding recognizable bot agents.",
+                description = "Distinct sessions with a session start each day, excluding recognizable bots and desktop crawlers. Sessions end after 5 minutes without activity, so counts run higher than tools that use a 30-minute timeout.",
                 query = """
                     select date(created) as date,
                            count(distinct nullif(context.session_id, '')) as value
                     from $eventsTable
-                    where $SESSION_START_PREDICATE
+                    where created >= :startDate
+                      and created < :endDate + interval '1' day
+                      and $SESSION_START_PREDICATE
                       and $BOT_USER_AGENT_PREDICATE
+                      and not $DESKTOP_CRAWLER_AGENT
                     group by date(created)
                     order by date(created)
                 """.trimIndent(),
-                parameters = listOf(),
+                parameters = dateRangeParameters(-30),
+                refreshIntervalSeconds = METRIC_REFRESH_INTERVAL_SECONDS,
                 configuration = JsonObject(
                     mapOf(
                         "jsOptions" to JsonPrimitive(
@@ -178,6 +199,92 @@ class QueryInstaller(
                 )
             ),
             AnalyticsQueryInput(
+                key = "monthly-users-and-engagement",
+                name = "Monthly Users and Engagement",
+                description = "Monthly active users and average engagement time per active user, for comparison with web analytics tools. Users follow the Daily Active Users definition with signed-out activity linked within each month. Engagement is an estimate from the time between consecutive events in each session, capped at the 5-minute session timeout, with audio and video playback counted as activity; it is comparable only across periods with unchanged event instrumentation. Use whole-month date ranges.",
+                query = """
+                    with events as (
+                        select date_trunc('month', created) as month,
+                               created,
+                               nullif(context.user_id, '') as user_id,
+                               nullif(context.device.installation_id, '') as installation_id,
+                               nullif(context.session_id, '') as session_id,
+                               $SESSION_START_PREDICATE as is_start
+                        from $eventsTable
+                        where created >= :startDate
+                          and created < :endDate + interval '1' day
+                          and type not in ('Heartbeat', 'Installation', 'Assignment')
+                          and $BOT_USER_AGENT_PREDICATE
+                          and not $DESKTOP_CRAWLER_AGENT
+                    ),
+                    installation_users as (
+                        select month, installation_id, arbitrary(user_id) as user_id
+                        from events
+                        where installation_id is not null and user_id is not null
+                        group by 1, 2
+                        having count(distinct user_id) = 1
+                    ),
+                    gaps as (
+                        select e.month,
+                               e.is_start,
+                               coalesce(e.user_id, iu.user_id, e.installation_id) as identity,
+                               least(coalesce(date_diff('millisecond', e.created,
+                                   lead(e.created) over (partition by e.installation_id, e.session_id order by e.created)), 0), 300000) as engaged_ms
+                        from events e
+                        left join installation_users iu on iu.month = e.month and iu.installation_id = e.installation_id
+                        where e.installation_id is not null and e.session_id is not null
+                    ),
+                    per_user as (
+                        select month, identity, bool_or(is_start) as active, sum(engaged_ms) as engaged_ms
+                        from gaps
+                        group by 1, 2
+                    )
+                    select month,
+                           count(*) as active_users,
+                           round(cast(sum(engaged_ms) as double) / 1000 / count(*)) as avg_engagement_seconds,
+                           round(cast(sum(engaged_ms) as double) / 60000 / count(*), 2) as avg_engagement_minutes
+                    from per_user
+                    where active
+                    group by 1
+                    order by 1
+                """.trimIndent(),
+                parameters = dateRangeParameters(-180),
+                refreshIntervalSeconds = METRIC_REFRESH_INTERVAL_SECONDS,
+                configuration = JsonObject(
+                    mapOf(
+                        "jsOptions" to JsonPrimitive(
+                            """
+                        {
+                            title: { text: 'Monthly Users and Engagement' },
+                            tooltip: { trigger: 'axis' },
+                            legend: { data: ['Active Users', 'Avg Engagement (min)'] },
+                            xAxis: {
+                                data: data.records.map(r => dateFormatter.format(new Date(r.month)))
+                            },
+                            yAxis: [
+                                { type: 'value', name: 'Users' },
+                                { type: 'value', name: 'Minutes' }
+                            ],
+                            series: [
+                                {
+                                    name: 'Active Users',
+                                    type: 'bar',
+                                    data: data.records.map(r => r.active_users)
+                                },
+                                {
+                                    name: 'Avg Engagement (min)',
+                                    type: 'line',
+                                    yAxisIndex: 1,
+                                    data: data.records.map(r => r.avg_engagement_minutes)
+                                }
+                            ]
+                        }
+                    """.trimIndent()
+                        )
+                    )
+                )
+            ),
+            AnalyticsQueryInput(
                 key = "total-organizations",
                 name = "Total Organizations",
                 description = "Total Organizations",
@@ -187,7 +294,8 @@ class QueryInstaller(
                     inner join $postgresCatalog."public".principals as principals on organization_members.principal_id = principals.id
                     where lower(name) not like '%test%' and lower(name) not like '%admin%'
                       and verification_token is null and verified = true
-                """.trimIndent()
+                """.trimIndent(),
+                refreshIntervalSeconds = METRIC_REFRESH_INTERVAL_SECONDS
             ),
             AnalyticsQueryInput(
                 key = "total-profiles",
@@ -198,7 +306,8 @@ class QueryInstaller(
                      inner join $postgresCatalog."public".principals as principals on profiles.principal = principals.id
                     where lower(name) not like '%test%' and lower(name) not like '%admin%'
                     and verification_token is null and verified = true
-                """.trimIndent()
+                """.trimIndent(),
+                refreshIntervalSeconds = METRIC_REFRESH_INTERVAL_SECONDS
             ),
             AnalyticsQueryInput(
                 key = "top-50-page-impressions",

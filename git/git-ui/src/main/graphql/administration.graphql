@@ -1,0 +1,275 @@
+query GitUiAccess {
+  security {
+    principals {
+      current {
+        id
+        groups {
+          id
+          name
+        }
+      }
+    }
+  }
+}
+query GitUiGroups($offset: Long!) {
+  security {
+    groups {
+      all(offset: $offset, limit: 100) {
+        id
+        name
+        description
+      }
+    }
+  }
+}
+query GitUiPermissions($id: UUID!) {
+  git {
+    repositoryById(id: $id) {
+      id
+      permissions {
+        groupId
+        action
+        group {
+          id
+          name
+        }
+      }
+    }
+  }
+}
+query GitUiWebhooks($id: UUID!) {
+  git {
+    webhooks(repositoryId: $id) {
+      id
+      url
+      active
+      events
+      created
+    }
+  }
+}
+query GitUiProtection($id: UUID!) {
+  git {
+    branchProtectionRules(repositoryId: $id) {
+      id
+      pattern
+      requirePullRequest
+      requiredApprovals
+      dismissStaleReviews
+      requireCodeOwnerReview
+      requireLinearHistory
+      allowForcePush
+      allowDeletion
+      requireStatusChecks
+      restrictPushAccess
+    }
+  }
+}
+query GitUiSecrets($id: UUID!) {
+  git {
+    pipelineSecrets(repositoryId: $id) {
+      id
+      name
+      environmentKey
+      created
+      updated
+    }
+  }
+}
+mutation GitUiGc($id: UUID!) {
+  git {
+    runRepositoryGc(id: $id) {
+      id
+      diskSizeBytes
+    }
+  }
+}
+mutation GitUiRepair($id: UUID!) {
+  git {
+    runRepositoryRepair(id: $id) {
+      id
+      diskSizeBytes
+    }
+  }
+}
+mutation GitUiGrant($input: PermissionInput!) {
+  git {
+    addPermission(permission: $input)
+  }
+}
+mutation GitUiRevoke($input: PermissionInput!) {
+  git {
+    removePermission(permission: $input)
+  }
+}
+mutation GitUiCreateWebhook($repo: UUID!, $input: GitWebhookInput!) {
+  git {
+    createWebhook(repositoryId: $repo, input: $input) {
+      id
+    }
+  }
+}
+mutation GitUiDeleteWebhook($id: UUID!) {
+  git {
+    deleteWebhook(id: $id)
+  }
+}
+mutation GitUiCreateProtection(
+  $repo: UUID!
+  $input: GitBranchProtectionRuleInput!
+) {
+  git {
+    createBranchProtectionRule(repositoryId: $repo, input: $input) {
+      id
+    }
+  }
+}
+mutation GitUiUpdateProtection(
+  $id: UUID!
+  $input: GitBranchProtectionRuleInput!
+) {
+  git {
+    updateBranchProtectionRule(id: $id, input: $input) {
+      id
+    }
+  }
+}
+mutation GitUiDeleteProtection($id: UUID!) {
+  git {
+    deleteBranchProtectionRule(id: $id)
+  }
+}
+mutation GitUiSetSecret(
+  $id: UUID!
+  $name: String!
+  $value: String!
+  $environment: String
+) {
+  git {
+    setPipelineSecret(
+      repositoryId: $id
+      name: $name
+      value: $value
+      environmentKey: $environment
+    ) {
+      id
+    }
+  }
+}
+mutation GitUiDeleteSecret($id: UUID!, $name: String!) {
+  git {
+    deletePipelineSecret(repositoryId: $id, name: $name)
+  }
+}
+query GitUiAgents($status: GitAgentStatus, $details: Boolean! = true, $id: UUID) {
+  git {
+    pipelineAgents(status: $status, id: $id) {
+      id
+      name
+      labels
+      mode
+      status
+      ephemeral
+      jobId
+      parentAgentId
+      instanceId
+      lastHeartbeat
+      expiresAt
+      created
+      currentJob @include(if: $details) {
+        id
+        pipelineRunId
+        name
+        status
+        runnerLabel
+        matrixValues
+        dependsOn
+        timeoutMinutes
+        started
+        finished
+        steps {
+          id
+          name
+          ordinal
+          status
+          uses
+          run
+          image
+          condition
+          workingDirectory
+          exitCode
+          started
+          finished
+        }
+      }
+      recentJobs(limit: 10) @include(if: $details) {
+        id
+        pipelineRunId
+        name
+        status
+        runnerLabel
+        started
+        finished
+      }
+    }
+  }
+}
+mutation GitUiRegisterAgent(
+  $name: String!
+  $labels: [String!]!
+  $mode: GitAgentMode!
+) {
+  git {
+    registerAgent(name: $name, labels: $labels, mode: $mode) {
+      agent {
+        id
+      }
+      token
+    }
+  }
+}
+mutation GitUiUpdateAgent($id: UUID!, $name: String!, $labels: [String!]!) {
+  git {
+    updateAgent(id: $id, name: $name, labels: $labels) {
+      id
+    }
+  }
+}
+mutation GitUiDeregisterAgent($id: UUID!) {
+  git {
+    deregisterAgent(id: $id)
+  }
+}
+mutation GitUiOrchestrator($id: UUID!) {
+  git {
+    getOrchestratorConfig(agentId: $id) {
+      provider
+      credentials {
+        selfDestructTokenScope
+      }
+      defaults {
+        region
+        size
+        image
+      }
+      runnerProfiles
+      maxConcurrentVms
+      maxJobTimeoutMinutes
+      maxVmLifetimeMinutes
+      alertSinks {
+        type
+        url
+      }
+    }
+  }
+}
+mutation GitUiConfigureOrchestrator(
+  $id: UUID!
+  $config: GitOrchestratorConfigInput!
+) {
+  git {
+    configureOrchestrator(agentId: $id, config: $config) {
+      id
+    }
+  }
+}

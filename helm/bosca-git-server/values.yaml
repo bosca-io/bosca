@@ -38,6 +38,11 @@ gateway:
   gatewayNamespace: ""
   hostnames: []
 
+# The embedded BML listener shares the Git origin and is selected by HTTP path.
+ui:
+  port: 8093
+  authCookiePrefix: ""
+
 resources:
   requests:
     cpu: 100m
@@ -62,9 +67,20 @@ appConfig:
   databaseUrl: ""
   databaseMaxConnections: 20
   natsHost: nats
+  # Distributed cache and lock backends: nats or redis.
+  cacheType: nats
+  distributedLockType: nats
+  # Redis Service in the release namespace, used when either backend is redis.
+  redisHost: redis
+  redisPort: 6379
   meilisearchHost: meilisearch
   gitUrl: ""
-  studioUrl: ""
+  autoVerify: false
+  authCookiePrefixes: []
+  googleEnabled: true
+  # Additional origins supplement the UI origin for auth email return links.
+  appAllowedOrigins: []
+  oauth2Redirects: []
   # Per-profile git push rate limiting (fixed window, distributed via the NATS counter).
   # Set enabled: false to turn it off entirely; raise max for bulk operators.
   pushRateLimit:

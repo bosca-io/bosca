@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import gql from 'graphql-tag'
-import ArtifactRepositorySync from '~/components/artifacts/ArtifactRepositorySync.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -323,6 +322,11 @@ async function startRawUpload(files: File[]) {
         :subtitle="repo ? `${versionCount} versions · ${tagCount} tags` : undefined"
       >
         <template #actions>
+          <Button
+            v-if="isAdmin && repo && ['docker', 'raw'].includes(repo.type)"
+            size="sm"
+            icon="settings"
+            @click="router.push(`/artifacts/settings/repositories/${repo.id}`)">Settings</Button>
           <Button size="sm" icon="trash" @click="showDeleteRepo = true">Delete</Button>
         </template>
       </PageHeader>
@@ -371,8 +375,6 @@ async function startRawUpload(files: File[]) {
       >
         <RawArtifactDropZone @files="startRawUpload" />
       </SectionCard>
-
-      <ArtifactRepositorySync v-if="isAdmin && repo.type === 'docker'" :key="repo.id" :repository-id="repo.id" />
 
       <!-- Tags (Docker only) -->
       <SectionCard v-if="repo.type === 'docker'" :title="`Tags (${tagCount})`">

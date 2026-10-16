@@ -1,0 +1,170 @@
+<component tag="git-pull-create">
+  <prop name="page" type="bosca.git.ui.PullListPage" required />
+  <script server provides="model">
+    bosca.git.ui.PullCreateModel(page)
+  </script>
+  <island name="git-pull-create" :key="page.repository">
+    <section :data-next-href="model.nextHref">
+      <ui-dialog
+        title="New Pull Request"
+        triggerLabel="New Pull Request"
+        icon="pull"
+        triggerIcon="plus"
+        primary
+        size="lg"
+        :forceOpen="model.page.showCreate || model.failed || model.editing"
+      >
+        <form
+          class="modal-form"
+          data-pull-draft
+          @submit="model.create(form.title, form.description, form.source, form.target, form.draft, form.deleteBranchOnMerge, ctx)"
+        >
+          <div class="modal-fields">
+            <if model.message.isNotBlank()>
+              <ui-alert>{ model.message }</ui-alert>
+            </if>
+            <if model.page.repositories.isEmpty()>
+              <p class="muted">
+                No active repositories are available.
+                <a href="/repositories">Create a repository</a>
+                to open a pull request.
+              </p>
+            </if>
+            <p class="create-intro">Choose the branches to merge, then describe your changes.</p>
+            <div class="comparison-grid">
+              <div class="comparison-column">
+                <ui-field label="Target repository">
+                  <ui-select
+                    searchable
+                    name="repo"
+                    label="Target repository"
+                    required
+                    @change="model.selectRepositories(form.repo, form.sourceRepo, form.title, form.description, form.source, form.target, form.draft, form.deleteBranchOnMerge, ctx)"
+                  >
+                    <option value="" :selected="model.page.repository.isBlank()">Choose a repository</option>
+                    <for repository in model.page.repositories>
+                      <option :value="repository.id" :selected="repository.id == model.page.repository">
+                        { repository.name + " · " + repository.slug }
+                      </option>
+                    </for>
+                  </ui-select>
+                </ui-field>
+                <ui-field label="Target branch">
+                  <ui-select
+                    searchable
+                    name="target"
+                    label="Target branch"
+                    :disabled="model.page.targetBranches.isEmpty()"
+                    required
+                  >
+                    <option value="" :selected="model.target.isBlank()">Choose a branch</option>
+                    <for branch in model.page.targetBranches>
+                      <option :value="branch" :selected="branch == model.target">{ branch }</option>
+                    </for>
+                  </ui-select>
+                </ui-field>
+              </div>
+              <div class="comparison-column">
+                <ui-field label="Source repository">
+                  <ui-select
+                    searchable
+                    name="sourceRepo"
+                    label="Source repository"
+                    :disabled="model.page.repository.isBlank()"
+                    @change="model.selectRepositories(form.repo, form.sourceRepo, form.title, form.description, form.source, form.target, form.draft, form.deleteBranchOnMerge, ctx)"
+                  >
+                    <option value="" :selected="model.page.sourceRepository.isBlank()">Choose a repository</option>
+                    <for repository in model.page.repositories>
+                      <option :value="repository.id" :selected="repository.id == model.page.sourceRepository">
+                        { repository.name + " · " + repository.slug }
+                      </option>
+                    </for>
+                  </ui-select>
+                </ui-field>
+                <ui-field label="Source branch">
+                  <ui-select
+                    searchable
+                    name="source"
+                    label="Source branch"
+                    :disabled="model.page.branches.isEmpty()"
+                    required
+                  >
+                    <option value="" :selected="model.source.isBlank()">Choose a branch</option>
+                    <for branch in model.page.branches>
+                      <option :value="branch" :selected="branch == model.source">{ branch }</option>
+                    </for>
+                  </ui-select>
+                </ui-field>
+              </div>
+            </div>
+            <ui-field label="Title">
+              <ui-input name="title" :value="model.title" placeholder="Describe the change" required />
+            </ui-field>
+            <ui-field label="Description">
+              <textarea name="description" rows="4" placeholder="Explain what changed and why">{ model.description }</textarea>
+            </ui-field>
+            <ui-switch
+              name="draft"
+              :checked="model.draft"
+              label="Create as draft"
+              description="Mark it ready when you want feedback."
+            />
+            <ui-switch
+              name="deleteBranchOnMerge"
+              :checked="model.deleteBranchOnMerge"
+              label="Delete source branch after merge"
+            />
+            <if model.page.repository.isNotBlank() && !model.page.canEdit>
+              <ui-alert>Repository edit access is required to create a pull request.</ui-alert>
+            <else-if model.page.repository.isNotBlank() && model.page.targetBranches.isEmpty()>
+              <p class="muted">Commit a file to this repository before opening a pull request.</p>
+            </if>
+          </div>
+          <footer class="modal-footer">
+            <ui-button ref="cancel">Cancel</ui-button>
+            <ui-button
+              type="submit"
+              primary
+              :disabled="!model.page.canEdit || model.page.branches.isEmpty() || model.page.targetBranches.isEmpty()"
+            >
+              Create pull request
+            </ui-button>
+          </footer>
+        </form>
+      </ui-dialog>
+    </section>
+  </island>
+  <style scoped>
+    .create-intro {
+      margin: 0;
+      color: var(--fg-3);
+      font-size: 12px;
+      line-height: 1.6;
+    }
+    .comparison-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 18px;
+      padding-bottom: 18px;
+      border-bottom: 1px solid var(--line);
+    }
+    .comparison-column {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      min-width: 0;
+    }
+    @media (max-width: 480px) {
+      .comparison-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+  <script client scoped>
+    ctx.onUpdate(() => {
+      const next =
+        ctx.root.querySelector<HTMLElement>("[data-next-href]")?.dataset.nextHref;
+      if (next) location.assign(next);
+    });
+  </script>
+</component>

@@ -1,0 +1,25 @@
+<component tag="git-github-pull-snapshot">
+  <prop name="title" type="String" required />
+  <prop name="description" type="String?" />
+  <prop name="source" type="String" required />
+  <prop name="target" type="String" required />
+  <prop name="status" type="String" required />
+  <prop name="sha" type="String?" />
+  <p>
+    <strong>{ title }</strong>
+    ·
+    { status }
+    ·
+    { source }
+    →
+    { target }
+    · Merge SHA
+    <code>{ sha ?: "Absent" }</code>
+  </p>
+  <p>{ description.orEmpty() }</p>
+  <style scoped>
+    p {
+      white-space: pre-wrap;
+    }
+  </style>
+</component>

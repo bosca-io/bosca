@@ -1,0 +1,187 @@
+<component tag="git-pull-actions">
+  <prop name="page" type="bosca.git.ui.PullPage" required />
+  <script server provides="model">
+    bosca.git.ui.PullActionsModel(page)
+  </script>
+  <island name="git-pull-actions" :key="page.pull.id">
+    <section :data-next-href="model.nextHref">
+      <if model.page.canEdit && (model.page.pull.status.name == "OPEN" || model.page.pull.status.name == "DRAFT" || model.page.pull.status.name == "CLOSED")>
+        <div class="side-card">
+          <h2 class="side-card-title">Actions</h2>
+          <div class="action-stack">
+            <if model.page.pull.status.name == "DRAFT">
+              <ui-dialog
+                title="Ready for review"
+                triggerLabel="Mark Ready for Review"
+                icon="eye"
+                primary
+                triggerStyle="block"
+                :forceOpen='model.failed && model.selectedAction == "ready"'
+              >
+                <form class="modal-form" @submit='model.lifecycle("ready", true, ctx)'>
+                  <div class="modal-fields">
+                    <p class="detail-note">Reviewers will be able to approve or request changes.</p>
+                    <if model.message.isNotBlank()><ui-alert>{ model.message }</ui-alert></if>
+                  </div>
+                  <footer class="modal-footer">
+                    <ui-button ref="cancel">Cancel</ui-button>
+                    <ui-button type="submit" primary>Ready for review</ui-button>
+                  </footer>
+                </form>
+              </ui-dialog>
+            </if>
+            <if model.page.pull.status.name == "OPEN">
+              <form class="merge-form" @submit="model.prepare(form.strategy, ctx)">
+                <div class="merge-row">
+                  <ui-select name="strategy" size="sm" label="Merge method">
+                    <for strategy in listOf("MERGE_COMMIT", "SQUASH", "REBASE", "FAST_FORWARD")>
+                      <option :value="strategy" :selected="model.strategy == strategy">
+                        { bosca.git.ui.mergeStrategyOptionLabel(strategy) }
+                      </option>
+                    </for>
+                  </ui-select>
+                </div>
+                <ui-button type="submit" size="sm" primary class="block" :disabled="model.page.hasMergeBlockers">
+                  Merge Pull Request
+                </ui-button>
+              </form>
+              <if model.page.hasMergeBlockers>
+                <p class="action-note" data-tone="error">Cannot merge — conflicts detected.</p>
+              <else-if model.page.pull.dependencies.any { it.status.name != "MERGED" }>
+                <p class="action-note">Open dependencies will be included in the merge confirmation.</p>
+              </if>
+              <if model.failed && model.selectedAction == "merge" && model.plan.isEmpty()>
+                <ui-alert>{ model.message }</ui-alert>
+              </if>
+              <ui-dialog
+                title="Merge pull request"
+                triggerLabel="Merge pull request"
+                icon="merge"
+                :showTrigger="false"
+                :openRequest="model.mergeDialogRequest"
+              >
+                <form class="modal-form" @submit="model.merge(true, ctx)">
+                  <div class="modal-fields">
+                    <if model.message.isNotBlank()><ui-alert>{ model.message }</ui-alert></if>
+                    <div class="detail-heading">
+                      <h3>Merge plan</h3>
+                      <ui-badge>{ bosca.git.ui.mergeStrategyLabel(model.strategy) }</ui-badge>
+                    </div>
+                    <p class="detail-note">
+                      { if (model.plan.size == 1) "The following pull request will be merged." else "Dependencies will be merged in this order, followed by this pull request." }
+                    </p>
+                    <ol class="merge-plan">
+                      <for pull in model.plan>
+                        <li>
+                          <div class="plan-title">
+                            <a :href="bosca.git.ui.pullHref(pull.id, pull.repositoryId, pull.number)">
+                              { "#" + pull.number + " " + pull.title }
+                            </a>
+                            <git-pull-status :status="pull.status.name" />
+                          </div>
+                          <if !pull.mergeable>
+                            <p class="plan-blocked">Cannot merge this pull request.</p>
+                          </if>
+                        </li>
+                      </for>
+                    </ol>
+                    <if model.mergeBlocked>
+                      <ui-alert>Resolve the blocked pull requests before merging.</ui-alert>
+                    </if>
+                  </div>
+                  <footer class="modal-footer">
+                    <ui-button ref="cancel">Cancel</ui-button>
+                    <ui-button type="submit" primary icon="merge" :disabled="model.mergeBlocked">
+                      { if (model.plan.size > 1) "Merge pull requests" else "Merge pull request" }
+                    </ui-button>
+                  </footer>
+                </form>
+              </ui-dialog>
+            </if>
+            <if model.page.pull.status.name == "CLOSED">
+              <ui-dialog
+                title="Reopen pull request"
+                triggerLabel="Reopen"
+                icon="pull"
+                primary
+                triggerStyle="block"
+                :forceOpen='model.failed && model.selectedAction == "reopen"'
+              >
+                <form class="modal-form" @submit='model.lifecycle("reopen", true, ctx)'>
+                  <div class="modal-fields">
+                    <p class="detail-note">Reopen this pull request to continue reviewing its changes.</p>
+                    <if model.message.isNotBlank()><ui-alert>{ model.message }</ui-alert></if>
+                  </div>
+                  <footer class="modal-footer">
+                    <ui-button ref="cancel">Cancel</ui-button>
+                    <ui-button type="submit" primary>Reopen pull request</ui-button>
+                  </footer>
+                </form>
+              </ui-dialog>
+            </if>
+            <if model.page.pull.status.name == "OPEN" || model.page.pull.status.name == "DRAFT">
+              <ui-dialog
+                title="Close pull request"
+                triggerLabel="Close"
+                icon="close"
+                size="sm"
+                triggerStyle="block"
+                :forceOpen='model.failed && model.selectedAction == "close"'
+              >
+                <form class="modal-form" @submit='model.lifecycle("close", true, ctx)'>
+                  <div class="modal-fields">
+                    <p class="detail-note">Close without merging these changes. You can reopen it later.</p>
+                    <if model.message.isNotBlank()><ui-alert>{ model.message }</ui-alert></if>
+                  </div>
+                  <footer class="modal-footer">
+                    <ui-button ref="cancel">Cancel</ui-button>
+                    <ui-button type="submit" class="danger">Close pull request</ui-button>
+                  </footer>
+                </form>
+              </ui-dialog>
+            </if>
+          </div>
+        </div>
+      </if>
+    </section>
+  </island>
+  <style scoped>
+    .merge-form {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin: 0;
+    }
+    .merge-row {
+      display: flex;
+      gap: 8px;
+    }
+    .merge-plan {
+      margin: 0;
+      padding-left: 22px;
+    }
+    .merge-plan li {
+      padding: 10px 0;
+      border-bottom: 1px solid var(--line);
+    }
+    .plan-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 8px;
+      font-size: 13px;
+    }
+    .plan-blocked {
+      margin: 6px 0 0;
+      color: var(--err);
+      font-size: 12px;
+    }
+  </style>
+  <script client scoped>
+    ctx.onUpdate(() => {
+      const next = ctx.root.querySelector<HTMLElement>("[data-next-href]")?.dataset.nextHref;
+      if (next) location.assign(next);
+    });
+  </script>
+</component>

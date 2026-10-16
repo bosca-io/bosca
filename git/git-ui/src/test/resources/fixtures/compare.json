@@ -1,0 +1,42 @@
+{
+  "baseRef": "main",
+  "headRef": "feature/one",
+  "filesChanged": 1,
+  "insertions": 1,
+  "deletions": 0,
+  "commits": [
+    {
+      "sha": "abc",
+      "message": "Fix image",
+      "authorName": "Alice",
+      "authorEmail": "alice@example.test",
+      "authorDate": "2026-10-09T00:00:00Z",
+      "parentShas": []
+    }
+  ],
+  "files": [
+    {
+      "oldPath": "a.txt",
+      "newPath": "a.txt",
+      "changeType": "MODIFY",
+      "newLineCount": 1,
+      "hunks": [
+        {
+          "oldStart": 1,
+          "oldCount": 0,
+          "newStart": 1,
+          "newCount": 1,
+          "totalLineCount": 1,
+          "lines": [
+            {
+              "content": "<script>diff</script>",
+              "type": "ADD",
+              "oldLineNumber": null,
+              "newLineNumber": 1
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

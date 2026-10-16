@@ -20,6 +20,7 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 /**
@@ -55,6 +56,8 @@ class GitPullRequestControllerTest {
         assertEquals("main", controller.targetBranch(pr))
         assertEquals(null, controller.sourceRepositoryId(pr))
         assertEquals(PullRequestStatus.OPEN, controller.status(pr))
+        assertTrue(controller.deleteBranchOnMerge(pr))
+        assertFalse(controller.deleteBranchOnMerge(pr.copy(deleteBranchOnMerge = false)))
         assertEquals(null, controller.mergeStrategy(pr))
         assertEquals(null, controller.mergedBy(pr))
         assertEquals(null, controller.mergedAt(pr))
@@ -100,6 +103,26 @@ class GitPullRequestControllerTest {
 
         controller.diff(pr)
         coVerify { diffService.computeDiff(pr.repositoryId, "refs/heads/main", "refs/heads/feature") }
+    }
+
+    @Test
+    fun `merged diffs use the immutable merge comparison instead of branch tips`() = runTest {
+        val merged = pr.copy(status = PullRequestStatus.MERGED, mergeSha = "merged", mergeBaseSha = "before")
+        coEvery { diffService.resolveMergedBase(merged) } returns "before"
+        assertEquals("before", controller.mergeBaseSha(merged))
+        controller.diff(merged)
+        coVerify { diffService.computeDiff(pr.repositoryId, "before", "merged") }
+        coVerify(exactly = 0) { diffService.computeDiff(any(), "refs/heads/main", any()) }
+    }
+
+    @Test
+    fun `merged diffs require recorded head and a determinable original base`() = runTest {
+        assertFailsWith<IllegalStateException> { controller.diff(pr.copy(status = PullRequestStatus.MERGED)) }
+        assertFailsWith<IllegalStateException> { controller.diff(pr.copy(status = PullRequestStatus.MERGED, mergeSha = " ")) }
+        val merged = pr.copy(status = PullRequestStatus.MERGED, mergeSha = "merged")
+        coEvery { diffService.resolveMergedBase(merged) } returns null
+        assertFailsWith<IllegalStateException> { controller.diff(merged) }
+        coVerify(exactly = 0) { diffService.computeDiff(any(), any(), any()) }
     }
 
     @Test

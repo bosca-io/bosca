@@ -88,7 +88,7 @@ class AnalyticsConfigurationTest {
         assertIs<bosca.analytics.installer.RawEventsQueryInstaller>(configuration.analyticsRawEventsQueriesInstaller(queryService, security, app))
         val pkg = configuration.analyticsQueriesPackage()
         assertEquals("analytics-queries", pkg.key)
-        assertEquals(listOf("1.0.0", "1.0.1", "1.0.2", "1.0.3", "1.0.4", "1.0.5", "1.0.6", "1.0.7", "1.0.8", "1.0.9"), pkg.versions.map { it.version })
+        assertEquals(listOf("1.0.0", "1.0.1", "1.0.2", "1.0.3", "1.0.4", "1.0.5", "1.0.6", "1.0.7", "1.0.8", "1.0.9", "1.0.10"), pkg.versions.map { it.version })
         assertEquals(listOf("analytics-queries"), pkg.versions.last().installerNames)
     }
 
@@ -96,11 +96,13 @@ class AnalyticsConfigurationTest {
     fun `application configuration providers support defaults and explicit values`() {
         val defaultApplication = application("bosca: {}")
         assertEquals(16, configuration.eventProcessingConfiguration(defaultApplication).workerCount)
+        assertEquals(false, configuration.eventProcessingConfiguration(defaultApplication).fumsEnabled)
         assertEquals(100, configuration.analyticsQueryCacheConfiguration(defaultApplication).maxEntriesPerQuery)
 
         val configured = application(
             """
             eventProcessing:
+              fumsEnabled: true
               workerCount: 2
               channelCapacity: 12
               natsBatchSize: 3
@@ -126,6 +128,7 @@ class AnalyticsConfigurationTest {
             """,
         )
         val processing = configuration.eventProcessingConfiguration(configured)
+        assertEquals(true, processing.fumsEnabled)
         assertEquals(2, processing.workerCount)
         assertEquals(12, processing.channelCapacity)
         assertEquals("analytics-sa", processing.scriptServiceAccount)
@@ -319,6 +322,7 @@ class AnalyticsConfigurationTest {
         val transform = mockk<EventsTransform<List<Record>>>()
         val protoBuf = ProtoBuf
         val errors = mockk<ErrorGroupService>()
+        val health = configuration.eventProcessingHealth()
         val natsApplication = application(
             """
             eventRepository:
@@ -337,6 +341,7 @@ class AnalyticsConfigurationTest {
                 transform.asProvider(),
                 protoBuf.asProvider(),
                 errors,
+                health,
             ),
         )
         assertIs<CompositeEventRepository>(
@@ -349,6 +354,7 @@ class AnalyticsConfigurationTest {
                 transform.asProvider(),
                 protoBuf.asProvider(),
                 errors,
+                health,
             ),
         )
         icebergApplication.shutdown()

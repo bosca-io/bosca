@@ -9,6 +9,7 @@ import bosca.analytics.livesessions.nats.NatsLiveSessions
 import bosca.analytics.livesessions.redis.RedisLiveSessions
 import bosca.analytics.repository.EventRepository
 import bosca.analytics.service.NatsEventConsumer
+import bosca.bible.BibleContentUse
 import bosca.bible.BibleFactory
 import bosca.bible.processor.BibleFactoryImpl
 import bosca.category.service.CategoryService
@@ -144,7 +145,7 @@ class Configuration {
         metadataService: MetadataService,
         bibleService: BibleService,
         json: Json
-    ): DocumentToTextTransformation = DocumentToTextTransformation(metadataService, bibleService, json)
+    ): DocumentToTextTransformation = DocumentToTextTransformation(metadataService, bibleService, json, BibleContentUse.TEXT_TO_SPEECH)
 
     @Provider(singleton = true)
     fun metadataToSearchDocumentConfiguration(

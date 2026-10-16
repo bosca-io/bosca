@@ -31,4 +31,8 @@ data class PullRequest(
     @Contextual val created: OffsetDateTime = OffsetDateTime.now(),
     @Contextual val updated: OffsetDateTime = OffsetDateTime.now(),
     val version: Long = 0,
+    /** Target tip immediately before merging, retained for the completed comparison. */
+    @ColumnName("merge_base_sha") val mergeBaseSha: String? = null,
+    /** Whether to delete the source branch after merging this PR. Initialized from repository policy. */
+    @ColumnName("delete_branch_on_merge") val deleteBranchOnMerge: Boolean = true,
 )

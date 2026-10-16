@@ -1,0 +1,101 @@
+<component tag="git-agent-register">
+  <prop name="page" type="bosca.git.ui.AgentPage" required />
+  <script server provides="model">
+    bosca.git.ui.AgentRegistrationModel(page)
+  </script>
+  <island name="git-agent-register" :key="page.status">
+    <div class="agent-actions" :data-next-href="model.nextHref">
+      <ui-dialog
+        title="Register CI agent"
+        triggerLabel="Register Agent"
+        triggerIcon="plus"
+        icon="server"
+        primary
+        :forceOpen="model.registering && (model.failed || model.token.isNotBlank())"
+      >
+        <if model.token.isNotBlank()>
+          <div class="modal-fields token-result">
+            <ui-alert :tone='if (model.failed) "error" else "success"'>{ model.message }</ui-alert>
+            <ui-field
+              label="One-time agent token"
+              hint="Copy this token now. It will not be shown again."
+            >
+              <input ref="token" readonly :value="model.token" aria-label="One-time agent token" />
+            </ui-field>
+            <div class="toolbar">
+              <ui-button ref="copy">Copy token</ui-button>
+              <span ref="copyStatus" role="status" />
+            </div>
+            <a class="button-link" :href='"/ci-agents/" + bosca.git.ui.encode(model.agentId)'>
+              View agent
+            </a>
+          </div>
+          <footer class="modal-footer">
+            <ui-button @click="model.hideToken()">Dismiss token</ui-button>
+          </footer>
+        <else>
+          <form class="modal-form" @submit="model.register(form.name, form.labels, form.mode, ctx)">
+            <div class="modal-fields">
+              <if model.failed && model.registering>
+                <ui-alert :tone='if (model.failed) "error" else "success"'>
+                  { model.message }
+                </ui-alert>
+              </if>
+              <ui-field label="Name">
+                <ui-input name="name" :value="model.name" placeholder="Build runner" required />
+              </ui-field>
+              <ui-field label="Labels" hint="Separate runner labels with commas.">
+                <ui-input name="labels" :value="model.labels" placeholder="linux, arm64" />
+              </ui-field>
+              <ui-field label="Mode">
+                <ui-select name="mode">
+                  <for mode in bosca.git.ui.graphql.GitAgentMode.entries>
+                    <option :value="mode.name" :selected="mode.name == model.mode">
+                      { mode.name.lowercase().replaceFirstChar(Char::uppercase) }
+                    </option>
+                  </for>
+                </ui-select>
+              </ui-field>
+            </div>
+            <footer class="modal-footer">
+              <ui-button ref="cancel">Cancel</ui-button>
+              <ui-button type="submit" primary>Register agent</ui-button>
+            </footer>
+          </form>
+        </if>
+      </ui-dialog>
+    </div>
+  </island>
+  <style scoped>
+    .agent-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .token-result input {
+      width: 100%;
+      min-width: 0;
+      font-family: var(--mono);
+    }
+  </style>
+  <script client scoped>
+    ctx.on<MouseEvent>(ctx.root, "click", async (event) => {
+      if (!(event.target as Element).closest("[data-bml-ref=copy]")) return;
+      const token = ctx.ref<HTMLInputElement>("token"),
+        status = ctx.ref<HTMLElement>("copyStatus");
+      if (!token || !status) return;
+      try {
+        await navigator.clipboard.writeText(token.value);
+        status.textContent = "Copied.";
+      } catch {
+        token.select();
+        status.textContent = "Select and copy the token.";
+      }
+    });
+    ctx.onUpdate(() => {
+      const next =
+        ctx.root.querySelector<HTMLElement>("[data-next-href]")?.dataset.nextHref;
+      if (next) location.assign(next);
+    });
+  </script>
+</component>

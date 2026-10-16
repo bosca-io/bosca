@@ -1,0 +1,18 @@
+<page route="/repositories/{id}" requireAuth>
+  <contract>
+    interface GitRefSearch {
+        suspend fun search(id: String, query: String, offset: Long, branchesOnly: Boolean): List<Map<String, String>>
+    }
+    interface GitMarkdownPreview {
+        suspend fun render(id: String, ref: String, path: String, source: String): String
+    }
+  </contract>
+  <script server provides="page">
+    bosca.git.ui.repositoryPage()
+  </script>
+  <if page != null>
+    <git-layout :title="page.name">
+      <git-repository-browser :page="page" />
+    </git-layout>
+  </if>
+</page>

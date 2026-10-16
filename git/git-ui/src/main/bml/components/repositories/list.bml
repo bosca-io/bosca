@@ -1,0 +1,82 @@
+<component tag="git-repository-list">
+  <prop name="page" type="bosca.git.ui.RepositoryListModel" required />
+  <script server provides="model">
+    bosca.git.ui.RepositoryListModel(page.state, page.owner, repositories = page.repositories)
+  </script>
+  <island name="git-repository-list">
+    <ui-page :data-next-href="model.nextHref">
+      <ui-page-heading
+        title="Repositories"
+        :subtitle="model.subtitle"
+      >
+        <form method="get" class="owner-toolbar">
+          <input type="hidden" name="state" :value="model.state.queryValue" />
+          <git-owner-picker
+            compact
+            :id="model.owner.id"
+            :label='if (model.owner.id == "all") model.owner.name else model.owner.label'
+          />
+        </form>
+        <git-repository-import :initial="model" />
+        <git-repository-create :initial="model" />
+      </ui-page-heading>
+      <ui-tabs label="Repository state" :items="model.tabs" header />
+      <if model.message.isNotBlank()>
+        <p role="status" :class='if (model.failed) "status error" else "status"'>
+          { model.message }
+        </p>
+      </if>
+      <div class="glass-table repository-table">
+        <div class="gt-header repository-columns" aria-hidden="true">
+          <span>Repository</span>
+          <span>Visibility</span>
+          <span>Type</span>
+          <span>Branch</span>
+          <span>Size</span>
+          <span>Updated</span>
+          <span></span>
+        </div>
+        <if model.repositories.isEmpty()>
+          <p class="gt-state">No repositories found</p>
+        <else>
+          <ul class="gt-rows repository-list">
+            <for repository in model.repositories>
+              <git-repository-row :repository="repository" :initial="model" />
+            </for>
+          </ul>
+        </if>
+      </div>
+    </ui-page>
+  </island>
+  <style scoped>
+    .owner-toolbar {
+      display: flex;
+      align-items: center;
+      margin: 0;
+    }
+    .repository-columns {
+      grid-template-columns: 1.5fr 100px 120px 100px 80px 120px 28px;
+    }
+    @media (max-width: 1100px) {
+      .repository-columns {
+        display: none;
+      }
+    }
+  </style>
+  <script client scoped>
+    const navigate = () => {
+      const next =
+        ctx.root.querySelector<HTMLElement>("[data-next-href]")?.dataset.nextHref;
+      if (next) location.assign(next);
+    };
+    ctx.onUpdate(navigate);
+    ctx.on(ctx.root, "ownerselected", (event) => {
+      if (event.target instanceof Element)
+        event.target.closest<HTMLFormElement>(".owner-toolbar")?.requestSubmit();
+    });
+    const owner = new URLSearchParams(location.search).get("owner");
+    if (owner)
+      document.cookie =
+        "git_owner=" + encodeURIComponent(owner) + "; Path=/; SameSite=Lax";
+  </script>
+</component>

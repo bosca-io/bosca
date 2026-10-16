@@ -1,10 +1,12 @@
 package bosca.analytics.events
 
 import bosca.analytics.model.Events
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 class AnalyticsEventCatalogRegistrarTest {
@@ -38,6 +40,13 @@ class AnalyticsEventCatalogRegistrarTest {
         val decoded = json.decodeFromJsonElement(typed, encoded) as AnalyticsScriptEvent
 
         assertEquals(event.events.sent, decoded.events.sent)
+    }
+
+    @Test
+    fun `script stages require a complete Analytics batch payload`() {
+        assertFailsWith<SerializationException> {
+            Json.decodeFromString(AnalyticsScriptEvent.serializer(), "{}")
+        }
     }
 
     @Test

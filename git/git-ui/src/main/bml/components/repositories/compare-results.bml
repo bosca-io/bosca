@@ -1,0 +1,255 @@
+<component tag="git-compare-results">
+  <prop name="page" type="bosca.git.ui.ExplorePage" required />
+  <script server provides="comparison">
+    page.comparison
+  </script>
+  <if comparison != null>
+    <div class="compare-results">
+      <dl class="stat-grid">
+        <div class="stat-tile">
+          <dt class="stat-label">Commits</dt>
+          <dd class="stat-value">{ comparison.commits.size }</dd>
+        </div>
+        <div class="stat-tile">
+          <dt class="stat-label">Files Changed</dt>
+          <dd class="stat-value">{ comparison.filesChanged }</dd>
+        </div>
+        <div class="stat-tile">
+          <dt class="stat-label">Insertions</dt>
+          <dd class="stat-value insertions">+{ comparison.insertions }</dd>
+        </div>
+        <div class="stat-tile">
+          <dt class="stat-label">Deletions</dt>
+          <dd class="stat-value deletions">-{ comparison.deletions }</dd>
+        </div>
+      </dl>
+      <div class="results-bar">
+        <div class="tab-toggle" role="radiogroup" aria-label="Comparison view">
+          <label class="tab-btn view-files">
+            <input type="radio" name="compare-view" value="files" checked />
+            <ui-icon name="file" :size="12" />
+            Files ({ comparison.files.size })
+          </label>
+          <label class="tab-btn view-commits">
+            <input type="radio" name="compare-view" value="commits" />
+            <ui-icon name="commit" :size="12" />
+            Commits ({ comparison.commits.size })
+          </label>
+        </div>
+        <a class="button-link" :href="page.createPullHref">
+          <span class="action-icon-muted"><ui-icon name="pull" :size="14" /></span>
+          Create pull request
+        </a>
+      </div>
+      <div class="files-pane">
+        <if comparison.files.isEmpty()>
+          <p class="empty-msg">No file differences between these refs.</p>
+        <else>
+          <git-compare-files :page="page" />
+        </if>
+      </div>
+      <div class="commits-pane">
+        <if comparison.commits.isEmpty()>
+          <p class="empty-msg">No commits between these refs.</p>
+        <else>
+          <div class="commit-list">
+            <for commit in comparison.commits>
+              <a class="commit-row" :href="page.browseHref(commit.sha)">
+                <span class="commit-icon"><ui-icon name="commit" :size="14" /></span>
+                <span class="commit-body">
+                  <span class="commit-message">{ commit.message.lineSequence().first() }</span>
+                  <span class="commit-meta">
+                    <span class="commit-author">{ commit.authorName }</span>
+                    <span class="commit-time"><ui-time :value="commit.authorDate" relative ago inheritTypography /></span>
+                  </span>
+                </span>
+                <code class="commit-sha">{ commit.sha.take(8) }</code>
+              </a>
+            </for>
+          </div>
+        </if>
+      </div>
+    </div>
+  <else>
+    <p class="empty-msg">Select two branches or refs and click Compare to see the differences.</p>
+  </if>
+  <style scoped>
+    /* Studio compare results: StatGrid, Files/Commits toggle, file and commit cards. */
+    .compare-results {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .stat-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      margin: 0;
+    }
+    .stat-tile {
+      min-width: 0;
+      padding: 16px;
+      background: var(--bg-1);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+    }
+    .stat-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--fg-3);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    .stat-value {
+      margin: 6px 0 0;
+      font-size: 28px;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      font-variant-numeric: tabular-nums;
+    }
+    .insertions {
+      color: #34d99a;
+    }
+    .deletions {
+      color: #ff5d6c;
+    }
+    .results-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .tab-toggle {
+      display: flex;
+      gap: 2px;
+      padding: 2px;
+      background: var(--bg-1);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+    }
+    .tab-btn {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      padding: 6px 12px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--fg-2);
+      cursor: pointer;
+    }
+    .tab-btn:hover {
+      background: var(--bg-2);
+    }
+    .tab-btn:has(input:checked) {
+      background: var(--bg-3);
+      color: var(--fg-0);
+    }
+    .tab-btn:has(input:focus-visible) {
+      outline: 2px solid var(--accent);
+      outline-offset: -2px;
+    }
+    .tab-btn input {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      opacity: 0;
+      pointer-events: none;
+    }
+    .files-pane {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .compare-results:has(.view-commits input:checked) .files-pane,
+    .compare-results:has(.view-files input:checked) .commits-pane {
+      display: none;
+    }
+    .commit-list {
+      overflow: hidden;
+      background: var(--bg-1);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+    }
+    .commit-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--line);
+      color: inherit;
+      text-decoration: none;
+      transition: background 0.12s;
+    }
+    .commit-row:last-child {
+      border-bottom: 0;
+    }
+    .commit-row:hover {
+      background: var(--bg-2);
+      text-decoration: none;
+    }
+    .commit-icon {
+      display: flex;
+      flex: 0 0 28px;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      color: var(--accent);
+      background: color-mix(in oklch, var(--accent) 10%, transparent);
+    }
+    .commit-body {
+      flex: 1;
+      min-width: 0;
+    }
+    .commit-message {
+      display: block;
+      overflow: hidden;
+      font-size: 13.5px;
+      font-weight: 500;
+      color: var(--fg-0);
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .commit-meta {
+      display: flex;
+      gap: 10px;
+      margin-top: 3px;
+    }
+    .commit-author {
+      font-size: 12px;
+      color: var(--fg-2);
+    }
+    .commit-time {
+      font-size: 11px;
+      color: var(--fg-3);
+    }
+    .commit-sha {
+      flex: none;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: var(--bg-2);
+      font-size: 11px;
+      color: var(--fg-3);
+    }
+    .empty-msg {
+      margin: 0;
+      padding: 48px 0;
+      text-align: center;
+      color: var(--fg-3);
+      font-size: 13.5px;
+    }
+    @media (max-width: 700px) {
+      .stat-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      .stat-value {
+        font-size: 22px;
+      }
+      .results-bar {
+        flex-wrap: wrap;
+      }
+    }
+  </style>
+</component>

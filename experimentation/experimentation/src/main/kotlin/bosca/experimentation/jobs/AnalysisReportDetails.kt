@@ -40,9 +40,12 @@ data class AnalysisReportDetails(
      * remains the current explanation for that state.
      */
     val experimentRevision: Long? = null,
+    /** Exact source-row timestamps keyed by "goalId:variationKey", used to match reports to results. */
+    val resultUpdatedAt: Map<String, String> = emptyMap(),
     val multipleTesting: MultipleTestingDetails? = null,
     val srm: SrmDetails? = null,
     val goals: List<GoalDetails> = emptyList(),
+    val plannedComparisons: List<PlannedComparison> = emptyList(),
 )
 
 /**

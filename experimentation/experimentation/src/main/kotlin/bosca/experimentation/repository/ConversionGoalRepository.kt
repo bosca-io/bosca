@@ -23,8 +23,8 @@ interface ConversionGoalRepository {
     suspend fun getById(id: UUID): ConversionGoal?
 
     @Query("""
-        insert into experimentation.conversion_goals (experiment_id, name, event_type, element_type, element_id, metric_type, page_path, page_path_prefixes, item_extra_key, item_extra_value, role, cuped_covariate)
-        values (:experimentId, :name, :eventType, :elementType, :elementId, (:metricType)::experimentation.goal_metric_type, :pagePath, :pagePathPrefixes, :itemExtraKey, :itemExtraValue, (:role)::experimentation.conversion_goal_role, :cupedCovariate::jsonb)
+        insert into experimentation.conversion_goals (experiment_id, name, event_type, element_type, element_id, metric_type, page_path, page_path_prefixes, item_extra_key, item_extra_value, role, cuped_covariate, activation, outcome_scope)
+        values (:experimentId, :name, :eventType, :elementType, :elementId, (:metricType)::experimentation.goal_metric_type, :pagePath, :pagePathPrefixes, :itemExtraKey, :itemExtraValue, (:role)::experimentation.conversion_goal_role, :cupedCovariate::jsonb, :activation::jsonb, :outcomeScope::jsonb)
         returning *
     """)
     suspend fun add(goal: ConversionGoal): ConversionGoal
@@ -41,7 +41,9 @@ interface ConversionGoalRepository {
             item_extra_key = :itemExtraKey,
             item_extra_value = :itemExtraValue,
             role = (:role)::experimentation.conversion_goal_role,
-            cuped_covariate = :cupedCovariate::jsonb
+            cuped_covariate = :cupedCovariate::jsonb,
+            activation = :activation::jsonb,
+            outcome_scope = :outcomeScope::jsonb
         where id = :id
         returning *
     """)

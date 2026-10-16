@@ -1,0 +1,301 @@
+<component tag="git-pipeline-catalog">
+  <prop name="page" type="bosca.git.ui.PipelinePage" required />
+  <div class="pipeline-list">
+    <for failure in page.failures>
+      <ui-alert>{ failure }</ui-alert>
+    </for>
+    <if page.pipelines.isEmpty()>
+      <div class="pipeline-empty">
+        <span class="empty-icon"><ui-icon name="workflow" :size="32" /></span>
+        <p>No pipelines found.</p>
+        <p class="empty-hint">
+          <if page.repositoryContext || page.repository.isNotBlank()>
+            Add a <code>.bosca/pipelines/*.yaml</code> file to define a pipeline.
+          <else>
+            The selected owner has no pipeline definitions.
+          </if>
+        </p>
+      </div>
+    <else-if page.repositoryContext>
+      <for pipeline in page.pipelines>
+        <section class="pipeline-card" :aria-label='pipeline.name + " pipeline"'>
+          <header class="pipeline-header">
+            <span class="pipeline-status-dot" :style='"background: " + bosca.git.ui.statusColor(pipeline.runs.firstOrNull()?.status?.name ?: "NONE")'></span>
+            <div class="pipeline-heading-copy">
+              <span class="pipeline-name">{ pipeline.name }</span>
+              <code class="pipeline-path">{ pipeline.filePath }</code>
+            </div>
+            <span class="pipeline-updated">Updated <ui-time :value="pipeline.updated" relative ago inheritTypography /></span>
+            <if bosca.git.ui.graphql.GitPipelineTriggerType.MANUAL in pipeline.triggerTypes && pipeline.repositoryId in page.executableRepositories>
+              <a class="button-link" :href="page.triggerHref(pipeline.repositoryId, pipeline.id)">
+                <span class="run-icon"><ui-icon name="play" :size="14" /></span>
+                Run
+              </a>
+            </if>
+          </header>
+          <if pipeline.runs.isEmpty()>
+            <p class="no-runs">No runs yet</p>
+          <else>
+            <git-pipeline-recent :repository="pipeline.repositoryId" :pipeline="pipeline" />
+          </if>
+        </section>
+      </for>
+    <else>
+      <for repository in page.groups>
+        <section class="repo-group" :aria-label='repository.name + " pipelines"'>
+          <div class="repo-heading">
+            <span class="repo-icon"><ui-icon name="folder" :size="12" /></span>
+            <a :href="repository.href">{ repository.name }</a>
+            <span class="repo-count">{ page.pipelines.count { it.repositoryId == repository.id } }</span>
+          </div>
+          <div class="pipeline-table">
+            <for pipeline in page.pipelines.filter { it.repositoryId == repository.id }>
+              <div class="pipeline-row">
+                <git-run-indicator :status='pipeline.runs.firstOrNull()?.status?.name ?: "NONE"' />
+                <a
+                  class="pipeline-name pipeline-row-link"
+                  :href='pipeline.runs.firstOrNull()?.id?.let { bosca.git.ui.runHref(it) }'
+                >
+                  { pipeline.name }
+                </a>
+                <code class="pipeline-path">{ pipeline.filePath }</code>
+                <if pipeline.runs.isNotEmpty()>
+                  <code class="run-ref">{ pipeline.runs.first().ref }</code>
+                  <code class="run-sha">{ pipeline.runs.first().commitSha.take(8) }</code>
+                  <code class="run-duration">{ bosca.git.ui.pipelineDuration(pipeline.runs.first().durationSeconds) }</code>
+                  <span class="run-time"><ui-time :value="pipeline.runs.first().created" inheritTypography /></span>
+                  <git-status-badge :status="pipeline.runs.first().status.name" run />
+                <else>
+                  <span class="no-runs-label">No runs</span>
+                  <git-status-badge status="NONE" run />
+                </if>
+                <if bosca.git.ui.graphql.GitPipelineTriggerType.MANUAL in pipeline.triggerTypes>
+                  <if repository.id in page.executableRepositories>
+                    <a class="button-link run-button" :href="page.triggerHref(repository.id, pipeline.id)">
+                      <span class="run-icon"><ui-icon name="play" :size="14" /></span>
+                      Run
+                    </a>
+                  <else>
+                    <ui-button
+                      size="sm"
+                      icon="play"
+                      disabled
+                      :title='"Execute permission is required to run " + pipeline.name'
+                    >
+                      Run
+                    </ui-button>
+                  </if>
+                </if>
+              </div>
+            </for>
+          </div>
+        </section>
+      </for>
+    </if>
+    <if page.repository.isNotBlank()>
+      <git-pipeline-history :repository="page.repository" :offset="page.offset" :runs="page.runs" />
+    </if>
+  </div>
+  <style scoped>
+    .pipeline-list {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .pipeline-empty {
+      padding: 48px 0;
+      text-align: center;
+      color: var(--fg-3);
+      font-size: 13.5px;
+    }
+    .pipeline-empty p {
+      margin: 0;
+    }
+    .empty-icon {
+      display: inline-flex;
+      margin-bottom: 12px;
+      color: var(--fg-4);
+    }
+    .empty-hint {
+      margin-top: 4px;
+      font-size: 12px;
+      color: var(--fg-4);
+    }
+    .empty-hint code {
+      padding: 1px 5px;
+      border-radius: 3px;
+      background: var(--bg-3);
+      font-size: 11px;
+    }
+    /* Repository context: one Studio pipeline card per definition. */
+    .pipeline-card {
+      overflow: hidden;
+      background: var(--bg-1);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+    }
+    .pipeline-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line);
+    }
+    .pipeline-status-dot {
+      flex: none;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+    }
+    .pipeline-heading-copy {
+      flex: 1;
+      min-width: 0;
+    }
+    .pipeline-card .pipeline-name {
+      font-size: 14px;
+    }
+    .pipeline-heading-copy .pipeline-path {
+      margin-left: 10px;
+    }
+    .pipeline-updated {
+      flex: none;
+      font-size: 11px;
+      color: var(--fg-3);
+    }
+    .no-runs {
+      margin: 0;
+      padding: 20px 16px;
+      text-align: center;
+      color: var(--fg-4);
+      font-size: 12px;
+    }
+    /* Owner context: Studio's grouped pipeline table. */
+    .repo-heading {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 0 4px 8px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--fg-3);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .repo-icon {
+      display: inline-flex;
+    }
+    .repo-heading a {
+      color: var(--fg-2);
+      text-decoration: none;
+    }
+    .repo-count {
+      margin-left: auto;
+      padding: 1px 6px;
+      border-radius: 8px;
+      background: var(--bg-3);
+      color: var(--fg-4);
+      font-size: 11px;
+      font-weight: 500;
+    }
+    .pipeline-table {
+      overflow: hidden;
+      background: var(--bg-1);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+    }
+    .pipeline-row {
+      position: relative;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--line);
+      transition: background 0.12s;
+    }
+    .pipeline-row:last-child {
+      border-bottom: 0;
+    }
+    .pipeline-row:hover {
+      background: var(--bg-2);
+    }
+    .pipeline-name {
+      flex: none;
+      color: var(--fg-0);
+      font-size: 13px;
+      font-weight: 600;
+      white-space: nowrap;
+      text-decoration: none;
+    }
+    .pipeline-row-link[href]::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+    }
+    .pipeline-path {
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      font-size: 11px;
+      color: var(--fg-3);
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .pipeline-heading-copy .pipeline-path {
+      flex: none;
+    }
+    .run-ref {
+      max-width: 120px;
+      overflow: hidden;
+      font-size: 11px;
+      color: var(--fg-2);
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .run-sha {
+      font-size: 11px;
+      color: var(--accent);
+    }
+    .run-duration {
+      width: 60px;
+      font-size: 11px;
+      color: var(--fg-2);
+      text-align: right;
+    }
+    .run-time {
+      width: 120px;
+      font-size: 11px;
+      color: var(--fg-3);
+      text-align: right;
+    }
+    .no-runs-label {
+      flex: 1;
+      font-size: 11px;
+      color: var(--fg-4);
+      text-align: right;
+    }
+    .run-button {
+      position: relative;
+      z-index: 1;
+    }
+    .run-icon {
+      display: inline-flex;
+      color: var(--fg-2);
+    }
+    @media (max-width: 900px) {
+      .run-ref,
+      .run-time {
+        display: none;
+      }
+    }
+    @media (max-width: 600px) {
+      .pipeline-row,
+      .pipeline-header {
+        flex-wrap: wrap;
+      }
+      .pipeline-path {
+        flex-basis: 100%;
+        order: 9;
+      }
+    }
+  </style>
+</component>

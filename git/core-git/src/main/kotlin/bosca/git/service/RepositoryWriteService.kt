@@ -102,7 +102,8 @@ interface RepositoryWriteService : Service {
     /**
      * Creates an annotated tag at [CreateTagInput.targetRef] and fires the ref-update
      * notifier — the same post-receive path a pushed tag takes, so downstream webhooks
-     * and TAG-triggered pipelines run. Fails if the tag already exists — unless the caller
+     * and TAG-triggered pipelines run. Rejects invalid Git ref names.
+     * Fails if the tag already exists — unless the caller
      * opted into [CreateTagInput.allowExisting], where a tag at the SAME commit becomes a
      * `created = false` no-op (notifier not re-fired — re-run safe) and a tag
      * at a DIFFERENT commit still fails loudly naming both commits.

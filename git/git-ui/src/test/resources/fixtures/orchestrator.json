@@ -1,0 +1,25 @@
+{
+  "provider": "digitalocean",
+  "credentials": {
+    "selfDestructTokenScope": "scope"
+  },
+  "defaults": {
+    "region": "nyc1",
+    "size": "small",
+    "image": "ubuntu"
+  },
+  "runnerProfiles": {
+    "linux": {
+      "size": "large"
+    }
+  },
+  "maxConcurrentVms": 5,
+  "maxJobTimeoutMinutes": 60,
+  "maxVmLifetimeMinutes": 120,
+  "alertSinks": [
+    {
+      "type": "webhook",
+      "url": "https://example.test/alerts"
+    }
+  ]
+}

@@ -1,0 +1,35 @@
+<component tag="ui-loading-state">
+  <prop name="label" type="String" default="Loading…" />
+  <prop name="compact" type="Boolean" default="false" />
+  <prop name="ref" type="String" default="" />
+  <script server provides="attrs">
+    props.filterKeys { it !in setOf("label", "compact", "ref", "__bmlAttrs") }
+  </script>
+  <div
+    :class='"loading-state" + if (compact) " compact" else ""'
+    :ref="ref.takeIf(String::isNotBlank)"
+    role="status"
+    {...attrs}
+  >
+    <ui-spinner />
+    <span>{ label }</span>
+  </div>
+  <style scoped>
+    .loading-state {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      width: 100%;
+      min-width: 0;
+      padding: 28px 20px;
+      color: var(--fg-3);
+      font-size: 12.5px;
+      line-height: normal;
+    }
+    .compact {
+      justify-content: flex-start;
+      padding: 8px 0;
+    }
+  </style>
+</component>

@@ -31,6 +31,7 @@ dependencies {
     implementation(project(":bosca-core:core-events"))
     implementation(project(":pipelines:core-pipelines"))
     implementation(project(":content:core-content"))
+    implementation(project(":content:core-bible-providers"))
     implementation(project(":content:core-comments"))
     implementation(project(":calendar:core-calendar"))
     implementation(project(":bosca-core:core-forms"))

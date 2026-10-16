@@ -1,6 +1,6 @@
 # Studio E2E Suite
 
-Playwright suite covering the Kubernetes subsystem.
+Playwright suite covering Kubernetes, GitHub synchronization, and raw artifact publication.
 
 ## Run
 
@@ -8,7 +8,8 @@ From the workspace root, change to `web/projects/studio` before running the suit
 
 ```bash
 cd web/projects/studio
-pnpm test:e2e            # all kubernetes specs
+pnpm test:e2e            # all browser specs
+pnpm exec playwright test e2e/artifacts/github-publication.spec.ts # CLI release settings
 pnpm test:e2e --headed   # watch the browser
 pnpm test:e2e --debug    # inspector
 ```
@@ -54,6 +55,20 @@ real login flow instead of bypassing auth:
   renders its breadcrumb without console errors or 5xx responses.
 - **overview.spec.ts** — the overview header reflects the loaded
   cluster name, and the four stat-tile labels are present.
+- **git/github-sync.spec.ts** — repository pairing, inline secret creation,
+  directional synchronization, conflict resolution, and repository settings.
+- **git/tags.spec.ts** — newest-first API order, 25-tag pages, previous/next
+  navigation, keyboard paging and Escape dismissal, pipeline ref search, and
+  selection outside the first page.
+- **artifacts/github-publication.spec.ts** — configure and enable the raw CLI's
+  GitHub release destination, create its token secret without losing destination
+  edits, review the Linux package, macOS installer, checksums, and installer
+  script's independent publication/verification results, disable the destination,
+  queue an existing CLI version for one destination and open its durable run,
+  recover upload completion by reviewing the stored files and build commit,
+  show a failed repeat while preserving its last successful verification date,
+  and preserve edits when configuration fails. Uses the local mock backend;
+  it does not publish a release to GitHub.
 
 ## What's deferred (marked `test.skip`)
 

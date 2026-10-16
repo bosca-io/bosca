@@ -14,6 +14,7 @@ import bosca.di.ProviderRegistry
 import bosca.di.annotation.InternalDI
 import bosca.di.provides
 import bosca.meilisearch.client.MeilisearchClient
+import bosca.meilisearch.client.MeilisearchTaskException
 import bosca.meilisearch.client.waitForTask
 import bosca.pipelines.PipelineContext
 import bosca.pipelines.node.NodeInputs
@@ -34,17 +35,21 @@ import io.mockk.mockk
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.encodeToJsonElement
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonArray
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.time.Duration
@@ -199,6 +204,55 @@ class IndexDocumentNodeIntegrationTest {
                 put("id", "d2"); put("contentId", "d2"); put("_type", "metadata")
             }))
             assertEquals(2, searchService.searchRaw(query).hits.size, "indexing evicted the cache; the new document is visible")
+        }
+    }
+
+    @Test
+    fun `partial document batches preserve content and refresh cached searches`() = runBlocking {
+        withRequestCache {
+            val originals = (1..2).map { number -> buildJsonObject {
+                put("id", "file$number")
+                put("content", "unchanged file content $number")
+                put("filePath", "file$number.kt")
+                putJsonArray("branches") { add("main") }
+            } }
+            searchService.index(system, originals)
+            val query = SearchQuery(query = "", offset = 0, limit = 20, storageSystemName = system.name)
+            assertEquals(2, searchService.searchRaw(query).hits.size)
+            val patches = originals.map { original -> buildJsonObject {
+                put("id", original.getValue("id"))
+                putJsonArray("branches") { add("feature") }
+            } }
+            val newDocument = buildJsonObject {
+                put("id", "file3")
+                put("content", "new file content")
+                putJsonArray("branches") { add("feature") }
+            }
+
+            searchService.update(system, patches + newDocument)
+
+            for ((original, patch) in originals.zip(patches)) {
+                val id = original.getValue("id").jsonPrimitive.content
+                assertEquals(JsonObject(original + patch), searchService.fetch(system, id))
+                assertEquals(patch, searchService.fetch(system, id, listOf("id", "branches")))
+            }
+            assertEquals(newDocument, searchService.fetch(system, "file3"))
+            assertEquals(3, searchService.searchRaw(query).hits.size, "updates evict the previous cached search")
+            assertNull(searchService.fetch(system, "missing", listOf("id", "branches")))
+
+            // The replacement API retains its distinct contract for other indexing callers.
+            searchService.index(system, patches.first())
+            assertEquals(patches.first(), searchService.fetch(system, "file1"))
+        }
+    }
+
+    @Test
+    fun `partial update task failures propagate`() = runBlocking {
+        withRequestCache {
+            val failure = assertFailsWith<MeilisearchTaskException> {
+                searchService.update(system, listOf(buildJsonObject { put("content", "missing id") }))
+            }
+            assertEquals("failed", failure.status)
         }
     }
 

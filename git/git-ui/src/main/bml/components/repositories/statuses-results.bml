@@ -1,0 +1,233 @@
+<component tag="git-statuses-results">
+  <prop name="page" type="bosca.git.ui.ExplorePage" required />
+  <div class="status-layout">
+    <div class="commit-panel">
+      <ui-card :padded="false">
+        <ui-section-heading
+          title="Recent Commits"
+          :subtitle='if (page.id.isBlank()) "Select a repository" else page.recent.size.toString() + " commits"'
+        />
+        <if page.recent.isEmpty()>
+          <p class="panel-empty">No commits found.</p>
+        <else>
+          <div class="commit-list">
+            <for commit in page.recent>
+              <a
+                class="commit-item"
+                :href="page.statusHref(commit.sha)"
+                :aria-current='if (commit.sha == page.sha) "true" else "false"'
+              >
+                <code class="commit-sha">{ commit.sha.take(8) }</code>
+                <span class="commit-msg">{ commit.message.lineSequence().first() }</span>
+                <span class="commit-meta">
+                  { commit.author.substringBefore(" <") } ·
+                  <ui-time :value="commit.date" inheritTypography />
+                </span>
+              </a>
+            </for>
+          </div>
+        </if>
+      </ui-card>
+    </div>
+    <div class="status-panel">
+      <form method="get" class="sha-input-row" :action="page.shaFormAction">
+        <for field in page.shaFormFields>
+          <input type="hidden" :name="field.first" :value="field.second" />
+        </for>
+        <ui-input name="sha" :value="page.sha" mono placeholder="Enter or select a commit SHA…" aria-label="Commit SHA" />
+        <ui-button type="submit" size="sm" primary>Load Statuses</ui-button>
+      </form>
+      <if page.sha.isNotBlank() && page.statuses.isNotEmpty()>
+        <ui-card :padded="false">
+          <ui-section-heading title="Status Checks" :subtitle='page.statuses.size.toString() + " checks"' />
+          <div class="status-list">
+            <for status in page.statuses>
+              <div class="status-row" :style='"--state-color: " + bosca.git.ui.statusColor(status.state.name)'>
+                <span class="status-icon">
+                  <ui-icon :name='when (status.state.name) { "SUCCESS" -> "check-plain"; "FAILURE", "ERROR" -> "close"; else -> "more" }' :size="14" />
+                </span>
+                <div class="status-info">
+                  <div class="status-context">{ status.context }</div>
+                  <if status.description.orEmpty().isNotBlank()>
+                    <div class="status-desc">{ status.description.orEmpty() }</div>
+                  </if>
+                </div>
+                <span class="status-time"><ui-time :value="status.created" inheritTypography /></span>
+                <git-status-badge :status="status.state.name" run />
+                <if bosca.git.ui.safeWebHref(status.targetUrl).isNotBlank()>
+                  <a
+                    class="status-link"
+                    :href="bosca.git.ui.safeWebHref(status.targetUrl)"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    :aria-label='"Open " + status.context + " check"'
+                    title="View check"
+                  >
+                    <ui-icon name="external" :size="12" />
+                  </a>
+                </if>
+              </div>
+            </for>
+          </div>
+        </ui-card>
+      <else-if page.sha.isNotBlank()>
+        <div class="panel-empty">
+          <p>No status checks found for this commit.</p>
+          <p class="hint">Status checks are reported by CI agents via the <code>recordCommitStatus</code> mutation.</p>
+        </div>
+      <else>
+        <p class="panel-empty">Select a commit from the left panel or enter a SHA to view its status checks.</p>
+      </if>
+    </div>
+  </div>
+  <style scoped>
+    /* Studio commit status layout. */
+    .status-layout {
+      display: grid;
+      grid-template-columns: 360px minmax(0, 1fr);
+      align-items: start;
+      gap: 18px;
+    }
+    .commit-panel,
+    .status-panel {
+      min-width: 0;
+    }
+    .status-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .sha-input-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 0;
+    }
+    .sha-input-row > :first-of-type {
+      flex: 1;
+    }
+    .panel-empty {
+      margin: 0;
+      padding: 32px 16px;
+      text-align: center;
+      color: var(--fg-3);
+      font-size: 13px;
+    }
+    .panel-empty p {
+      margin: 0;
+    }
+    .hint {
+      margin-top: 4px;
+      font-size: 11.5px;
+      color: var(--fg-4);
+    }
+    .hint code {
+      padding: 1px 5px;
+      border-radius: 3px;
+      background: var(--bg-3);
+      font-size: 11px;
+    }
+    .commit-list {
+      max-height: 600px;
+      overflow-y: auto;
+    }
+    .commit-item {
+      display: block;
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--line);
+      color: inherit;
+      text-decoration: none;
+      transition: background 0.12s;
+    }
+    .commit-item:last-child {
+      border-bottom: 0;
+    }
+    .commit-item:hover {
+      background: var(--bg-2);
+      text-decoration: none;
+    }
+    .commit-item[aria-current="true"] {
+      border-left: 2px solid var(--accent);
+      background: color-mix(in oklch, var(--accent) 10%, transparent);
+    }
+    .commit-sha {
+      display: block;
+      font-size: 11.5px;
+      font-weight: 600;
+      color: var(--accent);
+    }
+    .commit-msg {
+      display: block;
+      margin-top: 2px;
+      overflow: hidden;
+      font-size: 12.5px;
+      color: var(--fg-0);
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .commit-meta {
+      display: block;
+      margin-top: 2px;
+      font-size: 11px;
+      color: var(--fg-3);
+    }
+    .status-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--line);
+    }
+    .status-row:last-child {
+      border-bottom: 0;
+    }
+    .status-icon {
+      display: flex;
+      flex-shrink: 0;
+      align-items: center;
+      justify-content: center;
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      color: var(--state-color);
+      background: color-mix(in oklch, var(--state-color) 16%, transparent);
+    }
+    .status-info {
+      flex: 1;
+      min-width: 0;
+    }
+    .status-context {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--fg-0);
+    }
+    .status-desc {
+      margin-top: 2px;
+      font-size: 11.5px;
+      color: var(--fg-2);
+    }
+    .status-time {
+      flex-shrink: 0;
+      font-size: 11px;
+      color: var(--fg-3);
+    }
+    .status-link {
+      display: flex;
+      flex-shrink: 0;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      border-radius: 6px;
+      color: var(--fg-3);
+    }
+    .status-link:hover {
+      background: var(--bg-3);
+    }
+    @media (max-width: 900px) {
+      .status-layout {
+        grid-template-columns: minmax(0, 1fr);
+      }
+    }
+  </style>
+</component>

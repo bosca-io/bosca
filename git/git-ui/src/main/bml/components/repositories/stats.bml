@@ -1,0 +1,83 @@
+<component tag="git-repository-stats">
+  <prop name="id" type="String" required />
+  <div class="repository-summary">
+    <island name="statistics" render="deferred" :id="id">
+      <prop name="id" type="String" />
+      <fallback>
+        <div class="stats-state">
+          <span class="stats-loading"><ui-loading-state label="Loading statistics…" compact /></span>
+          <span class="stats-error" role="alert">Statistics could not be loaded.</span>
+          <button class="stats-retry" type="button" data-bml-deferred-retry>Retry</button>
+        </div>
+      </fallback>
+      <script server provides="stats">bosca.git.ui.repositoryStats(id)</script>
+      <dl class="stat-grid">
+        <for stat in stats>
+          <div class="stat-tile">
+            <dt class="stat-label">{ stat.label }</dt>
+            <dd class="stat-value">{ stat.value }</dd>
+          </div>
+        </for>
+      </dl>
+    </island>
+  </div>
+  <style scoped>
+    .repository-summary {
+      min-width: 0;
+      margin-bottom: 18px;
+    }
+    /* Studio StatGrid with five StatTiles. */
+    .stat-grid {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 12px;
+      margin: 0;
+    }
+    .stat-tile {
+      min-width: 0;
+      padding: 16px;
+      background: var(--bg-1);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+    }
+    .stat-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--fg-3);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    .stat-value {
+      margin: 6px 0 0;
+      font-size: 28px;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      font-variant-numeric: tabular-nums;
+      overflow-wrap: anywhere;
+    }
+    .stats-state {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 16px;
+      background: var(--bg-1);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      color: var(--fg-3);
+      font-size: 12.5px;
+    }
+    @media (max-width: 900px) {
+      .stat-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+    }
+    @media (max-width: 600px) {
+      .stat-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      .stat-value {
+        font-size: 22px;
+      }
+    }
+  </style>
+</component>

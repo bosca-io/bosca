@@ -1,0 +1,62 @@
+<component tag="git-owner-picker">
+  <prop name="id" type="String" default="all" />
+  <prop name="label" type="String" default="All accessible repositories" />
+  <prop name="allowAll" type="Boolean" default="true" />
+  <prop name="caption" type="String" default="Owner" />
+  <prop name="compact" type="Boolean" default="false" />
+  <prop name="name" type="String" default="owner" />
+  <div :class='"owner-picker" + if (compact) " compact" else ""'>
+    <span class="owner-caption">{ caption }</span>
+    <ui-select
+      :name="name"
+      :label="caption"
+      :placeholder="label"
+      searchable
+      async
+      :minQuery="2"
+      :size='if (compact) "sm" else "md"'
+      icon="users"
+    >
+      <if allowAll>
+        <option value="all" :selected='id == "all"'>All accessible repositories</option>
+      </if>
+      <if id != "all" && id.isNotBlank()>
+        <option :value="id" selected>{ label }</option>
+      <else-if !allowAll>
+        <option value="" selected>{ label }</option>
+      </if>
+    </ui-select>
+  </div>
+  <style scoped>
+    .owner-picker {
+      position: relative;
+      width: min(100%, 380px);
+      flex: 0 0 auto;
+      min-width: 0;
+    }
+    .owner-caption {
+      display: block;
+      margin-bottom: 6px;
+      color: var(--fg-2);
+      font-size: 12px;
+      font-weight: 550;
+      line-height: 18px;
+    }
+    .compact {
+      width: auto;
+      max-width: min(100%, 280px);
+    }
+    .compact .owner-caption {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+    }
+  </style>
+  <script client scoped>
+    import { GitOwnerSearch } from "./GitOwnerSearch";
+    import { mountOwnerPicker } from "@client/owner-picker";
+    mountOwnerPicker(ctx, (query) => GitOwnerSearch.search(query));
+  </script>
+</component>

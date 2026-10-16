@@ -32,6 +32,12 @@ import bosca.experimentation.model.FeatureFlag
 import bosca.experimentation.model.FlagStatus
 import bosca.experimentation.model.FlagType
 import bosca.experimentation.model.GoalMetricType
+import bosca.experimentation.model.GoalActivation
+import bosca.experimentation.model.GoalActivationRule
+import bosca.experimentation.model.GoalActivationMode
+import bosca.experimentation.model.GoalOutcomeScope
+import bosca.experimentation.model.GoalPopulationAnalysis
+import bosca.experimentation.model.GoalPopulation
 import bosca.experimentation.model.RolloutPolicy
 import bosca.experimentation.model.RolloutPolicyMode
 import bosca.experimentation.model.RolloutStep
@@ -382,6 +388,98 @@ class ExperimentServiceImplIntegrationTest {
     }
 
     @Test
+    fun `goal activation and descriptive results round trip and effective edits invalidate results`() = withDb {
+        val flag = transaction { insertFlag() }
+        val experiment = service.add(experimentInput(flag).copy(activationFilter = ExperimentActivationFilter(eventType = EventType.Impression)))
+        val activation = GoalActivation(
+            defaultFilter = ExperimentActivationFilter(eventType = EventType.Impression, applicationIds = listOf("site", "other")),
+            variationRules = listOf(GoalActivationRule("control", GoalActivationMode.NOT_APPLICABLE)),
+            sameSession = true, maxDelaySeconds = 300,
+        )
+        val input = ConversionGoalInput(name = "Scoped cards", eventType = EventType.Interaction, activation = activation,
+            outcomeScope = GoalOutcomeScope(recommendationCard = true, attributeRecommendationDestination = true))
+        val goal = service.addConversionGoal(experiment.id, input)
+        assertEquals(goal, conversionGoalRepository.getById(goal.id))
+        val revision = assertNotNull(service.getById(experiment.id)).analysisRevision
+        val summary = GoalPopulationAnalysis("2026-09-01T00:00:00Z", false, true,
+            GoalPopulation(12, 2, 12, 2.0 / 12, null, null))
+        transaction { experimentResultRepository.upsert(ExperimentResult(experimentId = experiment.id, variationKey = "control",
+            goalId = goal.id, impressions = 12, conversions = 2, conversionRate = 2.0 / 12, goalAnalysis = summary)) }
+        assertEquals(summary, service.getResults(experiment.id).single().goalAnalysis)
+        service.editConversionGoal(goal.id, input.copy(activation = activation.copy(
+            defaultFilter = activation.defaultFilter?.copy(applicationIds = listOf("other", " site ", "other")))))
+        assertEquals(revision, service.getById(experiment.id)?.analysisRevision)
+        assertEquals(1, service.getResults(experiment.id).size)
+        service.editConversionGoal(goal.id, input.copy(activation = activation.copy(maxDelaySeconds = 600)))
+        assertTrue(assertNotNull(service.getById(experiment.id)).analysisRevision > revision)
+        assertTrue(service.getResults(experiment.id).isEmpty())
+        assertFailsWith<IllegalArgumentException> { service.editConversionGoal(goal.id, input.copy(activation = activation.copy(
+            variationRules = listOf(GoalActivationRule("missing", GoalActivationMode.NOT_APPLICABLE))))) }
+        assertNull(service.editConversionGoal(goal.id, input.copy(activation = null, outcomeScope = null)).activation)
+    }
+
+    @Test
+    fun `goal scopes require a meaningful eligibility context and support explicit application scopes`() = withDb {
+        val flag = transaction { insertFlag() }
+        val ordinary = service.add(experimentInput(flag))
+        val gated = service.add(experimentInput(flag).copy(activationFilter = ExperimentActivationFilter(eventType = EventType.Impression)))
+        val filter = ExperimentActivationFilter(eventType = EventType.Impression)
+        val base = ConversionGoalInput(name = "Cards", eventType = EventType.Interaction)
+        for (input in listOf(
+            base.copy(activation = GoalActivation(filter, sameSession = true)),
+            base.copy(outcomeScope = GoalOutcomeScope(sameSession = true)),
+            base.copy(activation = GoalActivation(filter)),
+            base.copy(activation = GoalActivation(filter), outcomeScope = GoalOutcomeScope(applicationIds = listOf("site"))),
+            base.copy(activation = GoalActivation(filter, applicationIds = listOf("site")),
+                outcomeScope = GoalOutcomeScope(maxDelaySeconds = 60)),
+            base.copy(outcomeScope = GoalOutcomeScope(maxDelaySeconds = 60)),
+            base.copy(outcomeScope = GoalOutcomeScope(applicationIds = listOf("site"), attributeRecommendationDestination = true)),
+        )) assertFailsWith<IllegalArgumentException> { service.addConversionGoal(ordinary.id, input) }
+        assertFailsWith<IllegalArgumentException> { service.addConversionGoal(gated.id,
+            base.copy(metricType = GoalMetricType.SESSION_DURATION, eventType = null, outcomeScope = GoalOutcomeScope(recommendationCard = true))) }
+        assertFailsWith<IllegalArgumentException> { service.addConversionGoal(gated.id,
+            base.copy(outcomeScope = GoalOutcomeScope(attributeRecommendationDestination = true))) }
+        val byAssignment = service.addConversionGoal(ordinary.id,
+            base.copy(activation = GoalActivation(filter, applicationIds = listOf("site"))))
+        assertEquals(listOf("site"), byAssignment.activation?.applicationIds)
+        val scopedOutcome = service.addConversionGoal(ordinary.id,
+            base.copy(outcomeScope = GoalOutcomeScope(applicationIds = listOf("site"))))
+        assertEquals(listOf("site"), scopedOutcome.outcomeScope?.applicationIds)
+        assertFailsWith<IllegalArgumentException> {
+            service.editConversionGoal(scopedOutcome.id,
+                base.copy(activation = GoalActivation(filter), outcomeScope = GoalOutcomeScope(applicationIds = listOf("site"))))
+        }
+        val scopedActivation = service.addConversionGoal(ordinary.id,
+            base.copy(activation = GoalActivation(filter.copy(applicationIds = listOf("site"))),
+                outcomeScope = GoalOutcomeScope(applicationIds = listOf("site"))))
+        assertEquals(listOf("site"), scopedActivation.activation?.defaultFilter?.applicationIds)
+        val mixedRules = GoalActivation(variationRules = listOf(
+            GoalActivationRule("control", GoalActivationMode.EVENT, filter.copy(applicationIds = listOf("site"))),
+            GoalActivationRule("treatment", GoalActivationMode.EVENT, filter),
+        ))
+        assertFailsWith<IllegalArgumentException> {
+            service.addConversionGoal(ordinary.id, base.copy(activation = mixedRules,
+                outcomeScope = GoalOutcomeScope(applicationIds = listOf("site"))))
+        }
+        val notApplicable = mixedRules.copy(variationRules = mixedRules.variationRules.map {
+            if (it.variationKey == "treatment") GoalActivationRule(it.variationKey, GoalActivationMode.NOT_APPLICABLE) else it
+        })
+        assertNotNull(service.addConversionGoal(ordinary.id, base.copy(activation = notApplicable,
+            outcomeScope = GoalOutcomeScope(applicationIds = listOf("site")))).activation)
+        val session = service.addConversionGoal(gated.id,
+            base.copy(metricType = GoalMetricType.SESSION_DURATION, eventType = null, activation = GoalActivation(filter), outcomeScope = GoalOutcomeScope(sameSession = true)))
+        assertTrue(checkNotNull(session.outcomeScope).sameSession)
+        val cleared = assertFailsWith<IllegalArgumentException> { service.edit(gated.id, experimentInput(flag)) }
+        assertEquals("Same-session constraints require experiment activation", cleared.message)
+        assertNotNull(checkNotNull(service.getById(gated.id)).activationFilter)
+        service.deleteConversionGoal(session.id)
+        assertNull(service.edit(gated.id, experimentInput(flag)).activationFilter)
+        val revision = checkNotNull(service.getById(ordinary.id)).analysisRevision
+        service.editConversionGoal(scopedOutcome.id, base.copy(outcomeScope = GoalOutcomeScope(applicationIds = listOf("other"))))
+        assertTrue(checkNotNull(service.getById(ordinary.id)).analysisRevision > revision)
+    }
+
+    @Test
     fun `activation filter and follow-up content prefixes normalize and round trip`() = withDb {
         val flag = transaction { insertFlag() }
         val filter = ExperimentActivationFilter(
@@ -398,7 +496,7 @@ class ExperimentServiceImplIntegrationTest {
         assertEquals("page", normalized.elementType)
         assertEquals("article-page", normalized.elementId)
         assertEquals("/articles/featured", normalized.pagePath)
-        assertEquals(listOf("/articles/", "/talks/", "/studies/"), normalized.pagePathPrefixes)
+        assertEquals(listOf("/articles/", "/studies/", "/talks/"), normalized.pagePathPrefixes)
         assertEquals("campaign", normalized.itemExtraKey)
         assertEquals(normalized, service.getById(saved.id)?.activationFilter)
 

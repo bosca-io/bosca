@@ -78,6 +78,7 @@ val projects = buildList {
     add(project(":analytics:analytics"))
     add(project(":analytics:analytics-ai"))
     add(project(":content:content"))
+    add(project(":content:bible-providers"))
     add(project(":communications:communications"))
     add(project(":social:chat"))
     add(project(":social:collaboration"))

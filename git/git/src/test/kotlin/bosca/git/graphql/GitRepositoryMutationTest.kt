@@ -9,6 +9,8 @@ import bosca.git.model.Repository
 import bosca.git.model.UpdateRepositoryInput
 import bosca.git.security.RepositoryPermissionEvaluator
 import bosca.git.service.BranchProtectionService
+import bosca.git.service.CreateTagInput
+import bosca.git.service.CreateTagResult
 import bosca.git.service.PullRequestService
 import bosca.git.service.QuerySourceBackfill
 import bosca.git.service.RepositoryLifecycleService
@@ -31,6 +33,7 @@ import io.mockk.coVerify
 import io.mockk.mockk
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
@@ -68,6 +71,7 @@ class GitRepositoryMutationTest {
     private val repo = Repository(id = id, slug = "r", name = "R", ownerId = UUID.random(), visibility = bosca.git.model.Visibility.PRIVATE)
 
     private fun repoFound() {
+        coEvery { branchProtectionService.findMatchingRule(any(), any()) } returns null
         coEvery { repositoryService.findById(id) } returns repo
         coEvery { repositoryService.findByIdIncludingDeleted(id) } returns repo
     }
@@ -288,6 +292,31 @@ class GitRepositoryMutationTest {
         mutation.updatePullRequest(auth, prId, input)
         coVerify { permissionEvaluator.verifyAllowed(auth, repo, PermissionAction.EDIT) }
         coVerify { pullRequestService.update(prId, input) }
+    }
+
+    @Test
+    fun `branch edits require an available target and view access to a fork source`() = runTest {
+        val prId = UUID.random()
+        val pr = prFound(prId)
+        val sourceId = UUID.random()
+        coEvery { pr.sourceBranch } returns "feature"
+        coEvery { pr.targetBranch } returns "main"
+        coEvery { pr.sourceRepositoryId } returns sourceId
+        val input = bosca.git.model.UpdatePullRequestInput(targetBranch = "release")
+        coEvery { repositoryService.findById(sourceId) } returns null
+        assertFailsWith<NoSuchElementException> { mutation.updatePullRequest(auth, prId, input) }
+        val source = mockk<Repository>(relaxed = true)
+        coEvery { repositoryService.findById(sourceId) } returns source
+        coEvery { permissionEvaluator.verifyAllowed(auth, source, PermissionAction.VIEW) } throws SecurityException("Source unavailable")
+        assertFailsWith<SecurityException> { mutation.updatePullRequest(auth, prId, input) }
+        coEvery { permissionEvaluator.verifyAllowed(auth, source, PermissionAction.VIEW) } returns Unit
+        mutation.updatePullRequest(auth, prId, input)
+        coVerify { permissionEvaluator.verifyAllowed(auth, repo, PermissionAction.EDIT) }
+        coVerify { permissionEvaluator.verifyAllowed(auth, source, PermissionAction.VIEW) }
+        coEvery { repositoryService.findById(id) } returns repo.copy(archived = true)
+        assertFailsWith<IllegalArgumentException> { mutation.updatePullRequest(auth, prId, input) }
+        coEvery { repositoryService.findById(id) } returns repo.copy(deleted = true)
+        assertFailsWith<IllegalArgumentException> { mutation.updatePullRequest(auth, prId, input) }
     }
 
     @Test
@@ -548,6 +577,33 @@ class GitRepositoryMutationTest {
     }
 
     @Test
+    fun `replyReviewComment verifies view and authenticates the replying profile`() = runTest {
+        val prId = UUID.random()
+        val commentId = UUID.random()
+        prFound(prId)
+        io.mockk.every { auth.principal() } returns null
+        assertFailsWith<SecurityException> { mutation.replyReviewComment(auth, prId, commentId, "Reply", 3) }
+        val pid = actorProfile()
+        io.mockk.every { groupEvaluator.hasScope(auth, "git:write") } returns true
+        mutation.replyReviewComment(auth, prId, commentId, "Reply", 3)
+        coVerify { permissionEvaluator.verifyAllowed(auth, repo, PermissionAction.VIEW) }
+        coVerify { pullRequestService.replyReviewComment(prId, commentId, pid, "Reply", 3) }
+        io.mockk.every { groupEvaluator.hasScope(auth, "git:write") } returns false
+        assertFailsWith<SecurityException> { mutation.replyReviewComment(auth, prId, commentId, "Read-only", 3) }
+        coVerify(exactly = 0) { pullRequestService.replyReviewComment(prId, commentId, any(), "Read-only", any()) }
+        io.mockk.every { groupEvaluator.hasScope(auth, "ci:edit") } returns true
+        mutation.replyReviewComment(auth, prId, commentId, "CI reply", null)
+        coVerify { pullRequestService.replyReviewComment(prId, commentId, pid, "CI reply", null) }
+        io.mockk.every { groupEvaluator.hasScope(auth, "ci:edit") } returns false
+        io.mockk.every { groupEvaluator.hasSaGroup(auth) } returns true
+        mutation.replyReviewComment(auth, prId, commentId, "Service reply", null)
+        coVerify { pullRequestService.replyReviewComment(prId, commentId, pid, "Service reply", null) }
+        coEvery { permissionEvaluator.verifyAllowed(auth, repo, PermissionAction.VIEW) } throws SecurityException("denied")
+        assertFailsWith<SecurityException> { mutation.replyReviewComment(auth, prId, commentId, "Denied", 3) }
+        coVerify(exactly = 0) { pullRequestService.replyReviewComment(prId, commentId, any(), "Denied", any()) }
+    }
+
+    @Test
     fun `resolveReviewThread verifies VIEW and delegates`() = runTest {
         val prId = UUID.random()
         prFound(prId)
@@ -712,6 +768,63 @@ class GitRepositoryMutationTest {
     }
 
     @Test
+    fun `createTag verifies EDIT and retains the authenticated initiating principal`() = runTest {
+        repoFound()
+        val principalId = principal()
+        coEvery { writeService.createTag(any()) } returns CreateTagResult("release/1.0", "refs/tags/release/1.0", "commit", "tag")
+
+        val result = mutation.createTag(auth, id, "release/1.0", "main", "Release notes", "Alice", "alice@example.test")
+
+        coVerify { permissionEvaluator.verifyAllowed(auth, repo, PermissionAction.EDIT) }
+        coVerify {
+            writeService.createTag(CreateTagInput(id, "release/1.0", "main", "Release notes", "Alice", "alice@example.test", principalId))
+        }
+        assertEquals("release/1.0", result.name)
+        assertEquals("commit", result.targetSha)
+        assertEquals("tag", result.sha)
+        assertEquals("Alice", result.taggerName)
+        assertEquals("alice@example.test", result.taggerEmail)
+        assertEquals("Release notes", result.message)
+        assertTrue(result.isAnnotated)
+    }
+
+    @Test
+    fun `createTag rejects missing archived and deleted repositories`() = runTest {
+        principal()
+        coEvery { repositoryService.findById(id) } returns null
+        assertFailsWith<NoSuchElementException> { mutation.createTag(auth, id, "1.0", "main", "", "n", "e") }
+        for (unavailable in listOf(repo.copy(archived = true), repo.copy(deleted = true))) {
+            coEvery { repositoryService.findById(id) } returns unavailable
+            assertFailsWith<IllegalArgumentException> { mutation.createTag(auth, id, "1.0", "main", "", "n", "e") }
+        }
+        coVerify(exactly = 0) { writeService.createTag(any()) }
+    }
+
+    @Test
+    fun `createTag rejects anonymous and unauthorized callers`() = runTest {
+        repoFound()
+        io.mockk.every { auth.principal() } returns null
+        assertFailsWith<SecurityException> { mutation.createTag(auth, id, "1.0", "main", "", "n", "e") }
+        principal()
+        coEvery { permissionEvaluator.verifyAllowed(auth, repo, PermissionAction.EDIT) } throws SecurityException("Denied")
+        assertFailsWith<SecurityException> { mutation.createTag(auth, id, "1.0", "main", "", "n", "e") }
+        coVerify(exactly = 0) { writeService.createTag(any()) }
+    }
+
+    @Test
+    fun `createTag rejects blank target or tagger metadata and preserves write failures`() = runTest {
+        repoFound()
+        principal()
+        for ((target, name, email) in listOf(Triple(" ", "n", "e"), Triple("main", " ", "e"), Triple("main", "n", " "))) {
+            assertFailsWith<IllegalArgumentException> { mutation.createTag(auth, id, "1.0", target, "", name, email) }
+        }
+        coVerify(exactly = 0) { writeService.createTag(any()) }
+        coEvery { writeService.createTag(any()) } throws IllegalArgumentException("Tag '1.0' already exists")
+        val error = assertFailsWith<IllegalArgumentException> { mutation.createTag(auth, id, "1.0", "main", "", "n", "e") }
+        assertEquals("Tag '1.0' already exists", error.message)
+    }
+
+    @Test
     fun `deleteTag and deleteBranch enforce branch safety then delegate`() = runTest {
         repoFound()
         assertTrue(mutation.deleteTag(auth, id, "v1"))
@@ -814,6 +927,7 @@ class GitRepositoryMutationTest {
             { mutation.unassignPullRequest(auth, prId, UUID.random()) },
             { mutation.submitReview(auth, reviewInput) },
             { mutation.addReviewComment(auth, reviewCommentInput) },
+            { mutation.replyReviewComment(auth, prId, UUID.random(), "Reply", null) },
             { mutation.resolveReviewThread(auth, prId, "p", 1) },
             { mutation.createWebhook(auth, id, bosca.git.model.Webhook(repositoryId = id, url = "u", secret = "s")) },
             { mutation.updateWebhook(auth, hookId, bosca.git.model.Webhook(repositoryId = id, url = "u", secret = "s")) },
@@ -853,6 +967,7 @@ class GitRepositoryMutationTest {
             ))
         }
         assertFailsWith<NoSuchElementException> { mutation.resolveReviewThread(auth, prId, "p", 1) }
+        assertFailsWith<NoSuchElementException> { mutation.replyReviewComment(auth, prId, UUID.random(), "Reply", null) }
 
         val hookId = UUID.random()
         coEvery { webhookService.findById(hookId) } returns null
@@ -926,4 +1041,27 @@ class GitRepositoryMutationTest {
         assertTrue(json.contains("\"authorName\":\"n\""), json)
         assertTrue(GitMutation.toString().isNotEmpty())
     }
+    @Test
+    fun `direct file writes honor pull request protection and restricted push identities`() = runTest {
+        repoFound()
+        val principalId = principal()
+        val input = GraphQLCommitFileInput(id, "main", "a.txt", "new", "Edit", "Author", "author@example.test")
+        coEvery { branchProtectionService.findMatchingRule(id, "main") } returns BranchProtectionRule(repositoryId = id, pattern = "main", requirePullRequest = true)
+        assertFailsWith<IllegalStateException> { mutation.commitFile(auth, input) }
+        assertFailsWith<IllegalStateException> { mutation.deleteFile(auth, id, "main", "a.txt", "Author", "author@example.test") }
+        coVerify(exactly = 0) { writeService.commitFile(any(), any()) }
+        coVerify(exactly = 0) { writeService.deleteFile(any(), any()) }
+        coEvery { branchProtectionService.findMatchingRule(id, "main") } returns BranchProtectionRule(repositoryId = id, pattern = "main", restrictPushAccess = listOf(UUID.random()))
+        assertFailsWith<IllegalStateException> { mutation.commitFile(auth, input) }
+        assertFailsWith<IllegalStateException> { mutation.deleteFile(auth, id, "main", "a.txt", "Author", "author@example.test") }
+        coEvery { branchProtectionService.findMatchingRule(id, "main") } returns BranchProtectionRule(repositoryId = id, pattern = "main", restrictPushAccess = listOf(principalId))
+        mutation.commitFile(auth, input)
+        mutation.deleteFile(auth, id, "main", "a.txt", "Author", "author@example.test")
+        coVerify(exactly = 1) { writeService.commitFile(any(), principalId) }
+        coVerify(exactly = 1) { writeService.deleteFile(any(), principalId) }
+        coEvery { branchProtectionService.findMatchingRule(id, "main") } returns BranchProtectionRule(repositoryId = id, pattern = "main")
+        mutation.commitFile(auth, input)
+        mutation.deleteFile(auth, id, "main", "a.txt", "Author", "author@example.test")
+    }
+
 }

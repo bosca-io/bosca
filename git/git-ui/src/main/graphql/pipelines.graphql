@@ -1,0 +1,205 @@
+query GitUiPipelines($repo: UUID!, $runLimit: Int! = 10, $jobDetails: Boolean! = true, $id: UUID) {
+  git {
+    pipelines(repositoryId: $repo, id: $id) {
+      id
+      repositoryId
+      filePath
+      name
+      updated
+      triggerTypes
+      runs(limit: $runLimit) {
+        id
+        number
+        status
+        triggerType
+        jobs @include(if: $jobDetails) {
+          id
+          name
+          status
+        }
+        ref
+        commitSha
+        created
+        started
+        finished
+        durationSeconds
+      }
+    }
+  }
+}
+query GitUiPipelineInputs($id: UUID!, $ref: String!) {
+  git {
+    pipelineInputs(pipelineId: $id, ref: $ref) {
+      name
+      type
+      defaultValue
+      description
+      options
+      required
+    }
+  }
+}
+query GitUiPipelineRuns($repo: UUID!, $offset: Long!) {
+  git {
+    pipelineRuns(repositoryId: $repo, offset: $offset, limit: 50) {
+      id
+      pipelineId
+      number
+      status
+      ref
+      commitSha
+      triggerType
+      created
+      started
+      finished
+      durationSeconds
+    }
+  }
+}
+query GitUiRun($id: UUID!) {
+  git {
+    pipelineRun(id: $id) {
+      id
+      pipelineId
+      repositoryId
+      commitSha
+      ref
+      triggerType
+      triggeredBy
+      status
+      number
+      concurrencyGroup
+      parameters
+      created
+      started
+      finished
+      durationSeconds
+      jobs {
+        id
+        pipelineRunId
+        name
+        status
+        runnerLabel
+        agentId
+        matrixValues
+        dependsOn
+        requirements
+        pipelineRequirements
+        requirementsSatisfiedAt
+        requirementsDeadline
+        awaitingRequirements
+        requirementsBypassedAt
+        requirementsBypassReason
+        errorMessage
+        started
+        finished
+        attempt
+        agent {
+          id
+          name
+          status
+        }
+        steps {
+          id
+          pipelineJobId
+          name
+          ordinal
+          status
+          exitCode
+          errorMessage
+          started
+          finished
+        }
+      }
+      artifacts {
+        id
+        name
+        sizeBytes
+        created
+      }
+    }
+  }
+}
+query GitUiLogs($step: UUID!, $offset: Int, $before: Int, $tail: Boolean!) {
+  git {
+    pipelineLogs(
+      stepId: $step
+      offset: $offset
+      limit: 1000
+      tail: $tail
+      beforeLine: $before
+    ) {
+      lineNumber
+      timestamp
+      content
+      stream
+    }
+  }
+}
+mutation GitUiTrigger(
+  $id: UUID!
+  $ref: String!
+  $inputs: [GitPipelineInputValueInput!]!
+) {
+  git {
+    triggerPipeline(pipelineId: $id, ref: $ref, inputs: $inputs) {
+      id
+    }
+  }
+}
+mutation GitUiCancelRun($id: UUID!) {
+  git {
+    cancelPipelineRun(id: $id) {
+      id
+      status
+    }
+  }
+}
+mutation GitUiRerun($id: UUID!) {
+  git {
+    rerunPipeline(runId: $id) {
+      id
+    }
+  }
+}
+mutation GitUiRerunFailed($id: UUID!) {
+  git {
+    rerunFailedJobs(runId: $id) {
+      id
+      status
+    }
+  }
+}
+mutation GitUiDeleteRun($id: UUID!) {
+  git {
+    deletePipelineRun(id: $id)
+  }
+}
+mutation GitUiCancelJob($id: UUID!) {
+  git {
+    cancelPipelineJob(jobId: $id) {
+      id
+      status
+    }
+  }
+}
+mutation GitUiRerunJob($id: UUID!) {
+  git {
+    rerunPipelineJob(jobId: $id) {
+      id
+      status
+    }
+  }
+}
+mutation GitUiBuildAnyway($id: UUID!, $reason: String) {
+  git {
+    runPipelineJobAnyway(jobId: $id, reason: $reason) {
+      id
+      status
+    }
+  }
+}
+
+query GitUiPipelineTriggers($repo: UUID!) {
+  git { pipelines(repositoryId: $repo) { id triggerTypes } }
+}

@@ -132,8 +132,9 @@ expect_failure 'checksum mismatch' publish
 mv "$TEMP/original" "$TEMP/packages/alpha-0.1.0.tgz"
 echo 'PASS: publishing, identical bytes, retries, conflicts and credentials'
 
-# Real Helm integration: retain versions, bundle local dependencies, preserve sources.
-mkdir -p "$TEMP/charts/common/templates" "$TEMP/charts/app"
+# Real Helm integration: stamp release versions, bundle dependencies, preserve sources.
+VERSION=9.8.7
+mkdir -p "$TEMP/charts/common/templates" "$TEMP/charts/app/templates"
 printf '{{- define "common.example" -}}original{{- end -}}' > "$TEMP/charts/common/templates/_helpers.tpl"
 cat > "$TEMP/charts/common/Chart.yaml" <<'CHART'
 apiVersion: v2
@@ -151,20 +152,59 @@ dependencies:
     version: ">=0.1.0"
     repository: "file://../common"
 CHART
+cat > "$TEMP/charts/app/values.yaml" <<'VALUES'
+image:
+  registry: ghcr.io/bosca-io/bosca
+  repository: app
+  tag: ""
+VALUES
+cat > "$TEMP/charts/app/templates/deployment.yaml" <<'TEMPLATE'
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app
+spec:
+  selector:
+    matchLabels: {app: app}
+  template:
+    metadata:
+      labels: {app: app}
+    spec:
+      containers:
+        - name: app
+          image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+TEMPLATE
 HELM_REPOSITORY_CONFIG="$TEMP/repositories.yaml" HELM_REPOSITORY_CACHE="$TEMP/cache" \
   helm dependency update "$TEMP/charts/app" --skip-refresh
 cp -R "$TEMP/charts" "$TEMP/before"
-bash "$SCRIPT" package --charts "$TEMP/charts" --output "$TEMP/packaged"
+package() { bash "$SCRIPT" package --version "$VERSION" --charts "$TEMP/charts" --output "$1"; }
+expect_failure 'Set --version' bash "$SCRIPT" package --charts "$TEMP/charts" --output "$TEMP/no-version"
+for invalid in latest refs/heads/main refs/tags/9.8.7 v9.8.7 9.8 09.8.7 9.8.7-01 9.8.7+build.1; do
+  VERSION="$invalid" expect_failure 'bare semantic version' package "$TEMP/invalid-$invalid"
+done
+# Changing dependency metadata without updating the lock must still fail before
+# the release stamping replaces dependency constraints and regenerates locks.
+printf '    condition: common.enabled\n' >> "$TEMP/charts/app/Chart.yaml"
+expect_failure 'out of sync' package "$TEMP/stale-lock"
+[[ ! -f "$TEMP/stale-lock/release.tsv" ]] || fail "Stale lock produced a release manifest"
+cp "$TEMP/before/app/Chart.yaml" "$TEMP/charts/app/Chart.yaml"
+package "$TEMP/packaged"
 diff -r "$TEMP/before" "$TEMP/charts"
-tar -tzf "$TEMP/packaged/app-0.1.0.tgz" > "$TEMP/archive-files"
+tar -tzf "$TEMP/packaged/app-$VERSION.tgz" > "$TEMP/archive-files"
 grep -Fxq app/charts/common/Chart.yaml "$TEMP/archive-files" || fail "Dependency was not bundled"
-helm show chart "$TEMP/packaged/app-0.1.0.tgz" > "$TEMP/chart-metadata"
-grep -Fxq 'version: 0.1.0' "$TEMP/chart-metadata" || fail "Chart version changed"
-grep -Fq 6.9.0 "$TEMP/chart-metadata" || fail "Application version changed"
-expect_failure 'must be empty' bash "$SCRIPT" package --charts "$TEMP/charts" --output "$TEMP/packaged"
+helm show chart "$TEMP/packaged/app-$VERSION.tgz" > "$TEMP/chart-metadata"
+grep -Fxq "version: $VERSION" "$TEMP/chart-metadata" || fail "Chart version does not match release"
+grep -Fxq "appVersion: $VERSION" "$TEMP/chart-metadata" || fail "Application version does not match release"
+tar -xOf "$TEMP/packaged/app-$VERSION.tgz" app/charts/common/Chart.yaml > "$TEMP/child-metadata"
+grep -Fxq "version: $VERSION" "$TEMP/child-metadata" || fail "Bundled dependency version does not match release"
+helm template test "$TEMP/packaged/app-$VERSION.tgz" > "$TEMP/rendered.yaml"
+grep -Fq "ghcr.io/bosca-io/bosca/app:$VERSION" "$TEMP/rendered.yaml" || fail "Image default does not match release"
+helm template test "$TEMP/packaged/app-$VERSION.tgz" --set image.tag=custom > "$TEMP/rendered.yaml"
+grep -Fq 'ghcr.io/bosca-io/bosca/app:custom' "$TEMP/rendered.yaml" || fail "Image override was lost"
+expect_failure 'must be empty' package "$TEMP/packaged"
 rm "$TEMP/charts/app/Chart.lock"
-expect_failure 'Missing dependency lock' bash "$SCRIPT" package --charts "$TEMP/charts" --output "$TEMP/missing-lock"
-echo 'PASS: real Helm packaging, dependency locks, chart versions and source preservation'
+expect_failure 'Missing dependency lock' package "$TEMP/missing-lock"
+echo 'PASS: real Helm packaging, stale lock rejection, tagged dependencies and image defaults, overrides and source preservation'
 
 # Rebuilds differ only in archive timestamps. Both complete and partial releases
 # must reuse the existing bytes, while changed templates still fail preflight.
@@ -173,7 +213,7 @@ reset_registry
 publish "$TEMP/packaged"
 cp "$TEMP/packaged/release.tsv" "$TEMP/published.tsv"
 sleep 2
-bash "$SCRIPT" package --charts "$TEMP/charts" --output "$TEMP/rebuilt"
+package "$TEMP/rebuilt"
 ! cmp -s "$TEMP/published.tsv" "$TEMP/rebuilt/release.tsv" || fail "Expected Helm timestamps to change archive bytes"
 publish "$TEMP/rebuilt"
 cmp "$TEMP/published.tsv" "$TEMP/rebuilt/release.tsv"
@@ -181,18 +221,18 @@ cmp "$TEMP/published.tsv" "$TEMP/rebuilt/release.tsv"
 
 # Two independently packaged registries cannot be reconciled without replacing
 # an existing archive, even when their files match.
-cp "$RELEASE_TEST_STATE/oci/app-0.1.0.tgz" "$TEMP/published-app.tgz"
-gzip -dc "$TEMP/published-app.tgz" | gzip -n > "$RELEASE_TEST_STATE/oci/app-0.1.0.tgz"
+cp "$RELEASE_TEST_STATE/oci/app-$VERSION.tgz" "$TEMP/published-app.tgz"
+gzip -dc "$TEMP/published-app.tgz" | gzip -n > "$RELEASE_TEST_STATE/oci/app-$VERSION.tgz"
 : > "$RELEASE_TEST_STATE/writes"
 expect_failure 'HTTP and OCI archives differ' publish "$TEMP/rebuilt"
 [[ ! -s "$RELEASE_TEST_STATE/writes" ]] || fail "Divergent registries caused an upload"
-cp "$TEMP/published-app.tgz" "$RELEASE_TEST_STATE/oci/app-0.1.0.tgz"
+cp "$TEMP/published-app.tgz" "$RELEASE_TEST_STATE/oci/app-$VERSION.tgz"
 
 for destination in http oci; do
   other=http; [[ "$destination" == http ]] && other=oci
   rm "$RELEASE_TEST_STATE/$other/"*.tgz
   sleep 2
-  bash "$SCRIPT" package --charts "$TEMP/charts" --output "$TEMP/partial-$destination"
+  package "$TEMP/partial-$destination"
   publish "$TEMP/partial-$destination"
   cmp "$TEMP/published.tsv" "$TEMP/partial-$destination/release.tsv"
   for archive in "$TEMP/partial-$destination/"*.tgz; do
@@ -202,7 +242,7 @@ for destination in http oci; do
 done
 
 printf '{{- define "common.example" -}}changed{{- end -}}' > "$TEMP/charts/common/templates/_helpers.tpl"
-bash "$SCRIPT" package --charts "$TEMP/charts" --output "$TEMP/changed"
+package "$TEMP/changed"
 cp "$TEMP/changed/release.tsv" "$TEMP/changed-before.tsv"
 : > "$RELEASE_TEST_STATE/writes"
 expect_failure 'different contents' publish "$TEMP/changed"
@@ -214,3 +254,9 @@ cp "$TEMP/app-only.tsv" "$TEMP/changed/release.tsv"
 expect_failure 'different contents' publish "$TEMP/changed"
 [[ ! -s "$RELEASE_TEST_STATE/writes" ]] || fail "Changed dependency uploaded before conflict detection"
 echo 'PASS: timestamp-only rebuilds, reuse from either registry, changed templates and nested dependencies'
+
+# A later tag can publish changed files; prerelease dependencies must also resolve.
+VERSION=9.8.8-rc.1 package "$TEMP/next-release"
+publish "$TEMP/next-release"
+[[ -f "$RELEASE_TEST_STATE/http/app-9.8.8-rc.1.tgz" && -f "$RELEASE_TEST_STATE/oci/app-9.8.8-rc.1.tgz" ]] || fail "New tag was not published to both destinations"
+echo 'PASS: a new release tag publishes changed charts through HTTP and OCI'

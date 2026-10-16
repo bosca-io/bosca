@@ -1,0 +1,103 @@
+<component tag="git-diff-file-header">
+  <prop name="file" type="bosca.git.ui.DiffView" required />
+  <header class="diff-file-header">
+    <button
+      class="diff-file-toggle"
+      type="button"
+      aria-expanded="true"
+      :aria-controls='file.anchor + "-body"'
+      :aria-label='"Collapse " + file.path'
+    >
+      <ui-icon name="chevron" :size="12" />
+    </button>
+    <ui-badge :color="bosca.git.ui.pullFileChangeColor(file.changeType)">{ bosca.git.ui.pullFileChangeLabel(file.changeType) }</ui-badge>
+    <code class="file-path" :title="file.displayPath">{ file.displayPath }</code>
+    <ui-copy :value="file.path" label="Copy file path" :showStatus="false" />
+    <span class="file-stats">
+      <if file.additions != 0>
+        <span class="additions">+{ file.additions }</span>
+      </if>
+      <if file.deletions != 0>
+        <span class="deletions">−{ file.deletions }</span>
+      </if>
+    </span>
+    <span class="file-actions"><slot /></span>
+  </header>
+  <style scoped>
+    /* Sticky file header: stays visible while its diff scrolls past. */
+    .diff-file-header {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+      padding: 8px 12px 8px 8px;
+      /* The glass surface over the document's opaque base hides lines scrolling beneath. */
+      background: linear-gradient(var(--bg-1), var(--bg-1)), #0a0c12;
+      border-bottom: 1px solid var(--line);
+      border-radius: 10px 10px 0 0;
+    }
+    .diff-file-toggle {
+      display: flex;
+      flex: none;
+      align-items: center;
+      justify-content: center;
+      width: 24px;
+      height: 24px;
+      padding: 0;
+      border: 0;
+      border-radius: 6px;
+      color: var(--fg-2);
+      background: transparent;
+      cursor: pointer;
+    }
+    .diff-file-toggle:hover {
+      color: var(--fg-0);
+      background: var(--bg-2);
+    }
+    .diff-file-toggle:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: -2px;
+    }
+    .diff-file-toggle[aria-expanded="false"] svg {
+      transform: rotate(-90deg);
+    }
+    .file-path {
+      flex: 1;
+      min-width: 0;
+      color: var(--fg-0);
+      font-size: 12.5px;
+      line-height: 18px;
+      white-space: normal;
+      overflow-wrap: anywhere;
+    }
+    .file-stats {
+      display: flex;
+      flex: none;
+      gap: 6px;
+      font: 11.5px/18px var(--font-mono);
+    }
+    .additions {
+      color: #34d99a;
+    }
+    .deletions {
+      color: #ff5d6c;
+    }
+    .file-actions {
+      display: flex;
+      flex: none;
+      align-items: center;
+      gap: 2px;
+    }
+    @media (max-width: 700px) {
+      .diff-file-header {
+        flex-wrap: wrap;
+      }
+      .file-path {
+        flex-basis: calc(100% - 120px);
+      }
+    }
+  </style>
+</component>

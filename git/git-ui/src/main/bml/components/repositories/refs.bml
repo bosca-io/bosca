@@ -1,0 +1,166 @@
+<component tag="git-repository-refs">
+  <prop name="page" type="bosca.git.ui.RepositoryPage" required />
+  <script server provides="model">
+    bosca.git.ui.RepositoryRefModel(page, page.id, page.ref, page.listHref)
+  </script>
+  <island name="git-repository-refs" :key="model.page.id + model.page.ref + model.page.file">
+    <section class="settings-stack" :data-next-href="model.nextHref">
+      <if model.message.isNotBlank()>
+        <ui-alert :tone='if (model.failed) "error" else "success"'>{ model.message }</ui-alert>
+      </if>
+      <ui-card :padded="false">
+        <ui-section-heading :title='if (model.page.tab == "branches") "Branches" else "Tags"'>
+          <code class="section-meta">
+            { if (model.page.tab == "branches") model.page.branches.size.toString() + " total" else model.page.tags.size.toString() + " shown" }
+          </code>
+        </ui-section-heading>
+        <if model.page.tab == "branches">
+          <if model.page.branches.isEmpty()>
+            <p class="ref-empty">No branches.</p>
+          <else>
+            <div class="ref-list">
+              <for branch in model.page.branchRefs>
+                <div class="ref-row" :data-default="branch.name == model.page.defaultBranch">
+                  <span class="ref-icon"><ui-icon name="branch" :size="14" /></span>
+                  <a class="ref-name" :href="model.page.href(ref = branch.name)">{ branch.name }</a>
+                  <if branch.name == model.page.defaultBranch>
+                    <ui-badge tone="accent">default</ui-badge>
+                  </if>
+                  <if branch.name == model.page.ref && branch.name != model.page.defaultBranch>
+                    <ui-badge>selected</ui-badge>
+                  </if>
+                  <code class="ref-sha" :title="branch.sha">{ branch.sha.take(7) }</code>
+                  <if model.page.canEdit && !model.page.archived && branch.name != model.page.defaultBranch>
+                    <ui-confirm-dialog
+                      :title='"Delete branch " + branch.name + "?"'
+                      :description='"The branch " + branch.name + " will be deleted from this repository."'
+                      triggerLabel="Delete branch"
+                      triggerStyle="ghost"
+                    >
+                      <form class="modal-form" @submit='model.remove(branch.name, "branch", true, ctx)'>
+                        <footer class="modal-footer">
+                          <ui-button ref="cancel">Cancel</ui-button>
+                          <ui-button type="submit" class="danger">Delete branch</ui-button>
+                        </footer>
+                      </form>
+                    </ui-confirm-dialog>
+                  </if>
+                </div>
+              </for>
+            </div>
+          </if>
+        <else>
+          <if model.page.tags.isEmpty()>
+            <p class="ref-empty">No tags.</p>
+          <else>
+            <div class="ref-list">
+              <for tag in model.page.tags>
+                <div class="ref-row">
+                  <span class="ref-icon tag-icon"><ui-icon name="tag" :size="14" /></span>
+                  <a class="ref-name" :href="model.page.href(ref = tag.name)">{ tag.name }</a>
+                  <if tag.message.isNotBlank()>
+                    <span class="tag-message">{ tag.message.lineSequence().first() }</span>
+                  </if>
+                  <code class="ref-sha" :title="tag.sha">{ tag.sha.take(7) }</code>
+                  <if model.page.canEdit && !model.page.archived>
+                    <ui-confirm-dialog
+                      :title='"Delete tag " + tag.name + "?"'
+                      :description='"The tag " + tag.name + " will be deleted from this repository."'
+                      triggerLabel="Delete tag"
+                      triggerStyle="ghost"
+                    >
+                      <form class="modal-form" @submit='model.remove(tag.name, "tag", true, ctx)'>
+                        <footer class="modal-footer">
+                          <ui-button ref="cancel">Cancel</ui-button>
+                          <ui-button type="submit" class="danger">Delete tag</ui-button>
+                        </footer>
+                      </form>
+                    </ui-confirm-dialog>
+                  </if>
+                </div>
+              </for>
+            </div>
+          </if>
+        </if>
+        <if model.page.tab == "tags" && (model.page.offset != 0L || model.page.tagsHasMore)>
+          <nav class="load-more" aria-label="Tag pages">
+            <if model.page.offset != 0L>
+              <a class="button-link" :href="model.page.previousHref">Newer tags</a>
+            </if>
+            <if model.page.tagsHasMore>
+              <a class="button-link" :href="model.page.nextHref">Older tags</a>
+            </if>
+          </nav>
+        </if>
+      </ui-card>
+    </section>
+  </island>
+  <style scoped>
+    /* Studio branch and tag lists. */
+    .section-meta {
+      font-size: 11px;
+      color: var(--fg-3);
+    }
+    .ref-list {
+      padding: 4px 0;
+    }
+    .ref-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 16px;
+      border-top: 1px solid var(--line);
+    }
+    .ref-list > :first-child {
+      border-top: 0;
+    }
+    .ref-icon {
+      display: inline-flex;
+      flex: none;
+      color: var(--fg-3);
+    }
+    .ref-row[data-default] .ref-icon,
+    .tag-icon {
+      color: var(--accent);
+    }
+    .ref-name {
+      flex: 1;
+      min-width: 0;
+      color: var(--fg-0);
+      font-family: var(--font-mono);
+      font-size: 13px;
+      overflow-wrap: anywhere;
+    }
+    .tag-message {
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      color: var(--fg-2);
+      font-size: 12px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .ref-sha {
+      flex: none;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: var(--bg-2);
+      color: var(--fg-3);
+      font-size: 11px;
+    }
+    .ref-empty {
+      margin: 0;
+      padding: 48px 0;
+      text-align: center;
+      color: var(--fg-3);
+      font-size: 13.5px;
+    }
+  </style>
+  <script client scoped>
+    ctx.onUpdate(() => {
+      const next =
+        ctx.root.querySelector<HTMLElement>("[data-next-href]")?.dataset.nextHref;
+      if (next) location.assign(next);
+    });
+  </script>
+</component>

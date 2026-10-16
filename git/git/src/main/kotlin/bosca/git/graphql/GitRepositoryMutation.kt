@@ -16,6 +16,7 @@ import bosca.git.model.ReviewComment
 import bosca.git.model.ScriptSourceRef
 import bosca.git.model.SourceRefInput
 import bosca.git.model.SubmitReviewInput
+import bosca.git.model.TagInfo
 import bosca.git.model.UpdatePullRequestInput
 import bosca.git.model.UpdateRepositoryInput
 import bosca.git.model.Webhook
@@ -26,6 +27,7 @@ import bosca.profile.profile.service.ProfileService
 import bosca.profile.security.ProfilePermissionEvaluator
 import bosca.git.service.CommitFileInput
 import bosca.git.service.CommitFileResult
+import bosca.git.service.CreateTagInput
 import bosca.git.service.DeleteFileInput
 import bosca.git.service.PullRequestService
 import bosca.git.service.QuerySourceBackfill
@@ -42,6 +44,7 @@ import bosca.graphql.annotations.TypeController
 import bosca.security.model.PermissionAction
 import bosca.security.model.PermissionInput
 import bosca.security.service.AuthenticationContext
+import bosca.security.service.ApiTokenScopes
 import bosca.security.service.GroupEvaluator
 import bosca.serialization.UUID
 import kotlinx.serialization.Contextual
@@ -206,6 +209,46 @@ class GitRepositoryMutation(
     }
 
     @Field
+    suspend fun createTag(
+        authentication: AuthenticationContext,
+        repositoryId: UUID,
+        tag: String,
+        targetRef: String,
+        message: String,
+        taggerName: String,
+        taggerEmail: String,
+    ): TagInfo {
+        val repository = repositoryService.findById(repositoryId)
+            ?: throw NoSuchElementException("Repository not found: $repositoryId")
+        permissionEvaluator.verifyAllowed(authentication, repository, PermissionAction.EDIT)
+        val principalId = authentication.principal()?.id
+            ?: throw SecurityException("Authentication required")
+        require(!repository.archived && !repository.deleted) { "Repository is not available for editing." }
+        require(targetRef.isNotBlank()) { "Enter a target ref." }
+        require(taggerName.isNotBlank() && taggerEmail.isNotBlank()) { "Tagger name and email are required." }
+        val result = writeService.createTag(
+            CreateTagInput(
+                repositoryId = repositoryId,
+                tag = tag,
+                targetRef = targetRef,
+                message = message,
+                taggerName = taggerName,
+                taggerEmail = taggerEmail,
+                pusherPrincipalId = principalId,
+            )
+        )
+        return TagInfo(
+            name = result.tag,
+            sha = result.tagSha,
+            targetSha = result.commitSha,
+            taggerName = taggerName,
+            taggerEmail = taggerEmail,
+            message = message,
+            isAnnotated = true,
+        )
+    }
+
+    @Field
     suspend fun deleteTag(
         authentication: AuthenticationContext,
         repositoryId: UUID,
@@ -289,11 +332,27 @@ class GitRepositoryMutation(
         val repository = repositoryService.findById(pr.repositoryId)
             ?: throw NoSuchElementException("Repository not found: ${pr.repositoryId}")
         permissionEvaluator.verifyAllowed(authentication, repository, PermissionAction.EDIT)
+        val branchesChanged = input.sourceBranch?.let { it != pr.sourceBranch } == true ||
+            input.targetBranch?.let { it != pr.targetBranch } == true
+        if (branchesChanged) {
+            require(!repository.archived && !repository.deleted) { "Repository is not available for editing." }
+        }
+        val sourceRepositoryId = pr.sourceRepositoryId
+        if (branchesChanged && sourceRepositoryId != null && sourceRepositoryId != pr.repositoryId) {
+            val source = repositoryService.findById(sourceRepositoryId)
+                ?: throw NoSuchElementException("Source repository not found: $sourceRepositoryId")
+            permissionEvaluator.verifyAllowed(authentication, source, PermissionAction.VIEW)
+        }
         return pullRequestService.update(id, input)
     }
 
     @Field
-    suspend fun mergePullRequest(authentication: AuthenticationContext, id: UUID, strategy: MergeStrategy): PullRequest {
+    suspend fun mergePullRequest(
+        authentication: AuthenticationContext,
+        id: UUID,
+        strategy: MergeStrategy,
+        expectedVersion: Long? = null,
+    ): PullRequest {
         val pr = pullRequestService.findById(id)
             ?: throw NoSuchElementException("Pull request not found: $id")
         val repository = repositoryService.findById(pr.repositoryId)
@@ -306,7 +365,8 @@ class GitRepositoryMutation(
         return pullRequestService.merge(
             id, strategy, actorProfile.id,
             actorProfile.name,
-            authenticatedPrincipal.id.toString()
+            authenticatedPrincipal.id.toString(),
+            expectedVersion,
         )
     }
 
@@ -314,7 +374,8 @@ class GitRepositoryMutation(
     suspend fun mergePullRequestWithDependencies(
         authentication: AuthenticationContext,
         id: UUID,
-        strategy: MergeStrategy
+        strategy: MergeStrategy,
+        expectedVersion: Long? = null,
     ): List<PullRequest> {
         val plan = pullRequestService.getMergePlan(id)
         if (plan.isEmpty()) {
@@ -340,6 +401,7 @@ class GitRepositoryMutation(
             actorProfile.name,
             authenticatedPrincipal.id.toString(),
             plan.map { it.id },
+            expectedVersion,
         )
     }
 
@@ -456,6 +518,30 @@ class GitRepositoryMutation(
             newLineNumber = input.newLineNumber,
             commitSha = input.commitSha,
             content = input.content,
+            expectedVersion = input.expectedVersion,
+        )
+    }
+
+    @Field
+    suspend fun replyReviewComment(
+        authentication: AuthenticationContext,
+        pullRequestId: UUID,
+        commentId: UUID,
+        content: String,
+        expectedVersion: Long?,
+    ): ReviewComment {
+        val pr = pullRequestService.findById(pullRequestId)
+            ?: throw NoSuchElementException("Pull request not found: $pullRequestId")
+        val repository = repositoryService.findById(pr.repositoryId)
+            ?: throw NoSuchElementException("Repository not found: ${pr.repositoryId}")
+        permissionEvaluator.verifyAllowed(authentication, repository, PermissionAction.VIEW)
+        if (!groupEvaluator.hasSaGroup(authentication) &&
+            !groupEvaluator.hasScope(authentication, ApiTokenScopes.GIT_WRITE.name) &&
+            !groupEvaluator.hasScope(authentication, ApiTokenScopes.CI_EDIT.name)) {
+            throw SecurityException("Token needs Git write scope to reply.")
+        }
+        return pullRequestService.replyReviewComment(
+            pullRequestId, commentId, actorProfileId(authentication), content, expectedVersion,
         )
     }
 
@@ -591,6 +677,7 @@ class GitRepositoryMutation(
         permissionEvaluator.verifyAllowed(authentication, repository, PermissionAction.EDIT)
         val principalId = authentication.principal()?.id
             ?: throw SecurityException("Authentication required")
+        verifyDirectFileWrite(input.repositoryId, input.branch, principalId)
         return writeService.commitFile(
             CommitFileInput(
                 repositoryId = input.repositoryId,
@@ -619,6 +706,7 @@ class GitRepositoryMutation(
         permissionEvaluator.verifyAllowed(authentication, repository, PermissionAction.EDIT)
         val principalId = authentication.principal()?.id
             ?: throw SecurityException("Authentication required")
+        verifyDirectFileWrite(repositoryId, branch, principalId)
         return writeService.deleteFile(
             DeleteFileInput(
                 repositoryId = repositoryId,
@@ -631,6 +719,12 @@ class GitRepositoryMutation(
             principalId,
         )
     }
+    private suspend fun verifyDirectFileWrite(repositoryId: UUID, branch: String, principalId: UUID) {
+        val rule = branchProtectionService.findMatchingRule(repositoryId, branch) ?: return
+        check(!rule.requirePullRequest) { "Branch '$branch' is protected: changes must be made through a pull request" }
+        check(rule.restrictPushAccess.isEmpty() || principalId in rule.restrictPushAccess) { "Branch '$branch' is protected: you are not in the push access list" }
+    }
+
 }
 
 private fun BranchProtectionRuleInput.toRule(

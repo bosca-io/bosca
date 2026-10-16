@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import gql from 'graphql-tag'
+import GoalActivationEditor from '~/components/experiments/GoalActivationEditor.vue'
+import GoalAnalysisCharts from '~/components/experiments/GoalAnalysisCharts.vue'
+import type { GoalActivation, GoalPopulationAnalysis, PlannedComparison } from '~/utils/goalActivation'
 import type { SelectOption } from '@bosca/ui'
 import { useExperimentGoals, type ConversionGoalSnapshot } from '~/composables/useExperimentGoals'
 import { useExperimentRolloutPolicy } from '~/composables/useExperimentRolloutPolicy'
@@ -69,7 +72,7 @@ const experimentGql = gql`
         startDate endDate targetSampleSize created modified
         featureFlagId targetingRuleId controlVariationKey excludedPrincipalIds
         activationFilter {
-          eventType elementType elementId pagePath pagePathPrefixes itemExtraKey itemExtraValue
+          eventType elementType elementId elementIdContains pagePath pagePathPrefixes itemExtraKey itemExtraValue applicationIds recommendationCard
         }
         featureFlag { id key name type variations targetingRules }
         exclusionLayer { id name }
@@ -87,6 +90,8 @@ const experimentGql = gql`
         conversionGoals {
           id name eventType elementType elementId metricType pagePath pagePathPrefixes itemExtraKey itemExtraValue role
           cupedCovariate { eventType elementType elementId pagePath lookbackWindow }
+          activation { defaultFilter { eventType elementType elementId elementIdContains pagePath pagePathPrefixes itemExtraKey itemExtraValue applicationIds recommendationCard } variationRules { variationKey mode filter { eventType elementType elementId elementIdContains pagePath pagePathPrefixes itemExtraKey itemExtraValue applicationIds recommendationCard } } sameSession maxDelaySeconds applicationIds }
+          outcomeScope { applicationIds sameSession maxDelaySeconds recommendationCard attributeRecommendationDestination }
         }
         results {
           id variationKey goalId
@@ -96,6 +101,15 @@ const experimentGql = gql`
           mean variance
           probabilityBeatsControl expectedLoss
           adjustedMean adjustedVariance
+          goalAnalysis {
+            cutoff activationConfigured notApplicable
+            overall { subjects conversions observationCount estimate variance interval { lower upper } distribution { count mean standardDeviation p50 p75 p90 p95 p99 maximum } } activated { subjects conversions observationCount estimate variance interval { lower upper } distribution { count mean standardDeviation p50 p75 p90 p95 p99 maximum } } notActivated { subjects conversions observationCount estimate variance interval { lower upper } distribution { count mean standardDeviation p50 p75 p90 p95 p99 maximum } }
+            reach reachInterval { lower upper }
+            placement { expectedOnly unexpectedOnly both neither }
+            exposureEvents exposureIntensity { count mean standardDeviation p50 p75 p90 p95 p99 maximum }
+            attribution { engagedSubjects interactions attributedSubjects attributedInteractions interval { lower upper } unresolvedTargets unsupportedTypes missingSlugs missingSessions unmatchedDestinations }
+            diagnostics { excludedPrincipals excludedInstallations duplicateDeliveries outsideApplication missingApplication }
+          }
           updatedAt
         }
         analysisReports {
@@ -200,6 +214,7 @@ interface RolloutPolicyEvent {
 }
 
 interface ExperimentResult {
+  goalAnalysis?: GoalPopulationAnalysis | null
   id: string
   variationKey: string
   goalId: string
@@ -228,6 +243,9 @@ interface ExperimentActivationFilter {
   pagePathPrefixes: string[]
   itemExtraKey: string | null
   itemExtraValue: string | null
+  elementIdContains?: string | null
+  applicationIds?: string[]
+  recommendationCard?: boolean
 }
 
 interface AIInsights {
@@ -315,6 +333,9 @@ const activationEnabled = ref(false)
 const activationEventType = ref('Impression')
 const activationElementType = ref('page')
 const activationElementId = ref('')
+const activationElementIdContains = ref('')
+const activationApplicationIds = ref('')
+const activationRecommendationCard = ref(false)
 const activationPagePath = ref('')
 const activationPagePathPrefixes = ref('')
 const activationItemExtraKey = ref('')
@@ -329,6 +350,9 @@ watch(experiment, (exp) => {
   activationEventType.value = filter == null ? 'Impression' : (filter.eventType ?? ANY_ACTIVATION_EVENT_TYPE)
   activationElementType.value = filter == null ? 'page' : (filter.elementType ?? '')
   activationElementId.value = filter?.elementId ?? ''
+  activationElementIdContains.value = filter?.elementIdContains ?? ''
+  activationApplicationIds.value = filter?.applicationIds?.join(', ') ?? ''
+  activationRecommendationCard.value = filter?.recommendationCard ?? false
   activationPagePath.value = filter?.pagePath ?? ''
   activationPagePathPrefixes.value = filter?.pagePathPrefixes?.join('\n') ?? ''
   activationItemExtraKey.value = filter?.itemExtraKey ?? ''
@@ -342,6 +366,9 @@ function activationFilterPayload(): Record<string, unknown> | null {
     eventType: activationEventType.value === ANY_ACTIVATION_EVENT_TYPE ? null : activationEventType.value,
     elementType: activationElementType.value.trim() || null,
     elementId: activationElementId.value.trim() || null,
+    elementIdContains: activationElementIdContains.value.trim() || null,
+    applicationIds: activationApplicationIds.value.split(',').map(v => v.trim()).filter(Boolean),
+    recommendationCard: activationRecommendationCard.value,
     pagePath: activationPagePath.value.trim() || null,
     pagePathPrefixes: [...new Set(
       activationPagePathPrefixes.value.split(/[\n,]/).map((value) => value.trim()).filter(Boolean),
@@ -730,9 +757,26 @@ const latestVerdict = computed<string | null>(() => {
   return report.recommendation ?? null
 })
 
+const comparisonsMatchResults = computed(() => {
+  const snapshot = latestReport.value?.details?.resultUpdatedAt
+  const results = experiment.value?.results ?? []
+  if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot) || !results.length) return false
+  const timestamps = snapshot as Record<string, unknown>
+  return Object.keys(timestamps).length === results.length && results.every(result =>
+    result.updatedAt != null && timestamps[`${result.goalId}:${result.variationKey}`] === result.updatedAt,
+  )
+})
+
+const plannedComparisons = computed<PlannedComparison[]>(() => {
+  if (!comparisonsMatchResults.value) return []
+  const details = latestReport.value?.details as { plannedComparisons?: PlannedComparison[] } | null
+  return details?.plannedComparisons ?? []
+})
+
 // ── Per-goal result pivot, with control row + lift + duplicate detect ──
 
 interface DecoratedRow {
+  goalAnalysis?: GoalPopulationAnalysis | null
   variationKey: string
   isControl: boolean
   assignments: number
@@ -755,6 +799,7 @@ interface DecoratedRow {
 interface GoalGroup {
   goalId: string
   goalName: string
+  activation: GoalActivation | null
   definitionFingerprint: string
   metricType: string
   role: string
@@ -775,6 +820,8 @@ function goalDefinitionFingerprint(goal: ConversionGoalSnapshot | undefined, met
   const cuped = goal?.cupedCovariate
   return JSON.stringify([
     metricType,
+    goal?.activation ?? null,
+    goal?.outcomeScope ?? null,
     goal?.eventType ?? null,
     goal?.elementType ?? null,
     goal?.elementId ?? null,
@@ -844,6 +891,7 @@ const resultsByGoal = computed<GoalGroup[]>(() => {
       const decoratedRows: DecoratedRow[] = sorted.map((r) => {
         const isControl = r.variationKey === controlVariationKey.value
         return {
+          goalAnalysis: r.goalAnalysis,
           variationKey: r.variationKey,
           isControl,
           assignments: r.assignments ?? r.impressions ?? 0,
@@ -876,6 +924,7 @@ const resultsByGoal = computed<GoalGroup[]>(() => {
       return {
         goalId,
         goalName: goal?.name ?? 'Unnamed goal',
+        activation: goal?.activation ?? null,
         definitionFingerprint: goalDefinitionFingerprint(goal, metricType),
         metricType,
         role: goal?.role ?? 'PRIMARY',
@@ -965,8 +1014,14 @@ function metricLabel(metricType: string): string {
   return 'Unique Conversion'
 }
 
-function liftColor(n: number | null | undefined): string {
-  if (n == null) return 'var(--fg-3)'
+function liftColor(n: number | null | undefined, goalId: string, variationKey: string): string {
+  const comparison = plannedComparisons.value.find(c => c.goalId === goalId && c.conclusion === 'CONCLUSIVE'
+    && [c.leftVariationKey, c.rightVariationKey].includes(variationKey)
+    && [c.leftVariationKey, c.rightVariationKey].includes(controlVariationKey.value ?? ''))
+  if (!comparison || comparison.difference == null || n == null) return 'var(--fg-3)'
+  const difference = comparison.leftVariationKey === variationKey ? comparison.difference : -comparison.difference
+  if (Math.sign(n) !== Math.sign(difference)) return 'var(--fg-3)'
+  if (!['SHIP', 'HALT', 'DO_NOT_SHIP'].includes(latestVerdict.value ?? '')) return 'var(--fg-3)'
   if (n > 0) return '#34d99a'
   if (n < 0) return '#e5484d'
   return 'var(--fg-3)'
@@ -1084,7 +1139,7 @@ const canArchive = computed(() => {
           </Badge>
           <span class="verdict-label">Latest verdict</span>
           <span v-if="latestReport?.confidence != null" class="verdict-confidence">
-            · {{ formatPct(latestReport.confidence) }} confidence
+            · {{ analysisMethodValue === 'BAYESIAN' ? 'P(win)' : '1 − p' }} {{ formatPct(latestReport.confidence) }}
           </span>
         </div>
         <p v-if="latestReport?.summary" class="verdict-summary">{{ latestReport.summary }}</p>
@@ -1248,6 +1303,11 @@ const canArchive = computed(() => {
                   />
                 </FormField>
                 <div class="grid-2">
+                  <FormField label="Application IDs" help="Comma-separated applications permitted to establish experiment eligibility.">
+                    <TextInput v-model="activationApplicationIds" placeholder="(any application)" />
+                  </FormField>
+                  <FormField label="Element ID contains"><TextInput v-model="activationElementIdContains" /></FormField>
+                  <FormField label="Qualifying recommendation card"><Switch v-model="activationRecommendationCard" :accent="accent" /></FormField>
                   <FormField label="Item extra key">
                     <TextInput v-model="activationItemExtraKey" mono placeholder="(optional)" />
                   </FormField>
@@ -1578,6 +1638,15 @@ const canArchive = computed(() => {
                   <p class="goal-result-filter mono">Matches: {{ group.filterDescription }}</p>
                 </div>
 
+                <p v-if="latestReport && !comparisonsMatchResults" class="goal-result-filter">
+                  Run analysis to update comparisons for these results.
+                </p>
+                <GoalAnalysisCharts
+                  :rows="group.rows"
+                  :activation="group.activation"
+                  :metric-type="group.metricType"
+                  :comparisons="plannedComparisons.filter(c => c.goalId === group.goalId)" />
+
                 <div v-if="duplicateGoalIds.has(group.goalId)" class="duplicate-warning">
                   <strong>Duplicate goal:</strong> another goal in this experiment has the same
                   filter and is producing identical numbers. Distinguish them by setting
@@ -1654,7 +1723,7 @@ const canArchive = computed(() => {
                       <span class="text-right">{{ group.metricType === 'SESSION_DURATION' ? 'Observations' : group.metricType === 'EVENT_COUNT' ? 'Total events' : 'Conversions' }}</span>
                       <span class="text-right">{{ group.metricType === 'SESSION_DURATION' ? 'Avg seconds' : group.metricType === 'EVENT_COUNT' ? 'Events / user' : 'Rate' }}</span>
                       <span class="text-right">vs. control</span>
-                      <span class="text-right">Confidence</span>
+                      <span class="text-right">{{ analysisMethodValue === 'BAYESIAN' ? 'P(win)' : '1 − p' }}</span>
                     </div>
                     <div
                       v-for="row in group.rows"
@@ -1690,7 +1759,7 @@ const canArchive = computed(() => {
                       </span>
                       <span class="mono tabular text-right">
                         <span v-if="row.isControl" class="muted">—</span>
-                        <span v-else-if="row.lift != null" :style="{ color: liftColor(row.lift), fontWeight: 500 }">
+                        <span v-else-if="row.lift != null" :style="{ color: liftColor(row.lift, group.goalId, row.variationKey), fontWeight: 500 }">
                           {{ formatLift(row.lift) }}
                         </span>
                         <span v-else class="muted">—</span>
@@ -1728,7 +1797,7 @@ const canArchive = computed(() => {
                     {{ report.recommendation.replace(/_/g, ' ') }}
                   </Badge>
                   <Badge v-if="report.confidence != null" :color="confidenceColor(report.confidence)">
-                    {{ formatPct(report.confidence) }} confidence
+                    {{ analysisMethodValue === 'BAYESIAN' ? 'P(win)' : '1 − p' }} {{ formatPct(report.confidence) }}
                   </Badge>
                   <span class="report-date">{{ formatDateTime(report.created) }}</span>
                 </div>
@@ -1874,6 +1943,7 @@ const canArchive = computed(() => {
         <FormField label="Name">
           <TextInput v-model="goals.goalName.value" placeholder="Signup Completed" />
         </FormField>
+        <GoalActivationEditor v-model:activation="goals.goalActivation.value" v-model:outcome-scope="goals.goalOutcomeScope.value" :variations="flagVariations.filter(v => involvedVariationKeys.includes(v.key))" />
         <FormField
           label="Metric Type"
           help="Unique Conversion counts eligible subjects who act. Event Count averages matching follow-up events over eligible subjects. Session Duration includes observed audio/video progress. Older play events estimate remaining media duration, updated by pause, seek, end, or error events. The five-minute inactivity timeout follows the last activity or playback."

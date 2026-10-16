@@ -176,6 +176,21 @@ export type AddGitReviewCommentInput = {
   reviewId: Scalars['UUID']['input'];
 };
 
+export type AddProviderAudioInput = {
+  /** Audio sources may permit only PLAYBACK; an empty list grants no use */
+  allowedUses: Array<BibleContentUse>;
+  configurationId: Scalars['UUID']['input'];
+  providerBibleId: Scalars['String']['input'];
+};
+
+export type AddProviderBibleInput = {
+  /** Uses reviewed by an administrator; an empty list grants no use */
+  allowedUses: Array<BibleContentUse>;
+  configurationId: Scalars['UUID']['input'];
+  providerBibleId: Scalars['String']['input'];
+  variant: Scalars['String']['input'];
+};
+
 /** Address role: where the bill goes vs. where the goods go. */
 export enum AddressType {
   Billing = 'BILLING',
@@ -1877,6 +1892,63 @@ export type ArtifactNamespaceInfo_RepositoryCountArgs = {
   type?: InputMaybe<ArtifactRegistryType>;
 };
 
+/** A fixed file manifest and independent publication and verification results */
+export type ArtifactPublication = {
+  __typename?: 'ArtifactPublication';
+  attempts: Scalars['Int']['output'];
+  commitSha: Scalars['String']['output'];
+  created?: Maybe<Scalars['DateTime']['output']>;
+  destinationId: Scalars['UUID']['output'];
+  error?: Maybe<Scalars['String']['output']>;
+  files: Array<ArtifactPublicationFile>;
+  id: Scalars['UUID']['output'];
+  modified?: Maybe<Scalars['DateTime']['output']>;
+  prerelease: Scalars['Boolean']['output'];
+  published?: Maybe<Scalars['DateTime']['output']>;
+  releaseId?: Maybe<Scalars['Long']['output']>;
+  tagName: Scalars['String']['output'];
+  verified?: Maybe<Scalars['DateTime']['output']>;
+  /** Attempt number of the last successful verification, when recorded */
+  verifiedAttempt?: Maybe<Scalars['Int']['output']>;
+  versionId: Scalars['UUID']['output'];
+};
+
+/** An immutable GitHub repository target for raw release assets */
+export type ArtifactPublicationDestination = {
+  __typename?: 'ArtifactPublicationDestination';
+  created?: Maybe<Scalars['DateTime']['output']>;
+  enabled: Scalars['Boolean']['output'];
+  githubRepository: Scalars['String']['output'];
+  githubRepositoryId: Scalars['Long']['output'];
+  id: Scalars['UUID']['output'];
+  key: Scalars['String']['output'];
+  modified?: Maybe<Scalars['DateTime']['output']>;
+  owner: Scalars['String']['output'];
+  repositoryId: Scalars['UUID']['output'];
+  tagPrefix: Scalars['String']['output'];
+  tokenSecretName: Scalars['String']['output'];
+  version: Scalars['Long']['output'];
+};
+
+export type ArtifactPublicationDestinationInput = {
+  enabled?: Scalars['Boolean']['input'];
+  githubRepository: Scalars['String']['input'];
+  githubRepositoryId: Scalars['Long']['input'];
+  key: Scalars['String']['input'];
+  owner: Scalars['String']['input'];
+  repositoryId: Scalars['UUID']['input'];
+  tagPrefix?: Scalars['String']['input'];
+  tokenSecretName: Scalars['String']['input'];
+};
+
+export type ArtifactPublicationFile = {
+  __typename?: 'ArtifactPublicationFile';
+  digest: Scalars['String']['output'];
+  filename: Scalars['String']['output'];
+  mediaType: Scalars['String']['output'];
+  size: Scalars['Long']['output'];
+};
+
 /** The registry protocol an artifact repository serves */
 export enum ArtifactRegistryType {
   /** Docker / OCI container images */
@@ -1934,6 +2006,21 @@ export type ArtifactRepoInfo_VersionsArgs = {
   offset?: InputMaybe<Scalars['Long']['input']>;
 };
 
+/** Latest desired manifest and result for one destination/tag. */
+export type ArtifactSync = {
+  __typename?: 'ArtifactSync';
+  attempts: Scalars['Int']['output'];
+  created?: Maybe<Scalars['DateTime']['output']>;
+  destinationId: Scalars['UUID']['output'];
+  error?: Maybe<Scalars['String']['output']>;
+  id: Scalars['UUID']['output'];
+  manifestDigest: Scalars['String']['output'];
+  modified?: Maybe<Scalars['DateTime']['output']>;
+  synced?: Maybe<Scalars['DateTime']['output']>;
+  tagName: Scalars['String']['output'];
+  versionId: Scalars['UUID']['output'];
+};
+
 /** A GHCR image path; each published source tag is preserved. */
 export type ArtifactSyncDestination = {
   __typename?: 'ArtifactSyncDestination';
@@ -1947,6 +2034,15 @@ export type ArtifactSyncDestination = {
   tokenSecretName: Scalars['String']['output'];
   username: Scalars['String']['output'];
   version: Scalars['Long']['output'];
+};
+
+export type ArtifactSyncDestinationInput = {
+  enabled?: Scalars['Boolean']['input'];
+  key: Scalars['String']['input'];
+  remoteRepository: Scalars['String']['input'];
+  repositoryId: Scalars['UUID']['input'];
+  tokenSecretName: Scalars['String']['input'];
+  username: Scalars['String']['input'];
 };
 
 /** A mutable tag pointing to a specific manifest digest (Docker) */
@@ -1981,13 +2077,27 @@ export type ArtifactVersionBlobInfo = {
   size?: Maybe<Scalars['Long']['output']>;
 };
 
+/** Association between a version and a blob with a specific role */
+export type ArtifactVersionBlobInput = {
+  digest: Scalars['String']['input'];
+  filename?: InputMaybe<Scalars['String']['input']>;
+  mediaType?: InputMaybe<Scalars['String']['input']>;
+  role: Scalars['String']['input'];
+  versionId: Scalars['UUID']['input'];
+};
+
 /** A versioned release of an artifact */
 export type ArtifactVersionInfo = {
   __typename?: 'ArtifactVersionInfo';
   /** Blobs associated with this version */
   blobs: Array<ArtifactVersionBlobInfo>;
+  completed: Scalars['Boolean']['output'];
+  /** The build commit recorded when uploads completed */
+  completedCommitSha?: Maybe<Scalars['String']['output']>;
   /** When this version was created */
   created?: Maybe<Scalars['DateTime']['output']>;
+  /** Whether the version's files are fixed for publication */
+  finalized: Scalars['Boolean']['output'];
   /** Unique identifier */
   id: Scalars['UUID']['output'];
   /** Protocol-specific metadata (package.json, POM coords, manifest media type, etc.) */
@@ -2005,12 +2115,22 @@ export type ArtifactsAdmin = {
   namespace?: Maybe<ArtifactNamespaceInfo>;
   /** List all artifact namespaces */
   namespaces: Array<ArtifactNamespaceInfo>;
+  /** Publication destinations for a repository. Requires admin. */
+  publicationDestinations: Array<ArtifactPublicationDestination>;
+  /** Durable publication results for a version. Requires admin. */
+  publications: Array<ArtifactPublication>;
   /** List repositories, optionally filtered by type */
   repositories: Array<ArtifactRepoInfo>;
   /** Get a specific repository by ID */
   repository?: Maybe<ArtifactRepoInfo>;
+  /** GHCR sync destinations for a Docker repository. Requires admin. */
+  syncDestinations: Array<ArtifactSyncDestination>;
+  /** Latest desired tags and their sync results. Requires admin. */
+  syncs: Array<ArtifactSync>;
   /** List tags for a repository */
   tags: Array<ArtifactTagInfo>;
+  /** A stored version and its current file manifest. Requires admin. */
+  version?: Maybe<ArtifactVersionInfo>;
   /** List versions for a repository */
   versions: Array<ArtifactVersionInfo>;
 };
@@ -2019,6 +2139,20 @@ export type ArtifactsAdmin = {
 /** Administrative queries for artifact registry management */
 export type ArtifactsAdmin_NamespaceArgs = {
   id: Scalars['UUID']['input'];
+};
+
+
+/** Administrative queries for artifact registry management */
+export type ArtifactsAdmin_PublicationDestinationsArgs = {
+  repositoryId: Scalars['UUID']['input'];
+};
+
+
+/** Administrative queries for artifact registry management */
+export type ArtifactsAdmin_PublicationsArgs = {
+  limit?: InputMaybe<Scalars['Int']['input']>;
+  offset?: InputMaybe<Scalars['Long']['input']>;
+  versionId: Scalars['UUID']['input'];
 };
 
 
@@ -2038,10 +2172,30 @@ export type ArtifactsAdmin_RepositoryArgs = {
 
 
 /** Administrative queries for artifact registry management */
+export type ArtifactsAdmin_SyncDestinationsArgs = {
+  repositoryId: Scalars['UUID']['input'];
+};
+
+
+/** Administrative queries for artifact registry management */
+export type ArtifactsAdmin_SyncsArgs = {
+  limit?: InputMaybe<Scalars['Int']['input']>;
+  offset?: InputMaybe<Scalars['Long']['input']>;
+  repositoryId: Scalars['UUID']['input'];
+};
+
+
+/** Administrative queries for artifact registry management */
 export type ArtifactsAdmin_TagsArgs = {
   last?: InputMaybe<Scalars['String']['input']>;
   limit?: InputMaybe<Scalars['Int']['input']>;
   repositoryId: Scalars['UUID']['input'];
+};
+
+
+/** Administrative queries for artifact registry management */
+export type ArtifactsAdmin_VersionArgs = {
+  id: Scalars['UUID']['input'];
 };
 
 
@@ -2055,10 +2209,16 @@ export type ArtifactsAdminMutation = {
   __typename?: 'ArtifactsAdminMutation';
   /** Grant a permission action to a group on a namespace. Requires admin. */
   addPermission: Scalars['Boolean']['output'];
+  /** Confirm every reviewed raw file has finished uploading and record its build commit. The current manifest must match expectedBlobs. Enabled destinations may publish automatically. Requires admin. */
+  completeVersion: ArtifactVersionInfo;
   /** Create a new namespace */
   createNamespace: ArtifactNamespaceInfo;
+  /** Configure a GitHub release destination referencing a Pipeline secret. Requires admin. */
+  createPublicationDestination: ArtifactPublicationDestination;
   /** Create a repository within a namespace */
   createRepository: ArtifactRepoInfo;
+  /** Configure a GHCR image destination using a Pipeline secret. Requires admin. */
+  createSyncDestination: ArtifactSyncDestination;
   /** Delete a namespace and all its repositories (admin only) */
   deleteNamespace: Scalars['Boolean']['output'];
   /** Delete a repository and all its versions, tags, and blobs */
@@ -2069,14 +2229,20 @@ export type ArtifactsAdminMutation = {
   deleteTag: Scalars['Boolean']['output'];
   /** Delete a specific version and its blob associations */
   deleteVersion: Scalars['Boolean']['output'];
+  /** Queue an existing raw version for one enabled GitHub release destination under the caller's identity. The exact build commit must match its existing GitHub tag. Returns the durable pipeline run ID. Requires admin. */
+  publishRelease: Scalars['UUID']['output'];
   /** Queue a current Docker tag for one enabled GHCR destination under the caller's identity. Returns the durable pipeline run ID. Requires admin. */
   pushImage: Scalars['UUID']['output'];
   /** Revoke a permission action from a group on a namespace. Requires admin. */
   removePermission: Scalars['Boolean']['output'];
+  /** Requeue a failed sync or explicitly copy and verify its tag again. Requires admin. */
+  retrySync: ArtifactSync;
   /** Set a tag to point at a manifest digest */
   setTag: ArtifactTagInfo;
   /** Update a namespace's public (anonymous pull) visibility */
   updateNamespace: ArtifactNamespaceInfo;
+  /** Enable, disable or change a destination secret reference. Requires admin. */
+  updatePublicationDestination: ArtifactPublicationDestination;
   /** Update destination configuration with optimistic locking. Changing the image path clears its previous sync records. Requires admin. */
   updateSyncDestination: ArtifactSyncDestination;
 };
@@ -2089,9 +2255,23 @@ export type ArtifactsAdminMutation_AddPermissionArgs = {
 
 
 /** Administrative mutations for artifact registry management */
+export type ArtifactsAdminMutation_CompleteVersionArgs = {
+  commitSha: Scalars['String']['input'];
+  expectedBlobs: Array<ArtifactVersionBlobInput>;
+  versionId: Scalars['UUID']['input'];
+};
+
+
+/** Administrative mutations for artifact registry management */
 export type ArtifactsAdminMutation_CreateNamespaceArgs = {
   name: Scalars['String']['input'];
   public?: InputMaybe<Scalars['Boolean']['input']>;
+};
+
+
+/** Administrative mutations for artifact registry management */
+export type ArtifactsAdminMutation_CreatePublicationDestinationArgs = {
+  input: ArtifactPublicationDestinationInput;
 };
 
 
@@ -2100,6 +2280,12 @@ export type ArtifactsAdminMutation_CreateRepositoryArgs = {
   name: Scalars['String']['input'];
   namespaceId: Scalars['UUID']['input'];
   type: ArtifactRegistryType;
+};
+
+
+/** Administrative mutations for artifact registry management */
+export type ArtifactsAdminMutation_CreateSyncDestinationArgs = {
+  input: ArtifactSyncDestinationInput;
 };
 
 
@@ -2136,6 +2322,14 @@ export type ArtifactsAdminMutation_DeleteVersionArgs = {
 
 
 /** Administrative mutations for artifact registry management */
+export type ArtifactsAdminMutation_PublishReleaseArgs = {
+  commitSha: Scalars['String']['input'];
+  destinationId: Scalars['UUID']['input'];
+  versionId: Scalars['UUID']['input'];
+};
+
+
+/** Administrative mutations for artifact registry management */
 export type ArtifactsAdminMutation_PushImageArgs = {
   destinationId: Scalars['UUID']['input'];
   tagName: Scalars['String']['input'];
@@ -2145,6 +2339,12 @@ export type ArtifactsAdminMutation_PushImageArgs = {
 /** Administrative mutations for artifact registry management */
 export type ArtifactsAdminMutation_RemovePermissionArgs = {
   permission: PermissionInput;
+};
+
+
+/** Administrative mutations for artifact registry management */
+export type ArtifactsAdminMutation_RetrySyncArgs = {
+  id: Scalars['UUID']['input'];
 };
 
 
@@ -2160,6 +2360,15 @@ export type ArtifactsAdminMutation_SetTagArgs = {
 export type ArtifactsAdminMutation_UpdateNamespaceArgs = {
   id: Scalars['UUID']['input'];
   public: Scalars['Boolean']['input'];
+};
+
+
+/** Administrative mutations for artifact registry management */
+export type ArtifactsAdminMutation_UpdatePublicationDestinationArgs = {
+  enabled: Scalars['Boolean']['input'];
+  id: Scalars['UUID']['input'];
+  tokenSecretName?: InputMaybe<Scalars['String']['input']>;
+  version: Scalars['Long']['input'];
 };
 
 
@@ -2386,6 +2595,10 @@ export type Bible = {
   abbreviation: Scalars['String']['output'];
   /** Short abbreviation of the Bible translation in its native language */
   abbreviationLocal: Scalars['String']['output'];
+  /** Recordings attached to this exact Bible variant; listing does not download media */
+  audio: Array<BibleAudio>;
+  /** Authorized chapter recording with its attribution and timing; media is downloaded on demand */
+  audioChapter: BibleAudioChapter;
   /** Look up a specific book by its USFM reference (e.g. 'GEN' for Genesis) */
   book?: Maybe<BibleBook>;
   /** All books contained in this Bible translation */
@@ -2402,6 +2615,8 @@ export type Bible = {
   find: Array<FindBibleResult>;
   /** Languages available for this Bible translation */
   languages: Array<BibleLanguage>;
+  /** Bosca content identity for selecting an exact Bible variant */
+  metadataId: Scalars['UUID']['output'];
   /** Display name of the Bible translation in English (e.g. 'English Standard Version') */
   name: Scalars['String']['output'];
   /** Display name of the Bible translation in its native language */
@@ -2414,6 +2629,15 @@ export type Bible = {
   variant: Scalars['String']['output'];
   /** Variants stored for the same metadata version. Disabled variants require edit access and includeDisabled: true. */
   variants: Array<Bible>;
+  /** Content version containing this Bible variant */
+  version: Scalars['Int']['output'];
+};
+
+
+/** A Bible translation or version available in the system, containing books, chapters, and verses with rendering metadata for scripture display */
+export type Bible_AudioChapterArgs = {
+  audioId: Scalars['UUID']['input'];
+  usfm: Scalars['String']['input'];
 };
 
 
@@ -2440,6 +2664,50 @@ export type Bible_VariantsArgs = {
   includeDisabled?: InputMaybe<Scalars['Boolean']['input']>;
 };
 
+/** Copyright and citation accompanying delivered Scripture content */
+export type BibleAttribution = {
+  __typename?: 'BibleAttribution';
+  citation: Scalars['String']['output'];
+  copyright: Scalars['String']['output'];
+  informationUrl?: Maybe<Scalars['String']['output']>;
+};
+
+/** An attached recording; listing it does not download audio */
+export type BibleAudio = {
+  __typename?: 'BibleAudio';
+  abbreviation: Scalars['String']['output'];
+  attribution: BibleAttribution;
+  id: Scalars['UUID']['output'];
+  name: Scalars['String']['output'];
+  nameLocal: Scalars['String']['output'];
+};
+
+/** A chapter recording served through an authorized Bosca route */
+export type BibleAudioChapter = {
+  __typename?: 'BibleAudioChapter';
+  attribution: BibleAttribution;
+  audio: BibleAudio;
+  content: BibleAudioContent;
+  url: Scalars['String']['output'];
+  usfm: Scalars['String']['output'];
+};
+
+/** Format, byte length and verse timing of a downloaded recording */
+export type BibleAudioContent = {
+  __typename?: 'BibleAudioContent';
+  contentLength: Scalars['Long']['output'];
+  contentType: Scalars['String']['output'];
+  timecodes: Array<BibleAudioTimecode>;
+};
+
+/** A verse's start and end offsets in seconds within a chapter recording */
+export type BibleAudioTimecode = {
+  __typename?: 'BibleAudioTimecode';
+  end: Scalars['Float']['output'];
+  start: Scalars['Float']['output'];
+  usfm: Scalars['String']['output'];
+};
+
 /** A book within a Bible translation, such as Genesis or Matthew */
 export type BibleBook = {
   __typename?: 'BibleBook';
@@ -2455,9 +2723,27 @@ export type BibleBook = {
   reference: BibleReference;
 };
 
+/** A text Bible or recording available upstream; browsing does not download chapter content */
+export type BibleCatalog = {
+  __typename?: 'BibleCatalog';
+  abbreviation: Scalars['String']['output'];
+  abbreviationLocal: Scalars['String']['output'];
+  attribution: BibleAttribution;
+  description: Scalars['String']['output'];
+  id: Scalars['String']['output'];
+  kind: BibleSourceKind;
+  languages: Array<BibleLanguage>;
+  name: Scalars['String']['output'];
+  nameLocal: Scalars['String']['output'];
+  relatedSystemId?: Maybe<Scalars['String']['output']>;
+  systemId: Scalars['String']['output'];
+};
+
 /** A chapter within a Bible book, containing the rendered component tree and verse references */
 export type BibleChapter = {
   __typename?: 'BibleChapter';
+  /** Copyright and citation supplied with this chapter's content, when available */
+  attribution?: Maybe<BibleAttribution>;
   /** JSON component tree representing the rendered chapter content, including verses, paragraphs, poetry, and styling */
   component: Scalars['JSON']['output'];
   /** USFM reference identifying this chapter (e.g. 'GEN.1') */
@@ -2465,6 +2751,15 @@ export type BibleChapter = {
   /** References to all verses contained in this chapter */
   verses: Array<BibleReference>;
 };
+
+export enum BibleContentUse {
+  AiContext = 'AI_CONTEXT',
+  Display = 'DISPLAY',
+  Export = 'EXPORT',
+  Indexing = 'INDEXING',
+  Playback = 'PLAYBACK',
+  TextToSpeech = 'TEXT_TO_SPEECH'
+}
 
 /** Input for creating or importing a complete Bible translation, including all books, chapters, languages, and styles */
 export type BibleInput = {
@@ -2525,6 +2820,118 @@ export type BibleLanguageInput = {
   scriptDirection: Scalars['String']['input'];
 };
 
+/** Saved provider setup without credentials */
+export type BibleProviderConfiguration = {
+  __typename?: 'BibleProviderConfiguration';
+  enabled: Scalars['Boolean']['output'];
+  hasApiKey: Scalars['Boolean']['output'];
+  id: Scalars['UUID']['output'];
+  name: Scalars['String']['output'];
+  provider: Scalars['String']['output'];
+};
+
+export type BibleProviderConfigurationInput = {
+  /** Omit or send null to preserve the saved key when updating */
+  apiKey?: InputMaybe<Scalars['String']['input']>;
+  enabled: Scalars['Boolean']['input'];
+  id?: InputMaybe<Scalars['UUID']['input']>;
+  name: Scalars['String']['input'];
+  provider: Scalars['String']['input'];
+};
+
+/** Administrator queries for Bible provider integration */
+export type BibleProviders = {
+  __typename?: 'BibleProviders';
+  audioTargets: Array<Bible>;
+  catalog: Array<BibleCatalog>;
+  configurations: Array<BibleProviderConfiguration>;
+  providers: Array<Scalars['String']['output']>;
+  sources: Array<BibleSource>;
+};
+
+
+/** Administrator queries for Bible provider integration */
+export type BibleProviders_AudioTargetsArgs = {
+  configurationId: Scalars['UUID']['input'];
+  providerBibleId: Scalars['String']['input'];
+};
+
+
+/** Administrator queries for Bible provider integration */
+export type BibleProviders_CatalogArgs = {
+  configurationId: Scalars['UUID']['input'];
+  kind: BibleSourceKind;
+  limit?: Scalars['Int']['input'];
+  offset?: Scalars['Int']['input'];
+  query?: InputMaybe<Scalars['String']['input']>;
+};
+
+
+/** Administrator queries for Bible provider integration */
+export type BibleProviders_SourcesArgs = {
+  configurationId: Scalars['UUID']['input'];
+};
+
+/** Administrator operations for configuring providers and managing their sources */
+export type BibleProvidersMutation = {
+  __typename?: 'BibleProvidersMutation';
+  addAudio: BibleAudio;
+  addBible: Bible;
+  refresh: Scalars['Boolean']['output'];
+  /** Active sources prevent removal unless purgeSources is explicitly true */
+  removeConfiguration: Scalars['Boolean']['output'];
+  removeSource: Scalars['Boolean']['output'];
+  saveConfiguration: BibleProviderConfiguration;
+  test: Scalars['Boolean']['output'];
+};
+
+
+/** Administrator operations for configuring providers and managing their sources */
+export type BibleProvidersMutation_AddAudioArgs = {
+  bibleId: Scalars['UUID']['input'];
+  input: AddProviderAudioInput;
+  variant: Scalars['String']['input'];
+  version: Scalars['Int']['input'];
+};
+
+
+/** Administrator operations for configuring providers and managing their sources */
+export type BibleProvidersMutation_AddBibleArgs = {
+  input: AddProviderBibleInput;
+};
+
+
+/** Administrator operations for configuring providers and managing their sources */
+export type BibleProvidersMutation_RefreshArgs = {
+  sourceId: Scalars['UUID']['input'];
+};
+
+
+/** Administrator operations for configuring providers and managing their sources */
+export type BibleProvidersMutation_RemoveConfigurationArgs = {
+  configurationId: Scalars['UUID']['input'];
+  purgeSources?: Scalars['Boolean']['input'];
+};
+
+
+/** Administrator operations for configuring providers and managing their sources */
+export type BibleProvidersMutation_RemoveSourceArgs = {
+  expectedVersion: Scalars['Long']['input'];
+  sourceId: Scalars['UUID']['input'];
+};
+
+
+/** Administrator operations for configuring providers and managing their sources */
+export type BibleProvidersMutation_SaveConfigurationArgs = {
+  input: BibleProviderConfigurationInput;
+};
+
+
+/** Administrator operations for configuring providers and managing their sources */
+export type BibleProvidersMutation_TestArgs = {
+  configurationId: Scalars['UUID']['input'];
+};
+
 /** A reference to a specific location in a Bible, providing both human-readable and machine-readable formats */
 export type BibleReference = {
   __typename?: 'BibleReference';
@@ -2535,6 +2942,32 @@ export type BibleReference = {
   /** USFM (Unified Standard Format Markers) reference identifier (e.g. 'GEN.1.1') */
   usfm: Scalars['String']['output'];
 };
+
+/** A provider edition attached to an exact Bosca Bible version and variant */
+export type BibleSource = {
+  __typename?: 'BibleSource';
+  abbreviation: Scalars['String']['output'];
+  allowedUses: Array<BibleContentUse>;
+  attribution: BibleAttribution;
+  configurationId: Scalars['UUID']['output'];
+  created: Scalars['DateTime']['output'];
+  id: Scalars['UUID']['output'];
+  kind: BibleSourceKind;
+  metadataId: Scalars['UUID']['output'];
+  metadataVersion: Scalars['Int']['output'];
+  modified: Scalars['DateTime']['output'];
+  name: Scalars['String']['output'];
+  nameLocal: Scalars['String']['output'];
+  provider: Scalars['String']['output'];
+  providerBibleId: Scalars['String']['output'];
+  variant: Scalars['String']['output'];
+  version: Scalars['Long']['output'];
+};
+
+export enum BibleSourceKind {
+  Audio = 'AUDIO',
+  Text = 'TEXT'
+}
 
 /**
  * A project the BML Message Server currently hosts: the active (latest published)
@@ -6682,6 +7115,7 @@ export type ContainersMutation_ContainerArgs = {
 /** The primary content query type providing access to all content management features — collections, metadata, categories, workflow states, and search */
 export type Content = {
   __typename?: 'Content';
+  bibleProviders: BibleProviders;
   /** Access category queries */
   categories: Categories;
   /** Check which collection IDs the current user has the specified permission actions on. Returns the subset of IDs where all actions are allowed. */
@@ -6980,6 +7414,7 @@ export type ContentJobHistory = {
 /** Mutation operations for all content management features */
 export type ContentMutation = {
   __typename?: 'ContentMutation';
+  bibleProviders: BibleProvidersMutation;
   /** Access category mutations */
   category: CategoryMutation;
   /** Access collection mutations */
@@ -9964,6 +10399,8 @@ export type FindAttributesInput = {
 /** A result from searching the Bible by a human-readable reference string, containing the matched book, chapter, and verse range */
 export type FindBibleResult = {
   __typename?: 'FindBibleResult';
+  /** Copyright and citation supplied with the matched content, when available */
+  attribution?: Maybe<BibleAttribution>;
   /** The matched Bible book */
   book: BibleBook;
   /** The matched chapter, if the reference specifies a chapter */
@@ -10715,7 +11152,9 @@ export type Git = {
   sourceRefs: Array<GitScriptSourceRef>;
   /** Repository statistics. */
   stats: GitRepoStats;
-  /** List all tags. */
+  /** Look up a tag by name directly from Git. */
+  tag?: Maybe<GitTagInfo>;
+  /** List tags newest first by Git tagger date, using commit dates for lightweight tags, with optional filtering and pagination. */
   tags: Array<GitTagInfo>;
   /** Get the current status of a job attempt assigned to this agent. A stale attempt is reported as cancelled. */
   targetedJobStatus?: Maybe<GitPipelineRunStatus>;
@@ -10976,7 +11415,17 @@ export type Git_StatsArgs = {
 
 
 /** Queries for the git repository system. */
+export type Git_TagArgs = {
+  name: Scalars['String']['input'];
+  repositoryId: Scalars['UUID']['input'];
+};
+
+
+/** Queries for the git repository system. */
 export type Git_TagsArgs = {
+  limit?: InputMaybe<Scalars['Int']['input']>;
+  offset?: InputMaybe<Scalars['Long']['input']>;
+  query?: InputMaybe<Scalars['String']['input']>;
   repositoryId: Scalars['UUID']['input'];
 };
 

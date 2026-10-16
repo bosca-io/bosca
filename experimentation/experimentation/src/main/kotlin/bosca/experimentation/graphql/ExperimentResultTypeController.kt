@@ -95,5 +95,8 @@ class ExperimentResultTypeController(
     fun adjustedVariance(experimentResult: ExperimentResult): Double? = experimentResult.adjustedVariance
 
     @Field
+    fun goalAnalysis(experimentResult: ExperimentResult): bosca.experimentation.model.GoalPopulationAnalysis? = experimentResult.goalAnalysis
+
+    @Field
     fun updatedAt(experimentResult: ExperimentResult): OffsetDateTime = experimentResult.updatedAt
 }

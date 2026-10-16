@@ -44,7 +44,7 @@ window.profilesReturnPath = profilesReturnPath
 
 async function initializeProfilesAuth(auth: BoscaAuth) {
   try {
-    await auth.initialize()
+    await auth.initialize(location.pathname === "/login")
   } catch (error) {
     console.warn("profiles: session restore failed", error)
   }

@@ -1,0 +1,37 @@
+<component tag="git-pull-status">
+  <prop name="status" type="String" required />
+  <prop name="iconOnly" type="Boolean" default="false" />
+  <script server provides="color">
+    bosca.git.ui.pullStatusColor(status)
+  </script>
+  <span
+    class="pull-status"
+    :data-state="status"
+    :data-icon-only="iconOnly"
+    :style='"--state-color: " + color'
+  >
+    <if iconOnly>
+      <span class="state-icon" role="img" :aria-label="status.lowercase()">
+        <ui-icon name="pull" :size="14" />
+      </span>
+    <else>
+      <ui-badge :color="color">{ status.lowercase() }</ui-badge>
+    </if>
+  </span>
+  <style scoped>
+    .pull-status {
+      display: inline-flex;
+      flex: none;
+    }
+    .state-icon {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      color: var(--state-color);
+      background: color-mix(in oklch, var(--state-color) 14%, transparent);
+    }
+  </style>
+</component>

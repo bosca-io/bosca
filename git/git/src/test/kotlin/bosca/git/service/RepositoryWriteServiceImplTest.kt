@@ -286,6 +286,33 @@ class RepositoryWriteServiceImplTest {
     )
 
     @Test
+    fun `createTag rejects invalid ref names without writing or notifying`() = runTest {
+        for (name in listOf("", " ", "bad tag", "../main", "release..1", "release.lock", "release@{1}", "release/")) {
+            assertFailsWith<IllegalArgumentException>(name) { service.createTag(tagInput().copy(tag = name)) }
+        }
+        io.mockk.verify(exactly = 0) { dfsManager.open(any()) }
+        coVerify(exactly = 0) { notifier.notifyRefsUpdated(any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun `createTag accepts a nested name and targets a commit or annotated tag`() = runTest {
+        val commitId = seedMain("a.txt", "v1")
+        val first = service.createTag(tagInput().copy(tag = "release/1.0", targetRef = commitId.name()))
+        val second = service.createTag(tagInput().copy(tag = "release/1.1", targetRef = "refs/tags/release/1.0"))
+        assertEquals(commitId.name(), first.commitSha)
+        assertEquals(commitId.name(), second.commitSha)
+        assertEquals("refs/tags/release/1.1", second.ref)
+    }
+
+    @Test
+    fun `createTag rejects an unknown target without creating a ref or notifying`() = runTest {
+        seedMain("a.txt", "v1")
+        assertFailsWith<IllegalArgumentException> { service.createTag(tagInput().copy(targetRef = "missing")) }
+        assertEquals(null, inMemoryRepo.resolve("refs/tags/v6.2.0"))
+        coVerify(exactly = 0) { notifier.notifyRefsUpdated(any(), any(), any(), any()) }
+    }
+
+    @Test
     fun `createTag without allowExisting throws for an existing tag even at the same commit`() = runTest {
         seedMain("a.txt", "v1")
         coEvery { notifier.notifyRefsUpdated(any(), repositoryId, any(), any()) } just Runs

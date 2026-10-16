@@ -10,6 +10,7 @@ import bosca.analytics.repository.iceberg.IcebergEventRepository
 import bosca.analytics.repository.nats.NatsEventRepository
 import bosca.analytics.service.ErrorGroupService
 import bosca.analytics.service.AnalyticsQueryService
+import bosca.analytics.service.EventProcessingHealth
 import bosca.analytics.transform.EventsTransform
 import bosca.analytics.transform.iceberg.IcebergEventsToRecordTransform
 import bosca.db.migrations.Migration
@@ -47,6 +48,9 @@ import org.slf4j.LoggerFactory
 class AnalyticsConfiguration {
 
     private val log = LoggerFactory.getLogger(AnalyticsConfiguration::class.java)
+
+    @Provider(singleton = true)
+    fun eventProcessingHealth(): EventProcessingHealth = EventProcessingHealth()
 
     @Provider(name = "analytics-migrations")
     fun migration(): Migration = AnalyticsMigration()
@@ -218,12 +222,10 @@ class AnalyticsConfiguration {
     ): EventsTransform<List<Record>> = IcebergEventsToRecordTransform(schema)
 
     /**
-     * Builds a composite [EventRepository] that fans out each [EventRepository.process]
-     * call to the primary storage backend (NATS or Iceberg) **and** the error-group
-     * aggregation service. This keeps the event consumer decoupled from the number
-     * and identity of downstream sinks.
+     * Stores events in the configured backend before updating error groups. Storage must
+     * succeed for delivery to succeed; error-group aggregation is optional and logs failures.
      *
-     * The primary storage backend is selected by the `eventRepository.type` config:
+     * The storage backend is selected by the `eventRepository.type` config:
      * - `nats` — forwards events to a NATS JetStream stream for downstream processing
      * - unset / anything else — writes events directly to an Apache Iceberg table
      */
@@ -237,9 +239,10 @@ class AnalyticsConfiguration {
         @ProviderName(name = "icebergEventTransform") icebergTransform: ObjectProvider<EventsTransform<List<Record>>>,
         protoBuf: ObjectProvider<ProtoBuf>,
         errorGroupService: ErrorGroupService,
+        health: EventProcessingHealth,
     ): EventRepository {
         val storageRepository = when (application.environment.config.propertyOrNull("eventRepository.type")?.getString()) {
-            "nats" -> NatsEventRepository(natsConnectionPool.get(), json.get())
+            "nats" -> NatsEventRepository(natsConnectionPool.get(), json.get(), health)
             else -> IcebergEventRepository(
                 icebergTable.get(),
                 icebergTransform.get(),
@@ -250,7 +253,8 @@ class AnalyticsConfiguration {
             }
         }
         return CompositeEventRepository(
-            listOf(storageRepository, ErrorGroupEventRepository(errorGroupService))
+            storageRepository = storageRepository,
+            optionalRepositories = listOf(ErrorGroupEventRepository(errorGroupService)),
         )
     }
 
@@ -269,6 +273,16 @@ class AnalyticsConfiguration {
         distributedLockFactory,
         errorCapture,
     )
+
+    @Provider(singleton = true, name = JobQueueNames.fumsJobQueue)
+    fun fumsJobQueue(factory: JobQueueFactory): JobQueue = factory.create(JobQueueNames.fumsQueue)
+
+    @Provider(name = JobQueueNames.fumsRunner)
+    fun fumsJobQueueRunner(
+        @ProviderName(JobQueueNames.fumsJobQueue) queue: JobQueue,
+        distributedLockFactory: DistributedLockFactory,
+        errorCapture: ObjectProvider<ErrorCapture>,
+    ): JobRunner = JobRunner(queue, 100, distributedLockFactory, errorCapture)
 
     @Provider(name = "analytics-queries")
     fun analyticsQueriesInstaller(
@@ -347,6 +361,12 @@ class AnalyticsConfiguration {
             // QueryInstaller 1.0.6 clears the per-installer gate for existing installations.
             PackageInstallationVersion(
                 version = "1.0.9",
+                installerNames = listOf("analytics-queries")
+            ),
+            // Date-range user and session metrics that exclude desktop crawlers and link signed-out
+            // activity per period, plus monthly users and engagement. QueryInstaller 1.0.7 clears its gate.
+            PackageInstallationVersion(
+                version = "1.0.10",
                 installerNames = listOf("analytics-queries")
             )
         )

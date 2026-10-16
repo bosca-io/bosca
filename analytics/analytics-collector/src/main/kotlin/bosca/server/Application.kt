@@ -40,6 +40,7 @@ suspend fun BoscaApplication.module() {
     install(AnalyticsServerClientModule())
     install(SecurityRoutesModule())
     configureAnalyticsRoutes()
+    configureCollectorHealth()
     launch {
         PackageInstallations.install(this@module)
     }

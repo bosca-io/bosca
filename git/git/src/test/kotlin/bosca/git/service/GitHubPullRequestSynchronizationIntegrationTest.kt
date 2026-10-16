@@ -83,6 +83,7 @@ class GitHubPullRequestSynchronizationIntegrationTest {
     @BeforeTest fun setup(): Unit = runBlocking {
         ProviderRegistry.clear()
         provides<ConnectionPool>(singleton = true) { pool }
+        provides<RepositoryService> { hostedService }
         provides<Json>(singleton = true) { json }
         provides<PubSubService>(singleton = true) { notifications }
         coEvery { hostedService.findById(repositoryId) } returns hosted
@@ -134,8 +135,8 @@ class GitHubPullRequestSynchronizationIntegrationTest {
             RefSynchronizationResult(GitHubSyncResult.UNCHANGED, input.afterSha, input.afterSha)
         }
         db {
-            connection().useStatement("drop schema if exists git cascade; create schema git; create table git.repositories(id uuid primary key)") { it.execute() }
-            for (name in listOf("V3__pull_requests.sql", "V6__review_comments.sql", "V44__github_intake.sql", "V45__github_ref_synchronization.sql", "V46__github_pull_request_synchronization.sql", "V47__github_delivery_problems.sql", "V48__github_branch_filters.sql")) {
+            connection().useStatement("drop schema if exists git cascade; create schema git; create table git.repositories(id uuid primary key, configuration jsonb not null default '{}')") { it.execute() }
+            for (name in listOf("V3__pull_requests.sql", "V6__review_comments.sql", "V44__github_intake.sql", "V45__github_ref_synchronization.sql", "V46__github_pull_request_synchronization.sql", "V47__github_delivery_problems.sql", "V48__github_branch_filters.sql", "V49__pull_request_merge_base.sql", "V50__pull_request_branch_cleanup.sql")) {
                 connection().useStatement(javaClass.getResource("/db/migrations/$name")?.readText() ?: error(name)) { it.execute() }
             }
             connection().useStatement("create table git.dfs_refs(repository_id uuid, name text, object_id text, updated timestamptz)") { it.execute() }

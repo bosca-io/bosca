@@ -15,6 +15,21 @@ tests:
           path: metadata.name
           value: redis
 
+  - it: pins the Dragonfly image
+    asserts:
+      - equal:
+          path: spec.image
+          value: docker.dragonflydb.io/dragonflydb/dragonfly:v2.0.2
+
+  - it: honors the Dragonfly image override
+    set:
+      redis:
+        image: registry.example.com/dragonfly:v2.0.2
+    asserts:
+      - equal:
+          path: spec.image
+          value: registry.example.com/dragonfly:v2.0.2
+
   - it: includes cluster_mode emulated arg
     asserts:
       - contains:

@@ -149,7 +149,7 @@ class GitHubSyncServiceIntegrationTest {
         coEvery { protections.findMatchingRule(repositoryId, any()) } returns null
         coEvery { github.repositoryUrl(any(), "token") } returns "https://github.com/bosca-io/source.git"
         withDb {
-            connection().useStatement("drop schema if exists git cascade; create schema git; create table git.repositories(id uuid primary key)") { it.execute() }
+            connection().useStatement("drop schema if exists git cascade; create schema git; create table git.repositories(id uuid primary key, configuration jsonb not null default '{}')") { it.execute() }
             val hosting = javaClass.getResource("/db/migrations/V1__git_server.sql")?.readText() ?: error("Missing hosting migration")
             connection().useStatement("create table git.dfs_refs" + hosting.substringAfter("create table git.dfs_refs")
                 .substringBefore("create table git.dfs_packs")) { it.execute() }
@@ -158,7 +158,7 @@ class GitHubSyncServiceIntegrationTest {
             val refMigration = javaClass.getResource("/db/migrations/V45__github_ref_synchronization.sql")?.readText()
                 ?: error("Missing ref migration")
             connection().useStatement(refMigration) { it.execute() }
-            for (name in listOf("V3__pull_requests.sql", "V46__github_pull_request_synchronization.sql", "V47__github_delivery_problems.sql", "V48__github_branch_filters.sql")) {
+            for (name in listOf("V3__pull_requests.sql", "V46__github_pull_request_synchronization.sql", "V47__github_delivery_problems.sql", "V48__github_branch_filters.sql", "V49__pull_request_merge_base.sql", "V50__pull_request_branch_cleanup.sql")) {
                 connection().useStatement(javaClass.getResource("/db/migrations/$name")?.readText() ?: error(name)) { it.execute() }
             }
             connection().useStatement("insert into git.repositories(id) values ('$repositoryId')") { it.execute() }
@@ -1082,7 +1082,7 @@ class GitHubSyncServiceIntegrationTest {
     private suspend fun installTriggeredPipeline(sync: Boolean = false, pullRequests: Boolean = false, failures: Boolean = false): EventFixture {
         connection().useStatement("""
             drop schema if exists pipelines cascade;
-            create table if not exists groups (id uuid primary key);
+            create table if not exists groups (id uuid primary key, configuration jsonb not null default '{}');
             do $$ begin
                 if not exists (select 1 from pg_type where typname = 'permission_action') then
                     create type permission_action as enum ('view', 'edit', 'manage', 'delete', 'execute');

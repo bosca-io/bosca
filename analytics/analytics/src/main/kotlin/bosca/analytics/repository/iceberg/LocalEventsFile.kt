@@ -43,7 +43,6 @@ internal class LocalEventsFile(
     }
 
     suspend fun addEvents(events: Events) = withContext(Dispatchers.IO) {
-        recordsAdded += events.events.size
         val data = protoBuf.encodeToByteArray(events)
         var output = output
         if (output == null) {
@@ -52,6 +51,7 @@ internal class LocalEventsFile(
         }
         output.writeInt(data.size)
         output.write(data)
+        recordsAdded += events.events.size
     }
 
     suspend fun append() = withContext(Dispatchers.IO) {

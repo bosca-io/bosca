@@ -149,7 +149,7 @@ class GitHubRefSynchronizationIntegrationTest {
             connection().useStatement("""
                 drop schema if exists git cascade;
                 create schema git;
-                create table git.repositories(id uuid primary key, disk_size_bytes bigint default 0, updated timestamptz default now());
+                create table git.repositories(id uuid primary key, configuration jsonb not null default '{}', disk_size_bytes bigint default 0, updated timestamptz default now());
                 insert into git.repositories(id) values ('$repositoryId');
             """) { it.execute() }
             val hosting = migration("V1__git_server.sql")
@@ -157,7 +157,7 @@ class GitHubRefSynchronizationIntegrationTest {
                 "create table git.dfs_refs" + it.substringBefore("create table git.repository_permissions")
             }) { it.execute() }
             for (name in listOf("V23__dfs_pack_soft_delete.sql", "V44__github_intake.sql", "V45__github_ref_synchronization.sql",
-                "V3__pull_requests.sql", "V46__github_pull_request_synchronization.sql", "V47__github_delivery_problems.sql", "V48__github_branch_filters.sql")) {
+                "V3__pull_requests.sql", "V46__github_pull_request_synchronization.sql", "V47__github_delivery_problems.sql", "V48__github_branch_filters.sql", "V49__pull_request_merge_base.sql", "V50__pull_request_branch_cleanup.sql")) {
                 connection().useStatement(migration(name)) { it.execute() }
             }
             service.savePair(GitHubRepositoryPairInput(repositoryId, 123, "bosca-io", "source", "webhook", "token", true))
@@ -806,6 +806,8 @@ class GitHubRefSynchronizationIntegrationTest {
     }
 
     @Test fun `native merge cancellation rolls back PR metadata and DFS refs and retry commits under the write lock`() = runBlocking {
+        provides<RepositoryService> { hostedService }
+        provides<RefUpdateNotifier> { notifier }
         val base = createLocalRef()
         val tip = withConnectionManager {
             manager.open(repositoryId).use { repo ->
@@ -818,7 +820,7 @@ class GitHubRefSynchronizationIntegrationTest {
         val hostedRepository = mockk<bosca.git.repository.GitRepositoryRepository>()
         coEvery { hostedRepository.findById(repositoryId) } returns hosted
         val protections = mockk<BranchProtectionService>()
-        coEvery { protections.findMatchingRule(repositoryId, "main") } returns null
+        coEvery { protections.findMatchingRule(repositoryId, any()) } returns null
         val profiles = mockk<bosca.profile.profile.service.ProfileService>(relaxed = true)
         coEvery { security.getPrincipalById(any()) } returns null
         val pubsub = mockk<bosca.pubsub.PubSubService>()
@@ -831,8 +833,12 @@ class GitHubRefSynchronizationIntegrationTest {
         withConnectionManager {
             assertEquals(PullRequestStatus.OPEN, prs.findById(pr.id)?.status)
             assertEquals(0L, prs.findById(pr.id)?.version)
-            manager.open(repositoryId).use { assertEquals(base, it.resolve(ref)) }
+            manager.open(repositoryId).use {
+                assertEquals(base, it.resolve(ref))
+                assertEquals(tip, it.resolve("refs/heads/feature"))
+            }
         }
+        assertTrue(emitted.isEmpty(), "Rolled-back deletion must not dispatch ref notifications")
         val failedLease = owningService(object : bosca.git.repository.PullRequestRepository by prs {
             override suspend fun updateMergeState(pr: PullRequest): PullRequest? {
                 val updated = prs.updateMergeState(pr)
@@ -848,6 +854,24 @@ class GitHubRefSynchronizationIntegrationTest {
             assertEquals(PullRequestStatus.OPEN, prs.findById(pr.id)?.status)
             manager.open(repositoryId).use { assertEquals(base, it.resolve(ref)) }
         }
+        val changedSource = owningService(object : bosca.git.repository.PullRequestRepository by prs {
+            override suspend fun updateMergeState(pr: PullRequest): PullRequest? {
+                val updated = prs.updateMergeState(pr)
+                refs.compareAndSwap(repositoryId, "refs/heads/feature", tip.name(), base.name())
+                return updated
+            }
+        })
+        assertFailsWith<IllegalStateException> { withConnectionManager {
+            changedSource.merge(pr.id, MergeStrategy.FAST_FORWARD, principalId, "Author", "author@example.com")
+        } }
+        withConnectionManager {
+            assertEquals(PullRequestStatus.OPEN, prs.findById(pr.id)?.status)
+            manager.open(repositoryId).use {
+                assertEquals(base, it.resolve(ref))
+                assertEquals(tip, it.resolve("refs/heads/feature"))
+            }
+        }
+        assertTrue(emitted.isEmpty())
         var committed = 0
         coEvery { pubsub.publish("bosca.git.pull_request", PullRequestEvent.serializer(), any()) } coAnswers {
             assertTrue(connection().inTransaction)
@@ -855,10 +879,14 @@ class GitHubRefSynchronizationIntegrationTest {
         }
         val merged = withConnectionManager { pulls.merge(pr.id, MergeStrategy.FAST_FORWARD, principalId, "Author", "author@example.com") }
         assertEquals(tip.name(), merged.mergeSha); assertEquals(1, committed)
+        assertEquals(1, emitted.size, "Only the committed deletion dispatches a ref notification")
         withConnectionManager {
             assertEquals(PullRequestStatus.MERGED, prs.findById(pr.id)?.status)
             assertEquals(1L, prs.findById(pr.id)?.version)
-            manager.open(repositoryId).use { assertEquals(tip, it.resolve(ref)) }
+            manager.open(repositoryId).use {
+                assertEquals(tip, it.resolve(ref))
+                assertNull(it.resolve("refs/heads/feature"))
+            }
         }
     }
 

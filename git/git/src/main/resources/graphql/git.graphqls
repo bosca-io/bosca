@@ -73,6 +73,8 @@ type GitRepository {
     "The intended content classification."
     contentType: GitRepositoryContentType
     "Whether the current caller may execute builds in this repository."
+    canEdit: Boolean!
+    canManage: Boolean!
     canExecute: Boolean!
     "Total storage consumed in bytes."
     diskSizeBytes: Long!
@@ -268,6 +270,8 @@ type Git {
     branchProtectionRules(repositoryId: UUID!): [GitBranchProtectionRule!]!
     "Look up a pull request by repository and number."
     pullRequest(repositoryId: UUID!, number: Int!): GitPullRequest
+    "Look up a pull request by its unique ID."
+    pullRequestById(id: UUID!): GitPullRequest
     "List pull requests for a repository with optional filters."
     pullRequests(repositoryId: UUID!, status: GitPullRequestStatus, authorId: UUID, offset: Long, limit: Int): [GitPullRequest!]!
     "List pull requests across all repositories visible to the caller."
@@ -284,8 +288,10 @@ type Git {
     commit(repositoryId: UUID!, sha: String!): GitCommitInfo
     "List all branches with head SHA and ahead/behind counts."
     branches(repositoryId: UUID!): [GitBranchInfo!]!
-    "List all tags."
-    tags(repositoryId: UUID!): [GitTagInfo!]!
+    "List tags newest first by Git tagger date, using commit dates for lightweight tags, with optional filtering and pagination."
+    tags(repositoryId: UUID!, limit: Int, offset: Long, query: String): [GitTagInfo!]!
+    "Look up a tag by name directly from Git."
+    tag(repositoryId: UUID!, name: String!): GitTagInfo
     "Per-line blame attribution for a file."
     blame(repositoryId: UUID!, ref: String!, path: String!): [GitBlameLine!]!
     "Repository statistics."
@@ -451,6 +457,8 @@ enum GitDiffLineType {
 "A pull request within a repository."
 type GitPullRequest {
     id: UUID!
+    "Version used to reject stale edits and reviews."
+    version: Long!
     "The repository this PR belongs to."
     repositoryId: UUID!
     "Per-repository auto-incrementing number (e.g. #42)."
@@ -465,12 +473,16 @@ type GitPullRequest {
     "Non-null for cross-fork PRs."
     sourceRepositoryId: UUID
     status: GitPullRequestStatus!
+    "Whether to delete this PR's source branch after a successful merge."
+    deleteBranchOnMerge: Boolean!
     "The strategy used when merged."
     mergeStrategy: GitMergeStrategy
     mergedBy: UUID
     mergedAt: DateTime
     "The SHA of the merge commit."
     mergeSha: String
+    "Target commit immediately before the completed merge, when its base is known."
+    mergeBaseSha: String
     created: DateTime!
     updated: DateTime!
     "Whether the PR can be cleanly merged."
@@ -529,6 +541,8 @@ type GitDiffFile {
     newPath: String
     changeType: GitDiffChangeType!
     hunks: [GitDiffHunk!]!
+    "Number of text lines in the new version; zero when the file was deleted or is binary."
+    newLineCount: Int!
 }
 
 "A contiguous region of changed lines."
@@ -560,12 +574,19 @@ input CreateGitPullRequestInput {
     targetBranch: String!
     sourceRepositoryId: UUID
     isDraft: Boolean
+    "Defaults to the repository's branch cleanup setting when omitted."
+    deleteBranchOnMerge: Boolean
 }
 
 "Input for updating a pull request."
 input UpdateGitPullRequestInput {
+    "Changes this PR's branch cleanup setting. Omit to preserve it."
+    deleteBranchOnMerge: Boolean
     title: String
     description: String
+    sourceBranch: String
+    targetBranch: String
+    expectedVersion: Long
 }
 
 "Input for submitting a review."
@@ -573,6 +594,7 @@ input SubmitGitReviewInput {
     pullRequestId: UUID!
     status: GitReviewStatus!
     body: String
+    expectedVersion: Long
 }
 
 "Input for adding a review comment anchored to a diff line."
@@ -584,6 +606,7 @@ input AddGitReviewCommentInput {
     newLineNumber: Int
     commitSha: String!
     content: String!
+    expectedVersion: Long
 }
 
 "State of a CI/CD commit status check."
@@ -737,6 +760,8 @@ type GitMutation {
     removePermission(permission: PermissionInput!): Boolean!
     "Create a branch from a source ref (branch name, tag name, or SHA). Requires EDIT permission."
     createBranch(repositoryId: UUID!, branchName: String!, sourceRef: String!): GitBranchInfo!
+    "Create an annotated tag from a branch, tag, or commit SHA. Existing tags are never replaced. Requires EDIT permission on an active repository."
+    createTag(repositoryId: UUID!, tag: String!, targetRef: String!, message: String! = "", taggerName: String!, taggerEmail: String!): GitTagInfo!
     "Delete a tag (name without the refs/tags/ prefix). Fires TAG_DELETED webhooks. Requires EDIT permission."
     deleteTag(repositoryId: UUID!, tag: String!): Boolean!
     "Delete a branch. Refuses the default branch and branches matching a protection rule. Fires BRANCH_DELETED webhooks. Requires EDIT permission."
@@ -752,9 +777,9 @@ type GitMutation {
     "Update a pull request's title or description."
     updatePullRequest(id: UUID!, input: UpdateGitPullRequestInput!): GitPullRequest!
     "Merge a pull request using the specified strategy."
-    mergePullRequest(id: UUID!, strategy: GitMergeStrategy!): GitPullRequest!
+    mergePullRequest(id: UUID!, strategy: GitMergeStrategy!, expectedVersion: Long): GitPullRequest!
     "Merge every unresolved dependency in dependency-first order, then merge the requested pull request."
-    mergePullRequestWithDependencies(id: UUID!, strategy: GitMergeStrategy!): [GitPullRequest!]!
+    mergePullRequestWithDependencies(id: UUID!, strategy: GitMergeStrategy!, expectedVersion: Long): [GitPullRequest!]!
     "Add a pull request that must be merged before this pull request."
     addPullRequestDependency(id: UUID!, dependencyId: UUID!): GitPullRequest!
     "Remove a direct pull request dependency."
@@ -773,6 +798,8 @@ type GitMutation {
     submitReview(input: SubmitGitReviewInput!): GitReview!
     "Add a comment anchored to a specific diff line."
     addReviewComment(input: AddGitReviewCommentInput!): GitReviewComment!
+    "Reply using the original comment's review and line context, including outdated discussions."
+    replyReviewComment(pullRequestId: UUID!, commentId: UUID!, content: String!, expectedVersion: Long): GitReviewComment!
     "Resolve all comments in a thread at the given file and line."
     resolveReviewThread(pullRequestId: UUID!, filePath: String!, lineNumber: Int!): Boolean!
     "Create a webhook. Requires MANAGE permission."
@@ -1074,7 +1101,7 @@ type GitCreateTagResult {
 
 extend type Git {
     "List pipelines for a repository."
-    pipelines(repositoryId: UUID!): [GitPipeline!]!
+    pipelines(repositoryId: UUID!, id: UUID): [GitPipeline!]!
     "Manual input declarations read from the pipeline definition at the selected ref. Requires VIEW permission."
     pipelineInputs(pipelineId: UUID!, ref: String!): [GitPipelineInputDefinition!]!
     "Every pipeline across all repositories — the author-time picker for release relays."
@@ -1090,7 +1117,7 @@ extend type Git {
     "Get log output for a pipeline step. With tail: true, returns the last `limit` lines (offset is ignored). With beforeLine, returns the last `limit` lines whose line number is below it (offset and tail are ignored) — use this to page backwards, since stored line numbers can have gaps."
     pipelineLogs(stepId: UUID!, offset: Int, limit: Int, tail: Boolean, beforeLine: Int): [GitPipelineLogLine!]!
     "List registered build agents. System admins see all agents; agent credentials see only themselves and their direct children."
-    pipelineAgents(status: GitAgentStatus): [GitPipelineAgent!]!
+    pipelineAgents(status: GitAgentStatus, id: UUID): [GitPipelineAgent!]!
     "List secrets for a repository (names only). Requires MANAGE permission."
     pipelineSecrets(repositoryId: UUID!): [GitPipelineSecretInfo!]!
     "The uses:verify-deployment gate's observation: the current deployment's health for an environment (probed once), or NONE when nothing is deployed. Agents poll this until HEALTHY or timeout."

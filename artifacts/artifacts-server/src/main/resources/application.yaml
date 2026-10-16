@@ -67,6 +67,9 @@ natsMonitoring:
 cache:
   type: "$CACHE_TYPE:nats"
 
+counter:
+  type: "$COUNTER_TYPE:redis"
+
 jobQueue:
   factory: "$JOB_QUEUE_FACTORY:nats"
 

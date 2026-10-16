@@ -1,0 +1,272 @@
+<component tag="git-github-history">
+  <prop name="page" type="bosca.git.ui.GitHubPage" required />
+  <script server provides="model">
+    bosca.git.ui.GitHubHistoryModel(page)
+  </script>
+  <island name="git-github-history" :key="page.id + page.view">
+    <section class="settings-stack">
+      <ui-card :padded="false">
+        <ui-section-heading
+          title="Synchronization history"
+          subtitle="Observed state of paired repositories."
+        >
+          <ui-button size="sm" icon="refresh" @click="model.refresh(ctx)">
+            Refresh history
+          </ui-button>
+          <if model.page.pair?.enabled == true && model.page.view != "deliveries">
+            <ui-dialog title="Synchronize repository" triggerLabel="Synchronize" icon="refresh">
+              <form class="modal-form" @submit="model.synchronize(form.action, true, ctx)">
+                <div class="modal-fields">
+                  <p class="form-help">
+                    Choose the transfer to perform for this paired repository.
+                  </p>
+                  <ui-field label="Synchronization action">
+                    <ui-select name="action">
+                      <if model.page.view == "refs">
+                        <option value="refs">Reconcile branches and tags</option>
+                        <option value="pull">Pull refs from GitHub</option>
+                        <option value="push">Push refs to GitHub</option>
+                      <else>
+                        <option value="pulls">Reconcile pull requests</option>
+                      </if>
+                    </ui-select>
+                  </ui-field>
+                </div>
+                <footer class="modal-footer">
+                  <ui-button ref="cancel">Cancel</ui-button>
+                  <ui-button type="submit" primary>Synchronize</ui-button>
+                </footer>
+              </form>
+            </ui-dialog>
+          </if>
+        </ui-section-heading>
+        <ui-tabs label="Synchronization history" :items="model.page.tabs" />
+        <if model.message.isNotBlank()>
+          <ui-alert :tone='if (model.failed) "error" else "success"'>{ model.message }</ui-alert>
+        </if>
+        <if model.page.view == "refs">
+          <if model.page.refs.isEmpty()>
+            <ui-empty-state
+              icon="branch"
+              title="No synchronized refs"
+              message="Branch and tag observations will appear after synchronization."
+            />
+          <else>
+            <ui-table-scroll>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Ref</th>
+                    <th>State</th>
+                    <th>Common SHA</th>
+                    <th>Bosca SHA</th>
+                    <th>GitHub SHA</th>
+                    <th>Observed</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <for ref in model.page.refs.take(25)>
+                    <tr>
+                      <td>
+                        <code>{ ref.ref }</code>
+                      </td>
+                      <td>
+                        <ui-badge
+                          :tone='if (ref.conflict) "warning" else if (ref.synchronized) "success" else "neutral"'
+                        >
+                          { if (ref.conflict) "Conflict" else if (ref.synchronized) "Synchronized" else "Pending" }
+                        </ui-badge>
+                        <if ref.conflict && model.page.pair?.enabled == true>
+                          <ui-button size="sm" @click="model.review(ref.ref)">
+                            Review conflict
+                          </ui-button>
+                        </if>
+                      </td>
+                      <td>
+                        <code>{ ref.sha ?: "Absent" }</code>
+                      </td>
+                      <td>
+                        <code>{ ref.boscaSha ?: "Absent" }</code>
+                      </td>
+                      <td>
+                        <code>{ ref.githubSha ?: "Absent" }</code>
+                      </td>
+                      <td>
+                        <ui-time :value="ref.modified" />
+                      </td>
+                    </tr>
+                  </for>
+                </tbody>
+              </table>
+            </ui-table-scroll>
+          </if>
+          <for state in listOfNotNull(model.reviewed)>
+            <section class="resolution">
+              <h3>Resolve { state.ref }</h3>
+              <p>Reviewed Bosca SHA: <code>{ state.boscaSha ?: "Absent" }</code></p>
+              <p>Reviewed GitHub SHA: <code>{ state.githubSha ?: "Absent" }</code></p>
+              <p>
+                The selected host's value replaces the other host's value. An absent selected
+                ref deletes the destination ref. Both reviewed SHAs and destination protections
+                are checked before changing it.
+              </p>
+              <form class="form-grid" @submit="model.resolve(form.choice, form.confirmed, ctx)">
+                <ui-field label="Use reviewed value from">
+                  <ui-select name="choice" required>
+                    <option value="">Choose a host</option>
+                    <option value="BOSCA">Bosca</option>
+                    <option value="GITHUB">GitHub</option>
+                  </ui-select>
+                </ui-field>
+                <ui-switch
+                  name="confirmed"
+                  required
+                  label="Confirm the reviewed replacement or deletion"
+                />
+                <div class="toolbar">
+                  <ui-button @click="model.dismiss()">Cancel</ui-button>
+                  <ui-button type="submit" primary>Resolve ref</ui-button>
+                </div>
+              </form>
+            </section>
+          </for>
+        <else-if model.page.view == "pulls">
+          <if model.page.pulls.isEmpty()>
+            <ui-empty-state
+              icon="pull"
+              title="No synchronized pull requests"
+              message="Imported or exported pull request observations will appear here."
+            />
+          </if>
+          <for pull in model.page.pulls.take(25)>
+            <article>
+              <h3>
+                Bosca PR
+                { pull.pullRequestId ?: "Absent" }
+                · GitHub PR #
+                { pull.githubNumber ?: "Absent" }
+              </h3>
+              <p>
+                { pull.problem ?: "No synchronization problem recorded" }
+                ·
+                <ui-time :value="pull.modified" />
+              </p>
+              <dl>
+                <dt>Last common</dt>
+                <dd>
+                  <for state in listOfNotNull(pull.snapshot)>
+                    <git-github-pull-snapshot
+                      :title="state.title"
+                      :description="state.description"
+                      :source="state.sourceBranch"
+                      :target="state.targetBranch"
+                      :status="state.status.name"
+                      :sha="state.mergeSha"
+                    />
+                  </for>
+                </dd>
+                <dt>Bosca</dt>
+                <dd>
+                  <for state in listOfNotNull(pull.bosca)>
+                    <git-github-pull-snapshot
+                      :title="state.title"
+                      :description="state.description"
+                      :source="state.sourceBranch"
+                      :target="state.targetBranch"
+                      :status="state.status.name"
+                      :sha="state.mergeSha"
+                    />
+                  </for>
+                </dd>
+                <dt>GitHub</dt>
+                <dd>
+                  <for state in listOfNotNull(pull.github)>
+                    <git-github-pull-snapshot
+                      :title="state.title"
+                      :description="state.description"
+                      :source="state.sourceBranch"
+                      :target="state.targetBranch"
+                      :status="state.status.name"
+                      :sha="state.mergeSha"
+                    />
+                  </for>
+                </dd>
+              </dl>
+            </article>
+          </for>
+        <else>
+          <if model.page.deliveries.isEmpty()>
+            <ui-empty-state
+              icon="webhook"
+              title="No webhook deliveries"
+              message="Received synchronization events and their results will appear here."
+            />
+          <else>
+            <ui-table-scroll>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Delivery / event</th>
+                    <th>Attribution</th>
+                    <th>Intake</th>
+                    <th>Problems</th>
+                    <th>Received</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <for delivery in model.page.deliveries.take(25)>
+                    <tr>
+                      <td><code>{ delivery.deliveryId }</code> · { delivery.event }</td>
+                      <td>
+                        Bosca
+                        { delivery.principalId ?: "Unmapped" }
+                        · GitHub
+                        { delivery.githubUserId ?: "Unknown" }
+                      </td>
+                      <td>{ if (delivery.ignored) "Ignored" else "Accepted" }</td>
+                      <td>{ delivery.problem.orEmpty() } { delivery.importProblem.orEmpty() }</td>
+                      <td>
+                        <ui-time :value="delivery.created" />
+                      </td>
+                    </tr>
+                  </for>
+                </tbody>
+              </table>
+            </ui-table-scroll>
+            <p class="section-body detail-note">
+              Accepted intake does not mean synchronization completed.
+            </p>
+          </if>
+        </if>
+        <nav class="toolbar">
+          <if model.page.offset != 0L>
+            <a
+              :href="bosca.git.ui.githubHref(model.page.id, model.page.view, (model.page.offset - 25).coerceAtLeast(0))"
+            >
+              Previous
+            </a>
+          </if>
+          <if model.page.hasNext>
+            <a
+              :href="bosca.git.ui.githubHref(model.page.id, model.page.view, model.page.offset + 25)"
+            >
+              Next
+            </a>
+          </if>
+        </nav>
+      </ui-card>
+    </section>
+  </island>
+  <style scoped>
+    article,
+    .resolution {
+      padding: 16px;
+      border: 1px solid var(--line);
+      margin: 16px 18px;
+      border-radius: 8px;
+    }
+    code {
+      overflow-wrap: anywhere;
+    }
+  </style>
+</component>

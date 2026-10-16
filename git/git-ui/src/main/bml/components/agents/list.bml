@@ -1,0 +1,186 @@
+<component tag="git-agent-list">
+  <prop name="page" type="bosca.git.ui.AgentPage" required />
+  <section class="agent-list">
+    <form method="get" class="filter-bar">
+      <div class="status-filter">
+        <ui-select name="status" label="Status" size="sm">
+          <option value="">Status</option>
+          <for status in bosca.git.ui.graphql.GitAgentStatus.entries>
+            <option :value="status.name" :selected="status.name == page.status">
+              { status.name.lowercase().replaceFirstChar(Char::uppercase) }
+            </option>
+          </for>
+        </ui-select>
+      </div>
+      <span class="filter-spacer"></span>
+      <code class="count-label">{ page.agents.size } agents</code>
+    </form>
+    <ui-card :padded="false">
+      <ui-section-heading title="Build Agents" subtitle="Registered runners and orchestrators that execute pipeline jobs" />
+      <div class="glass-table">
+        <div class="gt-header agent-columns" aria-hidden="true">
+          <span>Agent</span>
+          <span>Mode</span>
+          <span>Labels</span>
+          <span>Status</span>
+          <span>Last Heartbeat</span>
+          <span></span>
+        </div>
+        <if page.agents.isEmpty()>
+          <p class="gt-state">No CI agents registered.</p>
+        <else>
+          <ul class="gt-rows">
+            <for agent in page.agents>
+              <li class="gt-row agent-row" :style='"--status-color: " + bosca.git.ui.statusColor(agent.status.name)'>
+                <span class="gt-cell agent-name-cell">
+                  <span class="agent-icon">
+                    <ui-icon :name='if (agent.mode.name == "ORCHESTRATOR") "workflow" else "settings"' :size="14" />
+                  </span>
+                  <span class="agent-copy">
+                    <a class="gt-row-link agent-name" :href='"/ci-agents/" + bosca.git.ui.encode(agent.id)'>{ agent.name }</a>
+                    <if agent.ephemeral>
+                      <span class="ephemeral-badge">ephemeral</span>
+                    </if>
+                    <if agent.instanceId != null>
+                      <code class="instance-id">{ agent.instanceId }</code>
+                    </if>
+                  </span>
+                </span>
+                <code class="gt-cell agent-mode">{ agent.mode.name }</code>
+                <span class="gt-cell gt-muted label-list">
+                  <if agent.labels.isEmpty()>
+                    —
+                  <else>
+                    <for label in agent.labels>
+                      <code class="label-chip">{ label }</code>
+                    </for>
+                  </if>
+                </span>
+                <span class="gt-cell"><git-status-badge :status="agent.status.name" /></span>
+                <span class="gt-cell gt-muted heartbeat">
+                  <if agent.lastHeartbeat != null>
+                    <time :datetime="agent.lastHeartbeat" :title="agent.lastHeartbeat">{ bosca.git.ui.heartbeatAge(agent.lastHeartbeat) }</time>
+                  <else>
+                    never
+                  </if>
+                </span>
+                <span class="agent-arrow"><ui-icon name="chevron" :size="12" /></span>
+              </li>
+            </for>
+          </ul>
+        </if>
+      </div>
+    </ui-card>
+  </section>
+  <style scoped>
+    .agent-list {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+    .filter-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 0 0 14px;
+    }
+    .status-filter {
+      width: auto;
+      min-width: 86px;
+    }
+    .filter-spacer {
+      flex: 1;
+    }
+    .count-label {
+      font-size: 11px;
+      color: var(--fg-3);
+    }
+    .agent-columns,
+    .agent-row {
+      grid-template-columns: minmax(180px, 2fr) 120px 1fr 100px 140px 28px;
+    }
+    .agent-name-cell {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .agent-icon {
+      display: flex;
+      flex: none;
+      align-items: center;
+      justify-content: center;
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      color: var(--status-color);
+      background: color-mix(in oklch, var(--status-color) 16%, transparent);
+    }
+    .agent-copy {
+      min-width: 0;
+    }
+    .agent-name {
+      font-weight: 500;
+      color: var(--fg-0);
+    }
+    .ephemeral-badge {
+      margin-left: 6px;
+      padding: 1px 5px;
+      border-radius: 3px;
+      background: var(--bg-3);
+      color: var(--fg-3);
+      font-size: 10px;
+      font-weight: 600;
+    }
+    .instance-id {
+      display: block;
+      margin-top: 1px;
+      font-size: 10.5px;
+      color: var(--fg-3);
+    }
+    .agent-mode,
+    .heartbeat {
+      font-family: var(--font-mono);
+      font-size: 11px;
+    }
+    .label-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+    }
+    .label-chip {
+      padding: 2px 7px;
+      border-radius: 4px;
+      background: var(--bg-3);
+      color: var(--fg-2);
+      font-size: 10.5px;
+    }
+    .agent-arrow {
+      display: flex;
+      justify-content: flex-end;
+      color: var(--fg-3);
+      opacity: 0.4;
+      transform: rotate(-90deg);
+    }
+    .agent-row:hover .agent-arrow {
+      opacity: 1;
+    }
+    @media (max-width: 900px) {
+      .agent-columns {
+        display: none;
+      }
+      .agent-row {
+        grid-template-columns: minmax(0, 1fr) auto;
+        row-gap: 6px;
+      }
+      .agent-arrow {
+        display: none;
+      }
+    }
+  </style>
+  <script client scoped>
+    ctx.on<Event>(ctx.root, "change", (event) => {
+      if (event.target instanceof HTMLSelectElement)
+        event.target.closest<HTMLFormElement>("form")?.requestSubmit();
+    });
+  </script>
+</component>

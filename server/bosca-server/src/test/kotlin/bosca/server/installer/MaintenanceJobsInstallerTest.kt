@@ -12,6 +12,7 @@ import io.mockk.mockk
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.decodeFromJsonElement
+import kotlinx.serialization.json.JsonObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.uuid.ExperimentalUuidApi
@@ -28,8 +29,8 @@ class MaintenanceJobsInstallerTest {
     }
 
     @Test
-    fun `version is 1_3_0`() {
-        assertEquals("1.3.0", installer.version)
+    fun `version is 1_4_0`() {
+        assertEquals("1.4.0", installer.version)
     }
 
     @Test
@@ -39,7 +40,7 @@ class MaintenanceJobsInstallerTest {
 
         installer.install(mockk(), mockk())
 
-        coVerify(exactly = 6) { schedulerService.createJob(any(), eq(UUID.NIL)) }
+        coVerify(exactly = 7) { schedulerService.createJob(any(), eq(UUID.NIL)) }
     }
 
     @Test
@@ -52,12 +53,13 @@ class MaintenanceJobsInstallerTest {
         installer.install(mockk(), mockk())
 
         val captured = mutableListOf<ScheduledJobInput>()
-        coVerify(exactly = 5) { schedulerService.createJob(capture(captured), any()) }
+        coVerify(exactly = 6) { schedulerService.createJob(capture(captured), any()) }
         assertEquals(
             setOf(
                 "purge-ephemeral-scripts",
                 "purge-job-history",
                 "delete-expired-security-tokens",
+                "delete-expired-bible-chapters",
                 "message-outbox-maintenance",
                 "notification-maintenance",
             ),
@@ -75,12 +77,13 @@ class MaintenanceJobsInstallerTest {
         installer.install(mockk(), mockk())
 
         val captured = mutableListOf<ScheduledJobInput>()
-        coVerify(exactly = 5) { schedulerService.createJob(capture(captured), any()) }
+        coVerify(exactly = 6) { schedulerService.createJob(capture(captured), any()) }
         assertEquals(
             setOf(
                 "finalize-deletion",
                 "purge-job-history",
                 "delete-expired-security-tokens",
+                "delete-expired-bible-chapters",
                 "message-outbox-maintenance",
                 "notification-maintenance",
             ),
@@ -95,6 +98,7 @@ class MaintenanceJobsInstallerTest {
             scheduledJob("purge-ephemeral-scripts"),
             scheduledJob("purge-job-history"),
             scheduledJob("delete-expired-security-tokens"),
+            scheduledJob("delete-expired-bible-chapters"),
             scheduledJob("message-outbox-maintenance"),
             scheduledJob("notification-maintenance"),
         )
@@ -119,6 +123,7 @@ class MaintenanceJobsInstallerTest {
         val purge = captured.find { it.jobName == "purge-ephemeral-scripts" }
         val purgeHistory = captured.find { it.jobName == "purge-job-history" }
         val security = captured.find { it.jobName == "delete-expired-security-tokens" }
+        val chapters = captured.find { it.jobName == "delete-expired-bible-chapters" }
         val messageOutbox = captured.find { it.jobName == "message-outbox-maintenance" }
         val notifications = captured.find { it.jobName == "notification-maintenance" }
 
@@ -131,9 +136,13 @@ class MaintenanceJobsInstallerTest {
             json.decodeFromJsonElement(purgeHistory!!.jobParameters),
         )
         assertEquals("*/30 * * * *", security?.cronExpression)
-        assertEquals("* * * * *", messageOutbox?.cronExpression)
+        assertEquals("0 0 * * *", chapters?.cronExpression)
+        assertEquals(false, chapters?.allowConcurrent)
+        assertEquals(false, chapters?.catchUp)
+        assertEquals(JsonObject(emptyMap()), chapters?.jobParameters)
+        assertEquals("0 * * * *", messageOutbox?.cronExpression)
         assertEquals(false, messageOutbox?.allowConcurrent)
-        assertEquals("* * * * *", notifications?.cronExpression)
+        assertEquals("0 * * * *", notifications?.cronExpression)
         assertEquals(false, notifications?.allowConcurrent)
     }
 }

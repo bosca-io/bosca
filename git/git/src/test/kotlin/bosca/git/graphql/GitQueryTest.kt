@@ -150,6 +150,12 @@ class GitQueryTest {
 
         query.tags(auth, id)
         coVerify { browseService.listTags(id) }
+        query.tags(auth, id, 500, -1, "release")
+        coVerify { browseService.listTags(id, 100, 0, "release") }
+        query.tags(auth, id, 25, 50, null)
+        coVerify { browseService.listTags(id, 25, 50, null) }
+        query.tag(auth, id, "v1")
+        coVerify { browseService.getTag(id, "v1") }
 
         query.blame(auth, id, "main", "a.txt")
         coVerify { browseService.blame(id, "main", "a.txt") }
@@ -186,6 +192,55 @@ class GitQueryTest {
     }
 
     // ── pull requests ───────────────────────────────────────────────────
+
+    @Test
+    fun `pullRequestById verifies VIEW on the resolved repository`() = runTest {
+        repoFound()
+        val pull = PullRequest(
+            repositoryId = id, number = 7, title = "Pull", authorId = UUID.random(),
+            sourceBranch = "feature", targetBranch = "main",
+        )
+        coEvery { pullRequestService.findById(pull.id) } returns pull
+
+        assertEquals(pull, query.pullRequestById(auth, pull.id))
+        coVerify { permissionEvaluator.verifyAllowed(auth, repo, PermissionAction.VIEW) }
+    }
+
+    @Test
+    fun `pullRequestById returns null for a missing pull request`() = runTest {
+        coEvery { pullRequestService.findById(id) } returns null
+
+        assertNull(query.pullRequestById(auth, id))
+        coVerify(exactly = 0) { repositoryService.findById(any()) }
+        coVerify(exactly = 0) { permissionEvaluator.verifyAllowed(any(), any(), any()) }
+    }
+
+    @Test
+    fun `pullRequestById returns null when its repository no longer exists`() = runTest {
+        val pull = PullRequest(
+            repositoryId = id, number = 7, title = "Pull", authorId = UUID.random(),
+            sourceBranch = "feature", targetBranch = "main",
+        )
+        coEvery { pullRequestService.findById(pull.id) } returns pull
+        coEvery { repositoryService.findById(id) } returns null
+
+        assertNull(query.pullRequestById(auth, pull.id))
+        coVerify(exactly = 0) { permissionEvaluator.verifyAllowed(any(), any(), any()) }
+    }
+
+    @Test
+    fun `pullRequestById preserves permission failures including anonymous access`() = runTest {
+        repoFound()
+        val pull = PullRequest(
+            repositoryId = id, number = 7, title = "Pull", authorId = UUID.random(),
+            sourceBranch = "feature", targetBranch = "main",
+        )
+        coEvery { pullRequestService.findById(pull.id) } returns pull
+        for (authentication in listOf(auth, null)) {
+            coEvery { permissionEvaluator.verifyAllowed(authentication, repo, PermissionAction.VIEW) } throws SecurityException("Denied")
+            assertFailsWith<SecurityException> { query.pullRequestById(authentication, pull.id) }
+        }
+    }
 
     @Test
     fun `pullRequest and pullRequests verify VIEW and apply paging defaults`() = runTest {
@@ -427,6 +482,7 @@ class GitQueryTest {
             "commit" to { query.commit(auth, id, "abc") },
             "branches" to { query.branches(auth, id) },
             "tags" to { query.tags(auth, id) },
+            "tag" to { query.tag(auth, id, "v1") },
             "blame" to { query.blame(auth, id, "main", "a") },
             "permissions" to { query.permissions(auth, id) },
             "webhooks" to { query.webhooks(auth, id) },

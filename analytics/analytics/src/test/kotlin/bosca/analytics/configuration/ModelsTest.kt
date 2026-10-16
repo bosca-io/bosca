@@ -21,8 +21,11 @@ class EventProcessingConfigurationTest {
         assertEquals(100, defaults.natsBatchSize)
         assertEquals(5L, defaults.natsFetchTimeoutSeconds)
         assertEquals("sa", defaults.scriptServiceAccount)
+        assertEquals(false, defaults.fumsEnabled)
 
-        val explicit = EventProcessingConfiguration(1, 2, 3, 4, "analytics-sa")
+        val explicit = EventProcessingConfiguration(1, 2, 3, 4, "analytics-sa", fumsEnabled = true)
+        assertEquals(true, json.decodeFromString(EventProcessingConfiguration.serializer(),
+            json.encodeToString(EventProcessingConfiguration.serializer(), explicit)).fumsEnabled)
         assertEquals(
             explicit.scriptServiceAccount,
             json.decodeFromString(
@@ -37,7 +40,7 @@ class EventProcessingConfigurationTest {
             omitDefaults.encodeToJsonElement(EventProcessingConfiguration.serializer(), constructedDefaults),
         )
         assertEquals(
-            5,
+            6,
             (omitDefaults.encodeToJsonElement(EventProcessingConfiguration.serializer(), explicit) as JsonObject).size,
         )
         assertEquals(

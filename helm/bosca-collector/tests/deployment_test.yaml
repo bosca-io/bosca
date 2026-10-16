@@ -17,6 +17,31 @@ release:
   name: test
   namespace: bosca
 tests:
+  - it: stops traffic on collector failure and delegates the restart grace period to the application
+    template: templates/deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.httpGet.path
+          value: /api/v1/collector/ready
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.failureThreshold
+          value: 1
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.timeoutSeconds
+          value: 5
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.httpGet.path
+          value: /api/v1/collector/live
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.httpGet.port
+          value: http
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.failureThreshold
+          value: 1
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.periodSeconds
+          value: 5
+
   - it: renders a Deployment with the analytics-collector image
     template: templates/deployment.yaml
     asserts:

@@ -1,6 +1,7 @@
 package bosca.jobs
 
 import bosca.ai.models.service.ModelService
+import bosca.bible.BibleContentUse
 import bosca.content.configuration.JobQueueNames
 import bosca.content.metadata.model.LocaleAwareDocument
 import bosca.content.metadata.model.MetadataSupplementaryInput
@@ -73,6 +74,7 @@ class ChirpToWavJobExecutor(
                 metadataService = metadataService,
                 bibleService = bibleService,
                 json = json,
+                use = BibleContentUse.TEXT_TO_SPEECH,
                 configuration = job.configuration
             )
             val model = modelService.getByKey(job.modelKey) ?: error("Missing model")

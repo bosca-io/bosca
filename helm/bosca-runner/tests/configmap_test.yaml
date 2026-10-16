@@ -14,6 +14,20 @@ set:
 release:
   namespace: bosca
 tests:
+  - it: selects the default FUMS transform placement
+    asserts:
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: 'fumsEnabled: \$\{FUMS_TRANSFORM_ENABLED:false\}'
+
+  - it: configures the FUMS transform for this server
+    set:
+      appConfig.fumsTransformEnabled: true
+    asserts:
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: 'fumsEnabled: \$\{FUMS_TRANSFORM_ENABLED:true\}'
+
   - it: renders a ConfigMap
     asserts:
       - isKind:
@@ -53,6 +67,12 @@ tests:
       - matchRegex:
           path: data["application.yaml"]
           pattern: "feedsQueueRunner"
+
+  - it: enables the FUMS queue runner
+    asserts:
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: '(?m)^\s*- fumsQueueRunner$'
 
   - it: disables ecommerce by default
     asserts:

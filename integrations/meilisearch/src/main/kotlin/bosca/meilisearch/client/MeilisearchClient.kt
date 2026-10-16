@@ -216,11 +216,16 @@ class MeilisearchClient(
      * keeps this robust against an unparseable error body, where [execute] falls back
      * to `code = "unknown"`. Any other failure propagates as [MeilisearchApiException].
      */
-    suspend fun getDocument(indexUid: String, documentId: String): String? {
+    suspend fun getDocument(indexUid: String, documentId: String): String? =
+        getDocument(indexUid, documentId, emptyList())
+
+    /** Gets selected fields of a document; an empty [fields] list retrieves all fields. */
+    suspend fun getDocument(indexUid: String, documentId: String, fields: List<String>): String? {
         requireSafePathSegment(indexUid, "index UID")
         requireSafePathSegment(documentId, "document ID")
+        val params = buildQueryParams("fields" to fields.takeIf { it.isNotEmpty() }?.joinToString(","))
         return try {
-            get("/indexes/$indexUid/documents/$documentId")
+            get("/indexes/$indexUid/documents/$documentId$params")
         } catch (e: MeilisearchApiException) {
             if (e.statusCode == 404) null else throw e
         }
@@ -230,6 +235,15 @@ class MeilisearchClient(
     suspend fun addDocuments(indexUid: String, documents: String, primaryKey: String? = null): TaskInfo {
         val params = buildQueryParams("primaryKey" to primaryKey)
         return json.decodeFromString(post("/indexes/$indexUid/documents$params", documents))
+    }
+
+    /**
+     * Adds or partially updates documents supplied as a JSON array. Omitted fields are
+     * preserved on existing documents; supplied arrays and objects replace their whole field.
+     */
+    suspend fun updateDocuments(indexUid: String, documents: String, primaryKey: String? = null): TaskInfo {
+        val params = buildQueryParams("primaryKey" to primaryKey)
+        return json.decodeFromString(put("/indexes/$indexUid/documents$params", documents))
     }
 
     /** Deletes all documents from an index. */

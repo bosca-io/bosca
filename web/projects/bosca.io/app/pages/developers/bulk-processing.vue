@@ -1,132 +1,86 @@
 <script setup lang="ts">
-useSeoMeta({ title: 'Bulk Processing' })
+definePageMeta({ layout: 'developers' })
+useSeoMeta({ title: 'Bulk Processing', description: 'Load and authorize groups of records, keep writes consistent, and bound background processing.' })
+const guard = 'require(collectionIds.size <= MAX_BULK_OPERATION_SIZE) {\n    "Cannot process more than $MAX_BULK_OPERATION_SIZE items at once"\n}'
+const deleteAll = '@Field\nsuspend fun deleteAll(authentication: AuthenticationContext, collectionIds: List<UUID>): Int {\n    require(collectionIds.size <= MAX_BULK_OPERATION_SIZE) {\n        "Cannot process more than $MAX_BULK_OPERATION_SIZE items at once"\n    }\n    return transaction {\n        val collections = service.getByIds(collectionIds)\n        val allowed = permissionEvaluator.filterAllowed(\n            authentication, collections, PermissionAction.DELETE\n        )\n        for (collection in allowed) {\n            service.markDeleted(collection.id)\n        }\n        allowed.size\n    }\n}'
+const tolerant = 'var count = 0\nfor (item in items) {\n    try {\n        processItem(item)\n        count++\n    } catch (e: CancellationException) {\n        throw e\n    } catch (e: Exception) {\n        log.error("Failed to process item", e)\n    }\n}\nreturn count'
+const locked = 'val isSa = groupEvaluator.hasSaGroup(authentication)\nval collections = service.getByIds(collectionIds)\nval unlocked = if (isSa) collections else collections.filter { !it.locked }\nval allowed = permissionEvaluator.filterAllowed(authentication, unlocked, PermissionAction.EDIT)'
 </script>
 
 <template>
   <div class="doc-content article">
     <h1>Bulk Processing</h1>
     <p class="subtitle">
-      <code>MAX_BULK_OPERATION_SIZE</code>, batch permission evaluation, transactional vs. error-tolerant mutations, offset-pagination, and chunking.
+      Load and authorize groups of records, keep writes consistent, and bound background processing.
     </p>
-
     <h2 id="guard">
-      Input Size Guard
+      Bound mutation inputs
     </h2>
-    <p>All bulk mutations enforce a maximum input size of <strong>500</strong>:</p>
+    <p>
+      Content bulk mutations use <code>MAX_BULK_OPERATION_SIZE</code>, currently 500. Import it from
+      <code>bosca.content.configuration</code> and reject oversized inputs before processing them:
+    </p>
     <CodeBlock
       lang="kotlin"
-      :code="`require(collectionIds.size <= MAX_BULK_OPERATION_SIZE) {
-    &quot;Cannot process more than \$MAX_BULK_OPERATION_SIZE items at once&quot;
-}`"
+      :code="guard"
     />
-
     <h2 id="pattern">
-      The Bulk Mutation Pattern
+      Load and authorize in batches
     </h2>
+    <p>
+      This is the collection controller's <code>deleteAll</code> implementation. It loads records and
+      evaluates permissions in batches, then calls the service for each allowed record inside one
+      transaction. Missing or inaccessible records do not contribute to the returned count.
+    </p>
     <CodeBlock
       lang="kotlin"
-      :code="`@Field
-suspend fun deleteAll(authentication: AuthenticationContext, collectionIds: List<UUID>): Int {
-    require(collectionIds.size <= MAX_BULK_OPERATION_SIZE) { &quot;...&quot; }
-    return transaction {
-        val collections = service.getByIds(collectionIds)          // 1 query
-        val allowed = permissionEvaluator.filterAllowed(            // 1 query
-            authentication, collections, PermissionAction.DELETE
-        )
-        service.markDeleted(allowed.map { it.id })                 // 1 query
-        allowed.size
-    }
-}`"
+      :code="deleteAll"
     />
-    <Callout type="tip">
-      No N+1 at any layer — data loading, permission checking, and the write are all batched.
-    </Callout>
-
-    <h2 id="bulk-end-to-end">
-      Prefer Bulk Operations End-to-End
-    </h2>
-    <p>Push the list down through service and repository layers rather than looping at the controller level.</p>
-
-    <h3>Repository: bulk SQL</h3>
-    <CodeBlock
-      lang="kotlin"
-      :code="`@Query(&quot;update collections set deleted = true, modified = now() where id = any(:ids)&quot;)
-suspend fun markDeleted(ids: List<UUID>)`"
-    />
-
-    <h3>Service: bulk SQL + per-item side effects</h3>
-    <CodeBlock
-      lang="kotlin"
-      :code="`override suspend fun markDeleted(ids: List<UUID>) = transaction {
-    repository.markDeleted(ids)
-    for (id in ids) {
-        removeFromCache(id)
-        val collection = getById(id) ?: continue
-        CollectionDeleted(collection).dispatch()
-    }
-}`"
-    />
-
-    <Callout type="warn">
-      <strong>Avoid</strong> looping at the controller with single-item service calls — that produces N SQL statements instead of 1.
-    </Callout>
-
+    <p>
+      Batch loading does not mean the whole mutation issues one SQL statement. Service calls can
+      perform additional writes, history updates, cache invalidation, and event dispatch.
+      When adding a bulk service operation, preserve those effects.
+    </p>
     <h2 id="transactional-vs-tolerant">
-      Transactional vs. Error-Tolerant
+      Choose the failure behavior
     </h2>
-
-    <h3>Transactional (all-or-nothing)</h3>
-    <p>If any item fails, everything rolls back. Use when partial completion would be inconsistent.</p>
-    <p>Examples: <code>deleteAll</code>, <code>setPublicAll</code>, <code>setWorkflowStateAll</code>, <code>setReadyAll</code></p>
-
-    <h3>Error-tolerant (best-effort)</h3>
-    <p>Per-item try/catch. Failed items are logged and skipped. Returns success count.</p>
+    <p>
+      Collection <code>deleteAll</code> and <code>setReadyAll</code> wrap allowed records in a transaction.
+      A failure during that work rolls back the database writes. Other operations, such as metadata
+      media processing, handle failures per item and return a success count.
+    </p>
+    <p>
+      For a new best-effort loop, propagate cancellation before catching ordinary failures.
+      This illustrative excerpt assumes <code>items</code> and <code>processItem</code> are supplied by the caller:
+    </p>
     <CodeBlock
       lang="kotlin"
-      :code="`var count = 0
-for (item in allowed) {
-    try {
-        service.setReady(item, principal)
-        count++
-    } catch (e: Exception) {
-        log.error(&quot;Failed to set ready: \${item.id}&quot;, e)
-    }
-}
-return count`"
+      :code="tolerant"
     />
-    <p>Examples: <code>setMetadataReadyAll</code>, <code>processMediaAll</code>, <code>beginTransitions</code></p>
-
     <h2 id="locked">
-      Locked Entity Handling
+      Respect locked records
     </h2>
-    <p>Filter locked entities <strong>before</strong> the permission check. SA users skip the filter:</p>
+    <p>
+      Collection bulk edits filter locked records before evaluating edit permissions, unless
+      <code>GroupEvaluator.hasSaGroup()</code> grants the elevated path:
+    </p>
     <CodeBlock
       lang="kotlin"
-      :code="`val isSa = groupEvaluator.hasSaGroup(authentication)
-val collections = service.getByIds(collectionIds)
-val unlocked = if (isSa) collections else collections.filter { !it.locked }
-val allowed = permissionEvaluator.filterAllowed(authentication, unlocked, PermissionAction.EDIT)`"
+      :code="locked"
     />
-
     <h2 id="background">
-      Background Job Batch Processing
+      Process long-running work in chunks
     </h2>
-    <p>Background jobs use <strong>offset-pagination loops</strong>:</p>
-    <CodeBlock
-      lang="kotlin"
-      :code="`val lock = distributedLock.acquire(&quot;collection:index:all&quot;) ?: return
-try {
-    var offset = 0L
-    while (true) {
-        val batch = service.getAll(offset, batchSize)
-        if (batch.isEmpty()) break
-        for (item in batch) { processItem(item) }
-        requestCache().clearLocal()   // prevent unbounded memory growth
-        offset += batchSize
-    }
-} finally {
-    lock.release()
-}`"
-    />
+    <p>
+      Background indexing jobs page through records with an offset and limit. Advance the offset by
+      the page size and stop when no records remain. Use the job's established distributed-lock
+      pattern to avoid overlapping work.
+    </p>
+    <p>
+      Clear local request-cache data between completed pages when needed to bound memory.
+      <code>requestCache().clearLocal()</code> also discards pending puts and removes, so use it after
+      the page's database and cache work has finished. Follow the owning service's side-effect and
+      transaction conventions rather than replacing it with direct SQL.
+    </p>
   </div>
 </template>

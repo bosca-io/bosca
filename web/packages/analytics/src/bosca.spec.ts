@@ -46,6 +46,16 @@ function mockFetch(installationId = 'test-iid') {
   })
 }
 
+function expectedBrowserDevice(platform: string) {
+  return {
+    platform,
+    model: platform,
+    system_name: 'Web',
+    primary_locale: navigator.language,
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+  }
+}
+
 describe('BoscaSink', () => {
   let sink: BoscaSink
 
@@ -214,6 +224,21 @@ describe('BoscaSink', () => {
       expect(payload.context.device.installation_id).toBe('bml-installation')
     })
 
+    it('describes the device before asynchronous initialization', async () => {
+      Object.defineProperty(navigator, 'platform', { value: 'MacIntel', configurable: true })
+      const sendBeacon = vi.fn().mockReturnValue(true)
+      Object.defineProperty(navigator, 'sendBeacon', { value: sendBeacon, configurable: true })
+
+      try {
+        sink.addBeacon({ type: AnalyticEventType.interaction, element: { id: 'btn', type: 'button' } })
+
+        const payload = JSON.parse(await (sendBeacon.mock.calls[0][1] as Blob).text())
+        expect(payload.context.device).toMatchObject(expectedBrowserDevice('MacIntel'))
+      } finally {
+        delete (navigator as unknown as Record<string, unknown>).platform
+      }
+    })
+
     it('should serialize context and event to JSON blob via sendBeacon', () => {
       const sendBeacon = vi.fn().mockReturnValue(true)
       Object.defineProperty(navigator, 'sendBeacon', { value: sendBeacon, configurable: true })
@@ -333,6 +358,34 @@ describe('BoscaSink', () => {
       expect(document.cookie).toContain('bml_iid=test-iid')
       expect(sink.installationId).toBe('test-iid')
     })
+  })
+
+  describe('device context', () => {
+    it('delivers the full device for events queued before the first flush', async () => {
+      Object.defineProperty(navigator, 'platform', { value: 'MacIntel', configurable: true })
+
+      try {
+        // The session start and this impression are both queued before any flush has described the device.
+        await logImpression({ id: 'card', type: 'widget' })
+
+        const deliveries = () => vi.mocked(fetch).mock.calls
+          .filter(([url]) => String(url).endsWith('/events'))
+          .map(([, request]) => JSON.parse(request?.body as string))
+        await vi.waitFor(() => {
+          const types = deliveries().flatMap(payload => payload.events.map((e: { type: string }) => e.type))
+          expect(types).toEqual(expect.arrayContaining([AnalyticEventType.session, AnalyticEventType.impression]))
+        }, { timeout: 5_000 })
+
+        for (const payload of deliveries()) {
+          expect(payload.context.device).toMatchObject({
+            ...expectedBrowserDevice('MacIntel'),
+            installation_id: 'test-iid',
+          })
+        }
+      } finally {
+        delete (navigator as unknown as Record<string, unknown>).platform
+      }
+    }, 10_000)
   })
 
   describe('flush error handling', () => {

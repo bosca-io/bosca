@@ -476,15 +476,21 @@ class BmlActionEndpointTest {
         }
 
         private fun awaitReady() {
-            repeat(100) {
+            val client = HttpClient.newHttpClient()
+            val deadline = System.nanoTime() + java.time.Duration.ofSeconds(10).toNanos()
+            var lastFailure: Exception? = null
+            while (System.nanoTime() < deadline) {
                 try {
-                    java.net.Socket("localhost", port).close()
-                    return
-                } catch (_: Exception) {
-                    Thread.sleep(50)
+                    val request = HttpRequest.newBuilder(URI.create("http://localhost:$port/plain"))
+                        .timeout(java.time.Duration.ofSeconds(1)).GET().build()
+                    val response = client.send(request, HttpResponse.BodyHandlers.ofString())
+                    if (response.statusCode() == 200 && "/plain" in response.body()) return
+                } catch (failure: Exception) {
+                    lastFailure = failure
                 }
+                Thread.sleep(50)
             }
-            error("bml-server did not start on port $port")
+            throw IllegalStateException("bml-server did not serve HTTP on port $port", lastFailure)
         }
     }
 }

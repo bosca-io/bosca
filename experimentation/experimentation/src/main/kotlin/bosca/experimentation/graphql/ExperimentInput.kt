@@ -19,6 +19,9 @@ data class ExperimentActivationFilterInput(
     val pagePathPrefixes: List<String>? = null,
     val itemExtraKey: String? = null,
     val itemExtraValue: String? = null,
+    val elementIdContains: String? = null,
+    val applicationIds: List<String>? = null,
+    val recommendationCard: Boolean = false,
 ) {
     fun toModel(): ExperimentActivationFilter = ExperimentActivationFilter(
         eventType = eventType?.toEventType(),
@@ -28,6 +31,9 @@ data class ExperimentActivationFilterInput(
         pagePathPrefixes = pagePathPrefixes.orEmpty(),
         itemExtraKey = itemExtraKey,
         itemExtraValue = itemExtraValue,
+        elementIdContains = elementIdContains,
+        applicationIds = applicationIds.orEmpty(),
+        recommendationCard = recommendationCard,
     )
 }
 

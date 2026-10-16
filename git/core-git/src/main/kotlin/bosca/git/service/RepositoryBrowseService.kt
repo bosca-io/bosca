@@ -56,9 +56,14 @@ interface RepositoryBrowseService : Service {
     suspend fun listBranches(repositoryId: UUID): List<BranchInfo>
 
     /**
-     * Lists all tags in the repository, peeling annotated tags to their target.
+     * Lists tags newest first using Git tagger dates, or committer dates for lightweight tags.
+     * Undated tags sort last; equal dates sort by name. Filters names before applying offset and limit.
+     * A null limit returns all matching tags. Bounded requests retain only the offset/limit window while sorting.
      */
-    suspend fun listTags(repositoryId: UUID): List<TagInfo>
+    suspend fun listTags(repositoryId: UUID, limit: Int? = null, offset: Long = 0, query: String? = null): List<TagInfo>
+
+    /** Looks up a tag directly from the Git ref database, independent of tag-list pagination. */
+    suspend fun getTag(repositoryId: UUID, name: String): TagInfo?
 
     /**
      * Computes per-line blame information for a file at the given [ref].

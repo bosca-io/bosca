@@ -113,4 +113,23 @@ class PreferencesTest {
         assertFalse(">On</button>" in html, html)
         assertFalse(">Off</button>" in html, html)
     }
+    @Test
+    fun `unsubscribe validates only preferences and skips the notification catalog`() = runBlocking {
+        for ((value, invalid) in listOf("null" to true, "[]" to false)) {
+            var reads = 0
+            val gql = object : GraphQLClient {
+                override suspend fun execute(query: String, variables: JsonObject?, operationName: String?, token: String?): JsonElement {
+                    reads++
+                    assertEquals("TokenPreferenceLink", operationName)
+                    assertFalse("notificationTypes" in query)
+                    return Json.parseToJsonElement("""{"communications":{"tokenNotificationPreferences":$value}}""")
+                }
+            }
+            withRenderContext(RenderContext(gql = gql, query = mapOf("token" to "link-token"))) {
+                assertEquals(invalid, unsubscribe().invalid)
+            }
+            assertEquals(1, reads)
+        }
+    }
+
 }

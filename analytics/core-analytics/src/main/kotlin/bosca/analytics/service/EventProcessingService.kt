@@ -23,6 +23,13 @@ interface EventProcessingService : Service {
     suspend fun queue(context: EventPipelineContext, events: Events)
 
     /**
+     * Enqueues a batch and waits for processing and primary storage to succeed.
+     * Storage and request-cleanup failures propagate to the caller. Cancelling the wait
+     * does not retract an already queued batch; retries must retain the events' IDs.
+     */
+    suspend fun queueAndWait(context: EventPipelineContext, events: Events)
+
+    /**
      * Forces all currently buffered events to be written to the underlying event store.
      * This ensures that any events accepted via [queue] but not yet persisted are flushed immediately.
      */

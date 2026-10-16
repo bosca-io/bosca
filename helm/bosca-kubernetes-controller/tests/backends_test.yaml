@@ -1,0 +1,54 @@
+suite: bosca-kubernetes-controller distributed backends
+templates:
+  - templates/configmap-appconfig.yaml
+set:
+  global.domain: example.com
+release:
+  name: test
+  namespace: backend-test
+tests:
+  - it: defaults caching and distributed locks to NATS
+    asserts:
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: 'cache:\s*\n\s*type: nats'
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: 'distributedLock:\s*\n\s*type: nats'
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: 'redis:\s*\n\s*host: redis.backend-test.svc.cluster.local\s*\n\s*port: 6380'
+
+  - it: uses a custom Redis endpoint for both backends while retaining NATS messaging
+    set:
+      appConfig.cacheType: redis
+      appConfig.distributedLockType: redis
+      appConfig.redisHost: shared-redis
+      appConfig.redisPort: 6379
+    asserts:
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: 'cache:\s*\n\s*type: redis'
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: 'distributedLock:\s*\n\s*type: redis'
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: 'redis:\s*\n\s*host: shared-redis.backend-test.svc.cluster.local\s*\n\s*port: 6379'
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: 'jobQueue:\s*\n\s*factory: nats'
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: 'pubsub:\s*\n\s*type: nats'
+
+  - it: can select Redis caching while retaining NATS locks
+    set:
+      appConfig.cacheType: redis
+    asserts:
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: 'cache:\s*\n\s*type: redis'
+      - matchRegex:
+          path: data["application.yaml"]
+          pattern: 'distributedLock:\s*\n\s*type: nats'

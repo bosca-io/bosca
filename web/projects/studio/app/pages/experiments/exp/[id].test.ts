@@ -1,7 +1,9 @@
+import type { ActivationEventFilter } from '~/utils/goalActivation'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils'
 import { ref } from 'vue'
 import ExperimentDetail from './[id].vue'
+import GoalAnalysisCharts from '~/components/experiments/GoalAnalysisCharts.vue'
 
 const refresh = vi.fn()
 const query = vi.fn()
@@ -72,15 +74,7 @@ function fixture(
     ruleVariationKeys?: string[]
     goalEventType?: string | null
     goalMetricType?: string
-    activationFilter?: {
-      eventType: string | null
-      elementType: string | null
-      elementId: string | null
-      pagePath: string | null
-      pagePathPrefixes: string[]
-      itemExtraKey: string | null
-      itemExtraValue: string | null
-    } | null
+    activationFilter?: ActivationEventFilter | null
     secondGoal?: {
       eventType: string | null
       metricType?: string
@@ -217,6 +211,7 @@ describe('Experiment detail results', () => {
   it('preserves a content-page activation filter when saving it', async () => {
     experimentData.value = fixture(70, {
       activationFilter: {
+            elementIdContains: null, applicationIds: [], recommendationCard: false,
         eventType: 'Impression',
         elementType: 'page',
         elementId: null,
@@ -235,6 +230,7 @@ describe('Experiment detail results', () => {
       id: 'exp-1',
       experiment: expect.objectContaining({
         activationFilter: {
+            elementIdContains: null, applicationIds: [], recommendationCard: false,
           eventType: 'Impression',
           elementType: 'page',
           elementId: null,
@@ -249,6 +245,7 @@ describe('Experiment detail results', () => {
 
   it.each([null, 'Completion'])('preserves nullable activation selectors when saving %s events', async (eventType) => {
     const activationFilter = {
+      elementIdContains: null, applicationIds: [], recommendationCard: false,
       eventType,
       elementType: null,
       elementId: 'play',
@@ -270,6 +267,7 @@ describe('Experiment detail results', () => {
 
   it.each([null, '', ' recommendations '])('preserves exact activation extra values when saving %s', async (itemExtraValue) => {
     const activationFilter = {
+      elementIdContains: null, applicationIds: [], recommendationCard: false,
       eventType: 'Impression', elementType: 'page', elementId: null, pagePath: null,
       pagePathPrefixes: ['/articles/'], itemExtraKey: 'recommendation_source', itemExtraValue,
     }
@@ -289,6 +287,7 @@ describe('Experiment detail results', () => {
 
   it('lets activation extras switch between key presence and an exact empty string', async () => {
     const activationFilter = {
+      elementIdContains: null, applicationIds: [], recommendationCard: false,
       eventType: 'Impression', elementType: 'page', elementId: null, pagePath: null,
       pagePathPrefixes: ['/articles/'], itemExtraKey: 'recommendation_source', itemExtraValue: null,
     }
@@ -303,7 +302,8 @@ describe('Experiment detail results', () => {
       await flushPromises()
       expect(mutation).toHaveBeenLastCalledWith(expect.anything(), expect.objectContaining({
         experiment: expect.objectContaining({
-          activationFilter: { ...activationFilter, itemExtraValue: enabled ? '' : null },
+          activationFilter: {
+            ...activationFilter, itemExtraValue: enabled ? '' : null },
         }),
       }))
     }
@@ -311,6 +311,7 @@ describe('Experiment detail results', () => {
 
   it('keeps unsaved activation changes out of unrelated saves', async () => {
     const activationFilter = {
+      elementIdContains: null, applicationIds: [], recommendationCard: false,
       eventType: 'Completion', elementType: null, elementId: 'play', pagePath: null,
       pagePathPrefixes: [], itemExtraKey: null, itemExtraValue: null,
     }
@@ -522,6 +523,81 @@ describe('Experiment detail results', () => {
     expect(wrapper.text()).toContain('Current report summary')
     expect(wrapper.text()).toContain('Latest verdict')
   })
+
+  it.each([
+    ['control', 'treatment', 2, 'var(--fg-3)'],
+    ['treatment', 'control', -2, 'var(--fg-3)'],
+    ['control', 'treatment', -2, '#34d99a'],
+    ['treatment', 'control', 2, '#34d99a'],
+  ])('colors raw lift only when its direction agrees with %s versus %s', async (left, right, difference, color) => {
+    experimentData.value = fixture(80, {
+      reports: [{
+        id: 'report-adjusted', summary: 'CUPED comparison', recommendation: 'DO_NOT_SHIP', confidence: .99,
+        details: {
+          verdict: 'DO_NOT_SHIP', isCurrent: true,
+          resultUpdatedAt: { 'goal-1:control': '2026-08-28T00:00:00Z', 'goal-1:treatment': '2026-08-28T00:00:00Z' },
+          plannedComparisons: [{ goalId: 'goal-1', leftVariationKey: left, rightVariationKey: right,
+            difference, conclusion: 'CONCLUSIVE' }],
+        },
+        aiInsights: null, created: '2026-08-28T01:00:00Z',
+      }],
+    })
+    const wrapper = mountPage()
+    await flushPromises()
+    const lift = wrapper.findAll('.results-data-row span[style]').find(span => span.text() === '+20.0%')
+    expect(lift?.attributes('style')).toContain(`color: ${color}`)
+  })
+
+  it('hides comparisons and neutralizes lift after reaggregation until a matching analysis arrives', async () => {
+    const comparison = { goalId: 'goal-1', leftVariationKey: 'treatment', rightVariationKey: 'control',
+      difference: 2, conclusion: 'CONCLUSIVE' }
+    const report: ReportFixture = {
+      id: 'report-1', summary: 'Winning result', recommendation: 'SHIP', confidence: .99,
+      details: { verdict: 'SHIP', isCurrent: true, plannedComparisons: [comparison],
+        resultUpdatedAt: { 'goal-1:control': '2026-08-28T00:00:00Z', 'goal-1:treatment': '2026-08-28T00:00:00Z' } },
+      aiInsights: null, created: '2026-08-28T01:00:00Z',
+    }
+    const data = fixture(80, { reports: [report] })
+    experimentData.value = data
+    const wrapper = mountPage()
+    await flushPromises()
+    const lift = () => wrapper.findAll('.results-data-row span[style]').find(span => span.text() === '+20.0%')
+    expect(wrapper.findComponent(GoalAnalysisCharts).props('comparisons')).toEqual([comparison])
+    expect(lift()?.attributes('style')).toContain('color: #34d99a')
+
+    // A new snapshot can arrive before the previous report is persisted (for example during AI insights).
+    const updatedAt = '2026-08-28T00:30:00.000001Z'
+    data.experiments.experiment.results[1]!.updatedAt = updatedAt
+    experimentData.value = structuredClone(data)
+    await flushPromises()
+    expect(wrapper.findComponent(GoalAnalysisCharts).props('comparisons')).toEqual([])
+    expect(lift()?.attributes('style')).toContain('color: var(--fg-3)')
+    expect(wrapper.text()).toContain('Run analysis to update comparisons for these results.')
+
+    report.details.resultUpdatedAt = { 'goal-1:control': '2026-08-28T00:00:00Z', 'goal-1:treatment': updatedAt }
+    experimentData.value = structuredClone(data)
+    await flushPromises()
+    expect(wrapper.findComponent(GoalAnalysisCharts).props('comparisons')).toEqual([comparison])
+    expect(lift()?.attributes('style')).toContain('color: #34d99a')
+    expect(wrapper.text()).not.toContain('Run analysis to update comparisons for these results.')
+  })
+
+  it.each([undefined, {}, { 'goal-1:control': '2026-08-28T00:00:00Z' }])(
+    'keeps comparisons without a complete matching result snapshot neutral (%j)', async (snapshot) => {
+      experimentData.value = fixture(80, { reports: [{
+        id: 'report-1', summary: 'Earlier report', recommendation: 'SHIP', confidence: .99,
+        details: { verdict: 'SHIP', isCurrent: true, resultUpdatedAt: snapshot,
+          plannedComparisons: [{ goalId: 'goal-1', leftVariationKey: 'treatment', rightVariationKey: 'control',
+            difference: 2, conclusion: 'CONCLUSIVE' }] },
+        aiInsights: null, created: '2026-08-28T01:00:00Z',
+      }] })
+      const wrapper = mountPage()
+      await flushPromises()
+      expect(wrapper.findComponent(GoalAnalysisCharts).props('comparisons')).toEqual([])
+      const lift = wrapper.findAll('.results-data-row span[style]').find(span => span.text() === '+20.0%')
+      expect(lift?.attributes('style')).toContain('color: var(--fg-3)')
+    },
+  )
 
   it('keeps the report that caused a pause presented as current', async () => {
     experimentData.value = fixture(70, {

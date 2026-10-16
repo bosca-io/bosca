@@ -1,0 +1,72 @@
+query GitUiSearchContent($id: UUID!, $query: String!, $ref: String!) {
+  git {
+    searchContent(repositoryId: $id, query: $query, ref: $ref, limit: 100) {
+      filePath
+      lineNumber
+      snippet
+    }
+  }
+}
+query GitUiSearchPaths($id: UUID!, $query: String!, $ref: String!) {
+  git {
+    searchPaths(repositoryId: $id, query: $query, ref: $ref) {
+      name
+      path
+      type
+      sha
+      size
+    }
+  }
+}
+query GitUiCompare($id: UUID!, $base: String!, $head: String!) {
+  git {
+    compare(repositoryId: $id, baseRef: $base, headRef: $head) {
+      baseRef
+      headRef
+      filesChanged
+      insertions
+      deletions
+      commits {
+        sha
+        message
+        authorName
+        authorEmail
+        authorDate
+        parentShas
+      }
+      files {
+        oldPath
+        newPath
+        changeType
+        newLineCount
+        hunks {
+          totalLineCount
+          oldStart
+          oldCount
+          newStart
+          newCount
+          lines {
+            content
+            type
+            oldLineNumber
+            newLineNumber
+          }
+        }
+      }
+    }
+  }
+}
+query GitUiStatuses($id: UUID!, $sha: String!) {
+  git {
+    commitStatuses(repositoryId: $id, commitSha: $sha) {
+      id
+      context
+      state
+      description
+      targetUrl
+      created
+      commitSha
+      repositoryId
+    }
+  }
+}

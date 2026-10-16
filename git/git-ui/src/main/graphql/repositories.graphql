@@ -1,0 +1,304 @@
+query GitUiRepositories($includeArchived: Boolean!, $owner: UUID) {
+  git {
+    repositories(includeArchived: $includeArchived, ownerId: $owner) {
+      id
+      name
+      slug
+      description
+      ownerId
+      contentType
+      diskSizeBytes
+      updated
+      defaultBranch
+      archived
+      deleted
+      visibility
+      canManage
+      canExecute
+    }
+  }
+}
+
+query GitUiRepository($id: UUID!) {
+  git {
+    repositoryById(id: $id) {
+      configuration { deleteBranchOnMerge }
+      id
+      name
+      slug
+      description
+      ownerId
+      contentType
+      diskSizeBytes
+      updated
+      defaultBranch
+      archived
+      deleted
+      visibility
+      cloneUrl
+      canEdit
+      canManage
+      canExecute
+    }
+  }
+}
+
+query GitUiBranches($id: UUID!) {
+  git {
+    branches(repositoryId: $id) {
+      name
+      sha
+    }
+  }
+}
+
+query GitUiTree($id: UUID!, $ref: String!, $path: String!) {
+  git {
+    tree(repositoryId: $id, ref: $ref, path: $path) {
+      name
+      path
+      type
+      sha
+      size
+    }
+  }
+}
+
+query GitUiBlob($id: UUID!, $ref: String!, $path: String!) {
+  git {
+    blob(repositoryId: $id, ref: $ref, path: $path) {
+      content
+      size
+      sha
+      isBinary
+    }
+  }
+}
+
+query GitUiTags($id: UUID!, $offset: Long!, $limit: Int!, $query: String) {
+  git {
+    tags(repositoryId: $id, offset: $offset, limit: $limit, query: $query) {
+      name
+      sha
+      targetSha
+      isAnnotated
+      message
+    }
+  }
+}
+query GitUiStats($id: UUID!) {
+  git {
+    stats(repositoryId: $id) {
+      commitCount
+      branchCount
+      tagCount
+      contributorCount
+      diskSizeBytes
+    }
+  }
+}
+query GitUiCommits($id: UUID!, $ref: String!, $path: String, $offset: Long!) {
+  git {
+    commits(
+      repositoryId: $id
+      ref: $ref
+      path: $path
+      offset: $offset
+      limit: 25
+    ) {
+      sha
+      message
+      authorName
+      authorEmail
+      authorDate
+      parentShas
+    }
+  }
+}
+query GitUiCommit($id: UUID!, $sha: String!) {
+  git {
+    commit(repositoryId: $id, sha: $sha) {
+      sha
+      message
+    }
+  }
+}
+query GitUiProfiles {
+  profiles {
+    current {
+      id
+      name
+      slug
+      isPrimary
+      attributes {
+        typeId
+        attributes
+      }
+    }
+  }
+}
+query GitUiProfile($id: UUID!) {
+  profiles {
+    profile(id: $id) {
+      id
+      name
+      slug
+    }
+  }
+}
+query GitUiOwners($query: String!) {
+  search {
+    search(
+      query: {
+        query: $query
+        filter: ["_type = \"profile\""]
+        storageSystemName: "Admin Search Index"
+        limit: 20
+        offset: 0
+      }
+    ) {
+      documents {
+        profile {
+          id
+          name
+          slug
+        }
+      }
+    }
+  }
+}
+mutation GitUiCreate($input: CreateGitRepositoryInput!) {
+  git {
+    createRepository(input: $input) {
+      id
+    }
+  }
+}
+mutation GitUiImport(
+  $url: String!
+  $owner: UUID!
+  $slug: String!
+  $name: String!
+) {
+  git {
+    importRepository(
+      cloneUrl: $url
+      ownerId: $owner
+      slug: $slug
+      name: $name
+    ) {
+      id
+    }
+  }
+}
+mutation GitUiArchive($id: UUID!) {
+  git {
+    archiveRepository(id: $id) {
+      id
+      archived
+    }
+  }
+}
+mutation GitUiRestore($id: UUID!) {
+  git {
+    restoreRepository(id: $id) {
+      id
+      archived
+      deleted
+    }
+  }
+}
+mutation GitUiDelete($id: UUID!) {
+  git {
+    deleteRepository(id: $id) {
+      id
+      deleted
+    }
+  }
+}
+mutation GitUiUpdate($id: UUID!, $input: UpdateGitRepositoryInput!) {
+  git {
+    updateRepository(id: $id, input: $input) {
+      id
+    }
+  }
+}
+mutation GitUiRenameRepository($id: UUID!, $slug: String!) {
+  git {
+    renameRepository(id: $id, newSlug: $slug) {
+      id
+      cloneUrl
+    }
+  }
+}
+mutation GitUiCommitFile($input: CommitFileInput!) {
+  git {
+    commitFile(input: $input) {
+      commitSha
+      branch
+      path
+    }
+  }
+}
+mutation GitUiDeleteFile(
+  $id: UUID!
+  $branch: String!
+  $path: String!
+  $name: String!
+  $email: String!
+) {
+  git {
+    deleteFile(
+      repositoryId: $id
+      branch: $branch
+      path: $path
+      authorName: $name
+      authorEmail: $email
+    ) {
+      commitSha
+    }
+  }
+}
+mutation GitUiCreateBranch($id: UUID!, $name: String!, $source: String!) {
+  git {
+    createBranch(repositoryId: $id, branchName: $name, sourceRef: $source) {
+      name
+      sha
+    }
+  }
+}
+mutation GitUiDeleteBranch($id: UUID!, $name: String!) {
+  git {
+    deleteBranch(repositoryId: $id, branchName: $name)
+  }
+}
+mutation GitUiDeleteTag($id: UUID!, $name: String!) {
+  git {
+    deleteTag(repositoryId: $id, tag: $name)
+  }
+}
+
+mutation GitUiCreateTag($id: UUID!, $name: String!, $source: String!, $message: String!, $taggerName: String!, $taggerEmail: String!) {
+  git {
+    createTag(repositoryId: $id, tag: $name, targetRef: $source, message: $message, taggerName: $taggerName, taggerEmail: $taggerEmail) {
+      name
+      sha
+      targetSha
+    }
+  }
+}
+
+query GitUiRefs($id: UUID!) {
+  git {
+    branches(repositoryId: $id) { name sha }
+    tags(repositoryId: $id, limit: 25) { name sha targetSha isAnnotated message }
+  }
+}
+
+query GitUiOwnerProfiles {
+  profiles { current { id name slug isPrimary } }
+}
+
+query GitUiTag($id: UUID!, $name: String!) {
+  git { tag(repositoryId: $id, name: $name) { name sha targetSha isAnnotated message } }
+}

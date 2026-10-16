@@ -1,0 +1,37 @@
+<component tag="git-explore-picker">
+  <prop name="page" type="bosca.git.ui.ExplorePage" required />
+  <prop name="repository" type="Boolean" default="true" />
+  <form method="get" class="explore-filters">
+    <git-owner-picker compact :id="page.list.owner.id" :label="page.list.owner.label" />
+    <if repository>
+      <div class="repository-filter">
+        <ui-select searchable name="repo" label="Repository" size="sm">
+          <for option in page.list.repositories>
+            <option :value="option.id" :selected="option.id == page.id">{ option.name }</option>
+          </for>
+        </ui-select>
+      </div>
+    </if>
+  </form>
+  <style scoped>
+    /* Studio header filters: compact selects that apply immediately. */
+    .explore-filters {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 0;
+    }
+    .repository-filter {
+      width: auto;
+      min-width: 120px;
+      max-width: 240px;
+    }
+  </style>
+  <script client scoped>
+    const submit = () => ctx.root.closest<HTMLFormElement>("form")?.requestSubmit();
+    ctx.on(ctx.root, "ownerselected", submit);
+    ctx.on<Event>(ctx.root, "change", (event) => {
+      if (event.target instanceof HTMLSelectElement && event.target.name === "repo") submit();
+    });
+  </script>
+</component>

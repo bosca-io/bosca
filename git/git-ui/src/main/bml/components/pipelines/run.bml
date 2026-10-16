@@ -1,0 +1,462 @@
+<component tag="git-pipeline-run">
+  <prop name="initial" type="bosca.git.ui.PipelineRunModel" required />
+  <script server provides="model">
+    bosca.git.ui.PipelineRunModel(
+        initial.run,
+        initial.canExecute,
+        initial.canEdit,
+        initial.canManage,
+        repositoryName = initial.repositoryName,
+        pipelineName = initial.pipelineName,
+        expandedStepId = initial.expandedStepId,
+        autoExpandedFailure = initial.autoExpandedFailure,
+    )
+  </script>
+  <island name="git-pipeline-run" :key="initial.run.id">
+    <section class="run-page" :data-next-href="model.nextHref" :data-run-active="model.active">
+      <ui-page-heading
+        :title="model.title"
+        :subtitle='model.run.status.name + " · " + bosca.git.ui.pipelineDuration(model.run.durationSeconds)'
+        :trail="model.trail"
+        :crumb='"Run #" + model.run.number'
+      >
+        <div
+          class="toolbar run-controls"
+          :data-bml-preserve='"run-actions-" + model.run.status.name + model.rerunnableJobCount'
+        >
+          <if model.active && model.canEdit>
+            <ui-confirm-dialog
+              :triggerIconOnly="false"
+              title="Cancel pipeline run?"
+              description="Running jobs will be stopped and pending jobs cancelled."
+              triggerLabel="Cancel"
+              icon="close"
+              :forceOpen='model.failed && model.selectedAction == "cancel"'
+            >
+              <form class="modal-form" @submit='model.action("cancel", "", "", true, ctx)'>
+                <footer class="modal-footer">
+                  <ui-button ref="cancel">Keep running</ui-button>
+                  <ui-button type="submit" class="danger">Cancel run</ui-button>
+                </footer>
+              </form>
+            </ui-confirm-dialog>
+          </if>
+          <if model.canExecute>
+            <ui-confirm-dialog
+              :triggerIconOnly="false"
+              title="Rerun pipeline?"
+              description="Start a new pipeline run using this run's commit."
+              triggerLabel="Rerun"
+              icon="refresh"
+              :forceOpen='model.failed && model.selectedAction == "rerun"'
+            >
+              <form class="modal-form" @submit='model.action("rerun", "", "", true, ctx)'>
+                <footer class="modal-footer">
+                  <ui-button ref="cancel">Cancel</ui-button>
+                  <ui-button type="submit" primary>Rerun pipeline</ui-button>
+                </footer>
+              </form>
+            </ui-confirm-dialog>
+            <if model.hasMultipleRerunnableJobs>
+              <ui-confirm-dialog
+                :triggerIconOnly="false"
+                title="Rerun failed jobs?"
+                description="Retry the failed or cancelled jobs in this run."
+                triggerLabel="Rerun failed jobs"
+                icon="refresh"
+                :forceOpen='model.failed && model.selectedAction == "failed"'
+              >
+                <form class="modal-form" @submit='model.action("failed", "", "", true, ctx)'>
+                  <footer class="modal-footer">
+                    <ui-button ref="cancel">Cancel</ui-button>
+                    <ui-button type="submit" primary>Rerun failed jobs</ui-button>
+                  </footer>
+                </form>
+              </ui-confirm-dialog>
+            </if>
+          </if>
+          <if !model.active && model.canManage>
+            <ui-confirm-dialog
+              :triggerIconOnly="false"
+              title="Delete pipeline run?"
+              description="This permanently removes the run, its logs and artifacts."
+              triggerLabel="Delete"
+              :forceOpen='model.failed && model.selectedAction == "delete"'
+            >
+              <form class="modal-form" @submit='model.action("delete", "", "", true, ctx)'>
+                <footer class="modal-footer">
+                  <ui-button ref="cancel">Cancel</ui-button>
+                  <ui-button type="submit" class="danger">Delete run</ui-button>
+                </footer>
+              </form>
+            </ui-confirm-dialog>
+          </if>
+          <ui-button size="sm" icon="pulse" @click="model.refresh(ctx)">Refresh</ui-button>
+        </div>
+      </ui-page-heading>
+      <div class="settings-stack">
+        <if model.message.isNotBlank()>
+          <ui-alert :tone='if (model.failed) "error" else "success"'>{ model.message }</ui-alert>
+        </if>
+        <span class="poll-status" data-bml-ref="pollError" role="status" />
+        <dl class="summary-row" aria-label="Run summary">
+          <div class="summary-card">
+            <dt>Status</dt>
+            <dd class="run-status" :data-status="model.run.status.name">
+              <git-run-indicator :status="model.run.status.name" compact />
+              { model.run.status.name }
+            </dd>
+          </div>
+          <div class="summary-card">
+            <dt>Duration</dt>
+            <dd><code>{ bosca.git.ui.pipelineDuration(model.run.durationSeconds) }</code></dd>
+          </div>
+          <div class="summary-card">
+            <dt>Trigger</dt>
+            <dd><ui-icon name="branch" :size="12" />{ model.run.triggerType.name.lowercase().split('_').joinToString(" ") { it.replaceFirstChar(Char::uppercase) } }</dd>
+          </div>
+          <div class="summary-card">
+            <dt>Ref</dt>
+            <dd><code>{ model.run.ref }</code></dd>
+          </div>
+          <div class="summary-card">
+            <dt>Commit</dt>
+            <dd class="commit-sha"><code :title="model.run.commitSha">{ model.run.commitSha.take(12) }</code></dd>
+          </div>
+        </dl>
+        <div class="job-list" aria-label="Jobs">
+          <if model.run.jobs.isEmpty()>
+            <ui-card :padded="false">
+              <ui-empty-state icon="workflow" title="No jobs" message="This run contains no jobs." />
+            </ui-card>
+          </if>
+          <for job in model.run.jobs>
+            <git-pipeline-job :job="job" :model="model">
+              <div class="step-list">
+                <for step in job.steps.sortedBy { it.ordinal }>
+                  <section class="step-item" :data-step-status="step.status.name">
+                    <button
+                      type="button"
+                      class="step-row"
+                      :data-step="step.id"
+                      :aria-expanded='(model.expandedStepId == step.id).toString()'
+                      :aria-controls='"step-logs-" + step.id'
+                      @click="model.toggleStepLogs(step.id)"
+                    >
+                      <span class="step-chevron"><ui-icon name="chevron" :size="12" /></span>
+                      <git-run-indicator :status="step.status.name" compact />
+                      <span class="step-name">{ step.name }</span>
+                      <if step.exitCode != null>
+                        <code class="step-exit" :data-failed="step.exitCode != 0">exit { step.exitCode }</code>
+                      </if>
+                      <code class="step-duration">{ bosca.git.ui.pipelineElapsed(step.started, step.finished) }</code>
+                    </button>
+                    <if step.errorMessage != null>
+                      <div class="step-error">
+                        <div class="step-error-title"><ui-icon name="close" :size="12" />Failure</div>
+                        <pre>{ step.errorMessage }</pre>
+                      </div>
+                    </if>
+                    <div :id='"step-logs-" + step.id' :hidden="model.expandedStepId != step.id">
+                      <if model.expandedStepId == step.id>
+                        <div :data-bml-preserve='"logs-" + step.id'>
+                          <git-pipeline-logs :step="step.id" :repository="model.run.repositoryId" :loadHistory="model.retainedLogStepId != step.id" />
+                        </div>
+                      </if>
+                    </div>
+                  </section>
+                </for>
+              </div>
+            </git-pipeline-job>
+          </for>
+        </div>
+        <if model.run.artifacts.isNotEmpty()>
+          <ui-card :padded="false">
+            <ui-section-heading title="Artifacts" />
+            <div class="artifact-list">
+              <for artifact in model.run.artifacts>
+                <a
+                  class="artifact-row"
+                  download
+                  :href='"/ci/artifacts/" + bosca.git.ui.encode(model.run.repositoryId) + "/" + bosca.git.ui.encode(model.run.id) + "/" + bosca.git.ui.encode(artifact.name)'
+                >
+                  <ui-icon name="boxes" :size="14" :strokeWidth="2.0" />
+                  <code class="artifact-name">{ artifact.name }</code>
+                  <code class="artifact-size">{ bosca.git.ui.formatSize(artifact.sizeBytes) }</code>
+                  <ui-time :value="artifact.created" />
+                  <ui-icon name="download" :size="14" />
+                </a>
+              </for>
+            </div>
+          </ui-card>
+        </if>
+        <ui-card :padded="false">
+          <ui-section-heading title="Details" />
+          <dl class="detail-grid">
+            <div><dt>Run ID</dt><dd><code>{ model.run.id }</code></dd></div>
+            <div><dt>Pipeline ID</dt><dd><code>{ model.run.pipelineId }</code></dd></div>
+            <div><dt>Repository ID</dt><dd><code>{ model.run.repositoryId }</code></dd></div>
+            <if model.run.concurrencyGroup != null>
+              <div><dt>Concurrency Group</dt><dd><code>{ model.run.concurrencyGroup }</code></dd></div>
+            </if>
+            <div><dt>Created</dt><dd><ui-time :value="model.run.created" /></dd></div>
+            <div><dt>Started</dt><dd><if model.run.started != null><ui-time :value="model.run.started.orEmpty()" /><else>—</if></dd></div>
+            <div><dt>Finished</dt><dd><if model.run.finished != null><ui-time :value="model.run.finished.orEmpty()" /><else>—</if></dd></div>
+          </dl>
+        </ui-card>
+      </div>
+    </section>
+  </island>
+  <style scoped>
+    .run-page {
+      width: 100%;
+      min-width: 0;
+    }
+    .poll-status:empty {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+    }
+    .run-controls {
+      padding: 0;
+      gap: 8px;
+    }
+    .summary-row {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin: 0;
+    }
+    .summary-card {
+      flex: 1;
+      min-width: 130px;
+      background: var(--bg-1);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 14px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    dt {
+      font-size: 11px;
+      color: var(--fg-3);
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      font-weight: 600;
+    }
+    dd {
+      margin: 0;
+      font-size: 13px;
+      color: var(--fg-0);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      overflow-wrap: anywhere;
+    }
+    .commit-sha {
+      color: var(--accent);
+    }
+    .run-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 10px;
+      border-radius: 8px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: .05em;
+      color: var(--fg-4);
+      background: color-mix(in oklch, currentColor 16%, transparent);
+    }
+    .run-status[data-status="SUCCESS"] { color: var(--ok); }
+    .run-status[data-status="FAILURE"] { color: var(--err); }
+    .run-status[data-status="RUNNING"] { color: var(--brand-2); }
+    .run-status[data-status="QUEUED"] { color: var(--warn); }
+    .job-list {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      min-width: 0;
+    }
+    .step-item {
+      border-bottom: 1px solid var(--line);
+    }
+    .step-item:last-child {
+      border-bottom: 0;
+    }
+    .step-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 16px;
+      width: 100%;
+      border: 0;
+      background: transparent;
+      color: var(--fg-1);
+      text-align: left;
+      cursor: pointer;
+      font: inherit;
+    }
+    .step-row:hover {
+      background: var(--bg-2);
+    }
+    .step-row[aria-expanded="true"] {
+      background: color-mix(in srgb, var(--accent) 8%, transparent);
+    }
+    .step-row:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: -2px;
+    }
+    .step-chevron {
+      display: flex;
+      flex: none;
+      color: var(--fg-3);
+      transition: transform .15s ease;
+    }
+    .step-row[aria-expanded="true"] .step-chevron {
+      transform: rotate(180deg);
+    }
+    .step-name {
+      flex: 1;
+      min-width: 0;
+      font-size: 12.5px;
+      overflow-wrap: anywhere;
+    }
+    .step-exit {
+      font-size: 10.5px;
+      color: var(--fg-3);
+    }
+    .step-exit[data-failed] {
+      color: var(--err);
+    }
+    .step-duration {
+      font-size: 11px;
+      color: var(--fg-2);
+      min-width: 60px;
+      text-align: right;
+    }
+    .step-error {
+      margin: 0 16px 10px 38px;
+      border: 1px solid color-mix(in srgb, var(--err) 35%, transparent);
+      border-radius: 8px;
+      background: color-mix(in srgb, var(--err) 7%, transparent);
+      overflow: hidden;
+    }
+    .step-error-title {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      color: var(--err);
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      border-bottom: 1px solid color-mix(in srgb, var(--err) 20%, transparent);
+    }
+    .step-error pre {
+      margin: 0;
+      padding: 10px 12px;
+      font: 11.5px/1.6 var(--font-mono);
+      color: var(--fg-1);
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      max-height: 260px;
+      overflow: auto;
+    }
+    .artifact-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--line);
+      font-size: 12px;
+    }
+    .artifact-row:last-child {
+      border: 0;
+    }
+    .artifact-row:hover {
+      background: var(--bg-2);
+    }
+    .artifact-name {
+      flex: 1;
+      min-width: 0;
+      overflow-wrap: anywhere;
+      font-size: 13px;
+    }
+    .artifact-size {
+      font-size: 11px;
+      color: var(--fg-2);
+    }
+    .detail-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+      gap: 16px;
+      padding: 16px;
+      margin: 0;
+    }
+    .detail-grid > div {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .detail-grid dd {
+      color: var(--fg-1);
+      font-size: 12.5px;
+    }
+    @media (max-width: 600px) {
+      .summary-card {
+        min-width: 110px;
+      }
+      .artifact-row {
+        flex-wrap: wrap;
+      }
+      .step-row {
+        gap: 6px;
+        padding: 8px 10px;
+      }
+      .step-duration {
+        min-width: 40px;
+      }
+      .step-error {
+        margin-left: 10px;
+        margin-right: 10px;
+      }
+    }
+  </style>
+  <script client scoped>
+    let disposed = false;
+    let busy = false;
+    const tick = async () => {
+      if (
+        disposed || busy ||
+        ctx.root.querySelector('[data-bml-method][aria-busy="true"]') ||
+        !ctx.root.querySelector("[data-run-active]")
+      ) return;
+      busy = true;
+      try {
+        await ctx.dispatch("model", "refresh");
+      } catch (error) {
+        const status = ctx.ref<HTMLElement>("pollError");
+        if (status)
+          status.textContent =
+            error instanceof Error ? error.message : "Refresh failed.";
+      } finally {
+        busy = false;
+      }
+    };
+    const timer = setInterval(tick, 2000);
+    ctx.onUpdate(() => {
+      const next =
+        ctx.root.querySelector<HTMLElement>("[data-next-href]")?.dataset.nextHref;
+      if (next) location.assign(next);
+    });
+    ctx.onUnmount(() => {
+      disposed = true;
+      clearInterval(timer);
+    });
+  </script>
+</component>

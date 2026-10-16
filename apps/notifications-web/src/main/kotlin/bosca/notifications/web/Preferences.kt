@@ -4,6 +4,7 @@ import bosca.bml.graphql.execute
 import bosca.bml.render.client
 import bosca.bml.render.currentRenderContext
 import bosca.notifications.web.graphql.TokenPreferences
+import bosca.notifications.web.graphql.TokenPreferenceLink
 import kotlinx.serialization.Serializable
 
 /**
@@ -92,7 +93,7 @@ suspend fun preferences(): PreferencesPage {
 suspend fun unsubscribe(): UnsubscribePage {
     val token = currentRenderContext().query["token"].orEmpty()
     if (token.isBlank()) return UnsubscribePage(invalid = true)
-    val prefs = client().execute(TokenPreferences, TokenPreferences.Variables(token = token))
+    val prefs = client().execute(TokenPreferenceLink, TokenPreferenceLink.Variables(token = token))
         .communications.tokenNotificationPreferences
     return if (prefs == null) UnsubscribePage(invalid = true) else UnsubscribePage(token = token)
 }

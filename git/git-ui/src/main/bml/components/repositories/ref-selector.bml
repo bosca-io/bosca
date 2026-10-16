@@ -1,0 +1,48 @@
+<component tag="git-ref-selector">
+  <prop name="page" type="bosca.git.ui.RepositoryPage" required />
+  <form method="get" class="ref-toolbar">
+    <input type="hidden" name="tab" :value="page.tab" />
+    <input type="hidden" name="return" :value="page.listHref" />
+    <div class="ref-choice">
+      <git-ref-search :id="page.id">
+        <ui-select
+          size="sm"
+          name="ref"
+          label="Branch, tag or commit"
+          searchable
+          async
+          allowCustom
+          required
+        >
+          <if page.ref !in page.branches && page.tags.none { it.name == page.ref }>
+            <option :value="page.ref" selected>{ page.ref }</option>
+          </if>
+          <for branch in page.branches>
+            <option :value="branch" :selected="branch == page.ref">{ branch }</option>
+          </for>
+          <for tag in page.tags>
+            <option :value="tag.name" :selected="tag.name == page.ref">{ tag.name } (tag)</option>
+          </for>
+        </ui-select>
+      </git-ref-search>
+    </div>
+  </form>
+  <style scoped>
+    .ref-choice {
+      width: auto;
+      min-width: 76px;
+      max-width: min(100%, 220px);
+    }
+    .ref-toolbar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+  </style>
+  <script client scoped>
+    ctx.on<Event>(ctx.root, "change", (event) => {
+      if (event.target instanceof HTMLSelectElement)
+        ctx.root.closest<HTMLFormElement>("form")?.requestSubmit();
+    });
+  </script>
+</component>

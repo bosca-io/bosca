@@ -23,4 +23,10 @@ data class ExperimentActivationFilter(
     val itemExtraKey: String? = null,
     /** Exact, case-sensitive scalar value match. Null means key presence is sufficient. */
     val itemExtraValue: String? = null,
+    /** Literal substring of the stable analytics element identifier. */
+    val elementIdContains: String? = null,
+    /** Explicit application allowlist; empty inherits the enclosing activation scope. */
+    val applicationIds: List<String> = emptyList(),
+    /** Require recommendation-card content and the existing visibility qualification. */
+    val recommendationCard: Boolean = false,
 )

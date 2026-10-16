@@ -15,6 +15,7 @@ import bosca.content.metadata.model.DocumentCollaboration
 import bosca.content.metadata.model.DocumentTemplate
 import bosca.content.metadata.model.EmptyMetadata
 import bosca.content.metadata.model.Guide
+import bosca.content.metadata.model.GuideStep
 import bosca.content.metadata.model.GuideTemplate
 import bosca.content.metadata.model.Metadata
 import bosca.content.metadata.model.MetadataCacheKeyId
@@ -370,6 +371,20 @@ class MetadataController(
     @Field
     suspend fun guide(batch: Batch<MetadataCacheKeyId, Guide>) {
         guideService.addGuidesToBatch(batch)
+    }
+
+    @Field
+    suspend fun parentGuides(authentication: AuthenticationContext?, batch: Batch<MetadataCacheKeyId, List<Metadata>>) {
+        val steps = Batch<MetadataCacheKeyId, List<GuideStep>>(batch.keys)
+        guideService.addParentGuideStepsToBatch(steps)
+        val parentKeys = steps.getResults().filterNotNull().flatten().map { MetadataCacheKeyId(it) }.distinct()
+        val parents = Batch<MetadataCacheKeyId, Metadata>(parentKeys)
+        if (parentKeys.isNotEmpty()) metadataService.getByIdBatched(parents)
+        val allowed = metadataPermissionEvaluator.filterAllowed(authentication, parents.getResults().filterNotNull(), PermissionAction.VIEW)
+            .associateBy { MetadataCacheKeyId(it) }
+        for (key in batch.keys) {
+            batch.setData(key, steps.getData(key).orEmpty().mapNotNull { allowed[MetadataCacheKeyId(it)] }.distinctBy { it.id })
+        }
     }
 
     @Field

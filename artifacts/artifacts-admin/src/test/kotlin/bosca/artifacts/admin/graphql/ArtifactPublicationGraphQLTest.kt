@@ -46,6 +46,8 @@ class ArtifactPublicationGraphQLTest {
         listOf(ArtifactPublicationFile("tool.zip", "sha256:" + "a".repeat(64), 12, "application/zip")),
         attempts = 1, error = "HTTP 503", created = OffsetDateTime.now(), modified = OffsetDateTime.now()
     )
+    private val storedVersion = ArtifactVersion(publication.versionId, destination.repositoryId, "1.0.0", completedCommitSha = publication.commitSha)
+    private val storedBlob = ArtifactVersionBlob(publication.versionId, publication.files.single().digest, "file", "tool.zip", "application/zip")
     private val syncDestination = ArtifactSyncDestination(
         UUID.random(), UUID.random(), "ghcr", "acme/server", "acme",
         "ghcr-token", created = OffsetDateTime.now(), modified = OffsetDateTime.now()
@@ -101,6 +103,7 @@ class ArtifactPublicationGraphQLTest {
                     ArtifactPublicationDestinationControllerDispatcher(ArtifactPublicationDestinationController()),
                     ArtifactPublicationFileControllerDispatcher(ArtifactPublicationFileController()),
                     ArtifactVersionInfoControllerDispatcher(ArtifactVersionInfoController(artifacts, groups)),
+                    ArtifactVersionBlobInfoControllerDispatcher(ArtifactVersionBlobInfoController(mockk(), groups)),
                 ).associateBy { it.type.typeName }
             }
 
@@ -113,6 +116,10 @@ class ArtifactPublicationGraphQLTest {
         coEvery { publications.updateDestination(destination.id, 0, true, "rotated") } returns destination.copy(enabled = true, version = 1)
         coEvery { publications.destinations(destination.repositoryId) } returns listOf(destination)
         coEvery { publications.publications(publication.versionId, 100, 0) } returns listOf(publication)
+        coEvery { publications.publish(any(), destination.id, publication.versionId, publication.commitSha) } returns publication.id
+        coEvery { artifacts.getVersion(publication.versionId) } returns storedVersion
+        coEvery { artifacts.getVersionBlobs(publication.versionId) } returns listOf(storedBlob)
+        coEvery { artifacts.confirmVersionCompletion(publication.versionId, publication.commitSha, listOf(storedBlob), principal.id) } returns storedVersion
         coEvery { syncing.createDestination(any()) } returns syncDestination
         coEvery { syncing.updateDestination(syncDestination.id, 0, true, null, "rotated", null, null) } returns syncDestination.copy(enabled = true, version = 1)
         coEvery { syncing.updateDestination(syncDestination.id, 0, true, null, null, "renamed", "acme/renamed") } returns syncDestination.copy(key = "renamed", remoteRepository = "acme/renamed", enabled = true, version = 1)
@@ -127,7 +134,7 @@ class ArtifactPublicationGraphQLTest {
     fun cleanup() = ProviderRegistry.clear()
 
     private val destinationFields = "id repositoryId key githubRepositoryId owner githubRepository tagPrefix tokenSecretName enabled version created modified"
-    private val publicationFields = "id destinationId versionId tagName commitSha prerelease releaseId attempts published verified error created modified files { filename digest size mediaType }"
+    private val publicationFields = "id destinationId versionId tagName commitSha prerelease releaseId attempts published verified verifiedAttempt error created modified files { filename digest size mediaType }"
     private val syncDestinationFields = "id repositoryId key remoteRepository username tokenSecretName enabled version created modified"
     private val syncFields = "id destinationId versionId tagName manifestDigest attempts synced error created modified"
     private val operations: List<String>
@@ -136,6 +143,11 @@ class ArtifactPublicationGraphQLTest {
             repositoryId: "${destination.repositoryId}", key: "github", githubRepositoryId: 123, owner: "acme", githubRepository: "tool", tokenSecretName: "github-token"
         }) { $destinationFields } } }""",
             """mutation { artifactsAdmin { updatePublicationDestination(id: "${destination.id}", version: 0, enabled: true, tokenSecretName: "rotated") { $destinationFields } } }""",
+            """mutation { artifactsAdmin { publishRelease(destinationId: "${destination.id}", versionId: "${publication.versionId}", commitSha: "${publication.commitSha}") } }""",
+            """{ artifactsAdmin { version(id: "${publication.versionId}") { id completed finalized completedCommitSha blobs { digest role filename mediaType } } } }""",
+            """mutation { artifactsAdmin { completeVersion(versionId: "${publication.versionId}", commitSha: "${publication.commitSha}", expectedBlobs: [{
+                versionId: "${publication.versionId}", digest: "${storedBlob.digest}", role: "file", filename: "tool.zip", mediaType: "application/zip"
+            }]) { id completed finalized completedCommitSha } } }""",
             """{ artifactsAdmin { publicationDestinations(repositoryId: "${destination.repositoryId}") { $destinationFields }
             publications(versionId: "${publication.versionId}") { $publicationFields } } }""",
             """mutation { artifactsAdmin { createSyncDestination(input: {
@@ -162,6 +174,26 @@ class ArtifactPublicationGraphQLTest {
         coVerify(exactly = 1) { syncing.deleteDestination(syncDestination.id, 0) }
         coVerify(exactly = 1) { syncing.updateDestination(syncDestination.id, 0, true, null, null, "renamed", "acme/renamed") }
         coVerify(exactly = 1) { syncing.push(any(), syncDestination.id, "latest") }
+        coVerify(exactly = 1) { publications.publish(admin, destination.id, publication.versionId, publication.commitSha) }
+        coVerify(exactly = 1) { artifacts.confirmVersionCompletion(publication.versionId, publication.commitSha, listOf(storedBlob), principal.id) }
+    }
+
+    @Test
+    fun `publication exposes its last verified attempt independently of its current attempt`() = runBlocking {
+        for (verifiedAttempt in listOf(1, null)) {
+            coEvery { publications.publications(publication.versionId, 100, 0) } returns listOf(publication.copy(
+                attempts = 2, verified = OffsetDateTime.now(), verifiedAttempt = verifiedAttempt,
+            ))
+            val result = graph.execute(admin, GraphQLRequest(query = """{ artifactsAdmin {
+                publications(versionId: "${publication.versionId}") { attempts verified verifiedAttempt }
+            } }""")).jsonObject
+            assertFalse("errors" in result, result.toString())
+            val value = result.getValue("data").jsonObject.getValue("artifactsAdmin").jsonObject
+                .getValue("publications").jsonArray.single().jsonObject
+            assertEquals(2, value.getValue("attempts").jsonPrimitive.int)
+            assertNotEquals(JsonNull, value.getValue("verified"))
+            assertEquals(verifiedAttempt, value.getValue("verifiedAttempt").jsonPrimitive.intOrNull)
+        }
     }
 
     @Test
@@ -174,6 +206,9 @@ class ArtifactPublicationGraphQLTest {
         coVerify(exactly = 0) { publications.updateDestination(any(), any(), any(), any()) }
         coVerify(exactly = 0) { publications.destinations(any()) }
         coVerify(exactly = 0) { publications.publications(any(), any(), any()) }
+        coVerify(exactly = 0) { publications.publish(any(), any(), any(), any()) }
+        coVerify(exactly = 0) { artifacts.confirmVersionCompletion(any(), any(), any(), any()) }
+        coVerify(exactly = 0) { artifacts.getVersion(any()) }
         coVerify(exactly = 0) { syncing.createDestination(any()) }
         coVerify(exactly = 0) { syncing.updateDestination(any(), any(), any(), any(), any(), any(), any()) }
         coVerify(exactly = 0) { syncing.destinations(any()) }

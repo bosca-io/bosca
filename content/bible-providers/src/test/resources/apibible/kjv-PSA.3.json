@@ -1,0 +1,189 @@
+[
+ {
+  "name": "para",
+  "type": "tag",
+  "attrs": {
+   "style": "d"
+  },
+  "items": [
+   {
+    "text": "A Psalm of David, when he fled from Absalom his son.",
+    "type": "text"
+   }
+  ]
+ },
+ {
+  "name": "para",
+  "type": "tag",
+  "attrs": {
+   "style": "q1"
+  },
+  "items": [
+   {
+    "name": "verse",
+    "type": "tag",
+    "attrs": {
+     "number": "1",
+     "style": "v",
+     "sid": "PSA 3:1"
+    },
+    "items": [
+     {
+      "text": "1",
+      "type": "text"
+     }
+    ]
+   },
+   {
+    "name": "char",
+    "type": "tag",
+    "attrs": {
+     "style": "nd"
+    },
+    "items": [
+     {
+      "text": "LORD",
+      "type": "text",
+      "attrs": {
+       "verseId": "PSA.3.1",
+       "verseOrgIds": [
+        "PSA.3.2"
+       ]
+      }
+     }
+    ]
+   },
+   {
+    "text": ", how are they increased that trouble me! many ",
+    "type": "text",
+    "attrs": {
+     "verseId": "PSA.3.1",
+     "verseOrgIds": [
+      "PSA.3.2"
+     ]
+    }
+   },
+   {
+    "name": "char",
+    "type": "tag",
+    "attrs": {
+     "style": "add"
+    },
+    "items": [
+     {
+      "text": "are",
+      "type": "text",
+      "attrs": {
+       "verseId": "PSA.3.1",
+       "verseOrgIds": [
+        "PSA.3.2"
+       ]
+      }
+     }
+    ]
+   },
+   {
+    "text": " they that rise up against me.",
+    "type": "text",
+    "attrs": {
+     "verseId": "PSA.3.1",
+     "verseOrgIds": [
+      "PSA.3.2"
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "name": "para",
+  "type": "tag",
+  "attrs": {
+   "style": "q1"
+  },
+  "items": [
+   {
+    "name": "verse",
+    "type": "tag",
+    "attrs": {
+     "number": "2",
+     "style": "v",
+     "sid": "PSA 3:2"
+    },
+    "items": [
+     {
+      "text": "2",
+      "type": "text"
+     }
+    ]
+   },
+   {
+    "text": "Many ",
+    "type": "text",
+    "attrs": {
+     "verseId": "PSA.3.2",
+     "verseOrgIds": [
+      "PSA.3.3"
+     ]
+    }
+   },
+   {
+    "name": "char",
+    "type": "tag",
+    "attrs": {
+     "style": "add"
+    },
+    "items": [
+     {
+      "text": "there be",
+      "type": "text",
+      "attrs": {
+       "verseId": "PSA.3.2",
+       "verseOrgIds": [
+        "PSA.3.3"
+       ]
+      }
+     }
+    ]
+   },
+   {
+    "text": " which say of my soul, ",
+    "type": "text",
+    "attrs": {
+     "verseId": "PSA.3.2",
+     "verseOrgIds": [
+      "PSA.3.3"
+     ]
+    }
+   },
+   {
+    "name": "char",
+    "type": "tag",
+    "attrs": {
+     "style": "add"
+    },
+    "items": [
+     {
+      "text": "There is",
+      "type": "text",
+      "attrs": {
+       "verseId": "PSA.3.2",
+       "verseOrgIds": [
+        "PSA.3.3"
+       ]
+      }
+     }
+    ]
+   },
+   {
+    "text": " no help for him in God. Selah.",
+    "type": "text",
+    "attrs": {
+     "verseId": "PSA.3.2",
+     "verseOrgIds": [
+      "PSA.3.3"
+     ]
+    }
+   }
+  ]
+ }
+]

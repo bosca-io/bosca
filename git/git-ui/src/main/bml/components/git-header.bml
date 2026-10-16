@@ -1,0 +1,299 @@
+<component tag="git-header">
+  <prop name="signedIn" type="Boolean" default="true" />
+  <script server provides="path">
+    ctx.requestPath
+  </script>
+  <ui-app-header brand="Bosca" product="Git" href="/repositories">
+    <if signedIn>
+      <div class="git-subsystem">
+        <span class="subsystem-icon">
+          <ui-icon name="branch" />
+        </span>
+        <div class="subsystem-text">
+          <strong>Git</strong>
+          <p>Browse repositories, review pull requests, and search code</p>
+        </div>
+      </div>
+      <a class="nav-search" href="/search" title="Search (⌘K)" ref="search">
+        <span class="nav-search-icon"><ui-icon name="search" :size="14" /></span>
+        <span class="nav-search-placeholder">Search…</span>
+        <kbd class="nav-search-kbd">⌘K</kbd>
+      </a>
+      <nav class="git-navigation" aria-label="Git">
+        <div class="nav-group">
+          <span class="nav-label">Code</span>
+          <a href="/search" :aria-current='if (path == "/search") "page" else "false"'>
+            <span class="nav-icon"><ui-icon name="search" :size="15" /></span>
+            Search
+          </a>
+          <a
+            href="/repositories"
+            :aria-current='if (path.startsWith("/repositories")) "page" else "false"'
+          >
+            <span class="nav-icon"><ui-icon name="folder" :size="15" /></span>
+            Repositories
+          </a>
+          <a href="/pulls" :aria-current='if (path.startsWith("/pulls")) "page" else "false"'>
+            <span class="nav-icon"><ui-icon name="merge" :size="15" /></span>
+            Pull Requests
+          </a>
+          <a href="/pipelines" :aria-current='if (path.startsWith("/pipelines")) "page" else "false"'>
+            <span class="nav-icon"><ui-icon name="workflow" :size="15" /></span>
+            Pipelines
+          </a>
+        </div>
+        <div class="nav-group">
+          <span class="nav-label">Tools</span>
+          <a href="/compare" :aria-current='if (path == "/compare") "page" else "false"'>
+            <span class="nav-icon"><ui-icon name="compare" :size="15" /></span>
+            Compare
+          </a>
+          <a href="/statuses" :aria-current='if (path == "/statuses") "page" else "false"'>
+            <span class="nav-icon"><ui-icon name="check" :size="15" /></span>
+            Statuses
+          </a>
+        </div>
+        <details
+          class="nav-group nav-settings"
+          :open='path.startsWith("/ci-agents") || path.startsWith("/settings/")'
+        >
+          <summary class="nav-label">
+            Settings
+            <span class="nav-chevron"><ui-icon name="chevron" :size="12" /></span>
+          </summary>
+          <a
+            href="/ci-agents"
+            :aria-current='if (path.startsWith("/ci-agents")) "page" else "false"'
+          >
+            <span class="nav-icon"><ui-icon name="wand" :size="15" /></span>
+            CI Agents
+          </a>
+          <a
+            href="/settings/github"
+            :aria-current='if (path == "/settings/github") "page" else "false"'
+          >
+            <span class="nav-icon"><ui-icon name="users" :size="15" /></span>
+            GitHub User Mappings
+          </a>
+        </details>
+      </nav>
+      <div class="session-control">
+        <git-session-button />
+      </div>
+    </if>
+  </ui-app-header>
+  <style scoped>
+    .git-subsystem {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin: 0 6px;
+      padding: 12px 33px 12px 9px;
+      border-radius: 10px;
+    }
+    .subsystem-icon {
+      width: 32px;
+      height: 32px;
+      flex: 0 0 32px;
+      border-radius: 999px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--accent);
+      background: color-mix(in oklch, var(--accent) 18%, transparent);
+      border: 1px solid color-mix(in oklch, var(--accent) 35%, transparent);
+    }
+    .subsystem-text {
+      min-width: 0;
+    }
+    .git-subsystem strong {
+      display: block;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--fg-0);
+      letter-spacing: -0.005em;
+    }
+    .git-subsystem p {
+      margin: 0;
+      font-size: 11px;
+      color: var(--fg-3);
+    }
+
+    .nav-search {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 14px 12px;
+      padding: 7px 10px;
+      border-radius: 9px;
+      border: 1px solid color-mix(in oklch, var(--line) 60%, transparent);
+      background: color-mix(in oklch, var(--bg-2) 55%, transparent);
+      color: var(--fg-3);
+      font-size: 12.5px;
+      text-decoration: none;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .nav-search:hover {
+      background: color-mix(in oklch, var(--bg-3) 70%, transparent);
+      border-color: color-mix(in oklch, var(--line) 90%, transparent);
+      text-decoration: none;
+    }
+    .nav-search-icon {
+      display: inline-flex;
+    }
+    .nav-search-placeholder {
+      flex: 1;
+    }
+    .nav-search-kbd {
+      padding: 1px 5px;
+      border-radius: 4px;
+      border: 1px solid color-mix(in oklch, var(--line) 60%, transparent);
+      font-family: var(--font-mono);
+      font-size: 10px;
+    }
+    .git-navigation {
+      display: flex;
+      flex-direction: column;
+      padding: 10px 0;
+    }
+    /* Block flow lets adjacent item margins collapse, as Studio's nav buttons do. */
+    .nav-group {
+      display: block;
+      margin-bottom: 14px;
+    }
+    .nav-label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 16px 6px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--fg-3);
+    }
+    .git-navigation a {
+      position: relative;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      width: calc(100% - 24px);
+      margin: 1px 12px;
+      padding: 8px 12px;
+      border-radius: 9px;
+      color: var(--fg-2);
+      font-size: 13px;
+      text-decoration: none;
+      transition: background 0.15s;
+    }
+    .nav-icon {
+      display: inline-flex;
+      flex: none;
+      color: var(--fg-3);
+    }
+    .git-navigation a:hover {
+      background: var(--bg-3);
+    }
+    .git-navigation a[aria-current="page"] {
+      color: var(--fg-0);
+      background: color-mix(in oklch, var(--accent) 16%, transparent);
+      font-weight: 500;
+    }
+    .git-navigation a[aria-current="page"] .nav-icon {
+      color: var(--accent);
+    }
+    .git-navigation a[aria-current="page"]::before {
+      content: "";
+      position: absolute;
+      left: -12px;
+      top: 5px;
+      bottom: 5px;
+      width: 3px;
+      border-radius: 2px;
+      background: var(--accent);
+      box-shadow: 0 0 8px var(--accent);
+    }
+    .nav-settings summary {
+      cursor: pointer;
+      list-style: none;
+    }
+    .nav-settings summary::-webkit-details-marker {
+      display: none;
+    }
+    .nav-settings summary:hover {
+      color: var(--fg-1);
+    }
+    .nav-chevron {
+      display: inline-flex;
+      transform: rotate(-90deg);
+      transition: transform 0.15s;
+    }
+    .nav-settings[open] .nav-chevron {
+      transform: rotate(0deg);
+    }
+    .session-control {
+      margin-top: auto;
+      padding: 16px 12px 0;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .nav-chevron {
+        transition: none;
+      }
+    }
+    @media (max-width: 700px) {
+      .git-subsystem,
+      .nav-search {
+        display: none;
+      }
+      .git-navigation {
+        flex-direction: row;
+        order: 3;
+        width: 100%;
+        overflow-x: auto;
+        padding: 0 0 8px;
+        gap: 4px;
+      }
+      .nav-group {
+        display: flex;
+        flex-direction: row;
+        flex: none;
+        gap: 4px;
+        margin: 0;
+      }
+      .git-navigation a {
+        width: auto;
+        margin: 0;
+        white-space: nowrap;
+        flex-shrink: 0;
+        padding: 7px 10px;
+      }
+      .git-navigation a[aria-current="page"]::before {
+        display: none;
+      }
+      .nav-settings[open] {
+        position: relative;
+      }
+      .nav-label {
+        display: none;
+      }
+      .nav-settings summary.nav-label {
+        display: flex;
+        padding: 7px 10px;
+        white-space: nowrap;
+      }
+      .session-control {
+        margin: 0 0 0 auto;
+        padding: 0;
+      }
+    }
+  </style>
+  <script client scoped>
+    const search = ctx.ref<HTMLAnchorElement>("search");
+    ctx.on<KeyboardEvent>(window, "keydown", (event) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k" && search) {
+        event.preventDefault();
+        location.assign(search.href);
+      }
+    });
+  </script>
+</component>

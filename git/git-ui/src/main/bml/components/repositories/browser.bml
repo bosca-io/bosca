@@ -1,0 +1,115 @@
+<component tag="git-repository-browser">
+  <prop name="page" type="bosca.git.ui.RepositoryPage" required />
+  <ui-page :data-repository-page="page.id">
+    <git-repository-heading :page="page" />
+    <ui-tabs label="Repository section" :items="page.tabs" header />
+    <if page.tab == "commits">
+      <git-repository-commits :page="page" />
+    <else-if page.tab == "branches" || page.tab == "tags">
+      <git-repository-refs :page="page" />
+    <else-if page.pulls != null>
+      <git-pull-list :page="page.pulls" />
+    <else-if page.pipelines != null>
+      <git-pipeline-catalog :page="page.pipelines" />
+      <git-pipeline-trigger :page="page.pipelines" />
+    <else-if page.statuses != null>
+      <git-statuses-results :page="page.statuses" />
+    <else-if page.secrets != null>
+      <if page.secrets.allowed>
+        <git-repository-secrets :page="page.secrets" />
+      <else>
+        <ui-alert>Manage permission is required.</ui-alert>
+      </if>
+    <else-if page.settings != null>
+      <git-repository-settings :page="page.settings" />
+    <else>
+      <div class="code-panel">
+        <if page.branches.isEmpty() && page.tags.isEmpty() && !page.creating && page.file.isBlank()>
+          <git-repository-setup :page="page" />
+        <else>
+          <git-repository-stats :id="page.id" />
+          <git-repository-path :page="page" />
+          <if page.editing || page.creating>
+            <git-file-editor :page="page" />
+          <else-if page.file.isNotBlank()>
+            <git-file-surface :page="page" />
+          <else-if page.fileMessage.isNotBlank()>
+            <div class="tree-message"><p>{ page.fileMessage }</p></div>
+          <else>
+            <git-repository-tree :entries="page.entries" :editable="page.canWriteRef" />
+            <if page.readmeHtml.isNotBlank() && page.readmeEntry != null>
+              <section class="readme-card">
+                <a class="readme-header" :href="page.readmeEntry?.href.orEmpty()">
+                  <span class="readme-icon"><ui-icon name="book-open" :size="14" /></span>
+                  { page.readmeEntry?.name.orEmpty() }
+                </a>
+                <git-markdown :html="page.readmeHtml" />
+              </section>
+            </if>
+            <if page.description.isNotBlank() && page.path.isBlank()>
+              <section class="side-card about-card">
+                <h2 class="side-card-title">About</h2>
+                <p>{ page.description }</p>
+              </section>
+            </if>
+          </if>
+        </if>
+      </div>
+    </if>
+  </ui-page>
+  <style scoped>
+    /* Studio's Code tab panel: a 12px stack of cards. */
+    .code-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      min-width: 0;
+    }
+    .tree-message {
+      padding: 48px 16px;
+      text-align: center;
+      color: var(--fg-3);
+      font-size: 13.5px;
+      background: var(--bg-1);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+    }
+    .tree-message p {
+      margin: 0;
+    }
+    .readme-card {
+      min-width: 0;
+      margin-top: 16px;
+      overflow: hidden;
+      background: var(--bg-1);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+    }
+    .readme-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 11px 16px;
+      border-bottom: 1px solid var(--line);
+      color: var(--fg-1);
+      font-size: 12.5px;
+      font-weight: 600;
+      text-decoration: none;
+    }
+    .readme-header:hover {
+      background: var(--bg-2);
+      text-decoration: none;
+    }
+    .readme-icon {
+      display: inline-flex;
+      color: var(--fg-2);
+    }
+    .about-card p {
+      margin: 0;
+      font-size: 12.5px;
+      line-height: 1.55;
+      color: var(--fg-2);
+      overflow-wrap: anywhere;
+    }
+  </style>
+</component>

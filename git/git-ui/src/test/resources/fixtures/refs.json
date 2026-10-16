@@ -1,0 +1,12 @@
+[
+  {
+    "repositoryId": "repo",
+    "ref": "refs/heads/main",
+    "sha": "common",
+    "synchronized": false,
+    "boscaSha": "abc",
+    "githubSha": "def",
+    "conflict": true,
+    "modified": "2026-10-09T00:00:00Z"
+  }
+]

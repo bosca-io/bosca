@@ -294,12 +294,13 @@ class GitTypeControllersTest {
         assertEquals(listOf(line, secondLine), hunks.lines(hunk, null, null))
         assertEquals(listOf(secondLine), hunks.lines(hunk, 1, 1))
 
-        val file = bosca.git.model.DiffFile("a", "b", bosca.git.model.DiffChangeType.MODIFY, listOf(hunk))
+        val file = bosca.git.model.DiffFile("a", "b", bosca.git.model.DiffChangeType.MODIFY, listOf(hunk), 9)
         val files = GitDiffFileController()
         assertEquals("a", files.oldPath(file))
         assertEquals("b", files.newPath(file))
         assertEquals(bosca.git.model.DiffChangeType.MODIFY, files.changeType(file))
         assertEquals(listOf(hunk), files.hunks(file))
+        assertEquals(9, files.newLineCount(file))
 
         val blame = bosca.git.model.BlameLine(7, "abc", "a", "a@x", "text")
         val blames = GitBlameLineController()

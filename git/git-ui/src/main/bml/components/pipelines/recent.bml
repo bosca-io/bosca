@@ -1,0 +1,113 @@
+<component tag="git-pipeline-recent">
+  <prop name="repository" type="String" required />
+  <prop name="pipeline" type="bosca.git.ui.graphql.GitUiPipelinesData.Git.Pipelines" required />
+  <div class="recent-runs">
+    <for run in pipeline.runs>
+      <a class="run-row" :href="bosca.git.ui.runHref(run.id)">
+        <git-run-indicator :status="run.status.name" />
+        <code class="run-number">#{ run.number }</code>
+        <code class="run-ref">{ run.ref }</code>
+        <span class="run-trigger">
+          <span class="trigger-icon"><ui-icon name="branch" :size="10" /></span>
+          { run.triggerType.name.lowercase().split('_').joinToString(" ") { it.replaceFirstChar(Char::uppercase) } }
+        </span>
+        <code class="run-sha">{ run.commitSha.take(8) }</code>
+        <div class="job-dots" aria-label="Jobs">
+          <for job in run.jobs.orEmpty()>
+            <span
+              class="job-dot"
+              :style='"background: " + bosca.git.ui.statusColor(job.status.name)'
+              :title='job.name + ": " + job.status.name'
+              :aria-label='job.name + ": " + job.status.name'
+            ></span>
+          </for>
+        </div>
+        <code class="run-duration">{ bosca.git.ui.pipelineDuration(run.durationSeconds) }</code>
+        <span class="run-time"><ui-time :value="run.created" relative ago inheritTypography /></span>
+        <git-status-badge :status="run.status.name" run />
+      </a>
+    </for>
+  </div>
+  <style scoped>
+    /* Studio repository pipeline run rows. */
+    .run-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--line);
+      color: inherit;
+      text-decoration: none;
+      transition: background 0.12s;
+    }
+    .recent-runs > .run-row:last-child {
+      border-bottom: 0;
+    }
+    .run-row:hover {
+      background: var(--bg-2);
+      text-decoration: none;
+    }
+    .run-number {
+      flex: none;
+      width: 40px;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--fg-1);
+    }
+    .run-ref {
+      max-width: 140px;
+      overflow: hidden;
+      font-size: 11px;
+      color: var(--fg-2);
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .run-trigger {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      font-size: 10.5px;
+      color: var(--fg-3);
+    }
+    .trigger-icon {
+      display: inline-flex;
+    }
+    .run-sha {
+      font-size: 11px;
+      color: var(--accent);
+    }
+    .job-dots {
+      display: flex;
+      flex: 1;
+      align-items: center;
+      gap: 3px;
+    }
+    .job-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+    }
+    .run-duration {
+      width: 60px;
+      font-size: 11px;
+      color: var(--fg-2);
+      text-align: right;
+    }
+    .run-time {
+      width: 80px;
+      font-size: 11px;
+      color: var(--fg-3);
+      text-align: right;
+    }
+    @media (max-width: 700px) {
+      .run-row {
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .job-dots {
+        flex-basis: 100%;
+        order: 9;
+      }
+    }
+  </style>
+</component>

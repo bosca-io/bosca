@@ -17,6 +17,10 @@ import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
+import io.mockk.spyk
+import io.mockk.verify
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.put
 import kotlinx.coroutines.withContext
@@ -36,6 +40,10 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.test.assertFailsWith
+import java.time.Instant
+import java.time.ZoneOffset
+import org.eclipse.jgit.lib.TagBuilder
 
 class RepositoryBrowseServiceTest {
 
@@ -240,6 +248,110 @@ class RepositoryBrowseServiceTest {
         assertEquals(2, stats.branchCount)
         assertEquals(0, stats.tagCount)
         assertEquals(1, stats.contributorCount)
+    }
+
+    @Test
+    fun `stats reuse history while ref counts and pack sizes remain fresh`() = runTest {
+        val repo = spyk(inMemoryRepo)
+        every { dfsManager.open(repositoryId) } returns repo
+        coEvery { packRepository.sumPackSizeBytes(repositoryId) } returnsMany listOf(100L, 200L)
+        val first = service.getStats(repositoryId)
+        inMemoryRepo.refDatabase.newUpdate("refs/tags/v1", true).apply {
+            setNewObjectId(firstCommitId)
+            update()
+        }
+        inMemoryRepo.refDatabase.newUpdate("refs/heads/extra", true).apply {
+            setNewObjectId(secondCommitId)
+            update()
+        }
+        val second = service.getStats(repositoryId)
+        assertEquals(first.commitCount, second.commitCount)
+        assertEquals(first.contributorCount, second.contributorCount)
+        assertEquals(3, second.branchCount)
+        assertEquals(1, second.tagCount)
+        assertEquals(200L, second.diskSizeBytes)
+        verify(exactly = 1) { repo.newObjectReader() }
+    }
+
+    @Test
+    fun `stats follow pushes force pushes and default branch changes`() = runTest {
+        assertEquals(1L, service.getStats(repositoryId).commitCount)
+        inMemoryRepo.refDatabase.newUpdate("refs/heads/main", true).apply {
+            setNewObjectId(secondCommitId)
+            update()
+        }
+        val pushed = service.getStats(repositoryId)
+        assertEquals(2L, pushed.commitCount)
+        assertEquals(2, pushed.contributorCount)
+        inMemoryRepo.refDatabase.newUpdate("refs/heads/main", true).apply {
+            setNewObjectId(firstCommitId)
+            setForceUpdate(true)
+            update()
+        }
+        assertEquals(1L, service.getStats(repositoryId).commitCount)
+        inMemoryRepo.refDatabase.newUpdate(Constants.HEAD, true).link("refs/heads/feature")
+        assertEquals(2L, service.getStats(repositoryId).commitCount)
+    }
+
+    @Test
+    fun `stats cache distinguishes shallow boundaries at the same head`() = runTest {
+        val repo = spyk(inMemoryRepo)
+        every { dfsManager.open(repositoryId) } returns repo
+        // DfsReader ignores shallow boundaries; adapt the in-memory reader to exercise the
+        // same semantics as a repository whose object reader supports shallow history.
+        every { repo.newObjectReader() } answers {
+            spyk(inMemoryRepo.newObjectReader()).also { reader ->
+                every { reader.shallowCommits } answers { inMemoryRepo.objectDatabase.shallowCommits }
+            }
+        }
+        inMemoryRepo.refDatabase.newUpdate(Constants.HEAD, true).link("refs/heads/feature")
+        inMemoryRepo.objectDatabase.setShallowCommits(setOf(secondCommitId))
+        assertEquals(1L, service.getStats(repositoryId).commitCount)
+        inMemoryRepo.objectDatabase.setShallowCommits(emptySet())
+        assertEquals(2L, service.getStats(repositoryId).commitCount)
+    }
+
+    @Test
+    fun `concurrent stats reads share one history walk`() = runTest {
+        val repo = spyk(inMemoryRepo)
+        every { dfsManager.open(repositoryId) } answers { repo.incrementOpen(); repo }
+        val results = (1..12).map { async { service.getStats(repositoryId) } }.awaitAll()
+        assertTrue(results.all { it.commitCount == 1L })
+        verify(exactly = 1) { repo.newObjectReader() }
+    }
+
+    @Test
+    fun `empty repository with unborn HEAD has zero stats and can be browsed`() = runTest {
+        inMemoryRepo.close()
+        inMemoryRepo = InMemoryRepository(DfsRepositoryDescription("empty"))
+        every { dfsManager.open(repositoryId) } returns inMemoryRepo
+        inMemoryRepo.refDatabase.newUpdate(Constants.HEAD, true).link("refs/heads/trunk")
+        assertNull(assertNotNull(inMemoryRepo.refDatabase.exactRef(Constants.HEAD)).objectId)
+        coEvery { packRepository.sumPackSizeBytes(repositoryId) } returns 128L
+
+        val stats = service.getStats(repositoryId)
+
+        assertEquals(0L, stats.commitCount)
+        assertEquals(0, stats.branchCount)
+        assertEquals(0, stats.tagCount)
+        assertEquals(0, stats.contributorCount)
+        assertEquals(128L, stats.diskSizeBytes)
+        withCache { assertTrue(service.listTree(repositoryId, "refs/heads/trunk", null).isEmpty()) }
+        assertTrue(service.listCommits(repositoryId, "refs/heads/trunk", null, 10, 0).isEmpty())
+        assertTrue(service.listBranches(repositoryId).isEmpty())
+        assertNull(service.readBlob(repositoryId, "refs/heads/trunk", "README.md"))
+    }
+
+    @Test
+    fun `stats fall back to an existing branch when HEAD is unborn`() = runTest {
+        inMemoryRepo.refDatabase.newUpdate(Constants.HEAD, true).link("refs/heads/trunk")
+        assertNull(assertNotNull(inMemoryRepo.refDatabase.exactRef(Constants.HEAD)).objectId)
+
+        val stats = service.getStats(repositoryId)
+
+        assertEquals(2L, stats.commitCount)
+        assertEquals(2, stats.branchCount)
+        assertEquals(2, stats.contributorCount)
     }
 
     @Test
@@ -595,6 +707,124 @@ class RepositoryBrowseServiceTest {
         assertEquals(firstCommitId.name(), annotated.targetSha)
         assertEquals("Tagger", annotated.taggerName)
         assertEquals("release v1", annotated.message)
+    }
+
+    @Test
+    fun `tags use Git creation dates independent of names target history and insertion order`() = runTest {
+        createDatedTag("v10", "2020-01-01T00:00:00Z", secondCommitId)
+        createDatedTag("v2", "2020-01-03T00:00:00Z")
+        createDatedTag("v1", "2020-01-02T00:00:00Z")
+        createDatedTag("hotfix", "2020-01-03T02:00:00+02:00")
+        assertEquals(listOf("hotfix", "v2", "v1", "v10"), service.listTags(repositoryId).map { it.name })
+        assertEquals(firstCommitId.name(), service.listTags(repositoryId, limit = 1).single().targetSha)
+    }
+
+    @Test
+    fun `tag pages filter before offset and allow exact lookup outside the page`() = runTest {
+        createDatedTag("release/1", "2020-01-01T00:00:00Z")
+        createDatedTag("release/2", "2020-01-02T00:00:00Z")
+        createDatedTag("other", "2020-01-03T00:00:00Z")
+        assertEquals(listOf("other", "release/2"), service.listTags(repositoryId, limit = 2).map { it.name })
+        assertEquals(listOf("release/1"), service.listTags(repositoryId, limit = 2, offset = 2).map { it.name })
+        assertEquals(listOf("release/1"), service.listTags(repositoryId, limit = 1, offset = 1, query = "RELEASE/").map { it.name })
+        assertTrue(service.listTags(repositoryId, limit = 2, offset = 3).isEmpty())
+        assertTrue(service.listTags(repositoryId, limit = 2, offset = Long.MAX_VALUE).isEmpty())
+        assertTrue(service.listTags(repositoryId, limit = 2, query = "absent").isEmpty())
+        assertEquals("release/1", service.getTag(repositoryId, "release/1")?.name)
+        assertEquals("release/1", service.getTag(repositoryId, "refs/tags/release/1")?.name)
+        assertNull(service.getTag(repositoryId, "missing"))
+        assertFailsWith<IllegalArgumentException> { service.listTags(repositoryId, limit = 0) }
+        assertFailsWith<IllegalArgumentException> { service.listTags(repositoryId, offset = -1) }
+    }
+
+    @Test
+    fun `lightweight tags use committer dates and undated tags sort last`() = runTest {
+        val commit = inMemoryRepo.newObjectInserter().use { inserter ->
+            val builder = CommitBuilder().apply {
+                setTreeId(inserter.insert(TreeFormatter()))
+                author = PersonIdent("Author", "author@example.test", Instant.parse("2030-01-01T00:00:00Z"), ZoneOffset.UTC)
+                committer = PersonIdent("Committer", "committer@example.test", Instant.parse("2020-01-02T00:00:00Z"), ZoneOffset.UTC)
+                message = "A lightweight tag target"
+            }
+            inserter.insert(builder).also { inserter.flush() }
+        }
+        inMemoryRepo.updateRef("refs/tags/light").apply { setNewObjectId(commit); update() }
+        createDatedTag("newest", "2020-01-03T00:00:00Z")
+        createDatedTag("oldest", "2020-01-01T00:00:00Z")
+        createDatedTag("undated", null)
+        assertEquals(listOf("newest", "light", "oldest", "undated"), service.listTags(repositoryId).map { it.name })
+        assertFalse(assertNotNull(service.getTag(repositoryId, "light")).isAnnotated)
+    }
+
+    @Test
+    fun `tag pages reuse object dates while ref changes remain authoritative`() = runTest {
+        repeat(600) { index -> createDatedTag("v${index.toString().padStart(4, '0')}", Instant.ofEpochSecond(index.toLong()).toString()) }
+        val repo = spyk(inMemoryRepo)
+        every { dfsManager.open(repositoryId) } returns repo
+        var objectReads = 0
+        every { repo.newObjectReader() } answers {
+            spyk(inMemoryRepo.newObjectReader()).also { reader ->
+                every { reader.open(any(), any()) } answers {
+                    objectReads++
+                    callOriginal()
+                }
+            }
+        }
+        assertEquals("v0599", service.listTags(repositoryId, limit = 25).first().name)
+        assertTrue(objectReads >= 600, "Cold reads: $objectReads")
+        objectReads = 0
+        assertEquals("v0574", service.listTags(repositoryId, limit = 25, offset = 25).first().name)
+        assertTrue(objectReads <= 26, "Warm page should read only its tags and target: $objectReads")
+        objectReads = 0
+        assertEquals("v0001", service.listTags(repositoryId, limit = 25, query = "v0001").single().name)
+        assertTrue(objectReads <= 2, "Warm search reads: $objectReads")
+
+        createDatedTag("v0001", "2030-01-01T00:00:00Z", secondCommitId)
+        val moved = service.listTags(repositoryId, limit = 1).single()
+        assertEquals("v0001", moved.name)
+        assertEquals(secondCommitId.name(), moved.targetSha)
+        inMemoryRepo.updateRef("refs/tags/v0001").apply { isForceUpdate = true; delete() }
+        assertEquals("v0599", service.listTags(repositoryId, limit = 1).single().name)
+        assertNull(service.getTag(repositoryId, "v0001"))
+        createDatedTag("added", "2040-01-01T00:00:00Z")
+        objectReads = 0
+        assertEquals("added", service.listTags(repositoryId, limit = 25).first().name)
+        assertEquals(27, objectReads, "Adding a tag before existing names should read only the new date and returned page")
+        inMemoryRepo.updateRef("refs/tags/added").apply { isForceUpdate = true; delete() }
+        objectReads = 0
+        assertEquals("v0599", service.listTags(repositoryId, limit = 25).first().name)
+        assertEquals(26, objectReads, "Removing a tag should not invalidate unchanged object dates")
+    }
+
+    @Test
+    fun `cold tag search parses only matching objects`() = runTest {
+        repeat(300) { index -> createDatedTag("v$index", "2020-01-01T00:00:00Z") }
+        val repo = spyk(inMemoryRepo)
+        every { dfsManager.open(repositoryId) } returns repo
+        var objectReads = 0
+        every { repo.newObjectReader() } answers {
+            spyk(inMemoryRepo.newObjectReader()).also { reader ->
+                every { reader.open(any(), any()) } answers { objectReads++; callOriginal() }
+            }
+        }
+        assertEquals("v299", service.listTags(repositoryId, limit = 25, query = "v299").single().name)
+        assertTrue(objectReads <= 3, "Cold selective search reads: $objectReads")
+        objectReads = 0
+        assertEquals("v299", service.listTags(repositoryId, limit = 25, query = "v299").single().name)
+        assertEquals(2, objectReads, "A repeated selective search should reuse its object date")
+    }
+
+    private fun createDatedTag(name: String, timestamp: String?, target: ObjectId = firstCommitId) {
+        val id = inMemoryRepo.newObjectInserter().use { inserter ->
+            val builder = TagBuilder().apply {
+                setObjectId(target, Constants.OBJ_COMMIT)
+                tag = name
+                timestamp?.let { tagger = PersonIdent("Tagger", "tag@example.test", Instant.parse(it), ZoneOffset.UTC) }
+                message = "Release $name"
+            }
+            inserter.insert(builder).also { inserter.flush() }
+        }
+        inMemoryRepo.updateRef("refs/tags/$name").apply { setNewObjectId(id); isForceUpdate = true; update() }
     }
 
     @Test

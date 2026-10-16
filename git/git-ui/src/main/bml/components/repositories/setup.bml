@@ -1,0 +1,144 @@
+<component tag="git-repository-setup">
+  <prop name="page" type="bosca.git.ui.RepositoryPage" required />
+  <div class="setup-stack">
+    <section class="setup-banner">
+      <span class="setup-banner-icon"><ui-icon name="folder" :size="20" /></span>
+      <div class="setup-banner-text">
+        <h2>Quick setup — if you've done this kind of thing before</h2>
+        <div class="clone-url-row">
+          <input class="clone-url-input" :value="page.cloneUrl" readonly aria-label="Clone URL" />
+          <ui-copy :value="page.cloneUrl" label="Copy clone URL" />
+        </div>
+        <if page.canEdit && !page.archived>
+          <a class="button-link primary create-first" :href='page.href() + "&new=true"'>
+            <span class="create-icon"><ui-icon name="plus" :size="14" /></span>
+            Create first file
+          </a>
+        </if>
+      </div>
+    </section>
+    <section class="setup-section">
+      <header>
+        <span class="setup-icon"><ui-icon name="code" :size="16" /></span>
+        …or create a new repository on the command line
+      </header>
+      <pre>{ "echo \"# " + page.name + "\" >> README.md\ngit init\ngit add README.md\ngit commit -m \"first commit\"\ngit branch -M " + page.defaultBranch + "\ngit remote add origin " + page.cloneUrl + "\ngit push -u origin " + page.defaultBranch }</pre>
+    </section>
+    <section class="setup-section">
+      <header>
+        <span class="setup-icon"><ui-icon name="upload" :size="16" /></span>
+        …or push an existing repository from the command line
+      </header>
+      <pre>{ "git remote add origin " + page.cloneUrl + "\ngit branch -M " + page.defaultBranch + "\ngit push -u origin " + page.defaultBranch }</pre>
+    </section>
+  </div>
+  <style scoped>
+    /* Studio's empty-repository Quick setup. */
+    .setup-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .setup-banner {
+      display: flex;
+      align-items: flex-start;
+      gap: 16px;
+      padding: 20px;
+      background: var(--bg-1);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+    }
+    .setup-banner-icon {
+      display: flex;
+      flex: 0 0 44px;
+      align-items: center;
+      justify-content: center;
+      width: 44px;
+      height: 44px;
+      border-radius: 12px;
+      background: var(--accent);
+      color: #fff;
+    }
+    .setup-banner-text {
+      flex: 1;
+      min-width: 0;
+    }
+    h2 {
+      margin: 0 0 12px;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--fg-0);
+    }
+    .clone-url-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .clone-url-input {
+      flex: 1;
+      min-width: 0;
+      padding: 8px 12px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      outline: none;
+      background: var(--bg-0);
+      color: var(--fg-1);
+      font-family: var(--font-mono);
+      font-size: 12.5px;
+    }
+    .clone-url-input:focus {
+      border-color: var(--accent);
+    }
+    .create-first {
+      margin-top: 12px;
+    }
+    .create-icon {
+      display: inline-flex;
+      color: var(--accent);
+    }
+    .setup-section {
+      overflow: hidden;
+      background: var(--bg-1);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+    }
+    .setup-section header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--line);
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--fg-1);
+    }
+    .setup-icon {
+      display: inline-flex;
+      color: var(--accent);
+    }
+    pre {
+      margin: 0;
+      padding: 16px 18px;
+      overflow-x: auto;
+      background: var(--bg-0);
+      color: var(--fg-1);
+      font-family: var(--font-mono);
+      font-size: 12.5px;
+      line-height: 1.7;
+      white-space: pre;
+    }
+    @media (max-width: 600px) {
+      .setup-banner {
+        flex-direction: column;
+        gap: 12px;
+      }
+      .setup-banner-text {
+        width: 100%;
+      }
+    }
+  </style>
+  <script client scoped>
+    for (const input of ctx.root.querySelectorAll<HTMLInputElement>(".clone-url-input"))
+      ctx.on(input, "focus", () => input.select());
+  </script>
+</component>

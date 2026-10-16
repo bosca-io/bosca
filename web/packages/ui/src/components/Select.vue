@@ -15,6 +15,12 @@ export interface SelectOption {
   disabled?: boolean
 }
 
+export interface SelectPage {
+  options: SelectOption[]
+  previousOffset?: number
+  nextOffset?: number
+}
+
 interface InternalSelectOption extends SelectOption {
   custom?: boolean
 }
@@ -32,7 +38,7 @@ const props = withDefaults(defineProps<{
   accent?: string
   disabled?: boolean
   maxTags?: number
-  onSearch?: (query: string) => Promise<SelectOption[]>
+  onSearch?: (query: string, offset: number) => Promise<SelectOption[] | SelectPage>
   debounce?: number
 }>(), {
   placeholder: 'Select…',
@@ -53,6 +59,7 @@ const open = ref(false)
 const searchQuery = ref('')
 const highlightIndex = ref(-1)
 const rootEl = ref<HTMLElement>()
+const triggerEl = ref<HTMLElement>()
 const inputEl = ref<HTMLInputElement>()
 const listEl = ref<HTMLElement>()
 const asyncOptions = ref<InternalSelectOption[]>([])
@@ -64,6 +71,10 @@ const asyncLoading = ref(false)
 const pickedOptions = ref(new Map<string, SelectOption>())
 const dropdownEl = ref<HTMLElement>()
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
+let searchRevision = 0
+const previousOffset = ref<number>()
+const nextOffset = ref<number>()
+const searchError = ref('')
 
 const dropdownStyle = ref<Record<string, string>>({})
 
@@ -76,7 +87,7 @@ function updateDropdownPosition() {
   const viewportMax = window.innerWidth - rect.left - 12
   // Open upward when there isn't room for the menu below and there's more room above, so a
   // select near the bottom of the window isn't clipped by the viewport edge.
-  const MENU_MAX = 260
+  const MENU_MAX = previousOffset.value !== undefined || nextOffset.value !== undefined ? 310 : 260
   const spaceBelow = window.innerHeight - rect.bottom
   const openUp = spaceBelow < MENU_MAX && rect.top > spaceBelow
   dropdownStyle.value = {
@@ -190,20 +201,46 @@ onMounted(async () => {
 watch(() => props.options, () => nextTick(measureWidth))
 watch(() => props.placeholder, () => nextTick(measureWidth))
 
-async function executeSearch(q: string) {
+async function executeSearch(q: string, offset = 0) {
   if (!props.onSearch) return
+  const revision = ++searchRevision
+  if (debounceTimer) clearTimeout(debounceTimer)
   asyncLoading.value = true
+  searchError.value = ''
+  asyncOptions.value = []
+  previousOffset.value = undefined
+  nextOffset.value = undefined
   try {
-    asyncOptions.value = await props.onSearch(q)
+    const result = await props.onSearch(q, offset)
+    if (revision !== searchRevision) return
+    asyncOptions.value = Array.isArray(result) ? result : result.options
+    previousOffset.value = Array.isArray(result) ? undefined : result.previousOffset
+    nextOffset.value = Array.isArray(result) ? undefined : result.nextOffset
+    highlightIndex.value = 0
+    await nextTick(updateDropdownPosition)
+  }
+  catch (error) {
+    if (revision === searchRevision) searchError.value = error instanceof Error ? error.message : 'Failed to load options.'
   }
   finally {
-    asyncLoading.value = false
+    if (revision === searchRevision) asyncLoading.value = false
   }
 }
 
 function debouncedSearch(q: string) {
+  ++searchRevision
   if (debounceTimer) clearTimeout(debounceTimer)
+  asyncOptions.value = []
+  previousOffset.value = undefined
+  nextOffset.value = undefined
+  asyncLoading.value = true
   debounceTimer = setTimeout(() => executeSearch(q), props.debounce)
+}
+
+function changePage(offset: number | undefined) {
+  if (offset === undefined) return
+  void executeSearch(searchQuery.value, offset)
+  inputEl.value?.focus()
 }
 
 function toggleOpen() {
@@ -245,6 +282,23 @@ function removeTag(value: string) {
   model.value = current
 }
 
+function dismissDropdown() {
+  open.value = false
+  triggerEl.value?.focus()
+}
+
+function onDropdownKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape') {
+    e.preventDefault()
+    e.stopPropagation()
+    dismissDropdown()
+  }
+  else if (e.key === 'Tab' && e.shiftKey && e.target === dropdownEl.value?.querySelector('.select-pagination button:not(:disabled)')) {
+    e.preventDefault()
+    inputEl.value?.focus()
+  }
+}
+
 function onKeydown(e: KeyboardEvent) {
   const opts = filteredOptions.value
   if (e.key === 'ArrowDown') {
@@ -264,7 +318,16 @@ function onKeydown(e: KeyboardEvent) {
     }
   }
   else if (e.key === 'Escape') {
-    open.value = false
+    e.preventDefault()
+    e.stopPropagation()
+    dismissDropdown()
+  }
+  else if (e.key === 'Tab' && !e.shiftKey) {
+    const pageButton = dropdownEl.value?.querySelector<HTMLButtonElement>('.select-pagination button:not(:disabled)')
+    if (pageButton) {
+      e.preventDefault()
+      pageButton.focus()
+    }
   }
   else if (e.key === 'Backspace' && !searchQuery.value && props.multiple) {
     const current = Array.isArray(model.value) ? [...model.value] : []
@@ -295,15 +358,19 @@ watch(open, (isOpen) => {
   }
   else {
     document.removeEventListener('mousedown', onClickOutside)
+    ++searchRevision
+    if (debounceTimer) clearTimeout(debounceTimer)
+    asyncLoading.value = false
   }
 })
 
 watch(searchQuery, (q) => {
   highlightIndex.value = 0
-  if (isAsync.value) debouncedSearch(q)
+  if (isAsync.value && open.value) debouncedSearch(q)
 })
 
 onBeforeUnmount(() => {
+  ++searchRevision
   document.removeEventListener('mousedown', onClickOutside)
   if (debounceTimer) clearTimeout(debounceTimer)
 })
@@ -323,8 +390,12 @@ onBeforeUnmount(() => {
     >
     <!-- Trigger -->
     <div
+      ref="triggerEl"
       class="select-trigger"
+      tabindex="-1"
       @click="toggleOpen"
+      @keydown.self.enter.prevent="toggleOpen"
+      @keydown.self.space.prevent="toggleOpen"
     >
       <!-- Leading icon: selected option's icon takes priority over default -->
       <Icon
@@ -414,6 +485,7 @@ onBeforeUnmount(() => {
       <div
         v-if="open"
         ref="dropdownEl"
+        @keydown="onDropdownKeydown"
         class="select-dropdown"
         :style="dropdownStyle"
       >
@@ -486,10 +558,18 @@ onBeforeUnmount(() => {
           </div>
 
           <!-- Empty state -->
-          <div v-if="filteredOptions.length === 0 && !asyncLoading" class="select-empty">
+          <div v-if="searchError && !asyncLoading" class="select-empty" role="alert">
+            {{ searchError }}
+            <button type="button" @click.stop="executeSearch(searchQuery)">Retry</button>
+          </div>
+          <div v-else-if="filteredOptions.length === 0 && !asyncLoading" class="select-empty">
             {{ isAsync ? 'No results found' : 'No matches' }}
           </div>
         </div>
+        <nav v-if="previousOffset !== undefined || nextOffset !== undefined" class="select-pagination" aria-label="Option pages">
+          <button type="button" :disabled="previousOffset === undefined" @click.stop="changePage(previousOffset)">Previous</button>
+          <button type="button" :disabled="nextOffset === undefined" @click.stop="changePage(nextOffset)">Next</button>
+        </nav>
       </div>
     </Transition>
     </Teleport>
@@ -498,6 +578,30 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.select-pagination {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px;
+  border-top: 1px solid var(--line);
+}
+
+.select-pagination button,
+.select-empty button {
+  padding: 4px 8px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-sm);
+  background: var(--bg-2);
+  color: var(--fg-2);
+  font: inherit;
+  cursor: pointer;
+}
+
+.select-pagination button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
 .select-field {
   display: flex;
   flex-direction: column;

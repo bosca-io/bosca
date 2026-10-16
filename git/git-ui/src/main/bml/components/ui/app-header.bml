@@ -1,0 +1,97 @@
+<component tag="ui-app-header">
+  <prop name="brand" type="String" required />
+  <prop name="product" type="String" default="" />
+  <prop name="href" type="String" required />
+  <header class="app-header">
+    <a class="brand" :href="href">
+      <ui-bosca-mark />
+      <span class="brand-text">
+        <span class="brand-name">{ brand }</span>
+        <if product.isNotBlank()>
+          <span class="brand-separator" aria-hidden="true"></span>
+          <span class="brand-product">{ product }</span>
+        </if>
+      </span>
+    </a>
+    <slot />
+  </header>
+  <style scoped>
+    .app-header {
+      width: 224px;
+      flex: 0 0 224px;
+      display: flex;
+      flex-direction: column;
+      padding: 0 0 16px;
+      min-height: 0;
+      overflow: auto;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 30px 20px 23px;
+      color: var(--fg-0);
+      text-decoration: none;
+      transition: opacity 0.15s ease;
+    }
+    .brand:hover {
+      opacity: 0.7;
+      text-decoration: none;
+    }
+    .brand-text {
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+    }
+    .brand-name {
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+    }
+    .brand-separator {
+      width: 1px;
+      height: 18px;
+      background: var(--fg-2);
+      align-self: center;
+    }
+    .brand-product {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--fg-1);
+    }
+    @media (max-width: 700px) {
+      .app-header {
+        width: 100%;
+        flex: none;
+        flex-direction: row;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 0 12px;
+        padding: 0 16px;
+        overflow: visible;
+        border-bottom: 1px solid var(--line);
+        background: var(--bg-1);
+      }
+      .brand {
+        padding: 14px 0;
+      }
+    }
+  </style>
+  <script client scoped>
+    const revealActive = () => {
+      if (!ctx.root.isConnected) return;
+      for (const nav of ctx.root.querySelectorAll<HTMLElement>("nav")) {
+        if (nav.scrollWidth <= nav.clientWidth) continue;
+        const active = nav.querySelector<HTMLElement>('a[aria-current="page"]');
+        if (!active) continue;
+        const bounds = nav.getBoundingClientRect();
+        const item = active.getBoundingClientRect();
+        nav.scrollLeft += item.left - bounds.left - (bounds.width - item.width) / 2;
+      }
+    };
+    ctx.on(window, "resize", revealActive);
+    ctx.onUpdate(revealActive);
+    void document.fonts.ready.then(revealActive);
+    revealActive();
+  </script>
+</component>

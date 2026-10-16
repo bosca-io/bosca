@@ -42,6 +42,9 @@ class GitPullRequestController(
     fun number(source: PullRequest): Int = source.number
 
     @Field
+    fun version(source: PullRequest): Long = source.version
+
+    @Field
     fun title(source: PullRequest): String = source.title
 
     @Field
@@ -63,6 +66,9 @@ class GitPullRequestController(
     fun status(source: PullRequest): PullRequestStatus = source.status
 
     @Field
+    fun deleteBranchOnMerge(source: PullRequest): Boolean = source.deleteBranchOnMerge
+
+    @Field
     fun mergeStrategy(source: PullRequest): MergeStrategy? = source.mergeStrategy
 
     @Field
@@ -73,6 +79,9 @@ class GitPullRequestController(
 
     @Field
     fun mergeSha(source: PullRequest): String? = source.mergeSha
+
+    @Field
+    suspend fun mergeBaseSha(source: PullRequest): String? = diffService.resolveMergedBase(source)
 
     @Field
     fun created(source: PullRequest): OffsetDateTime = source.created
@@ -124,6 +133,13 @@ class GitPullRequestController(
 
     @Field
     suspend fun diff(source: PullRequest): List<DiffFile> {
+        if (source.status == PullRequestStatus.MERGED) {
+            val head = source.mergeSha?.takeIf { it.isNotBlank() }
+                ?: error("The completed merge commit is not recorded.")
+            val base = diffService.resolveMergedBase(source)
+                ?: error("The original target commit for this merge is not recorded.")
+            return diffService.computeDiff(source.repositoryId, base, head)
+        }
         return diffService.computeDiff(
             source.repositoryId,
             "refs/heads/${source.targetBranch}",

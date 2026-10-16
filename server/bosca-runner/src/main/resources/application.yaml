@@ -176,6 +176,9 @@ natsMonitoring:
 cache:
   type: "$CACHE_TYPE:nats"
 
+counter:
+  type: "$COUNTER_TYPE:redis"
+
 experimentation:
   eventsTable: "$EXPERIMENTATION_EVENTS_TABLE:warehouse.bosca.events"
   assignmentsTable: "$EXPERIMENTATION_ASSIGNMENTS_TABLE:bosca.experimentation.assignments"
@@ -274,6 +277,9 @@ iceberg:
 
 packages: [core, security-initial, profiles, languages, search-index, root-collection-installer, bible, community-ai, ai, kit, maintenance, analytics-queries, hubspot]
 
+eventProcessing:
+  fumsEnabled: ${FUMS_TRANSFORM_ENABLED:false}
+
 runners:
   enabled:
     - indexQueueRunner
@@ -285,6 +291,7 @@ runners:
     - gitQueueRunner
     - workopsQueueRunner
     - analyticsQueueRunner
+    - fumsQueueRunner
     - scriptingQueueRunner
     - backupQueueRunner
     - segmentationQueueRunner

@@ -1,0 +1,34 @@
+query PipelineCatalog($jobDetails: Boolean! = true, $skipSummary: Boolean! = false) {
+  git {
+    pipelines {
+      runs {
+        id
+        jobs @include(if: $jobDetails) { id name }
+        summary @skip(if: $skipSummary)
+        note @include(if: $jobDetails)
+        latest: latestJob @include(if: $jobDetails) { id }
+        labels @include(if: $jobDetails)
+      }
+    }
+  }
+}
+
+query ConditionalFragment($details: Boolean!) {
+  git { pipelines { runs { ...RunFields } } }
+}
+fragment RunFields on Run {
+  id
+  jobs @include(if: $details) { id name }
+}
+
+query RepeatedField($details: Boolean!) {
+  git { pipelines { runs { id @include(if: $details) ...RunIdentity } } }
+}
+fragment RunIdentity on Run { id }
+
+query ConditionalNode($details: Boolean!) {
+  node {
+    id @include(if: $details)
+    ... on Job { name @skip(if: $details) }
+  }
+}

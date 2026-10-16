@@ -1,8 +1,6 @@
 package bosca.content.metadata.graphql
 
 import bosca.content.graphql.MetadataBatchFilter
-import bosca.content.metadata.model.Guide
-import bosca.content.metadata.model.GuideStep
 import bosca.content.metadata.model.GuideStepContext
 import bosca.content.metadata.model.GuideStepModule
 import bosca.content.metadata.model.Metadata
@@ -12,10 +10,7 @@ import bosca.content.metadata.service.MetadataService
 import bosca.content.security.MetadataPermissionEvaluator
 import bosca.graphql.Batch
 import bosca.graphql.BatchContext
-import bosca.graphql.BatchFilter
-import bosca.graphql.BatchItem
 import bosca.graphql.GraphQLController
-import bosca.graphql.annotations.BatchKey
 import bosca.graphql.annotations.Field
 import bosca.graphql.annotations.TypeController
 import bosca.security.model.PermissionAction
@@ -34,6 +29,20 @@ class GuideStepController(
 
     @Field
     fun date(step: GuideStepContext) = step.date
+
+    @Field
+    suspend fun guide(authentication: AuthenticationContext?, batch: Batch<MetadataCacheKeyId, Metadata>) {
+        val parentKeys = batch.keys.map { MetadataCacheKeyId(it.id, it.version) }.distinct()
+        val parents = Batch<MetadataCacheKeyId, Metadata>(parentKeys)
+        service.getByIdBatched(parents)
+        val allowed = permissionEvaluator.filterAllowed(
+            authentication, parents.getResults().filterNotNull(), PermissionAction.VIEW
+        ).toSet()
+        for (key in batch.keys) {
+            val parent = parents.getData(MetadataCacheKeyId(key.id, key.version)) ?: continue
+            if (parent in allowed) batch.setData(key, parent)
+        }
+    }
 
     @Field
     suspend fun metadata(authentication: AuthenticationContext, batch: Batch<MetadataCacheKeyId, Metadata>, env: BatchLoaderEnvironment) {

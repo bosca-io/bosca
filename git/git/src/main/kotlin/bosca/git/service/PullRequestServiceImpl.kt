@@ -2,6 +2,8 @@ package bosca.git.service
 
 import bosca.git.model.GitHubPullRequestSnapshot
 import bosca.db.connection
+import bosca.db.transaction
+import bosca.di.provide
 
 import bosca.git.dfs.BoscaDfsRepositoryManager
 import bosca.git.dfs.GitWorkDispatcher
@@ -40,6 +42,8 @@ import kotlinx.coroutines.withContext
 import org.eclipse.jgit.lib.ObjectId
 import org.eclipse.jgit.lib.PersonIdent
 import org.eclipse.jgit.lib.RefUpdate
+import org.eclipse.jgit.lib.Repository as JGitRepository
+import org.eclipse.jgit.revwalk.RevWalk
 import org.slf4j.LoggerFactory
 import java.time.OffsetDateTime
 
@@ -105,6 +109,10 @@ class PullRequestServiceImpl(
     }
 
     override suspend fun create(input: CreatePullRequestInput, authorId: UUID): PullRequest {
+        val deleteBranchOnMerge = input.deleteBranchOnMerge ?: (
+            provide<RepositoryService>().findById(input.repositoryId)
+                ?: throw NoSuchElementException("Repository not found: ${input.repositoryId}")
+            ).configuration.deleteBranchOnMerge
         val number = repoRepository.incrementPrNumber(input.repositoryId)
         val status = if (input.isDraft) PullRequestStatus.DRAFT else PullRequestStatus.OPEN
         val pr = prRepository.create(
@@ -117,7 +125,8 @@ class PullRequestServiceImpl(
                 sourceBranch = input.sourceBranch,
                 targetBranch = input.targetBranch,
                 sourceRepositoryId = input.sourceRepositoryId,
-                status = status
+                status = status,
+                deleteBranchOnMerge = deleteBranchOnMerge,
             )
         )
         log.info("Created PR #{} on repository {}", pr.number, pr.repositoryId)
@@ -126,17 +135,63 @@ class PullRequestServiceImpl(
         return pr
     }
 
-    override suspend fun update(id: UUID, input: UpdatePullRequestInput): PullRequest {
-        val existing = prRepository.findById(id)
+    override suspend fun update(id: UUID, input: UpdatePullRequestInput): PullRequest = transaction {
+        val existing = prRepository.lockById(id)
             ?: throw NoSuchElementException("Pull request not found: $id")
+        requireCurrentVersion(existing, input.expectedVersion)
+        if (input.deleteBranchOnMerge != null && input.deleteBranchOnMerge != existing.deleteBranchOnMerge) {
+            require(existing.status != PullRequestStatus.MERGED) { "Branch cleanup cannot be changed after merging." }
+        }
+        val title = input.title ?: existing.title
+        val source = input.sourceBranch ?: existing.sourceBranch
+        val target = input.targetBranch ?: existing.targetBranch
+        val branchesChanged = source != existing.sourceBranch || target != existing.targetBranch
+        if (branchesChanged) {
+            require(existing.status == PullRequestStatus.OPEN || existing.status == PullRequestStatus.DRAFT) {
+                "Branches can only be changed on open or draft pull requests."
+            }
+            val sourceRepository = existing.sourceRepositoryId ?: existing.repositoryId
+            requireBranch(sourceRepository, source, "Source")
+            requireBranch(existing.repositoryId, target, "Target")
+            require(sourceRepository != existing.repositoryId || source != target) {
+                "Choose different source and target branches."
+            }
+        }
         val updated = prRepository.update(
             existing.copy(
-                title = input.title ?: existing.title,
-                description = input.description ?: existing.description
+                title = title,
+                description = input.description ?: existing.description,
+                sourceBranch = source,
+                targetBranch = target,
+                deleteBranchOnMerge = input.deleteBranchOnMerge ?: existing.deleteBranchOnMerge,
             )
-        ) ?: throw IllegalStateException("Failed to update PR: $id")
+        ) ?: throw IllegalStateException("Pull request changed. Reload it before saving.")
+        if (branchesChanged) {
+            reviewRepository.dismissByPullRequest(id, "branches_updated")
+            reviewCommentRepository.markAllOutdatedByPullRequest(id)
+        }
+        extractAndStoreTaskKeys(updated)
         dispatchActivity(updated, PullRequestEventAction.UPDATED)
-        return updated
+        updated
+    }
+
+    private fun requireCurrentVersion(pr: PullRequest, expectedVersion: Long?) {
+        check(expectedVersion == null || pr.version == expectedVersion) {
+            "Pull request changed. Reload it before continuing."
+        }
+    }
+
+    private suspend fun requireBranch(repositoryId: UUID, branch: String, label: String) {
+        require(JGitRepository.isValidRefName("refs/heads/$branch")) {
+            "$label branch name is invalid."
+        }
+        withContext(GitWorkDispatcher) {
+            dfsManager.open(repositoryId).use { repo ->
+                val id = repo.exactRef("refs/heads/$branch")?.objectId
+                require(id != null) { "$label branch '$branch' is no longer available." }
+                RevWalk(repo).use { it.parseCommit(id) }
+            }
+        }
     }
 
     override suspend fun findById(id: UUID): PullRequest? = prRepository.findById(id)
@@ -225,10 +280,12 @@ class PullRequestServiceImpl(
         strategy: MergeStrategy,
         mergedById: UUID,
         mergerName: String,
-        mergerEmail: String
+        mergerEmail: String,
+        expectedVersion: Long?,
     ): PullRequest {
         val pr = prRepository.findById(id)
             ?: throw NoSuchElementException("Pull request not found: $id")
+        requireCurrentVersion(pr, expectedVersion)
         require(pr.status == PullRequestStatus.OPEN) { "Can only merge OPEN pull requests" }
         val unresolvedDependencies = dependencyRepository.findDependencies(id)
             .filter { it.status != PullRequestStatus.MERGED }
@@ -279,6 +336,7 @@ class PullRequestServiceImpl(
                             pr.copy(
                                 status = PullRequestStatus.MERGED, mergeStrategy = strategy, mergedBy = mergedById,
                                 mergedAt = OffsetDateTime.now(), mergeSha = mergeResult.mergeSha,
+                                mergeBaseSha = targetRef.objectId.name(),
                             )
                         ) ?: throw IllegalStateException("Failed to update PR merge state")
                         val refUpdate = repo.refDatabase.newUpdate("refs/heads/${pr.targetBranch}", false)
@@ -291,6 +349,7 @@ class PullRequestServiceImpl(
                             )
                         ) { "Target branch changed during merge" }
 
+                        deleteMergedSourceBranch(merged, repo, sourceRef.objectId, mergedById)
                         merged
                     }
                 }
@@ -301,16 +360,50 @@ class PullRequestServiceImpl(
         }
     }
 
+    private suspend fun deleteMergedSourceBranch(
+        pr: PullRequest,
+        repo: JGitRepository,
+        sourceId: ObjectId,
+        mergedById: UUID,
+    ) {
+        if (!pr.deleteBranchOnMerge || pr.sourceBranch == pr.targetBranch ||
+            (pr.sourceRepositoryId != null && pr.sourceRepositoryId != pr.repositoryId)
+        ) return
+
+        // These services depend on PullRequestService through the ref notifier; resolve after construction.
+        val repository = provide<RepositoryService>().findById(pr.repositoryId)
+            ?: throw NoSuchElementException("Repository not found: ${pr.repositoryId}")
+        if (pr.sourceBranch == repository.defaultBranch) return
+        if (branchProtectionService.findMatchingRule(pr.repositoryId, pr.sourceBranch) != null) return
+        if (prRepository.isBranchInUse(pr.repositoryId, pr.sourceBranch)) return
+
+        val refName = "refs/heads/${pr.sourceBranch}"
+        val deletion = repo.refDatabase.newUpdate(refName, false)
+        deletion.setExpectedOldObjectId(sourceId)
+        deletion.setForceUpdate(true)
+        check(deletion.delete() in setOf(RefUpdate.Result.FORCED, RefUpdate.Result.FAST_FORWARD, RefUpdate.Result.NO_CHANGE)) {
+            "Source branch changed during merge"
+        }
+        provide<RefUpdateNotifier>().notifyRefsUpdated(
+            repository = repo,
+            repositoryId = pr.repositoryId,
+            updates = listOf(RefChange(refName, sourceId, ObjectId.zeroId())),
+            pusherPrincipalId = deliveryProfile(mergedById)?.principal,
+        )
+    }
+
     override suspend fun mergeWithDependencies(
         id: UUID,
         strategy: MergeStrategy,
         mergedById: UUID,
         mergerName: String,
         mergerEmail: String,
-        expectedPullRequestIds: List<UUID>
+        expectedPullRequestIds: List<UUID>,
+        expectedVersion: Long?,
     ): List<PullRequest> {
         val plan = getMergePlan(id)
         require(plan.isNotEmpty() && plan.last().id == id) { "Pull request is already merged" }
+        requireCurrentVersion(plan.last(), expectedVersion)
         require(plan.map { it.id } == expectedPullRequestIds) {
             "Pull request dependencies changed; review the merge plan and try again"
         }
@@ -338,7 +431,7 @@ class PullRequestServiceImpl(
             val current = prRepository.findById(planned.id)
                 ?: throw NoSuchElementException("Pull request not found: ${planned.id}")
             if (current.status == PullRequestStatus.MERGED) continue
-            merged += merge(current.id, strategy, mergedById, mergerName, mergerEmail)
+            merged += merge(current.id, strategy, mergedById, mergerName, mergerEmail, planned.version)
         }
         return merged
     }
@@ -392,9 +485,10 @@ class PullRequestServiceImpl(
         return ready
     }
 
-    override suspend fun submitReview(input: SubmitReviewInput, reviewerId: UUID): Review {
-        val pr = prRepository.findById(input.pullRequestId)
+    override suspend fun submitReview(input: SubmitReviewInput, reviewerId: UUID): Review = transaction {
+        val pr = prRepository.lockById(input.pullRequestId)
             ?: throw NoSuchElementException("Pull request not found: ${input.pullRequestId}")
+        requireCurrentVersion(pr, input.expectedVersion)
         require(pr.status == PullRequestStatus.OPEN) { "Can only review OPEN pull requests" }
 
         val review = reviewRepository.create(
@@ -412,7 +506,7 @@ class PullRequestServiceImpl(
             body = review.body,
             reviewStatus = review.status,
         )
-        return review
+        review
     }
 
     override suspend fun getReviews(pullRequestId: UUID): List<Review> {
@@ -427,11 +521,13 @@ class PullRequestServiceImpl(
         oldLineNumber: Int?,
         newLineNumber: Int?,
         commitSha: String,
-        content: String
-    ): ReviewComment {
-        val pr = prRepository.findById(pullRequestId)
+        content: String,
+        expectedVersion: Long?,
+    ): ReviewComment = transaction {
+        val pr = prRepository.lockById(pullRequestId)
             ?: throw NoSuchElementException("Pull request not found: $pullRequestId")
-        val comment = reviewCommentRepository.create(
+        requireCurrentVersion(pr, expectedVersion)
+        createReviewComment(pr,
             ReviewComment(
                 reviewId = reviewId,
                 pullRequestId = pullRequestId,
@@ -443,10 +539,43 @@ class PullRequestServiceImpl(
                 content = content
             )
         )
+    }
+
+    override suspend fun replyReviewComment(
+        pullRequestId: UUID,
+        commentId: UUID,
+        authorId: UUID,
+        content: String,
+        expectedVersion: Long?,
+    ): ReviewComment = transaction {
+        val pr = prRepository.lockById(pullRequestId)
+            ?: throw NoSuchElementException("Pull request not found: $pullRequestId")
+        requireCurrentVersion(pr, expectedVersion)
+        require(content.isNotBlank()) { "Enter a reply." }
+        val original = reviewCommentRepository.findById(commentId)
+            ?: throw NoSuchElementException("Comment not found: $commentId")
+        require(original.pullRequestId == pullRequestId) { "Comment belongs to a different pull request." }
+        createReviewComment(pr,
+            ReviewComment(
+                reviewId = original.reviewId,
+                pullRequestId = pullRequestId,
+                authorId = authorId,
+                filePath = original.filePath,
+                oldLineNumber = original.oldLineNumber,
+                newLineNumber = original.newLineNumber,
+                commitSha = original.commitSha,
+                content = content,
+                outdated = original.outdated,
+            ),
+        )
+    }
+
+    private suspend fun createReviewComment(pr: PullRequest, input: ReviewComment): ReviewComment {
+        val comment = reviewCommentRepository.create(input)
         dispatchActivity(
             pr,
             PullRequestEventAction.COMMENTED,
-            actorId = authorId,
+            actorId = comment.authorId,
             body = comment.content,
             filePath = comment.filePath,
             lineNumber = comment.newLineNumber ?: comment.oldLineNumber,

@@ -1,283 +1,125 @@
 <script setup lang="ts">
-useSeoMeta({ title: 'Organizations' })
+definePageMeta({ layout: 'developers' })
+useSeoMeta({ title: 'Organizations', description: 'Group members, maintain an organization profile, and configure signup and access rules.' })
+const list = 'query Organizations {\n  organizations {\n    all(offset: 0, limit: 20) {\n      id\n      name\n      visibility\n      profile { id name }\n      memberCount\n    }\n  }\n}'
+const create = 'mutation CreateOrganization($organization: OrganizationInput!, $profile: ProfileInput!) {\n  organizations {\n    add(organization: $organization, profile: $profile) {\n      id name profile { id name }\n    }\n  }\n}'
+const invite = 'mutation Invite($id: UUID!, $token: OrganizationSignupTokenInput!) {\n  organizations {\n    addSignupToken(id: $id, token: $token) {\n      id\n      signupTokens { token type group { id name } }\n    }\n  }\n}'
+const member = 'mutation AddMember($id: UUID!, $principalId: UUID!) {\n  organizations { addMember(id: $id, principalId: $principalId) }\n}\n\nmutation RemoveMember($id: UUID!, $principalId: UUID!) {\n  organizations { removeMember(id: $id, principalId: $principalId) }\n}'
 </script>
 
 <template>
   <div class="doc-content article">
     <h1>Organizations</h1>
     <p class="subtitle">
-      Multi-tenant workspaces — the <code>Organization</code> model, membership, signup tokens,
-      signup emails, domain auto-join, and organization-scoped permissions.
+      Group members, maintain an organization profile, and configure signup and access rules.
     </p>
-
     <h2 id="overview">
-      Overview
+      Organizations and access boundaries
     </h2>
     <p>
-      Organizations are the top-level grouping for teams working together in Bosca. Each
-      Organization has its own members, permissions, and content. Organizations extend
-      <code>PermissibleEntity</code>, so all standard
-      <NuxtLink to="/developers/permissions">permission checks</NuxtLink> apply, and they expose
-      <code>ContentItem</code> for inclusion in collections.
+      An organization groups members and has a linked
+      <NuxtLink to="/developers/profile">Profile</NuxtLink> for its identity.
+      Its record has a name, JSON attributes, system attributes, visibility, and a profile ID.
     </p>
-
-    <h2 id="model">
-      Organization Model
+    <p>
+      Bosca is effectively single-tenant. An organization does not create an isolated tenant or
+      automatically scope content visibility. Collections, metadata, and other entities keep their
+      own access rules. Use <NuxtLink to="/developers/permissions">group-based permissions</NuxtLink>
+      to grant access to those entities.
+    </p>
+    <h2 id="query">
+      List organizations
     </h2>
-    <CodeBlock
-      lang="kotlin"
-      :code="`@Serializable
-data class Organization(
-    override val id: UUID = UUID.NIL,
-    val name: String,
-    override val attributes: JsonElement,
-    val systemAttributes: JsonElement,
-    val visibility: ProfileVisibility,
-    val profileId: UUID,           // linked Profile for org identity
-    val created: OffsetDateTime,
-    val modified: OffsetDateTime,
-) : PermissibleEntity<UUID>, ContentItem`"
-    />
-    <Callout type="info">
-      Every Organization has an associated <NuxtLink to="/developers/profile">Profile</NuxtLink>
-      (<code>profileId</code>) that serves as its public identity — name, logo, description, and
-      other attributes.
-    </Callout>
-
-    <h2 id="membership">
-      Membership
-    </h2>
-    <p>
-      Members are <NuxtLink to="/developers/security">Principals</NuxtLink> linked to an
-      Organization. Membership is stored as a simple join record:
-    </p>
-    <CodeBlock
-      lang="kotlin"
-      :code="`@Serializable
-data class OrganizationMember(
-    val organizationId: UUID,
-    val principalId: UUID,
-)`"
-    />
-    <p>
-      Permissions within an Organization are granted to <strong>groups</strong>, not individual
-      members. Members inherit access through their group memberships.
-    </p>
-
-    <h2 id="signup-mechanisms">
-      Signup Mechanisms
-    </h2>
-    <p>Bosca supports three ways to add members to an Organization:</p>
-
-    <h3>1. Signup Tokens</h3>
-    <p>
-      Time-limited invitation strings tied to a specific group. The recipient redeems the token
-      to join the Organization and be assigned to the linked group.
-    </p>
-    <CodeBlock
-      lang="kotlin"
-      :code="`@Serializable
-data class OrganizationSignupToken(
-    val token: String,
-    val organizationId: UUID,
-    val groupId: UUID?,
-    val created: OffsetDateTime,
-    val expires: OffsetDateTime,         // default: 60 days after creation
-)`"
-    />
-    <p>
-      The signup token input identifies which built-in group new members should land in via the
-      <code>OrganizationSignupGroupType</code> enum (<code>ADMINISTRATORS</code>,
-      <code>USERS</code>, <code>UNKNOWN</code>); the server resolves it to a concrete group and
-      stores the resulting <code>groupId</code> on the token.
-    </p>
     <CodeBlock
       lang="graphql"
-      :code="`# Generate a signup token for an organization
-mutation AddSignupToken($id: UUID!, $token: OrganizationSignupTokenInput!) {
-  organizations {
-    addSignupToken(id: $id, token: $token) {
-      id
-      name
-    }
-  }
-}
-
-# Delete an issued token
-mutation DeleteSignupToken($id: UUID!, $token: String!) {
-  organizations {
-    deleteSignupToken(id: $id, token: $token) {
-      id
-    }
-  }
-}`"
-    />
-
-    <h3>2. Signup Emails</h3>
-    <p>
-      Pre-authorize specific email addresses. When a user signs up with a matching email, they
-      are added to the Organization and assigned to the group implied by the
-      <code>OrganizationSignupGroupType</code>.
-    </p>
-    <CodeBlock
-      lang="kotlin"
-      :code="`@Serializable
-data class OrganizationSignupEmail(
-    val email: String,
-    val organizationId: UUID,
-    val groupId: UUID?,
-    val created: OffsetDateTime,
-    val expires: OffsetDateTime,
-)
-
-@Serializable
-data class OrganizationSignupEmailInput(
-    val email: String,
-    val type: OrganizationSignupGroupType,
-)`"
-    />
-    <CodeBlock
-      lang="graphql"
-      :code="`mutation AddSignupEmail($id: UUID!, $token: OrganizationSignupEmailInput!) {
-  organizations {
-    addSignupEmailToken(id: $id, token: $token) {
-      id
-    }
-  }
-}`"
-    />
-
-    <h3>3. Domain Auto-Join</h3>
-    <p>
-      Link an email domain to an Organization. When <code>autoJoin</code> is true, any user
-      signing up with a matching email domain is automatically added.
-    </p>
-    <CodeBlock
-      lang="kotlin"
-      :code="`@Serializable
-data class OrganizationDomain(
-    val organizationId: UUID,
-    val domain: String,
-    val autoJoin: Boolean,
-    val groupId: UUID? = null,
-)
-
-@Serializable
-data class OrganizationDomainInput(
-    val domain: String,
-    val autoJoin: Boolean,
-    val defaultGroupId: UUID? = null,
-    val type: OrganizationSignupGroupType? = null,
-)`"
-    />
-    <CodeBlock
-      lang="graphql"
-      :code="`mutation AddDomain($id: UUID!, $domain: OrganizationDomainInput!) {
-  organizations {
-    addOrganizationDomain(id: $id, domain: $domain) {
-      id
-    }
-  }
-}
-
-mutation RemoveDomain($id: UUID!, $domain: String!) {
-  organizations {
-    removeOrganizationDomain(id: $id, domain: $domain) {
-      id
-    }
-  }
-}`"
-    />
-    <Callout type="tip">
-      Domain auto-join is useful for enterprise deployments where all employees share a
-      corporate email domain. Combined with OAuth2 SSO, it enables zero-friction onboarding.
-    </Callout>
-
-    <h2 id="permissions">
-      Organization Permissions
-    </h2>
-    <p>
-      Permissions are granted at the Organization level to <strong>groups</strong>. Each
-      permission record maps a group to a <code>PermissionAction</code>:
-    </p>
-    <CodeBlock
-      lang="kotlin"
-      :code="`@Serializable
-data class OrganizationPermission(
-    val organizationId: UUID,
-    override val groupId: UUID,
-    override val action: PermissionAction,
-) : EntityPermission`"
+      :code="list"
     />
     <p>
-      Since Organization extends <code>PermissibleEntity</code>, the standard
-      <NuxtLink to="/developers/permissions">decision chain</NuxtLink> applies — public access
-      flags, group checks, and role-based fallbacks all work the same way.
+      <code>organizations.all</code> returns records for administrators and an empty list otherwise.
+      A single organization lookup checks <code>VIEW</code> permission. Management fields such as signup configuration,
+      permissions, and member lists require additional authority.
+      GraphQL exposes the associated <code>profile</code> object; <code>profileId</code> is a Kotlin model property.
     </p>
-
-    <h2 id="membership-mutations">
-      Membership Mutations
-    </h2>
-    <p>
-      Member management requires <code>MANAGE</code> permission on the Organization:
-    </p>
-    <CodeBlock
-      lang="graphql"
-      :code="`mutation AddMember($id: UUID!, $principalId: UUID!) {
-  organizations {
-    addMember(id: $id, principalId: $principalId)
-  }
-}
-
-mutation RemoveMember($id: UUID!, $principalId: UUID!) {
-  organizations {
-    removeMember(id: $id, principalId: $principalId)
-  }
-}`"
-    />
-
     <h2 id="creating-organizations">
-      Creating an Organization
+      Create an organization
+    </h2>
+    <CodeBlock
+      lang="graphql"
+      :code="create"
+    />
+    <p>
+      <code>OrganizationInput</code> requires <code>name</code>, <code>attributes</code>,
+      <code>systemAttributes</code>, <code>visibility</code>, <code>domains</code>,
+      <code>signupEmails</code>, and <code>signupTokens</code>. Empty arrays are valid for the signup
+      lists. Its optional <code>id</code> identifies an existing organization when editing.
+      <code>ProfileInput</code> supplies the associated name, attributes, and visibility.
+    </p>
+    <p>
+      The creation resolver is intentionally available to signup flows without a caller authentication
+      parameter. Edits, deletion, and membership management have their own permission checks.
+    </p>
+    <h2 id="membership">
+      Membership and groups
     </h2>
     <p>
-      <code>organizations.add</code> is intentionally open so that signup flows can create an
-      organization and its linked profile in one step:
+      Membership records link an organization ID and a principal ID. The profile API exposes these
+      organizations for profiles linked to that principal. Organization creation also establishes
+      administrator and user groups for its signup and permission configuration.
+    </p>
+    <p>
+      Membership and group grants are separate records. Adding a member directly does not assign
+      a signup group. Removing the membership record does not revoke its existing security-group
+      memberships. Manage those memberships explicitly when changing access.
     </p>
     <CodeBlock
       lang="graphql"
-      :code="`mutation CreateOrganization(
-  $organization: OrganizationInput!,
-  $profile: ProfileInput!
-) {
-  organizations {
-    add(organization: $organization, profile: $profile) {
-      id
-      name
-      profileId
-    }
-  }
-}`"
+      :code="member"
     />
-
-    <h2 id="relationship">
-      How It Fits Together
+    <p>Both membership mutations require <code>MANAGE</code> permission on the organization.</p>
+    <h2 id="signup-mechanisms">
+      Signup mechanisms
     </h2>
     <ul>
       <li>
-        <strong>Principal</strong> (security identity) → is a <strong>Member</strong> of an
-        Organization
+        <strong>Signup tokens:</strong> share a token that selects an organization signup group.
+        Creating or deleting a token requires organization <code>MANAGE</code> permission.
       </li>
       <li>
-        <strong>Organization</strong> → has a linked <strong>Profile</strong> (public identity)
+        <strong>Signup emails:</strong> preconfigure an email address and signup group type.
+        These mutations require administrator authority.
       </li>
       <li>
-        <strong>Groups</strong> → receive permission grants on the Organization; members inherit
-        access through them
-      </li>
-      <li>
-        <strong>Signup mechanisms</strong> → control how new Principals are routed into the
-        Organization and into a specific group
+        <strong>Domains:</strong> configure a matching email domain, <code>autoJoin</code>, and a
+        default group. Adding or removing domains requires administrator authority.
       </li>
     </ul>
+    <p>
+      Signup group types are <code>ADMINISTRATORS</code>, <code>USERS</code>, and <code>UNKNOWN</code>.
+      They select the organization's groups, not the platform-wide administrator role.
+    </p>
+    <CodeBlock
+      lang="graphql"
+      :code="invite"
+    />
+    <p>
+      For an ordinary member invitation, supply <code>{ "type": "USERS" }</code> as the
+      <code>token</code> variable. Read the generated token from the returned
+      <code>signupTokens</code> list.
+    </p>
+    <h2 id="permissions">
+      Organization permissions
+    </h2>
+    <p>
+      <code>OrganizationPermission</code> grants an action to a security group on the organization
+      record. It does not grant that action on every item associated with a member or the organization.
+      The organization permission evaluator maps API-token access to profile scopes such as <code>profiles:read</code> and <code>profiles:manage</code>.
+    </p>
+    <h2 id="source">
+      Where to look in the workspace
+    </h2>
+    <p>
+      Models live in <code>social/core-profile</code>. Membership, signup, and resolver behavior live in
+      <code>social/profile</code>, alongside <code>src/main/resources/graphql/organizations.graphqls</code>.
+    </p>
   </div>
 </template>

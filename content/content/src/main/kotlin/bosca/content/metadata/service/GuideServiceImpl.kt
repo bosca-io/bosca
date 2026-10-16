@@ -105,6 +105,15 @@ class GuideServiceImpl(
         batch.ensureNotNull(emptyList())
     }
 
+    override suspend fun addParentGuideStepsToBatch(batch: Batch<MetadataCacheKeyId, List<GuideStep>>) {
+        if (batch.keys.isEmpty()) return
+        val steps = guideStepRepository.getByStepMetadataIds(batch.keys.map { it.id }.distinct())
+            .groupBy { MetadataCacheKeyId(it.stepMetadataId ?: error("GuideStep does not have metadata"), it.stepMetadataVersion) }
+        for (key in batch.keys) {
+            batch.setData(key, steps[key] ?: emptyList())
+        }
+    }
+
     override suspend fun getGuideStepModules(id: UUID, version: Int, stepId: Long) = guideStepModulesCache.get(MetadataCacheKeyId(id, version, stepId = stepId)) ?: emptyList()
 
     override suspend fun addGuideStepModulesToBatch(batch: Batch<MetadataCacheKeyId, List<GuideStepModule>>) {

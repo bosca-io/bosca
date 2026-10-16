@@ -1,0 +1,98 @@
+<component tag="git-pull-edit">
+  <prop name="page" type="bosca.git.ui.PullPage" required />
+  <script server provides="model">
+    bosca.git.ui.PullEditModel(page)
+  </script>
+  <island name="git-pull-edit" :key="page.pull.id">
+    <div :data-next-href="model.nextHref">
+      <ui-icon-button icon="edit" label="Edit pull request" @click="model.open(ctx)" />
+      <ui-dialog
+        title="Edit pull request"
+        triggerLabel="Edit pull request"
+        icon="edit"
+        :showTrigger="false"
+        :forceOpen="model.editing"
+        returnFocus='[aria-label="Edit pull request"]'
+      >
+        <form class="modal-form" @submit="model.save(form.title, form.description, form.source, form.target, form.deleteBranchOnMerge, ctx)">
+          <div class="modal-fields">
+            <if model.message.isNotBlank()>
+              <ui-alert>{ model.message }</ui-alert>
+            </if>
+            <ui-field label="Title">
+              <ui-input name="title" :value="model.title" required />
+            </ui-field>
+            <ui-field label="Description">
+              <textarea name="description" rows="5" placeholder="Explain what changed and why">{ model.description }</textarea>
+              <small>Markdown supported.</small>
+            </ui-field>
+            <ui-switch
+              name="deleteBranchOnMerge"
+              :checked="model.deleteBranchOnMerge"
+              :disabled='model.page.pull.status.name == "MERGED"'
+              label="Delete source branch after merge"
+            />
+            <if model.canChangeBranches>
+              <div class="branch-fields">
+                <ui-field label="Source branch">
+                  <ui-select name="source" label="Source branch" searchable required>
+                    <for branch in (listOf(model.source) + model.sourceBranches).distinct()>
+                      <option :value="branch" :selected="branch == model.source">
+                        { branch + if (branch in model.sourceBranches) "" else " (unavailable)" }
+                      </option>
+                    </for>
+                  </ui-select>
+                  <small>{ model.page.sourceRepositoryName }</small>
+                </ui-field>
+                <ui-field label="Target branch">
+                  <ui-select name="target" label="Target branch" searchable required>
+                    <for branch in (listOf(model.target) + model.targetBranches).distinct()>
+                      <option :value="branch" :selected="branch == model.target">
+                        { branch + if (branch in model.targetBranches) "" else " (unavailable)" }
+                      </option>
+                    </for>
+                  </ui-select>
+                  <small>{ model.page.repositoryName }</small>
+                </ui-field>
+              </div>
+              <p class="edit-note">Changing either branch dismisses previous review decisions and marks line comments outdated.</p>
+            <else>
+              <input type="hidden" name="source" :value="model.source" />
+              <input type="hidden" name="target" :value="model.target" />
+              <p class="edit-note">
+                { if (model.page.pull.status.name == "CLOSED") "Reopen this pull request to change its branches." else "Branches are fixed after merging." }
+              </p>
+            </if>
+          </div>
+          <footer class="modal-footer">
+            <ui-button data-dialog-close>Cancel</ui-button>
+            <ui-button type="submit" primary icon="check">Save changes</ui-button>
+          </footer>
+        </form>
+      </ui-dialog>
+    </div>
+  </island>
+  <style scoped>
+    .branch-fields {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 14px;
+    }
+    .edit-note {
+      margin: 0;
+      font-size: 12px;
+      color: var(--fg-3);
+    }
+    @media (max-width: 600px) {
+      .branch-fields {
+        grid-template-columns: minmax(0, 1fr);
+      }
+    }
+  </style>
+  <script client scoped>
+    ctx.onUpdate(() => {
+      const next = ctx.root.querySelector<HTMLElement>("[data-next-href]")?.dataset.nextHref;
+      if (next) location.assign(next);
+    });
+  </script>
+</component>

@@ -250,7 +250,7 @@ describe('Select', () => {
       await w.find('.select-trigger').trigger('click')
       await flush()
       await nextTick()
-      expect(onSearch).toHaveBeenCalledWith('')
+      expect(onSearch).toHaveBeenCalledWith('', 0)
       const opts = w.findAll('.select-option')
       expect(opts).toHaveLength(1)
       expect(opts[0].text()).toContain('Alice')
@@ -278,6 +278,77 @@ describe('Select', () => {
       await w.find('.select-search').trigger('keydown', { key: 'Escape' })
       await nextTick()
       expect(w.find('.select-display').text()).toBe('Alice')
+      w.unmount()
+    })
+
+    it('pages results without accumulating options and resets the offset when searching', async () => {
+      const onSearch = vi.fn(async (query: string, offset: number) => ({
+        options: query ? [{ value: 'old', label: 'Older tag' }] : offset
+          ? [{ value: 'v1', label: 'v1' }]
+          : [{ value: 'v2', label: 'v2' }, { value: 'v10', label: 'v10' }],
+        previousOffset: offset ? 0 : undefined,
+        nextOffset: !query && !offset ? 25 : undefined,
+      }))
+      const w = mountSelect({ options: undefined, searchable: true, onSearch, debounce: 0 })
+      await w.find('.select-trigger').trigger('click')
+      await flush()
+      expect(w.findAll('.select-option').map(option => option.text())).toEqual(['v2', 'v10'])
+      await w.findAll('.select-pagination button')[1].trigger('click')
+      await flush()
+      expect(onSearch).toHaveBeenLastCalledWith('', 25)
+      expect(w.findAll('.select-option').map(option => option.text())).toEqual(['v1'])
+      await w.findAll('.select-pagination button')[0].trigger('click')
+      await flush()
+      expect(onSearch).toHaveBeenLastCalledWith('', 0)
+      await w.findAll('.select-pagination button')[1].trigger('click')
+      await flush()
+      await w.find('.select-search').setValue('old')
+      await flush()
+      await flush()
+      expect(onSearch).toHaveBeenLastCalledWith('old', 0)
+      expect(w.find('.select-pagination').exists()).toBe(false)
+      await w.find('.select-option').trigger('click')
+      expect(w.emitted('update:modelValue')?.at(-1)).toEqual(['old'])
+      await w.setProps({ modelValue: 'old' })
+      expect(w.find('.select-display').text()).toBe('Older tag')
+      w.unmount()
+    })
+
+    it('dismisses the dropdown when Escape is pressed on a pagination button', async () => {
+      const onSearch = vi.fn().mockResolvedValue({ options, nextOffset: 25 })
+      const w = mountSelect({ options: undefined, searchable: true, onSearch })
+      await w.find('.select-trigger').trigger('click')
+      await flush()
+      await w.findAll('.select-pagination button')[1].trigger('keydown', { key: 'Escape' })
+      expect(w.find('.select-dropdown').exists()).toBe(false)
+      w.unmount()
+    })
+
+    it('ignores a stale page response after the search changes', async () => {
+      let resolveOld: ((value: typeof options) => void) | undefined
+      const onSearch = vi.fn((query: string) => query
+        ? Promise.resolve([{ value: 'new', label: 'Newest result' }])
+        : new Promise<typeof options>(resolve => { resolveOld = resolve }))
+      const w = mountSelect({ options: undefined, searchable: true, onSearch, debounce: 0 })
+      await w.find('.select-trigger').trigger('click')
+      await w.find('.select-search').setValue('new')
+      await flush()
+      resolveOld?.(options)
+      await flush()
+      expect(w.findAll('.select-option').map(option => option.text())).toEqual(['Newest result'])
+      w.unmount()
+    })
+
+    it('shows an async error and retries the search', async () => {
+      const onSearch = vi.fn().mockRejectedValueOnce(new Error('Unavailable')).mockResolvedValue(options)
+      const w = mountSelect({ searchable: true, onSearch })
+      await w.find('.select-trigger').trigger('click')
+      await flush()
+      expect(w.get('[role=alert]').text()).toContain('Unavailable')
+      await w.get('[role=alert] button').trigger('click')
+      await flush()
+      expect(w.find('[role=alert]').exists()).toBe(false)
+      expect(w.findAll('.select-option')).toHaveLength(3)
       w.unmount()
     })
 

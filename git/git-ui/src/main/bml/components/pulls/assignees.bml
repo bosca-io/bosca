@@ -1,0 +1,74 @@
+<component tag="git-pull-assignees">
+  <prop name="page" type="bosca.git.ui.PullPage" required />
+  <script server provides="model">
+    bosca.git.ui.PullActionsModel(page)
+  </script>
+  <island name="git-pull-assignees" :key="page.pull.id">
+    <section class="side-card assignees" :data-next-href="model.nextHref">
+      <h2 class="side-card-title">Assignees</h2>
+      <if model.page.pull.assignees.isEmpty()>
+        <p class="side-empty">No assignees</p>
+      <else>
+        <div class="side-list">
+          <for profile in model.page.pull.assignees>
+            <form class="side-row" @submit="model.assign(profile.id, true, ctx)">
+              <span class="avatar" aria-hidden="true">
+                { profile.name.split(' ').filter { it.isNotBlank() }.joinToString("") { it.take(1) }.uppercase().take(2).ifBlank { "?" } }
+              </span>
+              <span class="side-row-name" :title='profile.slug?.let { "@" + it } ?: profile.id'>{ profile.name }</span>
+              <if model.page.canEdit && (model.page.pull.status.name == "OPEN" || model.page.pull.status.name == "DRAFT")>
+                <span class="side-row-remove">
+                  <ui-icon-button
+                    type="submit"
+                    size="xs"
+                    class="ghost"
+                    icon="close"
+                    :label='"Remove assignee " + profile.name + " · " + (profile.slug?.let { "@" + it } ?: profile.id)'
+                  />
+                </span>
+              </if>
+            </form>
+          </for>
+        </div>
+      </if>
+      <if model.failed && model.selectedAction == "unassign">
+        <ui-alert>{ model.message }</ui-alert>
+      </if>
+      <if model.page.canEdit && (model.page.pull.status.name == "OPEN" || model.page.pull.status.name == "DRAFT")>
+        <ui-dialog
+          title="Add assignee"
+          triggerLabel="Add assignee"
+          icon="users"
+          triggerStyle="link"
+          :forceOpen='model.failed && model.selectedAction == "assign"'
+        >
+          <form class="modal-form" @submit="model.assign(form.profile, false, ctx)">
+            <div class="modal-fields">
+              <if model.message.isNotBlank()>
+                <ui-alert>{ model.message }</ui-alert>
+              </if>
+              <git-owner-picker
+                :allowAll="false"
+                caption="Assignee"
+                name="profile"
+                id=""
+                label="Choose an assignee"
+              />
+            </div>
+            <footer class="modal-footer">
+              <ui-button ref="cancel">Cancel</ui-button>
+              <ui-button type="submit" primary>Add assignee</ui-button>
+            </footer>
+          </form>
+        </ui-dialog>
+      </if>
+    </section>
+  </island>
+  <script client scoped>
+    ctx.onUpdate(() => {
+      const next =
+        ctx.root.querySelector<HTMLElement>("[data-next-href]")?.dataset.nextHref;
+      if (next) location.assign(next);
+    });
+  </script>
+</component>

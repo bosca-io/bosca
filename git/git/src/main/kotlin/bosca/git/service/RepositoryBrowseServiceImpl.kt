@@ -1,5 +1,7 @@
 package bosca.git.service
 
+import com.github.benmanes.caffeine.cache.Caffeine
+import java.time.Duration
 import bosca.cache.ServiceCache
 import bosca.cache.serializers.StringKeySerializer
 import bosca.git.dfs.BoscaDfsRepositoryManager
@@ -33,7 +35,10 @@ import org.eclipse.jgit.lib.Constants
 import org.eclipse.jgit.lib.FileMode
 import org.eclipse.jgit.lib.ObjectId
 import org.eclipse.jgit.lib.Repository
+import org.eclipse.jgit.lib.Ref
+import java.util.PriorityQueue
 import org.eclipse.jgit.revwalk.RevCommit
+import org.eclipse.jgit.revwalk.RevTag
 import org.eclipse.jgit.revwalk.RevWalk
 import org.eclipse.jgit.treewalk.TreeWalk
 import org.eclipse.jgit.treewalk.filter.PathFilter
@@ -49,6 +54,19 @@ class RepositoryBrowseServiceImpl(
     private val packRepository: bosca.git.repository.DfsPackRepository,
     private val searchService: SearchService
 ) : RepositoryBrowseService {
+
+    private data class HistoryKey(val repositoryId: UUID, val head: ObjectId, val shallow: Set<ObjectId>)
+    private data class HistoryStats(val commits: Long, val contributors: Int)
+
+    // History is immutable at a commit, except when shallow boundaries change. Cache only that
+    // work: refs and physical pack size are read fresh so pushes, deletes and GC stay visible.
+    // Atomic loading coalesces concurrent requests for the same history snapshot.
+    private val historyStats = Caffeine.newBuilder()
+        .maximumSize(4096)
+        .expireAfterAccess(Duration.ofMinutes(30))
+        .build<HistoryKey, HistoryStats>()
+
+    private val tagDates = TagDateCache()
 
     private val treeCache = ServiceCache<String, List<TreeEntry>>(
         cacheName = "git:tree",
@@ -195,37 +213,54 @@ class RepositoryBrowseServiceImpl(
         }
     }
 
-    override suspend fun listTags(repositoryId: UUID): List<TagInfo> {
-        return withRepository(repositoryId) {
-            val refs = it.refDatabase.getRefsByPrefix(Constants.R_TAGS)
-            val revWalk = RevWalk(it)
-            val tags = refs.map { ref ->
-                val name = ref.name.removePrefix(Constants.R_TAGS)
-                val peeledRef = it.refDatabase.peel(ref)
-                val peeledId = peeledRef.peeledObjectId
-
-                if (peeledId != null) {
-                    try {
-                        val tagObj = revWalk.parseTag(ref.objectId)
-                        TagInfo(
-                            name = name,
-                            sha = ref.objectId.name(),
-                            targetSha = peeledId.name(),
-                            taggerName = tagObj.taggerIdent?.name,
-                            taggerEmail = tagObj.taggerIdent?.emailAddress,
-                            message = tagObj.fullMessage,
-                            isAnnotated = true
-                        )
-                    } catch (_: Exception) {
-                        TagInfo(name = name, sha = ref.objectId.name(), targetSha = peeledId.name(), isAnnotated = true)
-                    }
-                } else {
-                    TagInfo(name = name, sha = ref.objectId.name(), isAnnotated = false)
+    override suspend fun listTags(repositoryId: UUID, limit: Int?, offset: Long, query: String?): List<TagInfo> {
+        require(offset >= 0) { "Tag offset must not be negative" }
+        require(limit == null || limit > 0) { "Tag limit must be positive" }
+        return withRepository(repositoryId) { repository ->
+            val refs = repository.refDatabase.getRefsByPrefix(Constants.R_TAGS)
+            if (offset >= refs.size) return@withRepository emptyList()
+            val window = minOf(refs.size.toLong(), offset + (limit?.toLong() ?: refs.size.toLong())).toInt()
+            val order = compareByDescending<Pair<Ref, Long>> { it.second }.thenBy { it.first.name }
+            val newest = PriorityQueue(order.reversed())
+            // Keep only the requested window and release parsed objects between batches.
+            // Ref enumeration and dates always come from Git, including imported tags.
+            val matching = refs.asSequence().filter {
+                query.isNullOrBlank() || it.name.removePrefix(Constants.R_TAGS).contains(query, ignoreCase = true)
+            }
+            tagDates.forEach(repositoryId, repository, matching) { ref, created ->
+                val candidate = ref to created
+                if (newest.size < window) newest.add(candidate)
+                else if (order.compare(candidate, newest.peek()) < 0) {
+                    newest.poll()
+                    newest.add(candidate)
                 }
             }
-            revWalk.dispose()
-            tags
+            RevWalk(repository).use { walk ->
+                newest.sortedWith(order).drop(offset.toInt()).map { tagInfo(it.first, walk) }
+            }
         }
+    }
+
+    override suspend fun getTag(repositoryId: UUID, name: String): TagInfo? = withRepository(repositoryId) { repository ->
+        val ref = repository.refDatabase.exactRef(Constants.R_TAGS + name.removePrefix(Constants.R_TAGS))
+            ?: return@withRepository null
+        RevWalk(repository).use { tagInfo(ref, it) }
+    }
+
+    private fun tagInfo(ref: Ref, walk: RevWalk): TagInfo {
+        val name = ref.name.removePrefix(Constants.R_TAGS)
+        val target = walk.parseAny(ref.objectId)
+        return if (target is RevTag) {
+            TagInfo(
+                name = name,
+                sha = ref.objectId.name(),
+                targetSha = walk.peel(target).name(),
+                taggerName = target.taggerIdent?.name,
+                taggerEmail = target.taggerIdent?.emailAddress,
+                message = target.fullMessage,
+                isAnnotated = true,
+            )
+        } else TagInfo(name = name, sha = ref.objectId.name(), isAnnotated = false)
     }
 
     override suspend fun blame(repositoryId: UUID, ref: String, path: String): List<BlameLine> {
@@ -255,28 +290,31 @@ class RepositoryBrowseServiceImpl(
         val stats = withRepository(repositoryId) {
             val branches = it.refDatabase.getRefsByPrefix(Constants.R_HEADS)
             val tags = it.refDatabase.getRefsByPrefix(Constants.R_TAGS)
-            val headRef = it.refDatabase.findRef(Constants.HEAD)
-                ?: it.refDatabase.getRefsByPrefix(Constants.R_HEADS).firstOrNull()
+            val headId = it.refDatabase.findRef(Constants.HEAD)?.objectId
+                ?: branches.firstNotNullOfOrNull { branch -> branch.objectId }
 
-            var commitCount = 0L
-            val contributors = mutableSetOf<String>()
-
-            if (headRef != null) {
-                RevWalk(it).use { revWalk ->
-                    revWalk.markStart(revWalk.parseCommit(headRef.objectId))
-                    for (commit in revWalk) {
-                        commitCount++
-                        contributors.add(commit.authorIdent.emailAddress)
-                        if (commitCount > 10000) break
+            val history = if (headId == null) HistoryStats(0, 0) else {
+                val key = HistoryKey(repositoryId, headId, it.objectDatabase.shallowCommits.toSet())
+                historyStats.get(key) { _ ->
+                    var commits = 0L
+                    val contributors = mutableSetOf<String>()
+                    RevWalk(it).use { revWalk ->
+                        revWalk.markStart(revWalk.parseCommit(headId))
+                        for (commit in revWalk) {
+                            commits++
+                            contributors.add(commit.authorIdent.emailAddress)
+                            if (commits > 10000) break
+                        }
                     }
+                    HistoryStats(commits, contributors.size)
                 }
             }
 
             RepoStats(
-                commitCount = commitCount,
+                commitCount = history.commits,
                 branchCount = branches.size,
                 tagCount = tags.size,
-                contributorCount = contributors.size,
+                contributorCount = history.contributors,
                 diskSizeBytes = 0,
             )
         }

@@ -320,7 +320,8 @@ class ExperimentAnalysisExecutorTest {
 
     @Test
     fun `SHIP path writes a typed analysis report with deterministic prose`() = runTest {
-        val mocks = setupMocks()
+        val results = shipResults()
+        val mocks = setupMocks(results = results)
         val reportSlot = slot<AnalysisReport>()
         coEvery { mocks.analysisReportRepository.add(capture(reportSlot)) } answers { firstArg() }
 
@@ -348,6 +349,7 @@ class ExperimentAnalysisExecutorTest {
         assertEquals("SHIP", details.verdict,
             "SHIP fixture should produce SHIP verdict on the typed details blob")
         assertEquals(controlKey, details.controlVariationKey)
+        assertEquals(results.associate { "${it.goalId}:${it.variationKey}" to it.updatedAt.toString() }, details.resultUpdatedAt)
         assertEquals(1, details.goals.size)
         val goal = details.goals.single()
         assertEquals(ConversionGoalRole.PRIMARY, goal.role)
@@ -368,6 +370,27 @@ class ExperimentAnalysisExecutorTest {
     // -----------------------------------------------------------------
     // AI commentary
     // -----------------------------------------------------------------
+
+    @Test
+    fun `report snapshot retains the analyzed rows when aggregation finishes during AI insights`() = runTest {
+        val results = shipResults()
+        val replacement = results.map { it.copy(updatedAt = it.updatedAt.plusMinutes(1)) }
+        val mocks = setupMocks(results = results)
+        val reportSlot = slot<AnalysisReport>()
+        coEvery { mocks.analysisReportRepository.add(capture(reportSlot)) } answers { firstArg() }
+        val aiAnalyzer = mockk<ExperimentAiAnalyzer>()
+        coEvery { aiAnalyzer.summarize(any()) } coAnswers {
+            coEvery { mocks.experimentService.getResults(experimentId) } returns replacement
+            AiInsights(hypothesisAssessment = "Treatment improved the primary goal.",
+                crossGoalPatterns = "Single goal.", followUpExperiments = emptyList())
+        }
+
+        run(mocks, aiAnalyzer)
+
+        val details = json.decodeFromJsonElement(AnalysisReportDetails.serializer(), reportSlot.captured.details)
+        assertEquals(results.associate { "${it.goalId}:${it.variationKey}" to it.updatedAt.toString() }, details.resultUpdatedAt)
+        assertEquals(replacement, mocks.experimentService.getResults(experimentId))
+    }
 
     @Test
     fun `AI analyzer success populates aiInsights on the report`() = runTest {
@@ -509,7 +532,8 @@ class ExperimentAnalysisExecutorTest {
             effectiveAlpha = 0.05,
         )
         val experimentRevision = 7L
-        val typed = buildAnalysisDetailsFor(analysis, experimentRevision)
+        val results = shipResults()
+        val typed = buildAnalysisDetailsFor(analysis, experimentRevision, results)
         val encoded = json.encodeToJsonElement(
             AnalysisReportDetails.serializer(),
             typed,
@@ -522,6 +546,7 @@ class ExperimentAnalysisExecutorTest {
             "typed analysis report details must round-trip through JSON without loss")
         assertEquals("SHIP", decoded.verdict)
         assertEquals(experimentRevision, decoded.experimentRevision)
+        assertEquals(results.associate { "${it.goalId}:${it.variationKey}" to it.updatedAt.toString() }, decoded.resultUpdatedAt)
         assertEquals(0.05, decoded.multipleTesting?.effectiveAlpha)
     }
 }
