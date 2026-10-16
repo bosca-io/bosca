@@ -40,7 +40,7 @@ test('tag lists and pipeline dropdowns preserve API order with bounded pages and
       tagRequests.push(variables)
       const filtered = tags.filter(tag => tag.name.includes(variables.query ?? ''))
       await route.fulfill({ json: { data: { git: {
-        tags: filtered.slice(variables.offset, variables.offset + variables.limit),
+        ...(variables.includeTags !== false ? { tags: filtered.slice(variables.offset, variables.offset + variables.limit) } : {}),
         ...(variables.includeBranches ? { branches: [{ name: 'main' }] } : {}),
       } } } })
     } else if (operation === 'PipelineRunInputs') {
@@ -83,7 +83,9 @@ test('tag lists and pipeline dropdowns preserve API order with bounded pages and
   await expect(dropdown.locator('.select-option')).toHaveText(names.slice(25, 50).map(name => `${name} (tag)`))
   await dropdown.getByRole('button', { name: 'Previous', exact: true }).click()
   await expect(dropdown.locator('.select-option').first()).toHaveText('v2 (tag)')
-  await picker.locator('input').fill('older-996')
+  await picker.locator('input').fill('refs/heads/main')
+  await expect(dropdown.locator('.select-option')).toHaveText(['main (branch)'])
+  await picker.locator('input').fill('refs/tags/older-996')
   await expect(dropdown.locator('.select-option')).toHaveText(['older-996 (tag)'])
   await picker.locator('input').press('Enter')
   await expect(picker.locator('.select-display')).toHaveText('older-996 (tag)')

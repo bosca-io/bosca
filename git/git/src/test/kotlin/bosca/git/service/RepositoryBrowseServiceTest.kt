@@ -787,7 +787,13 @@ class RepositoryBrowseServiceTest {
         assertEquals("v0599", service.listTags(repositoryId, limit = 1).single().name)
         assertNull(service.getTag(repositoryId, "v0001"))
         createDatedTag("added", "2040-01-01T00:00:00Z")
-        assertEquals("added", service.listTags(repositoryId, limit = 1).single().name)
+        objectReads = 0
+        assertEquals("added", service.listTags(repositoryId, limit = 25).first().name)
+        assertEquals(27, objectReads, "Adding a tag before existing names should read only the new date and returned page")
+        inMemoryRepo.updateRef("refs/tags/added").apply { isForceUpdate = true; delete() }
+        objectReads = 0
+        assertEquals("v0599", service.listTags(repositoryId, limit = 25).first().name)
+        assertEquals(26, objectReads, "Removing a tag should not invalidate unchanged object dates")
     }
 
     @Test
@@ -803,6 +809,9 @@ class RepositoryBrowseServiceTest {
         }
         assertEquals("v299", service.listTags(repositoryId, limit = 25, query = "v299").single().name)
         assertTrue(objectReads <= 3, "Cold selective search reads: $objectReads")
+        objectReads = 0
+        assertEquals("v299", service.listTags(repositoryId, limit = 25, query = "v299").single().name)
+        assertEquals(2, objectReads, "A repeated selective search should reuse its object date")
     }
 
     private fun createDatedTag(name: String, timestamp: String?, target: ObjectId = firstCommitId) {

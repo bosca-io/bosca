@@ -36,8 +36,6 @@ import org.eclipse.jgit.lib.FileMode
 import org.eclipse.jgit.lib.ObjectId
 import org.eclipse.jgit.lib.Repository
 import org.eclipse.jgit.lib.Ref
-import java.security.MessageDigest
-import java.util.HexFormat
 import java.util.PriorityQueue
 import org.eclipse.jgit.revwalk.RevCommit
 import org.eclipse.jgit.revwalk.RevTag
@@ -68,13 +66,7 @@ class RepositoryBrowseServiceImpl(
         .expireAfterAccess(Duration.ofMinutes(30))
         .build<HistoryKey, HistoryStats>()
 
-    // Dates belong to immutable Git objects. Compact batches keep repeated page requests
-    // from reopening every object, while fresh refs still determine membership and order.
-    private val tagDates = Caffeine.newBuilder()
-        .maximumWeight(64L * 1024 * 1024)
-        .weigher<String, LongArray> { key, dates -> key.length * 2 + dates.size * Long.SIZE_BYTES + 96 }
-        .expireAfterAccess(Duration.ofMinutes(30))
-        .build<String, LongArray>()
+    private val tagDates = TagDateCache()
 
     private val treeCache = ServiceCache<String, List<TreeEntry>>(
         cacheName = "git:tree",
@@ -232,49 +224,22 @@ class RepositoryBrowseServiceImpl(
             val newest = PriorityQueue(order.reversed())
             // Keep only the requested window and release parsed objects between batches.
             // Ref enumeration and dates always come from Git, including imported tags.
-            refs.asSequence()
-                .chunked(256)
-                .forEach { batch ->
-                    val matching = batch.indices.filter {
-                        query.isNullOrBlank() || batch[it].name.removePrefix(Constants.R_TAGS).contains(query, ignoreCase = true)
-                    }
-                    if (matching.isEmpty()) return@forEach
-                    val ids = ByteArray(batch.size * Constants.OBJECT_ID_LENGTH)
-                    batch.forEachIndexed { index, ref -> ref.objectId.copyRawTo(ids, index * Constants.OBJECT_ID_LENGTH) }
-                    val key = "$repositoryId:" + HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(ids))
-                    val dates = if (matching.size == batch.size) {
-                        tagDates.get(key) {
-                            RevWalk(repository).use { walk -> LongArray(batch.size) { tagDate(batch[it], walk) } }
-                        }
-                    } else tagDates.getIfPresent(key)
-                    fun select(index: Int, created: Long) {
-                        val candidate = batch[index] to created
-                        if (newest.size < window) newest.add(candidate)
-                        else if (order.compare(candidate, newest.peek()) < 0) {
-                            newest.poll()
-                            newest.add(candidate)
-                        }
-                    }
-                    if (dates != null) {
-                        matching.forEach { select(it, dates[it]) }
-                    } else {
-                        // A selective search need only parse its matches on a cold cache.
-                        RevWalk(repository).use { walk ->
-                            matching.forEach { select(it, tagDate(batch[it], walk)) }
-                        }
-                    }
+            val matching = refs.asSequence().filter {
+                query.isNullOrBlank() || it.name.removePrefix(Constants.R_TAGS).contains(query, ignoreCase = true)
+            }
+            tagDates.forEach(repositoryId, repository, matching) { ref, created ->
+                val candidate = ref to created
+                if (newest.size < window) newest.add(candidate)
+                else if (order.compare(candidate, newest.peek()) < 0) {
+                    newest.poll()
+                    newest.add(candidate)
                 }
+            }
             RevWalk(repository).use { walk ->
                 newest.sortedWith(order).drop(offset.toInt()).map { tagInfo(it.first, walk) }
             }
         }
     }
-
-    private fun tagDate(ref: Ref, walk: RevWalk): Long = when (val target = walk.parseAny(ref.objectId)) {
-        is RevTag -> target.taggerIdent?.whenAsInstant?.epochSecond
-        is RevCommit -> target.committerIdent.whenAsInstant.epochSecond
-        else -> null
-    } ?: Long.MIN_VALUE
 
     override suspend fun getTag(repositoryId: UUID, name: String): TagInfo? = withRepository(repositoryId) { repository ->
         val ref = repository.refDatabase.exactRef(Constants.R_TAGS + name.removePrefix(Constants.R_TAGS))

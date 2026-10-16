@@ -80,7 +80,10 @@ for (const path of ["/repositories/repo", "/search?repo=repo&mode=paths", "/pipe
   assert.equal(await ev(`${popup}.querySelectorAll('[role=option]').length`), 25, path);
   await ev(`${popup}.querySelector('[data-bml-ref=previous]').click()`);
   await until(`${popup}?.textContent.includes('v1000') && !${popup}.hasAttribute('aria-busy')`);
-  await ev(`(() => { const input = ${popup}.querySelector('input'); input.value = 'v0001'; input.dispatchEvent(new Event('input', {bubbles:true})); })()`);
+  await ev(`(() => { const input = ${popup}.querySelector('input'); input.value = 'refs/heads/main'; input.dispatchEvent(new Event('input', {bubbles:true})); })()`);
+  await until(`${popup}?.querySelector('[role=option]')?.textContent === 'main' && !${popup}.hasAttribute('aria-busy')`);
+  assert.equal(await ev(`${popup}.querySelectorAll('[role=option]').length`), path.startsWith('/pipelines') ? 1 : 2, path);
+  await ev(`(() => { const input = ${popup}.querySelector('input'); input.value = 'refs/tags/v0001'; input.dispatchEvent(new Event('input', {bubbles:true})); })()`);
   await until(`${popup}?.querySelector('[role=option]')?.textContent === 'v0001 (tag)' && !${popup}.hasAttribute('aria-busy')`);
   for (const type of ["keyDown", "keyUp"]) await call("Input.dispatchKeyEvent", {type, key:"Enter", code:"Enter", windowsVirtualKeyCode:13});
   const value = path === "/repositories/repo" ? "v0001" : "refs/tags/v0001";
@@ -94,5 +97,6 @@ for (const path of ["/repositories/repo", "/search?repo=repo&mode=paths", "/pipe
   }
 }
 assert.deepEqual(errors, []);
+await call("Network.setCookie", { name: "_git_test", value: "ui-test-token", url: base });
 console.log("Tag list and dropdown pagination, search, and off-page selection passed.");
 ws.close();

@@ -207,6 +207,27 @@ class GitUiRoutesTest {
     }
 
     @Test
+    fun `ref search accepts qualified names and preserves their namespace`() {
+        for ((query, name, kind) in listOf(
+            Triple("refs/tags/v0001", "v0001", "tag"),
+            Triple("REFS/TAGS/v0001", "v0001", "tag"),
+            Triple("refs/heads/main", "main", "branch"),
+        )) {
+            val before = requests.size
+            val response = post("/_bml/contract/GitRefSearch/search", "[\"repo\",\"$query\",0,false]", token = "tag-pages-token")
+            assertEquals(200, response.statusCode(), response.body())
+            val choice = Json.parseToJsonElement(response.body()).jsonArray.single().jsonObject
+            assertEquals(name, choice["name"]?.jsonPrimitive?.content)
+            assertEquals(kind, choice["kind"]?.jsonPrimitive?.content)
+            val calls = requests.drop(before)
+            assertFalse(calls.any { it.operation == if (kind == "tag") "GitUiBranches" else "GitUiTags" })
+            if (kind == "tag") assertEquals(name, calls.single().variables["query"]?.jsonPrimitive?.content)
+        }
+        val response = post("/_bml/contract/GitRefSearch/search", "[\"repo\",\"refs/tags/v0001\",0,true]", token = "tag-pages-token")
+        assertEquals("[]", response.body())
+    }
+
+    @Test
     fun `tags outside the first page remain usable for browsing search and pipeline runs`() {
         val token = "tag-pages-token"
         for (path in listOf(

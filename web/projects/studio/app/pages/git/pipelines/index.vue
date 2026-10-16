@@ -233,7 +233,7 @@ async function openRunModal(repo: RepoWithPipelines, p: Pipeline) {
     const page = await searchRunRefs('')
     if (revision !== refsRevision || runTarget.value?.pipeline.id !== p.id) return
     refOptions.value = page.options
-    runRef.value = refOptions.value[0]?.value ?? ''
+    if (!runRef.value) runRef.value = refOptions.value[0]?.value ?? ''
   } catch (e) {
     if (revision === refsRevision) runError.value = e instanceof Error ? e.message : 'Failed to load refs.'
   } finally {
@@ -244,16 +244,21 @@ async function openRunModal(repo: RepoWithPipelines, p: Pipeline) {
 async function searchRunRefs(search: string, offset = 0) {
   const repositoryId = runTarget.value?.repoId
   if (!repositoryId) return { options: [] }
-  const result = await query<{ git: { tags: Array<{ name: string }>; branches?: Array<{ name: string }> } }>(gql`
-    query PipelineRunRefs($repositoryId: UUID!, $limit: Int!, $offset: Long!, $query: String, $includeBranches: Boolean!) {
+  const text = search.trim()
+  const qualifiedTag = text.toLowerCase().startsWith('refs/tags/')
+  const qualifiedBranch = text.toLowerCase().startsWith('refs/heads/')
+  const name = qualifiedTag ? text.slice('refs/tags/'.length)
+    : qualifiedBranch ? text.slice('refs/heads/'.length) : text
+  const result = await query<{ git: { tags?: Array<{ name: string }>; branches?: Array<{ name: string }> } }>(gql`
+    query PipelineRunRefs($repositoryId: UUID!, $limit: Int!, $offset: Long!, $query: String, $includeBranches: Boolean!, $includeTags: Boolean!) {
       git {
-        tags(repositoryId: $repositoryId, limit: $limit, offset: $offset, query: $query) { name }
+        tags(repositoryId: $repositoryId, limit: $limit, offset: $offset, query: $query) @include(if: $includeTags) { name }
         branches(repositoryId: $repositoryId) @include(if: $includeBranches) { name }
       }
     }
-  `, { repositoryId, limit: 26, offset, query: search, includeBranches: offset === 0 })
-  const tags = result.git.tags
-  const branches = (result.git.branches ?? []).filter(branch => branch.name.toLowerCase().includes(search.toLowerCase()))
+  `, { repositoryId, limit: 26, offset, query: name, includeBranches: offset === 0 && !qualifiedTag, includeTags: !qualifiedBranch })
+  const tags = qualifiedBranch ? [] : result.git.tags ?? []
+  const branches = qualifiedTag ? [] : (result.git.branches ?? []).filter(branch => branch.name.toLowerCase().includes(name.toLowerCase()))
   return {
     options: [
       ...tags.slice(0, 25).map(tag => ({ value: `refs/tags/${tag.name}`, label: `${tag.name} (tag)` })),
