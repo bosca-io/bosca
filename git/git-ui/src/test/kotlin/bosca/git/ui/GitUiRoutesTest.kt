@@ -727,7 +727,7 @@ class GitUiRoutesTest {
                 "/repositories/archived?tab=pulls",
                 "git-pull-create.model",
                 "create",
-                listOf("Title", "Body", "feature/one", "main", false),
+                listOf("Title", "Body", "feature/one", "main", false, false),
             )
         assertEquals(true, actionState(denied)["failed"]?.jsonPrimitive?.boolean, denied.body())
         assertTrue("Repository edit access" in denied.body(), denied.body())
@@ -744,7 +744,7 @@ class GitUiRoutesTest {
                 path,
                 "git-pull-create.model",
                 "selectRepositories",
-                listOf("repo", "", "Keep title", "Keep description", "feature/one", "main", true),
+                listOf("repo", "", "Keep title", "Keep description", "feature/one", "main", true, false),
             )
         assertEquals(200, selected.statusCode(), selected.body())
         val state = actionState(selected)
@@ -754,6 +754,7 @@ class GitUiRoutesTest {
         assertEquals("repo", state["page"]?.jsonObject?.get("repository")?.jsonPrimitive?.content)
         assertEquals("feature/one", state["source"]?.jsonPrimitive?.content)
         assertEquals(true, state["draft"]?.jsonPrimitive?.boolean)
+        assertEquals(true, state["deleteBranchOnMerge"]?.jsonPrimitive?.boolean)
         assertTrue("feature/one" in selected.body(), selected.body())
         val sourceChanged =
             continueAction(
@@ -769,6 +770,7 @@ class GitUiRoutesTest {
                     "feature/one",
                     "main",
                     true,
+                    false,
                 ),
             )
         assertEquals(200, sourceChanged.statusCode(), sourceChanged.body())
@@ -777,6 +779,7 @@ class GitUiRoutesTest {
             actionState(sourceChanged)["description"]?.jsonPrimitive?.content,
         )
         assertEquals("", actionState(sourceChanged)["source"]?.jsonPrimitive?.content)
+        assertEquals(false, actionState(sourceChanged)["deleteBranchOnMerge"]?.jsonPrimitive?.boolean)
     }
 
     @Test
@@ -876,7 +879,7 @@ class GitUiRoutesTest {
         val opened = action(path, "git-pull-edit.model", "open", emptyList())
         assertEquals(200, opened.statusCode(), opened.body())
         assertTrue("feature/one" in opened.body() && "main" in opened.body(), opened.body())
-        val saved = action(path, "git-pull-edit.model", "save", listOf("Updated title", "", "main", "feature/one"))
+        val saved = action(path, "git-pull-edit.model", "save", listOf("Updated title", "", "main", "feature/one", false))
         assertEquals(200, saved.statusCode(), saved.body())
         val state = actionState(saved)
         assertEquals(false, state["failed"]?.jsonPrimitive?.boolean, saved.body())
@@ -887,14 +890,16 @@ class GitUiRoutesTest {
         assertEquals("main", input["sourceBranch"]?.jsonPrimitive?.content)
         assertEquals("feature/one", input["targetBranch"]?.jsonPrimitive?.content)
         assertEquals(0L, input["expectedVersion"]?.jsonPrimitive?.long)
+        assertEquals(false, input["deleteBranchOnMerge"]?.jsonPrimitive?.boolean)
     }
 
     @Test
     fun `a rejected edit retains every field and exposes its API error`() {
-        val response = action("/pulls/pull?repo=repo&number=1", "git-pull-edit.model", "save", listOf("Reject edit", "Draft description", "main", "feature/one"))
+        val response = action("/pulls/pull?repo=repo&number=1", "git-pull-edit.model", "save", listOf("Reject edit", "Draft description", "main", "feature/one", false))
         val state = actionState(response)
         assertEquals(true, state["failed"]?.jsonPrimitive?.boolean, response.body())
         assertEquals("Draft description", state["description"]?.jsonPrimitive?.content)
+        assertEquals(false, state["deleteBranchOnMerge"]?.jsonPrimitive?.boolean)
         assertEquals("main", state["source"]?.jsonPrimitive?.content)
         assertEquals("feature/one", state["target"]?.jsonPrimitive?.content)
         assertTrue("Rejected pull request edit" in response.body(), response.body())
@@ -903,7 +908,7 @@ class GitUiRoutesTest {
     @Test
     fun `blank titles are rejected by the editor without sending an update`() {
         val count = requests.count { it.operation == "GitUiUpdatePull" }
-        val response = action("/pulls/pull?repo=repo&number=1", "git-pull-edit.model", "save", listOf("   ", "Draft description", "feature/one", "main"))
+        val response = action("/pulls/pull?repo=repo&number=1", "git-pull-edit.model", "save", listOf("   ", "Draft description", "feature/one", "main", false))
         assertTrue(actionState(response)["failed"]?.jsonPrimitive?.boolean == true, response.body())
         assertTrue("Enter a pull request title" in response.body(), response.body())
         assertEquals(count, requests.count { it.operation == "GitUiUpdatePull" })
@@ -1170,10 +1175,12 @@ class GitUiRoutesTest {
                 "/pulls?repo=repo&new=true",
                 "git-pull-create.model",
                 "create",
-                listOf("Rejected", "keep description", "feature/one", "main", true),
+                listOf("Rejected", "keep description", "feature/one", "main", true, false),
             )
         assertEquals(true, actionState(create)["failed"]?.jsonPrimitive?.boolean, create.body())
         assertEquals("keep description", actionState(create)["description"]?.jsonPrimitive?.content)
+        assertEquals(false, actionState(create)["deleteBranchOnMerge"]?.jsonPrimitive?.boolean)
+        assertEquals(false, requests.last { it.operation == "GitUiCreatePull" }.variables["input"]?.jsonObject?.get("deleteBranchOnMerge")?.jsonPrimitive?.boolean)
         val source = "/pulls/pull?repo=repo&number=1"
         val review =
             action(source, "git-pull-review.model", "review", listOf("APPROVED", "Rejected"))
@@ -2814,7 +2821,7 @@ class GitUiRoutesTest {
         private val session =
             """{"principal":{"id":"test-principal","verified":true,"primaryProfileId":null},"profile":[],"token":{"token":"ui-test-token","expiresAt":4102444800,"issuedAt":1},"refreshToken":null,"accountCreated":false,"originator":"git-ui"}"""
         private val active =
-            """{"id":"repo","slug":"repo","ownerId":"owner","contentType":"GENERAL","diskSizeBytes":1024,"updated":"2026-10-09T00:00:00Z","canEdit":true,"canManage":true,"canExecute":true,"name":"Active project","description":"<script>untrusted</script>","defaultBranch":"main","archived":false,"deleted":false,"visibility":"PRIVATE","cloneUrl":"https://git.example.test/owner/repo.git"}"""
+            """{"id":"repo","slug":"repo","ownerId":"owner","contentType":"GENERAL","diskSizeBytes":1024,"updated":"2026-10-09T00:00:00Z","configuration":{"deleteBranchOnMerge":true},"canEdit":true,"canManage":true,"canExecute":true,"name":"Active project","description":"<script>untrusted</script>","defaultBranch":"main","archived":false,"deleted":false,"visibility":"PRIVATE","cloneUrl":"https://git.example.test/owner/repo.git"}"""
         private val archived =
             active
                 .replace("\"id\":\"repo\"", "\"id\":\"archived\"")

@@ -121,6 +121,7 @@ enum GitTreeEntryType {
 }
 
 type GitRepository {
+  configuration: GitRepositoryConfiguration!
   id: UUID!
   name: String!
   slug: String!
@@ -139,6 +140,10 @@ type GitRepository {
   diskSizeBytes: Long!
   created: DateTime!
   updated: DateTime!
+}
+
+type GitRepositoryConfiguration {
+  deleteBranchOnMerge: Boolean!
 }
 
 type GitTreeEntry {
@@ -453,6 +458,7 @@ enum GitCommitStatusState {
 }
 
 type GitPullRequest {
+  deleteBranchOnMerge: Boolean!
   id: UUID!
   "Version used to reject stale edits and reviews."
   version: Long!
@@ -552,6 +558,7 @@ enum GitMergeStrategy {
 }
 
 input CreateGitPullRequestInput {
+  deleteBranchOnMerge: Boolean
   repositoryId: UUID!
   title: String!
   description: String
@@ -562,6 +569,7 @@ input CreateGitPullRequestInput {
 }
 
 input UpdateGitPullRequestInput {
+  deleteBranchOnMerge: Boolean
   title: String
   description: String
   sourceBranch: String

@@ -14,6 +14,7 @@ import bosca.git.model.PullRequestEvent
 import bosca.git.model.PullRequestEventAction
 import bosca.git.model.PullRequestStatus
 import bosca.git.model.Repository
+import bosca.git.model.RepositoryConfiguration
 import bosca.git.model.Review
 import bosca.git.model.ReviewStatus
 import bosca.git.model.SubmitReviewInput
@@ -45,7 +46,10 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class PullRequestServiceTest {
@@ -65,6 +69,8 @@ class PullRequestServiceTest {
     private val profileService = mockk<ProfileService>(relaxed = true)
     private val securityService = mockk<SecurityService>(relaxed = true)
     private val pubSub = mockk<PubSubService>(relaxed = true)
+    private val repositoryService = mockk<RepositoryService>()
+    private val refUpdateNotifier = mockk<RefUpdateNotifier>(relaxed = true)
     private lateinit var service: PullRequestService
 
     private val repositoryId = UUID.random()
@@ -75,6 +81,12 @@ class PullRequestServiceTest {
     fun setup() {
         ProviderRegistry.clear()
         provides<PubSubService>(singleton = true) { pubSub }
+        provides<RepositoryService>(singleton = true) { repositoryService }
+        provides<RefUpdateNotifier>(singleton = true) { refUpdateNotifier }
+        coEvery { repositoryService.findById(repositoryId) } returns Repository(
+            id = repositoryId, name = "Repository", slug = "repository", ownerId = authorId,
+        )
+        coEvery { branchProtectionService.findMatchingRule(repositoryId, any()) } returns null
         val connectionPool = mockk<bosca.db.ConnectionPool>()
         coEvery { connectionPool.connection() } answers { mockk<bosca.db.ConnectionManager>(relaxed = true) }
         provides<bosca.db.ConnectionPool>(singleton = true) { connectionPool }
@@ -1008,6 +1020,9 @@ class PullRequestServiceTest {
     fun `mergeWithDependencies merges nested repositories dependency first`() = runTest {
         val dependencyId = UUID.random()
         val dependencyRepositoryId = UUID.random()
+        coEvery { repositoryService.findById(dependencyRepositoryId) } returns Repository(
+            id = dependencyRepositoryId, name = "Dependency", slug = "dependency", ownerId = authorId,
+        )
         var dependency = testPr(number = 2).copy(
             id = dependencyId,
             repositoryId = dependencyRepositoryId,
@@ -1028,7 +1043,8 @@ class PullRequestServiceTest {
         coEvery { prRepository.findById(prId) } answers { parent }
         coEvery { dependencyRepository.findDependencies(dependencyId) } returns emptyList()
         coEvery { dependencyRepository.findDependencies(prId) } answers { listOf(dependency) }
-        coEvery { branchProtectionService.findMatchingRule(any(), any()) } returns BranchProtectionRule(
+        coEvery { branchProtectionService.findMatchingRule(any(), "feature") } returns null
+        coEvery { branchProtectionService.findMatchingRule(any(), "main") } returns BranchProtectionRule(
             repositoryId = repositoryId,
             pattern = "main",
             requiredApprovals = 0,
@@ -1048,6 +1064,8 @@ class PullRequestServiceTest {
         assertEquals(listOf(dependencyId, prId), merged.map { it.id })
         assertEquals(PullRequestStatus.MERGED, dependency.status)
         assertEquals(PullRequestStatus.MERGED, parent.status)
+        assertNull(dependencyGitRepository.refDatabase.findRef("refs/heads/feature"))
+        assertNull(parentGitRepository.refDatabase.findRef("refs/heads/feature"))
         dependencyGitRepository.close()
         parentGitRepository.close()
     }
@@ -1174,9 +1192,102 @@ class PullRequestServiceTest {
             assertEquals(before, merged.mergeBaseSha)
             val mergeSha = kotlin.test.assertNotNull(merged.mergeSha)
             assertEquals(mergeSha, repo.refDatabase.findRef("refs/heads/main")?.objectId?.name())
+            assertNull(repo.refDatabase.findRef("refs/heads/feature"), strategy.name)
+            coVerify { refUpdateNotifier.notifyRefsUpdated(repo, repositoryId, match {
+                it.single().refName == "refs/heads/feature" && it.single().newId == org.eclipse.jgit.lib.ObjectId.zeroId()
+            }, any()) }
             coVerify { prRepository.updateMergeState(match { it.mergeStrategy == strategy && it.mergeBaseSha == before }) }
             repo.close()
         }
+    }
+
+    @Test
+    fun `merge retains the source when automatic deletion is disabled`() = runTest {
+        assertMergeRetainsSource(testPr().copy(deleteBranchOnMerge = false))
+    }
+
+    @Test
+    fun `merge retains a source that is the default branch`() = runTest {
+        coEvery { repositoryService.findById(repositoryId) } returns Repository(
+            id = repositoryId, name = "Repository", slug = "repository", ownerId = authorId,
+            defaultBranch = "feature",
+        )
+        assertMergeRetainsSource()
+    }
+
+    @Test
+    fun `merge retains a protected source branch`() = runTest {
+        coEvery { branchProtectionService.findMatchingRule(repositoryId, "feature") } returns
+            BranchProtectionRule(repositoryId = repositoryId, pattern = "feature")
+        assertMergeRetainsSource()
+    }
+
+    @Test
+    fun `merge retains a branch still used by another pull request`() = runTest {
+        coEvery { prRepository.isBranchInUse(repositoryId, "feature") } returns true
+        assertMergeRetainsSource()
+    }
+
+    private suspend fun assertMergeRetainsSource(pr: PullRequest = testPr()) {
+        val repo = seedMergeableRepo()
+        io.mockk.every { dfsManager.open(repositoryId) } returns repo
+        coEvery { prRepository.findById(prId) } returns pr
+        coEvery { prRepository.updateMergeState(any()) } answers { firstArg() }
+
+        val merged = service.merge(prId, MergeStrategy.MERGE_COMMIT, authorId, "Merger", "m@x")
+
+        assertEquals(PullRequestStatus.MERGED, merged.status)
+        assertNotNull(repo.refDatabase.findRef("refs/heads/feature"))
+        coVerify(exactly = 0) { refUpdateNotifier.notifyRefsUpdated(any(), any(), any(), any()) }
+        repo.close()
+    }
+
+    @Test
+    fun `creation snapshots repository cleanup default and accepts either override`() = runTest {
+        coEvery { prRepository.create(any()) } answers { firstArg() }
+        for (repositoryDefault in listOf(false, true)) {
+            coEvery { repositoryService.findById(repositoryId) } returns Repository(
+                id = repositoryId, name = "Repository", slug = "repository", ownerId = authorId,
+                configuration = RepositoryConfiguration(deleteBranchOnMerge = repositoryDefault),
+            )
+            for (choice in listOf(null, false, true)) {
+                val pr = service.create(CreatePullRequestInput(
+                    repositoryId = repositoryId, title = "Cleanup choice", sourceBranch = "feature", targetBranch = "main",
+                    deleteBranchOnMerge = choice,
+                ), authorId)
+                assertEquals(choice ?: repositoryDefault, pr.deleteBranchOnMerge)
+            }
+        }
+    }
+
+    @Test
+    fun `cleanup edits preserve omission and reject stale or completed changes`() = runTest {
+        var current = testPr().copy(deleteBranchOnMerge = false)
+        coEvery { prRepository.findById(prId) } answers { current }
+        coEvery { prRepository.update(any()) } answers { firstArg<PullRequest>().copy(version = current.version + 1).also { current = it } }
+        withConnectionManager {
+            assertFalse(service.update(prId, UpdatePullRequestInput(title = "Edited", expectedVersion = 0)).deleteBranchOnMerge)
+            assertTrue(service.update(prId, UpdatePullRequestInput(deleteBranchOnMerge = true, expectedVersion = 1)).deleteBranchOnMerge)
+            assertFailsWith<IllegalStateException> { service.update(prId, UpdatePullRequestInput(deleteBranchOnMerge = false, expectedVersion = 1)) }
+            assertFalse(service.update(prId, UpdatePullRequestInput(deleteBranchOnMerge = false, expectedVersion = 2)).deleteBranchOnMerge)
+            current = current.copy(status = PullRequestStatus.MERGED)
+            assertFailsWith<IllegalArgumentException> { service.update(prId, UpdatePullRequestInput(deleteBranchOnMerge = true)) }
+        }
+    }
+
+    @Test
+    fun `a saved PR cleanup choice overrides a later repository default change`() = runTest {
+        coEvery { repositoryService.findById(repositoryId) } returns Repository(
+            id = repositoryId, name = "Repository", slug = "repository", ownerId = authorId,
+            configuration = RepositoryConfiguration(deleteBranchOnMerge = false),
+        )
+        val repo = seedMergeableRepo()
+        io.mockk.every { dfsManager.open(repositoryId) } returns repo
+        coEvery { prRepository.findById(prId) } returns testPr().copy(deleteBranchOnMerge = true)
+        coEvery { prRepository.updateMergeState(any()) } answers { firstArg() }
+        service.merge(prId, MergeStrategy.MERGE_COMMIT, authorId, "Merger", "m@x")
+        assertNull(repo.refDatabase.findRef("refs/heads/feature"))
+        repo.close()
     }
 
     @Test

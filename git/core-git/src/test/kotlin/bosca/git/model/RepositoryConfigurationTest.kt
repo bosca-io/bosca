@@ -1,8 +1,10 @@
 package bosca.git.model
 
+import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 class RepositoryConfigurationTest {
 
@@ -16,11 +18,19 @@ class RepositoryConfigurationTest {
     }
 
     @Test
-    fun `defaults disable squash-by-default and auto-delete-branch`() {
+    fun `defaults enable branch deletion while leaving squash and signed commits disabled`() {
         val config = RepositoryConfiguration()
         assertFalse(config.squashByDefault)
-        assertFalse(config.deleteBranchOnMerge)
+        assertTrue(config.deleteBranchOnMerge)
         assertFalse(config.requireSignedCommits)
+    }
+
+    @Test
+    fun `stored configuration defaults to branch deletion and preserves an explicit opt out`() {
+        assertTrue(Json.decodeFromString(RepositoryConfiguration.serializer(), "{}").deleteBranchOnMerge)
+        val optedOut = RepositoryConfiguration(deleteBranchOnMerge = false)
+        val stored = Json.encodeToString(RepositoryConfiguration.serializer(), optedOut)
+        assertFalse(Json.decodeFromString(RepositoryConfiguration.serializer(), stored).deleteBranchOnMerge)
     }
 
     @Test

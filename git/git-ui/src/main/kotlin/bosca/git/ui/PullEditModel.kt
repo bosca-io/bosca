@@ -15,6 +15,7 @@ class PullEditModel(
     var description: String = page.pull.description.orEmpty(),
     var source: String = page.pull.sourceBranch,
     var target: String = page.pull.targetBranch,
+    var deleteBranchOnMerge: Boolean = page.pull.deleteBranchOnMerge,
     var sourceBranches: List<String> = emptyList(),
     var targetBranches: List<String> = emptyList(),
     var editing: Boolean = false,
@@ -30,6 +31,7 @@ class PullEditModel(
         description = page.pull.description.orEmpty()
         source = page.pull.sourceBranch
         target = page.pull.targetBranch
+        deleteBranchOnMerge = page.pull.deleteBranchOnMerge
         editing = true
         perform {
             require(page.canEdit) { "Repository edit access is required." }
@@ -52,12 +54,14 @@ class PullEditModel(
         description: String,
         source: String,
         target: String,
+        deleteBranchOnMerge: Boolean,
         ctx: RenderContext,
     ) {
         this.title = title
         this.description = description
         this.source = source
         this.target = target
+        this.deleteBranchOnMerge = deleteBranchOnMerge
         editing = true
         perform {
             val repository =
@@ -76,6 +80,7 @@ class PullEditModel(
                         sourceBranch = source,
                         targetBranch = target,
                         expectedVersion = page.pull.version,
+                        deleteBranchOnMerge = deleteBranchOnMerge.takeUnless { page.pull.status.name == "MERGED" },
                     ),
                 ),
             )

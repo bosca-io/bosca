@@ -471,6 +471,8 @@ type GitPullRequest {
     "Non-null for cross-fork PRs."
     sourceRepositoryId: UUID
     status: GitPullRequestStatus!
+    "Whether to delete this PR's source branch after a successful merge."
+    deleteBranchOnMerge: Boolean!
     "The strategy used when merged."
     mergeStrategy: GitMergeStrategy
     mergedBy: UUID
@@ -568,10 +570,14 @@ input CreateGitPullRequestInput {
     targetBranch: String!
     sourceRepositoryId: UUID
     isDraft: Boolean
+    "Defaults to the repository's branch cleanup setting when omitted."
+    deleteBranchOnMerge: Boolean
 }
 
 "Input for updating a pull request."
 input UpdateGitPullRequestInput {
+    "Changes this PR's branch cleanup setting. Omit to preserve it."
+    deleteBranchOnMerge: Boolean
     title: String
     description: String
     sourceBranch: String

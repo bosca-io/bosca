@@ -3,6 +3,7 @@ package bosca.git.service
 import bosca.git.model.GitHubPullRequestSnapshot
 import bosca.db.connection
 import bosca.db.transaction
+import bosca.di.provide
 
 import bosca.git.dfs.BoscaDfsRepositoryManager
 import bosca.git.dfs.GitWorkDispatcher
@@ -108,6 +109,10 @@ class PullRequestServiceImpl(
     }
 
     override suspend fun create(input: CreatePullRequestInput, authorId: UUID): PullRequest {
+        val deleteBranchOnMerge = input.deleteBranchOnMerge ?: (
+            provide<RepositoryService>().findById(input.repositoryId)
+                ?: throw NoSuchElementException("Repository not found: ${input.repositoryId}")
+            ).configuration.deleteBranchOnMerge
         val number = repoRepository.incrementPrNumber(input.repositoryId)
         val status = if (input.isDraft) PullRequestStatus.DRAFT else PullRequestStatus.OPEN
         val pr = prRepository.create(
@@ -120,7 +125,8 @@ class PullRequestServiceImpl(
                 sourceBranch = input.sourceBranch,
                 targetBranch = input.targetBranch,
                 sourceRepositoryId = input.sourceRepositoryId,
-                status = status
+                status = status,
+                deleteBranchOnMerge = deleteBranchOnMerge,
             )
         )
         log.info("Created PR #{} on repository {}", pr.number, pr.repositoryId)
@@ -133,6 +139,9 @@ class PullRequestServiceImpl(
         val existing = prRepository.lockById(id)
             ?: throw NoSuchElementException("Pull request not found: $id")
         requireCurrentVersion(existing, input.expectedVersion)
+        if (input.deleteBranchOnMerge != null && input.deleteBranchOnMerge != existing.deleteBranchOnMerge) {
+            require(existing.status != PullRequestStatus.MERGED) { "Branch cleanup cannot be changed after merging." }
+        }
         val title = input.title ?: existing.title
         val source = input.sourceBranch ?: existing.sourceBranch
         val target = input.targetBranch ?: existing.targetBranch
@@ -154,6 +163,7 @@ class PullRequestServiceImpl(
                 description = input.description ?: existing.description,
                 sourceBranch = source,
                 targetBranch = target,
+                deleteBranchOnMerge = input.deleteBranchOnMerge ?: existing.deleteBranchOnMerge,
             )
         ) ?: throw IllegalStateException("Pull request changed. Reload it before saving.")
         if (branchesChanged) {
@@ -339,6 +349,7 @@ class PullRequestServiceImpl(
                             )
                         ) { "Target branch changed during merge" }
 
+                        deleteMergedSourceBranch(merged, repo, sourceRef.objectId, mergedById)
                         merged
                     }
                 }
@@ -347,6 +358,38 @@ class PullRequestServiceImpl(
             dispatchActivity(merged, PullRequestEventAction.MERGED, actorId = mergedById)
             merged
         }
+    }
+
+    private suspend fun deleteMergedSourceBranch(
+        pr: PullRequest,
+        repo: JGitRepository,
+        sourceId: ObjectId,
+        mergedById: UUID,
+    ) {
+        if (!pr.deleteBranchOnMerge || pr.sourceBranch == pr.targetBranch ||
+            (pr.sourceRepositoryId != null && pr.sourceRepositoryId != pr.repositoryId)
+        ) return
+
+        // These services depend on PullRequestService through the ref notifier; resolve after construction.
+        val repository = provide<RepositoryService>().findById(pr.repositoryId)
+            ?: throw NoSuchElementException("Repository not found: ${pr.repositoryId}")
+        if (pr.sourceBranch == repository.defaultBranch) return
+        if (branchProtectionService.findMatchingRule(pr.repositoryId, pr.sourceBranch) != null) return
+        if (prRepository.isBranchInUse(pr.repositoryId, pr.sourceBranch)) return
+
+        val refName = "refs/heads/${pr.sourceBranch}"
+        val deletion = repo.refDatabase.newUpdate(refName, false)
+        deletion.setExpectedOldObjectId(sourceId)
+        deletion.setForceUpdate(true)
+        check(deletion.delete() in setOf(RefUpdate.Result.FORCED, RefUpdate.Result.FAST_FORWARD, RefUpdate.Result.NO_CHANGE)) {
+            "Source branch changed during merge"
+        }
+        provide<RefUpdateNotifier>().notifyRefsUpdated(
+            repository = repo,
+            repositoryId = pr.repositoryId,
+            updates = listOf(RefChange(refName, sourceId, ObjectId.zeroId())),
+            pusherPrincipalId = deliveryProfile(mergedById)?.principal,
+        )
     }
 
     override suspend fun mergeWithDependencies(

@@ -19,6 +19,7 @@ data class PullListPage(
     val targetBranches: List<String> = emptyList(),
     val baseHref: String = "",
     val repositoryNames: Map<String, String> = emptyMap(),
+    val deleteBranchOnMerge: Boolean = true,
 ) {
     val tabs: List<NavigationItem>
         get() =
