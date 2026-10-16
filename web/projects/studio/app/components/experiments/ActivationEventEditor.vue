@@ -22,7 +22,7 @@ const model = defineModel<ActivationEventFilter>({ required: true })
 <style scoped>
 .event-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
 label { display: flex; flex-direction: column; gap: 5px; font-size: 12px; }
-input, select { padding: 8px; background: var(--bg-2); color: var(--fg-1); border: 1px solid var(--border); border-radius: 6px; }
+input, select { padding: 8px; background: var(--bg-2); color: var(--fg-1); border: 1px solid var(--line); border-radius: 6px; }
 .check { flex-direction: row; align-items: center; }
 p { grid-column: 1 / -1; margin: 0; color: var(--fg-3); font-size: 12px; }
 </style>

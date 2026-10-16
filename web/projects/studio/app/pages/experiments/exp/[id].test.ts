@@ -548,6 +548,29 @@ describe('Experiment detail results', () => {
     expect(lift?.attributes('style')).toContain(`color: ${color}`)
   })
 
+  it.each([
+    [null, '#f59e42'],
+    [0.9833, '#6c7388'],
+    [0.88, '#34d99a'],
+  ])('colors row evidence against the corrected comparison threshold %s', async (threshold, color) => {
+    experimentData.value = fixture(80, {
+      reports: threshold == null ? [] : [{
+        id: 'report-threshold', summary: 'Corrected family', recommendation: 'KEEP_RUNNING', confidence: .9,
+        details: {
+          verdict: 'KEEP_RUNNING', isCurrent: true,
+          resultUpdatedAt: { 'goal-1:control': '2026-08-28T00:00:00Z', 'goal-1:treatment': '2026-08-28T00:00:00Z' },
+          plannedComparisons: [{ goalId: 'goal-1', leftVariationKey: 'treatment', rightVariationKey: 'control',
+            difference: 2, threshold, conclusion: 'INCONCLUSIVE' }],
+        },
+        aiInsights: null, created: '2026-08-28T01:00:00Z',
+      }],
+    })
+    const wrapper = mountPage()
+    await flushPromises()
+    const badge = wrapper.findAll('.results-data-row span[color]').find(span => span.text() === '90.0%')
+    expect(badge?.attributes('color')).toBe(color)
+  })
+
   it('hides comparisons and neutralizes lift after reaggregation until a matching analysis arrives', async () => {
     const comparison = { goalId: 'goal-1', leftVariationKey: 'treatment', rightVariationKey: 'control',
       difference: 2, conclusion: 'CONCLUSIVE' }
