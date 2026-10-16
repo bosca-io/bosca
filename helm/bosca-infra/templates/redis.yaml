@@ -6,6 +6,7 @@ metadata:
   labels:
     {{- include "bosca-common.labels" . | nindent 4 }}
 spec:
+  image: {{ .Values.redis.image | quote }}
   replicas: {{ .Values.redis.replicas | default 1 }}
   args:
     - "--cluster_mode=emulated"

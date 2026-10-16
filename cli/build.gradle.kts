@@ -94,6 +94,7 @@ dependencies {
 
 tasks.test {
     inputs.file("install.sh").withPathSensitivity(PathSensitivity.RELATIVE)
+    inputs.file(rootProject.file("docker-compose.yaml")).withPathSensitivity(PathSensitivity.RELATIVE)
     inputs.files(
         rootProject.file("server/bosca-server/src/main/resources/application.yaml"),
         rootProject.file("server/bosca-runner/src/main/resources/application.yaml"),

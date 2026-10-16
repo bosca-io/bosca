@@ -66,6 +66,22 @@ docker compose up -d
 Use `--dry-run` to preview the version changes. The script updates the Compose
 defaults and `.env.example`; overrides in your own `.env` still take precedence.
 
+The `dragonfly` service runs Dragonfly `v2.0.2` in standalone mode, using its
+own `dragonfly` volume. Clients use the `dragonfly` endpoint. It writes `dump.rdb`
+every minute and on clean shutdown; crash recovery uses the last completed
+snapshot.
+
+When switching a local stack from Redis with disposable cache and lock data,
+restart the clients together so they all use the new lock store:
+
+```bash
+docker compose stop
+docker compose up -d --remove-orphans
+```
+
+Dragonfly starts with an empty volume; no data import is needed. The old Redis
+container is removed, and its volume is left untouched.
+
 ## License
 
 Bosca is licensed under the [Apache License 2.0](LICENSE), except for:
