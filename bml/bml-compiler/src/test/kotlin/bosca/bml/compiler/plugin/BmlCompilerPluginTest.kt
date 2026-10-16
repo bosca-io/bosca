@@ -1,8 +1,21 @@
 package bosca.bml.compiler.plugin
 
+import bosca.bml.library.BmlLibraryArtifacts
+import bosca.bml.project.ContentDigest
 import bosca.bml.render.BmlPageRenderer
 import bosca.bml.render.RenderContext
 import bosca.di.provides
+import java.io.File
+import java.net.URLClassLoader
+import java.util.jar.JarEntry
+import java.util.jar.JarFile
+import java.util.jar.JarOutputStream
+import kotlin.reflect.full.callSuspend
+import kotlin.reflect.full.functions
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 import kotlinx.coroutines.runBlocking
 import org.jetbrains.kotlin.cli.common.ExitCode
 import org.jetbrains.kotlin.cli.common.arguments.K2JVMCompilerArguments
@@ -18,15 +31,6 @@ import org.jetbrains.kotlin.compiler.plugin.ExperimentalCompilerApi
 import org.jetbrains.kotlin.config.CommonConfigurationKeys
 import org.jetbrains.kotlin.config.CompilerConfiguration
 import org.jetbrains.kotlin.config.Services
-import java.io.File
-import java.net.URLClassLoader
-import java.util.jar.JarFile
-import kotlin.reflect.full.callSuspend
-import kotlin.reflect.full.functions
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertTrue
 
 class InjectedLifecycle {
     var loaded: Boolean = false
@@ -78,6 +82,217 @@ class BmlCompilerPluginTest {
           <span class="badge badge-{ tone }">{ label }</span>
         </component>
     """.trimIndent()
+
+    @Test
+    fun `a binary library retains Kotlin models and original source metadata without the producer checkout`() {
+        val work = newWorkDir()
+        val sourceRoot = File(work, "producer/bml").apply { mkdirs() }
+        val source = """
+            <component tag="button">
+              <prop name="model" type="example.design.ButtonModel"/>
+              <prop name="disabled" type="Boolean" default="false"/>
+              <style scoped>button { color: red; }</style>
+              <html:button :disabled="disabled">{ model.label }<slot/></html:button>
+            </component>
+        """.trimIndent()
+        File(sourceRoot, "button.bml").writeText(source)
+        File(sourceRoot, "private.bml").writeText("""<component tag="private-label"><span>Internal</span></component>""")
+        val model = File(work, "producer/ButtonModel.kt").apply {
+            writeText("package example.design\nclass ButtonModel(val label: String)")
+        }
+        val output = File(work, "producer-classes").apply { mkdirs() }
+        val resources = File(work, "producer-resources")
+        val options = listOf(
+            "bmlSourceRoot=$sourceRoot", "bmlPackageName=example.design.generated",
+            "bmlLibraryId=example:design", "bmlLibraryVersion=1.2.3", "bmlLibraryExport=button",
+            "bmlResourcesOutputDir=$resources",
+        )
+        val (exit, messages) = compileWithBmlPlugin(output, options, work, additionalSources = listOf(model))
+        assertEquals(ExitCode.OK, exit, messages)
+        val manifest = BmlLibraryArtifacts.decode(File(resources, BmlLibraryArtifacts.MANIFEST_PATH).readText())
+        assertEquals("example:design", manifest.library)
+        assertEquals("1.2.3", manifest.version)
+        assertEquals(listOf("button"), manifest.components.filter { it.exported }.map { it.tag })
+        val button = manifest.components.first { it.tag == "button" }
+        assertEquals("example.design.generated.ButtonComponent", button.renderer)
+        assertEquals("bml/button.bml", button.source.entry)
+        assertEquals(ContentDigest.sha256(source), button.source.digest)
+        assertEquals(1, button.source.line)
+        assertTrue(button.hasDefaultSlot)
+        assertEquals("example.design.ButtonModel", button.props.first().declaredType)
+        assertFalse(button.props.first().hasDefault)
+        assertTrue(button.props.last().hasDefault)
+        assertTrue("data-bml-c" in button.styles)
+        assertFalse(File(output, "bml/generated").exists())
+        assertFalse(output.walkTopDown().any { it.name in setOf("BmlPages.class", "BmlMessages.class", "BmlIslands.class") })
+
+        val artifact = File(work, "design.jar")
+        JarOutputStream(artifact.outputStream()).use { jar ->
+            for (root in listOf(output, resources)) root.walkTopDown().filter { it.isFile }.forEach { file ->
+                jar.putNextEntry(JarEntry(file.relativeTo(root).invariantSeparatorsPath))
+                jar.write(file.readBytes())
+                jar.closeEntry()
+            }
+        }
+        File(work, "producer").deleteRecursively()
+        output.deleteRecursively()
+        resources.deleteRecursively()
+        val consumerSource = File(work, "Consumer.kt").apply {
+            writeText("""
+                package example.consumer
+                object ConsumerPage : bosca.bml.render.BmlPageRenderer {
+                    override val route = "/"
+                    override suspend fun render(ctx: bosca.bml.render.RenderContext) {
+                        example.design.generated.ButtonComponent.render(
+                            ctx, mapOf("model" to example.design.ButtonModel("Save")),
+                        ) { ctx.writer.text(" now") }
+                    }
+                }
+            """.trimIndent())
+        }
+        val consumerOutput = File(work, "consumer-classes").apply { mkdirs() }
+        val (consumerExit, consumerMessages) = compileWithBmlPlugin(
+            consumerOutput, emptyList(), work, listOf(consumerSource), listOf(artifact),
+        )
+        assertEquals(ExitCode.OK, consumerExit, consumerMessages)
+        URLClassLoader(arrayOf(consumerOutput.toURI().toURL(), artifact.toURI().toURL()), javaClass.classLoader).use { loader ->
+            val page = loader.loadClass("example.consumer.ConsumerPage").getField("INSTANCE").get(null) as BmlPageRenderer
+            val context = RenderContext()
+            runBlocking { page.render(context) }
+            assertTrue("Save now</button>" in context.toString(), context.toString())
+            assertFalse(" disabled" in context.toString(), context.toString())
+        }
+    }
+
+    @Test
+    fun `library compilation ignores installed packages beneath authored BML sources`() {
+        val work = newWorkDir()
+        val root = File(work, "markup").apply { mkdirs() }
+        File(root, "button.bml").writeText("""<component tag="button"><html:button>Save</html:button></component>""")
+        File(root, "node_modules-example/badge.bml").apply {
+            parentFile.mkdirs(); writeText("""<component tag="badge"><span>Authored</span></component>""")
+        }
+        for (directory in listOf("node_modules/token", "controls/node_modules/@design/token")) {
+            File(root, "$directory/example.bml").apply {
+                parentFile.mkdirs()
+                writeText("""<page route="/dependency-example"><dependency-example/></page>
+                    <component tag="dependency-example"><span>Unused dependency</span></component>""")
+            }
+        }
+        val output = File(work, "classes")
+        val resources = File(work, "resources")
+        val (exit, messages) = compileWithBmlPlugin(output, listOf(
+            "bmlSourceRoot=$root", "bmlPackageName=example.design", "bmlLibraryId=example:design",
+            "bmlLibraryVersion=1", "bmlLibraryExport=button", "bmlResourcesOutputDir=$resources",
+        ), work)
+        assertEquals(ExitCode.OK, exit, messages)
+        val manifest = BmlLibraryArtifacts.decode(File(resources, BmlLibraryArtifacts.MANIFEST_PATH).readText())
+        assertEquals(setOf("button", "badge"), manifest.components.map { it.tag }.toSet())
+        assertEquals(setOf("bml/button.bml", "bml/node_modules-example/badge.bml"), manifest.components.map { it.source.entry }.toSet())
+        assertFalse(output.walkTopDown().any { it.name == "DependencyExampleComponent.class" })
+    }
+
+    @Test
+    fun `configured package applies to pages messages contracts and every registry`() {
+        val work = newWorkDir()
+        val root = File(work, "bml").apply { mkdirs() }
+        File(root, "home.bml").writeText(pageBml)
+        File(root, "badge.bml").writeText(badgeBml)
+        File(root, "welcome.bml").writeText("""<message key="welcome"><email><subject>Hi</subject><p>Welcome</p></email></message>""")
+        File(root, "contract.bml").writeText("""<page route="/contract"><contract>interface Greeting { fun greet(name: String): String }</contract><p>Contract</p></page>""")
+        val output = File(work, "classes").apply { mkdirs() }
+        val kotlinOutput = File(work, "generated")
+        val resources = File(work, "resources")
+        val (exit, messages) = compileWithBmlPlugin(output, listOf(
+            "bmlSourceRoot=$root", "bmlPackageName=example.custom.generated",
+            "bmlKotlinOutputDir=$kotlinOutput", "bmlResourcesOutputDir=$resources",
+        ), work)
+        assertEquals(ExitCode.OK, exit, messages)
+        val generated = kotlinOutput.listFiles().orEmpty().filter { it.extension == "kt" }
+        assertTrue(generated.map { it.name }.containsAll(listOf("BmlPages.kt", "BmlComponents.kt", "BmlIslands.kt", "BmlMessages.kt", "GreetingContract.kt")))
+        generated.forEach { assertTrue(it.readText().startsWith("package example.custom.generated"), it.name) }
+        assertTrue("Hello, world" in renderGenerated(output, "example.custom.generated.HomePage"))
+        assertTrue("example.custom.generated.BmlMessages" in File(resources, "META-INF/bml/message-manifest.json").readText())
+    }
+
+    @Test
+    fun `invalid library configuration and declarations fail compilation and remove stale manifest`() {
+        val cases = listOf(
+            listOf("bmlLibraryExport=missing") to "has no component declaration",
+            listOf("bmlLibraryExport=badge", "bmlLibraryExport=badge") to "Duplicate exports",
+            listOf("bmlLibraryExport=badge", "bmlPackageName=bml.generated") to "requires its own",
+            listOf("bmlLibraryExport=badge", "bmlPackageName=bad;package") to "Invalid generated package",
+            listOf("bmlLibraryExport=badge", "bmlLibraryId=bad") to "Invalid library identity",
+            emptyList<String>() to "at least one exported component",
+        )
+        for ((overrides, expected) in cases) {
+            val work = newWorkDir()
+            val root = File(work, "bml").apply { mkdirs() }
+            File(root, "badge.bml").writeText(badgeBml)
+            val resources = File(work, "resources")
+            val manifest = File(resources, BmlLibraryArtifacts.MANIFEST_PATH).apply { parentFile.mkdirs(); writeText("stale") }
+            val base = listOf("bmlSourceRoot=$root", "bmlPackageName=example.design", "bmlLibraryId=example:design", "bmlLibraryVersion=1", "bmlResourcesOutputDir=$resources")
+            val overrideNames = overrides.map { it.substringBefore('=') }.toSet()
+            val options = base.filterNot { it.substringBefore('=') in overrideNames } + overrides
+            val (exit, messages) = compileWithBmlPlugin(File(work, "classes"), options, work)
+            assertEquals(ExitCode.COMPILATION_ERROR, exit, messages)
+            assertTrue(expected in messages, messages)
+            assertFalse(manifest.exists(), "failed compilation retained a stale manifest")
+        }
+    }
+
+    @Test
+    fun `library localization conflicts do not leave a usable component manifest`() {
+        for (functionDefaults in listOf(false, true)) {
+            val work = newWorkDir()
+            val root = File(work, "bml").apply { mkdirs() }
+            for ((tag, label) in listOf("button" to "One", "badge" to "Two")) {
+                val content = if (functionDefaults) """<span>{ t("shared.key", "$label") }</span>"""
+                    else """<span t="shared.key">$label</span>"""
+                File(root, "$tag.bml").writeText("""<component tag="$tag">$content</component>""")
+            }
+            val resources = File(work, "resources")
+            val manifest = File(resources, BmlLibraryArtifacts.MANIFEST_PATH).apply {
+                parentFile.mkdirs(); writeText("stale")
+            }
+            val (exit, messages) = compileWithBmlPlugin(File(work, "classes"), listOf(
+                "bmlSourceRoot=$root", "bmlPackageName=example.design", "bmlLibraryId=example:design",
+                "bmlLibraryVersion=1", "bmlLibraryExport=button", "bmlResourcesOutputDir=$resources",
+            ), work)
+            assertEquals(ExitCode.COMPILATION_ERROR, exit, messages)
+            assertTrue("key 'shared.key' has different source text" in messages, messages)
+            assertFalse(manifest.exists(), "A localization conflict must not expose new component metadata to dependency tooling")
+        }
+    }
+
+    @Test
+    fun `library routes duplicate tags and generated filenames fail with source context`() {
+        for ((secondName, secondSource, expected) in listOf(
+            Triple("home.bml", """<page route="/"><badge label="Home"/></page>""", "cannot declare <page>"),
+            Triple("duplicate.bml", badgeBml, "Duplicate component 'badge'"),
+            Triple("collision.bml", """<component tag="badge-"><span>Collision</span></component>""", "Generated component 'BadgeComponent' collides"),
+            Triple("page.bml", """<component tag="page"><span>Bad</span></component>""", "protected library component"),
+        )) {
+            val work = newWorkDir()
+            val root = File(work, "bml").apply { mkdirs() }
+            File(root, "badge.bml").writeText(badgeBml)
+            File(root, secondName).writeText(secondSource)
+            val (exit, messages) = compileWithBmlPlugin(File(work, "classes"), listOf(
+                "bmlSourceRoot=$root", "bmlPackageName=example.design", "bmlLibraryId=example:design",
+                "bmlLibraryVersion=1", "bmlLibraryExport=badge", "bmlResourcesOutputDir=${File(work, "resources")}",
+            ), work)
+            assertEquals(ExitCode.COMPILATION_ERROR, exit, messages)
+            assertTrue(expected in messages, messages)
+        }
+        val work = newWorkDir()
+        val root = File(work, "bml").apply { mkdirs() }
+        File(root, "a-b.bml").writeText("""<page route="/one"><p>One</p></page>""")
+        File(root, "a/b.bml").apply { parentFile.mkdirs(); writeText("""<page route="/two"><p>Two</p></page>""") }
+        val (exit, messages) = compileWithBmlPlugin(File(work, "classes"), listOf("bmlSourceRoot=$root"), work)
+        assertEquals(ExitCode.COMPILATION_ERROR, exit, messages)
+        assertTrue("Generated file 'ABPage.kt' collides" in messages, messages)
+        assertTrue("a-b.bml" in messages && "a/b.bml" in messages, messages)
+    }
 
     @Test
     fun `the K2 plugin lowers a directory of bml files to in-memory Kotlin that compiles and renders`() {
@@ -499,10 +714,9 @@ class BmlCompilerPluginTest {
         assertTrue("NotesPage.kt" !in names, "a page-less/component-less file generates nothing: $names")
     }
 
+    @OptIn(CompilerConfiguration.Internals::class)
     @Test
-    fun `collectSources skips a file it cannot read`() {
-        // The runCatching { parse(readText()) }.getOrNull() ?: return@forEach arm: an unreadable .bml is
-        // skipped rather than crashing the compile. Skipped where the OS won't drop read permission (e.g. root).
+    fun `collectSources reports an unreadable source instead of publishing an incomplete module`() {
         val dir = newWorkDir()
         val bad = File(dir, "bad.bml").apply { writeText("""<page route="/bad"><span>x</span></page>""") }
         org.junit.Assume.assumeTrue(
@@ -510,15 +724,32 @@ class BmlCompilerPluginTest {
             bad.setReadable(false, false) && !bad.canRead(),
         )
         try {
-            val result = collect(configWith(listOf(dir.absolutePath)))
+            val errors = mutableListOf<String>()
+            val configuration = configWith(listOf(dir.absolutePath)).apply {
+                put(CommonConfigurationKeys.MESSAGE_COLLECTOR_KEY, object : MessageCollector {
+                    override fun clear() = errors.clear()
+                    override fun hasErrors() = errors.isNotEmpty()
+                    override fun report(severity: CompilerMessageSeverity, message: String, location: CompilerMessageSourceLocation?) {
+                        if (severity.isError) errors += message
+                    }
+                })
+            }
+            val result = collect(configuration)
             assertTrue(result.none { it.name == "BadPage.kt" }, "an unreadable .bml must be skipped")
+            assertTrue(errors.any { "Cannot read BML source" in it && "bad.bml" in it }, errors.toString())
         } finally {
             bad.setReadable(true, false)
         }
     }
 
     /** Compiles a placeholder source with the BML plugin registered + the given `plugin:bml:<opt>` options. */
-    private fun compileWithBmlPlugin(out: File, options: List<String>, work: File): Pair<ExitCode, String> {
+    private fun compileWithBmlPlugin(
+        out: File,
+        options: List<String>,
+        work: File,
+        additionalSources: List<File> = emptyList(),
+        extraClasspath: List<File> = emptyList(),
+    ): Pair<ExitCode, String> {
         // The compiler needs at least one source to anchor the module; the plugin contributes the rest.
         val anchor = File(work, "Anchor.kt").apply { writeText("package bml.test.anchor\n") }
         // Pass the `.bml` files as source args (what KGP's addCustomSourceFilesExtensions("bml") + source-dir
@@ -546,9 +777,9 @@ class BmlCompilerPluginTest {
         )
 
         val args = K2JVMCompilerArguments().apply {
-            freeArgs = listOf(anchor.absolutePath) + bmlFiles
+            freeArgs = listOf(anchor.absolutePath) + bmlFiles + additionalSources.map { it.absolutePath }
             destination = out.absolutePath
-            classpath = System.getProperty("java.class.path")
+            classpath = (listOf(System.getProperty("java.class.path")) + extraClasspath.map { it.absolutePath }).joinToString(File.pathSeparator)
             // Generated inject/live-state bindings inline both Bosca DI and core-bml serialization
             // helpers. Match the BML modules' Java 25 toolchain so neither dependency is newer than
             // this embedded-compiler harness's bytecode target.

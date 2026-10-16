@@ -19,11 +19,15 @@ data class BmlPageMeta(
  * references (the closure edges), [clientModule] its bundled module when its file carries client
  * script or live state.
  */
-data class BmlComponentMeta(
+data class BmlComponentMeta @JvmOverloads constructor(
     val tag: String,
     val styles: String,
     val deps: List<String>,
     val clientModule: String?,
+    val eagerDeps: List<String> = deps,
+    val hasServerState: Boolean = false,
+    val hasEagerFeatureFlags: Boolean = false,
+    val hasDeferredIslands: Boolean = false,
 )
 
 /**

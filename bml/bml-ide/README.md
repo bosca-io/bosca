@@ -31,6 +31,9 @@ toolchain. Ultimate supplies the JavaScript/TypeScript support used for client-s
   suggestions, including deferred islands and shared-cache page attributes.
 - **Formatting and navigation** — BML formatting, embedded-body formatting, component references,
   Kotlin declaration navigation, and CSS class references/usages when the CSS plugin is available.
+- **Tag folding** — collapse multiline tag bodies with the editor's gutter controls or standard
+  Collapse/Expand actions. Nested HTML, BML, and bare/namespaced component tags fold independently,
+  as do script/style bodies. Opening and closing tags stay visible; tags start expanded.
 - **Language injection** (the payoff):
   - Kotlin into `<script server>` bodies and `{ … }` interpolation → full completion,
     highlighting, and error-checking inside embedded Kotlin.

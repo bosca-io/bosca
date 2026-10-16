@@ -43,6 +43,7 @@ tasks.processResources {
 // compiler. The compiler is `compileOnly` — it is provided by kotlinc at runtime.
 // Plugin registration is via META-INF/services (no AutoService dependency).
 dependencies {
+    implementation(libs.kotlinx.serialization.json)
     implementation(project(":bml:core-bml"))   // tag registry used by the codegen
     compileOnly("org.jetbrains.kotlin:kotlin-compiler-embeddable:$compilerVersion")
 
