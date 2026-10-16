@@ -2,7 +2,8 @@
   <prop name="label" type="String" required />
   <prop name="heading" type="String" default="" />
   <prop name="local" type="Boolean" default="false" />
-  <section class="ui-tree" :data-local="local">
+  <prop name="embedded" type="Boolean" default="false" />
+  <section class="ui-tree" :data-local="local" :data-embedded="embedded">
     <if heading.isNotBlank()>
       <h3>{ heading }</h3>
     </if>
@@ -32,6 +33,11 @@
       .ui-tree {
         max-height: 220px;
       }
+    }
+    .ui-tree[data-embedded] {
+      max-height: none;
+      overflow: visible;
+      padding: 0;
     }
   </style>
   <script client scoped>

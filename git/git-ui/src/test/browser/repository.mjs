@@ -68,6 +68,34 @@ for (const width of [1440, 390]) {
   await call("Emulation.setDeviceMetricsOverride", {
     width, height: 900, deviceScaleFactor: 1, mobile: width === 390,
   });
+  await call("Page.navigate", { url: base + "/repositories/branch-counts?tab=branches&ref=feature%2Fone" });
+  await until("document.querySelectorAll('.branch-row').length === 5 && document.readyState === 'complete'");
+  const branches = await ev(`Array.from(document.querySelectorAll('.branch-row'), row => {
+    const delta = row.querySelector('.branch-delta');
+    return {
+      name: row.querySelector('.ref-name').textContent.trim(),
+      ahead: row.querySelector('.delta-ahead')?.textContent.trim() ?? '',
+      behind: row.querySelector('.delta-behind')?.textContent.trim() ?? '',
+      label: delta?.getAttribute('aria-label') ?? '',
+      title: delta?.title ?? '',
+      height: delta?.getBoundingClientRect().height ?? 0,
+    };
+  })`);
+  assert.deepEqual(branches.map(({name, ahead, behind}) => ({name, ahead, behind})), [
+    {name: "main", ahead: "", behind: ""},
+    {name: "feature/one", ahead: "+3", behind: "-2"},
+    {name: "ahead-only", ahead: "+1", behind: ""},
+    {name: "behind-only", ahead: "", behind: "-1"},
+    {name: "in-sync", ahead: "", behind: ""},
+  ]);
+  assert.equal(branches[1].label, "Commits compared with main: 3 ahead, 2 behind");
+  assert.equal(branches[1].title, branches[1].label);
+  assert.ok(branches.filter(branch => branch.label).every(branch => branch.height > 0 && branch.height < 24));
+  assert.equal(await ev("document.documentElement.scrollWidth > innerWidth"), false, `Branches fit at ${width}px`);
+  await writeFile(
+    `${process.env.GIT_UI_ARTIFACT_DIR}/bosca-git-ui-branches-${width}.png`,
+    Buffer.from((await call("Page.captureScreenshot", { format: "png" })).data, "base64"),
+  );
   await call("Page.navigate", { url: base + "/repositories/repo?tab=tags&ref=feature%2Fone" });
   await until(`document.querySelector('${tagCreate} [data-bml-ref=trigger]') && document.readyState === 'complete'`);
   await ev(`document.querySelector('${tagCreate} [data-bml-ref=trigger]').click()`);
@@ -101,6 +129,7 @@ for (const width of [1440, 390]) {
   assert.equal(await ev("new URLSearchParams(location.search).get('tab')"), "tags");
 }
 console.log("Tag creation: target defaults, duplicate errors, retained drafts, modal retry, navigation and mobile fit.");
+console.log("Branches: ahead/behind counts, default-branch comparison labels, in-sync branches and desktop/mobile fit.");
 await call("Emulation.setDeviceMetricsOverride", {
   width: 1440, height: 900, deviceScaleFactor: 1, mobile: false,
 });

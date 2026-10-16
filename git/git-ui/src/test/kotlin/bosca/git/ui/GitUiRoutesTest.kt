@@ -566,6 +566,33 @@ class GitUiRoutesTest {
     }
 
     @Test
+    fun `branch list shows ahead and behind commits relative to the default branch`() {
+        for (ref in listOf("main", "feature%2Fone")) {
+            val response = get("/repositories/branch-counts?tab=branches&ref=$ref")
+            assertEquals(200, response.statusCode(), response.body())
+            val rows = Regex("""<div[^>]*class="ref-row branch-row"[^>]*>(.*?)</div>""", RegexOption.DOT_MATCHES_ALL)
+                .findAll(response.body()).map { it.groupValues[1] }.toList()
+            assertEquals(5, rows.size)
+            fun row(name: String) = rows.single {
+                Regex("""class="ref-name"[^>]*>\s*${Regex.escape(name)}\s*</a>""").containsMatchIn(it)
+            }
+            val diverged = row("feature/one")
+            assertTrue(Regex("""class="delta-ahead"[^>]*>\s*\+3\s*</span>""").containsMatchIn(diverged), diverged)
+            assertTrue(Regex("""class="delta-behind"[^>]*>\s*-2\s*</span>""").containsMatchIn(diverged), diverged)
+            assertTrue("aria-label=\"Commits compared with main: 3 ahead, 2 behind\"" in diverged, diverged)
+            val ahead = row("ahead-only")
+            assertTrue(Regex("""class="delta-ahead"[^>]*>\s*\+1\s*</span>""").containsMatchIn(ahead), ahead)
+            assertFalse("delta-behind" in ahead, ahead)
+            val behind = row("behind-only")
+            assertTrue(Regex("""class="delta-behind"[^>]*>\s*-1\s*</span>""").containsMatchIn(behind), behind)
+            assertFalse("delta-ahead" in behind, behind)
+            assertFalse("branch-delta" in row("main"))
+            assertFalse("branch-delta" in row("in-sync"))
+        }
+        assertFalse("class=\"branch-delta\"" in get("/repositories/repo?tab=tags").body())
+    }
+
+    @Test
     fun `tag creation is available only on editable nonempty active repositories`() {
         assertTrue("New Tag" in get("/repositories/repo?tab=tags").body())
         assertFalse("New Tag" in get("/repositories/repo?tab=branches").body())
@@ -986,6 +1013,26 @@ class GitUiRoutesTest {
     }
 
     @Test
+    fun `pull overview and reviews omit full diff and branch history work`() {
+        for (view in listOf("overview", "reviews")) {
+            val before = requests.size
+            val response = get("/pulls/pull?view=$view")
+            assertEquals(200, response.statusCode(), response.body())
+            val calls = requests.drop(before)
+            val unnecessary = calls.filter { it.operation in setOf("GitUiPullDiffPage", "GitUiBranches", "GitUiBlob") }
+            assertTrue(unnecessary.isEmpty(), "$view requested unnecessary work: ${unnecessary.map { it.operation }}")
+            assertTrue(calls.none { it.operation == "GitUiPullList" && Regex("\\bmergeable\\b").containsMatchIn(it.query) })
+            val refs = calls.single { it.operation == "GitUiPullHeads" }.variables
+            assertEquals("refs/heads/feature/one", refs["source"]?.jsonPrimitive?.content)
+            assertEquals("refs/heads/main", refs["target"]?.jsonPrimitive?.content)
+            if (view == "overview") {
+                assertTrue("View changes" in response.body(), response.body())
+                assertFalse(">0 changed<" in response.body(), response.body())
+            }
+        }
+    }
+
+    @Test
     fun `pull detail resolves its path ID without repository and number parameters`() {
         for (suffix in listOf("", "?view=files", "?view=reviews", "?repo=other&number=99")) {
             val response = get("/pulls/pull$suffix")
@@ -1111,6 +1158,49 @@ class GitUiRoutesTest {
         assertTrue(state["failed"]?.jsonPrimitive?.boolean == true, response.body())
         assertTrue("Pull request changed" in response.body(), response.body())
         assertEquals(2, state.getValue("diff").jsonArray.single().jsonObject.getValue("hunks").jsonArray.single().jsonObject.getValue("lines").jsonArray.size)
+    }
+
+    @Test
+    fun `PR commits paginate and link to a selected commit comparison`() {
+        val before = requests.size
+        val page = get("/pulls/pull?view=commits")
+        assertEquals(200, page.statusCode(), page.body())
+        assertTrue("Commit 0" in page.body() && "Commit 24" in page.body(), page.body())
+        assertFalse("Commit 25" in page.body(), page.body())
+        assertTrue("commit=" + "b".repeat(40) in page.body(), page.body())
+        assertTrue("Load more commits" in page.body(), page.body())
+        assertFalse(requests.drop(before).any { it.operation == "GitUiPullDiffPage" })
+        val next = get("/pulls/pull?view=commits&commitOffset=25")
+        assertTrue("Commit 25" in next.body() && "Newer commits" in next.body(), next.body())
+        assertFalse("Load more commits" in next.body(), next.body())
+        assertEquals(25, requests.last { it.operation == "GitUiPullCommits" }.variables.getValue("offset").jsonPrimitive.int)
+        val merged = get("/pulls/pull-merged?view=commits").body()
+        assertTrue("recorded merge history" in merged, merged)
+        val unavailable = get("/pulls/pull-missing-branch?view=commits").body()
+        assertTrue("Commit history unavailable" in unavailable, unavailable)
+    }
+
+    @Test
+    fun `selected commit keeps diff pagination file links and discussion context separate`() {
+        val sha = "b".repeat(40)
+        val path = "/pulls/pull?view=files&commit=$sha&commitOffset=25"
+        val response = get(path)
+        assertEquals(200, response.statusCode(), response.body())
+        val html = response.body()
+        assertTrue("Commit bbbbbbb" in html && "Selected commit change" in html, html)
+        assertTrue("ref=$sha" in html && "commitOffset=25" in html, html)
+        assertTrue("Discussions outside this diff" in html && "Existing line comment" in html, html)
+        assertFalse("Comment on line" in html, html)
+        val expanded = action(path, "git-pull-review.model", "expand", emptyList(), sourceHtml = html)
+        val state = actionState(expanded)
+        assertEquals(false, state.getValue("failed").jsonPrimitive.boolean, expanded.body())
+        assertTrue("More selected commit lines" in expanded.body(), expanded.body())
+        val query = requests.last { it.operation == "GitUiPullDiffPage" }
+        assertEquals(sha, query.variables.getValue("commitSha").jsonPrimitive.content)
+        assertEquals(2000, query.variables.getValue("offset").jsonPrimitive.int)
+        val all = get("/pulls/pull?view=files").body()
+        assertTrue("Second diff line" in all && "Comment on line" in all, all)
+        assertFalse("Selected commit change" in all, all)
     }
 
     @Test
@@ -2029,7 +2119,7 @@ class GitUiRoutesTest {
             "/settings/github" to setOf("GitUiGitHubUsers", "GitUiPrincipals"),
             "/repositories/repo?tab=settings&panel=permissions" to setOf("GitUiPermissions", "GitUiGroups"),
             "/repositories/repo?tab=statuses&sha=abc" to setOf("GitUiStatuses", "GitUiCommits"),
-            "/pulls/pull" to setOf("GitUiRepository", "GitUiBranches", "GitUiProfiles", "GitUiPullList", "GitUiRepositories"),
+            "/pulls/pull" to setOf("GitUiRepository", "GitUiPullHeads", "GitUiProfiles", "GitUiPullList", "GitUiRepositories"),
         )) {
             val arrived = CountDownLatch(operations.size)
             val timeouts = AtomicInteger()
@@ -2381,6 +2471,7 @@ class GitUiRoutesTest {
             val variables: JsonObject,
             val authorization: String?,
             val origin: String?,
+            val query: String,
         )
 
         private val client = HttpClient.newHttpClient()
@@ -2427,6 +2518,7 @@ class GitUiRoutesTest {
                         variables,
                         exchange.requestHeaders.getFirst("Authorization"),
                         exchange.requestHeaders.getFirst("Origin"),
+                        input["query"]?.jsonPrimitive?.content.orEmpty(),
                     )
                 )
                 val id = variables["id"]?.jsonPrimitive?.contentOrNull
@@ -2504,6 +2596,36 @@ class GitUiRoutesTest {
                             """{"data":{"git":{"pullRequest":$editedPull}}}"""
                         operation == "GitUiPull" && id == "pull-replies" ->
                             """{"data":{"git":{"pullRequest":$replyPull}}}"""
+                        operation == "GitUiPullHeads" -> {
+                            fun head(key: String) = if (variables[key]?.jsonPrimitive?.content == "refs/heads/missing") "[]"
+                                else """[{"sha":"$commitSha"}]"""
+                            """{"data":{"git":{"sourceHead":${head("source")},"targetHead":${head("target")}}}}"""
+                        }
+                        operation == "GitUiPullCommits" -> {
+                            val offset = variables.getValue("offset").jsonPrimitive.int
+                            val commits = (0..25).drop(offset).take(26).map { index -> buildJsonObject {
+                                put("sha", if (index == 0) "b".repeat(40) else index.toString(16).padStart(40, '0'))
+                                put("message", "Commit $index")
+                                put("authorName", "Alice")
+                                put("authorDate", "2026-10-09T00:00:00Z")
+                                put("parentShas", JsonArray(listOf(JsonPrimitive("abc"))))
+                            } }
+                            """{"data":{"git":{"pullRequestById":{"version":0,"commits":${JsonArray(commits)}}}}}"""
+                        }
+                        operation == "GitUiPullDiffPage" && variables["commitSha"]?.jsonPrimitive?.contentOrNull != null -> {
+                            val current = Json.parseToJsonElement(pull).jsonObject
+                            val file = current.getValue("diff").jsonArray.single().jsonObject
+                            val hunk = file.getValue("hunks").jsonArray.single().jsonObject
+                            val offset = variables.getValue("offset").jsonPrimitive.int
+                            val line = buildJsonObject {
+                                put("content", if (offset == 0) "Selected commit change" else "More selected commit lines")
+                                put("type", "ADD"); put("oldLineNumber", JsonNull); put("newLineNumber", if (offset == 0) 1 else 2)
+                            }
+                            val changedHunk = JsonObject(hunk + mapOf("totalLineCount" to JsonPrimitive(2), "lines" to JsonArray(listOf(line))))
+                            val changedFile = JsonObject(file + ("hunks" to JsonArray(listOf(changedHunk))))
+                            val result = JsonObject(current + ("diff" to JsonArray(listOf(changedFile))))
+                            """{"data":{"git":{"pullRequest":$result}}}"""
+                        }
                         operation == "GitUiPullDiffPage" -> {
                             val number = variables.getValue("number").jsonPrimitive.int
                             val current = when (number) {
@@ -2739,6 +2861,8 @@ class GitUiRoutesTest {
                             variables["sha"]?.jsonPrimitive?.content in
                                 setOf("main", "feature/one", "v1") ->
                             """{"errors":[{"message":"commit requires a SHA, not a ref name"}]}"""
+                        operation == "GitUiCommit" && variables["sha"]?.jsonPrimitive?.contentOrNull == "b".repeat(40) ->
+                            """{"data":{"git":{"commit":{"sha":"${"b".repeat(40)}","message":"Selected commit message"}}}}"""
                         operation == "GitUiCommit" ->
                             """{"data":{"git":{"commit":${if (variables["sha"]?.jsonPrimitive?.content == "invalid") "null" else "{\"sha\":\"$commitSha\",\"message\":\"Initial\"}"}}}}"""
                         operation == "GitUiCommits" ->
@@ -2751,8 +2875,18 @@ class GitUiRoutesTest {
                             """{"data":{"git":{"branches":[{"name":"main","sha":"abc"},{"name":"feature/one","sha":"abc"}],"tags":[$tags]}}}"""
                         operation == "GitUiBranches" && id == "empty" ->
                             """{"data":{"git":{"branches":[]}}}"""
-                        operation == "GitUiBranches" ->
-                            """{"data":{"git":{"branches":[{"name":"main","sha":"abc"},{"name":"feature/one","sha":"abc"}]}}}"""
+                        operation == "GitUiBranches" -> {
+                            val branches = mutableListOf(
+                                """{"name":"main","sha":"abc","ahead":0,"behind":0}""",
+                                """{"name":"feature/one","sha":"abc","ahead":3,"behind":2}""",
+                            )
+                            if (id == "branch-counts") branches += listOf(
+                                """{"name":"ahead-only","sha":"abc","ahead":1,"behind":0}""",
+                                """{"name":"behind-only","sha":"abc","ahead":0,"behind":1}""",
+                                """{"name":"in-sync","sha":"abc","ahead":0,"behind":0}""",
+                            )
+                            """{"data":{"git":{"branches":[${branches.joinToString(",")}]}}}"""
+                        }
                         operation == "GitUiTree" &&
                             id?.startsWith("retry-") == true &&
                             treeRetries

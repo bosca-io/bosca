@@ -116,6 +116,20 @@ class GitPullRequestControllerTest {
     }
 
     @Test
+    fun `commit list and selected diffs share the PR comparison and pagination`() = runTest {
+        controller.commits(pr, 50, 26)
+        coVerify { diffService.listComparisonCommits(pr.repositoryId, "refs/heads/main", "refs/heads/feature", 50, 26) }
+        controller.diff(pr, "selected")
+        coVerify { diffService.computeCommitDiff(pr.repositoryId, "refs/heads/main", "refs/heads/feature", "selected") }
+        val merged = pr.copy(status = PullRequestStatus.MERGED, mergeSha = "merged", mergeBaseSha = "before")
+        coEvery { diffService.resolveMergedBase(merged) } returns "before"
+        controller.commits(merged)
+        controller.diff(merged, "selected")
+        coVerify { diffService.listComparisonCommits(pr.repositoryId, "before", "merged", 0, 25) }
+        coVerify { diffService.computeCommitDiff(pr.repositoryId, "before", "merged", "selected") }
+    }
+
+    @Test
     fun `merged diffs require recorded head and a determinable original base`() = runTest {
         assertFailsWith<IllegalStateException> { controller.diff(pr.copy(status = PullRequestStatus.MERGED)) }
         assertFailsWith<IllegalStateException> { controller.diff(pr.copy(status = PullRequestStatus.MERGED, mergeSha = " ")) }

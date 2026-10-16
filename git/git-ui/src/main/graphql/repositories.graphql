@@ -48,6 +48,8 @@ query GitUiBranches($id: UUID!) {
     branches(repositoryId: $id) {
       name
       sha
+      ahead
+      behind
     }
   }
 }

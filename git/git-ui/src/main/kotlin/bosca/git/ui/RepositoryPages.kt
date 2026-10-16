@@ -270,7 +270,7 @@ suspend fun repositoryPage(): RepositoryPage? = supervisorScope {
             (branches.contains(ref) || (emptyRepository && ref == repo.defaultBranch)) &&
             ctx.query["new"] == "true",
         tagsHasMore = loadedTags.size > 25,
-        branchRefs = branchRefs.map { RefOption(it.name, "branch", it.sha) },
+        branchRefs = branchRefs.map { RefOption(it.name, "branch", it.sha, ahead = it.ahead, behind = it.behind) },
         pulls =
             if (tab == "pulls")
                 pullListPage(id, repositoryHref(id, ref, listHref = listHref, tab = tab), repo)

@@ -156,10 +156,26 @@ for (const width of [1440, 390]) {
 
   const label = await ev(`(() => {
     const item = document.querySelector('.diff-sidebar [role="treeitem"][data-path="${CONTEXT_FILE}"] .tree-label');
-    return { text: item.textContent.trim(), clipped: item.scrollWidth > item.clientWidth + 1 };
+    const row = item.closest('.ui-tree-row');
+    const tree = document.querySelector('.sidebar-tree');
+    return { text: item.textContent.trim(), clipped: item.scrollWidth > item.clientWidth + 1,
+      whiteSpace: getComputedStyle(item).whiteSpace, rowHeight: row.getBoundingClientRect().height,
+      scrollWidth: tree.scrollWidth, clientWidth: tree.clientWidth };
   })()`);
   assert.equal(label.text, "ContextExpansionReviewFixtureWithAVeryLongName.kt", "The tree shows the whole file name");
-  assert.equal(label.clipped, false, "Long file names wrap instead of truncating");
+  assert.equal(label.clipped, false, "The entire label is available in the scrollable tree");
+  assert.equal(label.whiteSpace, "nowrap", "Long file names stay on one line");
+  assert.ok(label.rowHeight <= 32, "A long name does not increase the row height");
+  assert.ok(label.scrollWidth > label.clientWidth, "The tree provides horizontal scrolling");
+  const treeBounds = await ev(`(() => {
+    const r = document.querySelector('.sidebar-tree').getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  })()`);
+  await call("Input.dispatchMouseEvent", { type: "mouseWheel", ...treeBounds, deltaX: 200, deltaY: 0 });
+  await until(`document.querySelector('.sidebar-tree').scrollLeft > 0`);
+  assert.ok(await ev(`document.documentElement.scrollWidth <= innerWidth`), "Horizontal scrolling stays inside the tree");
+  await screenshot("tree-scroll", width);
+  await ev(`document.querySelector('.sidebar-tree').scrollLeft = 0`);
   assert.ok(await ev(`document.querySelector('${file} .file-path').textContent.trim() === ${JSON.stringify(CONTEXT_FILE)}`), "The file header shows the full path");
 
   // Top, before and after the discussion window, and the end of the file.
@@ -216,14 +232,45 @@ for (const width of [1440, 390]) {
 
   if (width > 980) {
     const before = await ev(`document.querySelector('.diff-sidebar').getBoundingClientRect().width`);
+    const grip = await ev(`(() => {
+      const handle = document.querySelector('.sidebar-resize');
+      handle.scrollIntoView({ block: 'center' });
+      const r = handle.getBoundingClientRect();
+      const x = r.left + r.width / 2, y = r.top + r.height / 2;
+      return { x, y, width: r.width, target: document.elementFromPoint(x, y) === handle,
+        visible: getComputedStyle(handle, '::after').backgroundColor !== 'rgba(0, 0, 0, 0)' };
+    })()`);
+    assert.ok(grip.width >= 12 && grip.target && grip.visible, "The divider has a visible, reachable drag grip");
+    await call("Input.dispatchMouseEvent", { type: "mouseMoved", x: grip.x, y: grip.y });
+    await call("Input.dispatchMouseEvent", { type: "mousePressed", x: grip.x, y: grip.y, button: "left", clickCount: 1 });
+    await call("Input.dispatchMouseEvent", { type: "mouseMoved", x: grip.x + 100, y: grip.y, button: "left", buttons: 1 });
+    await call("Input.dispatchMouseEvent", { type: "mouseReleased", x: grip.x + 100, y: grip.y, button: "left", clickCount: 1 });
+    await until(`Math.round(document.querySelector('.diff-sidebar').getBoundingClientRect().width) === ${Math.round(before + 100)}`);
     await ev(`document.querySelector('.sidebar-resize').focus()`);
     await pressKey("ArrowRight");
     await pressKey("ArrowRight");
     const after = await ev(`document.querySelector('.diff-sidebar').getBoundingClientRect().width`);
-    assert.equal(Math.round(after - before), 32, "The file tree resizes from the keyboard");
+    assert.equal(Math.round(after - before), 132, "The file tree resizes by dragging and with the keyboard");
+    await click(`${file} button[aria-label="Show all lines"]`);
+    await until(`!document.querySelector('${file} button[aria-label="Show all lines"]')`);
+    assert.equal(Math.round(await ev(`document.querySelector('.diff-sidebar').getBoundingClientRect().width`)), Math.round(after), "The resized width survives a server update");
     assert.equal(await ev(`localStorage.getItem('git-ui:diff-sidebar-width')`), String(Math.round(after)), "The tree width is remembered");
     await nav("/pulls/pull-context?repo=repo&number=12&view=files");
     assert.equal(Math.round(await ev(`document.querySelector('.diff-sidebar').getBoundingClientRect().width`)), Math.round(after), "The remembered width applies on load");
+    await ev(`document.querySelector('.sidebar-resize').focus()`);
+    await pressKey("End");
+    await call("Emulation.setDeviceMetricsOverride", { width: 1024, height: 900, deviceScaleFactor: 1, mobile: false });
+    await until(`Number(document.querySelector('.sidebar-resize').getAttribute('aria-valuenow')) <= Math.round(document.querySelector('.diff-workspace').clientWidth * 0.6)`);
+    await call("Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: false });
+    await until(`document.querySelector('.sidebar-resize').getAttribute('aria-valuenow') === '640'`);
+    await screenshot("tree-resized", width);
+    const reset = await ev(`(() => { const r = document.querySelector('.sidebar-resize').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
+    for (const clickCount of [1, 2]) {
+      await call("Input.dispatchMouseEvent", { type: "mousePressed", ...reset, button: "left", clickCount });
+      await call("Input.dispatchMouseEvent", { type: "mouseReleased", ...reset, button: "left", clickCount });
+    }
+    await until(`document.querySelector('.sidebar-resize').getAttribute('aria-valuenow') === '300'`);
+    assert.equal(await ev(`localStorage.getItem('git-ui:diff-sidebar-width')`), null, "Double-click resets the saved width");
   }
 
   assert.ok(await ev(`document.documentElement.scrollWidth <= innerWidth`), "The review page has no horizontal overflow");

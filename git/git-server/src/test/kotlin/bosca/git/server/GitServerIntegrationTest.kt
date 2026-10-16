@@ -763,6 +763,10 @@ class GitServerIntegrationTest {
                     buildJsonObject { put("repo", emptyId); put("branch", branch); put("content", content) }, adminToken,
                 )
             }
+            graphql(
+                "mutation Second(\$repo: UUID!) { git { commitFile(input: { repositoryId: \$repo, branch: \"feature\", path: \"second-review.txt\", content: \"Second change\", message: \"Second review commit\", authorName: \"Reviewer\", authorEmail: \"reviewer@example.test\" }) { commitSha } } }",
+                buildJsonObject { put("repo", emptyId) }, adminToken,
+            )
             val editable = graphql(
                 "mutation Pull(\$repo: UUID!) { git { createPullRequest(input: { repositoryId: \$repo, title: \"Original PR\", description: \"Original description\", sourceBranch: \"feature\", targetBranch: \"trunk\" }) { id number version } } }",
                 buildJsonObject { put("repo", emptyId) }, adminToken,
@@ -777,6 +781,29 @@ class GitServerIntegrationTest {
                 "query Head(\$repo: UUID!) { git { branches(repositoryId: \$repo) { name sha } } }",
                 buildJsonObject { put("repo", emptyId) }, adminToken,
             ).at("git", "branches").jsonArray.single { it.at("name").jsonPrimitive.content == "feature" }.at("sha").jsonPrimitive.content
+            val commitPage = graphql(
+                "query Commits(\$id: UUID!) { git { pullRequestById(id: \$id) { commits(offset: 0, limit: 1) { sha message parentShas } } } }",
+                buildJsonObject { put("id", pullId) }, adminToken,
+            ).at("git", "pullRequestById", "commits").jsonArray.single()
+            assertEquals(sourceSha, commitPage.at("sha").jsonPrimitive.content)
+            assertEquals("Second review commit", commitPage.at("message").jsonPrimitive.content)
+            val olderCommit = graphql(
+                "query Commits(\$id: UUID!) { git { pullRequestById(id: \$id) { commits(offset: 1, limit: 1) { sha message } } } }",
+                buildJsonObject { put("id", pullId) }, adminToken,
+            ).at("git", "pullRequestById", "commits").jsonArray.single()
+            assertEquals("Prepare review", olderCommit.at("message").jsonPrimitive.content)
+            val selectedDiff = graphql(
+                "query Selected(\$id: UUID!, \$sha: String!) { git { pullRequestById(id: \$id) { diff(commitSha: \$sha) { newPath } } } }",
+                buildJsonObject { put("id", pullId); put("sha", sourceSha) }, adminToken,
+            ).at("git", "pullRequestById", "diff").jsonArray
+            assertEquals(listOf("second-review.txt"), selectedDiff.map { it.at("newPath").jsonPrimitive.content })
+            val commitsHtml = request("/pulls/$pullId?view=commits", cookie = "$cookiePrefix=$adminToken")
+            assertEquals(200, commitsHtml.statusCode(), commitsHtml.body())
+            assertTrue("Second review commit" in commitsHtml.body() && "Prepare review" in commitsHtml.body(), commitsHtml.body())
+            val commitHtml = request("/pulls/$pullId?view=files&commit=$sourceSha", cookie = "$cookiePrefix=$adminToken")
+            assertEquals(200, commitHtml.statusCode(), commitHtml.body())
+            assertTrue("second-review.txt" in commitHtml.body(), commitHtml.body())
+            assertFalse("data-path=\"review.txt\"" in commitHtml.body(), commitHtml.body())
             val originalCommentId = graphql(
                 "mutation Comment(\$id: UUID!, \$review: UUID!, \$sha: String!) { git { addReviewComment(input: { pullRequestId: \$id, reviewId: \$review, filePath: \"review.txt\", newLineNumber: 1, commitSha: \$sha, content: \"Original line comment\", expectedVersion: 0 }) { id } } }",
                 buildJsonObject { put("id", pullId); put("review", reviewId); put("sha", sourceSha) }, adminToken,
@@ -999,7 +1026,7 @@ class GitServerIntegrationTest {
                     buildJsonObject { put("repo", emptyId); put("branch", target) }, adminToken,
                 )
                 val historical = graphql(
-                    "query Merged(\$repo: UUID!, \$number: Int!) { git { pullRequest(repositoryId: \$repo, number: \$number) { mergeSha mergeBaseSha diff { newPath } } } }",
+                    "query Merged(\$repo: UUID!, \$number: Int!) { git { pullRequest(repositoryId: \$repo, number: \$number) { mergeSha mergeBaseSha commits { sha message } diff { newPath } } } }",
                     buildJsonObject { put("repo", emptyId); put("number", createdPull.at("number").jsonPrimitive.int) }, adminToken,
                 ).at("git", "pullRequest")
                 assertEquals(before, historical.at("mergeBaseSha").jsonPrimitive.content, strategy)
@@ -1013,6 +1040,14 @@ class GitServerIntegrationTest {
                 val filesPath = "/pulls/${createdPull.at("id").jsonPrimitive.content}?repo=$emptyId&number=${createdPull.at("number").jsonPrimitive.int}&view=files"
                 val files = request(filesPath, cookie = "$cookiePrefix=$adminToken")
                 assertEquals(200, files.statusCode(), files.body())
+                val historicalCommits = historical.at("commits").jsonArray
+                assertEquals(if (strategy == "SQUASH") 1 else if (strategy == "MERGE_COMMIT") 3 else 2, historicalCommits.size, strategy)
+                val selectedPath = filesPath + "&commit=" + historicalCommits.first().at("sha").jsonPrimitive.content
+                val selectedFiles = request(selectedPath, cookie = "$cookiePrefix=$adminToken")
+                assertEquals(200, selectedFiles.statusCode(), selectedFiles.body())
+                assertTrue("second-change.txt" in selectedFiles.body(), selectedFiles.body())
+                if (strategy in listOf("REBASE", "FAST_FORWARD"))
+                    assertFalse("data-path=\"first-change.txt\"" in selectedFiles.body(), selectedFiles.body())
                 assertTrue("first-change.txt" in files.body() && "second-change.txt" in files.body() && "Retained merged change" in files.body(), files.body())
                 assertFalse("Comparison unavailable" in files.body() || "No files changed" in files.body(), files.body())
                 val mergedFiles = Regex("<section[^>]*class=\"diff-file\"[^>]*>.*?</section>", RegexOption.DOT_MATCHES_ALL)

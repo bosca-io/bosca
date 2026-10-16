@@ -8,6 +8,7 @@ import bosca.git.ui.graphql.GitPullRequestStatus
  * whose source cannot be shown keeps those discussions in the list outside the diff.
  */
 internal suspend fun PullPage.withDiscussionContext(gql: GraphQLClient): PullPage {
+    if (selectedCommit != null) return this
     val lines = pull.reviews
         .flatMap { it.comments }
         .filter { !it.outdated && (pull.status != GitPullRequestStatus.MERGED || it.commitSha == headSha) }

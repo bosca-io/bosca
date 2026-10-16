@@ -1,0 +1,126 @@
+<component tag="git-pull-commits">
+  <prop name="page" type="bosca.git.ui.PullPage" required />
+  <section class="commits-panel">
+    <if page.diffUnavailableMessage.isNotBlank()>
+      <ui-empty-state icon="branch" title="Commit history unavailable" :message="page.diffUnavailableMessage" />
+    <else>
+      <if page.pull.status.name == "MERGED">
+        <p class="detail-note">Commits from the recorded merge history. Squash merges contain the single squash commit.</p>
+      </if>
+      <div class="commit-list">
+        <if page.commits.isEmpty()>
+          <p class="commit-empty">No commits found.</p>
+        <else>
+          <for commit in page.commits>
+            <div class="commit-row">
+              <span class="commit-icon"><ui-icon name="commit" :size="14" /></span>
+              <div class="commit-body">
+                <a class="commit-message" :href="page.commitHref(commit.sha)">{ commit.message.lineSequence().first() }</a>
+                <div class="commit-meta">
+                  <span class="commit-author">{ commit.authorName }</span>
+                  <span class="commit-time"><ui-time :value="commit.authorDate" relative ago inheritTypography /></span>
+                </div>
+              </div>
+              <a class="commit-sha" :href="page.commitHref(commit.sha)" :title="commit.sha">
+                { commit.sha.take(7) }
+              </a>
+            </div>
+          </for>
+        </if>
+      </div>
+      <if page.commitOffset != 0L || page.hasMoreCommits>
+        <nav class="load-more" aria-label="Commit pages">
+          <if page.commitOffset != 0L>
+            <a class="button-link" :href="page.commitsHref((page.commitOffset - 25).coerceAtLeast(0))">Newer commits</a>
+          </if>
+          <if page.hasMoreCommits>
+            <a class="button-link" :href="page.commitsHref(page.commitOffset + 25)">Load more commits</a>
+          </if>
+        </nav>
+      </if>
+    </if>
+  </section>
+  <style scoped>
+    .commit-list {
+      overflow: hidden;
+      background: var(--bg-1);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+    }
+    .commit-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--line);
+    }
+    .commit-row:last-child {
+      border-bottom: 0;
+    }
+    .commit-icon {
+      display: flex;
+      flex: 0 0 28px;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      color: var(--accent);
+      background: color-mix(in oklch, var(--accent) 10%, transparent);
+    }
+    .commit-body {
+      flex: 1;
+      min-width: 0;
+    }
+    .commit-message {
+      display: block;
+      overflow: hidden;
+      color: var(--fg-0);
+      font-size: 13.5px;
+      font-weight: 500;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .commit-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 3px;
+    }
+    .commit-author {
+      overflow-wrap: anywhere;
+      font-size: 12px;
+      color: var(--fg-2);
+    }
+    .commit-time {
+      font-size: 11px;
+      color: var(--fg-3);
+    }
+    .commit-sha {
+      flex: none;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: var(--bg-2);
+      color: var(--fg-3);
+      font-family: var(--font-mono);
+      font-size: 11px;
+    }
+    .commit-sha:hover {
+      color: var(--fg-1);
+      text-decoration: none;
+    }
+    .commit-empty {
+      margin: 0;
+      padding: 48px 0;
+      text-align: center;
+      color: var(--fg-3);
+      font-size: 13.5px;
+    }
+    .load-more {
+      display: flex;
+      justify-content: center;
+      gap: 8px;
+      padding: 16px 0;
+    }
+  </style>
+</component>

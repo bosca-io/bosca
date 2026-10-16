@@ -73,6 +73,12 @@ class DiffServiceTest {
                 setNewObjectId(headCommitId); setForceUpdate(true); update()
             }
             assertEquals(originalDiff, service.computeDiff(repositoryId, pr.mergeBaseSha.orEmpty(), sha), strategy.name)
+            val commits = service.listComparisonCommits(repositoryId, pr.mergeBaseSha.orEmpty(), sha, 0, 100)
+            assertTrue(commits.isNotEmpty(), strategy.name)
+            if (strategy == MergeStrategy.SQUASH) assertEquals(1, commits.size)
+            for (commit in commits) {
+                assertTrue(service.computeCommitDiff(repositoryId, pr.mergeBaseSha.orEmpty(), sha, commit.sha).isNotEmpty(), strategy.name)
+            }
         }
     }
 
@@ -106,6 +112,77 @@ class DiffServiceTest {
         }
         every { dfsManager.open(repositoryId) } throws kotlinx.coroutines.CancellationException("cancelled")
         assertFailsWith<kotlinx.coroutines.CancellationException> { service.resolveMergedBase(pr) }
+    }
+
+    private fun commitWithFiles(message: String, files: Map<String, String>, vararg parents: ObjectId): ObjectId =
+        inMemoryRepo.newObjectInserter().use { inserter ->
+            val tree = TreeFormatter()
+            files.toSortedMap().forEach { (path, content) ->
+                tree.append(path, FileMode.REGULAR_FILE, inserter.insert(Constants.OBJ_BLOB, content.toByteArray()))
+            }
+            val author = PersonIdent("Author", "author@example.test")
+            inserter.insert(CommitBuilder().apply {
+                setTreeId(inserter.insert(tree)); setParentIds(*parents)
+                setAuthor(author); setCommitter(author); setMessage(message)
+            }).also { inserter.flush() }
+        }
+
+    @Test
+    fun `comparison commits paginate beyond 250 and exclude target history`() = runTest {
+        var head = baseCommitId
+        val history = (1..270).map { index ->
+            commitWithFiles("Change $index", mapOf("file.txt" to "$index\n"), head).also { head = it }
+        }
+        val all = (0L..275L step 25).flatMap { offset ->
+            service.listComparisonCommits(repositoryId, baseCommitId.name(), head.name(), offset, 25)
+        }
+        assertEquals(history.reversed().map { it.name() }, all.map { it.sha })
+        assertEquals("Change 270", all.first().message)
+        assertEquals("Author", all.first().authorName)
+        assertEquals(listOf(history[268].name()), all.first().parentShas)
+        assertTrue(service.listComparisonCommits(repositoryId, head.name(), head.name(), 0, 25).isEmpty())
+        assertTrue(service.listComparisonCommits(repositoryId, baseCommitId.name(), head.name(), Long.MAX_VALUE, 25).isEmpty())
+        for ((offset, limit) in listOf(-1L to 25, 0L to 0, 0L to 101)) {
+            assertFailsWith<IllegalArgumentException> {
+                service.listComparisonCommits(repositoryId, baseCommitId.name(), head.name(), offset, limit)
+            }
+        }
+    }
+
+    @Test
+    fun `commit diff contains only selected changes and rejects commits outside the PR`() = runTest {
+        val second = commitWithFiles("Second", mapOf("file.txt" to "line 1\nline 2 modified\nline 3\nline 4\n",
+            "new.txt" to "new content\n", "second.txt" to "second\n"), headCommitId)
+        val diff = service.computeCommitDiff(repositoryId, baseCommitId.name(), second.name(), second.name())
+        assertEquals(listOf("second.txt"), diff.map { it.newPath })
+        assertEquals(service.computeDiff(repositoryId, baseCommitId.name(), headCommitId.name()),
+            service.computeCommitDiff(repositoryId, baseCommitId.name(), second.name(), headCommitId.name()))
+        val unrelated = commitWithFiles("Unrelated", mapOf("unrelated.txt" to "other"), baseCommitId)
+        for (sha in listOf(baseCommitId.name(), unrelated.name(), "feature", ObjectId.zeroId().name())) {
+            assertFailsWith<IllegalArgumentException> {
+                service.computeCommitDiff(repositoryId, baseCommitId.name(), second.name(), sha)
+            }
+        }
+        for ((base, head) in listOf("missing" to second.name(), baseCommitId.name() to "missing")) {
+            assertFailsWith<NoSuchElementException> {
+                service.listComparisonCommits(repositoryId, base, head, 0, 25)
+            }
+        }
+    }
+
+    @Test
+    fun `merge commits compare to first parent and root commits to empty tree`() = runTest {
+        val merge = commitWithFiles("Merge", mapOf("file.txt" to "line 1\nline 2\nline 3\n", "merged.txt" to "resolved"), baseCommitId, headCommitId)
+        assertEquals(listOf("merged.txt"), service.computeCommitDiff(repositoryId, baseCommitId.name(), merge.name(), merge.name()).map { it.newPath })
+        val root = commitWithFiles("Root", mapOf("root.txt" to "root\n"))
+        val rootDiff = service.computeCommitDiff(repositoryId, baseCommitId.name(), root.name(), root.name())
+        assertEquals(listOf("root.txt"), rootDiff.map { it.newPath })
+        assertEquals(DiffChangeType.ADD, rootDiff.single().changeType)
+        assertEquals(1, rootDiff.single().newLineCount)
+        every { dfsManager.open(repositoryId) } throws kotlinx.coroutines.CancellationException("cancelled")
+        assertFailsWith<kotlinx.coroutines.CancellationException> {
+            service.computeCommitDiff(repositoryId, baseCommitId.name(), root.name(), root.name())
+        }
     }
 
     @BeforeTest

@@ -26,7 +26,7 @@
         tabindex="0"
         aria-orientation="vertical"
         aria-label="Resize changed files"
-        title="Drag to resize. Double-click to reset."
+        title="Drag or use arrow keys to resize. Double-click to reset."
       ></div>
     </aside>
     <div class="diff-column"><slot /></div>
@@ -53,7 +53,7 @@
       flex-direction: column;
       min-width: 0;
       max-height: calc(100dvh - 94px);
-      overflow: hidden;
+      overflow: visible;
       background: var(--bg-1);
       border: 1px solid var(--line);
       border-radius: 10px;
@@ -106,21 +106,48 @@
       overflow: auto;
       overscroll-behavior: contain;
       padding: 6px;
+      border-radius: 0 0 10px 10px;
     }
     .sidebar-resize {
       position: absolute;
       top: 0;
-      right: -1px;
+      right: -14px;
       bottom: 0;
-      width: 7px;
+      width: 14px;
+      z-index: 1;
       cursor: col-resize;
       touch-action: none;
     }
-    .sidebar-resize:hover,
-    .sidebar-resize:focus-visible,
-    .sidebar-resize[data-dragging] {
-      outline: none;
-      background: linear-gradient(to right, transparent 3px, var(--accent) 3px, var(--accent) 5px, transparent 5px);
+    .sidebar-resize::before,
+    .sidebar-resize::after {
+      content: "";
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      border-radius: 999px;
+      pointer-events: none;
+    }
+    .sidebar-resize::before {
+      top: 8px;
+      bottom: 8px;
+      width: 2px;
+      background: var(--line);
+    }
+    .sidebar-resize::after {
+      top: calc(50% - 16px);
+      height: 32px;
+      width: 4px;
+      background: var(--fg-3);
+    }
+    .sidebar-resize:hover::after,
+    .sidebar-resize:focus-visible::after,
+    .sidebar-resize[data-dragging]::after {
+      background: var(--accent);
+    }
+    .sidebar-resize:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: -2px;
+      border-radius: 6px;
     }
     .diff-column {
       display: flex;
