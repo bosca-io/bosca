@@ -195,10 +195,10 @@ class RepositoryBrowseServiceImpl(
         }
     }
 
-    override suspend fun listBranches(repositoryId: UUID): List<BranchInfo> {
+    override suspend fun listBranches(repositoryId: UUID, includeAheadBehind: Boolean): List<BranchInfo> {
         return withRepository(repositoryId) {
             val refs = it.refDatabase.getRefsByPrefix(Constants.R_HEADS)
-            val defaultRef = it.refDatabase.findRef(Constants.HEAD)
+            val defaultRef = if (includeAheadBehind) it.refDatabase.findRef(Constants.HEAD) else null
             val defaultId = defaultRef?.objectId
 
             refs.map { ref ->

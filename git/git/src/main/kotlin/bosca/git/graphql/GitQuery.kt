@@ -215,11 +215,13 @@ class GitQuery(
     }
 
     @Field
-    suspend fun branches(authentication: AuthenticationContext?, repositoryId: UUID): List<BranchInfo> {
+    suspend fun branches(
+        authentication: AuthenticationContext?, repositoryId: UUID, includeAheadBehind: Boolean? = null,
+    ): List<BranchInfo> {
         val repository = repositoryService.findById(repositoryId)
             ?: throw NoSuchElementException("Repository not found: $repositoryId")
         permissionEvaluator.verifyAllowed(authentication, repository, PermissionAction.VIEW)
-        return browseService.listBranches(repositoryId)
+        return browseService.listBranches(repositoryId, includeAheadBehind != false)
     }
 
     @Field
