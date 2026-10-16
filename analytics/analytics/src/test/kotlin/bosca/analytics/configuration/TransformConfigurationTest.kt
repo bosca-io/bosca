@@ -8,6 +8,8 @@ import bosca.analytics.transform.AnalyticsScriptTransform
 import bosca.analytics.transform.ErrorFingerprintTransform
 import bosca.analytics.transform.SessionHeartbeatTransform
 import bosca.analytics.transform.fums.FumsReporter
+import bosca.analytics.transform.fums.FumsLogCapture
+import ch.qos.logback.classic.Level
 import bosca.analytics.transform.fums.FumsAnalyticsTransform
 import bosca.analytics.transform.geo.CloudflareGeoTransform
 import bosca.counter.Counter
@@ -40,12 +42,19 @@ import kotlin.test.assertSame
 import kotlin.test.assertIs
 
 class TransformConfigurationTest {
+    private lateinit var logs: FumsLogCapture
 
     @BeforeTest
-    fun setup() = ProviderRegistry.clear()
+    fun setup() {
+        ProviderRegistry.clear()
+        logs = FumsLogCapture(TransformConfiguration::class.java)
+    }
 
     @AfterTest
-    fun teardown() = ProviderRegistry.clear()
+    fun teardown() {
+        logs.close()
+        ProviderRegistry.clear()
+    }
 
     private val config = TransformConfiguration()
 
@@ -89,6 +98,7 @@ class TransformConfigurationTest {
         assertTrue(pipeline.transforms[2] is ErrorFingerprintTransform)
         assertTrue(pipeline.transforms[3] is FumsAnalyticsTransform)
         assertTrue(pipeline.transforms[4] is AnalyticsScriptTransform)
+        assertEquals(listOf("FUMS event processing enabled: queue=fums"), logs.messages)
     }
 
     @Test
@@ -99,6 +109,7 @@ class TransformConfigurationTest {
         coVerify(exactly = 0) { queue.get() }
         assertEquals(6, disabled.transforms.size)
         assertTrue(disabled.transforms.none { it is FumsAnalyticsTransform })
+        assertEquals("FUMS event processing disabled: eventProcessing.fumsEnabled=false", logs.messages.last())
     }
 
     @Test
@@ -112,6 +123,8 @@ class TransformConfigurationTest {
         val queue = mockk<ObjectProvider<JobQueue>> { every { exists } returns false }
         assertTrue(buildTransforms(fums = true, queue = queue).transforms.none { it is FumsAnalyticsTransform })
         coVerify(exactly = 0) { queue.get() }
+        assertEquals(listOf("FUMS event processing unavailable: queue=fums is not registered"), logs.messages)
+        assertEquals(Level.WARN, logs.events.single().level)
     }
 
     @Test
