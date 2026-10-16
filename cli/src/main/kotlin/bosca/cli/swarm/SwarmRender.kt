@@ -172,9 +172,14 @@ internal fun infraStack(config: SwarmConfig): Map<String, Any> {
             "volumes" to listOf("$root/nats:/data", "$root/config/nats.conf:/etc/nats/nats.conf:ro"),
             "healthcheck" to healthcheck(httpGetCheck("wget", "http://127.0.0.1:8222/healthz"), "30s"),
         )))
-        put("redis", service(images.getValue("redis"), deploy(Placement.STATEFUL), mapOf(
-            "command" to listOf("redis-server", "--appendonly", "yes"),
-            "volumes" to listOf("$root/redis:/data"),
+        put("dragonfly", service(images.getValue("dragonfly"), deploy(Placement.STATEFUL), mapOf(
+            "command" to listOf(
+                "--lock_on_hashtags", "--default_lua_flags=allow-undeclared-keys",
+                "--dir=/data", "--dbfilename=dump", "--df_snapshot_format=false", "--snapshot_cron=* * * * *",
+            ),
+            "ulimits" to mapOf("memlock" to -1),
+            "stop_grace_period" to "60s",
+            "volumes" to listOf("$root/dragonfly:/data"),
             "healthcheck" to healthcheck(listOf("CMD-SHELL", "redis-cli ping | grep -q PONG"), "30s"),
         )))
         put("meilisearch", service(images.getValue("meilisearch"), deploy(Placement.STATEFUL), mapOf(
@@ -252,7 +257,7 @@ internal fun backupServices(config: SwarmConfig): Map<String, Any> {
                 "$root/meilisearch/snapshots:/data/meilisearch-snapshots:ro", "$root/caddy-data:/data/caddy-data:ro",
                 "$root/config:/data/config:ro", "$root/backup-state:/state",
             ) + if (config.sites.any { it.jobQueueBackend == "redis" || it.counterBackend == "redis" }) {
-                listOf("$root/redis:/data/redis:ro")
+                listOf("$root/dragonfly:/data/dragonfly:ro")
             } else emptyList(),
             "configs" to listOf(mapOf("source" to "backup-snapshot", "target" to "/scripts/backup.sh", "mode" to 365)),
         )),
@@ -278,7 +283,7 @@ internal fun siteEnvironment(config: SwarmConfig, site: SwarmSite): Map<String, 
         "TRINO_DATABASE_READONLY_USER" to "${name}_readonly",
         "NATS_HOST" to "nats://nats:4222", "NATS_USERNAME" to name, "NATS_PASSWORD" to secret.nats,
         "NATS_MONITORING_URL" to "http://nats:8222",
-        "REDIS_HOST" to "redis", "REDIS_PORT" to "6379", "REDIS_DATABASE" to site.redisDatabase.toString(),
+        "REDIS_HOST" to "dragonfly", "REDIS_PORT" to "6379", "REDIS_DATABASE" to site.redisDatabase.toString(),
         "REDIS_NAMESPACE" to "${name}_", "CACHE_TYPE" to site.cacheBackend,
         "JOB_QUEUE_FACTORY" to site.jobQueueBackend, "PUBSUB_TYPE" to site.pubsubBackend,
         "DISTRIBUTED_LOCK_TYPE" to site.distributedLockBackend, "COUNTER_TYPE" to site.counterBackend,
@@ -371,7 +376,7 @@ internal fun siteStack(config: SwarmConfig, site: SwarmSite): Map<String, Any> {
     // Mirrors the bosca-studio chart's ConfigMap. Studio appends /graphqlws to the bare WebSocket origin.
     val studioEnv = mapOf(
         "HOST" to "0.0.0.0", "PORT" to "3000",
-        "REDIS_HOST" to "redis", "REDIS_PORT" to "6379", "REDIS_PREFIX" to "${name}_hocuspocus",
+        "REDIS_HOST" to "dragonfly", "REDIS_PORT" to "6379", "REDIS_PREFIX" to "${name}_hocuspocus",
         "API_URL" to server, "COLLABORATION_URL" to server, "GRAPHQL_URL" to "$server/graphql",
         "SIGNUP_TOKEN_BASE_URL" to "$studio/content/signup-token/{token}",
         "NUXT_PUBLIC_SIGNUP_TOKEN_BASE_URL" to "$studio/content/signup-token/{token}",

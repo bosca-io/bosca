@@ -22,7 +22,7 @@ services:
       start_period: 10s
 
   dragonfly:
-    image: 'docker.dragonflydb.io/dragonflydb/dragonfly'
+    image: 'docker.dragonflydb.io/dragonflydb/dragonfly:v2.0.2'
     ulimits:
       memlock: -1
     environment:

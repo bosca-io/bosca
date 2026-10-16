@@ -32,6 +32,17 @@ collector. `FUMS_TRANSFORM_ENABLED` overrides this setting on those applications
 
 ## Distributed cache and locks
 
+The infrastructure chart pins Dragonfly to `v2.0.2`. Set `redis.image` in your
+deployment's infrastructure values to override the full image reference:
+
+```yaml
+redis:
+  image: docker.dragonflydb.io/dragonflydb/dragonfly:v2.0.2
+```
+
+The chart passes this image to the Dragonfly operator through `spec.image`.
+Apply it with the existing infrastructure release name, namespace and values file.
+
 Starting with services chart `0.1.3`, server, runner, collector, artifacts server,
 Git server, and Kubernetes controller charts expose `appConfig.cacheType` and
 `appConfig.distributedLockType`, each accepting `nats` or `redis`. In the services

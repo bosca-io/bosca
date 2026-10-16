@@ -33,7 +33,7 @@ data class SwarmConfig(
 
 /**
  * Nightly off-VM backup with restic: PostgreSQL dumps of every site database plus the S3 objects, NATS
- * JetStream data, Redis data when used for jobs or counters, Caddy certificates and rendered configuration.
+ * JetStream data, Dragonfly data when used for jobs or counters, Caddy certificates and rendered configuration.
  * A blank [repository] disables it.
  */
 @Serializable data class SwarmBackup(
@@ -202,7 +202,7 @@ internal val SwarmSite.hosts: SiteHosts
 /** Default images, pinned to exact versions; configurations keep the images they already name. */
 internal fun defaultImages() = mapOf(
     "postgres" to "pgvector/pgvector:0.8.6-pg18", "pgbouncer" to "pgbouncer/pgbouncer:1.25.2", "nats" to "nats:2.12.15-alpine",
-    "redis" to "redis:7.4.11-alpine", "meilisearch" to "getmeili/meilisearch:v1.39.0",
+    "dragonfly" to "docker.dragonflydb.io/dragonflydb/dragonfly:v2.0.2", "meilisearch" to "getmeili/meilisearch:v1.39.0",
     "s3proxy" to "andrewgaul/s3proxy:3.0.0", "trino" to "trinodb/trino:479",
     "imageprocessor" to "ghcr.io/bosca-io/bosca/imageprocessor:4.8.22",
     "text-embeddings-inference" to "ghcr.io/huggingface/text-embeddings-inference:cpu-1.8.1",
