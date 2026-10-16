@@ -27,6 +27,8 @@ kotlin {
 }
 
 dependencies {
+    api(project(":backup:core-backup"))
+
     implementation(project(":bosca-core:core"))
     implementation(project(":content:core-content"))
     implementation(project(":bosca-core:core-storage"))

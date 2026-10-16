@@ -1,19 +1,17 @@
 package bosca.backup
 
+import bosca.service.annotation.ServiceImplementation
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
 import java.security.MessageDigest
 
-/**
- * Manages per-revision progress using the caller's connection-manager context.
- *
- * Callers own exclusive payload-writer access and must verify destination persistence before
- * recording completion. Recover a running attempt only after its previous writer has stopped.
- */
-class ObjectBackupProgressService(private val repository: ObjectBackupProgressRepository) {
-    /** Prepares immutable intent without resetting an existing revision's progress. */
-    suspend fun prepare(
+/** Persists guarded per-revision progress through the backup repository. */
+@ServiceImplementation
+class ObjectBackupProgressServiceImpl(
+    private val repository: ObjectBackupProgressRepository,
+) : ObjectBackupProgressService {
+    override suspend fun prepare(
         sourceId: String,
         destinationId: String,
         scope: String,
@@ -43,16 +41,14 @@ class ObjectBackupProgressService(private val repository: ObjectBackupProgressRe
         return progress
     }
 
-    /** Reads persisted progress without changing its state. */
-    suspend fun get(key: String): ObjectBackupProgress? {
+    override suspend fun get(key: String): ObjectBackupProgress? {
         require(key.isNotBlank()) {
             "Object backup progress key is required"
         }
         return repository.get(key)
     }
 
-    /** Lists progress within one source/destination scope. */
-    suspend fun list(
+    override suspend fun list(
         sourceId: String,
         destinationId: String,
         scope: String,
@@ -69,20 +65,17 @@ class ObjectBackupProgressService(private val repository: ObjectBackupProgressRe
         return repository.list(sourceId, destinationId, scope, offset, limit)
     }
 
-    /** Starts a pending or failed record while checking the observed version. */
-    suspend fun start(key: String, expectedVersion: Long): ObjectBackupProgress {
+    override suspend fun start(key: String, expectedVersion: Long): ObjectBackupProgress {
         validateVersion(key, expectedVersion)
         return updated(repository.start(key, expectedVersion), key, expectedVersion)
     }
 
-    /** Records completion after the caller verifies the stored payload. */
-    suspend fun complete(key: String, expectedVersion: Long): ObjectBackupProgress {
+    override suspend fun complete(key: String, expectedVersion: Long): ObjectBackupProgress {
         validateVersion(key, expectedVersion)
         return updated(repository.complete(key, expectedVersion), key, expectedVersion)
     }
 
-    /** Records a failed or interrupted attempt after its writer has stopped. */
-    suspend fun fail(key: String, expectedVersion: Long, error: String): ObjectBackupProgress {
+    override suspend fun fail(key: String, expectedVersion: Long, error: String): ObjectBackupProgress {
         validateVersion(key, expectedVersion)
         require(error.isNotBlank()) {
             "Object backup failure detail is required"
@@ -90,8 +83,7 @@ class ObjectBackupProgressService(private val repository: ObjectBackupProgressRe
         return updated(repository.fail(key, expectedVersion, error), key, expectedVersion)
     }
 
-    /** Marks completed output as failed after missing or corrupt bytes have been established. */
-    suspend fun invalidate(key: String, expectedVersion: Long, error: String): ObjectBackupProgress {
+    override suspend fun invalidate(key: String, expectedVersion: Long, error: String): ObjectBackupProgress {
         validateVersion(key, expectedVersion)
         require(error.isNotBlank()) {
             "Object backup invalidation detail is required"

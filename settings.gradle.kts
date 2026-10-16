@@ -259,6 +259,7 @@ includeComponent("git", listOf(
 ))
 
 includeComponent("backup", listOf(
+    "core-backup",
     "backup",
 ))
 

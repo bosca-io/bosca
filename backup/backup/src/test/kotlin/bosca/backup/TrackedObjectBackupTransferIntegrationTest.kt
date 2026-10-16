@@ -179,7 +179,7 @@ class TrackedObjectBackupTransferIntegrationTest {
         assertEquals("da", destination.getString(destinationPath))
 
         writeSource()
-        progressService = ObjectBackupProgressService(provide())
+        progressService = ObjectBackupProgressServiceImpl(provide())
         val retried = copy()
 
         assertEquals(failed.key, retried.key)

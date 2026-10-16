@@ -139,7 +139,7 @@ class ObjectBackupInventoryTransferIntegrationTest {
         assertEquals(ObjectBackupProgressStatus.PENDING, interrupted[third.revision]?.status)
         assertEquals(0, interrupted[third.revision]?.attempts)
 
-        progressService = ObjectBackupProgressService(provide())
+        progressService = ObjectBackupProgressServiceImpl(provide())
         val origin = mockk<ObjectStorageService>()
         coEvery { origin.getInputStream(any()) } coAnswers {
             assertEquals(third.key, firstArg<StringObjectPath>().toString())

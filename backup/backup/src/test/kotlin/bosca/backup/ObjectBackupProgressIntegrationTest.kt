@@ -90,7 +90,7 @@ class ObjectBackupProgressIntegrationTest {
     @Test
     fun `prepared intent survives a service restart with exact JSON payload mapping`() = runBlocking {
         val prepared = request { prepare() }
-        val restarted = ObjectBackupProgressService(repository)
+        val restarted = ObjectBackupProgressServiceImpl(repository)
         val loaded = request { restarted.get(prepared.key) }
 
         assertEquals(prepared, loaded)

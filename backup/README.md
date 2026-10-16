@@ -11,15 +11,18 @@ Content backup and restore service for the Bosca platform. Provides table-level 
 Run these commands from the **workspace root**. `backup` is part of the root Gradle build, and its dependency versions live in [gradle/libs.versions.toml](../gradle/libs.versions.toml). Local `io.bosca:*` dependencies resolve to sibling projects without publishing.
 
 ```bash
-./gradlew :backup:backup:test  # Test backup and restore
+./gradlew :backup:core-backup:test :backup:backup:test  # Test contracts, backup and restore
 ```
 
 ## Architecture
 
-This is a single-module library published as a Maven artifact consumed by the main Bosca server. Backup and restore operations run as jobs (`BackupJob`/`RestoreJob`) using an executor pattern. Each backup records a `BackupManifest` with metadata about backed-up tables and records. Restore operations use a configurable `ConflictStrategy` for handling existing data. `BackupTableDefinition` describes which tables to include and how to serialize them. GraphQL controllers provide admin access to backup and restore operations.
+`core-backup` defines the object backup service contracts and shared models. `backup` implements persistence, object transfers, manifest publication, GraphQL administration, and background jobs. Service implementations use `@ServiceImplementation` for generated DI registration.
+
+ZIP backup and restore operations run as jobs (`BackupJob`/`RestoreJob`) using an executor pattern. Each backup records a `BackupManifest` with metadata about backed-up tables and records. Restore operations use a configurable `ConflictStrategy` for handling existing data. `BackupTableDefinition` describes which tables to include and how to serialize them. GraphQL controllers provide admin access to backup and restore operations.
 
 ## Dependencies
 
+- `io.bosca:core-backup` -- object backup service contracts and shared models
 - `io.bosca:core` -- Bosca Core (platform framework)
 - `io.bosca:core-content` -- Bosca Core Content (content model interfaces)
 - `io.bosca:core-storage` -- Bosca Core Storage (object storage abstraction)

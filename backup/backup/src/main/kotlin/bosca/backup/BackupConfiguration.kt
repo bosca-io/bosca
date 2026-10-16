@@ -33,11 +33,6 @@ class BackupConfiguration {
     @Provider(name = "backup-migrations")
     fun migration(): Migration = BackupMigration()
 
-    /** Provides the per-object transfer progress service and its owning repository. */
-    @Provider(singleton = true)
-    fun objectBackupProgressService(repository: ObjectBackupProgressRepository): ObjectBackupProgressService =
-        ObjectBackupProgressService(repository)
-
     /** Provides the job queue used to dispatch backup and restore jobs. */
     @Provider(singleton = true, name = BackupJobQueueNames.backupJobQueue)
     fun backupJobQueue(factory: JobQueueFactory): JobQueue = factory.create(BackupJobQueueNames.backupQueue)
