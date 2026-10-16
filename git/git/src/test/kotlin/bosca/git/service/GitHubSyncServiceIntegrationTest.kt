@@ -1511,10 +1511,15 @@ class GitHubSyncServiceIntegrationTest {
         coVerify(exactly = 0) { github.synchronizeCommitStatus(any(), any(), any(), any()) }
 
         coEvery { ci.findEvaluationsByCommit(repositoryId, sha) } returns listOf(excluded.copy(id = UUID.random(), ref = ref))
-        coEvery { github.synchronizeCommitStatus(any(), "token", sha, any()) } returns true
+        coEvery { github.synchronizeCommitStatus(any(), "token", sha, any()) } throws IllegalStateException("GitHub unavailable")
         coEvery { writes.synchronizeRef(any()) } returns RefSynchronizationResult(GitHubSyncResult.APPLIED, sha, sha)
-        assertEquals(GitHubSyncResult.APPLIED, sync.synchronizeRef(refEvent()))
-        coVerify(exactly = 1) {
+        assertFailsWith<IllegalStateException> { sync.synchronizeRef(refEvent()) }
+
+        // The retry finds the ref already converged and still publishes the statuses.
+        coEvery { github.synchronizeCommitStatus(any(), "token", sha, any()) } returns true
+        coEvery { writes.synchronizeRef(any()) } returns RefSynchronizationResult(GitHubSyncResult.UNCHANGED, sha, sha)
+        assertEquals(GitHubSyncResult.UNCHANGED, sync.synchronizeRef(refEvent()))
+        coVerify(exactly = 2) {
             github.synchronizeCommitStatus(any(), "token", sha, match { it.context == "bosca/ci" && it.state == "success" })
         }
     }

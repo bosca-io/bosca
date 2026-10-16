@@ -611,8 +611,10 @@ class GitHubSyncServiceImpl(
         val token = token(pair)
         val url = github.repositoryUrl(pair, token)
         val result = synchronize(pair, event.ref, event.beforeSha, event.afterSha, RefSynchronizationDirection.OUTBOUND, null, url, token)
-        // CI statuses exported before the commit reached GitHub were rejected; publish them now that it exists there.
-        val exported = event.afterSha?.nonZeroSha()?.takeIf { result == GitHubSyncResult.APPLIED && event.ref.startsWith("refs/heads/") }
+        // CI statuses exported before the commit reached GitHub were rejected; publish them once it exists there.
+        // A converged retry republishes too, so a failed publication is not lost after the push already landed.
+        val converged = result == GitHubSyncResult.APPLIED || result == GitHubSyncResult.UNCHANGED
+        val exported = event.afterSha?.nonZeroSha()?.takeIf { converged && event.ref.startsWith("refs/heads/") }
         if (exported != null) synchronizeCiCommit(pair, exported)
         result
     }
