@@ -1,12 +1,12 @@
 package bosca.git.dfs
 
+import org.eclipse.jgit.internal.storage.dfs.DfsBlockCache
 import org.eclipse.jgit.internal.storage.dfs.DfsObjDatabase
 import org.eclipse.jgit.internal.storage.dfs.DfsOutputStream
 import org.eclipse.jgit.internal.storage.dfs.DfsPackDescription
 import org.eclipse.jgit.internal.storage.dfs.DfsReaderOptions
 import org.eclipse.jgit.internal.storage.dfs.DfsRepositoryDescription
 import org.eclipse.jgit.internal.storage.dfs.ReadableChannel
-import org.eclipse.jgit.internal.storage.file.PackIndex
 import org.eclipse.jgit.internal.storage.pack.PackExt
 import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
@@ -198,12 +198,14 @@ class BoscaDfsObjDatabase(
 
     private fun DfsPackInfo.withObjectCount(): DfsPackInfo {
         if (objectCount != 0L) return this
-        val index = extensions[PackExt.INDEX.extension] ?: return this
+        if (PackExt.INDEX.extension !in extensions) return this
         // Cached-pack reuse writes the description's count into the outgoing
         // pack header. The index is authoritative when that metadata is missing;
         // a received thin pack's own header can exclude appended base objects.
-        val count = storageAdapter.openFile(repositoryId, index.storagePath).use {
-            PackIndex.read(it).objectCount
+        // Use JGit's shared index cache so fresh repository handles reuse the
+        // same parsed index as ordinary object reads.
+        val count = newReader().use { reader ->
+            createDfsPackFile(DfsBlockCache.getInstance(), toDescription()).getPackIndex(reader).objectCount
         }
         return copy(objectCount = count)
     }

@@ -11,6 +11,8 @@ import org.eclipse.jgit.lib.NullProgressMonitor
 import org.eclipse.jgit.lib.ObjectId
 import org.eclipse.jgit.lib.PersonIdent
 import org.eclipse.jgit.lib.TreeFormatter
+import org.eclipse.jgit.revwalk.RevWalk
+import org.eclipse.jgit.treewalk.TreeWalk
 import org.eclipse.jgit.transport.ReceivePack
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
@@ -563,6 +565,63 @@ class BoscaDfsObjDatabaseTest {
         }
         return sb.toString()
     }
+    @Test
+    fun `reopening a single branch repository reuses indexes with missing object counts`() {
+        var head: ObjectId? = null
+        repeat(12) { index ->
+            repo.newObjectInserter().use { inserter ->
+                val blob = inserter.insert(Constants.OBJ_BLOB, "readme $index".toByteArray())
+                val tree = inserter.insert(TreeFormatter().apply { append("README.md", FileMode.REGULAR_FILE, blob) })
+                head = inserter.insert(CommitBuilder().apply {
+                    setTreeId(tree)
+                    head?.let { setParentId(it) }
+                    author = PersonIdent("Test", "test@test.com")
+                    committer = author
+                    message = "commit $index"
+                })
+                inserter.flush()
+            }
+        }
+        repo.updateRef("refs/heads/main").apply { setNewObjectId(requireNotNull(head)); update() }
+        repo.updateRef(Constants.HEAD).link("refs/heads/main")
+        storageAdapter.packs.values.forEach { it.objectCount = 0L }
+        var storageReads = 0
+        val countedStorage = object : DfsStorageAdapter by storageAdapter {
+            override fun openFile(repositoryId: UUID, storagePath: String): InputStream {
+                storageReads++
+                return storageAdapter.openFile(repositoryId, storagePath)
+            }
+
+            override fun openFileRange(repositoryId: UUID, storagePath: String, range: LongRange): InputStream {
+                storageReads++
+                return storageAdapter.openFileRange(repositoryId, storagePath, range)
+            }
+        }
+        fun readReadme() {
+            BoscaDfsRepositoryBuilder().apply {
+                repositoryId = this@BoscaDfsObjDatabaseTest.repositoryId
+                storageAdapter = countedStorage
+                refAdapter = this@BoscaDfsObjDatabaseTest.refAdapter
+                repositoryDescription = DfsRepositoryDescription(repositoryId.toString())
+            }.build().use { freshRepo ->
+                assertEquals(1, freshRepo.refDatabase.getRefsByPrefix(Constants.R_HEADS).size)
+                RevWalk(freshRepo).use { walk ->
+                    val commit = walk.parseCommit(freshRepo.resolve(Constants.HEAD))
+                    TreeWalk.forPath(freshRepo, "README.md", commit.tree).use { tree ->
+                        assertEquals("readme 11", String(freshRepo.open(tree.getObjectId(0)).bytes))
+                    }
+                }
+                assertEquals(36, freshRepo.objectDatabase.packs.sumOf { it.packDescription.objectCount })
+            }
+        }
+
+        readReadme()
+        storageReads = 0
+        readReadme()
+        assertEquals(0, storageReads, "Reopening must reuse cached indexes and object blocks")
+        assertTrue(storageAdapter.packs.values.all { it.objectCount == 0L }, "Reads must not mutate pack metadata")
+    }
+
     @Test
     fun `missing object count is recovered from the index instead of the pack header`() {
         repo.objectDatabase.newInserter().use { inserter ->
