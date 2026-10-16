@@ -138,6 +138,34 @@ class OAuth2CallbackHandlerTest {
     }
 
     @Test
+    fun `native app callback creates an exchange token instead of a browser session`() = runTest {
+        val testCall = SecurityRouteTestCall()
+        val context = RoutingContext(testCall.call, testCall.application)
+        val loginResponse = response()
+        coEvery {
+            securityService.loginWithThirdParty(any(), testUser, any(), true, any(), any(), any())
+        } returns loginResponse
+        coEvery {
+            securityService.createExchangeToken(loginResponse.principalId, false, null)
+        } returns "one+time-token"
+
+        with(handler) {
+            context.handleCallback(state(redirect = "exampleapp://auth/callback?state=login"), "google", testUser)
+        }
+
+        verify {
+            testCall.response.respondRedirect(
+                "exampleapp://auth/callback?state=login&exchangeToken=one%2Btime-token",
+                false,
+            )
+        }
+        coVerify(exactly = 1) {
+            securityService.createExchangeToken(loginResponse.principalId, false, null)
+        }
+        verify(exactly = 0) { testCall.sessions.set(any()) }
+    }
+
+    @Test
     fun `same domain callback establishes ordinary session and companion cookies`() = runTest {
         val testCall = SecurityRouteTestCall(
             languages = listOf(bosca.server.LanguageItem("fr-CA", 1.0f)),

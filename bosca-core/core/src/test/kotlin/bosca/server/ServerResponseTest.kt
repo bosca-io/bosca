@@ -542,10 +542,57 @@ class ServerResponseTest {
     }
 
     @Test
-    fun `respondRedirect rejects unsafe schemes and skips after commit`() {
-        val response = ServerResponse(createMockCtx())
-        assertFailsWith<IllegalArgumentException> { response.respondRedirect("javascript:alert(1)") }
+    fun `respondRedirect accepts custom application schemes and preserves callback parameters`() {
+        for (url in listOf(
+            "exampleapp://auth/callback?state=login&exchangeToken=one%2Btime-token",
+            "ExampleApp://auth/callback?exchangeToken=token",
+            "com.example.app:/oauth/callback?exchangeToken=token",
+            "example+app-v2://auth/callback?exchangeToken=token",
+        )) {
+            val ctx = createMockCtx()
+            val response = ServerResponse(ctx)
+            val captured = slot<Any>()
+            every { ctx.writeAndFlush(capture(captured)) } returns mockk(relaxed = true)
 
+            response.respondRedirect(url)
+
+            val written = captured.captured as DefaultFullHttpResponse
+            assertEquals(HttpResponseStatus.FOUND, written.status())
+            assertEquals(url, written.headers().get(HttpHeaderNames.LOCATION))
+            assertTrue(response.isCommitted)
+        }
+    }
+
+    @Test
+    fun `respondRedirect rejects unsafe and malformed schemes without committing`() {
+        for (url in listOf(
+            "javascript:alert(1)",
+            "JaVaScRiPt:alert(1)",
+            "data:text/html,<script>alert(1)</script>",
+            "vbscript:msgbox(1)",
+            "file:///etc/passwd",
+            "blob:https://example.com/id",
+            "about:blank",
+            " javascript:alert(1)",
+            "java\r\nscript:alert(1)",
+            "java\tscript:alert(1)",
+            "1app://auth/callback",
+            "://auth/callback",
+        )) {
+            val ctx = createMockCtx()
+            val response = ServerResponse(ctx)
+
+            assertFailsWith<IllegalArgumentException>(url) { response.respondRedirect(url) }
+
+            assertFalse(response.isCommitted)
+            assertNull(response.status())
+            verify(exactly = 0) { ctx.writeAndFlush(any()) }
+        }
+    }
+
+    @Test
+    fun `respondRedirect skips validation after commit`() {
+        val response = ServerResponse(createMockCtx())
         response.commit()
         response.respondRedirect("data:text/plain,bad")
     }
