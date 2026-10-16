@@ -1,0 +1,91 @@
+package bosca.backup
+
+import kotlinx.serialization.Required
+import kotlinx.serialization.Serializable
+import java.time.Instant
+import java.time.format.DateTimeParseException
+
+/**
+ * Portable inventory for one source and declared object-backup scope.
+ *
+ * [created] is the inventory creation time; database recovery-point coverage is established
+ * separately.
+ */
+@Serializable
+data class ObjectBackupManifest(
+    val id: String,
+    val sourceId: String,
+    val scope: String,
+    val created: String,
+    val objects: List<BackupObject>,
+    @Required
+    val version: Int = 1,
+    @Required
+    val format: String = "bosca-object-backup",
+) {
+    /** Checks whether the manifest describes an unambiguous inventory of retained payloads. */
+    fun validate() {
+        require(format == "bosca-object-backup") {
+            "Unsupported object backup format: $format"
+        }
+        require(version == 1) {
+            "Unsupported object backup version: $version"
+        }
+
+        require(id.isNotBlank()) {
+            "Object backup identity is required"
+        }
+        require(sourceId.isNotBlank()) {
+            "Object backup source identity is required"
+        }
+        require(scope.isNotBlank()) {
+            "Object backup scope is required"
+        }
+
+        try {
+            Instant.parse(created)
+        } catch (error: DateTimeParseException) {
+            throw IllegalArgumentException("Invalid object backup creation time: $created", error)
+        }
+
+        val revisions = mutableSetOf<Triple<String, String, String>>()
+        val payloads = mutableMapOf<String, Pair<Long, String>>()
+
+        for (entry in objects) {
+            require(
+                entry.store.isNotBlank() &&
+                    entry.key.isNotBlank() &&
+                    entry.revision.isNotBlank()
+            ) {
+                "Object store, key, and revision identity are required"
+            }
+            require(entry.length >= 0) {
+                "Invalid object length for ${entry.key}: ${entry.length}"
+            }
+            require(SHA256.matches(entry.sha256)) {
+                "Invalid SHA-256 digest for ${entry.key}"
+            }
+            require(
+                entry.payloadPath.split('/').all {
+                    it.isNotEmpty() && it != "." && it != ".."
+                }
+            ) {
+                "Invalid backup payload path: ${entry.payloadPath}"
+            }
+            require(revisions.add(Triple(entry.store, entry.key, entry.revision))) {
+                "Duplicate object revision: ${entry.store}/${entry.key}@${entry.revision}"
+            }
+
+            val identity = entry.length to entry.sha256
+            val previous = payloads[entry.payloadPath]
+            require(previous == null || previous == identity) {
+                "Conflicting payload identity: ${entry.payloadPath}"
+            }
+            payloads[entry.payloadPath] = identity
+        }
+    }
+
+    companion object {
+        private val SHA256 = Regex("[0-9a-f]{64}")
+    }
+}
