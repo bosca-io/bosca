@@ -89,10 +89,8 @@ class BoscaFeature : Feature {
     }
 
     /**
-     * Registers Caffeine cache internal classes that use `sun.misc.Unsafe` and runtime
-     * reflection to instantiate dynamically-named node and buffer implementations.
-     * Without these registrations, `NodeFactory.newFactory` throws
-     * `IllegalStateException` because `Class.forName` fails for the generated class names.
+     * Registers Caffeine internals and the dynamically named implementations selected by
+     * LocalCacheFactory and NodeFactory, including their constructors and factory fields.
      */
     private fun registerCaffeineClasses() {
         val caffeineClasses = listOf(
@@ -107,17 +105,8 @@ class BoscaFeature : Feature {
             register(className)
         }
 
-        // Node implementation classes — Caffeine generates class names from feature acronyms:
-        //   P=padded, S=strong ref, L=linked (access-order), M=maximum, W=write-expiry, A=access-expiry
-        // Register all variants that might be selected at runtime based on cache configuration.
-        val nodeClasses = listOf(
-            "PS", "PSA", "PSAMS", "PSM", "PSMS", "PSMA", "PSMSA",
-            "PSW", "PSWMS", "PSAW", "PSMW", "PSMSW", "PSMWA", "PSMSWA",
-            "SSL", "SSLMS", "SSLMSA", "SSLMSW", "SSLMSWA", "SSLW",
-            "SSMS", "SSMSA", "SSMSW", "SSW",
-        )
-        for (name in nodeClasses) {
-            register("com.github.benmanes.caffeine.cache.$name")
+        for (className in caffeineFactoryClassNames()) {
+            register(className)
         }
     }
 
