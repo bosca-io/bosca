@@ -16,6 +16,23 @@ import bosca.service.Service
 
 /** Owns repository pairing, user attribution, verified intake and ref synchronization state. */
 interface GitHubSyncService : Service {
+    /**
+     * Exports the latest explicit attempt of this run and the push gate for its exact commit.
+     * Independent runs cannot replace the selected work. Delayed events read persisted current state.
+     * Disabled or unavailable pairs are ignored; remote failures propagate for durable retry.
+     */
+    suspend fun synchronizePipelineRun(event: bosca.git.model.PipelineEvent): GitHubSyncResult
+
+    /** Exports a persisted push evaluation, including intentional skips and selection errors. */
+    suspend fun synchronizePipelineEvaluation(event: bosca.git.model.PipelineEvaluationEvent): GitHubSyncResult
+
+    /**
+     * Queues at most 100 missed, failed, or previously ignored exports for CI changed within seven
+     * days or still active, matching the source revision in existing pipeline run inputs.
+     * Null selects all enabled pairs.
+     */
+    suspend fun reconcileCiStatuses(repositoryId: UUID? = null): Int
+
     /** Imports only signed current PR state whose originating principal retains Bosca write permission and merge protections. */
     suspend fun synchronizePullRequest(delivery: GitHubDelivery): GitHubSyncResult
 

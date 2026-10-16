@@ -88,6 +88,13 @@ class PipelineTriggerAuthorizationTest {
         coEvery { repositories.getPermissions(repository) } returns listOf(
             RepositoryPermission(repository.id, buildGroup.id, PermissionAction.EXECUTE),
         )
+        coEvery { pipelines.beginEvaluation(any()) } answers { firstArg() }
+        val planner = bosca.git.ci.service.PipelineRunServiceImpl(
+            mockk(), mockk(), mockk(), pipelines, Json, mockk(), mockk(), mockk(), mockk(),
+        )
+        io.mockk.every { runs.plan(any(), any(), any(), any()) } answers {
+            planner.plan(firstArg(), secondArg(), thirdArg(), arg(3))
+        }
         coEvery { pipelines.syncPipelines(repository.id, any(), any()) } returns listOf(pipeline)
         coEvery { pipelines.parseDefinition(repository.id, any(), pipeline.filePath) } returns definition
         coEvery { runs.createTriggeredRun(any(), any(), any(), any(), any(), any(), any(), any()) } returns PipelineRun(
@@ -246,6 +253,42 @@ class PipelineTriggerAuthorizationTest {
         // Coroutine stack-trace recovery may rethrow a copy whose cause is the original exception.
         val original = generateSequence<Throwable>(failure) { it.cause }.last()
         kotlin.test.assertEquals(listOf("second"), original.suppressed.map { it.message })
+    }
+
+    @Test
+    fun `failed evaluation finishes once with every pipeline error`() = runTest {
+        val second = pipeline.copy(id = UUID.random(), filePath = ".bosca/pipelines/second.yaml", name = "Second")
+        coEvery { pipelines.syncPipelines(repository.id, any(), any()) } returns listOf(pipeline, second)
+        coEvery { pipelines.parseDefinition(repository.id, any(), pipeline.filePath) } throws IllegalStateException("first")
+        coEvery { pipelines.parseDefinition(repository.id, any(), second.filePath) } throws IllegalArgumentException("second")
+
+        assertFailsWith<IllegalStateException> { execute(principalId) }
+
+        coVerify(exactly = 1) { pipelines.finishEvaluation(any(), any(), any()) }
+        coVerify(exactly = 1) {
+            pipelines.finishEvaluation(any(), false, "${pipeline.filePath}: first; ${second.filePath}: second")
+        }
+    }
+
+    @Test
+    fun `unauthorized push records no error when no pipeline applies`() = runTest {
+        coEvery { pipelines.syncPipelines(repository.id, any(), any()) } returns emptyList()
+        execute(null)
+        coEvery { pipelines.syncPipelines(repository.id, any(), any()) } returns listOf(pipeline)
+        execute(null, "refs/tags/v1")
+
+        coVerify(exactly = 2) { pipelines.finishEvaluation(any(), true, null) }
+        coVerify(exactly = 1) { pipelines.recordEvaluationRun(any(), pipeline.filePath, null) }
+    }
+
+    @Test
+    fun `unauthorized push records the authorization error when a pipeline applies`() = runTest {
+        execute(null)
+
+        coVerify(exactly = 1) {
+            pipelines.finishEvaluation(any(), true, "The ref update has no initiating principal")
+        }
+        coVerify(exactly = 0) { pipelines.recordEvaluationRun(any(), any(), any()) }
     }
 
     @Test

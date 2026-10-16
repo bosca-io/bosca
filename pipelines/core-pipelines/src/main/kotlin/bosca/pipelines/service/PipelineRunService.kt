@@ -66,6 +66,15 @@ interface PipelineRunService : Service {
     /** Durable run state by id, or `null` when absent or soft-deleted. */
     suspend fun get(runId: UUID): PipelineRun?
 
+    /**
+     * Latest retained run for a pipeline and typed input containing [inputMatch].
+     * Includes restarts, whose event name differs but whose input type is preserved.
+     */
+    suspend fun findLatestByInput(pipelineId: UUID, inputType: String, inputMatch: JsonElement): PipelineRun?
+
+    /** Enqueues a typed event for one pipeline through its ordinary durable run job and admission rules. */
+    suspend fun enqueueEvent(pipelineId: UUID, eventName: String, input: JsonElement, created: OffsetDateTime): UUID
+
     /** Records a failed backing-work attempt without ending the suspended run or changing retry policy. */
     suspend fun recordNodeAttemptFailure(runId: UUID, nodeId: String, error: String)
 

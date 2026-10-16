@@ -59,9 +59,30 @@ interface PipelineRunRepository {
     """)
     suspend fun findLatestByPipelineAndRef(pipelineId: UUID, ref: String): PipelineRun?
 
+    /** Latest explicit attempt of a selected root run; independent executions cannot replace it. */
     @Query("""
-        insert into git.pipeline_runs (pipeline_id, repository_id, commit_sha, ref, trigger_type, triggered_by, status, number, concurrency_group, parameters)
-        values (:pipelineId, :repositoryId, :commitSha, :ref, :triggerType::git.pipeline_trigger_type, :triggeredBy, :status::git.pipeline_run_status, :number, :concurrencyGroup, :parameters)
+        select * from git.pipeline_runs
+        where id = :runId or rerun_of = :runId
+        order by attempt_order desc
+        limit 1
+    """)
+    suspend fun findLatestAttempt(runId: UUID): PipelineRun?
+
+    /** Recent source changes and active runs, in stable pages for recovery. */
+    @Query("""
+        select * from git.pipeline_runs where repository_id = :repositoryId
+          and (modified >= :since or status in ('queued', 'running'))
+        order by modified, id limit :limit offset :offset
+    """)
+    suspend fun findChangedSince(repositoryId: UUID, since: bosca.serialization.OffsetDateTime, offset: Long, limit: Int): List<PipelineRun>
+
+    /** All executions for an immutable commit, including explicit retry lineage. */
+    @Query("select * from git.pipeline_runs where repository_id = :repositoryId and commit_sha = :commitSha order by number, id")
+    suspend fun findByCommit(repositoryId: UUID, commitSha: String): List<PipelineRun>
+
+    @Query("""
+        insert into git.pipeline_runs (pipeline_id, repository_id, commit_sha, ref, trigger_type, triggered_by, status, number, concurrency_group, parameters, rerun_of)
+        values (:pipelineId, :repositoryId, :commitSha, :ref, :triggerType::git.pipeline_trigger_type, :triggeredBy, :status::git.pipeline_run_status, :number, :concurrencyGroup, :parameters, :rerunOf)
         returning *
     """)
     suspend fun create(run: PipelineRun): PipelineRun
@@ -95,14 +116,17 @@ interface PipelineRunRepository {
     """)
     suspend fun findLatestSuccessfulPromotionToEnvironment(pipelineId: UUID, environment: String): PipelineRun?
 
-    @Query("update git.pipeline_runs set status = :status::git.pipeline_run_status, started = now() where id = :id")
-    suspend fun markStarted(id: UUID, status: PipelineRunStatus)
+    /** Starts the run and returns the persisted revision for event dispatch. */
+    @Query("update git.pipeline_runs set modified = clock_timestamp(), status = :status::git.pipeline_run_status, started = now() where id = :id returning *")
+    suspend fun markStarted(id: UUID, status: PipelineRunStatus): PipelineRun?
 
-    @Query("update git.pipeline_runs set status = :status::git.pipeline_run_status, finished = now() where id = :id")
-    suspend fun markFinished(id: UUID, status: PipelineRunStatus)
+    /** Finishes the run and returns the persisted revision for event dispatch. */
+    @Query("update git.pipeline_runs set modified = clock_timestamp(), status = :status::git.pipeline_run_status, finished = now() where id = :id returning *")
+    suspend fun markFinished(id: UUID, status: PipelineRunStatus): PipelineRun?
 
-    @Query("update git.pipeline_runs set status = :status::git.pipeline_run_status where id = :id")
-    suspend fun updateStatus(id: UUID, status: PipelineRunStatus)
+    /** Changes the run status and returns the persisted revision for event dispatch. */
+    @Query("update git.pipeline_runs set modified = clock_timestamp(), status = :status::git.pipeline_run_status where id = :id returning *")
+    suspend fun updateStatus(id: UUID, status: PipelineRunStatus): PipelineRun?
 
     /**
      * Re-run-failed: re-opens a FAILED/CANCELLED run whose failed jobs were reset — the
@@ -111,7 +135,8 @@ interface PipelineRunRepository {
      */
     @Query("""
         update git.pipeline_runs
-        set status = 'queued'::git.pipeline_run_status, finished = null,
+        set modified = clock_timestamp(), status = 'queued'::git.pipeline_run_status, finished = null,
+            attempt_order = nextval('git.pipeline_run_attempts'),
             triggered_by = coalesce(:triggeredBy, triggered_by)
         where id = :id and status in ('failure', 'cancelled')
         returning *

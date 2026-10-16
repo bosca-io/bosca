@@ -84,7 +84,7 @@ class GitHubRefSynchronizationIntegrationTest {
     }
     private val writes = RepositoryWriteServiceImpl(manager, notifier, locks)
     private fun syncService(ledger: GitHubSyncRepository = repository, writer: RepositoryWriteService = writes) =
-        GitHubSyncServiceImpl(ledger, hostedService, secrets, security, writer, github, locks, mockk(), mockk(), permissions, protections)
+        GitHubSyncServiceImpl(ledger, hostedService, secrets, security, writer, github, locks, mockk(), mockk(), permissions, protections, mockk(relaxed = true), mockk(relaxed = true), mockk(), mockk())
     private val service = syncService()
     private val ref = "refs/heads/main"
     private val emitted = mutableListOf<UUID?>()

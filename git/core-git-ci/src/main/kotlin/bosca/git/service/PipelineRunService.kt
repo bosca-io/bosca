@@ -22,6 +22,7 @@ interface PipelineRunService : Service {
      * This applies the same input defaults, conditions, environment selection, approval inheritance,
      * secret declarations, and pruned dependency edges as [createRun]. Promotion history validation is
      * intentionally deferred to run creation because a future phase remains useful in a draft plan.
+     * An empty job map is a valid selection (no applicable work); invalid inputs or expressions throw.
      */
     fun plan(
         definition: PipelineDefinition,
@@ -79,6 +80,15 @@ interface PipelineRunService : Service {
     /** The latest run (by number) of [pipelineId] for [ref] — pipeline-requirement evaluation. */
     suspend fun findLatestByPipelineAndRef(pipelineId: UUID, ref: String): PipelineRun?
 
+    /** Latest explicit attempt of [runId], including full and in-place retries; independent runs never replace it. */
+    suspend fun findLatestAttempt(runId: UUID): PipelineRun?
+
+    /** Pages recent changes and active CI runs for recovery, ordered by modification time then ID. */
+    suspend fun findChangedSince(repositoryId: UUID, since: bosca.serialization.OffsetDateTime, offset: Long, limit: Int): List<PipelineRun>
+
+    /** Lists all executions of an immutable commit, including explicit retry lineage. */
+    suspend fun findByCommit(repositoryId: UUID, commitSha: String): List<PipelineRun>
+
     /**
      * Lists pipeline runs for a specific pipeline, ordered by number descending.
      */
@@ -105,7 +115,9 @@ interface PipelineRunService : Service {
     suspend fun artifacts(runId: UUID): List<ArtifactDefinition>
 
     /**
-     * Permanently deletes a terminal pipeline run and its persisted logs and artifacts. Database
+     * Permanently deletes a terminal pipeline run and its persisted logs and artifacts. The latest
+     * explicit retry cannot be deleted while its original run exists, because that would restore an
+     * earlier attempt's CI result. Older retries can be deleted. Database
      * relationships cascade the run deletion to its jobs, steps, and artifact records. Active
      * queued or running runs must be cancelled before deletion.
      *

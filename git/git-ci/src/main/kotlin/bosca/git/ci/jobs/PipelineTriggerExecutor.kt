@@ -2,8 +2,6 @@ package bosca.git.ci.jobs
 
 import bosca.db.transaction
 import bosca.di.provide
-import bosca.git.ci.parser.ExpressionContext
-import bosca.git.ci.parser.PipelineExpressionParser
 import bosca.git.ci.parser.PipelineYamlParser
 import bosca.git.ci.trigger.TriggerEvaluator
 import bosca.git.model.CommitStatusState
@@ -32,126 +30,113 @@ class PipelineTriggerExecutor : AbstractJobExecutor<PipelineTriggerJob>(Pipeline
         val repository = provide<RepositoryService>().findById(job.repositoryId)
             ?: throw NoSuchElementException("Repository not found: ${job.repositoryId}")
         val pipelineService = provide<PipelineService>()
-        // Refresh the current catalog independently of build permission; match this commit's snapshot.
+        val evaluationId = bosca.sharedqueue.jobs.job().getId()
+        val evaluation = pipelineService.beginEvaluation(bosca.git.model.PipelineEvaluation(
+            id = evaluationId, repositoryId = job.repositoryId, commitSha = job.afterSha, ref = job.ref,
+        ))
+        if (evaluation.completed) return
+        // evaluate() records its own per-pipeline failures; this only covers failures before it can.
+        val failure = try {
+            evaluate(job, repository, pipelineService, evaluationId)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            pipelineService.finishEvaluation(evaluationId, completed = false, error = e.message ?: "CI evaluation failed")
+            throw e
+        }
+        failure?.let { throw it }
+    }
+
+    private suspend fun evaluate(
+        job: PipelineTriggerJob,
+        repository: bosca.git.model.Repository,
+        pipelineService: PipelineService,
+        evaluationId: bosca.serialization.UUID,
+    ): Exception? {
+        // Refresh the catalog even when the initiator cannot execute builds.
         val pipelines = pipelineService.syncPipelines(job.repositoryId, job.ref, job.afterSha)
         val principalId = job.pusherPrincipalId
-        if (principalId == null) {
-            log.info("Skipping CI for repository {}: the ref update has no initiating principal", job.repositoryId)
-            return
-        }
         val security = provide<SecurityService>()
-        val principal = security.getPrincipalById(principalId)
-        if (principal == null || principal.deletedAt != null) {
-            log.info("Skipping CI for repository {}: initiating principal {} is unavailable", job.repositoryId, principalId)
-            return
+        val principal = principalId?.let { security.getPrincipalById(it) }
+        val authorizationError = when {
+            principalId == null -> "The ref update has no initiating principal"
+            principal == null || principal.deletedAt != null -> "The initiating principal is unavailable"
+            !provide<RepositoryPermissionEvaluator>().isAllowed(
+                security.impersonate(principalId), repository, PermissionAction.EXECUTE,
+            ) -> "The initiating principal cannot execute builds"
+            else -> null
         }
-        val authentication = security.impersonate(principalId)
-        if (!provide<RepositoryPermissionEvaluator>().isAllowed(authentication, repository, PermissionAction.EXECUTE)) {
-            log.info("Skipping CI for repository {}: principal {} cannot execute builds", job.repositoryId, principalId)
-            return
-        }
+        // The authorization error applies only when a pipeline matches; otherwise nothing would have run.
+        val actor = principalId.takeIf { authorizationError == null }
+        var blocked = false
         val runService = provide<PipelineRunService>()
         val commitStatusService = provide<CommitStatusService>()
         val triggerEvaluator = TriggerEvaluator()
         val parser = PipelineYamlParser()
-        val expressionParser = PipelineExpressionParser()
-
         val isTag = job.ref.startsWith("refs/tags/")
-
-        val pushEvent = if (!isTag) PushEvent(
-            repositoryId = job.repositoryId,
-            ref = job.ref,
-            beforeSha = job.beforeSha,
-            afterSha = job.afterSha,
-            pusherPrincipalId = job.pusherPrincipalId
-        ) else null
-
-        val tagName = if (isTag) job.ref.removePrefix("refs/tags/") else null
-        val branchName = if (job.ref.startsWith("refs/heads/")) job.ref.removePrefix("refs/heads/") else ""
-
-        val expressionContext = ExpressionContext(
-            ref = job.ref,
-            branch = branchName,
-            event = if (isTag) "tag" else "push"
-        )
-
+        val pushEvent = PushEvent(job.repositoryId, job.ref, job.beforeSha, job.afterSha, principalId)
         val triggerType = if (isTag) PipelineTriggerType.TAG else PipelineTriggerType.PUSH
-
-        // A failing pipeline must not block the others matched by this push: every pipeline is
-        // attempted, then the job fails so redelivery retries only those without an occurrence.
-        // A rejected plan is a definition problem that retrying cannot fix, so it is only logged.
+        val errors = pipelineService.definitionErrors(job.repositoryId, job.afterSha).toMutableList()
         var failure: Exception? = null
         for (pipeline in pipelines) {
-            val matchingTrigger = if (isTag) {
-                triggerEvaluator.evaluateTag(pipeline, tagName ?: continue)
-            } else {
-                triggerEvaluator.evaluatePush(pipeline, pushEvent ?: continue)
-            }
-            if (matchingTrigger == null) continue
-
             try {
-                val definition = pipelineService.parseDefinition(
-                    job.repositoryId, job.afterSha, pipeline.filePath
-                ) ?: continue
-
-                val errors = parser.validate(definition)
-                if (errors.isNotEmpty()) {
-                    log.warn("Skipping pipeline {} due to validation errors: {}", pipeline.name, errors)
+                val matchingTrigger = if (isTag) {
+                    triggerEvaluator.evaluateTag(pipeline, job.ref.removePrefix("refs/tags/"))
+                } else triggerEvaluator.evaluatePush(pipeline, pushEvent)
+                if (matchingTrigger == null) {
+                    pipelineService.recordEvaluationRun(evaluationId, pipeline.filePath, null)
                     continue
                 }
-
-                // Shared creation-time selection (also applied inside createRun): conditions
-                // evaluated, needs-edges to excluded jobs pruned.
-                val filteredJobs = bosca.git.ci.parser.PipelineJobFilter.filter(
-                    definition.jobs, expressionContext, expressionParser,
-                )
-
-                if (filteredJobs.isEmpty()) {
-                    log.info("All jobs skipped by if conditions for pipeline '{}'", pipeline.name)
+                if (actor == null) {
+                    blocked = true
                     continue
                 }
-
-                val filteredDefinition = definition.copy(jobs = filteredJobs)
-
-                val run = transaction {
+                val definition = pipelineService.parseDefinition(job.repositoryId, job.afterSha, pipeline.filePath)
+                    ?: throw PipelinePlanRejectedException("${pipeline.filePath}: definition could not be read")
+                val validationErrors = parser.validate(definition)
+                if (validationErrors.isNotEmpty()) {
+                    errors += validationErrors.map { "${pipeline.filePath}: $it" }
+                    continue
+                }
+                // Use the same inputs, conditions and environment selection as run creation.
+                val plan = runService.plan(definition, job.ref, triggerType)
+                if (plan.jobs.isEmpty()) {
+                    pipelineService.recordEvaluationRun(evaluationId, pipeline.filePath, null)
+                    continue
+                }
+                transaction {
                     val created = runService.createTriggeredRun(
-                        triggerId = bosca.sharedqueue.jobs.job().getId(),
-                        pipelineId = pipeline.id,
-                        repositoryId = job.repositoryId,
-                        definition = filteredDefinition,
-                        commitSha = job.afterSha,
-                        ref = job.ref,
-                        triggerType = triggerType,
-                        triggeredBy = principalId
-                    ) ?: return@transaction null
-
-                    for ((jobName, _) in filteredJobs) {
-                        val context = "ci/${pipeline.name.lowercase().replace(' ', '-')}/$jobName"
+                        evaluationId, pipeline.id, job.repositoryId, definition, job.afterSha,
+                        job.ref, triggerType, actor,
+                    ) ?: return@transaction
+                    // The occurrence, run and selection link commit atomically. A retry retains the link.
+                    pipelineService.recordEvaluationRun(evaluationId, pipeline.filePath, created.id)
+                    for (jobName in plan.jobs.keys) {
                         commitStatusService.recordStatus(
                             repositoryId = job.repositoryId,
                             commitSha = job.afterSha,
-                            context = context,
+                            context = "ci/${pipeline.name.lowercase().replace(' ', '-')}/$jobName",
                             state = CommitStatusState.PENDING,
-                            description = "Queued"
+                            description = "Queued",
                         )
                     }
-                    created
-                } ?: continue
-
-                log.info("Created pipeline run #{} for '{}' ({}/{} jobs) triggered by {} on {}",
-                    run.number, pipeline.name, filteredJobs.size, definition.jobs.size,
-                    if (isTag) "tag" else "push", job.ref)
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: PipelinePlanRejectedException) {
-                log.warn("Skipping pipeline '{}': {}", pipeline.name, e.message)
+                errors += "${pipeline.filePath}: ${e.message}"
+                log.warn("Rejected CI plan for {}: {}", pipeline.filePath, e.message)
             } catch (e: Exception) {
-                log.error("Failed to create pipeline run for '{}': {}", pipeline.name, e.message, e)
-                val first = failure
-                if (first == null) failure = e else first.addSuppressed(e)
+                errors += "${pipeline.filePath}: ${e.message}"
+                if (failure == null) failure = e else failure.addSuppressed(e)
             }
         }
-        failure?.let { throw it }
+        if (blocked && authorizationError != null) {
+            log.info("Skipping CI for repository {}: {}", job.repositoryId, authorizationError)
+            errors.add(0, authorizationError)
+        }
+        pipelineService.finishEvaluation(evaluationId, completed = failure == null, error = errors.takeIf { it.isNotEmpty() }?.joinToString("; "))
+        return failure
     }
 
     companion object {

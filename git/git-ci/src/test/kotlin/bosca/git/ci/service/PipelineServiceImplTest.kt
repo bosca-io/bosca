@@ -79,6 +79,7 @@ class PipelineServiceImplTest {
             kotlinx.serialization.json.Json { ignoreUnknownKeys = true },
             repositoryService,
             scheduleService,
+            evaluations = mockk(relaxed = true),
         )
     }
 

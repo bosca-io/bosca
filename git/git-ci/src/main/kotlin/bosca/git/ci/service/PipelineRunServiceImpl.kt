@@ -80,6 +80,12 @@ class PipelineRunServiceImpl(
         triggerType: PipelineTriggerType,
         triggeredBy: UUID?,
         parameters: Map<String, String>
+    ): PipelineRun = createAttempt(pipelineId, repositoryId, definition, commitSha, ref, triggerType, triggeredBy, parameters)
+
+    private suspend fun createAttempt(
+        pipelineId: UUID, repositoryId: UUID, definition: PipelineDefinition, commitSha: String,
+        ref: String, triggerType: PipelineTriggerType, triggeredBy: UUID?, parameters: Map<String, String>,
+        rerunOf: UUID? = null,
     ): PipelineRun {
         // Trigger inputs: defaults applied, unknown/invalid submissions rejected, and a
         // promotion validated against the trigger's allowed environments — all BEFORE any row exists,
@@ -90,6 +96,9 @@ class PipelineRunServiceImpl(
             validatePromotion(pipelineId, definition, ref, effectiveParameters)
         }
         val selectedJobs = executionPlan.jobs
+        rejectPlanUnless(selectedJobs.isNotEmpty()) {
+            "Every job in '${definition.name}' was excluded by its if: condition or environment for this ${triggerType.name.lowercase()} run"
+        }
         val parser = PipelineExpressionParser()
         val runContext = ExpressionContext(
             ref = ref,
@@ -97,31 +106,6 @@ class PipelineRunServiceImpl(
             event = triggerType.name.lowercase(),
             env = definition.env + effectiveParameters,
             extra = effectiveParameters,
-        )
-
-        val concurrencyGroup = resolveConcurrencyGroup(definition.concurrency, ref)
-
-        if (concurrencyGroup != null && definition.concurrency?.cancelInProgress == true) {
-            cancelSupersededRuns(concurrencyGroup)
-        }
-
-        val number = runRepository.getMaxNumber(pipelineId) + 1
-        val run = runRepository.create(
-            PipelineRun(
-                pipelineId = pipelineId,
-                repositoryId = repositoryId,
-                commitSha = commitSha,
-                ref = ref,
-                triggerType = triggerType,
-                triggeredBy = triggeredBy,
-                status = PipelineRunStatus.QUEUED,
-                number = number,
-                concurrencyGroup = concurrencyGroup,
-                parameters = json.encodeToJsonElement(
-                    MapSerializer(String.serializer(), String.serializer()),
-                    effectiveParameters,
-                ),
-            )
         )
 
         // Agents only receive step-level env from the claim-job payload, so the workflow-level env
@@ -152,14 +136,14 @@ class PipelineRunServiceImpl(
                     artifacts = if (job.artifacts.isEmpty()) {
                         job.artifacts
                     } else {
-                        job.artifacts.map { it.copy(coordinate = parser.interpolate(it.coordinate, runContext)) }
+                        job.artifacts.map { it.copy(coordinate = interpolateOrReject(parser, it.coordinate, runContext)) }
                     },
                     // Required-artifact coordinates resolve at the same single point as
                     // produced ones, so the dispatch gate reads concrete coordinates without re-parsing.
                     requires = if (job.requires.isEmpty()) {
                         job.requires
                     } else {
-                        job.requires.map { it.copy(coordinate = parser.interpolate(it.coordinate, runContext)) }
+                        job.requires.map { it.copy(coordinate = interpolateOrReject(parser, it.coordinate, runContext)) }
                     },
                     // Pipeline-requirement correlation refs resolve here too: an omitted
                     // ref becomes THIS run's ref — a consumer's tag run waits for the provider's run
@@ -169,13 +153,42 @@ class PipelineRunServiceImpl(
                         job.pipelineRequires
                     } else {
                         job.pipelineRequires.map { req ->
-                            req.copy(ref = req.ref?.let { parser.interpolate(it, runContext) } ?: ref)
+                            req.copy(ref = req.ref?.let { interpolateOrReject(parser, it, runContext) } ?: ref)
                         }
                     },
                 )
             }
         }
+
+        val concurrencyGroup = resolveConcurrencyGroup(definition.concurrency, ref)
+
+        if (concurrencyGroup != null && definition.concurrency?.cancelInProgress == true) {
+            cancelSupersededRuns(concurrencyGroup)
+        }
+
+        val number = runRepository.getMaxNumber(pipelineId) + 1
+        val run = runRepository.create(
+            PipelineRun(
+                pipelineId = pipelineId,
+                repositoryId = repositoryId,
+                commitSha = commitSha,
+                ref = ref,
+                triggerType = triggerType,
+                triggeredBy = triggeredBy,
+                status = PipelineRunStatus.QUEUED,
+                number = number,
+                concurrencyGroup = concurrencyGroup,
+                rerunOf = rerunOf,
+                parameters = json.encodeToJsonElement(
+                    MapSerializer(String.serializer(), String.serializer()),
+                    effectiveParameters,
+                ),
+            )
+        )
+
         jobService.createJobs(run.id, jobs)
+
+        PipelineEvent(run.repositoryId, run.id, run.pipelineId, run.status, run.modified).dispatch()
 
         // Gated jobs: evaluate immediately — the required artifacts may already exist
         // and the required upstream runs may already have succeeded, in which case the job dispatches
@@ -238,10 +251,6 @@ class PipelineRunServiceImpl(
                 }
             }
         )
-        rejectPlanUnless(selectedJobs.isNotEmpty()) {
-            "Every job in '${definition.name}' was excluded by its if: condition or environment for this " +
-                "${triggerType.name.lowercase()} run"
-        }
         return PipelineExecutionPlan(effectiveParameters, selectedJobs)
     }
 
@@ -254,6 +263,14 @@ class PipelineRunServiceImpl(
     override suspend fun findLatestByPipelineAndRef(pipelineId: UUID, ref: String): PipelineRun? {
         return runRepository.findLatestByPipelineAndRef(pipelineId, ref)
     }
+
+    override suspend fun findLatestAttempt(runId: UUID): PipelineRun? = runRepository.findLatestAttempt(runId)
+
+    override suspend fun findChangedSince(repositoryId: UUID, since: bosca.serialization.OffsetDateTime, offset: Long, limit: Int): List<PipelineRun> =
+        runRepository.findChangedSince(repositoryId, since, offset, limit)
+
+    override suspend fun findByCommit(repositoryId: UUID, commitSha: String): List<PipelineRun> =
+        runRepository.findByCommit(repositoryId, commitSha)
 
     override suspend fun findByPipeline(pipelineId: UUID, offset: Long, limit: Int): List<PipelineRun> {
         return runRepository.findByPipeline(pipelineId, offset, limit)
@@ -289,6 +306,10 @@ class PipelineRunServiceImpl(
         check(run.status in TERMINAL_STATUSES) {
             "Only a terminal pipeline run can be deleted (run #${run.number} is ${run.status})"
         }
+        val originalId = run.rerunOf
+        check(originalId == null || runRepository.findLatestAttempt(originalId)?.id != run.id) {
+            "The latest retry cannot be deleted while its original run exists; removing it would restore an earlier CI result"
+        }
 
         for (job in jobService.findByRun(runId)) {
             for (step in jobService.getSteps(job.id)) {
@@ -301,29 +322,34 @@ class PipelineRunServiceImpl(
 
         val deleted = runRepository.delete(runId)
             ?: throw IllegalStateException("Pipeline run $runId could not be deleted")
+        pipelineService.refreshEvaluations(run.repositoryId, run.commitSha)
         log.info("Deleted pipeline run #{} ({})", deleted.number, deleted.id)
         return deleted
     }
 
     override suspend fun updateStatus(runId: UUID, status: PipelineRunStatus) {
-        val run = runRepository.findById(runId) ?: return
+        val run = when (status) {
+            PipelineRunStatus.RUNNING -> runRepository.markStarted(runId, status)
+            PipelineRunStatus.SUCCESS, PipelineRunStatus.FAILURE,
+            PipelineRunStatus.CANCELLED -> runRepository.markFinished(runId, status)
+            else -> runRepository.updateStatus(runId, status)
+        } ?: return
         when (status) {
             PipelineRunStatus.RUNNING -> {
-                runRepository.markStarted(runId, status)
                 dispatchWebhook(run, WebhookEvent.PIPELINE_RUN_STARTED, status)
             }
             PipelineRunStatus.SUCCESS, PipelineRunStatus.FAILURE,
             PipelineRunStatus.CANCELLED -> {
-                runRepository.markFinished(runId, status)
                 dispatchWebhook(run, WebhookEvent.PIPELINE_RUN_COMPLETED, status)
             }
-            else -> runRepository.updateStatus(runId, status)
+            else -> Unit
         }
         PipelineEvent(
             repositoryId = run.repositoryId,
             pipelineRunId = runId,
             pipelineId = run.pipelineId,
-            status = status
+            status = run.status,
+            modified = run.modified,
         ).dispatch()
     }
 
@@ -368,7 +394,7 @@ class PipelineRunServiceImpl(
         val pipeline = pipelineService.findById(original.pipelineId)
             ?: throw NoSuchElementException("Pipeline not found: ${original.pipelineId}")
 
-        val definition = pipelineService.parseDefinition(original.repositoryId, original.ref, pipeline.filePath)
+        val definition = pipelineService.parseDefinition(original.repositoryId, original.commitSha, pipeline.filePath)
             ?: throw IllegalStateException("Failed to parse pipeline: ${pipeline.filePath}")
 
         // A re-run means THE SAME RUN again: the original trigger type and parameters select the
@@ -377,7 +403,7 @@ class PipelineRunServiceImpl(
             ?.mapNotNull { (key, value) -> value.jsonPrimitive.contentOrNull?.let { key to it } }
             ?.toMap()
             ?: emptyMap()
-        return createRun(
+        return createAttempt(
             pipelineId = original.pipelineId,
             repositoryId = original.repositoryId,
             definition = definition,
@@ -385,7 +411,8 @@ class PipelineRunServiceImpl(
             ref = original.ref,
             triggerType = original.triggerType,
             triggeredBy = triggeredBy,
-            parameters = originalParameters
+            parameters = originalParameters,
+            rerunOf = original.rerunOf ?: original.id,
         )
     }
 
@@ -421,7 +448,8 @@ class PipelineRunServiceImpl(
             repositoryId = reopened.repositoryId,
             pipelineRunId = reopened.id,
             pipelineId = reopened.pipelineId,
-            status = PipelineRunStatus.QUEUED
+            status = PipelineRunStatus.QUEUED,
+            modified = reopened.modified,
         ).dispatch()
 
         log.info("Re-running pipeline job {} ({}) in run #{} ({})", previous.name, jobId, run.number, run.id)
@@ -470,6 +498,7 @@ class PipelineRunServiceImpl(
                     pipelineRunId = reopened.id,
                     pipelineId = reopened.pipelineId,
                     status = PipelineRunStatus.QUEUED,
+                    modified = reopened.modified,
                 ).dispatch()
                 result
             }
@@ -533,7 +562,8 @@ class PipelineRunServiceImpl(
             repositoryId = reopened.repositoryId,
             pipelineRunId = runId,
             pipelineId = reopened.pipelineId,
-            status = PipelineRunStatus.QUEUED
+            status = PipelineRunStatus.QUEUED,
+            modified = reopened.modified,
         ).dispatch()
 
         log.info("Re-running {} failed job(s) of pipeline run #{} ({})", toReset.size, run.number, runId)
@@ -739,8 +769,18 @@ class PipelineRunServiceImpl(
     private fun resolveConcurrencyGroup(concurrency: PipelineConcurrency?, ref: String): String? {
         if (concurrency == null) return null
         val context = ExpressionContext(ref = ref, branch = branchOf(ref))
-        return PipelineExpressionParser().interpolate(concurrency.group, context)
+        return interpolateOrReject(PipelineExpressionParser(), concurrency.group, context)
     }
+
+    /** Interpolates a definition template; an invalid expression rejects the plan instead of being retried. */
+    private fun interpolateOrReject(parser: PipelineExpressionParser, template: String, context: ExpressionContext): String =
+        try {
+            parser.interpolate(template, context)
+        } catch (e: PipelinePlanRejectedException) {
+            throw e
+        } catch (e: IllegalArgumentException) {
+            throw PipelinePlanRejectedException("Failed to interpolate '$template': ${e.message}").also { it.initCause(e) }
+        }
 
     /** The branch name for a ref, stripping the `refs/heads/` prefix; other refs (tags) pass through. */
     /**

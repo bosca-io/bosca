@@ -1,14 +1,13 @@
 package bosca.git.ci.parser
 
 import bosca.git.model.JobDefinition
-import org.slf4j.LoggerFactory
 
 /**
  * Creation-time job selection: evaluates each job's `if:` condition against the run context and
  * drops the jobs whose condition is false — how one pipeline file serves multiple triggers with
  * disjoint job subsets (`if: event == 'promotion'`, `if: contains(release.projects,
- * 'server')`). A condition that fails to evaluate drops the job (and logs) rather than running work
- * the author gated.
+ * 'server')`). A condition that fails to evaluate rejects the plan, so invalid configuration
+ * cannot be reported as an intentional skip.
  *
  * A DEFERRED condition — one that references `needs.*` or uses `always()`/`failure()`/`cancelled()`
  * — cannot be decided at creation (no dependency has run yet), so the job is KEPT with its
@@ -28,13 +27,14 @@ object PipelineJobFilter {
     ): Map<String, JobDefinition> {
         val kept = jobs.mapNotNull { (name, job) ->
             val condition = job.condition ?: return@mapNotNull name to job
-            if (isDeferred(condition)) return@mapNotNull name to job
             val passed = try {
                 parser.evaluateBoolean(condition, context)
             } catch (e: Exception) {
-                log.warn("Failed to evaluate if condition '{}' on job '{}': {}", condition, name, e.message)
-                false
+                throw bosca.git.model.PipelinePlanRejectedException(
+                    "Failed to evaluate if condition '$condition' on job '$name': ${e.message}",
+                ).also { it.initCause(e) }
             }
+            if (isDeferred(condition)) return@mapNotNull name to job
             if (passed) name to job.copy(condition = null) else null
         }.toMap()
         if (kept.size == jobs.size && jobs.keys == kept.keys) {
@@ -60,5 +60,4 @@ object PipelineJobFilter {
             "failure()" in condition ||
             "cancelled()" in condition
 
-    private val log = LoggerFactory.getLogger(PipelineJobFilter::class.java)
 }

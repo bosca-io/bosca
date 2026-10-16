@@ -67,7 +67,7 @@ class GitHubPullRequestSynchronizationIntegrationTest {
     private val native = PullRequestServiceImpl(nativeRepository, dependencies, reviews,
         mockk(relaxed = true), hostedRepository, mockk(relaxed = true), protections, dfs,
         mockk(relaxed = true), statuses, locks, profiles, security)
-    private val service = GitHubSyncServiceImpl(repository, hostedService, secrets, security, writes, github, locks, native, profiles, permissions, protections)
+    private val service = GitHubSyncServiceImpl(repository, hostedService, secrets, security, writes, github, locks, native, profiles, permissions, protections, mockk(relaxed = true), mockk(relaxed = true), mockk(), mockk())
     private val json = Json { serializersModule = SerializersModule { contextual(UUIDSerializer()); contextual(OffsetDateTimeSerializer()) } }
     private var remote = remote()
     private var nextNumber = 0

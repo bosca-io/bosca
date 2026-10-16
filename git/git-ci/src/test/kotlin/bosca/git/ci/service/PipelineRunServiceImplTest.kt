@@ -80,6 +80,15 @@ class PipelineRunServiceImplTest {
         coEvery { runRepository.getMaxNumber(any()) } returns 0
         coEvery { runRepository.create(any()) } answers { (firstArg() as PipelineRun).copy(id = UUID.random()) }
         coEvery { runRepository.findById(any()) } returns null
+        coEvery { runRepository.markStarted(any(), any()) } coAnswers {
+            runRepository.findById(firstArg())?.copy(status = secondArg(), modified = OffsetDateTime.now())
+        }
+        coEvery { runRepository.markFinished(any(), any()) } coAnswers {
+            runRepository.findById(firstArg())?.copy(status = secondArg(), modified = OffsetDateTime.now())
+        }
+        coEvery { runRepository.updateStatus(any(), any()) } coAnswers {
+            runRepository.findById(firstArg())?.copy(status = secondArg(), modified = OffsetDateTime.now())
+        }
         service = PipelineRunServiceImpl(
             runRepository,
             jobService,
@@ -95,6 +104,25 @@ class PipelineRunServiceImplTest {
 
     @AfterTest
     fun teardown() = ProviderRegistry.clear()
+
+    @Test
+    fun `new runs dispatch queued status for durable CI synchronization`() = runTest {
+        val dispatcher = mockk<bosca.pipelines.PipelineEventDispatcher>(relaxed = true)
+        provides<bosca.pipelines.PipelineEventDispatcher> { dispatcher }
+        val run = service.createRun(pipelineId, repoId, definition, "a".repeat(40), "refs/heads/feature", PipelineTriggerType.PUSH)
+        coVerify(exactly = 1) {
+            dispatcher.dispatch("bosca.git.model.PipelineEvent",
+                bosca.git.model.PipelineEvent(repoId, run.id, pipelineId, PipelineRunStatus.QUEUED, run.modified), any())
+        }
+    }
+
+    @Test
+    fun `deferred run events retain each pipeline run in the same repository`() = runTest {
+        val first = bosca.git.model.PipelineEvent(repoId, UUID.random(), pipelineId, PipelineRunStatus.QUEUED, OffsetDateTime.now())
+        val second = first.copy(pipelineRunId = UUID.random())
+        kotlin.test.assertNotEquals(first.identityKey(), second.identityKey())
+        assertEquals(first.identityKey(), first.copy(status = PipelineRunStatus.SUCCESS).identityKey())
+    }
 
     @Test
     fun `automatic trigger redelivery neither creates jobs nor cancels runs again`() = runTest {
@@ -189,6 +217,24 @@ class PipelineRunServiceImplTest {
         coVerify { logService.deleteStepLog(repoId, runId, job.id, step.id) }
         coVerify { artifactService.delete(repoId, run.number, artifact.name) }
         coVerify { runRepository.delete(runId) }
+    }
+
+    @Test
+    fun `delete rejects the latest retry before touching logs or artifacts`() = runTest {
+        val originalId = UUID.random()
+        for (status in listOf(PipelineRunStatus.SUCCESS, PipelineRunStatus.FAILURE, PipelineRunStatus.CANCELLED)) {
+            val retry = PipelineRun(id = UUID.random(), pipelineId = pipelineId, repositoryId = repoId,
+                commitSha = "abc123", ref = "refs/heads/main", triggerType = PipelineTriggerType.PUSH,
+                status = status, rerunOf = originalId)
+            coEvery { runRepository.findByIdForUpdate(retry.id) } returns retry
+            coEvery { runRepository.findLatestAttempt(originalId) } returns retry
+            val failure = assertFailsWith<IllegalStateException> { service.delete(retry.id) }
+            assertTrue(failure.message.orEmpty().contains("latest retry"))
+        }
+        coVerify(exactly = 0) { jobService.findByRun(any()) }
+        coVerify(exactly = 0) { artifactService.listByRun(any()) }
+        coVerify(exactly = 0) { runRepository.delete(any()) }
+        coVerify(exactly = 0) { pipelineService.refreshEvaluations(any(), any()) }
     }
 
     @Test
@@ -377,6 +423,24 @@ class PipelineRunServiceImplTest {
         val artifacts = captured.captured.getValue("publish").artifacts
         assertEquals("io.bosca:x:2.0.1", artifacts[0].coordinate)
         assertEquals("kctl:main", artifacts[1].coordinate)
+    }
+
+    @Test
+    fun `invalid templates reject the plan before a run is created`() = runTest {
+        val invalidCoordinate = definition.copy(jobs = mapOf(
+            "publish" to JobDefinition(
+                steps = listOf(StepDefinition(name = "Publish", run = "publish")),
+                artifacts = listOf(ArtifactDefinition(type = "maven", namespace = "bosca-maven", coordinate = "x:\${{ matrix['os'] }}")),
+            ),
+        ))
+        val invalidGroup = definition.copy(concurrency = PipelineConcurrency(group = "ci-\${{ unknown(ref) }}"))
+        for (invalid in listOf(invalidCoordinate, invalidGroup)) {
+            assertFailsWith<bosca.git.model.PipelinePlanRejectedException> {
+                service.createRun(pipelineId, repoId, invalid, "abc", "refs/heads/main", PipelineTriggerType.PUSH)
+            }
+        }
+        coVerify(exactly = 0) { runRepository.create(any()) }
+        coVerify(exactly = 0) { jobService.createJobs(any(), any()) }
     }
 
     @Test
@@ -587,6 +651,26 @@ class PipelineRunServiceImplTest {
     }
 
     @Test
+    fun `status events identify the persisted revision returned by each update`() = runTest {
+        val dispatcher = mockk<bosca.pipelines.PipelineEventDispatcher>(relaxed = true)
+        provides<bosca.pipelines.PipelineEventDispatcher> { dispatcher }
+        val run = testRun()
+        for ((index, status) in PipelineRunStatus.entries.withIndex()) {
+            val updated = run.copy(status = status, modified = run.modified.plusSeconds(index + 1L))
+            coEvery { runRepository.markStarted(run.id, status) } returns updated
+            coEvery { runRepository.markFinished(run.id, status) } returns updated
+            coEvery { runRepository.updateStatus(run.id, status) } returns updated
+
+            service.updateStatus(run.id, status)
+
+            coVerify(exactly = 1) {
+                dispatcher.dispatch("bosca.git.model.PipelineEvent",
+                    bosca.git.model.PipelineEvent(repoId, run.id, pipelineId, status, updated.modified), any())
+            }
+        }
+    }
+
+    @Test
     fun `rerun creates new run preserving the original trigger and parameters`() = runTest {
         val original = testRun(status = PipelineRunStatus.FAILURE).copy(
             triggerType = PipelineTriggerType.PROMOTION,
@@ -604,7 +688,7 @@ class PipelineRunServiceImplTest {
             name = "Build",
             configHash = "abc"
         )
-        coEvery { pipelineService.parseDefinition(repoId, original.ref, any()) } returns releaseDefinition
+        coEvery { pipelineService.parseDefinition(repoId, original.commitSha, any()) } returns releaseDefinition
 
         val captured = slot<PipelineRun>()
         coEvery { runRepository.create(capture(captured)) } answers {
@@ -614,6 +698,8 @@ class PipelineRunServiceImplTest {
         val profileId = UUID.random()
         val result = service.rerun(original.id, profileId)
 
+        assertEquals(original.id, captured.captured.rerunOf)
+        coVerify(exactly = 0) { pipelineService.parseDefinition(repoId, original.ref, any()) }
         assertEquals(original.commitSha, captured.captured.commitSha)
         assertEquals(original.ref, captured.captured.ref)
         // A re-run means the same run again: the original trigger and parameters carry over — the
@@ -1073,7 +1159,7 @@ class PipelineRunServiceImplTest {
     }
 
     @Test
-    fun `plans that can never run are rejected with a dedicated type`() {
+    fun `empty selection is distinct from invalid trigger inputs`() {
         val environmentOnly = PipelineDefinition(
             name = "Deploy",
             triggers = listOf(PipelineTrigger(type = PipelineTriggerType.PUSH)),
@@ -1081,9 +1167,7 @@ class PipelineRunServiceImplTest {
                 "deploy" to JobDefinition(environment = "production", steps = listOf(StepDefinition(name = "Deploy", run = "deploy"))),
             ),
         )
-        assertFailsWith<bosca.git.model.PipelinePlanRejectedException> {
-            service.plan(environmentOnly, "refs/heads/main", PipelineTriggerType.PUSH)
-        }
+        assertTrue(service.plan(environmentOnly, "refs/heads/main", PipelineTriggerType.PUSH).jobs.isEmpty())
 
         val requiredInput = PipelineDefinition(
             name = "Build",
