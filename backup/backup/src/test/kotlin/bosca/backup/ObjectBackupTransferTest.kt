@@ -49,7 +49,7 @@ class ObjectBackupTransferTest {
         directory = createTempDirectory("bosca-object-transfer-")
         source = storage("source")
         destination = storage("destination")
-        transfer = ObjectBackupTransfer(source, destination)
+        transfer = ObjectBackupTransfer(mapOf("content" to source), destination)
     }
 
     @AfterTest
@@ -93,7 +93,7 @@ class ObjectBackupTransferTest {
             }
         }
 
-        ObjectBackupTransfer(origin, destination).copy(entry)
+        ObjectBackupTransfer(mapOf("content" to origin), destination).copy(entry)
 
         store.verify(store.load(manifestPath))
         assertEquals("data", destination.getString(destinationPath))
@@ -120,7 +120,7 @@ class ObjectBackupTransferTest {
         coEvery { target.getInputStream(any()) } throws expected
 
         val failure = assertFailsWith<IOException> {
-            ObjectBackupTransfer(origin, target).copy(entry)
+            ObjectBackupTransfer(mapOf("content" to origin), target).copy(entry)
         }
 
         assertEquals(expected.message, failure.message)
@@ -136,7 +136,7 @@ class ObjectBackupTransferTest {
         coEvery { target.getInputStream(any()) } throws expected
 
         val failure = assertFailsWith<IllegalStateException> {
-            ObjectBackupTransfer(origin, target).copy(entry)
+            ObjectBackupTransfer(mapOf("content" to origin), target).copy(entry)
         }
 
         assertEquals(expected.message, failure.message)
@@ -151,7 +151,7 @@ class ObjectBackupTransferTest {
         coEvery { target.getInputStream(any()) } throws CancellationException("cancelled")
 
         assertFailsWith<CancellationException> {
-            ObjectBackupTransfer(origin, target).copy(entry)
+            ObjectBackupTransfer(mapOf("content" to origin), target).copy(entry)
         }
 
         coVerify(exactly = 0) { origin.getInputStream(any()) }
@@ -185,7 +185,7 @@ class ObjectBackupTransferTest {
         val target = mockk<ObjectStorageService>(relaxed = true)
 
         assertFailsWith<IllegalArgumentException> {
-            ObjectBackupTransfer(origin, target).copy(entry.copy(sha256 = "multipart-etag-2"))
+            ObjectBackupTransfer(mapOf("content" to origin), target).copy(entry.copy(sha256 = "multipart-etag-2"))
         }
 
         coVerify(exactly = 0) { origin.getInputStream(any()) }
@@ -236,7 +236,7 @@ class ObjectBackupTransferTest {
         }
 
         writeSource(data)
-        ObjectBackupTransfer(source, destination).copy(entry)
+        ObjectBackupTransfer(mapOf("content" to source), destination).copy(entry)
 
         assertEquals("data", destination.getString(destinationPath))
         assertEquals("retained", destination.getString(retainedPath))
@@ -249,7 +249,7 @@ class ObjectBackupTransferTest {
             val target = acknowledgingDestination(bytes.toByteArray())
 
             assertFailsWith<IllegalStateException> {
-                ObjectBackupTransfer(source, target).copy(entry)
+                ObjectBackupTransfer(mapOf("content" to source), target).copy(entry)
             }
 
             coVerify(exactly = 2) { target.getInputStream(match { it.toString() == entry.payloadPath }) }
@@ -263,7 +263,7 @@ class ObjectBackupTransferTest {
         coEvery { target.getInputStream(any()) } throws ObjectNotFoundException(destinationPath)
 
         assertFailsWith<ObjectNotFoundException> {
-            ObjectBackupTransfer(source, target).copy(entry)
+            ObjectBackupTransfer(mapOf("content" to source), target).copy(entry)
         }
     }
 
@@ -276,7 +276,7 @@ class ObjectBackupTransferTest {
         }
 
         val failure = assertFailsWith<IOException> {
-            ObjectBackupTransfer(source, target).copy(entry)
+            ObjectBackupTransfer(mapOf("content" to source), target).copy(entry)
         }
 
         assertEquals("destination unavailable", failure.message)
@@ -292,7 +292,7 @@ class ObjectBackupTransferTest {
         }
 
         assertFailsWith<IllegalStateException> {
-            ObjectBackupTransfer(source, target).copy(entry)
+            ObjectBackupTransfer(mapOf("content" to source), target).copy(entry)
         }
 
         coVerify(exactly = 1) { target.getInputStream(any()) }
@@ -308,7 +308,7 @@ class ObjectBackupTransferTest {
         }
 
         assertFailsWith<IllegalStateException> {
-            ObjectBackupTransfer(source, target).copy(entry)
+            ObjectBackupTransfer(mapOf("content" to source), target).copy(entry)
         }
 
         coVerify(exactly = 1) { target.getInputStream(any()) }
@@ -324,7 +324,7 @@ class ObjectBackupTransferTest {
         }
 
         assertFailsWith<IllegalStateException> {
-            ObjectBackupTransfer(source, target).copy(entry)
+            ObjectBackupTransfer(mapOf("content" to source), target).copy(entry)
         }
     }
 
@@ -340,7 +340,7 @@ class ObjectBackupTransferTest {
             entry.length
         }
 
-        ObjectBackupTransfer(source, target).copy(entry)
+        ObjectBackupTransfer(mapOf("content" to source), target).copy(entry)
 
         coVerify(exactly = 2) { target.getInputStream(any()) }
     }
@@ -352,7 +352,9 @@ class ObjectBackupTransferTest {
         coEvery { target.setInputStream(any(), any(), any()) } returns 0
         payloadAfterInitialMiss(target) { ByteArray(0).inputStream() }
 
-        ObjectBackupTransfer(source, target).copy(entry.copy(length = 0, sha256 = digest(ByteArray(0))))
+        ObjectBackupTransfer(mapOf("content" to source), target).copy(
+            entry.copy(length = 0, sha256 = digest(ByteArray(0))),
+        )
 
         coVerify(exactly = 2) { target.getInputStream(any()) }
     }
@@ -380,7 +382,7 @@ class ObjectBackupTransferTest {
         }
         payloadAfterInitialMiss(target) { bytes.inputStream() }
 
-        ObjectBackupTransfer(origin, target).copy(
+        ObjectBackupTransfer(mapOf("content" to origin), target).copy(
             entry.copy(length = bytes.size.toLong(), sha256 = digest(bytes))
         )
 
@@ -403,7 +405,7 @@ class ObjectBackupTransferTest {
         coEvery { target.setInputStream(any(), any(), any()) } throws IOException("write failed")
 
         val failure = assertFailsWith<IOException> {
-            ObjectBackupTransfer(origin, target).copy(entry)
+            ObjectBackupTransfer(mapOf("content" to origin), target).copy(entry)
         }
 
         assertEquals("write failed", failure.message)
@@ -428,7 +430,7 @@ class ObjectBackupTransferTest {
         coEvery { origin.getInputStream(any()) } returns input
 
         assertFailsWith<IOException> {
-            ObjectBackupTransfer(origin, destination).copy(entry)
+            ObjectBackupTransfer(mapOf("content" to origin), destination).copy(entry)
         }
 
         assertTrue(closed)
@@ -442,7 +444,7 @@ class ObjectBackupTransferTest {
         coEvery { target.getInputStream(any()) } throws ObjectNotFoundException(destinationPath)
 
         assertFailsWith<CancellationException> {
-            ObjectBackupTransfer(origin, target).copy(entry)
+            ObjectBackupTransfer(mapOf("content" to origin), target).copy(entry)
         }
 
         coVerify(exactly = 0) { target.setInputStream(any(), any(), any()) }
@@ -468,7 +470,7 @@ class ObjectBackupTransferTest {
         }
 
         assertFailsWith<CancellationException> {
-            ObjectBackupTransfer(origin, destination).copy(entry)
+            ObjectBackupTransfer(mapOf("content" to origin), destination).copy(entry)
         }
 
         assertTrue(closed)
@@ -493,7 +495,7 @@ class ObjectBackupTransferTest {
         }
 
         assertFailsWith<CancellationException> {
-            ObjectBackupTransfer(source, target).copy(entry)
+            ObjectBackupTransfer(mapOf("content" to source), target).copy(entry)
         }
 
         assertTrue(closed)

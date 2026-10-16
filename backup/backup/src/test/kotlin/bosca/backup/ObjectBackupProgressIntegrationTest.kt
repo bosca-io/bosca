@@ -23,6 +23,7 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
@@ -97,11 +98,34 @@ class ObjectBackupProgressIntegrationTest {
         assertEquals("source-1", prepared.sourceId)
         assertEquals("destination-1", prepared.destinationId)
         assertEquals("content", prepared.scope)
-        assertEquals("pending", prepared.status)
+        assertEquals(ObjectBackupProgressStatus.PENDING, prepared.status)
         assertEquals(0, prepared.attempts)
         assertEquals(0L, prepared.version)
         assertEquals(0L, prepared.verifiedBytes)
         assertNull(prepared.error)
+    }
+
+    @Test
+    fun `persisted lifecycle states are mapped to a closed enum`() = runBlocking {
+        val prepared = request { prepare() }
+        val running = request { service.start(prepared.key, prepared.version) }
+        val failed = request { service.fail(running.key, running.version, "retry required") }
+        val retried = request { service.start(failed.key, failed.version) }
+        val completed = request { service.complete(retried.key, retried.version) }
+
+        val states = listOf(prepared, running, failed, retried, completed).map {
+            assertIs<Enum<*>>(it.status).name
+        }
+        assertEquals(listOf("PENDING", "RUNNING", "FAILED", "RUNNING", "COMPLETED"), states)
+
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { connection ->
+            connection.createStatement().use { statement ->
+                statement.executeQuery("select status from backup.object_progress").use { rows ->
+                    assertTrue(rows.next())
+                    assertEquals("completed", rows.getString(1))
+                }
+            }
+        }
     }
 
     @Test
@@ -110,7 +134,7 @@ class ObjectBackupProgressIntegrationTest {
         val running = request { service.start(prepared.key, prepared.version) }
         val failed = request { service.fail(running.key, running.version, "network unavailable") }
 
-        assertEquals("failed", failed.status)
+        assertEquals(ObjectBackupProgressStatus.FAILED, failed.status)
         assertEquals(1, failed.attempts)
         assertEquals("network unavailable", request { service.get(failed.key) }?.error)
 
@@ -120,7 +144,7 @@ class ObjectBackupProgressIntegrationTest {
         assertEquals(prepared.key, completed.key)
         assertEquals(prepared.created, completed.created)
         assertEquals(2, completed.attempts)
-        assertEquals("completed", completed.status)
+        assertEquals(ObjectBackupProgressStatus.COMPLETED, completed.status)
         assertEquals(payload.length, completed.verifiedBytes)
         assertNull(completed.error)
         assertTrue(completed.version > failed.version)
@@ -152,7 +176,7 @@ class ObjectBackupProgressIntegrationTest {
         }
 
         assertNotEquals(completed.key, changed.key)
-        assertEquals("pending", changed.status)
+        assertEquals(ObjectBackupProgressStatus.PENDING, changed.status)
         assertEquals(completed, request { service.get(completed.key) })
         assertEquals(2, request { service.list("source-1", "destination-1", "content", 0, 10) }.size)
     }
@@ -169,7 +193,10 @@ class ObjectBackupProgressIntegrationTest {
         }
 
         assertEquals(retried, request { service.get(retried.key) })
-        assertEquals("completed", request { service.complete(retried.key, retried.version) }.status)
+        assertEquals(
+            ObjectBackupProgressStatus.COMPLETED,
+            request { service.complete(retried.key, retried.version) }.status,
+        )
     }
 
     @Test
@@ -227,7 +254,7 @@ class ObjectBackupProgressIntegrationTest {
         }
         val invalid = request { service.invalidate(completed.key, completed.version, "destination object missing") }
 
-        assertEquals("failed", invalid.status)
+        assertEquals(ObjectBackupProgressStatus.FAILED, invalid.status)
         assertEquals(0L, invalid.verifiedBytes)
         assertEquals("destination object missing", invalid.error)
         assertEquals(2, request { service.start(invalid.key, invalid.version) }.attempts)

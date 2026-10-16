@@ -15,8 +15,7 @@ data class ObjectBackupProgress(
     val scope: String,
     @property:DbMapper(JsonbMapper::class)
     val payload: BackupObject,
-    /** One of pending, running, completed or failed. */
-    val status: String = "pending",
+    val status: ObjectBackupProgressStatus = ObjectBackupProgressStatus.PENDING,
     val attempts: Int = 0,
     @ColumnName("verified_bytes")
     val verifiedBytes: Long = 0,
