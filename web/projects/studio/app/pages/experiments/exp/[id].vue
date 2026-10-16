@@ -461,6 +461,9 @@ const controlVariationOptions = computed<SelectOption[]>(() =>
   }),
 )
 
+const variationNames = computed<Record<string, string>>(() =>
+  Object.fromEntries(flagVariations.value.map(v => [v.key, v.name])))
+
 function variationName(key: string): string {
   return flagVariations.value.find((v) => v.key === key)?.name ?? key
 }
@@ -1803,6 +1806,7 @@ const canArchive = computed(() => {
                   :metric-type="group.metricType"
                   :accent="accent"
                   :cuped="group.cupedConfigured"
+                  :variation-names="variationNames"
                   :comparisons="plannedComparisons.filter(c => c.goalId === group.goalId)" />
               </div>
             </div>
