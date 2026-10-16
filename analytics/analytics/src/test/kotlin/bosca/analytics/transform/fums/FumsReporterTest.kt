@@ -25,7 +25,8 @@ class FumsReporterTest {
     @Test
     fun `reports one encoded token and usage identifiers without an API key`() = runTest {
         server.enqueue(MockResponse.Builder().code(204).build())
-        FumsReporter(OkHttpClient(), server.url("/f3")).report("opaque+token&value", "device/id", "session id", "hashed-user")
+        val status = FumsReporter(OkHttpClient(), server.url("/f3")).report("opaque+token&value", "device/id", "session id", "hashed-user")
+        assertEquals(204, status)
         val request = server.takeRequest()
         assertEquals("GET", request.method)
         assertEquals("/f3", request.url.encodedPath)
@@ -40,7 +41,7 @@ class FumsReporterTest {
     @Test
     fun `anonymous reports omit the optional user identifier`() = runTest {
         server.enqueue(MockResponse.Builder().code(200).build())
-        FumsReporter(OkHttpClient(), server.url("/f3")).report("token", "device", "session", null)
+        assertEquals(200, FumsReporter(OkHttpClient(), server.url("/f3")).report("token", "device", "session", null))
         assertNull(server.takeRequest().url.queryParameter("uId"))
     }
 

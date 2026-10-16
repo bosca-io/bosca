@@ -31,6 +31,7 @@ class FumsAnalyticsTransformTest {
     private val bibleId = UUID.random()
     private val audioId = UUID.random()
     private val jobs = mutableListOf<Job>()
+    private lateinit var logs: FumsLogCapture
     private val context = EventContext("app", "1", device = Device("device", "", "", "", "", "", "", "", ""),
         sessionId = "session", userId = "reader@example.com")
 
@@ -39,10 +40,14 @@ class FumsAnalyticsTransformTest {
         ProviderRegistry.clear()
         provides<Json> { json }
         coEvery { queue.enqueue(any()) } coAnswers { firstArg<Job>().also(jobs::add).getId() }
+        logs = FumsLogCapture(FumsAnalyticsTransform::class.java)
     }
 
     @AfterTest
-    fun teardown() = ProviderRegistry.clear()
+    fun teardown() {
+        logs.close()
+        ProviderRegistry.clear()
+    }
 
     private fun event(type: EventType = EventType.Impression, elementType: String = "bible-text", audio: Boolean = false,
                       reference: String = "JHN.1") = Event(100, type = type, element = Element(type = elementType,
@@ -77,6 +82,13 @@ class FumsAnalyticsTransformTest {
         assertNotEquals(context.userId, text.userId)
         assertEquals(text.deviceId, audio.deviceId)
         assertFalse(jobs[0].getDefinition().toString().contains("fumsToken"))
+        assertEquals(listOf(
+            "FUMS usage submitted: jobId=${jobs[0].getId()} bibleId=$bibleId chapter=JHN.1 kind=text",
+            "FUMS usage submitted: jobId=${jobs[1].getId()} bibleId=$bibleId chapter=JHN.1 kind=audio",
+        ), logs.messages)
+        for (privateValue in listOf(context.device.installationId, context.sessionId, context.userId.orEmpty(), text.deviceId, text.userId.orEmpty())) {
+            assertFalse(logs.messages.any { privateValue in it })
+        }
     }
 
     @Test
@@ -86,6 +98,7 @@ class FumsAnalyticsTransformTest {
             event(elementType = "bible-audio", audio = true), event(EventType.Interaction, "bible-audio"),
             event(reference = "bad"), missing, event().copy(element = null)))
         coVerify(exactly = 0) { queue.enqueue(any()) }
+        assertTrue(logs.messages.isEmpty())
     }
 
     @Test
@@ -108,6 +121,7 @@ class FumsAnalyticsTransformTest {
         assertSame(failure, assertFailsWith<IllegalStateException> { transform.transform(pipeline, batch(event())) })
         coEvery { queue.enqueue(any()) } throws CancellationException("cancelled")
         assertFailsWith<CancellationException> { transform.transform(pipeline, batch(event())) }
+        assertTrue(logs.messages.isEmpty())
     }
 
     @Test

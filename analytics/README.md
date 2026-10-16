@@ -129,6 +129,34 @@ audio preserves usage tokens until their original expiry so pending reports can 
 The ordinary job queue
 retries delivery failures and completes successful reports.
 
+### Confirming FUMS delivery
+
+Filter collector and worker logs for `FUMS`. These messages are visible at the
+default INFO level. When the transform list is assembled, the collector logs
+`FUMS event processing enabled: queue=fums`. Disabled processing is logged explicitly;
+enabled processing without a registered queue produces a warning. Processing being
+disabled on a worker does not disable its separate `fumsQueueRunner` delivery worker.
+
+Open a Bible chapter in the reader or start a recording, then follow the same
+`jobId` through these messages:
+
+| Message | Meaning |
+|---|---|
+| `FUMS usage submitted` | The transform recognized a valid usage event and submitted its job to the queue abstraction. If a database transaction is active, publishing waits for commit. |
+| `FUMS delivery processing` | A worker picked up the job and started resolving its token. |
+| `FUMS delivery accepted by API.Bible` | The reporting endpoint returned a successful HTTP response; `httpStatus` records the status. |
+| `FUMS delivery skipped` | No token was available for that exact content reference. The token may be missing or expired; no report was sent. |
+| `FUMS delivery failed` | The request failed or returned a non-success status. The exception still reaches the job queue for its normal retry handling. |
+
+Check `bosca-runner` logs, or the API server logs when `fumsQueueRunner` runs there.
+Generic job completion alone does not prove delivery: skipped reports also complete.
+An accepted message confirms HTTP acceptance by API.Bible, not downstream usage
+aggregation. If submission appears without processing, check that `fumsQueueRunner`
+is enabled and connected to the same job transport. If processing appears without
+an outcome, check the job ID in worker errors, including token lookup failures.
+These FUMS messages omit tokens, request URLs, response bodies, and device, session,
+and user identifiers.
+
 ## Dependencies
 
 - `io.bosca:core` -- Bosca Core (platform framework)

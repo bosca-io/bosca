@@ -14,7 +14,8 @@ class FumsReporter internal constructor(client: OkHttpClient, private val endpoi
 
     constructor() : this(OkHttpClient.Builder().callTimeout(10, TimeUnit.SECONDS).build(), "https://fums.api.bible/f3".toHttpUrl())
 
-    suspend fun report(token: String, deviceId: String, sessionId: String, userId: String?) {
+    /** Returns the successful HTTP status after API.Bible accepts the report. */
+    suspend fun report(token: String, deviceId: String, sessionId: String, userId: String?): Int {
         val url = endpoint.newBuilder().addQueryParameter("t", token)
             .addQueryParameter("dId", deviceId).addQueryParameter("sId", sessionId)
             .apply { userId?.let { addQueryParameter("uId", it) } }.build()
@@ -26,6 +27,7 @@ class FumsReporter internal constructor(client: OkHttpClient, private val endpoi
         }
         response.use {
             if (!it.isSuccessful) throw IOException("FUMS reporting failed (HTTP ${it.code})")
+            return it.code
         }
     }
 }
