@@ -36,8 +36,9 @@ type NavPatch = {
   ref?: string | undefined
   path?: string | undefined
   file?: string | undefined
+  tagOffset?: string | undefined
 }
-const NAV_KEYS = ['tab', 'ref', 'path', 'file'] as const
+const NAV_KEYS = ['tab', 'ref', 'path', 'file', 'tagOffset'] as const
 
 function pushNavQuery(patch: NavPatch) {
   const next: Record<string, string> = {}
@@ -197,22 +198,50 @@ interface TagInfo {
 }
 
 const tags = ref<TagInfo[]>([])
+const tagPageSize = 25
+const tagOffset = computed({
+  get: () => {
+    const value = Number(route.query.tagOffset ?? 0)
+    return Number.isSafeInteger(value) && value >= 0 ? value : 0
+  },
+  set: (value: number) => pushNavQuery({ tagOffset: value > 0 ? String(value) : undefined }),
+})
+const tagsHasMore = ref(false)
+const tagsLoading = ref(false)
+const tagsError = ref('')
+let tagsRevision = 0
 
 async function loadTags(repositoryId: string) {
+  const revision = ++tagsRevision
+  tagsLoading.value = true
+  tagsError.value = ''
   try {
     const result = await query<{ git: { tags: TagInfo[] } }>(gql`
-      query Tags($repositoryId: UUID!) {
-        git { tags(repositoryId: $repositoryId) {
+      query Tags($repositoryId: UUID!, $limit: Int!, $offset: Long!) {
+        git { tags(repositoryId: $repositoryId, limit: $limit, offset: $offset) {
           name sha isAnnotated message taggerName taggerEmail targetSha
         } }
       }
-    `, { repositoryId })
-    tags.value = result.git?.tags ?? []
-  } catch { /* ignore */ }
+    `, { repositoryId, limit: tagPageSize + 1, offset: tagOffset.value })
+    if (revision !== tagsRevision) return
+    const page = result.git?.tags ?? []
+    tags.value = page.slice(0, tagPageSize)
+    tagsHasMore.value = page.length > tagPageSize
+  } catch (error) {
+    if (revision !== tagsRevision) return
+    tagsError.value = error instanceof Error ? error.message : 'Failed to load tags.'
+  } finally {
+    if (revision === tagsRevision) tagsLoading.value = false
+  }
 }
 
-watch(repo, async (r) => {
-  if (r) await loadTags(r.id)
+watch([repo, activeTab, tagOffset], async ([r, tab]) => {
+  ++tagsRevision
+  tags.value = []
+  tagsHasMore.value = false
+  tagsLoading.value = false
+  tagsError.value = ''
+  if (r && tab === 'Tags') await loadTags(r.id)
 }, { immediate: true })
 
 // Deleting a tag is destructive (releases reference tags), so it confirms first.
@@ -232,6 +261,9 @@ async function confirmDeleteTag() {
     deleteTagTarget.value = null
     toast.success(`Tag '${target.name}' deleted`)
     await loadTags(repo.value.id)
+    if (!tagsError.value && tags.value.length === 0 && tagOffset.value > 0) {
+      tagOffset.value = Math.max(0, tagOffset.value - tagPageSize)
+    }
   }
   catch (e: unknown) {
     toast.error(e instanceof Error ? e.message : 'Failed to delete the tag')
@@ -1740,9 +1772,14 @@ git push -u origin {{ repo.defaultBranch }}</pre>
       <div v-if="activeTab === 'Tags'" class="tab-panel">
         <SectionCard title="Tags">
           <template #right>
-            <span class="mono section-meta">{{ tags.length }} total</span>
+            <span class="mono section-meta">{{ tags.length }} shown</span>
           </template>
-          <div v-if="tags.length" class="branch-list">
+          <div v-if="tagsLoading" class="empty-msg">Loading tags…</div>
+          <div v-else-if="tagsError" class="empty-msg" role="alert">
+            {{ tagsError }}
+            <Button @click="loadTags(repoId)">Retry</Button>
+          </div>
+          <div v-else-if="tags.length" class="branch-list">
             <div v-for="t in tags" :key="t.name" class="branch-row">
               <Icon name="tag" :size="14" :color="accent" />
               <span class="mono branch-name">{{ t.name }}</span>
@@ -1759,6 +1796,10 @@ git push -u origin {{ repo.defaultBranch }}</pre>
             </div>
           </div>
           <div v-else class="empty-msg">No tags.</div>
+          <nav v-if="tagOffset > 0 || tagsHasMore" class="tag-pagination" aria-label="Tag pages">
+            <Button :disabled="tagsLoading || tagOffset === 0" @click="tagOffset = Math.max(0, tagOffset - tagPageSize)">Newer tags</Button>
+            <Button :disabled="tagsLoading || !tagsHasMore" @click="tagOffset += tagPageSize">Older tags</Button>
+          </nav>
         </SectionCard>
 
         <ConfirmModal
@@ -2288,6 +2329,13 @@ git push -u origin {{ repo?.defaultBranch }}</pre>
 </template>
 
 <style scoped>
+.tag-pagination {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 16px;
+}
+
 /* ─── Shared ──────────────────────────────────────────────────────────────── */
 .loading-state, .empty-msg {
   color: var(--fg-3); text-align: center; padding: 48px 0; font-size: 13.5px;

@@ -170,9 +170,8 @@ class SearchModel(
                             )
                         }
             } else {
-                val known = refs.filter { it.kind == "tag" }.associate { it.name to it.sha } +
-                    refs.filter { it.kind == "tag" }.associate { "refs/tags/${it.name}" to it.sha } +
-                    refs.filter { it.kind == "branch" }.associate { it.name to it.sha }
+                val known = refs.filter { it.kind == "tag" }.associate { "refs/tags/${it.name}" to it.sha } +
+                    refs.filter { it.kind == "branch" }.associate { "refs/heads/${it.name}" to it.sha }
                 val sha = ctx.gql.commitShaForRef(id, ref, known)
                 require(!sha.isNullOrBlank()) { "The selected ref does not exist." }
                 hits =

@@ -24,21 +24,24 @@
                   label="Ref"
                   hint="The pipeline definition and inputs come from the selected branch or tag."
                 >
-                  <ui-select
-                    searchable
-                    name="ref"
-                    label="Pipeline ref"
-                    @change="model.selectRef(form.ref, form.inputs, ctx)"
-                  >
-                    <for ref in model.page.refs>
-                      <option :value="ref" :selected="ref == model.page.ref">
-                        { ref.removePrefix("refs/heads/").removePrefix("refs/tags/") }
-                        (
-                        { if (ref.startsWith("refs/tags/")) "tag" else "branch" }
-                        )
-                      </option>
-                    </for>
-                  </ui-select>
+                  <git-ref-search :id="model.page.repository" mode="qualified">
+                    <ui-select
+                      searchable
+                      async
+                      name="ref"
+                      label="Pipeline ref"
+                      @change="model.selectRef(form.ref, form.inputs, ctx)"
+                    >
+                      <for ref in model.page.refs>
+                        <option :value="ref" :selected="ref == model.page.ref">
+                          { ref.removePrefix("refs/heads/").removePrefix("refs/tags/") }
+                          (
+                          { if (ref.startsWith("refs/tags/")) "tag" else "branch" }
+                          )
+                        </option>
+                      </for>
+                    </ui-select>
+                  </git-ref-search>
                 </ui-field>
                 <input name="inputs" type="hidden" value="[]" />
                 <for input in model.page.inputs>

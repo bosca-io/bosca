@@ -150,6 +150,12 @@ class GitQueryTest {
 
         query.tags(auth, id)
         coVerify { browseService.listTags(id) }
+        query.tags(auth, id, 500, -1, "release")
+        coVerify { browseService.listTags(id, 100, 0, "release") }
+        query.tags(auth, id, 25, 50, null)
+        coVerify { browseService.listTags(id, 25, 50, null) }
+        query.tag(auth, id, "v1")
+        coVerify { browseService.getTag(id, "v1") }
 
         query.blame(auth, id, "main", "a.txt")
         coVerify { browseService.blame(id, "main", "a.txt") }
@@ -476,6 +482,7 @@ class GitQueryTest {
             "commit" to { query.commit(auth, id, "abc") },
             "branches" to { query.branches(auth, id) },
             "tags" to { query.tags(auth, id) },
+            "tag" to { query.tag(auth, id, "v1") },
             "blame" to { query.blame(auth, id, "main", "a") },
             "permissions" to { query.permissions(auth, id) },
             "webhooks" to { query.webhooks(auth, id) },

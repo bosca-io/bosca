@@ -28,8 +28,9 @@ const stubs = {
   Button: { template: '<button :disabled="disabled"><slot /></button>', props: ['disabled'] },
   Modal: { template: '<section class="run-modal"><slot /><footer><slot name="footer" /></footer></section>' },
   Select: {
+    name: 'Select',
     template: '<label>{{ label }}<select :data-label="label" :value="modelValue" @change="$emit(\'update:modelValue\', $event.target.value)"><option value="" /><option v-for="option in options" :key="option.value" :value="option.value">{{ option.label }}</option></select></label>',
-    props: ['label', 'modelValue', 'options'],
+    props: ['label', 'modelValue', 'options', 'onSearch'],
     emits: ['update:modelValue'],
   },
   Input: {
@@ -94,6 +95,41 @@ describe('manual pipeline runs', () => {
       pipelineId: 'image-release', ref: 'refs/tags/7.4.0', inputs: [{ name: 'image', value: 'bosca-server' }, { name: 'version', value: '7.4.1' }],
     })
     expect(push).toHaveBeenCalledWith('/git/pipelines/run-1')
+    wrapper.unmount()
+  })
+
+  it('preserves tag creation order and searches bounded pages for older refs', async () => {
+    const original = query.getMockImplementation()!
+    const names = ['v2', 'v10', 'v1', ...Array.from({ length: 23 }, (_, i) => `older-${i}`)]
+    query.mockImplementation(async (document: DocumentNode, variables: { offset?: number; query?: string }) => {
+      if (print(document).includes('PipelineRunRefs')) {
+        return { git: {
+          tags: (variables.query ? ['legacy'] : variables.offset ? ['older-22'] : names).map(name => ({ name })),
+          branches: variables.offset ? [] : [{ name: 'main' }],
+        } }
+      }
+      return original(document, variables)
+    })
+    const wrapper = await openRun()
+    const select = wrapper.findAllComponents({ name: 'Select' }).find(component => component.props('label') === 'Ref')!
+    const options = select.props('options')
+    expect(options.slice(0, 3).map((option: { value: string }) => option.value)).toEqual(['refs/tags/v2', 'refs/tags/v10', 'refs/tags/v1'])
+    expect(options).toHaveLength(26) // 25 tags and one branch.
+    expect(query.mock.calls.find(([document]) => print(document).includes('PipelineRunRefs'))?.[1]).toEqual({
+      repositoryId: 'repo-1', limit: 26, offset: 0, query: '', includeBranches: true,
+    })
+    const next = await select.props('onSearch')('', 25)
+    expect(next.options).toEqual([{ value: 'refs/tags/older-22', label: 'older-22 (tag)' }])
+    expect(next.previousOffset).toBe(0)
+    expect(next.nextOffset).toBeUndefined()
+    expect(query).toHaveBeenLastCalledWith(expect.anything(), {
+      repositoryId: 'repo-1', limit: 26, offset: 25, query: '', includeBranches: false,
+    })
+    const filtered = await select.props('onSearch')('legacy', 0)
+    expect(filtered.options).toEqual([{ value: 'refs/tags/legacy', label: 'legacy (tag)' }])
+    select.vm.$emit('update:modelValue', filtered.options[0].value)
+    await flushPromises()
+    expect(query.mock.calls.some(([document, variables]) => print(document).includes('PipelineRunInputs') && variables.ref === 'refs/tags/legacy')).toBe(true)
     wrapper.unmount()
   })
 

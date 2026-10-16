@@ -11152,7 +11152,9 @@ export type Git = {
   sourceRefs: Array<GitScriptSourceRef>;
   /** Repository statistics. */
   stats: GitRepoStats;
-  /** List all tags. */
+  /** Look up a tag by name directly from Git. */
+  tag?: Maybe<GitTagInfo>;
+  /** List tags newest first by Git tagger date, using commit dates for lightweight tags, with optional filtering and pagination. */
   tags: Array<GitTagInfo>;
   /** Get the current status of a job attempt assigned to this agent. A stale attempt is reported as cancelled. */
   targetedJobStatus?: Maybe<GitPipelineRunStatus>;
@@ -11413,7 +11415,17 @@ export type Git_StatsArgs = {
 
 
 /** Queries for the git repository system. */
+export type Git_TagArgs = {
+  name: Scalars['String']['input'];
+  repositoryId: Scalars['UUID']['input'];
+};
+
+
+/** Queries for the git repository system. */
 export type Git_TagsArgs = {
+  limit?: InputMaybe<Scalars['Int']['input']>;
+  offset?: InputMaybe<Scalars['Long']['input']>;
+  query?: InputMaybe<Scalars['String']['input']>;
   repositoryId: Scalars['UUID']['input'];
 };
 
