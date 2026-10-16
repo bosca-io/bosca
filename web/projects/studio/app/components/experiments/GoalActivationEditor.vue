@@ -18,7 +18,7 @@ function setMode(key: string, value: string) {
     <p>Experiment activation defines eligibility. Goal activation describes who reached a condition after assignment; it keeps everyone in the overall result.</p>
     <label class="check"><input type="checkbox" :checked="activation !== null" @change="activation = ($event.target as HTMLInputElement).checked ? newGoalActivation() : null">Configure goal activation</label>
     <template v-if="activation">
-      <label>Application IDs<input :value="activation.applicationIds.join(', ')" placeholder="Use the experiment activation application" @input="activation.applicationIds = splitIdentifiers(($event.target as HTMLInputElement).value)"></label>
+      <label>Application IDs<input :value="activation.applicationIds.join(', ')" placeholder="Any application" @input="activation.applicationIds = splitIdentifiers(($event.target as HTMLInputElement).value)"></label>
       <label class="check"><input v-model="activation.sameSession" type="checkbox">Same session as experiment activation</label>
       <label>Maximum delay (seconds)<input
         type="number"
@@ -40,7 +40,7 @@ function setMode(key: string, value: string) {
     <h3>Outcome scope</h3>
     <label class="check"><input type="checkbox" :checked="outcomeScope !== null" @change="outcomeScope = ($event.target as HTMLInputElement).checked ? newOutcomeScope() : null">Configure outcome scope and attribution</label>
     <template v-if="outcomeScope">
-      <label>Application IDs<input :value="outcomeScope.applicationIds.join(', ')" placeholder="Use the experiment activation application" @input="outcomeScope.applicationIds = splitIdentifiers(($event.target as HTMLInputElement).value)"></label>
+      <label>Application IDs<input :value="outcomeScope.applicationIds.join(', ')" placeholder="Any application" @input="outcomeScope.applicationIds = splitIdentifiers(($event.target as HTMLInputElement).value)"></label>
       <label class="check"><input v-model="outcomeScope.sameSession" type="checkbox">Same browser session</label>
       <label>Maximum delay (seconds)<input
         type="number"

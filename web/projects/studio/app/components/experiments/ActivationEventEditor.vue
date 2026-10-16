@@ -14,7 +14,7 @@ const model = defineModel<ActivationEventFilter>({ required: true })
     <label>Item extra key<input v-model="model.itemExtraKey" placeholder="recommendation_location"></label>
     <label class="check"><input type="checkbox" :checked="model.itemExtraValue != null" @change="model.itemExtraValue = ($event.target as HTMLInputElement).checked ? '' : null">Match an exact item extra value</label>
     <label v-if="model.itemExtraValue != null">Item extra value<input v-model="model.itemExtraValue"></label>
-    <label>Application IDs<input :value="model.applicationIds?.join(', ')" placeholder="Inherit activation scope" @input="model.applicationIds = splitIdentifiers(($event.target as HTMLInputElement).value)"></label>
+    <label>Application IDs<input :value="model.applicationIds?.join(', ')" placeholder="Goal activation applications, or any" @input="model.applicationIds = splitIdentifiers(($event.target as HTMLInputElement).value)"></label>
     <label class="check"><input v-model="model.recommendationCard" type="checkbox">Recommendation card with a content target</label>
     <p>Card impressions require at least 50% visibility for one second.</p>
   </div>

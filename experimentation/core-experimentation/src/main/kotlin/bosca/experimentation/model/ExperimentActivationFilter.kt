@@ -25,7 +25,7 @@ data class ExperimentActivationFilter(
     val itemExtraValue: String? = null,
     /** Literal substring of the stable analytics element identifier. */
     val elementIdContains: String? = null,
-    /** Explicit application allowlist; empty inherits the enclosing activation scope. */
+    /** Explicit application allowlist; empty falls back to the enclosing activation's list, and no list means any application. */
     val applicationIds: List<String> = emptyList(),
     /** Require recommendation-card content and the existing visibility qualification. */
     val recommendationCard: Boolean = false,

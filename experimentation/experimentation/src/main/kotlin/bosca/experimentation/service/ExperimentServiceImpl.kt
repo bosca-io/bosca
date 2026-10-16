@@ -842,16 +842,6 @@ class ExperimentServiceImpl(
             require(activation?.sameSession != true && outcomeScope?.sameSession != true) {
                 "Same-session constraints require experiment activation"
             }
-            if (activation != null) {
-                val filters = variationKeys.mapNotNull(activation::filterFor)
-                require(filters.all { it.applicationIds.isNotEmpty() || activation.applicationIds.isNotEmpty() }) {
-                    "Goal activation without experiment activation requires an explicit application scope for every event rule"
-                }
-            }
-            val outcomeApplications = outcomeScope?.applicationIds ?: activation?.applicationIds.orEmpty()
-            require(outcomeApplications.isNotEmpty()) {
-                "Outcomes without experiment activation require an explicit application scope"
-            }
         }
         require(outcomeScope?.attributeRecommendationDestination != true || activation != null) {
             "Recommendation destination attribution requires goal activation"

@@ -38,13 +38,13 @@ internal fun appendOutcomeEventFilter(
     }
 }
 
+/** Ordering constraints relative to eligibility; application ids are applied as an explicit event filter only. */
 internal fun outcomeScopePredicate(
     scope: GoalOutcomeScope?, hasActivation: Boolean, alias: String, nestedContext: Boolean = false,
 ): String {
     if (scope == null) return ""
     val context = if (nestedContext) "$alias.context" else alias
     val conditions = mutableListOf<String>()
-    if (scope.applicationIds.isEmpty() && hasActivation) conditions.add("$context.app_id = subjects.app_id")
     if (scope.sameSession) {
         require(hasActivation) { "Same-session outcomes require captured experiment activation" }
         conditions.add("$context.session_id = subjects.session_id")
@@ -56,7 +56,10 @@ internal fun outcomeScopePredicate(
     return conditions.joinToString("", prefix = "") { " AND $it" }
 }
 
-/** One bounded rule scan against the frozen eligible cohort, including rejected application events. */
+/**
+ * One bounded rule scan against the frozen eligible cohort, including rejected application events.
+ * A rule's application ids fall back to the activation's; when both are empty, any application qualifies.
+ */
 internal fun buildGoalActivationQuery(
     eventsTable: String, assignmentsTable: String, experimentId: bosca.serialization.UUID,
     filter: ExperimentActivationFilter, activation: bosca.experimentation.model.GoalActivation,
@@ -67,7 +70,7 @@ internal fun buildGoalActivationQuery(
     val params = cohort.params.toMutableList()
     val conditions = activationEventConditions(filter.copy(applicationIds = emptyList()), start, cutoff, params)
     val apps = filter.applicationIds.ifEmpty { activation.applicationIds }
-    val appMatch = if (apps.isEmpty()) "c.app_id = subjects.app_id" else {
+    val appMatch = if (apps.isEmpty()) "true" else {
         params.addAll(apps)
         "c.app_id IN (${apps.joinToString { "?" }})"
     }

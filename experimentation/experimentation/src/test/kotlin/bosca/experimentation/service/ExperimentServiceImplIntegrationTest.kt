@@ -419,7 +419,7 @@ class ExperimentServiceImplIntegrationTest {
     }
 
     @Test
-    fun `goal scopes require a meaningful eligibility context and support explicit application scopes`() = withDb {
+    fun `goal scopes require a meaningful eligibility context and treat application scopes as optional`() = withDb {
         val flag = transaction { insertFlag() }
         val ordinary = service.add(experimentInput(flag))
         val gated = service.add(experimentInput(flag).copy(activationFilter = ExperimentActivationFilter(eventType = EventType.Impression)))
@@ -428,13 +428,16 @@ class ExperimentServiceImplIntegrationTest {
         for (input in listOf(
             base.copy(activation = GoalActivation(filter, sameSession = true)),
             base.copy(outcomeScope = GoalOutcomeScope(sameSession = true)),
+            base.copy(outcomeScope = GoalOutcomeScope(applicationIds = listOf("site"), attributeRecommendationDestination = true)),
+        )) assertFailsWith<IllegalArgumentException> { service.addConversionGoal(ordinary.id, input) }
+        // Without application ids, assignment-based goals place no application restriction.
+        for (input in listOf(
             base.copy(activation = GoalActivation(filter)),
             base.copy(activation = GoalActivation(filter), outcomeScope = GoalOutcomeScope(applicationIds = listOf("site"))),
             base.copy(activation = GoalActivation(filter, applicationIds = listOf("site")),
                 outcomeScope = GoalOutcomeScope(maxDelaySeconds = 60)),
             base.copy(outcomeScope = GoalOutcomeScope(maxDelaySeconds = 60)),
-            base.copy(outcomeScope = GoalOutcomeScope(applicationIds = listOf("site"), attributeRecommendationDestination = true)),
-        )) assertFailsWith<IllegalArgumentException> { service.addConversionGoal(ordinary.id, input) }
+        )) service.deleteConversionGoal(service.addConversionGoal(ordinary.id, input).id)
         assertFailsWith<IllegalArgumentException> { service.addConversionGoal(gated.id,
             base.copy(metricType = GoalMetricType.SESSION_DURATION, eventType = null, outcomeScope = GoalOutcomeScope(recommendationCard = true))) }
         assertFailsWith<IllegalArgumentException> { service.addConversionGoal(gated.id,
@@ -445,10 +448,10 @@ class ExperimentServiceImplIntegrationTest {
         val scopedOutcome = service.addConversionGoal(ordinary.id,
             base.copy(outcomeScope = GoalOutcomeScope(applicationIds = listOf("site"))))
         assertEquals(listOf("site"), scopedOutcome.outcomeScope?.applicationIds)
-        assertFailsWith<IllegalArgumentException> {
-            service.editConversionGoal(scopedOutcome.id,
-                base.copy(activation = GoalActivation(filter), outcomeScope = GoalOutcomeScope(applicationIds = listOf("site"))))
-        }
+        assertTrue(assertNotNull(service.editConversionGoal(scopedOutcome.id,
+            base.copy(activation = GoalActivation(filter), outcomeScope = GoalOutcomeScope(applicationIds = listOf("site"))))
+            .activation).applicationIds.isEmpty())
+        service.editConversionGoal(scopedOutcome.id, base.copy(outcomeScope = GoalOutcomeScope(applicationIds = listOf("site"))))
         val scopedActivation = service.addConversionGoal(ordinary.id,
             base.copy(activation = GoalActivation(filter.copy(applicationIds = listOf("site"))),
                 outcomeScope = GoalOutcomeScope(applicationIds = listOf("site"))))
@@ -457,10 +460,8 @@ class ExperimentServiceImplIntegrationTest {
             GoalActivationRule("control", GoalActivationMode.EVENT, filter.copy(applicationIds = listOf("site"))),
             GoalActivationRule("treatment", GoalActivationMode.EVENT, filter),
         ))
-        assertFailsWith<IllegalArgumentException> {
-            service.addConversionGoal(ordinary.id, base.copy(activation = mixedRules,
-                outcomeScope = GoalOutcomeScope(applicationIds = listOf("site"))))
-        }
+        assertNotNull(service.addConversionGoal(ordinary.id, base.copy(activation = mixedRules,
+            outcomeScope = GoalOutcomeScope(applicationIds = listOf("site")))).activation)
         val notApplicable = mixedRules.copy(variationRules = mixedRules.variationRules.map {
             if (it.variationKey == "treatment") GoalActivationRule(it.variationKey, GoalActivationMode.NOT_APPLICABLE) else it
         })
