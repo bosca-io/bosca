@@ -2,13 +2,11 @@ package bosca.backup
 
 import bosca.storage.service.ObjectPath
 import bosca.storage.service.ObjectStorageService
-import bosca.storage.service.StringObjectPath
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
-import java.security.MessageDigest
 
 /**
  * Reads and publishes object inventories in a selected backup destination.
@@ -70,36 +68,12 @@ class ObjectBackupManifestStore(
     private suspend fun verifyPayloads(manifest: ObjectBackupManifest) {
         val context = currentCoroutineContext()
         val verified = mutableSetOf<String>()
-        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
 
         for (entry in manifest.objects) {
             context.ensureActive()
             if (!verified.add(entry.payloadPath)) continue
 
-            val digest = MessageDigest.getInstance("SHA-256")
-            var length = 0L
-
-            storage.getInputStream(StringObjectPath(entry.payloadPath)).use { input ->
-                while (true) {
-                    context.ensureActive()
-
-                    val read = input.read(buffer)
-                    if (read == -1) break
-
-                    length += read
-                    check(length <= entry.length) {
-                        "Backup payload exceeds expected length: ${entry.payloadPath}"
-                    }
-                    digest.update(buffer, 0, read)
-                }
-            }
-
-            check(length == entry.length) {
-                "Backup payload length mismatch: ${entry.payloadPath}"
-            }
-            check(digest.digest().toHexString() == entry.sha256) {
-                "Backup payload SHA-256 mismatch: ${entry.payloadPath}"
-            }
+            storage.verifyBackupPayload(entry)
         }
     }
 }

@@ -17,4 +17,32 @@ data class BackupObject(
     val length: Long,
     val sha256: String,
     val payloadPath: String,
-)
+) {
+    /** Checks that this revision identifies a payload with a portable destination key. */
+    fun validate() {
+        require(
+            store.isNotBlank() &&
+                key.isNotBlank() &&
+                revision.isNotBlank()
+        ) {
+            "Object store, key, and revision identity are required"
+        }
+        require(length >= 0) {
+            "Invalid object length for $key: $length"
+        }
+        require(SHA256.matches(sha256)) {
+            "Invalid SHA-256 digest for $key"
+        }
+        require(
+            payloadPath.split('/').all {
+                it.isNotEmpty() && it != "." && it != ".."
+            }
+        ) {
+            "Invalid backup payload path: $payloadPath"
+        }
+    }
+
+    companion object {
+        private val SHA256 = Regex("[0-9a-f]{64}")
+    }
+}

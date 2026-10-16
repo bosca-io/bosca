@@ -52,26 +52,7 @@ data class ObjectBackupManifest(
         val payloads = mutableMapOf<String, Pair<Long, String>>()
 
         for (entry in objects) {
-            require(
-                entry.store.isNotBlank() &&
-                    entry.key.isNotBlank() &&
-                    entry.revision.isNotBlank()
-            ) {
-                "Object store, key, and revision identity are required"
-            }
-            require(entry.length >= 0) {
-                "Invalid object length for ${entry.key}: ${entry.length}"
-            }
-            require(SHA256.matches(entry.sha256)) {
-                "Invalid SHA-256 digest for ${entry.key}"
-            }
-            require(
-                entry.payloadPath.split('/').all {
-                    it.isNotEmpty() && it != "." && it != ".."
-                }
-            ) {
-                "Invalid backup payload path: ${entry.payloadPath}"
-            }
+            entry.validate()
             require(revisions.add(Triple(entry.store, entry.key, entry.revision))) {
                 "Duplicate object revision: ${entry.store}/${entry.key}@${entry.revision}"
             }
@@ -83,9 +64,5 @@ data class ObjectBackupManifest(
             }
             payloads[entry.payloadPath] = identity
         }
-    }
-
-    companion object {
-        private val SHA256 = Regex("[0-9a-f]{64}")
     }
 }
