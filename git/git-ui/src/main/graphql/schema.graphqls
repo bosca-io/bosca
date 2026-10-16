@@ -88,7 +88,8 @@ type Git {
   tree(repositoryId: UUID!, ref: String, path: String): [GitTreeEntry!]!
   blob(repositoryId: UUID!, ref: String!, path: String!): GitBlob
   branches(repositoryId: UUID!): [GitBranchInfo!]!
-  tags(repositoryId: UUID!): [GitTagInfo!]!
+  tags(repositoryId: UUID!, limit: Int, offset: Long, query: String): [GitTagInfo!]!
+  tag(repositoryId: UUID!, name: String!): GitTagInfo
   commit(repositoryId: UUID!, sha: String!): GitCommitInfo
   commits(
     repositoryId: UUID!
@@ -121,6 +122,7 @@ enum GitTreeEntryType {
 }
 
 type GitRepository {
+  configuration: GitRepositoryConfiguration!
   id: UUID!
   name: String!
   slug: String!
@@ -139,6 +141,10 @@ type GitRepository {
   diskSizeBytes: Long!
   created: DateTime!
   updated: DateTime!
+}
+
+type GitRepositoryConfiguration {
+  deleteBranchOnMerge: Boolean!
 }
 
 type GitTreeEntry {
@@ -454,6 +460,7 @@ enum GitCommitStatusState {
 }
 
 type GitPullRequest {
+  deleteBranchOnMerge: Boolean!
   id: UUID!
   "Version used to reject stale edits and reviews."
   version: Long!
@@ -553,6 +560,7 @@ enum GitMergeStrategy {
 }
 
 input CreateGitPullRequestInput {
+  deleteBranchOnMerge: Boolean
   repositoryId: UUID!
   title: String!
   description: String
@@ -563,6 +571,7 @@ input CreateGitPullRequestInput {
 }
 
 input UpdateGitPullRequestInput {
+  deleteBranchOnMerge: Boolean
   title: String
   description: String
   sourceBranch: String

@@ -35,7 +35,10 @@ import org.eclipse.jgit.lib.Constants
 import org.eclipse.jgit.lib.FileMode
 import org.eclipse.jgit.lib.ObjectId
 import org.eclipse.jgit.lib.Repository
+import org.eclipse.jgit.lib.Ref
+import java.util.PriorityQueue
 import org.eclipse.jgit.revwalk.RevCommit
+import org.eclipse.jgit.revwalk.RevTag
 import org.eclipse.jgit.revwalk.RevWalk
 import org.eclipse.jgit.treewalk.TreeWalk
 import org.eclipse.jgit.treewalk.filter.PathFilter
@@ -62,6 +65,8 @@ class RepositoryBrowseServiceImpl(
         .maximumSize(4096)
         .expireAfterAccess(Duration.ofMinutes(30))
         .build<HistoryKey, HistoryStats>()
+
+    private val tagDates = TagDateCache()
 
     private val treeCache = ServiceCache<String, List<TreeEntry>>(
         cacheName = "git:tree",
@@ -208,37 +213,54 @@ class RepositoryBrowseServiceImpl(
         }
     }
 
-    override suspend fun listTags(repositoryId: UUID): List<TagInfo> {
-        return withRepository(repositoryId) {
-            val refs = it.refDatabase.getRefsByPrefix(Constants.R_TAGS)
-            val revWalk = RevWalk(it)
-            val tags = refs.map { ref ->
-                val name = ref.name.removePrefix(Constants.R_TAGS)
-                val peeledRef = it.refDatabase.peel(ref)
-                val peeledId = peeledRef.peeledObjectId
-
-                if (peeledId != null) {
-                    try {
-                        val tagObj = revWalk.parseTag(ref.objectId)
-                        TagInfo(
-                            name = name,
-                            sha = ref.objectId.name(),
-                            targetSha = peeledId.name(),
-                            taggerName = tagObj.taggerIdent?.name,
-                            taggerEmail = tagObj.taggerIdent?.emailAddress,
-                            message = tagObj.fullMessage,
-                            isAnnotated = true
-                        )
-                    } catch (_: Exception) {
-                        TagInfo(name = name, sha = ref.objectId.name(), targetSha = peeledId.name(), isAnnotated = true)
-                    }
-                } else {
-                    TagInfo(name = name, sha = ref.objectId.name(), isAnnotated = false)
+    override suspend fun listTags(repositoryId: UUID, limit: Int?, offset: Long, query: String?): List<TagInfo> {
+        require(offset >= 0) { "Tag offset must not be negative" }
+        require(limit == null || limit > 0) { "Tag limit must be positive" }
+        return withRepository(repositoryId) { repository ->
+            val refs = repository.refDatabase.getRefsByPrefix(Constants.R_TAGS)
+            if (offset >= refs.size) return@withRepository emptyList()
+            val window = minOf(refs.size.toLong(), offset + (limit?.toLong() ?: refs.size.toLong())).toInt()
+            val order = compareByDescending<Pair<Ref, Long>> { it.second }.thenBy { it.first.name }
+            val newest = PriorityQueue(order.reversed())
+            // Keep only the requested window and release parsed objects between batches.
+            // Ref enumeration and dates always come from Git, including imported tags.
+            val matching = refs.asSequence().filter {
+                query.isNullOrBlank() || it.name.removePrefix(Constants.R_TAGS).contains(query, ignoreCase = true)
+            }
+            tagDates.forEach(repositoryId, repository, matching) { ref, created ->
+                val candidate = ref to created
+                if (newest.size < window) newest.add(candidate)
+                else if (order.compare(candidate, newest.peek()) < 0) {
+                    newest.poll()
+                    newest.add(candidate)
                 }
             }
-            revWalk.dispose()
-            tags
+            RevWalk(repository).use { walk ->
+                newest.sortedWith(order).drop(offset.toInt()).map { tagInfo(it.first, walk) }
+            }
         }
+    }
+
+    override suspend fun getTag(repositoryId: UUID, name: String): TagInfo? = withRepository(repositoryId) { repository ->
+        val ref = repository.refDatabase.exactRef(Constants.R_TAGS + name.removePrefix(Constants.R_TAGS))
+            ?: return@withRepository null
+        RevWalk(repository).use { tagInfo(ref, it) }
+    }
+
+    private fun tagInfo(ref: Ref, walk: RevWalk): TagInfo {
+        val name = ref.name.removePrefix(Constants.R_TAGS)
+        val target = walk.parseAny(ref.objectId)
+        return if (target is RevTag) {
+            TagInfo(
+                name = name,
+                sha = ref.objectId.name(),
+                targetSha = walk.peel(target).name(),
+                taggerName = target.taggerIdent?.name,
+                taggerEmail = target.taggerIdent?.emailAddress,
+                message = target.fullMessage,
+                isAnnotated = true,
+            )
+        } else TagInfo(name = name, sha = ref.objectId.name(), isAnnotated = false)
     }
 
     override suspend fun blame(repositoryId: UUID, ref: String, path: String): List<BlameLine> {

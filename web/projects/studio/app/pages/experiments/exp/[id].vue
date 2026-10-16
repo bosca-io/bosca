@@ -461,6 +461,9 @@ const controlVariationOptions = computed<SelectOption[]>(() =>
   }),
 )
 
+const variationNames = computed<Record<string, string>>(() =>
+  Object.fromEntries(flagVariations.value.map(v => [v.key, v.name])))
+
 function variationName(key: string): string {
   return flagVariations.value.find((v) => v.key === key)?.name ?? key
 }
@@ -1025,6 +1028,25 @@ function liftColor(n: number | null | undefined, goalId: string, variationKey: s
   if (n > 0) return '#34d99a'
   if (n < 0) return '#e5484d'
   return 'var(--fg-3)'
+}
+
+/**
+ * The corrected planned-comparison threshold against control, when the current report carries
+ * one; otherwise the uncorrected 95% level. Multi-arm families require more than 95%.
+ */
+function controlThreshold(goalId: string, variationKey: string): number {
+  const control = controlVariationKey.value ?? ''
+  return plannedComparisons.value.find(c => c.goalId === goalId
+    && [c.leftVariationKey, c.rightVariationKey].includes(variationKey)
+    && [c.leftVariationKey, c.rightVariationKey].includes(control))?.threshold ?? 0.95
+}
+
+function evidenceColor(level: number | null, goalId: string, variationKey: string): string {
+  if (level == null) return '#6c7388'
+  const threshold = controlThreshold(goalId, variationKey)
+  if (level >= threshold) return '#34d99a'
+  if (level >= threshold - 0.05) return '#f59e42'
+  return '#6c7388'
 }
 
 function confidenceColor(level: number | null): string {
@@ -1638,15 +1660,6 @@ const canArchive = computed(() => {
                   <p class="goal-result-filter mono">Matches: {{ group.filterDescription }}</p>
                 </div>
 
-                <p v-if="latestReport && !comparisonsMatchResults" class="goal-result-filter">
-                  Run analysis to update comparisons for these results.
-                </p>
-                <GoalAnalysisCharts
-                  :rows="group.rows"
-                  :activation="group.activation"
-                  :metric-type="group.metricType"
-                  :comparisons="plannedComparisons.filter(c => c.goalId === group.goalId)" />
-
                 <div v-if="duplicateGoalIds.has(group.goalId)" class="duplicate-warning">
                   <strong>Duplicate goal:</strong> another goal in this experiment has the same
                   filter and is producing identical numbers. Distinguish them by setting
@@ -1768,21 +1781,33 @@ const canArchive = computed(() => {
                         <Badge v-if="row.isControl" color="#6c7388">baseline</Badge>
                         <Badge
                           v-else-if="analysisMethodValue === 'BAYESIAN' && row.probabilityBeatsControl != null"
-                          :color="confidenceColor(row.probabilityBeatsControl)"
+                          :color="evidenceColor(row.probabilityBeatsControl, group.goalId, row.variationKey)"
                         >
-                          P(win) {{ (row.probabilityBeatsControl * 100).toFixed(0) }}%
+                          P(win) {{ (row.probabilityBeatsControl * 100).toFixed(1) }}%
                         </Badge>
                         <Badge
                           v-else-if="row.confidenceLevel != null"
-                          :color="confidenceColor(row.confidenceLevel)"
+                          :color="evidenceColor(row.confidenceLevel, group.goalId, row.variationKey)"
                         >
-                          {{ (row.confidenceLevel * 100).toFixed(0) }}%
+                          {{ (row.confidenceLevel * 100).toFixed(1) }}%
                         </Badge>
                         <span v-else class="muted">insufficient data</span>
                       </span>
                     </div>
                   </div>
                 </template>
+
+                <p v-if="latestReport && !comparisonsMatchResults" class="stale-comparisons">
+                  Run analysis to update comparisons for these results.
+                </p>
+                <GoalAnalysisCharts
+                  :rows="group.rows"
+                  :activation="group.activation"
+                  :metric-type="group.metricType"
+                  :accent="accent"
+                  :cuped="group.cupedConfigured"
+                  :variation-names="variationNames"
+                  :comparisons="plannedComparisons.filter(c => c.goalId === group.goalId)" />
               </div>
             </div>
           </SectionCard>
@@ -2462,6 +2487,14 @@ const canArchive = computed(() => {
   margin: 6px 0 0;
   font-size: 11px;
   color: var(--fg-3);
+}
+
+.stale-comparisons {
+  margin: 0;
+  padding: 8px 14px;
+  font-size: 11px;
+  color: #f59e42;
+  border-top: 1px solid var(--line);
 }
 
 .duplicate-warning {

@@ -11,7 +11,7 @@
       <ui-card :padded="false">
         <ui-section-heading :title='if (model.page.tab == "branches") "Branches" else "Tags"'>
           <code class="section-meta">
-            { (if (model.page.tab == "branches") model.page.branches.size else model.page.tags.size).toString() + " total" }
+            { if (model.page.tab == "branches") model.page.branches.size.toString() + " total" else model.page.tags.size.toString() + " shown" }
           </code>
         </ui-section-heading>
         <if model.page.tab == "branches">
@@ -81,6 +81,16 @@
               </for>
             </div>
           </if>
+        </if>
+        <if model.page.tab == "tags" && (model.page.offset != 0L || model.page.tagsHasMore)>
+          <nav class="load-more" aria-label="Tag pages">
+            <if model.page.offset != 0L>
+              <a class="button-link" :href="model.page.previousHref">Newer tags</a>
+            </if>
+            <if model.page.tagsHasMore>
+              <a class="button-link" :href="model.page.nextHref">Older tags</a>
+            </if>
+          </nav>
         </if>
       </ui-card>
     </section>

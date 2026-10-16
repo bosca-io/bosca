@@ -66,6 +66,9 @@ class GitPullRequestController(
     fun status(source: PullRequest): PullRequestStatus = source.status
 
     @Field
+    fun deleteBranchOnMerge(source: PullRequest): Boolean = source.deleteBranchOnMerge
+
+    @Field
     fun mergeStrategy(source: PullRequest): MergeStrategy? = source.mergeStrategy
 
     @Field

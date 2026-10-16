@@ -17,7 +17,7 @@
         <form
           class="modal-form"
           data-pull-draft
-          @submit="model.create(form.title, form.description, form.source, form.target, form.draft, ctx)"
+          @submit="model.create(form.title, form.description, form.source, form.target, form.draft, form.deleteBranchOnMerge, ctx)"
         >
           <div class="modal-fields">
             <if model.message.isNotBlank()>
@@ -39,7 +39,7 @@
                     name="repo"
                     label="Target repository"
                     required
-                    @change="model.selectRepositories(form.repo, form.sourceRepo, form.title, form.description, form.source, form.target, form.draft, ctx)"
+                    @change="model.selectRepositories(form.repo, form.sourceRepo, form.title, form.description, form.source, form.target, form.draft, form.deleteBranchOnMerge, ctx)"
                   >
                     <option value="" :selected="model.page.repository.isBlank()">Choose a repository</option>
                     <for repository in model.page.repositories>
@@ -71,7 +71,7 @@
                     name="sourceRepo"
                     label="Source repository"
                     :disabled="model.page.repository.isBlank()"
-                    @change="model.selectRepositories(form.repo, form.sourceRepo, form.title, form.description, form.source, form.target, form.draft, ctx)"
+                    @change="model.selectRepositories(form.repo, form.sourceRepo, form.title, form.description, form.source, form.target, form.draft, form.deleteBranchOnMerge, ctx)"
                   >
                     <option value="" :selected="model.page.sourceRepository.isBlank()">Choose a repository</option>
                     <for repository in model.page.repositories>
@@ -108,6 +108,11 @@
               :checked="model.draft"
               label="Create as draft"
               description="Mark it ready when you want feedback."
+            />
+            <ui-switch
+              name="deleteBranchOnMerge"
+              :checked="model.deleteBranchOnMerge"
+              label="Delete source branch after merge"
             />
             <if model.page.repository.isNotBlank() && !model.page.canEdit>
               <ui-alert>Repository edit access is required to create a pull request.</ui-alert>

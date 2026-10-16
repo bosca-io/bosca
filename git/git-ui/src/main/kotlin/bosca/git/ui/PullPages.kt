@@ -124,6 +124,7 @@ suspend fun pullListPage(
         targetBranches = targetBranchesRequest.await(),
         baseHref = baseHref,
         repositoryNames = allRepositories.filterNot { it.deleted }.associate { it.id to it.name },
+        deleteBranchOnMerge = metadata?.configuration?.deleteBranchOnMerge ?: true,
     )
 }
 
@@ -183,7 +184,7 @@ suspend fun pullPage(): PullPage? = supervisorScope {
     }
     val sourceRefs = sourceRefsRequest.await()
     val sha = if (merged) pull.mergeSha.orEmpty()
-        else ctx.gql.commitShaForRef(repo.id, pull.sourceBranch, sourceRefs).orEmpty()
+        else ctx.gql.commitShaForRef(repo.id, pull.sourceBranch, sourceRefs.mapKeys { "refs/heads/${it.key}" }).orEmpty()
     val checksRequest = async {
         if (sha.isBlank()) emptyList()
         else ctx.gql.execute(GitUiStatuses, GitUiStatuses.Variables(repo.id, sha)).git.commitStatuses

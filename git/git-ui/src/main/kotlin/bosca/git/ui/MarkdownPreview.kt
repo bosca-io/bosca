@@ -24,10 +24,10 @@ class MarkdownPreview : GitMarkdownPreview {
                     error("Repository not found")
                 }
         val refs = refsRequest.await()
-        val known = refs.tags.associate { it.name to (it.targetSha ?: it.sha) } +
-            refs.branches.associate { it.name to it.sha }
+        val known = refs.tags.associate { "refs/tags/${it.name}" to (it.targetSha ?: it.sha) } +
+            refs.branches.associate { "refs/heads/${it.name}" to it.sha }
         val sha =
-            gql.commitShaForRef(id, ref, known)
+            (if (known.isEmpty()) null else gql.commitShaForRef(id, ref, known))
                 ?: run {
                     require(
                         ref == repo.defaultBranch && refs.branches.isEmpty()

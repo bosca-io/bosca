@@ -173,6 +173,7 @@ const runTarget = ref<{ repoId: string; repoName: string; pipeline: Pipeline } |
 const runRef = ref('')
 const refOptions = ref<{ value: string; label: string }[]>([])
 const refsLoading = ref(false)
+let refsRevision = 0
 const runError = ref('')
 const runStarting = ref(false)
 const runInputs = ref<GitPipelineInputDefinition[]>([])
@@ -222,32 +223,50 @@ function inputOptions(input: GitPipelineInputDefinition) {
 
 async function openRunModal(repo: RepoWithPipelines, p: Pipeline) {
   if (!repo.canExecute) return
+  const revision = ++refsRevision
   runTarget.value = { repoId: repo.id, repoName: repo.name, pipeline: p }
   runError.value = ''
   runRef.value = ''
   refOptions.value = []
   refsLoading.value = true
   try {
-    const result = await query<{ git: { tags: Array<{ name: string }>; branches: Array<{ name: string }> } }>(gql`
-      query PipelineRunRefs($repositoryId: UUID!) {
-        git {
-          tags(repositoryId: $repositoryId) { name }
-          branches(repositoryId: $repositoryId) { name }
-        }
-      }
-    `, { repositoryId: repo.id })
-    const tags = [...(result.git?.tags ?? [])]
-      .sort((a, b) => b.name.localeCompare(a.name, undefined, { numeric: true }))
-    const branches = result.git?.branches ?? []
-    refOptions.value = [
-      ...tags.map(t => ({ value: `refs/tags/${t.name}`, label: `${t.name} (tag)` })),
-      ...branches.map(b => ({ value: `refs/heads/${b.name}`, label: `${b.name} (branch)` })),
-    ]
-    runRef.value = refOptions.value[0]?.value ?? ''
+    const page = await searchRunRefs('')
+    if (revision !== refsRevision || runTarget.value?.pipeline.id !== p.id) return
+    refOptions.value = page.options
+    if (!runRef.value) runRef.value = refOptions.value[0]?.value ?? ''
   } catch (e) {
-    runError.value = e instanceof Error ? e.message : 'Failed to load refs.'
+    if (revision === refsRevision) runError.value = e instanceof Error ? e.message : 'Failed to load refs.'
+  } finally {
+    if (revision === refsRevision) refsLoading.value = false
   }
-  refsLoading.value = false
+}
+
+async function searchRunRefs(search: string, offset = 0) {
+  const repositoryId = runTarget.value?.repoId
+  if (!repositoryId) return { options: [] }
+  const text = search.trim()
+  const qualifiedTag = text.toLowerCase().startsWith('refs/tags/')
+  const qualifiedBranch = text.toLowerCase().startsWith('refs/heads/')
+  const name = qualifiedTag ? text.slice('refs/tags/'.length)
+    : qualifiedBranch ? text.slice('refs/heads/'.length) : text
+  const result = await query<{ git: { tags?: Array<{ name: string }>; branches?: Array<{ name: string }> } }>(gql`
+    query PipelineRunRefs($repositoryId: UUID!, $limit: Int!, $offset: Long!, $query: String, $includeBranches: Boolean!, $includeTags: Boolean!) {
+      git {
+        tags(repositoryId: $repositoryId, limit: $limit, offset: $offset, query: $query) @include(if: $includeTags) { name }
+        branches(repositoryId: $repositoryId) @include(if: $includeBranches) { name }
+      }
+    }
+  `, { repositoryId, limit: 26, offset, query: name, includeBranches: offset === 0 && !qualifiedTag, includeTags: !qualifiedBranch })
+  const tags = qualifiedBranch ? [] : result.git.tags ?? []
+  const branches = qualifiedTag ? [] : (result.git.branches ?? []).filter(branch => branch.name.toLowerCase().includes(name.toLowerCase()))
+  return {
+    options: [
+      ...tags.slice(0, 25).map(tag => ({ value: `refs/tags/${tag.name}`, label: `${tag.name} (tag)` })),
+      ...branches.map(branch => ({ value: `refs/heads/${branch.name}`, label: `${branch.name} (branch)` })),
+    ],
+    previousOffset: offset > 0 ? Math.max(0, offset - 25) : undefined,
+    nextOffset: tags.length > 25 ? offset + 25 : undefined,
+  }
 }
 
 async function startRun() {
@@ -372,6 +391,7 @@ async function startRun() {
         <Select
           v-model="runRef"
           :options="refOptions"
+          :on-search="searchRunRefs"
           searchable
           label="Ref"
           :placeholder="refsLoading ? 'Loading refs…' : 'Select a tag or branch…'"

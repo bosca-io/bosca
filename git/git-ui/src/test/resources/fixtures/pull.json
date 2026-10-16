@@ -1,6 +1,7 @@
 {
   "id": "pull",
   "version": 0,
+  "deleteBranchOnMerge": true,
   "repositoryId": "repo",
   "number": 1,
   "title": "Fix image",

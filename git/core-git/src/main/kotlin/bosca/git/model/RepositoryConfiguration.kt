@@ -13,8 +13,8 @@ data class RepositoryConfiguration(
     val mergeStrategies: List<MergeStrategy> = listOf(MergeStrategy.MERGE_COMMIT, MergeStrategy.SQUASH, MergeStrategy.REBASE),
     /** Whether the squash strategy is pre-selected in the merge dialog. */
     val squashByDefault: Boolean = false,
-    /** Whether the source branch is automatically deleted after a successful PR merge. */
-    val deleteBranchOnMerge: Boolean = false,
+    /** Default source-branch cleanup policy for newly created PRs. Each PR can override it. */
+    val deleteBranchOnMerge: Boolean = true,
     /** Whether all pushed commits must carry a valid GPG signature. */
     val requireSignedCommits: Boolean = false
 )

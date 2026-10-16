@@ -52,6 +52,7 @@ interface PullRequestLink {
 }
 
 interface PullRequest {
+  version: number; deleteBranchOnMerge: boolean
   id: string; number: number; title: string; description: string | null
   status: string; sourceBranch: string; targetBranch: string
   authorId: string; mergeable: boolean; created: string; updated: string
@@ -90,7 +91,7 @@ watch([repositoryId, prNumber], async ([repoId, num]) => {
     const result = await query<{ git: { pullRequest: Omit<PullRequest, 'reviews' | 'diff'> | null } }>(gql`
       query GetPR($repositoryId: UUID!, $number: Int!) {
         git { pullRequest(repositoryId: $repositoryId, number: $number) {
-          id number title description status sourceBranch targetBranch
+          id version number title description status sourceBranch targetBranch deleteBranchOnMerge
           authorId mergeable created updated mergedAt mergedBy
           mergeSha mergeStrategy repositoryId sourceRepositoryId
           conflictingFiles
@@ -167,7 +168,7 @@ async function loadReviews(repoId: string, num: number) {
 }
 
 // ─── Repo info ───────────────────────────────────────────────────────────────
-interface RepoInfo { id: string; name: string; slug: string; defaultBranch: string }
+interface RepoInfo { id: string; name: string; slug: string; defaultBranch: string; canEdit: boolean }
 const repoInfo = ref<RepoInfo | null>(null)
 const repositories = ref<RepoInfo[]>([])
 const repositoryMap = computed(() => new Map(repositories.value.map(repository => [repository.id, repository])))
@@ -178,8 +179,8 @@ watch(repositoryId, async (id) => {
     const result = await query<{ git: { repositoryById: RepoInfo | null; repositories: RepoInfo[] } }>(gql`
       query RepositoriesForPR($id: UUID!) {
         git {
-          repositoryById(id: $id) { id name slug defaultBranch }
-          repositories { id name slug defaultBranch }
+          repositoryById(id: $id) { id name slug defaultBranch canEdit }
+          repositories { id name slug defaultBranch canEdit }
         }
       }
     `, { id })
@@ -194,6 +195,27 @@ const preparingMerge = ref(false)
 const mergeStrategy = ref('MERGE_COMMIT')
 const mergePlan = ref<PullRequestLink[]>([])
 const showMergeDependenciesModal = ref(false)
+const savingBranchCleanup = ref(false)
+
+async function saveBranchCleanup(event: Event) {
+  if (!pr.value || savingBranchCleanup.value) return
+  const input = event.target as HTMLInputElement
+  savingBranchCleanup.value = true
+  error.value = ''
+  try {
+    const result = await mutation<{ git: { updatePullRequest: { version: number; deleteBranchOnMerge: boolean } } }>(gql`
+      mutation UpdatePullRequestCleanup($id: UUID!, $input: UpdateGitPullRequestInput!) {
+        git { updatePullRequest(id: $id, input: $input) { version deleteBranchOnMerge } }
+      }
+    `, { id: pr.value.id, input: { deleteBranchOnMerge: input.checked, expectedVersion: pr.value.version } })
+    Object.assign(pr.value, result.git.updatePullRequest)
+  } catch (e: unknown) {
+    error.value = e instanceof Error ? e.message : 'Failed to save branch cleanup setting'
+  } finally {
+    input.checked = pr.value.deleteBranchOnMerge
+    savingBranchCleanup.value = false
+  }
+}
 
 const mergeStrategyOptions = [
   { value: 'MERGE_COMMIT', label: 'Merge Commit' },
@@ -1056,6 +1078,15 @@ git push origin {{ pr.sourceBranch }}</pre>
           <div v-if="pr.status === 'OPEN' || pr.status === 'DRAFT'" class="card">
             <div class="card-section-title">Actions</div>
             <div class="action-stack">
+              <label class="branch-cleanup">
+                <input
+                  type="checkbox"
+                  :checked="pr.deleteBranchOnMerge"
+                  :disabled="!repoInfo?.canEdit || savingBranchCleanup || merging || preparingMerge"
+                  @change="saveBranchCleanup"
+                >
+                <span>Delete source branch after merge</span>
+              </label>
               <template v-if="pr.status === 'DRAFT'">
                 <Button
                   primary
@@ -1076,7 +1107,7 @@ git push origin {{ pr.sourceBranch }}</pre>
                   primary
                   :accent="accent"
                   size="sm"
-                  :disabled="!pr.mergeable || merging || preparingMerge"
+                  :disabled="!pr.mergeable || merging || preparingMerge || savingBranchCleanup"
                   @click="handleMerge"
                 >
                   {{ merging ? 'Merging…' : preparingMerge ? 'Checking dependencies…' : 'Merge Pull Request' }}
@@ -1480,6 +1511,7 @@ git push origin {{ pr.sourceBranch }}</pre>
 .link-btn:hover { text-decoration: underline; }
 
 /* ─── Actions ─────────────────────────────────────────────────────────────── */
+.branch-cleanup { display: flex; align-items: center; gap: 8px; font-size: 12px; }
 .action-stack { display: flex; flex-direction: column; gap: 10px; }
 .merge-row { display: flex; gap: 8px; }
 .merge-warning { font-size: 12px; color: #ff5d6c; margin: 0; }

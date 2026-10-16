@@ -8,8 +8,14 @@ export interface SelectOption {
 }
 export interface SelectSearch {
   query: string;
-  resolve: (options: SelectOption[]) => void;
+  offset: number;
+  resolve: (options: SelectOption[] | SelectPage) => void;
   reject: (error: unknown) => void;
+}
+export interface SelectPage {
+  options: SelectOption[];
+  previousOffset?: number;
+  nextOffset?: number;
 }
 
 /** Enhances a native form select; the native values remain the form submission contract. */
@@ -23,6 +29,11 @@ export function richSelect(ctx: ClientContext) {
   const popup = ctx.ref<HTMLElement>("popup");
   const list = ctx.ref<HTMLElement>("options");
   const status = ctx.ref<HTMLElement>("status");
+  const pagination = ctx.ref<HTMLElement>("pagination");
+  const previous = ctx.ref<HTMLButtonElement>("previous");
+  const next = ctx.ref<HTMLButtonElement>("next");
+  let previousOffset: number | undefined;
+  let nextOffset: number | undefined;
   if (
     !native ||
     !control ||
@@ -203,10 +214,11 @@ export function richSelect(ctx: ClientContext) {
       query.focus();
     } else close(true);
   };
-  const filter = () => {
+  const filter = (offset = 0) => {
     const value = query.value.trim();
     const current = ++revision;
     if (timer) clearTimeout(timer);
+    if (pagination) pagination.hidden = true;
     if (!asynchronous) {
       let options: SelectOption[] = initial.filter(
         (option) =>
@@ -243,15 +255,24 @@ export function richSelect(ctx: ClientContext) {
     render([]);
     timer = setTimeout(async () => {
       try {
-        const options = await new Promise<SelectOption[]>((resolve, reject) => {
+        const result = await new Promise<SelectOption[] | SelectPage>((resolve, reject) => {
           ctx.root.dispatchEvent(
             new CustomEvent<SelectSearch>("selectsearch", {
               bubbles: true,
-              detail: { query: value, resolve, reject },
+              detail: { query: value, offset, resolve, reject },
             }),
           );
         });
         if (current !== revision || !expanded) return;
+        let options = Array.isArray(result) ? result : result.options;
+        previousOffset = Array.isArray(result) ? undefined : result.previousOffset;
+        nextOffset = Array.isArray(result) ? undefined : result.nextOffset;
+        if (pagination) pagination.hidden = previousOffset === undefined && nextOffset === undefined;
+        if (previous) previous.disabled = previousOffset === undefined;
+        if (next) next.disabled = nextOffset === undefined;
+        if (allowCustom && value && !options.some((option) => option.value === value)) {
+          options = [...options, { value, label: `Use “${value}”`, custom: true }];
+        }
         searching = false;
         popup.removeAttribute("aria-busy");
         options.forEach((option) => remembered.set(option.value, option));
@@ -280,7 +301,20 @@ export function richSelect(ctx: ClientContext) {
     if (searchable) query.focus();
   };
   ctx.on(trigger, "click", () => (expanded ? close() : open()));
-  ctx.on(query, "input", filter);
+  ctx.on(query, "input", () => filter());
+  ctx.on<KeyboardEvent>(popup, "keydown", (event) => {
+    if (event.key === "Escape" && expanded) {
+      event.preventDefault();
+      event.stopPropagation();
+      close(true);
+    }
+  });
+  if (previous) ctx.on(previous, "click", () => {
+    if (previousOffset !== undefined) { filter(previousOffset); query.focus(); }
+  });
+  if (next) ctx.on(next, "click", () => {
+    if (nextOffset !== undefined) { filter(nextOffset); query.focus(); }
+  });
   ctx.on<PointerEvent>(list, "pointerdown", (event) => {
     if (!(event.target instanceof Element)) return;
     const item = event.target.closest<HTMLElement>("[data-index]");
@@ -307,6 +341,7 @@ export function richSelect(ctx: ClientContext) {
       return;
     }
     if (event.key === "Tab") {
+      if (expanded && pagination && !pagination.hidden && event.target === query && !event.shiftKey) return;
       close();
       return;
     }
@@ -346,6 +381,9 @@ export function richSelect(ctx: ClientContext) {
   ctx.on<KeyboardEvent>(trigger, "keydown", keydown);
   ctx.on<KeyboardEvent>(query, "keydown", keydown);
   ctx.on(native, "change", renderLabel);
+  ctx.on<FocusEvent>(popup, "focusout", (event) => {
+    if (event.relatedTarget instanceof Node && !ctx.root.contains(event.relatedTarget)) close();
+  });
   ctx.on(native, "invalid", (event) => {
     event.preventDefault();
     trigger.setAttribute("aria-invalid", "true");
