@@ -273,6 +273,38 @@ class ObjectBackupProgressIntegrationTest {
         assertEquals(prepared, request { service.get(prepared.key) })
     }
 
+    @Test
+    fun `revision lookup does not create intent and preserves exact existing progress`(): Unit = runBlocking {
+        assertNull(request { service.get("source-1", "destination-1", "content", payload) })
+        assertTrue(request { service.list("source-1", "destination-1", "content", 0, 10) }.isEmpty())
+        val completed = request { completed() }
+
+        assertEquals(completed, request { service.get("source-1", "destination-1", "content", payload) })
+        assertNull(request { service.get("other-source", "destination-1", "content", payload) })
+        assertNull(request { service.get("source-1", "other-destination", "content", payload) })
+        assertNull(request { service.get("source-1", "destination-1", "other-scope", payload) })
+        assertNull(request { service.get("source-1", "destination-1", "content", payload.copy(revision = "other")) })
+        assertEquals(listOf(completed), request { service.list("source-1", "destination-1", "content", 0, 10) })
+    }
+
+    @Test
+    fun `revision lookup rejects invalid and conflicting claims without changing persisted intent`(): Unit = runBlocking {
+        val prepared = request { prepare() }
+        for (changed in listOf(payload.copy(length = 5), payload.copy(payloadPath = "other/path"))) {
+            assertFailsWith<IllegalArgumentException> {
+                request { service.get("source-1", "destination-1", "content", changed) }
+            }
+        }
+        assertFailsWith<IllegalArgumentException> {
+            request { service.get(" ", "destination-1", "content", payload) }
+        }
+        assertFailsWith<IllegalArgumentException> {
+            request { service.get("source-1", "destination-1", "content", payload.copy(sha256 = "bad")) }
+        }
+
+        assertEquals(prepared, request { service.get(prepared.key) })
+    }
+
     private suspend fun prepare(): ObjectBackupProgress =
         service.prepare("source-1", "destination-1", "content", payload)
 

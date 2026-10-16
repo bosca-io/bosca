@@ -7,6 +7,21 @@ import bosca.storage.service.ObjectStorageService
 /** Materializes a retained object inventory using independent recovery storage. */
 interface ObjectBackupRestoreService : Service {
     /**
+     * Validates retained backup payloads and inspects their destination objects without writes.
+     *
+     * Returns existing progress without creating intent or changing its state. Conflicts are
+     * reported per object; invalid manifests, mappings and unavailable/corrupt backup payloads
+     * fail explicitly. Inspection does not reserve destinations or establish database coverage.
+     * [restore] checks storage again when it executes; the same isolation requirements apply.
+     */
+    suspend fun inspect(
+        path: ObjectPath,
+        backup: ObjectStorageService,
+        destinations: Map<String, ObjectStorageService>,
+        destinationId: String,
+    ): ObjectBackupRestoreInspection
+
+    /**
      * Restores the manifest at [path] to its original logical store/key locations.
      *
      * Validates all mappings and retained payloads before writing destination assets. Matching

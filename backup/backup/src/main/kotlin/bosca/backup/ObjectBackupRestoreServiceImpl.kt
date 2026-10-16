@@ -18,12 +18,12 @@ class ObjectBackupRestoreServiceImpl(
     private val progress: ObjectBackupProgressService,
     private val json: Json,
 ) : ObjectBackupRestoreService {
-    override suspend fun restore(
+    override suspend fun inspect(
         path: ObjectPath,
         backup: ObjectStorageService,
         destinations: Map<String, ObjectStorageService>,
         destinationId: String,
-    ): ObjectBackupManifest {
+    ): ObjectBackupRestoreInspection {
         require(destinationId.isNotBlank()) {
             "Object restore destination identity is required"
         }
@@ -37,17 +37,43 @@ class ObjectBackupRestoreServiceImpl(
         manifests.verify(inventory)
 
         val context = currentCoroutineContext()
-        val checkpoints = required.map { entry ->
+        val objects = inventory.objects.map { entry ->
+            context.ensureActive()
+            val targetPayload = entry.copy(payloadPath = entry.key)
+            val checkpoint = withConnectionManager {
+                progress.get(inventory.sourceId, destinationId, inventory.scope, targetPayload)
+            }
+            val status = inspectTarget(targets.getValue(entry.store), targetPayload, checkpoint)
+            ObjectBackupRestoreObject(entry, status, checkpoint)
+        }
+
+        context.ensureActive()
+        return ObjectBackupRestoreInspection(inventory, objects)
+    }
+
+    override suspend fun restore(
+        path: ObjectPath,
+        backup: ObjectStorageService,
+        destinations: Map<String, ObjectStorageService>,
+        destinationId: String,
+    ): ObjectBackupManifest {
+        val targets = destinations.toMap()
+        val inspection = inspect(path, backup, targets, destinationId)
+        for (item in inspection.objects) {
+            check(item.status != ObjectBackupRestoreObjectStatus.CONFLICTING) {
+                "Existing destination object conflicts with restore: ${item.payload.store}/${item.payload.key}"
+            }
+        }
+
+        val inventory = inspection.inventory
+        val required = inventory.objects.map { it.copy(payloadPath = it.key) }
+        val context = currentCoroutineContext()
+
+        for (entry in required) {
             context.ensureActive()
             withConnectionManager {
                 progress.prepare(inventory.sourceId, destinationId, inventory.scope, entry)
             }
-        }
-
-        for (checkpoint in checkpoints) {
-            context.ensureActive()
-            val destination = targets.getValue(checkpoint.payload.store)
-            validateExistingTarget(destination, checkpoint)
         }
 
         for ((index, entry) in required.withIndex()) {
@@ -91,17 +117,21 @@ class ObjectBackupRestoreServiceImpl(
         }
     }
 
-    private suspend fun validateExistingTarget(
+    private suspend fun inspectTarget(
         destination: ObjectStorageService,
-        checkpoint: ObjectBackupProgress,
-    ): Unit = withContext(Dispatchers.IO) {
+        payload: BackupObject,
+        checkpoint: ObjectBackupProgress?,
+    ): ObjectBackupRestoreObjectStatus = withContext(Dispatchers.IO) {
         try {
-            destination.verifyBackupPayload(checkpoint.payload)
+            destination.verifyBackupPayload(payload)
+            ObjectBackupRestoreObjectStatus.MATCHING
         } catch (_: ObjectNotFoundException) {
-            // Missing objects can be materialized by this restore.
+            ObjectBackupRestoreObjectStatus.MISSING
         } catch (_: BackupPayloadMismatchException) {
-            check(checkpoint.attempts > 0) {
-                "Existing destination object conflicts with restore: ${checkpoint.payload.store}/${checkpoint.payload.key}"
+            if ((checkpoint?.attempts ?: 0) > 0) {
+                ObjectBackupRestoreObjectStatus.REPAIRABLE
+            } else {
+                ObjectBackupRestoreObjectStatus.CONFLICTING
             }
         }
     }

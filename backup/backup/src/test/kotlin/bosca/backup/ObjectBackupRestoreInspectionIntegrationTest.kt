@@ -1,0 +1,328 @@
+package bosca.backup
+
+import bosca.db.ConnectionConfig
+import bosca.db.ConnectionFactoryImpl
+import bosca.db.ConnectionPool
+import bosca.db.migrations.FlywayMigration
+import bosca.db.migrations.Migration
+import bosca.db.withConnectionManager
+import bosca.di.BackupProviderRegistrar
+import bosca.di.ProviderRegistry
+import bosca.di.annotation.InternalDI
+import bosca.di.provide
+import bosca.di.provides
+import bosca.storage.service.FileSystemObjectStorageService
+import bosca.storage.service.ObjectNotFoundException
+import bosca.storage.service.ObjectStorageService
+import bosca.storage.service.StringObjectPath
+import bosca.test.resources.SharedPostgreSQLContainer
+import io.mockk.coEvery
+import io.mockk.coVerify
+import io.mockk.mockk
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.SerializationException
+import kotlinx.serialization.json.Json
+import java.io.IOException
+import java.nio.file.Path
+import java.security.MessageDigest
+import kotlin.io.path.createTempDirectory
+import kotlin.test.AfterTest
+import kotlin.test.BeforeTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertTrue
+
+/** Real recovery storage, generated services and a separate progress database. */
+@OptIn(InternalDI::class)
+class ObjectBackupRestoreInspectionIntegrationTest {
+    private lateinit var postgres: SharedPostgreSQLContainer
+    private lateinit var pool: ConnectionPool
+    private lateinit var service: ObjectBackupRestoreService
+    private lateinit var progress: ObjectBackupProgressService
+    private lateinit var directory: Path
+    private lateinit var backup: FileSystemObjectStorageService
+    private lateinit var content: FileSystemObjectStorageService
+    private lateinit var artifacts: FileSystemObjectStorageService
+    private val path = StringObjectPath("manifests/recovery.json")
+    private val first = entry("content", "metadata/a/1/content", "data")
+    private val second = entry("artifacts", "packages/b", "more")
+    private val inventory = ObjectBackupManifest(
+        id = "snapshot-1",
+        sourceId = "old-instance",
+        scope = "content-and-artifacts",
+        created = "2026-10-16T00:00:00Z",
+        objects = listOf(first, second),
+    )
+
+    @BeforeTest
+    fun setUp(): Unit = runBlocking {
+        postgres = SharedPostgreSQLContainer().withDatabaseName("object_backup_restore_inspection").apply { start() }
+        pool = ConnectionPool(ConnectionFactoryImpl(
+            ConnectionConfig(postgres.jdbcUrl, postgres.username, postgres.password, maxConnections = 3),
+            key = "object-backup-restore-inspection-test",
+        ))
+        ProviderRegistry.clear()
+        provides<ConnectionPool>(singleton = true) { pool }
+        provides<Json>(singleton = true) { Json }
+        BackupProviderRegistrar().register()
+        FlywayMigration(pool).migrate(listOf(provide<Migration>(name = "backup-migrations")))
+        service = provide()
+        progress = provide()
+
+        directory = createTempDirectory("bosca-object-restore-")
+        backup = storage("independent-backup")
+        content = storage("restored-content")
+        artifacts = storage("restored-artifacts")
+        write(backup, first.payloadPath, "data")
+        write(backup, second.payloadPath, "more")
+        save()
+    }
+
+    @AfterTest
+    fun tearDown(): Unit = runBlocking {
+        try {
+            if (::pool.isInitialized) pool.close()
+        } finally {
+            if (::postgres.isInitialized) postgres.stop()
+            if (::directory.isInitialized) directory.toFile().deleteRecursively()
+            ProviderRegistry.clear()
+        }
+    }
+
+    @Test
+    fun `missing objects are reported in inventory order without creating progress`(): Unit = runBlocking {
+        val inspection = inspect()
+
+        assertEquals(inventory, inspection.inventory)
+        assertEquals(inventory.objects, inspection.objects.map { it.payload })
+        assertEquals(List(2) { ObjectBackupRestoreObjectStatus.MISSING }, inspection.objects.map { it.status })
+        assertTrue(inspection.objects.all { it.progress == null })
+        assertTrue(checkpoints().isEmpty())
+        assertMissing(content, first.key)
+        assertMissing(artifacts, second.key)
+    }
+
+    @Test
+    fun `matching and conflicting destination data are both reported without writes`(): Unit = runBlocking {
+        write(content, first.key, "data")
+        write(artifacts, second.key, "independent data")
+        val target = delegate(artifacts)
+
+        val inspection = inspect(artifactTarget = target)
+
+        assertEquals(
+            listOf(ObjectBackupRestoreObjectStatus.MATCHING, ObjectBackupRestoreObjectStatus.CONFLICTING),
+            inspection.objects.map { it.status },
+        )
+        assertEquals("independent data", read(artifacts, second.key))
+        coVerify(exactly = 0) { target.setInputStream(any(), any(), any()) }
+        assertTrue(checkpoints().isEmpty())
+    }
+
+    @Test
+    fun `failed earlier output is repairable without changing its checkpoint`(): Unit = runBlocking {
+        val failed = withConnectionManager {
+            val prepared = progress.prepare(inventory.sourceId, "new-instance", inventory.scope, restorePayload(first))
+            val running = progress.start(prepared.key, prepared.version)
+            progress.fail(running.key, running.version, "interrupted")
+        }
+        write(content, first.key, "da")
+
+        val item = inspect().objects.first()
+
+        assertEquals(ObjectBackupRestoreObjectStatus.REPAIRABLE, item.status)
+        assertEquals(failed, item.progress)
+        assertEquals(listOf(failed), checkpoints())
+        assertEquals("da", read(content, first.key))
+    }
+
+    @Test
+    fun `pending intent does not authorize overwriting conflicting data`(): Unit = runBlocking {
+        val pending = withConnectionManager {
+            progress.prepare(inventory.sourceId, "new-instance", inventory.scope, restorePayload(first))
+        }
+        write(content, first.key, "other")
+
+        val item = inspect().objects.first()
+
+        assertEquals(ObjectBackupRestoreObjectStatus.CONFLICTING, item.status)
+        assertEquals(pending, item.progress)
+        assertEquals(listOf(pending), checkpoints())
+    }
+
+    @Test
+    fun `completed checkpoint is preserved while actual missing output is reported`(): Unit = runBlocking {
+        service.restore(path, backup, targets(), "new-instance")
+        val before = checkpoints()
+        artifacts.delete(StringObjectPath(second.key))
+
+        val inspection = inspect()
+
+        assertEquals(
+            listOf(ObjectBackupRestoreObjectStatus.MATCHING, ObjectBackupRestoreObjectStatus.MISSING),
+            inspection.objects.map { it.status },
+        )
+        assertTrue(inspection.objects.all { it.progress?.status == ObjectBackupProgressStatus.COMPLETED })
+        assertEquals(before, checkpoints())
+        assertMissing(artifacts, second.key)
+    }
+
+    @Test
+    fun `corrupt backup data fails inspection before reading destination storage`(): Unit = runBlocking {
+        write(backup, second.payloadPath, "oops")
+        val target = mockk<ObjectStorageService>()
+
+        assertFailsWith<BackupPayloadMismatchException> { inspect(contentTarget = target) }
+
+        coVerify(exactly = 0) { target.getInputStream(any()) }
+        assertTrue(checkpoints().isEmpty())
+    }
+
+    @Test
+    fun `missing backup payload and malformed manifest fail inspection without progress writes`(): Unit = runBlocking {
+        backup.delete(StringObjectPath(second.payloadPath))
+        assertFailsWith<ObjectNotFoundException> { inspect() }
+        write(backup, path.toString(), "{")
+        assertFailsWith<SerializationException> { inspect() }
+        assertTrue(checkpoints().isEmpty())
+    }
+
+    @Test
+    fun `destination access errors propagate without classifying them as missing`(): Unit = runBlocking {
+        val target = delegate(artifacts)
+        coEvery { target.getInputStream(any()) } throws IOException("destination unavailable")
+
+        assertFailsWith<IOException> { inspect(artifactTarget = target) }
+
+        coVerify(exactly = 0) { target.setInputStream(any(), any(), any()) }
+        assertTrue(checkpoints().isEmpty())
+    }
+
+    @Test
+    fun `destination cancellation propagates without creating progress`(): Unit = runBlocking {
+        val target = delegate(artifacts)
+        coEvery { target.getInputStream(any()) } throws CancellationException("inspection cancelled")
+
+        assertFailsWith<CancellationException> { inspect(artifactTarget = target) }
+
+        assertTrue(checkpoints().isEmpty())
+    }
+
+    @Test
+    fun `mapping validation precedes destination reads and progress creation`(): Unit = runBlocking {
+        val target = mockk<ObjectStorageService>()
+        assertFailsWith<IllegalArgumentException> {
+            service.inspect(path, backup, mapOf("content" to target), "new-instance")
+        }
+        save(inventory.copy(objects = listOf(first.copy(key = "../outside"))))
+        assertFailsWith<IllegalArgumentException> { inspect(contentTarget = target) }
+        assertFailsWith<IllegalArgumentException> {
+            service.inspect(path, backup, targets(), " ")
+        }
+        coVerify(exactly = 0) { target.getInputStream(any()) }
+        assertTrue(checkpoints().isEmpty())
+    }
+
+    @Test
+    fun `storage reads run without an active database connection`(): Unit = runBlocking {
+        val target = delegate(content)
+        coEvery { target.getInputStream(any()) } coAnswers {
+            assertEquals(0, pool.activeConnections)
+            content.getInputStream(firstArg())
+        }
+
+        inspect(contentTarget = target)
+
+        assertTrue(checkpoints().isEmpty())
+    }
+
+    @Test
+    fun `a restore checks storage again after an earlier inspection`(): Unit = runBlocking {
+        assertTrue(inspect().objects.all { it.status == ObjectBackupRestoreObjectStatus.MISSING })
+        write(artifacts, second.key, "new independent data")
+
+        val failure = assertFailsWith<IllegalStateException> {
+            service.restore(path, backup, targets(), "new-instance")
+        }
+
+        assertTrue(failure.message.orEmpty().contains(second.key))
+        assertMissing(content, first.key)
+        assertTrue(checkpoints().isEmpty())
+    }
+
+    @Test
+    fun `conflicting revision claims are rejected without changing earlier progress`(): Unit = runBlocking {
+        val prepared = withConnectionManager {
+            progress.prepare(
+                inventory.sourceId, "new-instance", inventory.scope, restorePayload(first).copy(length = 5),
+            )
+        }
+
+        assertFailsWith<IllegalArgumentException> { inspect() }
+
+        assertEquals(listOf(prepared), checkpoints())
+        assertMissing(content, first.key)
+    }
+
+    @Test
+    fun `empty inventory inspection returns no objects or progress`(): Unit = runBlocking {
+        save(inventory.copy(objects = emptyList()))
+
+        val inspection = inspect()
+
+        assertTrue(inspection.inventory.objects.isEmpty())
+        assertTrue(inspection.objects.isEmpty())
+        assertTrue(checkpoints().isEmpty())
+    }
+
+    private suspend fun inspect(
+        contentTarget: ObjectStorageService = content,
+        artifactTarget: ObjectStorageService = artifacts,
+    ): ObjectBackupRestoreInspection = service.inspect(
+        path, backup, mapOf("content" to contentTarget, "artifacts" to artifactTarget), "new-instance",
+    )
+
+    private fun targets(): Map<String, ObjectStorageService> = mapOf("content" to content, "artifacts" to artifacts)
+
+    private fun restorePayload(entry: BackupObject): BackupObject = entry.copy(payloadPath = entry.key)
+
+    private suspend fun checkpoints(): List<ObjectBackupProgress> = withConnectionManager {
+        progress.list(inventory.sourceId, "new-instance", inventory.scope, 0, 100)
+    }
+
+    private suspend fun save(manifest: ObjectBackupManifest = inventory) {
+        ObjectBackupManifestStore(backup, Json).save(path, manifest)
+    }
+
+    private fun delegate(storage: ObjectStorageService): ObjectStorageService =
+        mockk<ObjectStorageService>().also { target ->
+            coEvery { target.getInputStream(any()) } coAnswers { storage.getInputStream(firstArg()) }
+            coEvery { target.setInputStream(any(), any(), any()) } coAnswers {
+                storage.setInputStream(firstArg(), secondArg(), thirdArg())
+            }
+        }
+
+    private fun storage(name: String): FileSystemObjectStorageService = FileSystemObjectStorageService(
+        "", "", mockk(), directory.resolve(name).toString(), mockk(),
+    )
+
+    private suspend fun write(storage: ObjectStorageService, key: String, value: String) {
+        val bytes = value.toByteArray()
+        storage.setInputStream(StringObjectPath(key), bytes.inputStream(), bytes.size.toLong())
+    }
+
+    private suspend fun read(storage: ObjectStorageService, key: String): String =
+        storage.getInputStream(StringObjectPath(key)).use { it.readBytes().decodeToString() }
+
+    private suspend fun assertMissing(storage: ObjectStorageService, key: String) {
+        assertFailsWith<ObjectNotFoundException> { storage.getInputStream(StringObjectPath(key)) }
+    }
+
+    private fun entry(store: String, key: String, value: String): BackupObject {
+        val bytes = value.toByteArray()
+        val digest = MessageDigest.getInstance("SHA-256").digest(bytes).toHexString()
+        return BackupObject(store, key, "revision-1", bytes.size.toLong(), digest, "objects/$digest")
+    }
+}

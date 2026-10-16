@@ -20,6 +20,14 @@ interface ObjectBackupProgressService : Service {
     /** Reads persisted progress without changing its state. */
     suspend fun get(key: String): ObjectBackupProgress?
 
+    /** Reads exact revision intent without inserting it; conflicting immutable payload claims fail. */
+    suspend fun get(
+        sourceId: String,
+        destinationId: String,
+        scope: String,
+        payload: BackupObject,
+    ): ObjectBackupProgress?
+
     /** Lists progress within one source/destination scope. */
     suspend fun list(
         sourceId: String,

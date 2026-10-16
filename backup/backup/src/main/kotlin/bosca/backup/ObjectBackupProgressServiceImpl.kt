@@ -17,19 +17,29 @@ class ObjectBackupProgressServiceImpl(
         scope: String,
         payload: BackupObject,
     ): ObjectBackupProgress {
-        validateIdentity(sourceId, destinationId, scope)
-        payload.validate()
-
-        val identity = Json.encodeToString(
-            ListSerializer(String.serializer()),
-            listOf(sourceId, destinationId, scope, payload.store, payload.key, payload.revision),
-        )
-        val key = MessageDigest.getInstance("SHA-256").digest(identity.toByteArray()).toHexString()
+        val key = revisionKey(sourceId, destinationId, scope, payload)
         repository.add(ObjectBackupProgress(key, sourceId, destinationId, scope, payload))
 
-        val progress = checkNotNull(repository.get(key)) {
+        return checkNotNull(get(sourceId, destinationId, scope, payload)) {
             "Prepared object backup progress is missing: $key"
         }
+    }
+
+    override suspend fun get(key: String): ObjectBackupProgress? {
+        require(key.isNotBlank()) {
+            "Object backup progress key is required"
+        }
+        return repository.get(key)
+    }
+
+    override suspend fun get(
+        sourceId: String,
+        destinationId: String,
+        scope: String,
+        payload: BackupObject,
+    ): ObjectBackupProgress? {
+        val key = revisionKey(sourceId, destinationId, scope, payload)
+        val progress = repository.get(key) ?: return null
         require(
             progress.sourceId == sourceId &&
                 progress.destinationId == destinationId &&
@@ -39,13 +49,6 @@ class ObjectBackupProgressServiceImpl(
             "Conflicting object backup revision intent: $key"
         }
         return progress
-    }
-
-    override suspend fun get(key: String): ObjectBackupProgress? {
-        require(key.isNotBlank()) {
-            "Object backup progress key is required"
-        }
-        return repository.get(key)
     }
 
     override suspend fun list(
@@ -89,6 +92,22 @@ class ObjectBackupProgressServiceImpl(
             "Object backup invalidation detail is required"
         }
         return updated(repository.invalidate(key, expectedVersion, error), key, expectedVersion)
+    }
+
+    private fun revisionKey(
+        sourceId: String,
+        destinationId: String,
+        scope: String,
+        payload: BackupObject,
+    ): String {
+        validateIdentity(sourceId, destinationId, scope)
+        payload.validate()
+
+        val identity = Json.encodeToString(
+            ListSerializer(String.serializer()),
+            listOf(sourceId, destinationId, scope, payload.store, payload.key, payload.revision),
+        )
+        return MessageDigest.getInstance("SHA-256").digest(identity.toByteArray()).toHexString()
     }
 
     private fun validateIdentity(sourceId: String, destinationId: String, scope: String) {
