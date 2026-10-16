@@ -117,16 +117,12 @@ class RestoreExecutor : AbstractJobExecutor<RestoreJob>(RestoreJob.serializer())
                         log.error("Skipping suspicious path in archive: {}", storagePath)
                         continue
                     }
-                    try {
-                        zipFile.getInputStream(entry).use { input ->
-                            objectStorage.setInputStream(
-                                StringObjectPath(storagePath),
-                                input,
-                                entry.size
-                            )
-                        }
-                    } catch (e: Exception) {
-                        log.warn("Failed to restore file {}", storagePath, e)
+                    zipFile.getInputStream(entry).use { input ->
+                        objectStorage.setInputStream(
+                            StringObjectPath(storagePath),
+                            input,
+                            entry.size
+                        )
                     }
                 }
 
