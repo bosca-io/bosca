@@ -1,5 +1,6 @@
 package bosca.backup
 
+import bosca.backup.ObjectBackupOperation.RESTORE
 import bosca.db.ConnectionConfig
 import bosca.db.ConnectionFactoryImpl
 import bosca.db.ConnectionPool
@@ -337,6 +338,32 @@ class ObjectBackupRestoreIntegrationTest {
         assertTrue(checkpoints().isEmpty())
     }
 
+    @Test
+    fun `selected inventory is validated and restored without reading a manifest path`(): Unit = runBlocking {
+        val unavailable = mockk<ObjectStorageService>()
+        for (invalid in listOf(
+            inventory.copy(version = 99),
+            inventory.copy(objects = listOf(first, first)),
+            inventory.copy(objects = listOf(first.copy(key = "../outside"))),
+        )) {
+            assertFailsWith<IllegalArgumentException> {
+                service.restore(invalid, backup, mapOf("content" to unavailable), "new-instance")
+            }
+        }
+        coVerify(exactly = 0) { unavailable.getInputStream(any()) }
+        coVerify(exactly = 0) { unavailable.setInputStream(any(), any(), any()) }
+        assertTrue(checkpoints().isEmpty())
+        backup.delete(path)
+
+        val restored = service.restore(
+            inventory, backup, mapOf("content" to content, "artifacts" to artifacts), "new-instance",
+        )
+
+        assertEquals(inventory, restored)
+        assertEquals("data", read(content, first.key))
+        assertEquals("more", read(artifacts, second.key))
+    }
+
     private suspend fun restore(
         contentTarget: ObjectStorageService = content,
         artifactTarget: ObjectStorageService = artifacts,
@@ -346,7 +373,7 @@ class ObjectBackupRestoreIntegrationTest {
     )
 
     private suspend fun checkpoints(): List<ObjectBackupProgress> = withConnectionManager {
-        progress.list(inventory.sourceId, "new-instance", inventory.scope, 0, 100)
+        progress.list(RESTORE, inventory.sourceId, "new-instance", inventory.scope, 0, 100)
     }
 
     private suspend fun save(manifest: ObjectBackupManifest = inventory) {

@@ -1,5 +1,6 @@
 package bosca.backup
 
+import bosca.backup.ObjectBackupOperation.BACKUP
 import bosca.db.ConnectionConfig
 import bosca.db.ConnectionFactoryImpl
 import bosca.db.ConnectionPool
@@ -114,7 +115,7 @@ class ObjectBackupRunIntegrationTest {
     @Test
     fun `prepared run survives restart with exact inventory and ordered checkpoints`(): Unit = runBlocking {
         val run = request { service.prepare(inventory, "destination-1") }
-        request { progress.prepare(inventory.sourceId, "destination-1", inventory.scope, entry("unrelated", "x")) }
+        request { progress.prepare(BACKUP, inventory.sourceId, "destination-1", inventory.scope, entry("unrelated", "x")) }
         BackupProviderRegistrar().register()
         service = provide()
 
@@ -148,9 +149,9 @@ class ObjectBackupRunIntegrationTest {
             }
         }
 
-        assertEquals(listOf(prepared), request { service.list("source-1", "destination-1", "content", 0, 10) })
+        assertEquals(listOf(prepared), request { service.list(BACKUP, "source-1", "destination-1", "content", 0, 10) })
         assertEquals(setOf(first, second), request {
-            progress.list("source-1", "destination-1", "content", 0, 10)
+            progress.list(BACKUP, "source-1", "destination-1", "content", 0, 10)
         }.map { it.payload }.toSet())
     }
 
@@ -169,9 +170,9 @@ class ObjectBackupRunIntegrationTest {
         }
         assertFailsWith<IllegalArgumentException> { request { service.items("missing", -1, 10) } }
         assertFailsWith<IllegalArgumentException> {
-            request { service.list("source-1", "destination-1", "content", 0, 0) }
+            request { service.list(BACKUP, "source-1", "destination-1", "content", 0, 0) }
         }
-        assertTrue(request { service.list("source-1", "destination-1", "content", 0, 10) }.isEmpty())
+        assertTrue(request { service.list(BACKUP, "source-1", "destination-1", "content", 0, 10) }.isEmpty())
         assertNull(request { service.get("missing") })
         assertFailsWith<IllegalStateException> { request { service.summary("missing") } }
     }
@@ -243,7 +244,7 @@ class ObjectBackupRunIntegrationTest {
         val manifests = ObjectBackupManifestStore(destination, Json)
         assertEquals(inventory, manifests.load(StringObjectPath(completed.path)))
         manifests.verify(inventory)
-        assertEquals(completed, request { service.lastSuccessful("source-1", "destination-1", "content") })
+        assertEquals(completed, request { service.lastSuccessful(BACKUP, "source-1", "destination-1", "content") })
     }
 
     @Test
@@ -262,9 +263,9 @@ class ObjectBackupRunIntegrationTest {
         assertEquals(ObjectBackupRunStatus.PARTIAL, partial.status)
         assertEquals(summary(completed = 1, failed = 1), partial.result)
         assertEquals("source unavailable", partial.error)
-        assertEquals(successful, request { service.lastSuccessful("source-1", "destination-1", "content") })
+        assertEquals(successful, request { service.lastSuccessful(BACKUP, "source-1", "destination-1", "content") })
         assertEquals(listOf(partial, successful), request {
-            service.list("source-1", "destination-1", "content", 0, 10)
+            service.list(BACKUP, "source-1", "destination-1", "content", 0, 10)
         })
         assertFailsWith<ObjectNotFoundException> { destination.getInputStream(StringObjectPath(partial.path)) }
     }
@@ -381,7 +382,7 @@ class ObjectBackupRunIntegrationTest {
         assertFailsWith<Exception> { execute(prepared, target = target) }
 
         assertEquals(ObjectBackupRunStatus.PARTIAL, request { service.get(prepared.key) }?.status)
-        assertNull(request { service.lastSuccessful("source-1", "destination-1", "content") })
+        assertNull(request { service.lastSuccessful(BACKUP, "source-1", "destination-1", "content") })
     }
 
     @Test
@@ -471,9 +472,9 @@ class ObjectBackupRunIntegrationTest {
         request { service.prepare(inventory.copy(scope = "other-scope"), "destination-1") }
 
         assertNotEquals(firstRun.key, secondRun.key)
-        assertEquals(listOf(secondRun), request { service.list("source-1", "destination-1", "content", 0, 1) })
-        assertEquals(listOf(firstRun), request { service.list("source-1", "destination-1", "content", 1, 10) })
-        assertNull(request { service.lastSuccessful("source-1", "destination-1", "content") })
+        assertEquals(listOf(secondRun), request { service.list(BACKUP, "source-1", "destination-1", "content", 0, 1) })
+        assertEquals(listOf(firstRun), request { service.list(BACKUP, "source-1", "destination-1", "content", 1, 10) })
+        assertNull(request { service.lastSuccessful(BACKUP, "source-1", "destination-1", "content") })
     }
 
     @Test

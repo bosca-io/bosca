@@ -13,9 +13,10 @@ data class ObjectBackupRun(
     @ColumnName("destination_id")
     val destinationId: String,
     val scope: String,
+    val operation: ObjectBackupOperation,
     @property:DbMapper(JsonbMapper::class)
     val inventory: ObjectBackupManifest,
-    /** Planned manifest path; publication is acknowledged only in the completed state. */
+    /** Backup publication path or the immutable restore input manifest path. */
     val path: String,
     val status: ObjectBackupRunStatus = ObjectBackupRunStatus.PENDING,
     val attempts: Int = 0,

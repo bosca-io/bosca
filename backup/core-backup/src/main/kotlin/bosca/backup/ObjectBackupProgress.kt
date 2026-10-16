@@ -13,6 +13,7 @@ data class ObjectBackupProgress(
     @ColumnName("destination_id")
     val destinationId: String,
     val scope: String,
+    val operation: ObjectBackupOperation,
     @property:DbMapper(JsonbMapper::class)
     val payload: BackupObject,
     val status: ObjectBackupProgressStatus = ObjectBackupProgressStatus.PENDING,

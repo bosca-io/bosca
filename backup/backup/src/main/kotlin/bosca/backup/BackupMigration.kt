@@ -8,5 +8,6 @@ class BackupMigration : Migration {
     override val resources: List<String> = listOf(
         "V1__backup_object_progress.sql",
         "V2__backup_object_runs.sql",
+        "V3__object_backup_operations.sql",
     )
 }

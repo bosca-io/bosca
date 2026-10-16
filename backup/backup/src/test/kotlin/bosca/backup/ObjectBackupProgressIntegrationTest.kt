@@ -1,5 +1,7 @@
 package bosca.backup
 
+import bosca.backup.ObjectBackupOperation.BACKUP
+import bosca.backup.ObjectBackupOperation.RESTORE
 import bosca.db.ConnectionConfig
 import bosca.db.ConnectionFactoryImpl
 import bosca.db.ConnectionPool
@@ -162,7 +164,7 @@ class ObjectBackupProgressIntegrationTest {
         val prepared = request { prepare() }
 
         assertFailsWith<IllegalArgumentException> {
-            request { service.prepare("source-1", "destination-1", "content", payload.copy(sha256 = "0".repeat(64))) }
+            request { service.prepare(BACKUP, "source-1", "destination-1", "content", payload.copy(sha256 = "0".repeat(64))) }
         }
 
         assertEquals(prepared, request { service.get(prepared.key) })
@@ -172,13 +174,13 @@ class ObjectBackupProgressIntegrationTest {
     fun `a changed revision leaves earlier completed progress intact`() = runBlocking {
         val completed = request { completed() }
         val changed = request {
-            service.prepare("source-1", "destination-1", "content", payload.copy(revision = "revision-2"))
+            service.prepare(BACKUP, "source-1", "destination-1", "content", payload.copy(revision = "revision-2"))
         }
 
         assertNotEquals(completed.key, changed.key)
         assertEquals(ObjectBackupProgressStatus.PENDING, changed.status)
         assertEquals(completed, request { service.get(completed.key) })
-        assertEquals(2, request { service.list("source-1", "destination-1", "content", 0, 10) }.size)
+        assertEquals(2, request { service.list(BACKUP, "source-1", "destination-1", "content", 0, 10) }.size)
     }
 
     @Test
@@ -216,34 +218,34 @@ class ObjectBackupProgressIntegrationTest {
     fun `lists isolate source destination and scope with stable pagination`() = runBlocking {
         val first = request { prepare() }
         val second = request {
-            service.prepare("source-1", "destination-1", "content", payload.copy(key = "other-key"))
+            service.prepare(BACKUP, "source-1", "destination-1", "content", payload.copy(key = "other-key"))
         }
-        request { service.prepare("other-source", "destination-1", "content", payload) }
-        request { service.prepare("source-1", "other-destination", "content", payload) }
-        request { service.prepare("source-1", "destination-1", "other-scope", payload) }
+        request { service.prepare(BACKUP, "other-source", "destination-1", "content", payload) }
+        request { service.prepare(BACKUP, "source-1", "other-destination", "content", payload) }
+        request { service.prepare(BACKUP, "source-1", "destination-1", "other-scope", payload) }
 
-        assertEquals(listOf(first), request { service.list("source-1", "destination-1", "content", 0, 1) })
-        assertEquals(listOf(second), request { service.list("source-1", "destination-1", "content", 1, 10) })
+        assertEquals(listOf(first), request { service.list(BACKUP, "source-1", "destination-1", "content", 0, 1) })
+        assertEquals(listOf(second), request { service.list(BACKUP, "source-1", "destination-1", "content", 1, 10) })
     }
 
     @Test
     fun `invalid identities payloads and pagination do not create progress`() = runBlocking {
         assertFailsWith<IllegalArgumentException> {
-            request { service.prepare(" ", "destination-1", "content", payload) }
+            request { service.prepare(BACKUP, " ", "destination-1", "content", payload) }
         }
         assertFailsWith<IllegalArgumentException> {
-            request { service.prepare("source-1", "", "content", payload) }
+            request { service.prepare(BACKUP, "source-1", "", "content", payload) }
         }
         assertFailsWith<IllegalArgumentException> {
-            request { service.prepare("source-1", "destination-1", "", payload) }
+            request { service.prepare(BACKUP, "source-1", "destination-1", "", payload) }
         }
         assertFailsWith<IllegalArgumentException> {
-            request { service.prepare("source-1", "destination-1", "content", payload.copy(sha256 = "bad")) }
+            request { service.prepare(BACKUP, "source-1", "destination-1", "content", payload.copy(sha256 = "bad")) }
         }
         assertFailsWith<IllegalArgumentException> {
-            request { service.list("source-1", "destination-1", "content", -1, 10) }
+            request { service.list(BACKUP, "source-1", "destination-1", "content", -1, 10) }
         }
-        assertEquals(emptyList(), request { service.list("source-1", "destination-1", "content", 0, 10) })
+        assertEquals(emptyList(), request { service.list(BACKUP, "source-1", "destination-1", "content", 0, 10) })
     }
 
     @Test
@@ -275,16 +277,16 @@ class ObjectBackupProgressIntegrationTest {
 
     @Test
     fun `revision lookup does not create intent and preserves exact existing progress`(): Unit = runBlocking {
-        assertNull(request { service.get("source-1", "destination-1", "content", payload) })
-        assertTrue(request { service.list("source-1", "destination-1", "content", 0, 10) }.isEmpty())
+        assertNull(request { service.get(BACKUP, "source-1", "destination-1", "content", payload) })
+        assertTrue(request { service.list(BACKUP, "source-1", "destination-1", "content", 0, 10) }.isEmpty())
         val completed = request { completed() }
 
-        assertEquals(completed, request { service.get("source-1", "destination-1", "content", payload) })
-        assertNull(request { service.get("other-source", "destination-1", "content", payload) })
-        assertNull(request { service.get("source-1", "other-destination", "content", payload) })
-        assertNull(request { service.get("source-1", "destination-1", "other-scope", payload) })
-        assertNull(request { service.get("source-1", "destination-1", "content", payload.copy(revision = "other")) })
-        assertEquals(listOf(completed), request { service.list("source-1", "destination-1", "content", 0, 10) })
+        assertEquals(completed, request { service.get(BACKUP, "source-1", "destination-1", "content", payload) })
+        assertNull(request { service.get(BACKUP, "other-source", "destination-1", "content", payload) })
+        assertNull(request { service.get(BACKUP, "source-1", "other-destination", "content", payload) })
+        assertNull(request { service.get(BACKUP, "source-1", "destination-1", "other-scope", payload) })
+        assertNull(request { service.get(BACKUP, "source-1", "destination-1", "content", payload.copy(revision = "other")) })
+        assertEquals(listOf(completed), request { service.list(BACKUP, "source-1", "destination-1", "content", 0, 10) })
     }
 
     @Test
@@ -292,21 +294,37 @@ class ObjectBackupProgressIntegrationTest {
         val prepared = request { prepare() }
         for (changed in listOf(payload.copy(length = 5), payload.copy(payloadPath = "other/path"))) {
             assertFailsWith<IllegalArgumentException> {
-                request { service.get("source-1", "destination-1", "content", changed) }
+                request { service.get(BACKUP, "source-1", "destination-1", "content", changed) }
             }
         }
         assertFailsWith<IllegalArgumentException> {
-            request { service.get(" ", "destination-1", "content", payload) }
+            request { service.get(BACKUP, " ", "destination-1", "content", payload) }
         }
         assertFailsWith<IllegalArgumentException> {
-            request { service.get("source-1", "destination-1", "content", payload.copy(sha256 = "bad")) }
+            request { service.get(BACKUP, "source-1", "destination-1", "content", payload.copy(sha256 = "bad")) }
         }
 
         assertEquals(prepared, request { service.get(prepared.key) })
     }
 
+    @Test
+    fun `backup and restore checkpoints remain independent for identical payloads`(): Unit = runBlocking {
+        val backup = request { service.prepare(BACKUP, "source-1", "destination-1", "content", payload) }
+        val restore = request { service.prepare(RESTORE, "source-1", "destination-1", "content", payload) }
+        assertNotEquals(backup.key, restore.key)
+        val completed = request {
+            val running = service.start(backup.key, backup.version)
+            service.complete(running.key, running.version)
+        }
+
+        assertEquals(completed, request { service.get(BACKUP, "source-1", "destination-1", "content", payload) })
+        assertEquals(restore, request { service.get(RESTORE, "source-1", "destination-1", "content", payload) })
+        assertEquals(listOf(completed), request { service.list(BACKUP, "source-1", "destination-1", "content", 0, 10) })
+        assertEquals(listOf(restore), request { service.list(RESTORE, "source-1", "destination-1", "content", 0, 10) })
+    }
+
     private suspend fun prepare(): ObjectBackupProgress =
-        service.prepare("source-1", "destination-1", "content", payload)
+        service.prepare(BACKUP, "source-1", "destination-1", "content", payload)
 
     private suspend fun completed(): ObjectBackupProgress {
         val prepared = prepare()

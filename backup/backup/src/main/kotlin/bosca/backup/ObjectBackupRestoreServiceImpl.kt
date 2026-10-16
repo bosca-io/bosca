@@ -27,11 +27,25 @@ class ObjectBackupRestoreServiceImpl(
         require(destinationId.isNotBlank()) {
             "Object restore destination identity is required"
         }
+        val inventory = ObjectBackupManifestStore(backup, json).load(path)
+        return inspectInventory(inventory, backup, destinations, destinationId)
+    }
+
+    private suspend fun inspectInventory(
+        selected: ObjectBackupManifest,
+        backup: ObjectStorageService,
+        destinations: Map<String, ObjectStorageService>,
+        destinationId: String,
+    ): ObjectBackupRestoreInspection {
+        require(destinationId.isNotBlank()) {
+            "Object restore destination identity is required"
+        }
 
         val targets = destinations.toMap()
         val manifests = ObjectBackupManifestStore(backup, json)
-        val inventory = manifests.load(path)
-        val required = inventory.objects.map { it.copy(payloadPath = it.key) }
+        val inventory = selected.copy(objects = selected.objects.toList())
+        inventory.validate()
+        val required = inventory.restoreObjects()
         validateDestinations(required, targets)
 
         manifests.verify(inventory)
@@ -41,7 +55,9 @@ class ObjectBackupRestoreServiceImpl(
             context.ensureActive()
             val targetPayload = entry.copy(payloadPath = entry.key)
             val checkpoint = withConnectionManager {
-                progress.get(inventory.sourceId, destinationId, inventory.scope, targetPayload)
+                progress.get(
+                    ObjectBackupOperation.RESTORE, inventory.sourceId, destinationId, inventory.scope, targetPayload,
+                )
             }
             val status = inspectTarget(targets.getValue(entry.store), targetPayload, checkpoint)
             ObjectBackupRestoreObject(entry, status, checkpoint)
@@ -59,6 +75,26 @@ class ObjectBackupRestoreServiceImpl(
     ): ObjectBackupManifest {
         val targets = destinations.toMap()
         val inspection = inspect(path, backup, targets, destinationId)
+        return restoreInventory(inspection, backup, targets, destinationId)
+    }
+
+    override suspend fun restore(
+        inventory: ObjectBackupManifest,
+        backup: ObjectStorageService,
+        destinations: Map<String, ObjectStorageService>,
+        destinationId: String,
+    ): ObjectBackupManifest {
+        val targets = destinations.toMap()
+        val inspection = inspectInventory(inventory, backup, targets, destinationId)
+        return restoreInventory(inspection, backup, targets, destinationId)
+    }
+
+    private suspend fun restoreInventory(
+        inspection: ObjectBackupRestoreInspection,
+        backup: ObjectStorageService,
+        targets: Map<String, ObjectStorageService>,
+        destinationId: String,
+    ): ObjectBackupManifest {
         for (item in inspection.objects) {
             check(item.status != ObjectBackupRestoreObjectStatus.CONFLICTING) {
                 "Existing destination object conflicts with restore: ${item.payload.store}/${item.payload.key}"
@@ -66,13 +102,15 @@ class ObjectBackupRestoreServiceImpl(
         }
 
         val inventory = inspection.inventory
-        val required = inventory.objects.map { it.copy(payloadPath = it.key) }
+        val required = inventory.restoreObjects()
         val context = currentCoroutineContext()
 
         for (entry in required) {
             context.ensureActive()
             withConnectionManager {
-                progress.prepare(inventory.sourceId, destinationId, inventory.scope, entry)
+                progress.prepare(
+                    ObjectBackupOperation.RESTORE, inventory.sourceId, destinationId, inventory.scope, entry,
+                )
             }
         }
 
@@ -89,6 +127,7 @@ class ObjectBackupRestoreServiceImpl(
                 entry,
                 progress,
                 inventory.objects[index].payloadPath,
+                ObjectBackupOperation.RESTORE,
             )
         }
 
@@ -100,16 +139,12 @@ class ObjectBackupRestoreServiceImpl(
         required: List<BackupObject>,
         destinations: Map<String, ObjectStorageService>,
     ) {
-        val logicalKeys = mutableSetOf<Pair<String, String>>()
         val physicalKeys = IdentityHashMap<ObjectStorageService, MutableSet<String>>()
 
         for (entry in required) {
             entry.validate()
             val destination = requireNotNull(destinations[entry.store]) {
                 "No destination object storage configured for store: ${entry.store}"
-            }
-            require(logicalKeys.add(entry.store to entry.key)) {
-                "Multiple revisions target the same object: ${entry.store}/${entry.key}"
             }
             require(physicalKeys.getOrPut(destination) { mutableSetOf() }.add(entry.key)) {
                 "Multiple logical stores target the same destination object: ${entry.key}"

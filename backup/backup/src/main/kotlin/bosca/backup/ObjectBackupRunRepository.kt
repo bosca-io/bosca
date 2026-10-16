@@ -9,8 +9,8 @@ interface ObjectBackupRunRepository {
     /** Inserts a run once, without resetting an existing attempt or result. */
     @Query(
         """
-        insert into backup.object_runs (key, source_id, destination_id, scope, inventory, path)
-        values (:key, :sourceId, :destinationId, :scope, :inventory, :path)
+        insert into backup.object_runs (key, source_id, destination_id, scope, operation, inventory, path)
+        values (:key, :sourceId, :destinationId, :scope, :operation, :inventory, :path)
         on conflict (key) do nothing
         """,
         returnUpdateCount = true,
@@ -36,10 +36,12 @@ interface ObjectBackupRunRepository {
         """
         select * from backup.object_runs
         where source_id = :sourceId and destination_id = :destinationId and scope = :scope
+            and operation = :operation
         order by created desc, key limit :limit offset :offset
         """
     )
     suspend fun list(
+        operation: ObjectBackupOperation,
         sourceId: String,
         destinationId: String,
         scope: String,
@@ -52,10 +54,16 @@ interface ObjectBackupRunRepository {
         """
         select * from backup.object_runs
         where source_id = :sourceId and destination_id = :destinationId and scope = :scope and status = 'completed'
+            and operation = :operation
         order by created desc, key limit 1
         """
     )
-    suspend fun lastSuccessful(sourceId: String, destinationId: String, scope: String): ObjectBackupRun?
+    suspend fun lastSuccessful(
+        operation: ObjectBackupOperation,
+        sourceId: String,
+        destinationId: String,
+        scope: String,
+    ): ObjectBackupRun?
 
     /** Lists only the run's required checkpoints in declared inventory order. */
     @Query(

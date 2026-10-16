@@ -1,5 +1,6 @@
 package bosca.backup
 
+import bosca.backup.ObjectBackupOperation.BACKUP
 import bosca.db.ConnectionConfig
 import bosca.db.ConnectionFactoryImpl
 import bosca.db.ConnectionPool
@@ -385,10 +386,10 @@ class TrackedObjectBackupTransferIntegrationTest {
     )
 
     private suspend fun prepare(): ObjectBackupProgress =
-        progressService.prepare("source-1", "destination-1", "content", entry)
+        progressService.prepare(BACKUP, "source-1", "destination-1", "content", entry)
 
     private suspend fun persisted(): ObjectBackupProgress = withConnectionManager {
-        progressService.list("source-1", "destination-1", "content", 0, 10).first()
+        progressService.list(BACKUP, "source-1", "destination-1", "content", 0, 10).first()
     }
 
     private suspend fun writeSource() {

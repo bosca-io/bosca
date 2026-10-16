@@ -1,5 +1,6 @@
 package bosca.backup
 
+import bosca.backup.ObjectBackupOperation.BACKUP
 import bosca.db.ConnectionConfig
 import bosca.db.ConnectionFactoryImpl
 import bosca.db.ConnectionPool
@@ -258,6 +259,7 @@ class ObjectBackupInventoryTransferIntegrationTest {
     fun `conflicting persisted revision intent fails before transferring any item`() = runBlocking {
         withConnectionManager {
             progressService.prepare(
+                BACKUP,
                 inventory.sourceId, "destination-1", inventory.scope, second.copy(sha256 = "0".repeat(64)),
             )
         }
@@ -330,7 +332,7 @@ class ObjectBackupInventoryTransferIntegrationTest {
     ): Map<String, ObjectStorageService> = mapOf("content" to contentSource, "media" to mediaSource)
 
     private suspend fun persisted(): Map<String, ObjectBackupProgress> = withConnectionManager {
-        progressService.list(inventory.sourceId, "destination-1", inventory.scope, 0, 100)
+        progressService.list(BACKUP, inventory.sourceId, "destination-1", inventory.scope, 0, 100)
             .associateBy { it.payload.revision }
     }
 

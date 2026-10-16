@@ -1,5 +1,6 @@
 package bosca.backup
 
+import bosca.backup.ObjectBackupOperation.RESTORE
 import bosca.db.ConnectionConfig
 import bosca.db.ConnectionFactoryImpl
 import bosca.db.ConnectionPool
@@ -124,7 +125,7 @@ class ObjectBackupRestoreInspectionIntegrationTest {
     @Test
     fun `failed earlier output is repairable without changing its checkpoint`(): Unit = runBlocking {
         val failed = withConnectionManager {
-            val prepared = progress.prepare(inventory.sourceId, "new-instance", inventory.scope, restorePayload(first))
+            val prepared = progress.prepare(RESTORE, inventory.sourceId, "new-instance", inventory.scope, restorePayload(first))
             val running = progress.start(prepared.key, prepared.version)
             progress.fail(running.key, running.version, "interrupted")
         }
@@ -141,7 +142,7 @@ class ObjectBackupRestoreInspectionIntegrationTest {
     @Test
     fun `pending intent does not authorize overwriting conflicting data`(): Unit = runBlocking {
         val pending = withConnectionManager {
-            progress.prepare(inventory.sourceId, "new-instance", inventory.scope, restorePayload(first))
+            progress.prepare(RESTORE, inventory.sourceId, "new-instance", inventory.scope, restorePayload(first))
         }
         write(content, first.key, "other")
 
@@ -256,6 +257,7 @@ class ObjectBackupRestoreInspectionIntegrationTest {
     fun `conflicting revision claims are rejected without changing earlier progress`(): Unit = runBlocking {
         val prepared = withConnectionManager {
             progress.prepare(
+                RESTORE,
                 inventory.sourceId, "new-instance", inventory.scope, restorePayload(first).copy(length = 5),
             )
         }
@@ -289,7 +291,7 @@ class ObjectBackupRestoreInspectionIntegrationTest {
     private fun restorePayload(entry: BackupObject): BackupObject = entry.copy(payloadPath = entry.key)
 
     private suspend fun checkpoints(): List<ObjectBackupProgress> = withConnectionManager {
-        progress.list(inventory.sourceId, "new-instance", inventory.scope, 0, 100)
+        progress.list(RESTORE, inventory.sourceId, "new-instance", inventory.scope, 0, 100)
     }
 
     private suspend fun save(manifest: ObjectBackupManifest = inventory) {

@@ -12,19 +12,31 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerializationException
-import kotlinx.serialization.builtins.ListSerializer
-import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
-import java.security.MessageDigest
 
 /** Persists and executes object inventory runs through the selected storage services. */
 @ServiceImplementation
 class ObjectBackupRunServiceImpl(
     private val repository: ObjectBackupRunRepository,
     private val progressService: ObjectBackupProgressService,
+    private val restoreService: ObjectBackupRestoreService,
     private val json: Json,
 ) : ObjectBackupRunService {
-    override suspend fun prepare(inventory: ObjectBackupManifest, destinationId: String): ObjectBackupRun {
+    override suspend fun prepare(inventory: ObjectBackupManifest, destinationId: String): ObjectBackupRun =
+        prepare(ObjectBackupOperation.BACKUP, inventory, destinationId, null)
+
+    override suspend fun prepareRestore(
+        inventory: ObjectBackupManifest,
+        destinationId: String,
+        path: String,
+    ): ObjectBackupRun = prepare(ObjectBackupOperation.RESTORE, inventory, destinationId, path)
+
+    private suspend fun prepare(
+        operation: ObjectBackupOperation,
+        inventory: ObjectBackupManifest,
+        destinationId: String,
+        manifestPath: String?,
+    ): ObjectBackupRun {
         val captured = inventory.copy(objects = inventory.objects.toList())
         captured.validate()
         validateIdentity(captured.sourceId, destinationId, captured.scope)
@@ -37,19 +49,28 @@ class ObjectBackupRunServiceImpl(
             totalBytes += entry.length
         }
 
-        val identity = Json.encodeToString(
-            ListSerializer(String.serializer()),
+        val key = objectBackupIdentity(
+            operation,
             listOf(captured.sourceId, destinationId, captured.scope, captured.id),
         )
-        val key = MessageDigest.getInstance("SHA-256").digest(identity.toByteArray()).toHexString()
-        val path = "manifests/$key.json"
+        val path = when (operation) {
+            ObjectBackupOperation.BACKUP -> "manifests/$key.json"
+            ObjectBackupOperation.RESTORE -> requireNotNull(manifestPath) { "Restore manifest path is required" }
+        }
+        require(path.split('/').all { it.isNotEmpty() && it != "." && it != ".." }) {
+            "Invalid object run manifest path: $path"
+        }
         require(captured.objects.none { it.payloadPath == path }) {
             "Manifest path conflicts with a payload: $path"
+        }
+        val required = when (operation) {
+            ObjectBackupOperation.BACKUP -> captured.objects
+            ObjectBackupOperation.RESTORE -> captured.restoreObjects()
         }
 
         return transaction {
             val inserted = repository.add(ObjectBackupRun(
-                key, captured.sourceId, destinationId, captured.scope, captured, path,
+                key, captured.sourceId, destinationId, captured.scope, operation, captured, path,
             ))
             val run = checkNotNull(repository.get(key)) {
                 "Prepared object backup run is missing: $key"
@@ -58,6 +79,7 @@ class ObjectBackupRunServiceImpl(
                 run.sourceId == captured.sourceId &&
                     run.destinationId == destinationId &&
                     run.scope == captured.scope &&
+                    run.operation == operation &&
                     run.inventory == captured &&
                     run.path == path
             ) {
@@ -65,9 +87,11 @@ class ObjectBackupRunServiceImpl(
             }
 
             if (inserted > 0) {
-                for ((position, entry) in captured.objects.withIndex()) {
+                for ((position, entry) in required.withIndex()) {
                     currentCoroutineContext().ensureActive()
-                    val progress = progressService.prepare(captured.sourceId, destinationId, captured.scope, entry)
+                    val progress = progressService.prepare(
+                        operation, captured.sourceId, destinationId, captured.scope, entry,
+                    )
                     check(repository.addItem(key, position, progress.key) == 1) {
                         "Object backup run item was not associated: $key at $position"
                     }
@@ -83,6 +107,7 @@ class ObjectBackupRunServiceImpl(
     }
 
     override suspend fun list(
+        operation: ObjectBackupOperation,
         sourceId: String,
         destinationId: String,
         scope: String,
@@ -91,12 +116,17 @@ class ObjectBackupRunServiceImpl(
     ): List<ObjectBackupRun> {
         validateIdentity(sourceId, destinationId, scope)
         validatePagination(offset, limit)
-        return repository.list(sourceId, destinationId, scope, offset, limit)
+        return repository.list(operation, sourceId, destinationId, scope, offset, limit)
     }
 
-    override suspend fun lastSuccessful(sourceId: String, destinationId: String, scope: String): ObjectBackupRun? {
+    override suspend fun lastSuccessful(
+        operation: ObjectBackupOperation,
+        sourceId: String,
+        destinationId: String,
+        scope: String,
+    ): ObjectBackupRun? {
         validateIdentity(sourceId, destinationId, scope)
-        return repository.lastSuccessful(sourceId, destinationId, scope)
+        return repository.lastSuccessful(operation, sourceId, destinationId, scope)
     }
 
     override suspend fun items(key: String, offset: Long, limit: Int): List<ObjectBackupProgress> {
@@ -137,9 +167,35 @@ class ObjectBackupRunServiceImpl(
         key: String,
         sources: Map<String, ObjectStorageService>,
         destination: ObjectStorageService,
+    ): ObjectBackupRun = executeRun(key, ObjectBackupOperation.BACKUP) { run ->
+        val transfer = ObjectBackupTransfer(sources, destination)
+        transfer.copy(run.inventory, run.destinationId, progressService)
+        publish(run, ObjectBackupManifestStore(destination, json))
+    }
+
+    override suspend fun executeRestore(
+        key: String,
+        backup: ObjectStorageService,
+        destinations: Map<String, ObjectStorageService>,
+    ): ObjectBackupRun = executeRun(key, ObjectBackupOperation.RESTORE) { run ->
+        val path = StringObjectPath(run.path)
+        val inventory = ObjectBackupManifestStore(backup, json).load(path)
+        check(inventory == run.inventory) {
+            "Stored restore manifest differs from prepared inventory: ${run.key}"
+        }
+        restoreService.restore(run.inventory, backup, destinations, run.destinationId)
+    }
+
+    private suspend fun executeRun(
+        key: String,
+        operation: ObjectBackupOperation,
+        transfer: suspend (ObjectBackupRun) -> Unit,
     ): ObjectBackupRun {
         val prepared = withConnectionManager {
             checkNotNull(get(key)) { "Object backup run is missing: $key" }
+        }
+        require(prepared.operation == operation) {
+            "Object run operation is ${prepared.operation}; expected $operation: $key"
         }
         val ready = when (prepared.status) {
             ObjectBackupRunStatus.COMPLETED, ObjectBackupRunStatus.CANCELLED -> return prepared
@@ -153,12 +209,8 @@ class ObjectBackupRunServiceImpl(
             ObjectBackupRunStatus.FAILED -> prepared
         }
         val running = withConnectionManager { start(ready.key, ready.version) }
-        val transfer = ObjectBackupTransfer(sources, destination)
-        val manifests = ObjectBackupManifestStore(destination, json)
-
         return try {
-            transfer.copy(running.inventory, running.destinationId, progressService)
-            publish(running, manifests)
+            transfer(running)
             currentCoroutineContext().ensureActive()
 
             withConnectionManager { complete(running.key, running.version) }

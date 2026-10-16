@@ -44,7 +44,9 @@ class ObjectBackupTransfer(
         for (entry in captured.objects) {
             context.ensureActive()
             withConnectionManager {
-                progressService.prepare(captured.sourceId, destinationId, captured.scope, entry)
+                progressService.prepare(
+                    ObjectBackupOperation.BACKUP, captured.sourceId, destinationId, captured.scope, entry,
+                )
             }
         }
 
@@ -72,7 +74,9 @@ class ObjectBackupTransfer(
         scope: String,
         entry: BackupObject,
         progressService: ObjectBackupProgressService,
-    ): ObjectBackupProgress = copy(sourceId, destinationId, scope, entry, progressService, entry.key)
+    ): ObjectBackupProgress = copy(
+        sourceId, destinationId, scope, entry, progressService, entry.key, ObjectBackupOperation.BACKUP,
+    )
 
     /** Uses a retained backup key when restoring an object to its original location. */
     internal suspend fun copy(
@@ -82,9 +86,10 @@ class ObjectBackupTransfer(
         entry: BackupObject,
         progressService: ObjectBackupProgressService,
         sourceKey: String,
+        operation: ObjectBackupOperation,
     ): ObjectBackupProgress {
         val prepared = withConnectionManager {
-            progressService.prepare(sourceId, destinationId, scope, entry)
+            progressService.prepare(operation, sourceId, destinationId, scope, entry)
         }
 
         val progress = when (prepared.status) {

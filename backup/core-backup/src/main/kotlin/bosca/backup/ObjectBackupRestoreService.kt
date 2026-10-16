@@ -42,4 +42,18 @@ interface ObjectBackupRestoreService : Service {
         destinations: Map<String, ObjectStorageService>,
         destinationId: String,
     ): ObjectBackupManifest
+
+    /**
+     * Restores a selected inventory without rereading a manifest location.
+     *
+     * Copies and validates the inventory, verifies its retained payloads and applies the same
+     * isolation, progress and target-conflict rules as the path-based restore. Run execution
+     * uses this entry point after comparing stored manifest input with its persisted intent.
+     */
+    suspend fun restore(
+        inventory: ObjectBackupManifest,
+        backup: ObjectStorageService,
+        destinations: Map<String, ObjectStorageService>,
+        destinationId: String,
+    ): ObjectBackupManifest
 }

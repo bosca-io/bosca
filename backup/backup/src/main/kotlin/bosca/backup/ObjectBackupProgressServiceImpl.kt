@@ -1,10 +1,6 @@
 package bosca.backup
 
 import bosca.service.annotation.ServiceImplementation
-import kotlinx.serialization.builtins.ListSerializer
-import kotlinx.serialization.builtins.serializer
-import kotlinx.serialization.json.Json
-import java.security.MessageDigest
 
 /** Persists guarded per-revision progress through the backup repository. */
 @ServiceImplementation
@@ -12,15 +8,16 @@ class ObjectBackupProgressServiceImpl(
     private val repository: ObjectBackupProgressRepository,
 ) : ObjectBackupProgressService {
     override suspend fun prepare(
+        operation: ObjectBackupOperation,
         sourceId: String,
         destinationId: String,
         scope: String,
         payload: BackupObject,
     ): ObjectBackupProgress {
-        val key = revisionKey(sourceId, destinationId, scope, payload)
-        repository.add(ObjectBackupProgress(key, sourceId, destinationId, scope, payload))
+        val key = revisionKey(operation, sourceId, destinationId, scope, payload)
+        repository.add(ObjectBackupProgress(key, sourceId, destinationId, scope, operation, payload))
 
-        return checkNotNull(get(sourceId, destinationId, scope, payload)) {
+        return checkNotNull(get(operation, sourceId, destinationId, scope, payload)) {
             "Prepared object backup progress is missing: $key"
         }
     }
@@ -33,17 +30,19 @@ class ObjectBackupProgressServiceImpl(
     }
 
     override suspend fun get(
+        operation: ObjectBackupOperation,
         sourceId: String,
         destinationId: String,
         scope: String,
         payload: BackupObject,
     ): ObjectBackupProgress? {
-        val key = revisionKey(sourceId, destinationId, scope, payload)
+        val key = revisionKey(operation, sourceId, destinationId, scope, payload)
         val progress = repository.get(key) ?: return null
         require(
             progress.sourceId == sourceId &&
                 progress.destinationId == destinationId &&
                 progress.scope == scope &&
+                progress.operation == operation &&
                 progress.payload == payload
         ) {
             "Conflicting object backup revision intent: $key"
@@ -52,6 +51,7 @@ class ObjectBackupProgressServiceImpl(
     }
 
     override suspend fun list(
+        operation: ObjectBackupOperation,
         sourceId: String,
         destinationId: String,
         scope: String,
@@ -65,7 +65,7 @@ class ObjectBackupProgressServiceImpl(
         require(limit > 0) {
             "Object backup progress limit must be positive"
         }
-        return repository.list(sourceId, destinationId, scope, offset, limit)
+        return repository.list(operation, sourceId, destinationId, scope, offset, limit)
     }
 
     override suspend fun start(key: String, expectedVersion: Long): ObjectBackupProgress {
@@ -95,6 +95,7 @@ class ObjectBackupProgressServiceImpl(
     }
 
     private fun revisionKey(
+        operation: ObjectBackupOperation,
         sourceId: String,
         destinationId: String,
         scope: String,
@@ -103,11 +104,10 @@ class ObjectBackupProgressServiceImpl(
         validateIdentity(sourceId, destinationId, scope)
         payload.validate()
 
-        val identity = Json.encodeToString(
-            ListSerializer(String.serializer()),
+        return objectBackupIdentity(
+            operation,
             listOf(sourceId, destinationId, scope, payload.store, payload.key, payload.revision),
         )
-        return MessageDigest.getInstance("SHA-256").digest(identity.toByteArray()).toHexString()
     }
 
     private fun validateIdentity(sourceId: String, destinationId: String, scope: String) {

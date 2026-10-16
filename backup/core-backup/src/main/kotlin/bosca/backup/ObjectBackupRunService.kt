@@ -5,17 +5,25 @@ import bosca.storage.service.ObjectStorageService
 
 /**
  * Tracks fixed object inventories using the caller's connection-manager context.
- * [execute] owns short database contexts around storage work and manifest publication.
+ * [execute] and [executeRestore] own short database contexts around storage work.
  */
 interface ObjectBackupRunService : Service {
-    /** Atomically prepares immutable run intent and its exact object checkpoint associations. */
+    /** Atomically prepares backup intent and its exact retained-payload checkpoint associations. */
     suspend fun prepare(inventory: ObjectBackupManifest, destinationId: String): ObjectBackupRun
+
+    /** Atomically fixes restore input, its manifest path and exact destination object checkpoints. */
+    suspend fun prepareRestore(
+        inventory: ObjectBackupManifest,
+        destinationId: String,
+        path: String,
+    ): ObjectBackupRun
 
     /** Reads a persisted run without changing its attempt or historical result. */
     suspend fun get(key: String): ObjectBackupRun?
 
-    /** Lists runs within one source/destination scope using offset pagination. */
+    /** Lists runs of one operation within a source/destination scope using offset pagination. */
     suspend fun list(
+        operation: ObjectBackupOperation,
         sourceId: String,
         destinationId: String,
         scope: String,
@@ -23,8 +31,13 @@ interface ObjectBackupRunService : Service {
         limit: Int,
     ): List<ObjectBackupRun>
 
-    /** Returns the latest completed inventory, separately from newer partial attempts. */
-    suspend fun lastSuccessful(sourceId: String, destinationId: String, scope: String): ObjectBackupRun?
+    /** Returns the operation's latest completed inventory, separately from newer partial attempts. */
+    suspend fun lastSuccessful(
+        operation: ObjectBackupOperation,
+        sourceId: String,
+        destinationId: String,
+        scope: String,
+    ): ObjectBackupRun?
 
     /** Lists the run's current shared checkpoints in declared inventory order. */
     suspend fun items(key: String, offset: Long, limit: Int): List<ObjectBackupProgress>
@@ -39,8 +52,8 @@ interface ObjectBackupRunService : Service {
     suspend fun retry(key: String, expectedVersion: Long): ObjectBackupRun
 
     /**
-     * Acknowledges a published inventory only when all required checkpoints are completed.
-     * Callers publish and verify the manifest before invoking this transition.
+     * Acknowledges an inventory only when all required checkpoints are completed.
+     * Callers verify restored objects or publish and verify backup manifests before this transition.
      */
     suspend fun complete(key: String, expectedVersion: Long): ObjectBackupRun
 
@@ -63,5 +76,20 @@ interface ObjectBackupRunService : Service {
         key: String,
         sources: Map<String, ObjectStorageService>,
         destination: ObjectStorageService,
+    ): ObjectBackupRun
+
+    /**
+     * Restores the exact prepared inventory through independent backup storage.
+     *
+     * Requires a restore run and compares its stored input manifest before destination writes.
+     * Uses the same isolated-destination and immutable-backup contract as
+     * [ObjectBackupRestoreService.restore]. Progress storage remains outside any application
+     * database being replaced. Earlier writers must have stopped before recovery. Completed or
+     * cancelled redelivery returns the recorded outcome; cancelled runs require explicit [retry].
+     */
+    suspend fun executeRestore(
+        key: String,
+        backup: ObjectStorageService,
+        destinations: Map<String, ObjectStorageService>,
     ): ObjectBackupRun
 }

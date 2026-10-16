@@ -22,6 +22,8 @@ Run these commands from the **workspace root**. `backup` is part of the root Gra
 
 Its `inspect` method verifies the retained payloads and reports each destination object as missing, matching, repairable from an earlier attempt, or conflicting. Inspection does not write assets or create/update progress. Restore repeats the inspection when it runs.
 
+`ObjectBackupRunService.prepareRestore` records a fixed inventory and its input manifest path. `executeRestore` compares the stored manifest with that intent, then restores the selected inventory and records its outcome. Backup and restore operations have separate run and checkpoint identities, filtered histories, and last-success queries. Restore runs reuse the existing partial-result, cancellation, retry and frozen-result behavior; progress storage remains separate from any application database being restored.
+
 ZIP backup and restore operations run as jobs (`BackupJob`/`RestoreJob`) using an executor pattern. Each backup records a `BackupManifest` with metadata about backed-up tables and records. Restore operations use a configurable `ConflictStrategy` for handling existing data. `BackupTableDefinition` describes which tables to include and how to serialize them. GraphQL controllers provide admin access to backup and restore operations.
 
 ## Dependencies

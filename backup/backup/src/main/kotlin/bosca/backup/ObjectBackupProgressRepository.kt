@@ -9,8 +9,8 @@ interface ObjectBackupProgressRepository {
     /** Inserts an intent once; duplicate preparation leaves the existing record unchanged. */
     @Query(
         """
-        insert into backup.object_progress (key, source_id, destination_id, scope, payload)
-        values (:key, :sourceId, :destinationId, :scope, :payload)
+        insert into backup.object_progress (key, source_id, destination_id, scope, operation, payload)
+        values (:key, :sourceId, :destinationId, :scope, :operation, :payload)
         on conflict (key) do nothing
         """,
         returnUpdateCount = true,
@@ -26,10 +26,12 @@ interface ObjectBackupProgressRepository {
         """
         select * from backup.object_progress
         where source_id = :sourceId and destination_id = :destinationId and scope = :scope
+            and operation = :operation
         order by created, key limit :limit offset :offset
         """
     )
     suspend fun list(
+        operation: ObjectBackupOperation,
         sourceId: String,
         destinationId: String,
         scope: String,

@@ -9,8 +9,9 @@ import bosca.service.Service
  * recording completion. Recover a running attempt only after its previous writer has stopped.
  */
 interface ObjectBackupProgressService : Service {
-    /** Prepares immutable intent without resetting an existing revision's progress. */
+    /** Prepares operation-specific immutable intent without resetting an existing revision's progress. */
     suspend fun prepare(
+        operation: ObjectBackupOperation,
         sourceId: String,
         destinationId: String,
         scope: String,
@@ -20,16 +21,18 @@ interface ObjectBackupProgressService : Service {
     /** Reads persisted progress without changing its state. */
     suspend fun get(key: String): ObjectBackupProgress?
 
-    /** Reads exact revision intent without inserting it; conflicting immutable payload claims fail. */
+    /** Reads the operation's exact revision intent without insertion; conflicting payload claims fail. */
     suspend fun get(
+        operation: ObjectBackupOperation,
         sourceId: String,
         destinationId: String,
         scope: String,
         payload: BackupObject,
     ): ObjectBackupProgress?
 
-    /** Lists progress within one source/destination scope. */
+    /** Lists one operation's progress within a source/destination scope. */
     suspend fun list(
+        operation: ObjectBackupOperation,
         sourceId: String,
         destinationId: String,
         scope: String,
