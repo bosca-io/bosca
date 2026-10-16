@@ -119,8 +119,8 @@ appConfig:
   redisHost: redis
   redisPort: 6379
   meilisearchHost: meilisearch
-  # Email provider implementation: sendgrid or mailgun. Credentials live in encrypted
-  # platform configuration under the provider's key.
+  # Default email provider: sendgrid, mailgun, or smtp. Studio Email settings can override it.
+  # Credentials live in encrypted platform configuration under the provider's key.
   mailerType: sendgrid
   mailerFromName: "Support"
   # Empty = noreply@<domain>.

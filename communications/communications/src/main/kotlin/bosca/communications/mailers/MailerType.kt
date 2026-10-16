@@ -10,4 +10,7 @@ enum class MailerType {
 
     @SerialName("mailgun")
     MAILGUN,
+
+    @SerialName("smtp")
+    SMTP,
 }

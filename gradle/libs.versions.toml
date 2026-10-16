@@ -2,6 +2,8 @@
 # Keep one version per dependency family across the root Gradle build.
 
 [versions]
+angus-mail = "2.0.5"
+greenmail = "2.1.14"
 acp = "0.25.0"
 antlr = "4.13.2"
 adaptive = "1.3.0-beta01"
@@ -100,6 +102,8 @@ trino = "480"
 webauthn4j = "0.28.4.RELEASE"
 
 [libraries]
+angus-mail = { module = "org.eclipse.angus:jakarta.mail", version.ref = "angus-mail" }
+greenmail = { module = "com.icegreen:greenmail", version.ref = "greenmail" }
 acp = { module = "com.agentclientprotocol:acp", version.ref = "acp" }
 antlr-runtime = { module = "org.antlr:antlr4-runtime", version.ref = "antlr" }
 antlr-tool = { module = "org.antlr:antlr4", version.ref = "antlr" }

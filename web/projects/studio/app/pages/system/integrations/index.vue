@@ -14,6 +14,7 @@ const configsGql = gql`
   query GetIntegrationConfigs {
     sendgrid: configurations { configuration(key: "sendgrid") { id key value } }
     mailgun: configurations { configuration(key: "mailgun") { id key value } }
+    smtp: configurations { configuration(key: "smtp") { id key value } }
     push: configurations { configuration(key: "push") { id key value } }
     hubspot: configurations { configuration(key: "hubspot") { id key value } }
     mux: configurations { configuration(key: "mux") { id key value } }
@@ -25,6 +26,7 @@ const configsGql = gql`
 const { data } = useAsyncQuery<{
   sendgrid: { configuration: IntegrationConfig | null }
   mailgun: { configuration: IntegrationConfig | null }
+  smtp: { configuration: IntegrationConfig | null }
   push: { configuration: IntegrationConfig | null }
   hubspot: { configuration: IntegrationConfig | null }
   mux: { configuration: IntegrationConfig | null }
@@ -43,6 +45,18 @@ interface IntegrationCard {
 }
 
 const integrations: IntegrationCard[] = [
+  {
+    id: 'smtp',
+    name: 'SMTP',
+    description: 'Email delivery through an SMTP server',
+    icon: 'mail',
+    route: '/system/integrations/smtp',
+    config: () => data.value?.smtp?.configuration ?? null,
+    connected: () => {
+      const value = data.value?.smtp?.configuration?.value as { host?: string; port?: number } | undefined
+      return !!value?.host?.trim() && Number.isInteger(value.port ?? 587) && (value.port ?? 587) > 0 && (value.port ?? 587) <= 65535
+    },
+  },
   {
     id: 'bible',
     name: 'Bible Providers',
@@ -143,7 +157,11 @@ const integrations: IntegrationCard[] = [
         :breadcrumb="buildBreadcrumb('System', 'Integrations')"
         title="Integrations"
         subtitle="Connect and configure external services"
-      />
+      >
+        <template #actions>
+          <NuxtLink to="/system/integrations/email" class="email-link">Choose email provider</NuxtLink>
+        </template>
+      </PageHeader>
     </template>
 
     <div class="int-grid">
@@ -183,6 +201,8 @@ const integrations: IntegrationCard[] = [
 </template>
 
 <style scoped>
+.email-link { color: var(--fg-2); font-size: 12px; }
+
 .int-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));

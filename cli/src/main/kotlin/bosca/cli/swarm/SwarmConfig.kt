@@ -329,8 +329,8 @@ internal fun SwarmConfig.validate(deploy: Boolean = false) {
         require(site.serverMemory.matches(Regex("[1-9][0-9]*[bkmg]?", RegexOption.IGNORE_CASE))) {
             "serverMemory for ${site.id} must be a positive byte count with an optional B, K, M, or G suffix"
         }
-        require(site.mailerType in setOf("sendgrid", "mailgun")) {
-            "mailerType for ${site.id} must be sendgrid or mailgun"
+        require(site.mailerType in setOf("sendgrid", "mailgun", "smtp")) {
+            "mailerType for ${site.id} must be sendgrid, mailgun, or smtp"
         }
         val cookieDomain = site.profilesWeb.cookieDomain.ifBlank { site.domain }
         require(domainPattern.matches(cookieDomain) &&

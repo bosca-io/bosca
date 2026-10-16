@@ -21,6 +21,7 @@ kotlin {
 dependencies {
     implementation(project(":bosca-core:core"))
     implementation(libs.caffeine)
+    implementation(libs.angus.mail)
     implementation(project(":bml:bml-message-client")) // the BML Message Server's typed render client
     implementation(project(":social:core-profile"))
     implementation(project(":social:profile"))
@@ -44,6 +45,7 @@ dependencies {
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.kotlin.test.junit)
     testImplementation(libs.mockk)
+    testImplementation(libs.greenmail)
     testImplementation(libs.okhttp.mockwebserver)
     testImplementation(libs.testcontainers)
     testImplementation(project(":bosca-core:test-support"))
@@ -72,6 +74,11 @@ kover {
                     "bosca.communications.mailers.mailgun.MailgunMessage",
                     "bosca.communications.mailers.sendgrid.SendGridMailer",
                     "bosca.communications.mailers.sendgrid.SendGridMessage",
+                    "bosca.communications.mailers.MailerProvider",
+                    "bosca.communications.mailers.smtp.SmtpMailer",
+                    "bosca.communications.mailers.smtp.SmtpMessage",
+                    "bosca.communications.mailers.smtp.SmtpConfiguration",
+                    "bosca.communications.mailers.smtp.SmtpEmail",
                     "bosca.communications.routes.SendGridWebhook",
                     "bosca.communications.service.MessageServiceImpl",
                     "bosca.communications.service.DeliveryTrackingServiceImpl",
