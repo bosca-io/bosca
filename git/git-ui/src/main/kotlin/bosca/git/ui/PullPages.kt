@@ -124,6 +124,7 @@ suspend fun pullListPage(
         targetBranches = targetBranchesRequest.await(),
         baseHref = baseHref,
         repositoryNames = allRepositories.filterNot { it.deleted }.associate { it.id to it.name },
+        deleteBranchOnMerge = metadata?.configuration?.deleteBranchOnMerge ?: true,
     )
 }
 

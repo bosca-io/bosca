@@ -56,6 +56,8 @@ class GitPullRequestControllerTest {
         assertEquals("main", controller.targetBranch(pr))
         assertEquals(null, controller.sourceRepositoryId(pr))
         assertEquals(PullRequestStatus.OPEN, controller.status(pr))
+        assertTrue(controller.deleteBranchOnMerge(pr))
+        assertFalse(controller.deleteBranchOnMerge(pr.copy(deleteBranchOnMerge = false)))
         assertEquals(null, controller.mergeStrategy(pr))
         assertEquals(null, controller.mergedBy(pr))
         assertEquals(null, controller.mergedAt(pr))

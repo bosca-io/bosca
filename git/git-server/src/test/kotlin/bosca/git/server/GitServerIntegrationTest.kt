@@ -801,7 +801,7 @@ class GitServerIntegrationTest {
                 buildJsonObject {
                     put("page", "/pulls/{id}"); put("path", "/pulls/$pullId")
                     put("stateKey", editState.groupValues[1]); put("state", editState.groupValues[2]); put("method", "save")
-                    put("args", buildJsonArray { add("Edited PR"); add("## Updated description\n\nEdited through BML."); add("feature-two"); add("release") })
+                    put("args", buildJsonArray { add("Edited PR"); add("## Updated description\n\nEdited through BML."); add("feature-two"); add("release"); add(false) })
                 }.toString(), cookie = "$cookiePrefix=$adminToken",
             )
             assertEquals(200, edited.statusCode(), edited.body())
@@ -887,7 +887,7 @@ class GitServerIntegrationTest {
                 val rejected = request("/_bml/action", buildJsonObject {
                     put("page", "/pulls/{id}"); put("path", "/pulls/$pullId")
                     put("stateKey", editState.groupValues[1]); put("state", editState.groupValues[2]); put("method", "save")
-                    put("args", buildJsonArray { add("Stale edit"); add(""); add("feature"); add("trunk") })
+                    put("args", buildJsonArray { add("Stale edit"); add(""); add("feature"); add("trunk"); add(false) })
                 }.toString(), cookie = "$cookiePrefix=$actor")
                 assertTrue(message in rejected.body(), rejected.body())
             }
@@ -920,7 +920,7 @@ class GitServerIntegrationTest {
                 val repair = request("/_bml/action", buildJsonObject {
                     put("page", "/pulls/{id}"); put("path", "/pulls/$pullId")
                     put("stateKey", state.groupValues[1]); put("state", state.groupValues[2]); put("method", "save")
-                    put("args", buildJsonArray { add(title); add("Edited with a deleted source branch."); add(source); add("release") })
+                    put("args", buildJsonArray { add(title); add("Edited with a deleted source branch."); add(source); add("release"); add(false) })
                 }.toString(), cookie = "$cookiePrefix=$adminToken")
                 val stateAfter = Json.parseToJsonElement(Json.parseToJsonElement(repair.body()).at("state").jsonPrimitive.content)
                 assertEquals(false, stateAfter.at("failed").jsonPrimitive.boolean, repair.body())
@@ -950,10 +950,21 @@ class GitServerIntegrationTest {
                         buildJsonObject { put("repo", emptyId); put("branch", source); put("path", path) }, adminToken,
                     ).at("git", "commitFile", "commitSha").jsonPrimitive.content
                 }
-                val createdPull = graphql(
-                    "mutation Pull(\$repo: UUID!, \$source: String!, \$target: String!) { git { createPullRequest(input: { repositoryId: \$repo, title: \"Retained merged diff\", sourceBranch: \$source, targetBranch: \$target }) { id number version } } }",
-                    buildJsonObject { put("repo", emptyId); put("source", source); put("target", target) }, adminToken,
+                var createdPull = graphql(
+                    "mutation Pull(\$repo: UUID!, \$source: String!, \$target: String!, \$cleanup: Boolean) { git { createPullRequest(input: { repositoryId: \$repo, title: \"Retained merged diff\", sourceBranch: \$source, targetBranch: \$target, deleteBranchOnMerge: \$cleanup }) { id number version deleteBranchOnMerge } } }",
+                    buildJsonObject {
+                        put("repo", emptyId); put("source", source); put("target", target)
+                        if (strategy == "FAST_FORWARD") put("cleanup", false)
+                    }, adminToken,
                 ).at("git", "createPullRequest")
+                assertEquals(strategy != "FAST_FORWARD", createdPull.at("deleteBranchOnMerge").jsonPrimitive.boolean)
+                if (strategy == "SQUASH") {
+                    createdPull = graphql(
+                        "mutation Cleanup(\$id: UUID!, \$version: Long!) { git { updatePullRequest(id: \$id, input: { deleteBranchOnMerge: false, expectedVersion: \$version }) { id number version deleteBranchOnMerge } } }",
+                        buildJsonObject { put("id", createdPull.at("id").jsonPrimitive.content); put("version", createdPull.at("version").jsonPrimitive.long) }, adminToken,
+                    ).at("git", "updatePullRequest")
+                    assertFalse(createdPull.at("deleteBranchOnMerge").jsonPrimitive.boolean)
+                }
                 val mergedReview = graphql(
                     "mutation Review(\$id: UUID!) { git { submitReview(input: { pullRequestId: \$id, status: COMMENT_ONLY }) { id } } }",
                     buildJsonObject { put("id", createdPull.at("id").jsonPrimitive.content) }, adminToken,
@@ -971,10 +982,18 @@ class GitServerIntegrationTest {
                 ).at("git", "mergePullRequest")
                 val mergedSha = merged.at("mergeSha").jsonPrimitive.content
                 assertEquals(before, merged.at("mergeBaseSha").jsonPrimitive.content, strategy)
-                graphql(
+                val remainingBranches = graphql(
+                    "query Branches(\$repo: UUID!) { git { branches(repositoryId: \$repo) { name sha } } }",
+                    buildJsonObject { put("repo", emptyId) }, adminToken,
+                ).at("git", "branches").jsonArray
+                val keepSource = !createdPull.at("deleteBranchOnMerge").jsonPrimitive.boolean
+                assertEquals(keepSource, remainingBranches.any { it.at("name").jsonPrimitive.content == source }, strategy)
+                if (keepSource) graphql(
                     "mutation Delete(\$repo: UUID!, \$branch: String!) { git { deleteBranch(repositoryId: \$repo, branchName: \$branch) } }",
                     buildJsonObject { put("repo", emptyId); put("branch", source) }, adminToken,
                 )
+                assertEquals(mergedSha, remainingBranches.single { it.at("name").jsonPrimitive.content == target }
+                    .at("sha").jsonPrimitive.content, strategy)
                 graphql(
                     "mutation Later(\$repo: UUID!, \$branch: String!) { git { commitFile(input: { repositoryId: \$repo, branch: \$branch, path: \"unrelated-after-merge.txt\", content: \"Later target change\", message: \"Advance target\", authorName: \"Reviewer\", authorEmail: \"reviewer@example.test\" }) { commitSha } } }",
                     buildJsonObject { put("repo", emptyId); put("branch", target) }, adminToken,

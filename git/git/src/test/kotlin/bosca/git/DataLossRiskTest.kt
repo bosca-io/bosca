@@ -76,6 +76,14 @@ class DataLossRiskTest {
     fun setup() {
         provides<ConnectionPool>(singleton = true) { mockk(relaxed = true) }
         provides<PubSubService>(singleton = true) { mockk(relaxed = true) }
+        provides<bosca.git.service.RepositoryService>(singleton = true) {
+            mockk<bosca.git.service.RepositoryService> {
+                coEvery { findById(repositoryId) } returns Repository(
+                    id = repositoryId, name = "Repository", slug = "repository", ownerId = UUID.random(),
+                )
+            }
+        }
+        provides<bosca.git.service.RefUpdateNotifier>(singleton = true) { mockk(relaxed = true) }
     }
 
     /** A lock factory whose lock always acquires — for tests that aren't exercising contention. */

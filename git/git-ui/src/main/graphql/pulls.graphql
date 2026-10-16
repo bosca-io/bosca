@@ -46,6 +46,7 @@ query GitUiRepositoryPullList(
 query GitUiPull($id: UUID!) {
   git {
     pullRequest: pullRequestById(id: $id) {
+      deleteBranchOnMerge
       id
       version
       repositoryId

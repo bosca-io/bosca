@@ -14,7 +14,7 @@
         :forceOpen="model.editing"
         returnFocus='[aria-label="Edit pull request"]'
       >
-        <form class="modal-form" @submit="model.save(form.title, form.description, form.source, form.target, ctx)">
+        <form class="modal-form" @submit="model.save(form.title, form.description, form.source, form.target, form.deleteBranchOnMerge, ctx)">
           <div class="modal-fields">
             <if model.message.isNotBlank()>
               <ui-alert>{ model.message }</ui-alert>
@@ -26,6 +26,12 @@
               <textarea name="description" rows="5" placeholder="Explain what changed and why">{ model.description }</textarea>
               <small>Markdown supported.</small>
             </ui-field>
+            <ui-switch
+              name="deleteBranchOnMerge"
+              :checked="model.deleteBranchOnMerge"
+              :disabled='model.page.pull.status.name == "MERGED"'
+              label="Delete source branch after merge"
+            />
             <if model.canChangeBranches>
               <div class="branch-fields">
                 <ui-field label="Source branch">

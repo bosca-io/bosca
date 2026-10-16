@@ -15,5 +15,7 @@ data class CreatePullRequestInput(
     val sourceBranch: String,
     val targetBranch: String,
     @Contextual val sourceRepositoryId: UUID? = null,
-    val isDraft: Boolean = false
+    val isDraft: Boolean = false,
+    /** Overrides the repository default when supplied. */
+    val deleteBranchOnMerge: Boolean? = null,
 )
