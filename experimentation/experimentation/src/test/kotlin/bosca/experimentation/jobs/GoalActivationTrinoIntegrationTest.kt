@@ -112,13 +112,18 @@ class GoalActivationTrinoIntegrationTest {
                 assertEquals(7, eligible.size)
                 val cohort = ActivatedCohort(eligible).batches.single()
                 val inline = ExperimentActivationFilter(eventType = EventType.Impression, elementIdContains = "article-inline-rec-", recommendationCard = true)
-                val activation = GoalActivation(variationRules = listOf(GoalActivationRule("Mid", GoalActivationMode.EVENT, inline), GoalActivationRule("None", GoalActivationMode.NOT_APPLICABLE)), sameSession = true, maxDelaySeconds = 300)
+                val activation = GoalActivation(variationRules = listOf(GoalActivationRule("Mid", GoalActivationMode.EVENT, inline), GoalActivationRule("None", GoalActivationMode.NOT_APPLICABLE)), sameSession = true, maxDelaySeconds = 300, applicationIds = listOf("site"))
                 val matches = rows(c, buildGoalActivationQuery(config.safeEventsTable, config.safeAssignmentsTable, experiment, inline, activation, cohort, start, cutoff, listOf(excluded), listOf("linked")))
                 val active = matches.filter { it["activated_at"] != null }
                 assertEquals(setOf(ids.getValue("good"), ids.getValue("both")), active.map { it.getValue("subject_id") }.toSet())
                 assertEquals("1", active.first { it["subject_id"] == ids["good"] }["event_count"])
                 assertEquals("1", active.first { it["subject_id"] == ids["good"] }["duplicates"])
                 assertEquals("1", matches.first { it["subject_id"] == ids["foreign"] }["outside_application"])
+                // Without application ids the same foreign-application impression activates the goal.
+                val unscoped = rows(c, buildGoalActivationQuery(config.safeEventsTable, config.safeAssignmentsTable, experiment, inline,
+                    activation.copy(applicationIds = emptyList(), sameSession = false), cohort, start, cutoff, listOf(excluded), listOf("linked")))
+                assertTrue(unscoped.any { it["subject_id"] == ids["foreign"] && it["activated_at"] != null })
+                assertTrue(unscoped.all { it["outside_application"] == "0" })
                 val activated = ActivatedCohort(active.map { ActivatedSubject(it.getValue("subject_id"), it.getValue("variation_key"), it.getValue("activated_at"), it["app_id"], it["session_id"]) }).batches.single()
                 val goal = ConversionGoal(experimentId = experiment, name = "Cards", eventType = EventType.Interaction,
                     outcomeScope = GoalOutcomeScope(recommendationCard = true, attributeRecommendationDestination = true))

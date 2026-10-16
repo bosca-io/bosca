@@ -20,7 +20,7 @@ class GoalScopeQueryTest {
         val assignment = outcomeScopePredicate(GoalOutcomeScope(maxDelaySeconds = 60), false, "c")
         assertTrue(assignment.contains("subjects.assigned_at"))
         val captured = outcomeScopePredicate(GoalOutcomeScope(sameSession = true, maxDelaySeconds = 60), true, "e", true)
-        assertTrue(captured.contains("e.context.app_id = subjects.app_id"))
+        assertFalse(captured.contains("app_id"), "Unlisted applications are not restricted")
         assertTrue(captured.contains("e.context.session_id = subjects.session_id"))
         assertTrue(captured.contains("subjects.activated_at"))
         assertFailsWith<IllegalArgumentException> { outcomeScopePredicate(GoalOutcomeScope(sameSession = true), false, "c") }
@@ -45,5 +45,8 @@ class GoalScopeQueryTest {
         assertTrue(fallback.sql.contains("c.session_id = subjects.session_id"))
         assertTrue(fallback.sql.contains("date_add('second', 5, subjects.activated_at)"))
         assertFailsWith<IllegalArgumentException> { query(filter, GoalActivation(maxDelaySeconds = 0)) }
+        val unscoped = query(filter, GoalActivation())
+        assertTrue(unscoped.sql.contains("coalesce(true, false) AS in_application"))
+        assertFalse(unscoped.sql.contains("c.app_id = subjects.app_id"))
     }
 }

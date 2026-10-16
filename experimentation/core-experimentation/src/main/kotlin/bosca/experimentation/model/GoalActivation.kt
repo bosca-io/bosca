@@ -4,7 +4,7 @@ import kotlinx.serialization.Serializable
 
 /**
  * Descriptive exposure boundary within the experiment's eligible population.
- * Missing application ids inherit the application of the experiment activation event.
+ * Empty application ids place no application restriction on activation events.
  * Activation never changes the overall denominator or the automatic decision population.
  */
 @Serializable
