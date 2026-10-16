@@ -54,11 +54,13 @@ function setMode(key: string, value: string) {
   </section>
 </template>
 <style scoped>
-.activation-editor { display: grid; gap: 12px; border-top: 1px solid var(--border); padding-top: 16px; }
+.activation-editor { display: grid; gap: 12px; border-top: 1px solid var(--line); padding-top: 16px; }
 h3, p { margin: 0; }
+h3 { font-size: 13px; font-weight: 600; color: var(--fg-0); }
+legend { padding: 0 6px; font-size: 12px; font-weight: 500; color: var(--fg-1); }
 p { color: var(--fg-3); font-size: 12px; line-height: 1.5; }
 label { display: flex; flex-direction: column; gap: 5px; font-size: 12px; }
 .check { flex-direction: row; align-items: center; }
-input, select { padding: 8px; background: var(--bg-2); color: var(--fg-1); border: 1px solid var(--border); border-radius: 6px; }
-fieldset { display: grid; gap: 12px; padding: 12px; border: 1px solid var(--border); border-radius: 8px; }
+input, select { padding: 8px; background: var(--bg-2); color: var(--fg-1); border: 1px solid var(--line); border-radius: 6px; }
+fieldset { display: grid; gap: 12px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; }
 </style>
