@@ -43,7 +43,7 @@
       </if>
       <div class="info-row">
         <dt class="info-label">Files</dt>
-        <dd class="info-value">{ page.diff.size } changed</dd>
+        <dd class="info-value"><a class="info-link" :href='page.href + "&view=files"'>View changes</a></dd>
       </div>
       <div class="info-row">
         <dt class="info-label">Created</dt>
@@ -61,6 +61,10 @@
           <dd class="info-value">{ page.pull.mergeStrategy.toString().replace('_', ' ').lowercase() }</dd>
         </div>
       </if>
+      <div class="info-row">
+        <dt class="info-label">Delete source branch</dt>
+        <dd class="info-value">{ if (page.pull.deleteBranchOnMerge) "After merge" else "Keep branch" }</dd>
+      </div>
       <if page.pull.mergeSha.orEmpty().isNotBlank()>
         <div class="info-row">
           <dt class="info-label">Merge commit</dt>

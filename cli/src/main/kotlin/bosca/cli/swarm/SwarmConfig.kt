@@ -33,7 +33,7 @@ data class SwarmConfig(
 
 /**
  * Nightly off-VM backup with restic: PostgreSQL dumps of every site database plus the S3 objects, NATS
- * JetStream data, Redis data when used for jobs or counters, Caddy certificates and rendered configuration.
+ * JetStream data, Dragonfly data when used for jobs or counters, Caddy certificates and rendered configuration.
  * A blank [repository] disables it.
  */
 @Serializable data class SwarmBackup(
@@ -99,7 +99,7 @@ data class SwarmConfig(
     val ml: SwarmSiteMl = SwarmSiteMl(),
     /** Optional Google sign-in client; blank values leave Google sign-in unconfigured. */
     val google: SwarmSiteGoogle = SwarmSiteGoogle(),
-    /** Allowed sign-in redirect URLs; null keeps application defaults, and an empty list disables redirects. */
+    /** Allowed sign-in HTTP(S) URLs or custom-scheme URIs; null keeps defaults, and an empty list disables redirects. */
     val oauthRedirects: List<String>? = null,
     /** Optional website image for the root and www hosts; it listens on [rootPort]. */
     val rootImage: String = "",
@@ -202,7 +202,7 @@ internal val SwarmSite.hosts: SiteHosts
 /** Default images, pinned to exact versions; configurations keep the images they already name. */
 internal fun defaultImages() = mapOf(
     "postgres" to "pgvector/pgvector:0.8.6-pg18", "pgbouncer" to "pgbouncer/pgbouncer:1.25.2", "nats" to "nats:2.12.15-alpine",
-    "redis" to "redis:7.4.11-alpine", "meilisearch" to "getmeili/meilisearch:v1.39.0",
+    "dragonfly" to "docker.dragonflydb.io/dragonflydb/dragonfly:v2.0.2", "meilisearch" to "getmeili/meilisearch:v1.39.0",
     "s3proxy" to "andrewgaul/s3proxy:3.0.0", "trino" to "trinodb/trino:479",
     "imageprocessor" to "ghcr.io/bosca-io/bosca/imageprocessor:4.8.22",
     "text-embeddings-inference" to "ghcr.io/huggingface/text-embeddings-inference:cpu-1.8.1",
@@ -329,8 +329,8 @@ internal fun SwarmConfig.validate(deploy: Boolean = false) {
         require(site.serverMemory.matches(Regex("[1-9][0-9]*[bkmg]?", RegexOption.IGNORE_CASE))) {
             "serverMemory for ${site.id} must be a positive byte count with an optional B, K, M, or G suffix"
         }
-        require(site.mailerType in setOf("sendgrid", "mailgun")) {
-            "mailerType for ${site.id} must be sendgrid or mailgun"
+        require(site.mailerType in setOf("sendgrid", "mailgun", "smtp")) {
+            "mailerType for ${site.id} must be sendgrid, mailgun, or smtp"
         }
         val cookieDomain = site.profilesWeb.cookieDomain.ifBlank { site.domain }
         require(domainPattern.matches(cookieDomain) &&
@@ -368,7 +368,7 @@ internal fun SwarmConfig.validate(deploy: Boolean = false) {
             "Set both or neither of google.clientId and google.clientSecret for ${site.id}"
         }
         require(site.oauthRedirects.orEmpty().all(::validRedirectUrl)) {
-            "oauthRedirects for ${site.id} must contain absolute HTTP or HTTPS URLs without credentials"
+            "oauthRedirects for ${site.id} must contain absolute HTTP(S) URLs or custom-scheme URIs without credentials"
         }
         if (deploy) {
             require(site.hosts.all.none { it.endsWith(".invalid") }) { "Replace example domains for ${site.id}" }
@@ -412,9 +412,14 @@ private val HEX_COLOR = Regex("^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}
 private fun singleLine(value: String) = !value.contains('\n') && !value.contains('\r')
 
 private fun validRedirectUrl(value: String): Boolean = try {
-    val uri = URI(value)
-    value == value.trim() && singleLine(value) && uri.scheme in setOf("http", "https") &&
-        uri.host != null && uri.rawUserInfo == null && (uri.port == -1 || uri.port in 1..65535)
+    // A bare app scheme is an allow-list entry; URI requires a path after an empty authority.
+    val uri = URI(if (value.endsWith("://")) "$value/" else value)
+    val scheme = uri.scheme?.lowercase()
+    val requiresHost = scheme in setOf("http", "https") || uri.rawAuthority != null
+    value == value.trim() && singleLine(value) && uri.isAbsolute && !uri.isOpaque &&
+        scheme !in setOf("data", "file", "ftp", "javascript", "vbscript") &&
+        (!requiresHost || uri.host != null) && uri.rawUserInfo == null &&
+        (uri.port == -1 || uri.port in 1..65535)
 } catch (_: java.net.URISyntaxException) {
     false
 }

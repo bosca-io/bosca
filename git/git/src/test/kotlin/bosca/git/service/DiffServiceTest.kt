@@ -73,6 +73,12 @@ class DiffServiceTest {
                 setNewObjectId(headCommitId); setForceUpdate(true); update()
             }
             assertEquals(originalDiff, service.computeDiff(repositoryId, pr.mergeBaseSha.orEmpty(), sha), strategy.name)
+            val commits = service.listComparisonCommits(repositoryId, pr.mergeBaseSha.orEmpty(), sha, 0, 100)
+            assertTrue(commits.isNotEmpty(), strategy.name)
+            if (strategy == MergeStrategy.SQUASH) assertEquals(1, commits.size)
+            for (commit in commits) {
+                assertTrue(service.computeCommitDiff(repositoryId, pr.mergeBaseSha.orEmpty(), sha, commit.sha).isNotEmpty(), strategy.name)
+            }
         }
     }
 
@@ -106,6 +112,77 @@ class DiffServiceTest {
         }
         every { dfsManager.open(repositoryId) } throws kotlinx.coroutines.CancellationException("cancelled")
         assertFailsWith<kotlinx.coroutines.CancellationException> { service.resolveMergedBase(pr) }
+    }
+
+    private fun commitWithFiles(message: String, files: Map<String, String>, vararg parents: ObjectId): ObjectId =
+        inMemoryRepo.newObjectInserter().use { inserter ->
+            val tree = TreeFormatter()
+            files.toSortedMap().forEach { (path, content) ->
+                tree.append(path, FileMode.REGULAR_FILE, inserter.insert(Constants.OBJ_BLOB, content.toByteArray()))
+            }
+            val author = PersonIdent("Author", "author@example.test")
+            inserter.insert(CommitBuilder().apply {
+                setTreeId(inserter.insert(tree)); setParentIds(*parents)
+                setAuthor(author); setCommitter(author); setMessage(message)
+            }).also { inserter.flush() }
+        }
+
+    @Test
+    fun `comparison commits paginate beyond 250 and exclude target history`() = runTest {
+        var head = baseCommitId
+        val history = (1..270).map { index ->
+            commitWithFiles("Change $index", mapOf("file.txt" to "$index\n"), head).also { head = it }
+        }
+        val all = (0L..275L step 25).flatMap { offset ->
+            service.listComparisonCommits(repositoryId, baseCommitId.name(), head.name(), offset, 25)
+        }
+        assertEquals(history.reversed().map { it.name() }, all.map { it.sha })
+        assertEquals("Change 270", all.first().message)
+        assertEquals("Author", all.first().authorName)
+        assertEquals(listOf(history[268].name()), all.first().parentShas)
+        assertTrue(service.listComparisonCommits(repositoryId, head.name(), head.name(), 0, 25).isEmpty())
+        assertTrue(service.listComparisonCommits(repositoryId, baseCommitId.name(), head.name(), Long.MAX_VALUE, 25).isEmpty())
+        for ((offset, limit) in listOf(-1L to 25, 0L to 0, 0L to 101)) {
+            assertFailsWith<IllegalArgumentException> {
+                service.listComparisonCommits(repositoryId, baseCommitId.name(), head.name(), offset, limit)
+            }
+        }
+    }
+
+    @Test
+    fun `commit diff contains only selected changes and rejects commits outside the PR`() = runTest {
+        val second = commitWithFiles("Second", mapOf("file.txt" to "line 1\nline 2 modified\nline 3\nline 4\n",
+            "new.txt" to "new content\n", "second.txt" to "second\n"), headCommitId)
+        val diff = service.computeCommitDiff(repositoryId, baseCommitId.name(), second.name(), second.name())
+        assertEquals(listOf("second.txt"), diff.map { it.newPath })
+        assertEquals(service.computeDiff(repositoryId, baseCommitId.name(), headCommitId.name()),
+            service.computeCommitDiff(repositoryId, baseCommitId.name(), second.name(), headCommitId.name()))
+        val unrelated = commitWithFiles("Unrelated", mapOf("unrelated.txt" to "other"), baseCommitId)
+        for (sha in listOf(baseCommitId.name(), unrelated.name(), "feature", ObjectId.zeroId().name())) {
+            assertFailsWith<IllegalArgumentException> {
+                service.computeCommitDiff(repositoryId, baseCommitId.name(), second.name(), sha)
+            }
+        }
+        for ((base, head) in listOf("missing" to second.name(), baseCommitId.name() to "missing")) {
+            assertFailsWith<NoSuchElementException> {
+                service.listComparisonCommits(repositoryId, base, head, 0, 25)
+            }
+        }
+    }
+
+    @Test
+    fun `merge commits compare to first parent and root commits to empty tree`() = runTest {
+        val merge = commitWithFiles("Merge", mapOf("file.txt" to "line 1\nline 2\nline 3\n", "merged.txt" to "resolved"), baseCommitId, headCommitId)
+        assertEquals(listOf("merged.txt"), service.computeCommitDiff(repositoryId, baseCommitId.name(), merge.name(), merge.name()).map { it.newPath })
+        val root = commitWithFiles("Root", mapOf("root.txt" to "root\n"))
+        val rootDiff = service.computeCommitDiff(repositoryId, baseCommitId.name(), root.name(), root.name())
+        assertEquals(listOf("root.txt"), rootDiff.map { it.newPath })
+        assertEquals(DiffChangeType.ADD, rootDiff.single().changeType)
+        assertEquals(1, rootDiff.single().newLineCount)
+        every { dfsManager.open(repositoryId) } throws kotlinx.coroutines.CancellationException("cancelled")
+        assertFailsWith<kotlinx.coroutines.CancellationException> {
+            service.computeCommitDiff(repositoryId, baseCommitId.name(), root.name(), root.name())
+        }
     }
 
     @BeforeTest
@@ -274,6 +351,109 @@ class DiffServiceTest {
         assertEquals("Subproject commit ${newGitlink.name()}", hunk.lines[1].content)
         assertNull(hunk.lines[1].oldLineNumber)
         assertEquals(1, hunk.lines[1].newLineNumber)
+    }
+
+    private fun commitFiles(parent: ObjectId?, ref: String, vararg files: Pair<String, ByteArray>): ObjectId {
+        val person = PersonIdent("Test", "test@example.com")
+        return inMemoryRepo.objectDatabase.newInserter().use { inserter ->
+            val tree = TreeFormatter().apply {
+                for ((name, bytes) in files.sortedBy { it.first }) {
+                    append(name, FileMode.REGULAR_FILE, inserter.insert(Constants.OBJ_BLOB, bytes))
+                }
+            }
+            val commit = CommitBuilder().apply {
+                setTreeId(inserter.insert(tree)); setAuthor(person); setCommitter(person); setMessage(ref)
+                parent?.let { setParentId(it) }
+            }
+            inserter.insert(commit).also { id ->
+                inserter.flush()
+                inMemoryRepo.refDatabase.newUpdate("refs/heads/$ref", true).apply {
+                    setNewObjectId(id); setForceUpdate(true); update()
+                }
+            }
+        }
+    }
+
+    private fun numbered(count: Int, change: (Int) -> String? = { "line $it" }): ByteArray =
+        (1..count).mapNotNull(change).joinToString("") { "$it\n" }.toByteArray()
+
+    @Test
+    fun `computeDiff windows distant changes into separate hunks with three lines of context`() = runTest {
+        val base = commitFiles(null, "window-base", "long.txt" to numbered(40))
+        commitFiles(base, "window-head", "long.txt" to numbered(40) { if (it == 5 || it == 30) "changed $it" else "line $it" })
+
+        val file = service.computeDiff(repositoryId, "refs/heads/window-base", "refs/heads/window-head").single()
+
+        assertEquals(40, file.newLineCount)
+        assertEquals(2, file.hunks.size)
+        val (first, second) = file.hunks
+        assertEquals(listOf(2, 7, 2, 7), listOf(first.oldStart, first.oldCount, first.newStart, first.newCount))
+        assertEquals(listOf(27, 7, 27, 7), listOf(second.oldStart, second.oldCount, second.newStart, second.newCount))
+        assertEquals(
+            listOf("CONTEXT 2 2", "CONTEXT 3 3", "CONTEXT 4 4", "DELETE 5 null", "ADD null 5", "CONTEXT 6 6", "CONTEXT 7 7", "CONTEXT 8 8"),
+            first.lines.map { "${it.type} ${it.oldLineNumber} ${it.newLineNumber}" },
+        )
+        assertEquals("line 2", first.lines.first().content)
+        assertEquals("changed 5", first.lines[4].content)
+        assertEquals("line 33", second.lines.last().content)
+        assertTrue(file.hunks.flatMap { it.lines }.none { it.newLineNumber in 9..26 }, "Unchanged lines between hunks stay hidden")
+    }
+
+    @Test
+    fun `computeDiff merges nearby changes and clips context at file boundaries`() = runTest {
+        val base = commitFiles(null, "merge-base", "short.txt" to numbered(12))
+        commitFiles(base, "merge-head", "short.txt" to numbered(13) {
+            when (it) {
+                1 -> "first changed"
+                8 -> null
+                else -> "line $it"
+            }
+        } + "appended\n".toByteArray())
+
+        val file = service.computeDiff(repositoryId, "refs/heads/merge-base", "refs/heads/merge-head").single()
+
+        val hunk = file.hunks.single()
+        assertEquals(listOf(1, 12, 1, 13), listOf(hunk.oldStart, hunk.oldCount, hunk.newStart, hunk.newCount))
+        assertEquals("DELETE", hunk.lines.first().type.name)
+        assertEquals("appended", hunk.lines.last().content)
+        assertEquals(13, file.newLineCount)
+        assertEquals(hunk.lines.count { it.type != bosca.git.model.DiffLineType.ADD }, hunk.oldCount)
+        assertEquals(hunk.lines.count { it.type != bosca.git.model.DiffLineType.DELETE }, hunk.newCount)
+    }
+
+    @Test
+    fun `computeDiff keeps empty text changes distinct from binary files`() = runTest {
+        val binary = byteArrayOf(0, 1, 2, 3, 0, 5)
+        val base = commitFiles(null, "kinds-base", "image.bin" to binary, "same.txt" to numbered(3))
+        commitFiles(
+            base, "kinds-head",
+            "empty.txt" to ByteArray(0),
+            "image.bin" to byteArrayOf(0, 9, 9, 9, 0, 5),
+            "same.txt" to numbered(3),
+        )
+
+        val files = service.computeDiff(repositoryId, "refs/heads/kinds-base", "refs/heads/kinds-head").associateBy { it.newPath }
+
+        val empty = files.getValue("empty.txt")
+        assertEquals(listOf(bosca.git.model.DiffHunk(0, 0, 0, 0, emptyList())), empty.hunks)
+        assertEquals(0, empty.newLineCount)
+        val image = files.getValue("image.bin")
+        assertTrue(image.hunks.isEmpty())
+        assertEquals(0, image.newLineCount)
+        assertNull(files["same.txt"])
+    }
+
+    @Test
+    fun `computeDiff numbers added files from the first line`() = runTest {
+        val diff = service.computeDiff(repositoryId, "refs/heads/main", "refs/heads/feature")
+        val added = diff.single { it.newPath == "new.txt" }.hunks.single()
+        assertEquals(listOf(0, 0, 1, 1), listOf(added.oldStart, added.oldCount, added.newStart, added.newCount))
+        val modified = diff.single { it.newPath == "file.txt" }
+        assertEquals(4, modified.newLineCount)
+        assertEquals(
+            listOf("CONTEXT 1 1", "DELETE 2 null", "ADD null 2", "CONTEXT 3 3", "ADD null 4"),
+            modified.hunks.single().lines.map { "${it.type} ${it.oldLineNumber} ${it.newLineNumber}" },
+        )
     }
 
     // ── appended coverage: delete arm, unknown refs, orphan histories ────

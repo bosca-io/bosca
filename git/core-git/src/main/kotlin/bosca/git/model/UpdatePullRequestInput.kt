@@ -10,4 +10,6 @@ data class UpdatePullRequestInput(
     val sourceBranch: String? = null,
     val targetBranch: String? = null,
     val expectedVersion: Long? = null,
+    /** Sets this PR's source-branch cleanup policy; null preserves its current value. */
+    val deleteBranchOnMerge: Boolean? = null,
 )

@@ -11,6 +11,7 @@ import bosca.sharedqueue.jobs.JobQueue
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.intOrNull
+import org.slf4j.LoggerFactory
 import java.security.MessageDigest
 
 /** Queues client-authored Bible usage for delivery by the FUMS worker. */
@@ -32,7 +33,11 @@ class FumsAnalyticsTransform(private val queue: JobQueue) : EventPipelineTransfo
             val usfm = extras.string("bible_usfm")?.takeIf { chapter.matches(it) } ?: return@forEach
             val audioId = if (audio) extras.uuid("bible_audio_id") ?: return@forEach else null
             val job = FumsDeliveryJob(bibleId, version, variant, usfm, audioId, deviceId, session, user).prepare()
-            queue.enqueue(job)
+            val jobId = queue.enqueue(job)
+            log.info(
+                "FUMS usage submitted: jobId={} bibleId={} chapter={} kind={}",
+                jobId, bibleId, usfm, if (audio) "audio" else "text",
+            )
         }
         return events
     }
@@ -51,6 +56,7 @@ class FumsAnalyticsTransform(private val queue: JobQueue) : EventPipelineTransfo
         .digest(value.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
 
     private companion object {
+        val log = LoggerFactory.getLogger(FumsAnalyticsTransform::class.java)
         val chapter = Regex("[A-Z0-9]+\\.([0-9]+|intro)")
     }
 }

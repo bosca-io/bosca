@@ -58,8 +58,8 @@ interface PullRequestRepository {
     suspend fun findByRepositories(query: PullRequestRepositoryQuery): List<PullRequest>
 
     @Query("""
-        insert into git.pull_requests (repository_id, number, title, description, author_id, source_branch, target_branch, source_repository_id, status)
-        values (:repositoryId, :number, :title, :description, :authorId, :sourceBranch, :targetBranch, :sourceRepositoryId, :status::git.pull_request_status)
+        insert into git.pull_requests (repository_id, number, title, description, author_id, source_branch, target_branch, source_repository_id, status, delete_branch_on_merge)
+        values (:repositoryId, :number, :title, :description, :authorId, :sourceBranch, :targetBranch, :sourceRepositoryId, :status::git.pull_request_status, :deleteBranchOnMerge)
         returning *
     """)
     suspend fun create(pr: PullRequest): PullRequest
@@ -68,6 +68,7 @@ interface PullRequestRepository {
         update git.pull_requests
         set title = :title, description = :description,
             source_branch = :sourceBranch, target_branch = :targetBranch,
+            delete_branch_on_merge = :deleteBranchOnMerge,
             updated = now(), version = version + 1
         where id = :id and version = :version
         returning *
@@ -104,4 +105,15 @@ interface PullRequestRepository {
         where repository_id = :repositoryId and source_branch = :sourceBranch and status = 'open'
     """)
     suspend fun findOpenBySourceBranch(repositoryId: UUID, sourceBranch: String): List<PullRequest>
+
+    /** Whether an open or draft PR still uses this branch as its source or target. */
+    @Query("""
+        select exists (
+            select 1 from git.pull_requests
+            where status in ('open', 'draft')
+              and ((repository_id = :repositoryId and target_branch = :branch)
+                or (coalesce(source_repository_id, repository_id) = :repositoryId and source_branch = :branch))
+        )
+    """)
+    suspend fun isBranchInUse(repositoryId: UUID, branch: String): Boolean
 }

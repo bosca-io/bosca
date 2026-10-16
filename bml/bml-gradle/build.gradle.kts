@@ -19,6 +19,40 @@ dependencies {
     testImplementation(kotlin("test-junit"))
 }
 
+// Real producer/consumer TestKit builds use workspace compiler/runtime artifacts, without publishing
+// them to Maven Local or requiring a released compiler that already implements the new manifest.
+val libraryFixtureClasspath = configurations.create("libraryFixtureClasspath") {
+    isCanBeConsumed = false
+    attributes {
+        attribute(Usage.USAGE_ATTRIBUTE, objects.named(Usage.JAVA_RUNTIME))
+        attribute(Category.CATEGORY_ATTRIBUTE, objects.named(Category.LIBRARY))
+        attribute(LibraryElements.LIBRARY_ELEMENTS_ATTRIBUTE, objects.named(LibraryElements.JAR))
+    }
+}
+dependencies {
+    add(libraryFixtureClasspath.name, project(":bml:bml-compiler"))
+    add(libraryFixtureClasspath.name, project(":bml:bml-annotations"))
+}
+tasks.test {
+    dependsOn(libraryFixtureClasspath)
+    inputs.files(libraryFixtureClasspath).withPropertyName("libraryFixtureClasspath").withNormalizer(ClasspathNormalizer::class.java)
+    systemProperty("bml.libraryFixtureClasspath", libraryFixtureClasspath.asPath)
+    inputs.files(fileTree("../bml-runtime/tools"), fileTree("../bml-runtime/src"), file("../bml-runtime/package-lock.json"))
+        .withPropertyName("bmlClientToolchain").withPathSensitivity(PathSensitivity.RELATIVE)
+}
+
+// Exercise the real GraphQL plugin's independently generated browser output in cache tests.
+val graphqlFixturePlugin = configurations.create("graphqlFixturePlugin") {
+    isCanBeConsumed = false
+    isTransitive = false
+}
+dependencies {
+    add(graphqlFixturePlugin.name, project(":bosca-graphql:bosca-graphql-gradle"))
+}
+tasks.pluginUnderTestMetadata {
+    pluginClasspath.from(graphqlFixturePlugin)
+}
+
 gradlePlugin {
     plugins {
         create("bml") {

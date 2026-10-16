@@ -1,5 +1,6 @@
 package bosca.git.graphql
 
+import bosca.git.model.CommitInfo
 import bosca.git.model.DiffFile
 import bosca.git.model.MergeStrategy
 import bosca.git.model.PullRequest
@@ -66,6 +67,9 @@ class GitPullRequestController(
     fun status(source: PullRequest): PullRequestStatus = source.status
 
     @Field
+    fun deleteBranchOnMerge(source: PullRequest): Boolean = source.deleteBranchOnMerge
+
+    @Field
     fun mergeStrategy(source: PullRequest): MergeStrategy? = source.mergeStrategy
 
     @Field
@@ -129,19 +133,27 @@ class GitPullRequestController(
     }
 
     @Field
-    suspend fun diff(source: PullRequest): List<DiffFile> {
+    suspend fun commits(source: PullRequest, offset: Long = 0, limit: Int = 25): List<CommitInfo> {
+        val (base, head) = comparisonRefs(source)
+        return diffService.listComparisonCommits(source.repositoryId, base, head, offset, limit)
+    }
+
+    @Field
+    suspend fun diff(source: PullRequest, commitSha: String? = null): List<DiffFile> {
+        val (base, head) = comparisonRefs(source)
+        return if (commitSha == null) diffService.computeDiff(source.repositoryId, base, head)
+            else diffService.computeCommitDiff(source.repositoryId, base, head, commitSha)
+    }
+
+    private suspend fun comparisonRefs(source: PullRequest): Pair<String, String> {
         if (source.status == PullRequestStatus.MERGED) {
             val head = source.mergeSha?.takeIf { it.isNotBlank() }
                 ?: error("The completed merge commit is not recorded.")
             val base = diffService.resolveMergedBase(source)
                 ?: error("The original target commit for this merge is not recorded.")
-            return diffService.computeDiff(source.repositoryId, base, head)
+            return base to head
         }
-        return diffService.computeDiff(
-            source.repositoryId,
-            "refs/heads/${source.targetBranch}",
-            "refs/heads/${source.sourceBranch}"
-        )
+        return "refs/heads/${source.targetBranch}" to "refs/heads/${source.sourceBranch}"
     }
 
     private suspend fun visiblePullRequests(

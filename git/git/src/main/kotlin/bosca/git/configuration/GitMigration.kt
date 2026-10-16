@@ -60,6 +60,7 @@ class GitMigration : Migration {
         "V47__github_delivery_problems.sql",
         "V48__github_branch_filters.sql",
         "V49__pull_request_merge_base.sql",
-        "V50__pipeline_evaluations.sql",
+        "V50__pull_request_branch_cleanup.sql",
+        "V51__pipeline_evaluations.sql",
     )
 }

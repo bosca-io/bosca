@@ -11,6 +11,12 @@ import org.jetbrains.kotlin.config.CompilerConfigurationKey
 /** Compiler-configuration keys for the BML K2 plugin. */
 object BmlConfigKeys {
     val ENABLED = CompilerConfigurationKey<Boolean>("bml.enabled")
+    val PACKAGE_NAME = CompilerConfigurationKey<String>("bml.packageName")
+    val LIBRARY_ID = CompilerConfigurationKey<String>("bml.libraryId")
+    val LIBRARY_VERSION = CompilerConfigurationKey<String>("bml.libraryVersion")
+    /** Bundled inline CSS keyed by original BML source location. */
+    val LIBRARY_STYLES = CompilerConfigurationKey<String>("bml.libraryStyles")
+    val LIBRARY_EXPORTS = CompilerConfigurationKey<List<String>>("bml.libraryExports")
 
     /** Root directories of `.bml` sources the plugin reads to synthesize page objects. */
     val SOURCE_ROOTS = CompilerConfigurationKey<List<String>>("bml.sourceRoots")
@@ -50,6 +56,11 @@ class BmlCommandLineProcessor : CommandLineProcessor {
 
     override val pluginOptions: Collection<CliOption> = listOf(
         CliOption("enabled", "<true|false>", "Enable BML compiler-plugin codegen", required = false),
+        CliOption("bmlPackageName", "<package>", "Package for all generated Kotlin declarations", required = false),
+        CliOption("bmlLibraryId", "<group:artifact>", "Compile a component library with this Maven identity", required = false),
+        CliOption("bmlLibraryVersion", "<version>", "Version of the compiled component library", required = false),
+        CliOption("bmlLibraryStyles", "<file>", "Prepared library stylesheet bodies", required = false),
+        CliOption("bmlLibraryExport", "<tag>", "Export a component tag", required = false, allowMultipleOccurrences = true),
         CliOption(
             "bmlSourceRoot", "<dir>", "Root directory of .bml sources (repeatable)",
             required = false, allowMultipleOccurrences = true,
@@ -75,6 +86,11 @@ class BmlCommandLineProcessor : CommandLineProcessor {
     override fun processOption(option: AbstractCliOption, value: String, configuration: CompilerConfiguration) {
         when (option.optionName) {
             "enabled" -> configuration.put(BmlConfigKeys.ENABLED, value.toBooleanStrictOrNull() ?: true)
+            "bmlPackageName" -> configuration.put(BmlConfigKeys.PACKAGE_NAME, value)
+            "bmlLibraryId" -> configuration.put(BmlConfigKeys.LIBRARY_ID, value)
+            "bmlLibraryVersion" -> configuration.put(BmlConfigKeys.LIBRARY_VERSION, value)
+            "bmlLibraryStyles" -> configuration.put(BmlConfigKeys.LIBRARY_STYLES, value)
+            "bmlLibraryExport" -> configuration.add(BmlConfigKeys.LIBRARY_EXPORTS, value)
             "bmlSourceRoot" -> configuration.add(BmlConfigKeys.SOURCE_ROOTS, value)
             "bmlTsOutputDir" -> configuration.put(BmlConfigKeys.TS_OUTPUT_DIR, value)
             "bmlKotlinOutputDir" -> configuration.put(BmlConfigKeys.KOTLIN_OUTPUT_DIR, value)

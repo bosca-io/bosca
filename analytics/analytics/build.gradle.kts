@@ -49,6 +49,7 @@ dependencies {
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.kotlin.test.junit)
     testImplementation(libs.mockk)
+    testImplementation(libs.logback.classic)
     testImplementation(libs.okhttp.mockwebserver)
     testImplementation(libs.testcontainers)
     testImplementation(project(":bosca-core:test-support"))

@@ -111,7 +111,7 @@ describe('Pull Request Page', () => {
       if (operation.includes('query RepositoriesForPR')) {
         return {
           git: {
-            repositoryById: { id: 'repository-1', name: 'Workspace', slug: 'workspace', defaultBranch: 'main' },
+            repositoryById: { id: 'repository-1', name: 'Workspace', slug: 'workspace', defaultBranch: 'main', canEdit: true },
             repositories: [
               { id: 'repository-1', name: 'Workspace', slug: 'workspace', defaultBranch: 'main' },
               { id: 'repository-git', name: 'Git', slug: 'git', defaultBranch: 'main' },
@@ -124,6 +124,8 @@ describe('Pull Request Page', () => {
         git: {
           pullRequest: {
             id: 'pull-request-1',
+            version: 3,
+            deleteBranchOnMerge: true,
             number: 7,
             title: 'Large generated diff',
             description,
@@ -197,6 +199,38 @@ describe('Pull Request Page', () => {
 
     expect(wrapper.get('.pr-description').text()).toBe('No description provided.')
     expect(wrapper.find('.mdc-stub').exists()).toBe(false)
+  })
+
+  it('saves either cleanup choice on the PR using its current version', async () => {
+    mockMutation.mockResolvedValueOnce({ git: { updatePullRequest: { version: 4, deleteBranchOnMerge: false } } })
+    mockMutation.mockResolvedValueOnce({ git: { updatePullRequest: { version: 5, deleteBranchOnMerge: true } } })
+    const wrapper = mount(PullRequestPage, {
+      global: { stubs, mocks: { buildBreadcrumb: (...parts: string[]) => parts } },
+    })
+    await flushPromises()
+    const toggle = wrapper.get<HTMLInputElement>('.branch-cleanup input')
+    expect(toggle.element.checked).toBe(true)
+    await toggle.setValue(false)
+    await flushPromises()
+    expect(mockMutation.mock.calls[0]?.[1]).toEqual({ id: 'pull-request-1', input: { deleteBranchOnMerge: false, expectedVersion: 3 } })
+    expect(toggle.element.checked).toBe(false)
+    await toggle.setValue(true)
+    await flushPromises()
+    expect(mockMutation.mock.calls[1]?.[1]).toEqual({ id: 'pull-request-1', input: { deleteBranchOnMerge: true, expectedVersion: 4 } })
+    expect(toggle.element.checked).toBe(true)
+  })
+
+  it('retains the saved cleanup choice and displays a rejected change', async () => {
+    mockMutation.mockRejectedValueOnce(new Error('Pull request changed. Reload it before saving.'))
+    const wrapper = mount(PullRequestPage, {
+      global: { stubs, mocks: { buildBreadcrumb: (...parts: string[]) => parts } },
+    })
+    await flushPromises()
+    const toggle = wrapper.get<HTMLInputElement>('.branch-cleanup input')
+    await toggle.setValue(false)
+    await flushPromises()
+    expect(toggle.element.checked).toBe(true)
+    expect(wrapper.text()).toContain('Pull request changed. Reload it before saving.')
   })
 
   it('bounds large diff hunks and explains when lines are truncated', async () => {

@@ -333,16 +333,16 @@ class ServerResponse internal constructor(private val ctx: ChannelHandlerContext
      * Responds with a 302 Found redirect to the given [url].
      * If [permanent] is true, uses 301 Moved Permanently instead.
      *
-     * Only relative URLs and URLs with http(s) schemes are allowed.
-     * URLs with other schemes (javascript:, data:, etc.) are rejected to prevent open redirect attacks.
+     * Supports relative URLs, HTTP(S) URLs, and custom application schemes.
+     * Schemes that execute scripts or load inline or browser-local content are rejected.
+     * Callers must validate untrusted destinations against their redirect allow-list.
      */
     fun respondRedirect(url: String, permanent: Boolean = false) {
         if (isCommitted) return
-        // Validate that redirect URLs use safe schemes to prevent open redirect via javascript: or data: URIs
         if (url.contains(":") && !url.startsWith("/")) {
             val scheme = url.substringBefore(":").lowercase()
-            require(scheme == "http" || scheme == "https") {
-                "Redirect URL must use http or https scheme, got: $scheme"
+            require(REDIRECT_SCHEME_PATTERN.matches(scheme) && scheme !in UNSAFE_REDIRECT_SCHEMES) {
+                "Redirect URL uses an invalid or unsafe scheme: $scheme"
             }
         }
         status(if (permanent) HttpStatusCode.MovedPermanently else HttpStatusCode.Found)
@@ -354,6 +354,9 @@ class ServerResponse internal constructor(private val ctx: ChannelHandlerContext
     internal fun channelContext(): ChannelHandlerContext = ctx
 
     companion object {
+        private val REDIRECT_SCHEME_PATTERN = Regex("[a-z][a-z0-9+.-]*")
+        private val UNSAFE_REDIRECT_SCHEMES = setOf("javascript", "data", "vbscript", "file", "blob", "about")
+
         /** Default timeout (5 minutes) for streaming responses to prevent slow clients from holding coroutines indefinitely. */
         private const val STREAMING_TIMEOUT_MS = 300_000L
     }

@@ -63,6 +63,32 @@ class CssScoperTest {
     }
 
     @Test
+    fun `source comments before group rules preserve the prelude and scope nested selectors`() {
+        for (prelude in listOf("@media (min-width: 600px)", "@supports (display: grid)", "@container (width > 600px)", "@layer design")) {
+            val out = scope("/* bundled source.css */\n$prelude { /* nested source.css */ .a { color: red; } }")
+            assertTrue("$prelude {" in out, out)
+            assertTrue(".a$s { color: red; }" in out, out)
+            assertTrue("/* bundled source.css */" in out && "/* nested source.css */" in out, out)
+        }
+    }
+
+    @Test
+    fun `comments before font face and keyframes retain unscoped definitions and licenses`() {
+        val css = """
+            /*! Font license */
+            /* fonts.css */
+            @font-face { font-family: Design; src: url(font.woff2); }
+            /* animation.css */
+            @keyframes pulse { from { opacity: 0; } to { opacity: 1; } }
+            /*! Trailing license */
+        """.trimIndent()
+        val out = scope(css)
+        assertTrue(s !in out, out)
+        assertTrue("@font-face {" in out && "@keyframes pulse {" in out, out)
+        assertTrue("/*! Font license */" in out && "/*! Trailing license */" in out, out)
+    }
+
+    @Test
     fun `keyframes are left completely unscoped`() {
         val out = scope("@keyframes spin { from { opacity: 0; } to { opacity: 1; } }")
         assertTrue("from {" in out && "to {" in out, "keyframe selectors preserved: $out")

@@ -245,7 +245,7 @@ class BmlMessageSendEndToEndTest {
             unsubscribeUrl = "https://app.example.com/unsubscribe",
             preferencesUrl = "https://app.example.com/preferences",
         ),
-        mailer = mailer,
+        mailerProvider = mockk { coEvery { get() } returns mailer },
         sender = mockk(relaxed = true),
         deliveryTracking = tracking,
         gate = NotificationPreferenceGateImpl(preferences, tracking),

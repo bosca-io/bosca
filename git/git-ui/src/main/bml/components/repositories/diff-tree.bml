@@ -1,7 +1,7 @@
 <component tag="git-diff-tree">
   <prop name="entries" type="List<bosca.git.ui.DiffTreeEntry>" required />
   <nav aria-label="Changed file tree">
-    <ui-tree label="Changed files" local>
+    <ui-tree label="Changed files" local embedded>
       <for entry in entries>
         <ui-tree-item
           :path="entry.path"
@@ -16,8 +16,8 @@
   </nav>
   <style scoped>
     nav {
-      max-height: 320px;
-      overflow: auto;
+      width: max-content;
+      min-width: 100%;
     }
   </style>
 </component>

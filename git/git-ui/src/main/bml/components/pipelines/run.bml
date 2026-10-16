@@ -160,7 +160,7 @@
                     <div :id='"step-logs-" + step.id' :hidden="model.expandedStepId != step.id">
                       <if model.expandedStepId == step.id>
                         <div :data-bml-preserve='"logs-" + step.id'>
-                          <git-pipeline-logs :step="step.id" :repository="model.run.repositoryId" />
+                          <git-pipeline-logs :step="step.id" :repository="model.run.repositoryId" :loadHistory="model.retainedLogStepId != step.id" />
                         </div>
                       </if>
                     </div>

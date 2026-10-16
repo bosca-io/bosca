@@ -2006,7 +2006,10 @@ class BmlCodeGenerator(
                 ", deferredRenderers = listOf(${componentDeferred.joinToString(", ") { it.objectName }})"
             }
             line("public val info: bosca.bml.render.BmlComponentInfo = bosca.bml.render.BmlComponentInfo(${kstr(tag)}, $scopeArg, $stylesArg, listOf($depsArg), $clientArg, $hasServerState$eagerDepsOverride$featureFlagsOverride, renderRevision = ${kstr(sourceRevision)}$deferredOverride)")
-            componentMeta += BmlComponentMeta(tag, if (isScopedComponent) scopedCss else "", deps, clientModule)
+            componentMeta += BmlComponentMeta(
+                tag, if (isScopedComponent) scopedCss else "", deps, clientModule,
+                eagerDeps, hasServerState, hasEagerFeatureFlags, componentDeferred.isNotEmpty(),
+            )
         }
         // One dispatcher per live state, registered under the "<tag>.<binding>" prefix
         // (bml.generated.BmlIslands.componentDispatchers).

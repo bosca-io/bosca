@@ -45,9 +45,7 @@
         <if comparison.files.isEmpty()>
           <p class="empty-msg">No file differences between these refs.</p>
         <else>
-          <for file in comparison.files>
-            <git-diff-file :file="bosca.git.ui.diffView(file)" />
-          </for>
+          <git-compare-files :page="page" />
         </if>
       </div>
       <div class="commits-pane">

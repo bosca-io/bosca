@@ -22,6 +22,7 @@ query GitUiRepositories($includeArchived: Boolean!, $owner: UUID) {
 query GitUiRepository($id: UUID!) {
   git {
     repositoryById(id: $id) {
+      configuration { deleteBranchOnMerge }
       id
       name
       slug
@@ -42,11 +43,13 @@ query GitUiRepository($id: UUID!) {
   }
 }
 
-query GitUiBranches($id: UUID!) {
+query GitUiBranches($id: UUID!, $includeAheadBehind: Boolean! = false) {
   git {
-    branches(repositoryId: $id) {
+    branches(repositoryId: $id, includeAheadBehind: $includeAheadBehind) {
       name
       sha
+      ahead
+      behind
     }
   }
 }
@@ -74,9 +77,9 @@ query GitUiBlob($id: UUID!, $ref: String!, $path: String!) {
   }
 }
 
-query GitUiTags($id: UUID!) {
+query GitUiTags($id: UUID!, $offset: Long!, $limit: Int!, $query: String) {
   git {
-    tags(repositoryId: $id) {
+    tags(repositoryId: $id, offset: $offset, limit: $limit, query: $query) {
       name
       sha
       targetSha
@@ -289,11 +292,15 @@ mutation GitUiCreateTag($id: UUID!, $name: String!, $source: String!, $message: 
 
 query GitUiRefs($id: UUID!) {
   git {
-    branches(repositoryId: $id) { name sha }
-    tags(repositoryId: $id) { name sha targetSha isAnnotated message }
+    branches(repositoryId: $id, includeAheadBehind: false) { name sha }
+    tags(repositoryId: $id, limit: 25) { name sha targetSha isAnnotated message }
   }
 }
 
 query GitUiOwnerProfiles {
   profiles { current { id name slug isPrimary } }
+}
+
+query GitUiTag($id: UUID!, $name: String!) {
+  git { tag(repositoryId: $id, name: $name) { name sha targetSha isAnnotated message } }
 }

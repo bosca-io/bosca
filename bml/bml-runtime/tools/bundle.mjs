@@ -1,4 +1,5 @@
 import { build } from "esbuild"
+import { bundleLibraryAssets } from "./library.mjs"
 import { readdirSync, readFileSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs"
 import { join, resolve } from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
@@ -200,6 +201,14 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   if (assetsOut) {
     rmSync(assetsOut, { recursive: true, force: true })
     mkdirSync(assetsOut, { recursive: true })
+  }
+  const libraryManifest = argOf("--library-manifest")
+  if (libraryManifest) {
+    await bundleLibraryAssets({ manifestPath: libraryManifest, inDir, sourceRoot: argOf("--source-root"),
+      buildDir: argOf("--build-dir"), clientDir: assetsIn, publicDir: argOf("--public-in"), projectDir: argOf("--project-dir"),
+      stylesDir: argOf("--library-styles"), outdir: argOf("--library-out"), sourcesOut: argOf("--library-sources-out"),
+      inputsOut: argOf("--library-inputs-out") })
+    process.exit(0)
   }
   const entryPoints = existsSync(inDir)
     ? readdirSync(inDir).filter((f) => f.endsWith(".ts")).map((f) => join(inDir, f))

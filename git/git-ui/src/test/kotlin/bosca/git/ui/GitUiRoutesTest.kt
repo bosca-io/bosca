@@ -142,6 +142,143 @@ class GitUiRoutesTest {
     }
 
     @Test
+    fun `tag lists and dropdowns preserve newest first API order`() {
+        val expected = listOf("v2", "v10", "v1")
+        val paths = listOf(
+            "/repositories/repo",
+            "/repositories/repo?tab=commits",
+            "/repositories/repo?tab=statuses",
+            "/repositories/repo?tab=tags",
+            "/search?repo=repo&mode=paths",
+            "/pipelines?repo=repo&pipeline=pipeline",
+            "/repositories/repo?tab=pipelines&pipeline=pipeline",
+        )
+        for (path in paths) {
+            val response = get(path, token = "tag-order-token")
+            assertEquals(200, response.statusCode(), response.body())
+            val selects = Regex("<select\\b[^>]*>(.*?)</select>", RegexOption.DOT_MATCHES_ALL)
+                .findAll(response.body())
+                .map { select ->
+                    Regex("<option\\b[^>]*value=\"([^\"]+)\"")
+                        .findAll(select.groupValues[1])
+                        .map { it.groupValues[1].removePrefix("refs/tags/") }
+                        .filter { it in expected }
+                        .toList()
+                }
+                .filter { it.isNotEmpty() }
+                .toList()
+            if ("tab=tags" in path) {
+                val names = Regex("<a\\b[^>]*class=\"ref-name\"[^>]*>(.*?)</a>", RegexOption.DOT_MATCHES_ALL)
+                    .findAll(response.body()).map { it.groupValues[1].trim() }.toList()
+                assertEquals(expected, names, path)
+            } else {
+                assertTrue(selects.isNotEmpty(), "Missing tag dropdown: $path")
+                selects.forEach { assertEquals(expected, it, path) }
+            }
+        }
+    }
+
+    @Test
+    fun `large tag lists and dropdown searches request bounded pages`() {
+        val token = "tag-pages-token"
+        for ((offset, first, last) in listOf(Triple(0, "v1000", "v0976"), Triple(25, "v0975", "v0951"))) {
+            val response = get("/repositories/repo?tab=tags&offset=$offset", token = token)
+            assertEquals(200, response.statusCode(), response.body())
+            val names = Regex("<a\\b[^>]*class=\"ref-name\"[^>]*>(.*?)</a>", RegexOption.DOT_MATCHES_ALL)
+                .findAll(response.body()).map { it.groupValues[1].trim() }.toList()
+            assertEquals(25, names.size)
+            assertEquals(first, names.first())
+            assertEquals(last, names.last())
+            assertTrue("Older tags" in response.body())
+            assertEquals(offset > 0, "Newer tags" in response.body())
+            val request = requests.last { it.operation == "GitUiTags" }
+            assertEquals(26, request.variables["limit"]?.jsonPrimitive?.int)
+            assertEquals(offset, request.variables["offset"]?.jsonPrimitive?.int)
+        }
+        val page = post("/_bml/contract/GitRefSearch/search", "[\"repo\",\"\",25,false]", token = token)
+        assertEquals(200, page.statusCode(), page.body())
+        val choices = Json.parseToJsonElement(page.body()).jsonArray
+        assertEquals(26, choices.size)
+        assertEquals("v0975", choices.first().jsonObject["name"]?.jsonPrimitive?.content)
+        val filtered = post("/_bml/contract/GitRefSearch/search", "[\"repo\",\"v0001\",0,false]", token = token)
+        assertEquals(200, filtered.statusCode(), filtered.body())
+        assertEquals("v0001", Json.parseToJsonElement(filtered.body()).jsonArray.single().jsonObject["name"]?.jsonPrimitive?.content)
+        assertEquals("Bearer $token", requests.last { it.operation == "GitUiTags" }.authorization)
+    }
+
+    @Test
+    fun `ref search accepts qualified names and preserves their namespace`() {
+        for ((query, name, kind) in listOf(
+            Triple("refs/tags/v0001", "v0001", "tag"),
+            Triple("REFS/TAGS/v0001", "v0001", "tag"),
+            Triple("refs/heads/main", "main", "branch"),
+        )) {
+            val before = requests.size
+            val response = post("/_bml/contract/GitRefSearch/search", "[\"repo\",\"$query\",0,false]", token = "tag-pages-token")
+            assertEquals(200, response.statusCode(), response.body())
+            val choice = Json.parseToJsonElement(response.body()).jsonArray.single().jsonObject
+            assertEquals(name, choice["name"]?.jsonPrimitive?.content)
+            assertEquals(kind, choice["kind"]?.jsonPrimitive?.content)
+            val calls = requests.drop(before)
+            assertFalse(calls.any { it.operation == if (kind == "tag") "GitUiBranches" else "GitUiTags" })
+            if (kind == "tag") assertEquals(name, calls.single().variables["query"]?.jsonPrimitive?.content)
+        }
+        val response = post("/_bml/contract/GitRefSearch/search", "[\"repo\",\"refs/tags/v0001\",0,true]", token = "tag-pages-token")
+        assertEquals("[]", response.body())
+    }
+
+    @Test
+    fun `tags outside the first page remain usable for browsing search and pipeline runs`() {
+        val token = "tag-pages-token"
+        for (path in listOf(
+            "/repositories/repo?ref=v0001",
+            "/search?repo=repo&mode=paths&q=paths&ref=refs%2Ftags%2Fv0001",
+            "/pipelines?repo=repo&pipeline=pipeline&runRef=refs%2Ftags%2Fv0001",
+        )) {
+            val before = requests.size
+            val response = get(path, token = token)
+            assertEquals(200, response.statusCode(), response.body())
+            assertTrue(requests.drop(before).any { it.operation == "GitUiTag" && it.variables["name"]?.jsonPrimitive?.content == "v0001" }, path)
+            assertFalse("selected ref does not exist" in response.body(), response.body())
+        }
+        val response = action("/pipelines?repo=repo&pipeline=pipeline", "git-pipeline-trigger", "selectRef", listOf("refs/tags/v0001", "[]"), token = token)
+        val state = actionState(response)
+        assertFalse(state.getValue("failed").jsonPrimitive.boolean, response.body())
+        assertEquals("refs/tags/v0001", state.getValue("page").jsonObject.getValue("ref").jsonPrimitive.content)
+    }
+
+    @Test
+    fun `explicit branch and tag names never resolve across namespaces`() {
+        for (ref in listOf("refs%2Fheads%2Fv1", "refs%2Ftags%2Fmain")) {
+            val before = requests.size
+            val response = get("/repositories/repo?ref=$ref")
+            assertEquals(200, response.statusCode(), response.body())
+            assertTrue("The selected ref does not exist." in response.body())
+            assertFalse(requests.drop(before).any { it.operation == "GitUiCommit" })
+        }
+        for (ref in listOf("refs%2Fheads%2Fmain", "refs%2Ftags%2Fv1", "v1")) {
+            val response = get("/repositories/repo?ref=$ref")
+            assertEquals(200, response.statusCode(), response.body())
+            assertFalse("The selected ref does not exist." in response.body())
+        }
+    }
+
+    @Test
+    fun `hexadecimal tag names outside the first page resolve before raw commit IDs`() {
+        val namedTag = "a".repeat(40)
+        val rawSha = "b".repeat(40)
+        for ((ref, expectedSha) in listOf(namedTag to "abc", rawSha to rawSha)) {
+            val before = requests.size
+            val response = get("/repositories/repo?ref=$ref", token = "hex-tag-token")
+            assertEquals(200, response.statusCode(), response.body())
+            val calls = requests.drop(before)
+            assertTrue(calls.any { it.operation == "GitUiTag" && it.variables["name"]?.jsonPrimitive?.content == ref })
+            assertEquals(expectedSha, calls.single { it.operation == "GitUiCommit" }.variables["sha"]?.jsonPrimitive?.content)
+            assertFalse("The selected ref does not exist." in response.body())
+        }
+    }
+
+    @Test
     fun `missing repository and unavailable files have distinct states`() {
         assertEquals(404, get("/repositories/missing").statusCode())
         assertTrue("File not found at this ref." in get("/repositories/repo?file=missing").body())
@@ -426,6 +563,35 @@ class GitUiRoutesTest {
             )
         assertEquals(true, actionState(detached)["failed"]?.jsonPrimitive?.boolean)
         assertEquals(before, requests.count { it.operation == "GitUiCommitFile" })
+    }
+
+    @Test
+    fun `branch list shows ahead and behind commits relative to the default branch`() {
+        for (ref in listOf("main", "feature%2Fone")) {
+            val response = get("/repositories/branch-counts?tab=branches&ref=$ref")
+            assertEquals(200, response.statusCode(), response.body())
+            val rows = Regex("""<div[^>]*class="ref-row branch-row"[^>]*>(.*?)</div>""", RegexOption.DOT_MATCHES_ALL)
+                .findAll(response.body()).map { it.groupValues[1] }.toList()
+            assertEquals(5, rows.size)
+            fun row(name: String) = rows.single {
+                Regex("""class="ref-name"[^>]*>\s*${Regex.escape(name)}\s*</a>""").containsMatchIn(it)
+            }
+            val diverged = row("feature/one")
+            assertTrue(Regex("""class="delta-ahead"[^>]*>\s*\+3\s*</span>""").containsMatchIn(diverged), diverged)
+            assertTrue(Regex("""class="delta-behind"[^>]*>\s*-2\s*</span>""").containsMatchIn(diverged), diverged)
+            assertTrue("aria-label=\"Commits compared with main: 3 ahead, 2 behind\"" in diverged, diverged)
+            val ahead = row("ahead-only")
+            assertTrue(Regex("""class="delta-ahead"[^>]*>\s*\+1\s*</span>""").containsMatchIn(ahead), ahead)
+            assertFalse("delta-behind" in ahead, ahead)
+            val behind = row("behind-only")
+            assertTrue(Regex("""class="delta-behind"[^>]*>\s*-1\s*</span>""").containsMatchIn(behind), behind)
+            assertFalse("delta-ahead" in behind, behind)
+            assertFalse("branch-delta" in row("main"))
+            assertFalse("branch-delta" in row("in-sync"))
+            assertEquals(true, requests.last { it.operation == "GitUiBranches" }.variables["includeAheadBehind"]?.jsonPrimitive?.boolean)
+        }
+        assertFalse("class=\"branch-delta\"" in get("/repositories/repo?tab=tags").body())
+        assertEquals(false, requests.last { it.operation == "GitUiBranches" }.variables["includeAheadBehind"]?.jsonPrimitive?.boolean)
     }
 
     @Test
@@ -727,7 +893,7 @@ class GitUiRoutesTest {
                 "/repositories/archived?tab=pulls",
                 "git-pull-create.model",
                 "create",
-                listOf("Title", "Body", "feature/one", "main", false),
+                listOf("Title", "Body", "feature/one", "main", false, false),
             )
         assertEquals(true, actionState(denied)["failed"]?.jsonPrimitive?.boolean, denied.body())
         assertTrue("Repository edit access" in denied.body(), denied.body())
@@ -744,7 +910,7 @@ class GitUiRoutesTest {
                 path,
                 "git-pull-create.model",
                 "selectRepositories",
-                listOf("repo", "", "Keep title", "Keep description", "feature/one", "main", true),
+                listOf("repo", "", "Keep title", "Keep description", "feature/one", "main", true, false),
             )
         assertEquals(200, selected.statusCode(), selected.body())
         val state = actionState(selected)
@@ -754,6 +920,7 @@ class GitUiRoutesTest {
         assertEquals("repo", state["page"]?.jsonObject?.get("repository")?.jsonPrimitive?.content)
         assertEquals("feature/one", state["source"]?.jsonPrimitive?.content)
         assertEquals(true, state["draft"]?.jsonPrimitive?.boolean)
+        assertEquals(true, state["deleteBranchOnMerge"]?.jsonPrimitive?.boolean)
         assertTrue("feature/one" in selected.body(), selected.body())
         val sourceChanged =
             continueAction(
@@ -769,6 +936,7 @@ class GitUiRoutesTest {
                     "feature/one",
                     "main",
                     true,
+                    false,
                 ),
             )
         assertEquals(200, sourceChanged.statusCode(), sourceChanged.body())
@@ -777,6 +945,7 @@ class GitUiRoutesTest {
             actionState(sourceChanged)["description"]?.jsonPrimitive?.content,
         )
         assertEquals("", actionState(sourceChanged)["source"]?.jsonPrimitive?.content)
+        assertEquals(false, actionState(sourceChanged)["deleteBranchOnMerge"]?.jsonPrimitive?.boolean)
     }
 
     @Test
@@ -846,6 +1015,26 @@ class GitUiRoutesTest {
     }
 
     @Test
+    fun `pull overview and reviews omit full diff and branch history work`() {
+        for (view in listOf("overview", "reviews")) {
+            val before = requests.size
+            val response = get("/pulls/pull?view=$view")
+            assertEquals(200, response.statusCode(), response.body())
+            val calls = requests.drop(before)
+            val unnecessary = calls.filter { it.operation in setOf("GitUiPullDiffPage", "GitUiBranches", "GitUiBlob") }
+            assertTrue(unnecessary.isEmpty(), "$view requested unnecessary work: ${unnecessary.map { it.operation }}")
+            assertTrue(calls.none { it.operation == "GitUiPullList" && Regex("\\bmergeable\\b").containsMatchIn(it.query) })
+            val refs = calls.single { it.operation == "GitUiPullHeads" }.variables
+            assertEquals("refs/heads/feature/one", refs["source"]?.jsonPrimitive?.content)
+            assertEquals("refs/heads/main", refs["target"]?.jsonPrimitive?.content)
+            if (view == "overview") {
+                assertTrue("View changes" in response.body(), response.body())
+                assertFalse(">0 changed<" in response.body(), response.body())
+            }
+        }
+    }
+
+    @Test
     fun `pull detail resolves its path ID without repository and number parameters`() {
         for (suffix in listOf("", "?view=files", "?view=reviews", "?repo=other&number=99")) {
             val response = get("/pulls/pull$suffix")
@@ -876,7 +1065,7 @@ class GitUiRoutesTest {
         val opened = action(path, "git-pull-edit.model", "open", emptyList())
         assertEquals(200, opened.statusCode(), opened.body())
         assertTrue("feature/one" in opened.body() && "main" in opened.body(), opened.body())
-        val saved = action(path, "git-pull-edit.model", "save", listOf("Updated title", "", "main", "feature/one"))
+        val saved = action(path, "git-pull-edit.model", "save", listOf("Updated title", "", "main", "feature/one", false))
         assertEquals(200, saved.statusCode(), saved.body())
         val state = actionState(saved)
         assertEquals(false, state["failed"]?.jsonPrimitive?.boolean, saved.body())
@@ -887,14 +1076,16 @@ class GitUiRoutesTest {
         assertEquals("main", input["sourceBranch"]?.jsonPrimitive?.content)
         assertEquals("feature/one", input["targetBranch"]?.jsonPrimitive?.content)
         assertEquals(0L, input["expectedVersion"]?.jsonPrimitive?.long)
+        assertEquals(false, input["deleteBranchOnMerge"]?.jsonPrimitive?.boolean)
     }
 
     @Test
     fun `a rejected edit retains every field and exposes its API error`() {
-        val response = action("/pulls/pull?repo=repo&number=1", "git-pull-edit.model", "save", listOf("Reject edit", "Draft description", "main", "feature/one"))
+        val response = action("/pulls/pull?repo=repo&number=1", "git-pull-edit.model", "save", listOf("Reject edit", "Draft description", "main", "feature/one", false))
         val state = actionState(response)
         assertEquals(true, state["failed"]?.jsonPrimitive?.boolean, response.body())
         assertEquals("Draft description", state["description"]?.jsonPrimitive?.content)
+        assertEquals(false, state["deleteBranchOnMerge"]?.jsonPrimitive?.boolean)
         assertEquals("main", state["source"]?.jsonPrimitive?.content)
         assertEquals("feature/one", state["target"]?.jsonPrimitive?.content)
         assertTrue("Rejected pull request edit" in response.body(), response.body())
@@ -903,10 +1094,63 @@ class GitUiRoutesTest {
     @Test
     fun `blank titles are rejected by the editor without sending an update`() {
         val count = requests.count { it.operation == "GitUiUpdatePull" }
-        val response = action("/pulls/pull?repo=repo&number=1", "git-pull-edit.model", "save", listOf("   ", "Draft description", "feature/one", "main"))
+        val response = action("/pulls/pull?repo=repo&number=1", "git-pull-edit.model", "save", listOf("   ", "Draft description", "feature/one", "main", false))
         assertTrue(actionState(response)["failed"]?.jsonPrimitive?.boolean == true, response.body())
         assertTrue("Enter a pull request title" in response.body(), response.body())
         assertEquals(count, requests.count { it.operation == "GitUiUpdatePull" })
+    }
+
+    @Test
+    fun `pull files show only changes and reveal unchanged lines on request`() {
+        val path = "/pulls/pull-context?repo=repo&number=12&view=files"
+        val page = get(path)
+        assertEquals(200, page.statusCode(), page.body())
+        val body = page.body()
+        assertTrue("1 hidden line" in body && "@@ -2,7 +2,7 @@" in body, body)
+        assertTrue("Show 20 more lines below" in body && "Show 20 more lines above" in body, body)
+        assertTrue(">line 20<" !in body && ">line 30<" !in body, "Unchanged lines between hunks start hidden")
+        assertTrue(">line 40<" in body && "Context discussion" in body, "A discussion on a hidden line opens beside its context")
+        assertFalse("Discussions outside this diff" in body, body)
+        assertTrue("title=\"$CONTEXT_FILE\"" in body, "The full path is available on the file header")
+        assertTrue("Copy file path" in body && "Show all lines" in body, body)
+
+        val down = action(path, "git-pull-review.model", "expandContext", listOf(CONTEXT_FILE, 1, "down"), sourceHtml = body)
+        val state = actionState(down)
+        assertEquals("", state.getValue("contextMessage").jsonPrimitive.content, down.body())
+        val hunks = state.getValue("diff").jsonArray.single().jsonObject.getValue("hunks").jsonArray.map { it.jsonObject }
+        assertEquals((9..28).toList(), hunks.first().getValue("after").jsonArray.map { it.jsonObject.getValue("newLineNumber").jsonPrimitive.int })
+        assertTrue(">line 20<" in down.body() && "Hide unchanged lines" in down.body(), down.body())
+        assertEquals(CONTEXT_FILE, requests.last { it.operation == "GitUiBlob" }.variables["path"]?.jsonPrimitive?.content)
+
+        val all = action(path, "git-pull-review.model", "expandFile", listOf(CONTEXT_FILE), sourceHtml = body)
+        assertTrue((1..100).all { ">line $it<" in all.body() || it == 5 }, "Show all lines reveals the whole file")
+        assertFalse("hidden line" in all.body(), all.body())
+
+        // Expanded lines are ordinary diff lines, so reviewers can comment on them.
+        val key = Regex("data-bml-state-key=\"(git-pull-review\\.model[^\"]*)\"").find(body)?.groupValues?.get(1) ?: error(body)
+        val expandedHtml = "<script type=\"application/json\" data-bml-state-key=\"$key\">$state</script>"
+        val comment = action(path, "git-pull-review.model", "select", listOf(CONTEXT_FILE, 20, 20), sourceHtml = expandedHtml)
+        assertFalse(actionState(comment)["failed"]?.jsonPrimitive?.boolean == true, comment.body())
+        assertEquals(CONTEXT_FILE, actionState(comment).getValue("commentFile").jsonPrimitive.content, comment.body())
+    }
+
+    @Test
+    fun `revealing unchanged lines reports unavailable source beside the file`() {
+        val path = "/pulls/pull-context?repo=repo&number=12&view=files"
+        val response = action(path, "git-pull-review.model", "expandContext", listOf(CONTEXT_FILE, 0, "down"))
+        val state = actionState(response)
+        assertEquals(CONTEXT_FILE, state.getValue("contextFile").jsonPrimitive.content)
+        assertTrue("Nothing to show below this change" in state.getValue("contextMessage").jsonPrimitive.content, response.body())
+        assertTrue("Nothing to show below this change" in response.body(), response.body())
+    }
+
+    @Test
+    fun `compared files reveal unchanged lines from the head ref`() {
+        val compare = get("/compare?repo=repo&base=main&head=feature%2Fone")
+        assertEquals(200, compare.statusCode(), compare.body())
+        assertTrue("Changed files" in compare.body() && "diff-file-header" in compare.body(), compare.body())
+        val response = action("/compare?repo=repo&base=main&head=feature%2Fone", "git-compare-files.model", "collapseContext", listOf("a.txt"))
+        assertEquals("feature/one", actionState(response).getValue("ref").jsonPrimitive.content)
     }
 
     @Test
@@ -916,6 +1160,49 @@ class GitUiRoutesTest {
         assertTrue(state["failed"]?.jsonPrimitive?.boolean == true, response.body())
         assertTrue("Pull request changed" in response.body(), response.body())
         assertEquals(2, state.getValue("diff").jsonArray.single().jsonObject.getValue("hunks").jsonArray.single().jsonObject.getValue("lines").jsonArray.size)
+    }
+
+    @Test
+    fun `PR commits paginate and link to a selected commit comparison`() {
+        val before = requests.size
+        val page = get("/pulls/pull?view=commits")
+        assertEquals(200, page.statusCode(), page.body())
+        assertTrue("Commit 0" in page.body() && "Commit 24" in page.body(), page.body())
+        assertFalse("Commit 25" in page.body(), page.body())
+        assertTrue("commit=" + "b".repeat(40) in page.body(), page.body())
+        assertTrue("Load more commits" in page.body(), page.body())
+        assertFalse(requests.drop(before).any { it.operation == "GitUiPullDiffPage" })
+        val next = get("/pulls/pull?view=commits&commitOffset=25")
+        assertTrue("Commit 25" in next.body() && "Newer commits" in next.body(), next.body())
+        assertFalse("Load more commits" in next.body(), next.body())
+        assertEquals(25, requests.last { it.operation == "GitUiPullCommits" }.variables.getValue("offset").jsonPrimitive.int)
+        val merged = get("/pulls/pull-merged?view=commits").body()
+        assertTrue("recorded merge history" in merged, merged)
+        val unavailable = get("/pulls/pull-missing-branch?view=commits").body()
+        assertTrue("Commit history unavailable" in unavailable, unavailable)
+    }
+
+    @Test
+    fun `selected commit keeps diff pagination file links and discussion context separate`() {
+        val sha = "b".repeat(40)
+        val path = "/pulls/pull?view=files&commit=$sha&commitOffset=25"
+        val response = get(path)
+        assertEquals(200, response.statusCode(), response.body())
+        val html = response.body()
+        assertTrue("Commit bbbbbbb" in html && "Selected commit change" in html, html)
+        assertTrue("ref=$sha" in html && "commitOffset=25" in html, html)
+        assertTrue("Discussions outside this diff" in html && "Existing line comment" in html, html)
+        assertFalse("Comment on line" in html, html)
+        val expanded = action(path, "git-pull-review.model", "expand", emptyList(), sourceHtml = html)
+        val state = actionState(expanded)
+        assertEquals(false, state.getValue("failed").jsonPrimitive.boolean, expanded.body())
+        assertTrue("More selected commit lines" in expanded.body(), expanded.body())
+        val query = requests.last { it.operation == "GitUiPullDiffPage" }
+        assertEquals(sha, query.variables.getValue("commitSha").jsonPrimitive.content)
+        assertEquals(2000, query.variables.getValue("offset").jsonPrimitive.int)
+        val all = get("/pulls/pull?view=files").body()
+        assertTrue("Second diff line" in all && "Comment on line" in all, all)
+        assertFalse("Selected commit change" in all, all)
     }
 
     @Test
@@ -969,8 +1256,9 @@ class GitUiRoutesTest {
         val html = get(path).body()
         assertTrue("Existing line comment" in html && "Second diff line" in html, html)
         assertTrue("Earlier revision" in html && "Discussions outside this diff" in html, html)
-        val displayedDiff = Regex("<details[^>]*class=\"diff-file\"[^>]*>.*?</details>", RegexOption.DOT_MATCHES_ALL)
+        val displayedDiff = Regex("<section[^>]*class=\"diff-file\"[^>]*>.*?</section>", RegexOption.DOT_MATCHES_ALL)
             .findAll(html).joinToString("\n") { it.value }
+        assertTrue("Second diff line" in displayedDiff, html)
         assertFalse("Existing line comment" in displayedDiff, displayedDiff)
         assertFalse("Comparison unavailable" in html || "No files changed" in html, html)
         assertTrue(requests.drop(before).none { it.operation == "GitUiBranches" })
@@ -1170,10 +1458,12 @@ class GitUiRoutesTest {
                 "/pulls?repo=repo&new=true",
                 "git-pull-create.model",
                 "create",
-                listOf("Rejected", "keep description", "feature/one", "main", true),
+                listOf("Rejected", "keep description", "feature/one", "main", true, false),
             )
         assertEquals(true, actionState(create)["failed"]?.jsonPrimitive?.boolean, create.body())
         assertEquals("keep description", actionState(create)["description"]?.jsonPrimitive?.content)
+        assertEquals(false, actionState(create)["deleteBranchOnMerge"]?.jsonPrimitive?.boolean)
+        assertEquals(false, requests.last { it.operation == "GitUiCreatePull" }.variables["input"]?.jsonObject?.get("deleteBranchOnMerge")?.jsonPrimitive?.boolean)
         val source = "/pulls/pull?repo=repo&number=1"
         val review =
             action(source, "git-pull-review.model", "review", listOf("APPROVED", "Rejected"))
@@ -1367,18 +1657,53 @@ class GitUiRoutesTest {
     }
 
     @Test
-    fun `step logs load on demand and selection survives polling and collapse`() {
+    fun `step logs load on demand without reloading history during run polling`() {
         val before = requests.count { it.operation == "GitUiLogs" }
         val html = get("/pipelines/run").body()
         assertFalse("data-log-step=" in html, html)
         assertEquals(before, requests.count { it.operation == "GitUiLogs" })
         val expanded = action("/pipelines/run", "git-pipeline-run.model", "toggleStepLogs", listOf("step"))
+        assertEquals(before + 1, requests.count { it.operation == "GitUiLogs" })
         val refreshed = continueAction("/pipelines/run", "git-pipeline-run.model:run", "refresh", actionState(expanded), emptyList())
         assertEquals("step", actionState(refreshed)["expandedStepId"]?.jsonPrimitive?.content)
-        val collapsed = continueAction("/pipelines/run", "git-pipeline-run.model:run", "toggleStepLogs", actionState(refreshed), listOf("step"))
+        assertEquals(before + 1, requests.count { it.operation == "GitUiLogs" })
+        val polled = continueAction("/pipelines/run", "git-pipeline-run.model:run", "refresh", actionState(refreshed), emptyList())
+        assertEquals("step", actionState(polled)["expandedStepId"]?.jsonPrimitive?.content)
+        assertEquals(before + 1, requests.count { it.operation == "GitUiLogs" })
+        val polledHtml = Json.parseToJsonElement(polled.body()).jsonObject.getValue("html").jsonPrimitive.content
+        assertTrue("data-bml-preserve=\"logs-step\"" in polledHtml, polledHtml)
+        val expandedHtml = Json.parseToJsonElement(expanded.body()).jsonObject.getValue("html").jsonPrimitive.content
+        val logs = action("/pipelines/run", "git-pipeline-logs.model", "refresh", emptyList(), sourceHtml = expandedHtml)
+        assertEquals(1, actionState(logs).getValue("lines").jsonArray.size)
+        assertEquals(before + 2, requests.count { it.operation == "GitUiLogs" })
+        val collapsed = continueAction("/pipelines/run", "git-pipeline-run.model:run", "toggleStepLogs", actionState(polled), listOf("step"))
         val collapsedHtml = Json.parseToJsonElement(collapsed.body()).jsonObject.getValue("html").jsonPrimitive.content
         assertFalse("data-log-step=" in collapsedHtml, collapsedHtml)
         assertTrue("aria-expanded=\"false\"" in collapsedHtml, collapsedHtml)
+        assertEquals(before + 2, requests.count { it.operation == "GitUiLogs" })
+        val reopened = continueAction("/pipelines/run", "git-pipeline-run.model:run", "toggleStepLogs", actionState(collapsed), listOf("step"))
+        assertEquals("step", actionState(reopened)["expandedStepId"]?.jsonPrimitive?.content)
+        assertEquals(before + 3, requests.count { it.operation == "GitUiLogs" })
+    }
+
+    @Test
+    fun `run refresh loads history when it first expands a failed step`() {
+        val run = Json.decodeFromString(
+            bosca.git.ui.graphql.GitUiRunData.Git.PipelineRun.serializer(),
+            requireNotNull(javaClass.getResource("/fixtures/run-failed.json")).readText(),
+        ).copy(status = bosca.git.ui.graphql.GitPipelineRunStatus.RUNNING)
+        val state = Json.encodeToJsonElement(
+            PipelineRunModel.serializer(), PipelineRunModel(run, true, true, true),
+        ).jsonObject
+        val before = requests.count { it.operation == "GitUiLogs" }
+        val refreshed = continueAction("/pipelines/failed-run", "git-pipeline-run.model:failed-run", "refresh", state, emptyList())
+        assertEquals("failed-step", actionState(refreshed)["expandedStepId"]?.jsonPrimitive?.content)
+        assertEquals(before + 1, requests.count { it.operation == "GitUiLogs" })
+        val html = Json.parseToJsonElement(refreshed.body()).jsonObject.getValue("html").jsonPrimitive.content
+        assertTrue("&lt;script&gt;log&lt;/script&gt;" in html, html)
+        val polled = continueAction("/pipelines/failed-run", "git-pipeline-run.model:failed-run", "refresh", actionState(refreshed), emptyList())
+        assertEquals("failed-step", actionState(polled)["expandedStepId"]?.jsonPrimitive?.content)
+        assertEquals(before + 1, requests.count { it.operation == "GitUiLogs" })
     }
 
     @Test
@@ -1796,7 +2121,7 @@ class GitUiRoutesTest {
             "/settings/github" to setOf("GitUiGitHubUsers", "GitUiPrincipals"),
             "/repositories/repo?tab=settings&panel=permissions" to setOf("GitUiPermissions", "GitUiGroups"),
             "/repositories/repo?tab=statuses&sha=abc" to setOf("GitUiStatuses", "GitUiCommits"),
-            "/pulls/pull" to setOf("GitUiRepository", "GitUiBranches", "GitUiProfiles", "GitUiPullList", "GitUiRepositories"),
+            "/pulls/pull" to setOf("GitUiRepository", "GitUiPullHeads", "GitUiProfiles", "GitUiPullList", "GitUiRepositories"),
         )) {
             val arrived = CountDownLatch(operations.size)
             val timeouts = AtomicInteger()
@@ -2148,6 +2473,7 @@ class GitUiRoutesTest {
             val variables: JsonObject,
             val authorization: String?,
             val origin: String?,
+            val query: String,
         )
 
         private val client = HttpClient.newHttpClient()
@@ -2194,12 +2520,26 @@ class GitUiRoutesTest {
                         variables,
                         exchange.requestHeaders.getFirst("Authorization"),
                         exchange.requestHeaders.getFirst("Origin"),
+                        input["query"]?.jsonPrimitive?.content.orEmpty(),
                     )
                 )
                 val id = variables["id"]?.jsonPrimitive?.contentOrNull
                 val path = variables["path"]?.jsonPrimitive?.content
                 val token =
                     exchange.requestHeaders.getFirst("Authorization")?.removePrefix("Bearer ")
+                val tagNames = when (token) {
+                    "tag-order-token" -> listOf("v2", "v10", "v1")
+                    "tag-pages-token" -> (1000 downTo 1).map { "v" + it.toString().padStart(4, '0') }
+                    "hex-tag-token" -> (30 downTo 1).map { "v$it" } + "a".repeat(40)
+                    else -> listOf("v1")
+                }
+                fun tagJson(name: String) =
+                    """{"name":"$name","sha":"abc","targetSha":null,"isAnnotated":false,"message":null}"""
+                val tagQuery = variables["query"]?.jsonPrimitive?.contentOrNull.orEmpty()
+                val tags = tagNames.filter { it.contains(tagQuery, ignoreCase = true) }
+                    .drop(variables["offset"]?.jsonPrimitive?.int ?: 0)
+                    .take(if (operation == "GitUiRefs") 25 else variables["limit"]?.jsonPrimitive?.int ?: 26)
+                    .joinToString(",", transform = ::tagJson)
                 fun capabilities(json: String): String =
                     when (token) {
                         "reader-token" ->
@@ -2258,6 +2598,36 @@ class GitUiRoutesTest {
                             """{"data":{"git":{"pullRequest":$editedPull}}}"""
                         operation == "GitUiPull" && id == "pull-replies" ->
                             """{"data":{"git":{"pullRequest":$replyPull}}}"""
+                        operation == "GitUiPullHeads" -> {
+                            fun head(key: String) = if (variables[key]?.jsonPrimitive?.content == "refs/heads/missing") "[]"
+                                else """[{"sha":"$commitSha"}]"""
+                            """{"data":{"git":{"sourceHead":${head("source")},"targetHead":${head("target")}}}}"""
+                        }
+                        operation == "GitUiPullCommits" -> {
+                            val offset = variables.getValue("offset").jsonPrimitive.int
+                            val commits = (0..25).drop(offset).take(26).map { index -> buildJsonObject {
+                                put("sha", if (index == 0) "b".repeat(40) else index.toString(16).padStart(40, '0'))
+                                put("message", "Commit $index")
+                                put("authorName", "Alice")
+                                put("authorDate", "2026-10-09T00:00:00Z")
+                                put("parentShas", JsonArray(listOf(JsonPrimitive("abc"))))
+                            } }
+                            """{"data":{"git":{"pullRequestById":{"version":0,"commits":${JsonArray(commits)}}}}}"""
+                        }
+                        operation == "GitUiPullDiffPage" && variables["commitSha"]?.jsonPrimitive?.contentOrNull != null -> {
+                            val current = Json.parseToJsonElement(pull).jsonObject
+                            val file = current.getValue("diff").jsonArray.single().jsonObject
+                            val hunk = file.getValue("hunks").jsonArray.single().jsonObject
+                            val offset = variables.getValue("offset").jsonPrimitive.int
+                            val line = buildJsonObject {
+                                put("content", if (offset == 0) "Selected commit change" else "More selected commit lines")
+                                put("type", "ADD"); put("oldLineNumber", JsonNull); put("newLineNumber", if (offset == 0) 1 else 2)
+                            }
+                            val changedHunk = JsonObject(hunk + mapOf("totalLineCount" to JsonPrimitive(2), "lines" to JsonArray(listOf(line))))
+                            val changedFile = JsonObject(file + ("hunks" to JsonArray(listOf(changedHunk))))
+                            val result = JsonObject(current + ("diff" to JsonArray(listOf(changedFile))))
+                            """{"data":{"git":{"pullRequest":$result}}}"""
+                        }
                         operation == "GitUiPullDiffPage" -> {
                             val number = variables.getValue("number").jsonPrimitive.int
                             val current = when (number) {
@@ -2270,7 +2640,7 @@ class GitUiRoutesTest {
                             """{"data":{"git":{"pullRequest":$result}}}"""
                         }
                         operation == "GitUiPull" -> {
-                            val result = (1..11).asSequence().map { pullStateFixture(pull, it) }
+                            val result = (1..12).asSequence().map { pullStateFixture(pull, it) }
                                 .firstOrNull { Json.parseToJsonElement(it).jsonObject.getValue("id").jsonPrimitive.content == id }
                             """{"data":{"git":{"pullRequest":$result}}}"""
                         }
@@ -2477,10 +2847,14 @@ class GitUiRoutesTest {
                             """{"data":{"search":{"search":{"documents":[]}}}}"""
                         operation == "GitUiOwners" ->
                             """{"data":{"search":{"search":{"documents":[{"profile":$profile},{"profile":$otherProfile}]}}}}"""
+                        operation == "GitUiTag" -> {
+                            val name = variables["name"]?.jsonPrimitive?.content
+                            """{"data":{"git":{"tag":${name?.takeIf { it in tagNames && id != "empty" }?.let(::tagJson) ?: "null"}}}}"""
+                        }
                         operation == "GitUiTags" && id == "empty" ->
                             """{"data":{"git":{"tags":[]}}}"""
                         operation == "GitUiTags" ->
-                            """{"data":{"git":{"tags":[{"name":"v1","sha":"abc","targetSha":null,"isAnnotated":false,"message":null}]}}}"""
+                            """{"data":{"git":{"tags":[$tags]}}}"""
                         operation == "GitUiStats" && id == "empty" ->
                             """{"data":{"git":{"stats":{"commitCount":0,"branchCount":0,"tagCount":0,"contributorCount":0,"diskSizeBytes":0}}}}"""
                         operation == "GitUiStats" ->
@@ -2489,6 +2863,8 @@ class GitUiRoutesTest {
                             variables["sha"]?.jsonPrimitive?.content in
                                 setOf("main", "feature/one", "v1") ->
                             """{"errors":[{"message":"commit requires a SHA, not a ref name"}]}"""
+                        operation == "GitUiCommit" && variables["sha"]?.jsonPrimitive?.contentOrNull == "b".repeat(40) ->
+                            """{"data":{"git":{"commit":{"sha":"${"b".repeat(40)}","message":"Selected commit message"}}}}"""
                         operation == "GitUiCommit" ->
                             """{"data":{"git":{"commit":${if (variables["sha"]?.jsonPrimitive?.content == "invalid") "null" else "{\"sha\":\"$commitSha\",\"message\":\"Initial\"}"}}}}"""
                         operation == "GitUiCommits" ->
@@ -2498,11 +2874,21 @@ class GitUiRoutesTest {
                         operation == "GitUiRefs" && id == "empty" ->
                             """{"data":{"git":{"branches":[],"tags":[]}}}"""
                         operation == "GitUiRefs" ->
-                            """{"data":{"git":{"branches":[{"name":"main","sha":"abc"},{"name":"feature/one","sha":"abc"}],"tags":[{"name":"v1","sha":"abc","targetSha":null,"isAnnotated":false,"message":null}]}}}"""
+                            """{"data":{"git":{"branches":[{"name":"main","sha":"abc"},{"name":"feature/one","sha":"abc"}],"tags":[$tags]}}}"""
                         operation == "GitUiBranches" && id == "empty" ->
                             """{"data":{"git":{"branches":[]}}}"""
-                        operation == "GitUiBranches" ->
-                            """{"data":{"git":{"branches":[{"name":"main","sha":"abc"},{"name":"feature/one","sha":"abc"}]}}}"""
+                        operation == "GitUiBranches" -> {
+                            val branches = mutableListOf(
+                                """{"name":"main","sha":"abc","ahead":0,"behind":0}""",
+                                """{"name":"feature/one","sha":"abc","ahead":3,"behind":2}""",
+                            )
+                            if (id == "branch-counts") branches += listOf(
+                                """{"name":"ahead-only","sha":"abc","ahead":1,"behind":0}""",
+                                """{"name":"behind-only","sha":"abc","ahead":0,"behind":1}""",
+                                """{"name":"in-sync","sha":"abc","ahead":0,"behind":0}""",
+                            )
+                            """{"data":{"git":{"branches":[${branches.joinToString(",")}]}}}"""
+                        }
                         operation == "GitUiTree" &&
                             id?.startsWith("retry-") == true &&
                             treeRetries
@@ -2519,6 +2905,20 @@ class GitUiRoutesTest {
                             """{"data":{"git":{"tree":[{"name":"a # b.txt","path":"docs/a # b.txt","type":"BLOB","sha":"abc","size":12},{"name":"guide.md","path":"docs/guide.md","type":"BLOB","sha":"abc","size":12}]}}}"""
                         operation == "GitUiTree" ->
                             """{"data":{"git":{"tree":[{"name":"docs","path":"docs","type":"TREE","sha":"abc","size":0},{"name":"README.md","path":"README.md","type":"BLOB","sha":"abc","size":34},{"name":"a # b.txt","path":"docs/a # b.txt","type":"BLOB","sha":"abc","size":12}]}}}"""
+                        operation == "GitUiBlob" && path == CONTEXT_FILE ->
+                            buildJsonObject {
+                                put("data", buildJsonObject {
+                                    put("git", buildJsonObject {
+                                        put("blob", buildJsonObject {
+                                            val content = contextFileLines.joinToString("\n", postfix = "\n")
+                                            put("content", content)
+                                            put("size", content.length)
+                                            put("sha", "context")
+                                            put("isBinary", false)
+                                        })
+                                    })
+                                })
+                            }.toString()
                         operation == "GitUiBlob" && path == "search-result.md" ->
                             """{"data":{"git":{"blob":{"content":"# Title\nmatching line\nlast line","size":31,"sha":"abc","isBinary":false}}}}"""
                         operation == "GitUiBlob" && path in setOf("empty.txt", "long.txt") ->
@@ -2814,7 +3214,7 @@ class GitUiRoutesTest {
         private val session =
             """{"principal":{"id":"test-principal","verified":true,"primaryProfileId":null},"profile":[],"token":{"token":"ui-test-token","expiresAt":4102444800,"issuedAt":1},"refreshToken":null,"accountCreated":false,"originator":"git-ui"}"""
         private val active =
-            """{"id":"repo","slug":"repo","ownerId":"owner","contentType":"GENERAL","diskSizeBytes":1024,"updated":"2026-10-09T00:00:00Z","canEdit":true,"canManage":true,"canExecute":true,"name":"Active project","description":"<script>untrusted</script>","defaultBranch":"main","archived":false,"deleted":false,"visibility":"PRIVATE","cloneUrl":"https://git.example.test/owner/repo.git"}"""
+            """{"id":"repo","slug":"repo","ownerId":"owner","contentType":"GENERAL","diskSizeBytes":1024,"updated":"2026-10-09T00:00:00Z","configuration":{"deleteBranchOnMerge":true},"canEdit":true,"canManage":true,"canExecute":true,"name":"Active project","description":"<script>untrusted</script>","defaultBranch":"main","archived":false,"deleted":false,"visibility":"PRIVATE","cloneUrl":"https://git.example.test/owner/repo.git"}"""
         private val archived =
             active
                 .replace("\"id\":\"repo\"", "\"id\":\"archived\"")

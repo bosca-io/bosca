@@ -32,7 +32,7 @@ Edit `swarm.local.json` before deployment:
 
 - Set the manager and worker SSH targets and the manager's private advertise address. Set a worker's optional `advertiseAddress` to its private address when it has multiple network interfaces.
 - Set each site's `serverMemory` when its Bosca server needs a different memory limit. It defaults to `768M`; for example, `1536M` allows 1.5 GiB. CPU remains uncapped.
-- Set each site's `id`, base `domain`, mail sender and `mailerType` (`sendgrid` or `mailgun`), Redis database number, and BML Artifacts URL/token. Site IDs must be unique lower-case letters and digits. Each site gets `<id>-bosca` and `<id>-warehouse` PostgreSQL databases. A site's public hostnames are derived from its base domain as in the Kubernetes deployment (see [Hostnames](#hostnames)); `gitDomain` overrides the shared Git API and UI hostname. Set `rootImage` and optionally `rootPort` to serve a website at the root and `www` hosts.
+- Set each site's `id`, base `domain`, mail sender and default `mailerType` (`sendgrid`, `mailgun`, or `smtp`), Redis database number, and BML Artifacts URL/token. Studio's **System → Integrations → Choose email provider** setting overrides this default without redeployment. Site IDs must be unique lower-case letters and digits. Each site gets `<id>-bosca` and `<id>-warehouse` PostgreSQL databases. A site's public hostnames are derived from its base domain as in the Kubernetes deployment (see [Hostnames](#hostnames)); `gitDomain` overrides the shared Git API and UI hostname. Set `rootImage` and optionally `rootPort` to serve a website at the root and `www` hosts.
 - If a site's `rootImage` comes from another private registry, set `rootRegistryAuth.server` to the image's registry host. Set `username` to `api_token` and leave `password` blank for the one-time `setup-tokens` command to mint a pull-only token, or provide an existing `username` and `password` in the owner-only config. `passwordEnv` can supply the password during deployment instead. The CLI logs in to both the platform registry and any configured root image registries before deploying stacks.
 - The root website service receives `BML_GRAPHQL_ENDPOINT` pointing to that site's Bosca server over the Swarm overlay network, so BML pages can load data and proxy browser GraphQL calls.
 - Set a site's `rootEnv` map for additional website runtime environment variables. For the Bosca Nuxt website, set `rootEnv.NUXT_CLI_INSTALL_SCRIPT_URL` to `https://<artifacts-host>/raw/bosca/bosca-cli/<cli-version>/install.sh`. The website then configures that raw repository as the installer's package source. Use the CLI artifact version, which is independent of the website image tag. These settings apply only to that site's `root-web` service; run `bosca swarm deploy` after changing them.
@@ -58,7 +58,37 @@ The CLI runs on the operator's computer and needs `ssh` and `tar`. The VMs need 
 
 For an image upgrade, change the relevant image tags in the same config file and run `bosca swarm deploy` again. The CLI resolves changed image tags from the registry and Swarm updates services whose image changed. Use new, immutable tags for releases. To roll back an image, restore its previous tag in the config and deploy again. Database migrations and data rollback need separate review; the CLI does not automatically discover releases or reverse migrations.
 
-If a provider firewall is active, allow Swarm traffic between the VMs there as well (TCP 2377, TCP/UDP 7946, UDP 4789). Point every hostname of each site at the manager VM (eleven records per site, plus `www` when `rootImage` is set, or the base domain plus a `*.<domain>` wildcard); expose TCP 80 and 443 there for Caddy. Other service ports stay on the overlay network. The CLI waits for PostgreSQL and PgBouncer before updating site services, then waits up to 20 minutes for every service to report one healthy replica and finish its Swarm update; the embeddings model downloads on first start, so the first deployment can take several minutes. The CLI reports waiting services and public URLs as it retries. A service that does not become healthy is reported with its latest task error. Finally the CLI checks the public API, Studio, Profiles, and Notifications HTTPS endpoints and, when `rootImage` is set, the root and `www` websites. Use `--skip-public-check` only when DNS or HTTPS is intentionally not yet available.
+If a provider firewall is active, allow Swarm traffic between the VMs there as well (TCP 2377, TCP/UDP 7946, UDP 4789). Point every hostname of each site at the manager VM (eleven records per site, plus `www` when `rootImage` is set, or the base domain plus a `*.<domain>` wildcard); expose TCP 80 and 443 there for Caddy. Other service ports stay on the overlay network. The CLI waits for PostgreSQL, PgBouncer, and Dragonfly before updating site services, then waits up to 20 minutes for every service to report one healthy replica and finish its Swarm update; the embeddings model downloads on first start, so the first deployment can take several minutes. The CLI reports waiting services and public URLs as it retries. A service that does not become healthy is reported with its latest task error. Finally the CLI checks the public API, Studio, Profiles, and Notifications HTTPS endpoints and, when `rootImage` is set, the root and `www` websites. Use `--skip-public-check` only when DNS or HTTPS is intentionally not yet available.
+
+## Dragonfly
+
+The `dragonfly` service runs Dragonfly `v2.0.2`, configured through
+`images.dragonfly`. Loading an existing Swarm configuration adds this image
+setting automatically; an old `images.redis` entry is unused. Clients connect to
+`dragonfly` using the existing `redis` backend selector and each site's
+`redisDatabase`. Dragonfly runs in standalone mode with separate storage at
+`<dataRoot>/dragonfly`.
+
+For installations using Redis only for disposable cache and lock data, this
+starts fresh without a data import. On the first switch, pause traffic and stop
+all clients of the old Redis service, including site applications and Studio,
+then run `bosca swarm deploy --config ./swarm.local.json` using the updated CLI.
+Deployment waits for Dragonfly readiness and starts the sites with the new
+endpoint. Stopping clients together prevents old and new processes from using
+separate lock stores during cutover. Resume traffic after verifying the sites.
+
+Swarm retains services omitted from a stack update. After all clients have
+switched, remove the old service on the manager with
+`sudo docker service rm infra_redis`. Its `<dataRoot>/redis` directory is left
+untouched. This fresh-start procedure assumes no jobs or counters need to be
+retained from the old store.
+
+Dragonfly writes a single `dump.rdb` snapshot every minute and on clean shutdown,
+with 60 seconds allowed for shutdown. Crash recovery uses the last completed
+snapshot. Backups include `<dataRoot>/dragonfly` when the `redis` backend is
+selected for jobs or counters. For later Dragonfly upgrades, change
+`images.dragonfly` and deploy again; `swarm update-images` updates Bosca application
+images.
 
 ## Services and isolation
 
@@ -73,9 +103,9 @@ change. The renderer passes this setting as `FUMS_TRANSFORM_ENABLED` only to tha
 site's collector. The runner's transform remains disabled; delivery jobs use its
 separate `fumsQueueRunner` worker.
 
-One shared PostgreSQL with pgvector provides separate operational and warehouse databases and roles per site. As in the Kubernetes deployment, the Bosca services connect through PgBouncer in transaction mode (up to 1000 client connections, 25 server connections per database and role), so their connection pools cannot exhaust the shared server; PostgreSQL's connection limit is sized from the number of sites. Trino connects to PostgreSQL directly. PgBouncer logs in to PostgreSQL as the connecting role, so each site still reaches only its own databases. Shared NATS has an account per site. Redis uses distinct logical databases and Pub/Sub namespaces. Each site selects NATS or Redis independently for caches, pub/sub, job queues, locks, and counters (see [Backend selection](#backend-selection)). Meilisearch uses per-site index prefixes. S3Proxy uses separate content and warehouse buckets. Trino has per-site catalogs and file access rules. Image processing and the text-embeddings service are shared; embeddings carry no site data. Each site runs its own Bosca server, runner, Git server, analytics collector, artifacts server, Studio, Profiles, Notifications, BML message server, recommendation trainer, model loader, and TensorFlow Serving. Caddy routes by hostname.
+One shared PostgreSQL with pgvector provides separate operational and warehouse databases and roles per site. As in the Kubernetes deployment, the Bosca services connect through PgBouncer in transaction mode (up to 1000 client connections, 25 server connections per database and role), so their connection pools cannot exhaust the shared server; PostgreSQL's connection limit is sized from the number of sites. Trino connects to PostgreSQL directly. PgBouncer logs in to PostgreSQL as the connecting role, so each site still reaches only its own databases. Shared NATS has an account per site. Dragonfly uses distinct logical databases and Pub/Sub namespaces. Each site selects NATS or Redis independently for caches, pub/sub, job queues, locks, and counters (see [Backend selection](#backend-selection)). Meilisearch uses per-site index prefixes. S3Proxy uses separate content and warehouse buckets. Trino has per-site catalogs and file access rules. Image processing and the text-embeddings service are shared; embeddings carry no site data. Each site runs its own Bosca server, runner, Git server, analytics collector, artifacts server, Studio, Profiles, Notifications, BML message server, recommendation trainer, model loader, and TensorFlow Serving. Caddy routes by hostname.
 
-The manager runs the stateful services: PostgreSQL, PgBouncer, NATS, Redis, Meilisearch, S3Proxy, Trino, Caddy and the backups. Application services run on the workers with memory limits but no CPU caps, allowing CPU overprovisioning. The first worker also holds each site's recommendation-model volume, shared by its model loader and TensorFlow Serving. Workers must be x86_64: the embeddings and TensorFlow Serving images are published for amd64 only. Every service rotates its logs (three 10 MB files). Services with a health check restart when it fails, and stateless application services start their replacement before stopping the old task and roll back when it does not become healthy.
+The manager runs the stateful services: PostgreSQL, PgBouncer, NATS, Dragonfly, Meilisearch, S3Proxy, Trino, Caddy and the backups. Application services run on the workers with memory limits but no CPU caps, allowing CPU overprovisioning. The first worker also holds each site's recommendation-model volume, shared by its model loader and TensorFlow Serving. Workers must be x86_64: the embeddings and TensorFlow Serving images are published for amd64 only. Every service rotates its logs (three 10 MB files). Services with a health check restart when it fails, and stateless application services start their replacement before stopping the old task and roll back when it does not become healthy.
 
 PgBouncer keeps prepared statements across pooled transactions. After a migration that changes a column's type, a cached statement can fail with `cached plan must not change result type`; restart the pooler with `sudo docker service update --force infra_pgbouncer` on the manager to clear it.
 
@@ -123,9 +153,9 @@ Every setting defaults to `nats`. Each selection applies consistently across the
 | `distributedLockBackend` | `DISTRIBUTED_LOCK_TYPE` |
 | `counterBackend` | `COUNTER_TYPE` |
 
-Redis keeps the site's existing `redisDatabase` and Pub/Sub namespace; NATS uses its existing account. Use images built with these configuration changes, including the Git server's selectable pub/sub binding and the collector's Redis connection settings.
+Dragonfly keeps the site's existing `redisDatabase` and Pub/Sub namespace; NATS uses its existing account. Use images built with these configuration changes, including the Git server's selectable pub/sub binding and the collector's Redis connection settings.
 
-Both infrastructure services stay deployed. Chat and collaboration use NATS directly, the analytics event pipeline stores and consumes batches through NATS JetStream, and Studio uses Redis for editor collaboration. Backups include Redis data whenever a site uses Redis for job queues or counters.
+Both infrastructure services stay deployed. Chat and collaboration use NATS directly, the analytics event pipeline stores and consumes batches through NATS JetStream, and Studio uses Dragonfly for editor collaboration. Backups include Dragonfly data whenever a site uses Redis for job queues or counters.
 
 For a new installation, choose the backends before the first `bosca swarm deploy`. To change an existing site's selections in either direction:
 
@@ -173,16 +203,18 @@ When a site's `rootRegistryAuth.username` is `api_token` and its password is bla
 
 ## Backups
 
-With `backup.repository` set, the deployment runs two services on the manager. At `backup.hour` (UTC) `backup-dump` writes a `pg_dump` of every site database and the PostgreSQL roles to `<dataRoot>/backups`. Thirty minutes later `backup` takes an encrypted restic snapshot of those dumps, the S3 objects, NATS data, Meilisearch's daily snapshots, Caddy certificates and the rendered configuration, then prunes to `backup.keepDaily`, `keepWeekly` and `keepMonthly` snapshots. It also includes Redis data when any site uses Redis for job queues or counters. A snapshot runs at start-up when the last success is more than a day old. `bosca swarm status` shows the last successful and failed backup. NATS and selected Redis data are copied while those services are running.
+With `backup.repository` set, the deployment runs two services on the manager. At `backup.hour` (UTC) `backup-dump` writes a `pg_dump` of every site database and the PostgreSQL roles to `<dataRoot>/backups`. Thirty minutes later `backup` takes an encrypted restic snapshot of those dumps, the S3 objects, NATS data, Meilisearch's daily snapshots, Caddy certificates and the rendered configuration, then prunes to `backup.keepDaily`, `keepWeekly` and `keepMonthly` snapshots. It also includes Dragonfly data when any site uses Redis for job queues or counters. A snapshot runs at start-up when the last success is more than a day old. `bosca swarm status` shows the last successful and failed backup. NATS and selected Dragonfly data are copied while those services are running.
 
 To run a backup now, run the scripts on the manager: `sudo docker exec $(sudo docker ps -q --filter label=com.docker.swarm.service.name=infra_backup-dump) /bin/sh /scripts/backup-dump.sh once`, then the same with `infra_backup` and `/scripts/backup.sh once`.
 
-To restore, use restic with the same repository, `secrets.backupPassword` and credentials: `restic snapshots`, then `restic restore latest --target <directory>`. Load each database with `pg_restore --no-owner -d <database> <directory>/data/postgres-dumps/postgres/<database>.dump` after recreating it with the bootstrap, and copy the S3, NATS, any included Redis, and Caddy directories back into the data root with the services stopped. Test a restore before relying on the installation.
+To restore, use restic with the same repository, `secrets.backupPassword` and credentials: `restic snapshots`, then `restic restore latest --target <directory>`. Load each database with `pg_restore --no-owner -d <database> <directory>/data/postgres-dumps/postgres/<database>.dump` after recreating it with the bootstrap, and copy the S3, NATS, any included Dragonfly, and Caddy directories back into the data root with the services stopped. Test a restore before relying on the installation.
 
 ## Mail and checks
 
-For Mailgun, create and verify a sending domain for each site in Mailgun and publish the DNS records shown for that domain. In each site's Studio, open **System → Integrations → Mailgun** and save a domain sending API key, the verified sending domain, and the API base URL (`https://api.mailgun.net` for US domains or `https://api.eu.mailgun.net` for EU domains). The credentials are stored in that site's encrypted platform configuration and take effect for new sends without a restart. Set that site's `mailerType` to `mailgun` in the private Swarm config and deploy to select the Mailgun sender. Keep `mailFromEmail` on the same root or sending domain and check its DMARC alignment.
+For Mailgun, create and verify a sending domain for each site in Mailgun and publish the DNS records shown for that domain. In each site's Studio, open **System → Integrations → Mailgun** and save a domain sending API key, the verified sending domain, and the API base URL (`https://api.mailgun.net` for US domains or `https://api.eu.mailgun.net` for EU domains). The credentials are stored in that site's encrypted platform configuration and take effect for new sends without a restart. Use **Choose email provider** to select Mailgun. Keep `mailFromEmail` on the same root or sending domain and check its DMARC alignment.
 
 For SendGrid, configure each site's API key and webhook verification key in its Studio system integrations. Verify each sender domain and point its SendGrid Event Webhook at `https://<domain>/api/v1/webhooks/sendgrid`.
+
+For SMTP, open **System → Integrations → SMTP** and save the host, port, connection security, and optional username/password. Select **None (plain SMTP)** for an unencrypted relay, **STARTTLS** for a required TLS upgrade, or **TLS** for TLS on connection. Leave both credentials empty for an unauthenticated relay. Use **Choose email provider** to select SMTP. Connection settings and provider changes apply to new sends without a restart.
 
 Check login, a Git clone, object upload, search, a queued job, an analytics event, and a test email from the selected provider for each site. Check Trino catalog access and perform a backup restore test before relying on the installation. The Kubernetes controller is disabled, and CI agents are not launched by this installer.

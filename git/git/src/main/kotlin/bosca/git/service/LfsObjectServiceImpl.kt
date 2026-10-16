@@ -8,7 +8,6 @@ import bosca.service.annotation.ServiceImplementation
 import bosca.storage.service.ObjectStorageService
 import bosca.storage.service.StringObjectPath
 import bosca.storage.service.StorageDispatcher
-import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -74,45 +73,48 @@ class LfsObjectServiceImpl(
                 // StorageDispatcher, which starts a thread per task and never runs out. On a bounded
                 // pool shared with writers, enough concurrent uploads would leave every thread waiting
                 // on a pipe and none free for the side that would unblock them. The reader keeps one
-                // thread for the whole upload, which the pipe's liveness checks require. ATOMIC: its
-                // finally must close the pipe even if the upload is cancelled before the reader starts,
-                // or a writer blocked on the full pipe would wait forever.
-                val upload = async(StorageDispatcher, start = CoroutineStart.ATOMIC) {
+                // thread for the whole upload, which the pipe's liveness checks require.
+                val upload = async(StorageDispatcher) {
                     try {
-                        input.use {
-                            val digest = MessageDigest.getInstance("SHA-256")
-                            val buffer = ByteArray(PART_SIZE)
-                            var received = 0L
-                            while (true) {
-                                val length = input.readNBytes(buffer, 0, buffer.size)
-                                if (length == 0) break
-                                received += length
-                                if (received > size) throw LfsUploadValidationException()
-                                digest.update(buffer, 0, length)
-                                val written = objectStorage.uploadMultipartPart(
-                                    path, checkNotNull(uploadId), ++partCount,
-                                    ByteArrayInputStream(buffer, 0, length), length.toLong(),
-                                )
-                                check(written == length.toLong()) { "LFS storage wrote $written bytes; expected $length" }
-                            }
-                            val actualOid = digest.digest().joinToString("") { "%02x".format(it) }
-                            if (received != size || actualOid != oid) throw LfsUploadValidationException()
+                        val digest = MessageDigest.getInstance("SHA-256")
+                        val buffer = ByteArray(PART_SIZE)
+                        var received = 0L
+                        while (true) {
+                            val length = input.readNBytes(buffer, 0, buffer.size)
+                            if (length == 0) break
+                            received += length
+                            if (received > size) throw LfsUploadValidationException()
+                            digest.update(buffer, 0, length)
+                            val written = objectStorage.uploadMultipartPart(
+                                path, checkNotNull(uploadId), ++partCount,
+                                ByteArrayInputStream(buffer, 0, length), length.toLong(),
+                            )
+                            check(written == length.toLong()) { "LFS storage wrote $written bytes; expected $length" }
                         }
+                        val actualOid = digest.digest().joinToString("") { "%02x".format(it) }
+                        if (received != size || actualOid != oid) throw LfsUploadValidationException()
                     } catch (failure: Throwable) {
                         currentCoroutineContext().ensureActive()
                         throw failure
-                    } finally {
-                        output.close()
                     }
                 }
+                // Report the reader's failure to the parent before closing the pipe wakes the writer.
+                // Completion handlers also run when cancellation prevents the reader from starting.
+                upload.invokeOnCompletion { failure ->
+                    if (failure != null) closeLfsUploadPipe(input, output, failure)
+                }
+                var bodyFailure: Throwable? = null
                 try {
-                    val written = output.use { writeBody(it) }
+                    val written = writeBody(output)
+                    output.close()
                     upload.await()
                     if (written != size) throw LfsUploadValidationException()
+                } catch (failure: Throwable) {
+                    bodyFailure = failure
+                    throw failure
                 } finally {
                     upload.cancel()
-                    output.close()
-                    input.close()
+                    closeLfsUploadPipe(input, output, bodyFailure)
                 }
             }
 

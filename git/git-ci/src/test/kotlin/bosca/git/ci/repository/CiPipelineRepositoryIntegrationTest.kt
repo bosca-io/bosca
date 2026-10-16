@@ -126,7 +126,7 @@ class CiPipelineRepositoryIntegrationTest {
                         "/db/migrations/V43__pipeline_catalog_archival.sql",
                         "/db/migrations/V44__github_intake.sql",
                         "/db/migrations/V48__github_branch_filters.sql",
-                        "/db/migrations/V50__pipeline_evaluations.sql",
+                        "/db/migrations/V51__pipeline_evaluations.sql",
                     )
                     for (path in ciMigrations) {
                         val sql = CiPipelineRepositoryIntegrationTest::class.java

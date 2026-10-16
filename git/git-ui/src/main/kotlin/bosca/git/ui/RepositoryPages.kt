@@ -56,11 +56,11 @@ suspend fun repositoryPage(): RepositoryPage? = supervisorScope {
     val listHref = safeListHref(ctx.query["return"])
     val needsRefs = tab in setOf("code", "commits", "branches", "tags", "statuses")
     val branchesRequest = async {
-        if (needsRefs) ctx.gql.execute(GitUiBranches, GitUiBranches.Variables(id)).git.branches
+        if (needsRefs) ctx.gql.execute(GitUiBranches, GitUiBranches.Variables(id, tab == "branches")).git.branches
         else emptyList()
     }
     val tagsRequest = async {
-        if (needsRefs) ctx.gql.execute(GitUiTags, GitUiTags.Variables(id)).git.tags.map {
+        if (needsRefs) ctx.gql.execute(GitUiTags, GitUiTags.Variables(id, if (tab == "tags") offset else 0, 26, null)).git.tags.map {
             RefOption(it.name, "tag", it.targetSha ?: it.sha, it.message.orEmpty())
         } else emptyList()
     }
@@ -105,10 +105,12 @@ suspend fun repositoryPage(): RepositoryPage? = supervisorScope {
     }
     val branchRefs = branchesRequest.await()
     val branches = branchRefs.map { it.name }
-    val tags = tagsRequest.await()
+    val loadedTags = tagsRequest.await()
+    val tags = loadedTags.take(25)
     val resolvedSha = if (tab == "code" || tab == "branches") {
         ctx.gql.commitShaForRef(
-            id, ref, tags.associate { it.name to it.sha } + branchRefs.associate { it.name to it.sha },
+            id, ref, tags.associate { "refs/tags/${it.name}" to it.sha } +
+                branchRefs.associate { "refs/heads/${it.name}" to it.sha },
         ).orEmpty()
     } else ""
     val emptyRepository = branches.isEmpty() && tags.isEmpty()
@@ -267,7 +269,8 @@ suspend fun repositoryPage(): RepositoryPage? = supervisorScope {
             !repo.archived &&
             (branches.contains(ref) || (emptyRepository && ref == repo.defaultBranch)) &&
             ctx.query["new"] == "true",
-        branchRefs = branchRefs.map { RefOption(it.name, "branch", it.sha) },
+        tagsHasMore = loadedTags.size > 25,
+        branchRefs = branchRefs.map { RefOption(it.name, "branch", it.sha, ahead = it.ahead, behind = it.behind) },
         pulls =
             if (tab == "pulls")
                 pullListPage(id, repositoryHref(id, ref, listHref = listHref, tab = tab), repo)

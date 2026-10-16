@@ -1,0 +1,47 @@
+<component tag="git-diff-gap">
+  <prop name="gap" type="bosca.git.ui.DiffGap" required />
+  <div class="diff-gap" :data-gap-index="gap.index">
+    <span class="gap-actions"><slot /></span>
+    <code class="gap-label">
+      <if gap.heading.isNotBlank()>
+        <span class="gap-heading">{ gap.heading }</span>
+      </if>
+      <span class="gap-count">{ gap.label }</span>
+    </code>
+  </div>
+  <style scoped>
+    /* Hidden unchanged lines between hunks, with expanders in the line-number gutter. */
+    .diff-gap {
+      position: sticky;
+      left: 0;
+      display: grid;
+      grid-template-columns: calc(var(--diff-number-width) * 2) minmax(0, 1fr);
+      align-items: stretch;
+      min-height: 26px;
+      color: var(--fg-3);
+      background: color-mix(in oklch, var(--accent) 6%, var(--bg-2));
+      border-block: 1px solid var(--line);
+    }
+    .gap-actions {
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      justify-content: center;
+      min-height: 26px;
+      background: color-mix(in oklch, var(--accent) 10%, var(--bg-2));
+    }
+    .gap-label {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 4px 12px;
+      min-width: 0;
+      padding: 3px 12px;
+      font: 11px/18px var(--font-mono);
+    }
+    .gap-heading {
+      color: var(--fg-2);
+      overflow-wrap: anywhere;
+    }
+  </style>
+</component>

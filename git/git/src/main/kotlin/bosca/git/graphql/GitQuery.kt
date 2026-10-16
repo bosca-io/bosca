@@ -215,19 +215,32 @@ class GitQuery(
     }
 
     @Field
-    suspend fun branches(authentication: AuthenticationContext?, repositoryId: UUID): List<BranchInfo> {
+    suspend fun branches(
+        authentication: AuthenticationContext?, repositoryId: UUID, includeAheadBehind: Boolean? = null,
+    ): List<BranchInfo> {
         val repository = repositoryService.findById(repositoryId)
             ?: throw NoSuchElementException("Repository not found: $repositoryId")
         permissionEvaluator.verifyAllowed(authentication, repository, PermissionAction.VIEW)
-        return browseService.listBranches(repositoryId)
+        return browseService.listBranches(repositoryId, includeAheadBehind != false)
     }
 
     @Field
-    suspend fun tags(authentication: AuthenticationContext?, repositoryId: UUID): List<TagInfo> {
+    suspend fun tags(
+        authentication: AuthenticationContext?, repositoryId: UUID,
+        limit: Int? = null, offset: Long? = null, query: String? = null,
+    ): List<TagInfo> {
         val repository = repositoryService.findById(repositoryId)
             ?: throw NoSuchElementException("Repository not found: $repositoryId")
         permissionEvaluator.verifyAllowed(authentication, repository, PermissionAction.VIEW)
-        return browseService.listTags(repositoryId)
+        return browseService.listTags(repositoryId, limit?.coerceIn(1, 100), (offset ?: 0).coerceAtLeast(0), query)
+    }
+
+    @Field
+    suspend fun tag(authentication: AuthenticationContext?, repositoryId: UUID, name: String): TagInfo? {
+        val repository = repositoryService.findById(repositoryId)
+            ?: throw NoSuchElementException("Repository not found: $repositoryId")
+        permissionEvaluator.verifyAllowed(authentication, repository, PermissionAction.VIEW)
+        return browseService.getTag(repositoryId, name)
     }
 
     @Field

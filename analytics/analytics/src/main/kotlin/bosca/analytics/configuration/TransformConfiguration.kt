@@ -23,6 +23,7 @@ import bosca.scripting.service.ScriptService
 import bosca.security.service.SecurityService
 import bosca.sharedqueue.jobs.JobQueue
 import kotlinx.serialization.json.Json
+import org.slf4j.LoggerFactory
 
 /**
  * Container for the ordered list of pipeline transforms that process analytics events.
@@ -90,6 +91,11 @@ class TransformConfiguration {
         )
         if (config.fumsEnabled && queue.exists) {
             transforms.add(FumsAnalyticsTransform(queue.get()))
+            log.info("FUMS event processing enabled: queue={}", JobQueueNames.fumsQueue)
+        } else if (config.fumsEnabled) {
+            log.warn("FUMS event processing unavailable: queue={} is not registered", JobQueueNames.fumsQueue)
+        } else {
+            log.info("FUMS event processing disabled: eventProcessing.fumsEnabled=false")
         }
         transforms.add(
             AnalyticsScriptTransform(
@@ -104,5 +110,9 @@ class TransformConfiguration {
         transforms.add(ScriptTransformPipelineTransform(AnalyticsEventNames.TRANSFORM))
         transforms.add(ScriptTriggerPipelineTransform(AnalyticsEventNames.NOTIFY))
         return EventPipelineTransforms(transforms)
+    }
+
+    private companion object {
+        val log = LoggerFactory.getLogger(TransformConfiguration::class.java)
     }
 }

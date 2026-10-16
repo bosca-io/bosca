@@ -9,9 +9,12 @@
         <ui-alert :tone='if (model.failed) "error" else "success"'>{ model.message }</ui-alert>
       </if>
       <ui-card :padded="false">
-        <ui-section-heading :title='if (model.page.tab == "branches") "Branches" else "Tags"'>
+        <ui-section-heading
+          :title='if (model.page.tab == "branches") "Branches" else "Tags"'
+          :subtitle='if (model.page.tab == "branches") "Commits compared with " + model.page.defaultBranch else ""'
+        >
           <code class="section-meta">
-            { (if (model.page.tab == "branches") model.page.branches.size else model.page.tags.size).toString() + " total" }
+            { if (model.page.tab == "branches") model.page.branches.size.toString() + " total" else model.page.tags.size.toString() + " shown" }
           </code>
         </ui-section-heading>
         <if model.page.tab == "branches">
@@ -20,7 +23,7 @@
           <else>
             <div class="ref-list">
               <for branch in model.page.branchRefs>
-                <div class="ref-row" :data-default="branch.name == model.page.defaultBranch">
+                <div class="ref-row branch-row" :data-default="branch.name == model.page.defaultBranch">
                   <span class="ref-icon"><ui-icon name="branch" :size="14" /></span>
                   <a class="ref-name" :href="model.page.href(ref = branch.name)">{ branch.name }</a>
                   <if branch.name == model.page.defaultBranch>
@@ -28,6 +31,21 @@
                   </if>
                   <if branch.name == model.page.ref && branch.name != model.page.defaultBranch>
                     <ui-badge>selected</ui-badge>
+                  </if>
+                  <if branch.ahead != 0 || branch.behind != 0>
+                    <span
+                      class="branch-delta"
+                      role="group"
+                      :aria-label='"Commits compared with " + model.page.defaultBranch + ": " + branch.ahead + " ahead, " + branch.behind + " behind"'
+                      :title='"Commits compared with " + model.page.defaultBranch + ": " + branch.ahead + " ahead, " + branch.behind + " behind"'
+                    >
+                      <if branch.ahead != 0>
+                        <span class="delta-ahead" aria-hidden="true">+{ branch.ahead }</span>
+                      </if>
+                      <if branch.behind != 0>
+                        <span class="delta-behind" aria-hidden="true">-{ branch.behind }</span>
+                      </if>
+                    </span>
                   </if>
                   <code class="ref-sha" :title="branch.sha">{ branch.sha.take(7) }</code>
                   <if model.page.canEdit && !model.page.archived && branch.name != model.page.defaultBranch>
@@ -81,6 +99,16 @@
               </for>
             </div>
           </if>
+        </if>
+        <if model.page.tab == "tags" && (model.page.offset != 0L || model.page.tagsHasMore)>
+          <nav class="load-more" aria-label="Tag pages">
+            <if model.page.offset != 0L>
+              <a class="button-link" :href="model.page.previousHref">Newer tags</a>
+            </if>
+            <if model.page.tagsHasMore>
+              <a class="button-link" :href="model.page.nextHref">Older tags</a>
+            </if>
+          </nav>
         </if>
       </ui-card>
     </section>
@@ -138,12 +166,34 @@
       color: var(--fg-3);
       font-size: 11px;
     }
+    .branch-delta {
+      display: inline-flex;
+      flex: none;
+      gap: 6px;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+    .delta-ahead {
+      color: var(--ok);
+    }
+    .delta-behind {
+      color: var(--err);
+    }
     .ref-empty {
       margin: 0;
       padding: 48px 0;
       text-align: center;
       color: var(--fg-3);
       font-size: 13.5px;
+    }
+    @media (max-width: 600px) {
+      .branch-row {
+        flex-wrap: wrap;
+      }
+      .branch-row .ref-name {
+        flex-basis: calc(100% - 24px);
+      }
     }
   </style>
   <script client scoped>

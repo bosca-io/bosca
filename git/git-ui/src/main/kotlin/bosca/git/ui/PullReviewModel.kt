@@ -28,6 +28,8 @@ class PullReviewModel(
     var failed: Boolean = false,
     var reviewFailed: Boolean = false,
     var reviewing: Boolean = false,
+    var contextFile: String = "",
+    var contextMessage: String = "",
 ) {
     val files: List<DiffTreeEntry>
         get() = changedFileTree(diff)
@@ -50,14 +52,14 @@ class PullReviewModel(
             .filter { sharesDisplayedCommit(it) && it.matches(file, old, new) }
 
     private fun sharesDisplayedCommit(thread: PullReviewThread): Boolean =
-        page.pull.status != GitPullRequestStatus.MERGED || thread.first.commitSha == page.headSha
+        page.selectedCommit == null && (page.pull.status != GitPullRequestStatus.MERGED || thread.first.commitSha == page.headSha)
 
     /** Discussions that cannot be placed on a displayed line remain reachable below the diff. */
     val detachedThreads: List<PullReviewThread>
         get() = reviews.flatMap(::reviewThreads).filter { thread ->
             !sharesDisplayedCommit(thread) || diff.none { file ->
                 file.hunks.any { hunk ->
-                    hunk.lines.any { line ->
+                    hunk.displayLines.any { line ->
                         thread.matches(file.path, line.oldLineNumber, line.newLineNumber)
                     }
                 }
@@ -127,13 +129,14 @@ class PullReviewModel(
 
     /** Selects a displayed diff line; zero represents an absent side in the primitive action arguments. */
     suspend fun select(file: String, oldLine: Int, newLine: Int) {
+        require(page.canCommentOnDiff) { "Open all changes to add a line comment." }
         val old = oldLine.takeIf { it > 0 }
         val new = newLine.takeIf { it > 0 }
         require(
             diff.any {
                 it.path == file &&
                     it.hunks.any { h ->
-                        h.lines.any { line ->
+                        h.displayLines.any { line ->
                             line.oldLineNumber == old && line.newLineNumber == new
                         }
                     }
@@ -192,6 +195,7 @@ class PullReviewModel(
                     GitUiReplyComment.Variables(page.pull.id, replyToCommentId, body, page.pull.version),
                 )
             } else {
+                require(page.canCommentOnDiff) { "Open all changes to add a line comment." }
                 require(commentFile.isNotBlank() && (oldLine != null || newLine != null)) {
                     "Choose a diff line."
                 }
@@ -234,7 +238,7 @@ class PullReviewModel(
             ctx.gql
                 .execute(
                     GitUiPullDiffPage,
-                    GitUiPullDiffPage.Variables(page.pull.repositoryId, page.pull.number, offset),
+                    GitUiPullDiffPage.Variables(page.pull.repositoryId, page.pull.number, offset, page.selectedCommit?.sha),
                 )
                 .git
                 .pullRequest ?: error("Pull request unavailable.")
@@ -244,17 +248,52 @@ class PullReviewModel(
         require(next.size == diff.size) { "The diff changed. Reload this pull request." }
         diff = diff.mapIndexed { index, file ->
             val additional = next[index]
-            require(file.path == additional.path && file.hunks.size == additional.hunks.size) {
+            require(file.path == additional.path && file.hunks.count { !it.synthetic } == additional.hunks.size) {
                 "The diff changed. Reload this pull request."
             }
+            // Revealed context-only hunks have no counterpart in the API's list.
+            var h = 0
             file.copy(
                 hunks =
-                    file.hunks.mapIndexed { h, previous ->
-                        previous.copy(lines = previous.lines + additional.hunks[h].lines)
+                    file.hunks.map { previous ->
+                        if (previous.synthetic) previous
+                        else previous.copy(lines = previous.lines + additional.hunks[h++].lines)
                     }
             )
         }
         offset += 2000
+    }
+
+    /** Reveals unchanged lines of [file] above hunk [index] (or after the last hunk) in [direction]. */
+    suspend fun expandContext(file: String, index: Int, direction: String, ctx: RenderContext) =
+        updateContext(file, ctx) { view, source -> view.expandGap(index, direction, source) }
+
+    /** Reveals every unchanged line of [file]. */
+    suspend fun expandFile(file: String, ctx: RenderContext) =
+        updateContext(file, ctx) { view, source -> view.expandAll(source) }
+
+    /** Hides the unchanged lines revealed in [file]. */
+    fun collapseContext(file: String) {
+        contextFile = ""
+        contextMessage = ""
+        diff = diff.map { if (it.path == file) it.collapseRevealed() else it }
+    }
+
+    private suspend fun updateContext(
+        file: String,
+        ctx: RenderContext,
+        change: (DiffView, List<String>) -> DiffView,
+    ) {
+        contextFile = file
+        contextMessage = ""
+        try {
+            diff = diff.withRevealedLines(file, { ctx.gql.diffSourceLines(page.sourceRepository, page.diffHeadSha, it) }, change)
+            contextFile = ""
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            contextMessage = e.message ?: "Unchanged lines could not be shown."
+        }
     }
 
     private suspend fun requireCurrentHead(ctx: RenderContext) {

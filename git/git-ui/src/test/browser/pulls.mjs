@@ -236,7 +236,7 @@ for (const width of [1920, 1440, 1024, 390]) {
   })()`);
   assert.ok(workspace.toolbarHeight <= 32, "Files use one compact review toolbar");
   if (width >= 1024) {
-    assert.ok(workspace.treeWidth >= 220 && workspace.treeWidth <= 280, "Changed-file navigation has a bounded sidebar");
+    assert.equal(Math.round(workspace.treeWidth), 300, "Changed-file navigation starts at its default resizable width");
     assert.ok(Math.abs(workspace.treeTop - workspace.panelTop) < 1, "Tree and diff start together");
     assert.ok(workspace.panelLeft > workspace.treeRight, "Diff is beside the file navigation");
   } else {
@@ -472,7 +472,7 @@ for (const width of [1920, 1440, 1024, 390]) {
   assert.ok(await ev(`(() => {
     const target = document.querySelector('#discussion-comment');
     const bounds = target.getBoundingClientRect();
-    return target.closest('.diff-file').open && bounds.top >= 0 && bounds.bottom <= innerHeight
+    return !target.closest('.diff-file').hasAttribute('data-collapsed') && bounds.top >= 0 && bounds.bottom <= innerHeight
       && getComputedStyle(target).boxShadow !== 'none';
   })()`), "A review location opens, focuses and highlights the exact discussion in Files Changed");
   await screenshot("discussion-linked", width);
@@ -485,10 +485,10 @@ for (const width of [1920, 1440, 1024, 390]) {
   await until(`location.hash === '#discussion-comment' && document.activeElement?.id === 'discussion-comment'`);
   await call("Page.reload", { ignoreCache: true });
   await until(`document.readyState === 'complete' && document.activeElement?.id === 'discussion-comment'`);
-  await ev(`document.querySelector('.diff-file').open = false;
+  await ev(`document.querySelector('.diff-file-toggle').click();
     history.replaceState(null, '', location.pathname + location.search);
     location.hash = 'discussion-comment'`);
-  await until(`document.querySelector('.diff-file').open && document.activeElement?.id === 'discussion-comment'`);
+  await until(`!document.querySelector('.diff-file').hasAttribute('data-collapsed') && document.activeElement?.id === 'discussion-comment'`);
   await click(replyAction);
   await until(`document.activeElement === document.querySelector('.comment-form textarea')`);
   await fillComment("A draft after following the discussion link");
@@ -663,6 +663,23 @@ for (const width of [1920, 1440, 1024, 390]) {
   await chooseEditBranch("target");
   await click(`${editDialog} button[type="submit"]`);
   await until(`document.querySelector('.page-heading h1')?.innerText.startsWith(${JSON.stringify(original.title)}) && !document.querySelector(${JSON.stringify(editDialog)})`);
+}
+for (const width of [1440, 390]) {
+  await call("Emulation.setDeviceMetricsOverride", { width, height: 1000, deviceScaleFactor: 1, mobile: false });
+  await nav("/pulls/pull?view=commits");
+  assert.ok(await ev(`document.querySelector('main').innerText.includes('Commit 24')`));
+  await click('a.commit-message');
+  await until(`location.search.includes('commit=' + 'b'.repeat(40)) && document.querySelector('.commit-comparison')?.innerText.includes('Selected commit message')`);
+  assert.ok(await ev(`document.querySelector('main').innerText.includes('Selected commit change')`));
+  assert.equal(await ev(`document.querySelectorAll('[aria-label^="Comment on line"]').length`), 0);
+  assert.ok(await ev(`document.documentElement.scrollWidth <= innerWidth`), "Commit comparison fits viewport");
+  await screenshot("commit-files", width);
+  await click('.commit-comparison nav a');
+  await until(`!location.search.includes('commit=') && document.querySelector('[aria-label^="Comment on line"]')`);
+  await nav("/pulls/pull?view=commits&commitOffset=25");
+  assert.ok(await ev(`document.querySelector('main').innerText.includes('Commit 25')`));
+  assert.ok(await ev(`!document.querySelector('main').innerText.includes('Load more commits')`));
+  await screenshot("commit-page", width);
 }
 assert.deepEqual(errors, [], "No browser exceptions on PR pages");
 await writeFile(

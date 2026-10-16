@@ -286,10 +286,12 @@ type Git {
     commits(repositoryId: UUID!, ref: String, path: String, limit: Int, offset: Long): [GitCommitInfo!]!
     "Get a single commit by SHA."
     commit(repositoryId: UUID!, sha: String!): GitCommitInfo
-    "List all branches with head SHA and ahead/behind counts."
-    branches(repositoryId: UUID!): [GitBranchInfo!]!
-    "List all tags."
-    tags(repositoryId: UUID!): [GitTagInfo!]!
+    "List all branches with head SHA. Set includeAheadBehind to false to skip history comparisons and return zero counts."
+    branches(repositoryId: UUID!, includeAheadBehind: Boolean = true): [GitBranchInfo!]!
+    "List tags newest first by Git tagger date, using commit dates for lightweight tags, with optional filtering and pagination."
+    tags(repositoryId: UUID!, limit: Int, offset: Long, query: String): [GitTagInfo!]!
+    "Look up a tag by name directly from Git."
+    tag(repositoryId: UUID!, name: String!): GitTagInfo
     "Per-line blame attribution for a file."
     blame(repositoryId: UUID!, ref: String!, path: String!): [GitBlameLine!]!
     "Repository statistics."
@@ -471,6 +473,8 @@ type GitPullRequest {
     "Non-null for cross-fork PRs."
     sourceRepositoryId: UUID
     status: GitPullRequestStatus!
+    "Whether to delete this PR's source branch after a successful merge."
+    deleteBranchOnMerge: Boolean!
     "The strategy used when merged."
     mergeStrategy: GitMergeStrategy
     mergedBy: UUID
@@ -495,8 +499,10 @@ type GitPullRequest {
     dependents: [GitPullRequest!]!
     "Reviews submitted on this PR."
     reviews: [GitReview!]!
-    "Structured diff between source and target branches."
-    diff: [GitDiffFile!]!
+    "Commits unique to this comparison, newest first. Merged requests use their recorded merge history."
+    commits(offset: Long! = 0, limit: Int! = 25): [GitCommitInfo!]!
+    "All PR changes, or one comparison commit against its first parent when commitSha is supplied."
+    diff(commitSha: String): [GitDiffFile!]!
 }
 
 "A review submitted on a pull request."
@@ -537,6 +543,8 @@ type GitDiffFile {
     newPath: String
     changeType: GitDiffChangeType!
     hunks: [GitDiffHunk!]!
+    "Number of text lines in the new version; zero when the file was deleted or is binary."
+    newLineCount: Int!
 }
 
 "A contiguous region of changed lines."
@@ -568,10 +576,14 @@ input CreateGitPullRequestInput {
     targetBranch: String!
     sourceRepositoryId: UUID
     isDraft: Boolean
+    "Defaults to the repository's branch cleanup setting when omitted."
+    deleteBranchOnMerge: Boolean
 }
 
 "Input for updating a pull request."
 input UpdateGitPullRequestInput {
+    "Changes this PR's branch cleanup setting. Omit to preserve it."
+    deleteBranchOnMerge: Boolean
     title: String
     description: String
     sourceBranch: String

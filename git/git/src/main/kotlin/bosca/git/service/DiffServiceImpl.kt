@@ -2,6 +2,7 @@ package bosca.git.service
 
 import bosca.git.dfs.BoscaDfsRepositoryManager
 import bosca.git.dfs.GitWorkDispatcher
+import bosca.git.model.CommitInfo
 import bosca.git.model.DiffChangeType
 import bosca.git.model.DiffFile
 import bosca.git.model.DiffHunk
@@ -15,16 +16,23 @@ import bosca.service.annotation.ServiceImplementation
 import kotlinx.coroutines.withContext
 import org.eclipse.jgit.diff.DiffEntry
 import org.eclipse.jgit.diff.DiffFormatter
+import org.eclipse.jgit.diff.Edit
+import org.eclipse.jgit.diff.EditList
 import org.eclipse.jgit.diff.RawText
 import org.eclipse.jgit.diff.RawTextComparator
 import org.eclipse.jgit.lib.Constants
 import org.eclipse.jgit.lib.FileMode
 import org.eclipse.jgit.lib.ObjectId
 import org.eclipse.jgit.lib.ObjectReader
+import org.eclipse.jgit.lib.Repository
+import org.eclipse.jgit.patch.FileHeader.PatchType
 import org.eclipse.jgit.revwalk.RevWalk
+import org.eclipse.jgit.revwalk.RevSort
 import org.eclipse.jgit.revwalk.filter.RevFilter
 import org.eclipse.jgit.treewalk.CanonicalTreeParser
-import java.io.ByteArrayOutputStream
+import org.eclipse.jgit.treewalk.AbstractTreeIterator
+import org.eclipse.jgit.treewalk.EmptyTreeIterator
+import org.eclipse.jgit.util.io.DisabledOutputStream
 
 /**
  * JGit-based diff computation with rename detection, producing structured
@@ -38,6 +46,66 @@ class DiffServiceImpl(
     override suspend fun computeDiff(repositoryId: UUID, baseRef: String, headRef: String): List<DiffFile> =
         // JGit's DFS reads are synchronous and bridge to storage with runBlocking: keep them off request threads.
         withContext(GitWorkDispatcher) { computeDiffBlocking(repositoryId, baseRef, headRef) }
+
+    override suspend fun listComparisonCommits(
+        repositoryId: UUID, baseRef: String, headRef: String, offset: Long, limit: Int,
+    ): List<CommitInfo> = withContext(GitWorkDispatcher) {
+        require(offset >= 0) { "Commit offset must not be negative." }
+        require(limit in 1..100) { "Commit limit must be between 1 and 100." }
+        dfsManager.open(repositoryId).use { repo ->
+            comparisonWalk(repo, baseRef, headRef).use { walk ->
+                var skipped = 0L
+                val commits = mutableListOf<CommitInfo>()
+                for (commit in walk) {
+                    if (skipped < offset) { skipped++; continue }
+                    commits.add(CommitInfo(
+                        sha = commit.name(), message = commit.fullMessage,
+                        authorName = commit.authorIdent.name, authorEmail = commit.authorIdent.emailAddress,
+                        authorDate = commit.authorIdent.whenAsInstant.toString(),
+                        committerName = commit.committerIdent.name, committerEmail = commit.committerIdent.emailAddress,
+                        committerDate = commit.committerIdent.whenAsInstant.toString(),
+                        parentShas = commit.parents.map { it.name() },
+                    ))
+                    if (commits.size == limit) break
+                }
+                commits
+            }
+        }
+    }
+
+    override suspend fun computeCommitDiff(
+        repositoryId: UUID, baseRef: String, headRef: String, commitSha: String,
+    ): List<DiffFile> = withContext(GitWorkDispatcher) {
+        require(ObjectId.isId(commitSha)) { "Choose a full commit SHA from this pull request." }
+        dfsManager.open(repositoryId).use { repo ->
+            comparisonWalk(repo, baseRef, headRef).use { walk ->
+                val commit = walk.firstOrNull { it.name() == commitSha }
+                    ?: throw IllegalArgumentException("Commit does not belong to this pull request comparison.")
+                repo.newObjectReader().use { reader ->
+                    val base = commit.parents.firstOrNull()?.let {
+                        prepareTreeParser(reader, walk.parseCommit(it).tree.id)
+                    } ?: EmptyTreeIterator()
+                    formatDiff(repo, reader, base, prepareTreeParser(reader, commit.tree.id))
+                }
+            }
+        }
+    }
+
+    private fun comparisonWalk(repo: Repository, baseRef: String, headRef: String): RevWalk {
+        val base = repo.resolve(baseRef) ?: throw NoSuchElementException("Ref not found: $baseRef")
+        val head = repo.resolve(headRef) ?: throw NoSuchElementException("Ref not found: $headRef")
+        return RevWalk(repo).also { walk ->
+            try {
+                walk.sort(RevSort.TOPO)
+                walk.sort(RevSort.COMMIT_TIME_DESC, true)
+                walk.markStart(walk.parseCommit(head))
+                walk.markUninteresting(walk.parseCommit(base))
+            } catch (e: Throwable) {
+                walk.close()
+                throw e
+            }
+        }
+    }
 
     override suspend fun resolveMergedBase(pullRequest: PullRequest): String? {
         if (pullRequest.status != PullRequestStatus.MERGED) return null
@@ -78,35 +146,35 @@ class DiffServiceImpl(
                 val baseTree = prepareTreeParser(reader, mergeBaseCommit.tree.id)
                 val headTree = prepareTreeParser(reader, headCommit.tree.id)
 
-                val out = ByteArrayOutputStream()
-                val formatter = DiffFormatter(out)
-                formatter.setRepository(repo)
-                formatter.setDiffComparator(RawTextComparator.DEFAULT)
-                formatter.isDetectRenames = true
-
-                val entries = formatter.scan(baseTree, headTree)
-
-                entries.map { entry ->
-                    if (entry.oldMode == FileMode.GITLINK || entry.newMode == FileMode.GITLINK) {
-                        return@map formatGitlinkDiff(reader, entry)
-                    }
-                    formatter.format(entry)
-                    val header = formatter.toFileHeader(entry)
-                    val oldText = loadRawText(reader, entry.oldId?.toObjectId())
-                    val newText = loadRawText(reader, entry.newId?.toObjectId())
-                    DiffFile(
-                        oldPath = if (entry.changeType == DiffEntry.ChangeType.ADD) null else entry.oldPath,
-                        newPath = if (entry.changeType == DiffEntry.ChangeType.DELETE) null else entry.newPath,
-                        changeType = entry.changeType.toDiffChangeType(),
-                        hunks = header.hunks.map { hunk ->
-                            parseHunk(hunk, oldText, newText)
-                        }
-                    )
-                }
+                formatDiff(repo, reader, baseTree, headTree)
             } finally {
                 reader.close()
                 revWalk.dispose()
             }
+        }
+    }
+
+    private fun formatDiff(
+        repo: Repository, reader: ObjectReader, baseTree: AbstractTreeIterator, headTree: AbstractTreeIterator,
+    ): List<DiffFile> = DiffFormatter(DisabledOutputStream.INSTANCE).use { formatter ->
+        formatter.setRepository(repo)
+        formatter.setDiffComparator(RawTextComparator.DEFAULT)
+        formatter.isDetectRenames = true
+        formatter.scan(baseTree, headTree).map { entry ->
+            if (entry.oldMode == FileMode.GITLINK || entry.newMode == FileMode.GITLINK) {
+                return@map formatGitlinkDiff(reader, entry)
+            }
+            val header = formatter.toFileHeader(entry)
+            val text = header.patchType == PatchType.UNIFIED
+            val oldText = if (text) loadRawText(reader, entry.oldId?.toObjectId()) else null
+            val newText = if (text) loadRawText(reader, entry.newId?.toObjectId()) else null
+            DiffFile(
+                oldPath = if (entry.changeType == DiffEntry.ChangeType.ADD) null else entry.oldPath,
+                newPath = if (entry.changeType == DiffEntry.ChangeType.DELETE) null else entry.newPath,
+                changeType = entry.changeType.toDiffChangeType(),
+                hunks = if (text) unifiedHunks(header.toEditList(), oldText, newText) else emptyList(),
+                newLineCount = newText?.size() ?: 0,
+            )
         }
     }
 
@@ -144,7 +212,8 @@ class DiffServiceImpl(
                         lines = lines
                     )
                 )
-            }
+            },
+            newLineCount = newCount,
         )
     }
 
@@ -168,40 +237,64 @@ class DiffServiceImpl(
         return RawText(loader.cachedBytes)
     }
 
-    private fun parseHunk(hunk: org.eclipse.jgit.patch.HunkHeader, oldText: RawText?, newText: RawText?): DiffHunk {
+    /**
+     * Groups [edits] into unified hunks with [CONTEXT_LINES] unchanged lines around each change,
+     * merging changes whose separating unchanged region is no longer than the two contexts. A text
+     * change with no edits (a pure rename, mode change or empty file) keeps one empty hunk.
+     */
+    private fun unifiedHunks(edits: EditList, oldText: RawText?, newText: RawText?): List<DiffHunk> {
+        if (edits.isEmpty()) return listOf(DiffHunk(0, 0, 0, 0, emptyList()))
+        val groups = mutableListOf<MutableList<Edit>>()
+        for (edit in edits) {
+            val group = groups.lastOrNull()
+            if (group != null && edit.beginA - group.last().endA <= 2 * CONTEXT_LINES) group += edit
+            else groups += mutableListOf(edit)
+        }
+        return groups.map { unifiedHunk(it, oldText, newText) }
+    }
+
+    private fun unifiedHunk(edits: List<Edit>, oldText: RawText?, newText: RawText?): DiffHunk {
+        val first = edits.first()
+        val last = edits.last()
+        val leading = minOf(CONTEXT_LINES, first.beginA, first.beginB)
+        val trailing = minOf(CONTEXT_LINES, (oldText?.size() ?: 0) - last.endA, (newText?.size() ?: 0) - last.endB)
+        val oldBegin = first.beginA - leading
+        val newBegin = first.beginB - leading
+        val oldEnd = last.endA + trailing
+        val newEnd = last.endB + trailing
         val lines = mutableListOf<DiffLine>()
-        var oldIdx = hunk.oldImage.startLine
-        var newIdx = hunk.newStartLine
-
-        for (edit in hunk.toEditList()) {
-            while (oldIdx < edit.beginA) {
-                val content = oldText?.getString(oldIdx) ?: ""
-                lines.add(DiffLine(DiffLineType.CONTEXT, oldIdx + 1, newIdx + 1, content))
-                oldIdx++
-                newIdx++
-            }
-
-            for (i in edit.beginA until edit.endA) {
-                val content = oldText?.getString(i) ?: ""
-                lines.add(DiffLine(DiffLineType.DELETE, i + 1, null, content))
-                oldIdx++
-            }
-
-            for (i in edit.beginB until edit.endB) {
-                val content = newText?.getString(i) ?: ""
-                lines.add(DiffLine(DiffLineType.ADD, null, i + 1, content))
-                newIdx++
+        var oldIndex = oldBegin
+        var newIndex = newBegin
+        fun contextUntil(end: Int) {
+            while (oldIndex < end) {
+                lines += DiffLine(DiffLineType.CONTEXT, oldIndex + 1, newIndex + 1, oldText?.getString(oldIndex).orEmpty())
+                oldIndex++
+                newIndex++
             }
         }
-
+        for (edit in edits) {
+            contextUntil(edit.beginA)
+            for (i in edit.beginA until edit.endA) {
+                lines += DiffLine(DiffLineType.DELETE, i + 1, null, oldText?.getString(i).orEmpty())
+            }
+            for (i in edit.beginB until edit.endB) {
+                lines += DiffLine(DiffLineType.ADD, null, i + 1, newText?.getString(i).orEmpty())
+            }
+            oldIndex = edit.endA
+            newIndex = edit.endB
+        }
+        contextUntil(oldEnd)
         return DiffHunk(
-            oldStart = hunk.oldImage.startLine + 1,
-            oldCount = hunk.oldImage.lineCount,
-            newStart = hunk.newStartLine + 1,
-            newCount = hunk.newLineCount,
-            lines = lines
+            oldStart = hunkStart(oldBegin, oldEnd - oldBegin),
+            oldCount = oldEnd - oldBegin,
+            newStart = hunkStart(newBegin, newEnd - newBegin),
+            newCount = newEnd - newBegin,
+            lines = lines,
         )
     }
+
+    /** Unified-diff start line: one-based, or the preceding line when the side is empty. */
+    private fun hunkStart(begin: Int, count: Int): Int = if (count == 0) begin else begin + 1
 
     private fun DiffEntry.ChangeType.toDiffChangeType(): DiffChangeType = when (this) {
         DiffEntry.ChangeType.ADD -> DiffChangeType.ADD
@@ -209,5 +302,10 @@ class DiffServiceImpl(
         DiffEntry.ChangeType.DELETE -> DiffChangeType.DELETE
         DiffEntry.ChangeType.RENAME -> DiffChangeType.RENAME
         DiffEntry.ChangeType.COPY -> DiffChangeType.COPY
+    }
+
+    private companion object {
+        /** Unchanged lines shown around each change, matching Git's default. */
+        const val CONTEXT_LINES = 3
     }
 }

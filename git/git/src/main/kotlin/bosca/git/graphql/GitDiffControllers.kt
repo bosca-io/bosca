@@ -27,6 +27,9 @@ class GitDiffFileController : GraphQLController<DiffFile> {
 
     @Field
     fun hunks(source: DiffFile): List<DiffHunk> = source.hunks
+
+    @Field
+    fun newLineCount(source: DiffFile): Int = source.newLineCount
 }
 
 /**

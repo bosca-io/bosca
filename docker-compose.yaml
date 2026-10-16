@@ -23,7 +23,7 @@ x-bosca-environment: &bosca-environment
   NATS_HOST: nats:4222
   NATS_MONITORING_URL: http://nats:8222
   NATS_TOKEN: OAVKZTG7ST62YCPUJYJ6LBQDMKLAUD4NRBPZ4GXUXNUJW2ATCFKKYGHV
-  REDIS_HOST: redis
+  REDIS_HOST: dragonfly
   REDIS_PORT: "6379"
   MEILISEARCH_URL: http://meilisearch:7700
   MEILISEARCH_API_KEY: p8JcB_HuMHRxN7uVXfrG2wU06b5k7oTvaAAYo6nsi9M
@@ -125,12 +125,21 @@ services:
       timeout: 5s
       retries: 12
 
-  redis:
-    image: redis:7.4.11-alpine
+  dragonfly:
+    image: docker.dragonflydb.io/dragonflydb/dragonfly:v2.0.2
     restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes"]
+    command:
+      - --lock_on_hashtags
+      - --default_lua_flags=allow-undeclared-keys
+      - --dir=/data
+      - --dbfilename=dump
+      - --df_snapshot_format=false
+      - "--snapshot_cron=* * * * *"
+    ulimits:
+      memlock: -1
+    stop_grace_period: 60s
     volumes:
-      - redis:/data
+      - dragonfly:/data
     healthcheck:
       test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
       interval: 5s
@@ -348,7 +357,7 @@ services:
       API_URL: http://bosca-server:8080
       NUXT_API_URL: http://bosca-server:8080
       COLLABORATION_URL: http://bosca-server:8080
-      REDIS_HOST: redis
+      REDIS_HOST: dragonfly
       REDIS_PORT: "6379"
       NUXT_PUBLIC_API_URL: http://${BOSCA_HOST:-bosca.localhost}:${BOSCA_PORT:-3000}
       NUXT_PUBLIC_WS_URL: ws://${BOSCA_HOST:-bosca.localhost}:${BOSCA_PORT:-3000}
@@ -360,7 +369,7 @@ services:
     depends_on:
       bosca-server:
         condition: service_healthy
-      redis:
+      dragonfly:
         condition: service_healthy
     healthcheck:
       <<: *ready
@@ -395,7 +404,7 @@ volumes:
   postgres:
   postgres-warehouse:
   nats:
-  redis:
+  dragonfly:
   meilisearch:
   objects:
   trino:

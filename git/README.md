@@ -34,6 +34,8 @@ Run these commands from the **workspace root**. `git` is part of the root Gradle
 
 Migration `V49__pull_request_merge_base.sql` records the target commit before each merge. Completed PR diffs compare that commit with the recorded merge result, so later branch changes and source deletion do not replace their history. Existing merge and squash commit parents can supply the original base; older rebase/fast-forward records without it report unavailable comparison history. The Git migration provider applies this migration at server startup.
 
+Each PR saves its own `deleteBranchOnMerge` choice. New PRs start with the repository's default (enabled unless configured otherwise), and the creation and edit controls can turn it off. Later repository changes do not alter saved PR choices. Registered migration `V50__pull_request_branch_cleanup.sql` initializes existing PRs from their repository configuration. Default branches, protected branches, and branches still used by an open or draft PR are retained. Branch deletion commits with the merge and sends the ordinary branch-deletion notifications; a failed merge retains the source branch.
+
 The embedded UI host proxies over loopback HTTP to the API’s actual bound port and performs no local authentication or GraphQL execution. `GIT_HTTP_PORT` and `GIT_UI_HTTP_PORT` select the two listeners. See [Git UI server](git-ui-server/README.md) for origin, OAuth and cookie configuration.
 
 ## Local Infrastructure
@@ -108,7 +110,7 @@ Native runtime checks passed for standalone startup and migrations, webhook reje
 
 ### CI status and required checks
 
-GitHub package and installer version `1.5.0` installs event-driven CI exports and daily **GitHub: Reconcile CI Statuses** recovery. Enabled repository pairs publish statuses on the exact build commit. Apply `V50__pipeline_evaluations.sql` to persist trigger decisions, retry ordering, and source modification times. The three recovery schedules run once daily, staggered at 03:10 (refs), 03:30 (PRs), and 03:50 (CI) in the scheduler’s timezone. The installer replaces the old hourly defaults and preserves custom or disabled schedules.
+GitHub package and installer version `1.5.0` installs event-driven CI exports and daily **GitHub: Reconcile CI Statuses** recovery. Enabled repository pairs publish statuses on the exact build commit. Apply `V51__pipeline_evaluations.sql` to persist trigger decisions, retry ordering, and source modification times. The three recovery schedules run once daily, staggered at 03:10 (refs), 03:30 (PRs), and 03:50 (CI) in the scheduler’s timezone. The installer replaces the old hourly defaults and preserves custom or disabled schedules.
 
 Require **`bosca/ci`** to gate PR merges. It covers every applicable pipeline selected by branch pushes for that commit, across all YAML files. Selection and unfinished work report `pending`; all applicable work passing reports `success`. A completed evaluation with no applicable work also reports `success`. Invalid YAML, invalid conditions, authorization failures, and missing selected runs report `error`. Required work cancelled before completion reports `failure` with a cancellation description; conditional skips report `success`. A commit without a recorded evaluation never receives an assumed pass. Commit-message skip markers suppress evaluation and do not satisfy this gate.
 

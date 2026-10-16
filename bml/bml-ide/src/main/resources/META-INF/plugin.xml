@@ -16,6 +16,8 @@
               (<code>src/main/client/*.css</code>) in scope so <code>var(--…)</code> resolves.</li>
           <li>Reformat (⌥⌘L): tag indentation and attribute spacing, with embedded script/style
               bodies re-based to one level inside their tag (relative indentation preserved).</li>
+          <li>Code folding: collapse multiline tag bodies, including nested component tags and
+              script/style bodies, while keeping opening and closing tags visible.</li>
         </ul>
     ]]></description>
 
@@ -62,6 +64,9 @@
         <lang.formatter
             language="BML"
             implementationClass="bosca.bml.ide.BmlFormattingModelBuilder"/>
+        <lang.foldingBuilder
+            language="BML"
+            implementationClass="bosca.bml.ide.BmlFoldingBuilder"/>
         <!-- After the block pass: each script/style body is reformatted with its REAL language
              formatter (out-of-band synthetic file) and spliced back at the body's indent. -->
         <postFormatProcessor

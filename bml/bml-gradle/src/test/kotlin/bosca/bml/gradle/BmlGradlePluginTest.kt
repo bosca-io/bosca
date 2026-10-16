@@ -9,8 +9,45 @@ import java.io.ByteArrayOutputStream
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import kotlin.test.assertFalse
 
 class BmlGradlePluginTest {
+
+    @Test
+    fun `library DSL forwards package coordinates and explicit exports to the compiler`() {
+        val project = ProjectBuilder.builder().build()
+        project.group = "example"
+        project.version = "1.2.3"
+        project.pluginManager.apply("org.jetbrains.kotlin.jvm")
+        val plugin = BmlGradlePlugin()
+        plugin.apply(project)
+        val extension = project.extensions.getByType(BmlExtension::class.java)
+        assertFalse(extension.library.enabled.get())
+        extension.packageName.set("example.design.generated")
+        extension.library { it.exports.set(listOf("button", "badge")) }
+        val kotlin = project.extensions.getByType(org.jetbrains.kotlin.gradle.dsl.KotlinJvmProjectExtension::class.java)
+        val options = plugin.applyToCompilation(kotlin.target.compilations.getByName("main")).get()
+        assertEquals("example.design.generated", options.single { it.key == "bmlPackageName" }.value)
+        assertEquals("example:${project.name}", options.single { it.key == "bmlLibraryId" }.value)
+        assertEquals("1.2.3", options.single { it.key == "bmlLibraryVersion" }.value)
+        assertEquals(listOf("button", "badge"), options.filter { it.key == "bmlLibraryExport" }.map { it.value })
+    }
+
+    @Test
+    fun `incremental compilation is disabled only for in-process main compilation`() {
+        fun compileTasks(strategy: String?): Pair<Boolean, Boolean> {
+            val project = ProjectBuilder.builder().build()
+            strategy?.let { project.extensions.extraProperties["kotlin.compiler.execution.strategy"] = it }
+            project.pluginManager.apply("org.jetbrains.kotlin.jvm")
+            project.pluginManager.apply(BmlGradlePlugin::class.java)
+            val main = project.tasks.named("compileKotlin", org.jetbrains.kotlin.gradle.tasks.KotlinCompile::class.java).get()
+            val tests = project.tasks.named("compileTestKotlin", org.jetbrains.kotlin.gradle.tasks.KotlinCompile::class.java).get()
+            return main.incremental to tests.incremental
+        }
+        assertEquals(true to true, compileTasks(null), "The default daemon strategy runs the BML plugin incrementally")
+        assertEquals(true to true, compileTasks("daemon"))
+        assertEquals(false to true, compileTasks("in-process"), "In-process IC skips the BML plugin; tests have no BML sources")
+    }
 
     @Test
     fun `workspace BML client installs inherit user npm settings without registry or token variables`() {

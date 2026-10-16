@@ -35,6 +35,17 @@ class SecurityRouteSupportTest {
     }
 
     @Test
+    fun `native callback redirects require a configured matching origin`() {
+        val redirect = "exampleapp://auth/callback?state=login"
+
+        assertEquals(redirect, validateRedirect(redirect, listOf("exampleapp://auth")))
+        assertEquals("/", validateRedirect(redirect, emptyList()))
+        assertEquals("/", validateRedirect(redirect, listOf("https://auth")))
+        assertEquals("/", validateRedirect(redirect, listOf("otherapp://auth")))
+        assertEquals("/", validateRedirect(redirect, listOf("exampleapp://other")))
+    }
+
+    @Test
     fun `redirect validation rejects unsafe and malformed values`() {
         assertNull(validateRedirect(null, emptyList()))
         assertEquals("/", validateRedirect("/relative", listOf("https://studio.example")))

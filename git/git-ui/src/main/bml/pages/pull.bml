@@ -34,6 +34,8 @@
               <git-pull-actions :page="page" />
             </aside>
           </div>
+        <else-if page.view == "commits">
+          <git-pull-commits :page="page" />
         <else>
           <git-pull-review :page="page" />
         </if>
