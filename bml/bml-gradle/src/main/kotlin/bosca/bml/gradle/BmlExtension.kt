@@ -1,17 +1,32 @@
 package bosca.bml.gradle
 
+import org.gradle.api.Action
 import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.RegularFileProperty
+import org.gradle.api.model.ObjectFactory
 import org.gradle.api.provider.Property
+import javax.inject.Inject
 
 /** DSL for the `bml { }` block: where `.bml` sources live and the generated package. */
 abstract class BmlExtension {
+    @get:Inject
+    protected abstract val objects: ObjectFactory
+
     /** Root directory of `.bml` sources (default `src/main/bml`). */
     abstract val sourceDir: DirectoryProperty
 
     /** Package the compiler plugin synthesizes page objects into (default `bml.generated`). */
     abstract val packageName: Property<String>
+
+    /** Producer settings for a component library; configured through [library]. */
+    val library: BmlLibraryExtension = objects.newInstance(BmlLibraryExtension::class.java)
+
+    /** Enables component-library compilation with an explicit list of exported component tags. */
+    fun library(configure: Action<in BmlLibraryExtension>) {
+        library.enabled.set(true)
+        configure.execute(library)
+    }
 
     /**
      * Opt in to writing the generated Kotlin (`.kt` + `.kt.map`) to `build/generated/bml/kotlin` so it's

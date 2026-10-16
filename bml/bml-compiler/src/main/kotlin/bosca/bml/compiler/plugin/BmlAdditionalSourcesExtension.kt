@@ -4,16 +4,24 @@ import bosca.bml.codegen.BmlClientCodeGenerator
 import bosca.bml.codegen.BmlCodeGenerator
 import bosca.bml.codegen.BmlComponentMeta
 import bosca.bml.codegen.BmlI18nEntry
+import bosca.bml.codegen.BmlLibraryStyles
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonObject
+import bosca.bml.codegen.BmlLibraryManifestGenerator
 import bosca.bml.codegen.BmlMetricsManifest
 import bosca.bml.codegen.BmlPageMeta
 import bosca.bml.codegen.BmlSourceMap
-import bosca.bml.codegen.StaticPropCoercion
 import bosca.bml.codegen.I18N_MANIFEST_PATH
-import bosca.bml.codegen.buildI18nManifest
+import bosca.bml.codegen.StaticPropCoercion
 import bosca.bml.codegen.bmlRenderRevision
+import bosca.bml.codegen.buildI18nManifest
 import bosca.bml.codegen.scanFunctionKeys
 import bosca.bml.contract.ContractCodeGenerator
 import bosca.bml.contract.ContractParser
+import bosca.bml.library.BmlLibraryArtifacts
+import bosca.bml.library.BmlLibrarySource
 import bosca.bml.parser.AttrText
 import bosca.bml.parser.BmlParser
 import bosca.bml.parser.Document
@@ -24,7 +32,11 @@ import bosca.bml.parser.Node
 import bosca.bml.parser.RawKind
 import bosca.bml.parser.RawTextNode
 import bosca.bml.parser.Severity
+import bosca.bml.parser.Span
 import bosca.bml.parser.StaticAttribute
+import bosca.bml.project.ContentDigest
+import java.io.File
+import java.io.IOException
 import org.jetbrains.kotlin.KtInMemoryTextSourceFile
 import org.jetbrains.kotlin.KtSourceFile
 import org.jetbrains.kotlin.cli.common.messages.CompilerMessageLocation
@@ -33,7 +45,6 @@ import org.jetbrains.kotlin.com.intellij.openapi.vfs.VirtualFile
 import org.jetbrains.kotlin.config.CommonConfigurationKeys
 import org.jetbrains.kotlin.config.CompilerConfiguration
 import org.jetbrains.kotlin.fir.extensions.CollectAdditionalSourceFilesExtension
-import java.io.File
 
 /**
  * The heart of the BML compiler plugin: reads every page `.bml` under the configured
@@ -53,6 +64,7 @@ class BmlAdditionalSourcesExtension : CollectAdditionalSourceFilesExtension() {
         findVirtualFile: (File) -> VirtualFile?,
         sources: Iterable<KtSourceFile>,
     ): Iterable<KtSourceFile> {
+        val packageName = configuration.get(BmlConfigKeys.PACKAGE_NAME) ?: "bml.generated"
         val generated = mutableListOf<KtSourceFile>()
         val pageObjects = mutableListOf<String>() // collected to emit the BmlPages registry
         val messageObjects = mutableListOf<String>() // collected to emit the BmlMessages registry
@@ -64,6 +76,33 @@ class BmlAdditionalSourcesExtension : CollectAdditionalSourceFilesExtension() {
         val i18nByKey = LinkedHashMap<String, BmlI18nEntry>()
         val i18nFunctionKeys = mutableListOf<BmlI18nEntry>()
         val messages = configuration.get(CommonConfigurationKeys.MESSAGE_COLLECTOR_KEY)
+        var hasErrors = false
+        fun reportError(message: String, file: File? = null, span: Span? = null) {
+            hasErrors = true
+            messages?.report(
+                CompilerMessageSeverity.ERROR, "bml: $message",
+                file?.let { CompilerMessageLocation.create(it.absolutePath, span?.startLine ?: 1, span?.startColumn ?: 1, null) },
+            )
+        }
+        val libraryId = configuration.get(BmlConfigKeys.LIBRARY_ID)
+        val libraryVersion = configuration.get(BmlConfigKeys.LIBRARY_VERSION)
+        val exports = configuration.getList(BmlConfigKeys.LIBRARY_EXPORTS)
+        val libraryManifest = configuration.get(BmlConfigKeys.RESOURCES_OUTPUT_DIR)
+            ?.let { File(it, BmlLibraryArtifacts.MANIFEST_PATH) }
+        // An invalid rebuild, a removed library block, or removed exports must not retain old metadata.
+        libraryManifest?.delete()
+        if (!BmlLibraryArtifacts.isPackageName(packageName)) reportError("Invalid generated package '$packageName'")
+        if (libraryId != null) {
+            if (!BmlLibraryArtifacts.isLibraryId(libraryId)) reportError("Invalid library identity '$libraryId'; expected group:artifact")
+            if (libraryVersion.isNullOrBlank() || libraryVersion.any(Char::isISOControl)) reportError("Library '$libraryId' requires an artifact version")
+            if (packageName == "bml.generated") reportError("Library '$libraryId' requires its own bml.packageName")
+            if (libraryManifest == null) reportError("Library '$libraryId' requires bmlResourcesOutputDir")
+            if (exports.isEmpty()) reportError("Library '$libraryId' must declare at least one exported component")
+            if (exports.distinct().size != exports.size) reportError("Duplicate exports in library '$libraryId'")
+        } else if (libraryVersion != null || exports.isNotEmpty()) {
+            reportError("Library version and exports require bmlLibraryId")
+        }
+        if (hasErrors) return sources.filterNot { it.name.endsWith(".bml") }
         // Client TypeScript (`<script client>` / islands) is emitted to disk for esbuild — TS is not a
         // Kotlin compiler source, so unlike the generated Kotlin it does land in a (build) directory.
         val tsOutputDir = configuration.get(BmlConfigKeys.TS_OUTPUT_DIR)?.let { File(it) }
@@ -93,18 +132,42 @@ class BmlAdditionalSourcesExtension : CollectAdditionalSourceFilesExtension() {
         }
 
         // Parse every `.bml` under the source roots once.
+        val preparedStyles = configuration.get(BmlConfigKeys.LIBRARY_STYLES)?.let { path ->
+            val file = File(path)
+            if (file.isFile) Json.parseToJsonElement(file.readText()).jsonObject else JsonObject(emptyMap())
+        }
+        val clientOrigins = linkedMapOf<String, JsonPrimitive>()
         val parsedFiles = mutableListOf<ParsedBml>()
+        val seenFiles = mutableSetOf<File>()
         for (root in configuration.getList(BmlConfigKeys.SOURCE_ROOTS)) {
             val dir = File(root)
             if (!dir.isDirectory) continue
             dir.walkTopDown()
+                .onEnter { it.name != "node_modules" }
                 .filter { it.isFile && it.extension == "bml" }
                 .sortedBy { it.invariantSeparatorsPath }
                 .forEach { file ->
-                    val text = runCatching { file.readText() }.getOrNull() ?: return@forEach
-                    val parsed = runCatching { BmlParser.parse(text) }.getOrNull() ?: return@forEach
+                    if (!seenFiles.add(file.canonicalFile)) return@forEach
+                    val text = try {
+                        file.readText()
+                    } catch (failure: IOException) {
+                        reportError("Cannot read BML source: ${failure.message}", file)
+                        return@forEach
+                    }
+                    val parsed = BmlParser.parse(text)
+                    parsed.diagnostics.forEach { diagnostic ->
+                        if (diagnostic.severity == Severity.Error) reportError(diagnostic.message, file, diagnostic.span)
+                    }
                     val rel = file.relativeTo(dir).invariantSeparatorsPath
-                    parsedFiles += ParsedBml(file, rel, parsed.document, bmlRenderRevision(text))
+                    val document = if (libraryId != null && preparedStyles != null) {
+                        BmlLibraryStyles.prepare(parsed.document, rel, preparedStyles) { message, span ->
+                            reportError(message, file, span)
+                        }
+                    } else parsed.document
+                    // Only this file's bundled CSS affects its renderers.
+                    val fileStyles = preparedStyles?.let { BmlLibraryStyles.forSource(it, rel) }
+                    val revisionText = if (fileStyles.isNullOrEmpty()) text else text + "\n" + JsonObject(fileStyles)
+                    parsedFiles += ParsedBml(file, rel, document, bmlRenderRevision(revisionText), ContentDigest.sha256(text))
                     // Static t("key") calls (server scripts, interpolations, client TS) feed the
                     // i18n manifest too, so the CLI can create their keys.
                     i18nFunctionKeys += scanFunctionKeys(text, rel)
@@ -115,14 +178,45 @@ class BmlAdditionalSourcesExtension : CollectAdditionalSourceFilesExtension() {
         // components declared in OTHER files (e.g. a shared `card.bml`).
         val componentTags = mutableMapOf<String, String>()
         val componentDeclarations = mutableMapOf<String, ElementNode>()
+        val libraryDeclarations = mutableMapOf<String, BmlLibraryManifestGenerator.Declaration>()
+        val componentLocations = mutableMapOf<String, String>()
+        val objectLocations = mutableMapOf<String, String>()
+        val fileLocations = mutableMapOf<String, String>()
         for (p in parsedFiles) {
+            val suffix = if (p.document.nodes.any { it is ElementNode && it.name == "message" && it.namespace == null }) "Message" else "Page"
+            if (p.document.nodes.any { it is ElementNode && it.namespace == null && it.name in ROUTABLE_TAGS + setOf("message", "component") }) {
+                val outputName = objectNameFor(p.rel, suffix)
+                val previousFile = fileLocations.putIfAbsent(outputName, p.file.absolutePath)
+                if (previousFile != null) reportError("Generated file '$outputName.kt' collides between $previousFile and ${p.file}", p.file, p.document.span)
+            }
+            if (libraryId != null) {
+                p.document.nodes.filterIsInstance<ElementNode>()
+                    .filter { it.namespace == null && it.name in ROUTABLE_TAGS + "message" }
+                    .forEach { reportError("Component library '$libraryId' cannot declare <${it.name}>; use a separate application", p.file, it.span) }
+            }
             topLevelComponents(p.document).forEach { decl ->
                 componentTag(decl)?.let { tag ->
-                    componentTags[tag] = BmlCodeGenerator.componentObjectName(tag)
+                    val location = "${p.file}:${decl.span.startLine}"
+                    componentLocations.putIfAbsent(tag, location)?.let { previous ->
+                        reportError("Duplicate component '$tag' in $previous and $location", p.file, decl.span)
+                    }
+                    val objectName = BmlCodeGenerator.componentObjectName(tag)
+                    objectLocations.putIfAbsent(objectName, location)?.let { previous ->
+                        reportError("Generated component '$objectName' collides between $previous and $location", p.file, decl.span)
+                    }
+                    if (libraryId != null && !BmlLibraryArtifacts.isComponentTag(tag)) {
+                        reportError("Invalid or protected library component tag '$tag'", p.file, decl.span)
+                    }
+                    componentTags[tag] = objectName
                     componentDeclarations[tag] = decl
+                    libraryDeclarations[tag] = BmlLibraryManifestGenerator.Declaration(
+                        decl, BmlLibrarySource("bml/${p.rel}", decl.span.startLine, decl.span.startColumn, p.digest), p.revision,
+                    )
                 }
             }
         }
+        exports.filter { it !in componentTags }.forEach { reportError("Export '$it' has no component declaration in library '$libraryId'") }
+        if (hasErrors) return sources.filterNot { it.name.endsWith(".bml") }
         val deferredComponentTags = BmlCodeGenerator.componentsUsingDeferredIslands(componentDeclarations)
         val clientBehaviorComponentTags = BmlCodeGenerator.componentsUsingClientBehavior(componentDeclarations)
         val sharedCacheComponentUsage = BmlCodeGenerator.componentsBlockingSharedCache(componentDeclarations)
@@ -142,7 +236,7 @@ class BmlAdditionalSourcesExtension : CollectAdditionalSourceFilesExtension() {
             }
             val objectName = objectNameFor(p.rel, suffix)
             val result = BmlCodeGenerator(
-                GENERATED_PACKAGE,
+                packageName,
                 objectName,
                 p.rel,
                 componentTags,
@@ -157,6 +251,7 @@ class BmlAdditionalSourcesExtension : CollectAdditionalSourceFilesExtension() {
             // direct generator callers): errors FAIL the build — the t/t: validity rules
             // and friends must never be silent.
             for (d in result.diagnostics) {
+                if (d.severity == Severity.Error) hasErrors = true
                 val severity = when (d.severity) {
                     Severity.Error -> CompilerMessageSeverity.ERROR
                     Severity.Warning -> CompilerMessageSeverity.WARNING
@@ -173,13 +268,15 @@ class BmlAdditionalSourcesExtension : CollectAdditionalSourceFilesExtension() {
                 val existing = i18nByKey[entry.key]
                 when {
                     existing == null -> i18nByKey[entry.key] = entry
-                    existing.message != entry.message || existing.pluralForms != entry.pluralForms ->
+                    existing.message != entry.message || existing.pluralForms != entry.pluralForms -> {
+                        hasErrors = true
                         messages?.report(
                             CompilerMessageSeverity.ERROR,
                             "bml i18n: key '${entry.key}' has different source text in " +
                                 "${existing.file}:${existing.line} and ${entry.file}:${entry.line} — one key, one message",
                             CompilerMessageLocation.create(p.file.absolutePath, entry.line, 1, null),
                         )
+                    }
                 }
             }
             if (result.source.isNotEmpty()) {
@@ -215,6 +312,7 @@ class BmlAdditionalSourcesExtension : CollectAdditionalSourceFilesExtension() {
                     val tsFile = File(tsOutputDir, "$objectName.ts")
                     tsFile.parentFile?.mkdirs()
                     tsFile.writeText(ts)
+                    clientOrigins["$objectName.ts"] = JsonPrimitive(p.rel)
                 }
             }
             // Emit each `<contract>`'s two generated halves: the Kotlin interface +
@@ -224,7 +322,7 @@ class BmlAdditionalSourcesExtension : CollectAdditionalSourceFilesExtension() {
                 generated += emit(
                     "${decl.name}Contract.kt",
                     p.file.absolutePath,
-                    ContractCodeGenerator.generateServerDispatcher(decl, GENERATED_PACKAGE),
+                    ContractCodeGenerator.generateServerDispatcher(decl, packageName),
                 )
                 if (tsOutputDir != null) {
                     val tsFile = File(tsOutputDir, "${decl.name}.ts")
@@ -242,14 +340,14 @@ class BmlAdditionalSourcesExtension : CollectAdditionalSourceFilesExtension() {
                 File(configuration.getList(BmlConfigKeys.SOURCE_ROOTS).first()),
                 "BmlPages.kt",
             ).absolutePath
-            generated += emit("BmlPages.kt", registryPath, buildPageRegistry(pageObjects.sorted()))
+            generated += emit("BmlPages.kt", registryPath, buildPageRegistry(packageName, pageObjects.sorted()))
         }
         if (messageObjects.isNotEmpty()) {
             val registryPath = File(
                 File(configuration.getList(BmlConfigKeys.SOURCE_ROOTS).first()),
                 "BmlMessages.kt",
             ).absolutePath
-            generated += emit("BmlMessages.kt", registryPath, buildMessageRegistry(messageObjects.sorted()))
+            generated += emit("BmlMessages.kt", registryPath, buildMessageRegistry(packageName, messageObjects.sorted()))
         }
         configuration.get(BmlConfigKeys.RESOURCES_OUTPUT_DIR)?.let { dir ->
             val manifest = File(dir, bosca.bml.message.BmlMessageArtifacts.MANIFEST_PATH)
@@ -257,7 +355,7 @@ class BmlAdditionalSourcesExtension : CollectAdditionalSourceFilesExtension() {
                 manifest.delete() // removed message units must not leave a stale manifest behind
             } else {
                 manifest.parentFile?.mkdirs()
-                manifest.writeText(buildMessageManifest(messageEntries.sortedBy { it.key }))
+                manifest.writeText(buildMessageManifest(packageName, messageEntries.sortedBy { it.key }))
             }
         }
         // Write the module's i18n manifest: every localized string authored in t/t:
@@ -271,6 +369,7 @@ class BmlAdditionalSourcesExtension : CollectAdditionalSourceFilesExtension() {
             val conflicts = entry.message != null && existing != null &&
                 (existing.pluralForms.isNotEmpty() || (existing.message != null && existing.message != entry.message))
             if (conflicts) {
+                hasErrors = true
                 messages?.report(
                     CompilerMessageSeverity.ERROR,
                     "bml i18n: key '${entry.key}' has different source text in " +
@@ -302,7 +401,7 @@ class BmlAdditionalSourcesExtension : CollectAdditionalSourceFilesExtension() {
                 File(configuration.getList(BmlConfigKeys.SOURCE_ROOTS).first()),
                 "BmlIslands.kt",
             ).absolutePath
-            generated += emit("BmlIslands.kt", registryPath, buildIslandRegistry(componentTags.isNotEmpty()))
+            generated += emit("BmlIslands.kt", registryPath, buildIslandRegistry(packageName, componentTags.isNotEmpty()))
         }
         // Emit a registry of every component (tag -> scope/styles/deps) so the asset pipeline can serve
         // per-component stylesheets and expand a page's render closure (BmlServer(..., BmlComponents.all)).
@@ -311,7 +410,7 @@ class BmlAdditionalSourcesExtension : CollectAdditionalSourceFilesExtension() {
                 File(configuration.getList(BmlConfigKeys.SOURCE_ROOTS).first()),
                 "BmlComponents.kt",
             ).absolutePath
-            generated += emit("BmlComponents.kt", registryPath, buildComponentRegistry(componentTags))
+            generated += emit("BmlComponents.kt", registryPath, buildComponentRegistry(packageName, componentTags))
         }
         // Write the site metrics manifest: the per-page asset closure plus one CSS chunk
         // file per styled component, so the Gradle `bmlMetrics` task can report first-load payload
@@ -329,14 +428,31 @@ class BmlAdditionalSourcesExtension : CollectAdditionalSourceFilesExtension() {
                 File(cssDir, "${meta.tag}.css").writeText(meta.styles)
             }
         }
+        if (libraryId != null && tsOutputDir != null) {
+            File(tsOutputDir, "bml-origins.json").writeText(JsonObject(clientOrigins).toString())
+        } else tsOutputDir?.let { File(it, "bml-origins.json").delete() }
+        // Publish component metadata only after all module-level BML validation has completed.
+        if (libraryId != null && libraryVersion != null && libraryManifest != null && !hasErrors) {
+            try {
+                val manifest = BmlLibraryManifestGenerator.generate(
+                    libraryId, libraryVersion, packageName, exports.toSet(), libraryDeclarations, componentMetas,
+                    clientBehaviorComponentTags,
+                )
+                val content = BmlLibraryArtifacts.encode(manifest)
+                libraryManifest.parentFile.mkdirs()
+                libraryManifest.writeText(content)
+            } catch (invalid: IllegalArgumentException) {
+                reportError("Invalid library metadata: ${invalid.message}")
+            }
+        }
         // applyFirProcessSourcesExtension folds our return into the source list. Keep any incoming
         // Kotlin sources, drop the raw `.bml` (they aren't Kotlin), and add the generated Kotlin.
         return sources.filterNot { it.name.endsWith(".bml") } + generated
     }
 
     /** The `bml.generated.BmlPages` registry listing every generated page object (for server wiring). */
-    private fun buildPageRegistry(objectNames: List<String>): String = buildString {
-        appendLine("package $GENERATED_PACKAGE")
+    private fun buildPageRegistry(packageName: String, objectNames: List<String>): String = buildString {
+        appendLine("package $packageName")
         appendLine()
         appendLine("import bosca.bml.render.BmlPageRenderer")
         appendLine()
@@ -363,16 +479,16 @@ class BmlAdditionalSourcesExtension : CollectAdditionalSourceFilesExtension() {
      * entry point a runtime instantiates after classloading; the per-template `objectName` and
      * `source` are informational (registry UIs, diagnostics).
      */
-    private fun buildMessageManifest(entries: List<MessageEntry>): String = buildString {
+    private fun buildMessageManifest(packageName: String, entries: List<MessageEntry>): String = buildString {
         appendLine("{")
         appendLine("  \"manifestVersion\": ${bosca.bml.message.BmlMessageArtifacts.MANIFEST_VERSION},")
-        appendLine("  \"module\": \"$GENERATED_PACKAGE.BmlMessages\",")
+        appendLine("  \"module\": \"$packageName.BmlMessages\",")
         appendLine("  \"templates\": [")
         entries.forEachIndexed { i, e ->
             val comma = if (i < entries.size - 1) "," else ""
             appendLine(
                 "    {\"key\": ${jsonString(e.key)}, \"source\": ${jsonString(e.source)}, " +
-                    "\"objectName\": ${jsonString("$GENERATED_PACKAGE.${e.objectName}")}, " +
+                    "\"objectName\": ${jsonString("$packageName.${e.objectName}")}, " +
                     "\"supportsEmail\": ${e.supportsEmail}, \"supportsPush\": ${e.supportsPush}}$comma",
             )
         }
@@ -396,8 +512,8 @@ class BmlAdditionalSourcesExtension : CollectAdditionalSourceFilesExtension() {
     }
 
     /** The canonical `bml.generated.BmlMessages` manifest. */
-    private fun buildMessageRegistry(objectNames: List<String>): String = buildString {
-        appendLine("package $GENERATED_PACKAGE")
+    private fun buildMessageRegistry(packageName: String, objectNames: List<String>): String = buildString {
+        appendLine("package $packageName")
         appendLine()
         appendLine("import bosca.bml.message.BmlMessageModule")
         appendLine("import bosca.bml.message.BmlMessageTemplate")
@@ -419,8 +535,8 @@ class BmlAdditionalSourcesExtension : CollectAdditionalSourceFilesExtension() {
      * derived from [BmlPages.all] so it stays in sync without re-listing dispatcher names. Looked up by
      * bml-server at `POST /_bml/action/{stateKey}`.
      */
-    private fun buildIslandRegistry(hasComponents: Boolean): String = buildString {
-        appendLine("package $GENERATED_PACKAGE")
+    private fun buildIslandRegistry(packageName: String, hasComponents: Boolean): String = buildString {
+        appendLine("package $packageName")
         appendLine()
         appendLine("import bosca.bml.render.BmlIslandActionDispatcher")
         appendLine()
@@ -449,9 +565,9 @@ class BmlAdditionalSourcesExtension : CollectAdditionalSourceFilesExtension() {
      * (asset pipeline) plus a tag -> renderer map (sliver re-render). [tagToObject] maps each component
      * tag to its generated object name.
      */
-    private fun buildComponentRegistry(tagToObject: Map<String, String>): String = buildString {
+    private fun buildComponentRegistry(packageName: String, tagToObject: Map<String, String>): String = buildString {
         val sortedObjects = tagToObject.values.toSortedSet()
-        appendLine("package $GENERATED_PACKAGE")
+        appendLine("package $packageName")
         appendLine()
         appendLine("import bosca.bml.render.BmlComponentInfo")
         appendLine("import bosca.bml.render.BmlComponentRenderer")
@@ -473,6 +589,7 @@ class BmlAdditionalSourcesExtension : CollectAdditionalSourceFilesExtension() {
         val rel: String,
         val document: Document,
         val revision: String,
+        val digest: String,
     )
 
     /** Every `<contract>` region's interface declarations, wherever the region sits in the tree. */
@@ -520,7 +637,6 @@ class BmlAdditionalSourcesExtension : CollectAdditionalSourceFilesExtension() {
     }
 
     private companion object {
-        const val GENERATED_PACKAGE = "bml.generated"
         val ROUTABLE_TAGS = setOf("page", "route")
     }
 }

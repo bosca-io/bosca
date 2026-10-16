@@ -33,6 +33,15 @@ object CssScoper {
         val out = StringBuilder()
         var i = 0
         while (i < input.length) {
+            // Comments between rules belong to neither a selector nor an at-rule's prelude.
+            // Retain them (including license comments) before classifying the next rule.
+            if (input[i].isWhitespace()) { i++; continue }
+            if (input.startsWith("/*", i)) {
+                val end = skipComment(input, i)
+                out.append(input.substring(i, end)).append('\n')
+                i = end
+                continue
+            }
             val term = nextTopLevel(input, i)
             if (term.index < 0) {                       // trailing content, no further rule
                 val rest = input.substring(i).trim()
