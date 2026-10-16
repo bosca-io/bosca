@@ -27,7 +27,10 @@ class PipelineTriggerModel(
         message = ""
         try {
             val retained = Json.decodeFromString<List<GitPipelineInputValueInput>>(inputs)
-            require(ref in page.refs) { "Choose an available branch or tag." }
+            require(ref in page.refs || (ref.startsWith("refs/tags/") &&
+                ctx.gql.execute(GitUiTag, GitUiTag.Variables(page.repository, ref.removePrefix("refs/tags/"))).git.tag != null)) {
+                "Choose an available branch or tag."
+            }
             val definitions =
                 ctx.gql
                     .execute(GitUiPipelineInputs, GitUiPipelineInputs.Variables(page.selected, ref))
@@ -39,7 +42,7 @@ class PipelineTriggerModel(
                         (it.type != GitPipelineInputType.CHOICE || value.value in it.options)
                 }
             }
-            page = page.copy(ref = ref, inputs = definitions)
+            page = page.copy(ref = ref, inputs = definitions, refs = (page.refs + ref).distinct())
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {

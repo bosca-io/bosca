@@ -44,6 +44,7 @@ data class RepositoryPage(
     val secrets: RepositorySecretsPage? = null,
     val settings: RepositorySettingsPage? = null,
     val branchRefs: List<RefOption> = emptyList(),
+    val tagsHasMore: Boolean = false,
 ) {
     /** Whether the viewer can commit to the selected ref, as the file actions require. */
     val canWriteRef: Boolean

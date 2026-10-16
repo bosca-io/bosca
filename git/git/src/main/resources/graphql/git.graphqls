@@ -288,8 +288,10 @@ type Git {
     commit(repositoryId: UUID!, sha: String!): GitCommitInfo
     "List all branches with head SHA and ahead/behind counts."
     branches(repositoryId: UUID!): [GitBranchInfo!]!
-    "List all tags."
-    tags(repositoryId: UUID!): [GitTagInfo!]!
+    "List tags newest first by Git tagger date, using commit dates for lightweight tags, with optional filtering and pagination."
+    tags(repositoryId: UUID!, limit: Int, offset: Long, query: String): [GitTagInfo!]!
+    "Look up a tag by name directly from Git."
+    tag(repositoryId: UUID!, name: String!): GitTagInfo
     "Per-line blame attribution for a file."
     blame(repositoryId: UUID!, ref: String!, path: String!): [GitBlameLine!]!
     "Repository statistics."

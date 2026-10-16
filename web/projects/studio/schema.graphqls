@@ -8318,8 +8318,12 @@ type Git {
   sourceRefs(repositoryId: UUID!): [GitScriptSourceRef!]!
   """Repository statistics."""
   stats(repositoryId: UUID!): GitRepoStats!
-  """List all tags."""
-  tags(repositoryId: UUID!): [GitTagInfo!]!
+  """Look up a tag by name directly from Git."""
+  tag(name: String!, repositoryId: UUID!): GitTagInfo
+  """
+  List tags newest first by Git tagger date, using commit dates for lightweight tags, with optional filtering and pagination.
+  """
+  tags(limit: Int, offset: Long, query: String, repositoryId: UUID!): [GitTagInfo!]!
   """
   Get the current status of a job attempt assigned to this agent. A stale attempt is reported as cancelled.
   """

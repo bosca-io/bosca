@@ -4,24 +4,27 @@
     <input type="hidden" name="tab" :value="page.tab" />
     <input type="hidden" name="return" :value="page.listHref" />
     <div class="ref-choice">
-      <ui-select
-        size="sm"
-        name="ref"
-        label="Branch, tag or commit"
-        searchable
-        allowCustom
-        required
-      >
-        <if page.ref !in page.branches && page.tags.none { it.name == page.ref }>
-          <option :value="page.ref" selected>{ page.ref }</option>
-        </if>
-        <for branch in page.branches>
-          <option :value="branch" :selected="branch == page.ref">{ branch }</option>
-        </for>
-        <for tag in page.tags>
-          <option :value="tag.name" :selected="tag.name == page.ref">{ tag.name } (tag)</option>
-        </for>
-      </ui-select>
+      <git-ref-search :id="page.id">
+        <ui-select
+          size="sm"
+          name="ref"
+          label="Branch, tag or commit"
+          searchable
+          async
+          allowCustom
+          required
+        >
+          <if page.ref !in page.branches && page.tags.none { it.name == page.ref }>
+            <option :value="page.ref" selected>{ page.ref }</option>
+          </if>
+          <for branch in page.branches>
+            <option :value="branch" :selected="branch == page.ref">{ branch }</option>
+          </for>
+          <for tag in page.tags>
+            <option :value="tag.name" :selected="tag.name == page.ref">{ tag.name } (tag)</option>
+          </for>
+        </ui-select>
+      </git-ref-search>
     </div>
   </form>
   <style scoped>

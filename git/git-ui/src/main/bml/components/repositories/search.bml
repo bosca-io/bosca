@@ -74,28 +74,31 @@
             </div>
             <div class="ref-choice">
               <ui-field :label='if (model.mode == "paths") "Ref" else "Branch"' hideLabel>
-                <ui-select
-                  name="ref"
-                  label="Search ref"
-                  size="sm"
-                  searchable
-                  :allowCustom='model.mode == "paths"'
-                  icon="branch"
-                  :disabled="model.id.isBlank()"
-                >
-                  <if model.refChoices.none { model.refValue(it) == model.ref }>
-                    <option :value="model.ref" selected>{ model.ref }</option>
-                  </if>
-                  <for choice in model.refChoices>
-                    <option
-                      :value="model.refValue(choice)"
-                      :data-kind="choice.kind"
-                      :selected="model.refValue(choice) == model.ref"
-                    >
-                      { choice.name + if (choice.kind == "tag") " (tag)" else "" }
-                    </option>
-                  </for>
-                </ui-select>
+                <git-ref-search :id="model.id" mode="search" :branchesOnly='model.mode == "content"'>
+                  <ui-select
+                    name="ref"
+                    label="Search ref"
+                    size="sm"
+                    searchable
+                    async
+                    :allowCustom='model.mode == "paths"'
+                    icon="branch"
+                    :disabled="model.id.isBlank()"
+                  >
+                    <if model.refChoices.none { model.refValue(it) == model.ref }>
+                      <option :value="model.ref" selected>{ model.ref }</option>
+                    </if>
+                    <for choice in model.refChoices>
+                      <option
+                        :value="model.refValue(choice)"
+                        :data-kind="choice.kind"
+                        :selected="model.refValue(choice) == model.ref"
+                      >
+                        { choice.name + if (choice.kind == "tag") " (tag)" else "" }
+                      </option>
+                    </for>
+                  </ui-select>
+                </git-ref-search>
               </ui-field>
             </div>
           </div>

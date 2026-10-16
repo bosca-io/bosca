@@ -71,6 +71,7 @@ fun gitUiServer(graphqlEndpoint: String?, authCookiePrefix: String? = null): Bml
         contracts =
             listOf(
                 bml.generated.GitOwnerSearchDispatcher(OwnerSearch()),
+                bml.generated.GitRefSearchDispatcher(RefSearch()),
                 bml.generated.GitMarkdownPreviewDispatcher(MarkdownPreview()),
             ),
         graphqlEndpoint = graphqlEndpoint,

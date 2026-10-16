@@ -1,0 +1,16 @@
+<component tag="git-ref-search">
+  <prop name="id" type="String" required />
+  <prop name="mode" type="String" default="short" />
+  <prop name="branchesOnly" type="Boolean" default="false" />
+  <div class="ref-search" :data-repository="id" :data-mode="mode" :data-branches-only="branchesOnly">
+    <slot />
+  </div>
+  <style scoped>
+    .ref-search { display: contents; }
+  </style>
+  <script client scoped>
+    import { GitRefSearch } from "./GitRefSearch";
+    import { mountRefSearch } from "@client/ref-search";
+    mountRefSearch(ctx, (id, query, offset, branchesOnly) => GitRefSearch.search(id, query, offset, branchesOnly));
+  </script>
+</component>

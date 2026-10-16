@@ -74,7 +74,12 @@ suspend fun pipelinePage(
         }
     }
     val pipelines = catalogs.flatMap { it.first }
-    val refs = refsRequest.await()
+    var refs = refsRequest.await()
+    val requested = ctx.query["runRef"] ?: ctx.query["ref"]
+    if (repo.isNotBlank() && !requested.isNullOrBlank() && refs.none { it == requested || it == "refs/heads/$requested" || it == "refs/tags/$requested" }) {
+        val tag = ctx.gql.execute(GitUiTag, GitUiTag.Variables(repo, requested.removePrefix("refs/tags/"))).git.tag
+        if (tag != null) refs = refs + "refs/tags/${tag.name}"
+    }
     val selected = ctx.query["pipeline"]?.takeIf { id -> pipelines.any { it.id == id } }.orEmpty()
     val ref = ctx.query["runRef"]?.takeIf { it in refs }
         ?: ctx.query["ref"]?.let { requested ->

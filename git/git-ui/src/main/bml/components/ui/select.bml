@@ -102,9 +102,21 @@
         </span>
         <p ref="status" class="select-status" role="status"></p>
       </div>
+      <nav ref="pagination" class="select-pagination" aria-label="Option pages" hidden>
+        <button ref="previous" type="button">Previous</button>
+        <button ref="next" type="button">Next</button>
+      </nav>
     </div>
   </div>
   <style scoped>
+    .select-pagination {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 8px;
+      border-top: 1px solid var(--line);
+    }
+    .select-pagination[hidden] { display: none; }
     .select-widget {
       position: relative;
       min-width: 0;
