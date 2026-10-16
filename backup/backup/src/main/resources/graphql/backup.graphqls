@@ -34,6 +34,115 @@ type Backups {
     list(offset: Int! = 0, limit: Int! = 20): [Backup!]!
     "Get a specific backup by its identifier."
     backup(id: UUID!): Backup
+    "Inspect persisted object backup and restore runs. Requires backup administration access."
+    objectRuns: ObjectBackupRuns!
+}
+
+"The operation tracked by an object inventory run or checkpoint."
+enum ObjectBackupOperation {
+    BACKUP
+    RESTORE
+}
+
+"The lifecycle and last recorded outcome of an object inventory run."
+enum ObjectBackupRunStatus {
+    PENDING
+    RUNNING
+    COMPLETED
+    PARTIAL
+    FAILED
+    CANCELLED
+}
+
+"The current transfer state of one declared object revision."
+enum ObjectBackupProgressStatus {
+    PENDING
+    RUNNING
+    COMPLETED
+    FAILED
+}
+
+"Read-only administration queries for persisted object inventory runs."
+type ObjectBackupRuns {
+    "List one operation's runs in the selected source, destination and scope, newest first."
+    list(operation: ObjectBackupOperation!, sourceId: String!, destinationId: String!, scope: String!, offset: Int! = 0, limit: Int! = 20): [ObjectBackupRun!]!
+    "Read one run and its exact declared inventory."
+    run(key: String!): ObjectBackupRun
+    "Read the latest completed run separately from any newer partial attempt."
+    lastSuccessful(operation: ObjectBackupOperation!, sourceId: String!, destinationId: String!, scope: String!): ObjectBackupRun
+}
+
+"A fixed object inventory and its recorded execution state."
+type ObjectBackupRun {
+    key: String!
+    sourceId: String!
+    destinationId: String!
+    scope: String!
+    operation: ObjectBackupOperation!
+    inventory: ObjectBackupManifest!
+    "The output manifest path for a backup or input manifest path for a restore."
+    path: String!
+    status: ObjectBackupRunStatus!
+    attempts: Int!
+    error: String
+    "Frozen totals from the most recent terminal outcome, null before an outcome is recorded."
+    result: ObjectBackupRunSummary
+    version: Long!
+    created: DateTime!
+    modified: DateTime!
+    "Current health of the run's exact shared checkpoints. May differ from its frozen result."
+    summary: ObjectBackupRunSummary!
+    "Read current checkpoint state in declared inventory order."
+    items(offset: Int! = 0, limit: Int! = 20): [ObjectBackupProgress!]!
+}
+
+"A portable object inventory. Database recovery-point coverage is established separately."
+type ObjectBackupManifest {
+    id: String!
+    sourceId: String!
+    scope: String!
+    created: String!
+    version: Int!
+    format: String!
+    objects(offset: Int! = 0, limit: Int! = 20): [BackupObject!]!
+}
+
+"An exact source revision and the retained payload described by an inventory or checkpoint."
+type BackupObject {
+    store: String!
+    key: String!
+    revision: String!
+    length: Long!
+    sha256: String!
+    payloadPath: String!
+}
+
+"Current state of one operation-specific revision checkpoint."
+type ObjectBackupProgress {
+    key: String!
+    sourceId: String!
+    destinationId: String!
+    scope: String!
+    operation: ObjectBackupOperation!
+    payload: BackupObject!
+    status: ObjectBackupProgressStatus!
+    attempts: Int!
+    verifiedBytes: Long!
+    error: String
+    version: Long!
+    created: DateTime!
+    modified: DateTime!
+}
+
+"Logical inventory totals. Shared payload references each contribute their declared length."
+type ObjectBackupRunSummary {
+    total: Long!
+    pending: Long!
+    running: Long!
+    completed: Long!
+    failed: Long!
+    totalBytes: Long!
+    verifiedBytes: Long!
 }
 
 "Mutation operations for creating backups and restoring from them."

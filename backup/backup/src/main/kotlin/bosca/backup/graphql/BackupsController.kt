@@ -29,6 +29,13 @@ class BackupsController(
         private const val MAX_PAGE_SIZE = 100
     }
 
+    /** Opens object run queries under the existing backup administration boundary. */
+    @Field
+    fun objectRuns(authorization: AuthenticationContext): ObjectBackupRuns {
+        groupEvaluator.verifyHasSaGroup(authorization)
+        return ObjectBackupRuns
+    }
+
     /** Lists all backup records with pagination, ordered by creation date descending. */
     @Field
     suspend fun list(
