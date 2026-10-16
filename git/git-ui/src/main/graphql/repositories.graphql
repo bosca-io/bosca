@@ -43,11 +43,13 @@ query GitUiRepository($id: UUID!) {
   }
 }
 
-query GitUiBranches($id: UUID!) {
+query GitUiBranches($id: UUID!, $includeAheadBehind: Boolean! = false) {
   git {
-    branches(repositoryId: $id, includeAheadBehind: false) {
+    branches(repositoryId: $id, includeAheadBehind: $includeAheadBehind) {
       name
       sha
+      ahead
+      behind
     }
   }
 }

@@ -664,6 +664,23 @@ for (const width of [1920, 1440, 1024, 390]) {
   await click(`${editDialog} button[type="submit"]`);
   await until(`document.querySelector('.page-heading h1')?.innerText.startsWith(${JSON.stringify(original.title)}) && !document.querySelector(${JSON.stringify(editDialog)})`);
 }
+for (const width of [1440, 390]) {
+  await call("Emulation.setDeviceMetricsOverride", { width, height: 1000, deviceScaleFactor: 1, mobile: false });
+  await nav("/pulls/pull?view=commits");
+  assert.ok(await ev(`document.querySelector('main').innerText.includes('Commit 24')`));
+  await click('a.commit-message');
+  await until(`location.search.includes('commit=' + 'b'.repeat(40)) && document.querySelector('.commit-comparison')?.innerText.includes('Selected commit message')`);
+  assert.ok(await ev(`document.querySelector('main').innerText.includes('Selected commit change')`));
+  assert.equal(await ev(`document.querySelectorAll('[aria-label^="Comment on line"]').length`), 0);
+  assert.ok(await ev(`document.documentElement.scrollWidth <= innerWidth`), "Commit comparison fits viewport");
+  await screenshot("commit-files", width);
+  await click('.commit-comparison nav a');
+  await until(`!location.search.includes('commit=') && document.querySelector('[aria-label^="Comment on line"]')`);
+  await nav("/pulls/pull?view=commits&commitOffset=25");
+  assert.ok(await ev(`document.querySelector('main').innerText.includes('Commit 25')`));
+  assert.ok(await ev(`!document.querySelector('main').innerText.includes('Load more commits')`));
+  await screenshot("commit-page", width);
+}
 assert.deepEqual(errors, [], "No browser exceptions on PR pages");
 await writeFile(
   `${artifacts}/pull-header-layout.json`,

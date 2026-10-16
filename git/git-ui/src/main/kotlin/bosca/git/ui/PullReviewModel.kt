@@ -52,7 +52,7 @@ class PullReviewModel(
             .filter { sharesDisplayedCommit(it) && it.matches(file, old, new) }
 
     private fun sharesDisplayedCommit(thread: PullReviewThread): Boolean =
-        page.pull.status != GitPullRequestStatus.MERGED || thread.first.commitSha == page.headSha
+        page.selectedCommit == null && (page.pull.status != GitPullRequestStatus.MERGED || thread.first.commitSha == page.headSha)
 
     /** Discussions that cannot be placed on a displayed line remain reachable below the diff. */
     val detachedThreads: List<PullReviewThread>
@@ -129,6 +129,7 @@ class PullReviewModel(
 
     /** Selects a displayed diff line; zero represents an absent side in the primitive action arguments. */
     suspend fun select(file: String, oldLine: Int, newLine: Int) {
+        require(page.canCommentOnDiff) { "Open all changes to add a line comment." }
         val old = oldLine.takeIf { it > 0 }
         val new = newLine.takeIf { it > 0 }
         require(
@@ -194,6 +195,7 @@ class PullReviewModel(
                     GitUiReplyComment.Variables(page.pull.id, replyToCommentId, body, page.pull.version),
                 )
             } else {
+                require(page.canCommentOnDiff) { "Open all changes to add a line comment." }
                 require(commentFile.isNotBlank() && (oldLine != null || newLine != null)) {
                     "Choose a diff line."
                 }
@@ -236,7 +238,7 @@ class PullReviewModel(
             ctx.gql
                 .execute(
                     GitUiPullDiffPage,
-                    GitUiPullDiffPage.Variables(page.pull.repositoryId, page.pull.number, offset),
+                    GitUiPullDiffPage.Variables(page.pull.repositoryId, page.pull.number, offset, page.selectedCommit?.sha),
                 )
                 .git
                 .pullRequest ?: error("Pull request unavailable.")
@@ -285,7 +287,7 @@ class PullReviewModel(
         contextFile = file
         contextMessage = ""
         try {
-            diff = diff.withRevealedLines(file, { ctx.gql.diffSourceLines(page.sourceRepository, page.headSha, it) }, change)
+            diff = diff.withRevealedLines(file, { ctx.gql.diffSourceLines(page.sourceRepository, page.diffHeadSha, it) }, change)
             contextFile = ""
         } catch (e: CancellationException) {
             throw e

@@ -161,7 +161,9 @@ export function diffWorkspace(ctx: ClientContext) {
   // Resizable file tree; the width persists for this browser.
   const handle = ctx.ref<HTMLElement>("resize");
   const maxWidth = () => Math.max(MIN_WIDTH, Math.min(640, root.clientWidth * 0.6));
+  let preferredWidth = readWidth();
   const applyWidth = (width: number | null) => {
+    handle?.setAttribute("aria-valuemax", String(Math.round(maxWidth())));
     if (width === null) {
       root.style.removeProperty("--diff-sidebar-width");
       handle?.setAttribute("aria-valuenow", String(DEFAULT_WIDTH));
@@ -173,11 +175,22 @@ export function diffWorkspace(ctx: ClientContext) {
   };
   if (handle) {
     handle.setAttribute("aria-valuemin", String(MIN_WIDTH));
-    handle.setAttribute("aria-valuemax", String(Math.round(maxWidth())));
-    applyWidth(readWidth());
+    applyWidth(preferredWidth);
     const sidebarWidth = () =>
       root.querySelector<HTMLElement>(".diff-sidebar")?.getBoundingClientRect().width ??
       DEFAULT_WIDTH;
+    const rememberWidth = () => {
+      preferredWidth = sidebarWidth();
+      writeWidth(preferredWidth);
+    };
+    let availableWidth = root.clientWidth;
+    const observer = new ResizeObserver(() => {
+      if (root.clientWidth === availableWidth) return;
+      availableWidth = root.clientWidth;
+      applyWidth(preferredWidth);
+    });
+    observer.observe(root);
+    ctx.onUnmount(() => observer.disconnect());
     ctx.on<PointerEvent>(handle, "pointerdown", (event) => {
       if (event.button !== 0) return;
       event.preventDefault();
@@ -185,20 +198,23 @@ export function diffWorkspace(ctx: ClientContext) {
       const startWidth = sidebarWidth();
       handle.setPointerCapture(event.pointerId);
       handle.setAttribute("data-dragging", "");
-      const move = (next: PointerEvent) =>
-        applyWidth(startWidth + next.clientX - startX);
+      const move = (next: PointerEvent) => {
+        preferredWidth = startWidth + next.clientX - startX;
+        applyWidth(preferredWidth);
+      };
       const end = () => {
         handle.removeAttribute("data-dragging");
         handle.removeEventListener("pointermove", move);
         handle.removeEventListener("pointerup", end);
         handle.removeEventListener("pointercancel", end);
-        writeWidth(sidebarWidth());
+        rememberWidth();
       };
       handle.addEventListener("pointermove", move);
       handle.addEventListener("pointerup", end);
       handle.addEventListener("pointercancel", end);
     });
     ctx.on(handle, "dblclick", () => {
+      preferredWidth = null;
       applyWidth(null);
       writeWidth(null);
     });
@@ -212,7 +228,7 @@ export function diffWorkspace(ctx: ClientContext) {
       else return;
       event.preventDefault();
       applyWidth(width);
-      writeWidth(sidebarWidth());
+      rememberWidth();
     });
   }
 

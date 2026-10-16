@@ -166,6 +166,8 @@ type GitBlob {
 type GitBranchInfo {
   name: String!
   sha: String!
+  ahead: Int!
+  behind: Int!
 }
 
 input CreateGitRepositoryInput {
@@ -501,8 +503,10 @@ type GitPullRequest {
   dependents: [GitPullRequest!]!
   "Reviews submitted on this PR."
   reviews: [GitReview!]!
-  "Structured diff between source and target branches."
-  diff: [GitDiffFile!]!
+  "Commits unique to this comparison, newest first. Merged requests use their recorded merge history."
+  commits(offset: Long! = 0, limit: Int! = 25): [GitCommitInfo!]!
+  "All PR changes, or one comparison commit against its first parent when commitSha is supplied."
+  diff(commitSha: String): [GitDiffFile!]!
 }
 
 enum GitPullRequestStatus {

@@ -24,9 +24,23 @@ data class PullPage(
     val repositoryNames: Map<String, String> = emptyMap(),
     val diff: List<DiffView> = emptyList(),
     val diffUnavailableMessage: String = "",
+    val commits: List<GitUiPullCommitsData.Git.PullRequestById.Commits> = emptyList(),
+    val commitOffset: Long = 0,
+    val hasMoreCommits: Boolean = false,
+    val selectedCommit: GitUiCommitData.Git.Commit? = null,
 ) {
     val canReview: Boolean
         get() = pull.status.name == "OPEN" && diffUnavailableMessage.isBlank()
+
+    val canCommentOnDiff: Boolean
+        get() = canReview && selectedCommit == null
+
+    val diffHeadSha: String
+        get() = selectedCommit?.sha ?: headSha
+
+    fun commitHref(sha: String): String = "$href&view=files&commit=${encode(sha)}&commitOffset=$commitOffset"
+
+    fun commitsHref(offset: Long = commitOffset): String = "$href&view=commits&commitOffset=$offset"
 
     val hasMergeBlockers: Boolean
         get() = !pull.mergeable
@@ -82,7 +96,7 @@ data class PullPage(
 
     val tabs: List<NavigationItem>
         get() =
-            listOf("overview" to "Overview", "files" to "Files Changed", "reviews" to "Reviews")
+            listOf("overview" to "Overview", "files" to "Files Changed", "commits" to "Commits", "reviews" to "Reviews")
                 .map {
                     NavigationItem(it.second, "$href&view=${it.first}", view == it.first)
                 }
@@ -96,7 +110,7 @@ data class PullPage(
     fun repositoryLabel(id: String): String = repositoryNames[id] ?: "Repository"
 
     fun fileHref(path: String, line: Int?): String =
-        repositoryHref(sourceRepository, headSha, file = path) + (line?.let { "&line=$it" } ?: "")
+        repositoryHref(sourceRepository, diffHeadSha, file = path) + (line?.let { "&line=$it" } ?: "")
 
     /** Opens the discussion in Files Changed, including discussions outside the current diff. */
     fun discussionHref(thread: PullReviewThread): String = "$href&view=files#${thread.anchor}"

@@ -161,13 +161,30 @@
         </ui-card>
       </if>
       <if model.page.view == "files">
+        <div class="commit-comparison">
+          <div class="commit-comparison-copy">
+            <if model.page.selectedCommit != null>
+              <strong>Commit { model.page.diffHeadSha.take(7) }</strong>
+              <p>{ model.page.selectedCommit.message }</p>
+              <span>Changes introduced by this commit. Open all changes to add line comments.</span>
+            <else>
+              <strong>All changes</strong>
+            </if>
+          </div>
+          <nav aria-label="Commit comparison">
+            <if model.page.selectedCommit != null>
+              <a class="button-link" :href='model.page.href + "&view=files"'>All changes</a>
+            </if>
+            <a class="button-link" :href="model.page.commitsHref()">Browse commits</a>
+          </nav>
+        </div>
         <if model.page.diffUnavailableMessage.isNotBlank()>
           <ui-empty-state icon="branch" title="Comparison unavailable" :message="model.page.diffUnavailableMessage" />
         <else-if model.diff.isEmpty()>
           <ui-empty-state
             icon="file"
             title="No files changed"
-            message="The source and target have no file changes."
+            :message='if (model.page.selectedCommit != null) "This commit has no file changes." else "The source and target have no file changes."'
           />
         <else>
           <git-diff-workspace :entries="model.files">
@@ -214,7 +231,7 @@
                         </if>
                         <for line in section.hunk.displayLines>
                           <git-diff-line :line="line" :anchor='file.path + ":" + (line.oldLineNumber ?: 0) + ":" + (line.newLineNumber ?: 0)'>
-                            <if model.page.canReview>
+                            <if model.page.canCommentOnDiff>
                               <ui-icon-button
                                 size="xs"
                                 icon="message"
@@ -308,6 +325,22 @@
     </section>
   </island>
   <style scoped>
+    .commit-comparison {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+      padding: 12px 16px;
+      border: 1px solid var(--line);
+      border-radius: var(--r-sm);
+      background: var(--bg-1);
+      font-size: 13px;
+    }
+    .commit-comparison-copy { flex: 1; min-width: 200px; overflow-wrap: anywhere; }
+    .commit-comparison-copy p { margin: 6px 0; white-space: pre-wrap; }
+    .commit-comparison-copy span { color: var(--fg-3); font-size: 12px; }
+    .commit-comparison nav { display: flex; flex-wrap: wrap; gap: 8px; }
     .review-workspace {
       display: flex;
       flex-direction: column;

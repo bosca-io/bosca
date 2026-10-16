@@ -56,7 +56,7 @@ suspend fun repositoryPage(): RepositoryPage? = supervisorScope {
     val listHref = safeListHref(ctx.query["return"])
     val needsRefs = tab in setOf("code", "commits", "branches", "tags", "statuses")
     val branchesRequest = async {
-        if (needsRefs) ctx.gql.execute(GitUiBranches, GitUiBranches.Variables(id)).git.branches
+        if (needsRefs) ctx.gql.execute(GitUiBranches, GitUiBranches.Variables(id, tab == "branches")).git.branches
         else emptyList()
     }
     val tagsRequest = async {
@@ -270,7 +270,7 @@ suspend fun repositoryPage(): RepositoryPage? = supervisorScope {
             (branches.contains(ref) || (emptyRepository && ref == repo.defaultBranch)) &&
             ctx.query["new"] == "true",
         tagsHasMore = loadedTags.size > 25,
-        branchRefs = branchRefs.map { RefOption(it.name, "branch", it.sha) },
+        branchRefs = branchRefs.map { RefOption(it.name, "branch", it.sha, ahead = it.ahead, behind = it.behind) },
         pulls =
             if (tab == "pulls")
                 pullListPage(id, repositoryHref(id, ref, listHref = listHref, tab = tab), repo)

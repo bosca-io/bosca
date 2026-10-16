@@ -10,7 +10,6 @@ query GitUiPullList($status: GitPullRequestStatus, $offset: Long!) {
       sourceBranch
       targetBranch
       authorId
-      mergeable
       created
       updated
     }
@@ -37,7 +36,6 @@ query GitUiRepositoryPullList(
       sourceBranch
       targetBranch
       authorId
-      mergeable
       created
       updated
     }
@@ -109,6 +107,12 @@ query GitUiPull($id: UUID!) {
         }
       }
     }
+  }
+}
+query GitUiPullHeads($repo: UUID!, $sourceRepo: UUID!, $source: String!, $target: String!) {
+  git {
+    sourceHead: commits(repositoryId: $sourceRepo, ref: $source, offset: 0, limit: 1) { sha }
+    targetHead: commits(repositoryId: $repo, ref: $target, offset: 0, limit: 1) { sha }
   }
 }
 query GitUiMergePlan($id: UUID!) {
@@ -227,11 +231,11 @@ mutation GitUiRemovePullDependency($id: UUID!, $dependency: UUID!) {
     }
   }
 }
-query GitUiPullDiffPage($repo: UUID!, $number: Int!, $offset: Int!) {
+query GitUiPullDiffPage($repo: UUID!, $number: Int!, $offset: Int!, $commitSha: String) {
   git {
     pullRequest(repositoryId: $repo, number: $number) {
       version
-      diff {
+      diff(commitSha: $commitSha) {
         oldPath
         newPath
         changeType
@@ -259,6 +263,21 @@ mutation GitUiUpdatePull($id: UUID!, $input: UpdateGitPullRequestInput!) {
     updatePullRequest(id: $id, input: $input) {
       id
       version
+    }
+  }
+}
+
+query GitUiPullCommits($id: UUID!, $offset: Long!) {
+  git {
+    pullRequestById(id: $id) {
+      version
+      commits(offset: $offset, limit: 26) {
+        sha
+        message
+        authorName
+        authorDate
+        parentShas
+      }
     }
   }
 }

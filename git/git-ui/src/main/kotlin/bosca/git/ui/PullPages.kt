@@ -139,16 +139,21 @@ suspend fun pullPage(): PullPage? = supervisorScope {
             ?.takeIf { it.id == id } ?: return@supervisorScope null.also { ctx.notFound = true }
     val repository = pull.repositoryId
     val number = pull.number
+    val view = ctx.query["view"]?.takeIf { it in setOf("overview", "files", "commits", "reviews") } ?: "overview"
     val merged = pull.status == GitPullRequestStatus.MERGED
     val sourceId = if (merged) repository else pull.sourceRepositoryId ?: repository
     val repositoryRequest = async {
         ctx.gql.execute(GitUiRepository, GitUiRepository.Variables(sourceId)).git.repositoryById
     }
     val profilesRequest = async { ctx.gql.execute(GitUiProfiles, Unit).profiles.current.orEmpty() }
-    val candidatesRequest = async { ctx.gql.execute(GitUiPullList, GitUiPullList.Variables(null, 0)).git.allPullRequests }
+    val candidatesRequest = async {
+        if (view == "overview") ctx.gql.execute(GitUiPullList, GitUiPullList.Variables(null, 0)).git.allPullRequests
+        else emptyList()
+    }
     val repositoriesRequest = async {
-        ctx.gql.execute(GitUiRepositories, GitUiRepositories.Variables(false, null)).git.repositories
+        if (view == "overview") ctx.gql.execute(GitUiRepositories, GitUiRepositories.Variables(false, null)).git.repositories
             .filterNot { it.deleted }.associate { it.id to it.name }
+        else emptyMap()
     }
     val identitiesRequest = async {
         val ownProfiles = profilesRequest.await().associate { it.id to OwnerOption(it.id, it.name, it.slug.orEmpty()).label }
@@ -160,16 +165,15 @@ suspend fun pullPage(): PullPage? = supervisorScope {
                 label?.let { profileId to it }
             }.filterNotNull().toMap()
     }
-    val sourceRefsRequest = async {
-        if (merged) emptyMap()
-        else ctx.gql.execute(GitUiBranches, GitUiBranches.Variables(sourceId)).git.branches.associate { it.name to it.sha }
-    }
-    val targetRefsRequest = async {
-        if (merged || sourceId == repository) sourceRefsRequest.await()
-        else ctx.gql.execute(GitUiBranches, GitUiBranches.Variables(repository)).git.branches.associate { it.name to it.sha }
+    val refsRequest = async {
+        if (merged) null
+        else ctx.gql.execute(
+            GitUiPullHeads,
+            GitUiPullHeads.Variables(repository, sourceId, "refs/heads/${pull.sourceBranch}", "refs/heads/${pull.targetBranch}"),
+        ).git
     }
     val repo = repositoryRequest.await() ?: run {
-        listOf(profilesRequest, candidatesRequest, repositoriesRequest, identitiesRequest, sourceRefsRequest, targetRefsRequest).forEach { it.cancel() }
+        listOf(profilesRequest, candidatesRequest, repositoriesRequest, identitiesRequest, refsRequest).forEach { it.cancel() }
         return@supervisorScope null.also { ctx.notFound = true }
     }
     val targetRepositoryRequest = async {
@@ -182,28 +186,39 @@ suspend fun pullPage(): PullPage? = supervisorScope {
                 .git.repositoryById?.name.orEmpty()
         else repo.name
     }
-    val sourceRefs = sourceRefsRequest.await()
+    val refs = refsRequest.await()
     val sha = if (merged) pull.mergeSha.orEmpty()
-        else ctx.gql.commitShaForRef(repo.id, pull.sourceBranch, sourceRefs.mapKeys { "refs/heads/${it.key}" }).orEmpty()
+        else refs?.sourceHead?.firstOrNull()?.sha.orEmpty()
     val checksRequest = async {
-        if (sha.isBlank()) emptyList()
+        if (view != "overview" || sha.isBlank()) emptyList()
         else ctx.gql.execute(GitUiStatuses, GitUiStatuses.Variables(repo.id, sha)).git.commitStatuses
     }
-    val targetRefs = targetRefsRequest.await()
     val diffUnavailable = when {
         merged && sha.isBlank() -> "The completed merge commit is not recorded."
         merged && pull.mergeBaseSha.isNullOrBlank() -> "The original target commit for this merge is not recorded."
         merged -> ""
         sha.isBlank() -> "Source branch '${pull.sourceBranch}' is no longer available."
-        targetRefs[pull.targetBranch].isNullOrBlank() -> "Target branch '${pull.targetBranch}' is no longer available."
+        refs?.targetHead.isNullOrEmpty() -> "Target branch '${pull.targetBranch}' is no longer available."
         else -> ""
     }
-    val diff = if (diffUnavailable.isBlank()) {
-        val comparison = ctx.gql.execute(GitUiPullDiffPage, GitUiPullDiffPage.Variables(repository, number, 0))
+    val selectedSha = ctx.query["commit"]?.takeIf { view == "files" && it.isNotBlank() }
+    val commitOffset = ctx.query["commitOffset"]?.toLongOrNull()?.coerceAtLeast(0) ?: 0L
+    val commits = if (view == "commits" && diffUnavailable.isBlank()) {
+        val result = ctx.gql.execute(GitUiPullCommits, GitUiPullCommits.Variables(id, commitOffset))
+            .git.pullRequestById ?: error("Pull request unavailable.")
+        require(result.version == pull.version) { "Pull request changed. Reload it before continuing." }
+        result.commits
+    } else emptyList()
+    val diff = if (view == "files" && diffUnavailable.isBlank()) {
+        val comparison = ctx.gql.execute(GitUiPullDiffPage, GitUiPullDiffPage.Variables(repository, number, 0, selectedSha))
             .git.pullRequest ?: error("Pull request unavailable.")
         require(comparison.version == pull.version) { "Pull request changed. Reload it before continuing." }
         comparison.diff.map { it.view() }
     } else emptyList()
+    val selectedCommit = if (selectedSha != null && diffUnavailable.isBlank())
+        ctx.gql.execute(GitUiCommit, GitUiCommit.Variables(repository, selectedSha)).git.commit
+            ?: error("Commit unavailable.")
+        else null
     val ownProfiles = profilesRequest.await().map { it.id }
     val identities = identitiesRequest.await()
     val candidateResults = candidatesRequest.await()
@@ -243,12 +258,16 @@ suspend fun pullPage(): PullPage? = supervisorScope {
         identities,
         targetRepository?.let { it.canEdit && !it.archived } == true,
         candidateResults.size,
-        ctx.query["view"]?.takeIf { it in setOf("overview", "files", "reviews") } ?: "overview",
+        view,
         ctx.query["review"] == "true",
         targetRepository?.name.orEmpty(),
         sourceNameRequest.await(),
         repositoriesRequest.await(),
         diff,
         diffUnavailable,
+        commits = commits.take(25),
+        commitOffset = commitOffset,
+        hasMoreCommits = commits.size > 25,
+        selectedCommit = selectedCommit,
     ).withDiscussionContext(ctx.gql)
 }
