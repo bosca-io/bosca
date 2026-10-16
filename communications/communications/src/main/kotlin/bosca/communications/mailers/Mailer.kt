@@ -2,7 +2,10 @@ package bosca.communications.mailers
 
 interface Mailer {
 
-    /** Maximum number of recipients the provider accepts in one message. */
+    /**
+     * Maximum number of recipients in one message. [send] must deliver to all of them or none, so a
+     * provider that hands recipients off separately declares 1; callers split larger sends to fit.
+     */
     val maxRecipientsPerMessage: Int
         get() = Int.MAX_VALUE
 

@@ -85,23 +85,15 @@ class MessageServiceImpl(
             "MessageService.sendNow cannot run inside a database transaction; use send instead"
         }
         val mailer = if (MessageChannel.EMAIL in message.channels) mailerProvider.get() else null
-        require(
-            mailer == null ||
-                message.bmlTemplate != null ||
-                message.recipients.size <= mailer.maxRecipientsPerMessage,
-        ) {
-            "The configured mail provider supports at most ${mailer?.maxRecipientsPerMessage} recipients per message"
-        }
         message.channels.distinct().forEach { channel ->
             when (channel) {
                 MessageChannel.EMAIL -> {
                     checkNotNull(mailer)
-                    if (message.bmlTemplate != null && message.recipients.size > 1) {
-                        message.recipients.forEach { recipient ->
-                            sendToMailer(message.copy(channels = listOf(channel), recipients = listOf(recipient)), mailer)
-                        }
-                    } else {
-                        sendToMailer(message.copy(channels = listOf(channel)), mailer)
+                    // A BML template renders per recipient. Otherwise each provider handoff carries at
+                    // most the mailer's limit, so a failed handoff only affects the recipients it carried.
+                    val recipientsPerSend = if (message.bmlTemplate != null) 1 else mailer.maxRecipientsPerMessage
+                    message.recipients.chunked(recipientsPerSend).forEach { recipients ->
+                        sendToMailer(message.copy(channels = listOf(channel), recipients = recipients), mailer)
                     }
                 }
                 MessageChannel.PUSH -> sendToPush(message)

@@ -342,19 +342,47 @@ class MessageServiceDeliveryTrackingTest {
     }
 
     @Test
-    fun `direct email send rejects an oversized provider request before lookup`() = runBlocking {
-        val fixture = fixture()
-        val error = assertFailsWith<IllegalArgumentException> {
+    fun `direct email send splits recipients to the provider limit`() = runBlocking {
+        val fixture = fixture(recipientCount = 3, maxRecipientsPerMessage = 2)
+
+        fixture.service.sendNow(Message(
+            channels = listOf(MessageChannel.EMAIL),
+            subject = "Bulk",
+            recipients = fixture.recipientIds,
+            content = listOf(MessageContent(MessageContentType.TEXT, "Hello")),
+        ))
+
+        assertEquals(
+            listOf(listOf("ada+0@example.com", "ada+1@example.com"), listOf("ada+2@example.com")),
+            fixture.mailer.sentRecipients,
+        )
+        assertEquals(List(3) { DeliveryStatusType.PENDING }, fixture.recorded.map(DeliveryEvent::status))
+    }
+
+    @Test
+    fun `failed provider handoff marks only its own recipients FAILED`() = runBlocking {
+        val fixture = fixture(recipientCount = 3, maxRecipientsPerMessage = 1, failOnSend = 2)
+
+        val error = assertFailsWith<IllegalStateException> {
             fixture.service.sendNow(Message(
                 channels = listOf(MessageChannel.EMAIL),
                 subject = "Bulk",
-                recipients = (1..1001).map { UUID.random() },
+                recipients = fixture.recipientIds,
                 content = listOf(MessageContent(MessageContentType.TEXT, "Hello")),
             ))
         }
 
-        assertEquals("The configured mail provider supports at most 1000 recipients per message", error.message)
-        assertEquals(0, fixture.mailer.sendCount)
+        assertEquals("provider rejected message", error.message)
+        assertEquals(listOf(listOf("ada+0@example.com"), listOf("ada+1@example.com")), fixture.mailer.sentRecipients)
+        assertEquals(
+            listOf(
+                fixture.recipientIds[0] to DeliveryStatusType.PENDING,
+                fixture.recipientIds[1] to DeliveryStatusType.PENDING,
+                fixture.recipientIds[1] to DeliveryStatusType.FAILED,
+            ),
+            fixture.recorded.map { it.recipientId to it.status },
+        )
+        coVerify(exactly = 1) { fixture.messageQueue.enqueue(any()) }
     }
 
     @Test
@@ -1256,6 +1284,8 @@ class MessageServiceDeliveryTrackingTest {
         registryFails: Boolean = false,
         recipientCount: Int = 1,
         locales: List<String> = emptyList(),
+        maxRecipientsPerMessage: Int = 1000,
+        failOnSend: Int? = null,
     ): Fixture {
         ProviderRegistry.clear()
         provides<Json>(singleton = true) { Json }
@@ -1276,6 +1306,8 @@ class MessageServiceDeliveryTrackingTest {
                 mailerFails -> IllegalStateException("provider rejected message")
                 else -> null
             },
+            maxRecipientsPerMessage = maxRecipientsPerMessage,
+            failOnSend = failOnSend,
         )
         val recorded = mutableListOf<DeliveryEvent>()
         val recordedTemplates = mutableListOf<BmlMessageTemplateRender>()
@@ -1428,9 +1460,9 @@ class MessageServiceDeliveryTrackingTest {
 
     private class RecordingMailer(
         private val failure: Throwable? = null,
+        override val maxRecipientsPerMessage: Int = 1000,
+        private val failOnSend: Int? = null,
     ) : Mailer {
-
-        override val maxRecipientsPerMessage: Int = 1000
 
         data class Address(
             override val name: String,
@@ -1448,6 +1480,7 @@ class MessageServiceDeliveryTrackingTest {
         ) : EmailMessage
 
         var sendCount = 0
+        val sentRecipients = mutableListOf<List<String>>()
 
         override suspend fun newEmail(
             name: String,
@@ -1468,7 +1501,9 @@ class MessageServiceDeliveryTrackingTest {
 
         override suspend fun send(message: EmailMessage) {
             sendCount++
+            sentRecipients += message.to.map { it.email }
             failure?.let { throw it }
+            if (sendCount == failOnSend) throw IllegalStateException("provider rejected message")
         }
     }
 }

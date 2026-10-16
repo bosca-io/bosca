@@ -19,9 +19,6 @@ import jakarta.mail.MessagingException
 import jakarta.mail.Multipart
 import jakarta.mail.internet.InternetAddress
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.CoroutineStart
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
 import org.bouncycastle.asn1.x500.X500Name
 import org.bouncycastle.asn1.x509.Extension
@@ -102,7 +99,8 @@ class SmtpMailerIntegrationTest {
             val mailer = Configuration().mailerProvider(
                 Json, MailerConfiguration(MailerType.SMTP, MailerEmail("Bosca", "mail@example.com")), configurationService,
             ).get()
-            mailer.send(message(mailer, listOf("ada@example.com", "grace@example.com")))
+            mailer.send(message(mailer, listOf("ada@example.com")))
+            mailer.send(message(mailer, listOf("grace@example.com")))
 
             assertTrue(server.waitForIncomingEmail(5000, 2))
             val messages = server.receivedMessages
@@ -147,29 +145,6 @@ class SmtpMailerIntegrationTest {
                 assertFailsWith<AuthenticationFailedException> { mailer.send(message(mailer)) }
                 assertEquals(1, second.receivedMessages.size)
             }
-        }
-    }
-
-    @Test
-    fun `cancelling delivery stops before the next recipient`() = runBlocking {
-        withServer { server ->
-            server.setUser("ada@example.com", "ada", "secret")
-            server.setUser("grace@example.com", "grace", "secret")
-            configure(server)
-            val mailer = SmtpMailer(Json, configurationService)
-            val delivery = launch(start = CoroutineStart.LAZY) {
-                mailer.send(message(mailer, listOf("ada@example.com", "grace@example.com")))
-            }
-            val handler = server.userManager.messageDeliveryHandler
-            server.userManager.setMessageDeliveryHandler { message, address ->
-                handler.handle(message, address).also { delivery.cancel() }
-            }
-
-            delivery.start()
-            withTimeout(5000) { delivery.join() }
-
-            assertTrue(delivery.isCancelled)
-            assertEquals(1, server.receivedMessages.size)
         }
     }
 
@@ -227,7 +202,7 @@ class SmtpMailerIntegrationTest {
             configure(server)
             val message = message(mailer) as SmtpMessage
             assertFailsWith<IllegalArgumentException> { mailer.send(message.copy(to = emptyList())) }
-            assertFailsWith<IllegalArgumentException> { mailer.send(message.copy(to = List(1001) { message.to.first() })) }
+            assertFailsWith<IllegalArgumentException> { mailer.send(message.copy(to = List(2) { message.to.first() })) }
             assertFailsWith<IllegalArgumentException> { mailer.send(message.copy(subject = "Hello\r\nBcc: other@example.com")) }
             assertFailsWith<IllegalArgumentException> { mailer.send(message.copy(subject = "Hello\nBcc: other@example.com")) }
             for (separator in listOf("\r", "\n")) {

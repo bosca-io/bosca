@@ -9,14 +9,15 @@ import bosca.communications.mailers.Mailer
 import bosca.configuration.service.ConfigurationService
 import jakarta.mail.Session
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.runInterruptible
 import kotlinx.serialization.json.Json
 
-/** SMTP delivery with current credentials and an isolated message for each recipient. */
+/**
+ * SMTP delivery with current credentials. Each recipient receives an isolated message through its own
+ * handoff, so a message carries one recipient and its delivery succeeds or fails as a unit.
+ */
 class SmtpMailer(private val json: Json, private val configurationService: ConfigurationService) : Mailer {
-    override val maxRecipientsPerMessage: Int = 1000
+    override val maxRecipientsPerMessage: Int = 1
 
     override suspend fun newEmail(name: String, email: String, customArguments: Map<String, String>): Email =
         SmtpEmail(name, email, customArguments)
@@ -40,21 +41,12 @@ class SmtpMailer(private val json: Json, private val configurationService: Confi
         val configuration = json.decodeFromJsonElement(SmtpConfiguration.serializer(), value)
         val session = Session.getInstance(configuration.properties())
         val smtpMessage = message as SmtpMessage
-        require(smtpMessage.to.isNotEmpty() && smtpMessage.to.size <= maxRecipientsPerMessage) {
-            "SMTP messages require between 1 and $maxRecipientsPerMessage recipients"
-        }
-        val sendContext = currentCoroutineContext()
+        val recipient = requireNotNull(smtpMessage.to.singleOrNull()) { "SMTP messages require exactly 1 recipient" }
         runInterruptible(Dispatchers.IO) {
-            // Validate every address before the first handoff to avoid partial sends on malformed input.
-            smtpMessage.from.address()
-            smtpMessage.to.forEach { it.address() }
+            val mimeMessage = smtpMessage.toMimeMessage(session, recipient)
             session.getTransport("smtp").use { transport ->
                 transport.connect(configuration.host, configuration.port, configuration.username.ifBlank { null }, configuration.password.ifEmpty { null })
-                smtpMessage.to.forEach { recipient ->
-                    val mimeMessage = smtpMessage.toMimeMessage(session, recipient)
-                    sendContext.ensureActive()
-                    transport.sendMessage(mimeMessage, mimeMessage.allRecipients)
-                }
+                transport.sendMessage(mimeMessage, mimeMessage.allRecipients)
             }
         }
     }
