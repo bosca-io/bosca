@@ -107,7 +107,7 @@ class SwarmServicesTest {
     @Test
     fun `stateful services stay on the manager and application services on the workers`() {
         val infra = services(infraStack(config))
-        listOf("postgres", "pgbouncer", "nats", "redis", "meilisearch", "s3proxy", "trino").forEach {
+        listOf("postgres", "pgbouncer", "nats", "dragonfly", "meilisearch", "s3proxy", "trino").forEach {
             assertEquals("node.labels.bosca_data == true", constraint(infra.getValue(it)), it)
         }
         listOf("imageprocessor", "text-embeddings-inference").forEach {

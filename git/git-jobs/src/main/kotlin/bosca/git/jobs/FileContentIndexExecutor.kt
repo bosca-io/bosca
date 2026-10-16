@@ -21,7 +21,6 @@ import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
@@ -152,15 +151,15 @@ class FileContentIndexExecutor : AbstractJobExecutor<FileContentIndexJob>(FileCo
             val treeWalk = TreeWalk(gitRepo)
             treeWalk.addTree(commit.tree)
             treeWalk.isRecursive = true
+            val batch = IndexBatch(searchService, this)
             var tagged = 0
             while (treeWalk.next()) {
                 if (!treeWalk.fileMode.isIndexableFile()) continue
                 val path = treeWalk.pathString
                 val blobSha = treeWalk.getObjectId(0)
-                val bytes = loadIndexableBytes(gitRepo, blobSha) ?: continue
-                tagBranch(searchService, repo, branch, path, blobSha, bytes)
-                tagged++
+                if (tagBranch(searchService, batch, gitRepo, repo, branch, path, blobSha)) tagged++
             }
+            batch.flush()
             log.info("Tagged {} files on branch {} of repository {}", tagged, branch, repositoryId)
         } finally {
             revWalk.dispose()
@@ -185,6 +184,7 @@ class FileContentIndexExecutor : AbstractJobExecutor<FileContentIndexJob>(FileCo
             val treeWalk = TreeWalk(gitRepo)
             treeWalk.addTree(commit.tree)
             treeWalk.isRecursive = true
+            val batch = IndexBatch(searchService, this)
             var untagged = 0
             while (treeWalk.next()) {
                 if (!treeWalk.fileMode.isIndexableFile()) continue
@@ -192,9 +192,10 @@ class FileContentIndexExecutor : AbstractJobExecutor<FileContentIndexJob>(FileCo
                 val blobSha = treeWalk.getObjectId(0)
                 // No need to load bytes; if we never tagged this doc (binary, oversize),
                 // the fetch in untagBranch returns null and the call is a no-op.
-                untagBranch(searchService, repositoryId, branch, path, blobSha)
+                untagBranch(searchService, batch, repositoryId, branch, path, blobSha)
                 untagged++
             }
+            batch.flush()
             log.info("Untagged branch {} from {} tree entries of repository {}", branch, untagged, repositoryId)
         } finally {
             revWalk.dispose()
@@ -229,6 +230,7 @@ class FileContentIndexExecutor : AbstractJobExecutor<FileContentIndexJob>(FileCo
             treeWalk.addTree(beforeTree) // index 0
             treeWalk.addTree(afterTree)  // index 1
             treeWalk.isRecursive = true
+            val batch = IndexBatch(searchService, this)
 
             var added = 0
             var modified = 0
@@ -248,17 +250,16 @@ class FileContentIndexExecutor : AbstractJobExecutor<FileContentIndexJob>(FileCo
                 if (beforeEligible && afterEligible && beforeId == afterId) continue
 
                 if (beforeEligible) {
-                    untagBranch(searchService, repositoryId, branch, path, beforeId)
+                    untagBranch(searchService, batch, repositoryId, branch, path, beforeId)
                     if (!afterEligible) removed++
                 }
                 if (afterEligible) {
-                    val bytes = loadIndexableBytes(gitRepo, afterId)
-                    if (bytes != null) {
-                        tagBranch(searchService, repo, branch, path, afterId, bytes)
+                    if (tagBranch(searchService, batch, gitRepo, repo, branch, path, afterId)) {
                         if (beforeEligible) modified++ else added++
                     }
                 }
             }
+            batch.flush()
             log.info(
                 "Diff applied to branch {} of repository {}: +{} ~{} -{}",
                 branch, repositoryId, added, modified, removed
@@ -270,30 +271,31 @@ class FileContentIndexExecutor : AbstractJobExecutor<FileContentIndexJob>(FileCo
 
     /**
      * Idempotently ensures [branch] appears in the `branches` overlay of the document
-     * for `(repositoryId, path, blobSha)`, creating the document from [bytes] if it
-     * does not yet exist. Safe to call repeatedly with the same arguments.
+     * for `(repositoryId, path, blobSha)`. Existing documents need only a branch patch;
+     * blob content is loaded only to create a missing document. Returns false when a
+     * missing document's blob is ineligible for indexing.
      */
     private suspend fun IndexStorageSystem.tagBranch(
         searchService: SearchService,
+        batch: IndexBatch,
+        gitRepo: org.eclipse.jgit.lib.Repository,
         repo: Repository,
         branch: String,
         path: String,
         blobSha: ObjectId,
-        bytes: ByteArray,
-    ) {
+    ): Boolean {
         val docId = documentId(repo.id.toString(), path, blobSha.name())
-        val existing = searchService.fetch(this, docId) as? JsonObject
-        val branches = existing?.get("branches")?.jsonArray?.toBranchList().orEmpty()
-        if (branch in branches) return
+        val existing = searchService.fetch(this, docId, BRANCH_FIELDS) as? JsonObject
+        val branches = existing?.get("branches")?.let { it.jsonArray.toBranchList() }.orEmpty()
+        if (branch in branches) return true
         val newBranches = branches + branch
         val updated = if (existing != null) {
             buildJsonObject {
-                for ((key, value) in existing) {
-                    if (key != "branches") put(key, value)
-                }
+                put("id", docId)
                 putJsonArray("branches") { newBranches.forEach { add(it) } }
             }
         } else {
+            val bytes = loadIndexableBytes(gitRepo, blobSha) ?: return false
             buildFileDocument(
                 docId = docId,
                 repo = repo,
@@ -302,7 +304,8 @@ class FileContentIndexExecutor : AbstractJobExecutor<FileContentIndexJob>(FileCo
                 branches = newBranches,
             )
         }
-        searchService.index(this, updated)
+        batch.add(updated)
+        return true
     }
 
     /**
@@ -313,26 +316,48 @@ class FileContentIndexExecutor : AbstractJobExecutor<FileContentIndexJob>(FileCo
      */
     private suspend fun IndexStorageSystem.untagBranch(
         searchService: SearchService,
+        batch: IndexBatch,
         repositoryId: UUID,
         branch: String,
         path: String,
         blobSha: ObjectId,
     ) {
         val docId = documentId(repositoryId.toString(), path, blobSha.name())
-        val existing = searchService.fetch(this, docId) as? JsonObject ?: return
-        val branches = existing["branches"]?.jsonArray?.toBranchList().orEmpty()
+        val existing = searchService.fetch(this, docId, BRANCH_FIELDS) as? JsonObject ?: return
+        val branches = existing["branches"]?.let { it.jsonArray.toBranchList() }.orEmpty()
         if (branch !in branches) return
         val remaining = branches.filter { it != branch }
         if (remaining.isEmpty()) {
             searchService.delete(this, docId)
         } else {
             val updated = buildJsonObject {
-                for ((key, value) in existing) {
-                    if (key != "branches") put(key, value)
-                }
+                put("id", docId)
                 putJsonArray("branches") { remaining.forEach { add(it) } }
             }
-            searchService.index(this, updated)
+            batch.add(updated)
+        }
+    }
+
+    /**
+     * Bounds buffered document updates while the repository lock is held. Each tree walk
+     * visits a (path, blob) document at most once, so subsequent reads do not depend on
+     * buffered writes. Flushes await indexing before the walk continues or completes.
+     */
+    private class IndexBatch(
+        private val searchService: SearchService,
+        private val storage: IndexStorageSystem,
+    ) {
+        private val documents = ArrayList<JsonElement>(INDEX_BATCH_SIZE)
+
+        suspend fun add(document: JsonElement) {
+            documents.add(document)
+            if (documents.size >= INDEX_BATCH_SIZE) flush()
+        }
+
+        suspend fun flush() {
+            if (documents.isEmpty()) return
+            searchService.update(storage, documents.toList())
+            documents.clear()
         }
     }
 
@@ -390,8 +415,10 @@ class FileContentIndexExecutor : AbstractJobExecutor<FileContentIndexJob>(FileCo
 
         private const val MAX_FILE_SIZE = 256L * 1024L
         private const val MAX_CONTENT_LENGTH = 50_000
+        private const val INDEX_BATCH_SIZE = 100
         private const val LOCK_PREFIX = "git-file-content-index-"
         private const val BRANCH_REF_PREFIX = "refs/heads/"
+        private val BRANCH_FIELDS = listOf("id", "branches")
 
         /**
          * Document primary key: namespaced under the repository UUID, derived from

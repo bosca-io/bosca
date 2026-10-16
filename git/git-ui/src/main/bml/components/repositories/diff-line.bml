@@ -1,0 +1,69 @@
+<component tag="git-diff-line">
+  <prop name="line" type="bosca.git.ui.DiffLineView" required />
+  <prop name="anchor" type="String" default="" />
+  <div
+    :class='"diff-line " + line.type.lowercase()'
+    :data-comment-anchor='anchor.ifBlank { null }'
+  >
+    <span class="line-number">{ line.oldLineNumber ?: "" }</span>
+    <span class="line-number">{ line.newLineNumber ?: "" }</span>
+    <span class="line-action"><slot /></span>
+    <span class="line-mark" aria-hidden="true">{ if (line.type == "ADD") "+" else if (line.type == "DELETE") "−" else " " }</span>
+    <code>{ line.content }</code>
+  </div>
+  <style scoped>
+    /* Studio diff line: old/new numbers, an optional line action, the change mark and content. */
+    .diff-line {
+      display: grid;
+      grid-template-columns: var(--diff-number-width) var(--diff-number-width) var(--diff-action-width) 16px minmax(max-content, 1fr);
+      width: 100%;
+      min-width: max-content;
+      align-items: center;
+      font: 12px/1.7 var(--font-mono);
+      color: var(--fg-2);
+    }
+    .line-number {
+      padding-right: 10px;
+      text-align: right;
+      color: var(--fg-3);
+      user-select: none;
+    }
+    .line-mark {
+      color: var(--fg-3);
+      user-select: none;
+    }
+    .line-action {
+      display: flex;
+      align-items: center;
+      opacity: 0;
+    }
+    .diff-line:hover .line-action,
+    .line-action:focus-within {
+      opacity: 1;
+    }
+    code {
+      padding-right: 16px;
+      white-space: pre;
+    }
+    /* Studio diff colours. */
+    .add {
+      background: color-mix(in oklch, #34d99a 8%, transparent);
+      color: #34d99a;
+    }
+    .delete {
+      background: color-mix(in oklch, #ff5d6c 8%, transparent);
+      color: #ff5d6c;
+    }
+    .add .line-mark {
+      color: #34d99a;
+    }
+    .delete .line-mark {
+      color: #ff5d6c;
+    }
+    @media (hover: none) {
+      .line-action {
+        opacity: 1;
+      }
+    }
+  </style>
+</component>

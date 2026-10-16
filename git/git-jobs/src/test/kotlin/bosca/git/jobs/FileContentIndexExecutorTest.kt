@@ -19,7 +19,11 @@ import bosca.sharedqueue.jobs.asCoroutineContext
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
+import io.mockk.every
+import io.mockk.spyk
 import io.mockk.unmockkAll
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -48,9 +52,11 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.coroutines.cancellation.CancellationException
 
 /**
  * Coverage for [FileContentIndexExecutor]'s branch-overlay state machine:
@@ -67,6 +73,7 @@ class FileContentIndexExecutorTest {
 
     private val json = Json { ignoreUnknownKeys = true }
     private val docs = mutableMapOf<String, JsonObject>()
+    private val indexedBatches = mutableListOf<List<JsonElement>>()
     private val searchService = mockk<SearchService>(relaxed = true)
     private val dfsManager = mockk<BoscaDfsRepositoryManager>()
     private val repoRepository = mockk<GitRepositoryRepository>(relaxed = true)
@@ -116,8 +123,8 @@ class FileContentIndexExecutorTest {
      * but doesn't NPE the test.
      */
     private fun wireInMemorySearch() {
-        coEvery { searchService.fetch(storageSystem, any()) } answers {
-            docs[secondArg<String>()]
+        coEvery { searchService.fetch(storageSystem, any(), any()) } answers {
+            docs[secondArg<String>()]?.let { doc -> JsonObject(doc.filterKeys { it in thirdArg<List<String>>() }) }
         }
         coEvery { searchService.index(storageSystem, any<JsonElement>()) } answers {
             val doc = secondArg<JsonElement>() as JsonObject
@@ -125,13 +132,8 @@ class FileContentIndexExecutorTest {
                 ?: error("indexed document missing id")
             docs[id] = doc
         }
-        coEvery { searchService.index(storageSystem, any<List<JsonElement>>()) } answers {
-            for (doc in secondArg<List<JsonElement>>()) {
-                val obj = doc as JsonObject
-                val id = obj["id"]?.jsonPrimitive?.contentOrNull
-                    ?: error("indexed document missing id")
-                docs[id] = obj
-            }
+        coEvery { searchService.update(storageSystem, any<List<JsonElement>>()) } answers {
+            storeBatch(secondArg())
         }
         coEvery { searchService.delete(storageSystem, any<String>()) } answers {
             docs.remove(secondArg<String>())
@@ -140,6 +142,16 @@ class FileContentIndexExecutorTest {
             val filter = secondArg<SearchFilter>()
             val toRemove = docs.entries.filter { matches(it.value, filter) }.map { it.key }
             toRemove.forEach { docs.remove(it) }
+        }
+    }
+
+    private fun storeBatch(batch: List<JsonElement>) {
+        indexedBatches.add(batch.toList())
+        for (doc in batch) {
+            val obj = doc as JsonObject
+            val id = obj["id"]?.jsonPrimitive?.contentOrNull
+                ?: error("indexed document missing id")
+            docs[id] = JsonObject(docs[id].orEmpty() + obj)
         }
     }
 
@@ -199,7 +211,7 @@ class FileContentIndexExecutorTest {
         runJob(FileContentIndexJob(storage = null, repositoryId = repositoryId, ref = "refs/heads/main", afterSha = commit.name()))
 
         coVerify { storageService.getAll() }
-        coVerify { searchService.index(any(), any<JsonElement>()) }
+        coVerify { searchService.update(any(), any<List<JsonElement>>()) }
     }
 
     @Test
@@ -254,17 +266,17 @@ class FileContentIndexExecutorTest {
 
     @Test
     fun `tagging tolerates an existing document with no branches overlay`() = runTest {
-        coEvery { searchService.fetch(storageSystem, any()) } returns
+        coEvery { searchService.fetch(storageSystem, any(), any()) } returns
             kotlinx.serialization.json.buildJsonObject { put("id", kotlinx.serialization.json.JsonPrimitive("x")) }
         val commit = commitTree(mapOf("a.kt" to "x".toByteArray()))
         runJob(FileContentIndexJob(storage = storageSystem, repositoryId = repositoryId, ref = "refs/heads/main", afterSha = commit.name()))
         // A malformed existing doc (no "branches") is treated as an empty overlay and re-indexed.
-        coVerify { searchService.index(storageSystem, any<JsonElement>()) }
+        coVerify { searchService.update(storageSystem, any<List<JsonElement>>()) }
     }
 
     @Test
     fun `untagging tolerates a document with no branches overlay`() = runTest {
-        coEvery { searchService.fetch(storageSystem, any()) } returns
+        coEvery { searchService.fetch(storageSystem, any(), any()) } returns
             kotlinx.serialization.json.buildJsonObject { put("id", kotlinx.serialization.json.JsonPrimitive("x")) }
         val commit = commitTree(mapOf("a.kt" to "x".toByteArray()))
         runJob(FileContentIndexJob(storage = storageSystem, repositoryId = repositoryId, ref = "refs/heads/main", beforeSha = commit.name()))
@@ -356,6 +368,7 @@ class FileContentIndexExecutorTest {
         runJob(FileContentIndexJob(storage = storageSystem, repositoryId = repositoryId, ref = "refs/heads/main", afterSha = commit.name()))
 
         coVerify(exactly = 0) { searchService.index(storageSystem, any<JsonElement>()) }
+        coVerify(exactly = 0) { searchService.update(storageSystem, any<List<JsonElement>>()) }
     }
 
     @Test
@@ -456,6 +469,8 @@ class FileContentIndexExecutorTest {
             ref = "refs/heads/main",
             afterSha = main.name(),
         ))
+        val original = docs.values.single()
+        indexedBatches.clear()
         runJob(FileContentIndexJob(
             storage = storageSystem,
             repositoryId = repositoryId,
@@ -467,6 +482,10 @@ class FileContentIndexExecutorTest {
         assertEquals(1, docs.size, "expected dedup to a single shared document")
         val doc = docs.values.single()
         assertEquals(setOf("main", "feature"), doc.branches().toSet())
+        assertEquals(original.filterKeys { it != "branches" }, doc.filterKeys { it != "branches" })
+        assertEquals(setOf("id", "branches"), (indexedBatches.single().single() as JsonObject).keys)
+        coVerify(exactly = 0) { searchService.fetch(any(), any()) }
+        coVerify { searchService.fetch(storageSystem, any(), listOf("id", "branches")) }
     }
 
     @Test
@@ -480,9 +499,194 @@ class FileContentIndexExecutorTest {
         )
         runJob(job)
         val snapshot = docs.toMap()
+        indexedBatches.clear()
         runJob(job)
         assertEquals(snapshot.size, docs.size)
         docs.values.forEach { assertEquals(listOf("main"), it.branches()) }
+        assertTrue(indexedBatches.isEmpty(), "an already indexed branch must not submit an empty batch")
+    }
+
+    @Test
+    fun `initial indexing sends bounded batches and flushes the final partial batch`() = runTest {
+        val files = (0 until 205).associate { "file-${it.toString().padStart(3, '0')}.txt" to "content $it".toByteArray() }
+        val commit = commitTree(files)
+
+        runJob(FileContentIndexJob(
+            storage = storageSystem, repositoryId = repositoryId,
+            ref = "refs/heads/main", afterSha = commit.name(),
+        ))
+
+        assertEquals(listOf(100, 100, 5), indexedBatches.map { it.size })
+        assertEquals(files.keys, docs.values.map { it.getValue("filePath").jsonPrimitive.content }.toSet())
+        docs.values.forEach { assertEquals(listOf("main"), it.branches()) }
+        coVerify(exactly = 0) { searchService.index(any(), any<JsonElement>()) }
+    }
+
+    @Test
+    fun `an exact batch boundary does not submit an empty trailing batch`() = runTest {
+        val commit = commitTree((0 until 100).associate { "file-$it.txt" to "content".toByteArray() })
+
+        runJob(FileContentIndexJob(
+            storage = storageSystem, repositoryId = repositoryId,
+            ref = "refs/heads/main", afterSha = commit.name(),
+        ))
+
+        assertEquals(listOf(100), indexedBatches.map { it.size })
+        assertEquals(100, docsForBranch("main").size)
+    }
+
+    @Test
+    fun `incremental batches preserve other branches while replacing changed documents`() = runTest {
+        val beforeFiles = (0 until 105).associate { "file-$it.txt" to "old $it".toByteArray() } +
+            mapOf("removed.txt" to "removed".toByteArray(), "unchanged.txt" to "same".toByteArray())
+        val before = commitTree(beforeFiles)
+        for (branch in listOf("main", "feature")) {
+            runJob(FileContentIndexJob(
+                storage = storageSystem, repositoryId = repositoryId,
+                ref = "refs/heads/$branch", afterSha = before.name(),
+            ))
+        }
+        val featureSnapshot = docsForBranch("feature").map { it.getValue("id") }.toSet()
+        val afterFiles = (0 until 105).associate { "file-$it.txt" to "new $it".toByteArray() } +
+            mapOf("added.txt" to "added".toByteArray(), "unchanged.txt" to "same".toByteArray())
+        val after = commitTree(afterFiles, parent = before)
+        indexedBatches.clear()
+
+        runJob(FileContentIndexJob(
+            storage = storageSystem, repositoryId = repositoryId, ref = "refs/heads/main",
+            beforeSha = before.name(), afterSha = after.name(),
+        ))
+
+        assertEquals(listOf(100, 100, 12), indexedBatches.map { it.size })
+        val updates = indexedBatches.flatten().map { it as JsonObject }
+        assertEquals(106, updates.count { it.keys == setOf("id", "branches") })
+        assertEquals(106, updates.count { "content" in it })
+        assertEquals(featureSnapshot, docsForBranch("feature").map { it.getValue("id") }.toSet())
+        assertEquals(afterFiles.keys, docsForBranch("main").map { it.getValue("filePath").jsonPrimitive.content }.toSet())
+        for (doc in docsForBranch("main")) {
+            val path = doc.getValue("filePath").jsonPrimitive.content
+            assertEquals(afterFiles.getValue(path).decodeToString(), doc.getValue("content").jsonPrimitive.content)
+        }
+        coVerify(exactly = 0) { searchService.index(any(), any<JsonElement>()) }
+    }
+
+    @Test
+    fun `branch deletion batches overlay updates and preserves shared documents`() = runTest {
+        val commit = commitTree((0 until 105).associate { "file-$it.txt" to "content".toByteArray() })
+        for (branch in listOf("main", "feature")) {
+            runJob(FileContentIndexJob(
+                storage = storageSystem, repositoryId = repositoryId,
+                ref = "refs/heads/$branch", afterSha = commit.name(),
+            ))
+        }
+        indexedBatches.clear()
+
+        runJob(FileContentIndexJob(
+            storage = storageSystem, repositoryId = repositoryId,
+            ref = "refs/heads/feature", beforeSha = commit.name(),
+        ))
+
+        assertEquals(listOf(100, 5), indexedBatches.map { it.size })
+        indexedBatches.flatten().forEach { assertEquals(setOf("id", "branches"), (it as JsonObject).keys) }
+        assertEquals(105, docs.size)
+        docs.values.forEach { assertEquals(listOf("main"), it.branches()) }
+        coVerify(exactly = 0) { searchService.delete(any(), any<String>()) }
+        coVerify(exactly = 0) { searchService.index(any(), any<JsonElement>()) }
+    }
+
+    @Test
+    fun `adding a branch to an indexed blob does not load file content`() = runTest {
+        val bytes = "already indexed".toByteArray()
+        val commit = commitTree(mapOf("file.txt" to bytes))
+        runJob(FileContentIndexJob(
+            storage = storageSystem, repositoryId = repositoryId,
+            ref = "refs/heads/main", afterSha = commit.name(),
+        ))
+        val original = docs.values.single()
+        val blobId = org.eclipse.jgit.lib.ObjectInserter.Formatter().use { it.idFor(Constants.OBJ_BLOB, bytes) }
+        val database = spyk(gitRepo.objectDatabase)
+        every { database.open(blobId, any()) } throws AssertionError("existing blob content must not be read")
+        val repository = spyk(gitRepo)
+        every { repository.objectDatabase } returns database
+        coEvery { dfsManager.open(repositoryId) } returns repository
+        indexedBatches.clear()
+
+        runJob(FileContentIndexJob(
+            storage = storageSystem, repositoryId = repositoryId,
+            ref = "refs/heads/feature", afterSha = commit.name(),
+        ))
+
+        assertEquals(original.filterKeys { it != "branches" }, docs.values.single().filterKeys { it != "branches" })
+        assertEquals(listOf("main", "feature"), docs.values.single().branches())
+        assertEquals(setOf("id", "branches"), (indexedBatches.single().single() as JsonObject).keys)
+    }
+
+    @Test
+    fun `failed batch propagates and retry resumes after the persisted batch`() = runTest {
+        val commit = commitTree((0 until 205).associate { "file-$it.txt" to "content".toByteArray() })
+        val job = FileContentIndexJob(
+            storage = storageSystem, repositoryId = repositoryId,
+            ref = "refs/heads/main", afterSha = commit.name(),
+        )
+        val failure = IllegalStateException("indexing failed")
+        var calls = 0
+        coEvery { searchService.update(storageSystem, any<List<JsonElement>>()) } answers {
+            calls++
+            if (calls == 2) throw failure
+            storeBatch(secondArg())
+        }
+
+        assertEquals(failure.message, assertFailsWith<IllegalStateException> { runJob(job) }.message)
+        assertEquals(100, docs.size)
+
+        runJob(job)
+
+        assertEquals(listOf(100, 100, 5), indexedBatches.map { it.size })
+        assertEquals(205, docs.size)
+        docs.values.forEach { assertEquals(listOf("main"), it.branches()) }
+    }
+
+    @Test
+    fun `job waits for the final batch to finish indexing`() = runTest {
+        val commit = commitTree(mapOf("file.txt" to "content".toByteArray()))
+        val started = CompletableDeferred<Unit>()
+        val finish = CompletableDeferred<Unit>()
+        coEvery { searchService.update(storageSystem, any<List<JsonElement>>()) } coAnswers {
+            started.complete(Unit)
+            finish.await()
+            storeBatch(secondArg())
+        }
+        val execution = async {
+            runJob(FileContentIndexJob(
+                storage = storageSystem, repositoryId = repositoryId,
+                ref = "refs/heads/main", afterSha = commit.name(),
+            ))
+        }
+        try {
+            started.await()
+            assertFalse(execution.isCompleted)
+            assertTrue(docs.isEmpty())
+        } finally {
+            finish.complete(Unit)
+        }
+        execution.await()
+        assertEquals(1, docsForBranch("main").size)
+    }
+
+    @Test
+    fun `cancellation during the final batch propagates`() = runTest {
+        val commit = commitTree(mapOf("file.txt" to "content".toByteArray()))
+        val cancellation = CancellationException("cancel indexing")
+        coEvery { searchService.update(storageSystem, any<List<JsonElement>>()) } throws cancellation
+
+        val thrown = assertFailsWith<CancellationException> {
+            runJob(FileContentIndexJob(
+                storage = storageSystem, repositoryId = repositoryId,
+                ref = "refs/heads/main", afterSha = commit.name(),
+            ))
+        }
+        assertEquals(cancellation.message, thrown.message)
+        assertTrue(docs.isEmpty())
     }
 
     @Test
@@ -556,7 +760,7 @@ class FileContentIndexExecutorTest {
 
         // Reset call count tracking by re-arming the fetch counter via a wrapper.
         val fetchedIds = mutableListOf<String>()
-        coEvery { searchService.fetch(storageSystem, any()) } answers {
+        coEvery { searchService.fetch(storageSystem, any(), any()) } answers {
             val id = secondArg<String>()
             fetchedIds.add(id)
             docs[id]

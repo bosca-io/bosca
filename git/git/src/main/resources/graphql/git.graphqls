@@ -473,6 +473,8 @@ type GitPullRequest {
     "Non-null for cross-fork PRs."
     sourceRepositoryId: UUID
     status: GitPullRequestStatus!
+    "Whether to delete this PR's source branch after a successful merge."
+    deleteBranchOnMerge: Boolean!
     "The strategy used when merged."
     mergeStrategy: GitMergeStrategy
     mergedBy: UUID
@@ -539,6 +541,8 @@ type GitDiffFile {
     newPath: String
     changeType: GitDiffChangeType!
     hunks: [GitDiffHunk!]!
+    "Number of text lines in the new version; zero when the file was deleted or is binary."
+    newLineCount: Int!
 }
 
 "A contiguous region of changed lines."
@@ -570,10 +574,14 @@ input CreateGitPullRequestInput {
     targetBranch: String!
     sourceRepositoryId: UUID
     isDraft: Boolean
+    "Defaults to the repository's branch cleanup setting when omitted."
+    deleteBranchOnMerge: Boolean
 }
 
 "Input for updating a pull request."
 input UpdateGitPullRequestInput {
+    "Changes this PR's branch cleanup setting. Omit to preserve it."
+    deleteBranchOnMerge: Boolean
     title: String
     description: String
     sourceBranch: String

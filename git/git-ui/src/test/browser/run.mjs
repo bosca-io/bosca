@@ -67,6 +67,7 @@ try {
     "statistics.mjs",
     "pipelines.mjs",
     "pulls.mjs",
+    "review.mjs",
     "search.mjs",
     "screens.mjs",
   ];

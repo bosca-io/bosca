@@ -33,4 +33,6 @@ data class PullRequest(
     val version: Long = 0,
     /** Target tip immediately before merging, retained for the completed comparison. */
     @ColumnName("merge_base_sha") val mergeBaseSha: String? = null,
+    /** Whether to delete the source branch after merging this PR. Initialized from repository policy. */
+    @ColumnName("delete_branch_on_merge") val deleteBranchOnMerge: Boolean = true,
 )

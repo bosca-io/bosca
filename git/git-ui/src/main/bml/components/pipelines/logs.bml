@@ -1,8 +1,9 @@
 <component tag="git-pipeline-logs">
   <prop name="repository" type="String" required />
   <prop name="step" type="String" required />
+  <prop name="loadHistory" type="Boolean" default="true" />
   <script server provides="model">
-    bosca.git.ui.PipelineLogsModel(step, repository).also { it.load(ctx) }
+    bosca.git.ui.PipelineLogsModel(step, repository).also { if (loadHistory) it.load(ctx) }
   </script>
   <island name="git-pipeline-logs" :key="step">
     <section class="step-logs" :data-log-step="model.step" :data-repository="model.repository">

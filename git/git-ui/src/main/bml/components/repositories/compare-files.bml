@@ -1,0 +1,94 @@
+<component tag="git-compare-files">
+  <prop name="page" type="bosca.git.ui.ExplorePage" required />
+  <script server provides="model">
+    bosca.git.ui.CompareDiffModel(
+        page.id,
+        page.head,
+        page.comparison?.files.orEmpty().map { bosca.git.ui.diffView(it) },
+    )
+  </script>
+  <island name="git-compare-files" :key='page.id + ":" + page.base + "..." + page.head'>
+    <git-diff-workspace :entries="model.files">
+      <for file in model.diff>
+        <section class="diff-file" :id="file.anchor" :data-path="file.path">
+          <git-diff-file-header :file="file">
+            <if file.hasHiddenLines>
+              <ui-icon-button icon="unfold" size="xs" label="Show all lines" @click="model.expandFile(file.path, ctx)" />
+            </if>
+            <if file.hasRevealedLines>
+              <ui-icon-button icon="fold" size="xs" label="Hide unchanged lines" @click="model.collapseContext(file.path)" />
+            </if>
+            <if file.newPath != null>
+              <ui-icon-link icon="external" label="View file" :href="model.fileHref(file.path)" />
+            </if>
+          </git-diff-file-header>
+          <div class="diff-file-body" :id='file.anchor + "-body"'>
+            <if model.contextFile == file.path && model.contextMessage.isNotBlank()>
+              <ui-alert>{ model.contextMessage }</ui-alert>
+            </if>
+            <if file.emptyTextChange>
+              <p class="diff-notice">{ file.emptyTextLabel }</p>
+            <else-if file.hunks.isEmpty()>
+              <p class="diff-notice">No text diff is available for this file.</p>
+            <else>
+              <div class="diff-lines">
+                <for section in file.sections>
+                  <for gap in listOfNotNull(section.gap)>
+                    <git-diff-gap :gap="gap">
+                      <if gap.expandsAtOnce>
+                        <git-diff-expander icon="unfold" :label='"Show " + gap.label' @click='model.expandContext(file.path, gap.index, "all", ctx)' />
+                      <else>
+                        <if gap.canExpandDown>
+                          <git-diff-expander icon="chevrons-down" label="Show 20 more lines below" @click='model.expandContext(file.path, gap.index, "down", ctx)' />
+                        </if>
+                        <if gap.canExpandUp>
+                          <git-diff-expander icon="chevrons-up" label="Show 20 more lines above" @click='model.expandContext(file.path, gap.index, "up", ctx)' />
+                        </if>
+                      </if>
+                    </git-diff-gap>
+                  </for>
+                  <if !section.hunk.complete>
+                    <ui-alert>Showing { section.hunk.lines.size } of { section.hunk.totalLineCount } diff lines.</ui-alert>
+                  </if>
+                  <for line in section.hunk.displayLines>
+                    <git-diff-line :line="line" />
+                  </for>
+                </for>
+                <for gap in listOfNotNull(file.bottomGap)>
+                  <git-diff-gap :gap="gap">
+                    <if gap.expandsAtOnce>
+                      <git-diff-expander icon="unfold" :label='"Show " + gap.label' @click='model.expandContext(file.path, gap.index, "all", ctx)' />
+                    <else>
+                      <git-diff-expander icon="chevrons-down" label="Show 20 more lines below" @click='model.expandContext(file.path, gap.index, "down", ctx)' />
+                    </if>
+                  </git-diff-gap>
+                </for>
+              </div>
+            </if>
+          </div>
+        </section>
+      </for>
+    </git-diff-workspace>
+  </island>
+  <style scoped>
+    /* Compared file card; its header stays visible while the file scrolls past. */
+    .diff-file {
+      overflow: clip;
+      scroll-margin-top: 8px;
+      background: var(--bg-1);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+    }
+    .diff-notice {
+      margin: 0;
+      padding: 14px 16px;
+      color: var(--fg-3);
+      font-size: 12px;
+    }
+    .diff-lines {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      overflow-x: auto;
+    }
+  </style>
+</component>

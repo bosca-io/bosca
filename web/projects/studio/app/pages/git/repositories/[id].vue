@@ -1084,7 +1084,7 @@ function statusStateIcon(state: string): string {
 
 // ─── Create PR ───────────────────────────────────────────────────────────────
 const showCreatePr = ref(false)
-const prForm = reactive({ title: '', description: '', sourceBranch: '', targetBranch: '', isDraft: false })
+const prForm = reactive({ title: '', description: '', sourceBranch: '', targetBranch: '', isDraft: false, deleteBranchOnMerge: true })
 const prSaving = ref(false)
 const prError = ref('')
 
@@ -1094,6 +1094,7 @@ function openCreatePr() {
   prForm.sourceBranch = ''
   prForm.targetBranch = repo.value?.defaultBranch ?? 'main'
   prForm.isDraft = false
+  prForm.deleteBranchOnMerge = repo.value?.configuration.deleteBranchOnMerge ?? true
   prError.value = ''
   showCreatePr.value = true
 }
@@ -1118,6 +1119,7 @@ async function handleCreatePr() {
         sourceBranch: prForm.sourceBranch,
         targetBranch: prForm.targetBranch,
         isDraft: prForm.isDraft,
+        deleteBranchOnMerge: prForm.deleteBranchOnMerge,
       },
     })
     showCreatePr.value = false
@@ -2047,6 +2049,10 @@ git push -u origin {{ repo.defaultBranch }}</pre>
         <label class="checkbox-row">
           <input v-model="prForm.isDraft" type="checkbox" >
           <span>Create as draft</span>
+        </label>
+        <label class="checkbox-row">
+          <input v-model="prForm.deleteBranchOnMerge" type="checkbox" >
+          <span>Delete source branch after merge</span>
         </label>
         <p v-if="prError" class="form-error">{{ prError }}</p>
       </div>

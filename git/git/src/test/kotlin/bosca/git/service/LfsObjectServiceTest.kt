@@ -184,12 +184,37 @@ class LfsObjectServiceTest {
 
     @Test
     fun `storage failure unblocks a body larger than the pipe buffer`() = runTest {
-        val failure = IOException("part failed")
-        coEvery { storage.uploadMultipartPart(any(), any(), any(), any(), any()) } throws failure
         val large = ByteArray(20 * 1024 * 1024)
-        assertEquals(failure.message, assertFailsWith<IOException> {
-            service.upload(repositoryId, digest(large), large.inputStream(), large.size.toLong())
-        }.message)
+        val largeOid = digest(large)
+        repeat(50) {
+            val failure = IOException("part failed")
+            coEvery { storage.uploadMultipartPart(any(), any(), any(), any(), any()) } throws failure
+            assertEquals(failure.message, assertFailsWith<IOException> {
+                service.upload(repositoryId, largeOid, large.inputStream(), large.size.toLong())
+            }.message)
+        }
+        coVerify(exactly = 50) { storage.abortMultipartUpload(any(), "upload-id", 1) }
+        coVerify(exactly = 50) { storage.delete(any()) }
+        coVerify(exactly = 0) { storage.completeMultipartUpload(any(), any(), any(), any()) }
+        coVerify(exactly = 0) { repository.create(any()) }
+    }
+
+    @Test
+    fun `body failure after streaming a part retains its original cause`() = runTest {
+        val part = ByteArray(8 * 1024 * 1024)
+        val failure = IOException("body failed")
+        repeat(25) {
+            assertEquals(failure.message, assertFailsWith<IOException> {
+                service.upload(repositoryId, oid, part.size * 2L) { output ->
+                    output.write(part)
+                    throw failure
+                }
+            }.message)
+        }
+        coVerify(exactly = 25) { storage.abortMultipartUpload(any(), "upload-id", any()) }
+        coVerify(exactly = 25) { storage.delete(any()) }
+        coVerify(exactly = 0) { storage.completeMultipartUpload(any(), any(), any(), any()) }
+        coVerify(exactly = 0) { repository.create(any()) }
     }
 
     @Test

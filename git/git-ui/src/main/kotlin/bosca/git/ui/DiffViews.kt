@@ -19,6 +19,7 @@ internal fun GitUiCompareData.Git.Compare.Files.view(): DiffView =
                 },
             )
         },
+        newLineCount,
     )
 
 internal fun GitUiPullDiffPageData.Git.PullRequest.Diff.view(): DiffView =
@@ -38,6 +39,7 @@ internal fun GitUiPullDiffPageData.Git.PullRequest.Diff.view(): DiffView =
                 },
             )
         },
+        newLineCount,
     )
 
 internal fun diffView(file: GitUiCompareData.Git.Compare.Files): DiffView = file.view()

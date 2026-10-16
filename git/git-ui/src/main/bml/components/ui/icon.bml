@@ -245,6 +245,33 @@
     <else-if name == "link">
       <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
       <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+    <else-if name == "arrow-up">
+      <path d="m5 12 7-7 7 7" />
+      <path d="M12 19V5" />
+    <else-if name == "chevrons-up">
+      <path d="m17 11-5-5-5 5" />
+      <path d="m17 18-5-5-5 5" />
+    <else-if name == "chevrons-down">
+      <path d="m7 6 5 5 5-5" />
+      <path d="m7 13 5 5 5-5" />
+    <else-if name == "unfold">
+      <path d="M12 22v-6" />
+      <path d="M12 8V2" />
+      <path d="M4 12H2" />
+      <path d="M10 12H8" />
+      <path d="M16 12h-2" />
+      <path d="M22 12h-2" />
+      <path d="m15 19-3 3-3-3" />
+      <path d="m15 5-3-3-3 3" />
+    <else-if name == "fold">
+      <path d="M12 22v-6" />
+      <path d="M12 8V2" />
+      <path d="M4 12H2" />
+      <path d="M10 12H8" />
+      <path d="M16 12h-2" />
+      <path d="M22 12h-2" />
+      <path d="m15 19-3-3-3 3" />
+      <path d="m15 5-3 3-3-3" />
     <else>
       <rect width="16" height="16" x="4" y="4" rx="2" />
     </if>

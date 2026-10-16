@@ -64,7 +64,7 @@ class SwarmBackendTest {
                     ).forEach { (key, backend) ->
                         assertEquals(backend, result.getValue(key).jsonPrimitive.content, "$service.$key")
                     }
-                    assertEquals("redis", result.getValue("redis.host").jsonPrimitive.content, service)
+                    assertEquals("dragonfly", result.getValue("redis.host").jsonPrimitive.content, service)
                     assertEquals("6379", result.getValue("redis.port").jsonPrimitive.content, service)
                     assertEquals(site.redisDatabase.toString(), result.getValue("redis.database").jsonPrimitive.content, service)
                     assertEquals("${site.id}_", result.getValue("redis.namespace").jsonPrimitive.content, service)
@@ -104,7 +104,7 @@ class SwarmBackendTest {
     }
 
     @Test
-    fun `Redis data is backed up for jobs or counters independently of transient backends`() {
+    fun `Dragonfly data is backed up for jobs or counters independently of transient backends`() {
         val config = SwarmConfig(backup = SwarmBackup("sftp:backup@example.invalid:/bosca")).withSecrets()
         fun volumes(config: SwarmConfig): List<String> {
             @Suppress("UNCHECKED_CAST")
@@ -112,18 +112,18 @@ class SwarmBackendTest {
             @Suppress("UNCHECKED_CAST")
             return service.getValue("volumes") as List<String>
         }
-        assertFalse("${config.dataRoot}/redis:/data/redis:ro" in volumes(config))
+        assertFalse("${config.dataRoot}/dragonfly:/data/dragonfly:ro" in volumes(config))
         val transient = config.copy(sites = config.sites.map {
             it.copy(cacheBackend = "redis", pubsubBackend = "redis", distributedLockBackend = "redis")
         })
-        assertFalse("${config.dataRoot}/redis:/data/redis:ro" in volumes(transient))
+        assertFalse("${config.dataRoot}/dragonfly:/data/dragonfly:ro" in volumes(transient))
         listOf<(SwarmSite) -> SwarmSite>(
             { it.copy(jobQueueBackend = "redis") }, { it.copy(counterBackend = "redis") },
         ).forEach { select ->
             val redis = config.copy(sites = config.sites.mapIndexed { index, site ->
                 if (index == 0) select(site) else site
             })
-            assertTrue("${config.dataRoot}/redis:/data/redis:ro" in volumes(redis))
+            assertTrue("${config.dataRoot}/dragonfly:/data/dragonfly:ro" in volumes(redis))
             assertTrue("${config.dataRoot}/nats:/data/nats:ro" in volumes(redis))
         }
     }

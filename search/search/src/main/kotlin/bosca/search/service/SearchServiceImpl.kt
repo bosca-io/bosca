@@ -134,9 +134,20 @@ class SearchServiceImpl(
         clearSearchCache()
     }
 
-    override suspend fun fetch(system: IndexStorageSystem, id: String): JsonElement? {
+    override suspend fun update(system: IndexStorageSystem, documents: List<JsonElement>) {
+        if (documents.isEmpty()) return
         val (_, configuration) = getConfiguration(system.id, system.name)
-        val body = client.getDocument(meilisearchConfiguration.indexUid(configuration.name), id) ?: return null
+        val task = client.updateDocuments(meilisearchConfiguration.indexUid(configuration.name), json.encodeToString(documents), "id")
+        client.waitForTask(task.taskUid)
+        clearSearchCache()
+    }
+
+    override suspend fun fetch(system: IndexStorageSystem, id: String): JsonElement? =
+        fetch(system, id, emptyList())
+
+    override suspend fun fetch(system: IndexStorageSystem, id: String, fields: List<String>): JsonElement? {
+        val (_, configuration) = getConfiguration(system.id, system.name)
+        val body = client.getDocument(meilisearchConfiguration.indexUid(configuration.name), id, fields) ?: return null
         return json.parseToJsonElement(body)
     }
 

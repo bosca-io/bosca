@@ -16,6 +16,7 @@ class PullCreateModel(
     var source: String = page.source,
     var target: String = page.target,
     var draft: Boolean = false,
+    var deleteBranchOnMerge: Boolean = page.deleteBranchOnMerge,
     var message: String = "",
     var failed: Boolean = false,
     var nextHref: String = "",
@@ -29,9 +30,11 @@ class PullCreateModel(
         source: String,
         target: String,
         draft: Boolean,
+        deleteBranchOnMerge: Boolean,
         ctx: RenderContext,
     ) {
         retainDraft(title, description, source, target, draft)
+        this.deleteBranchOnMerge = deleteBranchOnMerge
         editing = true
         failed = false
         message = ""
@@ -68,6 +71,7 @@ class PullCreateModel(
             this.target =
                 target.takeIf { it in targetBranches }
                     ?: metadata.defaultBranch.takeIf { it in targetBranches }.orEmpty()
+            if (repository != page.repository) this.deleteBranchOnMerge = metadata.configuration.deleteBranchOnMerge
             page =
                 page.copy(
                     repository = repository,
@@ -75,6 +79,7 @@ class PullCreateModel(
                     branches = branches,
                     targetBranches = targetBranches,
                     canEdit = metadata.canEdit && !metadata.archived,
+                    deleteBranchOnMerge = metadata.configuration.deleteBranchOnMerge,
                 )
         } catch (e: CancellationException) {
             throw e
@@ -104,9 +109,11 @@ class PullCreateModel(
         source: String,
         target: String,
         draft: Boolean,
+        deleteBranchOnMerge: Boolean,
         ctx: RenderContext,
     ) {
         retainDraft(title, description, source, target, draft)
+        this.deleteBranchOnMerge = deleteBranchOnMerge
         failed = false
         message = ""
         editing = true
@@ -129,13 +136,14 @@ class PullCreateModel(
                         GitUiCreatePull,
                         GitUiCreatePull.Variables(
                             CreateGitPullRequestInput(
-                                page.repository,
-                                title.trim(),
-                                description,
-                                source,
-                                target,
-                                page.sourceRepository.takeUnless { it == page.repository },
-                                draft,
+                                repositoryId = page.repository,
+                                title = title.trim(),
+                                description = description,
+                                sourceBranch = source,
+                                targetBranch = target,
+                                sourceRepositoryId = page.sourceRepository.takeUnless { it == page.repository },
+                                isDraft = draft,
+                                deleteBranchOnMerge = deleteBranchOnMerge,
                             )
                         ),
                     )

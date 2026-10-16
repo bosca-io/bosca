@@ -270,7 +270,7 @@ internal fun installBundleScript(config: SwarmConfig): String {
     val root = config.dataRoot
     val staging = uploadDirectory(config)
     val images = config.images
-    val directories = listOf("postgres", "nats", "redis", "meilisearch", "s3", "trino", "caddy-data", "caddy-config")
+    val directories = listOf("postgres", "nats", "dragonfly", "meilisearch", "s3", "trino", "caddy-data", "caddy-config")
         .joinToString(" ") { shell("$root/$it") }
     // S3Proxy's filesystem backend treats each directory under its base directory as a bucket; a directory
     // readable by others is reported as public-read, so buckets stay owner-only.
@@ -299,6 +299,8 @@ sudo -n find ${shell("$root/config/trino")} -type f -exec chmod 0600 {} +
 nats_owner=${imageOwner(images.getValue("nats"))}
 sudo -n chown "${'$'}nats_owner" ${shell("$root/config/nats.conf")} ${shell("$root/nats")}
 sudo -n chmod 0600 ${shell("$root/config/nats.conf")}
+dragonfly_owner=${imageOwner(images.getValue("dragonfly"))}
+sudo -n chown "${'$'}dragonfly_owner" ${shell("$root/dragonfly")}
 pgbouncer_owner=${imageOwner(images.getValue("pgbouncer"))}
 sudo -n chown "${'$'}pgbouncer_owner" ${shell("$root/config/pgbouncer/userlist.txt")}
 sudo -n chmod 0600 ${shell("$root/config/pgbouncer/userlist.txt")}
@@ -514,7 +516,7 @@ internal fun deploySwarm(config: SwarmConfig, bundle: Path, skipPublicCheck: Boo
     script(config.manager.ssh,
         "sudo -n docker network inspect bosca >/dev/null 2>&1 || sudo -n docker network create --driver overlay --attachable bosca")
     stackDeploy(config, "infra")
-    waitServices(config, expected = setOf("infra_postgres", "infra_pgbouncer"))
+    waitServices(config, expected = setOf("infra_postgres", "infra_pgbouncer", "infra_dragonfly"))
     bootstrapDatabases(config)
     config.sites.forEach { stackDeploy(config, it.id) }
     stackDeploy(config, "edge")

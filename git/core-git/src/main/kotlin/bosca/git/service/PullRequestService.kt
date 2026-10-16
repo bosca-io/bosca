@@ -38,11 +38,13 @@ interface PullRequestService : Service {
 
     /**
      * Creates a new pull request with an auto-incrementing number within the repository.
+     * Saves the requested branch cleanup choice, or the repository default when omitted.
      */
     suspend fun create(input: CreatePullRequestInput, authorId: UUID): PullRequest
 
     /**
      * Updates metadata and optionally the source/target branches of an open or draft request.
+     * Branch cleanup can be changed before merging; omitted values preserve the saved choice.
      * Branch changes dismiss existing review decisions and mark diff comments outdated atomically.
      * A supplied expected version rejects stale edits. Branch names must resolve to existing commits.
      */
@@ -110,9 +112,10 @@ interface PullRequestService : Service {
     /**
      * Merges a pull request using the given strategy. Enforces branch protection
      * rules (required approvals, status checks) before performing the merge.
-     * Updates the target branch ref on success.
+     * Updates the target branch ref on success and deletes the local source branch when enabled on the PR,
+     * unless it is the default branch, protected, or still used by an open or draft PR.
      * Owns its transaction independently of the caller. Locks and rechecks the PR version
-     * before writing; merge metadata, the target ref, and event registration commit together.
+     * before writing; merge metadata, ref updates/deletion, and event registration commit together.
      * Holds the repository write lock through commit. Cancellation rolls back the ref and PR.
      * A supplied [expectedVersion] rejects a merge based on a previous PR comparison.
      */

@@ -46,6 +46,7 @@ query GitUiRepositoryPullList(
 query GitUiPull($id: UUID!) {
   git {
     pullRequest: pullRequestById(id: $id) {
+      deleteBranchOnMerge
       id
       version
       repositoryId
@@ -234,6 +235,7 @@ query GitUiPullDiffPage($repo: UUID!, $number: Int!, $offset: Int!) {
         oldPath
         newPath
         changeType
+        newLineCount
         hunks {
           oldStart
           oldCount

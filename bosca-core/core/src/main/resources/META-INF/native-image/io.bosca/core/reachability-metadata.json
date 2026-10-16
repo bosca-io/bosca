@@ -1,0 +1,8 @@
+{
+  "comment": "PostgreSQL JDBC allocates java.util.UUID[] reflectively when decoding uuid[] columns.",
+  "reflection": [
+    {
+      "type": "java.util.UUID[]"
+    }
+  ]
+}
