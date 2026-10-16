@@ -43,7 +43,7 @@ import kotlin.test.assertTrue
 
 /** Runs the real executors, job context, connection manager, and ZIP I/O with controlled dependencies. */
 @OptIn(InternalDI::class, Internal::class)
-internal class BackupExecutorFixture {
+internal class BackupExecutorFixture(connectionPool: ConnectionPool? = null) {
     val json = Json { serializersModule = SerializersModule { contextual(UUIDSerializer()) } }
     val backupId = UUID.random()
     val repository = mockk<BackupRepository>(relaxed = true)
@@ -57,14 +57,14 @@ internal class BackupExecutorFixture {
     val sourceFiles = mutableMapOf<String, () -> InputStream>()
     val writtenFiles = mutableMapOf<String, ByteArray>()
     val backupMetadata = metadata(contentType = BACKUP_CONTENT_TYPE)
+    val connection = mockk<Connection>(relaxed = true)
+    val statement = mockk<PreparedStatement>(relaxed = true)
     private val queue = mockk<JobQueue>(relaxed = true)
     private val pool: ConnectionPool
 
     init {
         ProviderRegistry.clear()
         val factory = mockk<ConnectionFactory>()
-        val connection = mockk<Connection>(relaxed = true)
-        val statement = mockk<PreparedStatement>(relaxed = true)
         val rows = mockk<ResultSet>()
         var autoCommit = true
         every { factory.key } returns "backup-executor-test"
@@ -77,7 +77,7 @@ internal class BackupExecutorFixture {
         every { connection.prepareStatement(any()) } returns statement
         every { statement.executeQuery() } returns rows
         every { rows.next() } returns false
-        pool = ConnectionPool(factory)
+        pool = connectionPool ?: ConnectionPool(factory)
         provides<ConnectionPool> { pool }
         provides<Json> { json }
         provides<BackupRepository> { repository }
@@ -132,7 +132,15 @@ internal class BackupExecutorFixture {
         withContext(queue.asCoroutineContext(job)) { BackupExecutor().execute() }
     }
 
-    suspend fun restore(files: Map<String, ByteArray>) {
+    suspend fun restore(
+        files: Map<String, ByteArray> = emptyMap(),
+        data: Map<String, String> = emptyMap(),
+        manifest: BackupManifest = BackupManifest(
+            createdAt = "2026-10-15T00:00:00Z",
+            counts = data.mapValues { (_, rows) -> rows.lineSequence().count { it.isNotBlank() }.toLong() }.toMutableMap(),
+        ),
+        conflictStrategy: ConflictStrategy = ConflictStrategy.SKIP,
+    ) {
         val archive = ByteArrayOutputStream().also { output ->
             ZipOutputStream(output).use { zip ->
                 for ((path, bytes) in files) {
@@ -140,14 +148,19 @@ internal class BackupExecutorFixture {
                     zip.write(bytes)
                     zip.closeEntry()
                 }
+                for ((table, rows) in data) {
+                    zip.putNextEntry(ZipEntry("data/$table.jsonl"))
+                    zip.write(rows.toByteArray())
+                    zip.closeEntry()
+                }
                 zip.putNextEntry(ZipEntry("manifest.json"))
-                zip.write(json.encodeToString(BackupManifest.serializer(), BackupManifest(createdAt = "2026-10-15T00:00:00Z")).toByteArray())
+                zip.write(json.encodeToString(BackupManifest.serializer(), manifest).toByteArray())
                 zip.closeEntry()
             }
         }.toByteArray()
         sourceFiles["backups/input.zip"] = { archive.inputStream() }
         val job = InternalJobConstructor(
-            definition = json.encodeToJsonElement(RestoreJob.serializer(), RestoreJob("backups/input.zip")),
+            definition = json.encodeToJsonElement(RestoreJob.serializer(), RestoreJob("backups/input.zip", conflictStrategy)),
             executor = RestoreExecutor::class,
         )
         withContext(queue.asCoroutineContext(job)) { RestoreExecutor().execute() }
