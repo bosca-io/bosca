@@ -490,6 +490,35 @@ class RepositoryBrowseServiceTest {
     }
 
     @Test
+    fun `branch selectors read refs without opening commit objects`() = runTest {
+        repeat(100) { index ->
+            inMemoryRepo.updateRef("refs/heads/feature-$index").apply {
+                setNewObjectId(secondCommitId)
+                update()
+            }
+        }
+        val repo = spyk(inMemoryRepo)
+        every { dfsManager.open(repositoryId) } returns repo
+        var objectReads = 0
+        every { repo.newObjectReader() } answers {
+            spyk(inMemoryRepo.newObjectReader()).also { reader ->
+                every { reader.open(any(), any()) } answers {
+                    objectReads++
+                    callOriginal()
+                }
+            }
+        }
+
+        val branches = service.listBranches(repositoryId, includeAheadBehind = false)
+
+        assertEquals(102, branches.size)
+        assertEquals(firstCommitId.name(), branches.single { it.name == "main" }.sha)
+        assertTrue(branches.filter { it.name.startsWith("feature") }.all { it.sha == secondCommitId.name() })
+        assertEquals(0, objectReads, "Branch selectors must not traverse commit history")
+        assertTrue(branches.all { it.ahead == 0 && it.behind == 0 })
+    }
+
+    @Test
     fun `listChangedPaths returns modified and added paths between two commits`() = runTest {
         val paths = service.listChangedPaths(repositoryId, firstCommitId.name(), secondCommitId.name())
         assertTrue(paths.contains("README.md"))

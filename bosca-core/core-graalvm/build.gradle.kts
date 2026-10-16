@@ -10,4 +10,7 @@ java {
 
 dependencies {
     compileOnly(libs.graalvm.nativeimage)
+
+    testImplementation(libs.caffeine)
+    testImplementation(libs.kotlin.test.junit)
 }

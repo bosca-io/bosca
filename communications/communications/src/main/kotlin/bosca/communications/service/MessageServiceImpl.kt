@@ -17,6 +17,7 @@ import bosca.communications.mailers.DeliveryTrackingArguments
 import bosca.communications.mailers.InlineImage
 import bosca.communications.mailers.Mailer
 import bosca.communications.mailers.MailerConfiguration
+import bosca.communications.mailers.MailerProvider
 import bosca.communications.model.DeliveryChannel
 import bosca.communications.model.DeliveryEvent
 import bosca.communications.model.DeliveryStatusType
@@ -55,7 +56,7 @@ class MessageServiceImpl(
     @ProviderName(name = JobQueueNames.messagesJobQueue)
     private val messageQueue: JobQueue,
     private val mailerConfiguration: MailerConfiguration,
-    private val mailer: Mailer,
+    private val mailerProvider: MailerProvider,
     private val sender: PushSender,
     private val deliveryTracking: DeliveryTrackingService,
     private val gate: NotificationPreferenceGate,
@@ -83,22 +84,16 @@ class MessageServiceImpl(
         check(connectionOrNull()?.inTransaction != true) {
             "MessageService.sendNow cannot run inside a database transaction; use send instead"
         }
-        require(
-            MessageChannel.EMAIL !in message.channels ||
-                message.bmlTemplate != null ||
-                message.recipients.size <= mailer.maxRecipientsPerMessage,
-        ) {
-            "The configured mail provider supports at most ${mailer.maxRecipientsPerMessage} recipients per message"
-        }
+        val mailer = if (MessageChannel.EMAIL in message.channels) mailerProvider.get() else null
         message.channels.distinct().forEach { channel ->
             when (channel) {
                 MessageChannel.EMAIL -> {
-                    if (message.bmlTemplate != null && message.recipients.size > 1) {
-                        message.recipients.forEach { recipient ->
-                            sendToMailer(message.copy(channels = listOf(channel), recipients = listOf(recipient)))
-                        }
-                    } else {
-                        sendToMailer(message.copy(channels = listOf(channel)))
+                    checkNotNull(mailer)
+                    // A BML template renders per recipient. Otherwise each provider handoff carries at
+                    // most the mailer's limit, so a failed handoff only affects the recipients it carried.
+                    val recipientsPerSend = if (message.bmlTemplate != null) 1 else mailer.maxRecipientsPerMessage
+                    message.recipients.chunked(recipientsPerSend).forEach { recipients ->
+                        sendToMailer(message.copy(channels = listOf(channel), recipients = recipients), mailer)
                     }
                 }
                 MessageChannel.PUSH -> sendToPush(message)
@@ -107,7 +102,7 @@ class MessageServiceImpl(
     }
 
     @OptIn(ExperimentalUuidApi::class)
-    private suspend fun sendToMailer(message: Message) {
+    private suspend fun sendToMailer(message: Message, mailer: Mailer) {
         val from = mailer.newEmail(mailerConfiguration.from.name, mailerConfiguration.from.email)
         val profiles = message.recipients.map { profileService.getById(it) }
         val attributes = Batch<UUID, List<ProfileAttribute>>(message.recipients)

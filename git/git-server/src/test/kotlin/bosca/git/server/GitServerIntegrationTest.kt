@@ -763,6 +763,21 @@ class GitServerIntegrationTest {
                     buildJsonObject { put("repo", emptyId); put("branch", branch); put("content", content) }, adminToken,
                 )
             }
+            for (counts in listOf(null, "true", "null", "false")) {
+                val argument = counts?.let { ", includeAheadBehind: $it" }.orEmpty()
+                val branches = graphql(
+                    "query Branches(\$repo: UUID!) { git { branches(repositoryId: \$repo$argument) { name sha ahead behind } } }",
+                    buildJsonObject { put("repo", emptyId) }, adminToken,
+                ).at("git", "branches").jsonArray
+                assertEquals(setOf("trunk", "feature", "feature-two", "release"), branches.map { it.at("name").jsonPrimitive.content }.toSet())
+                val feature = branches.single { it.at("name").jsonPrimitive.content == "feature" }
+                assertEquals(40, feature.at("sha").jsonPrimitive.content.length)
+                assertEquals(if (counts == "false") 0 else 1, feature.at("ahead").jsonPrimitive.int)
+                assertEquals(0, feature.at("behind").jsonPrimitive.int)
+            }
+            val branchPage = request("/repositories/$emptyId?tab=branches", cookie = "$cookiePrefix=$adminToken")
+            assertEquals(200, branchPage.statusCode(), branchPage.body())
+            assertTrue("Commits compared with trunk: 1 ahead, 0 behind" in branchPage.body(), branchPage.body())
             graphql(
                 "mutation Second(\$repo: UUID!) { git { commitFile(input: { repositoryId: \$repo, branch: \"feature\", path: \"second-review.txt\", content: \"Second change\", message: \"Second review commit\", authorName: \"Reviewer\", authorEmail: \"reviewer@example.test\" }) { commitSha } } }",
                 buildJsonObject { put("repo", emptyId) }, adminToken,

@@ -148,13 +148,17 @@ class SwarmServicesTest {
 
     @Test
     fun `each site's selected mail provider reaches its server and runner`() {
-        val mailgunSite = site.copy(mailerType = "mailgun")
-        val stack = services(siteStack(config.copy(sites = listOf(mailgunSite)), mailgunSite))
-        assertEquals("mailgun", environment(stack.getValue("server"))["MAILER_TYPE"])
-        assertEquals("mailgun", environment(stack.getValue("runner"))["MAILER_TYPE"])
-        assertEquals(mailgunSite.mailFromEmail, environment(stack.getValue("server"))["MAILER_FROM_EMAIL"])
+        for (provider in listOf("sendgrid", "mailgun", "smtp")) {
+            val mailSite = site.copy(mailerType = provider)
+            val mailConfig = config.copy(sites = listOf(mailSite))
+            mailConfig.validate()
+            val stack = services(siteStack(mailConfig, mailSite))
+            assertEquals(provider, environment(stack.getValue("server"))["MAILER_TYPE"])
+            assertEquals(provider, environment(stack.getValue("runner"))["MAILER_TYPE"])
+            assertEquals(mailSite.mailFromEmail, environment(stack.getValue("server"))["MAILER_FROM_EMAIL"])
+        }
         assertFailsWith<IllegalArgumentException> {
-            config.copy(sites = listOf(mailgunSite.copy(mailerType = "other"))).validate()
+            config.copy(sites = listOf(site.copy(mailerType = "other"))).validate()
         }
     }
 

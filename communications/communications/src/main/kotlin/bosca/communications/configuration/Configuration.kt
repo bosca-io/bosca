@@ -11,11 +11,8 @@ import bosca.di.annotation.Providers
 import bosca.di.ObjectProvider
 import bosca.lock.DistributedLockFactory
 import bosca.observability.ErrorCapture
-import bosca.communications.mailers.Mailer
 import bosca.communications.mailers.MailerConfiguration
-import bosca.communications.mailers.MailerType
-import bosca.communications.mailers.mailgun.MailgunMailer
-import bosca.communications.mailers.sendgrid.SendGridMailer
+import bosca.communications.mailers.MailerProvider
 import bosca.communications.push.PushSender
 import bosca.communications.push.PushSenderImpl
 import bosca.communications.service.BmlMessageServerTokenProvider
@@ -52,22 +49,11 @@ class Configuration {
         application.environment.config.property("mailer").getAs<MailerConfiguration>()
 
     @Provider(singleton = true)
-    fun mailer(
+    fun mailerProvider(
         json: Json,
         configuration: MailerConfiguration,
         configurationService: ConfigurationService,
-    ): Mailer =
-        when (configuration.type) {
-            MailerType.SENDGRID -> SendGridMailer(
-                json,
-                configurationService,
-            )
-
-            MailerType.MAILGUN -> MailgunMailer(
-                json,
-                configurationService,
-            )
-        }
+    ): MailerProvider = MailerProvider(json, configuration, configurationService)
 
     @Provider(singleton = true)
     fun bmlMessageServerClient(): BmlMessageServerClient =

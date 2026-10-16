@@ -18,7 +18,7 @@ function setMode(key: string, value: string) {
     <p>Experiment activation defines eligibility. Goal activation describes who reached a condition after assignment; it keeps everyone in the overall result.</p>
     <label class="check"><input type="checkbox" :checked="activation !== null" @change="activation = ($event.target as HTMLInputElement).checked ? newGoalActivation() : null">Configure goal activation</label>
     <template v-if="activation">
-      <label>Application IDs<input :value="activation.applicationIds.join(', ')" placeholder="Use the experiment activation application" @input="activation.applicationIds = splitIdentifiers(($event.target as HTMLInputElement).value)"></label>
+      <label>Application IDs<input :value="activation.applicationIds.join(', ')" placeholder="Any application" @input="activation.applicationIds = splitIdentifiers(($event.target as HTMLInputElement).value)"></label>
       <label class="check"><input v-model="activation.sameSession" type="checkbox">Same session as experiment activation</label>
       <label>Maximum delay (seconds)<input
         type="number"
@@ -40,7 +40,7 @@ function setMode(key: string, value: string) {
     <h3>Outcome scope</h3>
     <label class="check"><input type="checkbox" :checked="outcomeScope !== null" @change="outcomeScope = ($event.target as HTMLInputElement).checked ? newOutcomeScope() : null">Configure outcome scope and attribution</label>
     <template v-if="outcomeScope">
-      <label>Application IDs<input :value="outcomeScope.applicationIds.join(', ')" placeholder="Use the experiment activation application" @input="outcomeScope.applicationIds = splitIdentifiers(($event.target as HTMLInputElement).value)"></label>
+      <label>Application IDs<input :value="outcomeScope.applicationIds.join(', ')" placeholder="Any application" @input="outcomeScope.applicationIds = splitIdentifiers(($event.target as HTMLInputElement).value)"></label>
       <label class="check"><input v-model="outcomeScope.sameSession" type="checkbox">Same browser session</label>
       <label>Maximum delay (seconds)<input
         type="number"
@@ -54,11 +54,13 @@ function setMode(key: string, value: string) {
   </section>
 </template>
 <style scoped>
-.activation-editor { display: grid; gap: 12px; border-top: 1px solid var(--border); padding-top: 16px; }
+.activation-editor { display: grid; gap: 12px; border-top: 1px solid var(--line); padding-top: 16px; }
 h3, p { margin: 0; }
+h3 { font-size: 13px; font-weight: 600; color: var(--fg-0); }
+legend { padding: 0 6px; font-size: 12px; font-weight: 500; color: var(--fg-1); }
 p { color: var(--fg-3); font-size: 12px; line-height: 1.5; }
 label { display: flex; flex-direction: column; gap: 5px; font-size: 12px; }
 .check { flex-direction: row; align-items: center; }
-input, select { padding: 8px; background: var(--bg-2); color: var(--fg-1); border: 1px solid var(--border); border-radius: 6px; }
-fieldset { display: grid; gap: 12px; padding: 12px; border: 1px solid var(--border); border-radius: 8px; }
+input, select { padding: 8px; background: var(--bg-2); color: var(--fg-1); border: 1px solid var(--line); border-radius: 6px; }
+fieldset { display: grid; gap: 12px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; }
 </style>

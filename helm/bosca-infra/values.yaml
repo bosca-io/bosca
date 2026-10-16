@@ -87,6 +87,47 @@ trino:
   fullnameOverride: trino
   server:
     workers: 1
+  # Prefer scheduling Trino's coordinator and workers away from nodes running
+  # PostgreSQL instances, the PgBouncer pooler, NATS, or Redis (Dragonfly) so analytical queries don't
+  # compete with operational stores for CPU, memory, and disk I/O. This is a soft
+  # preference: Trino still schedules onto those nodes when no others fit. The
+  # upstream chart doesn't run `tpl` on affinity values, so the selectors match the static
+  # labels set by CNPG (cluster postgres-bosca), the NATS chart, and the
+  # Dragonfly operator (CR redis).
+  coordinator:
+    affinity: &trinoAffinity
+      podAntiAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              topologyKey: kubernetes.io/hostname
+              labelSelector:
+                matchLabels:
+                  cnpg.io/cluster: postgres-bosca
+                  cnpg.io/podRole: instance
+          - weight: 100
+            podAffinityTerm:
+              topologyKey: kubernetes.io/hostname
+              labelSelector:
+                matchLabels:
+                  cnpg.io/cluster: postgres-bosca
+                  cnpg.io/podRole: pooler
+          - weight: 100
+            podAffinityTerm:
+              topologyKey: kubernetes.io/hostname
+              labelSelector:
+                matchLabels:
+                  app.kubernetes.io/name: nats
+                  app.kubernetes.io/component: nats
+          - weight: 100
+            podAffinityTerm:
+              topologyKey: kubernetes.io/hostname
+              labelSelector:
+                matchLabels:
+                  app: redis
+                  app.kubernetes.io/name: dragonfly
+  worker:
+    affinity: *trinoAffinity
   catalogs:
     bosca: |
       connector.name=postgresql

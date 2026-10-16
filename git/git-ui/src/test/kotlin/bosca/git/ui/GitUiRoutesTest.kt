@@ -588,8 +588,10 @@ class GitUiRoutesTest {
             assertFalse("delta-ahead" in behind, behind)
             assertFalse("branch-delta" in row("main"))
             assertFalse("branch-delta" in row("in-sync"))
+            assertEquals(true, requests.last { it.operation == "GitUiBranches" }.variables["includeAheadBehind"]?.jsonPrimitive?.boolean)
         }
         assertFalse("class=\"branch-delta\"" in get("/repositories/repo?tab=tags").body())
+        assertEquals(false, requests.last { it.operation == "GitUiBranches" }.variables["includeAheadBehind"]?.jsonPrimitive?.boolean)
     }
 
     @Test

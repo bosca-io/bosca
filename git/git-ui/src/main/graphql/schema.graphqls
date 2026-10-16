@@ -87,7 +87,7 @@ type Git {
   repositoryById(id: UUID!): GitRepository
   tree(repositoryId: UUID!, ref: String, path: String): [GitTreeEntry!]!
   blob(repositoryId: UUID!, ref: String!, path: String!): GitBlob
-  branches(repositoryId: UUID!): [GitBranchInfo!]!
+  branches(repositoryId: UUID!, includeAheadBehind: Boolean = true): [GitBranchInfo!]!
   tags(repositoryId: UUID!, limit: Int, offset: Long, query: String): [GitTagInfo!]!
   tag(repositoryId: UUID!, name: String!): GitTagInfo
   commit(repositoryId: UUID!, sha: String!): GitCommitInfo

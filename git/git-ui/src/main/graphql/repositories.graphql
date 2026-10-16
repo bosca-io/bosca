@@ -43,9 +43,9 @@ query GitUiRepository($id: UUID!) {
   }
 }
 
-query GitUiBranches($id: UUID!) {
+query GitUiBranches($id: UUID!, $includeAheadBehind: Boolean! = false) {
   git {
-    branches(repositoryId: $id) {
+    branches(repositoryId: $id, includeAheadBehind: $includeAheadBehind) {
       name
       sha
       ahead
@@ -292,7 +292,7 @@ mutation GitUiCreateTag($id: UUID!, $name: String!, $source: String!, $message: 
 
 query GitUiRefs($id: UUID!) {
   git {
-    branches(repositoryId: $id) { name sha }
+    branches(repositoryId: $id, includeAheadBehind: false) { name sha }
     tags(repositoryId: $id, limit: 25) { name sha targetSha isAnnotated message }
   }
 }

@@ -56,7 +56,7 @@ suspend fun repositoryPage(): RepositoryPage? = supervisorScope {
     val listHref = safeListHref(ctx.query["return"])
     val needsRefs = tab in setOf("code", "commits", "branches", "tags", "statuses")
     val branchesRequest = async {
-        if (needsRefs) ctx.gql.execute(GitUiBranches, GitUiBranches.Variables(id)).git.branches
+        if (needsRefs) ctx.gql.execute(GitUiBranches, GitUiBranches.Variables(id, tab == "branches")).git.branches
         else emptyList()
     }
     val tagsRequest = async {

@@ -2,7 +2,10 @@ package bosca.experimentation.model
 
 import kotlinx.serialization.Serializable
 
-/** Outcome scope relative to eligibility (or goal activation for the descriptive exposed view). */
+/**
+ * Outcome scope relative to eligibility (or goal activation for the descriptive exposed view).
+ * Empty application ids place no application restriction on outcome events.
+ */
 @Serializable
 data class GoalOutcomeScope(
     val applicationIds: List<String> = emptyList(),
