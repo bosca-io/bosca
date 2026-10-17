@@ -35,12 +35,11 @@ The default brand is Bosca. Each deployment routes its own profiles host (for ex
 `profiles.example.com`) to this service with its own values and assets.
 
 Package installs inherit the `@bosca` registry and authentication from npm's user configuration
-(`$HOME/.npmrc` by default). CI configures both automatically. For local builds, configure the
-registry that serves `@bosca` packages and its token before running Gradle or npm:
+(`$HOME/.npmrc` by default). CI configures both automatically. For local builds, log into the
+appropriate Bosca profile and configure artifact access before running Gradle or npm:
 
 ```bash
-npm config set @bosca:registry 'https://artifacts.example.com/npm/' --location=user
-npm config set '//artifacts.example.com/npm/:_authToken' '<Bosca API token>' --location=user
+bosca artifacts login --registry https://artifacts.example.com
 ```
 
 From the workspace root:
@@ -55,6 +54,6 @@ From the workspace root:
 `http://localhost:8080/graphql`; in Kubernetes it should use the internal Bosca API service.
 
 The root Gradle build resolves the BML runtime from the local workspace project. The browser
-auth package is linked from `web/packages/auth` for local development. BML version pins in this
+auth package uses the published release pinned in `package.json`. BML version pins in this
 application track available published releases while coordinated protocol changes are developed
 in the workspace.
