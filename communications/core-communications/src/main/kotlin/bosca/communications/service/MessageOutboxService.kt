@@ -9,13 +9,14 @@ interface MessageOutboxService : Service {
 
     /**
      * Persists and schedules [message] once for [sourceId], splitting it into one durable row for
-     * each recipient profile and channel. Repeated calls recover that first persisted fan-out.
+     * each recipient profile and channel. Repeated calls recover pending rows from that first
+     * persisted fan-out; sent and terminally failed rows remain closed.
      */
     suspend fun enqueueOnce(sourceId: UUID, message: Message)
 
-    /** Delivers a pending outbox row, or returns when it was already completed. */
+    /** Delivers a pending outbox row, or returns when it was already sent or terminally failed. */
     suspend fun deliver(outboxId: UUID)
 
-    /** Republishes pending rows whose original producer stopped before queue publication. */
+    /** Republishes pending rows, excluding sent and terminally failed deliveries. */
     suspend fun recoverPending(limit: Int = 200): Int
 }

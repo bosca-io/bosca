@@ -109,9 +109,14 @@ class MessageOutboxServiceImplTest {
             sentAt = OffsetDateTime.now(),
         )
         val pending = MessageOutboxEntry(UUID.random(), sourceId, 1, message)
+        val failed = MessageOutboxEntry(
+            UUID.random(), sourceId, 2, message,
+            attempts = 75_966,
+            lastError = "render failed",
+        )
         val jobs = mutableListOf<Job>()
         coEvery { repository.create(sourceId, any()) } returns emptyList()
-        coEvery { repository.getBySource(sourceId) } returns listOf(sent, pending)
+        coEvery { repository.getBySource(sourceId) } returns listOf(sent, pending, failed)
         coEvery { queue.enqueueIfAbsent(capture(jobs)) } coAnswers { firstArg<Job>().getId() }
         val service = MessageOutboxServiceImpl(repository, mockk(), json, queue)
 
@@ -258,6 +263,20 @@ class MessageOutboxServiceImplTest {
             MessageOutboxMaintenanceExecutor(outbox).execute()
         }
         Unit
+    }
+
+    @Test
+    fun `failure persistence keeps the delivery error and attaches the database error`() = runBlocking {
+        val repository = mockk<MessageOutboxRepository>()
+        val messages = mockk<MessageService>()
+        val entry = entry().copy(attempts = 9)
+        coEvery { repository.getPending(entry.id) } returns entry
+        coEvery { messages.sendNow(entry.message) } throws IllegalStateException("render failed")
+        coEvery { repository.markFailure(entry.id, "render failed") } throws IllegalStateException("database unavailable")
+
+        val failure = assertFailsWith<IllegalStateException> { service(repository, messages).deliver(entry.id) }
+        assertEquals("render failed", failure.message)
+        assertEquals("database unavailable", failure.suppressed.single().message)
     }
 
     private fun service(
