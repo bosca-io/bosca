@@ -42,8 +42,10 @@ interface ObjectBackupRunService : Service {
      * Captures configuration inputs, validates/binds all selected stores before opening any, and
      * closes them after work, failure or cancellation. Unrelated configurations are ignored.
      * Completed/cancelled outcomes return without opening stores; running attempts are rejected.
-     * Requires no active caller transaction. The caller pins source revisions, preserves storage
-     * accounts and owns exclusive cross-run destination access. This does not dispatch a job.
+     * Requires no active caller transaction. Configured runs in this progress database serialize
+     * write destinations. The caller pins source revisions, preserves storage accounts and excludes
+     * writers that do not participate in these claims, including other progress databases.
+     * This does not dispatch a job.
      */
     suspend fun executeConfigured(key: String, configurations: Map<String, StorageConfiguration>): ObjectBackupRun
 
@@ -79,7 +81,12 @@ interface ObjectBackupRunService : Service {
     /** Reads current checkpoint health; terminal outcome totals remain frozen in the run's result. */
     suspend fun summary(key: String): ObjectBackupRunSummary
 
-    /** Starts a pending or retryable terminal run using its observed version. */
+    /**
+     * Starts a pending or retryable terminal run using its observed version. Configured runs claim
+     * all bound write destinations atomically; contention rolls back the run transition and every
+     * claim. Ownership has no expiry and survives process restarts. Unconfigured runs retain their
+     * caller-owned destination contract.
+     */
     suspend fun start(key: String, expectedVersion: Long): ObjectBackupRun
 
     /** Explicitly queues a failed, partial or cancelled run for another attempt. */
@@ -88,13 +95,14 @@ interface ObjectBackupRunService : Service {
     /**
      * Acknowledges an inventory only when all required checkpoints are completed.
      * Callers verify restored objects or publish and verify backup manifests before this transition.
+     * Releases only this run's destination claims atomically with the recorded outcome.
      */
     suspend fun complete(key: String, expectedVersion: Long): ObjectBackupRun
 
-    /** Records failure or a partial outcome after the earlier writer has stopped. */
+    /** Records failure/partial outcome and releases owned destinations after the earlier writer stops. */
     suspend fun fail(key: String, expectedVersion: Long, error: String): ObjectBackupRun
 
-    /** Cancels a pending run, or records a running writer's cancellation after it stops. */
+    /** Cancels a pending run, or records a stopped writer's cancellation, releasing its destinations. */
     suspend fun cancel(key: String, expectedVersion: Long, error: String): ObjectBackupRun
 
     /**

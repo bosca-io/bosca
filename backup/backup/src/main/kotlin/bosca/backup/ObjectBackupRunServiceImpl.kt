@@ -260,7 +260,22 @@ class ObjectBackupRunServiceImpl(
 
     override suspend fun start(key: String, expectedVersion: Long): ObjectBackupRun {
         validateVersion(key, expectedVersion)
-        return updated(repository.start(key, expectedVersion), key, expectedVersion)
+        return transaction {
+            val run = updated(repository.start(key, expectedVersion), key, expectedVersion)
+            val storage = repository.getStorage(key)
+            if (storage != null) {
+                val destinations = when (run.operation) {
+                    ObjectBackupOperation.BACKUP -> setOf(storage.backupKey)
+                    ObjectBackupOperation.RESTORE -> storage.stores.values.toSet()
+                }
+                for (storageKey in destinations.sorted()) {
+                    if (repository.claimWriter(storageKey, key) != 1) {
+                        throw ObjectBackupDestinationBusyException(storageKey)
+                    }
+                }
+            }
+            run
+        }
     }
 
     override suspend fun retry(key: String, expectedVersion: Long): ObjectBackupRun {
@@ -270,7 +285,7 @@ class ObjectBackupRunServiceImpl(
 
     override suspend fun complete(key: String, expectedVersion: Long): ObjectBackupRun {
         validateVersion(key, expectedVersion)
-        return updated(repository.finish(key, expectedVersion, null, false), key, expectedVersion)
+        return finish(key, expectedVersion, null, false)
     }
 
     override suspend fun fail(key: String, expectedVersion: Long, error: String): ObjectBackupRun =
@@ -396,7 +411,18 @@ class ObjectBackupRunServiceImpl(
         require(error.isNotBlank()) {
             "Object backup run failure detail is required"
         }
-        return updated(repository.finish(key, expectedVersion, error, cancelled), key, expectedVersion)
+        return finish(key, expectedVersion, error, cancelled)
+    }
+
+    private suspend fun finish(
+        key: String,
+        expectedVersion: Long,
+        error: String?,
+        cancelled: Boolean,
+    ): ObjectBackupRun = transaction {
+        val run = updated(repository.finish(key, expectedVersion, error, cancelled), key, expectedVersion)
+        repository.releaseWriters(key)
+        run
     }
 
     private fun validateKey(key: String) {

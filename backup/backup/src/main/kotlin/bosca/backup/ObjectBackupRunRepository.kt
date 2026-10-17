@@ -35,6 +35,20 @@ interface ObjectBackupRunRepository {
     @Query("select * from backup.object_runs where key = :key for update")
     suspend fun getForUpdate(key: String): ObjectBackupRun?
 
+    /** Claims one bound write destination without replacing another run's ownership. */
+    @Query(
+        """
+        insert into backup.object_store_writers (storage_key, run_key)
+        values (:storageKey, :runKey) on conflict (storage_key) do nothing
+        """,
+        returnUpdateCount = true,
+    )
+    suspend fun claimWriter(storageKey: String, runKey: String): Int
+
+    /** Releases only the transitioned run's write destinations in the same transaction. */
+    @Query("delete from backup.object_store_writers where run_key = :runKey", returnUpdateCount = true)
+    suspend fun releaseWriters(runKey: String): Int
+
     /** Records the independent backup storage for one immutable run mapping. */
     @Query(
         """

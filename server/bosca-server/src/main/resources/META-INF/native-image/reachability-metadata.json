@@ -1,6 +1,9 @@
 {
   "reflection": [
     {
+      "type": "bosca.backup.ObjectBackupRunExecutor"
+    },
+    {
       "type": "bosca.analytics.jobs.FumsDeliveryExecutor"
     },
     {
