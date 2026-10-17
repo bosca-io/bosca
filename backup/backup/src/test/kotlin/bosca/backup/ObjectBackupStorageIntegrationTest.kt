@@ -13,6 +13,8 @@ import bosca.di.StorageProviderRegistrar
 import bosca.di.annotation.InternalDI
 import bosca.di.provide
 import bosca.di.provides
+import bosca.server.BoscaApplication
+import bosca.server.config.ApplicationConfig
 import bosca.storage.configuration.StorageConfiguration
 import bosca.storage.service.ObjectStorageService
 import bosca.storage.service.ObjectStorageServiceFactory
@@ -47,6 +49,7 @@ import kotlin.test.assertTrue
 class ObjectBackupStorageIntegrationTest {
     private lateinit var postgres: SharedPostgreSQLContainer
     private lateinit var pool: ConnectionPool
+    private lateinit var application: BoscaApplication
     private lateinit var directory: Path
     private lateinit var service: ObjectBackupStorageService
 
@@ -60,6 +63,8 @@ class ObjectBackupStorageIntegrationTest {
         ProviderRegistry.clear()
         provides<ConnectionPool>(singleton = true) { pool }
         provides<Json>(singleton = true) { Json }
+        application = BoscaApplication(ApplicationConfig.load("".byteInputStream()), ownsServices = false)
+        provides<BoscaApplication>(singleton = true) { application }
         StorageProviderRegistrar().register()
         BackupProviderRegistrar().register()
         FlywayMigration(pool).migrate(listOf(provide<Migration>(name = "backup-migrations")))
@@ -70,6 +75,7 @@ class ObjectBackupStorageIntegrationTest {
     @AfterTest
     fun tearDown(): Unit = runBlocking {
         try {
+            if (::application.isInitialized) application.shutdown()
             if (::pool.isInitialized) pool.close()
         } finally {
             if (::postgres.isInitialized) postgres.stop()
@@ -336,7 +342,7 @@ class ObjectBackupStorageIntegrationTest {
                 return actualFactory.withStorage(configuration, block)
             }
         }
-        val selectedService = ObjectBackupStorageServiceImpl(provide(), factory)
+        val selectedService = ObjectBackupStorageServiceImpl(provide(), factory, application)
         selectedService.withStorage("backup", filesystem("alias")) { write(it, "asset", "data") }
         assertEquals("data", first.resolve("asset").toFile().readText())
         assertEquals(false, second.resolve("asset").exists())

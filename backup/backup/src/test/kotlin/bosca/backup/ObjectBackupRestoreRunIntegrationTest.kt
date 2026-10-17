@@ -14,6 +14,8 @@ import bosca.di.ProviderRegistry
 import bosca.di.annotation.InternalDI
 import bosca.di.provide
 import bosca.di.provides
+import bosca.server.BoscaApplication
+import bosca.server.config.ApplicationConfig
 import bosca.storage.service.FileSystemObjectStorageService
 import bosca.storage.service.ObjectNotFoundException
 import bosca.storage.service.ObjectStorageService
@@ -53,6 +55,7 @@ import kotlin.test.assertTrue
 class ObjectBackupRestoreRunIntegrationTest {
     private lateinit var postgres: SharedPostgreSQLContainer
     private lateinit var pool: ConnectionPool
+    private lateinit var application: BoscaApplication
     private lateinit var service: ObjectBackupRunService
     private lateinit var progress: ObjectBackupProgressService
     private lateinit var directory: Path
@@ -79,6 +82,8 @@ class ObjectBackupRestoreRunIntegrationTest {
         ProviderRegistry.clear()
         provides<ConnectionPool>(singleton = true) { pool }
         provides<Json>(singleton = true) { Json }
+        application = BoscaApplication(ApplicationConfig.load("".byteInputStream()), ownsServices = false)
+        provides<BoscaApplication>(singleton = true) { application }
         StorageProviderRegistrar().register()
         BackupProviderRegistrar().register()
         val initial = object : Migration {
@@ -105,6 +110,7 @@ class ObjectBackupRestoreRunIntegrationTest {
     @AfterTest
     fun tearDown(): Unit = runBlocking {
         try {
+            if (::application.isInitialized) application.shutdown()
             if (::pool.isInitialized) pool.close()
         } finally {
             if (::postgres.isInitialized) postgres.stop()

@@ -6,6 +6,21 @@ import bosca.storage.service.ObjectStorageService
 
 /** Associates backup storage identities with fixed configured addresses, independently of credentials. */
 interface ObjectBackupStorageService : Service {
+    /**
+     * Reads only [keys] from backup.objectStores in application configuration, using literal IDs.
+     * An empty selection needs no catalog. Missing or malformed selected entries fail on use;
+     * unrelated entries are ignored. This performs no binding or storage I/O and returns runtime
+     * credentials for internal execution only. No shared content-storage fallback is applied.
+     */
+    suspend fun configurations(keys: Set<String>): Map<String, StorageConfiguration>
+
+    /**
+     * Atomically binds selected application configurations in the caller's database context.
+     * All selected entries and addresses validate before binding. Any binding conflict rolls back
+     * the entire selection. Credentials are not persisted, and no store is opened.
+     */
+    suspend fun bindConfigured(keys: Set<String>): List<ObjectBackupStorage>
+
     /** Reads the recorded address using the caller's connection-manager context. */
     suspend fun get(key: String): ObjectBackupStorage?
 

@@ -25,6 +25,9 @@ class ObjectBackupRunServiceImpl(
     private val json: Json,
     private val storageService: ObjectBackupStorageService,
 ) : ObjectBackupRunService {
+    override suspend fun executeConfigured(key: String): ObjectBackupRun =
+        executeConfiguredRun(key) { storageService.configurations(it) }
+
     override suspend fun configureStorage(
         key: String,
         backupKey: String,
@@ -94,6 +97,13 @@ class ObjectBackupRunServiceImpl(
         configurations: Map<String, StorageConfiguration>,
     ): ObjectBackupRun {
         val captured = configurations.toMap()
+        return executeConfiguredRun(key) { captured }
+    }
+
+    private suspend fun executeConfiguredRun(
+        key: String,
+        configurations: suspend (Set<String>) -> Map<String, StorageConfiguration>,
+    ): ObjectBackupRun {
         check(connectionOrNull()?.inTransaction != true) {
             "Configured object runs must execute outside an active database transaction"
         }
@@ -108,8 +118,10 @@ class ObjectBackupRunServiceImpl(
         val mapping = withConnectionManager {
             checkNotNull(getStorage(key)) { "Object run storage is not configured: $key" }
         }
-        val selected = (mapping.stores.values + mapping.backupKey).toSet().associateWith { storageKey ->
-            requireNotNull(captured[storageKey]) { "Missing storage configuration: $storageKey" }
+        val required = (mapping.stores.values + mapping.backupKey).toSet()
+        val available = configurations(required)
+        val selected = required.associateWith { storageKey ->
+            requireNotNull(available[storageKey]) { "Missing storage configuration: $storageKey" }
         }
         return executeRun(key, prepared.operation) { run ->
             storageService.withStorages(selected) { opened ->

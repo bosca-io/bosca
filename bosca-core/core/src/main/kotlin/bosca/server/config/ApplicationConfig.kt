@@ -1,5 +1,6 @@
 package bosca.server.config
 
+import kotlinx.serialization.DeserializationStrategy
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -177,6 +178,9 @@ class ApplicationConfig private constructor(private val root: JsonObject) {
  * for extracting the value as a String, List, or deserialized object.
  */
 class ConfigValue(@PublishedApi internal val element: JsonElement, @PublishedApi internal val json: Json) {
+
+    /** Deserializes the value with an explicit serializer for native-safe typed configuration reads. */
+    fun <T> getAs(deserializer: DeserializationStrategy<T>): T = json.decodeFromJsonElement(deserializer, element)
 
     /** Returns the value as a string. For objects/arrays, returns the JSON representation. */
     fun getString(): String = when (element) {

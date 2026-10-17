@@ -13,6 +13,8 @@ import bosca.di.StorageProviderRegistrar
 import bosca.di.annotation.InternalDI
 import bosca.di.provide
 import bosca.di.provides
+import bosca.server.BoscaApplication
+import bosca.server.config.ApplicationConfig
 import bosca.storage.configuration.StorageConfiguration
 import bosca.storage.service.ObjectStorageService
 import bosca.storage.service.ObjectStorageServiceFactory
@@ -46,6 +48,7 @@ import kotlin.test.assertTrue
 class ObjectBackupConfiguredRunIntegrationTest {
     private lateinit var postgres: SharedPostgreSQLContainer
     private lateinit var pool: ConnectionPool
+    private lateinit var application: BoscaApplication
     private lateinit var directory: Path
     private lateinit var runs: ObjectBackupRunService
     private lateinit var storage: ObjectBackupStorageService
@@ -70,6 +73,8 @@ class ObjectBackupConfiguredRunIntegrationTest {
         ProviderRegistry.clear()
         provides<ConnectionPool>(singleton = true) { pool }
         provides<Json>(singleton = true) { Json }
+        application = BoscaApplication(ApplicationConfig.load("".byteInputStream()), ownsServices = false)
+        provides<BoscaApplication>(singleton = true) { application }
         StorageProviderRegistrar().register()
         BackupProviderRegistrar().register()
         FlywayMigration(pool).migrate(listOf(provide<Migration>(name = "backup-migrations")))
@@ -88,6 +93,7 @@ class ObjectBackupConfiguredRunIntegrationTest {
     @AfterTest
     fun tearDown(): Unit = runBlocking {
         try {
+            if (::application.isInitialized) application.shutdown()
             if (::pool.isInitialized) pool.close()
         } finally {
             if (::postgres.isInitialized) postgres.stop()
@@ -379,7 +385,7 @@ class ObjectBackupConfiguredRunIntegrationTest {
                 }
             }
         }
-        val scoped = ObjectBackupStorageServiceImpl(provide(), tracked)
+        val scoped = ObjectBackupStorageServiceImpl(provide(), tracked, application)
         val configuredRuns = ObjectBackupRunServiceImpl(provide(), provide(), provide(), Json, scoped)
         val attempt = async { configuredRuns.executeConfigured(run.key, configurations) }
         withTimeout(30_000) { opened.await() }
@@ -443,7 +449,7 @@ class ObjectBackupConfiguredRunIntegrationTest {
                     }
                 }
             }
-            val scoped = ObjectBackupStorageServiceImpl(provide(), tracked)
+            val scoped = ObjectBackupStorageServiceImpl(provide(), tracked, application)
             val thrown = assertFailsWith<Exception> {
                 scoped.withStorages(selected) {
                     assertEquals(0, pool.activeConnections)
@@ -475,7 +481,7 @@ class ObjectBackupConfiguredRunIntegrationTest {
                 }
             }
         }
-        val scoped = ObjectBackupStorageServiceImpl(provide(), tracked)
+        val scoped = ObjectBackupStorageServiceImpl(provide(), tracked, application)
         var invoked = false
         val thrown = assertFailsWith<IOException> {
             scoped.withStorages(configurations.filterKeys { it in mapping.values }) { invoked = true }

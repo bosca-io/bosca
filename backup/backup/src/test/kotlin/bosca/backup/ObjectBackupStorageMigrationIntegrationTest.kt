@@ -12,6 +12,8 @@ import bosca.di.StorageProviderRegistrar
 import bosca.di.annotation.InternalDI
 import bosca.di.provide
 import bosca.di.provides
+import bosca.server.BoscaApplication
+import bosca.server.config.ApplicationConfig
 import bosca.test.resources.SharedPostgreSQLContainer
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
@@ -26,6 +28,7 @@ import kotlin.test.assertNull
 class ObjectBackupStorageMigrationIntegrationTest {
     private lateinit var postgres: SharedPostgreSQLContainer
     private lateinit var pool: ConnectionPool
+    private lateinit var application: BoscaApplication
 
     @BeforeTest
     fun setUp(): Unit = runBlocking {
@@ -37,6 +40,8 @@ class ObjectBackupStorageMigrationIntegrationTest {
         ProviderRegistry.clear()
         provides<ConnectionPool>(singleton = true) { pool }
         provides<Json>(singleton = true) { Json }
+        application = BoscaApplication(ApplicationConfig.load("".byteInputStream()), ownsServices = false)
+        provides<BoscaApplication>(singleton = true) { application }
         StorageProviderRegistrar().register()
         BackupProviderRegistrar().register()
         FlywayMigration(pool).migrate(listOf(object : Migration {
@@ -51,6 +56,7 @@ class ObjectBackupStorageMigrationIntegrationTest {
     @AfterTest
     fun tearDown(): Unit = runBlocking {
         try {
+            if (::application.isInitialized) application.shutdown()
             if (::pool.isInitialized) pool.close()
         } finally {
             if (::postgres.isInitialized) postgres.stop()

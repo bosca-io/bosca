@@ -47,6 +47,14 @@ interface ObjectBackupRunService : Service {
      */
     suspend fun executeConfigured(key: String, configurations: Map<String, StorageConfiguration>): ObjectBackupRun
 
+    /**
+     * Executes through the saved mapping and selected backup.objectStores application configuration.
+     * Uses the same storage, revision and writer contracts as the explicit-configuration overload.
+     * Terminal/active outcomes are checked before configuration lookup; missing or malformed selected
+     * entries fail before starting an attempt. Credentials remain outside the persisted run.
+     */
+    suspend fun executeConfigured(key: String): ObjectBackupRun
+
     /** Lists runs of one operation within a source/destination scope using offset pagination. */
     suspend fun list(
         operation: ObjectBackupOperation,

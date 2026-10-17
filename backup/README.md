@@ -32,11 +32,34 @@ GraphQL mutations under `backups.objectRuns` accept typed portable inventories t
 
 Tracked backup preparation reserves each retained destination/path for one length and SHA-256 digest, and each manifest path for its owning run. Matching inventories can share payload bytes across sources and scopes. Conflicting payload claims and manifest/path collisions fail before transfer and roll back preparation. The migration backfills existing backup progress and runs and rejects conflicting historical claims without selecting one. Database references protect reservations while checkpoints or runs use them. Restore target paths keep their separate semantics; destination identities must consistently identify the same storage namespace.
 
-`ObjectStorageServiceFactory` in core storage creates independently configured stores. `ContentConfiguration` uses the injected factory for the shared application store and closes it at application shutdown. `withStorage` closes operation-scoped stores when the callback ends, including failure or cancellation. Selecting configurations for worker jobs and dispatching workers remain separate work.
+`ObjectStorageServiceFactory` in core storage creates independently configured stores. `ContentConfiguration` uses the injected factory for the shared application store and closes it at application shutdown. `withStorage` closes operation-scoped stores when the callback ends, including failure or cancellation. Worker dispatch remains separate work.
 
 `ObjectBackupStorageService` records an immutable configured location for each backup storage identity. It rejects changed locations and duplicate address identities; credentials, URL presentation and bucket creation settings are not persisted. Its `withStorage` captures and checks the location in a short database context, then opens that exact configuration through the factory. `withStorages` checks all selected locations atomically before opening any and closes the opened stores if later setup or work fails. Active caller transactions are rejected before binding or opening storage. Filesystem paths resolve existing symlinks. S3 bindings require an explicit region and endpoint, with `AWS_ENDPOINT` supported as the endpoint fallback; credentials are supplied when opening and can rotate. The migration preserves existing inventories without inventing addresses for historical records. These checks identify configured addresses, not changed mounts, storage accounts or arbitrary endpoint aliases.
 
-`ObjectBackupRunService.configureStorage` saves the independent backup storage ID and an exact logical-store mapping before the first run attempt. Mappings reference bound storage IDs and cannot change on retry. Restore destination IDs keep each logical store at the same location across later inventories, preserving shared checkpoint identity. Logical stores may share a restore location when their object keys are disjoint. `executeConfigured` opens the required caller-supplied configurations, reuses the existing transfer and verification behavior, and closes them after completion, failure or cancellation. Credentials are not saved with the run. The caller still pins source revisions and owns exclusive destination writer access; credential lookup and worker dispatch remain separate work.
+`ObjectBackupRunService.configureStorage` saves the independent backup storage ID and an exact logical-store mapping before the first run attempt. Mappings reference bound storage IDs and cannot change on retry. Restore destination IDs keep each logical store at the same location across later inventories, preserving shared checkpoint identity. Logical stores may share a restore location when their object keys are disjoint. `executeConfigured` opens the required caller-supplied configurations, reuses the existing transfer and verification behavior, and closes them after completion, failure or cancellation. Credentials are not saved with the run. The caller still pins source revisions and owns exclusive destination writer access. Worker dispatch remains separate work.
+
+`backup.objectStores` supplies application-owned configurations by storage ID. `ObjectBackupStorageService.configurations(keys)` reads only the selected entries; IDs are literal map keys, including dots. Missing or malformed selected entries fail when used, while unrelated entries are ignored. `bindConfigured(keys)` validates all selected entries and binds their locations atomically in the caller's database context. Neither method opens a store, and configuration lookup does not access the database. There is no implicit fallback to `content.storage`.
+
+`ObjectBackupRunService.executeConfigured(key)` resolves the saved storage IDs from this application configuration and uses the same scoped execution path as the explicit-configuration overload. Completed or cancelled history returns without catalog access, and an active run remains untouched. Credentials can rotate across application restarts while the location binding stays fixed. The API server and eventual worker must receive matching locations for the selected IDs. Worker dispatch and writer ownership remain separate work.
+
+For example, application configuration can declare a source filesystem and independent S3-compatible retained storage. Supply credentials through the existing environment substitution:
+
+```yaml
+backup:
+  objectStores:
+    content:
+      type: fs
+      urlPrefix: ""
+      basePath: "${CONTENT_STORAGE_PATH}"
+    retained:
+      type: s3
+      urlPrefix: ""
+      bucket: "${BACKUP_BUCKET}"
+      region: "${BACKUP_REGION}"
+      endpoint: "${BACKUP_ENDPOINT}"
+      accessKeyId: "${BACKUP_ACCESS_KEY_ID}"
+      accessKeySecret: "${BACKUP_ACCESS_KEY_SECRET}"
+```
 
 ZIP backup and restore operations run as jobs (`BackupJob`/`RestoreJob`) using an executor pattern. Each backup records a `BackupManifest` with metadata about backed-up tables and records. Restore operations use a configurable `ConflictStrategy` for handling existing data. `BackupTableDefinition` describes which tables to include and how to serialize them. GraphQL controllers provide admin access to backup and restore operations.
 

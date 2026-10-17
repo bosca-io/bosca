@@ -7,8 +7,32 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import java.nio.file.Files
+import kotlinx.serialization.SerializationException
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.builtins.MapSerializer
+import kotlinx.serialization.builtins.serializer
 
 class ApplicationConfigTest {
+
+    @Test
+    fun `explicit deserializer reads structured configuration with literal keys`() {
+        val config = configFromYaml("""
+            stores:
+              source.primary: [one, two]
+              source/二: [three]
+        """.trimIndent())
+        val serializer = MapSerializer(String.serializer(), ListSerializer(String.serializer()))
+        assertEquals(
+            mapOf("source.primary" to listOf("one", "two"), "source/二" to listOf("three")),
+            config.property("stores").getAs(serializer),
+        )
+    }
+
+    @Test
+    fun `explicit deserializer preserves malformed configuration failures`() {
+        val config = configFromYaml("value: invalid")
+        assertFailsWith<SerializationException> { config.property("value").getAs(ListSerializer(String.serializer())) }
+    }
 
     private fun configFromYaml(yaml: String): ApplicationConfig {
         return ApplicationConfig.load(yaml.byteInputStream())

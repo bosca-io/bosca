@@ -3,6 +3,7 @@ package bosca.backup
 import bosca.db.connectionOrNull
 import bosca.db.transaction
 import bosca.db.withConnectionManager
+import bosca.server.BoscaApplication
 import bosca.service.annotation.ServiceImplementation
 import bosca.storage.configuration.StorageConfiguration
 import bosca.storage.service.ObjectStorageService
@@ -13,13 +14,37 @@ import java.net.URI
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.JsonObject
 
 /** Checks configured storage addresses before handing the selected configuration to the factory. */
 @ServiceImplementation
 class ObjectBackupStorageServiceImpl(
     private val repository: ObjectBackupStorageRepository,
     private val factory: ObjectStorageServiceFactory,
+    private val application: BoscaApplication,
 ) : ObjectBackupStorageService {
+    override suspend fun configurations(keys: Set<String>): Map<String, StorageConfiguration> {
+        val captured = keys.toSortedSet()
+        require(captured.all { it.isNotBlank() }) { "Backup storage identities are required" }
+        if (captured.isEmpty()) return emptyMap()
+        val catalog = checkNotNull(application.environment.config.propertyOrNull("backup.objectStores")) {
+            "Missing backup.objectStores configuration"
+        }.getAs(JsonObject.serializer())
+        return captured.associateWith { key ->
+            val selected = requireNotNull(catalog[key]) { "Missing storage configuration: $key" }
+            application.json.decodeFromJsonElement(StorageConfiguration.serializer(), selected)
+        }
+    }
+
+    override suspend fun bindConfigured(keys: Set<String>): List<ObjectBackupStorage> {
+        val selected = linkedMapOf<String, StorageConfiguration>()
+        for ((key, configuration) in configurations(keys)) selected[key] = select(configuration)
+        if (selected.isEmpty()) return emptyList()
+        return transaction {
+            selected.map { (key, configuration) -> bindSelected(key, configuration) }
+        }
+    }
+
     override suspend fun <T> withStorages(
         configurations: Map<String, StorageConfiguration>,
         block: suspend (Map<String, ObjectStorageService>) -> T,

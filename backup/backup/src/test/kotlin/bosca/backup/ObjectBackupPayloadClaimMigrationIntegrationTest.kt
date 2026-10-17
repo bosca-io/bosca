@@ -12,6 +12,8 @@ import bosca.di.ProviderRegistry
 import bosca.di.annotation.InternalDI
 import bosca.di.provide
 import bosca.di.provides
+import bosca.server.BoscaApplication
+import bosca.server.config.ApplicationConfig
 import bosca.test.resources.SharedPostgreSQLContainer
 import java.sql.DriverManager
 import kotlinx.coroutines.runBlocking
@@ -30,6 +32,7 @@ import kotlin.test.assertTrue
 class ObjectBackupPayloadClaimMigrationIntegrationTest {
     private lateinit var postgres: SharedPostgreSQLContainer
     private lateinit var pool: ConnectionPool
+    private lateinit var application: BoscaApplication
     private lateinit var migration: Migration
     private val payload = BackupObject("content", "items/a", "revision-1", 4, "a".repeat(64), "objects/shared")
 
@@ -43,6 +46,8 @@ class ObjectBackupPayloadClaimMigrationIntegrationTest {
         ProviderRegistry.clear()
         provides<ConnectionPool>(singleton = true) { pool }
         provides<Json>(singleton = true) { Json }
+        application = BoscaApplication(ApplicationConfig.load("".byteInputStream()), ownsServices = false)
+        provides<BoscaApplication>(singleton = true) { application }
         StorageProviderRegistrar().register()
         BackupProviderRegistrar().register()
         migration = provide(name = "backup-migrations")
@@ -59,6 +64,7 @@ class ObjectBackupPayloadClaimMigrationIntegrationTest {
     @AfterTest
     fun tearDown(): Unit = runBlocking {
         try {
+            if (::application.isInitialized) application.shutdown()
             if (::pool.isInitialized) pool.close()
         } finally {
             if (::postgres.isInitialized) postgres.stop()
