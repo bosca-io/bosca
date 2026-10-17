@@ -690,6 +690,19 @@ class GitServerIntegrationTest {
             assertEquals("First release\nRelease notes", tag.at("message").jsonPrimitive.content)
             assertTrue(tag.at("sha") != tag.at("targetSha"))
             assertEquals(readmeContent, tags.at("git", "blob", "content").jsonPrimitive.content)
+            nats.newConnection().use { connection ->
+                val queue = connection.keyValue("job-state-git")
+                val triggers = queue.keys().map { key ->
+                    Json.parseToJsonElement(requireNotNull(queue.get(key).value).decodeToString())
+                }.filter { job ->
+                    job.at("executor").jsonPrimitive.content == "bosca.git.ci.jobs.PipelineTriggerExecutor" &&
+                        job.at("definition", "repositoryId").jsonPrimitive.content == emptyId &&
+                        job.at("definition", "ref").jsonPrimitive.content == "refs/tags/release/1.0"
+                }
+                assertEquals(1, triggers.size, "GraphQL tag creation must enqueue a CI trigger.\n${log.readText()}")
+                assertEquals(tag.at("targetSha"), triggers.single().at("definition", "afterSha"))
+                assertTrue(triggers.single().at("definition", "pusherPrincipalId") != JsonNull)
+            }
             val duplicateTag = createTag("release/1.0")
             assertEquals(true, duplicateTag["failed"]?.jsonPrimitive?.boolean, duplicateTag.toString())
             assertTrue("already exists" in duplicateTag["message"]?.jsonPrimitive?.content.orEmpty())
@@ -1015,6 +1028,11 @@ class GitServerIntegrationTest {
                     "mutation Comment(\$id: UUID!, \$review: UUID!, \$sha: String!) { git { addReviewComment(input: { pullRequestId: \$id, reviewId: \$review, filePath: \"first-change.txt\", newLineNumber: 1, commitSha: \$sha, content: \"Retained source discussion\" }) { id } } }",
                     buildJsonObject { put("id", createdPull.at("id").jsonPrimitive.content); put("review", mergedReview); put("sha", sourceHead) }, adminToken,
                 )
+                // This fixture has no CI worker to complete the selection check before merging.
+                graphql(
+                    "mutation Ready(\$repo: UUID!, \$sha: String!) { git { reportCommitStatus(repositoryId: \$repo, commitSha: \$sha, context: \"ci/configuration\", state: SUCCESS) } }",
+                    buildJsonObject { put("repo", emptyId); put("sha", sourceHead) }, adminToken,
+                )
                 val merged = graphql(
                     "mutation Merge(\$id: UUID!, \$strategy: GitMergeStrategy!, \$version: Long!) { git { mergePullRequest(id: \$id, strategy: \$strategy, expectedVersion: \$version) { mergeSha mergeBaseSha } } }",
                     buildJsonObject {
@@ -1164,6 +1182,7 @@ class GitServerIntegrationTest {
                     put("pipelineRunId", java.util.UUID.randomUUID().toString())
                     put("pipelineId", java.util.UUID.randomUUID().toString())
                     put("status", "RUNNING")
+                    put("modified", java.time.OffsetDateTime.now().toString())
                 }
                     .toString()
                     .toByteArray()

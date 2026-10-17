@@ -12,14 +12,17 @@ import bosca.git.dfs.BoscaDfsRepositoryBuilder
 import bosca.git.model.WebhookEvent
 import bosca.git.repository.GitRepositoryRepository
 import bosca.git.repository.TaskCommitReferenceRepository
+import bosca.git.service.CommitStatusService
 import bosca.git.service.RefUpdateNotifierImpl
 import bosca.git.service.WebhookService
 import bosca.git.transport.GitPostReceiveHook
 import bosca.serialization.UUID
+import bosca.sharedqueue.jobs.JobConfigurationEnqueuer
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
+import kotlinx.serialization.json.Json
 import org.eclipse.jgit.internal.storage.dfs.DfsRepositoryDescription
 import org.eclipse.jgit.lib.CommitBuilder
 import org.eclipse.jgit.lib.Constants
@@ -59,6 +62,9 @@ class EndToEndWebhookDispatchTest {
         provides<ConnectionPool>(singleton = true) { mockk(relaxed = true) }
         provides<CacheManager>(singleton = true) { mockk(relaxed = true) }
         provides<RequestCacheSerializer>(singleton = true) { mockk(relaxed = true) }
+        provides<Json> { Json }
+        provides<CommitStatusService> { mockk(relaxed = true) }
+        provides<JobConfigurationEnqueuer>(name = "pipeline-trigger") { mockk(relaxed = true) }
     }
 
     @AfterTest

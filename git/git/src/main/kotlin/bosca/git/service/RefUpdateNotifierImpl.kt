@@ -68,13 +68,7 @@ class RefUpdateNotifierImpl(
         }
 
         enqueueSearchIndex(repositoryId, updates)
-        try {
-            enqueuePipelineTriggers(repository, repositoryId, updates, pusherPrincipalId)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            log.warn("Failed to enqueue pipeline trigger for repository {}", repositoryId, e)
-        }
+        enqueuePipelineTriggers(repository, repositoryId, updates, pusherPrincipalId)
     }
 
     private suspend fun updateDiskSize(repositoryId: UUID) {

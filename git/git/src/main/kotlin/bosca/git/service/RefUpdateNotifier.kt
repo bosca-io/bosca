@@ -28,6 +28,9 @@ data class RefChange(
 interface RefUpdateNotifier {
 
     /**
+     * CI trigger enqueue failures propagate to the caller. Ref writes may already be committed;
+     * this notification does not roll them back.
+     *
      * @param repository an open JGit repository positioned at the updated refs,
      *   used to walk commit messages for task-key extraction.
      * @param updates the refs that changed in this push/commit.
