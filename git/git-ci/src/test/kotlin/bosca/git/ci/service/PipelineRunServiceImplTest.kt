@@ -99,7 +99,7 @@ class PipelineRunServiceImplTest {
             kubernetesDispatchService.asProvider(),
             artifactService,
             logService,
-        )
+            commitStatusService = io.mockk.mockk(relaxed = true))
     }
 
     @AfterTest
@@ -219,7 +219,6 @@ class PipelineRunServiceImplTest {
         coVerify { artifactService.delete(repoId, run.number, artifact.name) }
         coVerify { runRepository.delete(runId) }
         coVerify(exactly = 0) { runRepository.reparentRetries(any(), any()) }
-        coVerify(exactly = 0) { pipelineService.replaceEvaluationRun(any(), any(), any(), any()) }
     }
 
     @Test
@@ -236,9 +235,7 @@ class PipelineRunServiceImplTest {
 
         io.mockk.coVerifyOrder {
             runRepository.reparentRetries(original.id, retry.id)
-            pipelineService.replaceEvaluationRun(repoId, "abc123", original.id, retry.id)
             runRepository.delete(original.id)
-            pipelineService.refreshEvaluations(repoId, "abc123")
         }
     }
 
@@ -257,7 +254,6 @@ class PipelineRunServiceImplTest {
         coVerify(exactly = 0) { jobService.findByRun(any()) }
         coVerify(exactly = 0) { artifactService.listByRun(any()) }
         coVerify(exactly = 0) { runRepository.delete(any()) }
-        coVerify(exactly = 0) { pipelineService.refreshEvaluations(any(), any()) }
     }
 
     @Test
@@ -1267,7 +1263,7 @@ class PipelineRunServiceImplTest {
         assertEquals(2, result.attempt)
         coVerify(exactly = 1) { jobService.resetForRerun(selected) }
         coVerify(exactly = 1) { runRepository.resetForRerun(run.id, rerunner) }
-        coVerify(exactly = 0) { jobService.findByRun(run.id) }
+        coVerify(exactly = 1) { jobService.findByRun(run.id) }
     }
 
     @Test

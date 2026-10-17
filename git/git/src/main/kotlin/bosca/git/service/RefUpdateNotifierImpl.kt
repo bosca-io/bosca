@@ -342,6 +342,8 @@ class RefUpdateNotifierImpl(
                 continue
             }
 
+            provide<CommitStatusService>().recordStatus(repositoryId, commitId.name(), "ci/configuration",
+                bosca.git.model.CommitStatusState.PENDING, "Selecting CI jobs", ref = update.refName)
             enqueuer.enqueue(json.encodeToJsonElement(
                 PipelineTriggerJob(
                     repositoryId = repositoryId,

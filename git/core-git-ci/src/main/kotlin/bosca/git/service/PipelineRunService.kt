@@ -118,7 +118,7 @@ interface PipelineRunService : Service {
      * Permanently deletes a terminal pipeline run and its persisted logs and artifacts. The latest
      * explicit retry cannot be deleted while its original run exists, because that would restore an
      * earlier attempt's CI result. Older retries can be deleted. Deleting an original run makes its
-     * latest retry the root of the remaining retries and moves the original's CI selection to it. Database
+     * latest retry the root of the remaining retries. Database
      * relationships cascade the run deletion to its jobs, steps, and artifact records. Active
      * queued or running runs must be cancelled before deletion.
      *
@@ -131,6 +131,9 @@ interface PipelineRunService : Service {
      * the aggregate status and dispatches a [bosca.git.model.PipelineEvent].
      */
     suspend fun updateStatus(runId: UUID, status: PipelineRunStatus)
+
+    /** Records the latest attempt's individual job results as native commit statuses. */
+    suspend fun refreshCommitStatuses(runId: UUID)
 
     /**
      * Cancels a running or queued pipeline run and all its pending jobs.

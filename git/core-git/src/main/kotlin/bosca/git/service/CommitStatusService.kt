@@ -22,7 +22,8 @@ interface CommitStatusService : Service {
         context: String,
         state: CommitStatusState,
         description: String? = null,
-        targetUrl: String? = null
+        targetUrl: String? = null,
+        ref: String? = null
     ): CommitStatus
 
     /**
@@ -30,9 +31,15 @@ interface CommitStatusService : Service {
      */
     suspend fun getStatuses(repositoryId: UUID, commitSha: String): List<CommitStatus>
 
+    /** Reads a persisted status by identity. */
+    suspend fun findById(id: UUID): CommitStatus?
+
+    /** Pages recent changes and pending checks for synchronization recovery. */
+    suspend fun findChangedSince(repositoryId: UUID, since: bosca.serialization.OffsetDateTime, offset: Long, limit: Int): List<CommitStatus>
+
     /**
-     * Checks whether all required status contexts have a SUCCESS state for the
-     * given commit. Returns false if any required context is missing or not SUCCESS.
+     * Requires every reported check to succeed, plus every explicitly required context to exist.
+     * An empty list of reported checks passes only when no explicit contexts are required.
      */
     suspend fun areRequiredChecksPassing(
         repositoryId: UUID,

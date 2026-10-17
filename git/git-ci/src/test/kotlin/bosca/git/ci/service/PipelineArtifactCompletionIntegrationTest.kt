@@ -88,6 +88,7 @@ class PipelineArtifactCompletionIntegrationTest {
             mockk<bosca.kubernetes.service.KubernetesJobDispatchService>(relaxed = true).asProvider())
         provides<PipelineJobService>(singleton = true) { jobs }
         runs = mockk()
+        coEvery { runs.refreshCommitStatuses(any()) } returns Unit
         coEvery { runs.findById(any()) } coAnswers { PipelineRunRepositoryImpl().findById(firstArg()) }
         coEvery { runs.findByIdForUpdate(any()) } coAnswers { PipelineRunRepositoryImpl().findByIdForUpdate(firstArg()) }
         coEvery { runs.updateStatus(any(), any()) } coAnswers {
@@ -104,7 +105,7 @@ class PipelineArtifactCompletionIntegrationTest {
                 "V26__pipeline_job_requirements.sql", "V28__pipeline_job_pipeline_requirements.sql", "V29__pipeline_job_attempt.sql",
                 "V31__pipeline_job_deferred_condition.sql", "V32__pipeline_job_environment_approval.sql", "V33__pipeline_run_parameters.sql",
                 "V34__pipeline_secret_permissions.sql", "V35__pipeline_job_kubernetes_dispatch.sql", "V38__pipeline_job_requirement_bypass.sql",
-                "V43__pipeline_catalog_archival.sql", "V51__pipeline_evaluations.sql",
+                "V43__pipeline_catalog_archival.sql", "V51__ci_statuses.sql",
             )
             for (path in paths) {
                 val sql = javaClass.getResource("/db/migrations/$path")?.readText() ?: error("Missing migration $path")

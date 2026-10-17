@@ -88,10 +88,9 @@ class PipelineTriggerAuthorizationTest {
         coEvery { repositories.getPermissions(repository) } returns listOf(
             RepositoryPermission(repository.id, buildGroup.id, PermissionAction.EXECUTE),
         )
-        coEvery { pipelines.beginEvaluation(any()) } answers { firstArg() }
         val planner = bosca.git.ci.service.PipelineRunServiceImpl(
             mockk(), mockk(), mockk(), pipelines, Json, mockk(), mockk(), mockk(), mockk(),
-        )
+            commitStatusService = io.mockk.mockk(relaxed = true))
         io.mockk.every { runs.plan(any(), any(), any(), any()) } answers {
             planner.plan(firstArg(), secondArg(), thirdArg(), arg(3))
         }
@@ -256,7 +255,7 @@ class PipelineTriggerAuthorizationTest {
     }
 
     @Test
-    fun `failed evaluation finishes once with every pipeline error`() = runTest {
+    fun `configuration status includes every pipeline error`() = runTest {
         val second = pipeline.copy(id = UUID.random(), filePath = ".bosca/pipelines/second.yaml", name = "Second")
         coEvery { pipelines.syncPipelines(repository.id, any(), any()) } returns listOf(pipeline, second)
         coEvery { pipelines.parseDefinition(repository.id, any(), pipeline.filePath) } throws IllegalStateException("first")
@@ -264,9 +263,8 @@ class PipelineTriggerAuthorizationTest {
 
         assertFailsWith<IllegalStateException> { execute(principalId) }
 
-        coVerify(exactly = 1) { pipelines.finishEvaluation(any(), any(), any()) }
         coVerify(exactly = 1) {
-            pipelines.finishEvaluation(any(), false, "${pipeline.filePath}: first; ${second.filePath}: second")
+            statuses.recordStatus(repository.id, "after", "ci/configuration", bosca.git.model.CommitStatusState.ERROR, "${pipeline.filePath}: first; ${second.filePath}: second", null, "refs/heads/main")
         }
     }
 
@@ -277,8 +275,7 @@ class PipelineTriggerAuthorizationTest {
         coEvery { pipelines.syncPipelines(repository.id, any(), any()) } returns listOf(pipeline)
         execute(null, "refs/tags/v1")
 
-        coVerify(exactly = 2) { pipelines.finishEvaluation(any(), true, null) }
-        coVerify(exactly = 1) { pipelines.recordEvaluationRun(any(), pipeline.filePath, null) }
+        coVerify(exactly = 2) { statuses.recordStatus(repository.id, "after", "ci/configuration", bosca.git.model.CommitStatusState.SUCCESS, "CI jobs selected", null, any()) }
     }
 
     @Test
@@ -286,16 +283,16 @@ class PipelineTriggerAuthorizationTest {
         execute(null)
 
         coVerify(exactly = 1) {
-            pipelines.finishEvaluation(any(), true, "The ref update has no initiating principal")
+            statuses.recordStatus(repository.id, "after", "ci/configuration", bosca.git.model.CommitStatusState.ERROR, "The ref update has no initiating principal", null, "refs/heads/main")
         }
-        coVerify(exactly = 0) { pipelines.recordEvaluationRun(any(), any(), any()) }
+        coVerify(exactly = 0) { runs.createTriggeredRun(any(), any(), any(), any(), any(), any(), any(), any()) }
     }
 
     @Test
     fun `already processed trigger does not reset commit statuses`() = runTest {
         coEvery { runs.createTriggeredRun(any(), any(), any(), any(), any(), any(), any(), any()) } returns null
         execute(principalId)
-        coVerify(exactly = 0) { statuses.recordStatus(any(), any(), any(), any(), any(), any()) }
+        coVerify(exactly = 0) { statuses.recordStatus(any(), any(), match { it != "ci/configuration" }, any(), any(), any(), any()) }
     }
 
     private suspend fun execute(actor: UUID?, ref: String = "refs/heads/main") {

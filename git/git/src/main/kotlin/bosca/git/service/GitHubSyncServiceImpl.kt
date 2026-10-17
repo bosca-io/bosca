@@ -7,7 +7,8 @@ import bosca.git.model.GitHubPullRequestState
 import bosca.git.model.PullRequestEvent
 import bosca.git.model.PullRequestEventAction
 import bosca.git.model.PullRequestStatus
-import bosca.git.model.PipelineEvent
+import bosca.git.model.CommitStatusEvent
+import bosca.git.model.GitHubCommitStatus
 
 import bosca.git.model.GitHubUser
 import bosca.lock.DistributedLockFactory
@@ -68,112 +69,75 @@ class GitHubSyncServiceImpl(
     private val profiles: ProfileService,
     private val permissions: RepositoryPermissionEvaluator,
     private val protections: BranchProtectionService,
-    private val pipelineRuns: PipelineRunService,
-    private val ciPipelines: PipelineService,
+    private val commitStatuses: CommitStatusService,
     private val exportPipelines: bosca.pipelines.service.PipelineService,
     private val exportRuns: bosca.pipelines.service.PipelineRunService,
 ) : GitHubSyncService {
     private val log = LoggerFactory.getLogger(GitHubSyncServiceImpl::class.java)
 
-    override suspend fun synchronizePipelineRun(event: PipelineEvent): GitHubSyncResult =
+    override suspend fun synchronizeCommitStatus(event: CommitStatusEvent): GitHubSyncResult =
         withPair(event.repositoryId, GitHubSyncResult.IGNORED) { pair ->
-            val (sha, _) = GitHubCiStatuses(pipelineRuns, ciPipelines).forRun(event, includeGate = false)
-                ?: return@withPair GitHubSyncResult.IGNORED
-            synchronizeCiCommit(pair, sha)
+            val status = commitStatuses.findById(event.statusId) ?: return@withPair GitHubSyncResult.IGNORED
+            require(status.repositoryId == event.repositoryId) { "Commit status does not belong to the paired repository" }
+            publishStatus(pair, status)
         }
 
-    override suspend fun synchronizePipelineEvaluation(event: bosca.git.model.PipelineEvaluationEvent): GitHubSyncResult =
-        withPair(event.repositoryId, GitHubSyncResult.IGNORED) { pair ->
-            val evaluation = ciPipelines.findEvaluation(event.evaluationId) ?: return@withPair GitHubSyncResult.IGNORED
-            require(evaluation.repositoryId == event.repositoryId) { "CI evaluation does not belong to the paired repository" }
-            synchronizeCiCommit(pair, evaluation.commitSha)
-        }
-
-    private suspend fun synchronizeCiCommit(pair: GitHubRepositoryPair, sha: String): GitHubSyncResult {
-        val runs = pipelineRuns.findByCommit(pair.repositoryId, sha)
-        val refs = ciPipelines.findEvaluationsByCommit(pair.repositoryId, sha).map { it.ref } + runs.map { it.ref }
-        // GitHub rejects statuses for a commit that only exists on refs this pair does not export.
-        if (refs.none { allowsAutomaticRef(pair, it, RefSynchronizationDirection.OUTBOUND) }) return GitHubSyncResult.UNCHANGED
-        val builder = GitHubCiStatuses(pipelineRuns, ciPipelines)
-        val statuses = builder.forCommit(pair.repositoryId, sha).toMutableList()
-        val roots = mutableSetOf<UUID>()
-        for (run in runs) {
-            if (!roots.add(run.rerunOf ?: run.id)) continue
-            builder.forRun(PipelineEvent(pair.repositoryId, run.id, run.pipelineId, run.status, run.modified), includeGate = false)
-                ?.second?.let(statuses::addAll)
-        }
-        var changed = false
-        if (statuses.isNotEmpty()) {
-            val credential = token(pair)
-            for (status in statuses) {
-                if (github.synchronizeCommitStatus(pair, credential, sha, status)) changed = true
-            }
-        }
+    private suspend fun publishStatus(pair: GitHubRepositoryPair, status: bosca.git.model.CommitStatus): GitHubSyncResult {
+        val ref = status.ref
+        if (ref != null && !allowsAutomaticRef(pair, ref, RefSynchronizationDirection.OUTBOUND)) return GitHubSyncResult.UNCHANGED
+        val changed = github.synchronizeCommitStatus(pair, token(pair), status.commitSha, GitHubCommitStatus(
+            state = status.state.name.lowercase(), context = status.context,
+            description = status.description, targetUrl = status.targetUrl,
+        ))
         return if (changed) GitHubSyncResult.APPLIED else GitHubSyncResult.UNCHANGED
     }
 
+    private suspend fun synchronizeCiCommit(pair: GitHubRepositoryPair, sha: String) {
+        for (status in commitStatuses.getStatuses(pair.repositoryId, sha)) publishStatus(pair, status)
+    }
+
     override suspend fun reconcileCiStatuses(repositoryId: UUID?): Int {
+        val pipeline = exportPipelines.getByKey("github-export-ci-status")?.takeIf { it.triggered } ?: return 0
         val pairs = if (repositoryId == null) repository.findEnabledPairs() else listOfNotNull(repository.findPair(repositoryId))
-        val runPipeline = exportPipelines.getByKey("github-export-ci-status")?.takeIf { it.triggered }
-        val evaluationPipeline = exportPipelines.getByKey("github-export-ci-evaluation")?.takeIf { it.triggered }
         val since = java.time.OffsetDateTime.now().minusDays(7)
+        val serializer = CommitStatusEvent.serializer()
         val failures = mutableListOf<Exception>()
         var attempts = 0
         var queued = 0
-        suspend fun recover(pipeline: bosca.pipelines.model.Pipeline, type: String,
-                            input: kotlinx.serialization.json.JsonElement, modified: java.time.OffsetDateTime) {
-            if (attempts >= 100) return
-            var attempted = false
-            try {
-                val previous = exportRuns.findLatestByInput(pipeline.id, type, input)
-                when (previous?.status) {
-                    ExportRunStatus.OK -> if (previous.output != JsonPrimitive(GitHubSyncResult.IGNORED.name)) return
-                    ExportRunStatus.RUNNING, ExportRunStatus.SUSPENDED -> return
-                    ExportRunStatus.FAILED, ExportRunStatus.CANCELLED, null -> Unit
-                }
-                attempts++
-                attempted = true
-                if (previous == null) {
-                    exportRuns.enqueueEvent(pipeline.id, type, input, modified)
-                    queued++
-                } else if (exportRuns.restart(previous.id) != null) queued++
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                if (!attempted) attempts++
-                log.error("Could not recover GitHub CI export for pipeline {}", pipeline.id, e)
-                failures += e
-            }
-        }
         for (pair in pairs) {
             if (attempts >= 100) break
             if (availablePair(pair) == null) continue
-            if (evaluationPipeline != null) {
-                var offset = 0L
-                do {
-                    val page = ciPipelines.findEvaluationsChangedSince(pair.repositoryId, since, offset, 100)
-                    for (evaluation in page) {
-                        val event = bosca.git.model.PipelineEvaluationEvent(pair.repositoryId, evaluation.id, evaluation.modified)
-                        val serializer = bosca.git.model.PipelineEvaluationEvent.serializer()
-                        recover(evaluationPipeline, serializer.descriptor.serialName, json.encodeToJsonElement(serializer, event), evaluation.modified)
-                        if (attempts >= 100) break
+            var offset = 0L
+            do {
+                val page = commitStatuses.findChangedSince(pair.repositoryId, since, offset, 100)
+                for (status in page) {
+                    if (attempts >= 100) break
+                    val event = CommitStatusEvent(pair.repositoryId, status.id, status.modified)
+                    val input = json.encodeToJsonElement(serializer, event)
+                    var attempted = false
+                    try {
+                        val previous = exportRuns.findLatestByInput(pipeline.id, serializer.descriptor.serialName, input)
+                        when (previous?.status) {
+                            ExportRunStatus.OK -> if (previous.output != JsonPrimitive(GitHubSyncResult.IGNORED.name)) continue
+                            ExportRunStatus.RUNNING, ExportRunStatus.SUSPENDED -> continue
+                            ExportRunStatus.FAILED, ExportRunStatus.CANCELLED, null -> Unit
+                        }
+                        attempts++
+                        attempted = true
+                        if (previous == null) {
+                            exportRuns.enqueueEvent(pipeline.id, serializer.descriptor.serialName, input, status.modified)
+                            queued++
+                        } else if (exportRuns.restart(previous.id) != null) queued++
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        if (!attempted) attempts++
+                        failures += e
+                        log.error("Could not recover GitHub commit status {}", status.id, e)
                     }
-                    offset += page.size
-                } while (page.size == 100 && attempts < 100)
-            }
-            if (runPipeline != null && attempts < 100) {
-                var offset = 0L
-                do {
-                    val page = pipelineRuns.findChangedSince(pair.repositoryId, since, offset, 100)
-                    for (run in page) {
-                        val event = PipelineEvent(pair.repositoryId, run.id, run.pipelineId, run.status, run.modified)
-                        val serializer = PipelineEvent.serializer()
-                        recover(runPipeline, serializer.descriptor.serialName, json.encodeToJsonElement(serializer, event), run.modified)
-                        if (attempts >= 100) break
-                    }
-                    offset += page.size
-                } while (page.size == 100 && attempts < 100)
-            }
+                }
+                offset += page.size
+            } while (page.size == 100 && attempts < 100)
         }
         if (failures.isNotEmpty()) throw IllegalStateException("GitHub CI recovery failed for ${failures.size} operations", failures.first())
             .apply { failures.drop(1).forEach { addSuppressed(it) } }

@@ -13,33 +13,6 @@ import bosca.service.Service
  */
 interface PipelineService : Service {
 
-    /** Starts a durable trigger decision once. Redelivery preserves recorded runs and completion. */
-    suspend fun beginEvaluation(evaluation: bosca.git.model.PipelineEvaluation): bosca.git.model.PipelineEvaluation
-
-    /** Records a created run in its creation transaction; null records an intentional file skip. */
-    suspend fun recordEvaluationRun(id: UUID, filePath: String, runId: UUID?)
-
-    /** Finishes selection, retaining errors; incomplete evaluations may be retried by the trigger job. */
-    suspend fun finishEvaluation(id: UUID, completed: Boolean, error: String? = null)
-
-    /** Reads a persisted automatic-trigger decision, including one which created no runs. */
-    suspend fun findEvaluation(id: UUID): bosca.git.model.PipelineEvaluation?
-
-    /** All automatic-trigger decisions for an exact commit, across refs, ordered by creation then ID. */
-    suspend fun findEvaluationsByCommit(repositoryId: UUID, commitSha: String): List<bosca.git.model.PipelineEvaluation>
-
-    /** Pages recent decisions and incomplete evaluations for export recovery. */
-    suspend fun findEvaluationsChangedSince(repositoryId: UUID, since: bosca.serialization.OffsetDateTime, offset: Long, limit: Int): List<bosca.git.model.PipelineEvaluation>
-
-    /**
-     * Moves every selection of [previousRunId] on this commit to [runId] when a deleted root's
-     * retry becomes the new root. Callers announce the change with [refreshEvaluations].
-     */
-    suspend fun replaceEvaluationRun(repositoryId: UUID, commitSha: String, previousRunId: UUID, runId: UUID)
-
-    /** Refreshes and announces aggregate checks after a run for this commit is deleted. */
-    suspend fun refreshEvaluations(repositoryId: UUID, commitSha: String)
-
     /** Reports invalid or unreadable YAML files at an immutable commit, including files omitted from the catalog. */
     suspend fun definitionErrors(repositoryId: UUID, commitSha: String): List<String>
 

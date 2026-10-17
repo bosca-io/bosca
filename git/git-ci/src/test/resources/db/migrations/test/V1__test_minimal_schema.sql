@@ -49,3 +49,21 @@ create table git.repositories (
     created         timestamptz not null default now(),
     updated         timestamptz not null default now()
 );
+
+create table git.commit_statuses (
+    id              uuid primary key default gen_random_uuid(),
+    repository_id   uuid not null references git.repositories(id) on delete cascade,
+    commit_sha      varchar not null,
+    context         varchar not null,
+    state           varchar not null,
+    description     varchar,
+    target_url      varchar,
+    created         timestamptz not null default now()
+);
+create index idx_git_commit_statuses_repo_sha on git.commit_statuses (repository_id, commit_sha);
+create unique index idx_git_commit_statuses_unique on git.commit_statuses (repository_id, commit_sha, context);
+
+create type git.commit_status_state as enum ('pending', 'success', 'failure', 'error');
+
+alter table git.commit_statuses
+    alter column state type git.commit_status_state using state::git.commit_status_state;

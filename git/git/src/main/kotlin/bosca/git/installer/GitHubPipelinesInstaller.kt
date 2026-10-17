@@ -15,7 +15,7 @@ import kotlinx.serialization.json.put
 
 /** Seeds synchronization graphs and adds their Git tag while preserving operator configuration. */
 class GitHubPipelinesInstaller(private val pipelines: PipelineService) : PackageInstaller {
-    override val version = "1.5.0"
+    override val version = "1.6.0"
 
     override suspend fun install(installation: PackageInstallation, version: PackageInstallationVersion) {
         seed("github-import-refs", "GitHub: Import Refs", "bosca.git.model.GitHubDelivery", "githubPush", "delivery")
@@ -24,8 +24,7 @@ class GitHubPipelinesInstaller(private val pipelines: PipelineService) : Package
         seed("github-import-pull-requests", "GitHub: Import Pull Requests", "bosca.git.model.GitHubDelivery", "githubImportPullRequest", "delivery")
         seed("github-export-pull-requests", "GitHub: Export Pull Requests", "bosca.git.model.PullRequestEvent", "githubExportPullRequest", "event")
         seed("github-reconcile-pull-requests", "GitHub: Reconcile Pull Requests", InputNode.JSON_TYPE, "githubReconcilePullRequests", "request", schedule = "30 3 * * *")
-        seed("github-export-ci-status", "GitHub: Export CI Status", "bosca.git.model.PipelineEvent", "githubExportCiStatus", "event")
-        seed("github-export-ci-evaluation", "GitHub: Export CI Evaluation", "bosca.git.model.PipelineEvaluationEvent", "githubExportCiEvaluation", "event")
+        seed("github-export-ci-status", "GitHub: Export CI Status", "bosca.git.model.CommitStatusEvent", "githubExportCiStatus", "event")
         seed("github-reconcile-ci-statuses", "GitHub: Reconcile CI Statuses", InputNode.JSON_TYPE, "githubReconcileCiStatuses", "request", schedule = "50 3 * * *")
     }
 
@@ -80,6 +79,6 @@ class GitHubPackageInstallerRegistry {
     @Provider(name = "github")
     fun installation(): PackageInstallation = PackageInstallation(
         key = "github", name = "GitHub",
-        versions = listOf(PackageInstallationVersion(version = "1.5.0", installerNames = listOf("github-pipelines"))),
+        versions = listOf(PackageInstallationVersion(version = "1.6.0", installerNames = listOf("github-pipelines"))),
     )
 }

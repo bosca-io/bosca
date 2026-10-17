@@ -1197,11 +1197,8 @@ class GitPipelineMutationTest {
             job.id,
         )
 
-        coVerify {
-            commitStatusService.recordStatus(
-                repoId, run.commitSha, "ci/build", CommitStatusState.SUCCESS, "Passed", null
-            )
-        }
+        coVerify { runService.refreshCommitStatuses(run.id) }
+        coVerify(exactly = 0) { commitStatusService.recordStatus(any(), any(), any(), any(), any(), any(), any()) }
     }
 
     @Test

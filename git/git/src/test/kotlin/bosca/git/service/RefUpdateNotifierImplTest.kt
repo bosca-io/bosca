@@ -80,6 +80,7 @@ class RefUpdateNotifierImplTest {
     @BeforeTest
     fun setup() {
         ProviderRegistry.clear()
+        provides<CommitStatusService> { mockk(relaxed = true) }
         provides<Json>(singleton = true) { Json { ignoreUnknownKeys = true } }
         provides<JobConfigurationEnqueuer>(name = "repository-index", singleton = true) { repoIndexEnqueuer }
         provides<JobConfigurationEnqueuer>(name = "file-content-index", singleton = true) { fileIndexEnqueuer }

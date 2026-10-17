@@ -122,7 +122,7 @@ class GitHubSyncServiceIntegrationTest {
     private val github = mockk<bosca.git.github.GitHubClient>()
     private val locks = mockk<bosca.lock.DistributedLockFactory>()
     private val lock = mockk<bosca.lock.DistributedLock>()
-    private val service = GitHubSyncServiceImpl(repository, hostedService, secrets, security, writes, github, locks, mockk(), mockk(), permissions, protections, mockk(relaxed = true), mockk(relaxed = true), mockk(), mockk())
+    private val service = GitHubSyncServiceImpl(repository, hostedService, secrets, security, writes, github, locks, mockk(), mockk(), permissions, protections, io.mockk.mockk(relaxed = true), mockk(), mockk())
     private val input = GitHubRepositoryPairInput(repositoryId, 123, "bosca-io", "source", "github-webhook", "github-token", true)
     private val secret = "test-secret-✓"
     private val json = Json { serializersModule = SerializersModule {
@@ -159,7 +159,10 @@ class GitHubSyncServiceIntegrationTest {
             val refMigration = javaClass.getResource("/db/migrations/V45__github_ref_synchronization.sql")?.readText()
                 ?: error("Missing ref migration")
             connection().useStatement(refMigration) { it.execute() }
-            for (name in listOf("V3__pull_requests.sql", "V46__github_pull_request_synchronization.sql", "V47__github_delivery_problems.sql", "V48__github_branch_filters.sql", "V49__pull_request_merge_base.sql", "V50__pull_request_branch_cleanup.sql", "V12__ci_cd_pipelines.sql", "V51__pipeline_evaluations.sql")) {
+            val statusSchema = requireNotNull(javaClass.getResource("/db/migrations/V5__lfs_and_deploy_tokens.sql")).readText()
+            connection().useStatement("create table git.commit_statuses" + statusSchema.substringAfter("create table git.commit_statuses")) { it.execute() }
+            connection().useStatement(requireNotNull(javaClass.getResource("/db/migrations/V15__commit_status_state_enum.sql")).readText()) { it.execute() }
+            for (name in listOf("V3__pull_requests.sql", "V46__github_pull_request_synchronization.sql", "V47__github_delivery_problems.sql", "V48__github_branch_filters.sql", "V49__pull_request_merge_base.sql", "V50__pull_request_branch_cleanup.sql", "V12__ci_cd_pipelines.sql", "V51__ci_statuses.sql")) {
                 connection().useStatement(javaClass.getResource("/db/migrations/$name")?.readText() ?: error(name)) { it.execute() }
             }
             connection().useStatement("insert into git.repositories(id) values ('$repositoryId')") { it.execute() }
@@ -599,7 +602,7 @@ class GitHubSyncServiceIntegrationTest {
             server.start()
             val resolving = GitHubSyncServiceImpl(repository, hostedService, secrets, security, writes,
                 bosca.git.github.GitHubClient(baseUrl = server.url("/").toString().removeSuffix("/")),
-                locks, mockk(), mockk(), permissions, protections, mockk(relaxed = true), mockk(relaxed = true), mockk(), mockk())
+                locks, mockk(), mockk(), permissions, protections, io.mockk.mockk(relaxed = true), mockk(), mockk())
             val automatic = input.copy(githubRepositoryId = null, enabled = false)
             server.enqueue(MockResponse.Builder().code(404).body("upstream-credential").build())
             val failure = assertFailsWith<IllegalStateException> { resolving.savePair(automatic) }
@@ -808,8 +811,7 @@ class GitHubSyncServiceIntegrationTest {
         provides<bosca.profile.profile.service.ProfileService>(singleton = true) { mockk() }
         provides<bosca.git.security.RepositoryPermissionEvaluator>(singleton = true) { permissions }
         provides<BranchProtectionService>(singleton = true) { protections }
-        provides<bosca.git.service.PipelineRunService>(singleton = true) { mockk() }
-        provides<bosca.git.service.PipelineService>(singleton = true) { mockk() }
+        provides<CommitStatusService>(singleton = true) { mockk() }
         provides<bosca.pipelines.service.PipelineService>(singleton = true) { mockk() }
         provides<bosca.pipelines.service.PipelineRunService>(singleton = true) { mockk() }
         val wired = GitHubSyncServiceImplProvider().get()
@@ -1090,7 +1092,7 @@ class GitHubSyncServiceIntegrationTest {
     }
 
     /** Exercises generated event dispatch, both production pipeline jobs and JDBC run mapping. */
-    private suspend fun installTriggeredPipeline(sync: Boolean = false, pullRequests: Boolean = false, failures: Boolean = false, ci: Boolean = false, ciEvaluation: Boolean = false): EventFixture {
+    private suspend fun installTriggeredPipeline(sync: Boolean = false, pullRequests: Boolean = false, failures: Boolean = false, ci: Boolean = false): EventFixture {
         connection().useStatement("""
             drop schema if exists pipelines cascade;
             create table if not exists groups (id uuid primary key, configuration jsonb not null default '{}');
@@ -1135,12 +1137,12 @@ class GitHubSyncServiceIntegrationTest {
         coEvery { pipelines.decodeGraph(any()) } answers {
             graphJson.decodeFromJsonElement(PipelineGraph.serializer(), firstArg())
         }
-        val eventName = if (ciEvaluation) bosca.git.model.PipelineEvaluationEvent.serializer().descriptor.serialName else if (ci) bosca.git.model.PipelineEvent.serializer().descriptor.serialName else if (failures) GitHubSynchronizationFailed.serializer().descriptor.serialName else GitHubDelivery.serializer().descriptor.serialName
+        val eventName = if (ci) bosca.git.model.CommitStatusEvent.serializer().descriptor.serialName else if (failures) GitHubSynchronizationFailed.serializer().descriptor.serialName else GitHubDelivery.serializer().descriptor.serialName
         val graph = Pipeline(
             id = UUID.NIL,
             name = "Inbound GitHub", key = "configured-by-administrator", triggered = true, acceptedInputType = eventName,
             nodes = listOf(InputNode("input", acceptedType = eventName),
-                if (ciEvaluation) bosca.git.pipeline.GitHubExportCiEvaluationNode("probe") else if (ci) bosca.git.pipeline.GitHubExportCiStatusNode("probe") else if (failures) FailureProbe("probe") else if (pullRequests) bosca.git.pipeline.GitHubImportPullRequestNode("probe") else if (sync) bosca.git.pipeline.GitHubPushNode("probe") else DeliveryProbe("probe"), OutputNode("output")),
+                if (ci) bosca.git.pipeline.GitHubExportCiStatusNode("probe") else if (failures) FailureProbe("probe") else if (pullRequests) bosca.git.pipeline.GitHubImportPullRequestNode("probe") else if (sync) bosca.git.pipeline.GitHubPushNode("probe") else DeliveryProbe("probe"), OutputNode("output")),
             edges = listOf(
                 PipelineEdge(id = "in", source = "input", target = "probe"),
                 PipelineEdge(id = "out", source = "probe", target = "output"),
@@ -1176,7 +1178,6 @@ class GitHubSyncServiceIntegrationTest {
         coEvery { pipelines.descriptorFor(any()) } answers {
             val key = when (firstArg<PipelineNode>()) {
                 is bosca.git.pipeline.GitHubExportCiStatusNode -> "githubExportCiStatus"
-                is bosca.git.pipeline.GitHubExportCiEvaluationNode -> "githubExportCiEvaluation"
                 is bosca.git.pipeline.GitHubPushNode -> "githubPush"
                 is bosca.git.pipeline.GitHubImportPullRequestNode -> "githubImportPullRequest"
                 else -> ""
@@ -1211,246 +1212,128 @@ class GitHubSyncServiceIntegrationTest {
         return fixture
     }
 
-    @Test fun `new pair recovers an evaluation export that previously returned ignored`() = withDb {
-        val fixture = installTriggeredPipeline(ciEvaluation = true)
-        val ciRuns = mockk<bosca.git.service.PipelineRunService>()
-        val ciPipelines = mockk<bosca.git.service.PipelineService>()
-        val evaluation = bosca.git.model.PipelineEvaluation(UUID.random(), repositoryId, sha, ref, completed = true)
-        coEvery { ciPipelines.findEvaluation(evaluation.id) } returns evaluation
-        coEvery { ciPipelines.findEvaluationsByCommit(repositoryId, sha) } returns listOf(evaluation)
-        coEvery { ciPipelines.findEvaluationsChangedSince(repositoryId, any(), 0, 100) } returns listOf(evaluation)
-        coEvery { ciRuns.findByCommit(repositoryId, sha) } returns emptyList()
-        coEvery { fixture.pipelineService.getByKey(any()) } returns null
-        coEvery { fixture.pipelineService.getByKey("github-export-ci-evaluation") } answers { fixture.pipelines.single() }
-        coEvery { github.synchronizeCommitStatus(any(), "token", sha, any()) } returns true
-        val sync = GitHubSyncServiceImpl(repository, hostedService, secrets, security, writes, github,
-            locks, mockk(), mockk(), permissions, protections, ciRuns, ciPipelines, fixture.pipelineService, fixture.runService)
-        provides<GitHubSyncService> { sync }
-        val event = bosca.git.model.PipelineEvaluationEvent(repositoryId, evaluation.id, evaluation.modified)
-        transaction { event.dispatch() }
-        fixture.dispatchAll(); fixture.driveAll(); fixture.executeBackingJobs(security)
-        val serializer = bosca.git.model.PipelineEvaluationEvent.serializer()
-        suspend fun latest() = assertNotNull(fixture.runService.findLatestByInput(fixture.pipelines.single().id,
-            serializer.descriptor.serialName, json.encodeToJsonElement(serializer, event)))
-        val ignored = latest()
-        assertEquals(PipelineRunStatus.OK, ignored.status)
-        assertEquals(kotlinx.serialization.json.JsonPrimitive("IGNORED"), ignored.output)
-        coVerify(exactly = 0) { github.synchronizeCommitStatus(any(), any(), any(), any()) }
+    // Individual commit-status synchronization is covered below.
 
-        service.savePair(input)
-        assertEquals(1, sync.reconcileCiStatuses(repositoryId))
-        assertNotEquals(ignored.id, latest().id)
-        assertEquals("restart", latest().eventName)
-        assertEquals(0, sync.reconcileCiStatuses(repositoryId), "An active restart must not be duplicated")
-        fixture.driveAll(); fixture.executeBackingJobs(security)
-        assertEquals(PipelineRunStatus.OK, latest().status)
-        assertEquals(kotlinx.serialization.json.JsonPrimitive("APPLIED"), latest().output)
-        coVerify(exactly = 1) { github.synchronizeCommitStatus(any(), "token", sha, match { it.context == "bosca/ci" && it.state == "success" }) }
-        assertEquals(0, sync.reconcileCiStatuses(repositoryId))
-    }
 
-    @Test fun `reenabling a pair recovers an ignored failure instead of retaining a stale pass`() = withDb {
+    @Test fun `native status events export exact checks and replay reads current state`() = withDb {
         val fixture = installTriggeredPipeline(ci = true)
-        provides<bosca.pubsub.PubSubService> { mockk(relaxed = true) }
-        val ciRuns = mockk<bosca.git.service.PipelineRunService>()
-        val ciPipelines = mockk<bosca.git.service.PipelineService>()
-        val pipeline = bosca.git.model.Pipeline(id = UUID.random(), repositoryId = repositoryId,
-            filePath = ".bosca/pipelines/ci.yaml", name = "CI", configHash = "hash")
-        var run = bosca.git.model.PipelineRun(id = UUID.random(), pipelineId = pipeline.id, repositoryId = repositoryId,
-            commitSha = sha, ref = ref, triggerType = bosca.git.model.PipelineTriggerType.PUSH,
-            status = bosca.git.model.PipelineRunStatus.SUCCESS, number = 1)
-        val evaluation = bosca.git.model.PipelineEvaluation(UUID.random(), repositoryId, sha, ref, completed = true,
-            selections = listOf(bosca.git.model.PipelineSelection(pipeline.filePath, run.id)))
-        coEvery { ciRuns.findById(run.id) } answers { run }
-        coEvery { ciRuns.findLatestAttempt(run.id) } answers { run }
-        coEvery { ciRuns.findByCommit(repositoryId, sha) } answers { listOf(run) }
-        coEvery { ciRuns.findChangedSince(repositoryId, any(), 0, 100) } answers { listOf(run) }
-        coEvery { ciPipelines.findById(pipeline.id) } returns pipeline
-        coEvery { ciPipelines.findEvaluationsByCommit(repositoryId, sha) } returns listOf(evaluation)
-        coEvery { fixture.pipelineService.getByKey(any()) } returns null
-        coEvery { fixture.pipelineService.getByKey("github-export-ci-status") } answers { fixture.pipelines.single() }
-        val published = mutableMapOf<String, bosca.git.model.GitHubCommitStatus>()
-        coEvery { github.synchronizeCommitStatus(any(), "token", sha, any()) } answers {
-            val status = arg<bosca.git.model.GitHubCommitStatus>(3)
-            published.put(status.context, status) != status
-        }
+        val statuses = CommitStatusServiceImpl(bosca.git.repository.CommitStatusRepositoryImpl())
         val sync = GitHubSyncServiceImpl(repository, hostedService, secrets, security, writes, github,
-            locks, mockk(), mockk(), permissions, protections, ciRuns, ciPipelines, fixture.pipelineService, fixture.runService)
+            locks, mockk(), mockk(), permissions, protections, statuses, fixture.pipelineService, fixture.runService)
         provides<GitHubSyncService> { sync }
-        suspend fun export() {
-            transaction { bosca.git.model.PipelineEvent(repositoryId, run.id, pipeline.id, run.status, run.modified).dispatch() }
-            fixture.dispatchAll(); fixture.driveAll(); fixture.executeBackingJobs(security)
-        }
-        val pair = service.savePair(input)
-        export()
-        assertEquals("success", published.getValue("bosca/ci").state)
-        val disabled = service.savePair(input.copy(enabled = false, version = pair.version))
-        run = run.copy(status = bosca.git.model.PipelineRunStatus.FAILURE, modified = java.time.OffsetDateTime.now())
-        export()
-        assertEquals("success", published.getValue("bosca/ci").state)
-        val event = bosca.git.model.PipelineEvent(repositoryId, run.id, pipeline.id, run.status, run.modified)
-        val serializer = bosca.git.model.PipelineEvent.serializer()
-        val ignored = assertNotNull(fixture.runService.findLatestByInput(fixture.pipelines.single().id,
-            serializer.descriptor.serialName, json.encodeToJsonElement(serializer, event)))
-        assertEquals(PipelineRunStatus.OK, ignored.status)
-        assertEquals(kotlinx.serialization.json.JsonPrimitive("IGNORED"), ignored.output)
+        coEvery { fixture.pipelineService.getByKey("github-export-ci-status") } answers { fixture.pipelines.single() }
+        coEvery { github.synchronizeCommitStatus(any(), "token", sha, any()) } returns true
+        service.savePair(input)
+        val pending = statuses.recordStatus(repositoryId, sha, "ci/build.yaml/tests", bosca.git.model.CommitStatusState.PENDING,
+            "Queued", "https://ci.example/run", ref)
+        fixture.dispatchAll(); fixture.driveAll(); fixture.executeBackingJobs(security)
+        coVerify { github.synchronizeCommitStatus(any(), "token", sha, bosca.git.model.GitHubCommitStatus(
+            "pending", "ci/build.yaml/tests", "Queued", "https://ci.example/run")) }
+        val completed = statuses.recordStatus(repositoryId, sha, pending.context, bosca.git.model.CommitStatusState.SUCCESS,
+            "Passed", pending.targetUrl)
+        fixture.dispatchAll(); fixture.driveAll(); fixture.executeBackingJobs(security)
+        assertEquals(pending.id, completed.id)
+        assertEquals(GitHubSyncResult.APPLIED, sync.synchronizeCommitStatus(bosca.git.model.CommitStatusEvent(repositoryId, pending.id, pending.modified)))
+        coVerify(exactly = 2) { github.synchronizeCommitStatus(any(), "token", sha, bosca.git.model.GitHubCommitStatus(
+            "success", pending.context, "Passed", pending.targetUrl)) }
         assertEquals(0, sync.reconcileCiStatuses(repositoryId))
+        assertTrue(fixture.runRepository.listActive(0, 25).isEmpty())
+    }
 
-        service.savePair(input.copy(version = disabled.version))
+    @Test fun `pair activation recovers ignored statuses and shed revisions through existing export history`() = withDb {
+        val fixture = installTriggeredPipeline(ci = true)
+        val statuses = CommitStatusServiceImpl(bosca.git.repository.CommitStatusRepositoryImpl())
+        val sync = GitHubSyncServiceImpl(repository, hostedService, secrets, security, writes, github,
+            locks, mockk(), mockk(), permissions, protections, statuses, fixture.pipelineService, fixture.runService)
+        provides<GitHubSyncService> { sync }
+        coEvery { fixture.pipelineService.getByKey("github-export-ci-status") } answers { fixture.pipelines.single() }
+        coEvery { github.synchronizeCommitStatus(any(), "token", sha, any()) } returns true
+        val status = statuses.recordStatus(repositoryId, sha, "ci/tests", bosca.git.model.CommitStatusState.PENDING)
+        fixture.dispatchAll(); fixture.driveAll(); fixture.executeBackingJobs(security)
+        coVerify(exactly = 0) { github.synchronizeCommitStatus(any(), any(), any(), any()) }
+        val pair = service.savePair(input)
         assertEquals(1, sync.reconcileCiStatuses(repositoryId))
         assertEquals(0, sync.reconcileCiStatuses(repositoryId))
         fixture.driveAll(); fixture.executeBackingJobs(security)
-        assertEquals("failure", published.getValue("bosca/ci").state)
-        assertEquals("failure", published.getValue("bosca/ci/ci.yaml").state)
         assertEquals(0, sync.reconcileCiStatuses(repositoryId))
-        export() // An unchanged export is acknowledged without another recovery.
-        assertEquals(0, sync.reconcileCiStatuses(repositoryId))
-    }
 
-    @Test fun `existing export history recovers a shed completion and avoids repeating success`() = withDb {
-        val fixture = installTriggeredPipeline(ciEvaluation = true)
         fixture.pipelines[0] = fixture.pipelines.single().copy(maxRunsPerMinute = 1)
-        val ciRuns = mockk<bosca.git.service.PipelineRunService>()
-        val ciPipelines = mockk<bosca.git.service.PipelineService>()
-        var evaluation = bosca.git.model.PipelineEvaluation(UUID.random(), repositoryId, sha, "refs/heads/feature")
-        coEvery { ciPipelines.findEvaluation(evaluation.id) } answers { evaluation }
-        coEvery { ciPipelines.findEvaluationsByCommit(repositoryId, sha) } answers { listOf(evaluation) }
-        coEvery { ciPipelines.findEvaluationsChangedSince(repositoryId, any(), 0, 100) } answers { listOf(evaluation) }
-        coEvery { ciRuns.findByCommit(repositoryId, sha) } returns emptyList()
-        coEvery { fixture.pipelineService.getByKey(any()) } returns null
-        coEvery { fixture.pipelineService.getByKey("github-export-ci-evaluation") } answers { fixture.pipelines.single() }
-        MockWebServer().use { server ->
-            server.start()
-            val sync = GitHubSyncServiceImpl(repository, hostedService, secrets, security, writes,
-                bosca.git.github.GitHubClient(baseUrl = server.url("/").toString().removeSuffix("/")),
-                locks, mockk(), mockk(), permissions, protections, ciRuns, ciPipelines, fixture.pipelineService, fixture.runService)
-            provides<GitHubSyncService> { sync }
-            service.savePair(input)
-            fun enqueuePublication() {
-                server.enqueue(MockResponse.Builder().body("""{"id":123}""").build())
-                server.enqueue(MockResponse.Builder().body("[]").build())
-                server.enqueue(MockResponse.Builder().code(201).body("{}").build())
-            }
-            enqueuePublication()
-            fun event() = bosca.git.model.PipelineEvaluationEvent(repositoryId, evaluation.id, evaluation.modified)
-            transaction { event().dispatch() }
-            fixture.dispatchAll(); fixture.driveAll(); fixture.executeBackingJobs(security)
-            server.takeRequest(); server.takeRequest()
-            val pending = Json.parseToJsonElement(requireNotNull(server.takeRequest().body).utf8()).jsonObject
-            assertEquals("pending", pending.getValue("state").jsonPrimitive.content)
-
-            evaluation = evaluation.copy(completed = true, modified = java.time.OffsetDateTime.now())
-            transaction { event().dispatch() }
-            fixture.dispatchAll(); fixture.driveAll(); fixture.executeBackingJobs(security)
-            assertEquals(3, server.requestCount, "the admission cap shed the completion export")
-            fixture.pipelines[0] = fixture.pipelines.single().copy(maxRunsPerMinute = null)
-            enqueuePublication()
-            assertEquals(1, sync.reconcileCiStatuses())
-            assertEquals(3, server.requestCount, "recovery queues normal pipeline work")
-            fixture.driveAll(); fixture.executeBackingJobs(security)
-            server.takeRequest(); server.takeRequest()
-            val completed = Json.parseToJsonElement(requireNotNull(server.takeRequest().body).utf8()).jsonObject
-            assertEquals("success", completed.getValue("state").jsonPrimitive.content)
-            assertEquals(0, sync.reconcileCiStatuses())
-            assertEquals(6, server.requestCount, "successful export history prevents another remote lookup")
-        }
-    }
-
-    @Test fun `recovery repairs a completion committed after an older export started`() = withDb {
-        val fixture = installTriggeredPipeline(ciEvaluation = true)
-        fixture.pipelines[0] = fixture.pipelines.single().copy(maxRunsPerMinute = 1)
-        val ciRuns = mockk<bosca.git.service.PipelineRunService>()
-        val ciPipelines = mockk<bosca.git.service.PipelineService>()
-        val initial = bosca.git.model.PipelineEvaluation(UUID.random(), repositoryId, sha, "refs/heads/feature")
-        connection().useStatement("insert into git.pipeline_evaluations(id, repository_id, commit_sha, ref) values ('${initial.id}', '$repositoryId', '$sha', '${initial.ref}')") { it.execute() }
-        suspend fun currentEvaluation() = connection().useStatement("select completed, modified from git.pipeline_evaluations where id = '${initial.id}'") { statement ->
-            statement.executeQuery().use { result ->
-                check(result.next())
-                initial.copy(completed = result.getBoolean(1), modified = result.getObject(2, java.time.OffsetDateTime::class.java))
-            }
-        }
-        coEvery { ciPipelines.findEvaluation(initial.id) } coAnswers { currentEvaluation() }
-        coEvery { ciPipelines.findEvaluationsByCommit(repositoryId, sha) } coAnswers { listOf(currentEvaluation()) }
-        coEvery { ciPipelines.findEvaluationsChangedSince(repositoryId, any(), 0, 100) } coAnswers { listOf(currentEvaluation()) }
-        coEvery { ciRuns.findByCommit(repositoryId, sha) } returns emptyList()
-        coEvery { fixture.pipelineService.getByKey(any()) } returns null
-        coEvery { fixture.pipelineService.getByKey("github-export-ci-evaluation") } answers { fixture.pipelines.single() }
-        val published = mutableMapOf<String, bosca.git.model.GitHubCommitStatus>()
-        coEvery { github.synchronizeCommitStatus(any(), "token", sha, any()) } answers {
-            val status = arg<bosca.git.model.GitHubCommitStatus>(3)
-            published.put(status.context, status) != status
-        }
-        val sync = GitHubSyncServiceImpl(repository, hostedService, secrets, security, writes, github,
-            locks, mockk(), mockk(), permissions, protections, ciRuns, ciPipelines, fixture.pipelineService, fixture.runService)
-        provides<GitHubSyncService> { sync }
-        service.savePair(input)
-        val pending = currentEvaluation()
-        val oldEvent = bosca.git.model.PipelineEvaluationEvent(repositoryId, pending.id, pending.modified)
-        val serializer = bosca.git.model.PipelineEvaluationEvent.serializer()
-
-        // Another connection has written completion, but the export can only see committed state.
-        java.sql.DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { completion ->
-            completion.autoCommit = false
-            completion.createStatement().use { statement ->
-                statement.executeUpdate("update git.pipeline_evaluations set completed = true, modified = clock_timestamp() where id = '${initial.id}'")
-            }
-            transaction { oldEvent.dispatch() }
-            fixture.dispatchAll(); fixture.driveAll(); fixture.executeBackingJobs(security)
-            assertFalse(currentEvaluation().completed)
-            assertEquals("pending", published.getValue("bosca/ci").state)
-            val oldExport = assertNotNull(fixture.runService.findLatestByInput(fixture.pipelines.single().id,
-                serializer.descriptor.serialName, json.encodeToJsonElement(serializer, oldEvent)))
-            assertEquals(PipelineRunStatus.OK, oldExport.status)
-
-            completion.commit()
-            val completed = currentEvaluation()
-            assertTrue(completed.completed)
-            assertTrue(oldExport.createdAt.isAfter(completed.modified))
-            transaction { bosca.git.model.PipelineEvaluationEvent(repositoryId, completed.id, completed.modified).dispatch() }
-            fixture.dispatchAll(); fixture.driveAll(); fixture.executeBackingJobs(security)
-            assertEquals("pending", published.getValue("bosca/ci").state, "the admission cap shed completion")
-        }
-
+        statuses.recordStatus(repositoryId, sha, status.context, bosca.git.model.CommitStatusState.SUCCESS)
+        fixture.dispatchAll(); fixture.driveAll(); fixture.executeBackingJobs(security)
+        coVerify(exactly = 0) { github.synchronizeCommitStatus(any(), any(), any(), match { it.state == "success" }) }
         fixture.pipelines[0] = fixture.pipelines.single().copy(maxRunsPerMinute = null)
         assertEquals(1, sync.reconcileCiStatuses(repositoryId))
         fixture.driveAll(); fixture.executeBackingJobs(security)
-        assertEquals("success", published.getValue("bosca/ci").state)
+        coVerify(exactly = 1) { github.synchronizeCommitStatus(any(), "token", sha, match { it.state == "success" }) }
+
+        val disabled = service.savePair(input.copy(enabled = false, version = pair.version))
+        statuses.recordStatus(repositoryId, sha, status.context, bosca.git.model.CommitStatusState.FAILURE)
+        fixture.dispatchAll(); fixture.driveAll(); fixture.executeBackingJobs(security)
         assertEquals(0, sync.reconcileCiStatuses(repositoryId))
+        service.savePair(input.copy(version = disabled.version))
+        assertEquals(1, sync.reconcileCiStatuses(repositoryId))
+        fixture.driveAll(); fixture.executeBackingJobs(security)
+        coVerify(exactly = 1) { github.synchronizeCommitStatus(any(), "token", sha, match { it.state == "failure" }) }
+        assertEquals(0, sync.reconcileCiStatuses(repositoryId))
+    }
+
+    @Test fun `status forwarding validates source ownership and respects ref filters`() = withDb {
+        val statuses = mockk<CommitStatusService>()
+        val sync = GitHubSyncServiceImpl(repository, hostedService, secrets, security, writes, github,
+            locks, mockk(), mockk(), permissions, protections, statuses, mockk(), mockk())
+        val status = bosca.git.model.CommitStatus(id = UUID.random(), repositoryId = repositoryId, commitSha = sha,
+            context = "ci/tests", state = bosca.git.model.CommitStatusState.SUCCESS, ref = "refs/heads/private/one")
+        val event = bosca.git.model.CommitStatusEvent(repositoryId, status.id, status.modified)
+        assertEquals(GitHubSyncResult.IGNORED, sync.synchronizeCommitStatus(event))
+        service.savePair(input.copy(pushBranchExcludes = listOf("private/**")))
+        coEvery { statuses.findById(status.id) } returns null
+        assertEquals(GitHubSyncResult.IGNORED, sync.synchronizeCommitStatus(event))
+        coEvery { statuses.findById(status.id) } returns status.copy(repositoryId = UUID.random())
+        assertFailsWith<IllegalArgumentException> { sync.synchronizeCommitStatus(event) }
+        coEvery { statuses.findById(status.id) } returns status
+        assertEquals(GitHubSyncResult.UNCHANGED, sync.synchronizeCommitStatus(event))
+        coVerify(exactly = 0) { github.synchronizeCommitStatus(any(), any(), any(), any()) }
+        coEvery { statuses.getStatuses(repositoryId, sha) } returns listOf(status.copy(ref = ref))
+        coEvery { writes.synchronizeRef(any()) } returns RefSynchronizationResult(GitHubSyncResult.APPLIED, sha, sha)
+        coEvery { github.synchronizeCommitStatus(any(), "token", sha, any()) } throws IllegalStateException("Unavailable")
+        assertFailsWith<IllegalStateException> { sync.synchronizeRef(refEvent()) }
+        coEvery { writes.synchronizeRef(any()) } returns RefSynchronizationResult(GitHubSyncResult.UNCHANGED, sha, sha)
+        coEvery { github.synchronizeCommitStatus(any(), "token", sha, any()) } returns false
+        assertEquals(GitHubSyncResult.UNCHANGED, sync.synchronizeRef(refEvent()))
+        coVerify(exactly = 2) { github.synchronizeCommitStatus(any(), "token", sha, match { it.context == status.context && it.state == "success" }) }
     }
 
     @Test fun `CI recovery pages source activity reuses failed runs and caps queued work`() = withDb {
         service.savePair(input)
-        val ciRuns = mockk<bosca.git.service.PipelineRunService>()
-        val ciPipelines = mockk<bosca.git.service.PipelineService>()
+        val statuses = mockk<CommitStatusService>()
         val exports = mockk<bosca.pipelines.service.PipelineService>()
         val exportRuns = mockk<bosca.pipelines.service.PipelineRunService>()
-        val graph = Pipeline(id = UUID.random(), name = "Export", acceptedInputType = "bosca.git.model.PipelineEvent", triggered = true)
+        val graph = Pipeline(id = UUID.random(), name = "Export", acceptedInputType = "bosca.git.model.CommitStatusEvent", triggered = true)
         coEvery { exports.getByKey(any()) } returns null
         coEvery { exports.getByKey("github-export-ci-status") } returns graph
-        val source = (1..105).map { number -> bosca.git.model.PipelineRun(id = UUID.random(), pipelineId = UUID.random(),
-            repositoryId = repositoryId, commitSha = sha, ref = "refs/heads/main", triggerType = bosca.git.model.PipelineTriggerType.PUSH,
-            number = number, status = bosca.git.model.PipelineRunStatus.SUCCESS) }
-        coEvery { ciRuns.findChangedSince(repositoryId, any(), any(), 100) } answers { source.drop(arg<Long>(2).toInt()).take(100) }
+        val source = (1..105).map { number -> bosca.git.model.CommitStatus(id = UUID.random(),
+            repositoryId = repositoryId, commitSha = sha, context = "ci/job$number", state = bosca.git.model.CommitStatusState.SUCCESS) }
+        coEvery { statuses.findChangedSince(repositoryId, any(), any(), 100) } answers { source.drop(arg<Long>(2).toInt()).take(100) }
         val previous = mutableMapOf<String, bosca.pipelines.model.PipelineRun>()
         for ((run, status) in source.take(4).zip(listOf(PipelineRunStatus.OK, PipelineRunStatus.SUSPENDED, PipelineRunStatus.FAILED, PipelineRunStatus.CANCELLED))) {
             previous[run.id.toString()] = bosca.pipelines.model.PipelineRun(id = UUID.random(), pipelineId = graph.id, status = status,
                 graphSnapshot = kotlinx.serialization.json.JsonObject(emptyMap()))
         }
         coEvery { exportRuns.findLatestByInput(graph.id, graph.acceptedInputType, any()) } answers {
-            previous[arg<kotlinx.serialization.json.JsonElement>(2).jsonObject.getValue("pipelineRunId").jsonPrimitive.content]
+            previous[arg<kotlinx.serialization.json.JsonElement>(2).jsonObject.getValue("statusId").jsonPrimitive.content]
         }
         coEvery { exportRuns.restart(any()) } answers {
             val entry = previous.entries.single { it.value.id == firstArg<UUID>() }
             entry.value.copy(id = UUID.random(), status = PipelineRunStatus.RUNNING).also { previous[entry.key] = it }
         }
         coEvery { exportRuns.enqueueEvent(graph.id, graph.acceptedInputType, any(), any()) } answers {
-            val id = arg<kotlinx.serialization.json.JsonElement>(2).jsonObject.getValue("pipelineRunId").jsonPrimitive.content
+            val id = arg<kotlinx.serialization.json.JsonElement>(2).jsonObject.getValue("statusId").jsonPrimitive.content
             val run = bosca.pipelines.model.PipelineRun(id = UUID.random(), pipelineId = graph.id, graphSnapshot = kotlinx.serialization.json.JsonObject(emptyMap()))
             previous[id] = run
             run.id
         }
         val sync = GitHubSyncServiceImpl(repository, hostedService, secrets, security, writes, github,
-            locks, mockk(), mockk(), permissions, protections, ciRuns, ciPipelines, exports, exportRuns)
+            locks, mockk(), mockk(), permissions, protections, statuses, exports, exportRuns)
         assertEquals(100, sync.reconcileCiStatuses())
         coVerify(exactly = 2) { exportRuns.restart(any()) }
         coVerify(exactly = 98) { exportRuns.enqueueEvent(any(), any(), any(), any()) }
@@ -1466,132 +1349,6 @@ class GitHubSyncServiceIntegrationTest {
         coVerify(exactly = 0) { github.synchronizeCommitStatus(any(), any(), any(), any()) }
     }
 
-    @Test fun `CI status verifies the event repository and ignores unavailable source records`() = withDb {
-        val runs = mockk<bosca.git.service.PipelineRunService>()
-        val ci = mockk<bosca.git.service.PipelineService>()
-        val sync = GitHubSyncServiceImpl(repository, hostedService, secrets, security, writes, github,
-            locks, mockk(), mockk(), permissions, protections, runs, ci, mockk(), mockk())
-        val pipeline = bosca.git.model.Pipeline(id = UUID.random(), repositoryId = repositoryId,
-            filePath = ".bosca/pipelines/ci.yaml", name = "CI", configHash = "hash")
-        val run = bosca.git.model.PipelineRun(id = UUID.random(), pipelineId = pipeline.id, repositoryId = repositoryId,
-            commitSha = sha, ref = "refs/heads/feature", triggerType = bosca.git.model.PipelineTriggerType.PUSH)
-        val event = bosca.git.model.PipelineEvent(repositoryId, run.id, pipeline.id, run.status, run.modified)
-        assertEquals(GitHubSyncResult.IGNORED, sync.synchronizePipelineRun(event))
-        service.savePair(input)
-        coEvery { runs.findById(run.id) } returns null
-        assertEquals(GitHubSyncResult.IGNORED, sync.synchronizePipelineRun(event))
-        coEvery { runs.findById(run.id) } returns run.copy(repositoryId = UUID.random())
-        assertFailsWith<IllegalArgumentException> { sync.synchronizePipelineRun(event) }
-        coEvery { runs.findById(run.id) } returns run
-        assertFailsWith<IllegalArgumentException> { sync.synchronizePipelineRun(event.copy(pipelineId = UUID.random())) }
-        coEvery { ci.findById(pipeline.id) } returns null
-        assertEquals(GitHubSyncResult.IGNORED, sync.synchronizePipelineRun(event))
-        coEvery { ci.findById(pipeline.id) } returns pipeline.copy(repositoryId = UUID.random())
-        assertFailsWith<IllegalArgumentException> { sync.synchronizePipelineRun(event) }
-        coEvery { ci.findById(pipeline.id) } returns pipeline
-        coEvery { runs.findLatestAttempt(run.id) } returns null
-        assertEquals(GitHubSyncResult.IGNORED, sync.synchronizePipelineRun(event))
-        coEvery { hostedService.findById(repositoryId) } returns hosted.copy(archived = true)
-        assertEquals(GitHubSyncResult.IGNORED, sync.synchronizePipelineRun(event))
-        coVerify(exactly = 0) { github.synchronizeCommitStatus(any(), any(), any(), any()) }
-    }
-
-    @Test fun `CI statuses publish only for exported commits and follow the outbound ref export`() = withDb {
-        val runs = mockk<bosca.git.service.PipelineRunService>()
-        val ci = mockk<bosca.git.service.PipelineService>()
-        val sync = GitHubSyncServiceImpl(repository, hostedService, secrets, security, writes, github,
-            locks, mockk(), mockk(), permissions, protections, runs, ci, mockk(), mockk())
-        service.savePair(input.copy(pushBranchExcludes = listOf("private/**")))
-        val excluded = bosca.git.model.PipelineEvaluation(UUID.random(), repositoryId, sha, "refs/heads/private/one", completed = true)
-        coEvery { ci.findEvaluation(excluded.id) } returns excluded
-        coEvery { ci.findEvaluationsByCommit(repositoryId, sha) } returns listOf(excluded)
-        coEvery { runs.findByCommit(repositoryId, sha) } returns emptyList()
-        assertEquals(GitHubSyncResult.UNCHANGED, sync.synchronizePipelineEvaluation(
-            bosca.git.model.PipelineEvaluationEvent(repositoryId, excluded.id, excluded.modified)))
-        coVerify(exactly = 0) { github.synchronizeCommitStatus(any(), any(), any(), any()) }
-
-        coEvery { ci.findEvaluationsByCommit(repositoryId, sha) } returns listOf(excluded.copy(id = UUID.random(), ref = ref))
-        coEvery { github.synchronizeCommitStatus(any(), "token", sha, any()) } throws IllegalStateException("GitHub unavailable")
-        coEvery { writes.synchronizeRef(any()) } returns RefSynchronizationResult(GitHubSyncResult.APPLIED, sha, sha)
-        assertFailsWith<IllegalStateException> { sync.synchronizeRef(refEvent()) }
-
-        // The retry finds the ref already converged and still publishes the statuses.
-        coEvery { github.synchronizeCommitStatus(any(), "token", sha, any()) } returns true
-        coEvery { writes.synchronizeRef(any()) } returns RefSynchronizationResult(GitHubSyncResult.UNCHANGED, sha, sha)
-        assertEquals(GitHubSyncResult.UNCHANGED, sync.synchronizeRef(refEvent()))
-        coVerify(exactly = 2) {
-            github.synchronizeCommitStatus(any(), "token", sha, match { it.context == "bosca/ci" && it.state == "success" })
-        }
-    }
-
-    @Test fun `CI status event reaches its durable backing job and publishes current server state`() = withDb {
-        val fixture = installTriggeredPipeline(ci = true)
-        provides<bosca.pubsub.PubSubService> { mockk(relaxed = true) }
-        val ciRuns = mockk<bosca.git.service.PipelineRunService>()
-        val ciPipelines = mockk<bosca.git.service.PipelineService>()
-        val pipeline = bosca.git.model.Pipeline(id = UUID.random(), repositoryId = repositoryId,
-            filePath = ".bosca/pipelines/ci.yaml", name = "CI", configHash = "hash")
-        val run = bosca.git.model.PipelineRun(id = UUID.random(), pipelineId = pipeline.id, repositoryId = repositoryId,
-            commitSha = sha, ref = "refs/heads/feature", triggerType = bosca.git.model.PipelineTriggerType.PUSH, number = 1)
-        coEvery { ciRuns.findById(run.id) } returns run
-        coEvery { ciRuns.findByCommit(repositoryId, sha) } returns listOf(run)
-        coEvery { ciPipelines.findById(pipeline.id) } returns pipeline
-        coEvery { ciPipelines.findEvaluationsByCommit(repositoryId, sha) } returns emptyList()
-        coEvery { ciRuns.findLatestAttempt(run.id) } returns run.copy(status = bosca.git.model.PipelineRunStatus.SUCCESS)
-        MockWebServer().use { server ->
-            server.start()
-            val actualSync = GitHubSyncServiceImpl(repository, hostedService, secrets, security, writes,
-                bosca.git.github.GitHubClient(baseUrl = server.url("/").toString().removeSuffix("/")),
-                locks, mockk(), mockk(), permissions, protections, ciRuns, ciPipelines, mockk(), mockk())
-            provides<GitHubSyncService> { actualSync }
-            service.savePair(input)
-            server.enqueue(MockResponse.Builder().body("""{"id":123}""").build())
-            server.enqueue(MockResponse.Builder().body("[]").build())
-            server.enqueue(MockResponse.Builder().code(201).body("{}").build())
-            val event = bosca.git.model.PipelineEvent(repositoryId, run.id, pipeline.id, bosca.git.model.PipelineRunStatus.QUEUED, run.modified)
-            transaction { event.dispatch() }
-            fixture.dispatchAll(); fixture.driveAll()
-            assertEquals(PipelineRunStatus.SUSPENDED, fixture.runRepository.listActive(0, 25).single().status)
-            fixture.executeBackingJobs(security)
-            assertTrue(fixture.runRepository.listActive(0, 25).isEmpty())
-            server.takeRequest(); server.takeRequest()
-            val request = server.takeRequest()
-            assertEquals("/repos/bosca-io/source/statuses/$sha", request.url.encodedPath)
-            val body = Json.parseToJsonElement(requireNotNull(request.body).utf8()).jsonObject
-            assertEquals("success", body.getValue("state").jsonPrimitive.content)
-            assertEquals("bosca/run/ci.yaml/push/1", body.getValue("context").jsonPrimitive.content)
-
-            // A stale success event observes a newer run for the same commit, resetting the check.
-            coEvery { ciRuns.findLatestAttempt(run.id) } returns run.copy(id = UUID.random(), number = 2)
-            for (status in bosca.git.model.PipelineRunStatus.entries) {
-                val current = run.copy(id = UUID.random(), number = 2, status = status)
-                coEvery { ciRuns.findLatestAttempt(run.id) } returns current
-                server.enqueue(MockResponse.Builder().body("""{"id":123}""").build())
-                server.enqueue(MockResponse.Builder().body("[]").build())
-                server.enqueue(MockResponse.Builder().code(201).body("{}").build())
-                assertEquals(GitHubSyncResult.APPLIED, actualSync.synchronizePipelineRun(event.copy(status = bosca.git.model.PipelineRunStatus.SUCCESS)))
-                server.takeRequest(); server.takeRequest()
-                val value = Json.parseToJsonElement(requireNotNull(server.takeRequest().body).utf8()).jsonObject
-                val expected = when (status) {
-                    bosca.git.model.PipelineRunStatus.QUEUED, bosca.git.model.PipelineRunStatus.RUNNING -> "pending"
-                    bosca.git.model.PipelineRunStatus.SUCCESS -> "success"
-                    bosca.git.model.PipelineRunStatus.FAILURE -> "failure"
-                    bosca.git.model.PipelineRunStatus.CANCELLED -> "failure"
-                    bosca.git.model.PipelineRunStatus.SKIPPED -> "success"
-                }
-                assertEquals(expected, value.getValue("state").jsonPrimitive.content)
-                assertEquals("Run #2: ${status.name.lowercase()}", value.getValue("description").jsonPrimitive.content)
-            }
-            server.enqueue(MockResponse.Builder().body("""{"id":123}""").build())
-            server.enqueue(MockResponse.Builder().body("""[{"state":"success","context":"bosca/run/ci.yaml/push/1","description":"Run #2: skipped"}]""").build())
-            coEvery { ciRuns.findLatestAttempt(run.id) } returns run.copy(number = 2, status = bosca.git.model.PipelineRunStatus.SKIPPED)
-            assertEquals(GitHubSyncResult.UNCHANGED, actualSync.synchronizePipelineRun(event))
-            val requestCount = server.requestCount
-            service.savePair(input.copy(enabled = false, version = assertNotNull(service.findPair(repositoryId)).version))
-            assertEquals(GitHubSyncResult.IGNORED, actualSync.synchronizePipelineRun(event))
-            assertEquals(requestCount, server.requestCount)
-        }
-    }
 
     @Test fun `verified PR reaches its generated backing job and resumes with persisted counterpart state`() = withDb {
         val fixture = installTriggeredPipeline(pullRequests = true)
@@ -1609,7 +1366,7 @@ class GitHubSyncServiceIntegrationTest {
                 sourceBranch = request.sourceBranch, targetBranch = request.targetBranch))
         }
         coEvery { pulls.findById(any()) } coAnswers { native.findById(firstArg()) }
-        val sync = GitHubSyncServiceImpl(repository, hostedService, secrets, security, writes, github, locks, pulls, profiles, permissions, protections, mockk(relaxed = true), mockk(relaxed = true), mockk(), mockk())
+        val sync = GitHubSyncServiceImpl(repository, hostedService, secrets, security, writes, github, locks, pulls, profiles, permissions, protections, io.mockk.mockk(relaxed = true), mockk(), mockk())
         provides<GitHubSyncService> { sync }
         val remote = bosca.git.model.GitHubPullRequest(456, 7, "PR_456", "Current title", "Current body", "open",
             modified = java.time.OffsetDateTime.now(), user = bosca.git.model.GitHubPullRequestUser(7, "original", "User"),
@@ -1657,7 +1414,7 @@ class GitHubSyncServiceIntegrationTest {
             coEvery { lock.renew(any()) } returns true
             coEvery { lock.release() } returns true
             val actualWrites = RepositoryWriteServiceImpl(manager, notifier, locks)
-            val actualSync = GitHubSyncServiceImpl(repository, hostedService, secrets, security, actualWrites, github, locks, mockk(), mockk(), permissions, protections, mockk(relaxed = true), mockk(relaxed = true), mockk(), mockk())
+            val actualSync = GitHubSyncServiceImpl(repository, hostedService, secrets, security, actualWrites, github, locks, mockk(), mockk(), permissions, protections, io.mockk.mockk(relaxed = true), mockk(), mockk())
             provides<GitHubSyncService> { actualSync }
             coEvery { github.repositoryUrl(any(), any()) } returns directory.toURI().toString()
             val commit = remote.newObjectInserter().use { inserter ->

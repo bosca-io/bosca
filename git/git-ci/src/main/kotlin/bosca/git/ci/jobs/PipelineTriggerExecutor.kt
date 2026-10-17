@@ -30,18 +30,18 @@ class PipelineTriggerExecutor : AbstractJobExecutor<PipelineTriggerJob>(Pipeline
         val repository = provide<RepositoryService>().findById(job.repositoryId)
             ?: throw NoSuchElementException("Repository not found: ${job.repositoryId}")
         val pipelineService = provide<PipelineService>()
-        val evaluationId = bosca.sharedqueue.jobs.job().getId()
-        val evaluation = pipelineService.beginEvaluation(bosca.git.model.PipelineEvaluation(
-            id = evaluationId, repositoryId = job.repositoryId, commitSha = job.afterSha, ref = job.ref,
-        ))
-        if (evaluation.completed) return
+        val triggerId = bosca.sharedqueue.jobs.job().getId()
+        val statuses = provide<CommitStatusService>()
+        statuses.recordStatus(job.repositoryId, job.afterSha, "ci/configuration", CommitStatusState.PENDING,
+            "Selecting CI jobs", ref = job.ref)
         // evaluate() records its own per-pipeline failures; this only covers failures before it can.
         val failure = try {
-            evaluate(job, repository, pipelineService, evaluationId)
+            evaluate(job, repository, pipelineService, triggerId)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            pipelineService.finishEvaluation(evaluationId, completed = false, error = e.message ?: "CI evaluation failed")
+            statuses.recordStatus(job.repositoryId, job.afterSha, "ci/configuration", CommitStatusState.ERROR,
+                e.message ?: "CI selection failed", ref = job.ref)
             throw e
         }
         failure?.let { throw it }
@@ -51,7 +51,7 @@ class PipelineTriggerExecutor : AbstractJobExecutor<PipelineTriggerJob>(Pipeline
         job: PipelineTriggerJob,
         repository: bosca.git.model.Repository,
         pipelineService: PipelineService,
-        evaluationId: bosca.serialization.UUID,
+        triggerId: bosca.serialization.UUID,
     ): Exception? {
         // Refresh the catalog even when the initiator cannot execute builds.
         val pipelines = pipelineService.syncPipelines(job.repositoryId, job.ref, job.afterSha)
@@ -84,7 +84,6 @@ class PipelineTriggerExecutor : AbstractJobExecutor<PipelineTriggerJob>(Pipeline
                     triggerEvaluator.evaluateTag(pipeline, job.ref.removePrefix("refs/tags/"))
                 } else triggerEvaluator.evaluatePush(pipeline, pushEvent)
                 if (matchingTrigger == null) {
-                    pipelineService.recordEvaluationRun(evaluationId, pipeline.filePath, null)
                     continue
                 }
                 if (actor == null) {
@@ -101,25 +100,14 @@ class PipelineTriggerExecutor : AbstractJobExecutor<PipelineTriggerJob>(Pipeline
                 // Use the same inputs, conditions and environment selection as run creation.
                 val plan = runService.plan(definition, job.ref, triggerType)
                 if (plan.jobs.isEmpty()) {
-                    pipelineService.recordEvaluationRun(evaluationId, pipeline.filePath, null)
                     continue
                 }
                 transaction {
-                    val created = runService.createTriggeredRun(
-                        evaluationId, pipeline.id, job.repositoryId, definition, job.afterSha,
+                    runService.createTriggeredRun(
+                        triggerId, pipeline.id, job.repositoryId, definition, job.afterSha,
                         job.ref, triggerType, actor,
                     ) ?: return@transaction
-                    // The occurrence, run and selection link commit atomically. A retry retains the link.
-                    pipelineService.recordEvaluationRun(evaluationId, pipeline.filePath, created.id)
-                    for (jobName in plan.jobs.keys) {
-                        commitStatusService.recordStatus(
-                            repositoryId = job.repositoryId,
-                            commitSha = job.afterSha,
-                            context = "ci/${pipeline.name.lowercase().replace(' ', '-')}/$jobName",
-                            state = CommitStatusState.PENDING,
-                            description = "Queued",
-                        )
-                    }
+
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -135,7 +123,9 @@ class PipelineTriggerExecutor : AbstractJobExecutor<PipelineTriggerJob>(Pipeline
             log.info("Skipping CI for repository {}: {}", job.repositoryId, authorizationError)
             errors.add(0, authorizationError)
         }
-        pipelineService.finishEvaluation(evaluationId, completed = failure == null, error = errors.takeIf { it.isNotEmpty() }?.joinToString("; "))
+        commitStatusService.recordStatus(job.repositoryId, job.afterSha, "ci/configuration",
+            if (errors.isEmpty()) CommitStatusState.SUCCESS else CommitStatusState.ERROR,
+            errors.takeIf { it.isNotEmpty() }?.joinToString("; ") ?: "CI jobs selected", ref = job.ref)
         return failure
     }
 

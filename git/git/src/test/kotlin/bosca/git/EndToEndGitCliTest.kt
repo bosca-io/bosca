@@ -857,8 +857,7 @@ class EndToEndGitCliTest {
                 val intakeRepository = mockk<bosca.git.repository.GitHubSyncRepository>()
                 coEvery { intakeRepository.findPair(any()) } returns null
                 bosca.git.transport.GitHubWebhookRoute(bosca.git.service.GitHubSyncServiceImpl(
-                    intakeRepository, repositoryService, mockk(), securityService, mockk(), mockk(), lockFactory, mockk(), mockk(), permissionEvaluator, branchProtectionService, mockk(), mockk(), mockk(), mockk(),
-                ))
+                    intakeRepository, repositoryService, mockk(), securityService, mockk(), mockk(), lockFactory, mockk(), mockk(), permissionEvaluator, branchProtectionService, io.mockk.mockk(relaxed = true), mockk(), mockk()))
             }
         }
 

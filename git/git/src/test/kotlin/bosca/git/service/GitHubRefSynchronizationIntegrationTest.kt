@@ -84,7 +84,7 @@ class GitHubRefSynchronizationIntegrationTest {
     }
     private val writes = RepositoryWriteServiceImpl(manager, notifier, locks)
     private fun syncService(ledger: GitHubSyncRepository = repository, writer: RepositoryWriteService = writes) =
-        GitHubSyncServiceImpl(ledger, hostedService, secrets, security, writer, github, locks, mockk(), mockk(), permissions, protections, mockk(relaxed = true), mockk(relaxed = true), mockk(), mockk())
+        GitHubSyncServiceImpl(ledger, hostedService, secrets, security, writer, github, locks, mockk(), mockk(), permissions, protections, io.mockk.mockk(relaxed = true), mockk(), mockk())
     private val service = syncService()
     private val ref = "refs/heads/main"
     private val emitted = mutableListOf<UUID?>()
@@ -825,8 +825,10 @@ class GitHubRefSynchronizationIntegrationTest {
         coEvery { security.getPrincipalById(any()) } returns null
         val pubsub = mockk<bosca.pubsub.PubSubService>()
         provides<bosca.pubsub.PubSubService> { pubsub }
+        val statuses = mockk<CommitStatusService>()
+        coEvery { statuses.areRequiredChecksPassing(any(), any(), any()) } returns true
         fun owningService(prRepository: bosca.git.repository.PullRequestRepository) = PullRequestServiceImpl(prRepository, mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true),
-            hostedRepository, mockk(relaxed = true), protections, manager, mockk(relaxed = true), mockk(), locks, profiles, security)
+            hostedRepository, mockk(relaxed = true), protections, manager, mockk(relaxed = true), statuses, locks, profiles, security)
         val pulls = owningService(prs)
         coEvery { pubsub.publish("bosca.git.pull_request", PullRequestEvent.serializer(), any()) } throws CancellationException("cancel after ref write")
         assertFailsWith<CancellationException> { withConnectionManager { pulls.merge(pr.id, MergeStrategy.FAST_FORWARD, principalId, "Author", "author@example.com") } }

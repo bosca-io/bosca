@@ -3,9 +3,6 @@ package bosca.git.ci.service
 import bosca.db.transaction
 import bosca.git.ci.parser.PipelineYamlParser
 import bosca.git.ci.repository.PipelineRepository
-import bosca.git.ci.repository.PipelineEvaluationRepository
-import bosca.git.model.PipelineEvaluation
-import bosca.git.model.PipelineEvaluationEvent
 import bosca.git.model.ArtifactDefinition
 import bosca.git.model.Pipeline
 import bosca.git.model.PipelineConcurrency
@@ -38,42 +35,7 @@ class PipelineServiceImpl(
     private val json: Json,
     private val repositoryService: RepositoryService,
     private val scheduleService: PipelineScheduleService,
-    private val evaluations: PipelineEvaluationRepository,
 ) : PipelineService {
-
-    override suspend fun beginEvaluation(evaluation: PipelineEvaluation): PipelineEvaluation = transaction {
-        val created = evaluations.create(evaluation) > 0
-        val persisted = requireNotNull(evaluations.findById(evaluation.id))
-        if (created) {
-            PipelineEvaluationEvent(persisted.repositoryId, persisted.id, persisted.modified).dispatch()
-        }
-        persisted
-    }
-
-    override suspend fun recordEvaluationRun(id: UUID, filePath: String, runId: UUID?) {
-        evaluations.recordRun(id, filePath, runId)
-    }
-
-    override suspend fun finishEvaluation(id: UUID, completed: Boolean, error: String?) = transaction {
-        evaluations.finish(id, completed, error)?.let { PipelineEvaluationEvent(it.repositoryId, it.id, it.modified).dispatch() }
-        Unit
-    }
-
-    override suspend fun findEvaluation(id: UUID): PipelineEvaluation? = evaluations.findById(id)
-
-    override suspend fun findEvaluationsByCommit(repositoryId: UUID, commitSha: String): List<PipelineEvaluation> =
-        evaluations.findByCommit(repositoryId, commitSha)
-
-    override suspend fun findEvaluationsChangedSince(repositoryId: UUID, since: bosca.serialization.OffsetDateTime, offset: Long, limit: Int): List<PipelineEvaluation> =
-        evaluations.findChangedSince(repositoryId, since, offset, limit)
-
-    override suspend fun replaceEvaluationRun(repositoryId: UUID, commitSha: String, previousRunId: UUID, runId: UUID) {
-        evaluations.replaceRun(repositoryId, commitSha, previousRunId, runId)
-    }
-
-    override suspend fun refreshEvaluations(repositoryId: UUID, commitSha: String) {
-        evaluations.refreshByCommit(repositoryId, commitSha).forEach { PipelineEvaluationEvent(it.repositoryId, it.id, it.modified).dispatch() }
-    }
 
     override suspend fun definitionErrors(repositoryId: UUID, commitSha: String): List<String> {
         val errors = mutableListOf<String>()

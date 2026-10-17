@@ -1,7 +1,7 @@
 package bosca.git.pipeline
 
 import bosca.di.provide
-import bosca.git.model.PipelineEvent
+import bosca.git.model.CommitStatusEvent
 import bosca.git.service.GitHubSyncService
 import bosca.pipelines.PipelineContext
 import bosca.pipelines.annotation.InputSlot
@@ -20,9 +20,9 @@ import kotlinx.serialization.json.put
 
 @PipelineNodeType(
     category = NodeCategory.ACTION, label = "Export GitHub CI Status",
-    description = "Publish the current CI pipeline result on its GitHub commit.",
+    description = "Forward the current Bosca commit status to GitHub.",
     group = "Git", subgroup = "GitHub",
-    inputs = [InputSlot(name = "event", kind = SlotKind.OBJECT, type = PipelineEvent::class)],
+    inputs = [InputSlot(name = "event", kind = SlotKind.OBJECT, type = CommitStatusEvent::class)],
     outputs = [OutputSlot(name = "out", kind = SlotKind.STRING)],
 )
 @Serializable
@@ -37,7 +37,7 @@ class GitHubExportCiStatusNode(
 
     override suspend fun execute(context: PipelineContext, inputs: NodeInputs): PipelineValue {
         val event = GitHubExportCiStatusNodeSerializer.deserialize(context, inputs).event
-        return GitHubExportCiStatusNodeSerializer.serialize(provide<GitHubSyncService>().synchronizePipelineRun(event).name)
+        return GitHubExportCiStatusNodeSerializer.serialize(provide<GitHubSyncService>().synchronizeCommitStatus(event).name)
     }
 
     override suspend fun dryRun(context: PipelineContext, inputs: NodeInputs): PipelineValue {
@@ -45,7 +45,7 @@ class GitHubExportCiStatusNode(
         context.trace?.actions?.set(id, buildJsonObject {
             put("action", "githubExportCiStatus")
             put("repositoryId", event?.repositoryId?.toString())
-            put("pipelineRunId", event?.pipelineRunId?.toString())
+            put("statusId", event?.statusId?.toString())
         })
         return GitHubExportCiStatusNodeSerializer.serialize("PREVIEW")
     }

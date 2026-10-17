@@ -82,6 +82,7 @@ class CiPipelineRepositoryIntegrationTest {
     private val artifactRepo = PipelineArtifactRepositoryImpl()
     private val agentRepo = PipelineAgentRepositoryImpl()
     private val secretRepo = PipelineSecretRepositoryImpl()
+    private val statuses = bosca.git.service.CommitStatusServiceImpl(bosca.git.repository.CommitStatusRepositoryImpl())
 
     private val ownerId = UUID.random()
     private lateinit var repositoryId: UUID
@@ -126,7 +127,7 @@ class CiPipelineRepositoryIntegrationTest {
                         "/db/migrations/V43__pipeline_catalog_archival.sql",
                         "/db/migrations/V44__github_intake.sql",
                         "/db/migrations/V48__github_branch_filters.sql",
-                        "/db/migrations/V51__pipeline_evaluations.sql",
+                        "/db/migrations/V51__ci_statuses.sql",
                     )
                     for (path in ciMigrations) {
                         val sql = CiPipelineRepositoryIntegrationTest::class.java
@@ -163,268 +164,86 @@ class CiPipelineRepositoryIntegrationTest {
         }
     }
 
-    @Test
-    fun `persisted trigger decisions export current conditional CI and retry outcomes`() = withDb {
-        val events = mutableListOf<bosca.events.Event>()
-        val dispatcher = io.mockk.mockk<bosca.pipelines.PipelineEventDispatcher>()
-        io.mockk.coEvery { dispatcher.dispatch(any(), any<bosca.events.Event>(), any()) } coAnswers {
-            events += secondArg<bosca.events.Event>()
-        }
-        provides<bosca.pipelines.PipelineEventDispatcher> { dispatcher }
-        val repositories = io.mockk.mockk<bosca.git.service.RepositoryService>(relaxed = true)
-        val browse = io.mockk.mockk<bosca.git.service.RepositoryBrowseService>()
-        val schedules = io.mockk.mockk<bosca.git.service.PipelineScheduleService>(relaxed = true)
-        val hosted = bosca.git.model.Repository(id = repositoryId, ownerId = ownerId, slug = "test-repo", name = "Test")
-        val path = ".bosca/pipelines/test.yaml"
-        val conditional = """
-            name: Tests
+
+    @Test fun `native statuses follow conditional jobs completion cancellation and retries`() = withDb {
+        val (jobs, runs, finalizer) = deferredStack()
+        val definition = bosca.git.ci.parser.PipelineYamlParser().parse("""
+            name: CI
             on:
-              push: { branches: ['**'] }
-              manual: true
+              push: true
             jobs:
+              build:
+                steps: [{name: Build, run: build}]
               tests:
-                if: event == 'push' && branch == 'feature'
-                steps: [{name: Test, run: tests}]
-              lint:
-                if: event == 'manual'
-                steps: [{name: Lint, run: lint}]
-        """.trimIndent()
-        val contents = mapOf(
-            "active" to conditional,
-            "skipped" to conditional.replace("branch == 'feature'", "branch == 'never'"),
-            "invalid" to "name: [",
-            "bad-condition" to conditional.replace("branch == 'feature'", "unknownFunction()"),
-        )
-        io.mockk.coEvery { repositories.findById(repositoryId) } returns hosted
-        io.mockk.coEvery { browse.resolveRef(repositoryId, "refs/heads/main") } returns "active"
-        io.mockk.coEvery { browse.listTree(repositoryId, any(), ".bosca/pipelines") } returns listOf(
-            bosca.git.model.TreeEntry("test.yaml", path, bosca.git.model.TreeEntryType.BLOB, 0x100644, "blob", 1),
-            bosca.git.model.TreeEntry("deploy.yml", ".bosca/pipelines/deploy.yml", bosca.git.model.TreeEntryType.BLOB, 0x100644, "blob", 1),
-        )
-        io.mockk.coEvery { browse.readBlob(repositoryId, any(), any()) } answers {
-            val content = if (thirdArg<String>() == path) contents.getValue(secondArg()) else
-                "name: Deploy\non:\n  tag: { tags: ['*'] }\njobs:\n  deploy:\n    steps: [{name: Deploy, run: deploy}]"
-            bosca.git.model.Blob(content, content.length.toLong(), "blob", false)
-        }
-        val pipelines = bosca.git.ci.service.PipelineServiceImpl(
-            pipelineRepo, browse, bosca.git.ci.parser.PipelineYamlParser(), json, repositories, schedules, PipelineEvaluationRepositoryImpl(),
-        )
-        val jobs = bosca.git.ci.service.PipelineJobServiceImpl(
-            jobRepo, stepRepo, io.mockk.mockk(relaxed = true), json,
-            bosca.git.ci.configuration.KubernetesCiDispatchConfiguration.disabled, io.mockk.mockk(relaxed = true),
-        )
-        val runs = bosca.git.ci.service.PipelineRunServiceImpl(
-            runRepo, jobs, io.mockk.mockk(relaxed = true), pipelines, json,
-            io.mockk.mockk(relaxed = true), io.mockk.mockk(relaxed = true), io.mockk.mockk(relaxed = true), io.mockk.mockk(relaxed = true),
-        )
-        val actor = UUID.random()
-        val security = io.mockk.mockk<bosca.security.service.SecurityService>(relaxed = true)
-        io.mockk.coEvery { security.getPrincipalById(actor) } returns bosca.security.model.Principal(id = actor)
-        io.mockk.coEvery { security.getPrincipalGroups(actor) } returns listOf(
-            bosca.security.model.Group(UUID.random(), "editors", "Editors", bosca.security.model.GroupType.SYSTEM),
-        )
-        val permissions = bosca.git.security.RepositoryPermissionEvaluator(repositories, security, io.mockk.mockk(relaxed = true))
-        provides<bosca.git.service.RepositoryService> { repositories }
-        provides<bosca.git.service.PipelineService> { pipelines }
-        provides<bosca.git.service.PipelineRunService> { runs }
-        provides<bosca.security.service.SecurityService> { security }
-        provides<bosca.git.security.RepositoryPermissionEvaluator> { permissions }
-        provides<bosca.git.service.CommitStatusService> { io.mockk.mockk(relaxed = true) }
-        val queue = io.mockk.mockk<bosca.sharedqueue.jobs.JobQueue>(relaxed = true)
-        suspend fun trigger(commit: String, ref: String = "refs/heads/feature"): bosca.git.model.PipelineEvaluation {
-            val job = bosca.sharedqueue.jobs.InternalJobConstructor(
-                definition = json.encodeToJsonElement(bosca.git.model.PipelineTriggerJob.serializer(),
-                    bosca.git.model.PipelineTriggerJob(repositoryId, ref, "before", commit, actor)),
-                executor = bosca.git.ci.jobs.PipelineTriggerExecutor::class,
-            )
-            job.setPersistentId(UUID.random())
-            withContext(queue.asCoroutineContext(job)) { bosca.git.ci.jobs.PipelineTriggerExecutor().execute() }
-            return assertNotNull(pipelines.findEvaluation(job.getId()))
-        }
-        val selected = trigger("active")
-        assertTrue(selected.completed)
-        assertEquals(selected.modified, events.filterIsInstance<bosca.git.model.PipelineEvaluationEvent>()
-            .last { it.evaluationId == selected.id }.modified)
-        assertNull(selected.error)
-        val selectedRun = assertNotNull(selected.selections.single { it.filePath == path }.runId)
-        suspend fun assertRunRevision(id: UUID) {
-            val persisted = assertNotNull(runs.findById(id))
-            val event = events.filterIsInstance<bosca.git.model.PipelineEvent>().last { it.pipelineRunId == id }
-            assertEquals(persisted.status, event.status)
-            assertEquals(persisted.modified, event.modified)
-        }
-        assertRunRevision(selectedRun)
-        assertNull(selected.selections.single { it.filePath.endsWith("deploy.yml") }.runId)
-        assertEquals(listOf("tests"), jobRepo.findByRun(selectedRun).map { it.name })
-        val skipped = trigger("skipped")
-        assertTrue(skipped.completed)
-        assertTrue(skipped.selections.all { it.runId == null })
-        assertNull(skipped.error)
-        assertNotNull(trigger("invalid").error)
-        assertNotNull(trigger("bad-condition").error)
-        trigger("active", "refs/heads/other") // Same commit, different selected work.
-        runs.updateStatus(selectedRun, PipelineRunStatus.FAILURE)
-        assertRunRevision(selectedRun)
-        val original = assertNotNull(runs.findById(selectedRun))
-        val manual = runs.createRun(original.pipelineId, repositoryId,
-            assertNotNull(pipelines.parseDefinition(repositoryId, "active", path)), "active", original.ref, PipelineTriggerType.MANUAL, actor)
-        assertEquals(listOf("lint"), jobRepo.findByRun(manual.id).map { it.name })
-        runs.updateStatus(manual.id, PipelineRunStatus.SUCCESS)
-
-        val pair = bosca.git.model.GitHubRepositoryPair(repositoryId, 123, "example", "repo", "webhook", "token", true)
-        val pairRepository = bosca.git.repository.GitHubSyncRepositoryImpl()
-        pairRepository.createPair(pair)
-        val locks = io.mockk.mockk<bosca.lock.DistributedLockFactory>()
-        val lock = io.mockk.mockk<bosca.lock.DistributedLock>()
-        io.mockk.coEvery { locks.create(any()) } returns lock
-        io.mockk.coEvery { lock.acquire(any(), any(), any()) } returns true
-        io.mockk.coEvery { lock.renew(any()) } returns true
-        io.mockk.coEvery { lock.release() } returns true
-        val secrets = io.mockk.mockk<bosca.pipelines.service.PipelineSecretService>()
-        io.mockk.coEvery { secrets.resolve("token") } returns "test-token"
-        val github = io.mockk.mockk<bosca.git.github.GitHubClient>()
-        val published = mutableMapOf<Pair<String, String>, bosca.git.model.GitHubCommitStatus>()
-        io.mockk.coEvery { github.synchronizeCommitStatus(match { it.repositoryId == repositoryId }, "test-token", any(), any()) } answers {
-            val status = arg<bosca.git.model.GitHubCommitStatus>(3)
-            published.put(thirdArg<String>() to status.context, status) != status
-        }
-        val sync = bosca.git.service.GitHubSyncServiceImpl(pairRepository, repositories, secrets, security,
-            io.mockk.mockk(), github, locks, io.mockk.mockk(), io.mockk.mockk(), permissions, io.mockk.mockk(), runs, pipelines, io.mockk.mockk(), io.mockk.mockk())
-        suspend fun exportAll() {
-            for (commit in listOf("active", "skipped", "invalid", "bad-condition")) {
-                val evaluation = pipelines.findEvaluationsByCommit(repositoryId, commit).last()
-                sync.synchronizePipelineEvaluation(bosca.git.model.PipelineEvaluationEvent(repositoryId, evaluation.id, evaluation.modified))
-            }
-        }
-        exportAll()
-        assertEquals("failure", published.getValue("active" to "bosca/ci").state)
-        assertEquals("failure", published.getValue("active" to "bosca/ci/test.yaml").state)
-        assertEquals("success", published.getValue("skipped" to "bosca/ci").state)
-        assertEquals("error", published.getValue("invalid" to "bosca/ci").state)
-        assertEquals("error", published.getValue("bad-condition" to "bosca/ci").state)
-        exportAll()
-        val retry = runs.rerun(selectedRun, actor)
-        assertRunRevision(retry.id)
-        assertEquals(original.id, retry.rerunOf)
-        assertEquals(listOf("tests"), jobRepo.findByRun(retry.id).map { it.name })
-        runs.updateStatus(retry.id, PipelineRunStatus.SUCCESS)
-        exportAll()
-        assertEquals("success", published.getValue("active" to "bosca/ci").state)
-        exportAll()
-
-        // An in-place retry on the original run is newer than its full rerun.
-        runs.updateStatus(retry.id, PipelineRunStatus.FAILURE)
-        val originalJob = jobRepo.findByRun(selectedRun).single()
-        jobRepo.markFinished(originalJob.id, PipelineRunStatus.FAILURE, "test failure")
-        runs.rerunJob(originalJob.id, actor)
-        assertRunRevision(selectedRun)
-        assertEquals(selectedRun, runs.findLatestAttempt(selectedRun)?.id)
-        sync.synchronizePipelineRun(bosca.git.model.PipelineEvent(repositoryId, selectedRun, original.pipelineId, PipelineRunStatus.QUEUED, assertNotNull(runs.findById(selectedRun)).modified))
-        assertEquals("pending", published.getValue("active" to "bosca/ci").state)
-        runs.updateStatus(selectedRun, PipelineRunStatus.SUCCESS)
-        exportAll()
-        assertEquals("success", published.getValue("active" to "bosca/ci").state)
-        runs.delete(retry.id) // The original's in-place attempt superseded this full retry.
-        assertNull(runs.findById(retry.id))
-        exportAll()
-        assertEquals("success", published.getValue("active" to "bosca/ci").state)
-
-        // Restoring the same SHA on the same branch creates equivalent automatic work.
-        runs.updateStatus(selectedRun, PipelineRunStatus.CANCELLED)
-        val replacement = trigger("active")
-        val replacementRun = assertNotNull(replacement.selections.single { it.filePath == path }.runId)
-        runs.updateStatus(replacementRun, PipelineRunStatus.SUCCESS)
-        exportAll()
-        assertEquals("success", published.getValue("active" to "bosca/ci").state)
-        val failedRetry = runs.rerun(replacementRun, actor)
-        runs.updateStatus(failedRetry.id, PipelineRunStatus.FAILURE)
-        exportAll()
-        assertEquals("failure", published.getValue("active" to "bosca/ci").state)
-        assertFailsWith<IllegalStateException> { runs.delete(failedRetry.id) }
-        assertNotNull(runs.findById(failedRetry.id))
-        exportAll()
-        assertEquals("failure", published.getValue("active" to "bosca/ci").state)
-        val successfulRetry = runs.rerun(replacementRun, actor)
-        runs.updateStatus(successfulRetry.id, PipelineRunStatus.SUCCESS)
-        runs.delete(failedRetry.id)
-        assertNull(runs.findById(failedRetry.id))
-        exportAll()
-        assertEquals("success", published.getValue("active" to "bosca/ci").state)
-        assertFailsWith<IllegalStateException> { runs.delete(successfulRetry.id) }
-        val beforeDeletion = assertNotNull(pipelines.findEvaluation(replacement.id)).modified
-        runs.delete(replacementRun)
-        val refreshed = assertNotNull(pipelines.findEvaluation(replacement.id))
-        assertTrue(refreshed.modified.isAfter(beforeDeletion))
-        assertEquals(refreshed.modified, events.filterIsInstance<bosca.git.model.PipelineEvaluationEvent>()
-            .last { it.evaluationId == replacement.id }.modified)
-        // The surviving latest retry becomes the root and keeps the selection.
-        assertEquals(successfulRetry.id, refreshed.selections.single { it.filePath == path }.runId)
-        assertNull(assertNotNull(runs.findById(successfulRetry.id)).rerunOf)
-        assertEquals(successfulRetry.id, runs.findLatestAttempt(successfulRetry.id)?.id)
-        exportAll()
-        assertEquals("success", published.getValue("active" to "bosca/ci").state)
-        assertEquals("success", published.getValue("active" to "bosca/ci/test.yaml").state)
+                needs: [build]
+                steps: [{name: Tests, run: tests}]
+              excluded:
+                if: "false"
+                steps: [{name: Excluded, run: excluded}]
+        """.trimIndent(), "ci.yaml")
+        val pipeline = pipelineRepo.create(Pipeline(repositoryId = repositoryId,
+            filePath = ".bosca/pipelines/ci.yaml", name = "CI", configHash = "ci"))
+        val run = runs.createRun(pipeline.id, repositoryId, definition, "head", "refs/heads/main", PipelineTriggerType.PUSH, null, emptyMap())
+        fun stateMap(checks: List<bosca.git.model.CommitStatus>) = checks.associate { it.context to it.state }
+        val pending = statuses.getStatuses(repositoryId, "head")
+        assertEquals(setOf("ci/ci.yaml/build", "ci/ci.yaml/tests"), pending.map { it.context }.toSet())
+        assertTrue(pending.all { it.state == bosca.git.model.CommitStatusState.PENDING && it.ref == "refs/heads/main" })
+        assertFalse(statuses.areRequiredChecksPassing(repositoryId, "head", emptyList()))
+        val build = jobRepo.findByRun(run.id).first { it.name == "build" }
+        jobs.finishIfActive(build.id, PipelineRunStatus.SUCCESS)
+        finalizer.finalizeJob(build.id, PipelineRunStatus.SUCCESS, releaseAgent = false)
+        assertEquals(bosca.git.model.CommitStatusState.SUCCESS, stateMap(statuses.getStatuses(repositoryId, "head"))["ci/ci.yaml/build"])
+        assertFalse(statuses.areRequiredChecksPassing(repositoryId, "head", emptyList()))
+        runs.cancelRun(run.id)
+        assertEquals(bosca.git.model.CommitStatusState.FAILURE, stateMap(statuses.getStatuses(repositoryId, "head"))["ci/ci.yaml/tests"])
+        assertFalse(statuses.areRequiredChecksPassing(repositoryId, "head", emptyList()))
+        runs.rerunFailedJobs(run.id)
+        assertEquals(bosca.git.model.CommitStatusState.PENDING, stateMap(statuses.getStatuses(repositoryId, "head"))["ci/ci.yaml/tests"])
+        val tests = jobRepo.findByRun(run.id).first { it.name == "tests" }
+        jobs.finishIfActive(tests.id, PipelineRunStatus.SUCCESS)
+        finalizer.finalizeJob(tests.id, PipelineRunStatus.SUCCESS, releaseAgent = false)
+        assertTrue(statuses.areRequiredChecksPassing(repositoryId, "head", emptyList()))
+        assertEquals(pending.map { it.id }.toSet(), statuses.getStatuses(repositoryId, "head").map { it.id }.toSet())
     }
 
-    @Test
-    fun `promoting a retry moves sibling retries and completed selections to the new root`() = withDb {
-        val pipeline = pipelineRepo.create(Pipeline(repositoryId = repositoryId, filePath = "ci.yaml", name = "CI", configHash = "h"))
-        fun attempt(number: Int, rerunOf: UUID?) = PipelineRun(pipelineId = pipeline.id, repositoryId = repositoryId,
-            commitSha = "promote", ref = "main", triggerType = PipelineTriggerType.PUSH, number = number, rerunOf = rerunOf)
-        val root = runRepo.create(attempt(1, null))
-        val first = runRepo.create(attempt(2, root.id))
-        val second = runRepo.create(attempt(3, root.id))
-        val evaluations = PipelineEvaluationRepositoryImpl()
-        val evaluation = bosca.git.model.PipelineEvaluation(id = UUID.random(), repositoryId = repositoryId, commitSha = "promote", ref = "main")
-        evaluations.create(evaluation)
-        evaluations.recordRun(evaluation.id, "a.yaml", root.id)
-        evaluations.recordRun(evaluation.id, "b.yaml", null)
-        evaluations.finish(evaluation.id, true, null)
-
-        assertEquals(second.id, runRepo.findLatestRetry(root.id)?.id)
-        assertEquals(2, runRepo.reparentRetries(root.id, second.id))
-        assertEquals(1, evaluations.replaceRun(repositoryId, "promote", root.id, second.id))
-
-        assertNull(assertNotNull(runRepo.findById(second.id)).rerunOf)
-        assertEquals(second.id, assertNotNull(runRepo.findById(first.id)).rerunOf)
-        assertNull(runRepo.findLatestRetry(root.id))
-        assertEquals(second.id, runRepo.findLatestAttempt(second.id)?.id)
-        val moved = assertNotNull(evaluations.findById(evaluation.id))
-        assertTrue(moved.completed)
-        assertEquals(listOf("a.yaml" to second.id, "b.yaml" to null), moved.selections.map { it.filePath to it.runId })
-        assertEquals(0, evaluations.replaceRun(repositoryId, "promote", root.id, second.id))
+    @Test fun `status updates preserve identity and unchanged revisions and recover old pending checks`() = withDb {
+        val before = java.time.OffsetDateTime.now().minusMinutes(1)
+        val first = statuses.recordStatus(repositoryId, "one", "external/test", bosca.git.model.CommitStatusState.PENDING,
+            "Queued", "https://ci.example/run", "refs/heads/main")
+        val same = statuses.recordStatus(repositoryId, "one", "external/test", bosca.git.model.CommitStatusState.PENDING,
+            "Queued", "https://ci.example/run")
+        assertEquals(first, same)
+        assertEquals(first, statuses.findById(first.id))
+        assertNull(statuses.findById(UUID.random()))
+        assertEquals(listOf(first), statuses.findChangedSince(repositoryId, before, 0, 100))
+        assertTrue(statuses.findChangedSince(repositoryId, before, 1, 100).isEmpty())
+        connection().useStatement("update git.commit_statuses set modified = now() - interval '10 days'") { it.execute() }
+        assertEquals(first.id, statuses.findChangedSince(repositoryId, before, 0, 100).single().id)
+        val finished = statuses.recordStatus(repositoryId, "one", "external/test", bosca.git.model.CommitStatusState.SUCCESS, "Passed")
+        assertEquals(first.id, finished.id)
+        assertEquals(first.ref, finished.ref)
+        assertTrue(finished.modified > first.modified)
+        connection().useStatement("update git.commit_statuses set modified = now() - interval '10 days'") { it.execute() }
+        assertTrue(statuses.findChangedSince(repositoryId, before, 0, 100).isEmpty())
     }
 
-    @Test
-    fun `recovery includes recent changes and old unfinished work and observes retries and deletions`() = withDb {
-        val pipeline = pipelineRepo.create(Pipeline(repositoryId = repositoryId, filePath = "ci.yaml", name = "CI", configHash = "h"))
-        val active = runRepo.create(PipelineRun(pipelineId = pipeline.id, repositoryId = repositoryId, commitSha = "active", ref = "main", triggerType = PipelineTriggerType.PUSH))
-        val finished = runRepo.create(PipelineRun(pipelineId = pipeline.id, repositoryId = repositoryId, commitSha = "finished", ref = "main", triggerType = PipelineTriggerType.PUSH))
-        runRepo.markFinished(finished.id, PipelineRunStatus.FAILURE)
-        val evaluations = PipelineEvaluationRepositoryImpl()
-        val pending = bosca.git.model.PipelineEvaluation(id = UUID.random(), repositoryId = repositoryId, commitSha = "active", ref = "main")
-        val completed = bosca.git.model.PipelineEvaluation(id = UUID.random(), repositoryId = repositoryId, commitSha = "finished", ref = "main")
-        evaluations.create(pending)
-        evaluations.create(completed)
-        evaluations.finish(completed.id, true, null)
-        connection().useStatement("update git.pipeline_runs set modified = now() - interval '30 days'") { it.execute() }
-        connection().useStatement("update git.pipeline_evaluations set modified = now() - interval '30 days'") { it.execute() }
-        val since = java.time.OffsetDateTime.now().minusDays(7)
-        assertEquals(listOf(active.id), runRepo.findChangedSince(repositoryId, since, 0, 100).map { it.id })
-        assertEquals(listOf(pending.id), evaluations.findChangedSince(repositoryId, since, 0, 100).map { it.id })
-        assertTrue(runRepo.findChangedSince(UUID.random(), since, 0, 100).isEmpty())
-        assertTrue(evaluations.findChangedSince(UUID.random(), since, 0, 100).isEmpty())
-
-        runRepo.resetForRerun(finished.id, null)
-        assertEquals(listOf(finished.id), runRepo.findChangedSince(repositoryId, since, 1, 1).map { it.id })
-        assertTrue(assertNotNull(runRepo.findById(finished.id)).modified.isAfter(since))
-        runRepo.markStarted(finished.id, PipelineRunStatus.RUNNING)
-        runRepo.updateStatus(finished.id, PipelineRunStatus.FAILURE)
-        assertEquals(listOf(finished.id), runRepo.findChangedSince(repositoryId, since, 1, 1).map { it.id })
-        val refreshed = evaluations.refreshByCommit(repositoryId, "finished").single()
-        assertTrue(refreshed.completed)
-        assertTrue(refreshed.modified.isAfter(since))
-        assertEquals(listOf(completed.id), evaluations.findChangedSince(repositoryId, since, 1, 1).map { it.id })
+    @Test fun `late reports from older attempts cannot replace the current attempt check`() = withDb {
+        val (_, runs, _) = deferredStack()
+        val pipeline = pipelineRepo.create(Pipeline(repositoryId = repositoryId,
+            filePath = ".bosca/pipelines/ci.yaml", name = "CI", configHash = "ci"))
+        val old = runRepo.create(PipelineRun(pipelineId = pipeline.id, repositoryId = repositoryId,
+            commitSha = "head", ref = "refs/heads/main", triggerType = PipelineTriggerType.PUSH, number = 1))
+        jobRepo.create(PipelineJob(pipelineRunId = old.id, name = "build", status = PipelineRunStatus.SUCCESS))
+        val latest = runRepo.create(old.copy(id = UUID.random(), number = 2, rerunOf = old.id))
+        jobRepo.create(PipelineJob(pipelineRunId = latest.id, name = "build", status = PipelineRunStatus.QUEUED))
+        runs.refreshCommitStatuses(latest.id)
+        runs.refreshCommitStatuses(old.id)
+        assertEquals(bosca.git.model.CommitStatusState.PENDING, statuses.getStatuses(repositoryId, "head").single().state)
+        val manual = runRepo.create(old.copy(id = UUID.random(), number = 3, triggerType = PipelineTriggerType.MANUAL))
+        jobRepo.create(PipelineJob(pipelineRunId = manual.id, name = "build", status = PipelineRunStatus.SUCCESS))
+        runs.refreshCommitStatuses(manual.id)
+        assertEquals(setOf("ci/ci.yaml/build", "ci/ci.yaml/manual/build"), statuses.getStatuses(repositoryId, "head").map { it.context }.toSet())
+        assertFalse(statuses.areRequiredChecksPassing(repositoryId, "head", emptyList()))
     }
 
     // ─── Pipeline Repository ────────────────────────────────────
@@ -815,12 +634,11 @@ class CiPipelineRepositoryIntegrationTest {
             io.mockk.mockk(relaxed = true),
             io.mockk.mockk(relaxed = true),
             io.mockk.mockk(relaxed = true),
-        )
+            commitStatusService = io.mockk.mockk(relaxed = true))
         provides<bosca.git.service.PipelineRunService>(singleton = true) { runService }
         val pipelineService = bosca.git.ci.service.PipelineServiceImpl(
             pipelineRepo, io.mockk.mockk(relaxed = true), bosca.git.ci.parser.PipelineYamlParser(),
-            json, io.mockk.mockk(relaxed = true), io.mockk.mockk(relaxed = true), PipelineEvaluationRepositoryImpl(),
-        )
+            json, io.mockk.mockk(relaxed = true), io.mockk.mockk(relaxed = true))
         val checker = bosca.git.ci.service.PipelineRequirementChecker(
             jobService, runService, io.mockk.mockk(relaxed = true),
             pipelineService, io.mockk.mockk(relaxed = true),
@@ -871,12 +689,11 @@ class CiPipelineRepositoryIntegrationTest {
             io.mockk.mockk(relaxed = true),
             io.mockk.mockk(relaxed = true),
             io.mockk.mockk(relaxed = true),
-        )
+            commitStatusService = io.mockk.mockk(relaxed = true))
         provides<bosca.git.service.PipelineRunService>(singleton = true) { runService }
         val pipelineService = bosca.git.ci.service.PipelineServiceImpl(
             pipelineRepo, io.mockk.mockk(relaxed = true), bosca.git.ci.parser.PipelineYamlParser(),
-            json, io.mockk.mockk(relaxed = true), io.mockk.mockk(relaxed = true), PipelineEvaluationRepositoryImpl(),
-        )
+            json, io.mockk.mockk(relaxed = true), io.mockk.mockk(relaxed = true))
         val checker = bosca.git.ci.service.PipelineRequirementChecker(
             jobService, runService, io.mockk.mockk(relaxed = true),
             pipelineService, io.mockk.mockk(relaxed = true),
@@ -927,15 +744,14 @@ class CiPipelineRepositoryIntegrationTest {
             io.mockk.mockk(relaxed = true),
             io.mockk.mockk(relaxed = true),
             io.mockk.mockk(relaxed = true),
-        )
+            commitStatusService = io.mockk.mockk(relaxed = true))
         provides<bosca.git.service.PipelineRunService>(singleton = true) { runService }
         val repositoryService = io.mockk.mockk<bosca.git.service.RepositoryService>(relaxed = true)
         io.mockk.coEvery { repositoryService.findByOwnerAndSlug("acme", "repo") } returns
             bosca.git.model.Repository(id = repositoryId, slug = "repo", name = "Repo", ownerId = ownerId)
         val pipelineService = bosca.git.ci.service.PipelineServiceImpl(
             pipelineRepo, io.mockk.mockk(relaxed = true), bosca.git.ci.parser.PipelineYamlParser(),
-            json, io.mockk.mockk(relaxed = true), io.mockk.mockk(relaxed = true), PipelineEvaluationRepositoryImpl(),
-        )
+            json, io.mockk.mockk(relaxed = true), io.mockk.mockk(relaxed = true))
         val checker = bosca.git.ci.service.PipelineRequirementChecker(
             jobService, runService, io.mockk.mockk(relaxed = true),
             pipelineService, repositoryService, io.mockk.mockk(relaxed = true), json,
@@ -1111,13 +927,15 @@ class CiPipelineRepositoryIntegrationTest {
             bosca.git.ci.configuration.KubernetesCiDispatchConfiguration.disabled,
             io.mockk.mockk(relaxed = true),
         )
+        val pipelines = io.mockk.mockk<bosca.git.service.PipelineService>(relaxed = true)
+        io.mockk.coEvery { pipelines.findById(any()) } coAnswers { pipelineRepo.findById(firstArg()) }
         val runService = bosca.git.ci.service.PipelineRunServiceImpl(
-            runRepo, jobService, io.mockk.mockk(relaxed = true), io.mockk.mockk(relaxed = true), json,
+            runRepo, jobService, io.mockk.mockk(relaxed = true), pipelines, json,
             io.mockk.mockk(relaxed = true),
             io.mockk.mockk(relaxed = true),
             io.mockk.mockk(relaxed = true),
             io.mockk.mockk(relaxed = true),
-        )
+            commitStatusService = statuses)
         provides<bosca.git.service.PipelineRunService>(singleton = true) { runService }
         val finalizer = bosca.git.ci.service.PipelineRunFinalizer(jobService, runService, io.mockk.mockk(relaxed = true))
         return Triple(jobService, runService, finalizer)
@@ -1473,7 +1291,7 @@ class CiPipelineRepositoryIntegrationTest {
             io.mockk.mockk(relaxed = true),
             io.mockk.mockk(relaxed = true),
             io.mockk.mockk(relaxed = true),
-        )
+            commitStatusService = io.mockk.mockk(relaxed = true))
         provides<bosca.git.service.PipelineRunService>(singleton = true) { runService }
 
         val pipeline = pipelineRepo.create(Pipeline(repositoryId = repositoryId, filePath = "rr.yaml", name = "RR", configHash = "rr"))
@@ -1934,8 +1752,7 @@ class CiPipelineRepositoryIntegrationTest {
         val browse = io.mockk.mockk<bosca.git.service.RepositoryBrowseService>()
         val schedules = io.mockk.mockk<bosca.git.service.PipelineScheduleService>(relaxed = true)
         val pipelines = bosca.git.ci.service.PipelineServiceImpl(
-            pipelineRepo, browse, bosca.git.ci.parser.PipelineYamlParser(), json, repositories, schedules, PipelineEvaluationRepositoryImpl(),
-        )
+            pipelineRepo, browse, bosca.git.ci.parser.PipelineYamlParser(), json, repositories, schedules)
         io.mockk.coEvery { security.getPrincipalById(actorId) } returns bosca.security.model.Principal(id = actorId)
         io.mockk.coEvery { security.getPrincipalGroups(actorId) } returns listOf(group)
         io.mockk.coEvery { repositories.findById(repositoryId) } returns repository
@@ -1960,11 +1777,12 @@ class CiPipelineRepositoryIntegrationTest {
             jobRepo, stepRepo, io.mockk.mockk(relaxed = true), json,
             bosca.git.ci.configuration.KubernetesCiDispatchConfiguration.disabled, io.mockk.mockk(relaxed = true),
         )
+        val statuses = io.mockk.spyk(this.statuses)
         val runs = bosca.git.ci.service.PipelineRunServiceImpl(
             runRepo, jobService, io.mockk.mockk(relaxed = true), pipelines, json,
             io.mockk.mockk(relaxed = true), io.mockk.mockk(relaxed = true),
             io.mockk.mockk(relaxed = true), io.mockk.mockk(relaxed = true),
-        )
+            commitStatusService = statuses)
         provides<bosca.git.service.RepositoryService> { repositories }
         provides<bosca.security.service.SecurityService> { security }
         provides<bosca.git.security.RepositoryPermissionEvaluator> {
@@ -1972,7 +1790,6 @@ class CiPipelineRepositoryIntegrationTest {
         }
         provides<bosca.git.service.PipelineService> { pipelines }
         provides<bosca.git.service.PipelineRunService> { runs }
-        val statuses = io.mockk.mockk<bosca.git.service.CommitStatusService>(relaxed = true)
         provides<bosca.git.service.CommitStatusService> { statuses }
         val queue = io.mockk.mockk<bosca.sharedqueue.jobs.JobQueue>(relaxed = true)
 
@@ -2011,13 +1828,13 @@ class CiPipelineRepositoryIntegrationTest {
 
         dispatch(actorId, triggerId)
         assertEquals(listOf(run.id), runRepo.findByRepository(repositoryId, 0, 100).map { it.id })
-        io.mockk.coVerify(exactly = 1) { statuses.recordStatus(any(), any(), any(), any(), any(), any()) }
+        io.mockk.coVerify(exactly = 1) { statuses.recordStatus(any(), any(), match { it != "ci/configuration" }, any(), any(), any(), any()) }
 
         val failedTriggerId = UUID.random()
-        io.mockk.coEvery { statuses.recordStatus(any(), any(), any(), any(), any(), any()) } throws IllegalStateException("status persistence failed")
+        io.mockk.coEvery { statuses.recordStatus(any(), any(), match { it != "ci/configuration" }, any(), any(), any(), any()) } throws IllegalStateException("status persistence failed")
         assertFailsWith<IllegalStateException> { dispatch(actorId, failedTriggerId) }
         assertEquals(listOf(run.id), runRepo.findByRepository(repositoryId, 0, 100).map { it.id })
-        io.mockk.coEvery { statuses.recordStatus(any(), any(), any(), any(), any(), any()) } returns io.mockk.mockk(relaxed = true)
+        io.mockk.coEvery { statuses.recordStatus(any(), any(), match { it != "ci/configuration" }, any(), any(), any(), any()) } coAnswers { callOriginal() }
         dispatch(actorId, failedTriggerId)
         val persistedIds = runRepo.findByRepository(repositoryId, 0, 100).map { it.id }.toSet()
         assertEquals(2, persistedIds.size)
@@ -2088,8 +1905,7 @@ class CiPipelineRepositoryIntegrationTest {
             }
         }
         val pipelines = bosca.git.ci.service.PipelineServiceImpl(
-            pipelineRepo, browse, bosca.git.ci.parser.PipelineYamlParser(), json, repositories, schedules, PipelineEvaluationRepositoryImpl(),
-        )
+            pipelineRepo, browse, bosca.git.ci.parser.PipelineYamlParser(), json, repositories, schedules)
         deferredStack()
         val actorId = UUID.random()
         val group = bosca.security.model.Group(UUID.random(), "builders", "Builders", bosca.security.model.GroupType.SYSTEM)

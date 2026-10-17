@@ -52,6 +52,7 @@ class PipelineRunServiceImpl(
     private val kubernetesDispatchService: ObjectProvider<KubernetesJobDispatchService>,
     private val artifactService: PipelineArtifactService,
     private val logService: PipelineLogService,
+    private val commitStatusService: bosca.git.service.CommitStatusService,
 ) : PipelineRunService {
 
     override suspend fun createTriggeredRun(
@@ -187,6 +188,7 @@ class PipelineRunServiceImpl(
         )
 
         jobService.createJobs(run.id, jobs)
+        refreshCommitStatuses(run.id)
 
         PipelineEvent(run.repositoryId, run.id, run.pipelineId, run.status, run.modified).dispatch()
 
@@ -320,16 +322,14 @@ class PipelineRunServiceImpl(
             artifactService.delete(run.repositoryId, run.number, artifact.name)
         }
 
-        // A deleted root's latest retry becomes the root, so its selection keeps the latest attempt's result.
+        // Preserve retry lineage when the original run is deleted.
         if (originalId == null) {
             runRepository.findLatestRetry(run.id)?.let { root ->
                 runRepository.reparentRetries(run.id, root.id)
-                pipelineService.replaceEvaluationRun(run.repositoryId, run.commitSha, run.id, root.id)
             }
         }
         val deleted = runRepository.delete(runId)
             ?: throw IllegalStateException("Pipeline run $runId could not be deleted")
-        pipelineService.refreshEvaluations(run.repositoryId, run.commitSha)
         log.info("Deleted pipeline run #{} ({})", deleted.number, deleted.id)
         return deleted
     }
@@ -351,6 +351,7 @@ class PipelineRunServiceImpl(
             }
             else -> Unit
         }
+        refreshCommitStatuses(runId)
         PipelineEvent(
             repositoryId = run.repositoryId,
             pipelineRunId = runId,
@@ -358,6 +359,26 @@ class PipelineRunServiceImpl(
             status = run.status,
             modified = run.modified,
         ).dispatch()
+    }
+
+    override suspend fun refreshCommitStatuses(runId: UUID) {
+        val run = runRepository.findById(runId) ?: return
+        val latest = runRepository.findByCommit(run.repositoryId, run.commitSha)
+            .filter { it.pipelineId == run.pipelineId && it.triggerType == run.triggerType }
+            .maxByOrNull { it.attemptOrder }
+        if (latest != null && latest.id != run.id) return
+        val pipeline = pipelineService.findById(run.pipelineId) ?: return
+        val file = pipeline.filePath.removePrefix(".bosca/pipelines/")
+        val prefix = if (run.triggerType == PipelineTriggerType.PUSH) "ci/$file" else "ci/$file/${run.triggerType.name.lowercase()}"
+        for (job in jobService.findByRun(run.id)) {
+            val state = when (job.status) {
+                PipelineRunStatus.QUEUED, PipelineRunStatus.RUNNING -> bosca.git.model.CommitStatusState.PENDING
+                PipelineRunStatus.SUCCESS, PipelineRunStatus.SKIPPED -> bosca.git.model.CommitStatusState.SUCCESS
+                PipelineRunStatus.FAILURE, PipelineRunStatus.CANCELLED -> bosca.git.model.CommitStatusState.FAILURE
+            }
+            commitStatusService.recordStatus(run.repositoryId, run.commitSha, "$prefix/${job.name}", state,
+                job.errorMessage ?: job.status.name.lowercase().replaceFirstChar { it.uppercase() }, ref = run.ref)
+        }
     }
 
     override suspend fun cancelRun(runId: UUID) {
@@ -451,6 +472,7 @@ class PipelineRunServiceImpl(
             jobService.evaluateDeferredConditions(run.id)
         }
 
+        refreshCommitStatuses(reopened.id)
         PipelineEvent(
             repositoryId = reopened.repositoryId,
             pipelineRunId = reopened.id,
@@ -500,6 +522,7 @@ class PipelineRunServiceImpl(
                 if (previous.condition != null) {
                     jobService.evaluateDeferredConditions(run.id)
                 }
+                refreshCommitStatuses(reopened.id)
                 PipelineEvent(
                     repositoryId = reopened.repositoryId,
                     pipelineRunId = reopened.id,
@@ -565,6 +588,7 @@ class PipelineRunServiceImpl(
             jobService.evaluateDeferredConditions(runId)
         }
 
+        refreshCommitStatuses(reopened.id)
         PipelineEvent(
             repositoryId = reopened.repositoryId,
             pipelineRunId = runId,
