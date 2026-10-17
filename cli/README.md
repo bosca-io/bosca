@@ -113,27 +113,6 @@ server. On first use after an upgrade, the former single-account
 `endpoint`/`auth` configuration is migrated automatically to a profile named
 `default`.
 
-## Artifact registry access
-
-After logging into a Bosca profile, configure Docker and npm together:
-
-```bash
-bosca artifacts login
-bosca --profile work artifacts login --registry https://artifacts.example.com
-```
-
-This creates a token with `artifacts:pull` access, logs Docker in, and configures
-the npm `@bosca` scope and authentication for the registry's `/npm/` endpoint.
-The registry defaults to `artifacts.<domain>` derived from the selected Bosca
-endpoint. Local endpoints use `http://localhost:8084`; an explicit HTTP(S) registry
-URL selects its transport.
-
-npm settings are written to `~/.npmrc`, or the file selected by
-`NPM_CONFIG_USERCONFIG` / `npm_config_userconfig`, with owner-only permissions.
-Existing unrelated settings are preserved. Rerunning the command replaces that
-registry's npm token and the `@bosca` registry selection. Docker must be installed
-and its login must succeed before npm configuration is updated.
-
 ## Analytics
 
 Saved analytics queries, visualization definitions, and dashboards are
