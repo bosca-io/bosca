@@ -9,6 +9,10 @@ import bosca.git.service.DiffService
 import bosca.git.service.PullRequestService
 import bosca.git.security.RepositoryPermissionEvaluator
 import bosca.git.service.RepositoryService
+import bosca.graphql.parser.Parser
+import bosca.graphql.server.ExecutableSchema
+import bosca.graphql.server.GraphQLExecutor
+import bosca.graphql.server.runtimeWiring
 import bosca.profile.profile.service.ProfileService
 import bosca.security.model.PermissionAction
 import bosca.security.service.AuthenticationContext
@@ -17,6 +21,11 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
 import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.boolean
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -69,9 +78,9 @@ class GitPullRequestControllerTest {
     @Test
     fun `mergeable consults the service only for open pull requests`() = runTest {
         coEvery { pullRequestService.checkMergeability(pr.id) } returns MergeResult(success = true)
-        assertTrue(controller.mergeable(pr))
+        assertTrue(mergeFields(pr).getValue("mergeable").jsonPrimitive.boolean)
 
-        assertFalse(controller.mergeable(pr.copy(status = PullRequestStatus.MERGED)))
+        assertFalse(mergeFields(pr.copy(status = PullRequestStatus.MERGED)).getValue("mergeable").jsonPrimitive.boolean)
         coVerify(exactly = 1) { pullRequestService.checkMergeability(any()) }
     }
 
@@ -79,8 +88,45 @@ class GitPullRequestControllerTest {
     fun `conflictingFiles is empty for closed pull requests`() = runTest {
         coEvery { pullRequestService.checkMergeability(pr.id) } returns
             MergeResult(success = false, conflictingFiles = listOf("a.txt"))
-        assertEquals(listOf("a.txt"), controller.conflictingFiles(pr))
-        assertEquals(emptyList(), controller.conflictingFiles(pr.copy(status = PullRequestStatus.CLOSED)))
+        assertEquals(listOf("a.txt"), mergeFields(pr).getValue("conflictingFiles").jsonArray.map { it.jsonPrimitive.content })
+        assertTrue(mergeFields(pr.copy(status = PullRequestStatus.CLOSED)).getValue("conflictingFiles").jsonArray.isEmpty())
+    }
+
+    @Test
+    fun `merge fields and aliases share one calculation and refresh on the next request`() = runTest {
+        coEvery { pullRequestService.checkMergeability(pr.id) } returnsMany listOf(
+            MergeResult(success = true),
+            MergeResult(success = false, conflictingFiles = listOf("changed.txt")),
+        )
+        val first = mergeFields(pr)
+        assertTrue(first.getValue("mergeable").jsonPrimitive.boolean)
+        assertEquals(first["mergeable"], first["again"])
+        assertTrue(first.getValue("conflictingFiles").jsonArray.isEmpty())
+        coVerify(exactly = 1) { pullRequestService.checkMergeability(pr.id) }
+
+        val next = mergeFields(pr)
+        assertFalse(next.getValue("mergeable").jsonPrimitive.boolean)
+        assertEquals(listOf("changed.txt"), next.getValue("conflictingFiles").jsonArray.map { it.jsonPrimitive.content })
+        coVerify(exactly = 2) { pullRequestService.checkMergeability(pr.id) }
+    }
+
+    private suspend fun mergeFields(source: PullRequest): JsonObject {
+        val executor = GraphQLExecutor(ExecutableSchema.fromSdl(
+            """
+                type Query { pull: GitPullRequest! }
+                type GitPullRequest { mergeable: Boolean!, conflictingFiles: [String!]! }
+            """.trimIndent(),
+            runtimeWiring {
+                type("Query") { field("pull") { source } }
+                type("GitPullRequest") {
+                    field("mergeable") { environment -> controller.mergeable(source, environment) }
+                    field("conflictingFiles") { environment -> controller.conflictingFiles(source, environment) }
+                }
+            },
+        ))
+        val result = executor.execute(Parser.parse("{ pull { mergeable conflictingFiles again: mergeable } }"))
+        assertTrue(result.errors.isEmpty(), result.errors.toString())
+        return result.data?.jsonObject?.getValue("pull")?.jsonObject ?: error("Missing pull request result")
     }
 
     @Test
