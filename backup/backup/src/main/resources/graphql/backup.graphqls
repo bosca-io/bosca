@@ -72,6 +72,35 @@ type ObjectBackupRuns {
     lastSuccessful(operation: ObjectBackupOperation!, sourceId: String!, destinationId: String!, scope: String!): ObjectBackupRun
 }
 
+"A declared portable object inventory. Source capture and revision retention are caller responsibilities."
+input ObjectBackupManifestInput {
+    id: String!
+    sourceId: String!
+    scope: String!
+    created: String!
+    objects: [BackupObjectInput!]!
+    version: Int!
+    format: String!
+}
+
+"An exact source revision, full-payload SHA-256 digest and retained payload key."
+input BackupObjectInput {
+    store: String!
+    key: String!
+    revision: String!
+    length: Long!
+    sha256: String!
+    payloadPath: String!
+}
+
+"Record immutable inventory intent and checkpoints. Preparation does not dispatch or execute transfers."
+type ObjectBackupRunsMutation {
+    "Prepare a declared backup inventory. Repeating the same intent preserves its existing run and outcome."
+    prepare(inventory: ObjectBackupManifestInput!, destinationId: String!): ObjectBackupRun!
+    "Prepare a declared restore inventory and input manifest path. Input storage is verified during execution."
+    prepareRestore(inventory: ObjectBackupManifestInput!, destinationId: String!, path: String!): ObjectBackupRun!
+}
+
 "A fixed object inventory and its recorded execution state."
 type ObjectBackupRun {
     key: String!
@@ -147,6 +176,8 @@ type ObjectBackupRunSummary {
 
 "Mutation operations for creating backups and restoring from them."
 type BackupsMutation {
+    "Prepare declared object inventory runs. Requires backup administration access."
+    objectRuns: ObjectBackupRunsMutation!
     "Initiate a new backup of all system data. Returns the backup tracking record immediately; the actual backup runs asynchronously."
     create(includeFiles: Boolean! = true): Backup!
     "Register an already-uploaded metadata item as an imported backup archive."

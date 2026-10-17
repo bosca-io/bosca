@@ -1,55 +1,27 @@
 package bosca.backup.graphql
 
 import bosca.backup.BackupObject
-import bosca.backup.ObjectBackupManifest
 import bosca.backup.ObjectBackupManifestStore
 import bosca.backup.ObjectBackupOperation
-import bosca.backup.ObjectBackupProgressService
-import bosca.backup.ObjectBackupRun
-import bosca.backup.ObjectBackupRunService
-import bosca.backup.configuration.BackupSchemaRegistrar
-import bosca.cache.CacheManager
-import bosca.cache.RequestCacheSerializer
-import bosca.content.metadata.service.MetadataService
-import bosca.db.ConnectionConfig
-import bosca.db.ConnectionFactoryImpl
-import bosca.db.ConnectionPool
-import bosca.db.migrations.FlywayMigration
-import bosca.db.migrations.Migration
-import bosca.db.withConnectionManager
-import bosca.di.BackupProviderRegistrar
-import bosca.di.BackupTestProviderRegistrar
-import bosca.di.ProviderRegistry
 import bosca.di.annotation.InternalDI
 import bosca.di.provide
-import bosca.di.provides
-import bosca.graphql.GraphQLRequest
-import bosca.graphql.SchemaRegistrar
-import bosca.graphql.SchemaRegistry
-import bosca.graphql.dispatcher.DispatchersRegistry
-import bosca.observability.ErrorCapture
-import bosca.security.model.AuthenticatedPrincipal
 import bosca.security.model.Group
 import bosca.security.model.GroupType
 import bosca.security.model.Principal
-import bosca.security.service.AuthenticationContext
-import bosca.security.service.AuthenticationProviders
-import bosca.security.service.GroupEvaluator
 import bosca.security.service.ImpersonatedAuthenticationContext
-import bosca.security.service.ScopedAuthenticatedPrincipal
-import bosca.server.BoscaApplication
-import bosca.server.config.ApplicationConfig
-import bosca.storage.service.FileSystemObjectStorageService
 import bosca.storage.service.ObjectStorageService
 import bosca.storage.service.StringObjectPath
-import bosca.test.resources.SharedPostgreSQLContainer
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
-import io.opentelemetry.api.GlobalOpenTelemetry
-import io.opentelemetry.api.trace.Tracer
+import java.io.IOException
+import java.time.OffsetDateTime
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
 import kotlinx.coroutines.runBlocking
-import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
@@ -60,103 +32,10 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.long
 import kotlinx.serialization.json.put
-import java.io.IOException
-import java.nio.file.Path
-import java.security.MessageDigest
-import java.time.OffsetDateTime
-import kotlin.io.path.createTempDirectory
-import kotlin.test.AfterTest
-import kotlin.test.BeforeTest
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertNotNull
-import kotlin.test.assertTrue
 
 /** Real schema/dispatcher/authorization integration over persisted object runs. */
 @OptIn(InternalDI::class)
-class ObjectBackupRunGraphQLIntegrationTest {
-    private lateinit var postgres: SharedPostgreSQLContainer
-    private lateinit var pool: ConnectionPool
-    private lateinit var runs: ObjectBackupRunService
-    private lateinit var progress: ObjectBackupProgressService
-    private lateinit var graphql: ObjectBackupQueryTestService
-    private lateinit var directory: Path
-    private lateinit var source: FileSystemObjectStorageService
-    private lateinit var destination: FileSystemObjectStorageService
-    private lateinit var run: ObjectBackupRun
-    private lateinit var json: Json
-    private val first = entry("items/a", "data")
-    private val second = entry("items/b", "more")
-    private val inventory = ObjectBackupManifest(
-        id = "inventory-1", sourceId = "source-1", scope = "content",
-        created = "2026-10-16T00:00:00Z", objects = listOf(first, second),
-    )
-    private val adminGroup = Group(name = "administrators", description = "", type = GroupType.SYSTEM)
-    private val admin = ImpersonatedAuthenticationContext(Principal(), listOf(adminGroup))
-    private val anonymous = AuthenticationContext(null, null)
-
-    @BeforeTest
-    fun setUp(): Unit = runBlocking {
-        postgres = SharedPostgreSQLContainer().withDatabaseName("object_backup_graphql").apply { start() }
-        pool = ConnectionPool(ConnectionFactoryImpl(
-            ConnectionConfig(postgres.jdbcUrl, postgres.username, postgres.password, maxConnections = 3),
-            key = "object-backup-graphql-test",
-        ))
-        ProviderRegistry.clear()
-        DispatchersRegistry.clear()
-        val application = BoscaApplication(ApplicationConfig.load(
-            "bosca:\n  server:\n    development: false\n".byteInputStream(),
-        ))
-        json = application.json
-        provides<ConnectionPool>(singleton = true) { pool }
-        provides<CacheManager> { mockk(relaxed = true) }
-        provides<RequestCacheSerializer> { mockk(relaxed = true) }
-        provides<AuthenticationProviders> { AuthenticationProviders(emptyArray()) }
-        provides<ErrorCapture> { ErrorCapture.Noop }
-        provides<Tracer> { GlobalOpenTelemetry.getTracer("ObjectBackupRunGraphQLIntegrationTest") }
-        provides<GroupEvaluator> { GroupEvaluator(mockk()) }
-        provides<MetadataService> { mockk() }
-        val objectStorage = mockk<ObjectStorageService>()
-        provides<ObjectStorageService> { objectStorage }
-        BackupProviderRegistrar().register()
-        BackupTestProviderRegistrar().register()
-        FlywayMigration(pool).migrate(listOf(provide<Migration>(name = "backup-migrations")))
-        runs = provide()
-        progress = provide()
-
-        SchemaRegistry.initialize(object : SchemaRegistrar {
-            override suspend fun load() = """
-                scalar DateTime
-                scalar JSON
-                scalar Long
-                scalar Upload
-                scalar UUID
-                type Query { test: Boolean }
-                type Mutation { test: Boolean }
-            """.trimIndent()
-        }, BackupSchemaRegistrar())
-        graphql = ObjectBackupQueryTestService()
-        directory = createTempDirectory("bosca-object-graphql-")
-        source = storage("source")
-        destination = storage("destination")
-        write(source, first.key, "data")
-        write(source, second.key, "more")
-        run = request { runs.prepare(inventory, "destination-1") }
-    }
-
-    @AfterTest
-    fun tearDown(): Unit = runBlocking {
-        try {
-            if (::pool.isInitialized) pool.close()
-        } finally {
-            if (::postgres.isInitialized) postgres.stop()
-            if (::directory.isInitialized) directory.toFile().deleteRecursively()
-            DispatchersRegistry.clear()
-            ProviderRegistry.clear()
-        }
-    }
-
+class ObjectBackupRunGraphQLIntegrationTest : ObjectBackupGraphQLTest() {
     @Test
     fun `administrator reads all run fields and explicit nullable values`(): Unit = runBlocking {
         val value = result("run(key: \"${run.key}\") { $RUN_FIELDS }").getValue("run").jsonObject
@@ -458,7 +337,7 @@ class ObjectBackupRunGraphQLIntegrationTest {
         }
         assertEquals(mapOf("offset" to "0", "limit" to "20"), defaults)
         val mutations = types.getValue("mutation").jsonObject.getValue("fields").jsonArray.associateBy { it.jsonObject.string("name") }
-        assertEquals(setOf("create", "importBackup", "restore", "delete"), mutations.keys)
+        assertEquals(setOf("create", "importBackup", "restore", "delete", "objectRuns"), mutations.keys)
         val create = mutations.getValue("create").jsonObject.getValue("args").jsonArray.single().jsonObject
         assertEquals("true", create.string("defaultValue"))
         val restoreArgs = mutations.getValue("restore").jsonObject.getValue("args").jsonArray.associateBy { it.jsonObject.string("name") }
@@ -466,46 +345,6 @@ class ObjectBackupRunGraphQLIntegrationTest {
     }
 
     private suspend fun result(selection: String): JsonObject = data(execute("{ backups { objectRuns { $selection } } }"))
-
-    private suspend fun execute(
-        query: String,
-        authentication: AuthenticationContext = admin,
-        variables: JsonObject? = null,
-    ): JsonObject = graphql.execute(authentication, GraphQLRequest(query = query, variables = variables)).jsonObject
-
-    private fun data(response: JsonObject): JsonObject {
-        assertFalse("errors" in response, response.toString())
-        return response.getValue("data").jsonObject.getValue("backups").jsonObject.getValue("objectRuns").jsonObject
-    }
-
-    private suspend fun complete(value: ObjectBackupRun): ObjectBackupRun =
-        runs.execute(value.key, mapOf("content" to source), destination)
-
-    private suspend fun <T> request(block: suspend () -> T): T = withConnectionManager(block)
-
-    private fun scoped(scopes: List<String>, allowedGroups: Set<bosca.serialization.UUID>? = null): AuthenticationContext {
-        val principal = ScopedAuthenticatedPrincipal(Principal(), listOf(adminGroup), scopes, allowedGroups, credentialId = 1)
-        return object : AuthenticationContext(null, null) {
-            override fun principal(): AuthenticatedPrincipal = principal
-        }
-    }
-
-    private fun storage(name: String): FileSystemObjectStorageService = FileSystemObjectStorageService(
-        "", "", mockk(), directory.resolve(name).toString(), mockk(),
-    )
-
-    private suspend fun write(storage: ObjectStorageService, key: String, value: String) {
-        val bytes = value.toByteArray()
-        storage.setInputStream(StringObjectPath(key), bytes.inputStream(), bytes.size.toLong())
-    }
-
-    private fun entry(key: String, value: String): BackupObject {
-        val bytes = value.toByteArray()
-        val digest = MessageDigest.getInstance("SHA-256").digest(bytes).toHexString()
-        return BackupObject("content", key, "revision-1", bytes.size.toLong(), digest, "objects/$digest")
-    }
-
-    private fun JsonObject.string(key: String): String = getValue(key).jsonPrimitive.content
 
     private fun assertPayload(expected: BackupObject, value: JsonObject) {
         assertEquals(expected.store, value.string("store"))

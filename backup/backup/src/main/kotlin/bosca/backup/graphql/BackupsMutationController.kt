@@ -37,6 +37,13 @@ class BackupsMutationController(
     private val objectStorageService: ObjectStorageService
 ) : GraphQLController<BackupsMutation> {
 
+    /** Opens inventory preparation under the existing backup administration boundary. */
+    @Field
+    fun objectRuns(authorization: AuthenticationContext): ObjectBackupRunsMutation {
+        groupEvaluator.verifyHasSaGroup(authorization)
+        return ObjectBackupRunsMutation
+    }
+
     /**
      * Creates a new backup tracking record and enqueues a [BackupJob] for
      * asynchronous execution. Returns the backup record immediately so the

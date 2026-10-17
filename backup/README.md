@@ -26,6 +26,8 @@ Its `inspect` method verifies the retained payloads and reports each destination
 
 Read-only GraphQL queries under `backups.objectRuns` provide operation-filtered `list` and `lastSuccessful` reads and `run(key)` lookup. Run fields include the fixed inventory, paginated `items`, live `summary` and frozen `result`. List, item and inventory-object pages default to 20 entries and are capped at 100. These queries use the existing backup administrator/group and API-token scope checks.
 
+GraphQL mutations under `backups.objectRuns` accept typed portable inventories through `prepare` and `prepareRestore`. Preparation records immutable run intent and exact checkpoints atomically. Repeating the same intent returns the existing run, including any recorded outcome. Preparation requires backup administration access; it does not capture or pin source revisions, open storage, dispatch transfers, or establish a database recovery point.
+
 ZIP backup and restore operations run as jobs (`BackupJob`/`RestoreJob`) using an executor pattern. Each backup records a `BackupManifest` with metadata about backed-up tables and records. Restore operations use a configurable `ConflictStrategy` for handling existing data. `BackupTableDefinition` describes which tables to include and how to serialize them. GraphQL controllers provide admin access to backup and restore operations.
 
 ## Dependencies
