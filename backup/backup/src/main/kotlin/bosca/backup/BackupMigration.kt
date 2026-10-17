@@ -11,5 +11,6 @@ class BackupMigration : Migration {
         "V3__object_backup_operations.sql",
         "V4__object_backup_payload_claims.sql",
         "V5__object_backup_storage.sql",
+        "V6__object_backup_run_storage.sql",
     )
 }

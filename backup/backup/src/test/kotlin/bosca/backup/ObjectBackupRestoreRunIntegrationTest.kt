@@ -9,6 +9,7 @@ import bosca.db.migrations.FlywayMigration
 import bosca.db.migrations.Migration
 import bosca.db.withConnectionManager
 import bosca.di.BackupProviderRegistrar
+import bosca.di.StorageProviderRegistrar
 import bosca.di.ProviderRegistry
 import bosca.di.annotation.InternalDI
 import bosca.di.provide
@@ -78,6 +79,7 @@ class ObjectBackupRestoreRunIntegrationTest {
         ProviderRegistry.clear()
         provides<ConnectionPool>(singleton = true) { pool }
         provides<Json>(singleton = true) { Json }
+        StorageProviderRegistrar().register()
         BackupProviderRegistrar().register()
         val initial = object : Migration {
             override val schema = "backup"
@@ -195,7 +197,7 @@ class ObjectBackupRestoreRunIntegrationTest {
         }
         val otherBackup = delegate(backup)
         val otherDestination = delegate(target)
-        val otherService = ObjectBackupRunServiceImpl(provide(), progress, provide(), Json)
+        val otherService = ObjectBackupRunServiceImpl(provide(), progress, provide(), Json, provide())
         val original = async { service.executeRestore(run.key, heldBackup, mapOf("content" to target)) }
         try {
             withTimeout(10_000) { entered.await() }

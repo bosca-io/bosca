@@ -32,4 +32,16 @@ interface ObjectBackupStorageService : Service {
         configuration: StorageConfiguration,
         block: suspend (ObjectStorageService) -> T,
     ): T
+
+    /**
+     * Captures and atomically binds all selected configurations before opening any store.
+     *
+     * IDs are the keys of [configurations]. All claims roll back on a binding conflict. Already
+     * opened stores close if a later store fails to open, or work fails or is cancelled. The caller
+     * closes streams inside [block]. Active caller transactions are rejected before mutation or I/O.
+     */
+    suspend fun <T> withStorages(
+        configurations: Map<String, StorageConfiguration>,
+        block: suspend (Map<String, ObjectStorageService>) -> T,
+    ): T
 }

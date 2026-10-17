@@ -1,11 +1,12 @@
 package bosca.backup
 
 import bosca.service.Service
+import bosca.storage.configuration.StorageConfiguration
 import bosca.storage.service.ObjectStorageService
 
 /**
  * Tracks fixed object inventories using the caller's connection-manager context.
- * [execute] and [executeRestore] own short database contexts around storage work.
+ * [execute], [executeRestore] and [executeConfigured] own short database contexts around storage work.
  */
 interface ObjectBackupRunService : Service {
     /** Atomically prepares backup intent and its exact retained-payload checkpoint associations. */
@@ -20,6 +21,31 @@ interface ObjectBackupRunService : Service {
 
     /** Reads a persisted run without changing its attempt or historical result. */
     suspend fun get(key: String): ObjectBackupRun?
+
+    /**
+     * Fixes the bound storage IDs for an untouched pending run in the caller's database context.
+     *
+     * Every declared logical store maps to a bound source for backup, or a bound target for restore.
+     * [backupKey] identifies independent retained storage and matches a backup run's destination ID.
+     * Repeating identical intent is idempotent; changed mappings and conflicting restore keys fail.
+     * Restore destination IDs keep each logical store at the same location across later runs,
+     * because those inventories share destination checkpoints.
+     */
+    suspend fun configureStorage(key: String, backupKey: String, stores: Map<String, String>): ObjectBackupRunStorage
+
+    /** Reads the fixed storage IDs in the caller's context, without credentials or opening stores. */
+    suspend fun getStorage(key: String): ObjectBackupRunStorage?
+
+    /**
+     * Executes the run through its saved mapping and the required caller-supplied configurations.
+     *
+     * Captures configuration inputs, validates/binds all selected stores before opening any, and
+     * closes them after work, failure or cancellation. Unrelated configurations are ignored.
+     * Completed/cancelled outcomes return without opening stores; running attempts are rejected.
+     * Requires no active caller transaction. The caller pins source revisions, preserves storage
+     * accounts and owns exclusive cross-run destination access. This does not dispatch a job.
+     */
+    suspend fun executeConfigured(key: String, configurations: Map<String, StorageConfiguration>): ObjectBackupRun
 
     /** Lists runs of one operation within a source/destination scope using offset pagination. */
     suspend fun list(

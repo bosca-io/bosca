@@ -42,6 +42,7 @@ class RepositoryGenerator(codeGenerator: CodeGenerator, private val logger: KSPL
 
     private lateinit var collectionType: KSType
     private lateinit var resolver: Resolver
+    private var usesJsonbSerializers = false
 
     private companion object {
         /** FQN of the jsonb mapper that takes an explicit serializer (so JSON columns stay native-safe). */
@@ -58,6 +59,7 @@ class RepositoryGenerator(codeGenerator: CodeGenerator, private val logger: KSPL
 
     override fun generate(items: Collection<FoundRepository>) {
         items.forEach { repository ->
+            usesJsonbSerializers = false
             logger.info("Generating repository for ${repository.repository}")
             val repositoryClassName = repository.repository as ClassName
             val repositoryImplClassName = ClassName(repositoryClassName.packageName, "${repositoryClassName.simpleName}Impl")
@@ -149,6 +151,8 @@ class RepositoryGenerator(codeGenerator: CodeGenerator, private val logger: KSPL
                         }
                     }
             }
+
+            if (usesJsonbSerializers) fileBuilder.addImport("kotlinx.serialization.builtins", "serializer")
 
             fileBuilder
                 .addImport("bosca.db", "connection")
@@ -282,6 +286,7 @@ class RepositoryGenerator(codeGenerator: CodeGenerator, private val logger: KSPL
      * serializer reflectively, so the generated code is safe in the GraalVM native image.
      */
     private fun jsonbSerializerExpr(typeName: TypeName): String {
+        usesJsonbSerializers = true
         val nonNull = typeName.copy(nullable = false)
         return when (nonNull) {
             is ParameterizedTypeName -> when (nonNull.rawType.canonicalName) {
@@ -719,4 +724,3 @@ class RepositoryGenerator(codeGenerator: CodeGenerator, private val logger: KSPL
             }
         }
 }
-

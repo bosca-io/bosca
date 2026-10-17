@@ -519,6 +519,56 @@ class RepositoryGeneratorTest {
 
     // ── Bind mapper types via model parameter ──
 
+    @Test
+    fun `JSONB string map reads import built-in serializers`() {
+        val mapType = ClassName("kotlin.collections", "Map").parameterizedBy(
+            ClassName("kotlin", "String"), ClassName("kotlin", "String"),
+        )
+        generateJsonbProperty(mapType, read = true)
+        val code = generatedCode()
+        assertTrue(code.contains("MapSerializer(kotlin.String.serializer(), kotlin.String.serializer())"))
+        assertTrue(code.contains("import kotlinx.serialization.builtins.serializer"))
+    }
+
+    @Test
+    fun `JSONB string collection binds import built-in serializers`() {
+        val listType = ClassName("kotlin.collections", "List").parameterizedBy(ClassName("kotlin", "String"))
+        generateJsonbProperty(listType, read = false)
+        val code = generatedCode()
+        assertTrue(code.contains("ListSerializer(kotlin.String.serializer())"))
+        assertTrue(code.contains("import kotlinx.serialization.builtins.serializer"))
+    }
+
+    @Test
+    fun `built-in serializer imports do not leak into later repositories`() {
+        generateJsonbProperty(ClassName("kotlin", "String"), read = true)
+        assertTrue(generatedCode().contains("import kotlinx.serialization.builtins.serializer"))
+        outputStream.reset()
+        testSelectReturningPrimitive(ClassName("kotlin", "String"))
+        assertFalse(generatedCode().contains("import kotlinx.serialization.builtins.serializer"))
+    }
+
+    private fun generateJsonbProperty(typeName: TypeName, read: Boolean) {
+        prepareGenerator(mockResolver())
+        val modelName = ClassName("com.example", "JsonbModel")
+        val model = mockModelClassDecl(modelName.canonicalName, listOf(
+            ModelProperty("value", typeName, hasDbMapper = true, dbMapperQualifiedName = "bosca.db.mapper.JsonbMapper"),
+        ))
+        val function = if (read) {
+            mockFunction(
+                "read", listOf(mockQueryAnnotation("select value from records")),
+                returnTypeRef = mockReturnTypeRef(modelName, classDecl = model),
+            )
+        } else {
+            mockFunction(
+                "write", listOf(mockQueryAnnotation("insert into records (value) values (:value)")),
+                listOf(mockParameter("model", mockTypeRef(modelName, model))),
+                mockReturnTypeRef(ClassName("kotlin", "Unit")),
+            )
+        }
+        generator.generate(listOf(mockFoundRepository(functions = sequenceOf(function))))
+    }
+
     /**
      * Tests defaultBindMappers for a specific type by wrapping it in a model parameter.
      * This uses the single-param model path to exercise the bind mapper for the type.

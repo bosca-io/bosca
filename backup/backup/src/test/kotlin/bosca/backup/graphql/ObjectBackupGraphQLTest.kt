@@ -17,6 +17,7 @@ import bosca.db.migrations.FlywayMigration
 import bosca.db.migrations.Migration
 import bosca.db.withConnectionManager
 import bosca.di.BackupProviderRegistrar
+import bosca.di.StorageProviderRegistrar
 import bosca.di.BackupTestProviderRegistrar
 import bosca.di.ProviderRegistry
 import bosca.di.annotation.InternalDI
@@ -104,8 +105,9 @@ abstract class ObjectBackupGraphQLTest {
         provides<Tracer> { GlobalOpenTelemetry.getTracer("ObjectBackupRunGraphQLIntegrationTest") }
         provides<GroupEvaluator> { GroupEvaluator(mockk()) }
         provides<MetadataService> { mockk() }
+        StorageProviderRegistrar().register()
         val objectStorage = mockk<ObjectStorageService>()
-        provides<ObjectStorageService> { objectStorage }
+        provides<ObjectStorageService>(overrideExisting = true) { objectStorage }
         val queue = mockk<JobQueue>()
         val queueFactory = mockk<JobQueueFactory>()
         every { queueFactory.create(BackupJobQueueNames.backupQueue) } returns queue

@@ -7,6 +7,7 @@ import bosca.db.migrations.FlywayMigration
 import bosca.db.migrations.Migration
 import bosca.db.withConnectionManager
 import bosca.di.BackupProviderRegistrar
+import bosca.di.StorageProviderRegistrar
 import bosca.di.ProviderRegistry
 import bosca.di.annotation.InternalDI
 import bosca.di.provide
@@ -42,6 +43,7 @@ class ObjectBackupPayloadClaimMigrationIntegrationTest {
         ProviderRegistry.clear()
         provides<ConnectionPool>(singleton = true) { pool }
         provides<Json>(singleton = true) { Json }
+        StorageProviderRegistrar().register()
         BackupProviderRegistrar().register()
         migration = provide(name = "backup-migrations")
         FlywayMigration(pool).migrate(listOf(object : Migration {

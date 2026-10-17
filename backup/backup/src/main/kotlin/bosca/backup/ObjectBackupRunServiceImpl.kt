@@ -1,8 +1,10 @@
 package bosca.backup
 
+import bosca.db.connectionOrNull
 import bosca.db.transaction
 import bosca.db.withConnectionManager
 import bosca.service.annotation.ServiceImplementation
+import bosca.storage.configuration.StorageConfiguration
 import bosca.storage.service.ObjectNotFoundException
 import bosca.storage.service.ObjectStorageService
 import bosca.storage.service.StringObjectPath
@@ -21,7 +23,106 @@ class ObjectBackupRunServiceImpl(
     private val progressService: ObjectBackupProgressService,
     private val restoreService: ObjectBackupRestoreService,
     private val json: Json,
+    private val storageService: ObjectBackupStorageService,
 ) : ObjectBackupRunService {
+    override suspend fun configureStorage(
+        key: String,
+        backupKey: String,
+        stores: Map<String, String>,
+    ): ObjectBackupRunStorage {
+        validateKey(key)
+        require(backupKey.isNotBlank()) { "Backup storage identity is required" }
+        val captured = stores.toMap()
+        require(captured.values.all { it.isNotBlank() }) { "Mapped storage identities are required" }
+        return transaction {
+            val run = checkNotNull(repository.getForUpdate(key)) { "Object backup run is missing: $key" }
+            require(captured.keys == run.inventory.objects.map { it.store }.toSet()) {
+                "Storage mapping must match the declared logical stores: $key"
+            }
+            require(backupKey !in captured.values) { "Backup storage must be independent of mapped content stores" }
+            if (run.operation == ObjectBackupOperation.BACKUP) {
+                require(backupKey == run.destinationId) { "Backup storage must match the run destination: $key" }
+            } else {
+                val claims = mutableSetOf<Pair<String, String>>()
+                for (entry in run.inventory.objects) {
+                    val target = captured.getValue(entry.store) to entry.key
+                    require(claims.add(target)) {
+                        "Multiple logical stores target the same destination object: ${entry.key}"
+                    }
+                }
+            }
+            val existing = repository.getStorage(key)
+            if (existing != null) {
+                require(existing.backupKey == backupKey && existing.stores == captured) {
+                    "Conflicting object run storage mapping: $key"
+                }
+                existing
+            } else {
+                check(run.status == ObjectBackupRunStatus.PENDING && run.attempts == 0) {
+                    "Storage can only be configured before the first run attempt: $key"
+                }
+                for (storageKey in (captured.values + backupKey).toSortedSet()) {
+                    requireNotNull(storageService.get(storageKey)) { "Backup storage is not bound: $storageKey" }
+                }
+                check(repository.addStorage(ObjectBackupRunStorage(key, backupKey, captured)) == 1) {
+                    "Object run storage mapping was not recorded: $key"
+                }
+                val restoreDestinationId = run.destinationId.takeIf { run.operation == ObjectBackupOperation.RESTORE }
+                for ((store, storageKey) in captured.toSortedMap()) {
+                    if (restoreDestinationId != null) {
+                        repository.addRestoreStore(restoreDestinationId, store, storageKey)
+                        require(repository.hasRestoreStore(restoreDestinationId, store, storageKey)) {
+                            "Conflicting restore destination storage: $restoreDestinationId/$store"
+                        }
+                    }
+                    check(repository.addStore(key, store, storageKey, restoreDestinationId) == 1) {
+                        "Object run store mapping was not recorded: $key/$store"
+                    }
+                }
+                checkNotNull(repository.getStorage(key)) { "Object run storage mapping is missing: $key" }
+            }
+        }
+    }
+
+    override suspend fun getStorage(key: String): ObjectBackupRunStorage? {
+        validateKey(key)
+        return repository.getStorage(key)
+    }
+
+    override suspend fun executeConfigured(
+        key: String,
+        configurations: Map<String, StorageConfiguration>,
+    ): ObjectBackupRun {
+        val captured = configurations.toMap()
+        check(connectionOrNull()?.inTransaction != true) {
+            "Configured object runs must execute outside an active database transaction"
+        }
+        val prepared = withConnectionManager {
+            checkNotNull(get(key)) { "Object backup run is missing: $key" }
+        }
+        when (prepared.status) {
+            ObjectBackupRunStatus.COMPLETED, ObjectBackupRunStatus.CANCELLED -> return prepared
+            ObjectBackupRunStatus.RUNNING -> error("Object run is already running: $key")
+            else -> Unit
+        }
+        val mapping = withConnectionManager {
+            checkNotNull(getStorage(key)) { "Object run storage is not configured: $key" }
+        }
+        val selected = (mapping.stores.values + mapping.backupKey).toSet().associateWith { storageKey ->
+            requireNotNull(captured[storageKey]) { "Missing storage configuration: $storageKey" }
+        }
+        return executeRun(key, prepared.operation) { run ->
+            storageService.withStorages(selected) { opened ->
+                val stores = mapping.stores.mapValues { (_, storageKey) -> opened.getValue(storageKey) }
+                val retained = opened.getValue(mapping.backupKey)
+                when (run.operation) {
+                    ObjectBackupOperation.BACKUP -> backup(run, stores, retained)
+                    ObjectBackupOperation.RESTORE -> restore(run, retained, stores)
+                }
+            }
+        }
+    }
+
     override suspend fun prepare(inventory: ObjectBackupManifest, destinationId: String): ObjectBackupRun =
         prepare(ObjectBackupOperation.BACKUP, inventory, destinationId, null)
 
@@ -171,6 +272,14 @@ class ObjectBackupRunServiceImpl(
         sources: Map<String, ObjectStorageService>,
         destination: ObjectStorageService,
     ): ObjectBackupRun = executeRun(key, ObjectBackupOperation.BACKUP) { run ->
+        backup(run, sources, destination)
+    }
+
+    private suspend fun backup(
+        run: ObjectBackupRun,
+        sources: Map<String, ObjectStorageService>,
+        destination: ObjectStorageService,
+    ) {
         val transfer = ObjectBackupTransfer(sources, destination)
         transfer.copy(run.inventory, run.destinationId, progressService)
         publish(run, ObjectBackupManifestStore(destination, json))
@@ -181,6 +290,14 @@ class ObjectBackupRunServiceImpl(
         backup: ObjectStorageService,
         destinations: Map<String, ObjectStorageService>,
     ): ObjectBackupRun = executeRun(key, ObjectBackupOperation.RESTORE) { run ->
+        restore(run, backup, destinations)
+    }
+
+    private suspend fun restore(
+        run: ObjectBackupRun,
+        backup: ObjectStorageService,
+        destinations: Map<String, ObjectStorageService>,
+    ) {
         val path = StringObjectPath(run.path)
         val inventory = ObjectBackupManifestStore(backup, json).load(path)
         check(inventory == run.inventory) {

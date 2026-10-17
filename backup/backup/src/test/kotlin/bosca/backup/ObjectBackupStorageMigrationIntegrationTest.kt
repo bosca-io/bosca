@@ -75,6 +75,7 @@ class ObjectBackupStorageMigrationIntegrationTest {
 
         assertEquals(run, withConnectionManager { service.get(run.key) })
         assertEquals(items, withConnectionManager { service.items(run.key, 0, 10) })
+        assertNull(withConnectionManager { service.getStorage(run.key) })
         val storage = provide<ObjectBackupStorageService>()
         assertNull(withConnectionManager { storage.get("legacy-destination") })
     }

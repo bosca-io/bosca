@@ -10,6 +10,8 @@ import bosca.storage.service.ObjectStorageServiceFactory
 import bosca.storage.service.StorageDispatcher
 import java.io.File
 import java.net.URI
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 
 /** Checks configured storage addresses before handing the selected configuration to the factory. */
@@ -18,6 +20,46 @@ class ObjectBackupStorageServiceImpl(
     private val repository: ObjectBackupStorageRepository,
     private val factory: ObjectStorageServiceFactory,
 ) : ObjectBackupStorageService {
+    override suspend fun <T> withStorages(
+        configurations: Map<String, StorageConfiguration>,
+        block: suspend (Map<String, ObjectStorageService>) -> T,
+    ): T {
+        val captured = configurations.toMap()
+        check(connectionOrNull()?.inTransaction != true) {
+            "Backup storage must be opened outside an active database transaction"
+        }
+        require(captured.keys.all { it.isNotBlank() }) { "Backup storage identities are required" }
+        val selected = linkedMapOf<String, StorageConfiguration>()
+        for ((key, configuration) in captured.toSortedMap()) selected[key] = select(configuration)
+        withConnectionManager {
+            transaction {
+                for ((key, configuration) in selected) bindSelected(key, configuration)
+            }
+        }
+        return withContext(StorageDispatcher) {
+            openStorages(selected.entries.toList(), 0, linkedMapOf(), block)
+        }
+    }
+
+    private suspend fun <T> openStorages(
+        entries: List<Map.Entry<String, StorageConfiguration>>,
+        index: Int,
+        opened: MutableMap<String, ObjectStorageService>,
+        block: suspend (Map<String, ObjectStorageService>) -> T,
+    ): T {
+        currentCoroutineContext().ensureActive()
+        if (index == entries.size) return block(opened.toMap())
+        val (key, configuration) = entries[index]
+        return factory.withStorage(configuration) { store ->
+            opened[key] = store
+            try {
+                openStorages(entries, index + 1, opened, block)
+            } finally {
+                opened.remove(key)
+            }
+        }
+    }
+
     override suspend fun get(key: String): ObjectBackupStorage? {
         require(key.isNotBlank()) { "Backup storage identity is required" }
         return repository.get(key)
@@ -31,12 +73,7 @@ class ObjectBackupStorageServiceImpl(
         configuration: StorageConfiguration,
         block: suspend (ObjectStorageService) -> T,
     ): T {
-        check(connectionOrNull()?.inTransaction != true) {
-            "Backup storage must be opened outside an active database transaction"
-        }
-        val selected = select(configuration)
-        withConnectionManager { bindSelected(key, selected) }
-        return factory.withStorage(selected, block)
+        return withStorages(mapOf(key to configuration)) { block(it.getValue(key)) }
     }
 
     private suspend fun bindSelected(key: String, selected: StorageConfiguration): ObjectBackupStorage {

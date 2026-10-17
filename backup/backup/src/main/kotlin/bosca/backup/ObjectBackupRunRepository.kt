@@ -31,6 +31,61 @@ interface ObjectBackupRunRepository {
     @Query("select * from backup.object_runs where key = :key")
     suspend fun get(key: String): ObjectBackupRun?
 
+    /** Serializes initial storage configuration with starting this operational run. */
+    @Query("select * from backup.object_runs where key = :key for update")
+    suspend fun getForUpdate(key: String): ObjectBackupRun?
+
+    /** Records the independent backup storage for one immutable run mapping. */
+    @Query(
+        """
+        insert into backup.object_run_storage (key, backup_key) values (:key, :backupKey)
+        """,
+        returnUpdateCount = true,
+    )
+    suspend fun addStorage(storage: ObjectBackupRunStorage): Int
+
+    /** Claims a logical restore store once across inventories that share destination progress. */
+    @Query(
+        """
+        insert into backup.object_restore_stores (destination_id, store, storage_key)
+        values (:destinationId, :store, :storageKey)
+        on conflict (destination_id, store) do nothing
+        """,
+        returnUpdateCount = true,
+    )
+    suspend fun addRestoreStore(destinationId: String, store: String, storageKey: String): Int
+
+    /** Checks that an existing restore destination claim selects the same physical storage. */
+    @Query(
+        """
+        select exists(select 1 from backup.object_restore_stores
+            where destination_id = :destinationId and store = :store and storage_key = :storageKey)
+        """,
+    )
+    suspend fun hasRestoreStore(destinationId: String, store: String, storageKey: String): Boolean
+
+    /** Associates one declared logical store with its fixed bound storage identity. */
+    @Query(
+        """
+        insert into backup.object_run_stores (run_key, store, storage_key, restore_destination_id)
+        values (:runKey, :store, :storageKey, :restoreDestinationId)
+        """,
+        returnUpdateCount = true,
+    )
+    suspend fun addStore(runKey: String, store: String, storageKey: String, restoreDestinationId: String?): Int
+
+    /** Reads the fixed mapping with an explicitly serialized map of logical stores. */
+    @Query(
+        """
+        select s.*, coalesce((
+            select jsonb_object_agg(m.store, m.storage_key)
+            from backup.object_run_stores m where m.run_key = s.key
+        ), '{}'::jsonb) as stores
+        from backup.object_run_storage s where s.key = :key
+        """,
+    )
+    suspend fun getStorage(key: String): ObjectBackupRunStorage?
+
     /** Lists run history within one source/destination scope, newest first. */
     @Query(
         """
