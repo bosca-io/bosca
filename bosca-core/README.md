@@ -60,6 +60,8 @@ docker compose down                # Stop all services
 
 The project follows a core/implementation split where `core-*` modules define contracts (interfaces, models, annotations). Other workspace projects depend on these contracts through the root Gradle build. KSP code generation processes annotations in `core-annotations/` to generate GraphQL controllers, repository implementations, job executors, and route handlers. Database access uses the `@Repository` pattern with `@Query`-annotated methods. Each module manages its own Flyway migrations. DI uses the `di` and `service` projects in `services-di` with KSP-generated wiring.
 
+`core-storage` contains `StorageConfiguration` and the `ObjectStorageServiceFactory` contract. The factory creates independent filesystem, S3-compatible or no-op stores. Callers of `create` own and close their stores; `withStorage` closes them after work, failure or cancellation. Stores and open streams stay within the callback. `ContentConfiguration` passes the application storage settings to the injected factory and closes its singleton store at application shutdown. Bucket creation is optional.
+
 ## Dependencies
 
 - `io.bosca:di`, `io.bosca:service`, `io.bosca:di-ksp`, `io.bosca:service-ksp` -- from `services-di`

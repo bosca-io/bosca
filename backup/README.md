@@ -30,6 +30,8 @@ GraphQL mutations under `backups.objectRuns` accept typed portable inventories t
 
 Tracked backup preparation reserves each retained destination/path for one length and SHA-256 digest, and each manifest path for its owning run. Matching inventories can share payload bytes across sources and scopes. Conflicting payload claims and manifest/path collisions fail before transfer and roll back preparation. The migration backfills existing backup progress and runs and rejects conflicting historical claims without selecting one. Database references protect reservations while checkpoints or runs use them. Restore target paths keep their separate semantics; destination identities must consistently identify the same storage namespace.
 
+`ObjectStorageServiceFactory` in core storage creates independently configured stores. `ContentConfiguration` uses the injected factory for the shared application store and closes it at application shutdown. `withStorage` closes operation-scoped stores when the callback ends, including failure or cancellation. Binding these configurations to persisted backup identities and dispatching workers remain separate work.
+
 ZIP backup and restore operations run as jobs (`BackupJob`/`RestoreJob`) using an executor pattern. Each backup records a `BackupManifest` with metadata about backed-up tables and records. Restore operations use a configurable `ConflictStrategy` for handling existing data. `BackupTableDefinition` describes which tables to include and how to serialize them. GraphQL controllers provide admin access to backup and restore operations.
 
 ## Dependencies

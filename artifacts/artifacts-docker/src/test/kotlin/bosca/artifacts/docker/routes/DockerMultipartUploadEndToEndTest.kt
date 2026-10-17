@@ -44,7 +44,6 @@ import bosca.server.ServerCall
 import bosca.server.ServerRequest
 import bosca.server.ServerResponse
 import bosca.server.config.ApplicationConfig
-import bosca.storage.configuration.ContentConfiguration
 import bosca.storage.service.S3ObjectStorageService
 import bosca.storage.service.UrlSigner
 import bosca.test.resources.SharedPostgreSQLContainer
@@ -65,7 +64,11 @@ import org.junit.Assume.assumeTrue
 import org.testcontainers.DockerClientFactory
 import org.testcontainers.containers.GenericContainer
 import org.testcontainers.containers.wait.strategy.Wait
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials
+import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider
+import software.amazon.awssdk.core.checksums.RequestChecksumCalculation
 import software.amazon.awssdk.core.sync.RequestBody
+import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.s3.model.CreateBucketRequest
 import software.amazon.awssdk.services.s3.model.CreateMultipartUploadRequest
@@ -73,6 +76,7 @@ import software.amazon.awssdk.services.s3.model.ListMultipartUploadsRequest
 import software.amazon.awssdk.services.s3.model.ListObjectsV2Request
 import software.amazon.awssdk.services.s3.model.PutObjectRequest
 import java.io.OutputStream
+import java.net.URI
 import java.security.MessageDigest
 import java.sql.DriverManager
 import java.time.Duration
@@ -162,7 +166,13 @@ class DockerMultipartUploadEndToEndTest {
                     """.trimIndent().byteInputStream(),
                 ),
             )
-            s3Client = ContentConfiguration().amazonS3(application)
+            s3Client = S3Client.builder()
+                .requestChecksumCalculation(RequestChecksumCalculation.WHEN_REQUIRED)
+                .forcePathStyle(true)
+                .region(Region.US_EAST_1)
+                .endpointOverride(URI.create("http://${s3Proxy.host}:${s3Proxy.getMappedPort(S3_PORT)}"))
+                .credentialsProvider(StaticCredentialsProvider.create(AwsBasicCredentials.create(ACCESS_KEY, SECRET_KEY)))
+                .build()
             s3Client.createBucket(CreateBucketRequest.builder().bucket(BUCKET).build())
 
             val objectStorage = S3ObjectStorageService(

@@ -36,6 +36,8 @@ class S3ObjectStorageService(
     securityService: ObjectProvider<SecurityService>
 ) : AbstractObjectStorageService(urlPrefix, urlUploadPrefix, urlSigner, securityService) {
 
+    override fun close() = client.close()
+
     override suspend fun getInputStream(path: ObjectPath): InputStream = openOnStorageDispatcher {
         try {
             AbortOnEarlyCloseInputStream(client.getObject(GetObjectRequest.builder().bucket(bucket).key(path.toString()).build()))

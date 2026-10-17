@@ -48,7 +48,14 @@ open class StringObjectPath(
  * direct client uploads and downloads, enabling efficient large-file transfers that bypass
  * the application server.
  */
-interface ObjectStorageService {
+interface ObjectStorageService : AutoCloseable {
+
+    /**
+     * Releases resources owned by this store after its operations and streams have finished.
+     * Closing may block and should run on [StorageDispatcher]. Stores without owned resources
+     * have nothing to release.
+     */
+    override fun close() {}
 
     /**
      * Resolves the storage path for a metadata item's primary or supplementary content.

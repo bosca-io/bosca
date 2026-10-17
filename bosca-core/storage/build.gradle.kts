@@ -27,7 +27,7 @@ dependencies {
     implementation(project(":content:content"))
     implementation(project(":social:profile"))
     implementation(project(":search:core-search"))
-    implementation(project(":bosca-core:core-storage"))
+    api(project(":bosca-core:core-storage"))
     implementation(project(":bosca-core:core-security"))
     implementation(project(":ai:core-ai"))
     implementation(project(":sharedqueue:sharedqueue"))
