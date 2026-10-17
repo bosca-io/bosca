@@ -3,6 +3,7 @@ package bosca.git.ci.parser
 import bosca.git.model.JobDefinition
 import bosca.git.model.StepDefinition
 import kotlin.test.Test
+import kotlin.test.assertFailsWith
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
@@ -20,6 +21,18 @@ class PipelineJobFilterTest {
         needs = needs,
         steps = listOf(StepDefinition(name = "S", run = "true")),
     )
+
+    @Test
+    fun `malformed conditions reject selection instead of becoming successful skips`() {
+        for (condition in listOf("event = 'push'", "unknown()", "(event == 'push'", "event == 'push", "false trailing", "event ==", "always() &&")) {
+            assertFailsWith<bosca.git.model.PipelinePlanRejectedException>(condition) {
+                PipelineJobFilter.filter(mapOf("test" to job(condition)), ExpressionContext(event = "push"))
+            }
+        }
+        assertEquals(setOf("test"), PipelineJobFilter.filter(
+            mapOf("test" to job("\${{ event == 'push' }}")), ExpressionContext(event = "push"),
+        ).keys)
+    }
 
     @Test
     fun `a decidable condition is evaluated and consumed`() {

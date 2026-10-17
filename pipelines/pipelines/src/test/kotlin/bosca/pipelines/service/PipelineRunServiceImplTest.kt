@@ -141,6 +141,41 @@ class PipelineRunServiceImplTest {
     fun tearDownRegistry() = ProviderRegistry.clear()
 
     @Test
+    fun `recovered events retain their typed payload and source time in the durable job`() = runTest {
+        val queue = mockk<JobQueue>()
+        val captured = slot<Job>()
+        val jobId = UUID.random()
+        coEvery { queue.enqueue(capture(captured)) } answers {
+            captured.captured.setPersistentId(jobId)
+            jobId
+        }
+        provides<JobQueue>(name = bosca.pipelines.configuration.PipelinesJobQueueNames.jobQueue) { queue }
+        val input = buildJsonObject { put("id", "recovered-event") }
+        val created = OffsetDateTime.now().minusDays(1)
+
+        assertEquals(jobId, service().enqueueEvent(pipeline.id, "sample", input, created))
+        val definition = json.decodeFromJsonElement(bosca.pipelines.trigger.PipelineRunJob.serializer(), captured.captured.getDefinition())
+        assertEquals(pipeline.id, definition.pipelineId)
+        assertEquals("sample", definition.eventName)
+        assertEquals(input, definition.eventPayload)
+        assertEquals(created, definition.eventCreated)
+        coVerify(exactly = 1) { queue.enqueue(any()) }
+    }
+
+    @Test
+    fun `recovery lookup matches source revisions in restarted input`() = runTest {
+        val repository = mockk<PipelineRunRepository>()
+        val input = buildJsonObject { put("id", "recovered-event"); put("modified", "2026-10-16T00:00:00Z") }
+        val restarted = PipelineRun(pipelineId = pipeline.id, eventName = "restart", inputType = "sample", input = input, graphSnapshot = JsonObject(emptyMap()))
+        coEvery { repository.findLatestByInput(pipeline.id, "sample", input) } returns restarted
+        val sut = service(runRepo = repository)
+        assertEquals(restarted, sut.findLatestByInput(pipeline.id, "sample", input))
+        val changed = buildJsonObject { put("id", "recovered-event"); put("modified", "2026-10-16T01:00:00Z") }
+        coEvery { repository.findLatestByInput(pipeline.id, "sample", changed) } returns null
+        assertNull(sut.findLatestByInput(pipeline.id, "sample", changed))
+    }
+
+    @Test
     fun `start snapshots the graph and seeds the encoded input as RUNNING`() = runTest {
         val runRepo = mockk<PipelineRunRepository>(relaxed = true)
         val pipelineService = stubbedPipelineService()

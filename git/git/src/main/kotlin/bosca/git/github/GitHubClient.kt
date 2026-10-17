@@ -1,6 +1,7 @@
 package bosca.git.github
 
 import bosca.git.model.GitHubRepositoryPair
+import bosca.git.model.GitHubCommitStatus
 import bosca.git.model.GitHubPullRequest
 import bosca.git.model.GitHubCreatePullRequestInput
 import bosca.git.model.GitHubUpdatePullRequestInput
@@ -48,6 +49,36 @@ class GitHubClient(
     suspend fun repositoryUrl(pair: GitHubRepositoryPair, token: String): String {
         verifyRepository(pair, token)
         return "https://github.com/${pair.owner}/${pair.name}.git"
+    }
+
+    /** Publishes only changed status values, including recovery after an uncertain POST response. */
+    suspend fun synchronizeCommitStatus(
+        pair: GitHubRepositoryPair, token: String, commitSha: String, status: GitHubCommitStatus,
+    ): Boolean {
+        require(commitSha.matches(Regex("[a-fA-F0-9]{40}"))) { "A full commit SHA is required" }
+        require(status.state in setOf("pending", "success", "failure", "error")) { "Invalid commit status state" }
+        require(status.context.isNotBlank()) { "A commit status context is required" }
+        verifyRepository(pair, token)
+        var page = 1
+        while (true) {
+            val url = url("repos", pair.owner, pair.name, "commits", commitSha, "statuses").newBuilder()
+                .addQueryParameter("per_page", "100").addQueryParameter("page", page.toString()).build()
+            val statuses = json.decodeFromString(
+                kotlinx.serialization.builtins.ListSerializer(GitHubCommitStatus.serializer()),
+                execute(request(token).url(url).build(), "commit status lookup"),
+            )
+            // GitHub returns newest statuses first, and treats context names case-insensitively.
+            val latest = statuses.firstOrNull { it.context.equals(status.context, ignoreCase = true) }
+            if (latest != null) {
+                if (latest.copy(context = status.context) == status) return false
+                break
+            }
+            if (statuses.size < 100) break
+            page++
+        }
+        val body = json.encodeToString(GitHubCommitStatus.serializer(), status).toRequestBody(JSON_MEDIA_TYPE)
+        execute(request(token, "repos", pair.owner, pair.name, "statuses", commitSha).post(body).build(), "commit status update")
+        return true
     }
 
     /** Reads the current PR instead of replaying an old webhook snapshot. */

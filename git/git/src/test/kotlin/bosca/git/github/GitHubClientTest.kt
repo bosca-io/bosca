@@ -16,6 +16,81 @@ import mockwebserver3.MockWebServer
 import kotlin.test.*
 
 class GitHubClientTest {
+    @Test fun `commit status uses exact SHA stable context and the paired token`() = runBlocking {
+        MockWebServer().use { server ->
+            server.start()
+            verifyPair(server)
+            server.enqueue(MockResponse.Builder().body("[]").build())
+            server.enqueue(MockResponse.Builder().code(201).body("{}").build())
+            val status = bosca.git.model.GitHubCommitStatus("pending", "bosca/ci/ci.yaml", "Run #1: queued")
+            val sha = "a".repeat(40)
+            assertTrue(client(server).synchronizeCommitStatus(pair, "secret-token", sha, status))
+            server.takeRequest()
+            val lookup = server.takeRequest()
+            assertEquals("/repos/owner/repo/commits/$sha/statuses", lookup.url.encodedPath)
+            assertEquals("100", lookup.url.queryParameter("per_page"))
+            val request = server.takeRequest()
+            assertEquals("POST", request.method)
+            assertEquals("/repos/owner/repo/statuses/$sha", request.url.encodedPath)
+            assertEquals("Bearer secret-token", request.headers["Authorization"])
+            assertEquals(status, Json.decodeFromString(bosca.git.model.GitHubCommitStatus.serializer(), requireNotNull(request.body).utf8()))
+        }
+    }
+
+    @Test fun `commit status pagination finds latest matching context and redelivery is idempotent`() = runBlocking {
+        MockWebServer().use { server ->
+            server.start()
+            val status = bosca.git.model.GitHubCommitStatus("success", "bosca/ci/ci.yaml", "Run #2: success")
+            verifyPair(server)
+            server.enqueue(MockResponse.Builder().body((1..100).joinToString(",", "[", "]") {
+                """{"state":"success","context":"other/$it"}"""
+            }).build())
+            server.enqueue(MockResponse.Builder().body("""[
+                {"state":"success","context":"BOSCA/CI/CI.YAML","description":"Run #2: success"},
+                {"state":"pending","context":"bosca/ci/ci.yaml"}
+            ]""").build())
+            assertFalse(client(server).synchronizeCommitStatus(pair, "token", "a".repeat(40), status))
+            assertEquals(3, server.requestCount)
+            server.takeRequest(); server.takeRequest()
+            assertEquals("2", server.takeRequest().url.queryParameter("page"))
+        }
+    }
+
+    @Test fun `status changes overwrite old success and failures remain retryable without exposing credentials`() = runBlocking {
+        MockWebServer().use { server ->
+            server.start()
+            val status = bosca.git.model.GitHubCommitStatus("pending", "bosca/ci/ci.yaml")
+            for (code in listOf(401, 403, 404, 422, 500)) {
+                verifyPair(server)
+                server.enqueue(MockResponse.Builder().body("""[{"state":"success","context":"bosca/ci/ci.yaml"}]""").build())
+                server.enqueue(MockResponse.Builder().code(code).body("private-token").build())
+                val error = assertFailsWith<IllegalStateException> {
+                    client(server).synchronizeCommitStatus(pair, "private-token", "a".repeat(40), status)
+                }
+                assertTrue(error.message.orEmpty().contains(code.toString()))
+                assertFalse(error.message.orEmpty().contains("private-token"))
+            }
+            verifyPair(server)
+            server.enqueue(MockResponse.Builder().body("[]").build())
+            server.enqueue(MockResponse.Builder().code(201).body("{}").build())
+            assertTrue(client(server).synchronizeCommitStatus(pair, "token", "a".repeat(40), status))
+        }
+    }
+
+    @Test fun `status sync rejects invalid commits and mismatched immutable repositories before writing`() = runBlocking {
+        MockWebServer().use { server ->
+            server.start()
+            val status = bosca.git.model.GitHubCommitStatus("success", "bosca/ci/ci.yaml")
+            for (sha in listOf("main", "abc123", "g".repeat(40))) {
+                assertFailsWith<IllegalArgumentException> { client(server).synchronizeCommitStatus(pair, "token", sha, status) }
+            }
+            assertEquals(0, server.requestCount)
+            server.enqueue(MockResponse.Builder().body("""{"id":999}""").build())
+            assertFailsWith<IllegalStateException> { client(server).synchronizeCommitStatus(pair, "token", "a".repeat(40), status) }
+            assertEquals(1, server.requestCount)
+        }
+    }
+
     private val pair = GitHubRepositoryPair(UUID.random(), 123, "owner", "repo", "webhook", "token")
     private val pr = """{"id":456,"number":7,"node_id":"PR_456","title":"Change","body":"Description","state":"open","draft":true,"merged":false,"updated_at":"2026-10-02T10:00:00Z","user":{"id":8,"login":"author","type":"User"},"head":{"ref":"feature/one","sha":"${"1".repeat(40)}","repo":{"id":123}},"base":{"ref":"main","sha":"${"2".repeat(40)}","repo":{"id":123}}}"""
     private fun client(server: MockWebServer) = GitHubClient(baseUrl = server.url("/").toString().removeSuffix("/"))

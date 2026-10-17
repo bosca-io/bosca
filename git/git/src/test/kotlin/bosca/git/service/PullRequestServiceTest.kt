@@ -80,6 +80,7 @@ class PullRequestServiceTest {
     @BeforeTest
     fun setup() {
         ProviderRegistry.clear()
+        coEvery { commitStatusService.areRequiredChecksPassing(any(), any(), any()) } returns true
         provides<PubSubService>(singleton = true) { pubSub }
         provides<RepositoryService>(singleton = true) { repositoryService }
         provides<RefUpdateNotifier>(singleton = true) { refUpdateNotifier }
@@ -971,12 +972,12 @@ class PullRequestServiceTest {
         coEvery { prRepository.findById(prId) } returns testPr().copy(sourceBranch = "missing")
         coEvery { dependencyRepository.findDependencies(prId) } returns emptyList()
         coEvery { branchProtectionService.findMatchingRule(repositoryId, "main") } returns null
-        val failure = assertFailsWith<IllegalArgumentException> {
+        val failure = assertFailsWith<IllegalStateException> {
             service.mergeWithDependencies(
                 prId, MergeStrategy.MERGE_COMMIT, authorId, "name", "email", listOf(prId),
             )
         }
-        assertEquals("Pull request #1 cannot be merged", failure.message)
+        assertEquals("Source branch 'missing' not found", failure.message)
         repository.close()
     }
 
@@ -1396,6 +1397,37 @@ class PullRequestServiceTest {
         coEvery { prRepository.findById(prId) } returns testPr()
         coEvery { branchProtectionService.findMatchingRule(repositoryId, "main") } returns rule
         coEvery { prRepository.updateMergeState(any()) } answers { firstArg() }
+    }
+
+    @Test fun `all reported checks gate a merge even without a branch protection rule`() = runTest {
+        val repo = seedMergeableRepo()
+        io.mockk.every { dfsManager.open(repositoryId) } answers { repo.incrementOpen(); repo }
+        coEvery { prRepository.findById(prId) } returns testPr()
+        val source = requireNotNull(repo.resolve("refs/heads/feature")).name()
+        val target = repo.resolve("refs/heads/main")
+        coEvery { commitStatusService.areRequiredChecksPassing(repositoryId, source, emptyList()) } returns false
+        val failure = assertFailsWith<IllegalArgumentException> {
+            service.merge(prId, MergeStrategy.MERGE_COMMIT, authorId, "n", "e")
+        }
+        assertEquals("All applicable CI status checks must pass before merging", failure.message)
+        assertEquals(target, repo.resolve("refs/heads/main"))
+        coVerify(exactly = 0) { prRepository.updateMergeState(any()) }
+        coEvery { prRepository.updateMergeState(any()) } answers { firstArg() }
+        coEvery { commitStatusService.areRequiredChecksPassing(repositoryId, source, emptyList()) } returns true
+        assertEquals(PullRequestStatus.MERGED, service.merge(prId, MergeStrategy.MERGE_COMMIT, authorId, "n", "e").status)
+        repo.close()
+    }
+
+    @Test fun `imported merge also requires all native statuses on its exact source commit`() = runTest {
+        val repo = seedMergeableRepo()
+        io.mockk.every { dfsManager.open(repositoryId) } answers { repo.incrementOpen(); repo }
+        coEvery { prRepository.findById(prId) } returns testPr()
+        val source = requireNotNull(repo.resolve("refs/heads/feature")).name()
+        coEvery { commitStatusService.areRequiredChecksPassing(repositoryId, source, emptyList()) } returns false
+        assertFailsWith<IllegalArgumentException> { service.verifyMergeAllowed(prId, 0, source) }
+        coEvery { commitStatusService.areRequiredChecksPassing(repositoryId, source, emptyList()) } returns true
+        service.verifyMergeAllowed(prId, 0, source)
+        repo.close()
     }
 
     private fun approval(reviewerId: UUID, created: bosca.serialization.OffsetDateTime) = Review(

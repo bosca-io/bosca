@@ -13,6 +13,9 @@ import bosca.service.Service
  */
 interface PipelineService : Service {
 
+    /** Reports invalid or unreadable YAML files at an immutable commit, including files omitted from the catalog. */
+    suspend fun definitionErrors(repositoryId: UUID, commitSha: String): List<String>
+
     /**
      * Reconciles the live catalog with the current default branch, archiving removed files while
      * preserving pipeline IDs, runs, and trigger occurrences. [ref] determines whether default-branch

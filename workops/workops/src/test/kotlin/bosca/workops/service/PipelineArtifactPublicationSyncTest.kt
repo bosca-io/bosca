@@ -199,6 +199,7 @@ class PipelineArtifactPublicationSyncTest {
         pipelineRunId = runId,
         pipelineId = pipelineId,
         status = status,
+        modified = java.time.OffsetDateTime.now(),
     )
 
     private fun run(

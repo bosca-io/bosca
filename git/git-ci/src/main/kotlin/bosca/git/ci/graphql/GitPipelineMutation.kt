@@ -999,7 +999,7 @@ class GitPipelineMutation(
     ): Boolean {
         val repository = repositoryService.findById(repositoryId)
             ?: throw NoSuchElementException("Repository not found: $repositoryId")
-        if (authentication.principal() is ScopedAuthenticatedPrincipal) {
+        if (authentication.principal() is ScopedAuthenticatedPrincipal || jobId != null) {
             permissionEvaluator.verifyAllowed(authentication, PermissionAction.EXECUTE)
             val scopedJobId = jobId
                 ?: throw SecurityException("API tokens must identify the job reporting commit status")
@@ -1017,10 +1017,11 @@ class GitPipelineMutation(
                     "Job $scopedJobId cannot report commit status for the requested target"
                 )
             }
+            runService.refreshCommitStatuses(run.id)
         } else {
             permissionEvaluator.verifyAllowed(authentication, repository, PermissionAction.EDIT)
+            commitStatusService.recordStatus(repositoryId, commitSha, context, state, description, targetUrl)
         }
-        commitStatusService.recordStatus(repositoryId, commitSha, context, state, description, targetUrl)
         return true
     }
 

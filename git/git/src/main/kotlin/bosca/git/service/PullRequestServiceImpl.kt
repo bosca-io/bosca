@@ -294,9 +294,6 @@ class PullRequestServiceImpl(
         }
 
         val rule = branchProtectionService.findMatchingRule(pr.repositoryId, pr.targetBranch)
-        if (rule != null) {
-            enforceProtectionForMerge(pr, rule)
-        }
 
         // A merge inserts objects and advances the target ref, so it must hold
         // the per-repository write lock like a push: a concurrent GC computing
@@ -306,6 +303,7 @@ class PullRequestServiceImpl(
             val current = prRepository.lockById(id) ?: throw NoSuchElementException("Pull request not found: $id")
             check(current.version == pr.version) { "Pull request changed before merge; retry with its current state" }
             val merged = withRefSynchronizationLock(pr.repositoryId, lockFactory) { lockHandle ->
+                enforceProtectionForMerge(current, rule)
                 // JGit's merge, object inserts, and ref update are synchronous: keep them off request threads.
                 withContext(GitWorkDispatcher) {
                     val dfsRepo = dfsManager.open(pr.repositoryId, connection())
@@ -412,9 +410,7 @@ class PullRequestServiceImpl(
             require(pullRequest.status == PullRequestStatus.OPEN) {
                 "Pull request #${pullRequest.number} is ${pullRequest.status.name.lowercase()} and cannot be merged"
             }
-            branchProtectionService.findMatchingRule(pullRequest.repositoryId, pullRequest.targetBranch)?.let {
-                enforceProtectionForMerge(pullRequest, it)
-            }
+            enforceProtectionForMerge(pullRequest, branchProtectionService.findMatchingRule(pullRequest.repositoryId, pullRequest.targetBranch))
             val mergeability = checkMergeability(pullRequest.id)
             require(mergeability.success) {
                 val conflicts = mergeability.conflictingFiles.joinToString(", ")
@@ -726,21 +722,20 @@ class PullRequestServiceImpl(
             dfsManager.open(pr.repositoryId).use { it.resolve("refs/heads/${pr.sourceBranch}")?.name() }
         }
         require(head == sourceSha) { "The GitHub merge source differs from the reviewed Bosca branch" }
-        branchProtectionService.findMatchingRule(pr.repositoryId, pr.targetBranch)?.let { rule ->
-            require(!rule.requireCodeOwnerReview) { "Code-owner approval cannot be verified for an imported merge" }
-            enforceProtectionForMerge(pr, rule)
-        }
+        val rule = branchProtectionService.findMatchingRule(pr.repositoryId, pr.targetBranch)
+        require(rule?.requireCodeOwnerReview != true) { "Code-owner approval cannot be verified for an imported merge" }
+        enforceProtectionForMerge(pr, rule)
     }
 
-    private suspend fun enforceProtectionForMerge(pr: PullRequest, rule: BranchProtectionRule) {
-        if (rule.requiredApprovals > 0) {
+    private suspend fun enforceProtectionForMerge(pr: PullRequest, rule: BranchProtectionRule?) {
+        if (rule != null && rule.requiredApprovals > 0) {
             val approvals = reviewRepository.findApprovedByPullRequest(pr.id)
             require(approvals.size >= rule.requiredApprovals) {
                 "Requires ${rule.requiredApprovals} approvals, has ${approvals.size}"
             }
         }
 
-        val changesRequested = reviewRepository.findLatestChangesRequested(pr.id)
+        val changesRequested = if (rule != null) reviewRepository.findLatestChangesRequested(pr.id) else null
         if (changesRequested != null) {
             val laterApproval = reviewRepository.findApprovedByPullRequest(pr.id)
                 .any { it.reviewerId == changesRequested.reviewerId && it.created > changesRequested.created }
@@ -749,17 +744,17 @@ class PullRequestServiceImpl(
             }
         }
 
-        if (rule.requireStatusChecks.isNotEmpty()) {
+        run {
             val headSha = withContext(GitWorkDispatcher) {
-                dfsManager.open(pr.repositoryId).use { repo ->
+                dfsManager.open(pr.sourceRepositoryId ?: pr.repositoryId).use { repo ->
                     repo.refDatabase.findRef("refs/heads/${pr.sourceBranch}")?.objectId?.name()
                 }
             } ?: throw IllegalStateException("Source branch '${pr.sourceBranch}' not found")
             val passing = commitStatusService.areRequiredChecksPassing(
-                pr.repositoryId, headSha, rule.requireStatusChecks
+                pr.sourceRepositoryId ?: pr.repositoryId, headSha, rule?.requireStatusChecks.orEmpty()
             )
             require(passing) {
-                "Required CI status checks are not passing: ${rule.requireStatusChecks.joinToString(", ")}"
+                "All applicable CI status checks must pass before merging"
             }
         }
     }

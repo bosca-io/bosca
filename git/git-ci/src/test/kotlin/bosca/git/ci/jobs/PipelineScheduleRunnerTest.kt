@@ -12,7 +12,6 @@ import bosca.git.model.Repository
 import bosca.git.model.StepDefinition
 import bosca.git.model.Visibility
 import bosca.git.security.RepositoryPermissionEvaluator
-import bosca.git.service.CommitStatusService
 import bosca.git.service.PipelineRunService
 import bosca.git.service.PipelineScheduleService
 import bosca.git.service.PipelineService
@@ -47,7 +46,6 @@ class PipelineScheduleRunnerTest {
     private val repositoryService = mockk<RepositoryService>(relaxed = true)
     private val browseService = mockk<RepositoryBrowseService>(relaxed = true)
     private val runService = mockk<PipelineRunService>(relaxed = true)
-    private val commitStatusService = mockk<CommitStatusService>(relaxed = true)
     private val securityService = mockk<SecurityService>(relaxed = true)
     private val permissionEvaluator = mockk<RepositoryPermissionEvaluator>(relaxed = true)
     private lateinit var runner: PipelineScheduleRunnerImpl
@@ -79,7 +77,6 @@ class PipelineScheduleRunnerTest {
             repositoryService,
             browseService,
             runService,
-            commitStatusService,
             securityService,
             permissionEvaluator,
         )
@@ -249,8 +246,6 @@ class PipelineScheduleRunnerTest {
                 principalId,
             )
         }
-        coVerify { commitStatusService.recordStatus(repository.id, "sha", "ci/nightly-build/build", any(), "Queued", null) }
-        coVerify { commitStatusService.recordStatus(repository.id, "sha", "ci/nightly-build/test", any(), "Queued", null) }
     }
 
     private suspend fun livePrincipal() {

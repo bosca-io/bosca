@@ -36,5 +36,8 @@ data class CommitStatus(
     val state: CommitStatusState,
     val description: String? = null,
     @ColumnName("target_url") val targetUrl: String? = null,
+    /** Source ref when the check originates from a CI run. */
+    val ref: String? = null,
+    @Contextual val modified: OffsetDateTime = OffsetDateTime.now(),
     @Contextual val created: OffsetDateTime = OffsetDateTime.now()
 )

@@ -25,6 +25,15 @@ interface PipelineRunRepository {
     @Query("select * from pipelines.pipeline_run where id = :id and deleted_at is null")
     suspend fun getById(id: UUID): PipelineRun?
 
+    /** Latest retained attempt for the matching typed input, including restarts. */
+    @Query("""
+        select * from pipelines.pipeline_run
+        where pipeline_id = :pipelineId and input_type = :inputType and input @> :inputMatch
+          and deleted_at is null
+        order by created_at desc, id desc limit 1
+    """)
+    suspend fun findLatestByInput(pipelineId: UUID, inputType: String, inputMatch: JsonElement): PipelineRun?
+
     /** The child runs a For Each / Run Pipeline node spawned, in item order — for step-oriented views. */
     @Query(
         """
