@@ -203,9 +203,7 @@ class ObjectBackupRunServiceImpl(
         val ready = when (prepared.status) {
             ObjectBackupRunStatus.COMPLETED, ObjectBackupRunStatus.CANCELLED -> return prepared
 
-            ObjectBackupRunStatus.RUNNING -> withConnectionManager {
-                fail(prepared.key, prepared.version, "Previous run stopped before acknowledgement")
-            }
+            ObjectBackupRunStatus.RUNNING -> error("Object run is already running: $key")
 
             ObjectBackupRunStatus.PENDING,
             ObjectBackupRunStatus.PARTIAL,

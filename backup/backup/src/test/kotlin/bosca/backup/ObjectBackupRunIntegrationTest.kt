@@ -21,11 +21,14 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
 import java.io.IOException
 import java.nio.file.Path
@@ -225,6 +228,49 @@ class ObjectBackupRunIntegrationTest {
     }
 
     @Test
+    fun `duplicate execution cannot take over an active backup writer`(): Unit = runBlocking {
+        val prepared = request { service.prepare(inventory, "destination-1") }
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val origin = mockk<ObjectStorageService>()
+        coEvery { origin.getInputStream(any()) } coAnswers {
+            entered.complete(Unit)
+            release.await()
+            source.getInputStream(firstArg())
+        }
+        val otherSource = mockk<ObjectStorageService>()
+        coEvery { otherSource.getInputStream(any()) } coAnswers { source.getInputStream(firstArg()) }
+        val otherDestination = delegatingDestination()
+        val otherService = ObjectBackupRunServiceImpl(provide(), progress, provide(), Json)
+        val original = async { execute(prepared, origin) }
+        try {
+            withTimeout(10_000) { entered.await() }
+            val running = assertNotNull(request { service.get(prepared.key) })
+            val items = request { service.items(prepared.key, 0, 10) }
+
+            val failure = assertFailsWith<IllegalStateException> {
+                otherService.execute(prepared.key, mapOf("content" to otherSource), otherDestination)
+            }
+
+            assertTrue(failure.message.orEmpty().contains("already running"))
+            assertEquals(running, request { service.get(prepared.key) })
+            assertEquals(items, request { service.items(prepared.key, 0, 10) })
+            coVerify(exactly = 0) { otherSource.getInputStream(any()) }
+            coVerify(exactly = 0) { otherDestination.getInputStream(any()) }
+            coVerify(exactly = 0) { otherDestination.setInputStream(any(), any(), any()) }
+            release.complete(Unit)
+
+            val completed = withTimeout(10_000) { original.await() }
+            assertEquals(ObjectBackupRunStatus.COMPLETED, completed.status)
+            assertEquals(1, completed.attempts)
+            assertEquals(running.version + 1, completed.version)
+        } finally {
+            release.complete(Unit)
+            original.cancelAndJoin()
+        }
+    }
+
+    @Test
     fun `execution publishes a verified manifest before recording completed outcome`(): Unit = runBlocking {
         val prepared = request { service.prepare(inventory, "destination-1") }
         val target = delegatingDestination { path ->
@@ -333,12 +379,16 @@ class ObjectBackupRunIntegrationTest {
     @Test
     fun `stopped run reuses a published manifest and payloads after a lost acknowledgement`(): Unit = runBlocking {
         val prepared = request { service.prepare(inventory, "destination-1") }
-        request { service.start(prepared.key, prepared.version) }
+        val running = request { service.start(prepared.key, prepared.version) }
         ObjectBackupTransfer(mapOf("content" to source), destination).copy(inventory, "destination-1", progress)
         ObjectBackupManifestStore(destination, Json).save(StringObjectPath(prepared.path), inventory)
         val origin = mockk<ObjectStorageService>()
         val target = delegatingDestination { error("Already published output must not be rewritten") }
 
+        assertFailsWith<IllegalStateException> { execute(prepared, origin, target) }
+        assertEquals(running, request { service.get(prepared.key) })
+        coVerify(exactly = 0) { target.getInputStream(any()) }
+        request { service.fail(running.key, running.version, "writer stopped after publishing manifest") }
         val completed = execute(prepared, origin, target)
 
         assertEquals(ObjectBackupRunStatus.COMPLETED, completed.status)
@@ -432,9 +482,16 @@ class ObjectBackupRunIntegrationTest {
             .toList()
         assertEquals(1, recordingFailures.size)
         assertTrue(recordingFailures.single().message.orEmpty().contains("run checkpoint failure"))
-        assertEquals(ObjectBackupRunStatus.RUNNING, request { service.get(prepared.key) }?.status)
+        val running = assertNotNull(request { service.get(prepared.key) })
+        assertEquals(ObjectBackupRunStatus.RUNNING, running.status)
         removeStatusRejection()
 
+        assertFailsWith<IllegalStateException> { execute(prepared) }
+        assertEquals(running, request { service.get(prepared.key) })
+        assertFailsWith<IllegalStateException> {
+            request { service.fail(running.key, running.version + 1, "writer stopped") }
+        }
+        request { service.fail(running.key, running.version, "writer stopped") }
         assertEquals(ObjectBackupRunStatus.COMPLETED, execute(prepared).status)
     }
 

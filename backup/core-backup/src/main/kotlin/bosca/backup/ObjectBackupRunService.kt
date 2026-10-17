@@ -69,6 +69,8 @@ interface ObjectBackupRunService : Service {
      * [sources] addresses the declared logical stores, and [destination] matches the run's
      * destination identity. The caller pins source revisions, owns exclusive payload/manifest
      * writer access and establishes that any prior run writer has stopped.
+     * Execution rejects [ObjectBackupRunStatus.RUNNING] before storage access. Once the previous
+     * writer stops, record its failure through [fail] with the observed version before another attempt.
      * Completed/cancelled runs return their historical result. Cancelled runs require [retry];
      * use a new inventory identity for a new copy of completed content.
      */
@@ -86,6 +88,8 @@ interface ObjectBackupRunService : Service {
      * [ObjectBackupRestoreService.restore]. Progress storage remains outside any application
      * database being replaced. Earlier writers must have stopped before recovery. Completed or
      * cancelled redelivery returns the recorded outcome; cancelled runs require explicit [retry].
+     * Execution rejects [ObjectBackupRunStatus.RUNNING] before storage access. Once the previous
+     * writer stops, use [fail] with the observed version before executing another attempt.
      */
     suspend fun executeRestore(
         key: String,

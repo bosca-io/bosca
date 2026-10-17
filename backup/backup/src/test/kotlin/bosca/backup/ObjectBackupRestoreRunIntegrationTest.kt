@@ -22,10 +22,13 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
@@ -177,6 +180,50 @@ class ObjectBackupRestoreRunIntegrationTest {
         assertTrue(request {
             service.list(RESTORE, "source-1", "destination-1", "content", 0, 10)
         }.isEmpty())
+    }
+
+    @Test
+    fun `duplicate execution cannot take over an active restore writer`(): Unit = runBlocking {
+        val run = prepare()
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val heldBackup = delegate(backup)
+        coEvery { heldBackup.getInputStream(any()) } coAnswers {
+            entered.complete(Unit)
+            release.await()
+            backup.getInputStream(firstArg())
+        }
+        val otherBackup = delegate(backup)
+        val otherDestination = delegate(target)
+        val otherService = ObjectBackupRunServiceImpl(provide(), progress, provide(), Json)
+        val original = async { service.executeRestore(run.key, heldBackup, mapOf("content" to target)) }
+        try {
+            withTimeout(10_000) { entered.await() }
+            val running = assertNotNull(request { service.get(run.key) })
+            val items = request { service.items(run.key, 0, 10) }
+
+            val failure = assertFailsWith<IllegalStateException> {
+                otherService.executeRestore(run.key, otherBackup, mapOf("content" to otherDestination))
+            }
+
+            assertTrue(failure.message.orEmpty().contains("already running"))
+            assertEquals(running, request { service.get(run.key) })
+            assertEquals(items, request { service.items(run.key, 0, 10) })
+            coVerify(exactly = 0) { otherBackup.getInputStream(any()) }
+            coVerify(exactly = 0) { otherDestination.getInputStream(any()) }
+            coVerify(exactly = 0) { otherDestination.setInputStream(any(), any(), any()) }
+            release.complete(Unit)
+
+            val completed = withTimeout(10_000) { original.await() }
+            assertEquals(ObjectBackupRunStatus.COMPLETED, completed.status)
+            assertEquals(1, completed.attempts)
+            assertEquals(running.version + 1, completed.version)
+            assertEquals("data", read(target, first.key))
+            assertEquals("more", read(target, second.key))
+        } finally {
+            release.complete(Unit)
+            original.cancelAndJoin()
+        }
     }
 
     @Test
@@ -382,11 +429,15 @@ class ObjectBackupRestoreRunIntegrationTest {
     @Test
     fun `stopped running attempt reconciles objects after lost run acknowledgement`(): Unit = runBlocking {
         val run = prepare()
-        request { service.start(run.key, run.version) }
+        val running = request { service.start(run.key, run.version) }
         provide<ObjectBackupRestoreService>().restore(StringObjectPath(path), backup, mapOf("content" to target), "destination-1")
         val destination = delegate(target)
         coEvery { destination.setInputStream(any(), any(), any()) } throws AssertionError("Verified output rewritten")
 
+        assertFailsWith<IllegalStateException> { execute(run, destination) }
+        assertEquals(running, request { service.get(run.key) })
+        coVerify(exactly = 0) { destination.getInputStream(any()) }
+        request { service.fail(running.key, running.version, "writer stopped after restoring objects") }
         val completed = execute(run, destination)
 
         assertEquals(ObjectBackupRunStatus.COMPLETED, completed.status)
@@ -424,8 +475,15 @@ class ObjectBackupRestoreRunIntegrationTest {
         assertTrue(generateSequence(failure as Throwable) { it.cause }.flatMap { it.suppressed.asSequence() }.any {
             it.message.orEmpty().contains("run checkpoint failure")
         })
-        assertEquals(ObjectBackupRunStatus.RUNNING, request { service.get(run.key) }?.status)
+        val running = assertNotNull(request { service.get(run.key) })
+        assertEquals(ObjectBackupRunStatus.RUNNING, running.status)
         removeStatusRejection()
+        assertFailsWith<IllegalStateException> { execute(run) }
+        assertEquals(running, request { service.get(run.key) })
+        assertFailsWith<IllegalStateException> {
+            request { service.fail(running.key, running.version + 1, "writer stopped") }
+        }
+        request { service.fail(running.key, running.version, "writer stopped") }
         assertEquals(ObjectBackupRunStatus.COMPLETED, execute(run).status)
     }
 
