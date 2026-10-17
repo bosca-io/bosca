@@ -1,5 +1,6 @@
 package bosca.backup
 
+import bosca.db.transaction
 import bosca.service.annotation.ServiceImplementation
 
 /** Persists guarded per-revision progress through the backup repository. */
@@ -15,10 +16,32 @@ class ObjectBackupProgressServiceImpl(
         payload: BackupObject,
     ): ObjectBackupProgress {
         val key = revisionKey(operation, sourceId, destinationId, scope, payload)
-        repository.add(ObjectBackupProgress(key, sourceId, destinationId, scope, operation, payload))
+        return transaction {
+            val existing = get(operation, sourceId, destinationId, scope, payload)
+            if (operation == ObjectBackupOperation.BACKUP) {
+                repository.addPayload(destinationId, payload.payloadPath, payload.length, payload.sha256)
+                require(repository.hasPayload(destinationId, payload.payloadPath, payload.length, payload.sha256)) {
+                    "Conflicting retained payload: $destinationId/${payload.payloadPath}"
+                }
+            }
+            if (existing != null) return@transaction existing
 
-        return checkNotNull(get(operation, sourceId, destinationId, scope, payload)) {
-            "Prepared object backup progress is missing: $key"
+            repository.add(ObjectBackupProgress(key, sourceId, destinationId, scope, operation, payload))
+            checkNotNull(get(operation, sourceId, destinationId, scope, payload)) {
+                "Prepared object backup progress is missing: $key"
+            }
+        }
+    }
+
+    override suspend fun reserveManifest(destinationId: String, path: String, runKey: String) {
+        require(destinationId.isNotBlank()) { "Object backup destination identity is required" }
+        require(runKey.isNotBlank()) { "Object backup run key is required" }
+        require(path.split('/').all { it.isNotEmpty() && it != "." && it != ".." }) {
+            "Invalid object backup manifest path: $path"
+        }
+        repository.addManifest(destinationId, path, runKey)
+        require(repository.hasManifest(destinationId, path, runKey)) {
+            "Conflicting retained manifest path: $destinationId/$path"
         }
     }
 

@@ -310,7 +310,9 @@ class ObjectBackupRunGraphQLIntegrationTest : ObjectBackupGraphQLTest() {
     @Test
     fun `byte counts beyond GraphQL Int range use the Long scalar`(): Unit = runBlocking {
         val length = 5_000_000_000L
-        val selected = first.copy(key = "items/large", revision = "large-revision", length = length)
+        val selected = first.copy(
+            key = "items/large", revision = "large-revision", length = length, payloadPath = "objects/large",
+        )
         val large = request { runs.prepare(inventory.copy(id = "large-bytes", objects = listOf(selected)), "destination-1") }
 
         val value = result("run(key: \"${large.key}\") { summary { totalBytes verifiedBytes } items { payload { length } } }")

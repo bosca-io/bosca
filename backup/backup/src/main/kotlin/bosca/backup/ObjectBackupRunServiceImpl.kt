@@ -69,6 +69,9 @@ class ObjectBackupRunServiceImpl(
         }
 
         return transaction {
+            if (operation == ObjectBackupOperation.BACKUP) {
+                progressService.reserveManifest(destinationId, path, key)
+            }
             val inserted = repository.add(ObjectBackupRun(
                 key, captured.sourceId, destinationId, captured.scope, operation, captured, path,
             ))

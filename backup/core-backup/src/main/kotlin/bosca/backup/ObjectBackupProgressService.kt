@@ -9,7 +9,12 @@ import bosca.service.Service
  * recording completion. Recover a running attempt only after its previous writer has stopped.
  */
 interface ObjectBackupProgressService : Service {
-    /** Prepares operation-specific immutable intent without resetting an existing revision's progress. */
+    /**
+     * Prepares operation-specific intent without resetting an existing revision's progress.
+     * Backup preparation atomically reserves the retained destination path's length and digest;
+     * all source revisions and scopes sharing that destination/path must describe the same bytes.
+     * Restore target paths do not reserve immutable backup payloads.
+     */
     suspend fun prepare(
         operation: ObjectBackupOperation,
         sourceId: String,
@@ -17,6 +22,13 @@ interface ObjectBackupProgressService : Service {
         scope: String,
         payload: BackupObject,
     ): ObjectBackupProgress
+
+    /**
+     * Reserves a backup run's immutable manifest path independently of its payload checkpoints.
+     * Matching run ownership is idempotent; payload claims or another run's reservation fail.
+     * Call from the run preparation transaction so a failed preparation releases its reservation.
+     */
+    suspend fun reserveManifest(destinationId: String, path: String, runKey: String)
 
     /** Reads persisted progress without changing its state. */
     suspend fun get(key: String): ObjectBackupProgress?

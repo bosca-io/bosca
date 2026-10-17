@@ -28,6 +28,8 @@ Read-only GraphQL queries under `backups.objectRuns` provide operation-filtered 
 
 GraphQL mutations under `backups.objectRuns` accept typed portable inventories through `prepare` and `prepareRestore`. Preparation records immutable run intent and exact checkpoints atomically. Repeating the same intent returns the existing run, including any recorded outcome. Preparation requires backup administration access; it does not capture or pin source revisions, open storage, dispatch transfers, or establish a database recovery point.
 
+Tracked backup preparation reserves each retained destination/path for one length and SHA-256 digest, and each manifest path for its owning run. Matching inventories can share payload bytes across sources and scopes. Conflicting payload claims and manifest/path collisions fail before transfer and roll back preparation. The migration backfills existing backup progress and runs and rejects conflicting historical claims without selecting one. Database references protect reservations while checkpoints or runs use them. Restore target paths keep their separate semantics; destination identities must consistently identify the same storage namespace.
+
 ZIP backup and restore operations run as jobs (`BackupJob`/`RestoreJob`) using an executor pattern. Each backup records a `BackupManifest` with metadata about backed-up tables and records. Restore operations use a configurable `ConflictStrategy` for handling existing data. `BackupTableDefinition` describes which tables to include and how to serialize them. GraphQL controllers provide admin access to backup and restore operations.
 
 ## Dependencies

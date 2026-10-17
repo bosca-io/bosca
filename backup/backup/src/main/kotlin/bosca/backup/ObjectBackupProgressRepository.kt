@@ -6,6 +6,51 @@ import bosca.db.annotation.Repository
 /** Persists immutable revision intent and optimistic per-attempt progress in the backup schema. */
 @Repository
 interface ObjectBackupProgressRepository {
+    /** Reserves immutable retained bytes within one destination, independently of logical source scope. */
+    @Query(
+        """
+        insert into backup.object_paths (destination_id, path, length, sha256)
+        values (:destinationId, :path, :length, :sha256)
+        on conflict (destination_id, path) do nothing
+        """,
+        returnUpdateCount = true,
+    )
+    suspend fun addPayload(destinationId: String, path: String, length: Long, sha256: String): Int
+
+    /** Checks whether an existing retained path identifies exactly these bytes. */
+    @Query(
+        """
+        select exists (
+            select 1 from backup.object_paths
+            where destination_id = :destinationId and path = :path
+                and length = :length and sha256 = :sha256
+        )
+        """,
+    )
+    suspend fun hasPayload(destinationId: String, path: String, length: Long, sha256: String): Boolean
+
+    /** Reserves a manifest path before its owning run is inserted in the same transaction. */
+    @Query(
+        """
+        insert into backup.object_paths (destination_id, path, manifest_key)
+        values (:destinationId, :path, :runKey)
+        on conflict (destination_id, path) do nothing
+        """,
+        returnUpdateCount = true,
+    )
+    suspend fun addManifest(destinationId: String, path: String, runKey: String): Int
+
+    /** Checks the run ownership of an existing reserved manifest path. */
+    @Query(
+        """
+        select exists (
+            select 1 from backup.object_paths
+            where destination_id = :destinationId and path = :path and manifest_key = :runKey
+        )
+        """,
+    )
+    suspend fun hasManifest(destinationId: String, path: String, runKey: String): Boolean
+
     /** Inserts an intent once; duplicate preparation leaves the existing record unchanged. */
     @Query(
         """

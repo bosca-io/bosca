@@ -132,7 +132,7 @@ class ObjectBackupRunPreparationGraphQLIntegrationTest : ObjectBackupGraphQLTest
 
     @Test
     fun `Long input lengths are preserved beyond Int range`(): Unit = runBlocking {
-        val entry = first.copy(key = "items/large", length = 5_000_000_000L)
+        val entry = first.copy(key = "items/large", length = 5_000_000_000L, payloadPath = "objects/large")
         val declared = inventory.copy(id = "large", objects = listOf(entry))
         val value = prepare(declared)
 
