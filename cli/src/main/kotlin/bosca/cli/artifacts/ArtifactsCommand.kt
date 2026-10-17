@@ -5,7 +5,7 @@ import com.github.ajalt.clikt.core.Context
 
 /**
  * Parent command grouping artifact repository operations such as
- * Docker registry authentication.
+ * Docker and npm registry authentication.
  */
 class ArtifactsCommand : BoscaCliCommand(name = "artifacts") {
     override fun help(context: Context) = "Manage artifact repository access"

@@ -8,34 +8,40 @@ import com.github.ajalt.clikt.parameters.options.default
 import com.github.ajalt.clikt.parameters.options.option
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.io.File
 
 /**
  * Creates an API token scoped to artifact operations and uses it
- * to authenticate with the Docker registry via `docker login`.
- * The generated token is passed securely through stdin so it
- * never appears in process listings or shell history.
+ * to authenticate Docker and npm. Docker receives the token through stdin;
+ * npm's user configuration stores it only for the registry's `/npm/` endpoint.
  */
-class ArtifactsLoginCommand : TokenSubcommand(name = "login") {
-    override fun help(context: Context) = "Generate an API token and log in to the artifacts Docker registry"
+class ArtifactsLoginCommand internal constructor(
+    private val dockerExecutable: String,
+    private val npmConfigFile: File,
+) : TokenSubcommand(name = "login") {
+    constructor() : this("docker", npmUserConfigFile())
+
+    override fun help(context: Context) = "Generate an API token and configure Docker and npm artifact access"
 
     private val registryOption by option(
         "--registry", "-r",
         envvar = "BOSCA_ARTIFACTS_REGISTRY",
-        help = "Artifacts registry hostname (default: artifacts.<domain> of the Bosca endpoint)"
+        help = "Artifacts registry host or HTTP(S) URL (default: artifacts.<domain> of the Bosca endpoint)"
     )
 
     private val tokenName by option(
         "--token-name",
         help = "Name for the generated API token"
-    ).default("artifacts-docker-login")
+    ).default("artifacts-login")
 
     override suspend fun execute(apiTokens: ApiTokens) {
-        val registry = registryOption ?: DeploymentHosts.artifactsRegistry(endpoint)
+        val registryUrl = artifactRegistryUrl(registryOption ?: DeploymentHosts.artifactsRegistry(endpoint))
+        val registry = registryUrl.rawAuthority
         echo("Creating API token for artifact registry access...")
 
         val result = apiTokens.create(
             name = tokenName,
-            description = "Auto-generated token for Docker registry login to $registry",
+            description = "Docker and npm artifact access for $registry",
             scopes = listOf("artifacts:pull"),
         )
 
@@ -44,7 +50,7 @@ class ArtifactsLoginCommand : TokenSubcommand(name = "login") {
         val tokenId = result.apiToken.id
 
         val process = withContext(Dispatchers.IO) {
-            ProcessBuilder("docker", "login", registry, "--username", "api_token", "--password-stdin")
+            ProcessBuilder(dockerExecutable, "login", registry, "--username", "api_token", "--password-stdin")
                 .redirectErrorStream(true)
                 .start()
         }
@@ -54,10 +60,10 @@ class ArtifactsLoginCommand : TokenSubcommand(name = "login") {
             stdin.flush()
         }
 
-        val exitCode = withContext(Dispatchers.IO) {
-            process.waitFor()
+        val (exitCode, output) = withContext(Dispatchers.IO) {
+            val output = process.inputStream.bufferedReader().readText().trim()
+            process.waitFor() to output
         }
-        val output = process.inputStream.bufferedReader().readText().trim()
 
         if (output.isNotEmpty()) {
             echo(output)
@@ -70,8 +76,13 @@ class ArtifactsLoginCommand : TokenSubcommand(name = "login") {
             return
         }
 
+        withContext(Dispatchers.IO) {
+            configureNpmRegistry(npmConfigFile, registryUrl, result.rawToken)
+        }
+
         echo("")
         echo("Logged in to $registry")
+        echo("npm @bosca registry configured at ${registryUrl.resolve("/npm/")}")
         echo("Token ID: $tokenId (revoke with: bosca tokens revoke $tokenId)")
     }
 }
