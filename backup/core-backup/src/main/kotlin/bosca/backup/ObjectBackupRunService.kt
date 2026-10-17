@@ -57,6 +57,14 @@ interface ObjectBackupRunService : Service {
      */
     suspend fun executeConfigured(key: String): ObjectBackupRun
 
+    /**
+     * Executes only the exact pending version recorded by a dispatch request, using application
+     * configuration. Changed or non-pending versions return their current state without storage I/O.
+     * The version is checked again atomically with starting the attempt, after configuration lookup.
+     * A failed/cancelled attempt requires explicit [retry] and a new dispatch request.
+     */
+    suspend fun executeConfigured(key: String, expectedVersion: Long): ObjectBackupRun
+
     /** Lists runs of one operation within a source/destination scope using offset pagination. */
     suspend fun list(
         operation: ObjectBackupOperation,

@@ -12,6 +12,7 @@ import bosca.sharedqueue.jobs.JobExecutor
 import bosca.sharedqueue.jobs.JobQueue
 import bosca.sharedqueue.jobs.JobQueueFactory
 import bosca.sharedqueue.jobs.asCoroutineContext
+import bosca.storage.configuration.StorageConfiguration
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -61,14 +62,18 @@ class ObjectBackupRunExecutorTest {
     }
 
     @Test
-    fun `payload contains only its persisted run key`() {
-        val definition = ObjectBackupRunJob(key)
+    fun `payload contains only its persisted run key and version`() {
+        val definition = ObjectBackupRunJob(key, 7)
         val value = Json.encodeToJsonElement(ObjectBackupRunJob.serializer(), definition)
-        assertEquals(JsonObject(mapOf("key" to JsonPrimitive(key))), value)
+        assertEquals(JsonObject(mapOf("key" to JsonPrimitive(key), "version" to JsonPrimitive(7))), value)
         assertEquals(definition, Json.decodeFromJsonElement(ObjectBackupRunJob.serializer(), value))
-        assertFailsWith<IllegalArgumentException> { ObjectBackupRunJob(" ") }
+        assertFailsWith<IllegalArgumentException> { ObjectBackupRunJob(" ", 0) }
+        assertFailsWith<IllegalArgumentException> { ObjectBackupRunJob(key, -1) }
         assertFailsWith<IllegalArgumentException> {
-            Json.decodeFromJsonElement(ObjectBackupRunJob.serializer(), JsonObject(mapOf("key" to JsonPrimitive(""))))
+            Json.decodeFromJsonElement(
+                ObjectBackupRunJob.serializer(),
+                JsonObject(mapOf("key" to JsonPrimitive(""), "version" to JsonPrimitive(0))),
+            )
         }
     }
 
@@ -76,8 +81,8 @@ class ObjectBackupRunExecutorTest {
     fun `generated enqueue helper selects the existing backup provider`(): Unit = runBlocking {
         val enqueuer = provide<JobConfigurationEnqueuer>(name = "object-backup-run")
         assertEquals(BackupJobQueueNames.backupJobQueue, enqueuer.queueName)
-        assertSame(queue, ObjectBackupRunJob(key).jobQueue())
-        val job = ObjectBackupRunJob(key).enqueue()
+        assertSame(queue, ObjectBackupRunJob(key, 7).jobQueue())
+        val job = ObjectBackupRunJob(key, 7).enqueue()
         assertIs<ObjectBackupRunExecutor>(job.newExecutor())
         coVerify(exactly = 1) { queue.enqueue(job) }
     }
@@ -92,17 +97,18 @@ class ObjectBackupRunExecutorTest {
     }
 
     @Test
-    fun `executor delegates only the persisted key to configured execution`(): Unit = runBlocking {
-        coEvery { service.executeConfigured(key) } returns mockk()
+    fun `executor delegates the persisted key and pinned version to configured execution`(): Unit = runBlocking {
+        coEvery { service.executeConfigured(key, 7) } returns mockk()
         withExecutor(key) { it.execute() }
-        coVerify(exactly = 1) { service.executeConfigured(key) }
-        coVerify(exactly = 0) { service.executeConfigured(any(), any()) }
+        coVerify(exactly = 1) { service.executeConfigured(key, 7) }
+        coVerify(exactly = 0) { service.executeConfigured(any()) }
+        coVerify(exactly = 0) { service.executeConfigured(any(), any<Map<String, StorageConfiguration>>()) }
     }
 
     @Test
     fun `destination contention becomes delayed redelivery with its original cause`(): Unit = runBlocking {
         val failure = ObjectBackupDestinationBusyException("retained")
-        coEvery { service.executeConfigured(key) } throws failure
+        coEvery { service.executeConfigured(key, 7) } throws failure
         val delayed = assertFailsWith<DelayException> { withExecutor(key) { it.execute() } }
         assertEquals(5.seconds, delayed.time)
         assertSame(failure, delayed.cause)
@@ -111,7 +117,7 @@ class ObjectBackupRunExecutorTest {
     @Test
     fun `ordinary failures and cancellation propagate unchanged`(): Unit = runBlocking {
         for (failure in listOf(IOException("storage failed"), CancellationException("worker stopped"))) {
-            coEvery { service.executeConfigured(key) } throws failure
+            coEvery { service.executeConfigured(key, 7) } throws failure
             val thrown = assertFailsWith<Exception> { withExecutor(key) { it.execute() } }
             assertEquals(failure::class, thrown::class)
             assertTrue(generateSequence(thrown as Throwable) { it.cause }.any { it === failure })
@@ -119,7 +125,7 @@ class ObjectBackupRunExecutorTest {
     }
 
     private suspend fun withExecutor(key: String, block: suspend (JobExecutor) -> Unit) {
-        val job = ObjectBackupRunJob(key).prepare()
+        val job = ObjectBackupRunJob(key, 7).prepare()
         withContext(queue.asCoroutineContext(job)) { block(job.newExecutor()) }
     }
 }

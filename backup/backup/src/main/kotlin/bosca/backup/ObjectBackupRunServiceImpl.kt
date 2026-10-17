@@ -28,6 +28,11 @@ class ObjectBackupRunServiceImpl(
     override suspend fun executeConfigured(key: String): ObjectBackupRun =
         executeConfiguredRun(key) { storageService.configurations(it) }
 
+    override suspend fun executeConfigured(key: String, expectedVersion: Long): ObjectBackupRun {
+        validateVersion(key, expectedVersion)
+        return executeConfiguredRun(key, expectedVersion) { storageService.configurations(it) }
+    }
+
     override suspend fun configureStorage(
         key: String,
         backupKey: String,
@@ -102,6 +107,7 @@ class ObjectBackupRunServiceImpl(
 
     private suspend fun executeConfiguredRun(
         key: String,
+        expectedVersion: Long? = null,
         configurations: suspend (Set<String>) -> Map<String, StorageConfiguration>,
     ): ObjectBackupRun {
         check(connectionOrNull()?.inTransaction != true) {
@@ -110,6 +116,7 @@ class ObjectBackupRunServiceImpl(
         val prepared = withConnectionManager {
             checkNotNull(get(key)) { "Object backup run is missing: $key" }
         }
+        if (!matchesDispatch(prepared, expectedVersion)) return prepared
         when (prepared.status) {
             ObjectBackupRunStatus.COMPLETED, ObjectBackupRunStatus.CANCELLED -> return prepared
             ObjectBackupRunStatus.RUNNING -> error("Object run is already running: $key")
@@ -123,7 +130,7 @@ class ObjectBackupRunServiceImpl(
         val selected = required.associateWith { storageKey ->
             requireNotNull(available[storageKey]) { "Missing storage configuration: $storageKey" }
         }
-        return executeRun(key, prepared.operation) { run ->
+        return executeRun(key, prepared.operation, expectedVersion) { run ->
             storageService.withStorages(selected) { opened ->
                 val stores = mapping.stores.mapValues { (_, storageKey) -> opened.getValue(storageKey) }
                 val retained = opened.getValue(mapping.backupKey)
@@ -336,24 +343,27 @@ class ObjectBackupRunServiceImpl(
     private suspend fun executeRun(
         key: String,
         operation: ObjectBackupOperation,
+        expectedVersion: Long? = null,
         transfer: suspend (ObjectBackupRun) -> Unit,
     ): ObjectBackupRun {
-        val prepared = withConnectionManager {
-            checkNotNull(get(key)) { "Object backup run is missing: $key" }
+        val (running, started) = withConnectionManager {
+            transaction {
+                val prepared = checkNotNull(repository.getForUpdate(key)) { "Object backup run is missing: $key" }
+                require(prepared.operation == operation) {
+                    "Object run operation is ${prepared.operation}; expected $operation: $key"
+                }
+                if (!matchesDispatch(prepared, expectedVersion)) {
+                    prepared to false
+                } else {
+                    when (prepared.status) {
+                        ObjectBackupRunStatus.COMPLETED, ObjectBackupRunStatus.CANCELLED -> prepared to false
+                        ObjectBackupRunStatus.RUNNING -> error("Object run is already running: $key")
+                        else -> start(prepared.key, prepared.version) to true
+                    }
+                }
+            }
         }
-        require(prepared.operation == operation) {
-            "Object run operation is ${prepared.operation}; expected $operation: $key"
-        }
-        val ready = when (prepared.status) {
-            ObjectBackupRunStatus.COMPLETED, ObjectBackupRunStatus.CANCELLED -> return prepared
-
-            ObjectBackupRunStatus.RUNNING -> error("Object run is already running: $key")
-
-            ObjectBackupRunStatus.PENDING,
-            ObjectBackupRunStatus.PARTIAL,
-            ObjectBackupRunStatus.FAILED -> prepared
-        }
-        val running = withConnectionManager { start(ready.key, ready.version) }
+        if (!started) return running
         return try {
             transfer(running)
             currentCoroutineContext().ensureActive()
@@ -430,6 +440,9 @@ class ObjectBackupRunServiceImpl(
             "Object backup run key is required"
         }
     }
+
+    private fun matchesDispatch(run: ObjectBackupRun, expectedVersion: Long?): Boolean =
+        expectedVersion == null || (run.version == expectedVersion && run.status == ObjectBackupRunStatus.PENDING)
 
     private fun validateVersion(key: String, expectedVersion: Long) {
         validateKey(key)

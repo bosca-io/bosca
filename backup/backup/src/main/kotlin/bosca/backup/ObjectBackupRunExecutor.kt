@@ -15,7 +15,7 @@ class ObjectBackupRunExecutor(
     override suspend fun execute() {
         val definition = getJobDefinition()
         try {
-            service.executeConfigured(definition.key)
+            service.executeConfigured(definition.key, definition.version)
         } catch (busy: ObjectBackupDestinationBusyException) {
             throw DelayException(5.seconds).also { it.initCause(busy) }
         }
