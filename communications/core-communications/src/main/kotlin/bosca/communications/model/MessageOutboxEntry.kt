@@ -28,4 +28,9 @@ data class MessageOutboxEntry(
     @ColumnName("created_at")
     @Contextual
     val createdAt: OffsetDateTime = OffsetDateTime.now(),
-)
+) {
+    companion object {
+        /** Maximum persisted delivery attempts, retained across queue recovery. */
+        const val MAX_ATTEMPTS = 10
+    }
+}

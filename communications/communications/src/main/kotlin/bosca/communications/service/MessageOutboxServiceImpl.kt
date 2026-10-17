@@ -4,6 +4,7 @@ import bosca.communications.configuration.JobQueueNames
 import bosca.communications.jobs.MessageOutboxDeliveryJob
 import bosca.communications.jobs.prepareDeliveryJob
 import bosca.communications.model.Message
+import bosca.communications.model.MessageOutboxEntry
 import bosca.communications.repository.MessageOutboxRepository
 import bosca.di.annotation.ProviderName
 import bosca.serialization.UUID
@@ -32,7 +33,7 @@ class MessageOutboxServiceImpl(
         val entries = created.ifEmpty { repository.getBySource(sourceId) }
         check(entries.isNotEmpty()) { "Message outbox batch $sourceId has no delivery rows" }
         entries.asSequence()
-            .filter { it.sentAt == null }
+            .filter { it.sentAt == null && it.attempts < MessageOutboxEntry.MAX_ATTEMPTS }
             .forEach { entry ->
                 queue.enqueueIfAbsent(MessageOutboxDeliveryJob(entry.id).prepareDeliveryJob())
             }
