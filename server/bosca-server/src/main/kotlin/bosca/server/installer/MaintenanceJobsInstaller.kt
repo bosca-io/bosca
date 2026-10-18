@@ -1,6 +1,7 @@
 package bosca.server.installer
 
 import bosca.bible.providers.jobs.DeleteExpiredBibleChaptersJob
+import bosca.backup.ObjectBackupDispatchRecoveryJob
 import bosca.installer.model.PackageInstallation
 import bosca.installer.model.PackageInstallationVersion
 import bosca.installer.service.PackageInstaller
@@ -26,11 +27,8 @@ class MaintenanceJobsInstaller(
     override val version: String = VERSION
 
     override suspend fun install(installation: PackageInstallation, version: PackageInstallationVersion) {
-        val existingJobs = schedulerService.getJobs()
-        val existingJobNames = existingJobs.map { it.jobName }.toSet()
-
         for (job in jobs) {
-            if (job.jobName in existingJobNames) {
+            if (schedulerService.getJobsByName(job.jobName, limit = 1).isNotEmpty()) {
                 log.info("Scheduled job '{}' already exists, skipping", job.jobName)
                 continue
             }
@@ -114,10 +112,23 @@ class MaintenanceJobsInstaller(
             catchUp = false,
             maxCatchUp = 1
         ),
+        ScheduledJobInput(
+            name = "Recover Object Backup Dispatches",
+            description = "Recovers pending backup and restore requests after interrupted queue publication",
+            jobName = ObjectBackupDispatchRecoveryJob.NAME,
+            jobParameters = json.encodeToJsonElement(
+                ObjectBackupDispatchRecoveryJob.serializer(), ObjectBackupDispatchRecoveryJob(),
+            ),
+            cronExpression = "0 0 * * *",
+            enabled = true,
+            allowConcurrent = false,
+            catchUp = false,
+            maxCatchUp = 1,
+        ),
     )
 
     companion object {
-        const val VERSION = "1.4.0"
+        const val VERSION = "1.5.0"
         private val log = LoggerFactory.getLogger(MaintenanceJobsInstaller::class.java)
     }
 }

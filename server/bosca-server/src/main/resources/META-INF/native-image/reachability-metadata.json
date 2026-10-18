@@ -1,6 +1,9 @@
 {
   "reflection": [
     {
+      "type": "bosca.backup.ObjectBackupDispatchRecoveryExecutor"
+    },
+    {
       "type": "bosca.backup.ObjectBackupRunExecutor"
     },
     {
