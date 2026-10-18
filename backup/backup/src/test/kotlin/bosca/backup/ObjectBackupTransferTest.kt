@@ -528,6 +528,36 @@ class ObjectBackupTransferTest {
         }
     }
 
+    @Test
+    fun `version transfer selects the exact provider version when known bytes need repair`() = runTest {
+        val origin = mockk<ObjectStorageService>()
+        coEvery { origin.getInputStream(any(), "provider-1") } answers { data.inputStream() }
+        ObjectBackupTransfer(mapOf(entry.store to origin), destination).copyVersion(entry, "provider-1")
+        assertEquals("data", destination.getString(destinationPath))
+        coVerify(exactly = 1) { origin.getInputStream(match { it.toString() == entry.key }, "provider-1") }
+        coVerify(exactly = 0) { origin.getInputStream(any()) }
+    }
+
+    @Test
+    fun `version transfer reuses known matching output without opening source content`() = runTest {
+        val origin = mockk<ObjectStorageService>()
+        destination.setInputStream(destinationPath, data.inputStream(), data.size.toLong())
+        ObjectBackupTransfer(mapOf(entry.store to origin), destination).copyVersion(entry, "provider-1")
+        coVerify(exactly = 0) { origin.getInputStream(any(), any<String>()) }
+        coVerify(exactly = 0) { origin.getInputStream(any()) }
+        assertEquals("data", destination.getString(destinationPath))
+    }
+
+    @Test
+    fun `version transfer rejects blank versions before storage access`() = runTest {
+        val origin = mockk<ObjectStorageService>()
+        val target = mockk<ObjectStorageService>()
+        assertFailsWith<IllegalArgumentException> {
+            ObjectBackupTransfer(mapOf(entry.store to origin), target).copyVersion(entry, " ")
+        }
+        coVerify(exactly = 0) { target.getInputStream(any()) }
+    }
+
     private fun digest(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256")
         .digest(bytes)
         .toHexString()

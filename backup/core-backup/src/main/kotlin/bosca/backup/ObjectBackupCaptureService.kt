@@ -7,6 +7,32 @@ import bosca.storage.service.ObjectStorageService
 /** Creates verified retained payloads from explicitly selected provider revisions. */
 interface ObjectBackupCaptureService : Service {
     /**
+     * Captures or reuses a revision with a durable completed checkpoint in the existing ledger.
+     *
+     * Uses stable [sourceId], [destinationId] and [scope] identities. Known revisions retain their
+     * recorded payload path, even if a different new [payloadPath] is proposed. Completed bytes
+     * are verified without opening the source; missing/corrupt known output is repaired from the
+     * selected provider version against the recorded digest. A running checkpoint is rejected;
+     * the caller must establish that its writer stopped before recording failure and retrying.
+     *
+     * New captures use [capture] and atomically record completion after verification. A failed
+     * checkpoint commit can leave unreferenced output: retry reads committed progress first,
+     * otherwise use a fresh proposed path. Pending intent before the first unknown-digest capture
+     * is not recorded. Existing storage isolation, retention and transaction restrictions apply.
+     * Retained bytes are read in full on reuse; this does not define a periodic integrity policy.
+     */
+    suspend fun captureTracked(
+        sourceId: String,
+        destinationId: String,
+        scope: String,
+        store: String,
+        entry: ObjectStorageEntry,
+        source: ObjectStorageService,
+        destination: ObjectStorageService,
+        payloadPath: String,
+    ): ObjectBackupProgress
+
+    /**
      * Captures [entry]'s retained provider version and returns a manifest-ready [BackupObject].
      *
      * Derives the SHA-256 digest while streaming, checks the exact declared length and EOF,

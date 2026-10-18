@@ -45,7 +45,7 @@ class ObjectBackupCaptureTest {
         directory = createTempDirectory("bosca-object-capture-")
         retained = FileSystemObjectStorageService("", "", mockk(), directory.toString(), mockk())
         source = mockk()
-        service = ObjectBackupCaptureServiceImpl()
+        service = ObjectBackupCaptureServiceImpl(mockk())
         closed = AtomicBoolean()
         coEvery { source.getInputStream(any(), "old") } answers { stream(bytes) }
     }

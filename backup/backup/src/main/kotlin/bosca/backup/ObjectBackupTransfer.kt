@@ -121,7 +121,7 @@ class ObjectBackupTransfer(
             progressService.start(progress.key, progress.version)
         }
         return try {
-            copy(entry, sourceKey)
+            copy(entry, sourceKey, null)
             currentCoroutineContext().ensureActive()
 
             withConnectionManager {
@@ -156,9 +156,19 @@ class ObjectBackupTransfer(
      * Changed source bytes fail length/digest verification. Failed transfers may leave an
      * unverified payload for retry; they do not publish a manifest or a completed checkpoint.
      */
-    suspend fun copy(entry: BackupObject): Unit = copy(entry, entry.key)
+    suspend fun copy(entry: BackupObject): Unit = copy(entry, entry.key, null)
 
-    private suspend fun copy(entry: BackupObject, sourceKey: String): Unit = withContext(Dispatchers.IO) {
+    /** Copies or reuses known bytes, reading exactly [version] if source access is needed. */
+    suspend fun copyVersion(entry: BackupObject, version: String) {
+        require(version.isNotBlank()) { "A retained provider object version is required" }
+        copy(entry, entry.key, version)
+    }
+
+    private suspend fun copy(
+        entry: BackupObject,
+        sourceKey: String,
+        sourceVersion: String?,
+    ): Unit = withContext(Dispatchers.IO) {
         entry.validate()
         if (destination.hasVerifiedBackupPayload(entry)) return@withContext
 
@@ -167,7 +177,11 @@ class ObjectBackupTransfer(
         }
         val context = currentCoroutineContext()
         val input = BackupPayloadInputStream(
-            source.getInputStream(StringObjectPath(sourceKey)),
+            if (sourceVersion == null) {
+                source.getInputStream(StringObjectPath(sourceKey))
+            } else {
+                source.getInputStream(StringObjectPath(sourceKey), sourceVersion)
+            },
             entry,
             context,
         )

@@ -33,6 +33,22 @@ interface ObjectBackupProgressService : Service {
     /** Reads persisted progress without changing its state. */
     suspend fun get(key: String): ObjectBackupProgress?
 
+    /**
+     * Reads known intent by its exact revision identity without needing a precomputed digest.
+     * No checkpoint is inserted or changed. Source/destination/scope, logical store, key and
+     * revision are required; operation namespaces remain independent. Callers validate the
+     * returned payload's immutable byte claims against their selected source observation.
+     */
+    suspend fun get(
+        operation: ObjectBackupOperation,
+        sourceId: String,
+        destinationId: String,
+        scope: String,
+        store: String,
+        key: String,
+        revision: String,
+    ): ObjectBackupProgress?
+
     /** Reads the operation's exact revision intent without insertion; conflicting payload claims fail. */
     suspend fun get(
         operation: ObjectBackupOperation,

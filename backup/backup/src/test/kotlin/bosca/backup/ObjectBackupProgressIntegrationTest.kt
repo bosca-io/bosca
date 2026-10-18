@@ -323,6 +323,35 @@ class ObjectBackupProgressIntegrationTest {
         assertEquals(listOf(restore), request { service.list(RESTORE, "source-1", "destination-1", "content", 0, 10) })
     }
 
+    @Test
+    fun `digest-free lookup finds only the exact identity without inserting or changing intent`(): Unit = runBlocking {
+        val identity = listOf("source-1", "destination-1", "content", payload.store, payload.key, payload.revision)
+        assertNull(request { service.get(BACKUP, identity[0], identity[1], identity[2], identity[3], identity[4], identity[5]) })
+        assertTrue(request { service.list(BACKUP, "source-1", "destination-1", "content", 0, 10) }.isEmpty())
+        val prepared = request { prepare() }
+        assertEquals(prepared, request {
+            service.get(BACKUP, identity[0], identity[1], identity[2], identity[3], identity[4], identity[5])
+        })
+        for (i in identity.indices) {
+            val changed = identity.toMutableList().apply { this[i] = "other" }
+            assertNull(request { service.get(BACKUP, changed[0], changed[1], changed[2], changed[3], changed[4], changed[5]) })
+        }
+        assertNull(request { service.get(RESTORE, identity[0], identity[1], identity[2], identity[3], identity[4], identity[5]) })
+        assertEquals(prepared, request { service.get(prepared.key) })
+    }
+
+    @Test
+    fun `digest-free lookup rejects blank identity fields without writing`(): Unit = runBlocking {
+        val identity = listOf("source-1", "destination-1", "content", payload.store, payload.key, payload.revision)
+        for (i in identity.indices) {
+            val changed = identity.toMutableList().apply { this[i] = " " }
+            assertFailsWith<IllegalArgumentException> {
+                request { service.get(BACKUP, changed[0], changed[1], changed[2], changed[3], changed[4], changed[5]) }
+            }
+        }
+        assertTrue(request { service.list(BACKUP, "source-1", "destination-1", "content", 0, 10) }.isEmpty())
+    }
+
     private suspend fun prepare(): ObjectBackupProgress =
         service.prepare(BACKUP, "source-1", "destination-1", "content", payload)
 

@@ -8,6 +8,27 @@ import bosca.service.annotation.ServiceImplementation
 class ObjectBackupProgressServiceImpl(
     private val repository: ObjectBackupProgressRepository,
 ) : ObjectBackupProgressService {
+    override suspend fun get(
+        operation: ObjectBackupOperation,
+        sourceId: String,
+        destinationId: String,
+        scope: String,
+        store: String,
+        key: String,
+        revision: String,
+    ): ObjectBackupProgress? {
+        val identity = revisionKey(operation, sourceId, destinationId, scope, store, key, revision)
+        val progress = repository.get(identity) ?: return null
+        progress.payload.validate()
+        require(
+            progress.sourceId == sourceId && progress.destinationId == destinationId &&
+                progress.scope == scope && progress.operation == operation &&
+                progress.payload.store == store && progress.payload.key == key &&
+                progress.payload.revision == revision
+        ) { "Conflicting object backup revision intent: $identity" }
+        return progress
+    }
+
     override suspend fun prepare(
         operation: ObjectBackupOperation,
         sourceId: String,
@@ -124,12 +145,26 @@ class ObjectBackupProgressServiceImpl(
         scope: String,
         payload: BackupObject,
     ): String {
-        validateIdentity(sourceId, destinationId, scope)
         payload.validate()
+        return revisionKey(operation, sourceId, destinationId, scope, payload.store, payload.key, payload.revision)
+    }
 
+    private fun revisionKey(
+        operation: ObjectBackupOperation,
+        sourceId: String,
+        destinationId: String,
+        scope: String,
+        store: String,
+        key: String,
+        revision: String,
+    ): String {
+        validateIdentity(sourceId, destinationId, scope)
+        require(store.isNotBlank() && key.isNotBlank() && revision.isNotBlank()) {
+            "Object store, key, and revision identity are required"
+        }
         return objectBackupIdentity(
             operation,
-            listOf(sourceId, destinationId, scope, payload.store, payload.key, payload.revision),
+            listOf(sourceId, destinationId, scope, store, key, revision),
         )
     }
 

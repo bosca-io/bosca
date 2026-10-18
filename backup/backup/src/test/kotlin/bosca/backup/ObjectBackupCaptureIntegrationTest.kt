@@ -24,12 +24,15 @@ import bosca.storage.service.ObjectStorageServiceFactory
 import bosca.storage.service.StringObjectPath
 import bosca.test.resources.SharedPostgreSQLContainer
 import com.sun.net.httpserver.HttpServer
+import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
+import java.io.IOException
 import java.io.InputStream
 import java.net.InetSocketAddress
 import java.net.URLDecoder
 import java.nio.file.Path
+import java.security.MessageDigest
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
@@ -190,6 +193,306 @@ class ObjectBackupCaptureIntegrationTest {
             work.join()
         }
         assertFailsWith<ObjectNotFoundException> { retained.getObjectInfo(StringObjectPath(payloadPath)) }
+    }
+
+    @Test
+    fun `tracked capture records verified bytes and completion atomically`(): Unit = runBlocking {
+        val result = provide<ObjectStorageServiceFactory>().withStorage(configuration()) { tracked(it) }
+        assertEquals(ObjectBackupProgressStatus.COMPLETED, result.status)
+        assertEquals(1, result.attempts)
+        assertEquals(2L, result.version)
+        assertEquals(knownPayload(), result.payload)
+        assertEquals(result, checkpoint())
+        assertEquals(content, retained.getString(StringObjectPath(payloadPath)))
+        assertEquals(1, requests.size)
+    }
+
+    @Test
+    fun `tracked capture survives service restart and reuses the recorded path with source offline`(): Unit = runBlocking {
+        val first = provide<ObjectStorageServiceFactory>().withStorage(configuration()) { tracked(it) }
+        endpoint.stop(0)
+        val proposed = "payloads/another-attempt"
+        writeRetained(proposed, "unrelated")
+        BackupProviderRegistrar().register()
+        capture = provide()
+        val source = mockk<ObjectStorageService>()
+        assertEquals(first, tracked(source, path = proposed))
+        assertEquals("unrelated", retained.getString(StringObjectPath(proposed)))
+        assertEquals(first, checkpoint())
+        coVerify(exactly = 0) { source.getInputStream(any(), any<String>()) }
+        coVerify(exactly = 0) { source.getInputStream(any()) }
+    }
+
+    @Test
+    fun `missing completed capture is invalidated and repaired from its retained provider revision`(): Unit = runBlocking {
+        provide<ObjectStorageServiceFactory>().withStorage(configuration()) { source ->
+            val first = tracked(source)
+            retained.delete(StringObjectPath(payloadPath))
+            val repaired = tracked(source, path = "payloads/unused-proposal")
+            assertEquals(first.payload, repaired.payload)
+            assertEquals(ObjectBackupProgressStatus.COMPLETED, repaired.status)
+            assertEquals(2, repaired.attempts)
+            assertEquals(5L, repaired.version)
+            assertEquals(content, retained.getString(StringObjectPath(payloadPath)))
+            assertEquals(2, requests.size)
+        }
+    }
+
+    @Test
+    fun `corrupt completed capture is repaired against the recorded digest`(): Unit = runBlocking {
+        provide<ObjectStorageServiceFactory>().withStorage(configuration()) { source ->
+            val first = tracked(source)
+            writeRetained(payloadPath, "x".repeat(content.length))
+            val repaired = tracked(source)
+            assertEquals(first.payload, repaired.payload)
+            assertEquals(2, repaired.attempts)
+            assertEquals(content, retained.getString(StringObjectPath(payloadPath)))
+        }
+    }
+
+    @Test
+    fun `running captured revision is never taken over or probed`(): Unit = runBlocking {
+        val running = withConnectionManager {
+            val prepared = prepareKnown()
+            provide<ObjectBackupProgressService>().start(prepared.key, prepared.version)
+        }
+        val source = mockk<ObjectStorageService>()
+        val target = mockk<ObjectStorageService>()
+        assertFailsWith<IllegalStateException> { tracked(source, target) }
+        assertEquals(running, checkpoint())
+        coVerify(exactly = 0) { target.getInputStream(any()) }
+        coVerify(exactly = 0) { target.getObjectInfo(any()) }
+        coVerify(exactly = 0) { source.getInputStream(any(), any<String>()) }
+    }
+
+    @Test
+    fun `pending and failed known revisions resume using the existing checkpoint`(): Unit = runBlocking {
+        val prepared = withConnectionManager { prepareKnown() }
+        provide<ObjectStorageServiceFactory>().withStorage(configuration()) { source ->
+            val first = tracked(source)
+            assertEquals(prepared.key, first.key)
+            retained.delete(StringObjectPath(payloadPath))
+            withConnectionManager { provide<ObjectBackupProgressService>().invalidate(first.key, first.version, "removed") }
+            val retried = tracked(source)
+            assertEquals(first.key, retried.key)
+            assertEquals(2, retried.attempts)
+            assertEquals(ObjectBackupProgressStatus.COMPLETED, retried.status)
+        }
+    }
+
+    @Test
+    fun `pending matching output reconciles a lost acknowledgement without source access`(): Unit = runBlocking {
+        withConnectionManager { prepareKnown() }
+        writeRetained(payloadPath, content)
+        val source = mockk<ObjectStorageService>()
+        val result = tracked(source)
+        assertEquals(ObjectBackupProgressStatus.COMPLETED, result.status)
+        assertEquals(1, result.attempts)
+        coVerify(exactly = 0) { source.getInputStream(any(), any<String>()) }
+    }
+
+    @Test
+    fun `a conflicting selected length cannot alter known revision intent`(): Unit = runBlocking {
+        val prepared = withConnectionManager { prepareKnown() }
+        val source = mockk<ObjectStorageService>()
+        val target = mockk<ObjectStorageService>()
+        assertFailsWith<IllegalArgumentException> {
+            tracked(source, target, entry = selected.copy(info = selected.info.copy(length = selected.info.length + 1)))
+        }
+        assertEquals(prepared, checkpoint())
+        coVerify(exactly = 0) { target.getInputStream(any()) }
+        coVerify(exactly = 0) { source.getInputStream(any(), any<String>()) }
+    }
+
+    @Test
+    fun `known source failure remains a failed checkpoint and preserves its original cause`(): Unit = runBlocking {
+        withConnectionManager { prepareKnown() }
+        val failure = IOException("retained source denied")
+        val source = mockk<ObjectStorageService>()
+        coEvery { source.getInputStream(any(), version) } throws failure
+        val observed = assertFailsWith<IOException> { tracked(source) }
+        assertTrue(generateSequence<Throwable>(observed) { it.cause }.any { it === failure })
+        val failed = checkpoint()
+        assertEquals(ObjectBackupProgressStatus.FAILED, failed?.status)
+        assertEquals(1, failed?.attempts)
+        assertEquals(failure.message, failed?.error)
+        coVerify(exactly = 0) { source.getInputStream(any()) }
+    }
+
+    @Test
+    fun `known capture cancellation records failed work that can resume`(): Unit = runBlocking {
+        withConnectionManager { prepareKnown() }
+        val cancellation = CancellationException("capture cancelled")
+        val source = mockk<ObjectStorageService>()
+        coEvery { source.getInputStream(any(), version) } throws cancellation
+        assertFailsWith<CancellationException> { tracked(source) }
+        assertEquals(ObjectBackupProgressStatus.FAILED, checkpoint()?.status)
+        provide<ObjectStorageServiceFactory>().withStorage(configuration()) { realSource ->
+            val resumed = tracked(realSource)
+            assertEquals(ObjectBackupProgressStatus.COMPLETED, resumed.status)
+            assertEquals(2, resumed.attempts)
+        }
+    }
+
+    @Test
+    fun `unavailable completed output cannot be invalidated as though it were corrupt`(): Unit = runBlocking {
+        val first = provide<ObjectStorageServiceFactory>().withStorage(configuration()) { tracked(it) }
+        val failure = IOException("retained storage offline")
+        val target = object : ObjectStorageService by retained {
+            override suspend fun getInputStream(path: ObjectPath): InputStream = throw failure
+        }
+        val source = mockk<ObjectStorageService>()
+        val observed = assertFailsWith<IOException> { tracked(source, target) }
+        assertTrue(generateSequence<Throwable>(observed) { it.cause }.any { it === failure })
+        assertEquals(first, checkpoint())
+        coVerify(exactly = 0) { source.getInputStream(any(), any<String>()) }
+    }
+
+    @Test
+    fun `tracked capture rejects caller transactions before storage I O`(): Unit = runBlocking {
+        val source = mockk<ObjectStorageService>()
+        val target = mockk<ObjectStorageService>()
+        assertFailsWith<IllegalStateException> { withConnectionManager { transaction { tracked(source, target) } } }
+        assertEquals(null, checkpoint())
+        coVerify(exactly = 0) { target.getObjectInfo(any()) }
+        coVerify(exactly = 0) { source.getInputStream(any(), any<String>()) }
+    }
+
+    @Test
+    fun `new capture commit failure leaves no false checkpoint and retry can use a fresh path`(): Unit = runBlocking {
+        val progress = provide<ObjectBackupProgressService>()
+        val failure = IOException("checkpoint commit failed")
+        capture = ObjectBackupCaptureServiceImpl(object : ObjectBackupProgressService by progress {
+            override suspend fun complete(key: String, expectedVersion: Long): ObjectBackupProgress = throw failure
+        })
+        provide<ObjectStorageServiceFactory>().withStorage(configuration()) { source ->
+            val observed = assertFailsWith<IOException> { tracked(source) }
+            assertTrue(generateSequence<Throwable>(observed) { it.cause }.any { it === failure })
+            assertEquals(null, checkpoint())
+            assertEquals(content, retained.getString(StringObjectPath(payloadPath)))
+            capture = provide()
+            val result = tracked(source, path = "payloads/fresh-attempt")
+            assertEquals("payloads/fresh-attempt", result.payload.payloadPath)
+            assertEquals(ObjectBackupProgressStatus.COMPLETED, result.status)
+        }
+    }
+
+    @Test
+    fun `repair failure is preserved when its failure bookkeeping also fails`(): Unit = runBlocking {
+        withConnectionManager { prepareKnown() }
+        val progress = provide<ObjectBackupProgressService>()
+        val failure = IOException("completion acknowledgement failed")
+        val recording = IOException("failure recording failed")
+        capture = ObjectBackupCaptureServiceImpl(object : ObjectBackupProgressService by progress {
+            override suspend fun complete(key: String, expectedVersion: Long): ObjectBackupProgress = throw failure
+            override suspend fun fail(key: String, expectedVersion: Long, error: String): ObjectBackupProgress = throw recording
+        })
+        provide<ObjectStorageServiceFactory>().withStorage(configuration()) { source ->
+            val observed = assertFailsWith<IOException> { tracked(source) }
+            assertTrue(generateSequence<Throwable>(observed) { it.cause }.any { it === failure })
+            assertTrue(generateSequence<Throwable>(observed) { it.cause }.flatMap { it.suppressed.asSequence() }.any {
+                generateSequence(it) { it.cause }.any { it === recording }
+            })
+        }
+        assertEquals(ObjectBackupProgressStatus.RUNNING, checkpoint()?.status)
+        assertEquals(content, retained.getString(StringObjectPath(payloadPath)))
+    }
+
+    @Test
+    fun `a changed provider revision gets its own captured checkpoint and preserves the old payload`(): Unit = runBlocking {
+        val first = provide<ObjectStorageServiceFactory>().withStorage(configuration()) { tracked(it) }
+        val replacement = "replacement content".toByteArray()
+        val changed = selected.copy(info = selected.info.copy(length = replacement.size.toLong(), version = "v2"))
+        val source = mockk<ObjectStorageService>()
+        coEvery { source.getInputStream(any(), "v2") } answers { replacement.inputStream() }
+        val next = tracked(source, path = "payloads/v2", entry = changed)
+        assertTrue(first.key != next.key)
+        assertEquals("v2", next.payload.revision)
+        assertEquals(first, checkpoint())
+        assertEquals(content, retained.getString(StringObjectPath(payloadPath)))
+        assertEquals("replacement content", retained.getString(StringObjectPath("payloads/v2")))
+    }
+
+    @Test
+    fun `known revision repair rejects changed source bytes without changing its recorded digest`(): Unit = runBlocking {
+        val prepared = withConnectionManager { prepareKnown() }
+        val source = mockk<ObjectStorageService>()
+        coEvery { source.getInputStream(any(), version) } answers { "x".repeat(content.length).byteInputStream() }
+        assertFailsWith<BackupPayloadMismatchException> { tracked(source) }
+        assertEquals(ObjectBackupProgressStatus.FAILED, checkpoint()?.status)
+        assertEquals(prepared.payload, checkpoint()?.payload)
+        provide<ObjectStorageServiceFactory>().withStorage(configuration()) { realSource ->
+            val repaired = tracked(realSource)
+            assertEquals(prepared.payload, repaired.payload)
+            assertEquals(content, retained.getString(StringObjectPath(payloadPath)))
+        }
+    }
+
+    @Test
+    fun `tracked capture validates identities before source or destination access`(): Unit = runBlocking {
+        val source = mockk<ObjectStorageService>()
+        val target = mockk<ObjectStorageService>()
+        val identity = listOf("old-instance", "retained-store", "content")
+        for (i in identity.indices) {
+            val changed = identity.toMutableList().apply { this[i] = " " }
+            assertFailsWith<IllegalArgumentException> {
+                capture.captureTracked(changed[0], changed[1], changed[2], "content", selected, source, target, payloadPath)
+            }
+        }
+        assertEquals(null, checkpoint())
+        coVerify(exactly = 0) { target.getObjectInfo(any()) }
+        coVerify(exactly = 0) { source.getInputStream(any(), any<String>()) }
+    }
+
+    @Test
+    fun `tracked capture releases database connections during creation reuse and repair`(): Unit = runBlocking {
+        val target = object : ObjectStorageService by retained {
+            override suspend fun getObjectInfo(path: ObjectPath): ObjectStorageInfo {
+                assertEquals(0, pool.activeConnections)
+                return retained.getObjectInfo(path)
+            }
+            override suspend fun setInputStream(path: ObjectPath, stream: InputStream, length: Long?): Long {
+                assertEquals(0, pool.activeConnections)
+                return retained.setInputStream(path, stream, length)
+            }
+            override suspend fun getInputStream(path: ObjectPath): InputStream {
+                assertEquals(0, pool.activeConnections)
+                return retained.getInputStream(path)
+            }
+        }
+        provide<ObjectStorageServiceFactory>().withStorage(configuration()) { source ->
+            val first = tracked(source, target)
+            assertEquals(first, tracked(source, target))
+            retained.delete(StringObjectPath(payloadPath))
+            assertEquals(2, tracked(source, target).attempts)
+        }
+    }
+
+    private suspend fun tracked(
+        source: ObjectStorageService,
+        target: ObjectStorageService = retained,
+        path: String = payloadPath,
+        entry: ObjectStorageEntry = selected,
+    ) = capture.captureTracked("old-instance", "retained-store", "content", "content", entry, source, target, path)
+
+    private fun knownPayload() = BackupObject(
+        "content", "asset", version, selected.info.length,
+        MessageDigest.getInstance("SHA-256").digest(content.toByteArray()).toHexString(), payloadPath,
+    )
+
+    private suspend fun prepareKnown() = provide<ObjectBackupProgressService>().prepare(
+        ObjectBackupOperation.BACKUP, "old-instance", "retained-store", "content", knownPayload(),
+    )
+
+    private suspend fun checkpoint() = withConnectionManager {
+        provide<ObjectBackupProgressService>().get(
+            ObjectBackupOperation.BACKUP, "old-instance", "retained-store", "content", knownPayload(),
+        )
+    }
+
+    private suspend fun writeRetained(path: String, value: String) {
+        val bytes = value.toByteArray()
+        retained.setInputStream(StringObjectPath(path), bytes.inputStream(), bytes.size.toLong())
     }
 
     private fun configuration() = StorageConfiguration(
