@@ -12,6 +12,7 @@ import kotlinx.serialization.json.jsonObject
 import bosca.bml.codegen.BmlLibraryManifestGenerator
 import bosca.bml.codegen.BmlMetricsManifest
 import bosca.bml.codegen.BmlPageMeta
+import bosca.bml.codegen.BmlProviderRegistryGenerator
 import bosca.bml.codegen.BmlSourceMap
 import bosca.bml.codegen.I18N_MANIFEST_PATH
 import bosca.bml.codegen.StaticPropCoercion
@@ -92,6 +93,7 @@ class BmlAdditionalSourcesExtension : CollectAdditionalSourceFilesExtension() {
         val libraryId = configuration.get(BmlConfigKeys.LIBRARY_ID)
         val libraryVersion = configuration.get(BmlConfigKeys.LIBRARY_VERSION)
         val exports = configuration.getList(BmlConfigKeys.LIBRARY_EXPORTS)
+        val providerRegistrars = configuration.getList(BmlConfigKeys.LIBRARY_PROVIDER_REGISTRARS)
         val libraryManifest = configuration.get(BmlConfigKeys.RESOURCES_OUTPUT_DIR)
             ?.let { File(it, BmlLibraryArtifacts.MANIFEST_PATH) }
         // An invalid rebuild, a removed library block, or removed exports must not retain old metadata.
@@ -107,8 +109,12 @@ class BmlAdditionalSourcesExtension : CollectAdditionalSourceFilesExtension() {
             if (libraryManifest == null) reportError("Library '$libraryId' requires bmlResourcesOutputDir")
             if (exports.isEmpty()) reportError("Library '$libraryId' must declare at least one exported component")
             if (exports.distinct().size != exports.size) reportError("Duplicate exports in library '$libraryId'")
-        } else if (libraryVersion != null || exports.isNotEmpty()) {
-            reportError("Library version and exports require bmlLibraryId")
+        } else if (libraryVersion != null || exports.isNotEmpty() || providerRegistrars.isNotEmpty()) {
+            reportError("Library version, exports, and provider registrars require bmlLibraryId")
+        }
+        if (providerRegistrars.distinct().size != providerRegistrars.size ||
+            providerRegistrars.any { '.' !in it || !BmlLibraryArtifacts.isPackageName(it) }) {
+            reportError("Invalid or duplicate library provider registrar; expected a fully qualified class name")
         }
         if (hasErrors) return sources.filterNot { it.name.endsWith(".bml") }
         // Client TypeScript (`<script client>` / islands) is emitted to disk for esbuild — TS is not a
@@ -301,7 +307,7 @@ class BmlAdditionalSourcesExtension : CollectAdditionalSourceFilesExtension() {
                 componentPropTypes = componentPropTypes,
             ).withImports(bindings)
             if (libraryId != null) generator.withLibraryIdentity(libraryId).withLibraryExports(exports.toSet())
-            else generator.withClientAssets("BmlAssets")
+            else generator.withClientAssets("BmlAssets").withLibraryProviders("BmlProviders")
             val result = generator.generate(document)
             importedEntryPoints += generator.referencedImports(document)
             generator.importedRenderers(document).forEach { (id, renderer) ->
@@ -403,6 +409,11 @@ class BmlAdditionalSourcesExtension : CollectAdditionalSourceFilesExtension() {
         val selectedImports = importedEntryPoints.flatMap { binding ->
             binding.graph.closure(binding.dependency.manifest.library, binding.component.tag)
         }.distinctBy { it.id }
+        val allProviderRegistrars = BmlProviderRegistryGenerator.registrars(importedEntryPoints, providerRegistrars)
+        if (!hasErrors && (pageObjects.isNotEmpty() || allProviderRegistrars.isNotEmpty())) {
+            val registryPath = File(configuration.getList(BmlConfigKeys.SOURCE_ROOTS).first(), "BmlProviders.kt").absolutePath
+            generated += emit("BmlProviders.kt", registryPath, BmlProviderRegistryGenerator.generate(packageName, allProviderRegistrars))
+        }
         val importedModules = selectedImports.associate { it.id to BmlLibraryClientLinker.moduleName(it) }
         val assetComponents = componentMetas.map { meta ->
             if (libraryId == null) meta else meta.copy(tag = BmlLibraryArtifacts.componentId(libraryId, meta.tag))
@@ -544,7 +555,7 @@ class BmlAdditionalSourcesExtension : CollectAdditionalSourceFilesExtension() {
             try {
                 val manifest = BmlLibraryManifestGenerator.generate(
                     libraryId, libraryVersion, packageName, exports.toSet(), libraryDeclarations, componentMetas,
-                    capabilities.clientBehavior, importedEntryPoints,
+                    capabilities.clientBehavior, importedEntryPoints, providerRegistrars,
                 )
                 val content = BmlLibraryArtifacts.encode(manifest)
                 libraryManifest.parentFile.mkdirs()

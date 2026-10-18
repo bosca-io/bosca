@@ -24,13 +24,17 @@ class BmlGradlePluginTest {
         val extension = project.extensions.getByType(BmlExtension::class.java)
         assertFalse(extension.library.enabled.get())
         extension.packageName.set("example.design.generated")
-        extension.library { it.exports.set(listOf("button", "badge")) }
+        extension.library {
+            it.exports.set(listOf("button", "badge"))
+            it.providerRegistrars.set(listOf("bosca.di.DesignProviderRegistrar"))
+        }
         val kotlin = project.extensions.getByType(org.jetbrains.kotlin.gradle.dsl.KotlinJvmProjectExtension::class.java)
         val options = plugin.applyToCompilation(kotlin.target.compilations.getByName("main")).get()
         assertEquals("example.design.generated", options.single { it.key == "bmlPackageName" }.value)
         assertEquals("example:${project.name}", options.single { it.key == "bmlLibraryId" }.value)
         assertEquals("1.2.3", options.single { it.key == "bmlLibraryVersion" }.value)
         assertEquals(listOf("button", "badge"), options.filter { it.key == "bmlLibraryExport" }.map { it.value })
+        assertEquals(listOf("bosca.di.DesignProviderRegistrar"), options.filter { it.key == "bmlLibraryProviderRegistrar" }.map { it.value })
     }
 
     @Test

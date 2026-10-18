@@ -12,6 +12,8 @@ data class BmlLibraryManifest @JvmOverloads constructor(
     val compilerVersion: String,
     val components: List<BmlLibraryComponent>,
     val requirements: List<BmlLibraryRequirement> = emptyList(),
+    /** Public, zero-argument ProviderRegistrar classes owned by this artifact. */
+    val providerRegistrars: List<String> = emptyList(),
 ) {
     /** Validates metadata before publication or use by compiler and editor tooling. */
     fun validate() {
@@ -22,6 +24,10 @@ data class BmlLibraryManifest @JvmOverloads constructor(
         require(version.isNotBlank() && version.none(Char::isISOControl)) { "Missing or invalid artifact version for $library" }
         require(BmlLibraryArtifacts.isPackageName(generatedPackage)) { "Invalid BML generated package '$generatedPackage'" }
         require(compilerVersion.isNotBlank()) { "Missing BML compiler version for $library" }
+        require(providerRegistrars.distinct().size == providerRegistrars.size &&
+            providerRegistrars.all { '.' in it && BmlLibraryArtifacts.isPackageName(it) }) {
+            "Invalid or duplicate provider registrar in $library"
+        }
         require(components.map { it.tag }.distinct().size == components.size) { "Duplicate component tags in $library" }
         require(components.map { it.renderer }.distinct().size == components.size) { "Duplicate component renderers in $library" }
         require(components.any { it.exported }) { "Library $library has no exported components" }

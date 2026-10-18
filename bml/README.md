@@ -7,6 +7,7 @@ server-rendered pages, interactive islands, reusable components, and email or pu
 - [Grammar](docs/grammar.md)
 - [Tag reference](docs/tag-reference.md)
 - [Islands, deferred rendering, and shared caching](docs/islands.md)
+- [Compiled library providers and host bindings](docs/library-providers.md)
 - [Examples](docs/examples/README.md)
 - [Performance benchmarks](docs/benchmarks.md)
 

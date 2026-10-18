@@ -28,12 +28,14 @@ internal object BmlLibraryManifestGenerator {
         metadata: List<BmlComponentMeta>,
         clientBehavior: Set<String>,
         imports: List<BmlImportResolver.Binding> = emptyList(),
+        providerRegistrars: List<String> = emptyList(),
     ): BmlLibraryManifest = BmlLibraryManifest(
         formatVersion = BmlLibraryArtifacts.FORMAT_VERSION,
         library = library,
         version = version,
         generatedPackage = packageName,
         compilerVersion = BmlCompilerRevision.current,
+        providerRegistrars = providerRegistrars.sorted(),
         requirements = imports.groupBy { it.dependency.manifest.library }.toSortedMap().map { (_, bindings) ->
             val dependency = bindings.first().dependency.manifest
             BmlLibraryRequirement(

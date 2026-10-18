@@ -10,4 +10,7 @@ abstract class BmlLibraryExtension {
 
     /** Component tags visible to consumers. Other declarations remain implementation details. */
     abstract val exports: ListProperty<String>
+
+    /** Public zero-argument ProviderRegistrar classes published for automatic consumer composition. */
+    abstract val providerRegistrars: ListProperty<String>
 }

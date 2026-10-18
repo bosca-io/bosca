@@ -49,6 +49,77 @@ import org.jetbrains.kotlin.config.Services
 /** Real K2 binary producer -> source-free consumer -> generated registries -> Netty route wiring. */
 class BmlBinaryRuntimeTest {
     @Test
+    fun `standalone generation compiles and registers binary library providers without source scanning`() {
+        val work = Files.createTempDirectory("bml-standalone-providers").toFile()
+        try {
+            val root = File(work, "producer/bml").apply { mkdirs() }
+            File(root, "label.bml").writeText("""
+                <component tag="label"><inject name="label" type="String" provider="bml-standalone-label"/><span>{ label }</span></component>
+            """.trimIndent())
+            val registrar = File(work, "producer/Registrar.kt").apply { writeText("""
+                package example
+                class DesignRegistrar : bosca.di.ProviderRegistrar {
+                    override fun register() { bosca.di.provides<String>("bml-standalone-label") { "DIRECT DI" } }
+                }
+            """.trimIndent()) }
+            val classes = File(work, "producer/classes")
+            val resources = File(work, "producer/resources")
+            compile(classes, listOf("bmlSourceRoot=$root", "bmlPackageName=example.generated", "bmlLibraryId=example:design",
+                "bmlLibraryVersion=1.0", "bmlLibraryExport=label", "bmlResourcesOutputDir=$resources",
+                "bmlLibraryProviderRegistrar=example.DesignRegistrar"), sources = listOf(registrar))
+            val binary = archive(File(work, "design.jar"), listOf(classes, resources))
+            assertTrue(File(work, "producer").deleteRecursively())
+            val source = File(work, "consumer/bml").apply { mkdirs() }
+            File(source, "imports.bml").writeText("""<import library="example:design"/>""")
+            val pageSource = File(source, "home.bml").apply { writeText("""<page route="/"><label/></page>""") }
+            val generated = File(work, "consumer/generated")
+            val generator = bosca.bml.codegen.BmlProjectGenerator("consumer.direct")
+            val output = generator.generateAll(source, generated, listOf(binary))
+            assertTrue(output.errors.isEmpty(), output.errors.toString())
+            val consumerClasses = File(work, "consumer/classes")
+            compile(consumerClasses, emptyList(), listOf(binary), sources = output.written)
+            URLClassLoader(arrayOf(consumerClasses.toURI().toURL(), binary.toURI().toURL()), javaClass.classLoader).use { loader ->
+                val providers = loader.loadClass("consumer.direct.BmlProviders")
+                (providers.getField("INSTANCE").get(null) as bosca.di.ProviderRegistrar).register()
+                val pageType = loader.loadClass("consumer.direct.HomePage")
+                val page = pageType.getField("INSTANCE").get(null) as BmlPageRenderer
+                kotlinx.coroutines.runBlocking {
+                    val context = bosca.bml.render.RenderContext()
+                    page.render(context)
+                    assertTrue("DIRECT DI" in context.toString(), context.toString())
+                }
+            }
+            pageSource.writeText("""<page route="/">Plain</page>""")
+            generator.generateAll(source, generated, listOf(binary))
+            assertFalse("DesignRegistrar()" in File(generated, "BmlProviders.kt").readText())
+            File(source, "imports.bml").delete()
+            generator.generateAll(source, generated)
+            assertFalse(File(generated, "BmlProviders.kt").exists())
+        } finally { work.deleteRecursively() }
+    }
+
+    @Test
+    fun `library registrar declarations must compile as public zero argument ProviderRegistrars`() {
+        val work = Files.createTempDirectory("bml-registrar-types").toFile()
+        try {
+            val root = File(work, "bml").apply { mkdirs() }
+            File(root, "card.bml").writeText("""<component tag="card"><span>Card</span></component>""")
+            for ((name, declaration) in listOf(
+                "WrongType" to "class WrongType",
+                "RequiresArgument" to "class RequiresArgument(val value: String) : bosca.di.ProviderRegistrar { override fun register() {} }",
+                "PrivateRegistrar" to "private class PrivateRegistrar : bosca.di.ProviderRegistrar { override fun register() {} }",
+            )) {
+                val model = File(work, "$name.kt").apply { writeText("package example\n$declaration") }
+                compile(File(work, "$name/classes"), listOf(
+                    "bmlSourceRoot=$root", "bmlPackageName=example.generated", "bmlLibraryId=example:design",
+                    "bmlLibraryVersion=1.0", "bmlLibraryExport=card", "bmlResourcesOutputDir=${File(work, "$name/resources")}",
+                    "bmlLibraryProviderRegistrar=example.$name",
+                ), sources = listOf(model), expected = ExitCode.COMPILATION_ERROR)
+            }
+        } finally { work.deleteRecursively() }
+    }
+
+    @Test
     fun `a binary wrapper preserves its own imports through transitive actions and deferred rendering`() {
         val work = Files.createTempDirectory("bml-transitive-runtime").toFile()
         try {

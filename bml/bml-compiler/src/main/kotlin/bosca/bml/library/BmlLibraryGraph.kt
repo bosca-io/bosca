@@ -17,7 +17,15 @@ class BmlLibraryGraph(dependencies: List<BmlLibraryDependency>) {
         dependencies.forEach { it.manifest.validate() }
         val packages = mutableMapOf<String, BmlLibraryDependency>()
         val renderers = mutableMapOf<String, Component>()
+        val registrars = mutableMapOf<String, BmlLibraryDependency>()
         dependencies.forEach { dependency ->
+            dependency.manifest.providerRegistrars.forEach { registrar ->
+                val previous = registrars.putIfAbsent(registrar, dependency)
+                require(previous == null) {
+                    "BML provider registrar '$registrar' is shared by ${previous?.manifest?.library} in ${previous?.artifact} " +
+                        "and ${dependency.manifest.library} in ${dependency.artifact}"
+                }
+            }
             val previous = packages.putIfAbsent(dependency.manifest.generatedPackage, dependency)
             require(previous == null) {
                 "BML generated package '${dependency.manifest.generatedPackage}' is shared by " +
@@ -69,6 +77,20 @@ class BmlLibraryGraph(dependencies: List<BmlLibraryDependency>) {
                 }
             }
         }
+    }
+
+    /** Used library and all its declared requirements, once each, in dependency-first order. */
+    fun librariesFor(library: String): List<BmlLibraryDependency> {
+        val seen = mutableSetOf<String>()
+        val ordered = mutableListOf<BmlLibraryDependency>()
+        fun visit(id: String) {
+            if (!seen.add(id)) return
+            val dependency = libraries.getValue(id)
+            dependency.manifest.requirements.sortedBy { it.library }.forEach { visit(it.library) }
+            ordered += dependency
+        }
+        visit(library)
+        return ordered
     }
 
     /** Full or eager reachable components, deduplicated by canonical identity and retaining ownership. */

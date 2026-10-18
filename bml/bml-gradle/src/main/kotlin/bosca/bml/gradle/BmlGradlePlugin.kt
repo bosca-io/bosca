@@ -29,6 +29,7 @@ class BmlGradlePlugin : KotlinCompilerPluginSupportPlugin {
         ext.packageName.convention("bml.generated")
         ext.library.enabled.convention(false)
         ext.library.exports.convention(emptyList())
+        ext.library.providerRegistrars.convention(emptyList())
         ext.generateKotlinSources.convention(false) // opt-in: dump generated `.kt` for inspection/debugging
         val nodeName = if (target.providers.systemProperty("os.name").get().startsWith("Windows")) "node.exe" else "node"
         ext.nodeExecutable.convention(
@@ -85,6 +86,7 @@ class BmlGradlePlugin : KotlinCompilerPluginSupportPlugin {
                 task.inputs.property("bmlPackageName", ext.packageName)
                 task.inputs.property("bmlLibrary", ext.library.enabled)
                 task.inputs.property("bmlLibraryExports", ext.library.exports)
+                task.inputs.property("bmlLibraryProviderRegistrars", ext.library.providerRegistrars)
                 task.outputs.dir(target.layout.buildDirectory.dir("generated/bml/resources"))
                     .withPropertyName("bmlResources")
                 task.outputs.dir(target.layout.buildDirectory.dir("generated/bml/compiler-ts"))
@@ -143,6 +145,7 @@ class BmlGradlePlugin : KotlinCompilerPluginSupportPlugin {
             }
             target.tasks.withType(BmlValidateLibraryTask::class.java).configureEach { task ->
                 task.result.set(target.layout.buildDirectory.file("bml/validation/${task.name}.txt"))
+                task.providerRegistrars.set(ext.library.providerRegistrars)
                 task.compiledOutputs.from(main.output.classesDirs)
                 task.kotlinSources.from(originalKotlinSources)
                 task.assetOutputs.from(target.layout.buildDirectory.dir(BmlLibraryAssets.OUTPUT))
@@ -649,6 +652,7 @@ class BmlGradlePlugin : KotlinCompilerPluginSupportPlugin {
                     add(SubpluginOption("bmlLibraryVersion", project.version.toString()))
                     add(SubpluginOption("bmlLibraryStyles", project.layout.buildDirectory.file("${BmlLibraryAssets.STYLES}/styles.json").get().asFile.absolutePath))
                     ext.library.exports.get().forEach { add(SubpluginOption("bmlLibraryExport", it)) }
+                    ext.library.providerRegistrars.get().forEach { add(SubpluginOption("bmlLibraryProviderRegistrar", it)) }
                 }
                 if (ext?.generateKotlinSources?.getOrElse(false) == true) {
                     add(SubpluginOption("bmlKotlinOutputDir", kotlinOutputDir))

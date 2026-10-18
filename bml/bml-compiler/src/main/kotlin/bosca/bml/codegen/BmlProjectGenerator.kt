@@ -36,6 +36,7 @@ class BmlProjectGenerator(private val packageName: String) {
         val written = mutableListOf<File>()
         val diagnostics = mutableListOf<Diagnostic>()
         if (!sourceRoot.exists()) return Output(written, diagnostics)
+        File(outputRoot, "BmlProviders.kt").delete()
 
         data class ParsedSource(
             val file: File,
@@ -105,13 +106,15 @@ class BmlProjectGenerator(private val packageName: String) {
         }.toMap()
         val capabilities = BmlCodeGenerator.moduleCapabilities(componentDeclarations, declarationImports)
 
+        val hasProviders = dependencies.any { it.manifest.providerRegistrars.isNotEmpty() }
+        val usedImports = mutableListOf<BmlImportResolver.Binding>()
         for (source in sources) {
             if (imports.getValue(source) === global) continue
             val hasMessage = source.document.nodes.any {
                 it is ElementNode && it.name == "message" && it.namespace == null
             }
             val objectName = objectNameFor(source.relativePath, if (hasMessage) "Message" else "Page")
-            val result = BmlCodeGenerator(
+            val generator = BmlCodeGenerator(
                 packageName,
                 objectName,
                 source.relativePath,
@@ -122,7 +125,11 @@ class BmlProjectGenerator(private val packageName: String) {
                 sessionComponentTags = capabilities.session,
                 featureFlagComponentTags = capabilities.featureFlags,
                 componentPropTypes = componentPropTypes,
-            ).withImports(bindings.getValue(source)).generate(imports.getValue(source).document)
+            ).withImports(bindings.getValue(source))
+            if (hasProviders) generator.withLibraryProviders("BmlProviders")
+            val document = imports.getValue(source).document
+            val result = generator.generate(document)
+            usedImports += generator.referencedImports(document)
             diagnostics += result.diagnostics
             if (result.source.isNotEmpty()) {
                 val out = File(outputRoot, "$objectName.kt")
@@ -133,6 +140,10 @@ class BmlProjectGenerator(private val packageName: String) {
                 // A derived artifact in the same output dir — not counted as a generated source.
                 File(outputRoot, "$objectName.kt.map").writeText(result.sourceMap.toJson())
             }
+        }
+        if (hasProviders && diagnostics.none { it.severity == Severity.Error }) {
+            val source = BmlProviderRegistryGenerator.generate(packageName, BmlProviderRegistryGenerator.registrars(usedImports))
+            File(outputRoot, "BmlProviders.kt").apply { parentFile.mkdirs(); writeText(source); written += this }
         }
         return Output(written, diagnostics)
     }

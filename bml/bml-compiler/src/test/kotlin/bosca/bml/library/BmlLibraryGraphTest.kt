@@ -24,6 +24,20 @@ class BmlLibraryGraphTest {
     )).copy(requirements = listOf(requirement))
 
     @Test
+    fun `two artifacts cannot claim the same provider registrar`() {
+        val declaredBase = base.copy(providerRegistrars = listOf("bosca.di.SharedProviderRegistrar"))
+        val declaredWrapper = wrapper.copy(
+            providerRegistrars = declaredBase.providerRegistrars,
+            requirements = listOf(BmlLibraryRequirement(declaredBase.library, declaredBase.version, BmlLibraryArtifacts.digest(declaredBase), listOf("button"))),
+        )
+        val failure = assertFailsWith<IllegalArgumentException> {
+            BmlLibraryGraph(listOf(dependency(declaredBase), dependency(declaredWrapper)))
+        }
+        assertTrue("provider registrar" in failure.message.orEmpty(), failure.message)
+        assertTrue("design.jar" in failure.message.orEmpty() && "wrapper.jar" in failure.message.orEmpty(), failure.message)
+    }
+
+    @Test
     fun `full and eager closures retain private producer ownership without leaking exports`() {
         val graph = BmlLibraryGraph(listOf(dependency(wrapper), dependency(base)))
         assertEquals(listOf(id("wrapper", "card"), id("design", "button"), id("design", "private-label")),
@@ -103,6 +117,7 @@ class BmlLibraryGraphTest {
             BmlLibraryRequirement(it.library, it.version, BmlLibraryArtifacts.digest(it), listOf("card"))
         })
         val graph = BmlLibraryGraph(listOf(top, wrapper, other, base).map(::dependency))
+        assertEquals(listOf(base.library, other.library, wrapper.library, top.library), graph.librariesFor(top.library).map { it.manifest.library })
         val closure = graph.closure(top.library, "panel")
         assertEquals(5, closure.size)
         assertEquals(1, closure.count { it.id == id("design", "private-label") })

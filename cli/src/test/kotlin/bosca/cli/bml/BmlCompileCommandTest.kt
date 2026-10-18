@@ -18,6 +18,25 @@ import kotlin.test.assertTrue
 
 class BmlCompileCommandTest {
     @Test
+    fun `compile emits the standard aggregate for library provider constructors`() = fixture { root ->
+        val source = File(root, "src/main/bml").apply { mkdirs() }
+        File(source, "imports.bml").writeText("""<import library="example:design"/>""")
+        File(source, "page.bml").writeText("""<page route="/"><button/></page>""")
+        val dependency = binary(root, "design", "button")
+        val manifest = JarFile(dependency).use { jar ->
+            BmlLibraryArtifacts.decode(jar.getInputStream(jar.getJarEntry(BmlLibraryArtifacts.MANIFEST_PATH)).reader().readText())
+        }
+        archive(root, manifest.copy(providerRegistrars = listOf("bosca.di.DesignProviderRegistrar")))
+        val output = File(root, "generated")
+        val result = BmlCompileCommand().test(listOf(root.path, "--out", output.path, "--library", dependency.path))
+        assertEquals(0, result.statusCode, result.stderr)
+        val aggregate = File(output, "BmlProviders.kt").readText()
+        assertTrue("bosca.di.DesignProviderRegistrar()" in aggregate, aggregate)
+        assertTrue("bosca.di.register(*all.toTypedArray())" in aggregate, aggregate)
+        assertTrue("BmlProviderPage" in File(output, "PagePage.kt").readText())
+    }
+
+    @Test
     fun `compile validates a wrapper graph without exposing transitive imports`() = fixture { root ->
         val source = File(root, "src/main/bml").apply { mkdirs() }
         File(source, "imports.bml").writeText("""<import library="example:wrapper"/>""")

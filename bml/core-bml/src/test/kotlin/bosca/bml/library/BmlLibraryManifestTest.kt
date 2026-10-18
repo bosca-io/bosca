@@ -8,6 +8,17 @@ import kotlin.test.assertTrue
 
 class BmlLibraryManifestTest {
     @Test
+    fun `provider registrars are explicit unique constructor entry points`() {
+        val declared = manifest.copy(providerRegistrars = listOf("bosca.di.DesignProviderRegistrar"))
+        assertEquals(declared, BmlLibraryArtifacts.decode(BmlLibraryArtifacts.encode(declared)))
+        for (names in listOf(listOf("Registrar"), listOf("example.Bad()"), listOf("example.class"),
+            listOf("example.Registrar", "example.Registrar"))) {
+            assertFailsWith<IllegalArgumentException> { manifest.copy(providerRegistrars = names).validate() }
+        }
+        assertFalse(BmlLibraryArtifacts.digest(manifest) == BmlLibraryArtifacts.digest(declared))
+    }
+
+    @Test
     fun `foreign edges require explicit versioned export contracts and canonical identities`() {
         val requirement = BmlLibraryRequirement("example:base", "1.0", "sha256:" + "b".repeat(64), listOf("button"))
         val id = BmlLibraryArtifacts.componentId(requirement.library, "button")
@@ -58,7 +69,7 @@ class BmlLibraryManifestTest {
     fun `manifest round trips explicit contracts and source identity`() {
         val encoded = BmlLibraryArtifacts.encode(manifest)
         assertEquals(manifest, BmlLibraryArtifacts.decode(encoded))
-        assertTrue("\"formatVersion\": 3" in encoded)
+        assertTrue("\"formatVersion\": 4" in encoded)
         assertTrue("bml/components/button.bml" in encoded)
     }
 
@@ -66,6 +77,7 @@ class BmlLibraryManifestTest {
     fun `unsupported format and malformed source locations fail before use`() {
         assertFailsWith<IllegalArgumentException> { manifest.copy(formatVersion = 1).validate() }
         assertFailsWith<IllegalArgumentException> { manifest.copy(formatVersion = 2).validate() }
+        assertFailsWith<IllegalArgumentException> { manifest.copy(formatVersion = 3).validate() }
         assertFailsWith<IllegalArgumentException> { manifest.copy(formatVersion = 99).validate() }
         for (source in listOf(
             button.source.copy(entry = "/Users/producer/button.bml"),

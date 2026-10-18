@@ -83,7 +83,7 @@ class BmlLibraryDependenciesTest {
         val json = kotlinx.serialization.json.Json { encodeDefaults = true }
         for (source in listOf(
             "not json",
-            encoded.replace("\"formatVersion\": 3", "\"formatVersion\": 99"),
+            encoded.replace("\"formatVersion\": 4", "\"formatVersion\": 99"),
             encoded.replace("example.design.ButtonComponent", "wrong.ButtonComponent"),
             json.encodeToString(BmlLibraryManifest.serializer(), cyclic),
         )) {

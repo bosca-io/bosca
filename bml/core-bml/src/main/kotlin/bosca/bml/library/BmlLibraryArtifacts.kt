@@ -6,7 +6,7 @@ import kotlinx.serialization.json.Json
 /** Artifact locations, naming rules, and explicit manifest serialization shared by BML tooling. */
 object BmlLibraryArtifacts {
     const val MANIFEST_PATH: String = "META-INF/bml/library-manifest.json"
-    const val FORMAT_VERSION: Int = 3
+    const val FORMAT_VERSION: Int = 4
     private val json = Json { encodeDefaults = true; prettyPrint = true }
     private val coordinatePart = Regex("[A-Za-z0-9_][A-Za-z0-9_.-]*")
     private val identifier = Regex("[A-Za-z_][A-Za-z0-9_]*")

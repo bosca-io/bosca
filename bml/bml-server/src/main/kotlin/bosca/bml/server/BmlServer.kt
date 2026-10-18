@@ -180,6 +180,8 @@ class BmlServer(
         val contracts: List<bosca.bml.render.BmlContractDispatcher>,
         val development: Boolean,
         val componentsByTag: Map<String, bosca.bml.render.BmlComponentInfo> = components.associateBy { it.tag },
+        val providerRegistrars: List<bosca.di.ProviderRegistrar> = pages.filterIsInstance<bosca.bml.render.BmlProviderPage>()
+            .flatMap { it.providerRegistrars }.distinctBy { it::class },
         val packagedAssets: List<bosca.bml.library.BmlApplicationAssets> = pages.filterIsInstance<BmlBundledPage>().map { it.assets }.distinct(),
         val pagesByRoute: Map<String, BmlPageRenderer> = pages.associateBy { it.route },
         val componentTagsByPage: Map<String, Set<String>> = pages.associate { page ->
@@ -408,6 +410,7 @@ class BmlServer(
     private val bootId: String = java.util.UUID.randomUUID().toString()
     private val reloadGeneration = MutableStateFlow(0L)
     private val registeredPageRoutes = ConcurrentHashMap.newKeySet<String>()
+    private val registeredProviderTypes = mutableSetOf<kotlin.reflect.KClass<out bosca.di.ProviderRegistrar>>()
     @Volatile private var installedApplication: BoscaApplication? = null
 
     /** Starts the server, or publishes this generation into the existing dev server. */
@@ -474,6 +477,7 @@ class BmlServer(
             "BML hot swap cannot change public asset caching"
         }
 
+        registerProviders(next.providerRegistrars)
         val router = installedApplication?.router
         if (router != null) next.pages.forEach { registerPageRoute(router, it.route) }
         state.set(next)
@@ -841,8 +845,18 @@ class BmlServer(
         )
     }
 
+    /** Library providers follow the listener lifetime, including generations removed by rollback. */
+    private fun registerProviders(registrars: List<bosca.di.ProviderRegistrar>) {
+        for (registrar in registrars) {
+            if (registrar::class in registeredProviderTypes) continue
+            bosca.di.register(registrar)
+            registeredProviderTypes += registrar::class
+        }
+    }
+
     fun install(application: BoscaApplication) {
         check(installedApplication == null) { "BML server is already installed" }
+        registerProviders(state.get().providerRegistrars)
         installedApplication = application
         application.install(AnalyticsSessionIdGenerator())
         state.get().logSharedCacheRefusals()

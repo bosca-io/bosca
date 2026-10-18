@@ -17,6 +17,7 @@ object BmlConfigKeys {
     /** Bundled inline CSS keyed by original BML source location. */
     val LIBRARY_STYLES = CompilerConfigurationKey<String>("bml.libraryStyles")
     val LIBRARY_EXPORTS = CompilerConfigurationKey<List<String>>("bml.libraryExports")
+    val LIBRARY_PROVIDER_REGISTRARS = CompilerConfigurationKey<List<String>>("bml.libraryProviderRegistrars")
     /** Resolved binary dependency artifacts containing optional BML manifests. */
     val LIBRARY_DEPENDENCIES = CompilerConfigurationKey<List<String>>("bml.libraryDependencies")
     /** Designated module-wide import file; defaults to imports.bml in the first source root. */
@@ -65,6 +66,7 @@ class BmlCommandLineProcessor : CommandLineProcessor {
         CliOption("bmlLibraryVersion", "<version>", "Version of the compiled component library", required = false),
         CliOption("bmlLibraryStyles", "<file>", "Prepared library stylesheet bodies", required = false),
         CliOption("bmlLibraryExport", "<tag>", "Export a component tag", required = false, allowMultipleOccurrences = true),
+        CliOption("bmlLibraryProviderRegistrar", "<class>", "Publish a ProviderRegistrar constructor", required = false, allowMultipleOccurrences = true),
         CliOption("bmlLibraryDependency", "<file>", "Resolved binary library artifact", required = false, allowMultipleOccurrences = true),
         CliOption("bmlLibraryClasspath", "<classpath>", "Resolved binary library classpath", required = false),
         CliOption("bmlImportsFile", "<file>", "Module-wide BML imports", required = false),
@@ -98,6 +100,7 @@ class BmlCommandLineProcessor : CommandLineProcessor {
             "bmlLibraryVersion" -> configuration.put(BmlConfigKeys.LIBRARY_VERSION, value)
             "bmlLibraryStyles" -> configuration.put(BmlConfigKeys.LIBRARY_STYLES, value)
             "bmlLibraryExport" -> configuration.add(BmlConfigKeys.LIBRARY_EXPORTS, value)
+            "bmlLibraryProviderRegistrar" -> configuration.add(BmlConfigKeys.LIBRARY_PROVIDER_REGISTRARS, value)
             "bmlLibraryDependency" -> configuration.add(BmlConfigKeys.LIBRARY_DEPENDENCIES, value)
             "bmlLibraryClasspath" -> value.split(java.io.File.pathSeparator).filter { it.isNotBlank() }
                 .forEach { configuration.add(BmlConfigKeys.LIBRARY_DEPENDENCIES, it) }

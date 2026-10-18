@@ -22,6 +22,9 @@ abstract class BmlValidateLibraryTask : DefaultTask() {
     @get:Input abstract val libraryId: Property<String>
     @get:Input abstract val artifactVersion: Property<String>
     @get:Input abstract val exports: ListProperty<String>
+    @get:Input abstract val providerRegistrars: ListProperty<String>
+
+    init { providerRegistrars.convention(emptyList()) }
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE)
     abstract val binaryArchive: RegularFileProperty
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE)
@@ -58,7 +61,7 @@ abstract class BmlValidateLibraryTask : DefaultTask() {
                 ?: error("Binary archive is missing the BML library manifest for ${libraryId.get()}")
             val metadata = binary.getInputStream(manifest).use { JsonSlurper().parse(it) } as? Map<*, *>
                 ?: error("Invalid BML library manifest")
-            require(metadata["formatVersion"] == 3) { "Unsupported BML library manifest format" }
+            require(metadata["formatVersion"] == 4) { "Unsupported BML library manifest format" }
             require(metadata["library"] == libraryId.get() && metadata["version"] == artifactVersion.get()) {
                 "BML library manifest coordinates do not match ${libraryId.get()}:${artifactVersion.get()}"
             }
@@ -67,6 +70,19 @@ abstract class BmlValidateLibraryTask : DefaultTask() {
             } ?: error("Missing BML component metadata")
             require(components.filter { it["exported"] == true }.map { it["tag"] }.toSet() == exports.get().toSet()) {
                 "BML library exports do not match the compiled manifest"
+            }
+            val registrars = (metadata["providerRegistrars"] as? List<*>).orEmpty()
+            require(registrars.distinct().size == registrars.size && registrars.toSet() == providerRegistrars.get().toSet()) {
+                "BML library provider registrars do not match the compiled manifest"
+            }
+            registrars.forEach { entry ->
+                val registrar = entry as? String ?: error("Invalid BML provider registrar")
+                require(registrar.split('.').size > 1 && registrar.split('.').all { Regex("[A-Za-z_][A-Za-z0-9_]*").matches(it) }) {
+                    "Invalid BML provider registrar $registrar"
+                }
+                require(binary.getJarEntry(registrar.replace('.', '/') + ".class")?.isDirectory == false) {
+                    "Binary archive is missing BML provider registrar $registrar"
+                }
             }
             JarFile(sourcesArchive.get().asFile).use { sources ->
                 components.forEach { component ->
