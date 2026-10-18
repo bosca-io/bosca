@@ -384,7 +384,7 @@ class ObjectBackupVerificationIntegrationTest {
         service = ObjectBackupCaptureServiceImpl(object : ObjectBackupProgressService by progress {
             override suspend fun recordVerification(key: String, expectedVersion: Long, objectVersion: String?): ObjectBackupProgress =
                 throw failure
-        }, Json, provide())
+        }, Json, provide(), mockk())
         resetCounters()
         val observed = assertFailsWith<IOException> { capture(checkNotNull(first.verified).plusSeconds(1)) }
         assertTrue(generateSequence<Throwable>(observed) { it.cause }.any { it === failure })

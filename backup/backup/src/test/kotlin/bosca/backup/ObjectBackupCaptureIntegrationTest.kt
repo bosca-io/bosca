@@ -365,7 +365,7 @@ class ObjectBackupCaptureIntegrationTest {
         val failure = IOException("checkpoint commit failed")
         capture = ObjectBackupCaptureServiceImpl(object : ObjectBackupProgressService by progress {
             override suspend fun completeVerified(key: String, expectedVersion: Long, objectVersion: String?): ObjectBackupProgress = throw failure
-        }, Json, provide())
+        }, Json, provide(), mockk())
         provide<ObjectStorageServiceFactory>().withStorage(configuration()) { source ->
             val observed = assertFailsWith<IOException> { tracked(source) }
             assertTrue(generateSequence<Throwable>(observed) { it.cause }.any { it === failure })
@@ -387,7 +387,7 @@ class ObjectBackupCaptureIntegrationTest {
         capture = ObjectBackupCaptureServiceImpl(object : ObjectBackupProgressService by progress {
             override suspend fun completeVerified(key: String, expectedVersion: Long, objectVersion: String?): ObjectBackupProgress = throw failure
             override suspend fun fail(key: String, expectedVersion: Long, error: String): ObjectBackupProgress = throw recording
-        }, Json, provide())
+        }, Json, provide(), mockk())
         provide<ObjectStorageServiceFactory>().withStorage(configuration()) { source ->
             val observed = assertFailsWith<IOException> { tracked(source) }
             assertTrue(generateSequence<Throwable>(observed) { it.cause }.any { it === failure })

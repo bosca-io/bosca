@@ -3,7 +3,9 @@ package bosca.backup
 import bosca.db.connectionOrNull
 import bosca.db.transaction
 import bosca.db.withConnectionManager
+import bosca.di.ObjectProvider
 import bosca.service.annotation.ServiceImplementation
+import bosca.storage.configuration.StorageConfiguration
 import bosca.storage.service.ObjectNotFoundException
 import bosca.storage.service.ObjectStorageEntry
 import bosca.storage.service.ObjectStorageService
@@ -23,7 +25,89 @@ class ObjectBackupCaptureServiceImpl(
     private val progressService: ObjectBackupProgressService,
     private val json: Json,
     private val repository: ObjectBackupCaptureRepository,
+    private val storageService: ObjectProvider<ObjectBackupStorageService>,
 ) : ObjectBackupCaptureService {
+    override suspend fun configureStorage(key: String, stores: Map<String, String>): ObjectBackupCaptureStorage {
+        require(key.isNotBlank()) { "Capture plan key is required" }
+        val captured = stores.toMap()
+        require(captured.values.all { it.isNotBlank() }) { "Mapped storage identities are required" }
+        return transaction {
+            val plan = checkNotNull(repository.get(key)) { "Capture plan is missing: $key" }
+            require(captured.keys == plan.inventory.stores.keys) {
+                "Storage mapping must match the selected logical stores: $key"
+            }
+            require(plan.destinationId !in captured.values) {
+                "Backup storage must be independent of mapped source stores"
+            }
+            val existing = repository.getStorage(key)
+            if (existing == null) {
+                val addresses = storageService.get()
+                for (storageKey in (captured.values + plan.destinationId).toSortedSet()) {
+                    requireNotNull(addresses.get(storageKey)) { "Backup storage is not bound: $storageKey" }
+                }
+                if (repository.addStorage(key, plan.destinationId) == 1) {
+                    for ((store, storageKey) in captured.toSortedMap()) {
+                        check(repository.addStore(key, store, storageKey) == 1) {
+                            "Capture source binding was not recorded: $key/$store"
+                        }
+                    }
+                }
+            }
+            val binding = existing ?: checkNotNull(repository.getStorage(key)) {
+                "Capture storage mapping is missing: $key"
+            }
+            require(binding.backupKey == plan.destinationId && binding.stores == captured) {
+                "Conflicting capture storage mapping: $key"
+            }
+            binding
+        }
+    }
+
+    override suspend fun getStorage(key: String): ObjectBackupCaptureStorage? {
+        require(key.isNotBlank()) { "Capture plan key is required" }
+        return repository.getStorage(key)
+    }
+
+    override suspend fun captureConfigured(
+        key: String,
+        configurations: Map<String, StorageConfiguration>,
+        verifiedSince: OffsetDateTime?,
+    ): ObjectBackupManifest {
+        val captured = configurations.toMap()
+        return captureConfiguredPlan(key, verifiedSince) { _, _ -> captured }
+    }
+
+    override suspend fun captureConfigured(key: String, verifiedSince: OffsetDateTime?): ObjectBackupManifest =
+        captureConfiguredPlan(key, verifiedSince) { addresses, keys -> addresses.configurations(keys) }
+
+    private suspend fun captureConfiguredPlan(
+        key: String,
+        verifiedSince: OffsetDateTime?,
+        configurations: suspend (ObjectBackupStorageService, Set<String>) -> Map<String, StorageConfiguration>,
+    ): ObjectBackupManifest {
+        check(connectionOrNull()?.inTransaction != true) {
+            "Configured capture must run outside an active database transaction"
+        }
+        val (plan, mapping) = withConnectionManager {
+            val plan = checkNotNull(getPlan(key)) { "Capture plan is missing: $key" }
+            val mapping = checkNotNull(getStorage(key)) { "Capture storage is not configured: $key" }
+            plan to mapping
+        }
+        val addresses = storageService.get()
+        val required = (mapping.stores.values + mapping.backupKey).toSet()
+        val available = configurations(addresses, required)
+        val selected = required.associateWith { storageKey ->
+            requireNotNull(available[storageKey]) { "Missing storage configuration: $storageKey" }
+        }
+        return addresses.withStorages(selected) { opened ->
+            val sources = mapping.stores.mapValues { (_, storageKey) -> opened.getValue(storageKey) }
+            captureInventory(
+                plan.inventory, plan.destinationId, sources, opened.getValue(mapping.backupKey),
+                plan.payloadPrefix, plan.path, verifiedSince,
+            )
+        }
+    }
+
     override suspend fun prepareInventory(
         inventory: ObjectBackupCaptureInventory,
         destinationId: String,

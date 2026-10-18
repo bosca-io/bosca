@@ -1,12 +1,40 @@
 package bosca.backup
 
 import bosca.service.Service
+import bosca.storage.configuration.StorageConfiguration
 import bosca.storage.service.ObjectStorageEntry
 import bosca.storage.service.ObjectStorageService
 import java.time.OffsetDateTime
 
 /** Creates verified retained payloads from explicitly selected provider revisions. */
 interface ObjectBackupCaptureService : Service {
+    /**
+     * Fixes this plan's logical source bindings in the caller's database transaction.
+     * Every selected logical store maps to an existing bound ID. The independent backup ID
+     * is the plan's destination identity. Matching replay is idempotent; changed intent fails.
+     * This performs no storage I/O and neither claims writer ownership nor starts capture.
+     */
+    suspend fun configureStorage(key: String, stores: Map<String, String>): ObjectBackupCaptureStorage
+
+    /** Reads saved storage identities in the caller's context, without credentials or storage I/O. */
+    suspend fun getStorage(key: String): ObjectBackupCaptureStorage?
+
+    /**
+     * Opens only this plan's saved IDs from caller-supplied configurations and captures its input.
+     * Checks every bound address before opening any store, and closes all stores on completion,
+     * failure or cancellation. Unrelated configurations are ignored; credentials are not persisted.
+     * Requires no active caller transaction, stable storage accounts, retained source versions
+     * and exclusive writers. [verifiedSince] remains an explicit execution-time cutoff.
+     */
+    suspend fun captureConfigured(
+        key: String,
+        configurations: Map<String, StorageConfiguration>,
+        verifiedSince: OffsetDateTime?,
+    ): ObjectBackupManifest
+
+    /** Uses only saved IDs from backup.objectStores with the same scoped storage/capture contracts. */
+    suspend fun captureConfigured(key: String, verifiedSince: OffsetDateTime?): ObjectBackupManifest
+
     /**
      * Records a canonical selected inventory and output intent in the caller's database context.
      * Matching replay returns the existing plan; changed intent for the same identity fails.

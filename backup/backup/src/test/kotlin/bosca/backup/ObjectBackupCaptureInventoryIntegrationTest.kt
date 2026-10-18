@@ -342,7 +342,7 @@ class ObjectBackupCaptureInventoryIntegrationTest {
                 expectedVersion: Long,
                 objectVersion: String?,
             ): ObjectBackupProgress = throw IOException("checkpoint unavailable")
-        }, Json, provide())
+        }, Json, provide(), mockk())
         assertFailsWith<IOException> { capture() }
         assertTrue(checkpoints().isEmpty())
         val orphan = writes.single()
