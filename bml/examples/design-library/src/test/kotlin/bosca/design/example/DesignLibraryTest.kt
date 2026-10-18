@@ -31,7 +31,7 @@ class DesignLibraryTest {
             assertEquals("bosca.design.generated", manifest.generatedPackage)
             assertEquals(setOf("alert", "app-header", "badge", "bosca-mark", "button", "card", "checkbox", "confirm-dialog", "copy", "copy-field", "dialog", "disclosure-heading",
                 "empty-state", "field", "icon", "icon-button", "icon-link", "input", "loading-state", "page-heading", "page-shell", "panel", "popover",
-                "section", "section-heading", "spinner", "switch", "table-scroll", "tooltip"),
+                "section", "section-heading", "spinner", "switch", "table-scroll", "toast", "tooltip"),
                 manifest.components.filter { it.exported }.map { it.tag }.toSet())
             assertTrue(manifest.requirements.isEmpty())
             assertTrue(manifest.providerRegistrars.isEmpty())
@@ -44,9 +44,13 @@ class DesignLibraryTest {
             assertEquals("List<bosca.design.model.NavigationItem>", heading.props.single { it.name == "trail" }.declaredType)
             assertTrue(jar.getJarEntry("bosca/design/model/NavigationItem.class") != null)
             assertTrue(manifest.components.single { it.tag == "app-header" }.clientModule != null)
-            assertTrue(listOf("tooltip", "icon-button", "icon-link", "dialog", "popover", "copy", "copy-field").all { tag ->
+            assertTrue(listOf("tooltip", "icon-button", "icon-link", "dialog", "popover", "copy", "copy-field", "toast").all { tag ->
                 manifest.components.single { it.tag == tag }.clientModule != null
             })
+            val toast = manifest.components.single { it.tag == "toast" }
+            assertFalse(toast.hasDefaultSlot)
+            assertEquals("Int", toast.props.single { it.name == "sequence" }.declaredType)
+            assertEquals("Int", toast.props.single { it.name == "duration" }.declaredType)
             assertTrue(jar.getJarEntry("META-INF/bml/client-manifest.json") != null)
             val notice = jar.getInputStream(jar.getJarEntry("META-INF/licenses/bml-design/lucide.txt")).reader().readText()
             assertTrue("ISC License" in notice, notice)
@@ -125,6 +129,11 @@ class DesignLibraryTest {
             assertTrue("data-copy-field=\"light\"" in clipboard && " readonly" in clipboard, clipboard)
             assertTrue("aria-label=\"Copy token\"" in clipboard && "Token &quot;alpha&quot; &amp; beta" in clipboard, clipboard)
             assertFalse("bosca.git" in clipboard || "/_git/" in clipboard, clipboard)
+            val notifications = request(client, base, "/notifications").body()
+            assertTrue("data-notice=\"light\"" in notifications && "data-bml-preserve=\"notice-light\"" in notifications, notifications)
+            assertTrue("data-sequence=\"0\"" in notifications && "data-duration=\"4000\"" in notifications, notifications)
+            assertTrue("aria-label=\"Dismiss notification\"" in notifications, notifications)
+            assertFalse("bosca.git" in notifications || "/_git/" in notifications, notifications)
             val preferencesId = "preferences.preferences:light"
             val saved = request(client, base, "/_bml/action", """{"page":"/","path":"/","stateKey":"$preferencesId","method":"save","args":["Grace"]}""")
             assertEquals(200, saved.statusCode(), saved.body())

@@ -124,3 +124,20 @@ form {
   gap: 8px;
   margin: 16px 0;
 }
+.notices-theme.light {
+  --toast-left: 25%;
+}
+.notices-theme.purple {
+  --toast-left: 75%;
+}
+.notices-theme.alternate {
+  --bg-1: #eff6ff;
+  --fg-1: #1e3a8a;
+  --ok: #2563eb;
+}
+@media (max-width: 700px) {
+  .notices-theme.light,
+  .notices-theme.purple {
+    --toast-left: 50%;
+  }
+}

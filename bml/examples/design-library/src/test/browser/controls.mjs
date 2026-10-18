@@ -8,6 +8,7 @@ import { checkLayout } from './layout-checks.mjs';
 import { checkIconActions } from './icon-action-checks.mjs';
 import { checkOverlays } from './overlay-checks.mjs';
 import { checkClipboard } from './clipboard-checks.mjs';
+import { checkToasts } from './toast-checks.mjs';
 
 const base = process.argv[2];
 const mode = process.argv[3] ?? 'fixture';
@@ -237,6 +238,7 @@ try {
   await checkIconActions({ call, evaluate, until, base, mode, artifacts });
   await checkOverlays({ call, evaluate, until, base, mode, artifacts });
   await checkClipboard({ call, evaluate, until, base, mode, artifacts });
+  await checkToasts({ call, evaluate, until, base, mode, artifacts });
   await call('Emulation.setScriptExecutionDisabled', { value: true });
   await call('Page.navigate', { url: base + '/' });
   await until('document.readyState === "complete" && document.querySelector("[data-input=light]")');

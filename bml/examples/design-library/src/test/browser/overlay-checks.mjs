@@ -133,11 +133,13 @@ export async function checkOverlays({ call, evaluate, until, base, mode, artifac
   let shot=await call('Page.captureScreenshot',{format:'png'});
   await writeFile(join(artifacts,`dialog-${mode}-1440.png`),Buffer.from(shot.data,'base64'));
   await call('Emulation.setDeviceMetricsOverride',{width:390,height:640,deviceScaleFactor:1,mobile:false});
-  assert.ok(await evaluate(`(() => { const node=document.querySelector('${modal(draft)}'); const box=node.getBoundingClientRect();
+  const phoneLayout=`(() => { const node=document.querySelector('${modal(draft)}'); const box=node.getBoundingClientRect();
     const body=node.querySelector('.modal-fields'); const footer=node.querySelector('.modal-footer').getBoundingClientRect();
     const actions=[...node.querySelectorAll('.modal-footer button')].map(button=>button.getBoundingClientRect());
     return box.left>=16 && box.right<=document.documentElement.clientWidth-16 && box.bottom<=innerHeight && body.scrollHeight>body.clientHeight &&
-      footer.bottom<=box.bottom && actions.every(button=>button.left>=footer.left+18 && button.right<=footer.right-18) })()`),'Modal body scrolls and footer actions wrap inside its padding on a phone');
+      footer.bottom<=box.bottom && actions.every(button=>button.left>=footer.left+18 && button.right<=footer.right-18) })()`;
+  await until(phoneLayout);
+
   shot=await call('Page.captureScreenshot',{format:'png'});
   await writeFile(join(artifacts,`dialog-${mode}-390.png`),Buffer.from(shot.data,'base64'));
   await key('Escape');

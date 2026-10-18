@@ -66,6 +66,13 @@ Two themes and desktop/phone layouts use the same library exports. Browser tests
 outcomes to avoid changing the system clipboard; rendering, server actions and lifecycle are real.
 Script-disabled values remain manually selectable.
 
+The `/notifications` page issues notices through caller-owned actions and monotonic sequences.
+Checks cover live-region priorities, repeated text, same/older/empty sequences, failed actions,
+retained DOM and announcements/timeouts across unrelated updates, hover/focus pausing, return focus,
+new-notice timeouts, reduced motion, two live CSS themes, long-message keyboard scrolling and narrow/
+short viewport fit. Document visibility is controlled through an isolated getter/event override for
+its pause/resume check. Repeated disposal verifies timer, listener and ResizeObserver cleanup.
+
 Chrome defaults to the installed Google Chrome app on macOS or `google-chrome` on Linux. Set
 `BML_DESIGN_CHROME_BINARY` for another executable. Screenshots land in this project's
 `build/reports/browser/`. The fixture is an application and is excluded from aggregate Maven

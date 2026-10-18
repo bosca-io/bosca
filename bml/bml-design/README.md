@@ -70,6 +70,7 @@ import provides `<design:button>` with the same runtime identity and assets as `
 | `popover` | Required `label: String`; `icon: String = ""`; `iconOnly: Boolean = false`; `width: Int = 360` | Native details with a labelled summary and default children in a labelled region. Additional attributes/classes target details. Scripts enhance its content into a viewport-fitted manual popover; without scripts it remains a native disclosure. |
 | `copy` | Required `value: String`; `label: String = "Copy"`; `showStatus: Boolean = true` | Root div receives additional attributes/classes. Its 30×30px native button copies the value, switches decorative icons and reports status. No child content. Visible status reserves 26ch so feedback does not move neighboring content; `showStatus="false"` keeps status accessible with no visible message space. |
 | `copy-field` | Required `value: String` and `label: String`; `copyLabel: String = "Copy value"` | Root div receives additional attributes/classes. A labelled readonly input and compact copy action display a single-line value. No child content. Focus selects the value; denied/unavailable clipboard access selects it and exposes manual-copy guidance. |
+| `toast` | Required `id: String`; `message: String = ""`; `sequence: Int = 0`; `tone: String = "info"` (`info`, `success`, `warning`, `error`); `duration: Int = 4000` (milliseconds) | Manual-popover root receives additional attributes/classes. `id` supplies its stable `data-bml-preserve` key, rather than a native DOM ID. No child content. The caller issues each nonempty notice with a new positive sequence; ordinary updates and same/older sequences do not replay it. |
 
 Regular controls are 32px high, compact controls 30px, and extra-small buttons 24px. Field labels use
 an 18px line and a 6px control gap. Buttons support the `ghost`, `danger`, `block`, and `icon-only`
@@ -135,6 +136,20 @@ Older overlapping results and results after unmount cannot overwrite current fee
 event. Timers and tooltip listeners are removed on disposal. Visible status reserves space; quiet status
 preserves an icon-only footprint. Icon visibility uses local hidden-state rules and needs no document reset.
 
+Toast state belongs to the application. Give each toast a stable key within its updating region,
+keep its sequence monotonic, and increment it for every notice, including repeated text. A new
+sequence restarts its timeout; unrelated patches retain the active notice and remaining time.
+Success/info/warning use a polite status region; errors use an assertive alert. Notifications do
+not take focus from the caller or move page content. Dismissal returns focus when the viewer had
+focused the notification, using the remembered target or an available control in the owning island.
+
+Hover, keyboard focus and document visibility pause expiry. Focus and pointer interest survive a
+preserved root's temporary removal from the native top layer. Escape, the dismiss button or expiry
+close it. Long text scrolls with a keyboard focus indicator while the close action stays visible.
+The surface fits the viewport, including short screens; reduced motion removes the entrance animation.
+Unmount removes timers, listeners and ResizeObservers. Each instance owns one notice; queues and
+progress notifications are application concerns. Live notification behavior requires client scripts.
+
 ## Consumer CSS
 
 Library defaults load before application CSS. Override ordinary custom properties on the root or a
@@ -189,6 +204,14 @@ Projected modal forms use the documented `modal-form`, `modal-fields` and `modal
 The library stylesheet scopes these rules to its native dialog panel, allowing the body to scroll
 independently of the footer. These classes do not style unrelated forms elsewhere in the document.
 
+Toasts use `--bg-1` and `--fg-1` for the solid surface/text, `--info`, `--ok`, `--warn` or `--err`
+for the tone and derived border, `--r-md` for radius, and `--accent` for keyboard focus. The optional
+`--toast-shadow` overrides the default shadow. `--toast-message-max-height` defaults to `240px`
+and is constrained further by the viewport. `--toast-left` and `--toast-top` default to `50%` and
+`75dvh`; consumer CSS can position separate themed instances, as in `/notifications`. Short screens
+use a 16px bottom inset, and the helper shifts a tall surface upward to retain viewport margins.
+Color changes on an already-open notification follow ordinary CSS inheritance.
+
 ## Source ownership
 
 | Library source | Extracted source in Git UI |
@@ -222,6 +245,8 @@ independently of the footer. These classes do not style unrelated forms elsewher
 | `components/popover.bml` | `components/ui/popover.bml` |
 | `components/copy.bml` | `components/ui/copy.bml` |
 | `components/copy-field.bml` | `components/ui/copy-field.bml` |
+| `components/toast.bml` | `components/ui/toast.bml` |
+| `client/helpers/toast.ts` | `src/main/client/toast.ts` |
 | `client/helpers/copy.ts` | `src/main/client/copy.ts` |
 | `client/helpers/dialog.ts` | `src/main/client/dialog.ts` |
 | `client/helpers/popover.ts` | `src/main/client/popover.ts` and its component's disclosure behavior from `src/main/client/disclosure.ts` |
