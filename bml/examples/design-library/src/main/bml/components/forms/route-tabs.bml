@@ -1,0 +1,27 @@
+<component tag="route-tabs">
+  <prop name="id" type="String" required />
+  <script server provides="navigation" scope="server-session">bosca.design.example.RouteTabsState(id)</script>
+  <card title="Route navigation">
+    <island name="navigation" :key="id">
+      <div :data-navigation="navigation.id">
+        <div class="actions">
+          <button @click="navigation.update" :data-route-update="navigation.id">Unrelated update</button>
+          <button @click="navigation.resize" :data-route-resize="navigation.id">Resize container</button>
+          <button @click="navigation.change" :data-route-change="navigation.id">Change current page</button>
+          <button @click="navigation.lengthen" :data-route-long="navigation.id">Long current label</button>
+          <button @click="navigation.toggle" :data-route-toggle="navigation.id">Toggle tabs</button>
+        </div>
+        <p :data-route-updates="navigation.id">Updates { navigation.updates }</p>
+        <if navigation.mounted>
+          <div :class='if (navigation.narrow) "navigation-host narrow" else "navigation-host"' :data-route-host="navigation.id">
+            <tabs :label='"Routes " + navigation.id + " " + navigation.updates' :items="navigation.items"
+                  :data-bml-preserve='"route-tabs-" + navigation.id + "-" + navigation.revision'
+                  :data-routes="navigation.id" class="fixture-tabs">
+              <icon-button icon="plus" label="Add destination" :data-route-action="navigation.id" @click="navigation.update" />
+            </tabs>
+          </div>
+        </if>
+      </div>
+    </island>
+  </card>
+</component>

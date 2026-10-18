@@ -1,0 +1,6 @@
+<page route="/navigation-target">
+  <html lang="en">
+    <head><meta charset="utf-8" /><title>Navigation destination</title></head>
+    <body><h1 data-destination>Destination { ctx.query["item"].orEmpty() }</h1></body>
+  </html>
+</page>

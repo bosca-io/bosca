@@ -74,6 +74,7 @@ import provides `<design:button>` with the same runtime identity and assets as `
 | `search-input` | `value: String = ""`; `name: String = "q"`; `placeholder: String = "Search…"`; `label: String = "Search"`; `preserveKey: String = ""`; `disabled: Boolean = false`; `autofocus: Boolean = true` | Search wrapper with decorative icon, clear action and default trailing action children. Additional attributes/classes/events target the native search input. The clear action emits one bubbling `input` event and returns focus to the query. |
 | `segmented-control` | Required `label: String`, `name: String`, `options: List<String>` and `value: String`; `values: List<String> = emptyList()`; `icons: List<String> = emptyList()`; `preserveKey: String = ""` | Radiogroup receives additional attributes/classes/events. A hidden native input supplies the selected form value. Buttons use indexed `values` or fall back to option labels; optional indexed icons are decorative. Emits bubbling `segmentchange` after updating its native value. No child content. |
 | `view-tabs` | Required `label: String`, `tabs: List<String>` and `selected: String` | Tablist receives additional attributes/classes/events. Emits bubbling `viewchange` with the selected label as its string detail. The application owns panels, IDs, accessible relationships and visibility. No child content. |
+| `tabs` | Required `label: String` and `items: List<NavigationItem>`; `header: Boolean = false` | Native nav receives additional attributes/classes and default trailing action children. Destinations remain native anchors with `aria-current="page"` on the current item. The scoped helper fits links around the current destination and a `More` overflow disclosure. |
 
 Regular controls are 32px high, compact controls 30px, and extra-small buttons 24px. Field labels use
 an 18px line and a 6px control gap. Buttons support the `ghost`, `danger`, `block`, and `icon-only`
@@ -176,6 +177,26 @@ The `/selection` consumer uses declarative form and segment actions, a scoped ca
 `viewchange`, and caller-owned labelled panels with unique `aria-controls`/`aria-labelledby` links.
 It demonstrates rejected search drafts, controlled changes, independent instances and consumer CSS.
 
+Route tabs use the same `NavigationItem` model as breadcrumbs. Applications supply every label,
+destination and current-page flag; the library does not intercept link navigation or own URL state.
+`header` retains the full-width page-heading spacing (22px gutters, 16px below 600px).
+Projected actions sit beside the link row and receive their usual application action context.
+
+With scripts, the current destination remains in the row; an unusually long current label truncates
+visually while preserving its full link name. Overflow destinations are native anchors in a labelled
+manual popover under the owning nav. The popup inherits consumer CSS, escapes clipping, clamps to
+the viewport, scrolls on short screens and follows resize/scroll. `More` exposes unique
+`aria-controls` and `aria-expanded` values. Enter/click opens it; Up/Down, Home/End navigate its
+links, Escape returns focus, and Tab can leave it. Outside pointer/focus and link activation dismiss.
+If a resize makes the focused destination fit in the row, focus follows that same destination.
+Without scripts, every destination remains in a horizontally scrolling native link row.
+
+An unchanged tab list can use `data-bml-preserve` to retain the open menu and focused link through
+unrelated updates, including updates to the nav's accessible label. Change/remove the preservation
+key when changing `items` or projected children, since those children remain client-owned.
+Unpreserved lists render their new links normally. Component lifecycle cleanup removes event
+listeners and ResizeObservers and closes the native popover on unmount.
+
 ## Consumer CSS
 
 Library defaults load before application CSS. Override ordinary custom properties on the root or a
@@ -238,6 +259,10 @@ and is constrained further by the viewport. `--toast-left` and `--toast-top` def
 use a 16px bottom inset, and the helper shifts a tall surface upward to retain viewport margins.
 Color changes on an already-open notification follow ordinary CSS inheritance.
 
+Route tabs use `--fg-3`, `--fg-1`, `--fg-0`, `--line` and `--accent` for normal/current/focused links.
+Their overflow surface inherits `--bg-2`, `--fg-1`, `--bg-3` and `--line-2`;
+`--tabs-menu-shadow` overrides the default `0 14px 40px #0006` shadow.
+
 ## Source ownership
 
 | Library source | Extracted source in Git UI |
@@ -275,6 +300,8 @@ Color changes on an already-open notification follow ordinary CSS inheritance.
 | `components/search-input.bml` | `components/ui/search-input.bml` |
 | `components/segmented-control.bml` | `components/ui/segmented-control.bml` |
 | `components/view-tabs.bml` | `components/ui/view-tabs.bml` |
+| `components/tabs.bml` | `components/ui/tabs.bml` |
+| `client/helpers/tabs.ts` | `src/main/client/tabs.ts` |
 | `client/helpers/search-input.ts` | Scoped client script in `components/ui/search-input.bml` |
 | `client/helpers/segmented-control.ts` | Scoped client script in `components/ui/segmented-control.bml` |
 | `client/helpers/view-tabs.ts` | Scoped client script in `components/ui/view-tabs.bml` |

@@ -1,0 +1,141 @@
+<component tag="tabs">
+  <prop name="label" type="String" required />
+  <prop name="items" type="List<bosca.design.model.NavigationItem>" required />
+  <prop name="header" type="Boolean" default="false" />
+  <nav :class='if (header) "tabs header-tabs" else "tabs"' :aria-label="label" {...attrs}>
+    <div class="tab-row" ref="row">
+      <for item in items>
+        <a :href="item.href" :aria-current='if (item.selected) "page" else "false"'>
+          <span class="tab-label">{ item.label }</span>
+        </a>
+      </for>
+      <html:button ref="more" class="more" type="button" aria-expanded="false" hidden>
+        <span class="more-label">More</span>
+        <span class="tab-chevron">
+          <icon name="chevron" :size="12" />
+        </span>
+      </html:button>
+    </div>
+    <slot />
+    <div ref="menu" class="tabs-menu" role="group" hidden></div>
+  </nav>
+  <style scoped>
+    .tabs {
+      box-sizing: border-box;
+      position: relative;
+      display: flex;
+      align-items: stretch;
+      gap: 12px;
+      min-width: 0;
+      flex: none;
+      align-self: stretch;
+      margin: 0 0 20px;
+      border-bottom: 1px solid color-mix(in oklch, var(--line) 55%, transparent);
+    }
+    .header-tabs {
+      margin: -22px -22px 22px;
+      padding: 0 22px;
+    }
+    .tab-row {
+      display: flex;
+      overflow-x: auto;
+      align-items: stretch;
+      gap: 4px;
+      min-width: 0;
+      flex: 1;
+    }
+    .tabs[data-tabs-enhanced] .tab-row { overflow: hidden; }
+    .tab-row > [hidden], .tabs-menu[hidden] { display: none; }
+    .tab-row > a,
+    .more {
+      box-sizing: border-box;
+      flex: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: -1px;
+      padding: 10px 12px;
+      color: var(--fg-3);
+      white-space: nowrap;
+      border: 0;
+      border-bottom: 2px solid transparent;
+      background: transparent;
+      font: inherit;
+      font-size: 13px;
+      cursor: pointer;
+      text-decoration: none;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .tab-row > a { overflow: hidden; }
+    .tab-row .tab-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+    .more { max-width: 100%; }
+    .more-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+    .tab-row > a:focus-visible, .more:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+    .tab-row > a:hover,
+    .more:hover {
+      color: var(--fg-1);
+      text-decoration: none;
+    }
+    .tab-row > [aria-current="page"] {
+      color: var(--fg-0);
+      border-bottom-color: var(--accent);
+      font-weight: 500;
+    }
+    .tab-chevron {
+      display: flex;
+      flex: none;
+      color: var(--fg-3);
+      transition: transform 0.15s;
+    }
+    .more[aria-expanded="true"] .tab-chevron {
+      transform: rotate(180deg);
+    }
+    @media (max-width: 600px) {
+      .header-tabs {
+        margin: -22px -16px 20px;
+        padding: 0 16px;
+      }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .tab-chevron {
+        transition: none;
+      }
+    }
+    .tabs-menu {
+      box-sizing: border-box;
+      position: fixed;
+      inset: auto;
+      margin: 0;
+      width: max-content;
+      min-width: min(180px, calc(100vw - 24px));
+      max-width: calc(100vw - 24px);
+      max-height: calc(100dvh - 24px);
+      overflow: auto;
+      padding: 5px;
+      background: var(--bg-2);
+      border: 1px solid var(--line-2);
+      border-radius: 10px;
+      box-shadow: var(--tabs-menu-shadow, 0 14px 40px #0006);
+      color: var(--fg-1);
+      font: inherit;
+      font-size: 13px;
+    }
+    .tabs-menu a {
+      display: block;
+      overflow-wrap: anywhere;
+      padding: 8px 10px;
+      color: var(--fg-1);
+      border-radius: 6px;
+      text-decoration: none;
+    }
+    .tabs-menu a:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+    .tabs-menu a:hover,
+    .tabs-menu a:focus-visible {
+      background: var(--bg-3);
+    }
+  </style>
+  <script client scoped>
+    import { overflowTabs } from "@client/helpers/tabs";
+    overflowTabs(ctx);
+  </script>
+</component>

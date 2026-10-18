@@ -153,3 +153,10 @@ form {
 .selection-theme.light { --bg-0: #f8fafc; }
 .selection-theme.alternate { --bg-0: #eff6ff; --bg-3: #dbeafe; --fg-0: #1e3a8a; }
 .selection-edge-cases { max-width: 300px; }
+
+.navigation-host { max-width: 100%; }
+.navigation-host.narrow, .navigation-no-current { width: 260px; max-width: 100%; }
+.navigation-edge-cases { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; margin-top: 24px; min-width: 0; }
+.navigation-clip { background: var(--bg-1); width: 260px; max-width: 100%; height: 44px; overflow: hidden; }
+.navigation-header { background: var(--bg-1); padding: 22px; }
+.navigation-theme.alternate { --bg-2: #dbeafe; --fg-1: #1e3a8a; --line-2: #2563eb; }

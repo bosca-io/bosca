@@ -80,6 +80,13 @@ roving arrows/Home/End and wrapping, local view events, caller-owned panel relat
 unmatched selections, independent roots and live CSS overrides. Repeated unmounts check root and
 document listener cleanup. Script-disabled search and initial segmented values remain native.
 
+The `/navigation` page uses native route tabs, shared `NavigationItem` values and projected actions.
+Checks cover current/overflow destinations, keyboard navigation and dismissal, container/viewport
+refits, focused-link continuity, retained menus across unrelated action patches, changed lists, long
+current labels, empty/short/unselected lists, header spacing, clipped/short-screen popups and live
+consumer themes. Disposal checks listeners and ResizeObservers. A separate destination page verifies
+native navigation from overflow links and script-disabled scrolling rows.
+
 Chrome defaults to the installed Google Chrome app on macOS or `google-chrome` on Linux. Set
 `BML_DESIGN_CHROME_BINARY` for another executable. Screenshots land in this project's
 `build/reports/browser/`. The fixture is an application and is excluded from aggregate Maven

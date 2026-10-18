@@ -1,0 +1,35 @@
+<page route="/navigation">
+  <script server>import bosca.design.model.NavigationItem</script>
+  <script server provides="manyItems">
+    (1..30).map { NavigationItem("Destination $it", "/navigation-target?item=$it", it == 30) }
+  </script>
+  <html lang="en">
+    <head>
+      <meta charset="utf-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1" />
+      <title>Route tabs</title>
+    </head>
+    <body>
+      <page-shell>
+        <h1>Route tabs</h1>
+        <div class="themes">
+          <div class="light navigation-theme" data-palette="light"><route-tabs id="light" /></div>
+          <div class="purple navigation-theme" data-palette="purple"><route-tabs id="purple" /></div>
+        </div>
+        <div class="navigation-edge-cases">
+          <tabs label="Empty navigation" :items="emptyList()" data-empty-routes />
+          <tabs label="Short navigation" :items='listOf(NavigationItem("Overview", "/navigation-target?item=1", true), NavigationItem("History", "/navigation-target?item=3", false))' data-short-routes />
+          <div class="navigation-clip light">
+            <tabs label="Clipped navigation" :items="manyItems" data-clipped-routes />
+          </div>
+          <div class="navigation-header light">
+            <tabs label="Header navigation" :items="manyItems" header data-header-routes />
+          </div>
+          <div class="navigation-no-current">
+            <tabs label="Unselected navigation" :items='manyItems.map { it.copy(selected = false) }' data-unselected-routes />
+          </div>
+        </div>
+      </page-shell>
+    </body>
+  </html>
+</page>

@@ -10,6 +10,7 @@ import { checkOverlays } from './overlay-checks.mjs';
 import { checkClipboard } from './clipboard-checks.mjs';
 import { checkToasts } from './toast-checks.mjs';
 import { checkSelection } from './selection-checks.mjs';
+import { checkNavigation } from './navigation-checks.mjs';
 
 const base = process.argv[2];
 const mode = process.argv[3] ?? 'fixture';
@@ -241,6 +242,7 @@ try {
   await checkClipboard({ call, evaluate, until, base, mode, artifacts });
   await checkToasts({ call, evaluate, until, base, mode, artifacts });
   await checkSelection({ call, evaluate, until, base, mode, artifacts });
+  await checkNavigation({ call, evaluate, until, base, mode, artifacts });
   await call('Emulation.setScriptExecutionDisabled', { value: true });
   await call('Page.navigate', { url: base + '/' });
   await until('document.readyState === "complete" && document.querySelector("[data-input=light]")');
@@ -277,6 +279,14 @@ try {
     query.value='Native query';const form=new FormData(document.querySelector('[data-selection-form=light]'));
     return query instanceof HTMLInputElement&&query.type==='search'&&!query.autofocus&&form.get('q')==='Native query'&&form.get('mode')==='paths'&&
       document.querySelector('[data-views=light] [aria-selected=true]').textContent.trim()==='Source'; })()`), 'No-script search and initial segment form values remain native');
+  await call('Page.navigate', { url: base + '/navigation' });
+  await until('document.readyState === "complete" && document.querySelector("[data-routes=light]")');
+  assert.ok(await evaluate(`(() => { const nav=document.querySelector('[data-routes=light]'),row=nav.querySelector('.tab-row');
+    const links=[...row.querySelectorAll('a')];return links.length===8&&links.every(link=>link instanceof HTMLAnchorElement&&!link.hidden)&&
+      nav.querySelector('[data-bml-ref=more]').hidden&&row.scrollWidth>row.clientWidth&&getComputedStyle(row).overflowX==='auto';})()`), 'No-script route links remain reachable through native scrolling');
+  await evaluate(`document.querySelector('[data-routes=light] .tab-row a').click()`);
+  await until('document.readyState === "complete" && location.pathname === "/navigation-target" && document.querySelector("[data-destination]")');
+  assert.equal(await evaluate('document.querySelector("[data-destination]").textContent.trim()'),'Destination 1');
   assert.deepEqual(exceptions, []);
   console.log(`Design library browser checks passed (${mode}); screenshots: ${artifacts}`);
 } finally {
