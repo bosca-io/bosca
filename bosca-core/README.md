@@ -64,6 +64,8 @@ The project follows a core/implementation split where `core-*` modules define co
 
 `ObjectStorageService.getObjectInfo(path)` reads an object's byte length and optional modification time, entity tag and provider version without reading its body. Filesystem storage reads regular-file attributes, S3 uses `HeadObject`, and Google storage reads blob metadata. Missing objects raise `ObjectNotFoundException`; access/backend errors and known S3 missing-bucket errors propagate. Blocking lookups use `StorageDispatcher`. Entity tags are opaque values, not SHA-256 digests. These observations do not pin revisions, guarantee unchanged content or establish backup recovery coverage.
 
+`listObjects(prefix, offset, limit)` enumerates literal keys and their `ObjectStorageInfo` metadata without asset bodies or per-object lookups. Public pagination uses nonnegative Long offsets and positive limits; provider continuation tokens stay internal. Filesystem enumeration sorts regular-file keys, follows directory aliases, prunes unrelated prefixes and retains at most the requested offset/limit window of metadata. Selected link/traversal failures and missing roots fail explicitly. S3 listing has no immutable version IDs; Google includes available generations. Source changes can shift page positions, so enumeration alone is not a closed snapshot.
+
 ## Dependencies
 
 - `io.bosca:di`, `io.bosca:service`, `io.bosca:di-ksp`, `io.bosca:service-ksp` -- from `services-di`

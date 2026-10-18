@@ -472,6 +472,88 @@ class ObjectStorageServiceFactoryIntegrationTest {
         }
     }
 
+    @Test
+    fun `S3 listing crosses signed provider pages with literal prefixes without reading assets`(): Unit = runBlocking {
+        val prefix = "assets/🖼 +%/"
+        ObjectStorageS3TestEndpoint(onList = { query ->
+            200 to if (query["continuation-token"] == null) {
+                listingPage(listOf(prefix + "a" to 1L, prefix + "b" to 7L), "next/+token")
+            } else {
+                listingPage(listOf(prefix + "c" to Long.MAX_VALUE))
+            }
+        }).use { endpoint ->
+            val entries = provide<ObjectStorageServiceFactory>().withStorage(s3(endpoint, key = "LISTING_KEY")) {
+                it.listObjects(prefix, 1, 2)
+            }
+            assertEquals(listOf(prefix + "b", prefix + "c"), entries.map { it.key })
+            assertEquals(ObjectStorageInfo(Long.MAX_VALUE, "\"multipart-3\"",
+                modified = OffsetDateTime.parse("2026-10-17T01:02:03Z")), entries.last().info)
+            assertEquals(listOf("3", "1"), endpoint.listQueries.map { it["max-keys"] })
+            assertEquals(listOf(null, "next/+token"), endpoint.listQueries.map { it["continuation-token"] })
+            assertTrue(endpoint.listQueries.all { it["prefix"] == prefix && it["list-type"] == "2" && "delimiter" !in it })
+            assertEquals(listOf("/test-bucket", "/test-bucket"), endpoint.paths.toList())
+            assertEquals(0, endpoint.objectHeads.get())
+            assertEquals(0, endpoint.objectGets.get())
+            assertEquals(0, endpoint.bucketChecks.get())
+            assertEquals(0, endpoint.bucketCreations.get())
+            assertTrue(endpoint.authorizationHeaders.all { it.contains("Credential=LISTING_KEY/") })
+        }
+    }
+
+    @Test
+    fun `S3 listing does not return partial inventory after a later page is denied`(): Unit = runBlocking {
+        ObjectStorageS3TestEndpoint(onList = { query ->
+            if (query["continuation-token"] == null) 200 to listingPage(listOf("a" to 1L), "denied")
+            else 403 to "<Error><Code>AccessDenied</Code><Message>Denied</Message></Error>"
+        }).use { endpoint ->
+            val failure = assertFailsWith<S3Exception> {
+                provide<ObjectStorageServiceFactory>().withStorage(s3(endpoint)) { it.listObjects("", 0, 2) }
+            }
+            assertEquals(403, failure.statusCode())
+            assertEquals(2, endpoint.listQueries.size)
+            assertEquals(0, endpoint.objectGets.get())
+        }
+    }
+
+    @Test
+    fun `S3 missing listing namespace stays a provider error`(): Unit = runBlocking {
+        ObjectStorageS3TestEndpoint(onList = {
+            404 to "<Error><Code>NoSuchBucket</Code><Message>Missing</Message></Error>"
+        }).use { endpoint ->
+            val failure = assertFailsWith<S3Exception> {
+                provide<ObjectStorageServiceFactory>().withStorage(s3(endpoint)) { it.listObjects("", 0, 1) }
+            }
+            assertEquals(404, failure.statusCode())
+            assertEquals(1, endpoint.listQueries.size)
+            assertEquals(0, endpoint.objectHeads.get())
+        }
+    }
+
+    @Test
+    fun `S3 empty listings remain empty beyond large offsets`(): Unit = runBlocking {
+        ObjectStorageS3TestEndpoint(onList = { 200 to listingPage(emptyList()) }).use { endpoint ->
+            val entries = provide<ObjectStorageServiceFactory>().withStorage(s3(endpoint)) {
+                it.listObjects("assets/", Long.MAX_VALUE, Int.MAX_VALUE)
+            }
+            assertTrue(entries.isEmpty())
+            assertEquals(1, endpoint.listQueries.size)
+            assertEquals(0, endpoint.objectGets.get())
+        }
+    }
+
+    private fun listingPage(entries: List<Pair<String, Long>>, next: String? = null): String = buildString {
+        append("<ListBucketResult xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\">")
+        append("<IsTruncated>${next != null}</IsTruncated>")
+        if (next != null) append("<NextContinuationToken>${xml(next)}</NextContinuationToken>")
+        for ((key, length) in entries) {
+            append("<Contents><Key>${xml(key)}</Key><Size>$length</Size>")
+            append("<ETag>&quot;multipart-3&quot;</ETag><LastModified>2026-10-17T01:02:03Z</LastModified></Contents>")
+        }
+        append("</ListBucketResult>")
+    }
+
+    private fun xml(value: String): String = value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
     private fun filesystem(name: String) = StorageConfiguration("fs", "", basePath = directory.resolve(name).toString())
 
     private fun s3(

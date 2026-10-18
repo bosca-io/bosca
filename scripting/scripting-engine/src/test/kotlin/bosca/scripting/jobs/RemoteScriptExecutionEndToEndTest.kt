@@ -15,6 +15,7 @@ import bosca.pubsub.Message
 import bosca.pubsub.PubSubService
 import bosca.storage.service.ObjectNotFoundException
 import bosca.storage.service.ObjectPath
+import bosca.storage.service.ObjectStorageEntry
 import bosca.storage.service.ObjectStorageInfo
 import bosca.storage.service.ObjectStorageService
 import bosca.storage.service.StringObjectPath
@@ -88,6 +89,13 @@ class RemoteScriptExecutionEndToEndTest {
     private val config = ScriptingSecurityConfiguration()
     private val storageData = ConcurrentHashMap<String, ByteArray>()
     private val objectStorageService = object : ObjectStorageService {
+        override suspend fun listObjects(prefix: String, offset: Long, limit: Int): List<ObjectStorageEntry> {
+            require(offset >= 0 && limit > 0)
+            val entries = storageData.entries.filter { it.key.startsWith(prefix) }.sortedBy { it.key }
+            return entries.asSequence().filterIndexed { index, _ -> index.toLong() >= offset }.take(limit)
+                .map { ObjectStorageEntry(it.key, ObjectStorageInfo(it.value.size.toLong())) }.toList()
+        }
+
         override suspend fun getObjectInfo(path: ObjectPath): ObjectStorageInfo =
             storageData[path.toString()]?.let { ObjectStorageInfo(it.size.toLong()) }
                 ?: throw ObjectNotFoundException(path)

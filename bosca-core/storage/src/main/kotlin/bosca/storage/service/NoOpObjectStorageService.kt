@@ -11,6 +11,12 @@ import kotlin.uuid.ExperimentalUuidApi
 
 class NoOpObjectStorageService : ObjectStorageService {
 
+    override suspend fun listObjects(prefix: String, offset: Long, limit: Int): List<ObjectStorageEntry> {
+        require(offset >= 0) { "Object listing offset must not be negative" }
+        require(limit > 0) { "Object listing limit must be positive" }
+        return emptyList()
+    }
+
     override suspend fun getObjectInfo(path: ObjectPath): ObjectStorageInfo = throw ObjectNotFoundException(path)
 
     override suspend fun getPath(metadata: Metadata, supplementaryId: UUID?): ObjectPath {

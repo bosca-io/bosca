@@ -1,11 +1,14 @@
 package bosca.storage.service
 
 import bosca.di.ObjectProvider
+import com.google.cloud.storage.Blob
 import com.google.cloud.storage.BlobId
 import com.google.cloud.storage.BlobInfo
 import com.google.cloud.storage.Storage
 import com.google.cloud.storage.StorageException
 import bosca.security.service.SecurityService
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import java.io.FilterInputStream
 import java.io.IOException
@@ -23,6 +26,32 @@ class GoogleObjectStorageService(
     securityService: ObjectProvider<SecurityService>
 ) : AbstractObjectStorageService(urlPrefix, urlUploadPrefix, urlSigner, securityService) {
 
+    override suspend fun listObjects(prefix: String, offset: Long, limit: Int): List<ObjectStorageEntry> {
+        require(offset >= 0) { "Object listing offset must not be negative" }
+        require(limit > 0) { "Object listing limit must be positive" }
+        return withContext(StorageDispatcher) {
+            val entries = mutableListOf<ObjectStorageEntry>()
+            var skip = offset
+            val page = storage.list(
+                bucket,
+                Storage.BlobListOption.prefix(prefix),
+                Storage.BlobListOption.pageSize(1000L),
+            )
+            for (blob in page.iterateAll()) {
+                currentCoroutineContext().ensureActive()
+                if (skip > 0) {
+                    skip--
+                    continue
+                }
+                val key = checkNotNull(blob.name) { "Listed object key is missing" }
+                require(key.startsWith(prefix)) { "Listed object is outside the requested prefix: $key" }
+                entries.add(ObjectStorageEntry(key, objectInfo(blob, key)))
+                if (entries.size == limit) break
+            }
+            entries
+        }
+    }
+
     override suspend fun getObjectInfo(path: ObjectPath): ObjectStorageInfo = withContext(StorageDispatcher) {
         val blob = try {
             storage.get(BlobId.of(bucket, path.toString()))
@@ -30,13 +59,15 @@ class GoogleObjectStorageService(
             if (failure.code == 404) throw ObjectNotFoundException(path, failure)
             throw failure
         } ?: throw ObjectNotFoundException(path)
-        ObjectStorageInfo(
-            length = checkNotNull(blob.size) { "Object length is missing: $path" },
-            etag = blob.etag?.takeIf { it.isNotBlank() },
-            version = blob.generation?.toString(),
-            modified = blob.updateTimeOffsetDateTime?.withOffsetSameInstant(ZoneOffset.UTC),
-        )
+        objectInfo(blob, path.toString())
     }
+
+    private fun objectInfo(blob: Blob, key: String) = ObjectStorageInfo(
+        length = checkNotNull(blob.size) { "Object length is missing: $key" },
+        etag = blob.etag?.takeIf { it.isNotBlank() },
+        version = blob.generation?.toString(),
+        modified = blob.updateTimeOffsetDateTime?.withOffsetSameInstant(ZoneOffset.UTC),
+    )
 
     override suspend fun getInputStream(path: ObjectPath): InputStream = openOnStorageDispatcher {
         val id = BlobId.of(bucket, path.toString())

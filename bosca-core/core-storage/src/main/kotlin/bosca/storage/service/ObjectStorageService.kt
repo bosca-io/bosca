@@ -104,6 +104,20 @@ interface ObjectStorageService : AutoCloseable {
     suspend fun getObjectInfo(path: ObjectPath): ObjectStorageInfo
 
     /**
+     * Lists current object keys beginning with the literal [prefix], in backend key order.
+     *
+     * [offset] must be nonnegative and [limit] positive. An empty prefix selects the whole store.
+     * Returns at most [limit] entries, or an empty page beyond the end. Reads no asset bodies.
+     * Cloud stores use provider listing metadata without per-object requests; S3 listings have no version IDs.
+     * Filesystem storage lists regular files, including paths reached through directory aliases.
+     * Blocking enumeration runs on [StorageDispatcher]; failures and cancellation propagate.
+     *
+     * Enumeration does not pin source revisions or establish a closed inventory. Source changes
+     * can shift offset positions between calls; callers establish exact capture/retention separately.
+     */
+    suspend fun listObjects(prefix: String, offset: Long, limit: Int): List<ObjectStorageEntry>
+
+    /**
      * Opens an [InputStream] for reading the entire content at the given path.
      * The caller is responsible for closing the returned stream.
      *
