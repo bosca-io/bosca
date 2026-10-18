@@ -8,6 +8,30 @@ import java.time.OffsetDateTime
 /** Creates verified retained payloads from explicitly selected provider revisions. */
 interface ObjectBackupCaptureService : Service {
     /**
+     * Captures all explicitly selected revisions and publishes their verified portable manifest.
+     *
+     * Snapshots and validates [inventory] and required [sources] before asset I/O. Results are
+     * ordered by logical store, key and provider revision. Completed entries survive partial
+     * failure/restart and reuse their recorded paths. Unknown revisions use new paths under
+     * [payloadPrefix]; the caller owns [manifestPath] and independent [destination] storage.
+     * [verifiedSince] applies to both capture reuse and publication; null forces full checks.
+     *
+     * Source revisions must remain readable. Requires stable source/destination identities,
+     * exclusive writers and no active caller transaction. No source writes are paused. This
+     * neither discovers a closed snapshot, persists initial unknown-digest intent, establishes
+     * database recovery coverage nor schedules later captures. Supplied stores remain caller-owned.
+     */
+    suspend fun captureInventory(
+        inventory: ObjectBackupCaptureInventory,
+        destinationId: String,
+        sources: Map<String, ObjectStorageService>,
+        destination: ObjectStorageService,
+        payloadPrefix: String,
+        manifestPath: String,
+        verifiedSince: OffsetDateTime?,
+    ): ObjectBackupManifest
+
+    /**
      * Captures or reuses a revision with a durable completed checkpoint in the existing ledger.
      *
      * Uses stable [sourceId], [destinationId] and [scope] identities. Known revisions retain their

@@ -384,7 +384,7 @@ class ObjectBackupVerificationIntegrationTest {
         service = ObjectBackupCaptureServiceImpl(object : ObjectBackupProgressService by progress {
             override suspend fun recordVerification(key: String, expectedVersion: Long, objectVersion: String?): ObjectBackupProgress =
                 throw failure
-        })
+        }, Json)
         resetCounters()
         val observed = assertFailsWith<IOException> { capture(checkNotNull(first.verified).plusSeconds(1)) }
         assertTrue(generateSequence<Throwable>(observed) { it.cause }.any { it === failure })
@@ -598,6 +598,30 @@ class ObjectBackupVerificationIntegrationTest {
         assertTrue(versionReads.isEmpty())
         assertNull(checkpoint(captured.key).verifiedVersion)
         assertNull(checkpoint(captured.key).verified)
+    }
+
+    @Test
+    fun `selected inventory capture and publication avoid all asset body reads on an unchanged pass`(): Unit = runBlocking {
+        val selectedInventory = ObjectBackupCaptureInventory(
+            "inventory", "source-instance", "content", "2026-10-18T00:00:00Z", mapOf("content" to listOf(selected)),
+        )
+        val path = "manifests/inventory.json"
+        val first = service.captureInventory(
+            selectedInventory, "retained-store", mapOf("content" to source), target, "payloads/inventory", path, OffsetDateTime.MIN,
+        )
+        assertEquals(1, first.objects.size)
+        assertEquals(1, bodies.get())
+        assertEquals(1, sourceReads.get())
+        resetCounters()
+        val repeated = service.captureInventory(
+            selectedInventory, "retained-store", mapOf("content" to source), target, "another-prefix", path, OffsetDateTime.MIN,
+        )
+        assertEquals(first, repeated)
+        assertEquals(2, heads.get())
+        assertEquals(0, bodies.get())
+        assertEquals(0, sourceReads.get())
+        assertEquals(1, writes.get())
+        assertEquals(first, ObjectBackupManifestStore(target, Json).load(StringObjectPath(path)))
     }
 
     private val manifestPath = StringObjectPath("manifests/captured.json")

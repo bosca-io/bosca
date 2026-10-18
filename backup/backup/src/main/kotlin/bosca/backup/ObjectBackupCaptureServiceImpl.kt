@@ -13,13 +13,78 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.Json
 import java.time.OffsetDateTime
+import java.util.UUID
 
 /** Streams a selected retained revision into new independent backup storage and verifies it. */
 @ServiceImplementation
 class ObjectBackupCaptureServiceImpl(
     private val progressService: ObjectBackupProgressService,
+    private val json: Json,
 ) : ObjectBackupCaptureService {
+    override suspend fun captureInventory(
+        inventory: ObjectBackupCaptureInventory,
+        destinationId: String,
+        sources: Map<String, ObjectStorageService>,
+        destination: ObjectStorageService,
+        payloadPrefix: String,
+        manifestPath: String,
+        verifiedSince: OffsetDateTime?,
+    ): ObjectBackupManifest {
+        val selected = inventory.copy(stores = inventory.stores.mapValues { (_, entries) -> entries.toList() })
+        val capturedSources = sources.toMap()
+        selected.validate()
+        require(destinationId.isNotBlank()) { "Object backup destination identity is required" }
+        check(connectionOrNull()?.inTransaction != true) {
+            "Inventory capture must run outside an active database transaction"
+        }
+        for (path in listOf(payloadPrefix, manifestPath)) {
+            require(path.split('/').all { it.isNotEmpty() && it != "." && it != ".." }) {
+                "Invalid inventory capture output path: $path"
+            }
+        }
+        require(payloadPrefix != manifestPath && !payloadPrefix.startsWith("$manifestPath/")) {
+            "Manifest output conflicts with the retained payload namespace: $manifestPath"
+        }
+        for (store in selected.stores.keys) {
+            val source = requireNotNull(capturedSources[store]) { "Selected source store is missing: $store" }
+            require(source !== destination) { "Backup storage must be independent of the source: $store" }
+        }
+        val entries = selected.stores.toSortedMap().flatMap { (store, entries) ->
+            entries.sortedWith(compareBy({ it.key }, { it.info.version })).map { store to it }
+        }
+        withConnectionManager {
+            for ((store, entry) in entries) {
+                val known = progressService.get(
+                    ObjectBackupOperation.BACKUP, selected.sourceId, destinationId, selected.scope,
+                    store, entry.key, requireNotNull(entry.info.version),
+                ) ?: continue
+                check(known.status != ObjectBackupProgressStatus.RUNNING) {
+                    "Object capture is already running: ${known.key}"
+                }
+                require(known.payload.length == entry.info.length) { "Conflicting captured revision length: ${known.key}" }
+                require(known.payload.payloadPath != manifestPath) {
+                    "Manifest path conflicts with a captured payload: $manifestPath"
+                }
+            }
+        }
+        val objects = entries.map { (store, entry) ->
+            currentCoroutineContext().ensureActive()
+            val path = "$payloadPrefix/${UUID.randomUUID()}"
+            require(path != manifestPath) { "Manifest path conflicts with a new payload: $path" }
+            captureTracked(
+                selected.sourceId, destinationId, selected.scope, store, entry,
+                capturedSources.getValue(store), destination, path, verifiedSince,
+            ).payload
+        }
+        val manifest = ObjectBackupManifest(selected.id, selected.sourceId, selected.scope, selected.created, objects)
+        ObjectBackupManifestStore(destination, json).saveTracked(
+            StringObjectPath(manifestPath), manifest, destinationId, progressService, verifiedSince,
+        )
+        return manifest
+    }
+
     override suspend fun captureTracked(
         sourceId: String,
         destinationId: String,

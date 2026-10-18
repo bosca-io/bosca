@@ -18,6 +18,7 @@ import java.io.InputStream
 import java.nio.file.Path
 import java.security.MessageDigest
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlinx.serialization.json.Json
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
 import kotlin.io.path.createTempDirectory
@@ -45,7 +46,7 @@ class ObjectBackupCaptureTest {
         directory = createTempDirectory("bosca-object-capture-")
         retained = FileSystemObjectStorageService("", "", mockk(), directory.toString(), mockk())
         source = mockk()
-        service = ObjectBackupCaptureServiceImpl(mockk())
+        service = ObjectBackupCaptureServiceImpl(mockk(), Json)
         closed = AtomicBoolean()
         coEvery { source.getInputStream(any(), "old") } answers { stream(bytes) }
     }
