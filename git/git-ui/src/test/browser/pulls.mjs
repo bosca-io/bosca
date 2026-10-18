@@ -183,7 +183,7 @@ for (const width of [1920, 1440, 1024, 390]) {
   assert.ok(await ev(`document.querySelector('.heading-subtitle').textContent.includes('#1 · feature/one → main')`), "The subtitle names the number and branches");
   assert.ok(await ev(`(() => {
     const sidebar = document.querySelector('.pull-sidebar');
-    return sidebar.innerText.includes('Mergeable') && sidebar.querySelector('.merge-form')
+    return sidebar.innerText.includes('Merge conflicts') && sidebar.querySelector('.merge-form')
       && document.querySelector('.pull-main .pull-checks') && !sidebar.querySelector('.pull-checks');
   })()`), "Details and actions use Studio's sidebar while checks stay in the main column");
   assert.ok(await ev(`document.querySelector('.review-summary-row')?.innerText.includes('comment only')`), "Overview shows recent review outcomes");
@@ -210,6 +210,19 @@ for (const width of [1920, 1440, 1024, 390]) {
   assert.ok(await ev(`document.querySelector('${actionRoot} dialog[open]').innerText.includes('Squash and merge')`), "Merge confirmation names the chosen method");
   await screenshot("merge-confirmation", width);
   await pressKey("Escape");
+
+  await nav("/pulls/pull-checks");
+  assert.ok(await ev(`document.querySelector('.pull-checks').innerText.includes('ci/missing')
+    && !document.querySelector('.pull-checks').innerText.includes('All checks passed')`), "Missing required checks are visible");
+  await click(`${actionRoot} .merge-form button[type=submit]`);
+  await until(`document.querySelector('${actionRoot} dialog[open] .merge-footer button.danger')`);
+  assert.ok(await ev(`document.querySelector('${actionRoot} dialog[open] button[type=submit]').disabled`), "Ordinary merge is blocked by required checks");
+  assert.ok(await ev(`document.documentElement.scrollWidth <= innerWidth
+    && document.querySelector('${actionRoot} dialog[open]').scrollWidth <= document.querySelector('${actionRoot} dialog[open]').clientWidth`), "Administrator merge confirmation fits the viewport");
+  await screenshot("bypass-confirmation", width);
+  await click(`${actionRoot} dialog[open] .merge-footer button.danger`);
+  await until(`!document.querySelector('${actionRoot} dialog[open]') && !document.querySelector('[data-bml-action-pending]')`);
+  await nav("/pulls/pull?repo=repo&number=1");
 
   await ev(`(() => {
     document.querySelector('.page-heading h1').textContent =

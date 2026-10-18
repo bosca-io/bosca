@@ -76,6 +76,16 @@ class GitPullRequestControllerTest {
     }
 
     @Test
+    fun `failing status checks are independent of clean Git mergeability`() = runTest {
+        coEvery { pullRequestService.checkMergeability(pr.id) } returns MergeResult(success = true)
+        coEvery { pullRequestService.getFailingStatusChecks(pr.id) } returns listOf("ci/build")
+        assertTrue(controller.mergeable(pr))
+        assertEquals(listOf("ci/build"), controller.failingStatusChecks(pr))
+        assertEquals(emptyList(), controller.failingStatusChecks(pr.copy(status = PullRequestStatus.MERGED)))
+        coVerify(exactly = 1) { pullRequestService.getFailingStatusChecks(pr.id) }
+    }
+
+    @Test
     fun `conflictingFiles is empty for closed pull requests`() = runTest {
         coEvery { pullRequestService.checkMergeability(pr.id) } returns
             MergeResult(success = false, conflictingFiles = listOf("a.txt"))

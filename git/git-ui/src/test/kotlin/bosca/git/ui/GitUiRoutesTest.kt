@@ -40,6 +40,8 @@ class GitUiRoutesTest {
         userMappings.clear()
         treeRetries.clear()
         commitSha = "abc"
+        failingChecks = emptyList()
+        checkTargetUrl = "javascript:alert(1)"
         requestProbe = null
     }
 
@@ -1015,6 +1017,35 @@ class GitUiRoutesTest {
     }
 
     @Test
+    fun `required checks block a clean merge and administrator override is explicit`() {
+        failingChecks = listOf("ci/build", "missing-check")
+        checkTargetUrl = "/pipelines/run"
+        val path = "/pulls/pull?view=overview"
+        val page = get(path).body()
+        assertTrue("Merge conflicts" in page && "Required status checks are not passing" in page, page)
+        assertFalse(">Mergeable<" in page, page)
+        assertTrue("href=\"/pipelines/run\"" in page, page)
+        val prepared = action(path, "git-pull-actions.model", "prepare", listOf("SQUASH"))
+        assertTrue("Bypass status checks and merge" in prepared.body(), prepared.body())
+        val before = requests.count { it.operation == "GitUiMergePull" }
+        val rejected = continueAction(path, "git-pull-actions.model:pull", "merge", actionState(prepared), listOf(true, false))
+        assertEquals(true, actionState(rejected)["failed"]?.jsonPrimitive?.boolean, rejected.body())
+        assertEquals(before, requests.count { it.operation == "GitUiMergePull" })
+        val merged = continueAction(path, "git-pull-actions.model:pull", "merge", actionState(prepared), listOf(true, true))
+        assertEquals(false, actionState(merged)["failed"]?.jsonPrimitive?.boolean, merged.body())
+        assertEquals(true, requests.last { it.operation == "GitUiMergePull" }.variables["bypassStatusChecks"]?.jsonPrimitive?.boolean)
+        val reader = get(path, token = "reader-token").body()
+        assertFalse("Bypass status checks and merge" in reader, reader)
+    }
+
+    @Test
+    fun `checks without a safe destination link to repository builds`() {
+        val html = get("/pulls/pull?view=overview").body()
+        assertFalse("href=\"javascript:" in html, html)
+        assertTrue("href=\"/repositories/repo?tab=pipelines&amp;ref=feature%2Fone\"" in html, html)
+    }
+
+    @Test
     fun `pull overview and reviews omit full diff and branch history work`() {
         for (view in listOf("overview", "reviews")) {
             val before = requests.size
@@ -1484,7 +1515,7 @@ class GitUiRoutesTest {
         assertEquals(false, actionState(comment)["reviewFailed"]?.jsonPrimitive?.boolean)
         assertFalse("data-force-open" in comment.body(), comment.body())
         val before = requests.count { it.operation == "GitUiMergePull" }
-        val merge = action(source, "git-pull-actions.model", "merge", listOf(true))
+        val merge = action(source, "git-pull-actions.model", "merge", listOf(true, false))
         assertEquals(true, actionState(merge)["failed"]?.jsonPrimitive?.boolean, merge.body())
         assertEquals("merge", actionState(merge)["selectedAction"]?.jsonPrimitive?.content)
         assertEquals(before, requests.count { it.operation == "GitUiMergePull" })
@@ -1504,7 +1535,7 @@ class GitUiRoutesTest {
                 "git-pull-actions.model:pull",
                 "merge",
                 actionState(plan),
-                listOf(true),
+                listOf(true, false),
             )
         assertEquals(false, actionState(merged)["failed"]?.jsonPrimitive?.boolean, merged.body())
         assertEquals(
@@ -2000,7 +2031,7 @@ class GitUiRoutesTest {
                 "git-pull-actions.model:pull",
                 "merge",
                 actionState(prepared),
-                listOf(true),
+                listOf(true, false),
             )
         assertEquals(true, actionState(rejected)["failed"]?.jsonPrimitive?.boolean, rejected.body())
         assertTrue("source branch changed" in rejected.body(), rejected.body())
@@ -2486,6 +2517,8 @@ class GitUiRoutesTest {
             >()
         private val userMappings = CopyOnWriteArrayList<JsonObject>()
         @Volatile private var commitSha = "abc"
+        @Volatile private var failingChecks: List<String> = emptyList()
+        @Volatile private var checkTargetUrl = "javascript:alert(1)"
         private var port = 0
         private lateinit var upstream: HttpServer
         private val upstreamExecutor = Executors.newVirtualThreadPerTaskExecutor()
@@ -2640,7 +2673,7 @@ class GitUiRoutesTest {
                             """{"data":{"git":{"pullRequest":$result}}}"""
                         }
                         operation == "GitUiPull" -> {
-                            val result = (1..12).asSequence().map { pullStateFixture(pull, it) }
+                            val result = (1..13).asSequence().map { pullStateFixture(pull, it) }
                                 .firstOrNull { Json.parseToJsonElement(it).jsonObject.getValue("id").jsonPrimitive.content == id }
                             """{"data":{"git":{"pullRequest":$result}}}"""
                         }
@@ -2711,7 +2744,7 @@ class GitUiRoutesTest {
                         operation == "GitUiResolveThread" ->
                             """{"data":{"git":{"resolveReviewThread":true}}}"""
                         operation == "GitUiMergePlan" ->
-                            """{"data":{"git":{"pullRequestMergePlan":[$pull]}}}"""
+                            """{"data":{"git":{"pullRequestMergePlan":[${if (id == "pull-checks") pullStateFixture(pull, 13) else pull}]}}}"""
                         operation == "GitUiMergePull" ->
                             """{"data":{"git":{"mergePullRequest":{"id":"pull","status":"MERGED"}}}}"""
                         operation == "GitUiPipelines" &&
@@ -3199,12 +3232,16 @@ class GitUiRoutesTest {
         private val pair = fixture("pair")
         private val refs = fixture("refs")
         private val orchestrator = fixture("orchestrator")
-        private val pull = fixture("pull")
+        private val pull: String
+            get() = JsonObject(Json.parseToJsonElement(fixture("pull")).jsonObject +
+                ("failingStatusChecks" to JsonArray(failingChecks.map(::JsonPrimitive)))).toString()
         @Volatile private var editedPull = Json.parseToJsonElement(pullStateFixture(pull, 7)).jsonObject
         @Volatile private var replyPull = Json.parseToJsonElement(pullStateFixture(pull, 10)).jsonObject
         private val run = fixture("run")
         private val comparison = fixture("compare")
-        private val status = fixture("status")
+        private val status: String
+            get() = JsonObject(Json.parseToJsonElement(fixture("status")).jsonObject +
+                ("targetUrl" to JsonPrimitive(checkTargetUrl))).toString()
         private val profile =
             """{"id":"owner","name":"Alice","slug":"alice","isPrimary":true,"attributes":[{"typeId":"bosca.profiles.email","attributes":{"email":"alice@example.test"}}]}"""
         private val otherProfile =

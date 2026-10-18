@@ -133,6 +133,10 @@ class PipelineTriggerAuthorizationTest {
     @Test
     fun `authorized branch build retains principal and reads the triggering commit`() = runTest {
         execute(principalId)
+        coVerify {
+            statuses.recordStatus(repository.id, "after", "ci/build/build", bosca.git.model.CommitStatusState.PENDING,
+                "Queued", "/pipelines/${UUID.NIL}")
+        }
         coVerify(exactly = 1) { pipelines.parseDefinition(repository.id, "after", pipeline.filePath) }
         coVerify(exactly = 1) {
             runs.createTriggeredRun(any(), pipeline.id, repository.id, definition, "after", "refs/heads/main",

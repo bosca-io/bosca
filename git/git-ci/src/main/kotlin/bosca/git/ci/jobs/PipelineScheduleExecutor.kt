@@ -131,6 +131,7 @@ class PipelineScheduleRunnerImpl(
                 context = "ci/${pipeline.name.lowercase().replace(' ', '-')}/$jobName",
                 state = CommitStatusState.PENDING,
                 description = "Queued",
+                targetUrl = "/pipelines/${run.id}",
             )
         }
         log.info(

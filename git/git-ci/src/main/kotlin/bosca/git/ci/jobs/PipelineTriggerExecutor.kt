@@ -132,7 +132,8 @@ class PipelineTriggerExecutor : AbstractJobExecutor<PipelineTriggerJob>(Pipeline
                             commitSha = job.afterSha,
                             context = context,
                             state = CommitStatusState.PENDING,
-                            description = "Queued"
+                            description = "Queued",
+                            targetUrl = "/pipelines/${created.id}",
                         )
                     }
                     created

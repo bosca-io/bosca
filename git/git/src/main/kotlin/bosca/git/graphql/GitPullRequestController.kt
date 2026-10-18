@@ -98,6 +98,12 @@ class GitPullRequestController(
     }
 
     @Field
+    suspend fun failingStatusChecks(source: PullRequest): List<String> {
+        if (source.status != PullRequestStatus.OPEN) return emptyList()
+        return pullRequestService.getFailingStatusChecks(source.id)
+    }
+
+    @Field
     suspend fun conflictingFiles(source: PullRequest): List<String> {
         if (source.status != PullRequestStatus.OPEN) return emptyList()
         val result = pullRequestService.checkMergeability(source.id)

@@ -27,6 +27,9 @@ class PullActionsModel(
     val mergeBlocked: Boolean
         get() = plan.any { it.status.name != "OPEN" || !it.mergeable }
 
+    val checksBlocked: Boolean
+        get() = plan.any { it.failingStatusChecks.isNotEmpty() }
+
     val dependencyCandidates: List<PullLink>
         get() = candidates.filter {
             it.status in setOf("OPEN", "DRAFT") &&
@@ -74,7 +77,7 @@ class PullActionsModel(
         mergeRequest++
     }
 
-    suspend fun merge(confirmed: Boolean, ctx: RenderContext) = perform {
+    suspend fun merge(confirmed: Boolean, bypassStatusChecks: Boolean, ctx: RenderContext) = perform {
         selectedAction = "merge"
         require(confirmed && plan.isNotEmpty()) { "Review and confirm the merge plan first." }
         requireReviewedHead(ctx)
@@ -87,10 +90,13 @@ class PullActionsModel(
             plan = current
             error("The merge plan changed. Review it and confirm again.")
         }
+        require(!mergeBlocked) { "Resolve the blocked pull requests before merging." }
+        require(!bypassStatusChecks || isGitAdministrator(ctx)) { "Only administrators can bypass required status checks." }
+        require(bypassStatusChecks || !checksBlocked) { "Required status checks are not passing." }
         if (plan.size == 1)
             ctx.gql.execute(
                 GitUiMergePull,
-                GitUiMergePull.Variables(page.pull.id, GitMergeStrategy.valueOf(strategy), page.pull.version),
+                GitUiMergePull.Variables(page.pull.id, GitMergeStrategy.valueOf(strategy), page.pull.version, bypassStatusChecks),
             )
         else
             ctx.gql.execute(
@@ -99,6 +105,7 @@ class PullActionsModel(
                     page.pull.id,
                     GitMergeStrategy.valueOf(strategy),
                     page.pull.version,
+                    bypassStatusChecks,
                 ),
             )
         nextHref = page.href

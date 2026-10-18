@@ -268,6 +268,7 @@ suspend fun pullPage(): PullPage? = supervisorScope {
         commits = commits.take(25),
         commitOffset = commitOffset,
         hasMoreCommits = commits.size > 25,
+        canBypassStatusChecks = isGitAdministrator(ctx),
         selectedCommit = selectedCommit,
     ).withDiscussionContext(ctx.gql)
 }

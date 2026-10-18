@@ -485,8 +485,10 @@ type GitPullRequest {
     mergeBaseSha: String
     created: DateTime!
     updated: DateTime!
-    "Whether the PR can be cleanly merged."
+    "Whether Git can merge the branches without conflicts. Does not include reviews, dependencies or status checks."
     mergeable: Boolean!
+    "Required checks without a successful result on the current source commit, including unreported checks."
+    failingStatusChecks: [String!]!
     "Files with merge conflicts, if any."
     conflictingFiles: [String!]!
     "Profile IDs of users assigned to this PR."
@@ -779,9 +781,9 @@ type GitMutation {
     "Update a pull request's title or description."
     updatePullRequest(id: UUID!, input: UpdateGitPullRequestInput!): GitPullRequest!
     "Merge a pull request using the specified strategy."
-    mergePullRequest(id: UUID!, strategy: GitMergeStrategy!, expectedVersion: Long): GitPullRequest!
+    mergePullRequest(id: UUID!, strategy: GitMergeStrategy!, expectedVersion: Long, bypassStatusChecks: Boolean! = false): GitPullRequest!
     "Merge every unresolved dependency in dependency-first order, then merge the requested pull request."
-    mergePullRequestWithDependencies(id: UUID!, strategy: GitMergeStrategy!, expectedVersion: Long): [GitPullRequest!]!
+    mergePullRequestWithDependencies(id: UUID!, strategy: GitMergeStrategy!, expectedVersion: Long, bypassStatusChecks: Boolean! = false): [GitPullRequest!]!
     "Add a pull request that must be merged before this pull request."
     addPullRequestDependency(id: UUID!, dependencyId: UUID!): GitPullRequest!
     "Remove a direct pull request dependency."

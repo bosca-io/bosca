@@ -12,18 +12,25 @@ import bosca.workops.service.RegistryProducedArtifactVerifier
 import bosca.db.*
 import bosca.di.*
 import bosca.git.ci.configuration.KubernetesCiDispatchConfiguration
+import bosca.git.ci.graphql.GitPipelineMutation
 import bosca.git.ci.repository.*
 import bosca.git.model.*
+import bosca.git.repository.CommitStatusRepositoryImpl
+import bosca.git.service.CommitStatusService
+import bosca.git.service.CommitStatusServiceImpl
 import bosca.git.service.PipelineAgentService
 import bosca.git.service.PipelineJobService
 import bosca.git.service.PipelineLogService
 import bosca.git.service.PipelineRunService
 import bosca.git.service.ProducedArtifactVerifier
+import bosca.git.service.PipelineService
+import bosca.git.service.RepositoryService
 import bosca.lock.nats.NatsDistributedLockFactory
 import bosca.pipelines.PipelineEventDispatcher
 import bosca.pipelines.trigger.PipelineDispatchJob
 import bosca.pipelines.trigger.PipelineEventDispatcherImpl
 import bosca.serialization.UUID
+import bosca.security.service.AuthenticationContext
 import bosca.server.BoscaApplication
 import bosca.server.config.ApplicationConfig
 import bosca.sharedqueue.jobs.JobQueue
@@ -50,6 +57,9 @@ class PipelineArtifactCompletionIntegrationTest {
     private lateinit var jobs: PipelineJobService
     private lateinit var runs: PipelineRunService
     private lateinit var run: PipelineRun
+    private lateinit var statuses: CommitStatusService
+    private lateinit var mutation: GitPipelineMutation
+    private val authentication = mockk<AuthenticationContext>(relaxed = true)
     private lateinit var graphService: bosca.pipelines.service.PipelineService
     private lateinit var verifier: ProducedArtifactVerifier
     private lateinit var artifacts: ArtifactRepositoryService
@@ -92,11 +102,20 @@ class PipelineArtifactCompletionIntegrationTest {
         coEvery { runs.findByIdForUpdate(any()) } coAnswers { PipelineRunRepositoryImpl().findByIdForUpdate(firstArg()) }
         coEvery { runs.updateStatus(any(), any()) } coAnswers { PipelineRunRepositoryImpl().markFinished(firstArg(), secondArg()) }
         provides<PipelineRunService>(singleton = true) { runs }
+        statuses = CommitStatusServiceImpl(CommitStatusRepositoryImpl())
+        val pipelines = mockk<PipelineService>()
+        coEvery { pipelines.findById(any()) } coAnswers { PipelineRepositoryImpl().findById(firstArg()) }
+        val repositories = mockk<RepositoryService>()
+        coEvery { repositories.findById(any()) } returns mockk(relaxed = true)
+        mutation = GitPipelineMutation(pipelines, runs, jobs, mockk(relaxed = true), mockk(relaxed = true),
+            mockk(relaxed = true), statuses, repositories, mockk(relaxed = true), mockk(relaxed = true),
+            mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true))
         withDb {
             connection().useStatement("DROP SCHEMA IF EXISTS git CASCADE") { it.execute() }
             connection().useStatement("DROP SCHEMA IF EXISTS artifacts CASCADE") { it.execute() }
             val paths = listOf(
-                "test/V1__test_minimal_schema.sql", "V12__ci_cd_pipelines.sql", "V17__pipeline_step_definitions.sql",
+                "test/V1__test_minimal_schema.sql", "V5__lfs_and_deploy_tokens.sql", "V15__commit_status_state_enum.sql",
+                "V12__ci_cd_pipelines.sql", "V17__pipeline_step_definitions.sql",
                 "V21__pipeline_step_error_message.sql", "V22__pipeline_job_error_message.sql", "V25__pipeline_job_artifacts.sql",
                 "V26__pipeline_job_requirements.sql", "V28__pipeline_job_pipeline_requirements.sql", "V29__pipeline_job_attempt.sql",
                 "V31__pipeline_job_deferred_condition.sql", "V32__pipeline_job_environment_approval.sql", "V33__pipeline_run_parameters.sql",
@@ -151,6 +170,51 @@ class PipelineArtifactCompletionIntegrationTest {
         val event = json.decodeFromJsonElement(ArtifactCompleted.serializer(), definition.eventPayload)
         queue.markComplete(job)
         return event
+    }
+
+    @Test fun `early success cannot pass a required check when artifact validation fails`() = runBlocking {
+        withDb {
+            val job = jobs.createJobs(run.id, mapOf("publish" to JobDefinition(
+                artifacts = listOf(artifact.copy(coordinate = "missing:1.0.0")),
+                steps = listOf(StepDefinition(name = "Upload", run = "true")),
+            ))).single()
+            jobs.updateStatus(job.id, PipelineRunStatus.RUNNING)
+            statuses.recordStatus(run.repositoryId, run.commitSha, "ci/build/publish", CommitStatusState.PENDING,
+                "Queued", "/pipelines/${run.id}")
+
+            mutation.reportCommitStatus(authentication, run.repositoryId, run.commitSha, "ci/publish",
+                CommitStatusState.SUCCESS, "Passed", null, job.id)
+            assertTrue(statuses.getStatuses(run.repositoryId, run.commitSha).all { it.state == CommitStatusState.PENDING })
+
+            val finished = mutation.updateJobStatus(authentication, job.id, PipelineRunStatus.SUCCESS, null)
+            assertEquals(PipelineRunStatus.FAILURE, finished.status)
+            assertContains(finished.errorMessage.orEmpty(), "missing:1.0.0")
+            val checks = statuses.getStatuses(run.repositoryId, run.commitSha)
+            assertEquals(setOf("ci/publish", "ci/build/publish"), checks.map { it.context }.toSet())
+            assertTrue(checks.all { it.state == CommitStatusState.FAILURE })
+            assertFalse(statuses.areRequiredChecksPassing(run.repositoryId, run.commitSha, listOf("ci/build/publish")))
+        }
+    }
+
+    @Test fun `required matrix check passes only after every stored variant succeeds`() = runBlocking {
+        withDb {
+            val variants = jobs.createJobs(run.id, mapOf("test" to JobDefinition(
+                matrix = mapOf("os" to listOf("linux", "macos")),
+                steps = listOf(StepDefinition(name = "Test", run = "true")),
+            )))
+            statuses.recordStatus(run.repositoryId, run.commitSha, "ci/build/test", CommitStatusState.PENDING,
+                "Queued", "/pipelines/${run.id}")
+
+            mutation.updateJobStatus(authentication, variants.first().id, PipelineRunStatus.SUCCESS, null)
+            assertFalse(statuses.areRequiredChecksPassing(run.repositoryId, run.commitSha, listOf("ci/build/test")))
+            assertEquals(CommitStatusState.PENDING,
+                statuses.getStatuses(run.repositoryId, run.commitSha).single { it.context == "ci/build/test" }.state)
+
+            mutation.updateJobStatus(authentication, variants.last().id, PipelineRunStatus.SUCCESS, null)
+            assertTrue(statuses.areRequiredChecksPassing(run.repositoryId, run.commitSha, listOf("ci/build/test")))
+            assertEquals("/pipelines/${run.id}",
+                statuses.getStatuses(run.repositoryId, run.commitSha).single { it.context == "ci/build/test" }.targetUrl)
+        }
     }
 
     @Test fun `successful producer dispatches through the normal pipeline queue before unrelated jobs finish`() = runBlocking {

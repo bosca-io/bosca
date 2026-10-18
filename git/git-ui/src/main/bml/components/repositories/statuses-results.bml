@@ -54,10 +54,10 @@
                 </div>
                 <span class="status-time"><ui-time :value="status.created" inheritTypography /></span>
                 <git-status-badge :status="status.state.name" run />
-                <if bosca.git.ui.safeWebHref(status.targetUrl).isNotBlank()>
+                <if bosca.git.ui.safeCheckHref(status.targetUrl).isNotBlank()>
                   <a
                     class="status-link"
-                    :href="bosca.git.ui.safeWebHref(status.targetUrl)"
+                    :href="bosca.git.ui.safeCheckHref(status.targetUrl)"
                     target="_blank"
                     rel="noopener noreferrer"
                     :aria-label='"Open " + status.context + " check"'

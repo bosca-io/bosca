@@ -11,6 +11,7 @@
   "targetBranch": "main",
   "authorId": "owner",
   "mergeable": true,
+  "failingStatusChecks": [],
   "created": "2026-10-09T00:00:00Z",
   "updated": "2026-10-09T00:00:00Z",
   "sourceRepositoryId": null,

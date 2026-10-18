@@ -17,6 +17,7 @@ import bosca.git.model.PipelineScheduleJob
 import bosca.git.model.PipelineSecret
 import bosca.git.model.PipelineTriggerType
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
 import bosca.git.security.RepositoryPermissionEvaluator
 import bosca.git.service.CommitStatusService
 import bosca.git.service.PipelineAgentService
@@ -968,8 +969,51 @@ class GitPipelineMutation(
         if (transitioned) {
             runFinalizer.finalizeJob(jobId, status)
         }
-        return jobService.findById(jobId)
+        val updated = jobService.findById(jobId)
             ?: throw NoSuchElementException("Job not found: $jobId")
+        updateJobCommitStatuses(updated)
+        return updated
+    }
+
+    private suspend fun updateJobCommitStatuses(job: PipelineJob) {
+        val run = runService.findById(job.pipelineRunId)
+            ?: throw NoSuchElementException("Pipeline run not found: ${job.pipelineRunId}")
+        val detailsUrl = "/pipelines/${run.id}"
+        commitStatusService.recordStatus(run.repositoryId, run.commitSha, "ci/${job.name}",
+            commitState(listOf(job)), job.errorMessage ?: "${job.name}: ${job.status}", detailsUrl)
+
+        val pipeline = pipelineService.findById(run.pipelineId)
+            ?: throw NoSuchElementException("Pipeline not found: ${run.pipelineId}")
+        val prefix = "ci/${pipeline.name.lowercase().replace(' ', '-')}/"
+        val checks = commitStatusService.getStatuses(run.repositoryId, run.commitSha)
+            .filter { it.context.startsWith(prefix) }
+            .associateBy { it.context.removePrefix(prefix) }
+        // Match the original queued job key, including every expanded matrix variant.
+        val jobsByCheck = jobService.findByRun(run.id).groupBy { candidate ->
+            checks.keys.filter { name ->
+                candidate.name == name ||
+                    ((candidate.matrixValues as? JsonObject)?.isNotEmpty() == true &&
+                        candidate.name.startsWith("$name (") && candidate.name.endsWith(")"))
+            }.maxByOrNull { it.length }
+        }
+        for ((name, check) in checks) {
+            val jobs = jobsByCheck[name].orEmpty()
+            if (jobs.isEmpty()) continue
+            val state = commitState(jobs)
+            // A finishing variant must not overwrite a concurrent completion with stale PENDING.
+            if (state == CommitStatusState.PENDING && job.status in TERMINAL_JOB_STATUSES) continue
+            commitStatusService.recordStatus(run.repositoryId, run.commitSha, check.context, state,
+                "$name: $state", detailsUrl)
+        }
+    }
+
+    // A job skipped by its own condition (e.g. `if: failure()` on a green run) did what it was
+    // configured to do, so it counts as passing rather than blocking the check.
+    private fun commitState(jobs: List<PipelineJob>): CommitStatusState = when {
+        jobs.any { it.status in setOf(PipelineRunStatus.FAILURE, PipelineRunStatus.CANCELLED) } ->
+            CommitStatusState.FAILURE
+        jobs.all { it.status in setOf(PipelineRunStatus.SUCCESS, PipelineRunStatus.SKIPPED) } -> CommitStatusState.SUCCESS
+        else -> CommitStatusState.PENDING
     }
 
     @Field
@@ -999,6 +1043,8 @@ class GitPipelineMutation(
     ): Boolean {
         val repository = repositoryService.findById(repositoryId)
             ?: throw NoSuchElementException("Repository not found: $repositoryId")
+        var reportedJob: PipelineJob? = null
+        var reportedRun: PipelineRun? = null
         if (authentication.principal() is ScopedAuthenticatedPrincipal) {
             permissionEvaluator.verifyAllowed(authentication, PermissionAction.EXECUTE)
             val scopedJobId = jobId
@@ -1017,10 +1063,28 @@ class GitPipelineMutation(
                     "Job $scopedJobId cannot report commit status for the requested target"
                 )
             }
+            reportedJob = job
+            reportedRun = run
         } else {
             permissionEvaluator.verifyAllowed(authentication, repository, PermissionAction.EDIT)
+            if (jobId != null) {
+                val job = jobService.findById(jobId) ?: throw NoSuchElementException("Job not found: $jobId")
+                val run = runService.findById(job.pipelineRunId)
+                    ?: throw NoSuchElementException("Pipeline run not found: ${job.pipelineRunId}")
+                require(run.repositoryId == repositoryId && run.commitSha == commitSha && context == "ci/${job.name}") {
+                    "Job $jobId does not match the reported commit status"
+                }
+                reportedJob = job
+                reportedRun = run
+            }
         }
-        commitStatusService.recordStatus(repositoryId, commitSha, context, state, description, targetUrl)
+        val run = reportedRun
+        val job = reportedJob
+        val detailsUrl = targetUrl?.takeIf { it.isNotBlank() } ?: run?.let { "/pipelines/${it.id}" }
+        // Job reports precede server-side artifact verification; only stored outcomes can pass a check.
+        commitStatusService.recordStatus(repositoryId, commitSha, context,
+            job?.let { commitState(listOf(it)) } ?: state,
+            job?.let { it.errorMessage ?: "${it.name}: ${it.status}" } ?: description, detailsUrl)
         return true
     }
 

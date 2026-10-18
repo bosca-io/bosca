@@ -20,6 +20,10 @@ choices and PR lists omit unused mergeability checks; the current PR and its mer
 confirmation retain their checks. Dependency choices and status checks load only
 on Overview.
 
+Pull-request details label the conflict-only result **Merge conflicts**. Required checks that are failed, pending, or missing appear in the overview and merge confirmation. Administrators can explicitly choose **Bypass status checks and merge** for the displayed plan; repository write access, reviews, dependencies, PR version checks and Git conflicts still apply. The API authorizes the override on both merge mutations, defaults it to false, and logs its use with the merging profile. Deploy the API's `failingStatusChecks` field and `bypassStatusChecks` arguments with or before this UI.
+
+Checks link to their reported web URL or same-origin run page. Existing checks without a usable destination link to the repository's builds. Newly queued CI checks save their run URL, and job completion also updates the pipeline-qualified check registered when the run was queued.
+
 The create and edit dialogs include **Delete source branch after merge**. Creation starts with the target repository's default, and editing saves the PR's own choice. Deploy the API and registered `V50__pull_request_branch_cleanup.sql` migration before the updated UI.
 
 The Git server hosts the GraphQL operations used by this application, including authentication and profile identity. BML loaders and server actions use its HTTP API. Browser authentication and subscriptions use same-origin proxies on the UI server; the API validates credentials and permissions. Studio and the main server composition are unchanged. Full replacement acceptance, backend separation and cutover are tracked in the specifications, with measured results in [parity validation](../../specs/git/parity-validation.md).

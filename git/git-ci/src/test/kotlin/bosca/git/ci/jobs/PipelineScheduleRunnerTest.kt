@@ -249,8 +249,8 @@ class PipelineScheduleRunnerTest {
                 principalId,
             )
         }
-        coVerify { commitStatusService.recordStatus(repository.id, "sha", "ci/nightly-build/build", any(), "Queued", null) }
-        coVerify { commitStatusService.recordStatus(repository.id, "sha", "ci/nightly-build/test", any(), "Queued", null) }
+        coVerify { commitStatusService.recordStatus(repository.id, "sha", "ci/nightly-build/build", any(), "Queued", match { it.startsWith("/pipelines/") }) }
+        coVerify { commitStatusService.recordStatus(repository.id, "sha", "ci/nightly-build/test", any(), "Queued", match { it.startsWith("/pipelines/") }) }
     }
 
     private suspend fun livePrincipal() {
