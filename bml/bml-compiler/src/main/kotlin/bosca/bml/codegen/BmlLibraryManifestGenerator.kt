@@ -3,6 +3,7 @@ package bosca.bml.codegen
 import bosca.bml.library.BmlLibraryArtifacts
 import bosca.bml.library.BmlLibraryComponent
 import bosca.bml.library.BmlLibraryManifest
+import bosca.bml.library.BmlLibraryMessage
 import bosca.bml.library.BmlLibraryProp
 import bosca.bml.library.BmlImportResolver
 import bosca.bml.library.BmlLibraryRequirement
@@ -29,6 +30,7 @@ internal object BmlLibraryManifestGenerator {
         clientBehavior: Set<String>,
         imports: List<BmlImportResolver.Binding> = emptyList(),
         providerRegistrars: List<String> = emptyList(),
+        messages: Map<String, List<BmlI18nEntry>> = emptyMap(),
     ): BmlLibraryManifest = BmlLibraryManifest(
         formatVersion = BmlLibraryArtifacts.FORMAT_VERSION,
         library = library,
@@ -71,6 +73,10 @@ internal object BmlLibraryManifestGenerator {
                 hasDeferredIslands = meta.hasDeferredIslands,
                 hasEagerFeatureFlags = meta.hasEagerFeatureFlags,
                 renderRevision = declaration.revision,
+                messages = messages[meta.tag].orEmpty().map { entry ->
+                    BmlLibraryMessage(entry.key, entry.message, entry.pluralForms,
+                        entry.placeholders.associate { it.name to it.expression }, entry.origin.name, entry.line)
+                },
             )
         },
     )

@@ -34,6 +34,10 @@ abstract class BmlValidateLibraryTask : DefaultTask() {
     @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val compiledOutputs: ConfigurableFileCollection
 
+    /** Compiler-authored component and localization contracts must survive archive customization. */
+    @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val contractOutputs: ConfigurableFileCollection
+
     /** Source trees preserve archive-relative paths independently of source JAR filtering or replacement. */
     @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val kotlinSources: ConfigurableFileCollection
@@ -61,7 +65,7 @@ abstract class BmlValidateLibraryTask : DefaultTask() {
                 ?: error("Binary archive is missing the BML library manifest for ${libraryId.get()}")
             val metadata = binary.getInputStream(manifest).use { JsonSlurper().parse(it) } as? Map<*, *>
                 ?: error("Invalid BML library manifest")
-            require(metadata["formatVersion"] == 4) { "Unsupported BML library manifest format" }
+            require(metadata["formatVersion"] == 5) { "Unsupported BML library manifest format" }
             require(metadata["library"] == libraryId.get() && metadata["version"] == artifactVersion.get()) {
                 "BML library manifest coordinates do not match ${libraryId.get()}:${artifactVersion.get()}"
             }
@@ -82,6 +86,16 @@ abstract class BmlValidateLibraryTask : DefaultTask() {
                 }
                 require(binary.getJarEntry(registrar.replace('.', '/') + ".class")?.isDirectory == false) {
                     "Binary archive is missing BML provider registrar $registrar"
+                }
+            }
+            contractOutputs.asFileTree.visit { output ->
+                if (!output.isDirectory) {
+                    val path = output.relativePath.pathString
+                    val entry = binary.getJarEntry(path)?.takeUnless { it.isDirectory }
+                        ?: error("Binary archive is missing library contract $path")
+                    require(binary.getInputStream(entry).use { it.readBytes() }.contentEquals(output.file.readBytes())) {
+                        "Binary archive contains a different version of library contract $path"
+                    }
                 }
             }
             JarFile(sourcesArchive.get().asFile).use { sources ->

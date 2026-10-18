@@ -52,6 +52,10 @@ data class BmlLibraryManifest @JvmOverloads constructor(
             requirement.components.map { BmlLibraryArtifacts.componentId(requirement.library, it) }
         }
         components.forEach { component ->
+            require(component.messages.map { it.key }.distinct().size == component.messages.size) {
+                "Duplicate localization keys for ${component.tag} in $library"
+            }
+            component.messages.forEach { it.validate() }
             require(BmlLibraryArtifacts.isComponentTag(component.tag)) { "Invalid component tag '${component.tag}' in $library" }
             require(component.renderer.startsWith("$generatedPackage.") && BmlLibraryArtifacts.isPackageName(component.renderer)) {
                 "Invalid renderer '${component.renderer}' in $library"

@@ -8,6 +8,26 @@ import kotlin.test.assertTrue
 
 class BmlLibraryManifestTest {
     @Test
+    fun `localization contracts round trip and affect dependency digests`() {
+        val message = BmlLibraryMessage("cart.items", null, mapOf("OTHER" to "{count} items"),
+            mapOf("count" to "items.size"), "ELEMENT", 5)
+        val localized = manifest.copy(components = listOf(button.copy(messages = listOf(message))))
+        assertEquals(localized, BmlLibraryArtifacts.decode(BmlLibraryArtifacts.encode(localized)))
+        assertFalse(BmlLibraryArtifacts.digest(manifest) == BmlLibraryArtifacts.digest(localized))
+        for (invalid in listOf(
+            message.copy(key = ""), message.copy(message = "plain"), message.copy(line = 0),
+            message.copy(origin = "UNKNOWN"), message.copy(pluralForms = mapOf("ONE" to "one")),
+            message.copy(pluralForms = mapOf("OTHER" to "items", "SOME" to "some")),
+            message.copy(pluralForms = emptyMap()), message.copy(placeholders = mapOf("" to "value")),
+        )) assertFailsWith<IllegalArgumentException> {
+            localized.copy(components = listOf(button.copy(messages = listOf(invalid)))).validate()
+        }
+        assertFailsWith<IllegalArgumentException> {
+            localized.copy(components = listOf(button.copy(messages = listOf(message, message)))).validate()
+        }
+    }
+
+    @Test
     fun `provider registrars are explicit unique constructor entry points`() {
         val declared = manifest.copy(providerRegistrars = listOf("bosca.di.DesignProviderRegistrar"))
         assertEquals(declared, BmlLibraryArtifacts.decode(BmlLibraryArtifacts.encode(declared)))
@@ -69,7 +89,7 @@ class BmlLibraryManifestTest {
     fun `manifest round trips explicit contracts and source identity`() {
         val encoded = BmlLibraryArtifacts.encode(manifest)
         assertEquals(manifest, BmlLibraryArtifacts.decode(encoded))
-        assertTrue("\"formatVersion\": 4" in encoded)
+        assertTrue("\"formatVersion\": 5" in encoded)
         assertTrue("bml/components/button.bml" in encoded)
     }
 
@@ -78,6 +98,7 @@ class BmlLibraryManifestTest {
         assertFailsWith<IllegalArgumentException> { manifest.copy(formatVersion = 1).validate() }
         assertFailsWith<IllegalArgumentException> { manifest.copy(formatVersion = 2).validate() }
         assertFailsWith<IllegalArgumentException> { manifest.copy(formatVersion = 3).validate() }
+        assertFailsWith<IllegalArgumentException> { manifest.copy(formatVersion = 4).validate() }
         assertFailsWith<IllegalArgumentException> { manifest.copy(formatVersion = 99).validate() }
         for (source in listOf(
             button.source.copy(entry = "/Users/producer/button.bml"),

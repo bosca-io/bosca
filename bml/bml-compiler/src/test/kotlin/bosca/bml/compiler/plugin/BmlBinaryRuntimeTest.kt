@@ -49,6 +49,43 @@ import org.jetbrains.kotlin.config.Services
 /** Real K2 binary producer -> source-free consumer -> generated registries -> Netty route wiring. */
 class BmlBinaryRuntimeTest {
     @Test
+    fun `binary localization retains component and shared script ownership with source locations`() {
+        val work = Files.createTempDirectory("bml-library-messages").toFile()
+        try {
+            val root = File(work, "bml").apply { mkdirs() }
+            File(root, "cards.bml").writeText("""
+                <script client>import { t } from "@bosca/bml"; export const title = () => t("module.title")</script>
+                <component tag="card"><p t="card.title">Card</p>{ t("card.function", "Function") }</component><component tag="other"><p t="other.title">Other</p></component>
+            """.trimIndent())
+            val resources = File(work, "resources")
+            compile(File(work, "classes"), listOf("bmlSourceRoot=$root", "bmlPackageName=example.cards",
+                "bmlLibraryId=example:cards", "bmlLibraryVersion=1.0", "bmlLibraryExport=card", "bmlResourcesOutputDir=$resources"))
+            val manifest = BmlLibraryArtifacts.decode(File(resources, BmlLibraryArtifacts.MANIFEST_PATH).readText())
+            val card = manifest.components.single { it.tag == "card" }.messages.associateBy { it.key }
+            val other = manifest.components.single { it.tag == "other" }.messages.associateBy { it.key }
+            assertEquals(setOf("module.title", "card.title", "card.function"), card.keys)
+            assertEquals(setOf("module.title", "other.title"), other.keys)
+            assertEquals(1, card.getValue("module.title").line)
+            assertEquals(2, card.getValue("card.function").line)
+            assertEquals("Function", card.getValue("card.function").message)
+        } finally { work.deleteRecursively() }
+    }
+
+    @Test
+    fun `localization conflicts fail compilation even without resource output`() {
+        val work = Files.createTempDirectory("bml-localization-validation").toFile()
+        try {
+            val root = File(work, "bml").apply { mkdirs() }
+            File(root, "one.bml").writeText("""<page route="/one"><p>{ t("shared", "One") }</p></page>""")
+            File(root, "two.bml").writeText("""<page route="/two"><p>{ t("shared", "Two") }</p></page>""")
+            val output = compile(File(work, "classes"), listOf("bmlSourceRoot=$root", "bmlPackageName=example.pages"),
+                expected = ExitCode.COMPILATION_ERROR)
+            assertTrue("key 'shared' has different source text" in output, output)
+            assertTrue("one.bml:1" in output && "two.bml:1" in output, output)
+        } finally { work.deleteRecursively() }
+    }
+
+    @Test
     fun `standalone generation compiles and registers binary library providers without source scanning`() {
         val work = Files.createTempDirectory("bml-standalone-providers").toFile()
         try {

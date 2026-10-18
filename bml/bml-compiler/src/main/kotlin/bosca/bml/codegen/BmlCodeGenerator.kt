@@ -259,6 +259,9 @@ class BmlCodeGenerator(
     // Localized messages harvested from t/t: markup, plus the one-key-one-message guard.
     private val i18nEntries = mutableListOf<BmlI18nEntry>()
     private val i18nByKey = HashMap<String, BmlI18nEntry>()
+    private var i18nComponent: String? = null
+    /** Declarations before file-level deduplication, retaining same-file component ownership. */
+    internal val componentI18n: MutableMap<String, MutableList<BmlI18nEntry>> = linkedMapOf()
 
     fun generate(document: Document): CodeGenResult {
         // Top-level `<component tag="…">` declarations -> generated render objects + instantiation map.
@@ -356,7 +359,11 @@ class BmlCodeGenerator(
         userImports.forEach { line(it) }
         blank()
 
-        componentDecls.forEach { emitComponent(it) }
+        componentDecls.forEach {
+            i18nComponent = staticString(it.attributes, "tag")
+            emitComponent(it)
+        }
+        i18nComponent = null
         if (page != null) emitPage(page)
         if (message != null) emitMessage(message)
 
@@ -3607,6 +3614,7 @@ class BmlCodeGenerator(
 
     /** One key, one message: an in-file redeclaration with different source text is an error. */
     private fun recordI18n(entry: BmlI18nEntry, span: Span) {
+        i18nComponent?.let { componentI18n.getOrPut(it, ::mutableListOf).add(entry) }
         val existing = i18nByKey[entry.key]
         if (existing != null) {
             if (existing.message != entry.message || existing.pluralForms != entry.pluralForms) {

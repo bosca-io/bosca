@@ -30,7 +30,7 @@ their own registrars. Duplicate names within a declaration or across resolved li
 The compiler checks constructor/type access, and publication checks that the registrar classes are
 present in the binary JAR.
 
-The library manifest uses format 4 for this contract. Build libraries and consumers with matching
+The library manifest uses format 5, including provider and localization contracts. Build libraries and consumers with matching
 BML tooling; earlier manifest formats are rejected before import resolution.
 
 Ordinary constructor-created models need no registrar. An injected model still uses the existing

@@ -147,6 +147,9 @@ class BmlGradlePlugin : KotlinCompilerPluginSupportPlugin {
                 task.result.set(target.layout.buildDirectory.file("bml/validation/${task.name}.txt"))
                 task.providerRegistrars.set(ext.library.providerRegistrars)
                 task.compiledOutputs.from(main.output.classesDirs)
+                task.contractOutputs.from(target.fileTree(target.layout.buildDirectory.dir("generated/bml/resources")) {
+                    it.include("META-INF/bml/library-manifest.json", "bml/i18n-manifest.json")
+                })
                 task.kotlinSources.from(originalKotlinSources)
                 task.assetOutputs.from(target.layout.buildDirectory.dir(BmlLibraryAssets.OUTPUT))
                 task.assetSources.from(target.layout.buildDirectory.dir(BmlLibraryAssets.SOURCES))

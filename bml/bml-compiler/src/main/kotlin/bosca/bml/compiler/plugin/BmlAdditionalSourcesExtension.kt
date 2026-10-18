@@ -10,6 +10,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
 import bosca.bml.codegen.BmlLibraryManifestGenerator
+import bosca.bml.codegen.BmlLibraryMessages
 import bosca.bml.codegen.BmlMetricsManifest
 import bosca.bml.codegen.BmlPageMeta
 import bosca.bml.codegen.BmlProviderRegistryGenerator
@@ -18,6 +19,7 @@ import bosca.bml.codegen.I18N_MANIFEST_PATH
 import bosca.bml.codegen.StaticPropCoercion
 import bosca.bml.codegen.bmlRenderRevision
 import bosca.bml.codegen.buildI18nManifest
+import bosca.bml.codegen.mergeI18nEntries
 import bosca.bml.codegen.scanFunctionKeys
 import bosca.bml.contract.ContractCodeGenerator
 import bosca.bml.contract.ContractParser
@@ -77,10 +79,9 @@ class BmlAdditionalSourcesExtension : CollectAdditionalSourceFilesExtension() {
         val pageMetas = mutableListOf<BmlPageMeta>() // collected to write the site metrics manifest
         val componentMetas = mutableListOf<BmlComponentMeta>()
         val importedEntryPoints = mutableListOf<BmlImportResolver.Binding>()
-        // Localized strings harvested from t/t: markup — deduped module-wide (one key,
-        // one message; cross-FILE conflicts reported below) — plus static t("…") call keys.
-        val i18nByKey = LinkedHashMap<String, BmlI18nEntry>()
+        val i18nEntries = mutableListOf<BmlI18nEntry>()
         val i18nFunctionKeys = mutableListOf<BmlI18nEntry>()
+        val componentMessages = linkedMapOf<String, List<BmlI18nEntry>>()
         val messages = configuration.get(CommonConfigurationKeys.MESSAGE_COLLECTOR_KEY)
         var hasErrors = false
         fun reportError(message: String, file: File? = null, span: Span? = null) {
@@ -98,6 +99,7 @@ class BmlAdditionalSourcesExtension : CollectAdditionalSourceFilesExtension() {
             ?.let { File(it, BmlLibraryArtifacts.MANIFEST_PATH) }
         // An invalid rebuild, a removed library block, or removed exports must not retain old metadata.
         libraryManifest?.delete()
+        configuration.get(BmlConfigKeys.RESOURCES_OUTPUT_DIR)?.let { File(it, I18N_MANIFEST_PATH).delete() }
         configuration.get(BmlConfigKeys.RESOURCES_OUTPUT_DIR)?.let { dir ->
             require(File(dir, "bml/applications").deleteRecursively()) { "Cannot clear BML application resources" }
         }
@@ -331,20 +333,28 @@ class BmlAdditionalSourcesExtension : CollectAdditionalSourceFilesExtension() {
                     CompilerMessageLocation.create(p.file.absolutePath, d.span.startLine, d.span.startColumn, null),
                 )
             }
-            // Merge the file's localized strings module-wide: identical redeclarations dedupe, a
-            // cross-file conflict is a compile error (one key, one message).
-            for (entry in result.i18n) {
-                val existing = i18nByKey[entry.key]
-                when {
-                    existing == null -> i18nByKey[entry.key] = entry
-                    existing.message != entry.message || existing.pluralForms != entry.pluralForms -> {
-                        hasErrors = true
-                        messages?.report(
-                            CompilerMessageSeverity.ERROR,
-                            "bml i18n: key '${entry.key}' has different source text in " +
-                                "${existing.file}:${existing.line} and ${entry.file}:${entry.line} — one key, one message",
-                            CompilerMessageLocation.create(p.file.absolutePath, entry.line, 1, null),
-                        )
+            i18nEntries += result.i18n
+            if (libraryId != null) {
+                val source = p.file.readText()
+                val declarations = topLevelComponents(p.document)
+                // Module-level scripts are shared by the components in this source file. Mask
+                // declaration bodies while retaining newlines so their keys keep accurate locations.
+                val sharedSource = source.toCharArray()
+                declarations.forEach { declaration ->
+                    for (offset in declaration.span.startOffset until declaration.span.endOffset) {
+                        if (sharedSource[offset] != '\n') sharedSource[offset] = ' '
+                    }
+                }
+                val sharedFunctions = scanFunctionKeys(String(sharedSource), p.rel)
+                for (declaration in declarations) {
+                    val tag = componentTag(declaration) ?: continue
+                    val span = declaration.span
+                    val functions = scanFunctionKeys(source.substring(span.startOffset, span.endOffset), p.rel)
+                        .map { it.copy(line = it.line + span.startLine - 1) }
+                    try {
+                        componentMessages[tag] = mergeI18nEntries(generator.componentI18n[tag].orEmpty() + functions + sharedFunctions)
+                    } catch (invalid: IllegalArgumentException) {
+                        reportError(invalid.message ?: "Invalid component localization", p.file, span)
                     }
                 }
             }
@@ -461,40 +471,19 @@ class BmlAdditionalSourcesExtension : CollectAdditionalSourceFilesExtension() {
                 manifest.writeText(buildMessageManifest(packageName, messageEntries.sortedBy { it.key }))
             }
         }
-        // Write the module's i18n manifest: every localized string authored in t/t:
-        // markup plus every static t("key") call — the compile-side half of the
-        // `bosca bml i18n push` contract. Validate authored function defaults before
-        // deduplication; otherwise two conflicting `t("key", "default")` calls silently depend on
-        // file traversal order. Markup entries win over compatible or bare function keys.
-        val functionByKey = LinkedHashMap<String, BmlI18nEntry>()
-        for (entry in i18nFunctionKeys) {
-            val existing = i18nByKey[entry.key] ?: functionByKey[entry.key]
-            val conflicts = entry.message != null && existing != null &&
-                (existing.pluralForms.isNotEmpty() || (existing.message != null && existing.message != entry.message))
-            if (conflicts) {
-                hasErrors = true
-                messages?.report(
-                    CompilerMessageSeverity.ERROR,
-                    "bml i18n: key '${entry.key}' has different source text in " +
-                        "${existing.file}:${existing.line} and ${entry.file}:${entry.line} — one key, one message",
-                    CompilerMessageLocation.create(entry.file, entry.line, 1, null),
-                )
-            } else if (entry.key !in i18nByKey) {
-                val priorFunction = functionByKey[entry.key]
-                if (priorFunction == null || priorFunction.message == null && entry.message != null) {
-                    functionByKey[entry.key] = entry
+        // The consumer owns one catalog. Imported defaults keep their artifact/source origin and
+        // enter only through the same canonical component closure used by rendering and assets.
+        try {
+            val all = mergeI18nEntries(i18nEntries + i18nFunctionKeys + BmlLibraryMessages.entries(selectedImports))
+            configuration.get(BmlConfigKeys.RESOURCES_OUTPUT_DIR)?.let { dir ->
+                if (!hasErrors && all.isNotEmpty()) {
+                    val manifest = File(dir, I18N_MANIFEST_PATH)
+                    manifest.parentFile?.mkdirs()
+                    manifest.writeText(buildI18nManifest(all))
                 }
             }
-        }
-        configuration.get(BmlConfigKeys.RESOURCES_OUTPUT_DIR)?.let { dir ->
-            val manifest = File(dir, I18N_MANIFEST_PATH)
-            val all = i18nByKey.values + functionByKey.values
-            if (all.isEmpty()) {
-                manifest.delete() // removed strings must not leave a stale manifest behind
-            } else {
-                manifest.parentFile?.mkdirs()
-                manifest.writeText(buildI18nManifest(all.sortedBy { it.key }))
-            }
+        } catch (invalid: IllegalArgumentException) {
+            reportError(invalid.message ?: "Invalid module localization")
         }
         // Emit a registry of every live-island action dispatcher (keyed by state key) so bml-server can
         // resolve POST /_bml/action/{stateKey}. Derived from BmlPages.all (each page exposes its
@@ -555,7 +544,7 @@ class BmlAdditionalSourcesExtension : CollectAdditionalSourceFilesExtension() {
             try {
                 val manifest = BmlLibraryManifestGenerator.generate(
                     libraryId, libraryVersion, packageName, exports.toSet(), libraryDeclarations, componentMetas,
-                    capabilities.clientBehavior, importedEntryPoints, providerRegistrars,
+                    capabilities.clientBehavior, importedEntryPoints, providerRegistrars, componentMessages,
                 )
                 val content = BmlLibraryArtifacts.encode(manifest)
                 libraryManifest.parentFile.mkdirs()
