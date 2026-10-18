@@ -492,7 +492,7 @@ type GitPullRequest {
   updated: DateTime!
   "Whether Git can merge the branches without conflicts. Does not include reviews, dependencies or status checks."
   mergeable: Boolean!
-  "Required checks without a successful result on the current source commit, including unreported checks."
+  "Reported or required checks without a successful result on the current source commit, including required checks that have not reported."
   failingStatusChecks: [String!]!
   "Files with merge conflicts, if any."
   conflictingFiles: [String!]!

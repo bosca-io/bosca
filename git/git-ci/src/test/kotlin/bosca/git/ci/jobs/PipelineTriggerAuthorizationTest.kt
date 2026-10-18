@@ -88,6 +88,12 @@ class PipelineTriggerAuthorizationTest {
         coEvery { repositories.getPermissions(repository) } returns listOf(
             RepositoryPermission(repository.id, buildGroup.id, PermissionAction.EXECUTE),
         )
+        val planner = bosca.git.ci.service.PipelineRunServiceImpl(
+            mockk(), mockk(), mockk(), pipelines, Json, mockk(), mockk(), mockk(), mockk(),
+            commitStatusService = io.mockk.mockk(relaxed = true))
+        io.mockk.every { runs.plan(any(), any(), any(), any()) } answers {
+            planner.plan(firstArg(), secondArg(), thirdArg(), arg(3))
+        }
         coEvery { pipelines.syncPipelines(repository.id, any(), any()) } returns listOf(pipeline)
         coEvery { pipelines.parseDefinition(repository.id, any(), pipeline.filePath) } returns definition
         coEvery { runs.createTriggeredRun(any(), any(), any(), any(), any(), any(), any(), any()) } returns PipelineRun(
@@ -133,10 +139,6 @@ class PipelineTriggerAuthorizationTest {
     @Test
     fun `authorized branch build retains principal and reads the triggering commit`() = runTest {
         execute(principalId)
-        coVerify {
-            statuses.recordStatus(repository.id, "after", "ci/build/build", bosca.git.model.CommitStatusState.PENDING,
-                "Queued", "/pipelines/${UUID.NIL}")
-        }
         coVerify(exactly = 1) { pipelines.parseDefinition(repository.id, "after", pipeline.filePath) }
         coVerify(exactly = 1) {
             runs.createTriggeredRun(any(), pipeline.id, repository.id, definition, "after", "refs/heads/main",
@@ -253,10 +255,44 @@ class PipelineTriggerAuthorizationTest {
     }
 
     @Test
+    fun `configuration status includes every pipeline error`() = runTest {
+        val second = pipeline.copy(id = UUID.random(), filePath = ".bosca/pipelines/second.yaml", name = "Second")
+        coEvery { pipelines.syncPipelines(repository.id, any(), any()) } returns listOf(pipeline, second)
+        coEvery { pipelines.parseDefinition(repository.id, any(), pipeline.filePath) } throws IllegalStateException("first")
+        coEvery { pipelines.parseDefinition(repository.id, any(), second.filePath) } throws IllegalArgumentException("second")
+
+        assertFailsWith<IllegalStateException> { execute(principalId) }
+
+        coVerify(exactly = 1) {
+            statuses.recordStatus(repository.id, "after", "ci/configuration", bosca.git.model.CommitStatusState.ERROR, "${pipeline.filePath}: first; ${second.filePath}: second", null, "refs/heads/main")
+        }
+    }
+
+    @Test
+    fun `unauthorized push records no error when no pipeline applies`() = runTest {
+        coEvery { pipelines.syncPipelines(repository.id, any(), any()) } returns emptyList()
+        execute(null)
+        coEvery { pipelines.syncPipelines(repository.id, any(), any()) } returns listOf(pipeline)
+        execute(null, "refs/tags/v1")
+
+        coVerify(exactly = 2) { statuses.recordStatus(repository.id, "after", "ci/configuration", bosca.git.model.CommitStatusState.SUCCESS, "CI jobs selected", null, any()) }
+    }
+
+    @Test
+    fun `unauthorized push records the authorization error when a pipeline applies`() = runTest {
+        execute(null)
+
+        coVerify(exactly = 1) {
+            statuses.recordStatus(repository.id, "after", "ci/configuration", bosca.git.model.CommitStatusState.ERROR, "The ref update has no initiating principal", null, "refs/heads/main")
+        }
+        coVerify(exactly = 0) { runs.createTriggeredRun(any(), any(), any(), any(), any(), any(), any(), any()) }
+    }
+
+    @Test
     fun `already processed trigger does not reset commit statuses`() = runTest {
         coEvery { runs.createTriggeredRun(any(), any(), any(), any(), any(), any(), any(), any()) } returns null
         execute(principalId)
-        coVerify(exactly = 0) { statuses.recordStatus(any(), any(), any(), any(), any(), any()) }
+        coVerify(exactly = 0) { statuses.recordStatus(any(), any(), match { it != "ci/configuration" }, any(), any(), any(), any()) }
     }
 
     private suspend fun execute(actor: UUID?, ref: String = "refs/heads/main") {

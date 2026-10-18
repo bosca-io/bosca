@@ -242,6 +242,7 @@ class DataLossRiskTest {
         val branchProtectionService = mockk<BranchProtectionService>(relaxed = true)
         val taskPrRefRepository = mockk<TaskPullRequestReferenceRepository>(relaxed = true)
         val commitStatusService = mockk<CommitStatusService>(relaxed = true)
+        coEvery { commitStatusService.areRequiredChecksPassing(any(), any(), any()) } returns true
 
         val inMemoryRepo = InMemoryRepository(DfsRepositoryDescription("test"))
         val ins = inMemoryRepo.objectDatabase.newInserter()

@@ -22,9 +22,9 @@ package bosca.git.ci.parser
 class PipelineExpressionParser {
 
     fun evaluate(expression: String, context: ExpressionContext): Any? {
-        val tokens = tokenize(expression)
+        val tokens = tokenize(expression.trim().removeSurrounding("\${{", "}}"))
         val parser = Parser(tokens, context)
-        return parser.parseExpression()
+        return parser.parse()
     }
 
     fun evaluateBoolean(expression: String, context: ExpressionContext): Boolean {
@@ -83,14 +83,16 @@ class PipelineExpressionParser {
                 input[i] == '\'' -> {
                     val start = ++i
                     while (i < input.length && input[i] != '\'') i++
+                    require(i < input.length) { "Unterminated string in expression" }
                     tokens.add(Token(TokenType.STRING, input.substring(start, i)))
-                    if (i < input.length) i++
+                    i++
                 }
                 input[i] == '"' -> {
                     val start = ++i
                     while (i < input.length && input[i] != '"') i++
+                    require(i < input.length) { "Unterminated string in expression" }
                     tokens.add(Token(TokenType.STRING, input.substring(start, i)))
-                    if (i < input.length) i++
+                    i++
                 }
                 input[i].isDigit() || (input[i] == '-' && i + 1 < input.length && input[i + 1].isDigit()) -> {
                     val start = i
@@ -108,7 +110,7 @@ class PipelineExpressionParser {
                     }
                     tokens.add(Token(type, word))
                 }
-                else -> i++
+                else -> throw IllegalArgumentException("Unexpected character in expression: ${input[i]}")
             }
         }
         tokens.add(Token(TokenType.EOF, ""))
@@ -117,6 +119,12 @@ class PipelineExpressionParser {
 
     private class Parser(private val tokens: List<Token>, private val context: ExpressionContext) {
         private var pos = 0
+
+        fun parse(): Any? {
+            val result = parseExpression()
+            expect(TokenType.EOF)
+            return result
+        }
 
         fun parseExpression(): Any? = parseOr()
 
@@ -180,7 +188,7 @@ class PipelineExpressionParser {
                     expect(TokenType.RPAREN)
                     result
                 }
-                else -> { advance(); null }
+                else -> throw IllegalArgumentException("Expected a value, got ${token.type}")
             }
         }
 
@@ -206,7 +214,7 @@ class PipelineExpressionParser {
             while (current().type == TokenType.DOT) {
                 advance()
                 path += ".${current().value}"
-                advance()
+                expect(TokenType.IDENT)
             }
             return context.resolve(path)
         }
@@ -241,14 +249,15 @@ class PipelineExpressionParser {
                     val globs = args.mapNotNull { it?.toString() }
                     context.hashFiles(globs)
                 }
-                else -> null
+                else -> throw IllegalArgumentException("Unknown expression function: $name")
             }
         }
 
         private fun current(): Token = tokens.getOrElse(pos) { Token(TokenType.EOF, "") }
         private fun advance() { pos++ }
         private fun expect(type: TokenType) {
-            if (current().type == type) advance()
+            require(current().type == type) { "Expected $type, got ${current().type}" }
+            advance()
         }
 
         private fun toBool(value: Any?): Boolean {

@@ -1,0 +1,62 @@
+name: "CI"
+on:
+  push:
+    branches: ["**"]
+  manual: true
+
+concurrency:
+  group: workspace-ci-${{ branch }}
+  cancel-in-progress: true
+
+env:
+  GRADLE_OPTS: "-Xmx4g -XX:+UseG1GC"
+
+jobs:
+  test-jvm:
+    runner: macos
+    timeout: 45m
+    steps:
+      - name: Checkout
+        uses: checkout
+      - name: Setup Registry
+        uses: setup-registry
+        with:
+          repository: bosca-maven
+      - name: Setup Java
+        uses: setup-java
+        with:
+          version: "25"
+          distribution: zulu
+      - name: Setup Node
+        # The BML sites bundle their client scripts with
+        # node/esbuild during processResources, which `test` reaches via classes.
+        uses: setup-node
+        with:
+          version: "22"
+      - name: Setup Rust
+        # The root test task configures firebase-scrypt, whose Gradle project
+        # invokes Cargo to compile the UniFFI native library.
+        uses: setup-rust
+        with:
+          toolchain: stable
+      - name: Configure npm Registry
+        run: |
+          registry="${BOSCA_REGISTRY_URL:?setup-registry must configure Bosca Artifacts before npm}"
+          registry="${registry%/}"
+          case "$registry" in
+            http://*|https://*) ;;
+            *) registry="https://$registry" ;;
+          esac
+          npm config set @bosca:registry "$registry/npm/" --location=user
+      - name: Start Shared Test Resources
+        run: ./gradlew --no-daemon testResourcesUp
+      - name: Install BML Bundler Dependencies
+        # The BML client bundlers do a bare `import "esbuild"` resolved from the
+        # bml-runtime checkout's node_modules, which is git-ignored — without
+        # this, the client bundle tasks fail with ERR_MODULE_NOT_FOUND.
+        run: cd bml/bml-runtime && npm ci --no-audit --no-fund
+      - name: Run JVM Tests
+        run: ./gradlew --no-daemon test
+      - name: Stop Shared Test Resources
+        run: ./gradlew --no-daemon testResourcesDown
+        if: always()

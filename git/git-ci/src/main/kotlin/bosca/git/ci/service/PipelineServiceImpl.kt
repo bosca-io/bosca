@@ -37,6 +37,27 @@ class PipelineServiceImpl(
     private val scheduleService: PipelineScheduleService,
 ) : PipelineService {
 
+    override suspend fun definitionErrors(repositoryId: UUID, commitSha: String): List<String> {
+        val errors = mutableListOf<String>()
+        for (entry in browseService.listTree(repositoryId, commitSha, ".bosca/pipelines")) {
+            if (!entry.name.endsWith(".yaml") && !entry.name.endsWith(".yml")) continue
+            val path = ".bosca/pipelines/${entry.name}"
+            val content = browseService.readBlob(repositoryId, commitSha, path)?.content
+            if (content == null) {
+                errors += "$path: definition could not be read"
+                continue
+            }
+            try {
+                errors += parser.validate(parser.parse(content, path)).map { "$path: $it" }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                errors += "$path: ${e.message ?: "definition could not be evaluated"}"
+            }
+        }
+        return errors
+    }
+
     override suspend fun syncPipelines(repositoryId: UUID, ref: String, commitSha: String): List<Pipeline> = transaction {
         pipelineRepository.lockForSync(repositoryId)
         val repository = repositoryService.findById(repositoryId)

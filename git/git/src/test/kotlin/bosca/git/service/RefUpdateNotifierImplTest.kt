@@ -26,6 +26,7 @@ import bosca.pubsub.PubSubService
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import org.eclipse.jgit.internal.storage.dfs.DfsRepositoryDescription
@@ -40,12 +41,14 @@ import org.eclipse.jgit.lib.TreeFormatter
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 
 /**
  * Covers [RefUpdateNotifierImpl] — the single funnel for push and UI-write
  * notifications: disk-size refresh, webhook event mapping (push/create/delete
  * for branches and tags), task-key extraction from new commits, and the three
- * job enqueues — with every side effect individually failure-tolerant.
+ * job enqueues, including propagation of CI trigger enqueue failures.
  */
 class RefUpdateNotifierImplTest {
 
@@ -80,6 +83,7 @@ class RefUpdateNotifierImplTest {
     @BeforeTest
     fun setup() {
         ProviderRegistry.clear()
+        provides<CommitStatusService> { mockk(relaxed = true) }
         provides<Json>(singleton = true) { Json { ignoreUnknownKeys = true } }
         provides<JobConfigurationEnqueuer>(name = "repository-index", singleton = true) { repoIndexEnqueuer }
         provides<JobConfigurationEnqueuer>(name = "file-content-index", singleton = true) { fileIndexEnqueuer }
@@ -397,17 +401,43 @@ class RefUpdateNotifierImplTest {
     }
 
     @Test
-    fun `failures in disk size, webhooks, and enqueues are tolerated`() = runTest {
+    fun `failures in disk size, webhooks, and search indexing do not prevent CI enqueueing`() = runTest {
         coEvery { packRepository.sumPackSizeBytes(repositoryId) } throws RuntimeException("db down")
         coEvery { webhookService.dispatch(any(), any(), any()) } throws RuntimeException("hook down")
         coEvery { repoIndexEnqueuer.enqueue(any(), any()) } throws RuntimeException("queue down")
-        coEvery { pipelineEnqueuer.enqueue(any(), any()) } throws RuntimeException("queue down")
-
-        // Must not throw despite every side effect failing.
         notifier.notifyRefsUpdated(
             gitRepo, repositoryId,
             listOf(change("refs/heads/main", firstCommit, secondCommit)),
             null,
         )
+        coVerify(exactly = 1) { pipelineEnqueuer.enqueue(any(), any()) }
+    }
+
+    @Test
+    fun `branch and annotated tag CI enqueue failures propagate including cancellation`() = runTest {
+        val tagId = gitRepo.newObjectInserter().use { inserter ->
+            val tag = TagBuilder().apply {
+                this.tag = "1.0.0"
+                setObjectId(secondCommit, Constants.OBJ_COMMIT)
+                tagger = PersonIdent("T", "t@x")
+                message = "Release 1.0.0"
+            }
+            inserter.insert(tag).also { inserter.flush() }
+        }
+        val changes = listOf(
+            change("refs/heads/main", firstCommit, secondCommit),
+            change("refs/tags/1.0.0", ObjectId.zeroId(), tagId),
+        )
+        for (failure in listOf(IllegalStateException("queue unavailable"), CancellationException("cancelled"))) {
+            coEvery { pipelineEnqueuer.enqueue(any(), any()) } throws failure
+            for (update in changes) {
+                val thrown = assertFailsWith<Exception> {
+                    notifier.notifyRefsUpdated(gitRepo, repositoryId, listOf(update), UUID.random())
+                }
+                assertEquals(failure::class, thrown::class)
+                assertEquals(failure.message, thrown.message)
+            }
+        }
+        coVerify(exactly = 4) { pipelineEnqueuer.enqueue(any(), any()) }
     }
 }

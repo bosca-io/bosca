@@ -15,27 +15,31 @@ import kotlinx.serialization.json.put
 
 /** Seeds synchronization graphs and adds their Git tag while preserving operator configuration. */
 class GitHubPipelinesInstaller(private val pipelines: PipelineService) : PackageInstaller {
-    override val version = "1.2.0"
+    override val version = "1.6.0"
 
     override suspend fun install(installation: PackageInstallation, version: PackageInstallationVersion) {
         seed("github-import-refs", "GitHub: Import Refs", "bosca.git.model.GitHubDelivery", "githubPush", "delivery")
         seed("github-export-refs", "GitHub: Export Refs", "bosca.git.model.RefUpdateEvent", "githubRef", "event")
-        seed("github-reconcile-refs", "GitHub: Reconcile Refs", InputNode.JSON_TYPE, "githubReconcileRefs", "request", schedule = "0 * * * *")
+        seed("github-reconcile-refs", "GitHub: Reconcile Refs", InputNode.JSON_TYPE, "githubReconcileRefs", "request", schedule = "10 3 * * *")
         seed("github-import-pull-requests", "GitHub: Import Pull Requests", "bosca.git.model.GitHubDelivery", "githubImportPullRequest", "delivery")
         seed("github-export-pull-requests", "GitHub: Export Pull Requests", "bosca.git.model.PullRequestEvent", "githubExportPullRequest", "event")
-        seed("github-reconcile-pull-requests", "GitHub: Reconcile Pull Requests", InputNode.JSON_TYPE, "githubReconcilePullRequests", "request", schedule = "0 * * * *")
+        seed("github-reconcile-pull-requests", "GitHub: Reconcile Pull Requests", InputNode.JSON_TYPE, "githubReconcilePullRequests", "request", schedule = "30 3 * * *")
+        seed("github-export-ci-status", "GitHub: Export CI Status", "bosca.git.model.CommitStatusEvent", "githubExportCiStatus", "event")
+        seed("github-reconcile-ci-statuses", "GitHub: Reconcile CI Statuses", InputNode.JSON_TYPE, "githubReconcileCiStatuses", "request", schedule = "50 3 * * *")
     }
 
     private suspend fun seed(key: String, name: String, inputType: String, nodeType: String, inputPort: String, schedule: String? = null) {
         val existing = pipelines.getByKey(key)
         if (existing != null) {
-            if (existing.tags.none { it.equals("Git", ignoreCase = true) }) {
+            val tags = if (existing.tags.any { it.equals("Git", ignoreCase = true) }) existing.tags else existing.tags + "Git"
+            val recoverySchedule = if (schedule != null && existing.schedule == "0 * * * *") schedule else existing.schedule
+            if (tags != existing.tags || recoverySchedule != existing.schedule) {
                 pipelines.save(
                     id = existing.id, name = existing.name, description = existing.description,
                     acceptedInputType = existing.acceptedInputType, triggered = existing.triggered,
                     version = existing.version, graph = pipelines.graphAsJsonElement(existing),
-                    tags = existing.tags + "Git", key = existing.key, api = existing.api, public = existing.public,
-                    schedule = existing.schedule, maxConcurrentRuns = existing.maxConcurrentRuns,
+                    tags = tags, key = existing.key, api = existing.api, public = existing.public,
+                    schedule = recoverySchedule, maxConcurrentRuns = existing.maxConcurrentRuns,
                     maxRunsPerMinute = existing.maxRunsPerMinute,
                 )
             }
@@ -75,6 +79,6 @@ class GitHubPackageInstallerRegistry {
     @Provider(name = "github")
     fun installation(): PackageInstallation = PackageInstallation(
         key = "github", name = "GitHub",
-        versions = listOf(PackageInstallationVersion(version = "1.2.0", installerNames = listOf("github-pipelines"))),
+        versions = listOf(PackageInstallationVersion(version = "1.6.0", installerNames = listOf("github-pipelines"))),
     )
 }

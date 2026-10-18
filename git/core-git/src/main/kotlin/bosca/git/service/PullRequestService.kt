@@ -156,7 +156,7 @@ interface PullRequestService : Service {
         bypassStatusChecks: Boolean = false,
     ): List<PullRequest>
 
-    /** Returns required check contexts missing a successful result on the current source head. */
+    /** Returns reported or required check contexts without a successful result on the current source head. */
     suspend fun getFailingStatusChecks(id: UUID): List<String>
 
     /**

@@ -85,6 +85,8 @@ class PipelineRunFinalizer(
             }
         }
 
+        runService.refreshCommitStatuses(run.id)
+
         if (releaseAgent) {
             val agentId = job.agentId
             if (agentId != null) {

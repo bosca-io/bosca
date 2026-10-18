@@ -5,11 +5,9 @@ import bosca.git.ci.parser.ExpressionContext
 import bosca.git.ci.parser.PipelineExpressionParser
 import bosca.git.ci.parser.PipelineJobFilter
 import bosca.git.ci.parser.PipelineYamlParser
-import bosca.git.model.CommitStatusState
 import bosca.git.model.PipelineScheduleJob
 import bosca.git.model.PipelineTriggerType
 import bosca.git.security.RepositoryPermissionEvaluator
-import bosca.git.service.CommitStatusService
 import bosca.git.service.PipelineRunService
 import bosca.git.service.PipelineScheduleRunner
 import bosca.git.service.PipelineScheduleService
@@ -50,7 +48,6 @@ class PipelineScheduleRunnerImpl(
     private val repositoryService: RepositoryService,
     private val browseService: RepositoryBrowseService,
     private val runService: PipelineRunService,
-    private val commitStatusService: CommitStatusService,
     private val securityService: SecurityService,
     private val permissionEvaluator: RepositoryPermissionEvaluator,
 ) : PipelineScheduleRunner {
@@ -124,16 +121,7 @@ class PipelineScheduleRunnerImpl(
             triggerType = PipelineTriggerType.SCHEDULE,
             triggeredBy = executionPrincipalId,
         )
-        for (jobName in filteredJobs.keys) {
-            commitStatusService.recordStatus(
-                repositoryId = repository.id,
-                commitSha = commitSha,
-                context = "ci/${pipeline.name.lowercase().replace(' ', '-')}/$jobName",
-                state = CommitStatusState.PENDING,
-                description = "Queued",
-                targetUrl = "/pipelines/${run.id}",
-            )
-        }
+
         log.info(
             "Created scheduled pipeline run #{} for '{}' as principal {}",
             run.number,

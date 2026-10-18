@@ -29,34 +29,38 @@ interface MessageOutboxRepository {
     )
     suspend fun getBySource(sourceId: UUID): List<MessageOutboxEntry>
 
-    @Query("select * from communications.message_outbox where id = :id and sent_at is null")
+    /** Retrieves an unsent delivery while its persisted attempt budget remains. */
+    @Query("select * from communications.message_outbox where id = :id and sent_at is null and attempts < ${MessageOutboxEntry.MAX_ATTEMPTS}")
     suspend fun getPending(id: UUID): MessageOutboxEntry?
 
+    /** Lists recoverable deliveries, excluding sent rows and exhausted attempt budgets. */
     @Query(
         """
         select * from communications.message_outbox
-        where sent_at is null
+        where sent_at is null and attempts < ${MessageOutboxEntry.MAX_ATTEMPTS}
         order by created_at, position
         limit :limit
         """
     )
     suspend fun getPending(limit: Int): List<MessageOutboxEntry>
 
+    /** Records provider acceptance once while the delivery remains pending. */
     @Query(
         """
         update communications.message_outbox
         set sent_at = now(), attempts = attempts + 1, last_error = null
-        where id = :id and sent_at is null
+        where id = :id and sent_at is null and attempts < ${MessageOutboxEntry.MAX_ATTEMPTS}
         """,
         returnUpdateCount = true,
     )
     suspend fun markSent(id: UUID): Int
 
+    /** Records an unsuccessful attempt; reaching [MessageOutboxEntry.MAX_ATTEMPTS] closes the delivery. */
     @Query(
         """
         update communications.message_outbox
         set attempts = attempts + 1, last_error = :error
-        where id = :id and sent_at is null
+        where id = :id and sent_at is null and attempts < ${MessageOutboxEntry.MAX_ATTEMPTS}
         """,
         returnUpdateCount = true,
     )

@@ -43,12 +43,23 @@ object MergeExecutor {
         sourceId: ObjectId,
         targetId: ObjectId
     ): MergeResult {
-        val merger = JGitMergeStrategy.RECURSIVE.newMerger(repo, true)
-        val canMerge = merger.merge(targetId, sourceId)
-        return if (canMerge) {
-            MergeResult(success = true)
-        } else {
-            MergeResult(success = false, conflictingFiles = extractConflicts(merger))
+        RevWalk(repo).use { walk ->
+            val source = walk.parseCommit(sourceId)
+            val target = walk.parseCommit(targetId)
+            // Ancestor tips need no content merge or tree reads.
+            if (walk.isMergedInto(target, source) || walk.isMergedInto(source, target)) {
+                return MergeResult(success = true)
+            }
+        }
+        MergePreviewInserter(repo).use { inserter ->
+            val merger = JGitMergeStrategy.RECURSIVE.newMerger(repo, true)
+            merger.setObjectInserter(inserter)
+            val canMerge = merger.merge(false, targetId, sourceId)
+            return if (canMerge) {
+                MergeResult(success = true)
+            } else {
+                MergeResult(success = false, conflictingFiles = extractConflicts(merger))
+            }
         }
     }
 

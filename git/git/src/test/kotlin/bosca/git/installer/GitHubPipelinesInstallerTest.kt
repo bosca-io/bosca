@@ -34,10 +34,10 @@ class GitHubPipelinesInstallerTest {
         val installation = registry.installation()
         val version = installation.versions.single()
         val installer = registry.installer(pipelines)
-        assertEquals("1.2.0", version.version); assertEquals(version.version, installer.version)
+        assertEquals("1.6.0", version.version); assertEquals(version.version, installer.version)
         assertEquals(listOf("github-pipelines"), version.installerNames)
         installer.install(installation, version)
-        assertEquals(setOf("github-import-refs", "github-export-refs", "github-reconcile-refs", "github-import-pull-requests", "github-export-pull-requests", "github-reconcile-pull-requests"), saved.keys)
+        assertEquals(setOf("github-import-refs", "github-export-refs", "github-reconcile-refs", "github-import-pull-requests", "github-export-pull-requests", "github-reconcile-pull-requests", "github-export-ci-status", "github-reconcile-ci-statuses"), saved.keys)
         val json = Json { serializersModule = SerializersModule {
             include(GitPipelineNodeSerializersProvider().module)
             polymorphic(PipelineNode::class) {
@@ -62,15 +62,51 @@ class GitHubPipelinesInstallerTest {
                 is GitHubReconcileRefsNode -> "githubReconcileRefs"
                 is bosca.git.pipeline.GitHubImportPullRequestNode -> "githubImportPullRequest"
                 is bosca.git.pipeline.GitHubExportPullRequestNode -> "githubExportPullRequest"
+                is bosca.git.pipeline.GitHubExportCiStatusNode -> "githubExportCiStatus"
+                is bosca.git.pipeline.GitHubReconcileCiStatusesNode -> "githubReconcileCiStatuses"
                 else -> "githubReconcilePullRequests"
             } }
             val declared = graph.nodes.filterIsInstance<HasDeclaredOutput>().associateBy { (it as PipelineNode).id }
             assertTrue(SlotConnectionValidator.validate(keys, graph.edges, descriptors, declared).isEmpty())
         }
         installer.install(installation, version)
-        coVerify(exactly = 6) { pipelines.save(id = any(), name = any(), description = any(), acceptedInputType = any(), triggered = any(), version = any(), graph = any(), tags = listOf("Git"), key = any(), schedule = any()) }
+        coVerify(exactly = 8) { pipelines.save(id = any(), name = any(), description = any(), acceptedInputType = any(), triggered = any(), version = any(), graph = any(), tags = listOf("Git"), key = any(), schedule = any()) }
         coVerify { pipelines.save(id = UUID.NIL, name = "GitHub: Import Refs", description = any(), acceptedInputType = "bosca.git.model.GitHubDelivery", triggered = true, version = 0, graph = any(), tags = listOf("Git"), key = "github-import-refs") }
-        coVerify { pipelines.save(id = UUID.NIL, name = "GitHub: Reconcile Refs", description = any(), acceptedInputType = InputNode.JSON_TYPE, triggered = false, version = 0, graph = any(), tags = listOf("Git"), key = "github-reconcile-refs", schedule = "0 * * * *") }
+        coVerify { pipelines.save(id = UUID.NIL, name = "GitHub: Reconcile Refs", description = any(), acceptedInputType = InputNode.JSON_TYPE, triggered = false, version = 0, graph = any(), tags = listOf("Git"), key = "github-reconcile-refs", schedule = "10 3 * * *") }
+    }
+
+    @Test fun `hourly recovery defaults migrate once while custom schedules stay unchanged`() = runBlocking {
+        val pipelines = mockk<PipelineService>()
+        val scheduled = listOf("github-reconcile-refs", "github-reconcile-pull-requests", "github-reconcile-ci-statuses")
+        val stored = scheduled.associateWith { key ->
+            Pipeline(id = UUID.random(), key = key, name = key, acceptedInputType = InputNode.JSON_TYPE,
+                tags = listOf("Git", "Custom"), schedule = "0 * * * *", maxConcurrentRuns = 2, version = 4)
+        }.toMutableMap()
+        val graph = kotlinx.serialization.json.buildJsonObject { }
+        coEvery { pipelines.getByKey(any()) } answers {
+            stored[firstArg<String>()] ?: Pipeline(id = UUID.random(), name = "custom", acceptedInputType = "", tags = listOf("Git"))
+        }
+        coEvery { pipelines.graphAsJsonElement(any()) } returns graph
+        coEvery { pipelines.save(id = any(), name = any(), description = any(), acceptedInputType = any(), triggered = any(),
+            version = any(), graph = any(), tags = any(), key = any(), api = any(), public = any(), schedule = any(),
+            maxConcurrentRuns = any(), maxRunsPerMinute = any()) } answers {
+            val previous = stored.getValue(arg(8))
+            assertEquals(previous.tags, arg(7))
+            assertEquals(previous.maxConcurrentRuns, arg(12))
+            previous.copy(schedule = arg(11), version = previous.version + 1).also { stored[previous.key.orEmpty()] = it }
+        }
+        val registry = GitHubPackageInstallerRegistry()
+        val installation = registry.installation()
+        val installer = registry.installer(pipelines)
+        repeat(2) { installer.install(installation, installation.versions.single()) }
+        assertEquals(listOf("10 3 * * *", "30 3 * * *", "50 3 * * *"), scheduled.map { stored.getValue(it).schedule })
+        assertTrue(stored.values.all { it.version == 5L })
+        for ((key, schedule) in scheduled.zip(listOf("15 */8 * * *", null, "0 4 * * 0"))) {
+            stored[key] = stored.getValue(key).copy(schedule = schedule)
+        }
+        installer.install(installation, installation.versions.single())
+        assertEquals(listOf("15 */8 * * *", null, "0 4 * * 0"), scheduled.map { stored.getValue(it).schedule })
+        assertTrue(stored.values.all { it.version == 5L })
     }
 
     @Test fun `existing pipelines gain the Git tag once without losing operator settings`() = runBlocking {

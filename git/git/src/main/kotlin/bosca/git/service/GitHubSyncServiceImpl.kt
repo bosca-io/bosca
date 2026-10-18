@@ -7,6 +7,8 @@ import bosca.git.model.GitHubPullRequestState
 import bosca.git.model.PullRequestEvent
 import bosca.git.model.PullRequestEventAction
 import bosca.git.model.PullRequestStatus
+import bosca.git.model.CommitStatusEvent
+import bosca.git.model.GitHubCommitStatus
 
 import bosca.git.model.GitHubUser
 import bosca.lock.DistributedLockFactory
@@ -31,6 +33,7 @@ import bosca.git.model.GitHubWebhookInputException
 import bosca.git.model.GitHubWebhookUnavailableException
 import bosca.git.repository.GitHubSyncRepository
 import bosca.pipelines.service.PipelineSecretService
+import bosca.pipelines.model.PipelineRunStatus as ExportRunStatus
 import bosca.security.service.SecurityService
 import bosca.git.security.RepositoryPermissionEvaluator
 import bosca.security.model.PermissionAction
@@ -43,6 +46,7 @@ import bosca.serialization.UUID
 import bosca.service.annotation.ServiceImplementation
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.SerializationException
 import java.nio.ByteBuffer
 import java.nio.charset.CodingErrorAction
@@ -65,8 +69,80 @@ class GitHubSyncServiceImpl(
     private val profiles: ProfileService,
     private val permissions: RepositoryPermissionEvaluator,
     private val protections: BranchProtectionService,
+    private val commitStatuses: CommitStatusService,
+    private val exportPipelines: bosca.pipelines.service.PipelineService,
+    private val exportRuns: bosca.pipelines.service.PipelineRunService,
 ) : GitHubSyncService {
     private val log = LoggerFactory.getLogger(GitHubSyncServiceImpl::class.java)
+
+    override suspend fun synchronizeCommitStatus(event: CommitStatusEvent): GitHubSyncResult =
+        withPair(event.repositoryId, GitHubSyncResult.IGNORED) { pair ->
+            val status = commitStatuses.findById(event.statusId) ?: return@withPair GitHubSyncResult.IGNORED
+            require(status.repositoryId == event.repositoryId) { "Commit status does not belong to the paired repository" }
+            publishStatus(pair, status)
+        }
+
+    private suspend fun publishStatus(pair: GitHubRepositoryPair, status: bosca.git.model.CommitStatus): GitHubSyncResult {
+        val ref = status.ref
+        if (ref != null && !allowsAutomaticRef(pair, ref, RefSynchronizationDirection.OUTBOUND)) return GitHubSyncResult.UNCHANGED
+        val changed = github.synchronizeCommitStatus(pair, token(pair), status.commitSha, GitHubCommitStatus(
+            state = status.state.name.lowercase(), context = status.context,
+            description = status.description, targetUrl = status.targetUrl,
+        ))
+        return if (changed) GitHubSyncResult.APPLIED else GitHubSyncResult.UNCHANGED
+    }
+
+    private suspend fun synchronizeCiCommit(pair: GitHubRepositoryPair, sha: String) {
+        for (status in commitStatuses.getStatuses(pair.repositoryId, sha)) publishStatus(pair, status)
+    }
+
+    override suspend fun reconcileCiStatuses(repositoryId: UUID?): Int {
+        val pipeline = exportPipelines.getByKey("github-export-ci-status")?.takeIf { it.triggered } ?: return 0
+        val pairs = if (repositoryId == null) repository.findEnabledPairs() else listOfNotNull(repository.findPair(repositoryId))
+        val since = java.time.OffsetDateTime.now().minusDays(7)
+        val serializer = CommitStatusEvent.serializer()
+        val failures = mutableListOf<Exception>()
+        var attempts = 0
+        var queued = 0
+        for (pair in pairs) {
+            if (attempts >= 100) break
+            if (availablePair(pair) == null) continue
+            var offset = 0L
+            do {
+                val page = commitStatuses.findChangedSince(pair.repositoryId, since, offset, 100)
+                for (status in page) {
+                    if (attempts >= 100) break
+                    val event = CommitStatusEvent(pair.repositoryId, status.id, status.modified)
+                    val input = json.encodeToJsonElement(serializer, event)
+                    var attempted = false
+                    try {
+                        val previous = exportRuns.findLatestByInput(pipeline.id, serializer.descriptor.serialName, input)
+                        when (previous?.status) {
+                            ExportRunStatus.OK -> if (previous.output != JsonPrimitive(GitHubSyncResult.IGNORED.name)) continue
+                            ExportRunStatus.RUNNING, ExportRunStatus.SUSPENDED -> continue
+                            ExportRunStatus.FAILED, ExportRunStatus.CANCELLED, null -> Unit
+                        }
+                        attempts++
+                        attempted = true
+                        if (previous == null) {
+                            exportRuns.enqueueEvent(pipeline.id, serializer.descriptor.serialName, input, status.modified)
+                            queued++
+                        } else if (exportRuns.restart(previous.id) != null) queued++
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        if (!attempted) attempts++
+                        failures += e
+                        log.error("Could not recover GitHub commit status {}", status.id, e)
+                    }
+                }
+                offset += page.size
+            } while (page.size == 100 && attempts < 100)
+        }
+        if (failures.isNotEmpty()) throw IllegalStateException("GitHub CI recovery failed for ${failures.size} operations", failures.first())
+            .apply { failures.drop(1).forEach { addSuppressed(it) } }
+        return queued
+    }
 
     private fun pullRequestSynchronization(pair: GitHubRepositoryPair) = GitHubPullRequestSynchronization(
         repository, pullRequests, profiles, securityService, github,
@@ -498,7 +574,13 @@ class GitHubSyncServiceImpl(
         if (!allowsAutomaticRef(pair, event.ref, RefSynchronizationDirection.OUTBOUND)) return@withPair GitHubSyncResult.IGNORED
         val token = token(pair)
         val url = github.repositoryUrl(pair, token)
-        synchronize(pair, event.ref, event.beforeSha, event.afterSha, RefSynchronizationDirection.OUTBOUND, null, url, token)
+        val result = synchronize(pair, event.ref, event.beforeSha, event.afterSha, RefSynchronizationDirection.OUTBOUND, null, url, token)
+        // CI statuses exported before the commit reached GitHub were rejected; publish them once it exists there.
+        // A converged retry republishes too, so a failed publication is not lost after the push already landed.
+        val converged = result == GitHubSyncResult.APPLIED || result == GitHubSyncResult.UNCHANGED
+        val exported = event.afterSha?.nonZeroSha()?.takeIf { converged && event.ref.startsWith("refs/heads/") }
+        if (exported != null) synchronizeCiCommit(pair, exported)
+        result
     }
 
     override suspend fun findRefStates(repositoryId: UUID, offset: Long, limit: Int): List<GitHubRefState> {

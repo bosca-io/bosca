@@ -22,7 +22,7 @@ on Overview.
 
 Pull-request details label the conflict-only result **Merge conflicts**. Required checks that are failed, pending, or missing appear in the overview and merge confirmation. Administrators can explicitly choose **Bypass status checks and merge** for the displayed plan; repository write access, reviews, dependencies, PR version checks and Git conflicts still apply. The API authorizes the override on both merge mutations, defaults it to false, and logs its use with the merging profile. Deploy the API's `failingStatusChecks` field and `bypassStatusChecks` arguments with or before this UI.
 
-Checks link to their reported web URL or same-origin run page. Existing checks without a usable destination link to the repository's builds. Newly queued CI checks save their run URL, and job completion also updates the pipeline-qualified check registered when the run was queued.
+Checks link to their reported web URL or same-origin run page. Checks without a usable destination link to the repository's builds. CI job checks record their run page as their link.
 
 The create and edit dialogs include **Delete source branch after merge**. Creation starts with the target repository's default, and editing saves the PR's own choice. Deploy the API and registered `V50__pull_request_branch_cleanup.sql` migration before the updated UI.
 

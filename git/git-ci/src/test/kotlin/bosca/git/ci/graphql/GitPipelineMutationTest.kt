@@ -5,7 +5,6 @@ import bosca.di.annotation.InternalDI
 import bosca.git.model.AgentMode
 import bosca.git.model.AgentStatus
 import bosca.git.model.CommitStatusState
-import bosca.git.model.CommitStatus
 import bosca.git.model.JobDefinition
 import bosca.git.model.Pipeline
 import bosca.git.model.PipelineAgent
@@ -55,8 +54,6 @@ import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.put
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -100,7 +97,6 @@ class GitPipelineMutationTest {
             writeService, permissionEvaluator, scheduleService, schedulerService, securityService,
         )
         coEvery { repositoryService.findById(repoId) } returns testRepo()
-        coEvery { pipelineService.findById(pipelineId) } returns testPipeline()
         coEvery { jobService.finishIfActive(any(), any(), any()) } returns true
         authenticate(UUID.random())
     }
@@ -1189,11 +1185,6 @@ class GitPipelineMutationTest {
         coEvery { jobService.findById(job.id) } returns job
         coEvery { runService.findById(run.id) } returns run
         coEvery { agentService.findById(agentId) } returns agent
-        coEvery { pipelineService.findById(run.pipelineId) } returns testPipeline().copy(name = "Build and test")
-        coEvery { commitStatusService.getStatuses(repoId, run.commitSha) } returns listOf(
-            bosca.git.model.CommitStatus(repositoryId = repoId, commitSha = run.commitSha,
-                context = "ci/build-and-test/build", state = CommitStatusState.PENDING),
-        )
 
         mutation.reportCommitStatus(
             authentication,
@@ -1206,110 +1197,8 @@ class GitPipelineMutationTest {
             job.id,
         )
 
-        coVerify {
-            commitStatusService.recordStatus(
-                repoId, run.commitSha, "ci/build", CommitStatusState.PENDING, "build: RUNNING", "/pipelines/${run.id}"
-            )
-        }
-        coVerify(exactly = 0) {
-            commitStatusService.recordStatus(repoId, run.commitSha, "ci/build-and-test/build", any(), any(), any())
-        }
-    }
-
-    @Test
-    fun `verified job failure overrides the agent success for both check contexts`() = runTest {
-        val job = testJob(status = PipelineRunStatus.RUNNING)
-        val run = testRun(id = job.pipelineRunId)
-        val failed = job.copy(status = PipelineRunStatus.FAILURE, errorMessage = "Missing artifact")
-        coEvery { jobService.findById(job.id) } returns job andThen failed
-        coEvery { jobService.findByRun(run.id) } returns listOf(failed)
-        coEvery { runService.findById(run.id) } returns run
-        coEvery { commitStatusService.getStatuses(repoId, run.commitSha) } returns listOf(
-            CommitStatus(repositoryId = repoId, commitSha = run.commitSha,
-                context = "ci/build/build", state = CommitStatusState.PENDING),
-        )
-
-        assertEquals(failed, mutation.updateJobStatus(authentication, job.id, PipelineRunStatus.SUCCESS, null))
-
-        coVerify { commitStatusService.recordStatus(repoId, run.commitSha, "ci/build",
-            CommitStatusState.FAILURE, "Missing artifact", "/pipelines/${run.id}") }
-        coVerify { commitStatusService.recordStatus(repoId, run.commitSha, "ci/build/build",
-            CommitStatusState.FAILURE, any(), "/pipelines/${run.id}") }
-        coVerify(exactly = 0) { commitStatusService.recordStatus(any(), any(), any(), CommitStatusState.SUCCESS, any(), any()) }
-    }
-
-    @Test
-    fun `matrix check waits for all variants and preserves any failed variant`() = runTest {
-        val linux = testJob(status = PipelineRunStatus.SUCCESS).copy(
-            name = "build (linux)", matrixValues = buildJsonObject { put("os", "linux") },
-        )
-        val mac = linux.copy(id = UUID.random(), name = "build (mac)", status = PipelineRunStatus.RUNNING,
-            matrixValues = buildJsonObject { put("os", "mac") })
-        val run = testRun(id = linux.pipelineRunId)
-        coEvery { jobService.findById(linux.id) } returns linux
-        coEvery { runService.findById(run.id) } returns run
-        coEvery { commitStatusService.getStatuses(repoId, run.commitSha) } returns listOf(
-            CommitStatus(repositoryId = repoId, commitSha = run.commitSha,
-                context = "ci/build/build", state = CommitStatusState.PENDING),
-        )
-        coEvery { jobService.findByRun(run.id) } returns listOf(linux, mac)
-        mutation.updateJobStatus(authentication, linux.id, PipelineRunStatus.SUCCESS, null)
-        coVerify(exactly = 0) {
-            commitStatusService.recordStatus(repoId, run.commitSha, "ci/build/build", any(), any(), any())
-        }
-        val recordedState = slot<CommitStatusState>()
-        coEvery { commitStatusService.recordStatus(repoId, run.commitSha, "ci/build/build",
-            capture(recordedState), any(), any()) } returns mockk()
-        for ((variantStatus, expected) in listOf(
-            PipelineRunStatus.SUCCESS to CommitStatusState.SUCCESS,
-            PipelineRunStatus.FAILURE to CommitStatusState.FAILURE,
-            PipelineRunStatus.CANCELLED to CommitStatusState.FAILURE,
-            PipelineRunStatus.SKIPPED to CommitStatusState.SUCCESS,
-        )) {
-            coEvery { jobService.findByRun(run.id) } returns listOf(linux, mac.copy(status = variantStatus))
-            mutation.updateJobStatus(authentication, linux.id, PipelineRunStatus.SUCCESS, null)
-            assertEquals(expected, recordedState.captured)
-        }
-    }
-
-    @Test
-    fun `a failure-only job skipped on a green run does not fail its check`() = runTest {
-        val build = testJob(status = PipelineRunStatus.RUNNING)
-        val run = testRun(id = build.pipelineRunId)
-        val succeeded = build.copy(status = PipelineRunStatus.SUCCESS)
-        // Finalizing the last job evaluates `if: failure()` on the notify job and skips it.
-        val notify = testJob(status = PipelineRunStatus.SKIPPED).copy(pipelineRunId = run.id, name = "notify")
-        coEvery { jobService.findById(build.id) } returns build andThen succeeded
-        coEvery { jobService.findByRun(run.id) } returns listOf(succeeded, notify)
-        coEvery { runService.findById(run.id) } returns run
-        coEvery { commitStatusService.getStatuses(repoId, run.commitSha) } returns listOf(
-            CommitStatus(repositoryId = repoId, commitSha = run.commitSha,
-                context = "ci/build/build", state = CommitStatusState.PENDING),
-            CommitStatus(repositoryId = repoId, commitSha = run.commitSha,
-                context = "ci/build/notify", state = CommitStatusState.PENDING),
-        )
-
-        mutation.updateJobStatus(authentication, build.id, PipelineRunStatus.SUCCESS, null)
-
-        coVerify { commitStatusService.recordStatus(repoId, run.commitSha, "ci/build/build",
-            CommitStatusState.SUCCESS, any(), "/pipelines/${run.id}") }
-        coVerify { commitStatusService.recordStatus(repoId, run.commitSha, "ci/build/notify",
-            CommitStatusState.SUCCESS, any(), "/pipelines/${run.id}") }
-        coVerify(exactly = 0) { commitStatusService.recordStatus(any(), any(), any(), CommitStatusState.FAILURE, any(), any()) }
-    }
-
-    @Test
-    fun `a late success report cannot turn a cancelled job green`() = runTest {
-        val job = testJob(status = PipelineRunStatus.CANCELLED)
-        val run = testRun(id = job.pipelineRunId)
-        coEvery { jobService.findById(job.id) } returns job
-        coEvery { runService.findById(run.id) } returns run
-
-        mutation.reportCommitStatus(authentication, repoId, run.commitSha, "ci/build",
-            CommitStatusState.SUCCESS, "Passed", null, job.id)
-
-        coVerify { commitStatusService.recordStatus(repoId, run.commitSha, "ci/build",
-            CommitStatusState.FAILURE, "build: CANCELLED", "/pipelines/${run.id}") }
+        coVerify { runService.refreshCommitStatuses(run.id) }
+        coVerify(exactly = 0) { commitStatusService.recordStatus(any(), any(), any(), any(), any(), any(), any()) }
     }
 
     @Test

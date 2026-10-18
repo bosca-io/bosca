@@ -20,6 +20,19 @@ class WorkspacePipelinesTest {
     private fun parse(name: String) = parser.parse(File(pipelines, name).readText(), ".bosca/pipelines/$name")
 
     @Test
+    fun `workspace CI validates branch commits without release side effects`() {
+        val definition = parse("ci.yaml")
+        assertEquals(setOf(PipelineTriggerType.PUSH, PipelineTriggerType.MANUAL), definition.triggers.map { it.type }.toSet())
+        val push = definition.triggers.single { it.type == PipelineTriggerType.PUSH }
+        assertEquals(listOf("**"), push.branches)
+        assertTrue(push.paths.isEmpty() && push.pathsIgnore.isEmpty())
+        assertEquals(setOf("test-jvm"), definition.jobs.keys)
+        assertEquals(parse("release.yaml").jobs.getValue("test-jvm"), definition.jobs.getValue("test-jvm"))
+        assertTrue(definition.jobs.values.all { it.artifacts.isEmpty() })
+        assertTrue(assertNotNull(definition.concurrency).cancelInProgress)
+    }
+
+    @Test
     fun `every workspace pipeline parses`() {
         val files = pipelines.listFiles { file -> file.extension == "yaml" }.orEmpty()
         assertTrue(files.isNotEmpty(), "no pipelines found in ${pipelines.absolutePath}")
