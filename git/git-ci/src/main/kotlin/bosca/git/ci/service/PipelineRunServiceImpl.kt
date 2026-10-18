@@ -377,7 +377,8 @@ class PipelineRunServiceImpl(
                 PipelineRunStatus.FAILURE, PipelineRunStatus.CANCELLED -> bosca.git.model.CommitStatusState.FAILURE
             }
             commitStatusService.recordStatus(run.repositoryId, run.commitSha, "$prefix/${job.name}", state,
-                job.errorMessage ?: job.status.name.lowercase().replaceFirstChar { it.uppercase() }, ref = run.ref)
+                job.errorMessage ?: job.status.name.lowercase().replaceFirstChar { it.uppercase() },
+                targetUrl = "/pipelines/${run.id}", ref = run.ref)
         }
     }
 

@@ -27,6 +27,7 @@ data class PullPage(
     val commits: List<GitUiPullCommitsData.Git.PullRequestById.Commits> = emptyList(),
     val commitOffset: Long = 0,
     val hasMoreCommits: Boolean = false,
+    val canBypassStatusChecks: Boolean = false,
     val selectedCommit: GitUiCommitData.Git.Commit? = null,
 ) {
     val canReview: Boolean
@@ -45,12 +46,15 @@ data class PullPage(
     val hasMergeBlockers: Boolean
         get() = !pull.mergeable
 
+    val hasFailingStatusChecks: Boolean
+        get() = pull.failingStatusChecks.isNotEmpty()
+
     val mergeIcon: String
         get() = when (pull.status.name) {
             "MERGED" -> "merge"
             "CLOSED" -> "close"
             "DRAFT" -> "pull"
-            else -> if (hasMergeBlockers) "close" else "check"
+            else -> if (hasMergeBlockers || hasFailingStatusChecks) "close" else "check"
         }
 
     val mergeHeading: String
@@ -61,6 +65,7 @@ data class PullPage(
             else -> when {
                 pull.conflictingFiles.isNotEmpty() -> "Resolve merge conflicts"
                 hasMergeBlockers -> "Merge unavailable"
+                hasFailingStatusChecks -> "Required status checks are not passing"
                 else -> "No merge conflicts"
             }
         }
@@ -74,12 +79,19 @@ data class PullPage(
                 pull.conflictingFiles.isNotEmpty() ->
                     "Resolve these files locally and push the changes to your source branch."
                 hasMergeBlockers -> "Check that the source and target branches are available."
+                hasFailingStatusChecks -> "Required checks: ${pull.failingStatusChecks.joinToString(", ")}."
                 else -> "Required reviews and checks must pass before merging."
             }
         }
 
+    fun checkHref(check: GitUiStatusesData.Git.CommitStatuses): String =
+        safeCheckHref(check.targetUrl).ifBlank {
+            "/repositories/${encode(sourceRepository)}?tab=pipelines&ref=${encode(pull.sourceBranch)}"
+        }
+
     val checkSummary: String
         get() = when {
+            hasFailingStatusChecks -> "Required checks not passing"
             checks.isEmpty() -> "No checks reported"
             checks.any { it.state.name in setOf("FAILURE", "ERROR") } -> "Checks failed"
             checks.any { it.state.name == "PENDING" } -> "Checks running"
@@ -88,6 +100,7 @@ data class PullPage(
 
     val checkTone: String
         get() = when {
+            hasFailingStatusChecks -> "error"
             checks.isEmpty() -> "neutral"
             checks.any { it.state.name in setOf("FAILURE", "ERROR") } -> "error"
             checks.any { it.state.name == "PENDING" } -> "warning"

@@ -188,6 +188,7 @@ class CiPipelineRepositoryIntegrationTest {
         val pending = statuses.getStatuses(repositoryId, "head")
         assertEquals(setOf("ci/ci.yaml/build", "ci/ci.yaml/tests"), pending.map { it.context }.toSet())
         assertTrue(pending.all { it.state == bosca.git.model.CommitStatusState.PENDING && it.ref == "refs/heads/main" })
+        assertTrue(pending.all { it.targetUrl == "/pipelines/${run.id}" })
         assertFalse(statuses.areRequiredChecksPassing(repositoryId, "head", emptyList()))
         val build = jobRepo.findByRun(run.id).first { it.name == "build" }
         jobs.finishIfActive(build.id, PipelineRunStatus.SUCCESS)
@@ -204,6 +205,32 @@ class CiPipelineRepositoryIntegrationTest {
         finalizer.finalizeJob(tests.id, PipelineRunStatus.SUCCESS, releaseAgent = false)
         assertTrue(statuses.areRequiredChecksPassing(repositoryId, "head", emptyList()))
         assertEquals(pending.map { it.id }.toSet(), statuses.getStatuses(repositoryId, "head").map { it.id }.toSet())
+    }
+
+    @Test fun `a failure-only job skipped after a green run passes its check`() = withDb {
+        val (jobs, runs, finalizer) = deferredStack()
+        val definition = bosca.git.ci.parser.PipelineYamlParser().parse("""
+            name: CI
+            on:
+              push: true
+            jobs:
+              build:
+                steps: [{name: Build, run: build}]
+              notify:
+                needs: [build]
+                if: "failure()"
+                steps: [{name: Notify, run: notify}]
+        """.trimIndent(), "ci.yaml")
+        val pipeline = pipelineRepo.create(Pipeline(repositoryId = repositoryId,
+            filePath = ".bosca/pipelines/ci.yaml", name = "CI", configHash = "ci"))
+        val run = runs.createRun(pipeline.id, repositoryId, definition, "head", "refs/heads/main", PipelineTriggerType.PUSH, null, emptyMap())
+        assertEquals(setOf("ci/ci.yaml/build", "ci/ci.yaml/notify"), statuses.getStatuses(repositoryId, "head").map { it.context }.toSet())
+        val build = jobRepo.findByRun(run.id).first { it.name == "build" }
+        jobs.finishIfActive(build.id, PipelineRunStatus.SUCCESS)
+        finalizer.finalizeJob(build.id, PipelineRunStatus.SUCCESS, releaseAgent = false)
+        assertEquals(PipelineRunStatus.SKIPPED, jobRepo.findByRun(run.id).first { it.name == "notify" }.status)
+        assertTrue(statuses.getStatuses(repositoryId, "head").all { it.state == bosca.git.model.CommitStatusState.SUCCESS })
+        assertTrue(statuses.areRequiredChecksPassing(repositoryId, "head", emptyList()))
     }
 
     @Test fun `status updates preserve identity and unchanged revisions and recover old pending checks`() = withDb {

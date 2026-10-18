@@ -332,6 +332,26 @@ class GitRepositoryMutationTest {
     }
 
     @Test
+    fun `status check bypass requires administrator authorization on both merge entry points`() = runTest {
+        val prId = UUID.random()
+        prFound(prId)
+        val actor = actorProfile()
+        io.mockk.every { groupEvaluator.hasAdminGroup(auth) } returns false
+        assertFailsWith<SecurityException> {
+            mutation.mergePullRequest(auth, prId, bosca.git.model.MergeStrategy.SQUASH, bypassStatusChecks = true)
+        }
+        assertFailsWith<SecurityException> {
+            mutation.mergePullRequestWithDependencies(auth, prId, bosca.git.model.MergeStrategy.SQUASH, bypassStatusChecks = true)
+        }
+        coVerify(exactly = 0) { pullRequestService.merge(any(), any(), any(), any(), any(), any(), any()) }
+        coVerify(exactly = 0) { pullRequestService.mergeWithDependencies(any(), any(), any(), any(), any(), any(), any(), any()) }
+        io.mockk.every { groupEvaluator.hasAdminGroup(auth) } returns true
+        mutation.mergePullRequest(auth, prId, bosca.git.model.MergeStrategy.SQUASH, 4, true)
+        coVerify { permissionEvaluator.verifyAllowed(auth, repo, PermissionAction.EDIT) }
+        coVerify { pullRequestService.merge(prId, bosca.git.model.MergeStrategy.SQUASH, actor, any(), any(), 4, true) }
+    }
+
+    @Test
     fun `mergePullRequest requires the authenticated principal to have a profile`() = runTest {
         val prId = UUID.random()
         prFound(prId)

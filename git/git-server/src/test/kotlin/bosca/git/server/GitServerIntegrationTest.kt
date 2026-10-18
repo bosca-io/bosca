@@ -1033,13 +1033,59 @@ class GitServerIntegrationTest {
                     "mutation Ready(\$repo: UUID!, \$sha: String!) { git { reportCommitStatus(repositoryId: \$repo, commitSha: \$sha, context: \"ci/configuration\", state: SUCCESS) } }",
                     buildJsonObject { put("repo", emptyId); put("sha", sourceHead) }, adminToken,
                 )
+                val protection = if (strategy == "MERGE_COMMIT") {
+                    val ruleId = graphql(
+                        "mutation Protect(\$repo: UUID!, \$target: String!) { git { createBranchProtectionRule(repositoryId: \$repo, input: { pattern: \$target, requiredApprovals: 0, requireStatusChecks: [\"ci/required\", \"ci/missing\"] }) { id } } }",
+                        buildJsonObject { put("repo", emptyId); put("target", target) }, adminToken,
+                    ).at("git", "createBranchProtectionRule", "id").jsonPrimitive.content
+                    graphql(
+                        "mutation Check(\$repo: UUID!, \$sha: String!) { git { reportCommitStatus(repositoryId: \$repo, commitSha: \$sha, context: \"ci/required\", state: FAILURE, targetUrl: \"https://ci.example/check/1\") } }",
+                        buildJsonObject { put("repo", emptyId); put("sha", sourceHead) }, adminToken,
+                    )
+                    val checkPullId = createdPull.at("id").jsonPrimitive.content
+                    val readiness = graphql(
+                        "query Ready(\$id: UUID!) { git { pullRequestById(id: \$id) { mergeable failingStatusChecks } } }",
+                        buildJsonObject { put("id", checkPullId) }, adminToken,
+                    ).at("git", "pullRequestById")
+                    assertTrue(readiness.at("mergeable").jsonPrimitive.boolean)
+                    assertEquals(listOf("ci/required", "ci/missing"), readiness.at("failingStatusChecks").jsonArray.map { it.jsonPrimitive.content })
+                    val checkPage = request("/pulls/$checkPullId", cookie = "$cookiePrefix=$adminToken")
+                    assertEquals(200, checkPage.statusCode(), checkPage.body())
+                    assertTrue("Required status checks are not passing" in checkPage.body(), checkPage.body())
+                    assertTrue("href=\"https://ci.example/check/1\"" in checkPage.body(), checkPage.body())
+                    for ((actor, bypass, expected) in listOf(
+                        Triple(adminToken, false, "All applicable CI status checks must pass before merging"),
+                        Triple(token, true, "Only administrators can bypass required status checks"),
+                    )) {
+                        for (operation in listOf("mergePullRequest", "mergePullRequestWithDependencies")) {
+                            val rejected = request("/graphql", buildJsonObject {
+                                put("query", "mutation { git { $operation(id: \"$checkPullId\", strategy: MERGE_COMMIT, bypassStatusChecks: $bypass) { id } } }")
+                            }.toString(), actor)
+                            assertTrue("errors" in Json.parseToJsonElement(rejected.body()).jsonObject, rejected.body())
+                            assertTrue(expected in rejected.body(), rejected.body())
+                        }
+                    }
+                    ruleId
+                } else null
                 val merged = graphql(
-                    "mutation Merge(\$id: UUID!, \$strategy: GitMergeStrategy!, \$version: Long!) { git { mergePullRequest(id: \$id, strategy: \$strategy, expectedVersion: \$version) { mergeSha mergeBaseSha } } }",
+                    "mutation Merge(\$id: UUID!, \$strategy: GitMergeStrategy!, \$version: Long!, \$bypass: Boolean!) { git { mergePullRequest(id: \$id, strategy: \$strategy, expectedVersion: \$version, bypassStatusChecks: \$bypass) { mergeSha mergeBaseSha } } }",
                     buildJsonObject {
                         put("id", createdPull.at("id").jsonPrimitive.content); put("strategy", strategy)
                         put("version", createdPull.at("version").jsonPrimitive.long)
+                        put("bypass", protection != null)
                     }, adminToken,
                 ).at("git", "mergePullRequest")
+                if (protection != null) {
+                    graphql(
+                        "mutation Unprotect(\$id: UUID!) { git { deleteBranchProtectionRule(id: \$id) } }",
+                        buildJsonObject { put("id", protection) }, adminToken,
+                    )
+                    // Later strategies produce the same source commit, and every reported check gates a merge.
+                    graphql(
+                        "mutation Check(\$repo: UUID!, \$sha: String!) { git { reportCommitStatus(repositoryId: \$repo, commitSha: \$sha, context: \"ci/required\", state: SUCCESS) } }",
+                        buildJsonObject { put("repo", emptyId); put("sha", sourceHead) }, adminToken,
+                    )
+                }
                 val mergedSha = merged.at("mergeSha").jsonPrimitive.content
                 assertEquals(before, merged.at("mergeBaseSha").jsonPrimitive.content, strategy)
                 val remainingBranches = graphql(

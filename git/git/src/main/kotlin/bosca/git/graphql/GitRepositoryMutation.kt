@@ -352,7 +352,11 @@ class GitRepositoryMutation(
         id: UUID,
         strategy: MergeStrategy,
         expectedVersion: Long? = null,
+        bypassStatusChecks: Boolean = false,
     ): PullRequest {
+        if (bypassStatusChecks && !groupEvaluator.hasAdminGroup(authentication)) {
+            throw SecurityException("Only administrators can bypass required status checks")
+        }
         val pr = pullRequestService.findById(id)
             ?: throw NoSuchElementException("Pull request not found: $id")
         val repository = repositoryService.findById(pr.repositoryId)
@@ -367,6 +371,7 @@ class GitRepositoryMutation(
             actorProfile.name,
             authenticatedPrincipal.id.toString(),
             expectedVersion,
+            bypassStatusChecks,
         )
     }
 
@@ -376,7 +381,11 @@ class GitRepositoryMutation(
         id: UUID,
         strategy: MergeStrategy,
         expectedVersion: Long? = null,
+        bypassStatusChecks: Boolean = false,
     ): List<PullRequest> {
+        if (bypassStatusChecks && !groupEvaluator.hasAdminGroup(authentication)) {
+            throw SecurityException("Only administrators can bypass required status checks")
+        }
         val plan = pullRequestService.getMergePlan(id)
         if (plan.isEmpty()) {
             throw IllegalArgumentException("Pull request is already merged")
@@ -402,6 +411,7 @@ class GitRepositoryMutation(
             authenticatedPrincipal.id.toString(),
             plan.map { it.id },
             expectedVersion,
+            bypassStatusChecks,
         )
     }
 

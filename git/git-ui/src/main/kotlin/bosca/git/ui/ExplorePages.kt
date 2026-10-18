@@ -87,3 +87,11 @@ internal fun safeWebHref(value: String?): String =
                 .getOrDefault(false)
         }
         .orEmpty()
+
+/** Accepts web URLs and same-origin absolute paths for check details. */
+internal fun safeCheckHref(value: String?): String {
+    if (value.isNullOrBlank() || value.any { it.isISOControl() || it == '\\' }) return ""
+    val uri = runCatching { java.net.URI(value) }.getOrNull() ?: return ""
+    return if (value.startsWith("/") && !value.startsWith("//") && uri.rawAuthority == null) value
+        else safeWebHref(value)
+}
