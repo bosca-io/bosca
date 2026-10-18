@@ -1,0 +1,77 @@
+<component tag="overlays">
+  <prop name="id" type="String" required />
+  <script server provides="state" scope="server-session">bosca.design.example.OverlayState(id)</script>
+  <card title="Dialogs and popovers">
+    <island name="state" :key="id">
+      <div class="actions">
+        <button @click="state.requestOpen" :data-programmatic-open="state.id">Request dialog</button>
+        <button @click="state.openForced" :data-force-open-action="state.id">Force dialog</button>
+        <button @click="state.toggle" :data-toggle-overlays="state.id">Toggle overlays</button>
+      </div>
+      <p :data-overlay-result="state.id">{ state.message } ({ state.attempts }) · Confirmed { state.confirmations } · Updates { state.bumps }</p>
+      <if state.mounted>
+        <div class="actions">
+          <dialog title="Edit display name" subtitle="State and actions belong to this application."
+                  triggerLabel="Edit name" triggerIcon="edit" icon="edit" primary
+                  :forceOpen="state.forceOpen" :completed="state.completed"
+                  :data-edit-dialog="state.id" class="fixture-dialog">
+            <form class="modal-form" @submit="state.save(form.name)" :data-modal-form="state.id">
+              <div class="modal-fields">
+                <if state.message.isNotBlank() && !state.completed><alert>{ state.message }</alert></if>
+                <field label="Name"><input name="name" :value="state.draft" required /></field>
+                <button disabled>Unavailable choice</button>
+              </div>
+              <footer class="modal-footer">
+                <button ref="cancel">Cancel</button>
+                <button type="submit" primary :data-modal-save="state.id">Save name</button>
+              </footer>
+            </form>
+          </dialog>
+          <dialog title="Draft dialog" triggerLabel="Draft dialog" :showTrigger="false" size="lg"
+                  :openRequest='if (state.request > 0) state.request.toString() else ""'
+                  :completed="state.completed" :returnFocus='"[data-programmatic-open=" + state.id + "]"'
+                  :data-bml-preserve='state.id + "-draft-dialog"' :data-draft-dialog="state.id">
+            <form class="modal-form">
+              <div class="modal-fields">
+                <field label="Draft"><input name="draft" value="Keep this draft" /></field>
+                <popover label="Draft options" :data-nested-popover="state.id">
+                  <p>Opening this child does not request another modal.</p>
+                </popover>
+                <for number in 1..12><p>Scrollable draft content { number }</p></for>
+              </div>
+              <footer class="modal-footer">
+                <button data-dialog-close>Cancel draft</button>
+                <button @click="state.bump" :data-draft-update="state.id">Update outside</button>
+                <button @click="state.complete" primary :data-draft-complete="state.id">Complete</button>
+              </footer>
+            </form>
+          </dialog>
+          <confirm-dialog title="Remove this item?" description="The application handles the confirmation."
+                          triggerLabel="Remove item" :data-confirm-dialog="state.id">
+            <footer class="modal-footer">
+              <button ref="cancel">Keep item</button>
+              <button @click="state.confirm" data-dialog-close class="danger" :data-confirm="state.id">Remove</button>
+            </footer>
+          </confirm-dialog>
+          <dialog title="Disabled dialog" triggerLabel="Disabled dialog" triggerDisabled :data-disabled-dialog="state.id"><p>Disabled</p></dialog>
+          <dialog title="Link dialog" triggerLabel="Add item" triggerStyle="link" :data-link-dialog="state.id"><p class="modal-fields">Link trigger content</p></dialog>
+          <dialog title="Ghost dialog" triggerLabel="More actions" triggerIcon="more" triggerIconOnly triggerStyle="ghost" :data-ghost-dialog="state.id"><p class="modal-fields">Icon trigger content</p></dialog>
+        </div>
+        <div class="overlay-clip">
+          <popover label="Popover details" icon="info" :width="420" :data-popover="state.id" class="fixture-popover">
+            <field label="Filter"><input name="filter" value="Initial" /></field>
+            <overlay-counter :id='state.id + "-popover"' />
+            <div class="actions"><a href="#overlay-destination">Read more</a><button ref="cancel">Close panel</button></div>
+          </popover>
+        </div>
+        <popover label="Menu options" icon="more" iconOnly :data-menu="state.id">
+          <div role="menu">
+            <html:button role="menuitem">First choice</html:button>
+            <html:button role="menuitem" disabled>Unavailable</html:button>
+            <html:button role="menuitem">Last choice</html:button>
+          </div>
+        </popover>
+      </if>
+    </island>
+  </card>
+</component>

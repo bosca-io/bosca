@@ -1,0 +1,20 @@
+<page route="/overlays">
+  <html lang="en">
+    <head>
+      <meta charset="utf-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1" />
+      <title>Dialogs and popovers</title>
+    </head>
+    <body>
+      <page-shell>
+        <h1>Dialogs and popovers</h1>
+        <div class="themes">
+          <div class="light overlays-theme" data-palette="light"><overlays id="light" /></div>
+          <div class="purple overlays-theme" data-palette="purple"><overlays id="purple" /></div>
+        </div>
+        <p id="overlay-destination">Native popover link destination</p>
+        <html:dialog id="native-dialog" aria-label="Native dialog">Native dialog</html:dialog>
+      </page-shell>
+    </body>
+  </html>
+</page>

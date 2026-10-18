@@ -1,0 +1,89 @@
+<component tag="popover">
+  <prop name="label" type="String" required />
+  <prop name="icon" type="String" default="" />
+  <prop name="iconOnly" type="Boolean" default="false" />
+  <prop name="width" type="Int" default="360" />
+  <details class="popover" ref="panel" :data-width="width" {...attrs}>
+    <summary
+      ref="trigger"
+      :class='if (iconOnly) "icon-only" else ""'
+      :title="label"
+      :aria-label="label"
+    >
+      <if icon.isNotBlank()>
+        <icon :name="icon" :size="14" />
+      </if>
+      <if !iconOnly>
+        { label }
+      </if>
+    </summary>
+    <div ref="content" class="popover-content" role="region" :aria-label="label">
+      <slot />
+    </div>
+  </details>
+  <style scoped>
+    .popover {
+      position: relative;
+    }
+    summary {
+      box-sizing: border-box;
+      color: var(--fg-1);
+      gap: 6px;
+      list-style: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      height: 30px;
+      padding: 0 10px;
+      line-height: normal;
+      font-size: 12.5px;
+      font-weight: 500;
+      border: 1px solid var(--line-2);
+      border-radius: var(--r-sm);
+      background: var(--control-bg);
+    }
+    summary:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 3px;
+    }
+    summary.icon-only {
+      width: 30px;
+      padding: 0;
+      justify-content: center;
+    }
+    summary::-webkit-details-marker {
+      display: none;
+    }
+    summary:hover {
+      background: var(--bg-3);
+    }
+    .popover-content {
+      box-sizing: border-box;
+      color: var(--fg-1);
+      font-family: var(--font-sans);
+      position: fixed;
+      inset: auto;
+      margin: 0;
+      z-index: 30;
+      width: 360px;
+      max-width: calc(100vw - 24px);
+      max-height: calc(100vh - 24px);
+      overflow: auto;
+      padding: 12px;
+      border: 1px solid var(--line-2);
+      border-radius: var(--r-sm);
+      background: var(--bg-1);
+      box-shadow: var(--popover-shadow, 0 12px 30px #0006);
+    }
+    .popover-content:not([popover]) {
+      position: static;
+      margin-top: 8px;
+    }
+  </style>
+  <script client scoped>
+    import { attachTooltip } from "@client/helpers/tooltip";
+    import { positionedPopover } from "@client/helpers/popover";
+    positionedPopover(ctx);
+    attachTooltip(ctx, () => ctx.ref<HTMLElement>("trigger") ?? ctx.root);
+  </script>
+</component>

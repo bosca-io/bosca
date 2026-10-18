@@ -13,6 +13,7 @@ h1 {
   gap: 20px;
 }
 .light {
+  --bg-2: #f8fafc;
   --bg-1: #fff;
   --bg-3: #e2e8f0;
   --control-bg: #f8fafc;
@@ -103,4 +104,16 @@ form {
   .layout-document {
     flex-direction: column;
   }
+}
+
+.overlay-clip {
+  height: 34px;
+  overflow: hidden;
+  margin: 20px 0;
+}
+.overlays-theme.alternate {
+  --bg-1: #eff6ff;
+  --bg-2: #dbeafe;
+  --fg-1: #1e3a8a;
+  --line-2: #2563eb;
 }

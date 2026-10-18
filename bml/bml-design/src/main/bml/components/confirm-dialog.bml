@@ -1,0 +1,32 @@
+<component tag="confirm-dialog">
+  <prop name="title" type="String" required />
+  <prop name="description" type="String" required />
+  <prop name="triggerLabel" type="String" default="Remove" />
+  <prop name="icon" type="String" default="trash" />
+  <prop name="forceOpen" type="Boolean" default="false" />
+  <prop name="triggerIconOnly" type="Boolean" default="true" />
+  <prop name="triggerStyle" type="String" default="button" />
+  <dialog
+    :title="title"
+    :triggerLabel="triggerLabel"
+    :icon="icon"
+    :forceOpen="forceOpen"
+    :triggerIconOnly="triggerIconOnly"
+    :triggerStyle="triggerStyle"
+    size="sm"
+    {...attrs}
+  >
+    <p class="confirmation-copy">{ description }</p>
+    <slot />
+  </dialog>
+  <style scoped>
+    .confirmation-copy {
+      padding: 18px 18px 0;
+      margin: 0;
+      color: var(--fg-2);
+      font-size: 13px;
+      line-height: 1.6;
+      overflow-wrap: anywhere;
+    }
+  </style>
+</component>

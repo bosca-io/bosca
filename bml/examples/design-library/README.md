@@ -51,6 +51,14 @@ live CSS overrides, description IDs, changed labels/triggers, delayed-show cance
 geometry, repeated mount/unmount and listener cleanup. Icon labels and link navigation remain
 available when scripts are disabled.
 
+The `/overlays` page exercises dialogs, confirmation and popovers with caller-owned form/state.
+Checks cover modal names and focus, Tab containment, Escape/backdrop/cancel dismissal and return
+focus, disabled triggers, pending geometry, failed-submit drafts, completion/reopen and server-issued
+requests. A preserved modal keeps an unsaved draft across unrelated updates. Popovers inherit two
+consumer palettes, escape clipped ancestors, fit desktop/phone/short viewports, retain nested action
+updates, and provide menu keyboard navigation. Repeated mounting checks listener and ResizeObserver
+cleanup. With scripts disabled, popovers remain native details disclosures.
+
 Chrome defaults to the installed Google Chrome app on macOS or `google-chrome` on Linux. Set
 `BML_DESIGN_CHROME_BINARY` for another executable. Screenshots land in this project's
 `build/reports/browser/`. The fixture is an application and is excluded from aggregate Maven

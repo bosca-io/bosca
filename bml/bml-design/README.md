@@ -65,6 +65,9 @@ import provides `<design:button>` with the same runtime identity and assets as `
 | `icon-button` | Required `icon: String` and `label: String`; `ref: String = ""`; `type: String = "button"`; `disabled: Boolean = false`; `size: String = "sm"` (`sm`, `xs`) | Native button with a decorative icon, required accessible name and tooltip. Additional attributes/classes and actions reach the button. Default dimensions are 30×30px; `xs` is 24×24px. No child content. |
 | `icon-link` | Required `icon: String`, `label: String` and `href: String` | Native 30×30px anchor with a decorative icon, accessible name and tooltip. Additional attributes/classes target the anchor, including `target`, `rel` and `download`. Supports the `primary` class modifier. No child content. |
 | `tooltip` | Required `content: String`; `placement: String = "top"` (`top`, `bottom`, `left`, `right`); `delay: Int = 200` (milliseconds) | Inline span with default children. The first descendant button/link/tabbable element is its trigger, falling back to the root. Additional attributes/classes target the span. |
+| `dialog` | Required `title: String` and `triggerLabel: String`; `subtitle: String = ""`; `size: String = "md"` (`sm`, `md`, `lg`); `triggerIcon: String = ""`; `icon: String = ""`; `primary: Boolean = false`; `triggerIconOnly: Boolean = false`; `triggerDisabled: Boolean = false`; `showTrigger: Boolean = true`; `triggerStyle: String = "button"` (`button`, `block`, `plain`, `link`, `ghost`); `returnFocus: String = ""`; `forceOpen: Boolean = false`; `openRequest: String = ""`; `completed: Boolean = false` | Wrapper div receives additional attributes/classes and contains a native modal dialog. Default children supply the body/form/footer. `ref="cancel"` or `data-dialog-close` on a projected control closes it. Native panel widths are 400/520/760px, constrained to the viewport. |
+| `confirm-dialog` | Required `title: String` and `description: String`; `triggerLabel: String = "Remove"`; `icon: String = "trash"`; `forceOpen: Boolean = false`; `triggerIconOnly: Boolean = true`; `triggerStyle: String = "button"` | Small dialog with description and default action children. Additional attributes/classes reach the dialog wrapper. The application owns confirmation actions and their outcomes. |
+| `popover` | Required `label: String`; `icon: String = ""`; `iconOnly: Boolean = false`; `width: Int = 360` | Native details with a labelled summary and default children in a labelled region. Additional attributes/classes target details. Scripts enhance its content into a viewport-fitted manual popover; without scripts it remains a native disclosure. |
 
 Regular controls are 32px high, compact controls 30px, and extra-small buttons 24px. Field labels use
 an 18px line and a 6px control gap. Buttons support the `ghost`, `danger`, `block`, and `icon-only`
@@ -97,6 +100,25 @@ Each visible tooltip adds its own ID to `aria-describedby`, preserving existing 
 The helper follows a replaced trigger and removes timers, listeners and tooltip nodes when its
 component unmounts. Clicking tooltip text does not activate its parent button or anchor.
 Icon actions retain native `title` labels when scripts are disabled.
+
+Dialog triggers open a native modal, focus the first available field, and contain Tab navigation.
+Escape, backdrop clicks, the close control and projected cancel controls dismiss it. Focus returns
+to the trigger, or to `returnFocus` within the nearest island when supplied. A rising `forceOpen`
+or a new nonempty `openRequest` opens it; a rising `completed` closes it once. A request remains
+consumer state: issue a new request to reopen after dismissal. Forms and failed-submit drafts belong
+to the application. The `/overlays` fixture shows an error response retaining submitted values and
+reopening through `forceOpen`, plus a preserved dialog whose server-owned request/completion
+attributes update while its client-owned draft DOM stays intact through `data-bml-preserve`.
+Use `<html:dialog>` when a native element is needed after importing the component.
+`ghost` selects the extra-small icon trigger when `triggerIconOnly` is true; `block` and `plain`
+control the text trigger presentation.
+
+Popovers preserve their trigger/content relationship through unique IDs and `aria-expanded`.
+Opening focuses the first available input. Escape and a projected `ref="cancel"` return focus to
+the summary; outside pointer presses dismiss without moving focus. Menu children with `role="menu"`
+and enabled `role="menuitem"` entries support arrows and Home/End. Resize, scrolling, content-size
+changes and nested island updates reposition the panel. Listeners and ResizeObservers are removed
+when the component unmounts. A nested popover consumes Escape before its containing modal.
 
 ## Consumer CSS
 
@@ -143,6 +165,15 @@ CSS custom properties inherit normally, including live theme-class changes. The 
 is `0 4px 12px #0005`. This surface rule lives in the real library stylesheet because the node is
 created at runtime. Consumers do not copy colors into JavaScript or configure a theme service.
 
+Dialogs and popovers retain their owning DOM subtree in the top layer, so they use consumer colors
+without a copied palette. Their surfaces use `--bg-1`, `--fg-1`, `--line-2` and the shared accent;
+modal footers use `--bg-2`. `--r-sm` and `--r-lg` default to 9px and 16px. Optional `--dialog-shadow`,
+`--dialog-backdrop` and `--popover-shadow` override the default shadows and backdrop color.
+
+Projected modal forms use the documented `modal-form`, `modal-fields` and `modal-footer` classes.
+The library stylesheet scopes these rules to its native dialog panel, allowing the body to scroll
+independently of the footer. These classes do not style unrelated forms elsewhere in the document.
+
 ## Source ownership
 
 | Library source | Extracted source in Git UI |
@@ -171,6 +202,11 @@ created at runtime. Consumers do not copy colors into JavaScript or configure a 
 | `components/icon-button.bml` | `components/ui/icon-button.bml` |
 | `components/icon-link.bml` | `components/ui/icon-link.bml` |
 | `components/tooltip.bml` | `components/ui/tooltip.bml` |
+| `components/dialog.bml` | `components/ui/dialog.bml` |
+| `components/confirm-dialog.bml` | `components/ui/confirm-dialog.bml` |
+| `components/popover.bml` | `components/ui/popover.bml` |
+| `client/helpers/dialog.ts` | `src/main/client/dialog.ts` |
+| `client/helpers/popover.ts` | `src/main/client/popover.ts` and its component's disclosure behavior from `src/main/client/disclosure.ts` |
 | `client/helpers/tooltip.ts` | `src/main/client/tooltip.ts` |
 | `client/design.css` | Shared control token defaults from `src/main/client/git-ui.css` |
 

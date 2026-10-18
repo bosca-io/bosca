@@ -38,7 +38,7 @@ export function attachTooltip(
     const anchor = trigger.getBoundingClientRect();
     const box = tooltip.getBoundingClientRect();
     const width = document.documentElement.clientWidth;
-    const height = document.documentElement.clientHeight;
+    const height = innerHeight;
     if (anchor.bottom <= 0 || anchor.right <= 0 || anchor.top >= height || anchor.left >= width) {
       hide();
       return;
@@ -82,7 +82,7 @@ export function attachTooltip(
     readLabel();
     if (!label || !ctx.root.isConnected || !trigger.isConnected || !trigger.checkVisibility()) return;
     const anchor = trigger.getBoundingClientRect();
-    if (anchor.bottom <= 0 || anchor.right <= 0 || anchor.top >= document.documentElement.clientHeight ||
+    if (anchor.bottom <= 0 || anchor.right <= 0 || anchor.top >= innerHeight ||
         anchor.left >= document.documentElement.clientWidth) return;
     if (!tooltip?.isConnected) {
       tooltip = document.createElement("span");
@@ -90,7 +90,8 @@ export function attachTooltip(
       tooltip.id = `tooltip-${crypto.randomUUID()}`;
       tooltip.setAttribute("role", "tooltip");
       tooltip.setAttribute("popover", "manual");
-      ctx.root.append(tooltip);
+      // A closed details element hides every child outside its summary, including top-layer nodes.
+      (ctx.root instanceof HTMLDetailsElement ? trigger : ctx.root).append(tooltip);
     }
     tooltip.textContent = label;
     if (!tooltip.matches(":popover-open")) tooltip.showPopover();

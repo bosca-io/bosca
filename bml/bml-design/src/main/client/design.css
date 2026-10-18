@@ -19,7 +19,9 @@
   --purple: #a78bff;
   --control-bg: #161a25;
   --control-radius: 9px;
+  --r-sm: 9px;
   --r-md: 12px;
+  --r-lg: 16px;
   --mark-top: #5ec5ff;
   --mark-right: #79d3ff;
   --mark-left: #409dcc;
@@ -91,4 +93,38 @@
   box-shadow: var(--tooltip-shadow, 0 4px 12px #0005);
   pointer-events: auto;
   cursor: default;
+}
+
+/* Projected modal forms cross component scopes and keep a scrolling body above a fixed footer. */
+[data-bml-design-dialog-panel] .modal-form {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  margin: 0;
+}
+[data-bml-design-dialog-panel] .modal-fields {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px;
+  overflow: auto;
+  min-height: 0;
+}
+[data-bml-design-dialog-panel] .modal-footer {
+  box-sizing: border-box;
+  flex: none;
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 18px;
+  border-top: 1px solid var(--line);
+  background: var(--bg-2);
+}
+[data-bml-design-dialog-panel] .modal-fields > label:not(.field) {
+  display: flex;
+  gap: 8px;
+  align-items: center;
 }
