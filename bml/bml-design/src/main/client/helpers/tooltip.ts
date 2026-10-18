@@ -157,4 +157,5 @@ export function attachTooltip(
     restoreTitle();
   });
   readLabel();
+  return readLabel;
 }

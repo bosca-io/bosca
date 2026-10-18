@@ -68,6 +68,8 @@ import provides `<design:button>` with the same runtime identity and assets as `
 | `dialog` | Required `title: String` and `triggerLabel: String`; `subtitle: String = ""`; `size: String = "md"` (`sm`, `md`, `lg`); `triggerIcon: String = ""`; `icon: String = ""`; `primary: Boolean = false`; `triggerIconOnly: Boolean = false`; `triggerDisabled: Boolean = false`; `showTrigger: Boolean = true`; `triggerStyle: String = "button"` (`button`, `block`, `plain`, `link`, `ghost`); `returnFocus: String = ""`; `forceOpen: Boolean = false`; `openRequest: String = ""`; `completed: Boolean = false` | Wrapper div receives additional attributes/classes and contains a native modal dialog. Default children supply the body/form/footer. `ref="cancel"` or `data-dialog-close` on a projected control closes it. Native panel widths are 400/520/760px, constrained to the viewport. |
 | `confirm-dialog` | Required `title: String` and `description: String`; `triggerLabel: String = "Remove"`; `icon: String = "trash"`; `forceOpen: Boolean = false`; `triggerIconOnly: Boolean = true`; `triggerStyle: String = "button"` | Small dialog with description and default action children. Additional attributes/classes reach the dialog wrapper. The application owns confirmation actions and their outcomes. |
 | `popover` | Required `label: String`; `icon: String = ""`; `iconOnly: Boolean = false`; `width: Int = 360` | Native details with a labelled summary and default children in a labelled region. Additional attributes/classes target details. Scripts enhance its content into a viewport-fitted manual popover; without scripts it remains a native disclosure. |
+| `copy` | Required `value: String`; `label: String = "Copy"`; `showStatus: Boolean = true` | Root div receives additional attributes/classes. Its 30×30px native button copies the value, switches decorative icons and reports status. No child content. Visible status reserves 26ch so feedback does not move neighboring content; `showStatus="false"` keeps status accessible with no visible message space. |
+| `copy-field` | Required `value: String` and `label: String`; `copyLabel: String = "Copy value"` | Root div receives additional attributes/classes. A labelled readonly input and compact copy action display a single-line value. No child content. Focus selects the value; denied/unavailable clipboard access selects it and exposes manual-copy guidance. |
 
 Regular controls are 32px high, compact controls 30px, and extra-small buttons 24px. Field labels use
 an 18px line and a 6px control gap. Buttons support the `ghost`, `danger`, `block`, and `icon-only`
@@ -119,6 +121,19 @@ the summary; outside pointer presses dismiss without moving focus. Menu children
 and enabled `role="menuitem"` entries support arrows and Home/End. Resize, scrolling, content-size
 changes and nested island updates reposition the panel. Listeners and ResizeObservers are removed
 when the component unmounts. A nested popover consumes Escape before its containing modal.
+
+Copy feedback changes the accessible button label to `Copied`, announces `Copied.` and resets after
+two seconds. A subsequent click restarts the timeout. A bubbling `copyresult` event carries
+`{ copied: boolean }`; applications can observe it without supplying a transport. Denied or unavailable
+clipboard access reports failure and leaves the value available for manual copying. The copy field
+focuses/selects its native input and hides the guidance after a successful retry. Inputs remain readonly
+and manually selectable with scripts disabled; icon buttons retain native title labels.
+
+`copy` supports arbitrary strings, including newlines; `copy-field` displays a native single-line input.
+The helper follows changed value/label props, including updates to a preserved component root.
+Older overlapping results and results after unmount cannot overwrite current feedback or emit a stale
+event. Timers and tooltip listeners are removed on disposal. Visible status reserves space; quiet status
+preserves an icon-only footprint. Icon visibility uses local hidden-state rules and needs no document reset.
 
 ## Consumer CSS
 
@@ -205,6 +220,9 @@ independently of the footer. These classes do not style unrelated forms elsewher
 | `components/dialog.bml` | `components/ui/dialog.bml` |
 | `components/confirm-dialog.bml` | `components/ui/confirm-dialog.bml` |
 | `components/popover.bml` | `components/ui/popover.bml` |
+| `components/copy.bml` | `components/ui/copy.bml` |
+| `components/copy-field.bml` | `components/ui/copy-field.bml` |
+| `client/helpers/copy.ts` | `src/main/client/copy.ts` |
 | `client/helpers/dialog.ts` | `src/main/client/dialog.ts` |
 | `client/helpers/popover.ts` | `src/main/client/popover.ts` and its component's disclosure behavior from `src/main/client/disclosure.ts` |
 | `client/helpers/tooltip.ts` | `src/main/client/tooltip.ts` |

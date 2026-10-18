@@ -117,3 +117,10 @@ form {
   --fg-1: #1e3a8a;
   --line-2: #2563eb;
 }
+.clipboard-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 16px 0;
+}

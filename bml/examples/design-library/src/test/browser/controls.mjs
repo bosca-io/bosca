@@ -7,6 +7,7 @@ import { join, resolve } from 'node:path';
 import { checkLayout } from './layout-checks.mjs';
 import { checkIconActions } from './icon-action-checks.mjs';
 import { checkOverlays } from './overlay-checks.mjs';
+import { checkClipboard } from './clipboard-checks.mjs';
 
 const base = process.argv[2];
 const mode = process.argv[3] ?? 'fixture';
@@ -235,6 +236,7 @@ try {
   await checkLayout({ call, evaluate, until, base, mode, artifacts });
   await checkIconActions({ call, evaluate, until, base, mode, artifacts });
   await checkOverlays({ call, evaluate, until, base, mode, artifacts });
+  await checkClipboard({ call, evaluate, until, base, mode, artifacts });
   await call('Emulation.setScriptExecutionDisabled', { value: true });
   await call('Page.navigate', { url: base + '/' });
   await until('document.readyState === "complete" && document.querySelector("[data-input=light]")');
@@ -260,6 +262,11 @@ try {
   await evaluate('document.querySelector("[data-menu=light] > summary").click()');
   assert.ok(await evaluate(`(() => { const panel=document.querySelector('[data-menu=light]'); const content=panel.querySelector('[data-bml-ref=content]');
     return panel instanceof HTMLDetailsElement && panel.open && !content.hasAttribute('popover') && content.getBoundingClientRect().height>0 })()`));
+  await call('Page.navigate', { url: base + '/clipboard' });
+  await until('document.readyState === "complete" && document.querySelector("[data-copy-field=light] input")');
+  assert.ok(await evaluate(`(() => { const input=document.querySelector('[data-copy-field=light] input'); input.focus(); input.select();
+    return input.readOnly && input.selectionStart===0 && input.selectionEnd===input.value.length && input.getAttribute('aria-label')==='Token' &&
+      (() => { const button=document.querySelector('[data-copy-standalone=light] button'); return !!button.title && button.title===button.getAttribute('aria-label') })() })()`), 'Native copy labels and manual selection survive scripts-disabled navigation');
   assert.deepEqual(exceptions, []);
   console.log(`Design library browser checks passed (${mode}); screenshots: ${artifacts}`);
 } finally {

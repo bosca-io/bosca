@@ -59,6 +59,13 @@ consumer palettes, escape clipped ancestors, fit desktop/phone/short viewports, 
 updates, and provide menu keyboard navigation. Repeated mounting checks listener and ResizeObserver
 cleanup. With scripts disabled, popovers remain native details disclosures.
 
+The `/clipboard` page checks exact copied values, accessible/icon feedback, stable visible/quiet
+geometry, denied/unavailable clipboard recovery, readonly selection, successful retry, feedback
+timeouts, overlapping results, preserved value/label updates and disposal during an in-flight copy.
+Two themes and desktop/phone layouts use the same library exports. Browser tests stub clipboard
+outcomes to avoid changing the system clipboard; rendering, server actions and lifecycle are real.
+Script-disabled values remain manually selectable.
+
 Chrome defaults to the installed Google Chrome app on macOS or `google-chrome` on Linux. Set
 `BML_DESIGN_CHROME_BINARY` for another executable. Screenshots land in this project's
 `build/reports/browser/`. The fixture is an application and is excluded from aggregate Maven

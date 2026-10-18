@@ -1,0 +1,135 @@
+import assert from 'node:assert/strict';
+import { writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+
+/** Clipboard outcomes are isolated API stubs; DOM, lifecycle, server updates and rendering are real. */
+export async function checkClipboard({ call, evaluate, until, base, mode, artifacts }) {
+  const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+  const standalone='[data-copy-standalone=light]';
+  const retained='[data-copy-retained=light]';
+  const field='[data-copy-field=light]';
+  const button=root=>`${root} [data-bml-ref=copy]`;
+  const label=root=>`document.querySelector(${JSON.stringify(button(root))})?.getAttribute('aria-label')`;
+  const click=selector=>evaluate(`document.querySelector(${JSON.stringify(selector)}).click()`);
+  const listeners=async()=>{
+    const handle=await call('Runtime.evaluate',{expression:'document'});
+    const result=await call('DOMDebugger.getEventListeners',{objectId:handle.result.objectId});
+    await call('Runtime.releaseObject',{objectId:handle.result.objectId});
+    return result.listeners.filter(listener=>['keydown','scroll','resize','bml:update'].includes(listener.type)).length;
+  };
+  await call('Emulation.setDeviceMetricsOverride',{width:1440,height:1000,deviceScaleFactor:1,mobile:false});
+  await call('Page.navigate',{url:base+'/clipboard'});
+  await until(`document.readyState==='complete' && document.querySelector('[data-change-copy=light]')?.dataset.bmlActionBound==='true' && !document.querySelector('${button(standalone)}').hasAttribute('title')`);
+  const baseline=await listeners();
+  await evaluate(`(() => {
+    window.fixtureClipboardWrites=[]; window.fixtureClipboardPending=[]; window.fixtureCopyEvents=[]; window.fixtureClipboardMode='success';
+    window.fixtureCopyEventsController=new AbortController();
+    document.addEventListener('copyresult',event=>window.fixtureCopyEvents.push({copied:event.detail.copied,root:event.target.getAttribute('data-copy-standalone')??event.target.getAttribute('data-copy-retained')??'field'}),{signal:window.fixtureCopyEventsController.signal});
+    window.fixtureClipboard={writeText(value){window.fixtureClipboardWrites.push(value);
+      if(window.fixtureClipboardMode==='denied')return Promise.reject(new DOMException('Clipboard denied','NotAllowedError'));
+      if(window.fixtureClipboardMode==='pending')return new Promise((resolve,reject)=>window.fixtureClipboardPending.push({resolve,reject}));
+      return Promise.resolve();}};
+    Object.defineProperty(navigator,'clipboard',{configurable:true,value:window.fixtureClipboard});
+  })()`);
+  const initial=await evaluate(`(() => { const copy=document.querySelector('${standalone}'); const input=document.querySelector('${field} input');
+    const button=copy.querySelector('button'); const box=button.getBoundingClientRect();
+    return {size:[box.width,box.height],name:button.getAttribute('aria-label'),native:button instanceof HTMLButtonElement && button.type==='button',
+      idle:getComputedStyle(copy.querySelector('[data-bml-ref=idleIcon]')).display,done:getComputedStyle(copy.querySelector('[data-bml-ref=doneIcon]')).display,
+      error:getComputedStyle(document.querySelector('${field} [role=alert]')).display,value:input.value,readonly:input.readOnly,
+      labeled:input.labels.length===1 && input.labels[0].textContent.includes('Token'),attrs:copy.classList.contains('fixture-copy')&&!copy.hasAttribute('value')&&!copy.hasAttribute('label')}; })()`);
+  assert.deepEqual(initial,{size:[30,30],name:'Copy token',native:true,idle:'flex',done:'none',error:'none',value:'Token "alpha" & beta',readonly:true,labeled:true,attrs:true});
+  const footprint=await evaluate(`(() => { const box=document.querySelector('${standalone}').getBoundingClientRect(); return [box.width,box.height] })()`);
+  await click(button(standalone));
+  await until(`${label(standalone)}==='Copied'`);
+  assert.equal(await evaluate('window.fixtureClipboardWrites.at(-1)'),initial.value);
+  assert.deepEqual(await evaluate(`(() => { const box=document.querySelector('${standalone}').getBoundingClientRect(); return [box.width,box.height] })()`),footprint,'Visible feedback reserves its space before copying');
+  assert.equal(await evaluate(`document.querySelector('${standalone} [role=status]').textContent`),'Copied.');
+  assert.deepEqual(await evaluate(`(() => { const root=document.querySelector('${standalone}'); const box=root.querySelector('button').getBoundingClientRect();
+    return [box.width,box.height,getComputedStyle(root.querySelector('[data-bml-ref=idleIcon]')).display,getComputedStyle(root.querySelector('[data-bml-ref=doneIcon]')).display] })()`),[30,30,'none','flex']);
+  assert.equal(await evaluate(`document.querySelector('[data-copy-standalone=purple] button').getAttribute('aria-label')`),'Copy token');
+  await evaluate(`document.querySelector('${button(standalone)}').focus()`);
+  await until(`document.querySelector('${standalone} .bosca-tooltip:popover-open')?.textContent==='Copied'`);
+  await until(`${label(standalone)}==='Copy token' && document.querySelector('${standalone} .bosca-tooltip:popover-open')?.textContent==='Copy token'`);
+  await call('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
+  await call('Input.dispatchKeyEvent',{type:'keyUp',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
+  await evaluate('window.fixtureClipboardMode="denied"');
+  await click(button(field));
+  await until(`!document.querySelector('${field} [role=alert]').hidden`);
+  assert.ok(await evaluate(`(() => { const input=document.querySelector('${field} input'); return document.activeElement===input && input.selectionStart===0 && input.selectionEnd===input.value.length })()`),'Denied access selects the native value for manual copying');
+  assert.equal(await evaluate('window.fixtureCopyEvents.at(-1).copied'),false);
+  assert.equal(await evaluate(`getComputedStyle(document.querySelector('${field} [role=alert]')).display`),'block');
+  assert.match(await evaluate(`document.querySelector('${field} [role=alert]').textContent`),/Select and copy/);
+  assert.equal(await evaluate(`getComputedStyle(document.querySelector('${field} [role=status]')).position`),'absolute');
+  await evaluate('window.fixtureClipboardMode="success"');
+  await click(button(field));
+  await until(`document.querySelector('${field} [role=alert]').hidden && ${label(field)}==='Copied'`);
+  await evaluate('Object.defineProperty(navigator,"clipboard",{configurable:true,value:undefined})');
+  await click(button(field));
+  await until(`!document.querySelector('${field} [role=alert]').hidden && ${label(field)}==='Copy token'`);
+  assert.equal(await evaluate('window.fixtureCopyEvents.at(-1).copied'),false);
+  await evaluate('Object.defineProperty(navigator,"clipboard",{configurable:true,value:window.fixtureClipboard}); window.fixtureClipboardMode="pending"; window.fixtureClipboardPending=[]');
+  const eventsBefore=await evaluate('window.fixtureCopyEvents.length');
+  const neighbor=await evaluate('document.querySelector("[data-copy-neighbor=light]").getBoundingClientRect().left');
+  await click(button(retained));
+  await click(button(retained));
+  assert.equal(await evaluate('window.fixtureClipboardPending.length'),2);
+  await evaluate('window.fixtureClipboardPending[1].resolve()');
+  await until(`${label(retained)}==='Copied'`);
+  await evaluate('window.fixtureClipboardPending[0].reject(new DOMException("Old request denied","NotAllowedError"))');
+  await pause(50);
+  assert.equal(await evaluate(label(retained)),'Copied');
+  assert.equal(await evaluate('window.fixtureCopyEvents.length'),eventsBefore+1,'A stale completion does not overwrite feedback or emit a result');
+  assert.equal(await evaluate('document.querySelector("[data-copy-neighbor=light]").getBoundingClientRect().left'),neighbor,'Quiet icon feedback does not move adjacent content');
+  assert.equal(await evaluate('window.fixtureClipboardWrites.at(-1)'),initial.value+'\nsecond line');
+  await pause(1000);
+  await evaluate('window.fixtureClipboardMode="success"');
+  await click(button(retained));
+  await pause(1200);
+  assert.equal(await evaluate(label(retained)),'Copied','A second click restarts the feedback timeout');
+  await until(`${label(retained)}==='Copy token'`);
+  await evaluate(`window.fixtureRetainedCopy=document.querySelector('${retained}'); window.fixtureClipboardMode='pending'; window.fixtureClipboardPending=[]`);
+  await click(button(retained));
+  await click('[data-change-copy=light]');
+  await until(`${label(retained)}==='Copy updated value' && ${label(standalone)}==='Copy updated value'`);
+  assert.ok(await evaluate(`window.fixtureRetainedCopy===document.querySelector('${retained}')`));
+  const beforeStale=await evaluate('window.fixtureCopyEvents.length');
+  await evaluate('window.fixtureClipboardPending[0].resolve()');
+  await pause(50);
+  assert.equal(await evaluate(label(retained)),'Copy updated value');
+  assert.equal(await evaluate('window.fixtureCopyEvents.length'),beforeStale,'Changing value/label invalidates an in-flight result');
+  await evaluate('window.fixtureClipboardMode="success"');
+  await click(button(retained));
+  await until(`${label(retained)}==='Copied'`);
+  assert.equal(await evaluate('window.fixtureClipboardWrites.at(-1)'),'Updated "value" & text / ?=1\nsecond line');
+  assert.equal(await evaluate(`document.querySelector('${field} input').value`),'Updated "value" & text / ?=1');
+  assert.equal(await evaluate(`document.querySelector('[data-copy-field=purple] input').value`),initial.value);
+  await evaluate(`window.fixtureRemovedCopy=document.querySelector('${retained}'); window.fixtureClipboardMode='pending'; window.fixtureClipboardPending=[]`);
+  await click(button(standalone));
+  await click('[data-toggle-copy=light]');
+  await until(`!document.querySelector('${standalone}')`);
+  const beforeUnmount=await evaluate('window.fixtureCopyEvents.length');
+  await evaluate('window.fixtureClipboardPending[0].resolve()');
+  await pause(2100);
+  assert.equal(await evaluate('window.fixtureCopyEvents.length'),beforeUnmount,'Unmount suppresses pending results');
+  assert.equal(await evaluate('window.fixtureRemovedCopy.querySelector("button").getAttribute("aria-label")'),'Copied','Unmount clears the previous feedback timer');
+  assert.ok(await evaluate('!window.fixtureRemovedCopy.isConnected'));
+  await click('[data-toggle-copy=light]');
+  await until(`document.querySelector('${standalone}') && !document.querySelector('${button(standalone)}').hasAttribute('title')`);
+  assert.equal(await listeners(),baseline,'Repeated mount/update/disposal removes tooltip document listeners');
+  await evaluate('window.fixtureClipboardMode="denied"');
+  await click(button(field));
+  await until(`!document.querySelector('${field} [role=alert]').hidden`);
+  await click(button('[data-copy-field=purple]'));
+  await until("!document.querySelector('[data-copy-field=purple] [role=alert]').hidden");
+  assert.deepEqual(await evaluate(`['light','purple'].map(palette=>getComputedStyle(document.querySelector('[data-copy-field='+palette+'] [role=alert]')).color)`),
+    ['rgb(71, 85, 105)','rgb(150, 156, 177)'],'Manual-copy guidance follows the readable secondary foreground in both themes');
+  for(const width of [1440,390]) {
+    await call('Emulation.setDeviceMetricsOverride',{width,height:1000,deviceScaleFactor:1,mobile:false});
+    assert.ok(await evaluate('document.documentElement.scrollWidth<=innerWidth'),`Clipboard page fits ${width}px`);
+    assert.ok(await evaluate(`(() => { const field=document.querySelector('${field}'); const row=field.querySelector('.copy-field-row').getBoundingClientRect();
+      const input=field.querySelector('input').getBoundingClientRect(); const button=field.querySelector('button').getBoundingClientRect(); return input.left>=row.left && button.right<=row.right && button.width===30 && input.height===30 })()`),'Readonly value and action fit their field');
+    const shot=await call('Page.captureScreenshot',{format:'png'});
+    await writeFile(join(artifacts,`clipboard-${mode}-${width}.png`),Buffer.from(shot.data,'base64'));
+  }
+  await evaluate('window.fixtureCopyEventsController.abort()');
+}
