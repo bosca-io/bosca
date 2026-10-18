@@ -6,7 +6,6 @@ import bosca.db.withConnectionManager
 import bosca.service.annotation.ServiceImplementation
 import bosca.storage.service.ObjectNotFoundException
 import bosca.storage.service.ObjectStorageEntry
-import bosca.storage.service.ObjectStorageInfo
 import bosca.storage.service.ObjectStorageService
 import bosca.storage.service.StorageDispatcher
 import bosca.storage.service.StringObjectPath
@@ -60,11 +59,11 @@ class ObjectBackupCaptureServiceImpl(
             ObjectBackupProgressStatus.RUNNING -> error("Object capture is already running: ${known.key}")
             ObjectBackupProgressStatus.COMPLETED -> {
                 val observed = try {
-                    withContext(StorageDispatcher) { observe(known.payload, destination) }
+                    withContext(StorageDispatcher) { destination.observeBackupPayload(known.payload) }
                 } catch (_: ObjectNotFoundException) {
                     null
                 }
-                if (observed != null && canReuse(known, observed, verifiedSince)) return known
+                if (observed != null && known.canReuseVerification(observed, verifiedSince)) return known
                 val verified = if (observed == null) false else try {
                     withContext(StorageDispatcher) { destination.verifyBackupPayload(known.payload, observed) }
                     true
@@ -93,7 +92,7 @@ class ObjectBackupCaptureServiceImpl(
         return try {
             ObjectBackupTransfer(mapOf(store to source), destination).copyVersion(known.payload, version)
             val objectVersion = withContext(StorageDispatcher) {
-                val observed = observe(known.payload, destination)
+                val observed = destination.observeBackupPayload(known.payload)
                 destination.verifyBackupPayload(known.payload, observed)
                 observed.version
             }
@@ -162,7 +161,7 @@ class ObjectBackupCaptureServiceImpl(
                 }
                 val captured = BackupObject(store, entry.key, version, entry.info.length, sha256, payloadPath)
                 captured.validate()
-                val observed = observe(captured, destination)
+                val observed = destination.observeBackupPayload(captured)
                 destination.verifyBackupPayload(captured, observed)
                 currentCoroutineContext().ensureActive()
                 captured to observed.version
@@ -187,19 +186,6 @@ class ObjectBackupCaptureServiceImpl(
             throw failure
         }
     }
-
-    private suspend fun observe(entry: BackupObject, storage: ObjectStorageService): ObjectStorageInfo {
-        val observed = storage.getObjectInfo(StringObjectPath(entry.payloadPath))
-        return observed.copy(version = observed.version?.takeIf { it.isNotBlank() && it != "null" })
-    }
-
-    private fun canReuse(
-        known: ObjectBackupProgress,
-        observed: ObjectStorageInfo,
-        verifiedSince: OffsetDateTime?,
-    ): Boolean = verifiedSince != null && known.verifiedVersion != null &&
-        known.verified?.isBefore(verifiedSince) == false &&
-        observed.length == known.payload.length && observed.version == known.verifiedVersion
 
     private suspend fun validateCapture(
         store: String,

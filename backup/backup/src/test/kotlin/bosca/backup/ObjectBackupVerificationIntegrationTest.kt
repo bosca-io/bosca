@@ -13,6 +13,7 @@ import bosca.di.annotation.InternalDI
 import bosca.di.provide
 import bosca.di.provides
 import bosca.storage.configuration.StorageConfiguration
+import bosca.storage.service.ObjectNotFoundException
 import bosca.storage.service.ObjectPath
 import bosca.storage.service.ObjectStorageEntry
 import bosca.storage.service.ObjectStorageInfo
@@ -391,6 +392,227 @@ class ObjectBackupVerificationIntegrationTest {
         assertEquals(1, bodies.get())
         assertEquals(0, sourceReads.get())
     }
+
+    @Test
+    fun `tracked manifest publication reuses captured proof without reading asset bodies`(): Unit = runBlocking {
+        val captured = verifiedCapture()
+        resetCounters()
+        publish(captured)
+        assertEquals(1, heads.get())
+        assertEquals(0, bodies.get())
+        assertEquals(0, sourceReads.get())
+        assertEquals(1, writes.get())
+        assertEquals(captured, checkpoint(captured.key))
+        assertEquals(manifest(captured), ObjectBackupManifestStore(target, Json).load(manifestPath))
+    }
+
+    @Test
+    fun `strict and expired publication policies fully check the exact retained version`(): Unit = runBlocking {
+        var captured = verifiedCapture()
+        for (cutoff in listOf(null, checkNotNull(captured.verified).plusSeconds(1))) {
+            resetCounters()
+            publish(captured, cutoff)
+            assertEquals(1, bodies.get())
+            assertEquals(listOf(captured.verifiedVersion), versionReads.toList())
+            assertEquals(0, sourceReads.get())
+            val refreshed = checkpoint(captured.key)
+            assertEquals(captured.version + 1, refreshed.version)
+            assertEquals(captured.attempts, refreshed.attempts)
+            captured = refreshed
+        }
+    }
+
+    @Test
+    fun `publication verifies a changed retained version before refreshing checkpoint proof`(): Unit = runBlocking {
+        val captured = verifiedCapture()
+        target.setInputStream(StringObjectPath(payloadPath), content.inputStream(), content.size.toLong())
+        val replacement = current[payloadPath]
+        resetCounters()
+        publish(captured)
+        assertEquals(1, bodies.get())
+        assertEquals(listOf(replacement), versionReads.toList())
+        assertEquals(replacement, checkpoint(captured.key).verifiedVersion)
+        assertEquals(captured.attempts, checkpoint(captured.key).attempts)
+    }
+
+    @Test
+    fun `publication corruption invalidates completed proof and prevents manifest output`(): Unit = runBlocking {
+        val captured = verifiedCapture()
+        Files.write(checkNotNull(versions[payloadPath to checkNotNull(captured.verifiedVersion)]), ByteArray(content.size) { 1 })
+        resetCounters()
+        assertFailsWith<BackupPayloadMismatchException> { publish(captured, null) }
+        val failed = checkpoint(captured.key)
+        assertEquals(ObjectBackupProgressStatus.FAILED, failed.status)
+        assertNull(failed.verified)
+        assertNull(failed.verifiedVersion)
+        assertEquals(0, writes.get())
+        assertEquals(0, sourceReads.get())
+    }
+
+    @Test
+    fun `publication absence invalidates proof without falling back to the source`(): Unit = runBlocking {
+        val captured = verifiedCapture()
+        current.remove(payloadPath)
+        resetCounters()
+        assertFailsWith<ObjectNotFoundException> { publish(captured) }
+        assertEquals(ObjectBackupProgressStatus.FAILED, checkpoint(captured.key).status)
+        assertEquals(0, writes.get())
+        assertEquals(0, sourceReads.get())
+    }
+
+    @Test
+    fun `publication metadata and read outages preserve proof and prevent manifest output`(): Unit = runBlocking {
+        val captured = verifiedCapture()
+        for (metadata in listOf(true, false)) {
+            headFailure.set(if (metadata) 403 else 0)
+            bodyFailure.set(if (metadata) 0 else 403)
+            resetCounters()
+            assertFailsWith<Exception> { publish(captured, null) }
+            assertEquals(captured, checkpoint(captured.key))
+            assertEquals(0, writes.get())
+        }
+    }
+
+    @Test
+    fun `publication cancellation after metadata prevents output and leaves proof unchanged`(): Unit = runBlocking {
+        val captured = verifiedCapture()
+        val original = target
+        target = object : ObjectStorageService by original {
+            override suspend fun getObjectInfo(path: ObjectPath): ObjectStorageInfo {
+                currentCoroutineContext().cancel(CancellationException("publication cancelled"))
+                return original.getObjectInfo(path)
+            }
+        }
+        resetCounters()
+        val work = async { publish(captured) }
+        assertFailsWith<CancellationException> { work.await() }
+        work.join()
+        assertEquals(captured, checkpoint(captured.key))
+        assertEquals(0, writes.get())
+    }
+
+    @Test
+    fun `publication proof refresh failure prevents manifest output and preserves original error`(): Unit = runBlocking {
+        val captured = verifiedCapture()
+        val failure = IOException("publication proof failed")
+        val original = provide<ObjectBackupProgressService>()
+        val progress = object : ObjectBackupProgressService by original {
+            override suspend fun recordVerification(
+                key: String,
+                expectedVersion: Long,
+                objectVersion: String?,
+            ): ObjectBackupProgress = throw failure
+        }
+        resetCounters()
+        val observed = assertFailsWith<IOException> { publish(captured, null, progress) }
+        assertTrue(generateSequence<Throwable>(observed) { it.cause }.any { it === failure })
+        assertEquals(captured, checkpoint(captured.key))
+        assertEquals(0, writes.get())
+    }
+
+    @Test
+    fun `shared payload publication verifies once and refreshes every revision needing proof`(): Unit = runBlocking {
+        val captured = verifiedCapture()
+        val other = withConnectionManager {
+            val progress = provide<ObjectBackupProgressService>()
+            val pending = progress.prepare(
+                ObjectBackupOperation.BACKUP, "source-instance", "retained-store", "content",
+                captured.payload.copy(store = "artifacts", key = "other"),
+            )
+            val running = progress.start(pending.key, pending.version)
+            progress.complete(running.key, running.version)
+        }
+        val selected = manifest(captured).copy(objects = listOf(captured.payload, other.payload))
+        resetCounters()
+        ObjectBackupManifestStore(target, Json).saveTracked(
+            manifestPath, selected, "retained-store", provide(), checkNotNull(captured.verified).minusSeconds(1),
+        )
+        assertEquals(1, heads.get())
+        assertEquals(1, bodies.get())
+        assertEquals(captured.verifiedVersion, checkpoint(other.key).verifiedVersion)
+        assertNotNull(checkpoint(other.key).verified)
+        assertEquals(selected, ObjectBackupManifestStore(target, Json).load(manifestPath))
+    }
+
+    @Test
+    fun `publication keeps valid proof when manifest write fails or reports incomplete output`(): Unit = runBlocking {
+        val captured = verifiedCapture()
+        val original = target
+        for (incomplete in listOf(false, true)) {
+            target = object : ObjectStorageService by original {
+                override suspend fun setInputStream(path: ObjectPath, stream: InputStream, length: Long?): Long {
+                    if (incomplete) return 0
+                    throw IOException("manifest unavailable")
+                }
+            }
+            assertFailsWith<Exception> { publish(captured) }
+            assertEquals(captured, checkpoint(captured.key))
+        }
+    }
+
+    @Test
+    fun `publication cannot use a checkpoint invalidated during retained metadata I O`(): Unit = runBlocking {
+        val captured = verifiedCapture()
+        val original = target
+        target = object : ObjectStorageService by original {
+            override suspend fun getObjectInfo(path: ObjectPath): ObjectStorageInfo {
+                val info = original.getObjectInfo(path)
+                withConnectionManager {
+                    provide<ObjectBackupProgressService>().invalidate(captured.key, captured.version, "stopped")
+                }
+                return info
+            }
+        }
+        resetCounters()
+        assertFailsWith<IllegalStateException> { publish(captured) }
+        assertEquals(0, writes.get())
+        assertEquals(ObjectBackupProgressStatus.FAILED, checkpoint(captured.key).status)
+    }
+
+    @Test
+    fun `publication preserves original absence when invalidation bookkeeping fails`(): Unit = runBlocking {
+        val captured = verifiedCapture()
+        current.remove(payloadPath)
+        val failure = IOException("invalidation unavailable")
+        val original = provide<ObjectBackupProgressService>()
+        val progress = object : ObjectBackupProgressService by original {
+            override suspend fun invalidate(key: String, expectedVersion: Long, error: String): ObjectBackupProgress =
+                throw failure
+        }
+        resetCounters()
+        val observed = assertFailsWith<ObjectNotFoundException> { publish(captured, null, progress) }
+        assertTrue(generateSequence<Throwable>(observed) { it.cause }.flatMap { it.suppressed.asSequence() }.any {
+            generateSequence(it) { it.cause }.any { cause -> cause === failure }
+        })
+        assertEquals(captured, checkpoint(captured.key))
+        assertEquals(0, writes.get())
+    }
+
+    @Test
+    fun `publication without retained version IDs performs full reads and clears unsupported proof`(): Unit = runBlocking {
+        val captured = verifiedCapture()
+        exposeVersion.set(false)
+        resetCounters()
+        repeat(2) { publish(captured) }
+        assertEquals(2, bodies.get())
+        assertTrue(versionReads.isEmpty())
+        assertNull(checkpoint(captured.key).verifiedVersion)
+        assertNull(checkpoint(captured.key).verified)
+    }
+
+    private val manifestPath = StringObjectPath("manifests/captured.json")
+
+    private fun manifest(progress: ObjectBackupProgress) = ObjectBackupManifest(
+        "captured", "source-instance", "content", "2026-10-17T00:00:00Z", listOf(progress.payload),
+    )
+
+    private suspend fun publish(
+        captured: ObjectBackupProgress,
+        cutoff: OffsetDateTime? = checkNotNull(captured.verified).minusSeconds(1),
+        progress: ObjectBackupProgressService? = null,
+    ) = ObjectBackupManifestStore(target, Json).saveTracked(
+        manifestPath, manifest(captured), "retained-store", progress ?: provide(), cutoff,
+    )
 
     private suspend fun capture(cutoff: OffsetDateTime? = null) = service.captureTracked(
         "source-instance", "retained-store", "content", "content", selected, source, target, payloadPath, cutoff,

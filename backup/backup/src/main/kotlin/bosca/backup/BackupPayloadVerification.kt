@@ -5,6 +5,21 @@ import bosca.storage.service.ObjectStorageInfo
 import bosca.storage.service.ObjectStorageService
 import bosca.storage.service.StringObjectPath
 import kotlinx.coroutines.currentCoroutineContext
+import java.time.OffsetDateTime
+
+/** Reads the current retained identity without treating mutable version sentinels as proof. */
+internal suspend fun ObjectStorageService.observeBackupPayload(entry: BackupObject): ObjectStorageInfo {
+    val observed = getObjectInfo(StringObjectPath(entry.payloadPath))
+    return observed.copy(version = observed.version?.takeIf { it.isNotBlank() && it != "null" })
+}
+
+/** Metadata-only checks preserve the age of the exact-version checksum verification. */
+internal fun ObjectBackupProgress.canReuseVerification(
+    observed: ObjectStorageInfo,
+    verifiedSince: OffsetDateTime?,
+): Boolean = verifiedSince != null && verifiedVersion != null &&
+    verified?.isBefore(verifiedSince) == false &&
+    observed.length == payload.length && observed.version == verifiedVersion
 
 /** Distinguishes missing or mismatching output from storage failures that must stop a transfer. */
 internal suspend fun ObjectStorageService.hasVerifiedBackupPayload(entry: BackupObject): Boolean = try {

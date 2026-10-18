@@ -1,12 +1,19 @@
 package bosca.backup
 
+import bosca.db.connectionOrNull
+import bosca.db.transaction
+import bosca.db.withConnectionManager
+import bosca.storage.service.ObjectNotFoundException
 import bosca.storage.service.ObjectPath
 import bosca.storage.service.ObjectStorageService
+import bosca.storage.service.StorageDispatcher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
+import java.time.OffsetDateTime
 
 /**
  * Reads and publishes object inventories in a selected backup destination.
@@ -17,8 +24,62 @@ class ObjectBackupManifestStore(
     private val storage: ObjectStorageService,
     private val json: Json,
 ) {
+    /**
+     * Publishes using matching completed backup checkpoints in [progressService].
+     *
+     * [destinationId] must address this storage. [verifiedSince] permits metadata-only reuse
+     * of recent exact-version checksum proof; null forces full verification. Stores without
+     * provider versions always require full reads. Metadata-only checks never extend proof age.
+     * Requires independent immutable storage, exclusive writers and no active transaction.
+     * Missing/corrupt output invalidates its completed proof and prevents publication; other
+     * storage failures and cancellation propagate without invalidating prior evidence.
+     */
+    suspend fun saveTracked(
+        path: ObjectPath,
+        manifest: ObjectBackupManifest,
+        destinationId: String,
+        progressService: ObjectBackupProgressService,
+        verifiedSince: OffsetDateTime?,
+    ): Unit = withContext(StorageDispatcher) {
+        check(connectionOrNull()?.inTransaction != true) {
+            "Tracked manifest publication must run outside an active database transaction"
+        }
+        require(destinationId.isNotBlank()) { "Object backup destination identity is required" }
+        val inventory = validatedInventory(path, manifest)
+        val checkpoints = withConnectionManager {
+            inventory.objects.map { entry ->
+                val checkpoint = checkNotNull(progressService.get(
+                    ObjectBackupOperation.BACKUP, inventory.sourceId, destinationId, inventory.scope, entry,
+                )) { "Completed capture checkpoint is missing: ${entry.store}/${entry.key}@${entry.revision}" }
+                check(checkpoint.status == ObjectBackupProgressStatus.COMPLETED) {
+                    "Capture checkpoint is not completed: ${checkpoint.key}"
+                }
+                checkpoint
+            }
+        }
+        val verified = mutableListOf<ObjectBackupProgress>()
+        for (shared in checkpoints.groupBy { it.payload.payloadPath }.values) {
+            currentCoroutineContext().ensureActive()
+            verified += verifyTrackedPayload(shared, progressService, verifiedSince)
+        }
+        withConnectionManager {
+            for (checkpoint in verified) {
+                check(progressService.get(checkpoint.key) == checkpoint) {
+                    "Capture checkpoint changed before manifest publication: ${checkpoint.key}"
+                }
+            }
+        }
+        write(path, inventory)
+    }
+
     /** Verifies all referenced payloads before writing the manifest to [path]. */
     suspend fun save(path: ObjectPath, manifest: ObjectBackupManifest): Unit = withContext(Dispatchers.IO) {
+        val inventory = validatedInventory(path, manifest)
+        verifyPayloads(inventory)
+        write(path, inventory)
+    }
+
+    private fun validatedInventory(path: ObjectPath, manifest: ObjectBackupManifest): ObjectBackupManifest {
         val inventory = manifest.copy(objects = manifest.objects.toList())
         inventory.validate()
 
@@ -34,7 +95,10 @@ class ObjectBackupManifestStore(
             "Manifest path conflicts with a payload: $key"
         }
 
-        verifyPayloads(inventory)
+        return inventory
+    }
+
+    private suspend fun write(path: ObjectPath, inventory: ObjectBackupManifest) {
         currentCoroutineContext().ensureActive()
 
         val bytes = json.encodeToString(ObjectBackupManifest.serializer(), inventory).toByteArray()
@@ -63,6 +127,56 @@ class ObjectBackupManifestStore(
         val inventory = manifest.copy(objects = manifest.objects.toList())
         inventory.validate()
         verifyPayloads(inventory)
+    }
+
+    private suspend fun verifyTrackedPayload(
+        shared: List<ObjectBackupProgress>,
+        progressService: ObjectBackupProgressService,
+        verifiedSince: OffsetDateTime?,
+    ): List<ObjectBackupProgress> {
+        val payload = shared.first().payload
+        val observed = try {
+            val info = storage.observeBackupPayload(payload)
+            if (shared.all { it.canReuseVerification(info, verifiedSince) }) return shared
+            storage.verifyBackupPayload(payload, info)
+            info
+        } catch (failure: ObjectNotFoundException) {
+            invalidate(shared, progressService, failure)
+        } catch (failure: BackupPayloadMismatchException) {
+            invalidate(shared, progressService, failure)
+        }
+        return withConnectionManager {
+            transaction {
+                shared.map { checkpoint ->
+                    if (observed.version == null && checkpoint.verifiedVersion == null) checkpoint
+                    else progressService.recordVerification(checkpoint.key, checkpoint.version, observed.version)
+                }
+            }
+        }
+    }
+
+    private suspend fun invalidate(
+        shared: List<ObjectBackupProgress>,
+        progressService: ObjectBackupProgressService,
+        failure: Exception,
+    ): Nothing {
+        try {
+            withContext(NonCancellable) {
+                withConnectionManager {
+                    transaction {
+                        for (checkpoint in shared) {
+                            progressService.invalidate(
+                                checkpoint.key, checkpoint.version,
+                                "Captured payload is missing or does not match its recorded length or digest",
+                            )
+                        }
+                    }
+                }
+            }
+        } catch (recordingFailure: Exception) {
+            if (recordingFailure !== failure) failure.addSuppressed(recordingFailure)
+        }
+        throw failure
     }
 
     private suspend fun verifyPayloads(manifest: ObjectBackupManifest) {
