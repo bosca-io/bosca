@@ -95,9 +95,8 @@ class BmlCompilerPluginTest {
               <script server>import example.design.ButtonModel</script>
               <prop name="model" type="ButtonModel"/>
               <prop name="disabled" type="Boolean" default="false"/>
-              <script server provides="attrs">props.filterKeys { it !in setOf("model", "disabled", "__bmlAttrs") }</script>
               <style scoped>button { color: red; }</style>
-              <html:button :disabled="disabled" {...attrs}>{ model.label }<slot/></html:button>
+              <html:button class="library" :disabled="disabled" {...attrs}>{ model.label }<slot/></html:button>
             </component>
         """.trimIndent()
         File(sourceRoot, "button.bml").writeText(source)
@@ -160,7 +159,7 @@ class BmlCompilerPluginTest {
                 <import library="example:design" as="ui"/>
                 <page route="/">
                   <script server provides="model">example.design.ButtonModel("Save")</script>
-                  <button :model="model" disabled="false" data-note="shared"> now</button>
+                  <button :model="model" disabled="false" class="consumer" data-note="shared"> now</button>
                   <ui:button :model="model"> again</ui:button>
                   <html:button>Native</html:button>
                 </page>
@@ -182,6 +181,8 @@ class BmlCompilerPluginTest {
             assertTrue("Save again</button>" in context.toString(), context.toString())
             assertTrue("<button>Native</button>" in context.toString(), context.toString())
             assertTrue("data-note=\"shared\"" in context.toString(), context.toString())
+            assertTrue("class=\"library consumer\"" in context.toString(), context.toString())
+            assertFalse(" model=" in context.toString(), context.toString())
             assertFalse(" disabled" in context.toString(), context.toString())
         }
         val validConsumer = consumerSource.readText()

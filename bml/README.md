@@ -9,6 +9,8 @@ server-rendered pages, interactive islands, reusable components, and email or pu
 - [Islands, deferred rendering, and shared caching](docs/islands.md)
 - [Compiled library providers and host bindings](docs/library-providers.md)
 - [Compiled library localization](docs/library-localization.md)
+- [Design library components](bml-design/README.md)
+- [Design library consumer example](examples/design-library/README.md)
 - [Examples](docs/examples/README.md)
 - [Performance benchmarks](docs/benchmarks.md)
 

@@ -1,0 +1,23 @@
+<component tag="preferences">
+  <prop name="id" type="String" required />
+  <prop name="title" type="String" required />
+  <script server provides="preferences" scope="server-session">bosca.design.example.Preferences(id)</script>
+  <card :title="title">
+    <island name="preferences" :key="id">
+      <form @submit="preferences.save(form.displayName)" :data-form="preferences.id">
+        <field label="Display name" hint="Shown beside your activity">
+          <input name="displayName" :value="preferences.savedName" class="display-name" required autocomplete="name" :data-input="preferences.id" />
+        </field>
+        <div class="actions">
+          <button type="submit" primary icon="save" :data-save="preferences.id">Save</button>
+          <button @click="preferences.increment" :data-increment="preferences.id">Count { preferences.clicks }</button>
+          <button size="sm" :data-compact="preferences.id">Compact</button>
+          <button size="xs" :data-small="preferences.id">Small</button>
+          <button disabled @click="preferences.increment" :data-disabled="preferences.id">Disabled</button>
+          <button loading :data-loading="preferences.id">Loading</button>
+        </div>
+      </form>
+      <p :data-result="preferences.id">Saved { preferences.savedName } ({ preferences.saves })</p>
+    </island>
+  </card>
+</component>

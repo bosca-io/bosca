@@ -1,0 +1,22 @@
+<page route="/">
+  <html lang="en">
+    <head>
+      <meta charset="utf-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1" />
+      <title>Design library</title>
+    </head>
+    <body>
+      <page-shell class="fixture-shell" data-shell="example">
+        <h1>Design library</h1>
+        <div class="themes">
+          <div class="light" data-palette="light"><preferences id="light" title="Light preferences" /></div>
+          <div class="purple" data-palette="purple"><preferences id="purple" title="Dark preferences" /></div>
+        </div>
+        <html:section class="native" aria-label="Native elements">
+          <html:button id="native-button" type="button">Native button</html:button>
+          <html:input id="native-input" aria-label="Native input" />
+        </html:section>
+      </page-shell>
+    </body>
+  </html>
+</page>

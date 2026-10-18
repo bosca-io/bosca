@@ -1,0 +1,7 @@
+<import library="io.bosca:bml-design" as="design" />
+<page route="/aliases">
+  <html><head><title>Aliases</title></head><body>
+    <card title="Unprefixed"><button data-alias="plain">Save</button></card>
+    <design:card title="Aliased"><design:button data-alias="qualified">Save</design:button></design:card>
+  </body></html>
+</page>

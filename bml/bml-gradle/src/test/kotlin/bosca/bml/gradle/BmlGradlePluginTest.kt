@@ -38,7 +38,7 @@ class BmlGradlePluginTest {
     }
 
     @Test
-    fun `incremental compilation is disabled only for in-process main compilation`() {
+    fun `BML main compilation is complete under every execution strategy while tests retain incremental compilation`() {
         fun compileTasks(strategy: String?): Pair<Boolean, Boolean> {
             val project = ProjectBuilder.builder().build()
             strategy?.let { project.extensions.extraProperties["kotlin.compiler.execution.strategy"] = it }
@@ -48,9 +48,9 @@ class BmlGradlePluginTest {
             val tests = project.tasks.named("compileTestKotlin", org.jetbrains.kotlin.gradle.tasks.KotlinCompile::class.java).get()
             return main.incremental to tests.incremental
         }
-        assertEquals(true to true, compileTasks(null), "The default daemon strategy runs the BML plugin incrementally")
-        assertEquals(true to true, compileTasks("daemon"))
-        assertEquals(false to true, compileTasks("in-process"), "In-process IC skips the BML plugin; tests have no BML sources")
+        assertEquals(false to true, compileTasks(null))
+        assertEquals(false to true, compileTasks("daemon"))
+        assertEquals(false to true, compileTasks("in-process"))
     }
 
     @Test

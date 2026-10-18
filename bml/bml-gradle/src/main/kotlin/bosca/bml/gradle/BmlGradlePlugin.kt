@@ -74,11 +74,10 @@ class BmlGradlePlugin : KotlinCompilerPluginSupportPlugin {
             // up-to-date / cache-restorable and the change silently doesn't take effect. Declare the `.bml`
             // dir as a content-tracked input so editing a `.bml` correctly invalidates the compilation.
             target.tasks.named("compileKotlin", org.jetbrains.kotlin.gradle.tasks.KotlinCompile::class.java).configure { task ->
-                // In-process incremental compilation never invokes the BML compiler plugin, so it would
-                // silently produce no pages. Daemon compilation runs it, incrementally or not.
-                if (task.compilerExecutionStrategy.get() == org.jetbrains.kotlin.gradle.tasks.KotlinCompilerExecutionStrategy.IN_PROCESS) {
-                    task.incremental = false
-                }
+                // BML contributes complete synthetic source files after Kotlin's incremental source
+                // selection. Compile the whole module so BML-only inputs cannot silently disappear.
+                // Gradle's input snapshots still skip unchanged compilations.
+                task.incremental = false
                 task.inputs.dir(ext.sourceDir)
                     .withPropertyName("bmlSources")
                     .withPathSensitivity(org.gradle.api.tasks.PathSensitivity.RELATIVE)

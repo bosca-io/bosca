@@ -1,0 +1,18 @@
+/* Consumer CSS loads after these defaults. Document layout belongs to the application. */
+:where(:root) {
+  --bg-1: #10131c;
+  --bg-2: #161a25;
+  --bg-3: #1d2230;
+  --line: #232839;
+  --line-2: #2e3447;
+  --fg-0: #f3f5fb;
+  --fg-1: #cdd2e2;
+  --fg-2: #969cb1;
+  --fg-3: #6c7388;
+  --accent: #64748b;
+  --err: #ff5470;
+  --control-bg: #161a25;
+  --control-radius: 9px;
+  --font-sans: "Geist", "Inter", -apple-system, system-ui, sans-serif;
+  --font-mono: "Geist Mono", "JetBrains Mono", ui-monospace, monospace;
+}

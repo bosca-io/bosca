@@ -96,6 +96,7 @@ class BmlCodeGenerator(
     private var libraryIdentity: String? = null
     private var clientAssetObject: String? = null
     private var providerRegistryObject: String? = null
+    private var componentAttrsInScope = false
 
     /** Exposes the generated application's ordinary Bosca DI registrars to its server host. */
     fun withLibraryProviders(objectName: String): BmlCodeGenerator {
@@ -2144,6 +2145,12 @@ class BmlCodeGenerator(
         line("@Suppress(\"UNCHECKED_CAST\", \"UNUSED_PARAMETER\", \"UNUSED_VARIABLE\")")
         line("override suspend fun render(ctx: RenderContext, props: Map<String, Any?>, slot: suspend () -> Unit) {")
         indent++
+        // Outside the authored render scope: an explicit prop or server binding can shadow attrs.
+        // Only components that forward attributes need to construct this map.
+        if (usesAttrsSpread(body)) {
+            val consumed = (props.map { it.name } + FALLTHROUGH_KEY).joinToString(", ", transform = ::kstr)
+            line("val attrs = props.filterKeys { it !in setOf($consumed) }")
+        }
         // Self-install the ambient context (no-op under a page render, which already did) so
         // sliver re-renders and custom hosts get ambient helpers without remembering to wrap.
         line("bosca.bml.render.withRenderContext(ctx) {")
@@ -2167,6 +2174,8 @@ class BmlCodeGenerator(
         val previousRoots = fallthroughRoots
         val previousClientComponent = currentClientComponentTag
         val previousIslandOwner = currentIslandOwnerComponentTag
+        val previousAttrsInScope = componentAttrsInScope
+        componentAttrsInScope = true
         if (isScopedComponent) currentScope = runtimeId
         // The component's first top-level element is its root: it re-emits any attributes the instantiation
         // forwards (e.g. a `@click` on `<button>` falls through onto the `<html:button>` here).
@@ -2177,6 +2186,7 @@ class BmlCodeGenerator(
             diagnostics.add(Diagnostic(Severity.Error, "component <$tag> has scoped client code but no element root to mount", decl.span))
         }
         emitChildren(body)
+        componentAttrsInScope = previousAttrsInScope
         for (state in liveStates.values.filter { it.siteScoped }) {
             val keyExpr = stateKeyExprs.getValue(state.name)
             if (state.serverScoped) {
@@ -2306,16 +2316,36 @@ class BmlCodeGenerator(
         // component) — and/or markers forwarded to it when this call is the enclosing component's own root —
         // ride a reserved prop the component re-emits onto its root element. No wrapper, no DOM noise.
         fallthroughEntry(el)?.let { entries.add(it) }
-        val mapArgs = entries.joinToString(", ")
+        val map = componentAttributeMap(el, entries)
         if (el.children.isEmpty()) {
-            line("$obj.render(ctx, mapOf($mapArgs)) {}")
+            line("$obj.render(ctx, $map) {}")
         } else {
-            line("$obj.render(ctx, mapOf($mapArgs)) {")
+            line("$obj.render(ctx, $map) {")
             indent++
             emitChildren(el.children)
             indent--
             currentSourceLine = el.span.startLine
             line("}")
+        }
+    }
+
+    private fun componentAttributeMap(el: ElementNode, entries: List<String>): String {
+        val explicit = "mapOf<String, Any?>(${entries.joinToString(", ")})"
+        val spreads = el.attributes.filterIsInstance<SpreadAttribute>()
+        if (spreads.isEmpty()) return "mapOf(${entries.joinToString(", ")})"
+        val forwarded = spreads.map { "(${it.expression})" }.reduce { left, right ->
+            "bosca.bml.render.mergeAttributes($left, $right)"
+        }
+        return "bosca.bml.render.mergeAttributes($forwarded, $explicit)"
+    }
+
+    private fun usesAttrsSpread(nodes: List<Node>): Boolean = nodes.any { node ->
+        when (node) {
+            is ElementNode -> node.attributes.any { it is SpreadAttribute && it.expression.trim() == "attrs" } ||
+                usesAttrsSpread(node.children)
+            is ForNode -> usesAttrsSpread(node.children)
+            is IfNode -> node.branches.any { usesAttrsSpread(it.children) } || usesAttrsSpread(node.elseChildren.orEmpty())
+            else -> false
         }
     }
 
@@ -2399,7 +2429,7 @@ class BmlCodeGenerator(
             }
         }
         is BoundAttribute -> "${kstr(attr.name)} to (${attr.expression})"
-        is SpreadAttribute -> null // spread onto a component is a follow-on
+        is SpreadAttribute -> null // Combined with explicit props by componentAttributeMap.
         is EventAttribute -> null // @click on a component instantiation is not a prop (v1: events are page-level)
     }
 
@@ -3190,25 +3220,45 @@ class BmlCodeGenerator(
                 pending.setLength(0)
             }
         }
-        for (attr in el.attributes) {
-            when (attr) {
-                is StaticAttribute -> {
-                    val emittedName = if (attr.name == "ref") "data-bml-ref" else attr.name
-                    val value = attr.value
-                    when {
-                        value == null -> pending.append(" $emittedName")                               // boolean
-                        value.all { it is AttrText } ->                                                // static literal
-                            pending.append(" $emittedName=\"${value.joinToString("") { (it as AttrText).value }}\"")
-                        else -> { flush(); line("w.attr(${kstr(emittedName)}, ${attrConcatExpr(value)})") } // interpolated
+        // attrs forwarding is opt-in at its actual native target. Merge before streaming so each
+        // attribute is emitted once, explicit false/null can suppress a forwarded value, and class
+        // composition does not depend on spread placement.
+        if (componentAttrsInScope && el.attributes.any { it is SpreadAttribute && it.expression.trim() == "attrs" }) {
+            flush()
+            val entries = el.attributes.mapNotNull { attribute ->
+                val decoded = if (attribute is StaticAttribute) attribute.copy(
+                    value = attribute.value?.map { part ->
+                        if (part is AttrText) part.copy(value = decodeEntities(part.value)) else part
+                    },
+                ) else attribute
+                propEntry(decoded)
+            }
+            val map = componentAttributeMap(el, entries)
+            line("w.spread($map.mapKeys { (name, _) -> if (name == \"ref\") \"data-bml-ref\" else name })")
+            el.attributes.filterIsInstance<EventAttribute>().forEach { attr ->
+                actionMarkersExpr(attr)?.let { line("w.markup($it)") }
+            }
+        } else {
+            for (attr in el.attributes) {
+                when (attr) {
+                    is StaticAttribute -> {
+                        val emittedName = if (attr.name == "ref") "data-bml-ref" else attr.name
+                        val value = attr.value
+                        when {
+                            value == null -> pending.append(" $emittedName")                               // boolean
+                            value.all { it is AttrText } ->                                                // static literal
+                                pending.append(" $emittedName=\"${value.joinToString("") { (it as AttrText).value }}\"")
+                            else -> { flush(); line("w.attr(${kstr(emittedName)}, ${attrConcatExpr(value)})") } // interpolated
+                        }
                     }
+                    is BoundAttribute -> {
+                        val emittedName = if (attr.name == "ref") "data-bml-ref" else attr.name
+                        flush()
+                        line("w.attr(${kstr(emittedName)}, (${attr.expression}))")
+                    }
+                    is SpreadAttribute -> { flush(); line("w.spread((${attr.expression}))") }
+                    is EventAttribute -> actionMarkersExpr(attr)?.let { flush(); line("w.markup($it)") }
                 }
-                is BoundAttribute -> {
-                    val emittedName = if (attr.name == "ref") "data-bml-ref" else attr.name
-                    flush()
-                    line("w.attr(${kstr(emittedName)}, (${attr.expression}))")
-                }
-                is SpreadAttribute -> { flush(); line("w.spread((${attr.expression}))") }
-                is EventAttribute -> actionMarkersExpr(attr)?.let { flush(); line("w.markup($it)") }
             }
         }
         // A component's root element re-emits any attributes the instantiation forwarded (fall-through), so a

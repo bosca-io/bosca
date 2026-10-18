@@ -1,0 +1,38 @@
+<component tag="field">
+  <prop name="label" type="String" required />
+  <prop name="hint" type="String" default="" />
+  <prop name="hideLabel" type="Boolean" default="false" />
+  <label class="field">
+    <span :class='if (hideLabel) "visually-hidden" else null'>{ label }</span>
+    <slot />
+    <if hint.isNotBlank()>
+      <small>{ hint }</small>
+    </if>
+  </label>
+  <style scoped>
+    .field > span {
+      font-weight: 550;
+      line-height: 18px;
+    }
+    .visually-hidden {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
+    .field small {
+      color: inherit;
+    }
+    .field {
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--fg-2);
+      min-width: 0;
+    }
+  </style>
+</component>
