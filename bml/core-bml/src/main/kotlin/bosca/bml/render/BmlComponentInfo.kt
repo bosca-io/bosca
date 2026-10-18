@@ -7,8 +7,9 @@ package bosca.bml.render
  *   - expand a page's directly-referenced components to the transitive set actually rendered, via the
  *     [deps] edges, so only those component chunks are linked ("included based on what's rendered").
  *
- * [scope] is the component's scope id (== [tag]) when it has `<style scoped>`, else null. [clientModule]
- * names the component's own client bundle once components can carry islands (not yet emitted).
+ * [tag] is the runtime identity: an application's local tag or a library's coordinate-qualified id,
+ * independent of its import alias. [scope] equals [tag] when it has `<style scoped>`, else null.
+ * [clientModule] names the component's own client bundle.
  */
 data class BmlComponentInfo(
     val tag: String,

@@ -227,10 +227,14 @@ class BmlGradlePlugin : KotlinCompilerPluginSupportPlugin {
                     target.tasks.withType(org.gradle.api.publish.maven.tasks.AbstractPublishToMaven::class.java)
                         .matching { it.publication == publication }.configureEach { task ->
                             task.dependsOn(validatePublication)
-                            val actualCoordinates = "${publication.groupId}:${publication.artifactId}:${publication.version}"
+                            val actualCoordinates = target.provider {
+                                "${publication.groupId}:${publication.artifactId}:${publication.version}"
+                            }
+                            task.inputs.property("bmlPublicationCoordinates", actualCoordinates)
                             task.doFirst {
-                                require(actualCoordinates == expectedCoordinates) {
-                                    "BML publication coordinates must match $expectedCoordinates from the compiled library manifest (got $actualCoordinates)"
+                                val coordinates = actualCoordinates.get()
+                                require(coordinates == expectedCoordinates) {
+                                    "BML publication coordinates must match $expectedCoordinates from the compiled library manifest (got $coordinates)"
                                 }
                             }
                         }

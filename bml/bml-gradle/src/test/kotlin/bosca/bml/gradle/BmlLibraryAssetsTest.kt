@@ -16,6 +16,9 @@ import kotlin.test.assertTrue
 
 /** Publishes actual compiled BML/CSS/TypeScript, then uses the archive after removing its producer. */
 class BmlLibraryAssetsTest {
+    private val libraryScope = "bml-6578616d706c653a64657369676e"
+    private val buttonId = "$libraryScope-button"
+    private val fieldId = "$libraryScope-field"
     @Test
     fun `published browser assets retain inline and file dependencies without producer sources`() {
         val work = createTempDirectory("bml-library-assets").toFile()
@@ -107,12 +110,12 @@ class BmlLibraryAssetsTest {
                 assertTrue((initial["globalStyles"] as List<*>).containsAll(listOf("styles/tokens.css", "client/tokens.css")))
                 val manifest = text(jar, "META-INF/bml/library-manifest.json")
                 assertTrue("#123456" in manifest && "/_bml/libraries/" in manifest, manifest)
-                assertTrue(".theme[data-bml-c=\\\"button\\\"]" in manifest, manifest)
+                assertTrue(".theme[data-bml-c=\\\"$buttonId\\\"]" in manifest, manifest)
                 val css = ((JsonSlurper().parseText(manifest) as Map<*, *>)["components"] as List<*>)
                     .map { (it as Map<*, *>)["styles"] as String }.joinToString("\n")
                 assertTrue("@media (min-width: 600px) {" in css && "@font-face {" in css, css)
-                assertTrue(".responsive[data-bml-c=\"button\"]" in css && ".workspace[data-bml-c=\"button\"]" in css, css)
-                assertTrue(".embedded[data-bml-c=\"button\"]" in css, css)
+                assertTrue(".responsive[data-bml-c=\"$buttonId\"]" in css && ".workspace[data-bml-c=\"$buttonId\"]" in css, css)
+                assertTrue(".embedded[data-bml-c=\"$buttonId\"]" in css, css)
                 assertFalse("@font-face[" in css || "600px)[" in css, css)
                 assertFalse(".disabled-server-style" in css, css)
                 assertFalse(jar.entries().asSequence().any { it.name.startsWith("bml/public/") })
@@ -199,7 +202,7 @@ class BmlLibraryAssetsTest {
                 await bundleIslands({entryPoints:[new URL('./modules/ControlsButtonPage.js', import.meta.url).pathname], outdir:new URL('./out', import.meta.url).pathname, runtime:new URL('./runtime.ts', import.meta.url).pathname});
                 const js = readFileSync(new URL('./out/ControlsButtonPage.js', import.meta.url), 'utf8');
                 new Function(js)();
-                if (globalThis.tag !== 'button' || globalThis.label !== 'published-changed-workspace-changed-data') throw new Error('Published client behavior was lost');
+                if (globalThis.tag !== '$buttonId' || globalThis.label !== 'published-changed-workspace-changed-data') throw new Error('Published client behavior was lost');
             """.trimIndent()) }
             val process = ProcessBuilder("node", verify.absolutePath).directory(consumer).redirectErrorStream(true).start()
             val output = process.inputStream.bufferedReader().readText()
@@ -476,8 +479,8 @@ class BmlLibraryAssetsTest {
                     import { readFileSync } from 'node:fs';
                     await bundleIslands({entryPoints:[new URL('./entry.ts', import.meta.url).pathname], outdir:new URL('./out', import.meta.url).pathname, runtime:new URL('./runtime.ts', import.meta.url).pathname});
                     new Function(readFileSync(new URL('./out/entry.js', import.meta.url), 'utf8'))();
-                    if (globalThis.labels.button !== '$token/$theme') throw new Error(globalThis.labels.button);
-                    if (globalThis.labels.field !== '$field/$field') throw new Error(globalThis.labels.field);
+                    if (globalThis.labels['$buttonId'] !== '$token/$theme') throw new Error(globalThis.labels['$buttonId']);
+                    if (globalThis.labels['$fieldId'] !== '$field/$field') throw new Error(globalThis.labels['$fieldId']);
                 """.trimIndent())
                 val process = ProcessBuilder("node", File(consumer, "verify.mjs").absolutePath).redirectErrorStream(true).start()
                 val output = process.inputStream.bufferedReader().readText()

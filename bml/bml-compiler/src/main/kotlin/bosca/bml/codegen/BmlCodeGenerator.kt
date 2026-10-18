@@ -93,6 +93,36 @@ class BmlCodeGenerator(
     private val importedFeatureFlags = mutableSetOf<String>()
     private val privateImportedTags = mutableSetOf<String>()
     private val libraryExports = mutableSetOf<String>()
+    private var libraryIdentity: String? = null
+
+    /** Uses producer-owned runtime identities for every public and private component in a library. */
+    fun withLibraryIdentity(library: String): BmlCodeGenerator {
+        require(BmlLibraryArtifacts.isLibraryId(library)) { "Invalid BML library identity '$library'" }
+        libraryIdentity = library
+        sourceRevision = bmlRenderRevision(sourceRevision + "\n" + library)
+        return this
+    }
+
+    private fun runtimeComponentId(name: String): String = importedComponents[name]?.let {
+        BmlLibraryArtifacts.componentId(it.dependency.manifest.library, it.component.tag)
+    } ?: libraryIdentity?.let { BmlLibraryArtifacts.componentId(it, name) } ?: name
+
+    /** Direct compiled references for the used imported closure, including producer-private helpers. */
+    internal fun importedRenderers(document: Document): Map<String, String> {
+        val renderers = sortedMapOf<String, String>()
+        collectComponentRefs(document.nodes).mapNotNull(importedComponents::get).forEach { binding ->
+            val library = binding.dependency.manifest
+            val components = library.components.associateBy { it.tag }
+            fun visit(tag: String) {
+                val id = BmlLibraryArtifacts.componentId(library.library, tag)
+                val component = components.getValue(tag)
+                if (renderers.putIfAbsent(id, component.renderer) != null) return
+                component.dependencies.forEach(::visit)
+            }
+            visit(binding.component.tag)
+        }
+        return renderers
+    }
 
     /** Exposes typed prop-check entry points only for the producer's public library exports. */
     fun withLibraryExports(exports: Set<String>): BmlCodeGenerator {
@@ -520,12 +550,12 @@ class BmlCodeGenerator(
         }
         // The components this page renders, so the asset pipeline can link their CSS/JS chunks.
         if (pageRefs.isNotEmpty()) {
-            line("override val componentTags: List<String> = listOf(${pageRefs.joinToString(", ") { kstr(it) }})")
+            line("override val componentTags: List<String> = listOf(${pageRefs.map(::runtimeComponentId).distinct().joinToString(", ") { kstr(it) }})")
         }
         if (eagerPageRefs != pageRefs) {
-            line("override val eagerComponentTags: List<String> = listOf(${eagerPageRefs.joinToString(", ") { kstr(it) }})")
+            line("override val eagerComponentTags: List<String> = listOf(${eagerPageRefs.map(::runtimeComponentId).distinct().joinToString(", ") { kstr(it) }})")
         }
-        pageMeta = BmlPageMeta(objectName, route, clientModule, pageRefs)
+        pageMeta = BmlPageMeta(objectName, route, clientModule, pageRefs.map(::runtimeComponentId).distinct())
         // One dispatcher per live state key; bml-server looks them up at POST /_bml/action/{stateKey}.
         if (liveStates.isNotEmpty() || pageDeferred.isNotEmpty()) {
             val dispatchers = liveStates.values.joinToString(", ") { it.dispatcherObject }
@@ -1898,7 +1928,7 @@ class BmlCodeGenerator(
         def.pageRoute?.let { line("override val pageRoute: String = ${kstr(it)}") }
         def.ownerComponentTag?.let { line("override val ownerComponentTag: String = ${kstr(it)}") }
         if (def.componentTags.isNotEmpty()) {
-            line("override val componentTags: List<String> = listOf(${def.componentTags.joinToString(", ") { kstr(it) }})")
+            line("override val componentTags: List<String> = listOf(${def.componentTags.map(::runtimeComponentId).distinct().joinToString(", ") { kstr(it) }})")
         }
         if (liveStates.values.any { it.serverScoped }) line("override val hasServerState: Boolean = true")
         if (liveStates.isNotEmpty()) {
@@ -1987,6 +2017,7 @@ class BmlCodeGenerator(
             diagnostics.add(Diagnostic(Severity.Error, "<component> requires a tag=\"…\"", decl.span))
             return
         }
+        val runtimeId = runtimeComponentId(tag)
         val stateScopeAttribute = decl.attributes.firstOrNull { it.name == "scope" }
         val stateScope = staticString(decl.attributes, "scope")
         if (stateScopeAttribute != null && stateScope !in setOf("page", "site")) {
@@ -2005,7 +2036,7 @@ class BmlCodeGenerator(
                 (it is RawTextNode && it.kind == RawKind.Style && isScoped(it))
         }
         val isScopedComponent = scopedStyles.isNotEmpty()
-        val scopedCss = scopedStyles.joinToString("\n") { CssScoper.scope(it.content, tag) }
+        val scopedCss = scopedStyles.joinToString("\n") { CssScoper.scope(it.content, runtimeId) }
 
         val deps = collectComponentRefs(body)
         val eagerDeps = collectEagerComponentRefs(body)
@@ -2013,8 +2044,8 @@ class BmlCodeGenerator(
         val hasEagerFeatureFlags = firstFeatureFlagCondition(decl.children, skipDeferredIslands = true) != null
         val componentDeferred = collectDeferredDefs(
             body,
-            ownerComponentTag = tag,
-            componentScope = tag.takeIf { isScopedComponent },
+            ownerComponentTag = runtimeId,
+            componentScope = runtimeId.takeIf { isScopedComponent },
             componentSiteScoped = siteScoped,
         )
         val previousDeferred = deferredByOffset
@@ -2027,8 +2058,8 @@ class BmlCodeGenerator(
         val previousSessionKeys = sessionStateKeyExprs
         liveStates = computeLiveStates(
             decl,
-            componentTag = tag,
-            componentScope = tag.takeIf { isScopedComponent },
+            componentTag = runtimeId,
+            componentScope = runtimeId.takeIf { isScopedComponent },
             siteScoped = siteScoped,
         )
         validateLiveStateKeys(liveStates, componentDeferred)
@@ -2049,7 +2080,7 @@ class BmlCodeGenerator(
         }
         if (isScopedComponent) {
             // Exposed for the asset pipeline (the per-component CSS chunk) AND inlined once per render below.
-            line("public const val scope: String = ${kstr(tag)}")
+            line("public const val scope: String = ${kstr(runtimeId)}")
             line("public val styles: String = ${kstr(scopedCss)}")
         }
         // Registry entry: scope/css for the per-component chunk, deps to expand a page's render
@@ -2057,14 +2088,14 @@ class BmlCodeGenerator(
         // module the server loads on every page that renders the component (the JS analog of the CSS
         // closure; live actions need the runtime's binder even with no author client code).
         run {
-            val scopeArg = if (isScopedComponent) kstr(tag) else "null"
+            val scopeArg = if (isScopedComponent) kstr(runtimeId) else "null"
             val stylesArg = if (isScopedComponent) "styles" else "\"\""
-            val depsArg = deps.joinToString(", ") { kstr(it) }
+            val depsArg = deps.map(::runtimeComponentId).distinct().joinToString(", ") { kstr(it) }
             val clientModule = "$objectName.js".takeIf {
                 hasClientScript(decl) || liveStates.isNotEmpty() || componentDeferred.isNotEmpty()
             }
             val clientArg = clientModule?.let(::kstr) ?: "null"
-            val eagerDepsArg = eagerDeps.joinToString(", ") { kstr(it) }
+            val eagerDepsArg = eagerDeps.map(::runtimeComponentId).distinct().joinToString(", ") { kstr(it) }
             val eagerDepsOverride = if (eagerDeps == deps) "" else ", eagerDeps = listOf($eagerDepsArg)"
             val featureFlagsOverride = if (hasEagerFeatureFlags) ", hasEagerFeatureFlags = true" else ""
             val deferredOverride = if (componentDeferred.isEmpty()) {
@@ -2072,7 +2103,7 @@ class BmlCodeGenerator(
             } else {
                 ", deferredRenderers = listOf(${componentDeferred.joinToString(", ") { it.objectName }})"
             }
-            line("public val info: bosca.bml.render.BmlComponentInfo = bosca.bml.render.BmlComponentInfo(${kstr(tag)}, $scopeArg, $stylesArg, listOf($depsArg), $clientArg, $hasServerState$eagerDepsOverride$featureFlagsOverride, renderRevision = ${kstr(sourceRevision)}$deferredOverride)")
+            line("public val info: bosca.bml.render.BmlComponentInfo = bosca.bml.render.BmlComponentInfo(${kstr(runtimeId)}, $scopeArg, $stylesArg, listOf($depsArg), $clientArg, $hasServerState$eagerDepsOverride$featureFlagsOverride, renderRevision = ${kstr(sourceRevision)}$deferredOverride)")
             componentMeta += BmlComponentMeta(
                 tag, if (isScopedComponent) scopedCss else "", deps, clientModule,
                 eagerDeps, hasServerState, hasEagerFeatureFlags, componentDeferred.isNotEmpty(),
@@ -2099,7 +2130,7 @@ class BmlCodeGenerator(
         indent++
         line("val w = ctx.writer")
         // Inline the scoped CSS the first time this component renders in a given page (deduped by ctx).
-        if (isScopedComponent) line("if (ctx.useStyleOnce(${kstr(tag)})) w.markup(\"<style>\" + styles + \"</style>\")")
+        if (isScopedComponent) line("if (ctx.useStyleOnce(${kstr(runtimeId)})) w.markup(\"<style>\" + styles + \"</style>\")")
         for (p in props) line(propLocal(p, deferred = false))
         // A server-scoped model needs its per-instance key before the prologue can restore it from
         // the session. Client-scoped state is initialized first so its island key may derive from
@@ -2116,12 +2147,12 @@ class BmlCodeGenerator(
         val previousRoots = fallthroughRoots
         val previousClientComponent = currentClientComponentTag
         val previousIslandOwner = currentIslandOwnerComponentTag
-        if (isScopedComponent) currentScope = tag
+        if (isScopedComponent) currentScope = runtimeId
         // The component's first top-level element is its root: it re-emits any attributes the instantiation
         // forwards (e.g. a `@click` on `<button>` falls through onto the `<html:button>` here).
         fallthroughRoots = componentRootElements(body)
-        currentClientComponentTag = tag.takeIf { hasScopedClientScriptOutsideIsland(decl.children) }
-        currentIslandOwnerComponentTag = tag
+        currentClientComponentTag = runtimeId.takeIf { hasScopedClientScriptOutsideIsland(decl.children) }
+        currentIslandOwnerComponentTag = runtimeId
         if (currentClientComponentTag != null && fallthroughRoots.isEmpty()) {
             diagnostics.add(Diagnostic(Severity.Error, "component <$tag> has scoped client code but no element root to mount", decl.span))
         }

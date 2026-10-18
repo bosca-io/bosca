@@ -185,6 +185,31 @@ class BmlCompilerPluginTest {
             assertFalse(" disabled" in context.toString(), context.toString())
         }
         val validConsumer = consumerSource.readText()
+        val localButton = File(consumerRoot, "local.bml").apply {
+            writeText("""<component tag="button"><html:button>LOCAL</html:button></component>""")
+        }
+        val (localExit, localMessages) = compileWithBmlPlugin(
+            consumerOutput, consumerOptions, work, extraClasspath = listOf(artifact),
+        )
+        assertEquals(ExitCode.OK, localExit, localMessages)
+        URLClassLoader(arrayOf(consumerOutput.toURI().toURL(), artifact.toURI().toURL()), javaClass.classLoader).use { loader ->
+            val page = loader.loadClass("example.consumer.PagesHomePage").getField("INSTANCE").get(null) as BmlPageRenderer
+            val context = RenderContext()
+            runBlocking { page.render(context) }
+            assertTrue("LOCAL</button>" in context.toString(), context.toString())
+            assertTrue("Save again</button>" in context.toString(), context.toString())
+            assertEquals(setOf("button", BmlLibraryArtifacts.componentId("example:design", "button")), page.componentTags.toSet())
+        }
+        localButton.delete()
+        val collision = File(consumerRoot, "collision.bml").apply {
+            writeText("""<component tag="${BmlLibraryArtifacts.componentId("example:design", "button")}"><span>Collision</span></component>""")
+        }
+        val (collisionExit, collisionMessages) = compileWithBmlPlugin(
+            consumerOutput, consumerOptions, work, extraClasspath = listOf(artifact),
+        )
+        assertEquals(ExitCode.COMPILATION_ERROR, collisionExit, collisionMessages)
+        assertTrue("Conflicting runtime component identity" in collisionMessages, collisionMessages)
+        collision.delete()
         for ((invalid, expected) in listOf(
             validConsumer.replace("example.design.ButtonModel(\"Save\")", "\"wrong model\"") to "ButtonModel",
             validConsumer.replace("disabled=\"false\"", "disabled=\"maybe\"") to "Boolean",

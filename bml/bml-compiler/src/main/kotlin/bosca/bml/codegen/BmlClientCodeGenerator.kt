@@ -1,5 +1,6 @@
 package bosca.bml.codegen
 
+import bosca.bml.library.BmlLibraryArtifacts
 import bosca.bml.parser.AttrText
 import bosca.bml.parser.Attribute
 import bosca.bml.parser.Document
@@ -19,6 +20,24 @@ import bosca.bml.tags.BuiltinTags
  * runtime setups with typed `ctx.refs`, programmatic server actions, and automatic lifecycle cleanup.
  */
 class BmlClientCodeGenerator {
+    private var libraryIdentity: String? = null
+    private var componentIds: Map<String, String> = emptyMap()
+
+    /** Matches component/island definitions to the producer's stable server-rendered identities. */
+    fun withLibraryIdentity(library: String): BmlClientCodeGenerator {
+        require(BmlLibraryArtifacts.isLibraryId(library)) { "Invalid BML library identity '$library'" }
+        libraryIdentity = library
+        return this
+    }
+
+    /** Resolves authored literal fragment targets in this file without exposing import aliases at runtime. */
+    fun withComponentIds(ids: Map<String, String>): BmlClientCodeGenerator {
+        componentIds = ids
+        return this
+    }
+
+    private fun componentId(tag: String): String = componentIds[tag]
+        ?: libraryIdentity?.let { BmlLibraryArtifacts.componentId(it, tag) } ?: tag
 
     fun generate(document: Document, hasTransitiveClientRuntime: Boolean = false): String? {
         val pageScripts = mutableListOf<String>()
@@ -54,7 +73,9 @@ class BmlClientCodeGenerator {
         // Imports are module declarations and cannot remain inside the setup callbacks generated
         // for island/component scripts. Hoist them once, preserving each script's executable body.
         val imports = linkedSetOf<String>()
-        fun hoist(content: String): String = CLIENT_IMPORT.replace(content) { match ->
+        fun hoist(content: String): String = CLIENT_IMPORT.replace(
+            ClientScriptScanner(content).rewriteRenderFragmentTargets(componentIds),
+        ) { match ->
             imports += match.value.trim()
             ""
         }
@@ -132,7 +153,7 @@ class BmlClientCodeGenerator {
             is ElementNode -> {
                 if (currentIsland?.element?.let(::isDeferredIsland) == true && isFallback(node)) continue
                 val component = if (node.namespace == null && node.name == "component") {
-                    Scope(staticString(node.attributes, "tag") ?: "component", node)
+                    Scope(componentId(staticString(node.attributes, "tag") ?: "component"), node)
                 } else currentComponent
                 val island = if (node.namespace == null && node.name == "island") {
                     Scope(staticString(node.attributes, "name") ?: "island", node)

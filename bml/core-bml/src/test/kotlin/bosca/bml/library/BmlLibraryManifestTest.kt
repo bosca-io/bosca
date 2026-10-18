@@ -7,6 +7,19 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class BmlLibraryManifestTest {
+    @Test
+    fun `runtime identities distinguish coordinates and tags and are safe across DOM CSS and routes`() {
+        val ids = listOf("example:design", "example.design:ui", "example:design-ui", "example-design:ui")
+            .flatMap { library -> listOf("button", "ui-button").map { tag -> BmlLibraryArtifacts.componentId(library, tag) } }
+        assertEquals(ids.size, ids.distinct().size)
+        ids.forEach { assertTrue(Regex("[a-z][a-z0-9-]*").matches(it), it) }
+        assertEquals(
+            BmlLibraryArtifacts.componentId(manifest.library, button.tag),
+            BmlLibraryArtifacts.componentId(manifest.copy(version = "2.0").library, button.tag),
+        )
+        assertFailsWith<IllegalArgumentException> { BmlLibraryArtifacts.componentId("example:design:1", "button") }
+        assertFailsWith<IllegalArgumentException> { BmlLibraryArtifacts.componentId("example:design", "ui:button") }
+    }
     private val button = BmlLibraryComponent(
         tag = "button", exported = true, renderer = "example.design.ButtonComponent",
         source = BmlLibrarySource("bml/components/button.bml", 2, 1, "sha256:" + "a".repeat(64)),
@@ -25,13 +38,14 @@ class BmlLibraryManifestTest {
     fun `manifest round trips explicit contracts and source identity`() {
         val encoded = BmlLibraryArtifacts.encode(manifest)
         assertEquals(manifest, BmlLibraryArtifacts.decode(encoded))
-        assertTrue("\"formatVersion\": 1" in encoded)
+        assertTrue("\"formatVersion\": 2" in encoded)
         assertTrue("bml/components/button.bml" in encoded)
     }
 
     @Test
     fun `unsupported format and malformed source locations fail before use`() {
-        assertFailsWith<IllegalArgumentException> { manifest.copy(formatVersion = 2).validate() }
+        assertFailsWith<IllegalArgumentException> { manifest.copy(formatVersion = 1).validate() }
+        assertFailsWith<IllegalArgumentException> { manifest.copy(formatVersion = 99).validate() }
         for (source in listOf(
             button.source.copy(entry = "/Users/producer/button.bml"),
             button.source.copy(entry = "bml/../button.bml"),

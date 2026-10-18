@@ -7,6 +7,21 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class BmlClientCodeGeneratorTest {
+    @Test
+    fun `producer scope definitions and literal fragment targets use the server identity`() {
+        val id = bosca.bml.library.BmlLibraryArtifacts.componentId("example:design", "button")
+        val document = BmlParser.parse("""
+            <component tag="button">
+              <html:button><script client scoped>ctx.onUnmount(() => {})</script></html:button>
+              <island name="view"><script client>renderFragment("button", {})</script></island>
+            </component>
+        """.trimIndent()).document
+        val ts = BmlClientCodeGenerator().withLibraryIdentity("example:design")
+            .withComponentIds(mapOf("button" to id)).generate(document).orEmpty()
+        assertHas(ts, "\"$id\", (ctx)")
+        assertHas(ts, "\"component:$id:view\"")
+        assertHas(ts, "renderFragment(\"$id\", {})")
+    }
 
     private fun gen(src: String): String? {
         val parsed = BmlParser.parse(src)

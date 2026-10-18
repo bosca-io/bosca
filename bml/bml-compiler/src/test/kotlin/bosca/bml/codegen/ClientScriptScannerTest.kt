@@ -4,6 +4,21 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 class ClientScriptScannerTest {
+    @Test
+    fun `fragment rewriting preserves noncode and unresolved targets`() {
+        val script = """
+            // renderFragment("ui:button")
+            const note = 'renderFragment("ui:button")';
+            renderFragment("ui:button", {}); renderFragment(`badge`); renderFragment("unknown");
+        """.trimIndent()
+        assertEquals("""
+            // renderFragment("ui:button")
+            const note = 'renderFragment("ui:button")';
+            renderFragment("canonical-button", {}); renderFragment(`canonical-badge`); renderFragment("unknown");
+        """.trimIndent(), ClientScriptScanner(script).rewriteRenderFragmentTargets(
+            mapOf("ui:button" to "canonical-button", "badge" to "canonical-badge"),
+        ))
+    }
     private fun targets(source: String): List<String> = ClientScriptScanner(source).renderFragmentTargets()
 
     @Test

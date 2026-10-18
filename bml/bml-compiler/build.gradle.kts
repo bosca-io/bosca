@@ -54,6 +54,9 @@ dependencies {
     testImplementation(libs.kotlin.reflect)
     testImplementation(libs.kotlinx.coroutines.core)
     testImplementation(libs.kotlinx.serialization.json) // email e2e builds a BmlMessageContext payload
+    testImplementation(project(":bml:bml-server"))
+    testImplementation(project(":bosca-core:core"))
+    testImplementation("org.jetbrains.kotlin:kotlin-serialization-compiler-plugin-embeddable:$kotlinVersion")
 }
 
 // Add the local Maven repo KEFS points at (Settings > Tools > Kotlin External FIR Support),

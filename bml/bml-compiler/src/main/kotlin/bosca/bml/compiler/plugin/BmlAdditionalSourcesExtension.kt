@@ -259,6 +259,12 @@ class BmlAdditionalSourcesExtension : CollectAdditionalSourceFilesExtension() {
             }
         }.toMap()
         val capabilities = BmlCodeGenerator.moduleCapabilities(componentDeclarations, declarationImports)
+        val runtimeRenderers = componentTags.mapKeys { (tag, _) ->
+            libraryId?.let { BmlLibraryArtifacts.componentId(it, tag) } ?: tag
+        }.toMutableMap()
+        val clientComponentIds = componentTags.keys.associateWith { tag ->
+            libraryId?.let { BmlLibraryArtifacts.componentId(it, tag) } ?: tag
+        }
 
         // Pass 2: generate page + component objects, resolving instantiations against `componentTags`.
         for (p in parsedFiles) {
@@ -288,8 +294,14 @@ class BmlAdditionalSourcesExtension : CollectAdditionalSourceFilesExtension() {
                 featureFlagComponentTags = capabilities.featureFlags,
                 componentPropTypes = componentPropTypes,
             ).withImports(bindings)
-            if (libraryId != null) generator.withLibraryExports(exports.toSet())
+            if (libraryId != null) generator.withLibraryIdentity(libraryId).withLibraryExports(exports.toSet())
             val result = generator.generate(document)
+            generator.importedRenderers(document).forEach { (id, renderer) ->
+                val previous = runtimeRenderers.putIfAbsent(id, renderer)
+                if (previous != null && previous != renderer) {
+                    reportError("Conflicting runtime component identity '$id': $previous and $renderer", p.file)
+                }
+            }
             // Surface codegen diagnostics on the real compile (they were previously visible only to
             // direct generator callers): errors FAIL the build — the t/t: validity rules
             // and friends must never be silent.
@@ -348,7 +360,13 @@ class BmlAdditionalSourcesExtension : CollectAdditionalSourceFilesExtension() {
             }
             // Emit the page's client TypeScript (no-op when it has no <script client>).
             if (tsOutputDir != null) {
-                BmlClientCodeGenerator().generate(
+                val clientGenerator = BmlClientCodeGenerator().withComponentIds(
+                    clientComponentIds + bindings.mapValues { (_, binding) ->
+                        BmlLibraryArtifacts.componentId(binding.dependency.manifest.library, binding.component.tag)
+                    },
+                )
+                if (libraryId != null) clientGenerator.withLibraryIdentity(libraryId)
+                clientGenerator.generate(
                     p.document,
                     hasTransitiveClientRuntime = result.pageMeta?.clientModule != null,
                 )?.let { ts ->
@@ -444,16 +462,16 @@ class BmlAdditionalSourcesExtension : CollectAdditionalSourceFilesExtension() {
                 File(configuration.getList(BmlConfigKeys.SOURCE_ROOTS).first()),
                 "BmlIslands.kt",
             ).absolutePath
-            generated += emit("BmlIslands.kt", registryPath, buildIslandRegistry(packageName, componentTags.isNotEmpty()))
+            generated += emit("BmlIslands.kt", registryPath, buildIslandRegistry(packageName, runtimeRenderers.isNotEmpty()))
         }
         // Emit a registry of every component (tag -> scope/styles/deps) so the asset pipeline can serve
         // per-component stylesheets and expand a page's render closure (BmlServer(..., BmlComponents.all)).
-        if (componentTags.isNotEmpty()) {
+        if (runtimeRenderers.isNotEmpty()) {
             val registryPath = File(
                 File(configuration.getList(BmlConfigKeys.SOURCE_ROOTS).first()),
                 "BmlComponents.kt",
             ).absolutePath
-            generated += emit("BmlComponents.kt", registryPath, buildComponentRegistry(packageName, componentTags))
+            generated += emit("BmlComponents.kt", registryPath, buildComponentRegistry(packageName, runtimeRenderers))
         }
         // Write the site metrics manifest: the per-page asset closure plus one CSS chunk
         // file per styled component, so the Gradle `bmlMetrics` task can report first-load payload
