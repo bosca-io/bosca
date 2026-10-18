@@ -29,8 +29,9 @@ class DesignLibraryTest {
             val manifest = BmlLibraryArtifacts.decode(jar.getInputStream(jar.getJarEntry(BmlLibraryArtifacts.MANIFEST_PATH)).reader().readText())
             assertEquals("io.bosca:bml-design", manifest.library)
             assertEquals("bosca.design.generated", manifest.generatedPackage)
-            assertEquals(setOf("alert", "badge", "button", "card", "checkbox", "empty-state", "field", "icon", "input",
-                "loading-state", "page-shell", "spinner", "switch", "table-scroll"),
+            assertEquals(setOf("alert", "app-header", "badge", "bosca-mark", "button", "card", "checkbox", "disclosure-heading",
+                "empty-state", "field", "icon", "input", "loading-state", "page-heading", "page-shell", "panel",
+                "section", "section-heading", "spinner", "switch", "table-scroll"),
                 manifest.components.filter { it.exported }.map { it.tag }.toSet())
             assertTrue(manifest.requirements.isEmpty())
             assertTrue(manifest.providerRegistrars.isEmpty())
@@ -39,6 +40,10 @@ class DesignLibraryTest {
             assertEquals("Int", manifest.components.single { it.tag == "icon" }.props.single { it.name == "size" }.declaredType)
             assertEquals(setOf("icon", "spinner").map { BmlLibraryArtifacts.componentId(manifest.library, it) }.toSet(), button.dependencies.toSet())
             assertTrue(button.hasDefaultSlot)
+            val heading = manifest.components.single { it.tag == "page-heading" }
+            assertEquals("List<bosca.design.model.NavigationItem>", heading.props.single { it.name == "trail" }.declaredType)
+            assertTrue(jar.getJarEntry("bosca/design/model/NavigationItem.class") != null)
+            assertTrue(manifest.components.single { it.tag == "app-header" }.clientModule != null)
             assertTrue(jar.getJarEntry("META-INF/bml/client-manifest.json") != null)
             val notice = jar.getInputStream(jar.getJarEntry("META-INF/licenses/bml-design/lucide.txt")).reader().readText()
             assertTrue("ISC License" in notice, notice)
@@ -100,6 +105,10 @@ class DesignLibraryTest {
             val links = Regex("<link[^>]+href=\"([^\"]+)\"").findAll(html).map { it.groupValues[1].replace("&amp;", "&") }.toList()
             assertTrue(links.any { it.startsWith("/_bml/libraries/") }, html)
             for (link in links) assertEquals(200, request(client, base, link).statusCode(), link)
+            val layout = request(client, base, "/layout").body()
+            assertTrue("Workspace" in layout && "Components" in layout && "Layout preview" in layout, layout)
+            assertTrue("data-page-heading" in layout && "id=\"layout-details\"" in layout, layout)
+            assertFalse("bosca.git" in layout || "/_git/" in layout, layout)
             val preferencesId = "preferences.preferences:light"
             val saved = request(client, base, "/_bml/action", """{"page":"/","path":"/","stateKey":"$preferencesId","method":"save","args":["Grace"]}""")
             assertEquals(200, saved.statusCode(), saved.body())

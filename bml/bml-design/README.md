@@ -33,7 +33,7 @@ Pages and local components, including nested source directories, can then use:
 
 The containing page or component declares the application's state and island as usual. The example
 consumer in [examples/design-library](../examples/design-library/README.md) demonstrates this wiring.
-Use `<html:button>` and `<html:input>` for native elements after importing their library counterparts.
+Use `<html:button>`, `<html:input>` and `<html:section>` for native elements after importing their library counterparts.
 Local component definitions take precedence throughout their module. An optional `as="design"`
 import provides `<design:button>` with the same runtime identity and assets as `<button>`.
 
@@ -55,6 +55,13 @@ import provides `<design:button>` with the same runtime identity and assets as `
 | `empty-state` | `message: String = ""`; `title: String = ""`; `icon: String = "folder"` | Native div with forwarded attributes/classes, decorative icon, optional title/message and default action children. |
 | `loading-state` | `label: String = "Loading…"`; `compact: Boolean = false`; `ref: String = ""` | Native div with `role="status"`, forwarded attributes/classes, decorative spinner and visible label. No child content. |
 | `table-scroll` | `label: String = "Scrollable table"` | Focusable, labelled region with forwarded attributes/classes and default table children. Horizontal overflow stays inside the region; keyboard focus uses the accent color. |
+| `bosca-mark` | No named props | The actual 22×22px Bosca SVG, labelled `Bosca`, with forwarded attributes/classes. `aria-hidden` can mark it decorative. No child content. |
+| `app-header` | Required `brand: String` and `href: String`; `product: String = ""` | Header with a brand link/mark and default navigation children. Extra attributes/classes target the header. A 224px sidebar becomes a wrapping header at 700px. Scoped client code reveals the active item in overflowing navigation on mount, resize and updates within the header. |
+| `panel` | No named props | Native section with a surface, border, 20px padding and default children. Additional attributes/classes target the section. |
+| `section` | No named props | Native section with 16px vertical spacing, a bottom border and default children. Additional attributes/classes target the section. |
+| `page-heading` | Required `title: String`; `subtitle: String = ""`; `trail: List<NavigationItem> = emptyList()`; `crumb: String = ""`; `icon: String = ""`; `iconColor: String = "var(--accent)"`; `badge: String = ""`; `badgeTone: String = "neutral"`; `badgeColor: String = ""` | Header with breadcrumbs, title/icon, optional badge/subtitle and default action children. Additional attributes/classes target the header. The current crumb defaults to the title. |
+| `section-heading` | Required `title: String`; `subtitle: String = ""` | Header with a title, subtitle and default action children. Additional attributes/classes target the header. |
+| `disclosure-heading` | `framed: Boolean = false` | Native summary inside caller-owned `details`, with default label children and a decorative chevron that follows the open state. Additional attributes/classes target the summary. |
 
 Regular controls are 32px high, compact controls 30px, and extra-small buttons 24px. Field labels use
 an 18px line and a 6px control gap. Buttons support the `ghost`, `danger`, `block`, and `icon-only`
@@ -75,6 +82,11 @@ when server state controls the value; use native `name`/`value` attributes to in
 in form submission. Disabled and unchecked controls follow native form rules. The compiled
 consumer's `/foundation` page demonstrates repeated instances, native form values and action patches.
 In BML action arguments, `form.checkboxName` resolves a checkbox's checked state to a Boolean.
+
+Breadcrumb links use `bosca.design.model.NavigationItem(label, href, selected)`. Applications own
+destinations, selected-state calculation and every trail entry, including any product/root label.
+An empty `href` renders plain trail text. The final current crumb comes from `crumb` or `title`;
+there is no fixed product prefix. Git's existing presentation models use this same library type.
 
 ## Consumer CSS
 
@@ -109,6 +121,11 @@ within a theme and otherwise use `--err`. Table cells use the same foreground/bo
 The library's table stylesheet targets only its scrolling wrapper, including caller-owned table
 children; unrelated tables keep their own styles.
 
+Layout adds `--r-md` for panel radius, `--fg-4` for breadcrumb separators and `--on-accent` for the
+page-heading icon's foreground. The mark uses `--mark-top`, `--mark-right` and `--mark-left`.
+Applications own the document's flex/grid arrangement and navigation-link styling; the `/layout`
+consumer page demonstrates a sidebar, responsive header and CSS-customized mark/panel colors.
+
 ## Source ownership
 
 | Library source | Extracted source in Git UI |
@@ -127,7 +144,17 @@ children; unrelated tables keep their own styles.
 | `components/empty-state.bml` | `components/ui/empty-state.bml` |
 | `components/loading-state.bml` | `components/ui/loading-state.bml` |
 | `components/table-scroll.bml` | `components/ui/table-scroll.bml` |
+| `components/bosca-mark.bml` | `components/ui/bosca-mark.bml` |
+| `components/app-header.bml` | `components/ui/app-header.bml` |
+| `components/panel.bml` | `components/ui/panel.bml` |
+| `components/section.bml` | `components/ui/section.bml` |
+| `components/page-heading.bml` | `components/ui/page-heading.bml` |
+| `components/section-heading.bml` | `components/ui/section-heading.bml` |
+| `components/disclosure-heading.bml` | `components/ui/disclosure-heading.bml` |
 | `client/design.css` | Shared control token defaults from `src/main/client/git-ui.css` |
+
+`src/main/kotlin/bosca/design/model/NavigationItem.kt` owns the shared navigation model formerly
+defined in Git UI. The original Git components remain until the application's component cutover.
 
 Component paths are relative to each module's `src/main/bml`; `client/design.css` is under `src/main`.
 Lucide glyphs retain their [ISC notice](src/main/resources/META-INF/licenses/bml-design/lucide.txt),

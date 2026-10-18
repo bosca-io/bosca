@@ -1,6 +1,6 @@
 <component tag="ui-tabs">
   <prop name="label" type="String" required />
-  <prop name="items" type="List<bosca.git.ui.components.NavigationItem>" required />
+  <prop name="items" type="List<bosca.design.model.NavigationItem>" required />
   <prop name="header" type="Boolean" default="false" />
   <nav :class='if (header) "tabs header-tabs" else "tabs"' :aria-label="label">
     <div class="tab-row" ref="row">

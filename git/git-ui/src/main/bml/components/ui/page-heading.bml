@@ -1,7 +1,7 @@
 <component tag="ui-page-heading">
   <prop name="title" type="String" required />
   <prop name="subtitle" type="String" default="" />
-  <prop name="trail" type="List<bosca.git.ui.components.NavigationItem>" default="emptyList()" />
+  <prop name="trail" type="List<bosca.design.model.NavigationItem>" default="emptyList()" />
   <prop name="crumb" type="String" default="" />
   <prop name="icon" type="String" default="" />
   <prop name="iconColor" type="String" default="var(--accent)" />

@@ -7,7 +7,7 @@
       <ui-page-heading
         title="GitHub User Mappings"
         subtitle="Map GitHub users to Bosca principals"
-        :trail='listOf(bosca.git.ui.components.NavigationItem("Settings", "", false))'
+        :trail='listOf(bosca.design.model.NavigationItem("Settings", "", false))'
       />
       <if model.allowed>
         <git-github-users :initial="model" />

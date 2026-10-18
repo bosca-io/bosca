@@ -16,8 +16,9 @@ bml {
     packageName.set("bosca.design.generated")
     library {
         exports.set(listOf(
-            "alert", "badge", "button", "card", "checkbox", "empty-state", "field", "icon", "input",
-            "loading-state", "page-shell", "spinner", "switch", "table-scroll",
+            "alert", "app-header", "badge", "bosca-mark", "button", "card", "checkbox", "disclosure-heading",
+            "empty-state", "field", "icon", "input",
+            "loading-state", "page-heading", "page-shell", "panel", "section", "section-heading", "spinner", "switch", "table-scroll",
         ))
     }
 }

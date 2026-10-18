@@ -20,6 +20,7 @@ h1 {
   --fg-1: #1e293b;
   --fg-2: #475569;
   --fg-3: #64748b;
+  --fg-4: #94a3b8;
   --line: #cbd5e1;
   --line-2: #94a3b8;
   --accent: #15803d;
@@ -48,4 +49,42 @@ form {
 }
 .native {
   margin-top: 24px;
+}
+.layout-document {
+  display: flex;
+  min-height: 100vh;
+  background: var(--bg-1);
+}
+.fixture-nav {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+}
+.fixture-nav a {
+  flex: 0 0 auto;
+  padding: 12px 18px;
+  color: var(--fg-2);
+  text-decoration: none;
+}
+.fixture-nav a[aria-current="page"] {
+  color: var(--accent);
+  text-decoration: underline;
+}
+.fixture-panel {
+  --r-md: 18px;
+}
+.fixture-header {
+  --mark-top: #0f766e;
+  --mark-right: #14b8a6;
+  --mark-left: #115e59;
+}
+.fixture-header > [data-bml-island] {
+  width: 100%;
+  min-width: 0;
+}
+@media (max-width: 700px) {
+  .layout-document {
+    flex-direction: column;
+  }
 }

@@ -1497,9 +1497,11 @@ class BmlCodeGenerator(
         return out
     }
 
-    /** Whether any expression inside [island] references the identifier [name] (a whole-word match). */
+    /** Whether server code inside [island] references [name], excluding literal text and comments. */
     private fun islandReferences(island: ElementNode, name: String): Boolean {
         val pattern = Regex("\\b" + Regex.escape(name) + "\\b")
+        fun usesName(expression: String): Boolean =
+            pattern.containsMatchIn(KotlinCodeScanner(expression).codeWithoutLiterals())
         fun refs(nodes: List<Node>): Boolean {
             for (n in nodes) when (n) {
                 is ElementNode -> {
@@ -1510,14 +1512,14 @@ class BmlCodeGenerator(
                             is EventAttribute -> a.expression
                             is StaticAttribute -> a.value.orEmpty().filterIsInstance<AttrInterpolation>().joinToString(" ") { it.expression }
                         }
-                        if (pattern.containsMatchIn(expr)) return true
+                        if (usesName(expr)) return true
                     }
                     if (refs(n.children)) return true
                 }
-                is InterpolationNode -> if (pattern.containsMatchIn(n.expression)) return true
-                is ForNode -> { if (pattern.containsMatchIn(n.iterable) || refs(n.children)) return true }
+                is InterpolationNode -> if (usesName(n.expression)) return true
+                is ForNode -> { if (usesName(n.iterable) || refs(n.children)) return true }
                 is IfNode -> {
-                    if (n.branches.any { pattern.containsMatchIn(it.condition) || refs(it.children) }) return true
+                    if (n.branches.any { usesName(it.condition) || refs(it.children) }) return true
                     if (n.elseChildren?.let { refs(it) } == true) return true
                 }
                 else -> Unit

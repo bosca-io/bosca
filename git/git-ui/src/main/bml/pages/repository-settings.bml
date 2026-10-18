@@ -9,7 +9,7 @@
           :title='page.repository.name'
           crumb="Settings"
           icon="folder"
-          :trail='listOf(bosca.git.ui.components.NavigationItem("Repositories", "/repositories", false), bosca.git.ui.components.NavigationItem(page.repository.name, "/repositories/" + bosca.git.ui.encode(page.repository.id), false))'
+          :trail='listOf(bosca.design.model.NavigationItem("Repositories", "/repositories", false), bosca.design.model.NavigationItem(page.repository.name, "/repositories/" + bosca.git.ui.encode(page.repository.id), false))'
         />
         <git-repository-settings :page="page" />
       </ui-page>

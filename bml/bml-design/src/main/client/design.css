@@ -9,7 +9,9 @@
   --fg-1: #cdd2e2;
   --fg-2: #969cb1;
   --fg-3: #6c7388;
+  --fg-4: #454b60;
   --accent: #64748b;
+  --on-accent: #fff;
   --err: #ff5470;
   --ok: #34d99a;
   --warn: #ffb547;
@@ -17,6 +19,10 @@
   --purple: #a78bff;
   --control-bg: #161a25;
   --control-radius: 9px;
+  --r-md: 12px;
+  --mark-top: #5ec5ff;
+  --mark-right: #79d3ff;
+  --mark-left: #409dcc;
   --font-sans: "Geist", "Inter", -apple-system, system-ui, sans-serif;
   --font-mono: "Geist Mono", "JetBrains Mono", ui-monospace, monospace;
 }

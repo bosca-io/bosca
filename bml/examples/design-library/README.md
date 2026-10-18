@@ -39,6 +39,12 @@ controls, independent instances, switch accessibility names, status/alert semant
 from consuming CSS, and keyboard scrolling inside a narrow table region. These controls also work
 as native inputs with scripts disabled.
 
+The `/layout` page uses the library-owned `NavigationItem`, caller-supplied breadcrumbs,
+responsive header/navigation, panels/sections and native disclosures. Its projected heading actions
+update application state. Consuming CSS changes the mark colors and panel radius. Browser checks
+cover desktop/phone geometry, active-navigation visibility, disclosure keyboard operation and
+the preserved Bosca SVG paths. Native sections remain available through `<html:section>`.
+
 Chrome defaults to the installed Google Chrome app on macOS or `google-chrome` on Linux. Set
 `BML_DESIGN_CHROME_BINARY` for another executable. Screenshots land in this project's
 `build/reports/browser/`. The fixture is an application and is excluded from aggregate Maven

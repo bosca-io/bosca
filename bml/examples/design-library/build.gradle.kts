@@ -31,6 +31,8 @@ application {
 val fixtureRuntime = configurations.named("runtimeClasspath")
 tasks.test {
     dependsOn(tasks.jar, fixtureRuntime)
+    inputs.dir(layout.projectDirectory.dir("src/test/browser"))
+        .withPropertyName("browserChecks").withPathSensitivity(PathSensitivity.RELATIVE)
     systemProperty("design.fixture.classpath", files(tasks.jar.flatMap { it.archiveFile }, fixtureRuntime).asPath)
     systemProperty("design.fixture.java", javaToolchains.launcherFor(java.toolchain).get().executablePath.asFile.absolutePath)
     systemProperty("design.fixture.node", bml.nodeExecutable.get())

@@ -10,7 +10,7 @@
         <ui-page-heading
           :title="page.selected.name"
           :subtitle='page.selected.mode.toString() + " · " + page.selected.status.toString()'
-          :trail='listOf(bosca.git.ui.components.NavigationItem("CI Agents", "/ci-agents", false))'
+          :trail='listOf(bosca.design.model.NavigationItem("CI Agents", "/ci-agents", false))'
         >
           <ui-button size="sm" type="submit" form="agent-form" primary icon="save">Save</ui-button>
           <if page.selected.mode.name == "ORCHESTRATOR">

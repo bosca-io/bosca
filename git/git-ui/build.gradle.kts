@@ -12,6 +12,7 @@ java {
 dependencies {
     "boscaGraphqlGenerator"(project(":bosca-graphql:bosca-graphql-client"))
     api(project(":bml:bml-server"))
+    api(project(":bml:bml-design"))
     api(project(":bosca-core:core"))
     implementation(project(":bml:core-bml"))
     implementation(project(":bml:bml-annotations"))

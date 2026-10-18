@@ -3,8 +3,8 @@ package bosca.bml.codegen
 /**
  * Reduces embedded Kotlin to the text that can execute, so compile-time checks can look for an API
  * access without matching prose. Comments (including nested block comments), string and character
- * literal contents are replaced by spaces; `${…}` string-template expressions are kept because they
- * are evaluated. The scanner is lexical, not a parser: unterminated input is consumed to the end.
+ * literal contents are replaced by spaces; `$name` and `${…}` string templates are kept because
+ * they are evaluated. The scanner is lexical, not a parser: unterminated input is consumed to the end.
  */
 internal class KotlinCodeScanner(private val source: String) {
     private val out = StringBuilder(source.length)
@@ -94,6 +94,14 @@ internal class KotlinCodeScanner(private val source: String) {
                     index += 2
                     out.append(' ')
                     code(stopAtClosingBrace = true)
+                    out.append(' ')
+                }
+                source[index] == '$' && source.getOrNull(index + 1)?.let { it == '_' || it.isLetter() } == true -> {
+                    index++
+                    out.append(' ')
+                    while (index < source.length && (source[index] == '_' || source[index].isLetterOrDigit())) {
+                        out.append(source[index++])
+                    }
                     out.append(' ')
                 }
                 else -> index++

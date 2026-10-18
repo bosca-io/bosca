@@ -7,7 +7,7 @@
       :badgeTone='when (page.visibility) { "PUBLIC" -> "success"; "INTERNAL" -> "warning"; else -> "neutral" }'
       :subtitle='page.slug + " · " + page.visibility.lowercase() + " · " + page.defaultBranch'
       :title="page.name"
-      :trail='listOf(bosca.git.ui.components.NavigationItem("Repositories", page.listHref, false))'
+      :trail='listOf(bosca.design.model.NavigationItem("Repositories", page.listHref, false))'
     >
       <div class="repository-controls">
         <if page.tab == "code" || page.tab == "commits" || page.tab == "statuses">
