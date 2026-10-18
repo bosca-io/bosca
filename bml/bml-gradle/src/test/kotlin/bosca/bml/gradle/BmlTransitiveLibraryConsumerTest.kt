@@ -16,6 +16,8 @@ class BmlTransitiveLibraryConsumerTest {
         val work = createTempDirectory("bml-transitive-maven").toFile()
         try {
             val fixture = BmlCompilerFixture(work)
+            val bundler = File("../bml-runtime/tools/bundle.mjs").canonicalFile
+            val runtime = File("../bml-runtime/src/index.ts").canonicalFile
             fun project(name: String, version: String, exports: List<String>, dependencies: String = ""): File {
                 val directory = File(work, "$name-$version").apply { mkdirs() }
                 File(directory, "settings.gradle").writeText("rootProject.name = '$name'")
@@ -25,7 +27,7 @@ class BmlTransitiveLibraryConsumerTest {
                     group = 'example'; version = '$version'
                     ${fixture.shared}
                     dependencies { $dependencies }
-                    bml { packageName.set('example.$name.generated'); library { exports.set(${exports.joinToString(prefix = "[", postfix = "]") { "'$it'" }}) } }
+                    bml { clientBundler.set(file(${quote(bundler)})); packageName.set('example.$name.generated'); library { exports.set(${exports.joinToString(prefix = "[", postfix = "]") { "'$it'" }}) } }
                     publishing {
                         publications { maven(MavenPublication) { from components.java } }
                         repositories { maven { name = 'fixture'; url = uri(${quote(fixture.repository)}) } }
@@ -40,6 +42,8 @@ class BmlTransitiveLibraryConsumerTest {
                 val base = project("base", version, listOf("button", "unused"))
                 source(base, "button", """
                     <component tag="button"><prop name="label" type="String"/>
+                      <script client scoped>ctx.onUnmount(() => {});</script>
+                      <style scoped>button { color: var(--accent); }</style>
                       <html:button>{ label }<private-label/></html:button>
                     </component>
                 """)
@@ -75,7 +79,7 @@ class BmlTransitiveLibraryConsumerTest {
                 plugins { id 'org.jetbrains.kotlin.jvm'; id 'io.bosca.bml'; id 'application' }
                 ${fixture.shared}
                 dependencies { implementation 'example:wrapper:1.0' }
-                bml { packageName.set('consumer.generated') }
+                bml { packageName.set('consumer.generated'); clientBundler.set(file(${quote(bundler)})); clientRuntime.set(file(${quote(runtime)})) }
                 application { mainClass = 'consumer.MainKt' }
             """.trimIndent()) }
             source(consumer, "imports", """<import library="example:wrapper"/>""")
@@ -93,12 +97,21 @@ class BmlTransitiveLibraryConsumerTest {
                     }
                 """.trimIndent())
             }
-            val first = runner(consumer, "run").build()
+            val first = runner(consumer, "run", "jar").build()
             assertTrue("Published<span>BASE</span></button>" in first.output, first.output)
             assertTrue("WRAPPER</span>" in first.output && "LOCAL</button>" in first.output, first.output)
-            val repeated = runner(consumer, "run").build()
+            JarFile(File(consumer, "build/libs/consumer.jar")).use { jar ->
+                val root = "bml/applications/consumer.generated/"
+                assertTrue(jar.getJarEntry(root + "client-manifest.json") != null)
+                val page = jar.getJarEntry(root + "prod/index.page.js")
+                assertTrue(page != null, "The consumer JAR must carry its production entry")
+                assertTrue("bml-6578616d706c653a62617365-button" in jar.getInputStream(page).reader().readText())
+                assertTrue(jar.entries().asSequence().any { it.name.startsWith(root + "dev/L") && it.name.endsWith("_ButtonPage.js") })
+            }
+            val repeated = runner(consumer, "run", "jar").build()
             assertTrue("Reusing configuration cache" in repeated.output, repeated.output)
             assertEquals(TaskOutcome.UP_TO_DATE, repeated.task(":compileKotlin")?.outcome)
+            assertEquals(TaskOutcome.UP_TO_DATE, repeated.task(":bmlBundleClient")?.outcome)
             publishBase("2.0")
             build.appendText("\ndependencies { implementation 'example:base:2.0' }\n")
             val conflict = runner(consumer, "compileKotlin").buildAndFail()

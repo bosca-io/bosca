@@ -1,7 +1,8 @@
 import { build } from "esbuild"
 import { bundleLibraryAssets } from "./library.mjs"
-import { readdirSync, readFileSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs"
-import { join, resolve } from "node:path"
+import { readdirSync, readFileSync, existsSync, mkdirSync, rmSync, writeFileSync, cpSync } from "node:fs"
+import { createHash } from "node:crypto"
+import { join, resolve, relative } from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 
 function globalBootstrapPath() {
@@ -18,15 +19,15 @@ function globalBootstrapPath() {
  * runtime entry — needed when `@bosca/bml` isn't installed in node_modules (e.g. this monorepo,
  * where it's local source). Omit it when consumers have the package installed.
  *
- * @param {{ entryPoints: string[], outdir: string, minify?: boolean, runtime?: string }} options
+ * @param {{ entryPoints: string[], outdir: string, minify?: boolean, runtime?: string, splitting?: boolean }} options
  */
-export async function bundleIslands({ entryPoints, outdir, minify = false, runtime }) {
+export async function bundleIslands({ entryPoints, outdir, minify = false, runtime, splitting = false }) {
   return build({
     entryPoints,
     outdir,
     bundle: true,
     minify,
-    splitting: false,
+    splitting,
     format: "esm",
     platform: "browser",
     target: "es2020",
@@ -83,7 +84,8 @@ export async function bundleProduction({ manifestPath, inDir, outdir, runtime })
     for (let n = 2; taken.has(slug); n++) slug = `${routeSlug(route)}-${n}`
     taken.add(slug)
     if (modules.length === 0) continue
-    const entries = modules
+    const orderedModules = [...modules.filter((m) => m.startsWith("BmlLibraries_")), ...modules.filter((m) => !m.startsWith("BmlLibraries_"))]
+    const entries = orderedModules
       .map((m) => m.replace(/\.js$/, ""))
       .filter((m) => existsSync(join(inDir, `${m}.ts`)))
     const outfile = join(outdir, `${slug}.page.js`)
@@ -160,6 +162,32 @@ export async function bundleGlobalAssets({ inDir, outdir }) {
   return readdirSync(outdir).filter((file) => /\.(?:css|js)$/.test(file)).sort()
 }
 
+/** Packages both client modes and indexes the exact application/library resource bytes. */
+export function packageApplicationAssets({ devDir, prodDir, resourcesDir, outdir }) {
+  rmSync(outdir, { recursive: true, force: true })
+  mkdirSync(outdir, { recursive: true })
+  for (const [mode, source] of [["dev", devDir], ["prod", prodDir]]) {
+    if (source && existsSync(source)) cpSync(source, join(outdir, mode), { recursive: true })
+  }
+  const files = []
+  function inventory(root, directory = root) {
+    if (!root || !existsSync(directory)) return
+    for (const entry of readdirSync(directory, { withFileTypes: true }).sort((a, b) => a.name < b.name ? -1 : 1)) {
+      const file = join(directory, entry.name)
+      if (entry.isDirectory()) inventory(root, file)
+      else if (entry.isFile()) files.push({
+        path: relative(root, file).replaceAll("\\", "/"),
+        digest: `sha256:${createHash("sha256").update(readFileSync(file)).digest("hex")}`,
+      })
+    }
+  }
+  inventory(outdir)
+  inventory(resourcesDir)
+  files.sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0)
+  if (new Set(files.map((file) => file.path)).size !== files.length) throw new Error("Duplicate packaged BML asset path")
+  writeFileSync(join(outdir, "client-manifest.json"), JSON.stringify({ formatVersion: 1, files }, null, 2))
+}
+
 const productionOptimization = {
   minifySyntax: true,
   minifyWhitespace: true,
@@ -215,7 +243,7 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
     : []
   const jobs = []
   if (entryPoints.length > 0) {
-    jobs.push(bundleIslands({ entryPoints, outdir: outDir, runtime }))
+    jobs.push(bundleIslands({ entryPoints, outdir: outDir, runtime, splitting: true }))
   }
   // Production bundles follow the manifest, not the .ts inputs: a page whose declared client modules
   // produced no TypeScript still needs its (empty) <slug>.page.js, because bml-server links it.
@@ -225,9 +253,13 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   if (assetsIn && assetsOut) {
     jobs.push(bundleGlobalAssets({ inDir: assetsIn, outdir: assetsOut }))
   }
-  if (jobs.length === 0) process.exit(0)
   Promise.all(jobs).then(
-    () => process.exit(0),
+    () => {
+      const applicationOut = argOf("--application-out")
+      if (applicationOut) packageApplicationAssets({ devDir: outDir, prodDir: prodOut,
+        resourcesDir: argOf("--application-resources"), outdir: applicationOut })
+      process.exit(0)
+    },
     (err) => {
       console.error(err)
       process.exit(1)

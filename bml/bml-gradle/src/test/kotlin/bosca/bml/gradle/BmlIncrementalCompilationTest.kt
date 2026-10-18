@@ -29,12 +29,13 @@ class BmlIncrementalCompilationTest {
                 parentFile.mkdirs()
                 writeText("<page route=\"/\"><html><body><p>marker-one</p>{ example.PageModel.title }</body></html></page>")
             }
+            var compilation = ""
             fun compile(): String = GradleRunner.create().withProjectDir(project).withPluginClasspath()
-                .withArguments("compileKotlin", "--no-build-cache", "--info", "--stacktrace").build().output
+                .withArguments("compileKotlin", "--no-build-cache", "--info", "--stacktrace").build().output.also { compilation = it }
             fun pageBytecode(): String {
                 val pages = File(project, "build/classes/kotlin/main").walkTopDown()
                     .filter { it.isFile && it.name.startsWith("HomePage") }.toList()
-                assertTrue(pages.isNotEmpty(), "The BML page must be compiled")
+                assertTrue(pages.isNotEmpty(), "The BML page must be compiled:\n$compilation")
                 assertTrue(File(project, "build/classes/kotlin/main/bml/generated/BmlPages.class").isFile)
                 return pages.joinToString { String(it.readBytes(), Charsets.ISO_8859_1) }
             }

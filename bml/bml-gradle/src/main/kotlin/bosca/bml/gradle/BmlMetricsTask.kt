@@ -52,6 +52,7 @@ abstract class BmlMetricsTask : DefaultTask() {
             cssDir = metricsDir.get().dir(CSS_DIR_NAME).asFile,
             globalAssets = globalAssets.files.sortedBy { it.name },
             prodJsDir = prodJsDir.orNull?.asFile,
+            libraryCssDir = metricsDir.get().dir("library-css").asFile,
         )
         logger.lifecycle(BmlSiteMetrics.renderTable(report))
         val out = reportFile.get().asFile

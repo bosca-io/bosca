@@ -314,7 +314,7 @@ class BmlClientCodeGenerator {
 
     private companion object {
         private val CLIENT_IMPORT = Regex(
-            "(?m)^[\\t ]*import\\s+(?:type\\s+)?(?:[\\s\\S]*?\\s+from\\s+)?[\"'][^\"']+[\"']\\s*;?[\\t ]*(?:\\r?\\n|$)",
+            "(?m)^[\\t ]*import\\s+(?:type\\s+)?(?:[\\s\\S]*?\\s+from\\s+)?[\"'][^\"']+[\"'][\\t ]*(?:;[\\t ]*(?:\\r?\\n)?|\\r?\\n|$)",
         )
         private val HANDLER_CALL = Regex("^\\s*([A-Za-z_$][A-Za-z0-9_$]*)\\s*\\(")
         private val PROGRAMMATIC_ACTION_CALL = Regex(

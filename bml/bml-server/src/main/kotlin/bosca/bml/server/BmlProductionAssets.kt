@@ -72,6 +72,7 @@ object BmlProductionAssets {
         val pagesByRoute = pages.associateBy { it.route }
         fun hasClientCode(page: BmlPageRenderer): Boolean =
             page.clientModule != null ||
+                (page as? bosca.bml.render.BmlBundledPage)?.assets?.scriptsByRoute?.get(page.route).orEmpty().isNotEmpty() ||
                 BmlStyleAssets.closure(page.componentTags, byTag).any { byTag[it]?.clientModule != null }
 
         val pageCss = linkedMapOf<String, String>()

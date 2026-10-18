@@ -214,7 +214,11 @@ class BmlLibraryPublicationTest {
                 "META-INF/*.kotlin_module" to "Binary archive is missing compiled library output META-INF/example_design.kotlin_module",
             )) {
                 producerBuild.writeText(validBuild + "\ntasks.named('jar') { exclude('$excluded') }\n")
-                val invalidBinary = runner(producer, "publishMavenPublicationToFixtureRepository").buildAndFail()
+                val invalidBinary = try {
+                    runner(producer, "publishMavenPublicationToFixtureRepository").buildAndFail()
+                } catch (failure: org.gradle.testkit.runner.UnexpectedBuildSuccess) {
+                    throw AssertionError("Excluding '$excluded' must invalidate the archive: ${failure.message}", failure)
+                }
                 assertTrue(message in invalidBinary.output, invalidBinary.output)
                 assertTrue(invalidBinary.tasks.any {
                     it.path in setOf(":bmlValidateLibrary", ":mavenBmlValidatePublication") && it.outcome == TaskOutcome.FAILED

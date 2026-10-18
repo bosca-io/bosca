@@ -305,6 +305,189 @@ class BmlBinaryRuntimeTest {
         }
     }
 
+    @Test
+    fun `binary library assets survive checkout deletion and serve both client modes with consumer palettes`() {
+        val work = Files.createTempDirectory("bml-linked-assets").toFile()
+        try {
+            val tools = File("../bml-runtime").canonicalFile
+            val bundler = File(tools, "tools/bundle.mjs")
+            val runtime = File(work, "runtime.ts").apply { writeText("""
+                globalThis.runtimeStarts = (globalThis.runtimeStarts ?? 0) + 1;
+                export function defineComponent(id, init) { (globalThis.registered ??= []).push(id) }
+                export function defineIsland() {}
+                export function mountAll() {}
+                export function renderFragment() {}
+                export function enableDeferred() {}
+            """.trimIndent()) }
+            fun node(vararg arguments: String): String {
+                val process = ProcessBuilder(listOf("node") + arguments).redirectErrorStream(true).start()
+                val output = process.inputStream.bufferedReader().readText()
+                assertEquals(0, process.waitFor(), output)
+                return output
+            }
+            fun library(name: String, base: File? = null): File {
+                val directory = File(work, name).apply { mkdirs() }
+                val root = File(directory, "bml").apply { mkdirs() }
+                if (base != null) File(root, "imports.bml").writeText("""<import library="example:base" as="base"/>""")
+                val tag = if (base == null) "button" else "card"
+                File(root, "button.bml").writeText("""
+                    <component tag="$tag">
+                      <script client scoped>import "./button.css"; ctx.onUnmount(() => {});</script>
+                      <style scoped>.label { color: var(--bml-accent); }</style>
+                      <span class="label">$name</span>${if (base != null) "<base:button/>" else "<private-label/>"}
+                    </component>
+                """.trimIndent())
+                File(root, "private-label.bml").writeText("""<component tag="private-label"><span>PRIVATE</span></component>""")
+                File(root, "unused.bml").writeText("""
+                    <component tag="unused"><script client>console.log("UNUSED_CLIENT_SENTINEL");</script><span>Unused</span></component>
+                """.trimIndent())
+                File(root, "button.css").writeText(".image-$name { background-image: url('./image.svg'); } @font-face { font-family: '$name'; src: url('./font.woff2'); }")
+                File(root, "image.svg").writeText("""<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>""")
+                File(root, "font.woff2").writeBytes(byteArrayOf(0, 1, 2, -1))
+                val globals = File(directory, "client").apply { mkdirs() }
+                File(globals, "$name.ts").writeText("(globalThis.libraryOrder ??= []).push('$name');")
+                File(globals, "theme.css").writeText(":root { --bml-accent: red; }")
+                val classes = File(directory, "classes")
+                val resources = File(directory, "resources")
+                val ts = File(directory, "ts")
+                compile(classes, listOf("bmlSourceRoot=$root", "bmlPackageName=example.$name.generated",
+                    "bmlLibraryId=example:$name", "bmlLibraryVersion=1.0", "bmlLibraryExport=$tag", "bmlLibraryExport=unused",
+                    "bmlResourcesOutputDir=$resources", "bmlTsOutputDir=$ts") +
+                    listOfNotNull(base?.let { "bmlLibraryDependency=$it" }), classpath = listOfNotNull(base))
+                val assets = File(directory, "assets")
+                node(bundler.path, "--in", ts.path, "--out", File(directory, "js").path,
+                    "--library-manifest", File(resources, BmlLibraryArtifacts.MANIFEST_PATH).path,
+                    "--source-root", root.path, "--project-dir", directory.path,
+                    "--library-styles", File(directory, "styles").path,
+                    "--assets-in", globals.path, "--library-out", assets.path,
+                    "--library-sources-out", File(directory, "sources").path)
+                val artifact = archive(File(work, "$name.jar"), listOf(classes, resources, assets))
+                assertTrue(directory.deleteRecursively())
+                return artifact
+            }
+            val base = library("base")
+            val wrapper = library("wrapper", base)
+            val directory = File(work, "app").apply { mkdirs() }
+            val root = File(directory, "bml").apply { mkdirs() }
+            File(root, "imports.bml").writeText("""<import library="example:wrapper"/>""")
+            for ((name, color) in listOf("green" to "rgb(0, 128, 0)", "blue" to "rgb(0, 0, 255)")) {
+                File(root, "$name.bml").writeText("""
+                    <page route="/$name"><html><head><style>:root { --bml-accent: $color; }</style></head><body><card/></body></html></page>
+                """.trimIndent())
+            }
+            File(root, "empty.bml").writeText("""<page route="/empty"><html><head></head><body>Empty</body></html></page>""")
+            val classes = File(directory, "classes")
+            val resources = File(directory, "resources")
+            val ts = File(directory, "ts")
+            val metrics = File(directory, "metrics")
+            compile(classes, listOf("bmlSourceRoot=$root", "bmlPackageName=consumer.assets", "bmlResourcesOutputDir=$resources",
+                "bmlTsOutputDir=$ts", "bmlMetricsOutputDir=$metrics", "bmlLibraryDependency=$wrapper", "bmlLibraryDependency=$base"), listOf(wrapper, base))
+            val packaged = File(directory, "packaged/bml/applications/consumer.assets")
+            node(bundler.path, "--in", ts.path, "--out", File(directory, "dev").path,
+                "--manifest", File(metrics, "manifest.tsv").path, "--prod-out", File(directory, "prod").path,
+                "--runtime", runtime.path, "--application-out", packaged.path,
+                "--application-resources", File(resources, "bml/applications/consumer.assets").path)
+            val appJar = archive(File(work, "app.jar"), listOf(classes, resources, File(directory, "packaged")))
+            assertTrue(directory.deleteRecursively())
+            File(work, "package.json").writeText("""{"type":"module"}""")
+            URLClassLoader(arrayOf(appJar, wrapper, base).map { it.toURI().toURL() }.toTypedArray(), javaClass.classLoader).use { loader ->
+                fun registry(name: String): Any {
+                    val type = loader.loadClass("consumer.assets.$name")
+                    return type.getMethod("getAll").invoke(type.getField("INSTANCE").get(null))
+                }
+                @Suppress("UNCHECKED_CAST") val pages = registry("BmlPages") as List<BmlPageRenderer>
+                @Suppress("UNCHECKED_CAST") val components = registry("BmlComponents") as List<BmlComponentInfo>
+                assertEquals(2, components.mapNotNull { it.clientModule }.distinct().size, "same-named producer modules must stay distinct")
+                for (development in listOf(true, false)) {
+                    val port = ServerSocket(0).use { it.localPort }
+                    val server = BmlServer(CompiledProject(name = "assets", version = "1"), pages, port, components = components, dev = development)
+                    val app = BoscaApplication(ApplicationConfig.load("bosca:\n  server:\n    port: $port\n    drain-timeout-ms: 0\n    development: true\n".byteInputStream()))
+                    server.install(app); app.freezeMiddleware()
+                    val engine = NettyServerEngine(app, port)
+                    thread(isDaemon = true, name = "bml-linked-assets-test") { engine.start() }
+                    try {
+                        awaitServer(port)
+                        val client = HttpClient.newHttpClient()
+                        fun get(path: String, etag: String? = null): HttpResponse<ByteArray> {
+                            val request = HttpRequest.newBuilder(URI("http://localhost:$port$path"))
+                            etag?.let { request.header("If-None-Match", it) }
+                            return client.send(request.GET().build(), HttpResponse.BodyHandlers.ofByteArray())
+                        }
+                        val page = get("/green").body().decodeToString()
+                        assertTrue(page.indexOf("/_bml/libraries/") < page.indexOf("<style>"), page)
+                        val styles = Regex("<link[^>]+href=\"([^\"]+)\"").findAll(page).map { it.groupValues[1].replace("&amp;", "&") }.toList()
+                        assertEquals(4, styles.count { "/_bml/libraries/" in it })
+                        val css = styles.joinToString("\n") { path ->
+                            val response = get(path)
+                            assertEquals(200, response.statusCode(), path)
+                            val etag = response.headers().firstValue("ETag").orElseThrow()
+                            assertEquals(304, get(path, etag).statusCode(), path)
+                            response.body().decodeToString()
+                        }
+                        val binaryUrls = Regex("/_bml/libraries/[^\\s)\\\"']+").findAll(css).map { it.value }.distinct().toList()
+                        assertTrue(binaryUrls.any { it.endsWith(".woff2") } && binaryUrls.any { it.endsWith(".svg") }, css)
+                        for (path in binaryUrls) {
+                            val response = get(path)
+                            assertEquals(200, response.statusCode(), path)
+                            if (path.endsWith(".woff2")) {
+                                assertTrue(response.headers().firstValue("Content-Type").orElseThrow().startsWith("font/woff2"))
+                                assertEquals("no-cache", response.headers().firstValue("Cache-Control").orElseThrow())
+                                assertTrue(response.body().contentEquals(byteArrayOf(0, 1, 2, -1)))
+                            }
+                        }
+                        assertEquals(404, get("/_bml/libraries/unknown/secret").statusCode())
+                        val scripts = Regex("<script[^>]+src=\"([^\"]+)\"").findAll(page).map { it.groupValues[1].replace("&amp;", "&") }
+                            .filter { it.startsWith("/_bml/js/") }.toList()
+                        assertEquals(if (development) 3 else 1, scripts.size)
+                        val clientRoot = File(work, "client-$development").apply { mkdirs() }
+                        val downloaded = mutableSetOf<String>()
+                        fun download(path: String) {
+                            val clean = path.substringBefore('?')
+                            if (!downloaded.add(clean)) return
+                            val response = get(path)
+                            assertEquals(200, response.statusCode(), path)
+                            val source = response.body().decodeToString()
+                            assertFalse("UNUSED_CLIENT_SENTINEL" in source, source)
+                            File(clientRoot, clean.substringAfterLast('/')).writeText(source)
+                            val etag = response.headers().firstValue("ETag").orElseThrow()
+                            assertEquals(304, get(path, etag).statusCode())
+                            Regex("(?:from\\s*|import\\s*)[\"'](\\./[^\"']+)[\"']").findAll(source).forEach {
+                                download("/_bml/js/" + it.groupValues[1].removePrefix("./"))
+                            }
+                        }
+                        scripts.forEach(::download)
+                        val check = File(clientRoot, "check.mjs").apply { writeText("""
+                            ${scripts.joinToString("\n") { "await import('./" + it.substringBefore('?').substringAfterLast('/') + "');" }}
+                            if (globalThis.runtimeStarts !== 1) throw new Error('runtime initialized ' + globalThis.runtimeStarts + ' times');
+                            if (globalThis.registered.length !== 2) throw new Error('wrong components ' + globalThis.registered);
+                            if (JSON.stringify(globalThis.libraryOrder) !== '["base","wrapper"]') throw new Error('wrong global order ' + globalThis.libraryOrder);
+                        """.trimIndent()) }
+                        node(check.path)
+                        val empty = get("/empty").body().decodeToString()
+                        assertFalse("/_bml/libraries/" in empty || "/_bml/js/" in empty, empty)
+                        for ((name, color) in listOf("green" to "rgb(0, 128, 0)", "blue" to "rgb(0, 0, 255)")) {
+                            var html = get("/$name").body().decodeToString()
+                            for (match in Regex("<link[^>]+href=\"([^\"]+)\"[^>]*>").findAll(html).toList()) {
+                                html = html.replace(match.value, "<style>" + get(match.groupValues[1].replace("&amp;", "&")).body().decodeToString() + "</style>")
+                            }
+                            val htmlFile = File(clientRoot, "$name.html").apply { writeText(html.replace(Regex("<script[\\s\\S]*?</script>"), "")) }
+                            val palette = File(clientRoot, "$name.mjs").apply { writeText("""
+                                import { Window } from ${JsonPrimitive(File(tools, "node_modules/happy-dom/lib/index.js").toURI().toString())};
+                                import { readFileSync } from 'node:fs';
+                                const window = new Window();
+                                window.document.write(readFileSync(${JsonPrimitive(htmlFile.path)}, 'utf8'));
+                                const color = window.getComputedStyle(window.document.querySelector('.label')).color;
+                                if (color !== ${JsonPrimitive(color)}) throw new Error('palette: ' + color);
+                                window.happyDOM.abort();
+                            """.trimIndent()) }
+                            node(palette.path)
+                        }
+                    } finally { engine.stopWithoutHalting() }
+                }
+            }
+        } finally { work.deleteRecursively() }
+    }
+
     private fun producer(work: File, name: String, initial: Int): File {
         val producer = File(work, name).apply { mkdirs() }
         val root = File(producer, "bml").apply { mkdirs() }

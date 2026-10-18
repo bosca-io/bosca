@@ -16,6 +16,23 @@ class BmlSiteMetricsTest {
     """.trimIndent()
 
     @Test
+    fun `library global styles count on static pages without reserving a production bundle slug`() {
+        val directory = kotlin.io.path.createTempDirectory("bml-library-metrics").toFile()
+        try {
+            val css = File(directory, "libraries/key/theme.css").apply { parentFile.mkdirs(); writeText(":root{--accent:red}") }
+            val entries = BmlSiteMetrics.parseManifest("bml-metrics\t1\nP\tHome\t/\t-\t-\t-\nA\tHome\tlibraries/key/theme.css\n")
+            val production = File(directory, "prod").apply { mkdirs() }
+            val report = BmlSiteMetrics.report(entries, null, null, emptyList(), production, directory)
+            assertEquals(css.length(), report.pages.single().css.single().rawBytes)
+            assertEquals(emptyList(), report.missing)
+            assertTrue(report.pages.single().js.isEmpty())
+            assertFailsWith<IllegalArgumentException> {
+                BmlSiteMetrics.parseManifest("bml-metrics\t1\nA\tHome\t../secret.css\n")
+            }
+        } finally { directory.deleteRecursively() }
+    }
+
+    @Test
     fun `parses pages with js css and component modules`() {
         val entries = BmlSiteMetrics.parseManifest(manifest)
         assertEquals(2, entries.size)

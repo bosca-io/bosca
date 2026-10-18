@@ -19,6 +19,7 @@ internal object BmlSiteMetrics {
         val pageJs: String?,
         val cssTags: List<String>,
         val componentJs: List<String>,
+        val libraryCss: List<String> = emptyList(),
     )
 
     /** A measured asset: size on disk and its gzip (default level) transfer size. */
@@ -49,6 +50,13 @@ internal object BmlSiteMetrics {
             "Unrecognized bml metrics manifest header: '${lines.firstOrNull()}' (expected 'bml-metrics\\t1')"
         }
         fun csv(field: String): List<String> = if (field == "-") emptyList() else field.split(',')
+        val libraryCss = lines.filter { it.startsWith("A\t") }.map { line ->
+            val fields = line.split('\t')
+            require(fields.size == 3 && fields[2].split('/').all { it.isNotEmpty() && it != "." && it != ".." } && '\\' !in fields[2]) {
+                "Malformed library stylesheet metric: '$line'"
+            }
+            fields[1] to fields[2]
+        }.groupBy({ it.first }, { it.second })
         return lines.drop(1).filter { it.startsWith("P\t") }.map { line ->
             val f = line.split('\t')
             require(f.size == 6) { "Malformed manifest page line: '$line'" }
@@ -58,6 +66,7 @@ internal object BmlSiteMetrics {
                 pageJs = f[3].takeIf { it != "-" },
                 cssTags = csv(f[4]),
                 componentJs = csv(f[5]),
+                libraryCss = libraryCss[f[1]].orEmpty().distinct(),
             )
         }
     }
@@ -92,10 +101,14 @@ internal object BmlSiteMetrics {
         cssDir: File?,
         globalAssets: List<File>,
         prodJsDir: File? = null,
+        libraryCssDir: File? = null,
     ): SiteReport {
         val missing = mutableListOf<String>()
         val global = globalAssets.mapNotNull { measure(it.name, it, missing) }.toMutableList()
         val production = prodJsDir?.takeIf { it.isDirectory }
+        fun libraryStyles(entry: PageEntry): List<AssetSize> = entry.libraryCss.mapNotNull { path ->
+            measure(path, libraryCssDir?.let { File(it, path) }, missing)
+        }
 
         if (production == null) {
             val pages = entries.map { entry ->
@@ -104,7 +117,7 @@ internal object BmlSiteMetrics {
                 val css = entry.cssTags.mapNotNull { tag ->
                     measure("$tag.css", cssDir?.let { d -> File(d, "$tag.css") }, missing)
                 }
-                PageReport(entry.objectName, entry.route, js, css)
+                PageReport(entry.objectName, entry.route, js, libraryStyles(entry) + css)
             }
             return SiteReport(global, pages, missing.distinct())
         }
@@ -140,7 +153,7 @@ internal object BmlSiteMetrics {
             val ownTags = entry.cssTags.filterNot { it in shared }
             val needsJs = entry.pageJs != null || entry.componentJs.isNotEmpty()
             if (ownTags.isEmpty() && !needsJs) {
-                return@map PageReport(entry.objectName, entry.route, emptyList(), emptyList())
+                return@map PageReport(entry.objectName, entry.route, emptyList(), libraryStyles(entry))
             }
             var candidate = slug(entry.route)
             var n = 2
@@ -157,7 +170,7 @@ internal object BmlSiteMetrics {
             } else {
                 listOfNotNull(measure("$candidate.page.js", File(production, "$candidate.page.js"), missing))
             }
-            PageReport(entry.objectName, entry.route, js, css)
+            PageReport(entry.objectName, entry.route, js, libraryStyles(entry) + css)
         }
         return SiteReport(global, pages, missing.distinct())
     }

@@ -21,6 +21,8 @@ import bosca.bml.codegen.scanFunctionKeys
 import bosca.bml.contract.ContractCodeGenerator
 import bosca.bml.contract.ContractParser
 import bosca.bml.library.BmlLibraryArtifacts
+import bosca.bml.library.BmlLibraryClientLinker
+import bosca.bml.library.LinkedBmlClientAssets
 import bosca.bml.library.BmlLibraryDependencies
 import bosca.bml.library.BmlImportResolver
 import bosca.bml.library.BmlLibrarySource
@@ -94,6 +96,9 @@ class BmlAdditionalSourcesExtension : CollectAdditionalSourceFilesExtension() {
             ?.let { File(it, BmlLibraryArtifacts.MANIFEST_PATH) }
         // An invalid rebuild, a removed library block, or removed exports must not retain old metadata.
         libraryManifest?.delete()
+        configuration.get(BmlConfigKeys.RESOURCES_OUTPUT_DIR)?.let { dir ->
+            require(File(dir, "bml/applications").deleteRecursively()) { "Cannot clear BML application resources" }
+        }
         if (!BmlLibraryArtifacts.isPackageName(packageName)) reportError("Invalid generated package '$packageName'")
         if (libraryId != null) {
             if (!BmlLibraryArtifacts.isLibraryId(libraryId)) reportError("Invalid library identity '$libraryId'; expected group:artifact")
@@ -296,6 +301,7 @@ class BmlAdditionalSourcesExtension : CollectAdditionalSourceFilesExtension() {
                 componentPropTypes = componentPropTypes,
             ).withImports(bindings)
             if (libraryId != null) generator.withLibraryIdentity(libraryId).withLibraryExports(exports.toSet())
+            else generator.withClientAssets("BmlAssets")
             val result = generator.generate(document)
             importedEntryPoints += generator.referencedImports(document)
             generator.importedRenderers(document).forEach { (id, renderer) ->
@@ -394,6 +400,29 @@ class BmlAdditionalSourcesExtension : CollectAdditionalSourceFilesExtension() {
                 }
             }
         }
+        val selectedImports = importedEntryPoints.flatMap { binding ->
+            binding.graph.closure(binding.dependency.manifest.library, binding.component.tag)
+        }.distinctBy { it.id }
+        val importedModules = selectedImports.associate { it.id to BmlLibraryClientLinker.moduleName(it) }
+        val assetComponents = componentMetas.map { meta ->
+            if (libraryId == null) meta else meta.copy(tag = BmlLibraryArtifacts.componentId(libraryId, meta.tag))
+        } + selectedImports.map(BmlLibraryClientLinker::metadata)
+        val applicationRoot = "bml/applications/$packageName"
+        val applicationResources = configuration.get(BmlConfigKeys.RESOURCES_OUTPUT_DIR)?.let { File(it, applicationRoot) }
+        var linked = LinkedBmlClientAssets()
+        if (libraryId == null && tsOutputDir != null && applicationResources != null && !hasErrors) {
+            try {
+                linked = BmlLibraryClientLinker.link(selectedImports, pageMetas, assetComponents, tsOutputDir, applicationResources, dependencies)
+            } catch (failure: IllegalArgumentException) {
+                reportError(failure.message ?: "Invalid BML library client assets")
+            } catch (failure: IOException) {
+                reportError(failure.message ?: "Cannot link BML library client assets")
+            }
+        }
+        if (libraryId == null && pageObjects.isNotEmpty()) {
+            val registryPath = File(configuration.getList(BmlConfigKeys.SOURCE_ROOTS).first(), "BmlAssets.kt").absolutePath
+            generated += emit("BmlAssets.kt", registryPath, buildAssetReader(packageName, applicationRoot, linked))
+        }
         // Emit a registry of every page so a deployment can register them all on the server without
         // hand-listing (`BmlServer(project, bml.generated.BmlPages.all, …)`).
         if (pageObjects.isNotEmpty()) {
@@ -473,7 +502,10 @@ class BmlAdditionalSourcesExtension : CollectAdditionalSourceFilesExtension() {
                 File(configuration.getList(BmlConfigKeys.SOURCE_ROOTS).first()),
                 "BmlComponents.kt",
             ).absolutePath
-            generated += emit("BmlComponents.kt", registryPath, buildComponentRegistry(packageName, runtimeRenderers))
+            generated += emit(
+                "BmlComponents.kt", registryPath,
+                buildComponentRegistry(packageName, runtimeRenderers, if (libraryId == null) importedModules else emptyMap()),
+            )
         }
         // Write the site metrics manifest: the per-page asset closure plus one CSS chunk
         // file per styled component, so the Gradle `bmlMetrics` task can report first-load payload
@@ -482,11 +514,24 @@ class BmlAdditionalSourcesExtension : CollectAdditionalSourceFilesExtension() {
         configuration.get(BmlConfigKeys.METRICS_OUTPUT_DIR)?.let { dirPath ->
             val dir = File(dirPath)
             val cssDir = File(dir, BmlMetricsManifest.CSS_DIR)
+            val libraryCss = File(dir, "library-css")
+            require(libraryCss.deleteRecursively()) { "Cannot clear BML library CSS metrics" }
+            linked.styles.values.flatten().distinct().forEach { url ->
+                val path = url.removePrefix("/_bml/")
+                applicationResources?.let { root ->
+                    File(libraryCss, path).apply { parentFile.mkdirs(); File(root, path).copyTo(this, overwrite = true) }
+                }
+            }
             cssDir.listFiles()?.forEach { it.delete() }
             dir.mkdirs()
-            File(dir, BmlMetricsManifest.FILE_NAME)
-                .writeText(BmlMetricsManifest.render(pageMetas, componentMetas))
-            componentMetas.filter { it.styles.isNotBlank() }.forEach { meta ->
+            val assetPages = pageMetas.map { page ->
+                page.copy(
+                    globalModules = linked.scripts[page.route].orEmpty(),
+                    libraryStyles = linked.styles[page.route].orEmpty().map { it.removePrefix("/_bml/") },
+                )
+            }
+            File(dir, BmlMetricsManifest.FILE_NAME).writeText(BmlMetricsManifest.render(assetPages, assetComponents))
+            assetComponents.filter { it.styles.isNotBlank() }.forEach { meta ->
                 cssDir.mkdirs()
                 File(cssDir, "${meta.tag}.css").writeText(meta.styles)
             }
@@ -511,6 +556,22 @@ class BmlAdditionalSourcesExtension : CollectAdditionalSourceFilesExtension() {
         // applyFirProcessSourcesExtension folds our return into the source list. Keep any incoming
         // Kotlin sources, drop the raw `.bml` (they aren't Kotlin), and add the generated Kotlin.
         return sources.filterNot { it.name.endsWith(".bml") } + generated
+    }
+
+    private fun buildAssetReader(packageName: String, root: String, assets: LinkedBmlClientAssets): String {
+        fun entries(values: Map<String, List<String>>) = values.toSortedMap().entries.joinToString(",\n") { (route, files) ->
+            "        ${jsonString(route)} to listOf(${files.joinToString(", ", transform = ::jsonString)})"
+        }
+        return """
+            package $packageName
+            public object BmlAssets {
+                public val source = bosca.bml.library.BmlApplicationAssets(
+                    ${jsonString(root)},
+                    mapOf(${entries(assets.styles)}),
+                    mapOf(${entries(assets.scripts)}),
+                ) { path -> BmlAssets::class.java.getResourceAsStream("/" + path)?.use { it.readBytes() } }
+            }
+        """.trimIndent()
     }
 
     /** The `bml.generated.BmlPages` registry listing every generated page object (for server wiring). */
@@ -628,8 +689,7 @@ class BmlAdditionalSourcesExtension : CollectAdditionalSourceFilesExtension() {
      * (asset pipeline) plus a tag -> renderer map (sliver re-render). [tagToObject] maps each component
      * tag to its generated object name.
      */
-    private fun buildComponentRegistry(packageName: String, tagToObject: Map<String, String>): String = buildString {
-        val sortedObjects = tagToObject.values.toSortedSet()
+    private fun buildComponentRegistry(packageName: String, tagToObject: Map<String, String>, modules: Map<String, String?>): String = buildString {
         appendLine("package $packageName")
         appendLine()
         appendLine("import bosca.bml.render.BmlComponentInfo")
@@ -638,7 +698,11 @@ class BmlAdditionalSourcesExtension : CollectAdditionalSourceFilesExtension() {
         appendLine("/** Every BML component compiled in this module: asset metadata + render-by-tag. Generated; do not edit. */")
         appendLine("public object BmlComponents {")
         appendLine("    public val all: List<BmlComponentInfo> = listOf(")
-        sortedObjects.forEach { appendLine("        $it.info,") }
+        tagToObject.toSortedMap().forEach { (tag, obj) ->
+            val module = modules[tag]
+            val override = if (module == null) "" else ".copy(clientModule = ${jsonString(module)})"
+            appendLine("        $obj.info$override,")
+        }
         appendLine("    )")
         appendLine("    public val byTag: Map<String, BmlComponentInfo> = all.associateBy { it.tag }")
         appendLine("    public val renderers: Map<String, BmlComponentRenderer> = mapOf(")

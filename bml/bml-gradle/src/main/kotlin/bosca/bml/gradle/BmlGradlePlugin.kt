@@ -330,6 +330,8 @@ class BmlGradlePlugin : KotlinCompilerPluginSupportPlugin {
         val globalAssetSourceDir = target.layout.projectDirectory.dir("src/main/client")
         val globalAssetOutputDir = target.layout.buildDirectory.dir("generated/bml/client-assets")
         val manifestFile = target.layout.buildDirectory.file("generated/bml/metrics/$MANIFEST_FILE_NAME")
+        val applicationOutputDir = target.layout.buildDirectory.dir("generated/bml/application-assets")
+        val applicationResourcesDir = target.layout.buildDirectory.dir(ext.packageName.map { "generated/bml/resources/bml/applications/$it" })
         val libraryManifestFile = target.layout.buildDirectory.file("generated/bml/resources/META-INF/bml/library-manifest.json")
         val libraryStylesDir = target.layout.buildDirectory.dir(BmlLibraryAssets.STYLES)
         val libraryOutputDir = target.layout.buildDirectory.dir(BmlLibraryAssets.OUTPUT)
@@ -391,6 +393,9 @@ class BmlGradlePlugin : KotlinCompilerPluginSupportPlugin {
                 .withPropertyName("clientRuntime")
                 .withPathSensitivity(org.gradle.api.tasks.PathSensitivity.RELATIVE)
                 .optional()
+            task.inputs.files(target.fileTree(applicationResourcesDir)).withPropertyName("importedClientResources")
+                .withPathSensitivity(org.gradle.api.tasks.PathSensitivity.RELATIVE)
+            task.outputs.dir(applicationOutputDir).withPropertyName("packagedClientAssets")
             task.outputs.dir(jsDir).withPropertyName("clientJs")
             task.outputs.dir(jsProdDir).withPropertyName("clientJsProd")
             task.outputs.dir(globalAssetOutputDir).withPropertyName("globalClientAssetsOptimized")
@@ -411,12 +416,15 @@ class BmlGradlePlugin : KotlinCompilerPluginSupportPlugin {
                     assetDir.walkTopDown().any { it.isFile } || projectDir.resolve("public").walkTopDown().any { it.isFile } ||
                     libraryStylesDir.get().asFile.resolve("resources").walkTopDown().any { it.isFile } ||
                     libraryOutputDir.get().asFile.walkTopDown().any { it.isFile })
-                require(!libraryInputs || available) {
+                val importedInputs = !ext.library.enabled.get() && (applicationResourcesDir.get().asFile.walkTopDown().any { it.isFile } ||
+                    dir.resolve("bml-linked-client").isFile)
+                require(!(libraryInputs || importedInputs) || available) {
                     "BML library client assets require the current @bosca/bml bundler; install it or configure bml.clientBundler"
                 }
-                available && (ext.library.enabled.get() || hasPageInputs || hasGlobalInputs || hasStaleOutputs)
+                available && (ext.library.enabled.get() || hasPageInputs || hasGlobalInputs || hasStaleOutputs || importedInputs)
             }
             task.doFirst {
+                require(applicationOutputDir.get().asFile.deleteRecursively()) { "Cannot clear packaged BML application assets" }
                 if (ext.library.enabled.get()) {
                     // Require output from this invocation, including when a different bundler is selected.
                     for (directory in listOf(libraryOutputDir, librarySourcesDir)) {
@@ -429,6 +437,11 @@ class BmlGradlePlugin : KotlinCompilerPluginSupportPlugin {
                 if (ext.library.enabled.get()) {
                     require(libraryOutputDir.get().file("META-INF/bml/client-manifest.json").asFile.isFile) {
                         "BML bundler did not produce library client assets; install the current @bosca/bml package or configure bml.clientBundler"
+                    }
+                } else if (applicationResourcesDir.get().asFile.walkTopDown().any { it.isFile } ||
+                    tsDir.get().file("bml-linked-client").asFile.isFile) {
+                    require(applicationOutputDir.get().file("client-manifest.json").asFile.isFile) {
+                        "BML bundler did not produce application client assets; install the current @bosca/bml package or configure bml.clientBundler"
                     }
                 }
             }
@@ -452,6 +465,10 @@ class BmlGradlePlugin : KotlinCompilerPluginSupportPlugin {
                         add("--library-sources-out"); add(librarySourcesDir.get().asFile.absolutePath)
                         add("--library-inputs-out"); add(buildDir.get().file(BmlLibraryAssets.INPUTS).asFile.absolutePath)
                     }
+                    if (!ext.library.enabled.get()) {
+                        add("--application-out"); add(applicationOutputDir.get().asFile.absolutePath)
+                        add("--application-resources"); add(applicationResourcesDir.get().asFile.absolutePath)
+                    }
                     if (ext.clientRuntime.isPresent) {
                         add("--runtime"); add(ext.clientRuntime.get().asFile.absolutePath)
                     }
@@ -459,6 +476,10 @@ class BmlGradlePlugin : KotlinCompilerPluginSupportPlugin {
             })
         }
         target.tasks.named("processResources", org.gradle.language.jvm.tasks.ProcessResources::class.java).configure { task ->
+            task.from(applicationOutputDir) { spec ->
+                spec.into(ext.packageName.map { "bml/applications/$it" })
+                spec.exclude { ext.library.enabled.get() }
+            }
             task.from(globalAssetOutputDir) { spec -> spec.exclude { ext.library.enabled.get() } }
             task.from(target.layout.buildDirectory.dir(BmlLibraryAssets.OUTPUT)) { spec -> spec.exclude { !ext.library.enabled.get() } }
         }

@@ -61,3 +61,9 @@ dependencies {
 
 // Add the local Maven repo KEFS points at (Settings > Tools > Kotlin External FIR Support),
 // alongside the root's optional Bosca registry. Task: publishMavenPublicationToLocalRepository.
+
+// Binary asset integration tests invoke the shipped browser bundler against source-free JARs.
+tasks.test {
+    inputs.files(fileTree("../bml-runtime/tools"), fileTree("../bml-runtime/src"), file("../bml-runtime/package-lock.json"))
+        .withPropertyName("bmlClientToolchain").withPathSensitivity(PathSensitivity.RELATIVE)
+}
