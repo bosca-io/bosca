@@ -1,0 +1,303 @@
+<component tag="select">
+  <prop name="name" type="String" default="" />
+  <prop name="ref" type="String" default="native" />
+  <prop name="placeholder" type="String" default="Select…" />
+  <prop name="label" type="String" default="Selection" />
+  <prop name="icon" type="String" default="" />
+  <prop name="searchable" type="Boolean" default="false" />
+  <prop name="async" type="Boolean" default="false" />
+  <prop name="multiple" type="Boolean" default="false" />
+  <prop name="allowCustom" type="Boolean" default="false" />
+  <prop name="disabled" type="Boolean" default="false" />
+  <prop name="loading" type="Boolean" default="false" />
+  <prop name="required" type="Boolean" default="false" />
+  <prop name="size" type="String" default="md" />
+  <prop name="maxTags" type="Int" default="3" />
+  <prop name="minQuery" type="Int" default="0" />
+  <prop name="debounce" type="Int" default="250" />
+  <prop name="preserveKey" type="String" default="" />
+  <div
+    :class='"select-widget size-" + size'
+    :data-bml-preserve="preserveKey.takeIf(String::isNotBlank)"
+    data-bml-design-select
+    :data-disabled="disabled"
+    :data-required="required"
+    :data-label="label"
+    :data-name="name"
+    :data-searchable="searchable"
+    :data-async="async"
+    :data-allow-custom="allowCustom"
+    :data-loading="loading"
+    :data-placeholder="placeholder"
+    :data-max-tags="maxTags"
+    :data-min-query="minQuery"
+    :data-debounce="debounce"
+  >
+    <html:select
+      :ref="ref"
+      :name="name.takeIf(String::isNotBlank)"
+      {...attrs}
+      :multiple="multiple"
+      :disabled="disabled"
+      :required="required"
+      :aria-label="label"
+    >
+      <slot />
+    </html:select>
+    <span class="select-native-chevron" aria-hidden="true">
+      <icon name="chevron" :size="13" />
+    </span>
+    <div ref="control" class="select-control" hidden>
+      <html:button
+        ref="trigger"
+        class="select-trigger"
+        type="button"
+        role="combobox"
+        aria-haspopup="listbox"
+        aria-expanded="false"
+        :aria-label="label"
+      >
+        <if icon.isNotBlank()>
+          <icon :name="icon" :size="14" />
+        </if>
+        <span ref="selection" class="select-selection">{ placeholder }</span>
+        <span class="select-chevron">
+          <icon name="chevron" :size="13" />
+        </span>
+      </html:button>
+      <div ref="tags" class="select-tags" hidden></div>
+    </div>
+    <div ref="popup" class="select-popup" popover="manual" hidden>
+      <html:input
+        ref="query"
+        class="select-query"
+        type="search"
+        role="combobox"
+        aria-autocomplete="list"
+        aria-expanded="false"
+        :aria-label='"Search " + label.lowercase()'
+        autocomplete="off"
+      />
+      <ul ref="options" class="select-options" role="listbox" :aria-label="label"></ul>
+      <div class="select-status-row">
+        <span class="select-progress">
+          <spinner />
+        </span>
+        <p ref="status" class="select-status" role="status"></p>
+      </div>
+      <nav ref="pagination" class="select-pagination" aria-label="Option pages" hidden>
+        <html:button ref="previous" type="button">Previous</html:button>
+        <html:button ref="next" type="button">Next</html:button>
+      </nav>
+    </div>
+  </div>
+  <style scoped>
+    .select-pagination {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 8px;
+      border-top: 1px solid var(--line);
+    }
+    .select-pagination button {
+      border: 1px solid var(--line-2);
+      border-radius: var(--r-sm);
+      padding: 4px 8px;
+      background: var(--control-bg);
+      color: var(--fg-1);
+      font: inherit;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .select-pagination button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .select-pagination button:disabled { opacity: 0.35; cursor: not-allowed; }
+    .select-pagination[hidden] { display: none; }
+    .select-widget {
+      box-sizing: border-box;
+      max-width: 100%;
+      position: relative;
+      min-width: 0;
+    }
+    .select-widget > select {
+      box-sizing: border-box;
+      height: 32px;
+      padding: 0 10px;
+      font: inherit;
+      font-size: 13px;
+      line-height: normal;
+      color: var(--fg-1);
+      background: var(--control-bg);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      width: 100%;
+      appearance: none;
+      -webkit-appearance: none;
+      padding-right: 32px;
+    }
+    .select-widget > select.enhanced {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      opacity: 0;
+      pointer-events: none;
+    }
+    .select-widget > select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .select-control[hidden], .select-tags[hidden], .select-popup[hidden], .select-query[hidden] { display: none; }
+    .select-native-chevron {
+      position: absolute;
+      top: 0;
+      right: 11px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      color: var(--fg-4);
+      pointer-events: none;
+    }
+    .size-sm .select-native-chevron {
+      height: 30px;
+    }
+    .select-widget.size-sm > select {
+      height: 30px;
+      font-size: 12.5px;
+    }
+    select:disabled + .select-native-chevron {
+      opacity: 0.35;
+    }
+    select.enhanced + .select-native-chevron {
+      display: none;
+    }
+    .select-chevron {
+      display: flex;
+      flex: none;
+      color: var(--fg-4);
+      transition: transform 0.15s;
+    }
+    .select-trigger[aria-expanded="true"] .select-chevron {
+      transform: rotate(180deg);
+    }
+    .select-trigger[aria-expanded="true"] {
+      border-color: var(--accent);
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .select-chevron {
+        transition: none;
+      }
+    }
+    .select-trigger {
+      box-sizing: border-box;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      width: 100%;
+      height: 32px;
+      padding: 0 10px;
+      border: 1px solid var(--line-2);
+      border-radius: var(--r-sm);
+      transition: border-color 0.15s;
+      background: var(--bg-2);
+      color: var(--fg-1);
+      font: inherit;
+      font-size: 13px;
+      line-height: normal;
+      text-align: left;
+      cursor: pointer;
+    }
+    [data-empty] .select-selection {
+      color: var(--fg-3);
+    }
+    .select-selection {
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .size-sm .select-trigger {
+      height: 30px;
+      font-size: 12.5px;
+    }
+    .select-trigger:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .select-trigger:hover:not(:disabled) {
+      border-color: var(--fg-4);
+    }
+    .select-trigger:disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
+    }
+    .select-trigger[aria-invalid] {
+      border-color: var(--err);
+    }
+    .select-popup {
+      box-sizing: border-box;
+      max-width: calc(100vw - 24px);
+      font: inherit;
+      position: fixed;
+      inset: auto;
+      margin: 0;
+      padding: 4px;
+      border: 1px solid var(--line-2);
+      border-radius: 10px;
+      color: var(--fg-1);
+      background: var(--bg-2);
+      box-shadow: var(--select-shadow, 0 12px 40px #0006);
+      overflow: auto;
+    }
+    .select-query {
+      box-sizing: border-box;
+      width: 100%;
+      height: 30px;
+      padding: 0 8px;
+      margin-bottom: 4px;
+      background: transparent;
+      border: 0;
+      border-bottom: 1px solid var(--line);
+      border-radius: 0;
+      color: var(--fg-0);
+      font: inherit;
+      font-size: 12.5px;
+      line-height: normal;
+    }
+    .select-query:focus-visible {
+      outline: 0;
+      box-shadow: none;
+      border-color: var(--accent);
+    }
+    .select-options {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+    .select-status-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px;
+      color: var(--fg-3);
+    }
+    .select-status-row:has(.select-status:empty),
+    .select-popup:not([aria-busy="true"]) .select-progress {
+      display: none;
+    }
+    .select-progress {
+      display: flex;
+      flex: none;
+    }
+    .select-status {
+      margin: 0;
+      padding: 0;
+      color: var(--fg-3);
+      font-size: 12px;
+    }
+    .select-tags {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 4px;
+      margin-top: 6px;
+    }
+  </style>
+  <script client scoped>
+    import { richSelect } from "@client/helpers/select";
+    richSelect(ctx);
+  </script>
+</component>

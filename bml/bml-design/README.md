@@ -75,6 +75,7 @@ import provides `<design:button>` with the same runtime identity and assets as `
 | `segmented-control` | Required `label: String`, `name: String`, `options: List<String>` and `value: String`; `values: List<String> = emptyList()`; `icons: List<String> = emptyList()`; `preserveKey: String = ""` | Radiogroup receives additional attributes/classes/events. A hidden native input supplies the selected form value. Buttons use indexed `values` or fall back to option labels; optional indexed icons are decorative. Emits bubbling `segmentchange` after updating its native value. No child content. |
 | `view-tabs` | Required `label: String`, `tabs: List<String>` and `selected: String` | Tablist receives additional attributes/classes/events. Emits bubbling `viewchange` with the selected label as its string detail. The application owns panels, IDs, accessible relationships and visibility. No child content. |
 | `tabs` | Required `label: String` and `items: List<NavigationItem>`; `header: Boolean = false` | Native nav receives additional attributes/classes and default trailing action children. Destinations remain native anchors with `aria-current="page"` on the current item. The scoped helper fits links around the current destination and a `More` overflow disclosure. |
+| `select` | `name: String = ""`; `ref: String = "native"`; `placeholder: String = "Select…"`; `label: String = "Selection"`; `icon: String = ""`; `searchable`, `async`, `multiple`, `allowCustom`, `disabled`, `loading`, `required`: `Boolean = false`; `size: String = "md"`; `maxTags: Int = 3`; `minQuery: Int = 0`; `debounce: Int = 250` (milliseconds); `preserveKey: String = ""` | Additional attributes/classes target the native select. Default children are caller-owned options/optgroups. The helper enhances it with a labelled combobox, listbox, optional search/pagination and selected tags; native values remain the form submission contract. |
 
 Regular controls are 32px high, compact controls 30px, and extra-small buttons 24px. Field labels use
 an 18px line and a 6px control gap. Buttons support the `ghost`, `danger`, `block`, and `icon-only`
@@ -197,6 +198,49 @@ key when changing `items` or projected children, since those children remain cli
 Unpreserved lists render their new links normally. Component lifecycle cleanup removes event
 listeners and ResizeObservers and closes the native popover on unmount.
 
+Select children supply native option values, labels, selected/disabled state and optgroups.
+`<html:select>` keeps a plain native select available after importing the library. With scripts
+disabled, the component remains a styled native select, including multiple values and required
+validation. With scripts, it keeps that native select for form submission and exposes a combobox.
+Additional native `aria-describedby`/`aria-labelledby` values reach the enhanced trigger. A wrapping
+`field` label supplies its visible name; provide a matching `label` for the native fallback.
+
+Keyboard arrows, Home/End, Enter and non-searchable Space choose enabled options. Escape returns
+focus and Tab leaves the popup, with access to page buttons when present. Native required validation
+focuses the trigger and marks it invalid. Selection emits one bubbling native `change` event.
+Multiple choices retain repeated native form values, show up to `maxTags` removable tags and a
+remaining count, and support Backspace removal when the query is empty. Disabled optgroups remain
+disabled. `loading` disables enhanced interaction while retaining native submission values.
+Native form resets refresh the displayed selection, including after a retained-root action patch.
+
+Local searchable choices filter their native labels/values. `allowCustom` adds a `Use “…”` choice
+and stores its actual value as the native option and displayed selection. Async controls emit
+`selectsearch` with `{ query, offset, resolve, reject }` after `debounce`; zero disables the delay.
+The caller supplies the search transport through its existing BML server/proxy abstractions.
+`resolve` accepts an option array or `{ options, previousOffset?, nextOffset? }`; options have
+`value`, `label`, optional `disabled` and optional `custom`. Page offsets are supplied by the caller.
+The helper retains selected native options and remembered labels while other pages are shown.
+`minQuery` suppresses requests below its threshold. Busy, empty and rejected requests have visible
+status feedback; newer queries, close/reopen and disposal prevent stale results from changing it.
+
+Mark caller-owned `<option data-persistent>` entries to keep them available below the query
+threshold and across async pages, busy states and failures. Their explicit labels/values win over
+matching returned values. The string `all` has no special meaning. Persistent choices can also be
+used with local filtering. The library does not own an `All …` convention or application filters.
+
+`preserveKey` retains the whole enhanced control, local native selection, query/caret/focus and open
+popup through unrelated island updates. Disabled/loading/required/name/label/placeholder settings
+reconcile through its server-owned root attributes. Change/remove the key when changing options,
+multiple mode, icons or additional native attributes; those child nodes remain client-owned.
+The popup stays under its owning root, inherits ordinary CSS, escapes clipping and fits narrow/short
+viewports. Unmount closes it, cancels debounce work, ignores pending results and removes listeners
+and ResizeObservers. Each instance owns its options and requests.
+
+The producer owns the `SelectOption`, `SelectPage` and `SelectSearch` declarations in
+`client/contracts/select.ts`. A stable TypeScript import for binary-only consumers is still pending;
+applications should not import a private helper or a hashed generated asset path. The isolated
+consumer currently handles the event directly and uses BML's same-origin contract client.
+
 ## Consumer CSS
 
 Library defaults load before application CSS. Override ordinary custom properties on the root or a
@@ -263,6 +307,10 @@ Route tabs use `--fg-3`, `--fg-1`, `--fg-0`, `--line` and `--accent` for normal/
 Their overflow surface inherits `--bg-2`, `--fg-1`, `--bg-3` and `--line-2`;
 `--tabs-menu-shadow` overrides the default `0 14px 40px #0006` shadow.
 
+Select surfaces use `--control-bg`, `--bg-2`, `--bg-3`, `--fg-0` through `--fg-4`, `--line`,
+`--line-2`, `--accent`, `--err` and `--r-sm`; `--select-shadow` overrides the popup shadow.
+Dynamic option/tag rules live in the real library stylesheet under its owning select marker.
+
 ## Source ownership
 
 | Library source | Extracted source in Git UI |
@@ -301,6 +349,9 @@ Their overflow surface inherits `--bg-2`, `--fg-1`, `--bg-3` and `--line-2`;
 | `components/segmented-control.bml` | `components/ui/segmented-control.bml` |
 | `components/view-tabs.bml` | `components/ui/view-tabs.bml` |
 | `components/tabs.bml` | `components/ui/tabs.bml` |
+| `components/select.bml` | `components/ui/select.bml` |
+| `client/helpers/select.ts` | `src/main/client/select.ts` |
+| `client/contracts/select.ts` | Public event interfaces from `src/main/client/select.ts` |
 | `client/helpers/tabs.ts` | `src/main/client/tabs.ts` |
 | `client/helpers/search-input.ts` | Scoped client script in `components/ui/search-input.bml` |
 | `client/helpers/segmented-control.ts` | Scoped client script in `components/ui/segmented-control.bml` |

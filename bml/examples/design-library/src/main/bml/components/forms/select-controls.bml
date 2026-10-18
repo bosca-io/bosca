@@ -1,0 +1,80 @@
+<component tag="select-controls">
+  <prop name="id" type="String" required />
+  <script server provides="choices" scope="server-session">bosca.design.example.SelectControlsState(id)</script>
+  <card title="Select controls">
+    <island name="choices" :key="id">
+      <div :data-select-example="choices.id">
+        <div class="actions">
+          <button @click="choices.update" :data-select-update="choices.id">Unrelated update</button>
+          <button @click="choices.change" :data-select-change="choices.id">Change controlled choice</button>
+          <button @click="choices.toggleDisabled" :data-select-disable="choices.id">Toggle disabled</button>
+          <button @click="choices.toggleLoading" :data-select-loading="choices.id">Toggle loading</button>
+          <button @click="choices.toggle" :data-select-toggle="choices.id">Toggle controls</button>
+        </div>
+        <p :data-select-updates="choices.id">Updates { choices.updates }</p>
+        <if choices.mounted>
+          <form class="select-fixture-form" @submit="choices.save(form.flavor)" :data-select-form="choices.id">
+            <field label="Flavor">
+              <select label="Flavor" name="flavor" required :disabled="choices.disabled" :loading="choices.loading"
+                      :preserveKey='"single-" + choices.id + "-" + choices.revision'
+                      :data-select-single="choices.id" :aria-describedby='"select-hint-" + choices.id' class="fixture-native-select">
+                <option value="">Choose a flavor</option>
+                <option value="a" :selected='choices.flavor == "a"'>Apple</option>
+                <option value="b" :selected='choices.flavor == "b"'>Berry</option>
+                <option value="disabled" disabled>Unavailable</option>
+                <option value="c">Citrus</option>
+              </select>
+            </field>
+            <p :id='"select-hint-" + choices.id'>Your preferred flavor.</p>
+            <field label="Toppings">
+              <select label="Toppings" name="toppings" multiple searchable :maxTags="2" size="sm" :disabled="choices.disabled" :loading="choices.loading"
+                      :preserveKey='"multi-" + choices.id + "-" + choices.revision' :data-select-multiple="choices.id">
+                <option value="a" selected>Almond</option><option value="b" selected>Berry</option>
+                <option value="c">Coconut</option><option value="d">Dates</option>
+                <optgroup label="Unavailable" disabled><option value="group-disabled">Group choice</option></optgroup>
+              </select>
+            </field>
+            <field label="Custom choice">
+              <select label="Custom choice" name="custom" searchable allowCustom :preserveKey='"custom-" + choices.id + "-" + choices.revision' :data-select-custom="choices.id">
+                <option value="" selected>Choose or enter a value</option><option value="known">Known choice</option>
+              </select>
+            </field>
+            <field label="Remote choice">
+              <select label="Remote choice" name="remote" searchable async :minQuery="2" :debounce="100" :disabled="choices.disabled" :loading="choices.loading"
+                      :preserveKey='"remote-" + choices.id + "-" + choices.revision' :data-select-async="choices.id">
+                <option value="any" data-persistent>Any option</option>
+                <option value="all">Literal all</option>
+                <option value="saved" selected>Saved choice</option>
+              </select>
+            </field>
+            <field label="Remote tags">
+              <select label="Remote tags" name="remoteTags" searchable async multiple allowCustom :minQuery="2" :debounce="0" :maxTags="2"
+                      :preserveKey='"remote-tags-" + choices.id + "-" + choices.revision' :data-select-remote-multiple="choices.id">
+                <option value="any" data-persistent>Any option</option><option value="saved" selected>Saved tag</option>
+              </select>
+            </field>
+            <div class="actions">
+              <button type="submit" :data-select-submit="choices.id">Save choices</button>
+              <button @click="choices.reject(form.flavor)" :data-select-reject="choices.id">Rejected choice</button>
+              <button type="reset" :data-select-reset="choices.id">Reset choices</button>
+            </div>
+          </form>
+        </if>
+        <p :data-select-result="choices.id">Saved { choices.flavor } ({ choices.submissions })</p>
+        <if choices.error.isNotBlank()><alert :data-select-error="choices.id">{ choices.error }</alert></if>
+      </div>
+    </island>
+  </card>
+  <script client scoped>
+    import { bmlContractCall } from "@bosca/bml";
+    ctx.on<CustomEvent>(ctx.root, "selectsearch", event => {
+      event.stopPropagation();
+      const { query, offset, resolve, reject } = event.detail;
+      bmlContractCall<Record<string, string>[]>("SelectChoices", "search", [query, offset]).then(rows => resolve({
+        options: rows.slice(0, 2).map(row => ({ value: row.value, label: row.label, disabled: row.disabled === "true" })),
+        previousOffset: offset > 0 ? Math.max(0, offset - 2) : undefined,
+        nextOffset: rows.length > 2 ? offset + 2 : undefined,
+      }), reject);
+    });
+  </script>
+</component>

@@ -7,7 +7,7 @@ import bosca.design.example.generated.BmlIslands
 import bosca.design.example.generated.BmlPages
 import java.io.File
 
-/** Runs the isolated design-library consumer without Git services or application bindings. */
+/** Runs the isolated design-library consumer with its local form and choice fixtures. */
 fun main(args: Array<String>) {
     val css = checkNotNull(BmlPages::class.java.getResourceAsStream("/design-example.css"))
         .bufferedReader().use { it.readText() }
@@ -18,6 +18,7 @@ fun main(args: Array<String>) {
         componentRenderers = BmlComponents.renderers,
         islandDispatchers = BmlIslands.dispatchers,
         componentIslandDispatchers = BmlIslands.componentDispatchers,
+        contracts = listOf(SelectChoiceSearch()),
         installationEndpoint = null,
         port = args.firstOrNull()?.toIntOrNull() ?: 9092,
         clientDir = System.getProperty("bml.clientDir")?.let(::File),

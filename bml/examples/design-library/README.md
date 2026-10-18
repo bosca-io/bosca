@@ -3,7 +3,7 @@
 An isolated BML application using `project(":bml:bml-design")`, one unaliased `imports.bml`, and
 nested pages/components. It renders two palettes against the same compiled dependency, application
 state, projected child content, native control escapes, and optional aliases. Forms and click actions
-use ordinary BML declarations. It has no Git dependency or backend connection.
+use ordinary BML declarations. It has no Git dependency or external backend connection.
 
 Run from the workspace root:
 
@@ -86,6 +86,16 @@ refits, focused-link continuity, retained menus across unrelated action patches,
 current labels, empty/short/unselected lists, header spacing, clipped/short-screen popups and live
 consumer themes. Disposal checks listeners and ResizeObservers. A separate destination page verifies
 native navigation from overflow links and script-disabled scrolling rows.
+
+The `/selects` page covers native single/multiple values, required validation, disabled/loading
+controls, keyboard choices, local search/custom choices and tag removal/limits. Its application-owned
+`SelectChoices` BML contract serves isolated HTTP pages, failures and delayed responses; the generic
+control only emits `selectsearch`. Browser checks cover minimum query/debounce, offsets, explicit
+persistent options, error/retry and stale results, native values across pages, remote multiple/custom
+choices, preserved query/caret/focus, native reset, live CSS themes, clipping/short screens and disposal.
+Script-disabled checks retain styled native selects and form values. Stable binary-consumer imports
+for the producer's TypeScript event declarations are still pending; the adapter handles the event
+directly through the existing same-origin contract client.
 
 Chrome defaults to the installed Google Chrome app on macOS or `google-chrome` on Linux. Set
 `BML_DESIGN_CHROME_BINARY` for another executable. Screenshots land in this project's

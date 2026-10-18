@@ -11,6 +11,7 @@ import { checkClipboard } from './clipboard-checks.mjs';
 import { checkToasts } from './toast-checks.mjs';
 import { checkSelection } from './selection-checks.mjs';
 import { checkNavigation } from './navigation-checks.mjs';
+import { checkSelects } from './select-checks.mjs';
 
 const base = process.argv[2];
 const mode = process.argv[3] ?? 'fixture';
@@ -243,6 +244,7 @@ try {
   await checkToasts({ call, evaluate, until, base, mode, artifacts });
   await checkSelection({ call, evaluate, until, base, mode, artifacts });
   await checkNavigation({ call, evaluate, until, base, mode, artifacts });
+  await checkSelects({ call, evaluate, until, base, mode, artifacts });
   await call('Emulation.setScriptExecutionDisabled', { value: true });
   await call('Page.navigate', { url: base + '/' });
   await until('document.readyState === "complete" && document.querySelector("[data-input=light]")');
@@ -287,6 +289,12 @@ try {
   await evaluate(`document.querySelector('[data-routes=light] .tab-row a').click()`);
   await until('document.readyState === "complete" && location.pathname === "/navigation-target" && document.querySelector("[data-destination]")');
   assert.equal(await evaluate('document.querySelector("[data-destination]").textContent.trim()'),'Destination 1');
+  await call('Page.navigate', { url: base + '/selects' });
+  await until('document.readyState === "complete" && document.querySelector("[data-select-single=light]")');
+  assert.ok(await evaluate(`(() => {const n=document.querySelector('[data-select-single=light]'),m=document.querySelector('[data-select-multiple=light]');
+    const form=new FormData(document.querySelector('[data-select-form=light]'));
+    return n instanceof HTMLSelectElement&&n.required&&n.value==='a'&&!n.classList.contains('enhanced')&&getComputedStyle(n).height==='32px'&&
+      m.multiple&&JSON.stringify(form.getAll('toppings'))==='["a","b"]'&&n.closest('[data-bml-design-select]').querySelector('[data-bml-ref=control]').hidden;})()`), 'No-script native single/multiple selects retain their names, form values and presentation');
   assert.deepEqual(exceptions, []);
   console.log(`Design library browser checks passed (${mode}); screenshots: ${artifacts}`);
 } finally {
