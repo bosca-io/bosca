@@ -22,7 +22,69 @@ import java.util.UUID
 class ObjectBackupCaptureServiceImpl(
     private val progressService: ObjectBackupProgressService,
     private val json: Json,
+    private val repository: ObjectBackupCaptureRepository,
 ) : ObjectBackupCaptureService {
+    override suspend fun prepareInventory(
+        inventory: ObjectBackupCaptureInventory,
+        destinationId: String,
+        payloadPrefix: String,
+        manifestPath: String,
+    ): ObjectBackupCapturePlan {
+        val selected = canonicalSelection(inventory)
+        selected.validate()
+        validateOutputPaths(destinationId, payloadPrefix, manifestPath)
+        val key = objectBackupIdentity(
+            ObjectBackupOperation.BACKUP, listOf(selected.sourceId, destinationId, selected.scope, selected.id),
+        )
+        return transaction {
+            repository.add(ObjectBackupCapturePlan(key, destinationId, selected, payloadPrefix, manifestPath))
+            val plan = checkNotNull(repository.get(key)) { "Prepared capture plan is missing: $key" }
+            require(plan.destinationId == destinationId && plan.inventory == selected &&
+                plan.payloadPrefix == payloadPrefix && plan.path == manifestPath) {
+                "Conflicting capture plan intent: $key"
+            }
+            plan
+        }
+    }
+
+    override suspend fun getPlan(key: String): ObjectBackupCapturePlan? {
+        require(key.isNotBlank()) { "Capture plan key is required" }
+        return repository.get(key)
+    }
+
+    override suspend fun listPlans(
+        sourceId: String,
+        destinationId: String,
+        scope: String,
+        offset: Long,
+        limit: Int,
+    ): List<ObjectBackupCapturePlan> {
+        require(sourceId.isNotBlank() && destinationId.isNotBlank() && scope.isNotBlank()) {
+            "Capture plan source, destination and scope identities are required"
+        }
+        require(offset >= 0) { "Capture plan offset must not be negative" }
+        require(limit > 0) { "Capture plan limit must be positive" }
+        return repository.list(sourceId, destinationId, scope, offset, limit)
+    }
+
+    override suspend fun captureInventory(
+        key: String,
+        sources: Map<String, ObjectStorageService>,
+        destination: ObjectStorageService,
+        verifiedSince: OffsetDateTime?,
+    ): ObjectBackupManifest {
+        check(connectionOrNull()?.inTransaction != true) {
+            "Capture plan execution must run outside an active database transaction"
+        }
+        val capturedSources = sources.toMap()
+        val plan = withConnectionManager {
+            checkNotNull(getPlan(key)) { "Capture plan is missing: $key" }
+        }
+        return captureInventory(
+            plan.inventory, plan.destinationId, capturedSources, destination, plan.payloadPrefix, plan.path, verifiedSince,
+        )
+    }
+
     override suspend fun captureInventory(
         inventory: ObjectBackupCaptureInventory,
         destinationId: String,
@@ -32,28 +94,18 @@ class ObjectBackupCaptureServiceImpl(
         manifestPath: String,
         verifiedSince: OffsetDateTime?,
     ): ObjectBackupManifest {
-        val selected = inventory.copy(stores = inventory.stores.mapValues { (_, entries) -> entries.toList() })
+        val selected = canonicalSelection(inventory)
         val capturedSources = sources.toMap()
         selected.validate()
-        require(destinationId.isNotBlank()) { "Object backup destination identity is required" }
+        validateOutputPaths(destinationId, payloadPrefix, manifestPath)
         check(connectionOrNull()?.inTransaction != true) {
             "Inventory capture must run outside an active database transaction"
-        }
-        for (path in listOf(payloadPrefix, manifestPath)) {
-            require(path.split('/').all { it.isNotEmpty() && it != "." && it != ".." }) {
-                "Invalid inventory capture output path: $path"
-            }
-        }
-        require(payloadPrefix != manifestPath && !payloadPrefix.startsWith("$manifestPath/")) {
-            "Manifest output conflicts with the retained payload namespace: $manifestPath"
         }
         for (store in selected.stores.keys) {
             val source = requireNotNull(capturedSources[store]) { "Selected source store is missing: $store" }
             require(source !== destination) { "Backup storage must be independent of the source: $store" }
         }
-        val entries = selected.stores.toSortedMap().flatMap { (store, entries) ->
-            entries.sortedWith(compareBy({ it.key }, { it.info.version })).map { store to it }
-        }
+        val entries = selected.stores.flatMap { (store, entries) -> entries.map { store to it } }
         withConnectionManager {
             for ((store, entry) in entries) {
                 val known = progressService.get(
@@ -249,6 +301,23 @@ class ObjectBackupCaptureServiceImpl(
                 }
             }
             throw failure
+        }
+    }
+
+    private fun canonicalSelection(inventory: ObjectBackupCaptureInventory): ObjectBackupCaptureInventory =
+        inventory.copy(stores = inventory.stores.toSortedMap().mapValues { (_, entries) ->
+            entries.sortedWith(compareBy({ it.key }, { it.info.version }))
+        })
+
+    private fun validateOutputPaths(destinationId: String, payloadPrefix: String, manifestPath: String) {
+        require(destinationId.isNotBlank()) { "Object backup destination identity is required" }
+        for (path in listOf(payloadPrefix, manifestPath)) {
+            require(path.isNotBlank() && path.split('/').all { it.isNotEmpty() && it != "." && it != ".." }) {
+                "Invalid inventory capture output path: $path"
+            }
+        }
+        require(payloadPrefix != manifestPath && !payloadPrefix.startsWith("$manifestPath/")) {
+            "Manifest output conflicts with the retained payload namespace: $manifestPath"
         }
     }
 

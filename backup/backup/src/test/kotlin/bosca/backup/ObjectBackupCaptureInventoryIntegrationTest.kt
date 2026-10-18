@@ -342,7 +342,7 @@ class ObjectBackupCaptureInventoryIntegrationTest {
                 expectedVersion: Long,
                 objectVersion: String?,
             ): ObjectBackupProgress = throw IOException("checkpoint unavailable")
-        }, Json)
+        }, Json, provide())
         assertFailsWith<IOException> { capture() }
         assertTrue(checkpoints().isEmpty())
         val orphan = writes.single()
@@ -376,6 +376,94 @@ class ObjectBackupCaptureInventoryIntegrationTest {
         assertEquals(listOf("artifacts/a@v1", "artifacts/a@v2"), requests)
         assertEquals(2, result.objects.map { it.payloadPath }.toSet().size)
     }
+
+    @Test
+    fun `prepared plan survives restart and executes using only its saved key`(): Unit = runBlocking {
+        val plan = preparePlan()
+        assertTrue(requests.isEmpty())
+        assertTrue(writes.isEmpty())
+        assertTrue(checkpoints().isEmpty())
+        BackupProviderRegistrar().register()
+        service = provide()
+        val result = executePlan(plan.key)
+        assertEquals(2, result.objects.size)
+        assertEquals(listOf("artifacts/a@v1", "content/b@v1"), requests)
+        assertEquals(result, ObjectBackupManifestStore(target, Json).load(StringObjectPath(plan.path)))
+        assertEquals(plan, withConnectionManager { service.getPlan(plan.key) })
+    }
+
+    @Test
+    fun `prepared plan resumes partial capture in another service without changing its selection`(): Unit = runBlocking {
+        val plan = preparePlan()
+        failSource = "content/b@v1"
+        assertFailsWith<IOException> { executePlan(plan.key) }
+        assertEquals(1, checkpoints().size)
+        assertNotPublished()
+        failSource = null
+        requests.clear()
+        BackupProviderRegistrar().register()
+        service = provide()
+        assertEquals(2, executePlan(plan.key).objects.size)
+        assertEquals(listOf("content/b@v1"), requests)
+        assertEquals(plan, withConnectionManager { service.getPlan(plan.key) })
+    }
+
+    @Test
+    fun `prepared plan retains input through cancellation and successful retry`(): Unit = runBlocking {
+        val plan = preparePlan()
+        failSource = "content/b@v1"
+        cancelSource = true
+        val work = async { executePlan(plan.key) }
+        assertFailsWith<CancellationException> { work.await() }
+        work.join()
+        assertEquals(plan, withConnectionManager { service.getPlan(plan.key) })
+        assertEquals(1, checkpoints().size)
+        assertNotPublished()
+        failSource = null
+        requests.clear()
+        assertEquals(2, executePlan(plan.key).objects.size)
+        assertEquals(listOf("content/b@v1"), requests)
+    }
+
+    @Test
+    fun `prepared plan retries publication without rereading either source`(): Unit = runBlocking {
+        val plan = preparePlan()
+        failPublication = true
+        assertFailsWith<IOException> { executePlan(plan.key) }
+        val before = checkpoints()
+        assertEquals(2, before.size)
+        failPublication = false
+        requests.clear()
+        data.clear()
+        assertEquals(2, executePlan(plan.key).objects.size)
+        assertTrue(requests.isEmpty())
+        assertEquals(before, checkpoints())
+        assertEquals(plan, withConnectionManager { service.getPlan(plan.key) })
+    }
+
+    @Test
+    fun `missing or blank plan keys fail before storage access`(): Unit = runBlocking {
+        assertFailsWith<IllegalStateException> { executePlan("unknown") }
+        assertFailsWith<IllegalArgumentException> { executePlan(" ") }
+        assertTrue(requests.isEmpty())
+        assertTrue(writes.isEmpty())
+    }
+
+    @Test
+    fun `plan execution rejects an active caller transaction before storage I O`(): Unit = runBlocking {
+        val plan = preparePlan()
+        assertFailsWith<IllegalStateException> {
+            withConnectionManager { transaction { executePlan(plan.key) } }
+        }
+        assertTrue(requests.isEmpty())
+        assertTrue(writes.isEmpty())
+    }
+
+    private suspend fun preparePlan() = withConnectionManager {
+        service.prepareInventory(selected, "retained", "payloads", outputPath)
+    }
+
+    private suspend fun executePlan(key: String) = service.captureInventory(key, sources, target, OffsetDateTime.MIN)
 
     private suspend fun capture(
         inventory: ObjectBackupCaptureInventory = selected,

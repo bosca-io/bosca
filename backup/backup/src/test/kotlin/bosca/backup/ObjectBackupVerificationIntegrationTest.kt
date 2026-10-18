@@ -384,7 +384,7 @@ class ObjectBackupVerificationIntegrationTest {
         service = ObjectBackupCaptureServiceImpl(object : ObjectBackupProgressService by progress {
             override suspend fun recordVerification(key: String, expectedVersion: Long, objectVersion: String?): ObjectBackupProgress =
                 throw failure
-        }, Json)
+        }, Json, provide())
         resetCounters()
         val observed = assertFailsWith<IOException> { capture(checkNotNull(first.verified).plusSeconds(1)) }
         assertTrue(generateSequence<Throwable>(observed) { it.cause }.any { it === failure })
@@ -622,6 +622,27 @@ class ObjectBackupVerificationIntegrationTest {
         assertEquals(0, sourceReads.get())
         assertEquals(1, writes.get())
         assertEquals(first, ObjectBackupManifestStore(target, Json).load(StringObjectPath(path)))
+    }
+
+    @Test
+    fun `saved plan uses the execution cutoff without freezing verification policy in durable input`(): Unit = runBlocking {
+        val selectedInventory = ObjectBackupCaptureInventory(
+            "planned", "source-instance", "content", "2026-10-18T00:00:00Z", mapOf("content" to listOf(selected)),
+        )
+        val plan = withConnectionManager {
+            service.prepareInventory(selectedInventory, "retained-store", "payloads/planned", "manifests/planned.json")
+        }
+        val first = service.captureInventory(plan.key, mapOf("content" to source), target, OffsetDateTime.MIN)
+        assertEquals(1, sourceReads.get())
+        resetCounters()
+        assertEquals(first, service.captureInventory(plan.key, mapOf("content" to source), target, OffsetDateTime.MIN))
+        assertEquals(0, sourceReads.get())
+        assertEquals(0, bodies.get())
+        resetCounters()
+        assertEquals(first, service.captureInventory(plan.key, mapOf("content" to source), target, null))
+        assertEquals(0, sourceReads.get())
+        assertEquals(2, bodies.get())
+        assertEquals(plan, withConnectionManager { service.getPlan(plan.key) })
     }
 
     private val manifestPath = StringObjectPath("manifests/captured.json")

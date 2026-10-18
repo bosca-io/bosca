@@ -32,7 +32,7 @@ class ObjectBackupVerificationMigrationIntegrationTest {
         ))
         FlywayMigration(pool).migrate(listOf(object : Migration {
             override val schema = "backup"
-            override val resources = BackupMigration().resources.filter { !it.startsWith("V9__") }
+            override val resources = BackupMigration().resources.takeWhile { !it.startsWith("V9__") }
         }))
     }
 

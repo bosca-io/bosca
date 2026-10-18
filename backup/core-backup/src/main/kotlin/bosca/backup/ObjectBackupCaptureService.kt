@@ -8,6 +8,43 @@ import java.time.OffsetDateTime
 /** Creates verified retained payloads from explicitly selected provider revisions. */
 interface ObjectBackupCaptureService : Service {
     /**
+     * Records a canonical selected inventory and output intent in the caller's database context.
+     * Matching replay returns the existing plan; changed intent for the same identity fails.
+     * Participates in the caller's transaction and performs no storage access or dispatch.
+     */
+    suspend fun prepareInventory(
+        inventory: ObjectBackupCaptureInventory,
+        destinationId: String,
+        payloadPrefix: String,
+        manifestPath: String,
+    ): ObjectBackupCapturePlan
+
+    /** Reads immutable capture intent in the caller's database context without opening stores. */
+    suspend fun getPlan(key: String): ObjectBackupCapturePlan?
+
+    /** Lists selected plans in one exact scope using the caller's context and offset pagination. */
+    suspend fun listPlans(
+        sourceId: String,
+        destinationId: String,
+        scope: String,
+        offset: Long,
+        limit: Int,
+    ): List<ObjectBackupCapturePlan>
+
+    /**
+     * Loads saved intent in a short database context, then captures/publishes it through [sources].
+     * Uses the same storage/retention/exclusive-writer contracts as inventory-based capture.
+     * Rejects active caller transactions. The caller chooses [verifiedSince] for this execution;
+     * plans neither freeze a recheck interval nor record an execution outcome or dispatch a job.
+     */
+    suspend fun captureInventory(
+        key: String,
+        sources: Map<String, ObjectStorageService>,
+        destination: ObjectStorageService,
+        verifiedSince: OffsetDateTime?,
+    ): ObjectBackupManifest
+
+    /**
      * Captures all explicitly selected revisions and publishes their verified portable manifest.
      *
      * Snapshots and validates [inventory] and required [sources] before asset I/O. Results are
