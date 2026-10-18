@@ -125,21 +125,60 @@ async function releaseRequests() {
     await call("Fetch.continueRequest", { requestId: request.requestId });
   await call("Fetch.disable");
 }
-for (const width of [1920, 1024, 390]) {
+async function statGeometry() {
+  return ev(`(() => {
+    const bounds = element => {
+      const {x, y, width, height} = element.getBoundingClientRect();
+      return {x, y, width, height};
+    };
+    return {
+      summary: bounds(document.querySelector('.repository-summary')),
+      path: bounds(document.querySelector('.path-bar')),
+      tiles: [...document.querySelectorAll('.repository-summary .stat-tile')].map(bounds),
+      values: [...document.querySelectorAll('.repository-summary .stat-value')].map(bounds),
+    };
+  })()`);
+}
+async function screenshot(state, width) {
+  await writeFile(
+    `${process.env.GIT_UI_ARTIFACT_DIR}/bosca-git-ui-statistics-${state}-${width}.png`,
+    Buffer.from((await call("Page.captureScreenshot", {format:"png",captureBeyondViewport:false})).data,"base64"),
+  );
+}
+for (const width of [1920, 1024, 768, 390]) {
   await call("Emulation.setDeviceMetricsOverride", {
     width,
     height: width === 390 ? 844 : 900,
     deviceScaleFactor: 1,
     mobile: width === 390,
   });
+  let loadingGeometry;
   await holdRequests("/_bml/deferred/*git-repository-stats*");
   try {
     await nav("/repositories/repo");
     await waitForHeldRequest();
     assert.ok(
-      await ev("document.querySelector('.stats-loading').checkVisibility() && !document.querySelector('.stats-retry').checkVisibility()"),
+      await ev("document.querySelector('.stats-loading').checkVisibility() && !document.querySelector('.stats-retry').checkVisibility() && document.querySelector('.repository-summary [data-bml-deferred]').getAttribute('aria-busy') === 'true'"),
       "Statistics show loading while the rest of the page is usable",
     );
+    assert.deepEqual(
+      await ev("[...document.querySelectorAll('.repository-summary .stat-label')].map(label => label.textContent.trim())"),
+      ["Commits", "Branches", "Tags", "Contributors", "Size"],
+      "Every statistic has its labeled tile before the numbers arrive",
+    );
+    assert.equal(
+      await ev("[...document.querySelectorAll('.stat-skeleton')].filter(skeleton => skeleton.checkVisibility() && skeleton.getAttribute('role') === 'status' && skeleton.getAttribute('aria-label')?.startsWith('Loading ')).length"),
+      5,
+      "Every value has a visible, accessible loading placeholder",
+    );
+    loadingGeometry = await statGeometry();
+    await screenshot("loading", width);
+    await call("Emulation.setEmulatedMedia", {features: [{name: "prefers-reduced-motion", value: "reduce"}]});
+    assert.ok(
+      await ev("[...document.querySelectorAll('.stat-skeleton')].every(skeleton => getComputedStyle(skeleton).animationName === 'none')"),
+      "Loading placeholders respect reduced motion",
+    );
+    await call("Emulation.setEmulatedMedia", {features: []});
     for (const request of pausedRequests.splice(0)) {
       await call("Fetch.fulfillRequest", {
         requestId: request.requestId,
@@ -147,20 +186,40 @@ for (const width of [1920, 1024, 390]) {
         body: btoa("Statistics temporarily unavailable"),
       });
     }
-    await until("document.querySelector('.stats-error').checkVisibility() && document.querySelector('.stats-retry').checkVisibility()");
+    await until("document.querySelector('.stats-state .stats-error').checkVisibility() && document.querySelector('.stats-retry').checkVisibility()");
     assert.ok(
       await ev("!document.querySelector('.stats-loading').checkVisibility()"),
       "Failed statistics stop showing the loading label",
     );
+    assert.deepEqual(await statGeometry(), loadingGeometry, "Failed statistics keep the tiles and following content in place");
+    const errorLayout = await ev(`(() => {
+      const error = document.querySelector('.stats-state').getBoundingClientRect();
+      const path = document.querySelector('.path-bar').getBoundingClientRect();
+      return {left: error.left, right: error.right, bottom: error.bottom, pathTop: path.top};
+    })()`);
+    assert.ok(errorLayout.left >= 0 && errorLayout.right <= width && errorLayout.bottom <= errorLayout.pathTop,
+      `The error and retry fit between the tiles and repository path: ${JSON.stringify(errorLayout)}`);
+    await screenshot("error", width);
   } finally {
     await releaseRequests();
   }
-  await ev("document.querySelector('.stats-retry').click()");
+  await holdRequests("/_bml/deferred/*git-repository-stats*");
+  try {
+    await ev("document.querySelector('.stats-retry').click()");
+    await waitForHeldRequest();
+    assert.ok(await ev("document.querySelector('.stats-loading').checkVisibility() && !document.querySelector('.stats-retry').checkVisibility()"));
+    assert.deepEqual(await statGeometry(), loadingGeometry, "Retry restores placeholders without moving the page");
+  } finally {
+    await releaseRequests();
+  }
   await until("document.querySelector('.repository-summary [data-bml-deferred]')?.dataset.bmlDeferredState==='loaded'");
-  assert.ok(
-    await ev("[...document.querySelectorAll('.repository-summary .stat-tile')].some(tile => tile.textContent.includes('Contributors') && tile.querySelector('.stat-value')?.textContent.trim() === '1') && !document.querySelector('.stats-error')"),
+  assert.deepEqual(
+    await ev("[...document.querySelectorAll('.repository-summary .stat-value')].map(value => value.textContent.trim())"),
+    ["2", "2", "1", "1", "1.0 KB"],
     "Retry replaces the statistics error with the loaded summary",
   );
+  assert.deepEqual(await statGeometry(), loadingGeometry, "Loaded numbers keep every tile, value slot and following content at its original size and position");
+  assert.ok(await ev("!document.querySelector('.stats-error') && !document.querySelector('.stat-skeleton') && !document.querySelector('.repository-summary [data-bml-deferred]').hasAttribute('aria-busy')"));
 
   const geometry = await ev(`(() => {
     const header = document.querySelector('.repository-heading').getBoundingClientRect();
@@ -171,10 +230,7 @@ for (const width of [1920, 1024, 390]) {
   assert.ok(geometry.left >= 0 && geometry.right <= width + 1 && geometry.scroll <= width + 1,
     `Statistics fit the viewport: ${JSON.stringify(geometry)}`);
   if (width >= 1024) assert.ok(Math.abs(geometry.right - geometry.headerRight) <= 1);
-  await writeFile(
-    `${process.env.GIT_UI_ARTIFACT_DIR}/bosca-git-ui-statistics-${width}.png`,
-    Buffer.from((await call("Page.captureScreenshot", {format:"png",captureBeyondViewport:false})).data,"base64"),
-  );
+  await screenshot("loaded", width);
   console.log(`Statistics loading, failure, retry and layout passed at ${width}px`);
 }
 assert.deepEqual(graphqlRequests, [], "Server-rendered data pages do not refetch browser identity");

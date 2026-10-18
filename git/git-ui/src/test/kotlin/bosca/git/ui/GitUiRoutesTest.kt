@@ -94,7 +94,7 @@ class GitUiRoutesTest {
     @Test
     fun `repository browsing preserves and encodes refs and file paths`() {
         val response = get("/repositories/repo?ref=feature%2Fone&path=docs")
-        assertTrue("Loading statistics" in response.body(), response.body())
+        assertTrue("aria-label=\"Loading commits\"" in response.body(), response.body())
         assertEquals(200, response.statusCode(), response.body())
         assertTrue(
             "ref=feature%2Fone&amp;path=docs&amp;file=docs%2Fa%20%23%20b.txt" in response.body(),
@@ -2195,6 +2195,14 @@ class GitUiRoutesTest {
         val shell = get("/repositories/repo")
         assertEquals(200, shell.statusCode(), shell.body())
         assertTrue("component:git-repository-stats:statistics" in shell.body(), shell.body())
+        val placeholderGrid = Regex("<dl[^>]*class=\"stat-grid\"[^>]*>(.*?)</dl>", RegexOption.DOT_MATCHES_ALL)
+            .find(shell.body())?.groupValues?.get(1).orEmpty()
+        assertEquals(
+            listOf("Commits", "Branches", "Tags", "Contributors", "Size"),
+            Regex("<dt[^>]*>(.*?)</dt>").findAll(placeholderGrid).map { it.groupValues[1].trim() }.toList(),
+            "The initial HTML reserves a labeled tile for every deferred statistic",
+        )
+        assertEquals(5, Regex("role=\"status\"").findAll(placeholderGrid).count())
         assertTrue(requests.drop(before).none { it.operation == "GitUiStats" })
         val payload = buildJsonObject {
             put("page", "/repositories/{id}")
