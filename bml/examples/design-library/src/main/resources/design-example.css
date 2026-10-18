@@ -23,6 +23,11 @@ h1 {
   --line: #cbd5e1;
   --line-2: #94a3b8;
   --accent: #15803d;
+  --ok: #15803d;
+  --err: #b91c1c;
+  --warn: #a16207;
+  --info: #1d4ed8;
+  --purple: #7c3aed;
   color-scheme: light;
   color: var(--fg-0);
 }

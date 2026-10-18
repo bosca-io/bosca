@@ -48,6 +48,13 @@ import provides `<design:button>` with the same runtime identity and assets as `
 | `page-shell` | `fill: Boolean = false`; `narrow: Boolean = false` | Native main with default children, merged classes, and additional attributes. `fill` allocates a flex column; `narrow` uses a centered 400px form surface. |
 | `icon` | Required `name: String`; `size: Int = 16`; `strokeWidth: Double = 2.0` | Decorative, aria-hidden Lucide SVG. No child content. |
 | `spinner` | `size: String = "sm"` (`xs`, `sm`, `md`) | Aria-hidden spinner, 12/14/20px respectively; stops animation for reduced motion. No child content. |
+| `checkbox` | Required `label: String`; `description: String = ""`; `checked: Boolean = false` | Wrapping label with a native 14px checkbox. Additional attributes and classes go to the input, including `name`, `value`, `required` and `disabled`. Change events bubble to the label root. No child content. |
+| `switch` | Required `label: String`; `description: String = ""`; `checked: Boolean = false`; `disabled: Boolean = false` | Wrapping label with a native checkbox and `role="switch"`, presented as a 32×18px track. Additional attributes/classes go to the input. Change events bubble to the label root. No child content. |
+| `alert` | `ref: String = ""`; `hidden: Boolean = false`; `tone: String = "error"` (`error`, `success`); `compact: Boolean = false` | Native paragraph with `role="alert"`, forwarded attributes/classes and default children. Compact text is 12px with an 18px line. |
+| `badge` | `tone: String = "neutral"` (`neutral`, `purple`, `info`, `success`, `warning`, `error`, `accent`); `color: String = ""` | Native span with forwarded attributes/classes and default children. A supplied CSS color overrides the tone. |
+| `empty-state` | `message: String = ""`; `title: String = ""`; `icon: String = "folder"` | Native div with forwarded attributes/classes, decorative icon, optional title/message and default action children. |
+| `loading-state` | `label: String = "Loading…"`; `compact: Boolean = false`; `ref: String = ""` | Native div with `role="status"`, forwarded attributes/classes, decorative spinner and visible label. No child content. |
+| `table-scroll` | `label: String = "Scrollable table"` | Focusable, labelled region with forwarded attributes/classes and default table children. Horizontal overflow stays inside the region; keyboard focus uses the accent color. |
 
 Regular controls are 32px high, compact controls 30px, and extra-small buttons 24px. Field labels use
 an 18px line and a 6px control gap. Buttons support the `ghost`, `danger`, `block`, and `icon-only`
@@ -62,6 +69,12 @@ Controls forward additional attributes declaratively with BML's compiler-provide
 The compiler excludes declared props, combines caller and component classes, and preserves the
 component's explicit attribute values. Components do not maintain exclusion lists or handle BML's
 internal action-marker props. See [attribute forwarding](../docs/tag-reference.md#forwarding-component-attributes).
+
+Checkbox and switch state belongs to the caller. Use `checked` with a declarative `@change` action
+when server state controls the value; use native `name`/`value` attributes to include checked controls
+in form submission. Disabled and unchecked controls follow native form rules. The compiled
+consumer's `/foundation` page demonstrates repeated instances, native form values and action patches.
+In BML action arguments, `form.checkboxName` resolves a checkbox's checked state to a Boolean.
 
 ## Consumer CSS
 
@@ -91,6 +104,11 @@ The initial controls use surface tokens `--bg-1`, `--bg-3`, and `--control-bg`; 
 document margins, backgrounds, font sizes, or a color scheme. Component states derive colors where
 they are used, so two themed containers can coexist in one document.
 
+Feedback uses `--ok`, `--warn`, `--info`, `--err` and `--purple`; alerts can override `--error-fg`
+within a theme and otherwise use `--err`. Table cells use the same foreground/border tokens.
+The library's table stylesheet targets only its scrolling wrapper, including caller-owned table
+children; unrelated tables keep their own styles.
+
 ## Source ownership
 
 | Library source | Extracted source in Git UI |
@@ -102,6 +120,13 @@ they are used, so two themed containers can coexist in one document.
 | `components/page-shell.bml` | `components/ui/page.bml` |
 | `components/icon.bml` | `components/ui/icon.bml` |
 | `components/spinner.bml` | `components/ui/spinner.bml` |
+| `components/checkbox.bml` | `components/ui/checkbox.bml` |
+| `components/switch.bml` | `components/ui/switch.bml` |
+| `components/alert.bml` | `components/ui/alert.bml` |
+| `components/badge.bml` | `components/ui/badge.bml` |
+| `components/empty-state.bml` | `components/ui/empty-state.bml` |
+| `components/loading-state.bml` | `components/ui/loading-state.bml` |
+| `components/table-scroll.bml` | `components/ui/table-scroll.bml` |
 | `client/design.css` | Shared control token defaults from `src/main/client/git-ui.css` |
 
 Component paths are relative to each module's `src/main/bml`; `client/design.css` is under `src/main`.

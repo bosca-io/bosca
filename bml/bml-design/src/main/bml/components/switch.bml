@@ -1,0 +1,105 @@
+<component tag="switch">
+  <prop name="label" type="String" required />
+  <prop name="description" type="String" default="" />
+  <prop name="checked" type="Boolean" default="false" />
+  <prop name="disabled" type="Boolean" default="false" />
+  <label :class='"switch-row" + if (disabled) " disabled" else ""'>
+    <span class="switch-control">
+      <html:input
+        type="checkbox"
+        role="switch"
+        :aria-label="label"
+        :checked="checked"
+        :disabled="disabled"
+        {...attrs}
+      />
+      <span class="switch-track" aria-hidden="true"></span>
+    </span>
+    <span class="switch-copy">
+      <strong>{ label }</strong>
+      <if description.isNotBlank()>
+        <small>{ description }</small>
+      </if>
+    </span>
+  </label>
+  <style scoped>
+    .switch-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      cursor: pointer;
+      min-width: 0;
+    }
+    .switch-control {
+      position: relative;
+      width: 32px;
+      height: 18px;
+      margin-top: 2px;
+      flex: none;
+    }
+    input {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      opacity: 0;
+      cursor: pointer;
+      z-index: 1;
+    }
+    .switch-track {
+      position: absolute;
+      inset: 0;
+      border: 1px solid var(--line-2);
+      border-radius: 10px;
+      background: var(--bg-3);
+      transition: background 0.15s;
+    }
+    .switch-track::after {
+      content: "";
+      position: absolute;
+      width: 12px;
+      height: 12px;
+      top: 2px;
+      left: 2px;
+      border-radius: 50%;
+      background: var(--fg-2);
+      transition: transform 0.15s;
+    }
+    input:checked + .switch-track {
+      background: var(--accent);
+      border-color: var(--accent);
+    }
+    input:checked + .switch-track::after {
+      transform: translateX(14px);
+      background: var(--fg-0);
+    }
+    input:focus-visible + .switch-track {
+      outline: 2px solid var(--accent);
+      outline-offset: 3px;
+    }
+    strong {
+      display: block;
+      font-size: 12.5px;
+      font-weight: 500;
+      line-height: 22px;
+    }
+    small {
+      display: block;
+      margin-top: 2px;
+      color: var(--fg-3);
+      font-size: 11.5px;
+      line-height: 1.5;
+    }
+    .disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .switch-track,
+      .switch-track::after {
+        transition: none;
+      }
+    }
+  </style>
+</component>

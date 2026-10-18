@@ -11,7 +11,8 @@ Run from the workspace root:
 ./gradlew :bml:examples:design-library:run
 ```
 
-Open `http://localhost:9092/`; `/aliases` compares aliased and unprefixed imports. For incremental
+Open `http://localhost:9092/`; `/aliases` compares aliased and unprefixed imports, and `/foundation`
+exercises checkboxes, switches, feedback states and table scrolling. For incremental
 development and browser reload:
 
 ```sh
@@ -32,6 +33,11 @@ Chrome profile in development and production. They exercise labels and native in
 geometry/accessibility, alias identity/resource deduplication, and native elements with scripts
 disabled. Additional compiler checks cover local precedence, import collisions, and typed prop
 diagnostics against the actual design-library artifact.
+
+The foundation page checks native form values, controlled checkbox/switch change actions, disabled
+controls, independent instances, switch accessibility names, status/alert semantics, feedback colors
+from consuming CSS, and keyboard scrolling inside a narrow table region. These controls also work
+as native inputs with scripts disabled.
 
 Chrome defaults to the installed Google Chrome app on macOS or `google-chrome` on Linux. Set
 `BML_DESIGN_CHROME_BINARY` for another executable. Screenshots land in this project's

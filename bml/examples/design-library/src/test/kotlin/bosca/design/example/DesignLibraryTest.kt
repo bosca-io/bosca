@@ -29,7 +29,8 @@ class DesignLibraryTest {
             val manifest = BmlLibraryArtifacts.decode(jar.getInputStream(jar.getJarEntry(BmlLibraryArtifacts.MANIFEST_PATH)).reader().readText())
             assertEquals("io.bosca:bml-design", manifest.library)
             assertEquals("bosca.design.generated", manifest.generatedPackage)
-            assertEquals(setOf("button", "card", "field", "icon", "input", "page-shell", "spinner"),
+            assertEquals(setOf("alert", "badge", "button", "card", "checkbox", "empty-state", "field", "icon", "input",
+                "loading-state", "page-shell", "spinner", "switch", "table-scroll"),
                 manifest.components.filter { it.exported }.map { it.tag }.toSet())
             assertTrue(manifest.requirements.isEmpty())
             assertTrue(manifest.providerRegistrars.isEmpty())

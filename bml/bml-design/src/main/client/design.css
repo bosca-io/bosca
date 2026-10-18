@@ -11,8 +11,53 @@
   --fg-3: #6c7388;
   --accent: #64748b;
   --err: #ff5470;
+  --ok: #34d99a;
+  --warn: #ffb547;
+  --info: #5ec5ff;
+  --purple: #a78bff;
   --control-bg: #161a25;
   --control-radius: 9px;
   --font-sans: "Geist", "Inter", -apple-system, system-ui, sans-serif;
   --font-mono: "Geist Mono", "JetBrains Mono", ui-monospace, monospace;
+}
+
+/* Projected table children belong to the caller; these rules stay under the library wrapper. */
+[data-bml-design-table] table {
+  border-collapse: collapse;
+  min-width: 100%;
+  width: max-content;
+}
+[data-bml-design-table] th,
+[data-bml-design-table] td {
+  padding: 12px 14px;
+  text-align: left;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+[data-bml-design-table] td {
+  overflow-wrap: normal;
+  font-size: 12.5px;
+  color: var(--fg-1);
+}
+[data-bml-design-table] th,
+[data-bml-design-table] button,
+[data-bml-design-table] code {
+  white-space: nowrap;
+}
+[data-bml-design-table] th {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--fg-3);
+  background: transparent;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+[data-bml-design-table] code {
+  font-family: var(--font-mono);
+}
+[data-bml-design-table] tbody tr:hover {
+  background: color-mix(in oklch, var(--bg-3) 40%, transparent);
+}
+[data-bml-design-table] tr:last-child td {
+  border-bottom: 0;
 }

@@ -15,6 +15,9 @@ dependencies {
 bml {
     packageName.set("bosca.design.generated")
     library {
-        exports.set(listOf("button", "card", "field", "icon", "input", "page-shell", "spinner"))
+        exports.set(listOf(
+            "alert", "badge", "button", "card", "checkbox", "empty-state", "field", "icon", "input",
+            "loading-state", "page-shell", "spinner", "switch", "table-scroll",
+        ))
     }
 }

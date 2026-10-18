@@ -70,7 +70,12 @@ try {
       if (await evaluate(expression)) return;
       await new Promise(resolve => setTimeout(resolve, 50));
     }
-    throw new Error(`Timed out: ${expression}`);
+    const context = await evaluate(`(() => { const input=document.querySelector('[data-switch=light]');
+      return input ? { html: input.closest('label').outerHTML, checked: input.checked,
+        background: getComputedStyle(input.nextElementSibling).backgroundColor,
+        accent: getComputedStyle(input).getPropertyValue('--accent'),
+        rules: Array.from(document.styleSheets).flatMap(sheet => Array.from(sheet.cssRules, rule => rule.cssText)).filter(rule => rule.includes('switch-track')) } : null })()`);
+    throw new Error(`Timed out: ${expression}\n${JSON.stringify(context)}`);
   }
   await call('Page.enable');
   await call('Runtime.enable');
@@ -156,10 +161,82 @@ try {
   await until('document.readyState === "complete" && document.querySelector("[data-alias=qualified]")');
   assert.ok(await evaluate(`document.querySelector('[data-alias=plain]').getAttribute('data-bml-c') === document.querySelector('[data-alias=qualified]').getAttribute('data-bml-c')`));
   assert.ok(await evaluate(`(() => { const links=Array.from(document.querySelectorAll('link[rel=stylesheet]'), e=>e.href); return links.length === new Set(links).size })()`));
+  await call('Page.navigate', { url: base + '/foundation' });
+  await until('document.readyState === "complete" && document.querySelector("[data-foundation-form=light]")?.dataset.bmlActionBound === "true"');
+  const foundation = await evaluate(`(() => {
+    const check = document.querySelector('[data-checkbox=light]');
+    const toggle = document.querySelector('[data-switch=light]');
+    const status = document.querySelector('[data-status=light]');
+    return {
+      native: check instanceof HTMLInputElement && check.type === 'checkbox' && toggle instanceof HTMLInputElement && toggle.type === 'checkbox',
+      labels: check.labels.length === 1 && check.labels[0].textContent.includes('Notifications') && toggle.getAttribute('aria-label') === 'Enable previews',
+      required: check.required, unchecked: !check.checked && !toggle.checked,
+      target: check.className === 'subscription' && !check.labels[0].classList.contains('subscription') && !check.hasAttribute('description') && !check.hasAttribute('label'),
+      disabled: document.querySelector('[data-disabled-checkbox=light]').disabled && document.querySelector('[data-disabled-switch=light]').disabled,
+      checkboxSize: [check.getBoundingClientRect().width, check.getBoundingClientRect().height],
+      switchSize: [toggle.getBoundingClientRect().width, toggle.getBoundingClientRect().height],
+      role: toggle.getAttribute('role'), feedbackHidden: document.querySelector('[data-feedback=light]').hidden,
+      status: status.getAttribute('role') === 'status' && status.textContent.includes('Loading records') && status.classList.contains('fixture-status'),
+      empty: document.querySelectorAll('.empty-actions button').length === 2,
+      success: getComputedStyle(document.querySelector('[data-badge=light]')).color,
+      purple: getComputedStyle(document.querySelector('[data-purple-badge=light]')).color,
+      darkPurple: getComputedStyle(document.querySelector('[data-purple-badge=purple]')).color,
+    };
+  })()`);
+  assert.deepEqual(foundation, { native: true, labels: true, required: true, unchecked: true, target: true,
+    disabled: true, checkboxSize: [14,14], switchSize: [32,18], role: 'switch', feedbackHidden: true,
+    status: true, empty: true, success: 'rgb(21, 128, 61)', purple: 'rgb(124, 58, 237)', darkPurple: 'rgb(167, 139, 255)' });
+  await evaluate('document.querySelector("[data-checkbox=light]").labels[0].click()');
+  await until('document.querySelector("[data-checkbox=light]").checked && document.querySelector("[data-checkbox=light]").hasAttribute("checked")');
+  assert.equal(await evaluate('document.querySelector("[data-checkbox=purple]").checked'), false);
+  await evaluate('document.querySelector("[data-switch=light]").click()');
+  await until('document.querySelector("[data-switch=light]").checked && document.querySelector("[data-switch=light]").hasAttribute("checked")');
+  await until('getComputedStyle(document.querySelector("[data-switch=light]").nextElementSibling).backgroundColor === "rgb(21, 128, 61)"');
+  assert.equal(await evaluate('getComputedStyle(document.querySelector("[data-switch=light]").nextElementSibling).backgroundColor'), 'rgb(21, 128, 61)');
+  assert.equal(await evaluate('document.querySelector("[data-switch=purple]").checked'), false);
+  assert.deepEqual(await evaluate(`(() => { const data = new FormData(document.querySelector('[data-foundation-form=light]')); return [data.get('subscription'), data.get('previews')] })()`), ['yes','enabled']);
+  await evaluate('document.querySelector("[data-foundation-form=light]").requestSubmit()');
+  await until('document.querySelector("[data-feedback=light]").textContent.includes("Saved yes (1)")');
+  assert.equal(await evaluate('document.querySelector("[data-feedback=light]").hidden'), false);
+  assert.equal(await evaluate('document.querySelector("[data-feedback=purple]").hidden'), true);
+  assert.ok(await evaluate('document.querySelector("[data-checkbox=light]").checked && document.querySelector("[data-switch=light]").checked'));
+  const switchHandle = await call('Runtime.evaluate', { expression: 'document.querySelector("[data-switch=light]")' });
+  const switchAX = await call('Accessibility.getPartialAXTree', { objectId: switchHandle.result.objectId, fetchRelatives: false });
+  assert.equal(switchAX.nodes.find(node => node.role?.value === 'switch').name.value, 'Enable previews');
+  for (const width of [1440, 390]) {
+    await call('Emulation.setDeviceMetricsOverride', { width, height: 1000, deviceScaleFactor: 1, mobile: false });
+    const table = await evaluate(`(() => {
+      const wrapper = document.querySelector('[data-table=light]'); const cell = wrapper.querySelector('th');
+      return { focusable: wrapper.tabIndex === 0, role: wrapper.getAttribute('role'), name: wrapper.getAttribute('aria-label'),
+        overflow: wrapper.scrollWidth > wrapper.clientWidth, local: wrapper.classList.contains('fixture-table'),
+        font: getComputedStyle(cell).fontSize, padding: getComputedStyle(cell).padding, pageFits: document.documentElement.scrollWidth <= innerWidth };
+    })()`);
+    assert.ok(table.focusable && table.local && table.pageFits, JSON.stringify(table));
+    assert.equal(table.role, 'region'); assert.equal(table.name, 'Records');
+    assert.equal(table.font, '11px'); assert.equal(table.padding, '12px 14px');
+    if (width === 390) {
+      assert.equal(table.overflow, true);
+      await evaluate('document.querySelector("[data-table=light]").focus()');
+      await call('Input.dispatchKeyEvent', { type: 'keyDown', key: 'ArrowRight', code: 'ArrowRight', windowsVirtualKeyCode: 39 });
+      await call('Input.dispatchKeyEvent', { type: 'keyUp', key: 'ArrowRight', code: 'ArrowRight', windowsVirtualKeyCode: 39 });
+      await until('document.querySelector("[data-table=light]").scrollLeft > 0');
+      assert.equal(await evaluate('getComputedStyle(document.querySelector("[data-table=light]")).outlineColor'), 'rgb(21, 128, 61)');
+    }
+    const shot = await call('Page.captureScreenshot', { format: 'png' });
+    await writeFile(join(artifacts, `foundation-${mode}-${width}.png`), Buffer.from(shot.data, 'base64'));
+  }
+  await evaluate('document.querySelector("[data-checkbox=light]").click()');
+  await until('!document.querySelector("[data-checkbox=light]").checked && !document.querySelector("[data-checkbox=light]").hasAttribute("checked")');
+  await evaluate('document.querySelector("[data-switch=light]").click()');
+  await until('!document.querySelector("[data-switch=light]").checked && !document.querySelector("[data-switch=light]").hasAttribute("checked")');
   await call('Emulation.setScriptExecutionDisabled', { value: true });
   await call('Page.navigate', { url: base + '/' });
   await until('document.readyState === "complete" && document.querySelector("[data-input=light]")');
   assert.ok(await evaluate('document.querySelector("[data-input=light]") instanceof HTMLInputElement && document.querySelector("[data-input=light]").required && document.querySelector("[data-save=light]") instanceof HTMLButtonElement'));
+  await call('Page.navigate', { url: base + '/foundation' });
+  await until('document.readyState === "complete" && document.querySelector("[data-checkbox=light]")');
+  await evaluate('document.querySelector("[data-checkbox=light]").click(); document.querySelector("[data-switch=light]").click()');
+  assert.ok(await evaluate('document.querySelector("[data-checkbox=light]").checked && document.querySelector("[data-switch=light]").checked'));
   assert.deepEqual(exceptions, []);
   console.log(`Design library browser checks passed (${mode}); screenshots: ${artifacts}`);
 } finally {
