@@ -1,8 +1,12 @@
 package bosca.backup.graphql
 
+import bosca.backup.ObjectBackupDispatch
+import bosca.backup.ObjectBackupDispatchService
 import bosca.backup.ObjectBackupOperation
 import bosca.backup.ObjectBackupRun
 import bosca.backup.ObjectBackupRunService
+import bosca.backup.ObjectBackupStorage
+import bosca.backup.ObjectBackupStorageService
 import bosca.graphql.GraphQLController
 import bosca.graphql.annotations.Field
 import bosca.graphql.annotations.TypeController
@@ -14,6 +18,8 @@ import bosca.security.service.GroupEvaluator
 class ObjectBackupRunsController(
     private val service: ObjectBackupRunService,
     private val groupEvaluator: GroupEvaluator,
+    private val storageService: ObjectBackupStorageService,
+    private val dispatchService: ObjectBackupDispatchService,
 ) : GraphQLController<ObjectBackupRuns> {
     @Field
     suspend fun list(
@@ -46,5 +52,17 @@ class ObjectBackupRunsController(
     ): ObjectBackupRun? {
         groupEvaluator.verifyHasSaGroup(authorization)
         return service.lastSuccessful(operation, sourceId, destinationId, scope)
+    }
+
+    @Field
+    suspend fun storage(authorization: AuthenticationContext, key: String): ObjectBackupStorage? {
+        groupEvaluator.verifyHasSaGroup(authorization)
+        return storageService.get(key)
+    }
+
+    @Field
+    suspend fun dispatch(authorization: AuthenticationContext, key: String, version: Long): ObjectBackupDispatch? {
+        groupEvaluator.verifyHasSaGroup(authorization)
+        return dispatchService.get(key, version)
     }
 }

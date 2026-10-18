@@ -69,7 +69,8 @@ abstract class ObjectBackupGraphQLTest {
     protected lateinit var runs: ObjectBackupRunService
     protected lateinit var progress: ObjectBackupProgressService
     private lateinit var graphql: ObjectBackupQueryTestService
-    private lateinit var directory: Path
+    protected lateinit var directory: Path
+    private lateinit var application: BoscaApplication
     protected lateinit var source: FileSystemObjectStorageService
     protected lateinit var destination: FileSystemObjectStorageService
     protected lateinit var run: ObjectBackupRun
@@ -93,10 +94,11 @@ abstract class ObjectBackupGraphQLTest {
         ))
         ProviderRegistry.clear()
         DispatchersRegistry.clear()
-        val application = BoscaApplication(ApplicationConfig.load(
-            "bosca:\n  server:\n    development: false\n".byteInputStream(),
-        ))
+        directory = createTempDirectory("bosca-object-graphql-")
+        application = BoscaApplication(applicationConfig(), ownsServices = false)
         json = application.json
+        provides<BoscaApplication>(singleton = true) { application }
+        provides<Json>(singleton = true) { json }
         provides<ConnectionPool>(singleton = true) { pool }
         provides<CacheManager> { mockk(relaxed = true) }
         provides<RequestCacheSerializer> { mockk(relaxed = true) }
@@ -108,10 +110,7 @@ abstract class ObjectBackupGraphQLTest {
         StorageProviderRegistrar().register()
         val objectStorage = mockk<ObjectStorageService>()
         provides<ObjectStorageService>(overrideExisting = true) { objectStorage }
-        val queue = mockk<JobQueue>()
-        val queueFactory = mockk<JobQueueFactory>()
-        every { queueFactory.create(BackupJobQueueNames.backupQueue) } returns queue
-        provides<JobQueueFactory> { queueFactory }
+        registerQueue()
         BackupProviderRegistrar().register()
         BackupTestProviderRegistrar().register()
         FlywayMigration(pool).migrate(listOf(provide<Migration>(name = "backup-migrations")))
@@ -130,7 +129,6 @@ abstract class ObjectBackupGraphQLTest {
             """.trimIndent()
         }, BackupSchemaRegistrar())
         graphql = ObjectBackupQueryTestService()
-        directory = createTempDirectory("bosca-object-graphql-")
         source = storage("source")
         destination = storage("destination")
         write(source, first.key, "data")
@@ -141,6 +139,8 @@ abstract class ObjectBackupGraphQLTest {
     @AfterTest
     fun tearDown(): Unit = runBlocking {
         try {
+            stopQueue()
+            if (::application.isInitialized) application.shutdown()
             if (::pool.isInitialized) pool.close()
         } finally {
             if (::postgres.isInitialized) postgres.stop()
@@ -149,6 +149,19 @@ abstract class ObjectBackupGraphQLTest {
             ProviderRegistry.clear()
         }
     }
+
+    protected open fun applicationConfig(): ApplicationConfig = ApplicationConfig.load(
+        "bosca:\n  server:\n    development: false\n".byteInputStream(),
+    )
+
+    protected open suspend fun registerQueue() {
+        val queue = mockk<JobQueue>()
+        val queueFactory = mockk<JobQueueFactory>()
+        every { queueFactory.create(BackupJobQueueNames.backupQueue) } returns queue
+        provides<JobQueueFactory> { queueFactory }
+    }
+
+    protected open suspend fun stopQueue() = Unit
 
     protected suspend fun execute(
         query: String,

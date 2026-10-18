@@ -70,6 +70,10 @@ type ObjectBackupRuns {
     run(key: String!): ObjectBackupRun
     "Read the latest completed run separately from any newer partial attempt."
     lastSuccessful(operation: ObjectBackupOperation!, sourceId: String!, destinationId: String!, scope: String!): ObjectBackupRun
+    "Read a saved storage address without credentials. Requires backup administration access."
+    storage(key: String!): ObjectBackupStorage
+    "Read the durable dispatch request for an exact run version."
+    dispatch(key: String!, version: Long!): ObjectBackupDispatch
 }
 
 "A declared portable object inventory. Source capture and revision retention are caller responsibilities."
@@ -93,12 +97,57 @@ input BackupObjectInput {
     payloadPath: String!
 }
 
-"Record immutable inventory intent and checkpoints. Preparation does not dispatch or execute transfers."
+"Prepare, configure and dispatch declared inventory runs. Requires backup administration access."
 type ObjectBackupRunsMutation {
     "Prepare a declared backup inventory. Repeating the same intent preserves its existing run and outcome."
     prepare(inventory: ObjectBackupManifestInput!, destinationId: String!): ObjectBackupRun!
     "Prepare a declared restore inventory and input manifest path. Input storage is verified during execution."
     prepareRestore(inventory: ObjectBackupManifestInput!, destinationId: String!, path: String!): ObjectBackupRun!
+    "Bind selected application storage IDs to their configured addresses without opening stores."
+    bindStorage(keys: [String!]!): [ObjectBackupStorage!]!
+    "Fix the backup and logical source or restore target IDs before the first attempt."
+    configureStorage(key: String!, backupKey: String!, stores: [ObjectBackupStoreMappingInput!]!): ObjectBackupRunStorage!
+    "Queue an exact pending run version. Returns saved intent; execution is asynchronous."
+    dispatch(key: String!, expectedVersion: Long!): ObjectBackupDispatch!
+}
+
+"A declared logical store and its bound application storage ID."
+input ObjectBackupStoreMappingInput {
+    store: String!
+    storageKey: String!
+}
+
+"A saved storage location. Runtime credentials are not exposed."
+type ObjectBackupStorage {
+    key: String!
+    type: String!
+    endpoint: String
+    bucket: String
+    region: String
+    basePath: String
+    created: DateTime!
+}
+
+"Immutable storage selection for one prepared run."
+type ObjectBackupRunStorage {
+    key: String!
+    backupKey: String!
+    stores: [ObjectBackupStoreMapping!]!
+    created: DateTime!
+}
+
+"A saved mapping from a declared logical store to a bound storage ID."
+type ObjectBackupStoreMapping {
+    store: String!
+    storageKey: String!
+}
+
+"Saved publication intent. The queue key remains stable for this exact run version."
+type ObjectBackupDispatch {
+    key: UUID!
+    runKey: String!
+    version: Long!
+    created: DateTime!
 }
 
 "A fixed object inventory and its recorded execution state."
@@ -119,6 +168,8 @@ type ObjectBackupRun {
     version: Long!
     created: DateTime!
     modified: DateTime!
+    "Fixed storage selection, or null for a run that has not been configured."
+    storage: ObjectBackupRunStorage
     "Current health of the run's exact shared checkpoints. May differ from its frozen result."
     summary: ObjectBackupRunSummary!
     "Read current checkpoint state in declared inventory order."
@@ -176,7 +227,7 @@ type ObjectBackupRunSummary {
 
 "Mutation operations for creating backups and restoring from them."
 type BackupsMutation {
-    "Prepare declared object inventory runs. Requires backup administration access."
+    "Prepare, configure and dispatch object inventory runs. Requires backup administration access."
     objectRuns: ObjectBackupRunsMutation!
     "Initiate a new backup of all system data. Returns the backup tracking record immediately; the actual backup runs asynchronously."
     create(includeFiles: Boolean! = true): Backup!

@@ -3,6 +3,7 @@ package bosca.backup.graphql
 import bosca.backup.ObjectBackupProgress
 import bosca.backup.ObjectBackupRun
 import bosca.backup.ObjectBackupRunService
+import bosca.backup.ObjectBackupRunStorage
 import bosca.backup.ObjectBackupRunSummary
 import bosca.graphql.GraphQLController
 import bosca.graphql.annotations.Field
@@ -57,6 +58,12 @@ class ObjectBackupRunController(
 
     @Field
     fun modified(run: ObjectBackupRun) = run.modified
+
+    @Field
+    suspend fun storage(authorization: AuthenticationContext, run: ObjectBackupRun): ObjectBackupRunStorage? {
+        groupEvaluator.verifyHasSaGroup(authorization)
+        return service.getStorage(run.key)
+    }
 
     @Field
     suspend fun summary(authorization: AuthenticationContext, run: ObjectBackupRun): ObjectBackupRunSummary {
