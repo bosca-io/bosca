@@ -27,6 +27,19 @@ class ObjectBackupCaptureServiceImpl(
     private val repository: ObjectBackupCaptureRepository,
     private val storageService: ObjectProvider<ObjectBackupStorageService>,
 ) : ObjectBackupCaptureService {
+    override suspend fun getWriter(key: String): ObjectBackupCaptureWriter? {
+        require(key.isNotBlank()) { "Capture plan key is required" }
+        return repository.getWriter(key)
+    }
+
+    override suspend fun releaseWriter(key: String, expectedKey: String) {
+        require(key.isNotBlank()) { "Capture plan key is required" }
+        require(expectedKey.isNotBlank()) { "Capture writer token is required" }
+        check(repository.releaseWriter(key, expectedKey) == 1) {
+            "Capture writer must match the observed execution token: $key"
+        }
+    }
+
     override suspend fun configureStorage(key: String, stores: Map<String, String>): ObjectBackupCaptureStorage {
         require(key.isNotBlank()) { "Capture plan key is required" }
         val captured = stores.toMap()
@@ -99,12 +112,43 @@ class ObjectBackupCaptureServiceImpl(
         val selected = required.associateWith { storageKey ->
             requireNotNull(available[storageKey]) { "Missing storage configuration: $storageKey" }
         }
-        return addresses.withStorages(selected) { opened ->
-            val sources = mapping.stores.mapValues { (_, storageKey) -> opened.getValue(storageKey) }
-            captureInventory(
-                plan.inventory, plan.destinationId, sources, opened.getValue(mapping.backupKey),
-                plan.payloadPrefix, plan.path, verifiedSince,
-            )
+        val token = UUID.randomUUID().toString()
+        var acquired = false
+        var failure: Throwable? = null
+        try {
+            // Record committed ownership before cancellation can resume the caller and trigger cleanup.
+            withContext(NonCancellable) {
+                withConnectionManager {
+                    transaction {
+                        if (repository.claimWriter(key, mapping.backupKey, token) != 1) {
+                            throw ObjectBackupDestinationBusyException(mapping.backupKey)
+                        }
+                    }
+                }
+                acquired = true
+            }
+            currentCoroutineContext().ensureActive()
+            return addresses.withStorages(selected) { opened ->
+                val sources = mapping.stores.mapValues { (_, storageKey) -> opened.getValue(storageKey) }
+                captureInventory(
+                    plan.inventory, plan.destinationId, sources, opened.getValue(mapping.backupKey),
+                    plan.payloadPrefix, plan.path, verifiedSince,
+                )
+            }
+        } catch (cause: Throwable) {
+            failure = cause
+            throw cause
+        } finally {
+            if (acquired) {
+                try {
+                    withContext(NonCancellable) {
+                        withConnectionManager { releaseWriter(key, token) }
+                    }
+                } catch (releaseFailure: Throwable) {
+                    if (failure == null) throw releaseFailure
+                    if (failure !== releaseFailure) failure.addSuppressed(releaseFailure)
+                }
+            }
         }
     }
 

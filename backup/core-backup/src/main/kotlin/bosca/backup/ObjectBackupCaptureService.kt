@@ -8,6 +8,17 @@ import java.time.OffsetDateTime
 
 /** Creates verified retained payloads from explicitly selected provider revisions. */
 interface ObjectBackupCaptureService : Service {
+    /** Reads this plan's active configured writer in the caller's database context, without storage I/O. */
+    suspend fun getWriter(key: String): ObjectBackupCaptureWriter?
+
+    /**
+     * Releases only the observed execution token in the caller's database transaction.
+     * The caller must establish that the writer stopped before recovering a persisted claim.
+     * Missing or stale ownership fails; this never expires or takes over an active writer.
+     * This releases destination ownership only and does not reset per-revision progress.
+     */
+    suspend fun releaseWriter(key: String, expectedKey: String)
+
     /**
      * Fixes this plan's logical source bindings in the caller's database transaction.
      * Every selected logical store maps to an existing bound ID. The independent backup ID
@@ -23,8 +34,13 @@ interface ObjectBackupCaptureService : Service {
      * Opens only this plan's saved IDs from caller-supplied configurations and captures its input.
      * Checks every bound address before opening any store, and closes all stores on completion,
      * failure or cancellation. Unrelated configurations are ignored; credentials are not persisted.
+     * Holds a token-fenced destination claim, shared with configured backup and restore runs,
+     * from before the first store opens until all stores close. Contention fails before asset I/O.
+     * Claims survive a process crash; recover only a stopped writer through [releaseWriter].
      * Requires no active caller transaction, stable storage accounts, retained source versions
-     * and exclusive writers. [verifiedSince] remains an explicit execution-time cutoff.
+     * and exclusion of writers outside this progress database. [verifiedSince] remains an
+     * explicit execution-time cutoff. A failed ownership release is loud and preserves the claim;
+     * if capture also failed, the release failure is suppressed on that original failure.
      */
     suspend fun captureConfigured(
         key: String,

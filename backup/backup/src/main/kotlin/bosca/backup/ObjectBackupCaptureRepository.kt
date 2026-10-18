@@ -6,6 +6,27 @@ import bosca.db.annotation.Repository
 /** Stores immutable selections independently of the existing per-revision transfer ledger. */
 @Repository
 interface ObjectBackupCaptureRepository {
+    /** Claims the retained destination without replacing a run or another capture execution. */
+    @Query(
+        """
+        insert into backup.object_store_writers (storage_key, capture_key, capture_token)
+        values (:storageKey, :key, :token) on conflict (storage_key) do nothing
+        """,
+        returnUpdateCount = true,
+    )
+    suspend fun claimWriter(key: String, storageKey: String, token: String): Int
+
+    /** Reads the active token for one configured capture plan. */
+    @Query("select capture_token, capture_key, storage_key from backup.object_store_writers where capture_key = :key")
+    suspend fun getWriter(key: String): ObjectBackupCaptureWriter?
+
+    /** Deletes only the observed capture execution, leaving later or unrelated owners untouched. */
+    @Query(
+        "delete from backup.object_store_writers where capture_key = :key and capture_token = :expectedKey",
+        returnUpdateCount = true,
+    )
+    suspend fun releaseWriter(key: String, expectedKey: String): Int
+
     /** Inserts one immutable backup binding without replacing a concurrently saved mapping. */
     @Query(
         """
