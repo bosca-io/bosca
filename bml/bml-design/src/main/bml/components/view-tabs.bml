@@ -1,0 +1,74 @@
+<component tag="view-tabs">
+  <prop name="label" type="String" required />
+  <prop name="tabs" type="List<String>" required />
+  <prop name="selected" type="String" required />
+  <div class="view-tabs" role="tablist" :aria-label="label" :data-selected="selected" {...attrs}>
+    <for tab in tabs>
+      <html:button
+        type="button"
+        role="tab"
+        :data-tab="tab"
+        :aria-selected="(tab == selected).toString()"
+        :tabindex="if (tab == selected) 0 else -1"
+      >
+        { tab }
+      </html:button>
+    </for>
+  </div>
+  <style scoped>
+    .view-tabs {
+      box-sizing: border-box;
+      max-width: 100%;
+      overflow-x: auto;
+      display: flex;
+      align-items: stretch;
+      align-self: stretch;
+      gap: 4px;
+      min-width: 0;
+    }
+    button {
+      box-sizing: border-box;
+      flex: none;
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border: 0;
+      background: transparent;
+      padding: 10px 12px;
+      color: var(--fg-3);
+      font: inherit;
+      font-size: 13px;
+      line-height: normal;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+    button::after {
+      content: "";
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: 2px;
+      background: transparent;
+    }
+    button[aria-selected="true"]::after {
+      background: var(--accent);
+    }
+    button[aria-selected="true"] {
+      color: var(--fg-0);
+      font-weight: 500;
+    }
+    button:hover {
+      color: var(--fg-1);
+    }
+    button:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: -2px;
+    }
+  </style>
+  <script client scoped>
+    import { viewTabs } from "@client/helpers/view-tabs";
+    viewTabs(ctx);
+  </script>
+</component>

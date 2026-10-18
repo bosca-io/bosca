@@ -9,6 +9,7 @@ import { checkIconActions } from './icon-action-checks.mjs';
 import { checkOverlays } from './overlay-checks.mjs';
 import { checkClipboard } from './clipboard-checks.mjs';
 import { checkToasts } from './toast-checks.mjs';
+import { checkSelection } from './selection-checks.mjs';
 
 const base = process.argv[2];
 const mode = process.argv[3] ?? 'fixture';
@@ -239,6 +240,7 @@ try {
   await checkOverlays({ call, evaluate, until, base, mode, artifacts });
   await checkClipboard({ call, evaluate, until, base, mode, artifacts });
   await checkToasts({ call, evaluate, until, base, mode, artifacts });
+  await checkSelection({ call, evaluate, until, base, mode, artifacts });
   await call('Emulation.setScriptExecutionDisabled', { value: true });
   await call('Page.navigate', { url: base + '/' });
   await until('document.readyState === "complete" && document.querySelector("[data-input=light]")');
@@ -269,6 +271,12 @@ try {
   assert.ok(await evaluate(`(() => { const input=document.querySelector('[data-copy-field=light] input'); input.focus(); input.select();
     return input.readOnly && input.selectionStart===0 && input.selectionEnd===input.value.length && input.getAttribute('aria-label')==='Token' &&
       (() => { const button=document.querySelector('[data-copy-standalone=light] button'); return !!button.title && button.title===button.getAttribute('aria-label') })() })()`), 'Native copy labels and manual selection survive scripts-disabled navigation');
+  await call('Page.navigate', { url: base + '/selection' });
+  await until('document.readyState === "complete" && document.querySelector("[data-search-query=light]")');
+  assert.ok(await evaluate(`(() => { const query=document.querySelector('[data-search-query=light]');
+    query.value='Native query';const form=new FormData(document.querySelector('[data-selection-form=light]'));
+    return query instanceof HTMLInputElement&&query.type==='search'&&!query.autofocus&&form.get('q')==='Native query'&&form.get('mode')==='paths'&&
+      document.querySelector('[data-views=light] [aria-selected=true]').textContent.trim()==='Source'; })()`), 'No-script search and initial segment form values remain native');
   assert.deepEqual(exceptions, []);
   console.log(`Design library browser checks passed (${mode}); screenshots: ${artifacts}`);
 } finally {

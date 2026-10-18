@@ -73,6 +73,13 @@ new-notice timeouts, reduced motion, two live CSS themes, long-message keyboard 
 short viewport fit. Document visibility is controlled through an isolated getter/event override for
 its pause/resume check. Repeated disposal verifies timer, listener and ResizeObserver cleanup.
 
+The `/selection` page uses search input, segmented controls and local view tabs. Checks cover native
+form values, one clear/input event, caller-controlled autofocus, readonly/disabled search, typed
+drafts/caret/focus through unrelated patches, changed controlled props, rejected search recovery,
+roving arrows/Home/End and wrapping, local view events, caller-owned panel relationships, empty and
+unmatched selections, independent roots and live CSS overrides. Repeated unmounts check root and
+document listener cleanup. Script-disabled search and initial segmented values remain native.
+
 Chrome defaults to the installed Google Chrome app on macOS or `google-chrome` on Linux. Set
 `BML_DESIGN_CHROME_BINARY` for another executable. Screenshots land in this project's
 `build/reports/browser/`. The fixture is an application and is excluded from aggregate Maven

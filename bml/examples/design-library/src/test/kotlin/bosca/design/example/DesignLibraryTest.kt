@@ -31,7 +31,7 @@ class DesignLibraryTest {
             assertEquals("bosca.design.generated", manifest.generatedPackage)
             assertEquals(setOf("alert", "app-header", "badge", "bosca-mark", "button", "card", "checkbox", "confirm-dialog", "copy", "copy-field", "dialog", "disclosure-heading",
                 "empty-state", "field", "icon", "icon-button", "icon-link", "input", "loading-state", "page-heading", "page-shell", "panel", "popover",
-                "section", "section-heading", "spinner", "switch", "table-scroll", "toast", "tooltip"),
+                "search-input", "section", "section-heading", "segmented-control", "spinner", "switch", "table-scroll", "toast", "tooltip", "view-tabs"),
                 manifest.components.filter { it.exported }.map { it.tag }.toSet())
             assertTrue(manifest.requirements.isEmpty())
             assertTrue(manifest.providerRegistrars.isEmpty())
@@ -44,7 +44,7 @@ class DesignLibraryTest {
             assertEquals("List<bosca.design.model.NavigationItem>", heading.props.single { it.name == "trail" }.declaredType)
             assertTrue(jar.getJarEntry("bosca/design/model/NavigationItem.class") != null)
             assertTrue(manifest.components.single { it.tag == "app-header" }.clientModule != null)
-            assertTrue(listOf("tooltip", "icon-button", "icon-link", "dialog", "popover", "copy", "copy-field", "toast").all { tag ->
+            assertTrue(listOf("tooltip", "icon-button", "icon-link", "dialog", "popover", "copy", "copy-field", "toast", "search-input", "segmented-control", "view-tabs").all { tag ->
                 manifest.components.single { it.tag == tag }.clientModule != null
             })
             val toast = manifest.components.single { it.tag == "toast" }
@@ -134,6 +134,11 @@ class DesignLibraryTest {
             assertTrue("data-sequence=\"0\"" in notifications && "data-duration=\"4000\"" in notifications, notifications)
             assertTrue("aria-label=\"Dismiss notification\"" in notifications, notifications)
             assertFalse("bosca.git" in notifications || "/_git/" in notifications, notifications)
+            val selection = request(client, base, "/selection").body()
+            assertTrue("data-search-query=\"light\"" in selection && "maxlength=\"120\"" in selection, selection)
+            assertTrue("role=\"radiogroup\"" in selection && "role=\"tablist\"" in selection, selection)
+            assertTrue("name=\"mode\"" in selection && "data-value=\"content\"" in selection, selection)
+            assertFalse("bosca.git" in selection || "/_git/" in selection, selection)
             val preferencesId = "preferences.preferences:light"
             val saved = request(client, base, "/_bml/action", """{"page":"/","path":"/","stateKey":"$preferencesId","method":"save","args":["Grace"]}""")
             assertEquals(200, saved.statusCode(), saved.body())

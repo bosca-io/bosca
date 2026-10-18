@@ -141,3 +141,15 @@ form {
     --toast-left: 50%;
   }
 }
+
+.selection-form, .selection-edge-cases {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+  gap: 12px;
+  margin: 16px 0;
+}
+.selection-theme.light { --bg-0: #f8fafc; }
+.selection-theme.alternate { --bg-0: #eff6ff; --bg-3: #dbeafe; --fg-0: #1e3a8a; }
+.selection-edge-cases { max-width: 300px; }

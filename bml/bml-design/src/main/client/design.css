@@ -1,5 +1,6 @@
 /* Consumer CSS loads after these defaults. Document layout belongs to the application. */
 :where(:root) {
+  --bg-0: #0a0c12;
   --bg-1: #10131c;
   --bg-2: #161a25;
   --bg-3: #1d2230;

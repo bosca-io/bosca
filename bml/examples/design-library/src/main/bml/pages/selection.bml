@@ -1,0 +1,26 @@
+<page route="/selection">
+  <html lang="en">
+    <head>
+      <meta charset="utf-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1" />
+      <title>Search and local views</title>
+    </head>
+    <body>
+      <page-shell>
+        <h1>Search and local views</h1>
+        <div class="themes">
+          <div class="light selection-theme" data-palette="light"><selection-controls id="light" /></div>
+          <div class="purple selection-theme" data-palette="purple"><selection-controls id="purple" /></div>
+        </div>
+        <div class="selection-edge-cases">
+          <search-input value="" label="Empty search" :autofocus="false" data-empty-search />
+          <search-input value="Readonly value" label="Readonly search" :autofocus="false" readonly data-readonly-search />
+          <segmented-control label="Empty choices" name="empty" :options="emptyList()" value="" data-empty-segments />
+          <segmented-control label="Unmatched choice" name="unknown" :options='listOf("One", "Two")' value="unknown" data-unmatched-segments />
+          <view-tabs label="Empty views" :tabs="emptyList()" selected="" data-empty-views />
+          <view-tabs label="Unmatched view" :tabs='listOf("One", "Two")' selected="unknown" data-unmatched-views />
+        </div>
+      </page-shell>
+    </body>
+  </html>
+</page>

@@ -71,6 +71,9 @@ import provides `<design:button>` with the same runtime identity and assets as `
 | `copy` | Required `value: String`; `label: String = "Copy"`; `showStatus: Boolean = true` | Root div receives additional attributes/classes. Its 30×30px native button copies the value, switches decorative icons and reports status. No child content. Visible status reserves 26ch so feedback does not move neighboring content; `showStatus="false"` keeps status accessible with no visible message space. |
 | `copy-field` | Required `value: String` and `label: String`; `copyLabel: String = "Copy value"` | Root div receives additional attributes/classes. A labelled readonly input and compact copy action display a single-line value. No child content. Focus selects the value; denied/unavailable clipboard access selects it and exposes manual-copy guidance. |
 | `toast` | Required `id: String`; `message: String = ""`; `sequence: Int = 0`; `tone: String = "info"` (`info`, `success`, `warning`, `error`); `duration: Int = 4000` (milliseconds) | Manual-popover root receives additional attributes/classes. `id` supplies its stable `data-bml-preserve` key, rather than a native DOM ID. No child content. The caller issues each nonempty notice with a new positive sequence; ordinary updates and same/older sequences do not replay it. |
+| `search-input` | `value: String = ""`; `name: String = "q"`; `placeholder: String = "Search…"`; `label: String = "Search"`; `preserveKey: String = ""`; `disabled: Boolean = false`; `autofocus: Boolean = true` | Search wrapper with decorative icon, clear action and default trailing action children. Additional attributes/classes/events target the native search input. The clear action emits one bubbling `input` event and returns focus to the query. |
+| `segmented-control` | Required `label: String`, `name: String`, `options: List<String>` and `value: String`; `values: List<String> = emptyList()`; `icons: List<String> = emptyList()`; `preserveKey: String = ""` | Radiogroup receives additional attributes/classes/events. A hidden native input supplies the selected form value. Buttons use indexed `values` or fall back to option labels; optional indexed icons are decorative. Emits bubbling `segmentchange` after updating its native value. No child content. |
+| `view-tabs` | Required `label: String`, `tabs: List<String>` and `selected: String` | Tablist receives additional attributes/classes/events. Emits bubbling `viewchange` with the selected label as its string detail. The application owns panels, IDs, accessible relationships and visibility. No child content. |
 
 Regular controls are 32px high, compact controls 30px, and extra-small buttons 24px. Field labels use
 an 18px line and a 6px control gap. Buttons support the `ghost`, `danger`, `block`, and `icon-only`
@@ -150,6 +153,29 @@ The surface fits the viewport, including short screens; reduced motion removes t
 Unmount removes timers, listeners and ResizeObservers. Each instance owns one notice; queues and
 progress notifications are application concerns. Live notification behavior requires client scripts.
 
+
+Search input retains the source's autofocus default; pass `:autofocus="false"` for embedded or repeated
+controls. `disabled` applies to its input and clear action; readonly inputs cannot be cleared.
+The empty clear action is hidden without a document reset. Native query fields and initial segmented
+form values remain available with scripts disabled; clear, segment choices and local view switching
+need client scripts. Application controllers own debounce, search requests, URL state and failures.
+
+Segmented controls and local tabs use roving Tab entry, Left/Right wrapping and Home/End. If the
+selected value is absent, the first option remains keyboard reachable without inventing a selection.
+Empty groups contain no focus target. Wide groups scroll within their available width.
+
+Use a stable `preserveKey` on search/segments, or `data-bml-preserve` on view tabs, to retain the
+query draft, selection/caret, focused option and DOM through unrelated island updates. A changed
+server `value`/`selected` updates retained state; unchanged server values leave local drafts alone.
+Preserved search also reconciles its name, label, placeholder and disabled state. Preserved group
+children remain client-owned: remove/change the preservation key when changing the option/tab list,
+icons or projected actions. Without preservation, the next server render supplies the full child DOM.
+Every helper uses component lifecycle listeners and removes them on unmount.
+
+The `/selection` consumer uses declarative form and segment actions, a scoped caller handler for
+`viewchange`, and caller-owned labelled panels with unique `aria-controls`/`aria-labelledby` links.
+It demonstrates rejected search drafts, controlled changes, independent instances and consumer CSS.
+
 ## Consumer CSS
 
 Library defaults load before application CSS. Override ordinary custom properties on the root or a
@@ -171,7 +197,7 @@ themed container. For example:
 }
 ```
 
-The initial controls use surface tokens `--bg-1`, `--bg-3`, and `--control-bg`; foreground tokens
+Search and segmented controls add `--bg-0` for their base surface. The initial controls use surface tokens `--bg-1`, `--bg-3`, and `--control-bg`; foreground tokens
 `--fg-0` through `--fg-3`; borders `--line` and `--line-2`; `--accent` for focus/primary actions;
 `--err` for danger actions; `--control-radius`; and `--font-mono` for monospaced inputs.
 `--font-sans` supplies a font stack applications can apply to their document. Defaults do not set
@@ -246,6 +272,12 @@ Color changes on an already-open notification follow ordinary CSS inheritance.
 | `components/copy.bml` | `components/ui/copy.bml` |
 | `components/copy-field.bml` | `components/ui/copy-field.bml` |
 | `components/toast.bml` | `components/ui/toast.bml` |
+| `components/search-input.bml` | `components/ui/search-input.bml` |
+| `components/segmented-control.bml` | `components/ui/segmented-control.bml` |
+| `components/view-tabs.bml` | `components/ui/view-tabs.bml` |
+| `client/helpers/search-input.ts` | Scoped client script in `components/ui/search-input.bml` |
+| `client/helpers/segmented-control.ts` | Scoped client script in `components/ui/segmented-control.bml` |
+| `client/helpers/view-tabs.ts` | Scoped client script in `components/ui/view-tabs.bml` |
 | `client/helpers/toast.ts` | `src/main/client/toast.ts` |
 | `client/helpers/copy.ts` | `src/main/client/copy.ts` |
 | `client/helpers/dialog.ts` | `src/main/client/dialog.ts` |
