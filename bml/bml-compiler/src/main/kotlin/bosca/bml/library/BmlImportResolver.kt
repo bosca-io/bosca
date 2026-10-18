@@ -16,6 +16,7 @@ import bosca.bml.parser.TextNode
 /** Shared project/file import binding for compiler, direct generation, and editor consumers. */
 class BmlImportResolver(dependencies: List<BmlLibraryDependency>) {
     private val libraries = dependencies.associateBy { it.manifest.library }
+    private val graph = BmlLibraryGraph(dependencies)
 
     init {
         require(libraries.size == dependencies.size) { "Resolve duplicate BML dependencies before binding imports" }
@@ -34,10 +35,11 @@ class BmlImportResolver(dependencies: List<BmlLibraryDependency>) {
     )
 
     /** Aliased and unprefixed bindings retain the same compiled dependency and component contract. */
-    data class Binding(
+    data class Binding @JvmOverloads constructor(
         val declaration: BmlImport,
         val dependency: BmlLibraryDependency,
         val component: BmlLibraryComponent,
+        val graph: BmlLibraryGraph = BmlLibraryGraph(listOf(dependency)),
     )
 
     /** An invalid scope exposes no bindings; diagnostics must be handled before generating code. */
@@ -90,7 +92,7 @@ class BmlImportResolver(dependencies: List<BmlLibraryDependency>) {
             }
             for (component in dependency.manifest.components.filter { it.exported }) {
                 val name = declaration.alias?.let { "$it:${component.tag}" } ?: component.tag
-                val binding = Binding(declaration, dependency, component)
+                val binding = Binding(declaration, dependency, component, graph)
                 val previous = bindings.putIfAbsent(name, binding)
                 if (previous != null && previous.dependency.manifest.library != declaration.library) {
                     conflict("Conflicting BML component '$name'", declaration, previous.declaration)

@@ -4,6 +4,8 @@ import bosca.bml.library.BmlLibraryArtifacts
 import bosca.bml.library.BmlLibraryComponent
 import bosca.bml.library.BmlLibraryManifest
 import bosca.bml.library.BmlLibraryProp
+import bosca.bml.library.BmlImportResolver
+import bosca.bml.library.BmlLibraryRequirement
 import bosca.bml.library.BmlLibrarySource
 import bosca.bml.parser.AttrText
 import bosca.bml.parser.BoundAttribute
@@ -25,12 +27,20 @@ internal object BmlLibraryManifestGenerator {
         declarations: Map<String, Declaration>,
         metadata: List<BmlComponentMeta>,
         clientBehavior: Set<String>,
+        imports: List<BmlImportResolver.Binding> = emptyList(),
     ): BmlLibraryManifest = BmlLibraryManifest(
         formatVersion = BmlLibraryArtifacts.FORMAT_VERSION,
         library = library,
         version = version,
         generatedPackage = packageName,
         compilerVersion = BmlCompilerRevision.current,
+        requirements = imports.groupBy { it.dependency.manifest.library }.toSortedMap().map { (_, bindings) ->
+            val dependency = bindings.first().dependency.manifest
+            BmlLibraryRequirement(
+                dependency.library, dependency.version, BmlLibraryArtifacts.digest(dependency),
+                bindings.map { it.component.tag }.distinct().sorted(),
+            )
+        },
         components = metadata.sortedBy { it.tag }.map { meta ->
             val declaration = declarations.getValue(meta.tag)
             BmlLibraryComponent(

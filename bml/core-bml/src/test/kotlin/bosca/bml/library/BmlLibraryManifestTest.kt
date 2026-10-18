@@ -8,6 +8,26 @@ import kotlin.test.assertTrue
 
 class BmlLibraryManifestTest {
     @Test
+    fun `foreign edges require explicit versioned export contracts and canonical identities`() {
+        val requirement = BmlLibraryRequirement("example:base", "1.0", "sha256:" + "b".repeat(64), listOf("button"))
+        val id = BmlLibraryArtifacts.componentId(requirement.library, "button")
+        val wrapper = manifest.copy(
+            requirements = listOf(requirement),
+            components = listOf(button.copy(dependencies = listOf(id), eagerDependencies = listOf(id))),
+        )
+        assertEquals(wrapper, BmlLibraryArtifacts.decode(BmlLibraryArtifacts.encode(wrapper)))
+        assertFailsWith<IllegalArgumentException> { wrapper.copy(requirements = emptyList()).validate() }
+        for (invalid in listOf(
+            requirement.copy(library = manifest.library), requirement.copy(version = ""),
+            requirement.copy(digest = "unversioned"), requirement.copy(components = emptyList()),
+            requirement.copy(components = listOf("button", "button")), requirement.copy(components = listOf("ui:button")),
+        )) assertFailsWith<IllegalArgumentException> { wrapper.copy(requirements = listOf(invalid)).validate() }
+        assertFailsWith<IllegalArgumentException> { wrapper.copy(requirements = listOf(requirement, requirement)).validate() }
+        assertFailsWith<IllegalArgumentException> {
+            manifest.copy(components = listOf(button.copy(dependencies = listOf("button")))).validate()
+        }
+    }
+    @Test
     fun `runtime identities distinguish coordinates and tags and are safe across DOM CSS and routes`() {
         val ids = listOf("example:design", "example.design:ui", "example:design-ui", "example-design:ui")
             .flatMap { library -> listOf("button", "ui-button").map { tag -> BmlLibraryArtifacts.componentId(library, tag) } }
@@ -38,13 +58,14 @@ class BmlLibraryManifestTest {
     fun `manifest round trips explicit contracts and source identity`() {
         val encoded = BmlLibraryArtifacts.encode(manifest)
         assertEquals(manifest, BmlLibraryArtifacts.decode(encoded))
-        assertTrue("\"formatVersion\": 2" in encoded)
+        assertTrue("\"formatVersion\": 3" in encoded)
         assertTrue("bml/components/button.bml" in encoded)
     }
 
     @Test
     fun `unsupported format and malformed source locations fail before use`() {
         assertFailsWith<IllegalArgumentException> { manifest.copy(formatVersion = 1).validate() }
+        assertFailsWith<IllegalArgumentException> { manifest.copy(formatVersion = 2).validate() }
         assertFailsWith<IllegalArgumentException> { manifest.copy(formatVersion = 99).validate() }
         for (source in listOf(
             button.source.copy(entry = "/Users/producer/button.bml"),
@@ -70,7 +91,7 @@ class BmlLibraryManifestTest {
             listOf(button.copy(props = button.props + button.props)),
             listOf(button.copy(renderer = "other.ButtonComponent")),
             listOf(button.copy(tag = "page")),
-            listOf(button.copy(dependencies = listOf("button"))),
+            listOf(button.copy(dependencies = listOf(BmlLibraryArtifacts.componentId(manifest.library, "button")))),
             listOf(button.copy(exported = false)),
         )) assertFailsWith<IllegalArgumentException> { manifest.copy(components = components).validate() }
     }

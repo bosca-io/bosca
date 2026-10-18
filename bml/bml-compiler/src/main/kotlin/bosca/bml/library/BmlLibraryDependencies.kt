@@ -43,7 +43,7 @@ object BmlLibraryDependencies {
             libraries[manifest.library] = dependency
             packages[manifest.generatedPackage] = dependency
         }
-        return libraries.values.toList()
+        return libraries.values.toList().also { BmlLibraryGraph(it) }
     }
 
     private fun readManifest(artifact: File): String? = try {

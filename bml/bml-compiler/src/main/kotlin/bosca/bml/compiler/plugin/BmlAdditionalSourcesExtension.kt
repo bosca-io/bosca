@@ -73,6 +73,7 @@ class BmlAdditionalSourcesExtension : CollectAdditionalSourceFilesExtension() {
         val messageEntries = mutableListOf<MessageEntry>()
         val pageMetas = mutableListOf<BmlPageMeta>() // collected to write the site metrics manifest
         val componentMetas = mutableListOf<BmlComponentMeta>()
+        val importedEntryPoints = mutableListOf<BmlImportResolver.Binding>()
         // Localized strings harvested from t/t: markup — deduped module-wide (one key,
         // one message; cross-FILE conflicts reported below) — plus static t("…") call keys.
         val i18nByKey = LinkedHashMap<String, BmlI18nEntry>()
@@ -296,6 +297,7 @@ class BmlAdditionalSourcesExtension : CollectAdditionalSourceFilesExtension() {
             ).withImports(bindings)
             if (libraryId != null) generator.withLibraryIdentity(libraryId).withLibraryExports(exports.toSet())
             val result = generator.generate(document)
+            importedEntryPoints += generator.referencedImports(document)
             generator.importedRenderers(document).forEach { (id, renderer) ->
                 val previous = runtimeRenderers.putIfAbsent(id, renderer)
                 if (previous != null && previous != renderer) {
@@ -497,7 +499,7 @@ class BmlAdditionalSourcesExtension : CollectAdditionalSourceFilesExtension() {
             try {
                 val manifest = BmlLibraryManifestGenerator.generate(
                     libraryId, libraryVersion, packageName, exports.toSet(), libraryDeclarations, componentMetas,
-                    capabilities.clientBehavior,
+                    capabilities.clientBehavior, importedEntryPoints,
                 )
                 val content = BmlLibraryArtifacts.encode(manifest)
                 libraryManifest.parentFile.mkdirs()

@@ -58,7 +58,7 @@ abstract class BmlValidateLibraryTask : DefaultTask() {
                 ?: error("Binary archive is missing the BML library manifest for ${libraryId.get()}")
             val metadata = binary.getInputStream(manifest).use { JsonSlurper().parse(it) } as? Map<*, *>
                 ?: error("Invalid BML library manifest")
-            require(metadata["formatVersion"] == 2) { "Unsupported BML library manifest format" }
+            require(metadata["formatVersion"] == 3) { "Unsupported BML library manifest format" }
             require(metadata["library"] == libraryId.get() && metadata["version"] == artifactVersion.get()) {
                 "BML library manifest coordinates do not match ${libraryId.get()}:${artifactVersion.get()}"
             }

@@ -78,12 +78,12 @@ class BmlLibraryDependenciesTest {
         val manifest = BmlImportFixtures.manifest()
         val encoded = BmlLibraryArtifacts.encode(manifest)
         val cyclic = manifest.copy(components = manifest.components.map {
-            if (it.tag == "button") it.copy(dependencies = listOf("button")) else it
+            if (it.tag == "button") it.copy(dependencies = listOf(BmlLibraryArtifacts.componentId(manifest.library, "button"))) else it
         })
         val json = kotlinx.serialization.json.Json { encodeDefaults = true }
         for (source in listOf(
             "not json",
-            encoded.replace("\"formatVersion\": 2", "\"formatVersion\": 99"),
+            encoded.replace("\"formatVersion\": 3", "\"formatVersion\": 99"),
             encoded.replace("example.design.ButtonComponent", "wrong.ButtonComponent"),
             json.encodeToString(BmlLibraryManifest.serializer(), cyclic),
         )) {

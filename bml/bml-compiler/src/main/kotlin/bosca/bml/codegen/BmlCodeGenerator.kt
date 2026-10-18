@@ -110,19 +110,18 @@ class BmlCodeGenerator(
     /** Direct compiled references for the used imported closure, including producer-private helpers. */
     internal fun importedRenderers(document: Document): Map<String, String> {
         val renderers = sortedMapOf<String, String>()
-        collectComponentRefs(document.nodes).mapNotNull(importedComponents::get).forEach { binding ->
-            val library = binding.dependency.manifest
-            val components = library.components.associateBy { it.tag }
-            fun visit(tag: String) {
-                val id = BmlLibraryArtifacts.componentId(library.library, tag)
-                val component = components.getValue(tag)
-                if (renderers.putIfAbsent(id, component.renderer) != null) return
-                component.dependencies.forEach(::visit)
+        referencedImports(document).forEach { binding ->
+            binding.graph.closure(binding.dependency.manifest.library, binding.component.tag).forEach { resolved ->
+                renderers[resolved.id] = resolved.component.renderer
             }
-            visit(binding.component.tag)
         }
         return renderers
     }
+
+    /** Direct imported entry points referenced by markup or literal client fragment targets. */
+    internal fun referencedImports(document: Document): List<BmlImportResolver.Binding> =
+        collectComponentRefs(document.nodes).mapNotNull(importedComponents::get)
+            .distinctBy { it.dependency.manifest.library to it.component.tag }
 
     /** Exposes typed prop-check entry points only for the producer's public library exports. */
     fun withLibraryExports(exports: Set<String>): BmlCodeGenerator {
@@ -138,7 +137,10 @@ class BmlCodeGenerator(
         importedComponents.putAll(bindings)
         if (bindings.isNotEmpty()) {
             sourceRevision = bmlRenderRevision(sourceRevision + "\n" + bindings.toSortedMap().entries.joinToString("\n") {
-                it.key + "=" + BmlLibraryArtifacts.encode(it.value.dependency.manifest)
+                val binding = it.value
+                it.key + "=" + binding.graph.closure(binding.dependency.manifest.library, binding.component.tag)
+                    .map { resolved -> resolved.dependency.manifest }.distinctBy { manifest -> manifest.library }
+                    .sortedBy { manifest -> manifest.library }.joinToString("\n", transform = BmlLibraryArtifacts::encode)
             })
         }
         for ((name, binding) in bindings) {
@@ -149,21 +151,12 @@ class BmlCodeGenerator(
             val components = binding.dependency.manifest.components.associateBy { it.tag }
             val prefix = name.substringBeforeLast(':', "").let { if (it.isEmpty()) "" else "$it:" }
             components.values.filterNot { it.exported }.forEach { privateImportedTags += prefix + it.tag }
-            fun closure(tag: String, eager: Boolean): Set<String> {
-                val visited = linkedSetOf<String>()
-                fun visit(current: String) {
-                    if (!visited.add(current)) return
-                    val component = components.getValue(current)
-                    (if (eager) component.eagerDependencies else component.dependencies).forEach(::visit)
-                }
-                visit(tag)
-                return visited
-            }
-            val all = closure(binding.component.tag, false).map(components::getValue)
+            val all = binding.graph.closure(binding.dependency.manifest.library, binding.component.tag).map { it.component }
             if (all.any { it.hasDeferredIslands }) importedDeferred += name
             if (all.any { it.hasClientBehavior }) importedClientBehavior += name
             if (all.any { it.hasServerState }) importedSession += name
-            if (closure(binding.component.tag, true).any { components.getValue(it).hasEagerFeatureFlags }) {
+            if (binding.graph.closure(binding.dependency.manifest.library, binding.component.tag, eager = true)
+                    .any { it.component.hasEagerFeatureFlags }) {
                 importedFeatureFlags += name
             }
         }
@@ -2105,8 +2098,8 @@ class BmlCodeGenerator(
             }
             line("public val info: bosca.bml.render.BmlComponentInfo = bosca.bml.render.BmlComponentInfo(${kstr(runtimeId)}, $scopeArg, $stylesArg, listOf($depsArg), $clientArg, $hasServerState$eagerDepsOverride$featureFlagsOverride, renderRevision = ${kstr(sourceRevision)}$deferredOverride)")
             componentMeta += BmlComponentMeta(
-                tag, if (isScopedComponent) scopedCss else "", deps, clientModule,
-                eagerDeps, hasServerState, hasEagerFeatureFlags, componentDeferred.isNotEmpty(),
+                tag, if (isScopedComponent) scopedCss else "", deps.map(::runtimeComponentId).distinct(), clientModule,
+                eagerDeps.map(::runtimeComponentId).distinct(), hasServerState, hasEagerFeatureFlags, componentDeferred.isNotEmpty(),
             )
         }
         // One dispatcher per live state, registered under the "<tag>.<binding>" prefix

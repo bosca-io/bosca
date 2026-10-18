@@ -2,7 +2,7 @@ package bosca.bml.library
 
 import kotlinx.serialization.Serializable
 
-/** A component's compiled entry point, authoring contract, and dependency metadata. */
+/** A compiled entry point and authoring contract. Dependency edges use canonical runtime identities. */
 @Serializable
 data class BmlLibraryComponent(
     val tag: String,

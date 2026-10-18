@@ -1,6 +1,9 @@
 package bosca.bml.compiler.plugin
 
 import bosca.bml.library.BmlLibraryArtifacts
+import bosca.bml.library.BmlLibraryDependencies
+import bosca.bml.library.BmlImportResolver
+import bosca.bml.parser.BmlParser
 import bosca.bml.project.CompiledProject
 import bosca.bml.render.BmlComponentInfo
 import bosca.bml.render.BmlComponentRenderer
@@ -45,6 +48,120 @@ import org.jetbrains.kotlin.config.Services
 
 /** Real K2 binary producer -> source-free consumer -> generated registries -> Netty route wiring. */
 class BmlBinaryRuntimeTest {
+    @Test
+    fun `a binary wrapper preserves its own imports through transitive actions and deferred rendering`() {
+        val work = Files.createTempDirectory("bml-transitive-runtime").toFile()
+        try {
+            val base = producer(work, "design", 0)
+            val wrapperRoot = File(work, "wrapper/bml").apply { mkdirs() }
+            File(wrapperRoot, "imports.bml").writeText("""<import library="example:design"/>""")
+            File(wrapperRoot, "card.bml").writeText("""
+                <component tag="card"><prop name="id" type="String"/>
+                  <counter :id="id"/><private-label/>
+                </component>
+            """.trimIndent())
+            File(wrapperRoot, "private-label.bml").writeText("""<component tag="private-label"><span>WRAPPER HELPER</span></component>""")
+            File(wrapperRoot, "lazy-card.bml").writeText("""
+                <component tag="lazy-card"><prop name="id" type="String"/>
+                  <island name="body" render="deferred" :id="id">
+                    <prop name="id" type="String"/><counter :id="id"/>
+                    <fallback>WRAPPER WAITING</fallback>
+                  </island>
+                </component>
+            """.trimIndent())
+            val wrapperClasses = File(work, "wrapper/classes")
+            val wrapperResources = File(work, "wrapper/resources")
+            compile(wrapperClasses, listOf(
+                "bmlSourceRoot=$wrapperRoot", "bmlPackageName=example.wrapper.generated", "bmlLibraryId=example:wrapper",
+                "bmlLibraryVersion=1.0", "bmlResourcesOutputDir=$wrapperResources", "bmlLibraryDependency=$base",
+                "bmlLibraryExport=card", "bmlLibraryExport=lazy-card",
+            ), classpath = listOf(base))
+            val manifest = BmlLibraryArtifacts.decode(File(wrapperResources, BmlLibraryArtifacts.MANIFEST_PATH).readText())
+            val requirement = manifest.requirements.single()
+            assertEquals("example:design", requirement.library)
+            assertEquals("1.0", requirement.version)
+            assertEquals(listOf("counter"), requirement.components, "only used entry points become requirements")
+            val counterId = BmlLibraryArtifacts.componentId("example:design", "counter")
+            assertEquals(listOf(counterId), manifest.components.first { it.tag == "lazy-card" }.dependencies)
+            assertTrue(manifest.components.first { it.tag == "lazy-card" }.eagerDependencies.isEmpty())
+            val wrapper = archive(File(work, "wrapper.jar"), listOf(wrapperClasses, wrapperResources))
+            assertTrue(File(work, "wrapper").deleteRecursively())
+            val dependencies = BmlLibraryDependencies.read(listOf(wrapper, base))
+            val imports = BmlImportResolver.parse("imports.bml", BmlParser.parse("""<import library="example:wrapper"/>""").document, true)
+            assertEquals(setOf("card", "lazy-card"), BmlImportResolver(dependencies).resolve(null, imports).bindings.keys)
+            val root = File(work, "consumer/bml").apply { mkdirs() }
+            File(root, "imports.bml").writeText("""<import library="example:wrapper"/>""")
+            File(root, "home.bml").writeText("""
+                <import library="example:wrapper" as="ui"/><import library="example:design" as="base"/>
+                <page route="/"><html><head></head><body>
+                  <card id="one"/><ui:card id="two"/><base:counter id="direct"/><counter/>
+                </body></html></page>
+            """.trimIndent())
+            File(root, "lazy.bml").writeText("""<page route="/lazy"><html><body><lazy-card id="later"/></body></html></page>""")
+            File(root, "counter.bml").writeText("""<component tag="counter"><p>APP COUNTER</p></component>""")
+            val options = listOf("bmlSourceRoot=$root", "bmlPackageName=consumer.generated", "bmlLibraryDependency=$wrapper", "bmlLibraryDependency=$base")
+            val output = File(work, "consumer/classes")
+            compile(output, options, listOf(wrapper, base))
+            URLClassLoader(arrayOf(output, wrapper, base).map { it.toURI().toURL() }.toTypedArray(), javaClass.classLoader).use { loader ->
+                fun registry(name: String, property: String): Any {
+                    val type = loader.loadClass("consumer.generated.$name")
+                    return type.getMethod("get" + property.replaceFirstChar(Char::uppercaseChar)).invoke(type.getField("INSTANCE").get(null))
+                }
+                @Suppress("UNCHECKED_CAST")
+                val pages = registry("BmlPages", "all") as List<BmlPageRenderer>
+                @Suppress("UNCHECKED_CAST")
+                val components = registry("BmlComponents", "all") as List<BmlComponentInfo>
+                @Suppress("UNCHECKED_CAST")
+                val renderers = registry("BmlComponents", "renderers") as Map<String, BmlComponentRenderer>
+                @Suppress("UNCHECKED_CAST")
+                val dispatchers = registry("BmlIslands", "componentDispatchers") as Map<String, BmlIslandActionDispatcher>
+                assertEquals(setOf("$counterId.counter"), dispatchers.keys)
+                assertEquals(1, components.count { it.tag == counterId })
+                assertFalse(components.any { it.tag.endsWith("unused") || it.tag.endsWith("client-counter") })
+                val port = ServerSocket(0).use { it.localPort }
+                val server = BmlServer(CompiledProject(name = "transitive", version = "1"), pages, port,
+                    components = components, componentRenderers = renderers, componentIslandDispatchers = dispatchers)
+                val app = BoscaApplication(ApplicationConfig.load("bosca:\n  server:\n    port: $port\n    drain-timeout-ms: 0\n    development: true\n".byteInputStream()))
+                server.install(app)
+                app.freezeMiddleware()
+                val engine = NettyServerEngine(app, port)
+                thread(isDaemon = true, name = "bml-transitive-runtime-test") { engine.start() }
+                try {
+                    awaitServer(port)
+                    val client = HttpClient.newBuilder().cookieHandler(CookieManager(null, CookiePolicy.ACCEPT_ALL)).build()
+                    fun get(path: String) = client.send(HttpRequest.newBuilder(URI("http://localhost:$port$path")).GET().build(), HttpResponse.BodyHandlers.ofString())
+                    fun post(path: String, body: String) = client.send(HttpRequest.newBuilder(URI("http://localhost:$port$path"))
+                        .POST(HttpRequest.BodyPublishers.ofString(body)).build(), HttpResponse.BodyHandlers.ofString())
+                    val page = get("/")
+                    assertEquals(200, page.statusCode(), page.body())
+                    assertTrue(listOf("APP COUNTER", "DESIGN HELPER", "WRAPPER HELPER").all { it in page.body() }, page.body())
+                    for (key in listOf("one", "two", "direct")) {
+                        val action = post("/_bml/action", """{"page":"/","path":"/","stateKey":"$counterId.counter:$key","method":"increment"}""")
+                        assertEquals(200, action.statusCode(), action.body())
+                        assertTrue("Count 1" in Json.parseToJsonElement(action.body()).jsonObject.getValue("html").jsonPrimitive.content, action.body())
+                    }
+                    val lazy = get("/lazy")
+                    assertEquals(200, lazy.statusCode(), lazy.body())
+                    assertTrue("WRAPPER WAITING" in lazy.body(), lazy.body())
+                    val lazyId = BmlLibraryArtifacts.componentId("example:wrapper", "lazy-card")
+                    val deferredId = URLEncoder.encode("component:$lazyId:body", Charsets.UTF_8)
+                    val deferred = post("/_bml/deferred/$deferredId", """{"page":"/lazy","path":"/lazy","query":{},"props":{"id":"later"}}""")
+                    assertEquals(200, deferred.statusCode(), deferred.body())
+                    assertTrue("Count 0" in deferred.body() && "DESIGN HELPER" in deferred.body(), deferred.body())
+                    val action = post("/_bml/action", """{"page":"/lazy","path":"/lazy","stateKey":"$counterId.counter:later","method":"increment"}""")
+                    assertEquals(200, action.statusCode(), action.body())
+                    assertTrue("Count 1" in Json.parseToJsonElement(action.body()).jsonObject.getValue("html").jsonPrimitive.content, action.body())
+                } finally { engine.stopWithoutHalting() }
+            }
+            val failure = compile(File(work, "missing/classes"), options.filterNot { it == "bmlLibraryDependency=$base" },
+                listOf(wrapper), expected = ExitCode.COMPILATION_ERROR)
+            assertTrue("Missing BML dependency example:design:1.0" in failure, failure)
+            val invalid = File(root, "shared.bml").apply { writeText("""<page route="/shared" cache="shared"><card id="shared"/></page>""") }
+            val sharedFailure = compile(File(work, "shared/classes"), options, listOf(wrapper, base), expected = ExitCode.COMPILATION_ERROR)
+            assertTrue("server-session state in its render closure" in sharedFailure, sharedFailure)
+            invalid.delete()
+        } finally { work.deleteRecursively() }
+    }
     @Test
     fun `binary components compose private closures and isolated actions across aliases and libraries`() {
         val work = Files.createTempDirectory("bml-binary-runtime").toFile()
@@ -229,9 +346,14 @@ class BmlBinaryRuntimeTest {
         ) + listOf("counter", "client-counter", "site-counter", "badge", "unused").map { "bmlLibraryExport=$it" }, sources = listOf(model))
         val id = BmlLibraryArtifacts.componentId("example:$name", "counter")
         assertTrue("component:$id:view" in File(ts, "CounterPage.ts").readText())
-        val artifact = File(work, "$name.jar")
+        val artifact = archive(File(work, "$name.jar"), listOf(output, resources))
+        assertTrue(producer.deleteRecursively())
+        return artifact
+    }
+
+    private fun archive(artifact: File, roots: List<File>): File {
         JarOutputStream(artifact.outputStream()).use { jar ->
-            listOf(output, resources).forEach { dir ->
+            roots.forEach { dir ->
                 dir.walkTopDown().filter { it.isFile }.forEach { file ->
                     jar.putNextEntry(JarEntry(file.relativeTo(dir).invariantSeparatorsPath))
                     jar.write(file.readBytes())
@@ -239,11 +361,10 @@ class BmlBinaryRuntimeTest {
                 }
             }
         }
-        assertTrue(producer.deleteRecursively())
         return artifact
     }
 
-    private fun compile(output: File, options: List<String>, classpath: List<File> = emptyList(), sources: List<File> = emptyList()) {
+    private fun compile(output: File, options: List<String>, classpath: List<File> = emptyList(), sources: List<File> = emptyList(), expected: ExitCode = ExitCode.OK): String {
         output.mkdirs()
         val anchor = File(output.parentFile, "Anchor.kt").apply { writeText("package anchor") }
         val messages = StringBuilder()
@@ -274,7 +395,8 @@ class BmlBinaryRuntimeTest {
             pluginClasspaths = plugins.toTypedArray()
             pluginOptions = options.map { "plugin:bml:$it" }.toTypedArray()
         }
-        assertEquals(ExitCode.OK, K2JVMCompiler().exec(collector, Services.EMPTY, args), messages.toString())
+        assertEquals(expected, K2JVMCompiler().exec(collector, Services.EMPTY, args), messages.toString())
+        return messages.toString()
     }
 
     private fun awaitServer(port: Int) {
