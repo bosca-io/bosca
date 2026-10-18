@@ -18,6 +18,7 @@ import bosca.test.resources.SharedPostgreSQLContainer
 import java.sql.DriverManager
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -78,12 +79,14 @@ class ObjectBackupPayloadClaimMigrationIntegrationTest {
         seed("b", payload.copy(store = "media", key = "other", revision = "other"), source = "source-2", scope = "other")
         seed("c", payload.copy(length = 8, sha256 = "b".repeat(64)), destination = "destination-2")
         val service: ObjectBackupProgressService = provide()
-        val before = withConnectionManager { assertNotNull(service.get("a".repeat(64))) }
+        val key = "a".repeat(64)
+        val before = progressSnapshot(key)
 
         FlywayMigration(pool).migrate(listOf(migration))
         FlywayMigration(pool).migrate(listOf(migration))
 
-        assertEquals(before, withConnectionManager { service.get(before.key) })
+        assertEquals(before, progressSnapshot(key))
+        assertEquals(payload, withConnectionManager { assertNotNull(service.get(key)).payload })
         assertEquals(2, queryInt("select count(*) from backup.object_paths"))
         assertEquals(1, queryInt("""
             select count(*) from backup.object_paths
@@ -239,6 +242,20 @@ class ObjectBackupPayloadClaimMigrationIntegrationTest {
                 statement.setString(2, operation)
                 statement.setString(3, Json.encodeToString(ObjectBackupManifest.serializer(), inventory))
                 assertEquals(1, statement.executeUpdate())
+            }
+        }
+    }
+
+    private fun progressSnapshot(key: String) = jdbc { connection ->
+        connection.prepareStatement("""
+            select (to_jsonb(p) - 'verified_version' - 'verified'
+                - 'retained_path' - 'retained_length' - 'retained_sha256')::text
+            from backup.object_progress p where key = ?
+        """.trimIndent()).use { statement ->
+            statement.setString(1, key)
+            statement.executeQuery().use {
+                assertTrue(it.next())
+                Json.parseToJsonElement(it.getString(1)).jsonObject
             }
         }
     }

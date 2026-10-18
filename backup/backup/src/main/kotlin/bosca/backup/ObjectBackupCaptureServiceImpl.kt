@@ -6,6 +6,7 @@ import bosca.db.withConnectionManager
 import bosca.service.annotation.ServiceImplementation
 import bosca.storage.service.ObjectNotFoundException
 import bosca.storage.service.ObjectStorageEntry
+import bosca.storage.service.ObjectStorageInfo
 import bosca.storage.service.ObjectStorageService
 import bosca.storage.service.StorageDispatcher
 import bosca.storage.service.StringObjectPath
@@ -13,6 +14,7 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
+import java.time.OffsetDateTime
 
 /** Streams a selected retained revision into new independent backup storage and verifies it. */
 @ServiceImplementation
@@ -28,6 +30,7 @@ class ObjectBackupCaptureServiceImpl(
         source: ObjectStorageService,
         destination: ObjectStorageService,
         payloadPath: String,
+        verifiedSince: OffsetDateTime?,
     ): ObjectBackupProgress {
         require(sourceId.isNotBlank() && destinationId.isNotBlank() && scope.isNotBlank()) {
             "Object capture source, destination and scope identities are required"
@@ -37,7 +40,7 @@ class ObjectBackupCaptureServiceImpl(
             progressService.get(ObjectBackupOperation.BACKUP, sourceId, destinationId, scope, store, entry.key, version)
         }
         if (known == null) {
-            val captured = capture(store, entry, source, destination, payloadPath)
+            val (captured, objectVersion) = capturePayload(store, entry, source, destination, payloadPath)
             currentCoroutineContext().ensureActive()
             return withConnectionManager {
                 transaction {
@@ -48,7 +51,7 @@ class ObjectBackupCaptureServiceImpl(
                         "Capture checkpoint changed before acknowledgement: ${prepared.key}"
                     }
                     val running = progressService.start(prepared.key, prepared.version)
-                    progressService.complete(running.key, running.version)
+                    progressService.completeVerified(running.key, running.version, objectVersion)
                 }
             }
         }
@@ -56,8 +59,27 @@ class ObjectBackupCaptureServiceImpl(
         val pending = when (known.status) {
             ObjectBackupProgressStatus.RUNNING -> error("Object capture is already running: ${known.key}")
             ObjectBackupProgressStatus.COMPLETED -> {
-                val verified = withContext(StorageDispatcher) { destination.hasVerifiedBackupPayload(known.payload) }
-                if (verified) return known
+                val observed = try {
+                    withContext(StorageDispatcher) { observe(known.payload, destination) }
+                } catch (_: ObjectNotFoundException) {
+                    null
+                }
+                if (observed != null && canReuse(known, observed, verifiedSince)) return known
+                val verified = if (observed == null) false else try {
+                    withContext(StorageDispatcher) { destination.verifyBackupPayload(known.payload, observed) }
+                    true
+                } catch (_: ObjectNotFoundException) {
+                    false
+                } catch (_: BackupPayloadMismatchException) {
+                    false
+                }
+                if (verified) {
+                    val objectVersion = observed?.version
+                    if (objectVersion == null && known.verifiedVersion == null) return known
+                    return withConnectionManager {
+                        progressService.recordVerification(known.key, known.version, objectVersion)
+                    }
+                }
                 withConnectionManager {
                     progressService.invalidate(
                         known.key, known.version,
@@ -70,8 +92,13 @@ class ObjectBackupCaptureServiceImpl(
         val running = withConnectionManager { progressService.start(pending.key, pending.version) }
         return try {
             ObjectBackupTransfer(mapOf(store to source), destination).copyVersion(known.payload, version)
+            val objectVersion = withContext(StorageDispatcher) {
+                val observed = observe(known.payload, destination)
+                destination.verifyBackupPayload(known.payload, observed)
+                observed.version
+            }
             currentCoroutineContext().ensureActive()
-            withConnectionManager { progressService.complete(running.key, running.version) }
+            withConnectionManager { progressService.completeVerified(running.key, running.version, objectVersion) }
         } catch (failure: Exception) {
             try {
                 withContext(NonCancellable) {
@@ -95,7 +122,15 @@ class ObjectBackupCaptureServiceImpl(
         source: ObjectStorageService,
         destination: ObjectStorageService,
         payloadPath: String,
-    ): BackupObject {
+    ): BackupObject = capturePayload(store, entry, source, destination, payloadPath).first
+
+    private suspend fun capturePayload(
+        store: String,
+        entry: ObjectStorageEntry,
+        source: ObjectStorageService,
+        destination: ObjectStorageService,
+        payloadPath: String,
+    ): Pair<BackupObject, String?> {
         val version = validateCapture(store, entry, source, destination, payloadPath)
         val path = StringObjectPath(payloadPath)
         var writeStarted = false
@@ -127,9 +162,10 @@ class ObjectBackupCaptureServiceImpl(
                 }
                 val captured = BackupObject(store, entry.key, version, entry.info.length, sha256, payloadPath)
                 captured.validate()
-                destination.verifyBackupPayload(captured)
+                val observed = observe(captured, destination)
+                destination.verifyBackupPayload(captured, observed)
                 currentCoroutineContext().ensureActive()
-                captured
+                captured to observed.version
             }
         } catch (failure: Throwable) {
             if (writeStarted) {
@@ -151,6 +187,19 @@ class ObjectBackupCaptureServiceImpl(
             throw failure
         }
     }
+
+    private suspend fun observe(entry: BackupObject, storage: ObjectStorageService): ObjectStorageInfo {
+        val observed = storage.getObjectInfo(StringObjectPath(entry.payloadPath))
+        return observed.copy(version = observed.version?.takeIf { it.isNotBlank() && it != "null" })
+    }
+
+    private fun canReuse(
+        known: ObjectBackupProgress,
+        observed: ObjectStorageInfo,
+        verifiedSince: OffsetDateTime?,
+    ): Boolean = verifiedSince != null && known.verifiedVersion != null &&
+        known.verified?.isBefore(verifiedSince) == false &&
+        observed.length == known.payload.length && observed.version == known.verifiedVersion
 
     private suspend fun validateCapture(
         store: String,

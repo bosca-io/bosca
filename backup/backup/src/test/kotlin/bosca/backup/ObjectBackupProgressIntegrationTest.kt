@@ -352,6 +352,76 @@ class ObjectBackupProgressIntegrationTest {
         assertTrue(request { service.list(BACKUP, "source-1", "destination-1", "content", 0, 10) }.isEmpty())
     }
 
+    @Test
+    fun `verified completion and refresh persist provider evidence with guarded versions`(): Unit = runBlocking {
+        val completed = request {
+            val prepared = prepare()
+            val running = service.start(prepared.key, prepared.version)
+            service.completeVerified(running.key, running.version, "provider-v1")
+        }
+        assertEquals("provider-v1", completed.verifiedVersion)
+        assertNotNull(completed.verified)
+        assertEquals(1, completed.attempts)
+        assertEquals(completed, request { service.get(completed.key) })
+        val refreshed = request { service.recordVerification(completed.key, completed.version, "provider-v2") }
+        assertEquals("provider-v2", refreshed.verifiedVersion)
+        assertEquals(completed.attempts, refreshed.attempts)
+        assertEquals(completed.version + 1, refreshed.version)
+        assertNotNull(refreshed.verified)
+        assertFailsWith<IllegalStateException> {
+            request { service.recordVerification(completed.key, completed.version, "stale") }
+        }
+        assertEquals(refreshed, request { service.get(completed.key) })
+    }
+
+    @Test
+    fun `verification cannot be recorded before completion or with invalid provider identities`(): Unit = runBlocking {
+        val prepared = request { prepare() }
+        assertFailsWith<IllegalStateException> {
+            request { service.recordVerification(prepared.key, prepared.version, "provider-v1") }
+        }
+        val running = request { service.start(prepared.key, prepared.version) }
+        for (value in listOf("", " ", "null")) {
+            assertFailsWith<IllegalArgumentException> {
+                request { service.completeVerified(running.key, running.version, value) }
+            }
+        }
+        assertEquals(running, request { service.get(running.key) })
+        val completed = request { service.completeVerified(running.key, running.version, null) }
+        assertNull(completed.verifiedVersion)
+        assertNull(completed.verified)
+    }
+
+    @Test
+    fun `invalidating verified output clears its evidence before another attempt`(): Unit = runBlocking {
+        val completed = request {
+            val prepared = prepare()
+            val running = service.start(prepared.key, prepared.version)
+            service.completeVerified(running.key, running.version, "provider-v1")
+        }
+        val invalid = request { service.invalidate(completed.key, completed.version, "missing") }
+        assertNull(invalid.verifiedVersion)
+        assertNull(invalid.verified)
+        val running = request { service.start(invalid.key, invalid.version) }
+        val failed = request { service.fail(running.key, running.version, "failed") }
+        assertNull(failed.verifiedVersion)
+        assertNull(failed.verified)
+    }
+
+    @Test
+    fun `a full verification without provider identity clears earlier evidence`() = runBlocking {
+        val completed = request {
+            val prepared = prepare()
+            val running = service.start(prepared.key, prepared.version)
+            service.completeVerified(running.key, running.version, "provider-v1")
+        }
+        val cleared = request { service.recordVerification(completed.key, completed.version, null) }
+        assertEquals(ObjectBackupProgressStatus.COMPLETED, cleared.status)
+        assertEquals(completed.attempts, cleared.attempts)
+        assertNull(cleared.verifiedVersion)
+        assertNull(cleared.verified)
+    }
+
     private suspend fun prepare(): ObjectBackupProgress =
         service.prepare(BACKUP, "source-1", "destination-1", "content", payload)
 

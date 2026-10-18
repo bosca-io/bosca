@@ -421,32 +421,31 @@ class ObjectBackupWriterIntegrationTest {
 
     @Test
     fun `migration backfills running configured writers without changing legacy history`(): Unit = runBlocking {
-        val backup = backup("backup", upgrade = false)
-        val restore = restore(
-            "restore", mapOf("content" to "target-a", "artifacts" to "target-a"), upgrade = false,
-        )
-        val failed = backup("failed", upgrade = false)
-        val legacy = request { service.prepare(inventory.copy(id = "legacy"), "legacy-destination") }
+        val backup = seedLegacyRun("backup")
+        val restore = seedLegacyRun("restore", ObjectBackupOperation.RESTORE)
+        val failed = seedLegacyRun("failed")
+        val legacy = seedLegacyRun("legacy", destination = "legacy-destination", configured = false)
         setLegacyStatus(backup.key, "running")
         setLegacyStatus(restore.key, "running")
         setLegacyStatus(failed.key, "failed")
         setLegacyStatus(legacy.key, "running")
         val previous = request { listOf(backup, restore, failed, legacy).map { service.get(it.key) } }
-        val items = request { service.items(backup.key, 0, 10) }
+        val items = legacyItems(backup.key)
 
         upgrade()
         FlywayMigration(pool).migrate(listOf(provide<Migration>(name = "backup-migrations")))
 
         assertEquals(mapOf("backup-a" to backup.key, "target-a" to restore.key), writers())
         assertEquals(previous, request { listOf(backup, restore, failed, legacy).map { service.get(it.key) } })
-        assertEquals(items, request { service.items(backup.key, 0, 10) })
+        assertEquals(items, legacyItems(backup.key))
+        assertEquals(inventory.objects, request { service.items(backup.key, 0, 10) }.map { it.payload })
         assertNull(request { service.getStorage(legacy.key) })
     }
 
     @Test
     fun `migration rejects overlapping historical writers without selecting an owner`(): Unit = runBlocking {
-        val firstRun = backup("one", upgrade = false)
-        val secondRun = backup("two", upgrade = false)
+        val firstRun = seedLegacyRun("one")
+        val secondRun = seedLegacyRun("two")
         setLegacyStatus(firstRun.key, "running")
         setLegacyStatus(secondRun.key, "running")
         assertFailsWith<Exception> { upgrade() }
@@ -469,9 +468,8 @@ class ObjectBackupWriterIntegrationTest {
         id: String,
         destination: String = "backup-a",
         objects: List<BackupObject> = inventory.objects,
-        upgrade: Boolean = true,
     ): ObjectBackupRun {
-        if (upgrade) upgrade()
+        upgrade()
         return request {
             service.prepare(inventory.copy(id = id, sourceId = id, objects = objects), destination).also {
                 service.configureStorage(it.key, destination, objects.associate { entry -> entry.store to "source" })
@@ -484,15 +482,95 @@ class ObjectBackupWriterIntegrationTest {
         mapping: Map<String, String>,
         objects: List<BackupObject> = inventory.objects,
         retained: String = "backup-a",
-        upgrade: Boolean = true,
     ): ObjectBackupRun {
-        if (upgrade) upgrade()
+        upgrade()
         return request {
             service.prepareRestore(inventory.copy(id = id, objects = objects), id, "manifests/" + id).also {
                 service.configureStorage(it.key, retained, mapping)
             }
         }
     }
+
+    private suspend fun seedLegacyRun(
+        id: String,
+        operation: ObjectBackupOperation = ObjectBackupOperation.BACKUP,
+        destination: String = if (operation == ObjectBackupOperation.BACKUP) "backup-a" else id,
+        configured: Boolean = true,
+    ): ObjectBackupRun {
+        val selected = inventory.copy(id = id, sourceId = id)
+        val key = objectBackupIdentity(operation, listOf(id, destination, selected.scope, id))
+        val path = "manifests/$key.json"
+        val operationName = operation.name.lowercase()
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { connection ->
+            connection.autoCommit = false
+            if (operation == ObjectBackupOperation.BACKUP) {
+                connection.seed("""
+                    insert into backup.object_paths (destination_id, path, manifest_key) values (?, ?, ?)
+                """.trimIndent(), destination, path, key)
+            }
+            connection.seed("""
+                insert into backup.object_runs (key, source_id, destination_id, scope, operation, inventory, path)
+                values (?, ?, ?, ?, ?, ?::jsonb, ?)
+            """.trimIndent(), key, id, destination, selected.scope, operationName,
+                Json.encodeToString(ObjectBackupManifest.serializer(), selected), path)
+            for ((position, payload) in selected.objects.withIndex()) {
+                if (operation == ObjectBackupOperation.BACKUP) {
+                    connection.prepareStatement("""
+                        insert into backup.object_paths (destination_id, path, length, sha256)
+                        values (?, ?, ?, ?) on conflict (destination_id, path) do nothing
+                    """.trimIndent()).use {
+                        it.setString(1, destination)
+                        it.setString(2, payload.payloadPath)
+                        it.setLong(3, payload.length)
+                        it.setString(4, payload.sha256)
+                        it.executeUpdate()
+                    }
+                }
+                val progressKey = objectBackupIdentity(
+                    operation, listOf(id, destination, selected.scope, payload.store, payload.key, payload.revision),
+                )
+                connection.seed("""
+                    insert into backup.object_progress (key, source_id, destination_id, scope, operation, payload)
+                    values (?, ?, ?, ?, ?, ?::jsonb)
+                """.trimIndent(), progressKey, id, destination, selected.scope, operationName,
+                    Json.encodeToString(BackupObject.serializer(), payload))
+                connection.seed("""
+                    insert into backup.object_run_items (run_key, position, progress_key) values (?, ?, ?)
+                """.trimIndent(), key, position, progressKey)
+            }
+            connection.commit()
+        }
+        return request {
+            if (configured) {
+                val backupKey = if (operation == ObjectBackupOperation.BACKUP) destination else "backup-a"
+                val storageKey = if (operation == ObjectBackupOperation.BACKUP) "source" else "target-a"
+                service.configureStorage(key, backupKey, selected.objects.associate { it.store to storageKey })
+            }
+            assertNotNull(service.get(key))
+        }
+    }
+
+    private fun java.sql.Connection.seed(sql: String, vararg values: Any) {
+        prepareStatement(sql).use { statement ->
+            for ((index, value) in values.withIndex()) statement.setObject(index + 1, value)
+            assertEquals(1, statement.executeUpdate())
+        }
+    }
+
+    private fun legacyItems(key: String) =
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { connection ->
+            connection.prepareStatement("""
+                select jsonb_agg(to_jsonb(p) - 'verified_version' - 'verified' order by i.position)::text
+                from backup.object_run_items i join backup.object_progress p on p.key = i.progress_key
+                where i.run_key = ?
+            """.trimIndent()).use { statement ->
+                statement.setString(1, key)
+                statement.executeQuery().use {
+                    assertTrue(it.next())
+                    Json.parseToJsonElement(it.getString(1))
+                }
+            }
+        }
 
     private suspend fun upgrade() {
         if (migrated) return

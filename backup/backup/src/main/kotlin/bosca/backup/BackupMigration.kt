@@ -14,5 +14,6 @@ class BackupMigration : Migration {
         "V6__object_backup_run_storage.sql",
         "V7__object_backup_store_writers.sql",
         "V8__object_backup_dispatches.sql",
+        "V9__object_backup_verification.sql",
     )
 }

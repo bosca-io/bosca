@@ -3,6 +3,7 @@ package bosca.backup
 import bosca.service.Service
 import bosca.storage.service.ObjectStorageEntry
 import bosca.storage.service.ObjectStorageService
+import java.time.OffsetDateTime
 
 /** Creates verified retained payloads from explicitly selected provider revisions. */
 interface ObjectBackupCaptureService : Service {
@@ -19,7 +20,10 @@ interface ObjectBackupCaptureService : Service {
      * checkpoint commit can leave unreferenced output: retry reads committed progress first,
      * otherwise use a fresh proposed path. Pending intent before the first unknown-digest capture
      * is not recorded. Existing storage isolation, retention and transaction restrictions apply.
-     * Retained bytes are read in full on reuse; this does not define a periodic integrity policy.
+     * [verifiedSince] permits metadata-only reuse when a recorded checksum verification is at
+     * least that recent and current length/provider version still match. Null forces full
+     * verification. Stores without a stable provider version always receive full verification.
+     * The caller chooses the periodic recheck cutoff; metadata-only reuse never refreshes it.
      */
     suspend fun captureTracked(
         sourceId: String,
@@ -30,6 +34,7 @@ interface ObjectBackupCaptureService : Service {
         source: ObjectStorageService,
         destination: ObjectStorageService,
         payloadPath: String,
+        verifiedSince: OffsetDateTime?,
     ): ObjectBackupProgress
 
     /**

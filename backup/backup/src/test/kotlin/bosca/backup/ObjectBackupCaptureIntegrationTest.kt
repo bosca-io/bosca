@@ -33,6 +33,7 @@ import java.net.InetSocketAddress
 import java.net.URLDecoder
 import java.nio.file.Path
 import java.security.MessageDigest
+import java.time.OffsetDateTime
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
@@ -363,7 +364,7 @@ class ObjectBackupCaptureIntegrationTest {
         val progress = provide<ObjectBackupProgressService>()
         val failure = IOException("checkpoint commit failed")
         capture = ObjectBackupCaptureServiceImpl(object : ObjectBackupProgressService by progress {
-            override suspend fun complete(key: String, expectedVersion: Long): ObjectBackupProgress = throw failure
+            override suspend fun completeVerified(key: String, expectedVersion: Long, objectVersion: String?): ObjectBackupProgress = throw failure
         })
         provide<ObjectStorageServiceFactory>().withStorage(configuration()) { source ->
             val observed = assertFailsWith<IOException> { tracked(source) }
@@ -384,7 +385,7 @@ class ObjectBackupCaptureIntegrationTest {
         val failure = IOException("completion acknowledgement failed")
         val recording = IOException("failure recording failed")
         capture = ObjectBackupCaptureServiceImpl(object : ObjectBackupProgressService by progress {
-            override suspend fun complete(key: String, expectedVersion: Long): ObjectBackupProgress = throw failure
+            override suspend fun completeVerified(key: String, expectedVersion: Long, objectVersion: String?): ObjectBackupProgress = throw failure
             override suspend fun fail(key: String, expectedVersion: Long, error: String): ObjectBackupProgress = throw recording
         })
         provide<ObjectStorageServiceFactory>().withStorage(configuration()) { source ->
@@ -436,7 +437,7 @@ class ObjectBackupCaptureIntegrationTest {
         for (i in identity.indices) {
             val changed = identity.toMutableList().apply { this[i] = " " }
             assertFailsWith<IllegalArgumentException> {
-                capture.captureTracked(changed[0], changed[1], changed[2], "content", selected, source, target, payloadPath)
+                capture.captureTracked(changed[0], changed[1], changed[2], "content", selected, source, target, payloadPath, null)
             }
         }
         assertEquals(null, checkpoint())
@@ -468,12 +469,32 @@ class ObjectBackupCaptureIntegrationTest {
         }
     }
 
+    @Test
+    fun `filesystem capture still verifies retained bytes when metadata-only reuse is requested`(): Unit = runBlocking {
+        val first = provide<ObjectStorageServiceFactory>().withStorage(configuration()) { tracked(it) }
+        endpoint.stop(0)
+        var reads = 0
+        val target = object : ObjectStorageService by retained {
+            override suspend fun getInputStream(path: ObjectPath): InputStream {
+                reads++
+                return retained.getInputStream(path)
+            }
+        }
+        val source = mockk<ObjectStorageService>()
+        val reused = capture.captureTracked(
+            "old-instance", "retained-store", "content", "content", selected, source, target, payloadPath, OffsetDateTime.MIN,
+        )
+        assertEquals(first, reused)
+        assertEquals(1, reads)
+        coVerify(exactly = 0) { source.getInputStream(any(), any<String>()) }
+    }
+
     private suspend fun tracked(
         source: ObjectStorageService,
         target: ObjectStorageService = retained,
         path: String = payloadPath,
         entry: ObjectStorageEntry = selected,
-    ) = capture.captureTracked("old-instance", "retained-store", "content", "content", entry, source, target, path)
+    ) = capture.captureTracked("old-instance", "retained-store", "content", "content", entry, source, target, path, null)
 
     private fun knownPayload() = BackupObject(
         "content", "asset", version, selected.info.length,

@@ -89,7 +89,8 @@ interface ObjectBackupProgressRepository {
         """
         update backup.object_progress
         set status = 'running', attempts = attempts + 1, error = null,
-            verified_bytes = 0, version = version + 1, modified = now()
+            verified_bytes = 0, verified_version = null, verified = null,
+            version = version + 1, modified = now()
         where key = :key and version = :expectedVersion and status in ('pending', 'failed')
         returning *
         """
@@ -101,6 +102,7 @@ interface ObjectBackupProgressRepository {
         """
         update backup.object_progress
         set status = 'completed', verified_bytes = (payload->>'length')::bigint,
+            verified_version = null, verified = null,
             error = null, version = version + 1, modified = now()
         where key = :key and version = :expectedVersion and status = 'running'
         returning *
@@ -108,12 +110,39 @@ interface ObjectBackupProgressRepository {
     )
     suspend fun complete(key: String, expectedVersion: Long): ObjectBackupProgress?
 
+    /** Completes a verified attempt with the exact provider version read by its caller. */
+    @Query(
+        """
+        update backup.object_progress
+        set status = 'completed', verified_bytes = (payload->>'length')::bigint,
+            verified_version = :objectVersion,
+            verified = case when cast(:objectVersion as text) is null then null else now() end,
+            error = null, version = version + 1, modified = now()
+        where key = :key and version = :expectedVersion and status = 'running'
+        returning *
+        """,
+    )
+    suspend fun completeVerified(key: String, expectedVersion: Long, objectVersion: String?): ObjectBackupProgress?
+
+    /** Records a full checksum recheck without extending the time on metadata-only reads. */
+    @Query(
+        """
+        update backup.object_progress
+        set verified_version = :objectVersion,
+            verified = case when cast(:objectVersion as text) is null then null else now() end,
+            version = version + 1, modified = now()
+        where key = :key and version = :expectedVersion and status = 'completed'
+        returning *
+        """,
+    )
+    suspend fun recordVerification(key: String, expectedVersion: Long, objectVersion: String?): ObjectBackupProgress?
+
     /** Fails the current attempt without accepting a stale worker's acknowledgement. */
     @Query(
         """
         update backup.object_progress
         set status = 'failed', error = :error, verified_bytes = 0,
-            version = version + 1, modified = now()
+            verified_version = null, verified = null, version = version + 1, modified = now()
         where key = :key and version = :expectedVersion and status = 'running'
         returning *
         """
@@ -125,7 +154,7 @@ interface ObjectBackupProgressRepository {
         """
         update backup.object_progress
         set status = 'failed', error = :error, verified_bytes = 0,
-            version = version + 1, modified = now()
+            verified_version = null, verified = null, version = version + 1, modified = now()
         where key = :key and version = :expectedVersion and status = 'completed'
         returning *
         """

@@ -8,6 +8,26 @@ import bosca.service.annotation.ServiceImplementation
 class ObjectBackupProgressServiceImpl(
     private val repository: ObjectBackupProgressRepository,
 ) : ObjectBackupProgressService {
+    override suspend fun completeVerified(
+        key: String,
+        expectedVersion: Long,
+        objectVersion: String?,
+    ): ObjectBackupProgress {
+        validateVersion(key, expectedVersion)
+        validateObjectVersion(objectVersion)
+        return updated(repository.completeVerified(key, expectedVersion, objectVersion), key, expectedVersion)
+    }
+
+    override suspend fun recordVerification(
+        key: String,
+        expectedVersion: Long,
+        objectVersion: String?,
+    ): ObjectBackupProgress {
+        validateVersion(key, expectedVersion)
+        validateObjectVersion(objectVersion)
+        return updated(repository.recordVerification(key, expectedVersion, objectVersion), key, expectedVersion)
+    }
+
     override suspend fun get(
         operation: ObjectBackupOperation,
         sourceId: String,
@@ -177,6 +197,12 @@ class ObjectBackupProgressServiceImpl(
         }
         require(scope.isNotBlank()) {
             "Object backup scope is required"
+        }
+    }
+
+    private fun validateObjectVersion(value: String?) {
+        require(value == null || (value.isNotBlank() && value != "null")) {
+            "An immutable provider object version or null is required"
         }
     }
 

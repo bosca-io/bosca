@@ -74,6 +74,21 @@ interface ObjectBackupProgressService : Service {
     /** Records completion after the caller verifies the stored payload. */
     suspend fun complete(key: String, expectedVersion: Long): ObjectBackupProgress
 
+    /**
+     * Completes an attempt after the caller verifies bytes read from exactly [objectVersion].
+     * Null records completion without a provider identity. Non-null identities must be immutable;
+     * modification times and entity tags are not accepted as substitutes for provider versions.
+     */
+    suspend fun completeVerified(key: String, expectedVersion: Long, objectVersion: String?): ObjectBackupProgress
+
+    /**
+     * Refreshes a completed checkpoint after a full checksum check of exactly [objectVersion].
+     * Requires the observed completed version, preserves attempts, and advances its version.
+     * Null clears provider verification evidence. Callers must never invoke this after a
+     * metadata-only check; those checks cannot extend the full-verification interval.
+     */
+    suspend fun recordVerification(key: String, expectedVersion: Long, objectVersion: String?): ObjectBackupProgress
+
     /** Records a failed or interrupted attempt after its writer has stopped. */
     suspend fun fail(key: String, expectedVersion: Long, error: String): ObjectBackupProgress
 

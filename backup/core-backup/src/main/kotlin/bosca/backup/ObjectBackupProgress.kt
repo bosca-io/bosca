@@ -24,4 +24,9 @@ data class ObjectBackupProgress(
     val version: Long = 0,
     val created: OffsetDateTime = OffsetDateTime.now(),
     val modified: OffsetDateTime = created,
+    /** Provider identity whose exact bytes were checksum-verified at [verified]. */
+    @ColumnName("verified_version")
+    val verifiedVersion: String? = null,
+    /** Full-check time for the provider identity; absent when no strong identity was recorded. */
+    val verified: OffsetDateTime? = null,
 )
