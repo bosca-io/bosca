@@ -1,0 +1,367 @@
+package bosca.backup.pipeline
+
+import bosca.backup.ObjectBackupCaptureInventory
+import bosca.backup.ObjectBackupCapturePlan
+import bosca.backup.ObjectBackupCaptureService
+import bosca.backup.ObjectBackupManifest
+import bosca.backup.ObjectBackupProgressService
+import bosca.backup.ObjectBackupOperation
+import bosca.backup.ObjectBackupStorageService
+import bosca.cache.CacheManager
+import bosca.cache.RequestCacheSerializer
+import bosca.db.ConnectionConfig
+import bosca.db.ConnectionFactoryImpl
+import bosca.db.ConnectionPool
+import bosca.db.migrations.FlywayMigration
+import bosca.db.migrations.Migration
+import bosca.db.withConnectionManager
+import bosca.di.BackupProviderRegistrar
+import bosca.di.CorePipelinesProviderRegistrar
+import bosca.di.PipelinesProviderRegistrar
+import bosca.di.ProviderRegistry
+import bosca.di.StorageProviderRegistrar
+import bosca.di.annotation.InternalDI
+import bosca.di.provide
+import bosca.di.provides
+import bosca.lock.nats.NatsDistributedLockFactory
+import bosca.pipelines.builtin.ToStringNode
+import bosca.pipelines.configuration.PipelinesJobQueueNames
+import bosca.pipelines.model.NodeExecutionStatus
+import bosca.pipelines.model.Pipeline
+import bosca.pipelines.model.PipelineEdge
+import bosca.pipelines.model.PipelineRun
+import bosca.pipelines.model.PipelineRunStatus
+import bosca.pipelines.node.InputNode
+import bosca.pipelines.node.OutputNode
+import bosca.pipelines.node.PipelineResumeCorrelation
+import bosca.pipelines.node.PipelineValue
+import bosca.pipelines.repository.PipelineRecord
+import bosca.pipelines.repository.PipelineRepository
+import bosca.pipelines.service.PipelineRunService
+import bosca.pipelines.service.PipelineService
+import bosca.pipelines.trigger.ExecuteNodeInJob
+import bosca.pubsub.PubSubService
+import bosca.security.model.Group
+import bosca.security.model.GroupType
+import bosca.security.model.Principal
+import bosca.security.service.GroupEvaluator
+import bosca.security.service.ImpersonatedAuthenticationContext
+import bosca.security.service.SecurityService
+import bosca.serialization.UUID
+import bosca.server.BoscaApplication
+import bosca.server.config.ApplicationConfig
+import bosca.sharedqueue.jobs.Job
+import bosca.sharedqueue.jobs.JobQueue
+import bosca.sharedqueue.jobs.asCoroutineContext
+import bosca.sharedqueue.jobs.configuration.RegisterJobsConfiguration
+import bosca.sharedqueue.jobs.nats.NatsJobQueueFactory
+import bosca.storage.configuration.StorageConfiguration
+import bosca.storage.service.ObjectStorageEntry
+import bosca.storage.service.ObjectStorageInfo
+import bosca.storage.service.ObjectStorageService
+import bosca.storage.service.ObjectStorageServiceFactory
+import bosca.test.resources.SharedNatsContainer
+import bosca.test.resources.SharedPostgreSQLContainer
+import com.sun.net.httpserver.HttpServer
+import io.mockk.coEvery
+import io.mockk.coVerify
+import io.mockk.mockk
+import java.net.InetSocketAddress
+import java.net.URLDecoder
+import java.nio.file.Path
+import java.sql.DriverManager
+import java.time.OffsetDateTime
+import java.util.concurrent.CopyOnWriteArrayList
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+import kotlin.io.path.createTempDirectory
+import kotlin.io.path.exists
+import kotlin.test.AfterTest
+import kotlin.test.BeforeTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.seconds
+
+/** Real stored Pipelines, PostgreSQL progress, NATS child jobs and signed version-specific S3 reads. */
+@OptIn(InternalDI::class)
+class ObjectBackupCapturePipelineIntegrationTest {
+    private lateinit var postgres: SharedPostgreSQLContainer
+    private lateinit var pool: ConnectionPool
+    private lateinit var nats: SharedNatsContainer
+    private lateinit var queue: JobQueue
+    private lateinit var server: HttpServer
+    private lateinit var directory: Path
+    private lateinit var application: BoscaApplication
+    private lateinit var staging: ObjectStorageService
+    private lateinit var json: Json
+    private lateinit var captures: ObjectBackupCaptureService
+    private lateinit var runs: PipelineRunService
+    private lateinit var pipelines: PipelineService
+    private lateinit var plan: ObjectBackupCapturePlan
+    private lateinit var pipeline: Pipeline
+    private val security = mockk<SecurityService>()
+    private val caller = Principal(id = UUID.random())
+    private val serviceAccount = Principal(id = UUID.random())
+    private val administrator = Group(UUID.random(), "administrators", "", GroupType.SYSTEM)
+    private val requests = CopyOnWriteArrayList<String>()
+    private val signatures = CopyOnWriteArrayList<String>()
+    private var denied = false
+    private var failedKey: String? = null
+    private val selection = ObjectBackupCaptureInventory(
+        "selected", "source-instance", "content", "2026-10-18T00:00:00Z",
+        mapOf("content" to listOf("a", "b").map { ObjectStorageEntry(it, ObjectStorageInfo(4, version = "v1")) }),
+    )
+
+    @BeforeTest
+    fun setUp(): Unit = runBlocking {
+        postgres = SharedPostgreSQLContainer().withDatabaseName("capture_pipeline").apply { start() }
+        pool = ConnectionPool(ConnectionFactoryImpl(
+            ConnectionConfig(postgres.jdbcUrl, postgres.username, postgres.password, maxConnections = 4),
+            key = "capture-pipeline-test",
+        ))
+        nats = SharedNatsContainer().apply { start() }
+        directory = createTempDirectory("bosca-capture-pipeline-")
+        server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        server.createContext("/") { exchange ->
+            exchange.use {
+                assertEquals(0, pool.activeConnections)
+                val query = exchange.requestURI.rawQuery.orEmpty().split('&').associate {
+                    URLDecoder.decode(it.substringBefore('='), Charsets.UTF_8) to
+                        URLDecoder.decode(it.substringAfter('=', ""), Charsets.UTF_8)
+                }
+                val version = query["versionId"]
+                val key = exchange.requestURI.path.substringAfterLast('/')
+                requests.add("$key@$version")
+                signatures.add(exchange.requestHeaders.getFirst("Authorization").orEmpty())
+                val success = key != failedKey && version == "v1" && key in setOf("a", "b")
+                val bytes = if (success) (if (key == "a") "data" else "more").toByteArray()
+                    else "<Error><Code>AccessDenied</Code></Error>".toByteArray()
+                if (success) exchange.responseHeaders.add("x-amz-version-id", version)
+                exchange.sendResponseHeaders(if (success) 200 else 403, bytes.size.toLong())
+                exchange.responseBody.write(bytes)
+            }
+        }
+        server.start()
+        val configurations = mapOf(
+            "source" to StorageConfiguration("s3", "", bucket = "content", region = "us-east-1", forcePathStyle = true,
+                endpoint = "http://127.0.0.1:${server.address.port}", accessKeyId = "PIPELINE_CAPTURE_KEY", accessKeySecret = "test-secret"),
+            "retained" to StorageConfiguration("fs", "", basePath = directory.resolve("retained").toString()),
+        )
+        val config = buildJsonObject {
+            put("backup", buildJsonObject {
+                put("objectStores", JsonObject(configurations.mapValues { (_, value) ->
+                    Json.encodeToJsonElement(StorageConfiguration.serializer(), value)
+                }))
+            })
+            put("pipelines", buildJsonObject { put("onDemandRunMaxBlockMillis", 0) })
+        }
+        application = BoscaApplication(ApplicationConfig.load(Json.encodeToString(JsonObject.serializer(), config).byteInputStream()),
+            ownsServices = false)
+        json = application.json
+        coEvery { security.getPrincipalById(caller.id) } returns caller
+        coEvery { security.getPrincipalByIdentifier("sa") } returns serviceAccount
+        coEvery { security.getPrincipalGroups(any<UUID>()) } answers {
+            if (firstArg<UUID>() == caller.id && denied) emptyList() else listOf(administrator)
+        }
+        val natsPool = nats.newConnectionPool(1)
+        queue = NatsJobQueueFactory(natsPool, json, NatsDistributedLockFactory(natsPool), null, emptyList(),
+            processExpiredJobs = false).create("capture-pipeline-${UUID.random()}")
+        ProviderRegistry.clear()
+        StorageProviderRegistrar().register()
+        staging = provide<ObjectStorageServiceFactory>().create(
+            StorageConfiguration("fs", "", basePath = directory.resolve("pipeline-results").toString()),
+        )
+        install()
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { connection ->
+            connection.createStatement().use {
+                it.execute("create table groups (id uuid primary key)")
+                it.execute("create type permission_action as enum ('view', 'edit', 'manage', 'delete', 'execute')")
+            }
+        }
+        FlywayMigration(pool).migrate(listOf(provide<Migration>(name = "backup-migrations"),
+            provide<Migration>(name = "pipelines-migrations")))
+        plan = withConnectionManager {
+            provide<ObjectBackupStorageService>().bindConfigured(configurations.keys)
+            captures.prepareInventory(selection, "retained", "payloads", "manifests/selected.json").also {
+                captures.configureStorage(it.key, mapOf("content" to "source"))
+            }
+        }
+        val declared = Pipeline(id = UUID.NIL, name = "capture", acceptedInputType = "JSON", nodes = listOf(
+            InputNode("in", acceptedType = "JSON"), ToStringNode("key"), ObjectBackupCaptureNode("capture"), OutputNode("out"),
+        ), edges = listOf(
+            PipelineEdge("e1", source = "in", target = "key"),
+            PipelineEdge("e2", source = "key", target = "capture", targetPort = "planKey"),
+            PipelineEdge("e3", source = "capture", target = "out"),
+        ))
+        pipeline = withConnectionManager {
+            val saved = provide<PipelineRepository>().add(PipelineRecord(name = declared.name,
+                acceptedInputType = declared.acceptedInputType, graph = pipelines.graphAsJsonElement(declared)))
+            assertNotNull(pipelines.get(saved.id))
+        }
+    }
+
+    @AfterTest
+    fun tearDown(): Unit = runBlocking {
+        try {
+            if (::staging.isInitialized) staging.close()
+            if (::application.isInitialized) application.shutdown()
+            if (::server.isInitialized) server.stop(0)
+            if (::nats.isInitialized) nats.stop()
+            if (::pool.isInitialized) pool.close()
+        } finally {
+            if (::postgres.isInitialized) postgres.stop()
+            if (::directory.isInitialized) directory.toFile().deleteRecursively()
+            ProviderRegistry.clear()
+        }
+    }
+
+    @Test
+    fun `manual capture parks under its caller and resumes with the published manifest`(): Unit = runBlocking {
+        val initial = start()
+        assertEquals(caller.id, initial.principalId)
+        assertTrue(requests.isEmpty())
+        val parent = executeNext()
+        val parked = get(initial.id)
+        assertEquals(PipelineRunStatus.SUSPENDED, parked.status)
+        assertTrue(requests.isEmpty())
+        val child = assertNotNull(queue.dequeue(5.seconds))
+        assertEquals(parent.getId(), child.getParentId())
+        assertEquals(initial.id, json.decodeFromJsonElement(PipelineResumeCorrelation.serializer(), child.getContext()).runId)
+        val definition = json.decodeFromJsonElement(ExecuteNodeInJob.serializer(), child.getDefinition())
+        assertEquals(JsonPrimitive(plan.key), definition.inputs["planKey"])
+        assertFalse(child.getDefinition().toString().contains("test-secret"))
+        execute(child)
+        val complete = get(initial.id)
+        assertEquals(PipelineRunStatus.OK, complete.status)
+        val manifest = json.decodeFromJsonElement(ObjectBackupManifest.serializer(), assertNotNull(complete.output))
+        assertEquals(2, manifest.objects.size)
+        assertEquals(load(), manifest)
+        assertEquals(listOf("a@v1", "b@v1"), requests.toList())
+        assertTrue(signatures.all { "Credential=PIPELINE_CAPTURE_KEY/" in it })
+        assertNull(withConnectionManager { captures.getWriter(plan.key) })
+        coVerify(exactly = 0) { security.getPrincipalByIdentifier(any()) }
+        assertEquals(NodeExecutionStatus.OK, withConnectionManager { runs.nodeTimeline(initial.id) }
+            .last { it.nodeId == "capture" }.status)
+    }
+
+    @Test
+    fun `queue retry survives service restart and reads only unfinished source revisions`(): Unit = runBlocking {
+        failedKey = "b"
+        val initial = start()
+        executeNext()
+        val failed = failNext(retry = true)
+        assertEquals(PipelineRunStatus.SUSPENDED, get(initial.id).status)
+        assertNull(get(initial.id).output)
+        assertFalse(directory.resolve("retained").resolve(plan.path).exists())
+        assertEquals(listOf("a@v1", "b@v1"), requests.toList())
+        assertEquals(1, withConnectionManager {
+            provide<ObjectBackupProgressService>().list(ObjectBackupOperation.BACKUP, selection.sourceId, "retained", selection.scope, 0, 20)
+        }.size)
+        assertNull(withConnectionManager { captures.getWriter(plan.key) })
+        failedKey = null
+        requests.clear()
+        install()
+        val retry = assertNotNull(queue.dequeue(40.seconds))
+        assertEquals(failed.first.getId(), retry.getId())
+        execute(retry)
+        assertEquals(PipelineRunStatus.OK, get(initial.id).status)
+        assertEquals(listOf("b@v1"), requests.toList())
+        assertEquals(load(), json.decodeFromJsonElement(ObjectBackupManifest.serializer(), assertNotNull(get(initial.id).output)))
+        assertEquals(1, withConnectionManager { runs.nodeTimeline(initial.id) }.count {
+            it.nodeId == "capture" && it.status == NodeExecutionStatus.FAILED
+        })
+        coVerify(exactly = 0) { security.getPrincipalByIdentifier(any()) }
+    }
+
+    @Test
+    fun `terminal backing failure fails the pipeline without publishing partial output`(): Unit = runBlocking {
+        failedKey = "b"
+        val initial = start()
+        executeNext()
+        val backingFailure = failNext(retry = false).second
+        val failed = get(initial.id)
+        assertEquals(PipelineRunStatus.FAILED, failed.status)
+        assertNull(failed.output)
+        assertEquals(backingFailure.message, failed.error)
+        assertFalse(directory.resolve("retained").resolve(plan.path).exists())
+        assertNull(withConnectionManager { captures.getWriter(plan.key) })
+    }
+
+    @Test
+    fun `backing execution verifies the initiating principal without service-account fallback`(): Unit = runBlocking {
+        denied = true
+        val initial = start()
+        executeNext()
+        assertEquals(PipelineRunStatus.SUSPENDED, get(initial.id).status)
+        failNext(retry = false)
+        val failed = get(initial.id)
+        assertEquals(PipelineRunStatus.FAILED, failed.status)
+        assertTrue(assertNotNull(failed.error).contains("Unauthorized access"))
+        assertTrue(requests.isEmpty())
+        assertFalse(directory.resolve("retained").exists())
+        coVerify(exactly = 0) { security.getPrincipalByIdentifier(any()) }
+    }
+
+    private suspend fun install() {
+        ProviderRegistry.clear()
+        provides<BoscaApplication>(singleton = true) { application }
+        provides<ConnectionPool>(singleton = true) { pool }
+        provides<Json>(singleton = true) { json }
+        provides<SecurityService>(singleton = true) { security }
+        provides<GroupEvaluator>(singleton = true) { GroupEvaluator(security) }
+        provides<CacheManager> { mockk(relaxed = true) }
+        provides<RequestCacheSerializer> { mockk(relaxed = true) }
+        provides<PubSubService> { mockk(relaxed = true) }
+        CorePipelinesProviderRegistrar().register()
+        PipelinesProviderRegistrar().register()
+        StorageProviderRegistrar().register()
+        BackupProviderRegistrar().register()
+        RegisterJobsConfiguration()
+        provides<JobQueue>(name = PipelinesJobQueueNames.jobQueue, singleton = true, overrideExisting = true) { queue }
+        provides<ObjectStorageService>(singleton = true, overrideExisting = true) { staging }
+        captures = provide()
+        runs = provide()
+        pipelines = provide()
+    }
+
+    private suspend fun start(): PipelineRun = withConnectionManager {
+        assertNotNull(runs.start(pipeline, PipelineValue.ofJson(JsonPrimitive(plan.key)), "", OffsetDateTime.now(),
+            ImpersonatedAuthenticationContext(caller, if (denied) emptyList() else listOf(administrator))))
+    }
+
+    private suspend fun executeNext(): Job = assertNotNull(queue.dequeue(5.seconds)).also { execute(it) }
+
+    private suspend fun execute(job: Job) = withConnectionManager {
+        withContext(queue.asCoroutineContext(job)) {
+            job.newExecutor().execute()
+            queue.markComplete(job)
+        }
+    }
+
+    private suspend fun failNext(retry: Boolean): Pair<Job, Exception> {
+        val job = assertNotNull(queue.dequeue(5.seconds))
+        val failure = withConnectionManager {
+            withContext(queue.asCoroutineContext(job)) {
+                val failure = assertFailsWith<Exception> { job.newExecutor().execute() }
+                queue.markFailed(job, failure, retry)
+                failure
+            }
+        }
+        return job to failure
+    }
+
+    private suspend fun get(id: UUID): PipelineRun = withConnectionManager { assertNotNull(runs.get(id)) }
+
+    private fun load(): ObjectBackupManifest = json.decodeFromString(ObjectBackupManifest.serializer(),
+        directory.resolve("retained").resolve(plan.path).toFile().readText())
+}

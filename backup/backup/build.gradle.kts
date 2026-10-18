@@ -33,7 +33,6 @@ dependencies {
     implementation(project(":content:core-content"))
     implementation(project(":bosca-core:core-storage"))
     implementation(project(":bosca-core:core-security"))
-    // @JobDefinition KSP emits a pipeline-aware enqueue(context, nodeId) → needs core-pipelines
     implementation(project(":pipelines:core-pipelines"))
     implementation(project(":content:content"))
     implementation(project(":bosca-core:storage"))
@@ -50,6 +49,7 @@ dependencies {
     testImplementation(libs.kotlin.test.junit)
     testImplementation(libs.mockk)
     testImplementation(project(":bosca-core:test-support"))
+    testImplementation(project(":pipelines:pipelines"))
 }
 
 ksp {
