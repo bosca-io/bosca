@@ -18,6 +18,7 @@ internal class ObjectStorageS3TestEndpoint(
     private val objectVersion: String? = null,
     private val objectModified: String? = null,
     private val onList: ((Map<String, String>) -> Pair<Int, String>)? = null,
+    private val onGet: ((Map<String, String>) -> Pair<Int, String>)? = null,
     private val onHead: () -> Unit = {},
 ) : AutoCloseable {
     private val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
@@ -29,6 +30,7 @@ internal class ObjectStorageS3TestEndpoint(
     val objectHeads = AtomicInteger()
     val objectGets = AtomicInteger()
     val listQueries = CopyOnWriteArrayList<Map<String, String>>()
+    val getQueries = CopyOnWriteArrayList<Map<String, String>>()
     val endpoint: String get() = "http://127.0.0.1:${server.address.port}"
 
     init {
@@ -39,10 +41,7 @@ internal class ObjectStorageS3TestEndpoint(
                 val path = exchange.requestURI.path
                 when {
                     exchange.requestMethod == "GET" && path == "/$bucket" -> {
-                        val query = exchange.requestURI.rawQuery.orEmpty().split('&').filter { it.isNotEmpty() }.associate {
-                            URLDecoder.decode(it.substringBefore('='), Charsets.UTF_8) to
-                                URLDecoder.decode(it.substringAfter('=', ""), Charsets.UTF_8)
-                        }
+                        val query = query(exchange.requestURI.rawQuery)
                         listQueries.add(query)
                         val (status, body) = onList?.invoke(query) ?: (404 to "")
                         val bytes = body.toByteArray()
@@ -71,9 +70,13 @@ internal class ObjectStorageS3TestEndpoint(
                     }
                     exchange.requestMethod == "GET" && path == "/$bucket/asset" -> {
                         objectGets.incrementAndGet()
-                        val bytes = if (getStatus == 200) content.toByteArray() else
-                            "<Error><Code>AccessDenied</Code><Message>Denied</Message></Error>".toByteArray()
-                        exchange.sendResponseHeaders(getStatus, bytes.size.toLong())
+                        val query = query(exchange.requestURI.rawQuery)
+                        getQueries.add(query)
+                        val (status, body) = onGet?.invoke(query) ?: (getStatus to if (getStatus == 200) content else
+                            "<Error><Code>AccessDenied</Code><Message>Denied</Message></Error>")
+                        val bytes = body.toByteArray()
+                        objectVersion?.let { exchange.responseHeaders.add("x-amz-version-id", it) }
+                        exchange.sendResponseHeaders(status, bytes.size.toLong())
                         exchange.responseBody.write(bytes)
                     }
                     else -> exchange.sendResponseHeaders(404, -1)
@@ -82,6 +85,12 @@ internal class ObjectStorageS3TestEndpoint(
         }
         server.start()
     }
+
+    private fun query(raw: String?): Map<String, String> =
+        raw.orEmpty().split('&').filter { it.isNotEmpty() }.associate {
+            URLDecoder.decode(it.substringBefore('='), Charsets.UTF_8) to
+                URLDecoder.decode(it.substringAfter('=', ""), Charsets.UTF_8)
+        }
 
     override fun close() {
         server.stop(0)

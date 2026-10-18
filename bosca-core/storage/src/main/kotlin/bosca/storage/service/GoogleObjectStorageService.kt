@@ -78,6 +78,22 @@ class GoogleObjectStorageService(
         NotFoundMappingInputStream(path, Channels.newInputStream(reader))
     }
 
+    override suspend fun getInputStream(path: ObjectPath, version: String): InputStream {
+        val generation = version.toLongOrNull()
+        require(generation != null && generation > 0 && generation.toString() == version) {
+            "A canonical positive Google object generation is required"
+        }
+        return openOnStorageDispatcher {
+            val reader = try {
+                storage.reader(BlobId.of(bucket, path.toString(), generation))
+            } catch (failure: StorageException) {
+                if (failure.code == 404) throw ObjectNotFoundException(path, failure)
+                throw failure
+            }
+            NotFoundMappingInputStream(path, Channels.newInputStream(reader))
+        }
+    }
+
     private fun getOutputStream(path: ObjectPath): OutputStream {
         val id = BlobId.of(bucket, path.toString())
         // Replacing an object keeps its settings (content type, custom metadata, cache control), as

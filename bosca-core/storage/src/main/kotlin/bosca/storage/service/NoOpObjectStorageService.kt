@@ -35,6 +35,11 @@ class NoOpObjectStorageService : ObjectStorageService {
         TODO("Not yet implemented")
     }
 
+    override suspend fun getInputStream(path: ObjectPath, version: String): InputStream {
+        require(version.isNotBlank()) { "An object version is required" }
+        throw ObjectNotFoundException(path)
+    }
+
     override suspend fun getInputStreamRange(path: ObjectPath, range: LongRange): InputStream {
         TODO("Not yet implemented")
     }

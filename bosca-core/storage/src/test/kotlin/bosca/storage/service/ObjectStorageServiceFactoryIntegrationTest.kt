@@ -541,6 +541,63 @@ class ObjectStorageServiceFactoryIntegrationTest {
         }
     }
 
+    @Test
+    fun `S3 retained reads send the signed encoded version while current reads still use current content`(): Unit = runBlocking {
+        val version = "retained/+% =version"
+        ObjectStorageS3TestEndpoint(objectVersion = version, onGet = { query ->
+            200 to if (query["versionId"] == version) "retained content" else "current content"
+        }).use { endpoint ->
+            provide<ObjectStorageServiceFactory>().withStorage(s3(endpoint, key = "VERSION_KEY")) { storage ->
+                assertEquals("retained content", storage.getInputStream(StringObjectPath("asset"), version).use {
+                    it.readAllBytes().decodeToString()
+                })
+                assertEquals("current content", storage.getString(StringObjectPath("asset")))
+            }
+            assertEquals(listOf(mapOf("versionId" to version), emptyMap()), endpoint.getQueries.toList())
+            assertEquals(2, endpoint.objectGets.get())
+            assertEquals(0, endpoint.objectHeads.get())
+            assertEquals(0, endpoint.bucketChecks.get())
+            assertEquals(0, endpoint.bucketCreations.get())
+            assertTrue(endpoint.authorizationHeaders.all { it.contains("Credential=VERSION_KEY/") })
+        }
+    }
+
+    @Test
+    fun `S3 providers ignoring version selection cannot return successful retained reads`(): Unit = runBlocking {
+        for (returned in listOf(null, "new")) {
+            ObjectStorageS3TestEndpoint(content = "current content", objectVersion = returned).use { endpoint ->
+                assertFailsWith<IllegalStateException> {
+                    provide<ObjectStorageServiceFactory>().withStorage(s3(endpoint)) {
+                        it.getInputStream(StringObjectPath("asset"), "retained")
+                    }
+                }
+                assertEquals(listOf(mapOf("versionId" to "retained")), endpoint.getQueries.toList())
+                assertEquals(1, endpoint.objectGets.get())
+                assertEquals(0, endpoint.objectHeads.get())
+            }
+        }
+    }
+
+    @Test
+    fun `S3 missing retained versions cannot fall back to available current content`(): Unit = runBlocking {
+        ObjectStorageS3TestEndpoint(onGet = { query ->
+            if (query["versionId"] != null) {
+                404 to "<Error><Code>NoSuchVersion</Code><Message>Deleted revision</Message></Error>"
+            } else {
+                200 to "current content"
+            }
+        }).use { endpoint ->
+            provide<ObjectStorageServiceFactory>().withStorage(s3(endpoint)) { storage ->
+                val missing = assertFailsWith<ObjectNotFoundException> {
+                    storage.getInputStream(StringObjectPath("asset"), "retained")
+                }
+                assertEquals(404, assertIs<S3Exception>(missing.cause).statusCode())
+                assertEquals(listOf(mapOf("versionId" to "retained")), endpoint.getQueries.toList())
+                assertEquals("current content", storage.getString(StringObjectPath("asset")))
+            }
+        }
+    }
+
     private fun listingPage(entries: List<Pair<String, Long>>, next: String? = null): String = buildString {
         append("<ListBucketResult xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\">")
         append("<IsTruncated>${next != null}</IsTruncated>")

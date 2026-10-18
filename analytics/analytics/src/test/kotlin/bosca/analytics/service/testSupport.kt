@@ -58,6 +58,9 @@ internal class InMemoryObjectStorageService : ObjectStorageService {
     override suspend fun getInputStream(path: ObjectPath): InputStream =
         objects[path.toString()]?.inputStream() ?: error("no object at $path")
 
+    override suspend fun getInputStream(path: ObjectPath, version: String): InputStream =
+        throw UnsupportedOperationException("This test store does not retain object versions")
+
     override suspend fun getInputStreamRange(path: ObjectPath, range: LongRange): InputStream =
         error("not supported in tests")
 

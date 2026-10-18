@@ -128,6 +128,25 @@ interface ObjectStorageService : AutoCloseable {
     suspend fun getInputStream(path: ObjectPath): InputStream
 
     /**
+     * Opens exactly the retained provider [version] at [path], without falling back to current bytes.
+     *
+     * Use an immutable version identity observed in [ObjectStorageInfo.version]. S3 accepts an
+     * opaque, nonblank version ID other than its mutable `null` sentinel; Google requires a
+     * canonical positive Long generation. Filesystem storage does not retain provider versions
+     * and rejects this operation. The caller closes the returned stream, including after a read
+     * failure. Blocking open work runs on [StorageDispatcher].
+     *
+     * Selecting a version does not retain it or associate it with a database recovery boundary.
+     * Providers may report a missing revision lazily when the stream is first read.
+     *
+     * @throws IllegalArgumentException when [version] is invalid for this backend
+     * @throws UnsupportedOperationException when the backend cannot address retained versions
+     * @throws ObjectNotFoundException when the requested revision is unavailable
+     * @throws IllegalStateException when a provider response substitutes or omits a requested version
+     */
+    suspend fun getInputStream(path: ObjectPath, version: String): InputStream
+
+    /**
      * Opens an [InputStream] for reading a byte range of the content at the given path.
      * The caller is responsible for closing the returned stream.
      *

@@ -130,6 +130,11 @@ class FileSystemObjectStorageService(
         }
     }
 
+    override suspend fun getInputStream(path: ObjectPath, version: String): InputStream {
+        require(version.isNotBlank()) { "An object version is required" }
+        throw UnsupportedOperationException("Filesystem storage does not retain object versions")
+    }
+
     private fun getOutputStream(path: ObjectPath): OutputStream {
         val file = path.toFile(basePath)
         file.parentFile.mkdirs()

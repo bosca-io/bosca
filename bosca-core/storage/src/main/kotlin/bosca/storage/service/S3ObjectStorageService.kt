@@ -117,6 +117,39 @@ class S3ObjectStorageService(
         }
     }
 
+    override suspend fun getInputStream(path: ObjectPath, version: String): InputStream {
+        require(version.isNotBlank() && version != "null") { "An immutable S3 object version is required" }
+        return openOnStorageDispatcher {
+            val response = try {
+                client.getObject(
+                    GetObjectRequest.builder()
+                        .bucket(bucket)
+                        .key(path.toString())
+                        .versionId(version)
+                        .build(),
+                )
+            } catch (failure: S3Exception) {
+                val missingBucket = failure is NoSuchBucketException ||
+                    failure.awsErrorDetails()?.errorCode() == "NoSuchBucket"
+                if (failure.statusCode() == 404 && !missingBucket) throw ObjectNotFoundException(path, failure)
+                throw failure
+            }
+            try {
+                check(response.response().versionId() == version) {
+                    "Object response does not match the requested version"
+                }
+                AbortOnEarlyCloseInputStream(response)
+            } catch (failure: Throwable) {
+                try {
+                    response.abort()
+                } catch (abortFailure: Throwable) {
+                    failure.addSuppressed(abortFailure)
+                }
+                throw failure
+            }
+        }
+    }
+
     override suspend fun setInputStream(path: ObjectPath, stream: InputStream, length: Long?): Long = withContext(StorageDispatcher) {
         val key = path.toString()
         // Stream unknown-length input without buffering entire content using S3 Multipart Upload

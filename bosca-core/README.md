@@ -66,6 +66,8 @@ The project follows a core/implementation split where `core-*` modules define co
 
 `listObjects(prefix, offset, limit)` enumerates literal keys and their `ObjectStorageInfo` metadata without asset bodies or per-object lookups. Public pagination uses nonnegative Long offsets and positive limits; provider continuation tokens stay internal. Filesystem enumeration sorts regular-file keys, follows directory aliases, prunes unrelated prefixes and retains at most the requested offset/limit window of metadata. Selected link/traversal failures and missing roots fail explicitly. S3 listing has no immutable version IDs; Google includes available generations. Source changes can shift page positions, so enumeration alone is not a closed snapshot.
 
+`getInputStream(path, version)` reads an explicitly selected retained provider revision. S3 sends the opaque version ID and rejects responses that omit or substitute it; its mutable `null` version is invalid. Google addresses a canonical positive Long generation directly. Neither operation looks up or falls back to current content. Missing revisions raise `ObjectNotFoundException`, including lazy Google read failures; other provider failures and cancellation propagate. Callers close returned streams. Filesystem storage rejects version reads because it has no retained provider revisions; no-op storage reports absence. This operation does not enable retention or associate an object version with a database reference.
+
 ## Dependencies
 
 - `io.bosca:di`, `io.bosca:service`, `io.bosca:di-ksp`, `io.bosca:service-ksp` -- from `services-di`

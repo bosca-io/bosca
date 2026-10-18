@@ -104,6 +104,8 @@ class RemoteScriptExecutionEndToEndTest {
         override suspend fun getPath(collection: bosca.content.collection.model.Collection, supplementaryId: UUID?) = error("unused")
         override suspend fun getString(path: ObjectPath) = storageData[path.toString()]?.decodeToString() ?: error("Not found: $path")
         override suspend fun getInputStream(path: ObjectPath): InputStream = (storageData[path.toString()] ?: error("Not found: $path")).inputStream()
+        override suspend fun getInputStream(path: ObjectPath, version: String): InputStream =
+            throw UnsupportedOperationException("This test store does not retain object versions")
         override suspend fun getInputStreamRange(path: ObjectPath, range: LongRange) = error("unused")
         override suspend fun setInputStream(path: ObjectPath, stream: InputStream, length: Long?): Long {
             val bytes = stream.readBytes()
