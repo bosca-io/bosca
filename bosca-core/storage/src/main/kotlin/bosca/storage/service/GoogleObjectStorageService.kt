@@ -12,6 +12,7 @@ import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
 import java.nio.channels.Channels
+import java.time.ZoneOffset
 
 class GoogleObjectStorageService(
     private val bucket: String,
@@ -21,6 +22,21 @@ class GoogleObjectStorageService(
     urlSigner: ObjectProvider<UrlSigner>,
     securityService: ObjectProvider<SecurityService>
 ) : AbstractObjectStorageService(urlPrefix, urlUploadPrefix, urlSigner, securityService) {
+
+    override suspend fun getObjectInfo(path: ObjectPath): ObjectStorageInfo = withContext(StorageDispatcher) {
+        val blob = try {
+            storage.get(BlobId.of(bucket, path.toString()))
+        } catch (failure: StorageException) {
+            if (failure.code == 404) throw ObjectNotFoundException(path, failure)
+            throw failure
+        } ?: throw ObjectNotFoundException(path)
+        ObjectStorageInfo(
+            length = checkNotNull(blob.size) { "Object length is missing: $path" },
+            etag = blob.etag?.takeIf { it.isNotBlank() },
+            version = blob.generation?.toString(),
+            modified = blob.updateTimeOffsetDateTime?.withOffsetSameInstant(ZoneOffset.UTC),
+        )
+    }
 
     override suspend fun getInputStream(path: ObjectPath): InputStream = openOnStorageDispatcher {
         val id = BlobId.of(bucket, path.toString())

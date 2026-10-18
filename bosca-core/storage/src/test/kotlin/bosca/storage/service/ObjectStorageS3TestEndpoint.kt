@@ -11,6 +11,11 @@ internal class ObjectStorageS3TestEndpoint(
     private val content: String = "data",
     private val headStatus: Int = 200,
     private val getStatus: Int = 200,
+    private val objectHeadStatus: Int = 200,
+    private val objectLength: Long = content.toByteArray().size.toLong(),
+    private val objectEtag: String? = null,
+    private val objectVersion: String? = null,
+    private val objectModified: String? = null,
     private val onHead: () -> Unit = {},
 ) : AutoCloseable {
     private val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
@@ -19,6 +24,8 @@ internal class ObjectStorageS3TestEndpoint(
     val authorizationHeaders = CopyOnWriteArrayList<String>()
     val bucketChecks = AtomicInteger()
     val bucketCreations = AtomicInteger()
+    val objectHeads = AtomicInteger()
+    val objectGets = AtomicInteger()
     val endpoint: String get() = "http://127.0.0.1:${server.address.port}"
 
     init {
@@ -39,7 +46,16 @@ internal class ObjectStorageS3TestEndpoint(
                         created = true
                         exchange.sendResponseHeaders(200, -1)
                     }
+                    exchange.requestMethod == "HEAD" && path == "/$bucket/asset" -> {
+                        objectHeads.incrementAndGet()
+                        exchange.responseHeaders.add("Content-Length", objectLength.toString())
+                        objectEtag?.let { exchange.responseHeaders.add("ETag", it) }
+                        objectVersion?.let { exchange.responseHeaders.add("x-amz-version-id", it) }
+                        objectModified?.let { exchange.responseHeaders.add("Last-Modified", it) }
+                        exchange.sendResponseHeaders(objectHeadStatus, -1)
+                    }
                     exchange.requestMethod == "GET" && path == "/$bucket/asset" -> {
+                        objectGets.incrementAndGet()
                         val bytes = if (getStatus == 200) content.toByteArray() else
                             "<Error><Code>AccessDenied</Code><Message>Denied</Message></Error>".toByteArray()
                         exchange.sendResponseHeaders(getStatus, bytes.size.toLong())

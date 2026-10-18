@@ -62,6 +62,8 @@ The project follows a core/implementation split where `core-*` modules define co
 
 `core-storage` contains `StorageConfiguration` and the `ObjectStorageServiceFactory` contract. The factory creates independent filesystem, S3-compatible or no-op stores. Callers of `create` own and close their stores; `withStorage` closes them after work, failure or cancellation. Stores and open streams stay within the callback. `ContentConfiguration` passes the application storage settings to the injected factory and closes its singleton store at application shutdown. Bucket creation is optional.
 
+`ObjectStorageService.getObjectInfo(path)` reads an object's byte length and optional modification time, entity tag and provider version without reading its body. Filesystem storage reads regular-file attributes, S3 uses `HeadObject`, and Google storage reads blob metadata. Missing objects raise `ObjectNotFoundException`; access/backend errors and known S3 missing-bucket errors propagate. Blocking lookups use `StorageDispatcher`. Entity tags are opaque values, not SHA-256 digests. These observations do not pin revisions, guarantee unchanged content or establish backup recovery coverage.
+
 ## Dependencies
 
 - `io.bosca:di`, `io.bosca:service`, `io.bosca:di-ksp`, `io.bosca:service-ksp` -- from `services-di`

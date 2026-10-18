@@ -13,7 +13,9 @@ import bosca.di.annotation.InternalDI
 import bosca.di.provides
 import bosca.pubsub.Message
 import bosca.pubsub.PubSubService
+import bosca.storage.service.ObjectNotFoundException
 import bosca.storage.service.ObjectPath
+import bosca.storage.service.ObjectStorageInfo
 import bosca.storage.service.ObjectStorageService
 import bosca.storage.service.StringObjectPath
 import bosca.scripting.engine.KtsEngine
@@ -86,6 +88,10 @@ class RemoteScriptExecutionEndToEndTest {
     private val config = ScriptingSecurityConfiguration()
     private val storageData = ConcurrentHashMap<String, ByteArray>()
     private val objectStorageService = object : ObjectStorageService {
+        override suspend fun getObjectInfo(path: ObjectPath): ObjectStorageInfo =
+            storageData[path.toString()]?.let { ObjectStorageInfo(it.size.toLong()) }
+                ?: throw ObjectNotFoundException(path)
+
         override suspend fun getPath(metadata: bosca.content.metadata.model.Metadata, supplementaryId: UUID?) = error("unused")
         override suspend fun getPath(collection: bosca.content.collection.model.Collection, supplementaryId: UUID?) = error("unused")
         override suspend fun getString(path: ObjectPath) = storageData[path.toString()]?.decodeToString() ?: error("Not found: $path")

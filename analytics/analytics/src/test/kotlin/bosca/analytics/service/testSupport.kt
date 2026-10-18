@@ -8,7 +8,9 @@ import bosca.di.ObjectProvider
 import bosca.git.service.SourceRefService
 import bosca.security.model.AuthenticatedPrincipal
 import bosca.serialization.UUID
+import bosca.storage.service.ObjectNotFoundException
 import bosca.storage.service.ObjectPath
+import bosca.storage.service.ObjectStorageInfo
 import bosca.storage.service.ObjectStorageService
 import bosca.storage.service.SignedUrl
 import kotlinx.serialization.json.Json
@@ -32,6 +34,9 @@ internal object MissingSourceRefServiceProvider : ObjectProvider<SourceRefServic
 internal class InMemoryObjectStorageService : ObjectStorageService {
 
     private val objects = ConcurrentHashMap<String, ByteArray>()
+
+    override suspend fun getObjectInfo(path: ObjectPath): ObjectStorageInfo =
+        objects[path.toString()]?.let { ObjectStorageInfo(it.size.toLong()) } ?: throw ObjectNotFoundException(path)
 
     override suspend fun getPath(metadata: Metadata, supplementaryId: UUID?): ObjectPath =
         error("not supported in tests")

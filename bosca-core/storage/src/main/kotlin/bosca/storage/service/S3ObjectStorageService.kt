@@ -15,8 +15,10 @@ import software.amazon.awssdk.services.s3.model.CreateMultipartUploadRequest
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest
 import software.amazon.awssdk.services.s3.model.GetObjectRequest
 import software.amazon.awssdk.services.s3.model.GetObjectResponse
+import software.amazon.awssdk.services.s3.model.HeadObjectRequest
 import software.amazon.awssdk.services.s3.model.ListMultipartUploadsRequest
 import software.amazon.awssdk.services.s3.model.ListPartsRequest
+import software.amazon.awssdk.services.s3.model.NoSuchBucketException
 import software.amazon.awssdk.services.s3.model.NoSuchKeyException
 import software.amazon.awssdk.services.s3.model.S3Exception
 import software.amazon.awssdk.services.s3.model.UploadPartCopyRequest
@@ -26,6 +28,7 @@ import java.io.ByteArrayInputStream
 import java.io.FilterInputStream
 import java.io.InputStream
 import java.security.MessageDigest
+import java.time.ZoneOffset
 
 class S3ObjectStorageService(
     private val bucket: String,
@@ -37,6 +40,22 @@ class S3ObjectStorageService(
 ) : AbstractObjectStorageService(urlPrefix, urlUploadPrefix, urlSigner, securityService) {
 
     override fun close() = client.close()
+
+    override suspend fun getObjectInfo(path: ObjectPath): ObjectStorageInfo = withContext(StorageDispatcher) {
+        val response = try {
+            client.headObject(HeadObjectRequest.builder().bucket(bucket).key(path.toString()).build())
+        } catch (failure: S3Exception) {
+            val missingBucket = failure is NoSuchBucketException || failure.awsErrorDetails()?.errorCode() == "NoSuchBucket"
+            if (failure.statusCode() == 404 && !missingBucket) throw ObjectNotFoundException(path, failure)
+            throw failure
+        }
+        ObjectStorageInfo(
+            length = checkNotNull(response.contentLength()) { "Object length is missing: $path" },
+            etag = response.eTag()?.takeIf { it.isNotBlank() },
+            version = response.versionId()?.takeIf { it.isNotBlank() && it != "null" },
+            modified = response.lastModified()?.atOffset(ZoneOffset.UTC),
+        )
+    }
 
     override suspend fun getInputStream(path: ObjectPath): InputStream = openOnStorageDispatcher {
         try {

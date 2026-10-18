@@ -93,6 +93,17 @@ interface ObjectStorageService : AutoCloseable {
     suspend fun getString(path: ObjectPath): String
 
     /**
+     * Reads the current object's length and available provider metadata without opening its body.
+     *
+     * This observes the object at lookup time; it does not pin a revision, verify a digest or
+     * establish recovery coverage. Entity tags and modification times alone do not prove unchanged
+     * content. Blocking metadata access runs on [StorageDispatcher].
+     *
+     * @throws ObjectNotFoundException when no object exists at [path]; other failures propagate
+     */
+    suspend fun getObjectInfo(path: ObjectPath): ObjectStorageInfo
+
+    /**
      * Opens an [InputStream] for reading the entire content at the given path.
      * The caller is responsible for closing the returned stream.
      *

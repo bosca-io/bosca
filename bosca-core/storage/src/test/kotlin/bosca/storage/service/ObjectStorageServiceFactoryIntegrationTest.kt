@@ -14,6 +14,7 @@ import io.mockk.mockk
 import io.mockk.verify
 import java.io.IOException
 import java.nio.file.Path
+import java.time.OffsetDateTime
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
@@ -413,6 +414,61 @@ class ObjectStorageServiceFactoryIntegrationTest {
                 factory.withStorage(s3(endpoint)) { it.getString(StringObjectPath("asset")) }
             }
             assertEquals(403, failure.statusCode())
+        }
+    }
+
+    @Test
+    fun `S3 metadata uses a signed HEAD without downloading a multi-gigabyte object`(): Unit = runBlocking {
+        val length = 5L * 1024 * 1024 * 1024 + 17
+        ObjectStorageS3TestEndpoint(
+            getStatus = 403, objectLength = length, objectEtag = "\"multipart-3\"",
+            objectVersion = "opaque/+version", objectModified = "Sat, 17 Oct 2026 01:02:03 GMT",
+        ).use { endpoint ->
+            val configuration = s3(endpoint, key = "METADATA_KEY")
+            val info = provide<ObjectStorageServiceFactory>().withStorage(configuration) {
+                it.getObjectInfo(StringObjectPath("asset"))
+            }
+            assertEquals(ObjectStorageInfo(length, "\"multipart-3\"", "opaque/+version",
+                OffsetDateTime.parse("2026-10-17T01:02:03Z")), info)
+            assertEquals(1, endpoint.objectHeads.get())
+            assertEquals(0, endpoint.objectGets.get())
+            assertEquals(0, endpoint.bucketChecks.get())
+            assertEquals(0, endpoint.bucketCreations.get())
+            assertTrue(endpoint.authorizationHeaders.all { it.contains("Credential=METADATA_KEY/") })
+        }
+    }
+
+    @Test
+    fun `S3 metadata distinguishes real missing and access denied HTTP responses`(): Unit = runBlocking {
+        val factory = provide<ObjectStorageServiceFactory>()
+        for (status in listOf(404, 403)) {
+            ObjectStorageS3TestEndpoint(objectHeadStatus = status).use { endpoint ->
+                factory.withStorage(s3(endpoint)) { storage ->
+                    if (status == 404) {
+                        assertEquals("asset", assertFailsWith<ObjectNotFoundException> {
+                            storage.getObjectInfo(StringObjectPath("asset"))
+                        }.path.toString())
+                    } else {
+                        assertEquals(403, assertFailsWith<S3Exception> {
+                            storage.getObjectInfo(StringObjectPath("asset"))
+                        }.statusCode())
+                    }
+                }
+                assertEquals(1, endpoint.objectHeads.get())
+                assertEquals(0, endpoint.objectGets.get())
+            }
+        }
+    }
+
+    @Test
+    fun `S3 metadata without retention identifiers does not invent a version`(): Unit = runBlocking {
+        ObjectStorageS3TestEndpoint(objectVersion = "null").use { endpoint ->
+            val info = provide<ObjectStorageServiceFactory>().withStorage(s3(endpoint)) {
+                it.getObjectInfo(StringObjectPath("asset"))
+            }
+            assertEquals(ObjectStorageInfo(4), info)
+            assertEquals(1, endpoint.objectHeads.get())
+            assertEquals(0, endpoint.objectGets.get())
         }
     }
 

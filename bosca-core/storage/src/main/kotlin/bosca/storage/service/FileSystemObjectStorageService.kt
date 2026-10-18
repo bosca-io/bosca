@@ -7,7 +7,12 @@ import java.io.FileNotFoundException
 import java.io.InputStream
 import java.io.OutputStream
 import java.io.RandomAccessFile
+import java.nio.file.Files
+import java.nio.file.NoSuchFileException
+import java.nio.file.attribute.BasicFileAttributes
+import java.time.ZoneOffset
 import java.util.Objects
+import kotlinx.coroutines.withContext
 import kotlin.concurrent.atomics.AtomicLong
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
 import kotlin.concurrent.atomics.decrementAndFetch
@@ -27,6 +32,19 @@ class FileSystemObjectStorageService(
     private val basePath: String,
     securityService: ObjectProvider<SecurityService>
 ) : AbstractObjectStorageService(urlPrefix, urlUploadPrefix, urlSigner, securityService) {
+
+    override suspend fun getObjectInfo(path: ObjectPath): ObjectStorageInfo = withContext(StorageDispatcher) {
+        val attributes = try {
+            Files.readAttributes(path.toFile(basePath).toPath(), BasicFileAttributes::class.java)
+        } catch (failure: NoSuchFileException) {
+            throw ObjectNotFoundException(path, failure)
+        }
+        if (!attributes.isRegularFile) throw ObjectNotFoundException(path)
+        ObjectStorageInfo(
+            length = attributes.size(),
+            modified = attributes.lastModifiedTime().toInstant().atOffset(ZoneOffset.UTC),
+        )
+    }
 
     override suspend fun getInputStream(path: ObjectPath): InputStream = openOnStorageDispatcher {
         val file = path.toFile(basePath)

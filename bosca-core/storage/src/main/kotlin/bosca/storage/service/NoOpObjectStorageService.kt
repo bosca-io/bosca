@@ -11,6 +11,8 @@ import kotlin.uuid.ExperimentalUuidApi
 
 class NoOpObjectStorageService : ObjectStorageService {
 
+    override suspend fun getObjectInfo(path: ObjectPath): ObjectStorageInfo = throw ObjectNotFoundException(path)
+
     override suspend fun getPath(metadata: Metadata, supplementaryId: UUID?): ObjectPath {
         TODO("Not yet implemented")
     }
