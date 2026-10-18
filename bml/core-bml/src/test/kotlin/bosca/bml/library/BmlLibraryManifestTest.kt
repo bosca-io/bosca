@@ -73,7 +73,7 @@ class BmlLibraryManifestTest {
         assertTrue(BmlLibraryArtifacts.isLibraryId("io.bosca:bml-design"))
         assertTrue(BmlLibraryArtifacts.isComponentTag("button"))
         assertTrue(BmlLibraryArtifacts.isComponentTag("card-header"))
-        for (tag in listOf("script", "component", "import", "ui:button", "../button")) {
+        for (tag in listOf("script", "component", "import", "use", "subject", "ui:button", "../button")) {
             assertFalse(BmlLibraryArtifacts.isComponentTag(tag), tag)
         }
     }

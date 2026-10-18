@@ -21,6 +21,8 @@ import bosca.bml.codegen.scanFunctionKeys
 import bosca.bml.contract.ContractCodeGenerator
 import bosca.bml.contract.ContractParser
 import bosca.bml.library.BmlLibraryArtifacts
+import bosca.bml.library.BmlLibraryDependencies
+import bosca.bml.library.BmlImportResolver
 import bosca.bml.library.BmlLibrarySource
 import bosca.bml.parser.AttrText
 import bosca.bml.parser.BmlParser
@@ -174,6 +176,31 @@ class BmlAdditionalSourcesExtension : CollectAdditionalSourceFilesExtension() {
                 }
         }
 
+        val importsFile = File(configuration.get(BmlConfigKeys.IMPORTS_FILE)
+            ?: File(configuration.getList(BmlConfigKeys.SOURCE_ROOTS).first(), "imports.bml").path).canonicalFile
+        if (importsFile.isFile && parsedFiles.none { it.file.canonicalFile == importsFile }) {
+            val text = importsFile.readText()
+            val parsed = BmlParser.parse(text)
+            parsed.diagnostics.filter { it.severity == Severity.Error }.forEach {
+                reportError(it.message, importsFile, it.span)
+            }
+            parsedFiles += ParsedBml(importsFile, "imports.bml", parsed.document, bmlRenderRevision(text), ContentDigest.sha256(text))
+        }
+        val parsedImports = parsedFiles.associateWith { source ->
+            BmlImportResolver.parse(source.file.absolutePath, source.document, source.file.canonicalFile == importsFile)
+        }
+        val projectImports = parsedImports.entries.firstOrNull { it.key.file.canonicalFile == importsFile }?.value
+        val dependencies = try {
+            BmlLibraryDependencies.read(configuration.getList(BmlConfigKeys.LIBRARY_DEPENDENCIES).map(::File))
+        } catch (failure: IllegalArgumentException) {
+            reportError(failure.message ?: "Invalid BML dependency")
+            emptyList()
+        } catch (failure: IOException) {
+            reportError(failure.message ?: "Cannot read BML dependency")
+            emptyList()
+        }
+        val importResolver = BmlImportResolver(dependencies)
+
         // Pass 1: collect every `<component tag="…">` across all files so pages can instantiate
         // components declared in OTHER files (e.g. a shared `card.bml`).
         val componentTags = mutableMapOf<String, String>()
@@ -217,13 +244,27 @@ class BmlAdditionalSourcesExtension : CollectAdditionalSourceFilesExtension() {
         }
         exports.filter { it !in componentTags }.forEach { reportError("Export '$it' has no component declaration in library '$libraryId'") }
         if (hasErrors) return sources.filterNot { it.name.endsWith(".bml") }
-        val deferredComponentTags = BmlCodeGenerator.componentsUsingDeferredIslands(componentDeclarations)
-        val clientBehaviorComponentTags = BmlCodeGenerator.componentsUsingClientBehavior(componentDeclarations)
-        val sharedCacheComponentUsage = BmlCodeGenerator.componentsBlockingSharedCache(componentDeclarations)
         val componentPropTypes = StaticPropCoercion.declaredPropTypes(componentDeclarations)
+        val resolvedImports = parsedFiles.associateWith { source ->
+            val resolved = importResolver.resolve(projectImports, parsedImports.getValue(source), componentTags.keys)
+            resolved.problems.forEach { problem ->
+                reportError(problem.diagnostic.message, File(problem.source), problem.diagnostic.span)
+            }
+            resolved
+        }
+        if (hasErrors) return sources.filterNot { it.name.endsWith(".bml") }
+        val declarationImports = parsedFiles.flatMap { source ->
+            topLevelComponents(source.document).mapNotNull { declaration ->
+                componentTag(declaration)?.let { it to resolvedImports.getValue(source).bindings }
+            }
+        }.toMap()
+        val capabilities = BmlCodeGenerator.moduleCapabilities(componentDeclarations, declarationImports)
 
         // Pass 2: generate page + component objects, resolving instantiations against `componentTags`.
         for (p in parsedFiles) {
+            if (p.file.canonicalFile == importsFile) continue
+            val document = parsedImports.getValue(p).document
+            val bindings = resolvedImports.getValue(p).bindings
             val hasRoutable = p.document.nodes.any {
                 it is ElementNode && it.name in ROUTABLE_TAGS && it.namespace == null
             }
@@ -235,18 +276,20 @@ class BmlAdditionalSourcesExtension : CollectAdditionalSourceFilesExtension() {
                 else -> "Page"
             }
             val objectName = objectNameFor(p.rel, suffix)
-            val result = BmlCodeGenerator(
+            val generator = BmlCodeGenerator(
                 packageName,
                 objectName,
                 p.rel,
                 componentTags,
                 sourceRevision = p.revision,
-                deferredComponentTags = deferredComponentTags,
-                clientBehaviorComponentTags = clientBehaviorComponentTags,
-                sessionComponentTags = sharedCacheComponentUsage.requiresSession,
-                featureFlagComponentTags = sharedCacheComponentUsage.usesEagerFeatureFlags,
+                deferredComponentTags = capabilities.deferred,
+                clientBehaviorComponentTags = capabilities.clientBehavior,
+                sessionComponentTags = capabilities.session,
+                featureFlagComponentTags = capabilities.featureFlags,
                 componentPropTypes = componentPropTypes,
-            ).generate(p.document)
+            ).withImports(bindings)
+            if (libraryId != null) generator.withLibraryExports(exports.toSet())
+            val result = generator.generate(document)
             // Surface codegen diagnostics on the real compile (they were previously visible only to
             // direct generator callers): errors FAIL the build — the t/t: validity rules
             // and friends must never be silent.
@@ -436,7 +479,7 @@ class BmlAdditionalSourcesExtension : CollectAdditionalSourceFilesExtension() {
             try {
                 val manifest = BmlLibraryManifestGenerator.generate(
                     libraryId, libraryVersion, packageName, exports.toSet(), libraryDeclarations, componentMetas,
-                    clientBehaviorComponentTags,
+                    capabilities.clientBehavior,
                 )
                 val content = BmlLibraryArtifacts.encode(manifest)
                 libraryManifest.parentFile.mkdirs()

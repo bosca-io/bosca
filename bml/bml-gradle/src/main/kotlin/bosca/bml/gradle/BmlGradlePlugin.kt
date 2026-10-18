@@ -585,6 +585,19 @@ class BmlGradlePlugin : KotlinCompilerPluginSupportPlugin {
         val resourcesOutputDir = project.layout.buildDirectory.dir("generated/bml/resources").get().asFile.absolutePath
         // The site metrics manifest + per-component CSS chunks, read by `bmlMetrics`.
         val metricsOutputDir = project.layout.buildDirectory.dir("generated/bml/metrics").get().asFile.absolutePath
+        // Request binary JAR variants, including project dependencies: classes-only variants omit
+        // the manifests/resources that make a compiled BML library consumable.
+        val libraryDependencies = project.configurations.getByName(kotlinCompilation.compileDependencyConfigurationName)
+            .incoming.artifactView { view ->
+                view.attributes.attribute(
+                    org.gradle.api.attributes.LibraryElements.LIBRARY_ELEMENTS_ATTRIBUTE,
+                    project.objects.named(org.gradle.api.attributes.LibraryElements::class.java, org.gradle.api.attributes.LibraryElements.JAR),
+                )
+            }.files
+        kotlinCompilation.compileTaskProvider.configure { task ->
+            task.inputs.files(libraryDependencies).withPropertyName("bmlLibraryDependencies")
+                .withNormalizer(org.gradle.api.tasks.ClasspathNormalizer::class.java)
+        }
         return project.provider {
             val sourceRoot = (ext?.sourceDir?.orNull?.asFile
                 ?: project.layout.projectDirectory.dir("src/main/bml").asFile).absolutePath
@@ -592,6 +605,11 @@ class BmlGradlePlugin : KotlinCompilerPluginSupportPlugin {
                 add(SubpluginOption("enabled", "true"))
                 add(SubpluginOption("bmlPackageName", ext?.packageName?.getOrElse("bml.generated") ?: "bml.generated"))
                 add(SubpluginOption("bmlSourceRoot", sourceRoot))
+                add(SubpluginOption("bmlImportsFile", File(sourceRoot, "imports.bml").absolutePath))
+                add(org.jetbrains.kotlin.gradle.plugin.FilesSubpluginOption(
+                    "bmlLibraryClasspath", libraryDependencies, org.jetbrains.kotlin.gradle.plugin.FilesOptionKind.INTERNAL,
+                    lazy { libraryDependencies.files.sortedBy { it.absolutePath }.joinToString(File.pathSeparator) { it.absolutePath } },
+                ))
                 add(SubpluginOption("bmlTsOutputDir", tsOutputDir))
                 add(SubpluginOption("bmlResourcesOutputDir", resourcesOutputDir))
                 add(SubpluginOption("bmlMetricsOutputDir", metricsOutputDir))

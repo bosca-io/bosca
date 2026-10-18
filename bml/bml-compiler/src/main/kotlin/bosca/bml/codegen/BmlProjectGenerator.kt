@@ -1,5 +1,7 @@
 package bosca.bml.codegen
 
+import bosca.bml.library.BmlImportResolver
+import bosca.bml.library.BmlLibraryDependencies
 import bosca.bml.parser.AttrText
 import bosca.bml.parser.BmlParser
 import bosca.bml.parser.Diagnostic
@@ -7,7 +9,9 @@ import bosca.bml.parser.Document
 import bosca.bml.parser.ElementNode
 import bosca.bml.parser.Severity
 import bosca.bml.parser.StaticAttribute
+import bosca.bml.parser.Span
 import java.io.File
+import java.io.IOException
 
 /**
  * Generates Kotlin sources for every `.bml` file under a source root. Used by the
@@ -19,18 +23,29 @@ class BmlProjectGenerator(private val packageName: String) {
         val errors: List<Diagnostic> get() = diagnostics.filter { it.severity == Severity.Error }
     }
 
-    fun generateAll(sourceRoot: File, outputRoot: File): Output {
+    fun generateAll(sourceRoot: File, outputRoot: File): Output =
+        generateAll(sourceRoot, outputRoot, emptyList())
+
+    /** Generates a module using resolved binary libraries and its designated project import file. */
+    fun generateAll(
+        sourceRoot: File,
+        outputRoot: File,
+        libraryClasspath: List<File>,
+        importsFile: File = File(sourceRoot, "imports.bml"),
+    ): Output {
         val written = mutableListOf<File>()
         val diagnostics = mutableListOf<Diagnostic>()
         if (!sourceRoot.exists()) return Output(written, diagnostics)
 
         data class ParsedSource(
+            val file: File,
             val relativePath: String,
             val source: String,
             val document: Document,
         )
 
         val sources = sourceRoot.walkTopDown()
+            .onEnter { it.name != "node_modules" }
             .filter { it.isFile && it.extension == "bml" }
             .sortedBy { it.invariantSeparatorsPath }
             .map { bml ->
@@ -38,9 +53,31 @@ class BmlProjectGenerator(private val packageName: String) {
                 val source = bml.readText()
                 val parsed = BmlParser.parse(source)
                 diagnostics += parsed.diagnostics
-                ParsedSource(rel, source, parsed.document)
+                ParsedSource(bml, rel, source, parsed.document)
             }
-            .toList()
+            .toMutableList()
+        if (importsFile.isFile && sources.none { it.file.canonicalFile == importsFile.canonicalFile }) {
+            val source = importsFile.readText()
+            val parsed = BmlParser.parse(source)
+            diagnostics += parsed.diagnostics
+            sources += ParsedSource(importsFile, importsFile.path, source, parsed.document)
+        }
+        val dependencies = try {
+            BmlLibraryDependencies.read(libraryClasspath)
+        } catch (failure: IllegalArgumentException) {
+            diagnostics += Diagnostic(Severity.Error, failure.message ?: "Invalid BML dependency", sources.firstOrNull()?.document?.span ?: Span(0, 0, 1, 1, 1, 1))
+            return Output(written, diagnostics)
+        } catch (failure: IOException) {
+            diagnostics += Diagnostic(Severity.Error, failure.message ?: "Cannot read BML dependency", sources.firstOrNull()?.document?.span ?: Span(0, 0, 1, 1, 1, 1))
+            return Output(written, diagnostics)
+        }
+        val resolver = BmlImportResolver(dependencies)
+        val imports = sources.associateWith { source ->
+            BmlImportResolver.parse(
+                source.file.path, source.document, source.file.canonicalFile == importsFile.canonicalFile,
+            )
+        }
+        val global = imports.entries.firstOrNull { it.key.file.canonicalFile == importsFile.canonicalFile }?.value
 
         val componentTags = mutableMapOf<String, String>()
         val componentDeclarations = mutableMapOf<String, ElementNode>()
@@ -52,12 +89,24 @@ class BmlProjectGenerator(private val packageName: String) {
                 }
             }
         }
-        val deferredComponentTags = BmlCodeGenerator.componentsUsingDeferredIslands(componentDeclarations)
-        val clientBehaviorComponentTags = BmlCodeGenerator.componentsUsingClientBehavior(componentDeclarations)
-        val sharedCacheComponentUsage = BmlCodeGenerator.componentsBlockingSharedCache(componentDeclarations)
         val componentPropTypes = StaticPropCoercion.declaredPropTypes(componentDeclarations)
+        val bindings = sources.associateWith { source ->
+            val resolved = resolver.resolve(global, imports.getValue(source), componentTags.keys)
+            diagnostics += resolved.problems.map { problem ->
+                problem.diagnostic.copy(message = "${problem.source}: ${problem.diagnostic.message}")
+            }
+            resolved.bindings
+        }
+        if (diagnostics.any { it.severity == Severity.Error }) return Output(written, diagnostics)
+        val declarationImports = sources.flatMap { source ->
+            topLevelComponents(source.document).mapNotNull { declaration ->
+                componentTag(declaration)?.let { it to bindings.getValue(source) }
+            }
+        }.toMap()
+        val capabilities = BmlCodeGenerator.moduleCapabilities(componentDeclarations, declarationImports)
 
         for (source in sources) {
+            if (imports.getValue(source) === global) continue
             val hasMessage = source.document.nodes.any {
                 it is ElementNode && it.name == "message" && it.namespace == null
             }
@@ -68,12 +117,12 @@ class BmlProjectGenerator(private val packageName: String) {
                 source.relativePath,
                 components = componentTags,
                 sourceRevision = bmlRenderRevision(source.source),
-                deferredComponentTags = deferredComponentTags,
-                clientBehaviorComponentTags = clientBehaviorComponentTags,
-                sessionComponentTags = sharedCacheComponentUsage.requiresSession,
-                featureFlagComponentTags = sharedCacheComponentUsage.usesEagerFeatureFlags,
+                deferredComponentTags = capabilities.deferred,
+                clientBehaviorComponentTags = capabilities.clientBehavior,
+                sessionComponentTags = capabilities.session,
+                featureFlagComponentTags = capabilities.featureFlags,
                 componentPropTypes = componentPropTypes,
-            ).generate(source.document)
+            ).withImports(bindings.getValue(source)).generate(imports.getValue(source).document)
             diagnostics += result.diagnostics
             if (result.source.isNotEmpty()) {
                 val out = File(outputRoot, "$objectName.kt")

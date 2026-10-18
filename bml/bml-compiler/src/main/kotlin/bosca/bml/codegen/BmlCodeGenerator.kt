@@ -1,5 +1,8 @@
 package bosca.bml.codegen
 
+import bosca.bml.library.BmlImportResolver
+import bosca.bml.library.BmlLibraryArtifacts
+
 import bosca.bml.render.isSupportedDeferredPropType
 import bosca.bml.parser.AttrInterpolation
 import bosca.bml.parser.AttrPart
@@ -62,7 +65,7 @@ class BmlCodeGenerator(
     /** tag -> generated object name for components declared in OTHER files (cross-file instantiation). */
     components: Map<String, String> = emptyMap(),
     /** Stable digest of the compiler revision and complete `.bml` source. */
-    private val sourceRevision: String = sourcePath,
+    private var sourceRevision: String = sourcePath,
     /** Component tags whose render closure contains deferred islands. */
     private val deferredComponentTags: Set<String> = emptySet(),
     /** Component tags whose render closure contains client scripts or declarative actions. */
@@ -83,6 +86,71 @@ class BmlCodeGenerator(
      *  own `<component>` decls are added in [generate]). Used to lower `<tag …>` to a render call. */
     private val knownComponents = components.toMutableMap()
     private val knownComponentPropTypes = componentPropTypes.toMutableMap()
+    private val importedComponents = linkedMapOf<String, BmlImportResolver.Binding>()
+    private val importedDeferred = mutableSetOf<String>()
+    private val importedClientBehavior = mutableSetOf<String>()
+    private val importedSession = mutableSetOf<String>()
+    private val importedFeatureFlags = mutableSetOf<String>()
+    private val privateImportedTags = mutableSetOf<String>()
+    private val libraryExports = mutableSetOf<String>()
+
+    /** Exposes typed prop-check entry points only for the producer's public library exports. */
+    fun withLibraryExports(exports: Set<String>): BmlCodeGenerator {
+        libraryExports += exports
+        return this
+    }
+
+    /**
+     * Adds resolved binary component contracts before generation. Producer-owned prop checks retain
+     * Kotlin type resolution in the compiled library; aliases affect lookup, not its renderer.
+     */
+    fun withImports(bindings: Map<String, BmlImportResolver.Binding>): BmlCodeGenerator {
+        importedComponents.putAll(bindings)
+        if (bindings.isNotEmpty()) {
+            sourceRevision = bmlRenderRevision(sourceRevision + "\n" + bindings.toSortedMap().entries.joinToString("\n") {
+                it.key + "=" + BmlLibraryArtifacts.encode(it.value.dependency.manifest)
+            })
+        }
+        for ((name, binding) in bindings) {
+            knownComponents[name] = binding.component.renderer
+            knownComponentPropTypes[name] = binding.component.props.associate { prop ->
+                prop.name to if (prop.hasDefault) StaticPropCoercion.nullable(prop.declaredType) else prop.declaredType
+            }
+            val components = binding.dependency.manifest.components.associateBy { it.tag }
+            val prefix = name.substringBeforeLast(':', "").let { if (it.isEmpty()) "" else "$it:" }
+            components.values.filterNot { it.exported }.forEach { privateImportedTags += prefix + it.tag }
+            fun closure(tag: String, eager: Boolean): Set<String> {
+                val visited = linkedSetOf<String>()
+                fun visit(current: String) {
+                    if (!visited.add(current)) return
+                    val component = components.getValue(current)
+                    (if (eager) component.eagerDependencies else component.dependencies).forEach(::visit)
+                }
+                visit(tag)
+                return visited
+            }
+            val all = closure(binding.component.tag, false).map(components::getValue)
+            if (all.any { it.hasDeferredIslands }) importedDeferred += name
+            if (all.any { it.hasClientBehavior }) importedClientBehavior += name
+            if (all.any { it.hasServerState }) importedSession += name
+            if (closure(binding.component.tag, true).any { components.getValue(it).hasEagerFeatureFlags }) {
+                importedFeatureFlags += name
+            }
+        }
+        return this
+    }
+
+    private fun componentCapabilities(declarations: Map<String, ElementNode>): BmlComponentCapabilities {
+        val shared = componentsBlockingSharedCache(
+            declarations, knownComponents.keys, sessionComponentTags + importedSession,
+            featureFlagComponentTags + importedFeatureFlags,
+        )
+        return BmlComponentCapabilities(
+            componentsUsingDeferredIslands(declarations, deferredComponentTags + importedDeferred),
+            componentsUsingClientBehavior(declarations, clientBehaviorComponentTags + importedClientBehavior),
+            shared.requiresSession, shared.usesEagerFeatureFlags,
+        )
+    }
 
     /** Components declared in the document being generated; they share this file's imports. */
     private val localComponentTags = mutableSetOf<String>()
@@ -174,16 +242,11 @@ class BmlCodeGenerator(
         val localComponents = componentDecls.mapNotNull { declaration ->
             staticString(declaration.attributes, "tag")?.let { it to declaration }
         }.toMap()
-        componentsUsingDeferred = componentsUsingDeferredIslands(localComponents, deferredComponentTags)
-        componentsUsingClientBehavior = componentsUsingClientBehavior(localComponents, clientBehaviorComponentTags)
-        val sharedCacheUsage = componentsBlockingSharedCache(
-            declarations = localComponents,
-            componentTags = knownComponents.keys,
-            inheritedSession = sessionComponentTags,
-            inheritedFeatureFlags = featureFlagComponentTags,
-        )
-        componentsRequiringSession = sharedCacheUsage.requiresSession
-        componentsUsingEagerFeatureFlags = sharedCacheUsage.usesEagerFeatureFlags
+        val capabilities = componentCapabilities(localComponents)
+        componentsUsingDeferred = capabilities.deferred
+        componentsUsingClientBehavior = capabilities.clientBehavior
+        componentsRequiringSession = capabilities.session
+        componentsUsingEagerFeatureFlags = capabilities.featureFlags
         if (page == null && message == null && componentDecls.isEmpty()) {
             diagnostics.add(Diagnostic(Severity.Error, "No <page>, <route>, <message>, or <component> declaration found in $sourcePath", document.span))
             return CodeGenResult("", diagnostics, BmlSourceMap(sourcePath, emptyList()))
@@ -277,7 +340,7 @@ class BmlCodeGenerator(
     ): ElementNode? {
         for (node in nodes) when (node) {
             is ElementNode -> {
-                if (isDeferredIsland(node) || node.namespace == null && node.name in componentsUsingDeferred) {
+                if (isDeferredIsland(node) || node.qualifiedName in componentsUsingDeferred) {
                     return node
                 }
                 firstDeferredUsage(node.children, componentsUsingDeferred)?.let { return it }
@@ -1753,7 +1816,7 @@ class BmlCodeGenerator(
             is RawTextNode -> if (node.kind == RawKind.ClientScript) return node
             is ElementNode -> {
                 if (node.attributes.any { it is EventAttribute } ||
-                    node.namespace == null && node.name in clientBehaviorComponents
+                    node.qualifiedName in clientBehaviorComponents
                 ) {
                     return node
                 }
@@ -1980,6 +2043,10 @@ class BmlCodeGenerator(
         // Implements BmlComponentRenderer so the server can re-render it by tag for a sliver update.
         line("public object ${componentObjectName(tag)} : bosca.bml.render.BmlComponentRenderer {")
         indent++
+        val acceptedProps = StaticPropCoercion.acceptedPropTypes(decl)
+        if (tag in libraryExports) props.forEachIndexed { index, prop ->
+            line("public fun __bmlProp$index(value: ${acceptedProps.getValue(prop.name)}): Any? = value")
+        }
         if (isScopedComponent) {
             // Exposed for the asset pipeline (the per-component CSS chunk) AND inlined once per render below.
             line("public const val scope: String = ${kstr(tag)}")
@@ -2178,10 +2245,11 @@ class BmlCodeGenerator(
 
     /** `<card title="x" :elevation="2">kids</card>` -> `CardComponent.render(ctx, mapOf(…)) { kids }`. */
     private fun emitComponentCall(el: ElementNode) {
-        val obj = knownComponents.getValue(el.name)
-        val propTypes = knownComponentPropTypes[el.name].orEmpty()
+        val tag = el.qualifiedName
+        val obj = knownComponents.getValue(tag)
+        val propTypes = knownComponentPropTypes[tag].orEmpty()
         val entries = el.attributes.mapNotNull { attribute ->
-            componentPropEntry(el.name, attribute, propTypes[attribute.name]) ?: propEntry(attribute)
+            componentPropEntry(tag, attribute, propTypes[attribute.name]) ?: propEntry(attribute)
         }.toMutableList()
         // Attribute fall-through: a live `@click` on this component (e.g. `<button>` is the `button`
         // component) — and/or markers forwarded to it when this call is the enclosing component's own root —
@@ -2233,7 +2301,11 @@ class BmlCodeGenerator(
         if (declaredType == null) return null
         return when (val value = typedPropInput(attribute, attribute.name, declaredType, strict = false)) {
             is StaticPropValue.Code -> {
-                val checked = if (value.needsTypeCheck && typeResolvesAtCallSite(tag, declaredType)) {
+                val imported = importedComponents[tag]
+                val checked = if (imported != null) {
+                    val index = imported.component.props.indexOfFirst { it.name == attribute.name }
+                    "${imported.component.renderer}.__bmlProp$index(${value.expression})"
+                } else if (value.needsTypeCheck && typeResolvesAtCallSite(tag, declaredType)) {
                     typedPropValue(value.expression, declaredType)
                 } else {
                     value.expression
@@ -2369,6 +2441,29 @@ class BmlCodeGenerator(
     }
 
     companion object {
+        /** Propagates capabilities using each declaration's own import scope before module closure. */
+        internal fun moduleCapabilities(
+            declarations: Map<String, ElementNode>,
+            imports: Map<String, Map<String, BmlImportResolver.Binding>>,
+        ): BmlComponentCapabilities {
+            val components = declarations.keys.associateWith(::componentObjectName)
+            val seeds = declarations.map { (tag, declaration) ->
+                val flags = BmlCodeGenerator("", "BmlImportAnalysis", "", components)
+                    .withImports(imports[tag].orEmpty()).componentCapabilities(mapOf(tag to declaration))
+                BmlComponentCapabilities(
+                    setOf(tag).intersect(flags.deferred), setOf(tag).intersect(flags.clientBehavior),
+                    setOf(tag).intersect(flags.session), setOf(tag).intersect(flags.featureFlags),
+                )
+            }
+            return BmlCodeGenerator(
+                "", "BmlModuleAnalysis", "", components,
+                deferredComponentTags = seeds.flatMap { it.deferred }.toSet(),
+                clientBehaviorComponentTags = seeds.flatMap { it.clientBehavior }.toSet(),
+                sessionComponentTags = seeds.flatMap { it.session }.toSet(),
+                featureFlagComponentTags = seeds.flatMap { it.featureFlags }.toSet(),
+            ).componentCapabilities(declarations)
+        }
+
         private val ROUTABLE_TAGS = setOf("page", "route")
         private val KOTLIN_IDENTIFIER = Regex("[A-Za-z_][A-Za-z0-9_]*")
         private val DEFERRED_NAME = Regex("[A-Za-z0-9_.-]+")
@@ -2443,7 +2538,7 @@ class BmlCodeGenerator(
                     is ElementNode -> {
                         val deferred = node.namespace == null && node.name == "island" &&
                             staticValue(node, "render") == "deferred"
-                        deferred || node.namespace == null && node.name in affected || usesDeferred(node.children)
+                        deferred || node.qualifiedName in affected || usesDeferred(node.children)
                     }
                     is ForNode -> usesDeferred(node.children)
                     is IfNode -> node.branches.any { usesDeferred(it.children) } ||
@@ -2476,7 +2571,7 @@ class BmlCodeGenerator(
                     is RawTextNode -> node.kind == RawKind.ClientScript
                     is ElementNode ->
                         node.attributes.any { it is EventAttribute } ||
-                            node.namespace == null && node.name in affected ||
+                            node.qualifiedName in affected ||
                             usesClientBehavior(node.children)
                     is ForNode -> usesClientBehavior(node.children)
                     is IfNode -> node.branches.any { usesClientBehavior(it.children) } ||
@@ -2717,6 +2812,16 @@ class BmlCodeGenerator(
         parseTMarkup(el)?.let { emitLocalizedElement(el, it); return }
 
         val nativeSvg = el.namespace == "svg" || svgDepth > 0 && el.name in BuiltinTags.svg
+
+        if (!nativeSvg && el.qualifiedName in knownComponents) {
+            emitComponentCall(el)
+            return
+        }
+        if (el.namespace != null && el.namespace !in setOf("html", "svg") ||
+            el.namespace == null && el.name in privateImportedTags && el.name !in BuiltinTags.html) {
+            diagnostics.add(Diagnostic(Severity.Error, "Unknown or private imported component <${el.qualifiedName}>", el.span))
+            return
+        }
 
         if (el.namespace == null && !nativeSvg) {
             // A declared component instantiation lowers to a render call (takes precedence over HTML).
@@ -3224,7 +3329,7 @@ class BmlCodeGenerator(
     }
 
     private fun emitLocalizedElement(el: ElementNode, t: TMarkup) {
-        if (el.namespace == null && el.name in knownComponents) {
+        if (el.qualifiedName in knownComponents) {
             diagnostics.add(
                 Diagnostic(
                     Severity.Error,
@@ -3515,7 +3620,7 @@ class BmlCodeGenerator(
         fun walk(ns: List<Node>) {
             for (n in ns) when (n) {
                 is ElementNode -> {
-                    if (n.namespace == null && n.name in knownComponents) out += n.name
+                    if (n.qualifiedName in knownComponents) out += n.qualifiedName
                     walk(n.children)
                 }
                 is RawTextNode -> if (n.kind == RawKind.ClientScript) {
@@ -3542,7 +3647,7 @@ class BmlCodeGenerator(
                         walk(deferredFallbackChildren(n))
                         continue
                     }
-                    if (n.namespace == null && n.name in knownComponents) out += n.name
+                    if (n.qualifiedName in knownComponents) out += n.qualifiedName
                     walk(n.children)
                 }
                 is ForNode -> walk(n.children)

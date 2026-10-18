@@ -7,6 +7,7 @@ import com.github.ajalt.clikt.core.ProgramResult
 import com.github.ajalt.clikt.parameters.arguments.argument
 import com.github.ajalt.clikt.parameters.options.default
 import com.github.ajalt.clikt.parameters.options.option
+import com.github.ajalt.clikt.parameters.options.multiple
 import com.github.ajalt.clikt.parameters.types.path
 import java.nio.file.Path
 import kotlin.io.path.exists
@@ -26,6 +27,8 @@ class BmlCompileCommand : BoscaCliCommand(name = "compile") {
     private val sourceDir by option("--source", help = "BML source dir (default: <project>/src/main/bml).").path()
     private val outputDir by option("--out", help = "Output dir (default: <project>/build/generated/bml/kotlin).").path()
     private val packageName by option("--package", help = "Generated package name.").default("bml.generated")
+    private val libraries by option("--library", help = "Resolved binary BML dependency JAR or resource directory (repeatable).")
+        .path(mustExist = true, mustBeReadable = true).multiple()
 
     override fun run() {
         val src = (sourceDir ?: projectDir.resolve("src/main/bml"))
@@ -34,7 +37,7 @@ class BmlCompileCommand : BoscaCliCommand(name = "compile") {
             echo("No BML source directory: $src", err = true)
             throw ProgramResult(1)
         }
-        val result = BmlProjectGenerator(packageName).generateAll(src.toFile(), out.toFile())
+        val result = BmlProjectGenerator(packageName).generateAll(src.toFile(), out.toFile(), libraries.map { it.toFile() })
         result.errors.forEach { echo("error: ${it.message} (${it.span})", err = true) }
         echo("Generated ${result.written.size} file(s) into $out")
         if (result.errors.isNotEmpty()) throw ProgramResult(1)

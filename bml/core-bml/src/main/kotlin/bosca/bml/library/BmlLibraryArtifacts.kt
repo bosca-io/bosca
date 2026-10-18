@@ -16,7 +16,7 @@ object BmlLibraryArtifacts {
     )
     /** Syntax reserved by BML cannot be exported as an overridable component. */
     val protectedTags: Set<String> = setOf(
-        "import", "page", "route", "message", "email", "push", "template", "layout", "component", "prop",
+        "import", "page", "route", "message", "email", "push", "subject", "template", "layout", "use", "component", "prop",
         "slot", "data", "inject", "island", "fallback", "script", "style", "contract", "for", "if", "else",
         "else-if", "t",
     )

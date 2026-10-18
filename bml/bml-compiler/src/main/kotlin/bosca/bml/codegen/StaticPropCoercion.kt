@@ -147,7 +147,7 @@ internal object StaticPropCoercion {
      * [type] made nullable. A function type needs parentheses: `(A) -> B?` is a function returning a
      * nullable B, so it is only already nullable when written `((A) -> B)?`.
      */
-    private fun nullable(type: String): String {
+    fun nullable(type: String): String {
         val trimmed = type.trim()
         if ("->" !in trimmed) return if (trimmed.endsWith("?")) trimmed else "$trimmed?"
         return if (isParenthesizedNullable(trimmed)) trimmed else "($trimmed)?"

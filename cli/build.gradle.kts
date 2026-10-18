@@ -86,6 +86,7 @@ dependencies {
 
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.kotlin.test.junit)
+    testImplementation(project(":bml:core-bml"))
     testImplementation(project(":bosca-core:security"))
     testImplementation(libs.testcontainers)
     testImplementation(platform(libs.okhttp.bom))
