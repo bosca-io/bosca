@@ -9,8 +9,9 @@
     "verbatimModuleSyntax": true,
     "noEmit": true,
     "paths": {
+      "@client/*": ["./src/main/client/*"],
       "@bosca/bml": ["../bml-runtime/src/index.ts"]
     }
   },
-  "include": ["build/generated/bml/ts/**/*.ts"]
+  "include": ["src/main/client/**/*.ts", "build/generated/bml/ts/**/*.ts"]
 }

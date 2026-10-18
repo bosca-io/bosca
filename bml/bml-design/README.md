@@ -62,6 +62,9 @@ import provides `<design:button>` with the same runtime identity and assets as `
 | `page-heading` | Required `title: String`; `subtitle: String = ""`; `trail: List<NavigationItem> = emptyList()`; `crumb: String = ""`; `icon: String = ""`; `iconColor: String = "var(--accent)"`; `badge: String = ""`; `badgeTone: String = "neutral"`; `badgeColor: String = ""` | Header with breadcrumbs, title/icon, optional badge/subtitle and default action children. Additional attributes/classes target the header. The current crumb defaults to the title. |
 | `section-heading` | Required `title: String`; `subtitle: String = ""` | Header with a title, subtitle and default action children. Additional attributes/classes target the header. |
 | `disclosure-heading` | `framed: Boolean = false` | Native summary inside caller-owned `details`, with default label children and a decorative chevron that follows the open state. Additional attributes/classes target the summary. |
+| `icon-button` | Required `icon: String` and `label: String`; `ref: String = ""`; `type: String = "button"`; `disabled: Boolean = false`; `size: String = "sm"` (`sm`, `xs`) | Native button with a decorative icon, required accessible name and tooltip. Additional attributes/classes and actions reach the button. Default dimensions are 30×30px; `xs` is 24×24px. No child content. |
+| `icon-link` | Required `icon: String`, `label: String` and `href: String` | Native 30×30px anchor with a decorative icon, accessible name and tooltip. Additional attributes/classes target the anchor, including `target`, `rel` and `download`. Supports the `primary` class modifier. No child content. |
+| `tooltip` | Required `content: String`; `placement: String = "top"` (`top`, `bottom`, `left`, `right`); `delay: Int = 200` (milliseconds) | Inline span with default children. The first descendant button/link/tabbable element is its trigger, falling back to the root. Additional attributes/classes target the span. |
 
 Regular controls are 32px high, compact controls 30px, and extra-small buttons 24px. Field labels use
 an 18px line and a 6px control gap. Buttons support the `ghost`, `danger`, `block`, and `icon-only`
@@ -87,6 +90,13 @@ Breadcrumb links use `bosca.design.model.NavigationItem(label, href, selected)`.
 destinations, selected-state calculation and every trail entry, including any product/root label.
 An empty `href` renders plain trail text. The final current crumb comes from `crumb` or `title`;
 there is no fixed product prefix. Git's existing presentation models use this same library type.
+
+Tooltips open on pointer hover or keyboard focus and dismiss on Escape, activation or departure.
+Their text remains available while hovered. Placement can flip or clamp at viewport edges.
+Each visible tooltip adds its own ID to `aria-describedby`, preserving existing descriptions.
+The helper follows a replaced trigger and removes timers, listeners and tooltip nodes when its
+component unmounts. Clicking tooltip text does not activate its parent button or anchor.
+Icon actions retain native `title` labels when scripts are disabled.
 
 ## Consumer CSS
 
@@ -126,6 +136,13 @@ page-heading icon's foreground. The mark uses `--mark-top`, `--mark-right` and `
 Applications own the document's flex/grid arrangement and navigation-link styling; the `/layout`
 consumer page demonstrates a sidebar, responsive header and CSS-customized mark/panel colors.
 
+Tooltip nodes stay inside their owning component and use native manual popovers to escape clipping.
+CSS custom properties inherit normally, including live theme-class changes. The library-owned
+`.bosca-tooltip` surface uses `--bg-3`, `--fg-0` and `--line-2`; optional `--tooltip-bg`, `--tooltip-fg`,
+`--tooltip-border` and `--tooltip-shadow` overrides provide specific tooltip styling. Default shadow
+is `0 4px 12px #0005`. This surface rule lives in the real library stylesheet because the node is
+created at runtime. Consumers do not copy colors into JavaScript or configure a theme service.
+
 ## Source ownership
 
 | Library source | Extracted source in Git UI |
@@ -151,6 +168,10 @@ consumer page demonstrates a sidebar, responsive header and CSS-customized mark/
 | `components/page-heading.bml` | `components/ui/page-heading.bml` |
 | `components/section-heading.bml` | `components/ui/section-heading.bml` |
 | `components/disclosure-heading.bml` | `components/ui/disclosure-heading.bml` |
+| `components/icon-button.bml` | `components/ui/icon-button.bml` |
+| `components/icon-link.bml` | `components/ui/icon-link.bml` |
+| `components/tooltip.bml` | `components/ui/tooltip.bml` |
+| `client/helpers/tooltip.ts` | `src/main/client/tooltip.ts` |
 | `client/design.css` | Shared control token defaults from `src/main/client/git-ui.css` |
 
 `src/main/kotlin/bosca/design/model/NavigationItem.kt` owns the shared navigation model formerly

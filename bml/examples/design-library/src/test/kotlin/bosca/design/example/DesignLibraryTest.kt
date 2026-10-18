@@ -30,8 +30,8 @@ class DesignLibraryTest {
             assertEquals("io.bosca:bml-design", manifest.library)
             assertEquals("bosca.design.generated", manifest.generatedPackage)
             assertEquals(setOf("alert", "app-header", "badge", "bosca-mark", "button", "card", "checkbox", "disclosure-heading",
-                "empty-state", "field", "icon", "input", "loading-state", "page-heading", "page-shell", "panel",
-                "section", "section-heading", "spinner", "switch", "table-scroll"),
+                "empty-state", "field", "icon", "icon-button", "icon-link", "input", "loading-state", "page-heading", "page-shell", "panel",
+                "section", "section-heading", "spinner", "switch", "table-scroll", "tooltip"),
                 manifest.components.filter { it.exported }.map { it.tag }.toSet())
             assertTrue(manifest.requirements.isEmpty())
             assertTrue(manifest.providerRegistrars.isEmpty())
@@ -44,6 +44,9 @@ class DesignLibraryTest {
             assertEquals("List<bosca.design.model.NavigationItem>", heading.props.single { it.name == "trail" }.declaredType)
             assertTrue(jar.getJarEntry("bosca/design/model/NavigationItem.class") != null)
             assertTrue(manifest.components.single { it.tag == "app-header" }.clientModule != null)
+            assertTrue(listOf("tooltip", "icon-button", "icon-link").all { tag ->
+                manifest.components.single { it.tag == tag }.clientModule != null
+            })
             assertTrue(jar.getJarEntry("META-INF/bml/client-manifest.json") != null)
             val notice = jar.getInputStream(jar.getJarEntry("META-INF/licenses/bml-design/lucide.txt")).reader().readText()
             assertTrue("ISC License" in notice, notice)
@@ -109,6 +112,10 @@ class DesignLibraryTest {
             assertTrue("Workspace" in layout && "Components" in layout && "Layout preview" in layout, layout)
             assertTrue("data-page-heading" in layout && "id=\"layout-details\"" in layout, layout)
             assertFalse("bosca.git" in layout || "/_git/" in layout, layout)
+            val actions = request(client, base, "/actions").body()
+            assertTrue("aria-label=\"Increment\"" in actions && "title=\"Increment\"" in actions, actions)
+            assertTrue("name=\"submitAction\"" in actions && "value=\"save\"" in actions, actions)
+            assertTrue("href=\"#link-target\"" in actions && "rel=\"help\"" in actions, actions)
             val preferencesId = "preferences.preferences:light"
             val saved = request(client, base, "/_bml/action", """{"page":"/","path":"/","stateKey":"$preferencesId","method":"save","args":["Grace"]}""")
             assertEquals(200, saved.statusCode(), saved.body())

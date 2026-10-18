@@ -1,0 +1,19 @@
+<page route="/actions">
+  <html lang="en">
+    <head>
+      <meta charset="utf-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1" />
+      <title>Icon actions and tooltips</title>
+    </head>
+    <body>
+      <page-shell>
+        <h1>Icon actions and tooltips</h1>
+        <div class="themes">
+          <div class="light actions-theme" data-palette="light"><icon-actions id="light" /></div>
+          <div class="purple actions-theme" data-palette="purple"><icon-actions id="purple" /></div>
+        </div>
+        <p id="link-target">Native link destination</p>
+      </page-shell>
+    </body>
+  </html>
+</page>

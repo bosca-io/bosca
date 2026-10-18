@@ -45,6 +45,12 @@ update application state. Consuming CSS changes the mark colors and panel radius
 cover desktop/phone geometry, active-navigation visibility, disclosure keyboard operation and
 the preserved Bosca SVG paths. Native sections remain available through `<html:section>`.
 
+The `/actions` page demonstrates native icon buttons/links, labelled form submission and tooltips
+in two themed roots. Checks cover pointer and keyboard use, viewport placement, clipped ancestors,
+live CSS overrides, description IDs, changed labels/triggers, delayed-show cancellation, pending
+geometry, repeated mount/unmount and listener cleanup. Icon labels and link navigation remain
+available when scripts are disabled.
+
 Chrome defaults to the installed Google Chrome app on macOS or `google-chrome` on Linux. Set
 `BML_DESIGN_CHROME_BINARY` for another executable. Screenshots land in this project's
 `build/reports/browser/`. The fixture is an application and is excluded from aggregate Maven

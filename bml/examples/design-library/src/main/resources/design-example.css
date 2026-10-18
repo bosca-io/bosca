@@ -83,6 +83,22 @@ form {
   width: 100%;
   min-width: 0;
 }
+.actions-theme form {
+  display: flex;
+  align-items: end;
+  gap: 8px;
+  margin-top: 16px;
+}
+.actions-theme.alternate {
+  --tooltip-bg: #dbeafe;
+  --tooltip-fg: #1e3a8a;
+  --tooltip-border: #2563eb;
+}
+.tooltip-clip {
+  height: 34px;
+  overflow: hidden;
+  margin: 16px 0;
+}
 @media (max-width: 700px) {
   .layout-document {
     flex-direction: column;

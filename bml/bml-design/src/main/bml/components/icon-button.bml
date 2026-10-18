@@ -1,0 +1,14 @@
+<component tag="icon-button">
+  <prop name="icon" type="String" required />
+  <prop name="label" type="String" required />
+  <prop name="ref" type="String" default="" />
+  <prop name="type" type="String" default="button" />
+  <prop name="disabled" type="Boolean" default="false" />
+  <prop name="size" type="String" default="sm" />
+  <button class="icon-only" :size="size" :icon="icon" :ref="ref" :type="type" :disabled="disabled"
+          :aria-label="label" :title="label" :data-tooltip-content="label" {...attrs} />
+  <script client scoped>
+    import { attachTooltip } from "@client/helpers/tooltip";
+    attachTooltip(ctx);
+  </script>
+</component>

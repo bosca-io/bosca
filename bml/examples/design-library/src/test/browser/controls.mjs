@@ -5,6 +5,7 @@ import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { checkLayout } from './layout-checks.mjs';
+import { checkIconActions } from './icon-action-checks.mjs';
 
 const base = process.argv[2];
 const mode = process.argv[3] ?? 'fixture';
@@ -231,6 +232,7 @@ try {
   await evaluate('document.querySelector("[data-switch=light]").click()');
   await until('!document.querySelector("[data-switch=light]").checked && !document.querySelector("[data-switch=light]").hasAttribute("checked")');
   await checkLayout({ call, evaluate, until, base, mode, artifacts });
+  await checkIconActions({ call, evaluate, until, base, mode, artifacts });
   await call('Emulation.setScriptExecutionDisabled', { value: true });
   await call('Page.navigate', { url: base + '/' });
   await until('document.readyState === "complete" && document.querySelector("[data-input=light]")');
@@ -243,6 +245,14 @@ try {
   await until('document.readyState === "complete" && document.querySelector("[data-disclosure]")');
   await evaluate('document.querySelector("[data-disclosure]").click()');
   assert.equal(await evaluate('document.querySelector("#layout-details").open'), true);
+  await call('Page.navigate', { url: base + '/actions' });
+  await until('document.readyState === "complete" && document.querySelector("[data-icon-action=light]")');
+  assert.ok(await evaluate(`(() => { const button=document.querySelector('[data-icon-action=light]');
+    const link=document.querySelector('[data-icon-link=light]');
+    return button instanceof HTMLButtonElement && !!button.title && button.getAttribute('aria-label') === button.title &&
+      document.querySelector('[data-disabled-action=light]').disabled && link instanceof HTMLAnchorElement && link.title === 'Read details' })()`));
+  await evaluate('document.querySelector("[data-icon-link=light]").click()');
+  assert.equal(await evaluate('location.hash'), '#link-target');
   assert.deepEqual(exceptions, []);
   console.log(`Design library browser checks passed (${mode}); screenshots: ${artifacts}`);
 } finally {
