@@ -174,6 +174,7 @@ interface ObjectBackupRunRepository {
     /**
      * Freezes an outcome and checks the current attempt and full declared membership atomically.
      * Success requires every item completed; failures with completed items become partial.
+     * [pendingOnly] excludes running writers from pending cancellation.
      */
     @Query(
         "with summary as (" + OBJECT_BACKUP_RUN_SUMMARY + ") " +
@@ -189,12 +190,19 @@ interface ObjectBackupRunRepository {
             from summary s
             where r.key = :key and r.version = :expectedVersion
                 and (r.status = 'running' or (:cancelled and r.status = 'pending'))
+                and (not :pendingOnly or r.status = 'pending')
                 and s.total = jsonb_array_length(r.inventory->'objects')
                 and (cast(:error as text) is not null or s.completed = s.total)
             returning r.*
             """
     )
-    suspend fun finish(key: String, expectedVersion: Long, error: String?, cancelled: Boolean): ObjectBackupRun?
+    suspend fun finish(
+        key: String,
+        expectedVersion: Long,
+        error: String?,
+        cancelled: Boolean,
+        pendingOnly: Boolean,
+    ): ObjectBackupRun?
 }
 
 private const val OBJECT_BACKUP_RUN_SUMMARY = """

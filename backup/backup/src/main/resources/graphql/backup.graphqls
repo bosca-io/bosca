@@ -109,6 +109,10 @@ type ObjectBackupRunsMutation {
     configureStorage(key: String!, backupKey: String!, stores: [ObjectBackupStoreMappingInput!]!): ObjectBackupRunStorage!
     "Queue an exact pending run version. Returns saved intent; execution is asynchronous."
     dispatch(key: String!, expectedVersion: Long!): ObjectBackupDispatch!
+    "Return a failed, partial or cancelled run to pending. Dispatch the returned version separately."
+    retry(key: String!, expectedVersion: Long!): ObjectBackupRun!
+    "Cancel only an observed pending run version. Does not stop active writers."
+    cancelPending(key: String!, expectedVersion: Long!, reason: String!): ObjectBackupRun!
 }
 
 "A declared logical store and its bound application storage ID."

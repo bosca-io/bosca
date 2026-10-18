@@ -72,4 +72,25 @@ class ObjectBackupRunsMutationController(
         groupEvaluator.verifyHasSaGroup(authorization)
         return dispatchService.request(key, expectedVersion)
     }
+
+    @Field
+    suspend fun retry(
+        authorization: AuthenticationContext,
+        key: String,
+        expectedVersion: Long,
+    ): ObjectBackupRun {
+        groupEvaluator.verifyHasSaGroup(authorization)
+        return service.retry(key, expectedVersion)
+    }
+
+    @Field
+    suspend fun cancelPending(
+        authorization: AuthenticationContext,
+        key: String,
+        expectedVersion: Long,
+        reason: String,
+    ): ObjectBackupRun {
+        groupEvaluator.verifyHasSaGroup(authorization)
+        return service.cancelPending(key, expectedVersion, reason)
+    }
 }

@@ -1,6 +1,7 @@
 package bosca.backup.graphql
 
 import bosca.backup.BackupJobQueueNames
+import bosca.backup.ObjectBackupDestinationBusyException
 import bosca.backup.ObjectBackupDispatchService
 import bosca.backup.ObjectBackupManifest
 import bosca.backup.ObjectBackupRun
@@ -46,6 +47,7 @@ import kotlinx.serialization.json.put
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
@@ -433,6 +435,208 @@ class ObjectBackupRunDispatchGraphQLIntegrationTest : ObjectBackupGraphQLTest() 
         assertTrue(queuedKeys().isEmpty())
     }
 
+    @Test
+    fun `an unconfigured pending run can be cancelled without changing its checkpoints`(): Unit = runBlocking {
+        val checkpoints = request { runs.items(run.key, 0, 100) }
+        val cancelled = data(cancelPending(reason = "No longer needed")).getValue("cancelPending").jsonObject
+        assertEquals("CANCELLED", cancelled.string("status"))
+        assertEquals(run.version + 1, cancelled.getValue("version").jsonPrimitive.long)
+        assertEquals("No longer needed", cancelled.string("error"))
+        val saved = assertNotNull(request { runs.get(run.key) })
+        assertEquals(0, saved.attempts)
+        assertEquals(2, saved.result?.pending)
+        assertEquals(checkpoints, request { runs.items(run.key, 0, 100) })
+        assertNull(request { runs.getStorage(run.key) })
+        assertTrue(queuedKeys().isEmpty())
+    }
+
+    @Test
+    fun `pending cancellation preserves dispatch history and stale delivery performs no transfer`(): Unit = runBlocking {
+        configured()
+        val dispatched = data(dispatch()).getValue("dispatch").jsonObject
+        val checkpoints = request { runs.items(run.key, 0, 100) }
+        data(cancelPending())
+        val cancelled = request { runs.get(run.key) }
+        assertEquals(0, provide<ObjectBackupDispatchService>().recover())
+        assertEquals(dispatched, data(readDispatch(run.key, run.version)).getValue("dispatch"))
+        runner.run()
+        awaitDrained(UUID.parse(dispatched.string("key")))
+        assertEquals(cancelled, request { runs.get(run.key) })
+        assertEquals(checkpoints, request { runs.items(run.key, 0, 100) })
+        assertTrue(directory.resolve("destination").toFile().listFiles().isNullOrEmpty())
+    }
+
+    @Test
+    fun `retrying a cancelled run requires dispatching its new version`(): Unit = runBlocking {
+        configured()
+        val original = data(dispatch()).getValue("dispatch").jsonObject
+        data(cancelPending())
+        val cancelled = assertNotNull(request { runs.get(run.key) })
+        val storage = request { runs.getStorage(run.key) }
+        val checkpoints = request { runs.items(run.key, 0, 100) }
+        val retried = data(retry(version = cancelled.version)).getValue("retry").jsonObject
+        val version = retried.getValue("version").jsonPrimitive.long
+        assertEquals("PENDING", retried.string("status"))
+        assertEquals(cancelled.version + 1, version)
+        assertEquals(JsonNull, retried["error"])
+        assertEquals(JsonNull, retried["result"])
+        assertEquals(0, request { runs.get(run.key) }?.attempts)
+        assertEquals(storage, request { runs.getStorage(run.key) })
+        assertEquals(checkpoints, request { runs.items(run.key, 0, 100) })
+        assertEquals(listOf(original.string("key")), queuedKeys())
+        runner.run()
+        awaitDrained(UUID.parse(original.string("key")))
+        assertEquals(ObjectBackupRunStatus.PENDING, request { runs.get(run.key) }?.status)
+        assertTrue(directory.resolve("destination").toFile().listFiles().isNullOrEmpty())
+        assertError(retry(version = cancelled.version), "state, version")
+        assertError(dispatch(), "observed pending")
+        val next = data(dispatch(version = version)).getValue("dispatch").jsonObject
+        assertTrue(next.string("key") != original.string("key"))
+        assertEquals(1, awaitCompleted(run.key).attempts)
+        assertEquals(original, data(readDispatch(run.key, run.version)).getValue("dispatch"))
+    }
+
+    @Test
+    fun `retrying a real partial backup preserves verified items and resumes the missing payload`(): Unit = runBlocking {
+        configured()
+        assertTrue(directory.resolve("source").resolve(second.key).toFile().delete())
+        data(dispatch())
+        runner.run()
+        val partial = awaitStatus(run.key, ObjectBackupRunStatus.PARTIAL)
+        assertEquals(1, partial.attempts)
+        assertEquals(1, partial.result?.completed)
+        assertError(cancelPending(version = partial.version), "observed pending")
+        val checkpoints = request { runs.items(run.key, 0, 100) }
+        val verified = checkpoints.single { it.payload.key == first.key }
+        val storage = request { runs.getStorage(run.key) }
+        write(source, second.key, "more")
+        val retried = data(retry(version = partial.version)).getValue("retry").jsonObject
+        assertEquals("PENDING", retried.string("status"))
+        assertEquals(checkpoints, request { runs.items(run.key, 0, 100) })
+        assertEquals(storage, request { runs.getStorage(run.key) })
+        assertEquals(1, request { runs.get(run.key) }?.attempts)
+        data(dispatch(version = retried.getValue("version").jsonPrimitive.long))
+        assertEquals(2, awaitCompleted(run.key).attempts)
+        assertEquals(verified, request { runs.items(run.key, 0, 100) }.single { it.key == verified.key })
+        assertEquals("more", destination.getString(StringObjectPath(second.payloadPath)))
+    }
+
+    @Test
+    fun `failed runs can be explicitly retried through GraphQL without an implicit enqueue`(): Unit = runBlocking {
+        configured()
+        val failed = request {
+            val running = runs.start(run.key, run.version)
+            runs.fail(run.key, running.version, "stopped test writer")
+        }
+        assertEquals(ObjectBackupRunStatus.FAILED, failed.status)
+        val retried = data(retry(version = failed.version)).getValue("retry").jsonObject
+        assertEquals("PENDING", retried.string("status"))
+        assertTrue(queuedKeys().isEmpty())
+        assertEquals(1, request { runs.get(run.key) }?.attempts)
+        data(dispatch(version = retried.getValue("version").jsonPrimitive.long))
+        runner.run()
+        assertEquals(2, awaitCompleted(run.key).attempts)
+    }
+
+    @Test
+    fun `a cancelled restore can be retried and dispatched to a real worker`(): Unit = runBlocking {
+        configured()
+        data(dispatch())
+        runner.run()
+        val completed = awaitCompleted(run.key)
+        data(bind(listOf("target-1")))
+        val restore = request { runs.prepareRestore(completed.inventory, "restored", completed.path) }
+        data(configure(restore.key, mappings = listOf(mapping("content", "target-1"))))
+        data(cancelPending(restore.key, restore.version))
+        val cancelled = assertNotNull(request { runs.get(restore.key) })
+        val retried = data(retry(restore.key, cancelled.version)).getValue("retry").jsonObject
+        data(dispatch(restore.key, retried.getValue("version").jsonPrimitive.long))
+        assertEquals(1, awaitCompleted(restore.key).attempts)
+        assertEquals("data", storage("target").getString(StringObjectPath(first.key)))
+        assertEquals("more", storage("target").getString(StringObjectPath(second.key)))
+    }
+
+    @Test
+    fun `pending cancellation and retry cannot release an active writer`(): Unit = runBlocking {
+        configured()
+        val running = request { runs.start(run.key, run.version) }
+        val waiting = request {
+            runs.prepare(inventory.copy(id = "waiting"), "destination-1").also {
+                runs.configureStorage(it.key, "destination-1", mapOf("content" to "source-1"))
+            }
+        }
+        assertError(cancelPending(version = run.version), "observed pending")
+        assertError(cancelPending(version = running.version), "observed pending")
+        assertError(retry(version = running.version), "state, version")
+        assertEquals(running, request { runs.get(run.key) })
+        assertFailsWith<ObjectBackupDestinationBusyException> {
+            request { runs.start(waiting.key, waiting.version) }
+        }
+        assertEquals(waiting, request { runs.get(waiting.key) })
+        assertTrue(queuedKeys().isEmpty())
+    }
+
+    @Test
+    fun `recovery controls reject invalid input stale observations and terminal cancellation`(): Unit = runBlocking {
+        assertError(cancelPending(reason = "  "), "detail")
+        assertError(cancelPending(version = -1), "version")
+        assertError(retry(version = -1), "version")
+        assertError(cancelPending(key = "missing"), "missing")
+        assertError(retry(key = "missing"), "state, version")
+        assertError(cancelPending(key = ""), "key")
+        assertError(retry(key = ""), "key")
+        assertError(cancelPending(version = run.version + 1), "observed pending")
+        assertError(retry(), "state, version")
+        assertEquals(run, request { runs.get(run.key) })
+        data(cancelPending())
+        val cancelled = assertNotNull(request { runs.get(run.key) })
+        assertError(cancelPending(version = cancelled.version), "observed pending")
+        assertError(retry(version = run.version), "state, version")
+        assertEquals(cancelled, request { runs.get(run.key) })
+        val completed = request {
+            val empty = runs.prepare(inventory.copy(id = "empty", objects = emptyList()), "destination-1")
+            val running = runs.start(empty.key, empty.version)
+            runs.complete(empty.key, running.version)
+        }
+        assertError(cancelPending(completed.key, completed.version), "observed pending")
+        assertError(retry(completed.key, completed.version), "state, version")
+        assertEquals(completed, request { runs.get(completed.key) })
+        assertTrue(queuedKeys().isEmpty())
+    }
+
+    @Test
+    fun `anonymous ordinary and restricted tokens cannot cancel pending runs or retry failed runs`(): Unit = runBlocking {
+        val failed = request {
+            val pending = runs.prepare(inventory.copy(id = "failed"), "destination-1")
+            val running = runs.start(pending.key, pending.version)
+            runs.fail(pending.key, running.version, "stopped test writer")
+        }
+        for (authentication in listOf(anonymous, ImpersonatedAuthenticationContext(Principal(), emptyList()),
+            scoped(listOf("content:read")), scoped(listOf("security:manage"), emptySet()))) {
+            assertError(cancelPending(authentication = authentication), "Unauthorized access")
+            assertError(retry(failed.key, failed.version, authentication), "Unauthorized access")
+        }
+        assertEquals(run, request { runs.get(run.key) })
+        assertEquals(failed, request { runs.get(failed.key) })
+        assertTrue(queuedKeys().isEmpty())
+    }
+
+    @Test
+    fun `management scoped and super administrators can cancel and retry pending restore intent`(): Unit = runBlocking {
+        val sa = ImpersonatedAuthenticationContext(Principal(), listOf(
+            Group(name = "sa", description = "", type = GroupType.SYSTEM),
+        ))
+        for ((index, authentication) in listOf(scoped(listOf("security:manage")), sa).withIndex()) {
+            val restore = request { runs.prepareRestore(inventory, "restore-$index", "input/manifest.json") }
+            data(cancelPending(restore.key, restore.version, authentication = authentication))
+            val cancelled = assertNotNull(request { runs.get(restore.key) })
+            val retried = data(retry(restore.key, cancelled.version, authentication)).getValue("retry").jsonObject
+            assertEquals("PENDING", retried.string("status"))
+            assertEquals(0, request { runs.get(restore.key) }?.attempts)
+        }
+        assertTrue(queuedKeys().isEmpty())
+    }
+
     private suspend fun configured() {
         data(bind(listOf("source-1", "destination-1")))
         data(configure())
@@ -491,6 +695,36 @@ class ObjectBackupRunDispatchGraphQLIntegrationTest : ObjectBackupGraphQLTest() 
         put("version", version)
     })
 
+    private suspend fun cancelPending(
+        key: String = run.key,
+        version: Long = run.version,
+        reason: String = "Operator cancelled",
+        authentication: AuthenticationContext = admin,
+    ): JsonObject = execute("""
+        mutation Cancel(${'$'}key: String!, ${'$'}version: Long!, ${'$'}reason: String!) {
+            backups { objectRuns { cancelPending(key: ${'$'}key, expectedVersion: ${'$'}version, reason: ${'$'}reason) {
+                $controlFields
+            } } }
+        }
+    """, authentication, buildJsonObject {
+        put("key", key)
+        put("version", version)
+        put("reason", reason)
+    })
+
+    private suspend fun retry(
+        key: String = run.key,
+        version: Long = run.version,
+        authentication: AuthenticationContext = admin,
+    ): JsonObject = execute("""
+        mutation Retry(${'$'}key: String!, ${'$'}version: Long!) {
+            backups { objectRuns { retry(key: ${'$'}key, expectedVersion: ${'$'}version) { $controlFields } } }
+        }
+    """, authentication, buildJsonObject {
+        put("key", key)
+        put("version", version)
+    })
+
     private fun mapping(store: String, storageKey: String) = JsonObject(mapOf(
         "store" to JsonPrimitive(store), "storageKey" to JsonPrimitive(storageKey),
     ))
@@ -506,16 +740,25 @@ class ObjectBackupRunDispatchGraphQLIntegrationTest : ObjectBackupGraphQLTest() 
     private suspend fun queuedKeys(): List<String> =
         natsPool.systemConnection().keyValue("job-state-" + queue.name).keys().orEmpty().sorted()
 
-    private suspend fun awaitCompleted(key: String): ObjectBackupRun {
+    private suspend fun awaitCompleted(key: String): ObjectBackupRun = awaitStatus(key, ObjectBackupRunStatus.COMPLETED)
+
+    private suspend fun awaitStatus(key: String, status: ObjectBackupRunStatus): ObjectBackupRun {
         withTimeout(30_000) {
-            while (request { runs.get(key) }?.status != ObjectBackupRunStatus.COMPLETED) delay(25)
+            while (request { runs.get(key) }?.status != status) delay(25)
         }
         return assertNotNull(request { runs.get(key) })
+    }
+
+    private suspend fun awaitDrained(id: UUID) {
+        withTimeout(30_000) {
+            while (state(id) != null) delay(25)
+        }
     }
 
     companion object {
         private const val storageFields = "key type endpoint bucket region basePath created"
         private const val mappingFields = "key backupKey created stores { store storageKey }"
         private const val dispatchFields = "key runKey version created"
+        private const val controlFields = "key status version attempts error result { total pending completed failed }"
     }
 }

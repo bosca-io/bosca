@@ -292,14 +292,17 @@ class ObjectBackupRunServiceImpl(
 
     override suspend fun complete(key: String, expectedVersion: Long): ObjectBackupRun {
         validateVersion(key, expectedVersion)
-        return finish(key, expectedVersion, null, false)
+        return finish(key, expectedVersion, null, cancelled = false, pendingOnly = false)
     }
 
     override suspend fun fail(key: String, expectedVersion: Long, error: String): ObjectBackupRun =
-        finishFailure(key, expectedVersion, error, false)
+        finishFailure(key, expectedVersion, error, cancelled = false, pendingOnly = false)
 
     override suspend fun cancel(key: String, expectedVersion: Long, error: String): ObjectBackupRun =
-        finishFailure(key, expectedVersion, error, true)
+        finishFailure(key, expectedVersion, error, cancelled = true, pendingOnly = false)
+
+    override suspend fun cancelPending(key: String, expectedVersion: Long, reason: String): ObjectBackupRun =
+        finishFailure(key, expectedVersion, reason, cancelled = true, pendingOnly = true)
 
     override suspend fun execute(
         key: String,
@@ -416,12 +419,13 @@ class ObjectBackupRunServiceImpl(
         expectedVersion: Long,
         error: String,
         cancelled: Boolean,
+        pendingOnly: Boolean,
     ): ObjectBackupRun {
         validateVersion(key, expectedVersion)
         require(error.isNotBlank()) {
             "Object backup run failure detail is required"
         }
-        return finish(key, expectedVersion, error, cancelled)
+        return finish(key, expectedVersion, error, cancelled, pendingOnly)
     }
 
     private suspend fun finish(
@@ -429,8 +433,14 @@ class ObjectBackupRunServiceImpl(
         expectedVersion: Long,
         error: String?,
         cancelled: Boolean,
+        pendingOnly: Boolean,
     ): ObjectBackupRun = transaction {
-        val run = updated(repository.finish(key, expectedVersion, error, cancelled), key, expectedVersion)
+        val outcome = repository.finish(key, expectedVersion, error, cancelled, pendingOnly)
+        val run = if (pendingOnly) {
+            checkNotNull(outcome) { "Object backup run must match the observed pending version: $key at $expectedVersion" }
+        } else {
+            updated(outcome, key, expectedVersion)
+        }
         repository.releaseWriters(key)
         run
     }

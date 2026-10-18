@@ -213,6 +213,110 @@ class ObjectBackupWriterIntegrationTest {
     }
 
     @Test
+    fun `start and pending cancellation admit exactly one observed transition`(): Unit = runBlocking {
+        val runs = listOf(
+            backup("backup-race"),
+            restore("restore-race", mapOf("content" to "target-a", "artifacts" to "target-b")),
+        )
+        for (run in runs) {
+            val gate = CompletableDeferred<Unit>()
+            val attempts = listOf(
+                async {
+                    gate.await()
+                    try {
+                        request { service.start(run.key, run.version) }
+                    } catch (_: IllegalStateException) {
+                        null
+                    }
+                },
+                async {
+                    gate.await()
+                    try {
+                        request { service.cancelPending(run.key, run.version, "operator cancelled") }
+                    } catch (_: IllegalStateException) {
+                        null
+                    }
+                },
+            )
+            gate.complete(Unit)
+            val outcomes = attempts.awaitAll()
+            assertEquals(1, outcomes.filterNotNull().size)
+            val winner = assertNotNull(outcomes.single { it != null })
+            assertEquals(winner, request { service.get(run.key) })
+            assertEquals(run.version + 1, winner.version)
+            val mapping = assertNotNull(request { service.getStorage(run.key) })
+            if (winner.status == ObjectBackupRunStatus.RUNNING) {
+                assertEquals(1, winner.attempts)
+                val destinations = when (winner.operation) {
+                    ObjectBackupOperation.BACKUP -> setOf(mapping.backupKey)
+                    ObjectBackupOperation.RESTORE -> mapping.stores.values.toSet()
+                }
+                assertEquals(destinations.associateWith { run.key }, writers())
+                request { service.fail(run.key, winner.version, "test writer stopped") }
+            } else {
+                assertEquals(ObjectBackupRunStatus.CANCELLED, winner.status)
+                assertEquals(0, winner.attempts)
+                assertTrue(writers().isEmpty())
+            }
+        }
+    }
+
+    @Test
+    fun `duplicate pending cancellations change state and version once`(): Unit = runBlocking {
+        val run = backup("duplicate-cancel")
+        val gate = CompletableDeferred<Unit>()
+        val attempts = (1..2).map {
+            async {
+                gate.await()
+                try {
+                    request { service.cancelPending(run.key, run.version, "operator cancelled") }
+                } catch (_: IllegalStateException) {
+                    null
+                }
+            }
+        }
+        gate.complete(Unit)
+        val cancelled = attempts.awaitAll().filterNotNull().single()
+        assertEquals(ObjectBackupRunStatus.CANCELLED, cancelled.status)
+        assertEquals(run.version + 1, cancelled.version)
+        assertEquals(0, cancelled.attempts)
+        assertEquals(cancelled, request { service.get(run.key) })
+        assertTrue(writers().isEmpty())
+    }
+
+    @Test
+    fun `caller rollback preserves pending cancellation retry checkpoints and other writers`(): Unit = runBlocking {
+        val independent = backup("independent", "backup-b")
+        request { service.start(independent.key, independent.version) }
+        val run = backup("cancel-rollback")
+        val checkpoints = request { service.items(run.key, 0, 100) }
+        val mapping = request { service.getStorage(run.key) }
+        assertFailsWith<IOException> {
+            request {
+                transaction {
+                    service.cancelPending(run.key, run.version, "operator cancelled")
+                    throw IOException("abort cancellation")
+                }
+            }
+        }
+        assertEquals(run, request { service.get(run.key) })
+        assertEquals(mapOf("backup-b" to independent.key), writers())
+        val cancelled = request { service.cancelPending(run.key, run.version, "operator cancelled") }
+        assertFailsWith<IOException> {
+            request {
+                transaction {
+                    service.retry(run.key, cancelled.version)
+                    throw IOException("abort retry")
+                }
+            }
+        }
+        assertEquals(cancelled, request { service.get(run.key) })
+        assertEquals(checkpoints, request { service.items(run.key, 0, 100) })
+        assertEquals(mapping, request { service.getStorage(run.key) })
+        assertEquals(mapOf("backup-b" to independent.key), writers())
+    }
+
+    @Test
     fun `caller rollback preserves state and ownership for both start and finish`(): Unit = runBlocking {
         val run = backup("one")
         assertFailsWith<IOException> {

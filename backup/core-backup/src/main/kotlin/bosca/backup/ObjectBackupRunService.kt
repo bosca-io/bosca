@@ -97,8 +97,15 @@ interface ObjectBackupRunService : Service {
      */
     suspend fun start(key: String, expectedVersion: Long): ObjectBackupRun
 
-    /** Explicitly queues a failed, partial or cancelled run for another attempt. */
+    /** Returns a failed, partial or cancelled run to pending without dispatching or resetting its checkpoints. */
     suspend fun retry(key: String, expectedVersion: Long): ObjectBackupRun
+
+    /**
+     * Cancels only the observed pending version, recording [reason] and its current checkpoint totals.
+     * Checks state and version atomically with the transition; a concurrent start prevents cancellation.
+     * Does not stop an active writer, change checkpoints or remove historical dispatch requests.
+     */
+    suspend fun cancelPending(key: String, expectedVersion: Long, reason: String): ObjectBackupRun
 
     /**
      * Acknowledges an inventory only when all required checkpoints are completed.
