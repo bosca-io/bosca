@@ -25,6 +25,80 @@ class ObjectBackupRunServiceImpl(
     private val json: Json,
     private val storageService: ObjectBackupStorageService,
 ) : ObjectBackupRunService {
+    override suspend fun prepareRestoreConfigured(
+        requestKey: String,
+        destinationId: String,
+        backupKey: String,
+        path: String,
+        stores: Map<String, String>,
+    ): ObjectBackupRun {
+        check(connectionOrNull()?.inTransaction != true) {
+            "Configured restore preparation must run outside an active database transaction"
+        }
+        require(requestKey.isNotBlank() && destinationId.isNotBlank() && backupKey.isNotBlank()) {
+            "Restore request, destination and backup storage identities are required"
+        }
+        require(path.split('/').all { it.isNotEmpty() && it != "." && it != ".." }) {
+            "Invalid restore manifest path: $path"
+        }
+        val targets = stores.toSortedMap()
+        require(targets.all { (store, storageKey) -> store.isNotBlank() && storageKey.isNotBlank() }) {
+            "Logical target and storage identities are required"
+        }
+        require(backupKey !in targets.values) { "Backup storage must be independent of restore targets" }
+        val existing = withConnectionManager {
+            repository.getRestoreRequest(requestKey)?.also {
+                validateRestoreRequest(it, destinationId, backupKey, path, targets)
+            }
+        }
+        if (existing != null) return existing
+
+        val selected = storageService.configurations((targets.values + backupKey).toSet())
+        withConnectionManager {
+            transaction {
+                for ((key, configuration) in selected.toSortedMap()) storageService.bind(key, configuration)
+            }
+        }
+        val inventory = storageService.withStorage(backupKey, selected.getValue(backupKey)) {
+            ObjectBackupManifestStore(it, json).load(StringObjectPath(path))
+        }
+        return withConnectionManager {
+            transaction {
+                val saved = repository.getRestoreRequest(requestKey)
+                if (saved != null) {
+                    validateRestoreRequest(saved, destinationId, backupKey, path, targets)
+                    saved
+                } else {
+                    val run = prepare(ObjectBackupOperation.RESTORE, inventory, destinationId, path, requestKey)
+                    configureStorage(run.key, backupKey, targets)
+                    repository.addRestoreRequest(requestKey, run.key)
+                    val prepared = checkNotNull(repository.getRestoreRequest(requestKey)) {
+                        "Prepared restore request is missing: $requestKey"
+                    }
+                    require(prepared.key == run.key) { "Conflicting concurrent restore selection: $requestKey" }
+                    validateRestoreRequest(prepared, destinationId, backupKey, path, targets)
+                    prepared
+                }
+            }
+        }
+    }
+
+    private suspend fun validateRestoreRequest(
+        run: ObjectBackupRun,
+        destinationId: String,
+        backupKey: String,
+        path: String,
+        targets: Map<String, String>,
+    ) {
+        require(run.operation == ObjectBackupOperation.RESTORE && run.destinationId == destinationId && run.path == path) {
+            "Conflicting configured restore intent: ${run.key}"
+        }
+        val mapping = checkNotNull(getStorage(run.key)) { "Prepared restore storage is missing: ${run.key}" }
+        require(mapping.backupKey == backupKey && mapping.stores == targets) {
+            "Conflicting configured restore targets: ${run.key}"
+        }
+    }
+
     override suspend fun executeConfigured(key: String): ObjectBackupRun =
         executeConfiguredRun(key) { storageService.configurations(it) }
 
@@ -156,6 +230,7 @@ class ObjectBackupRunServiceImpl(
         inventory: ObjectBackupManifest,
         destinationId: String,
         manifestPath: String?,
+        requestKey: String? = null,
     ): ObjectBackupRun {
         val captured = inventory.copy(objects = inventory.objects.toList())
         captured.validate()
@@ -169,10 +244,9 @@ class ObjectBackupRunServiceImpl(
             totalBytes += entry.length
         }
 
-        val key = objectBackupIdentity(
-            operation,
-            listOf(captured.sourceId, destinationId, captured.scope, captured.id),
-        )
+        val identity = listOf(captured.sourceId, destinationId, captured.scope, captured.id)
+        // Each configured restore request verifies targets anew while sharing per-object checkpoints.
+        val key = objectBackupIdentity(operation, requestKey?.let { identity + it } ?: identity)
         val path = when (operation) {
             ObjectBackupOperation.BACKUP -> "manifests/$key.json"
             ObjectBackupOperation.RESTORE -> requireNotNull(manifestPath) { "Restore manifest path is required" }

@@ -7,6 +7,8 @@ import bosca.backup.ObjectBackupManifest
 import bosca.backup.ObjectBackupProgressService
 import bosca.backup.ObjectBackupOperation
 import bosca.backup.ObjectBackupStorageService
+import bosca.backup.ObjectBackupRunService
+import bosca.backup.ObjectBackupRunStatus
 import bosca.cache.CacheManager
 import bosca.cache.RequestCacheSerializer
 import bosca.db.ConnectionConfig
@@ -56,6 +58,7 @@ import bosca.sharedqueue.jobs.asCoroutineContext
 import bosca.sharedqueue.jobs.configuration.RegisterJobsConfiguration
 import bosca.sharedqueue.jobs.nats.NatsJobQueueFactory
 import bosca.storage.configuration.StorageConfiguration
+import bosca.storage.service.ObjectPath
 import bosca.storage.service.ObjectStorageEntry
 import bosca.storage.service.ObjectStorageInfo
 import bosca.storage.service.ObjectStorageService
@@ -66,6 +69,8 @@ import com.sun.net.httpserver.HttpServer
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
+import java.io.IOException
+import java.io.InputStream
 import java.net.InetSocketAddress
 import java.net.URLDecoder
 import java.nio.file.Path
@@ -117,6 +122,8 @@ class ObjectBackupCapturePipelineIntegrationTest {
     private val signatures = CopyOnWriteArrayList<String>()
     private val discoveryRequests = CopyOnWriteArrayList<String>()
     private var currentVersion = "v1"
+    private val restoreWrites = CopyOnWriteArrayList<String>()
+    private var failedRestoreKey: String? = null
     private var denied = false
     private var failedKey: String? = null
     private val selection = ObjectBackupCaptureInventory(
@@ -402,6 +409,145 @@ class ObjectBackupCapturePipelineIntegrationTest {
         assertFalse(directory.resolve("retained").exists())
     }
 
+    @Test
+    fun `restore action recovers captured assets with the source server stopped and catalog removed`(): Unit = runBlocking {
+        val captured = useRestorePipeline()
+        val initial = start(plan.path)
+        executeNext()
+        assertEquals(PipelineRunStatus.SUSPENDED, get(initial.id).status)
+        executeNext()
+        val complete = get(initial.id)
+        assertEquals(PipelineRunStatus.OK, complete.status)
+        assertEquals(captured, json.decodeFromJsonElement(ObjectBackupManifest.serializer(), assertNotNull(complete.output)))
+        assertEquals("data", directory.resolve("restored/a").toFile().readText())
+        assertEquals("more", directory.resolve("restored/b").toFile().readText())
+        assertEquals(listOf("a", "b"), restoreWrites.toList())
+        assertTrue(requests.isEmpty())
+        assertTrue(discoveryRequests.isEmpty())
+        assertEquals(ObjectBackupRunStatus.COMPLETED, restoreRun().status)
+        coVerify(exactly = 0) { security.getPrincipalByIdentifier(any()) }
+    }
+
+    @Test
+    fun `a later restore action run verifies targets and repairs a missing completed object`(): Unit = runBlocking {
+        useRestorePipeline()
+        suspend fun completeRestore() {
+            val initial = start(plan.path)
+            executeNext()
+            executeNext()
+            assertEquals(PipelineRunStatus.OK, get(initial.id).status)
+        }
+        completeRestore()
+        directory.resolve("restored/b").toFile().delete()
+        restoreWrites.clear()
+        completeRestore()
+        assertEquals(listOf("b"), restoreWrites.toList())
+        assertEquals("more", directory.resolve("restored/b").toFile().readText())
+        assertEquals(2, withConnectionManager {
+            provide<ObjectBackupRunService>().list(ObjectBackupOperation.RESTORE, selection.sourceId, "recovery-target", selection.scope, 0, 20).size
+        })
+        assertTrue(requests.isEmpty())
+    }
+
+    @Test
+    fun `restore action worker retry reuses prepared input and writes only the unfinished object`(): Unit = runBlocking {
+        useRestorePipeline()
+        failedRestoreKey = "b"
+        val initial = start(plan.path)
+        executeNext()
+        val failed = failNext(retry = true)
+        assertEquals(PipelineRunStatus.SUSPENDED, get(initial.id).status)
+        assertNull(get(initial.id).output)
+        val partial = restoreRun()
+        assertEquals(ObjectBackupRunStatus.PARTIAL, partial.status)
+        assertEquals(listOf("a", "b"), restoreWrites.toList())
+        restoreWrites.clear()
+        failedRestoreKey = null
+        install()
+        val retry = assertNotNull(queue.dequeue(40.seconds))
+        assertEquals(failed.first.getId(), retry.getId())
+        execute(retry)
+        assertEquals(PipelineRunStatus.OK, get(initial.id).status)
+        assertEquals(listOf("b"), restoreWrites.toList())
+        assertEquals(partial.key, restoreRun().key)
+        assertEquals(2, restoreRun().attempts)
+        assertTrue(requests.isEmpty())
+    }
+
+    @Test
+    fun `restore action corrupt retained payload fails before target writes and emits no output`(): Unit = runBlocking {
+        val captured = useRestorePipeline()
+        directory.resolve("retained").resolve(captured.objects.last().payloadPath).toFile().writeText("bad")
+        val initial = start(plan.path)
+        executeNext()
+        failNext(retry = false)
+        val failed = get(initial.id)
+        assertEquals(PipelineRunStatus.FAILED, failed.status)
+        assertNull(failed.output)
+        assertTrue(restoreWrites.isEmpty())
+        assertEquals(ObjectBackupRunStatus.FAILED, restoreRun().status)
+        assertTrue(requests.isEmpty())
+    }
+
+    @Test
+    fun `restore action denied caller cannot prepare or write recovery targets`(): Unit = runBlocking {
+        useRestorePipeline()
+        denied = true
+        val initial = start(plan.path)
+        executeNext()
+        failNext(retry = false)
+        val failed = get(initial.id)
+        assertEquals(PipelineRunStatus.FAILED, failed.status)
+        assertTrue(assertNotNull(failed.error).contains("Unauthorized access"))
+        assertTrue(restoreWrites.isEmpty())
+        assertFalse(directory.resolve("restored").exists())
+        assertTrue(withConnectionManager {
+            provide<ObjectBackupRunService>().list(ObjectBackupOperation.RESTORE, selection.sourceId, "recovery-target", selection.scope, 0, 20)
+        }.isEmpty())
+    }
+
+    private suspend fun restoreRun() = withConnectionManager {
+        provide<ObjectBackupRunService>().list(ObjectBackupOperation.RESTORE, selection.sourceId, "recovery-target", selection.scope, 0, 20).single()
+    }
+
+    private suspend fun useRestorePipeline(): ObjectBackupManifest {
+        val captured = captures.captureConfigured(plan.key, null)
+        server.stop(0)
+        val configurations = mapOf(
+            "retained" to StorageConfiguration("fs", "", basePath = directory.resolve("retained").toString()),
+            "restored" to StorageConfiguration("fs", "", basePath = directory.resolve("restored").toString()),
+        )
+        val root = buildJsonObject {
+            put("backup", buildJsonObject {
+                put("objectStores", JsonObject(configurations.mapValues { (_, value) ->
+                    Json.encodeToJsonElement(StorageConfiguration.serializer(), value)
+                }))
+            })
+            put("pipelines", buildJsonObject { put("onDemandRunMaxBlockMillis", 0) })
+        }
+        application.shutdown()
+        application = BoscaApplication(ApplicationConfig.load(root.toString().byteInputStream()), ownsServices = false)
+        json = application.json
+        install()
+        val declared = Pipeline(id = UUID.NIL, name = "restore independent backup", acceptedInputType = "JSON", nodes = listOf(
+            InputNode("in", acceptedType = "JSON"), ToStringNode("path"),
+            ObjectBackupRestoreNode("restore", backupKey = "retained", destinationId = "recovery-target", targets = """{"content":"restored"}"""),
+            OutputNode("out"),
+        ), edges = listOf(
+            PipelineEdge("input", source = "in", target = "path"),
+            PipelineEdge("path", source = "path", target = "restore", targetPort = "manifestPath"),
+            PipelineEdge("output", source = "restore", target = "out"),
+        ))
+        pipeline = withConnectionManager {
+            val saved = provide<PipelineRepository>().add(PipelineRecord(name = declared.name,
+                acceptedInputType = declared.acceptedInputType, graph = pipelines.graphAsJsonElement(declared)))
+            assertNotNull(pipelines.get(saved.id))
+        }
+        requests.clear()
+        discoveryRequests.clear()
+        return captured
+    }
+
     private suspend fun useDiscoveryPipeline() {
         val declared = Pipeline(id = UUID.NIL, name = "discover and back up", acceptedInputType = "JSON", nodes = listOf(
             InputNode("in", acceptedType = "JSON"), ObjectBackupNode("backup", sourceId = selection.sourceId, scope = selection.scope, destinationId = "retained",
@@ -427,6 +573,31 @@ class ObjectBackupCapturePipelineIntegrationTest {
         CorePipelinesProviderRegistrar().register()
         PipelinesProviderRegistrar().register()
         StorageProviderRegistrar().register()
+        val actualFactory = provide<ObjectStorageServiceFactory>()
+        provides<ObjectStorageServiceFactory>(singleton = true, overrideExisting = true) {
+            object : ObjectStorageServiceFactory by actualFactory {
+                override suspend fun create(configuration: StorageConfiguration): ObjectStorageService {
+                    val actual = actualFactory.create(configuration)
+                    if (configuration.basePath != directory.resolve("restored").toFile().canonicalPath) return actual
+                    return object : ObjectStorageService by actual {
+                        override suspend fun setInputStream(path: ObjectPath, stream: InputStream, length: Long?): Long {
+                            assertEquals(0, pool.activeConnections)
+                            restoreWrites.add(path.toString())
+                            if (path.toString() == failedRestoreKey) {
+                                actual.setInputStream(path, "x".byteInputStream(), 1)
+                                throw IOException("restore write failed")
+                            }
+                            return actual.setInputStream(path, stream, length)
+                        }
+                    }
+                }
+
+                override suspend fun <T> withStorage(
+                    configuration: StorageConfiguration,
+                    block: suspend (ObjectStorageService) -> T,
+                ): T = create(configuration).use { block(it) }
+            }
+        }
         BackupProviderRegistrar().register()
         RegisterJobsConfiguration()
         provides<JobQueue>(name = PipelinesJobQueueNames.jobQueue, singleton = true, overrideExisting = true) { queue }
@@ -436,8 +607,8 @@ class ObjectBackupCapturePipelineIntegrationTest {
         pipelines = provide()
     }
 
-    private suspend fun start(): PipelineRun = withConnectionManager {
-        assertNotNull(runs.start(pipeline, PipelineValue.ofJson(JsonPrimitive(plan.key)), "", OffsetDateTime.now(),
+    private suspend fun start(input: String = plan.key): PipelineRun = withConnectionManager {
+        assertNotNull(runs.start(pipeline, PipelineValue.ofJson(JsonPrimitive(input)), "", OffsetDateTime.now(),
             ImpersonatedAuthenticationContext(caller, if (denied) emptyList() else listOf(administrator))))
     }
 

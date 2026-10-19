@@ -6,6 +6,25 @@ import bosca.db.annotation.Repository
 /** Persists inventory runs and their exact associations to shared revision checkpoints. */
 @Repository
 interface ObjectBackupRunRepository {
+    /** Reads the canonical run selected by one immutable configured restore request. */
+    @Query(
+        """
+        select r.* from backup.object_restore_requests p
+        join backup.object_runs r on r.key = p.run_key where p.key = :requestKey
+        """,
+    )
+    suspend fun getRestoreRequest(requestKey: String): ObjectBackupRun?
+
+    /** Records a request's selected run without replacing a concurrent preparation. */
+    @Query(
+        """
+        insert into backup.object_restore_requests (key, run_key) values (:requestKey, :runKey)
+        on conflict (key) do nothing
+        """,
+        returnUpdateCount = true,
+    )
+    suspend fun addRestoreRequest(requestKey: String, runKey: String): Int
+
     /** Inserts a run once, without resetting an existing attempt or result. */
     @Query(
         """

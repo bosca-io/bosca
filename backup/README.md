@@ -57,6 +57,51 @@ not a point-in-time database snapshot or proof that a PostgreSQL recovery point 
 It does not infer source deletions, remove retained payloads, or copy Bosca database content
 between instances. Exact database/object reference association and retention remain open work.
 
+## Restore object-storage backups
+
+The **Restore Object Backup** Pipeline action (`objectBackup.restore`) reads a retained
+manifest and restores its declared objects to their original keys in configured target
+stores. Configure the independent backup and targets under `backup.objectStores`; the
+source instance, source credentials and source storage configuration are not needed.
+
+Set the action's **Backup storage ID**, **Restore destination identity** and **Target stores**
+JSON mapping. Every logical store in the manifest needs a target, for example:
+
+```json
+{
+  "content": "recovered-content",
+  "artifacts": "recovered-artifacts"
+}
+```
+
+Feed the relative saved manifest path into `manifestPath`. For a JSON Pipeline input,
+connect Input through **To String** to that port, then connect the restored manifest output
+to Output. The action emits a manifest only after the object restore run completes.
+
+Preparation validates the selected addresses, reads only manifest metadata and saves the
+fixed inventory and target mapping atomically. The first selected inventory remains bound
+to that backing job and node across retries. A changed file at the manifest path cannot
+silently select a different snapshot: execution compares it with the prepared inventory.
+No target store is opened during preparation. Credentials remain in runtime configuration.
+
+Execution uses the existing restore service: it verifies retained lengths and SHA-256
+digests, rejects conflicting target data before asset writes, and reuses matching objects.
+A recorded partial failure can retry after service restart without rewriting completed
+objects. Redelivery of the same completed request returns its historical result without
+storage work. A fresh request creates a distinct run that verifies current targets again,
+reuses matching files and repairs missing owned output through the shared checkpoints.
+Cancelled runs need the existing explicit retry control; a surviving running writer needs
+stopped-writer recovery. The Pipeline action does not take over active writers or report
+cancelled/incomplete outcomes as successful.
+
+Use isolated target namespaces and keep restore progress outside any application database
+being replaced. This action restores the declared objects only. PostgreSQL restoration,
+matching database/object recovery points, deployment configuration, keys and whole-instance
+recovery remain separate work. The local integration test captures through signed S3 SDK
+reads, stops the source server, removes its catalog entry and restores through real queued
+Pipeline jobs into independent files. Live cloud-provider and Kubernetes-cluster recovery
+have not been exercised.
+
 ## Architecture
 
 `core-backup` defines the object backup service contracts and shared models. `backup` implements persistence, object transfers, manifest publication, GraphQL administration, and background jobs. Service implementations use `@ServiceImplementation` for generated DI registration.
@@ -65,9 +110,9 @@ between instances. Exact database/object reference association and retention rem
 
 `captureTracked` records verified captures in the existing per-revision progress ledger. A later call or restarted service finds the known digest and reuses its recorded payload path without source reads, or repairs missing/corrupt output from the exact provider version. Known pending/failed checkpoints resume; running checkpoints require stopped-writer recovery. New completion and payload reservation commit atomically after verification. Before the first digest is known, failures have no durable pending checkpoint; an interrupted write or failed checkpoint commit can leave unreferenced output, requiring a fresh proposed path when no checkpoint committed.
 
-Its required `verifiedSince` argument controls retained-payload verification. Null always repeats the full length and SHA-256 check. A cutoff permits metadata-only reuse when the current retained provider version and length match a version fully verified at or after that cutoff. Metadata-only reuse leaves the original verification time unchanged. New or changed provider versions are checksum-verified through an exact version-addressed read before their proof is saved. Stores without stable version IDs, including filesystem storage, always require full reads; ETags and timestamps are not digest evidence. Callers choose the integrity-check interval and retain provider versions. The migration leaves historical checkpoints without verification proof until their next full check. Recurring capture orchestration remains separate work.
+Its required `verifiedSince` argument controls retained-payload verification. Null always repeats the full length and SHA-256 check. A cutoff permits metadata-only reuse when the current retained provider version and length match a version fully verified at or after that cutoff. Metadata-only reuse leaves the original verification time unchanged. New or changed provider versions are checksum-verified through an exact version-addressed read before their proof is saved. Stores without stable version IDs, including filesystem storage, always require full reads; ETags and timestamps are not digest evidence. Callers choose the integrity-check interval and retain provider versions. The migration leaves historical checkpoints without verification proof until their next full check. The Back Up Object Storage action supplies discovery and capture for existing Pipeline schedules.
 
-`ObjectBackupManifestStore.saveTracked` publishes a captured inventory using the same explicit verification cutoff. Every revision must have an exact matching completed backup checkpoint for the source, destination and scope before asset I/O begins. Shared payloads need one metadata/full check, while every associated checkpoint remains required. Full checks refresh provider proof; metadata-only checks preserve its age. Missing/corrupt assets invalidate their completed checkpoints and prevent publication. Other storage failures and cancellation propagate without invalidating prior evidence. Checkpoint versions are checked again before writing the manifest, and database contexts end before storage I/O. Call outside an active transaction with the same independent storage and exclusive-writer guarantees as capture. Ordinary `save` and `verify` always read payloads in full. This publication primitive is not yet connected to recurring inventory capture.
+`ObjectBackupManifestStore.saveTracked` publishes a captured inventory using the same explicit verification cutoff. Every revision must have an exact matching completed backup checkpoint for the source, destination and scope before asset I/O begins. Shared payloads need one metadata/full check, while every associated checkpoint remains required. Full checks refresh provider proof; metadata-only checks preserve its age. Missing/corrupt assets invalidate their completed checkpoints and prevent publication. Other storage failures and cancellation propagate without invalidating prior evidence. Checkpoint versions are checked again before writing the manifest, and database contexts end before storage I/O. Call outside an active transaction with the same independent storage and exclusive-writer guarantees as capture. Ordinary `save` and `verify` always read payloads in full. The inventory capture flow and Back Up Object Storage action use this publication path.
 
 `ObjectBackupCaptureService.captureInventory` captures and publishes an explicit `ObjectBackupCaptureInventory` selection. The core model carries identity, scope, creation time and provider-version entries grouped by logical store. The service snapshots caller collections, validates every selection/mapping and known checkpoint before asset I/O, then processes revisions in store/key/version order. Unknown revisions receive new unique paths under the selected payload prefix; known revisions reuse their recorded paths. Successful entries remain available after partial failure, cancellation or a failed manifest write, so retry/restart reads only unfinished source revisions. The same explicit verification cutoff applies to capture and publication. Supplied stores remain caller-owned.
 
@@ -79,7 +124,7 @@ The key-based `captureInventory` overload reloads saved intent in a short databa
 
 `ObjectBackupCaptureService.configureStorage` fixes a plan's logical source mapping to existing bound IDs. Its independent backup ID is the plan's destination identity. Configuration uses the caller's transaction, opens no stores and returns `ObjectBackupCaptureStorage`; `getStorage` reads that mapping. Matching or concurrent replay preserves the saved record, while changed mappings, missing bindings and source/backup aliasing fail atomically. The migration preserves existing plans without inventing storage mappings. Multiple logical stores may intentionally share one bound source namespace.
 
-`captureConfigured` resolves the saved IDs from explicit configurations or selected `backup.objectStores` entries and delegates to capture/publication. The existing storage service checks every selected address before opening any store and closes all operation-scoped stores on success, failure or cancellation. Unrelated configurations are ignored. Credentials remain runtime-only and can rotate while the saved addresses stay fixed. Restart and retry preserve the plan, mapping and verified revision checkpoints. The integrity cutoff remains explicit for each execution. Call outside an active transaction and retain source provider versions, stable storage accounts and owned output namespaces. Recurring capture creation and scheduling remain separate work.
+`captureConfigured` resolves the saved IDs from explicit configurations or selected `backup.objectStores` entries and delegates to capture/publication. The existing storage service checks every selected address before opening any store and closes all operation-scoped stores on success, failure or cancellation. Unrelated configurations are ignored. Credentials remain runtime-only and can rotate while the saved addresses stay fixed. Restart and retry preserve the plan, mapping and verified revision checkpoints. The integrity cutoff remains explicit for each execution. Call outside an active transaction and retain source provider versions, stable storage accounts and owned output namespaces. The Back Up Object Storage action creates selections through `discoverConfigured` and invokes this execution path.
 
 Configured capture shares destination ownership with configured backup and restore runs in the existing `object_store_writers` table. Each execution acquires a fresh token before opening any store and holds it until every opened store closes. Contention, including duplicate execution of the same plan, raises `ObjectBackupDestinationBusyException` before asset I/O. Independent destinations can proceed and source writes continue. Success, failure and cancellation release only that execution's token in short database contexts. A release failure propagates; when capture also failed, it is suppressed on the original failure. Per-revision progress still supports retry without recopying completed source revisions.
 
@@ -131,7 +176,7 @@ Apply the writer-ownership migration with existing object-copy writers stopped. 
 
 `ObjectBackupDispatchRecoveryJob` is a fallback for interrupted queue publication after a dispatch request commits. It scans pages on the existing common queue, independently of backup workers, and preserves queue retry state without restarting failed or cancelled run versions. The API server's maintenance package installs its enabled, nonconcurrent daily schedule (`0 0 * * *`) without catch-up runs. Existing disabled or edited schedules are preserved. Each sweep starts at offset zero; requests skipped when completed runs shrink the pending list are revisited by a later sweep. Recovery uses the selected job page size, defaulting to 100. Both applications already configure the common and backup runners and the scheduler; their existing enable settings still apply.
 
-Storage's `getObjectInfo(path)` provides lightweight length, timestamp and available provider identifiers without fetching asset bodies. `listObjects(prefix, offset, limit)` discovers literal object keys and listing metadata through existing offset pagination, without per-object requests. These capabilities support source capture and destination checks. Listing positions can shift while source writes continue, and metadata alone is not a digest or retained revision. Ordinary transfer/publication verification still reads and verifies payloads. Closed source capture and recurring baseline/integrity orchestration remain separate work.
+Storage's `getObjectInfo(path)` provides lightweight length, timestamp and available provider identifiers without fetching asset bodies. `listObjects(prefix, offset, limit)` discovers literal object keys and listing metadata through existing offset pagination, without per-object requests. These capabilities support source capture and destination checks. Listing positions can shift while source writes continue, and metadata alone is not a digest or retained revision. Ordinary transfer/publication verification still reads and verifies payloads. Closed database-consistent capture and baselines for sources without retained provider revisions remain separate work.
 
 Storage also provides `getInputStream(path, version)` for exact retained S3 versions and Google generations, with no current-content fallback. Filesystem storage cannot address retained provider revisions. Capture must establish provider support and retention, then associate each selected revision with its content/database reference. `ObjectBackupCaptureService` uses these reads to produce verified manifest entries. Existing run transfer still reads caller-pinned source keys; capture orchestration is not yet connected to run preparation.
 

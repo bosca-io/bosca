@@ -6,9 +6,28 @@ import bosca.storage.service.ObjectStorageService
 
 /**
  * Tracks fixed object inventories using the caller's connection-manager context.
- * [execute], [executeRestore] and [executeConfigured] own short database contexts around storage work.
+ * Execution and configured preparation own short database contexts around storage work.
  */
 interface ObjectBackupRunService : Service {
+    /**
+     * Loads manifest metadata from [backupKey] in backup.objectStores and atomically prepares
+     * restore intent with its fixed logical target mapping under [requestKey]. A fresh request
+     * creates a distinct run that verifies current targets. Matching retries return the saved
+     * selection without rereading the manifest. Validates all selected addresses
+     * before opening the retained store; targets are not opened and asset bodies are not read.
+     * Changed arguments or mappings fail; execution rejects a manifest that changed after selection.
+     * Credentials stay in application configuration. Requires no active caller transaction and no access
+     * to the source installation. This does not execute or verify the retained payloads; use
+     * [executeConfigured] afterward. Progress must live outside any database being replaced.
+     */
+    suspend fun prepareRestoreConfigured(
+        requestKey: String,
+        destinationId: String,
+        backupKey: String,
+        path: String,
+        stores: Map<String, String>,
+    ): ObjectBackupRun
+
     /** Atomically prepares backup intent and its exact retained-payload checkpoint associations. */
     suspend fun prepare(inventory: ObjectBackupManifest, destinationId: String): ObjectBackupRun
 
