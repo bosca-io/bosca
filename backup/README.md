@@ -102,6 +102,67 @@ reads, stops the source server, removes its catalog entry and restores through r
 Pipeline jobs into independent files. Live cloud-provider and Kubernetes-cluster recovery
 have not been exercised.
 
+## Native PostgreSQL database artifacts
+
+`PostgresBackupService.capture(sourceId, directory)` creates a custom-format `database.dump`
+and a final `manifest.json` in a new local directory. Its parent must already exist. This is
+the database-artifact service for portable snapshots; it has no Pipeline, GraphQL or CLI
+entry point yet. Existing scheduled PostgreSQL backups and the legacy ZIP jobs are unchanged.
+
+Configure the native client and a libpq connection service on the process invoking capture:
+
+```yaml
+backup:
+  postgres:
+    service: bosca-backup
+    serviceFile: /run/secrets/pg_service.conf
+    pgDump: /opt/postgresql/bin/pg_dump
+```
+
+`service` is required when capture is invoked. `serviceFile` is optional and otherwise
+libpq uses its ordinary service-file lookup; `pgDump` defaults to `pg_dump` on PATH.
+The service must connect to the same primary database as Bosca's connection pool.
+Keep its authentication and TLS settings in runtime libpq configuration and mounted secrets.
+Install a compatible native PostgreSQL client before invoking capture; the current Bosca
+runtime images do not install one. Missing configuration/tools fail on use, not at startup.
+
+Capture exports a read-only REPEATABLE READ snapshot through the pool, passes it to
+`pg_dump --snapshot`, and keeps the exporting transaction alive until the dump exits.
+It captures the single database's schemas and data without the legacy table allowlist.
+Ordinary inserts, updates and deletes continue; conflicting schema operations can make the
+dump fail. Foreign tables need explicit data coverage and are rejected, as are standby
+sources. Cluster-global roles/tablespaces, external data and object-storage bytes are outside
+this artifact. PostgreSQL sequence values follow native dump semantics rather than an
+MVCC history of each counter value.
+
+The manifest records the source identity, database, exported/logical snapshot, source-clock
+boundary observation and dump completion, PostgreSQL version/encoding, extension versions,
+and the dump's byte length and SHA-256. The exported snapshot identifier cannot be reused
+after capture ends. A complete custom-format file is checked and hashed before the final
+manifest is published. Credentials and the libpq service configuration are not put in the
+manifest. The dump itself contains sensitive database contents and needs independent storage,
+encryption and keys before it is used as retained recovery data.
+
+`verify(directory)` checks the manifest, regular payload file, length, SHA-256 and native
+archive header without source access or installed database tools. The caller owns the directory
+and prevents concurrent modification. Verification checks integrity, not authenticity or target
+extension compatibility. Capture never replaces an existing output directory. Failures and
+cancellation before publication stop the child process, roll back the exporting transaction and
+remove the attempt's files. Published output remains complete if cancellation arrives afterward.
+A process crash can leave partial output; stop any surviving dump and remove that incomplete
+directory before a new capture. A dump needs local scratch space for the database artifact,
+without bundling asset bytes.
+
+The integration tests run real `pg_dump` and `pg_restore` with pgvector, restore after dropping
+the source database, verify a different destination owner and application permission rows, and
+prove that later source writes are excluded. Restoration uses `--no-owner --no-acl
+--no-tablespaces` under a destination role with extension-creation privileges. Exact object
+references, matching recovery-set publication, retention, deployment rebinding and a real
+Kubernetes recovery drill remain open. See the PostgreSQL documentation for
+[pg_dump](https://www.postgresql.org/docs/18/app-pgdump.html),
+[pg_restore](https://www.postgresql.org/docs/18/app-pgrestore.html) and
+[libpq services](https://www.postgresql.org/docs/18/libpq-pgservice.html).
+
 ## Architecture
 
 `core-backup` defines the object backup service contracts and shared models. `backup` implements persistence, object transfers, manifest publication, GraphQL administration, and background jobs. Service implementations use `@ServiceImplementation` for generated DI registration.
