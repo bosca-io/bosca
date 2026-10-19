@@ -109,7 +109,7 @@
             </field>
             <switch name="readme" :checked="model.draft.readme" label="Initialize with README" />
             <details class="modal-options">
-              <ui-disclosure-heading>Initialization options</ui-disclosure-heading>
+              <disclosure-heading>Initialization options</disclosure-heading>
               <field label="Gitignore template">
                 <select name="gitignore">
                   <option value="">None</option>

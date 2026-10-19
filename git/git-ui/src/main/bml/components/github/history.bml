@@ -6,7 +6,7 @@
   <island name="git-github-history" :key="page.id + page.view">
     <html:section class="settings-stack">
       <card :padded="false">
-        <ui-section-heading
+        <section-heading
           title="Synchronization history"
           subtitle="Observed state of paired repositories."
         >
@@ -39,20 +39,20 @@
               </form>
             </dialog>
           </if>
-        </ui-section-heading>
+        </section-heading>
         <ui-tabs label="Synchronization history" :items="model.page.tabs" />
         <if model.message.isNotBlank()>
           <alert :tone='if (model.failed) "error" else "success"'>{ model.message }</alert>
         </if>
         <if model.page.view == "refs">
           <if model.page.refs.isEmpty()>
-            <ui-empty-state
+            <empty-state
               icon="branch"
               title="No synchronized refs"
               message="Branch and tag observations will appear after synchronization."
             />
           <else>
-            <ui-table-scroll>
+            <table-scroll>
               <table>
                 <thead>
                   <tr>
@@ -92,13 +92,13 @@
                         <code>{ ref.githubSha ?: "Absent" }</code>
                       </td>
                       <td>
-                        <ui-time :value="ref.modified" />
+                        <time :value="ref.modified" />
                       </td>
                     </tr>
                   </for>
                 </tbody>
               </table>
-            </ui-table-scroll>
+            </table-scroll>
           </if>
           <for state in listOfNotNull(model.reviewed)>
             <html:section class="resolution">
@@ -132,7 +132,7 @@
           </for>
         <else-if model.page.view == "pulls">
           <if model.page.pulls.isEmpty()>
-            <ui-empty-state
+            <empty-state
               icon="pull"
               title="No synchronized pull requests"
               message="Imported or exported pull request observations will appear here."
@@ -149,7 +149,7 @@
               <p>
                 { pull.problem ?: "No synchronization problem recorded" }
                 ·
-                <ui-time :value="pull.modified" />
+                <time :value="pull.modified" />
               </p>
               <dl>
                 <dt>Last common</dt>
@@ -196,13 +196,13 @@
           </for>
         <else>
           <if model.page.deliveries.isEmpty()>
-            <ui-empty-state
+            <empty-state
               icon="webhook"
               title="No webhook deliveries"
               message="Received synchronization events and their results will appear here."
             />
           <else>
-            <ui-table-scroll>
+            <table-scroll>
               <table>
                 <thead>
                   <tr>
@@ -226,13 +226,13 @@
                       <td>{ if (delivery.ignored) "Ignored" else "Accepted" }</td>
                       <td>{ delivery.problem.orEmpty() } { delivery.importProblem.orEmpty() }</td>
                       <td>
-                        <ui-time :value="delivery.created" />
+                        <time :value="delivery.created" />
                       </td>
                     </tr>
                   </for>
                 </tbody>
               </table>
-            </ui-table-scroll>
+            </table-scroll>
             <p class="section-body detail-note">
               Accepted intake does not mean synchronization completed.
             </p>

@@ -70,7 +70,7 @@
                   <code class="recent-job-duration">{ bosca.git.ui.pipelineElapsed(job.started, job.finished) }</code>
                   <span class="recent-job-time">
                     <if job.started != null>
-                      <ui-time :value="job.started.orEmpty()" inheritTypography />
+                      <time :value="job.started.orEmpty()" inheritTypography />
                     <else>
                       —
                     </if>
@@ -104,7 +104,7 @@
             </div>
             <div class="field-ro">
               <dt>Created</dt>
-              <dd><ui-time :value="model.agent.created" inheritTypography /></dd>
+              <dd><time :value="model.agent.created" inheritTypography /></dd>
             </div>
             <if model.agent.instanceId != null>
               <div class="field-ro">
@@ -125,7 +125,7 @@
             <if model.agent.expiresAt != null>
               <div class="field-ro">
                 <dt>Expires</dt>
-                <dd><ui-time :value="model.agent.expiresAt.orEmpty()" inheritTypography /></dd>
+                <dd><time :value="model.agent.expiresAt.orEmpty()" inheritTypography /></dd>
               </div>
             </if>
           </dl>

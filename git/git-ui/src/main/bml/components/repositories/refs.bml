@@ -9,14 +9,14 @@
         <alert :tone='if (model.failed) "error" else "success"'>{ model.message }</alert>
       </if>
       <card :padded="false">
-        <ui-section-heading
+        <section-heading
           :title='if (model.page.tab == "branches") "Branches" else "Tags"'
           :subtitle='if (model.page.tab == "branches") "Commits compared with " + model.page.defaultBranch else ""'
         >
           <code class="section-meta">
             { if (model.page.tab == "branches") model.page.branches.size.toString() + " total" else model.page.tags.size.toString() + " shown" }
           </code>
-        </ui-section-heading>
+        </section-heading>
         <if model.page.tab == "branches">
           <if model.page.branches.isEmpty()>
             <p class="ref-empty">No branches.</p>

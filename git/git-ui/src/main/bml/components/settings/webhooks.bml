@@ -9,7 +9,7 @@
         <alert :tone='if (model.failed) "error" else "success"'>{ model.message }</alert>
       </if>
       <card :padded="false">
-        <ui-section-heading
+        <section-heading
           title="Webhooks"
           subtitle="Send repository events to an external service."
         >
@@ -66,9 +66,9 @@
               </footer>
             </form>
           </dialog>
-        </ui-section-heading>
+        </section-heading>
         <if model.page.webhooks.isEmpty()>
-          <ui-empty-state
+          <empty-state
             icon="webhook"
             title="No webhooks configured"
             message="Add a webhook to deliver pushes and other repository events to your services."
@@ -89,7 +89,7 @@
                     <span>
                       { hook.events.joinToString(", ") { it.name.lowercase().replace('_', ' ') } }
                     </span>
-                    <ui-time :value="hook.created" />
+                    <time :value="hook.created" />
                   </div>
                 </div>
                 <confirm-dialog

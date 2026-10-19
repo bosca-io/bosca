@@ -30,7 +30,7 @@
         { bosca.git.ui.formatSize(model.repository.size) }
       </code>
       <span class="gt-cell gt-muted repository-updated">
-        <ui-time :value="model.repository.updated" format="MMM d" inheritTypography />
+        <time :value="model.repository.updated" format="MMM d" inheritTypography />
       </span>
       <span class="gt-actions">
       <if model.repository.canManage>

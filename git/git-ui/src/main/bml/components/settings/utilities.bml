@@ -9,7 +9,7 @@
         <alert :tone='if (model.failed) "error" else "success"'>{ model.message }</alert>
       </if>
       <card :padded="false">
-        <ui-section-heading title="Storage" subtitle="Current repository object storage." />
+        <section-heading title="Storage" subtitle="Current repository object storage." />
         <div class="storage-row">
           <div class="identity-cell">
             <span class="record-icon">

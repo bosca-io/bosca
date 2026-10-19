@@ -35,7 +35,7 @@
       <div class="thread-comment" :data-comment-id="comment.id">
         <header class="comment-heading">
           <strong>{ page.identity(comment.authorId) }</strong>
-          <span class="comment-time"><ui-time :value="comment.created" relative ago inheritTypography /></span>
+          <span class="comment-time"><time :value="comment.created" relative ago inheritTypography /></span>
         </header>
         <p>{ comment.content }</p>
       </div>

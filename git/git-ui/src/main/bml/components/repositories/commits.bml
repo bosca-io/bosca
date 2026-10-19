@@ -12,7 +12,7 @@
               <a class="commit-message" :href="page.href(ref = commit.sha)">{ commit.message.lineSequence().first() }</a>
               <div class="commit-meta">
                 <span class="commit-author">{ commit.author.substringBefore(" <") }</span>
-                <span class="commit-time"><ui-time :value="commit.date" relative ago inheritTypography /></span>
+                <span class="commit-time"><time :value="commit.date" relative ago inheritTypography /></span>
               </div>
             </div>
             <a class="commit-sha" :href="page.href(ref = commit.sha)" :title="commit.sha">

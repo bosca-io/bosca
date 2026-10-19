@@ -39,7 +39,7 @@
         <icon name="alert" :size="14" />
         <div>
           <strong>External requirements bypassed</strong>
-          <span><ui-time :value="job.requirementsBypassedAt" /></span>
+          <span><time :value="job.requirementsBypassedAt" /></span>
           <if !job.requirementsBypassReason.isNullOrBlank()><span class="override-reason">{ job.requirementsBypassReason }</span></if>
         </div>
       </div>
@@ -63,7 +63,7 @@
           <span class="waiting-label">Waiting on requirements</span>
         </if>
         <if job.requirementsDeadline != null>
-          <span class="waiting-deadline">Requirement deadline: <ui-time :value="job.requirementsDeadline" inheritTypography /></span>
+          <span class="waiting-deadline">Requirement deadline: <time :value="job.requirementsDeadline" inheritTypography /></span>
         </if>
       </div>
     </if>

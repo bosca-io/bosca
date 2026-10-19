@@ -405,26 +405,6 @@ input[type="checkbox"] {
   }
 }
 
-.table-scroll table {
-  border-collapse: collapse;
-  min-width: 100%;
-  width: max-content;
-}
-.table-scroll th,
-.table-scroll td {
-  padding: 12px 14px;
-  text-align: left;
-  border-bottom: 1px solid var(--line);
-  vertical-align: top;
-}
-.table-scroll td {
-  overflow-wrap: normal;
-}
-.table-scroll th,
-.table-scroll button,
-.table-scroll code {
-  white-space: nowrap;
-}
 /* Log rows arrive from both BML and the live subscription renderer. */
 .step-logs .log-line {
   display: flex;
@@ -511,24 +491,6 @@ input[type="checkbox"] {
   border-radius: 0;
   background: transparent;
 }
-.table-scroll th {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--fg-3);
-  background: transparent;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-}
-.table-scroll td {
-  font-size: 12.5px;
-  color: var(--fg-1);
-}
-.table-scroll tbody tr:hover {
-  background: color-mix(in oklch, var(--bg-3) 40%, transparent);
-}
-.table-scroll tr:last-child td {
-  border-bottom: 0;
-}
 .action-panel {
   padding: 12px 0;
   border: 0;
@@ -548,47 +510,8 @@ input[type="checkbox"] {
   color: var(--fg-1);
 }
 
-.panel h2:first-child,
-.panel h3:first-child {
-  margin-top: 0;
-}
-.panel .owner-picker {
-  width: min(100%, 300px);
-  flex-shrink: 1;
-}
-.panel .toolbar {
-  align-items: end;
-}
-.panel .owner-label {
-  font-size: 12px;
-  color: var(--fg-2);
-}
-.panel .form-grid {
-  padding-bottom: 0;
-}
-.panel details > summary {
-  cursor: pointer;
-  font-weight: 600;
-}
-
-
-.ui-section h2:first-child,
-.ui-section h3:first-child {
-  margin-top: 0;
-}
-.ui-section .toolbar {
-  align-items: end;
-}
-.ui-section .toolbar:empty {
-  display: none;
-}
-.ui-section .owner-picker {
-  width: 100%;
-  min-width: 0;
-}
-.ui-section details > summary {
-  cursor: pointer;
-  font-weight: 500;
+.git-comment-field {
+  --r-md: 6px;
 }
 .git-document .pull-main .markdown {
   padding: 0;
@@ -907,10 +830,6 @@ input[type="checkbox"] {
   padding: 0;
   font: inherit;
   cursor: pointer;
-}
-
-details[open] > .disclosure-heading > .disclosure-chevron {
-  transform: rotate(0deg);
 }
 
 /* Studio GlassTable. Rows are separate islands, so the table language is shared globally. */

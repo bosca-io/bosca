@@ -9,7 +9,7 @@
         <alert :tone='if (model.failed) "error" else "success"'>{ model.message }</alert>
       </if>
       <card :padded="false">
-        <ui-section-heading
+        <section-heading
           title="Group permissions"
           :subtitle='model.page.permissions.size.toString() + (if (model.page.permissions.size == 1) " permission" else " permissions") + " assigned to security groups."'
         >
@@ -57,15 +57,15 @@
               </footer>
             </form>
           </dialog>
-        </ui-section-heading>
+        </section-heading>
         <if model.page.permissions.isEmpty()>
-          <ui-empty-state
+          <empty-state
             icon="users"
             title="No group permissions"
             message="Grant a security group access to this repository."
           />
         <else>
-          <ui-table-scroll>
+          <table-scroll>
             <table>
               <thead>
                 <tr>
@@ -110,7 +110,7 @@
                 </for>
               </tbody>
             </table>
-          </ui-table-scroll>
+          </table-scroll>
         </if>
       </card>
     </html:section>

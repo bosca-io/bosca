@@ -16,7 +16,7 @@
       <code class="count-label">{ page.agents.size } agents</code>
     </form>
     <card :padded="false">
-      <ui-section-heading title="Build Agents" subtitle="Registered runners and orchestrators that execute pipeline jobs" />
+      <section-heading title="Build Agents" subtitle="Registered runners and orchestrators that execute pipeline jobs" />
       <div class="glass-table">
         <div class="gt-header agent-columns" aria-hidden="true">
           <span>Agent</span>

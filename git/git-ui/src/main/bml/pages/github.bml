@@ -16,7 +16,7 @@
         <else>
           <git-github-history :page="page" />
           <details class="github-configuration" :open="page.pair == null">
-            <ui-disclosure-heading>Pairing and secrets</ui-disclosure-heading>
+            <disclosure-heading>Pairing and secrets</disclosure-heading>
             <div class="configuration-body">
               <git-github-pair :page="page" />
               <git-github-secret :page="page" />

@@ -9,16 +9,16 @@
         <alert :tone='if (model.failed) "error" else "success"'>{ model.message }</alert>
       </if>
       <card :padded="false">
-        <ui-section-heading
+        <section-heading
           title="Branch protection"
           subtitle="Define review and history requirements for matching branches."
         >
           <button primary size="sm" icon="plus" data-new-rule @click="model.reset()">
             New rule
           </button>
-        </ui-section-heading>
+        </section-heading>
         <if model.page.rules.isEmpty()>
-          <ui-empty-state
+          <empty-state
             icon="shield"
             title="No branch protection rules"
             message="Add a rule to require pull requests, reviews or status checks on important branches."

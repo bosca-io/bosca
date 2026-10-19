@@ -56,7 +56,7 @@
       <if !model.page.canReview && model.page.pull.status.name == "DRAFT" && model.page.view != "overview">
         <p class="detail-note">Mark this draft ready before submitting a review.</p>
       </if>
-      <ui-toast
+      <toast
         :id='"pull-review-notice-" + model.page.pull.id'
         :message='if (model.failed) "" else model.message'
         :sequence="model.noticeSequence"
@@ -68,7 +68,7 @@
       <if model.page.view == "reviews">
         <if model.reviews.isEmpty()>
           <card :padded="false">
-            <ui-empty-state
+            <empty-state
               icon="pull"
               title="No reviews yet"
               :message='if (model.page.canReview) "Comment, approve, or request changes." else "Reviews for this pull request will appear here."'
@@ -83,7 +83,7 @@
                   <strong>{ model.page.identity(review.reviewerId) }</strong>
                   <git-pull-review-status :status="review.status.name" :dismissed="review.dismissedAt != null" />
                   <span class="review-time">
-                    <ui-time :value="review.created" relative ago inheritTypography />
+                    <time :value="review.created" relative ago inheritTypography />
                   </span>
                 </header>
                 <if review.body.orEmpty().isNotBlank()>
@@ -92,7 +92,7 @@
                 <if review.dismissedAt != null>
                   <p class="detail-note">
                     Dismissed
-                    <ui-time :value="review.dismissedAt.orEmpty()" />
+                    <time :value="review.dismissedAt.orEmpty()" />
                     <if review.dismissReason.orEmpty().isNotBlank()>
                       ·
                       { bosca.git.ui.reviewDismissReasonLabel(review.dismissReason.orEmpty()) }
@@ -115,7 +115,7 @@
                   <if model.replyToCommentId == thread.id>
                     <git-pull-comment :model="model" @submit="model.comment(form.body, ctx)">
                       <button size="sm" aria-label="Cancel reply" @click="model.cancelComment()">Cancel</button>
-                      <button ref="commentSubmit" size="sm" type="submit" primary :disabled="model.commentBody.isBlank()">Reply</button>
+                      <button ref="commentSubmit" size="sm" type="submit" primary>Reply</button>
                     </git-pull-comment>
                   </if>
                 </git-pull-thread>
@@ -126,9 +126,9 @@
       </if>
       <if model.page.view == "overview">
         <card :padded="false">
-          <ui-section-heading title="Reviews">
+          <section-heading title="Reviews">
             <code class="section-meta">{ model.reviews.size } reviews</code>
-          </ui-section-heading>
+          </section-heading>
           <if model.reviews.isEmpty()>
             <p class="summary-empty">No reviews yet.</p>
           <else>
@@ -153,7 +153,7 @@
                       <p>{ review.body.orEmpty() }</p>
                     </if>
                   </div>
-                  <code class="review-time"><ui-time :value="review.created" relative ago inheritTypography /></code>
+                  <code class="review-time"><time :value="review.created" relative ago inheritTypography /></code>
                 </article>
               </for>
             </div>
@@ -179,9 +179,9 @@
           </nav>
         </div>
         <if model.page.diffUnavailableMessage.isNotBlank()>
-          <ui-empty-state icon="branch" title="Comparison unavailable" :message="model.page.diffUnavailableMessage" />
+          <empty-state icon="branch" title="Comparison unavailable" :message="model.page.diffUnavailableMessage" />
         <else-if model.diff.isEmpty()>
-          <ui-empty-state
+          <empty-state
             icon="file"
             title="No files changed"
             :message='if (model.page.selectedCommit != null) "This commit has no file changes." else "The source and target have no file changes."'
@@ -255,7 +255,7 @@
                               <if model.replyToCommentId == thread.id>
                                 <git-pull-comment :model="model" @submit="model.comment(form.body, ctx)">
                                   <button size="sm" aria-label="Cancel reply" @click="model.cancelComment()">Cancel</button>
-                                  <button ref="commentSubmit" size="sm" type="submit" primary :disabled="model.commentBody.isBlank()">Reply</button>
+                                  <button ref="commentSubmit" size="sm" type="submit" primary>Reply</button>
                                 </git-pull-comment>
                               </if>
                             </git-pull-thread>
@@ -266,7 +266,7 @@
                               <if model.ownReviews.isEmpty()>
                                 <button size="sm" icon="eye" @click="model.openReview()">Review changes</button>
                               <else>
-                                <button ref="commentSubmit" size="sm" type="submit" primary :disabled="model.commentBody.isBlank()">Comment</button>
+                                <button ref="commentSubmit" size="sm" type="submit" primary>Comment</button>
                               </if>
                             </git-pull-comment>
                           </if>
@@ -314,7 +314,7 @@
                 <if model.replyToCommentId == thread.id>
                   <git-pull-comment :model="model" @submit="model.comment(form.body, ctx)">
                     <button size="sm" aria-label="Cancel reply" @click="model.cancelComment()">Cancel</button>
-                    <button ref="commentSubmit" size="sm" type="submit" primary :disabled="model.commentBody.isBlank()">Reply</button>
+                    <button ref="commentSubmit" size="sm" type="submit" primary>Reply</button>
                   </git-pull-comment>
                 </if>
               </git-pull-thread>

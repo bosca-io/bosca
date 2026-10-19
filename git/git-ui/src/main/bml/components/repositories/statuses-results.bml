@@ -3,7 +3,7 @@
   <div class="status-layout">
     <div class="commit-panel">
       <card :padded="false">
-        <ui-section-heading
+        <section-heading
           title="Recent Commits"
           :subtitle='if (page.id.isBlank()) "Select a repository" else page.recent.size.toString() + " commits"'
         />
@@ -21,7 +21,7 @@
                 <span class="commit-msg">{ commit.message.lineSequence().first() }</span>
                 <span class="commit-meta">
                   { commit.author.substringBefore(" <") } ·
-                  <ui-time :value="commit.date" inheritTypography />
+                  <time :value="commit.date" inheritTypography />
                 </span>
               </a>
             </for>
@@ -39,7 +39,7 @@
       </form>
       <if page.sha.isNotBlank() && page.statuses.isNotEmpty()>
         <card :padded="false">
-          <ui-section-heading title="Status Checks" :subtitle='page.statuses.size.toString() + " checks"' />
+          <section-heading title="Status Checks" :subtitle='page.statuses.size.toString() + " checks"' />
           <div class="status-list">
             <for status in page.statuses>
               <div class="status-row" :style='"--state-color: " + bosca.git.ui.statusColor(status.state.name)'>
@@ -52,7 +52,7 @@
                     <div class="status-desc">{ status.description.orEmpty() }</div>
                   </if>
                 </div>
-                <span class="status-time"><ui-time :value="status.created" inheritTypography /></span>
+                <span class="status-time"><time :value="status.created" inheritTypography /></span>
                 <git-status-badge :status="status.state.name" run />
                 <if bosca.git.ui.safeWebHref(status.targetUrl).isNotBlank()>
                   <a

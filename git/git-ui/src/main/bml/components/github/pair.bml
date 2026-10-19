@@ -6,7 +6,7 @@
   <island name="git-github-pair" :key="page.id">
     <html:section class="settings-stack" :data-next-href="model.nextHref">
       <card :padded="false">
-        <ui-section-heading
+        <section-heading
           title="Repository pairing"
           subtitle="Configure the paired repository and synchronization credentials."
         />

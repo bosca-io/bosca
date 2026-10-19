@@ -383,7 +383,7 @@ class GitUiRoutesTest {
     fun `migrated controls have no local registrations and use library client mounts`() {
         val migrated = listOf(
             "button", "input", "field", "card", "switch", "alert", "badge", "spinner", "loading-state",
-            "icon", "icon-button", "icon-link", "tooltip", "copy", "copy-field", "popover", "dialog", "confirm-dialog", "select", "search-input", "segmented-control",
+            "icon", "icon-button", "icon-link", "tooltip", "copy", "copy-field", "popover", "dialog", "confirm-dialog", "select", "search-input", "segmented-control", "section-heading", "table-scroll", "disclosure-heading", "empty-state", "time", "comment-editor", "toast",
         )
         val registered = bml.generated.BmlComponents.all.map { it.tag }.toSet()
         for (tag in migrated) {
@@ -391,20 +391,28 @@ class GitUiRoutesTest {
             assertTrue(id in registered, "Missing library registration for $tag")
             assertFalse("ui-$tag" in registered, "Unused local registration for $tag")
         }
-        assertFalse("ui-checkbox" in registered, "Unused local checkbox registration")
+        for (tag in listOf("checkbox", "section", "panel")) {
+            assertFalse("ui-$tag" in registered, "Unused local registration for $tag")
+        }
         val html = listOf(
             "/repositories/repo?file=README.md",
             "/pulls/pull?repo=repo&number=1&view=files",
             "/search?repo=repo&q=snippet",
+            "/pulls?status=CLOSED",
+            "/repositories/repo/github",
         ).joinToString("\n") { path ->
             val response = get(path)
             assertEquals(200, response.statusCode(), response.body())
             response.body()
         }
-        for (tag in listOf("icon-button", "icon-link", "tooltip", "copy", "copy-field", "popover", "dialog", "select", "search-input", "segmented-control")) {
+        for (tag in listOf("icon-button", "icon-link", "tooltip", "copy", "copy-field", "popover", "dialog", "select", "search-input", "segmented-control", "toast")) {
             val id = bosca.bml.library.BmlLibraryArtifacts.componentId("io.bosca:bml-design", tag)
             assertTrue("data-bml-component=\"$id\"" in html, "Missing library mount for $tag")
             assertFalse("data-bml-component=\"ui-$tag\"" in html)
+        }
+        for (tag in listOf("section-heading", "table-scroll", "disclosure-heading", "empty-state", "time")) {
+            val id = bosca.bml.library.BmlLibraryArtifacts.componentId("io.bosca:bml-design", tag)
+            assertTrue("data-bml-c=\"$id\"" in html, "Missing library scope for $tag")
         }
         val confirmationId = bosca.bml.library.BmlLibraryArtifacts.componentId("io.bosca:bml-design", "confirm-dialog")
         assertTrue("data-bml-c=\"$confirmationId\"" in html, "Missing projected library confirmation description")
@@ -1354,7 +1362,9 @@ class GitUiRoutesTest {
         val path = "/pulls/pull?repo=repo&number=1&view=files"
         val selected = action(path, "git-pull-review.model", "select", listOf("a.txt", 0, 1))
         val html = Json.parseToJsonElement(selected.body()).jsonObject.getValue("html").jsonPrimitive.content
-        assertTrue("ui-comment-editor" in html && "Comment on a.txt:1" in html, html)
+        val commentId = bosca.bml.library.BmlLibraryArtifacts.componentId("io.bosca:bml-design", "comment-editor")
+        assertTrue("data-bml-component=\"$commentId\"" in html && "Comment on a.txt:1" in html, html)
+        assertFalse("data-bml-component=\"ui-comment-editor\"" in html, html)
         assertFalse("Your review" in html, html)
         val original = actionState(selected)
         val review = original.getValue("reviews").jsonArray.first().jsonObject

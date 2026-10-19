@@ -14,7 +14,7 @@
       </div>
     </if>
     <if page.rows.isEmpty()>
-      <ui-empty-state
+      <empty-state
         icon="pull"
         :title='if (page.status == "ALL") "No pull requests" else "No " + page.status.lowercase() + " pull requests"'
         message="Try another repository or pull request state."
@@ -39,7 +39,7 @@
                 <code class="pull-branches">{ pull.source } → { pull.target }</code>
               </div>
             </div>
-            <span class="pull-time"><ui-time :value="pull.updated" relative ago inheritTypography /></span>
+            <span class="pull-time"><time :value="pull.updated" relative ago inheritTypography /></span>
           </a>
         </for>
       </div>

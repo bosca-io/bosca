@@ -1,11 +1,11 @@
 <component tag="git-pull-conflicts">
   <prop name="page" type="bosca.git.ui.PullPage" required />
   <card :padded="false">
-    <ui-section-heading title="Merge Conflicts">
+    <section-heading title="Merge Conflicts">
       <badge color="#ff5d6c">
         { page.pull.conflictingFiles.size.toString() + if (page.pull.conflictingFiles.size == 1) " conflict" else " conflicts" }
       </badge>
-    </ui-section-heading>
+    </section-heading>
     <div class="conflict-body">
       <div class="conflict-banner">
         <span class="conflict-icon"><icon name="alert" :size="16" /></span>

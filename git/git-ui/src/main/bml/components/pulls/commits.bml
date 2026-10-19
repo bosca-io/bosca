@@ -2,7 +2,7 @@
   <prop name="page" type="bosca.git.ui.PullPage" required />
   <html:section class="commits-panel">
     <if page.diffUnavailableMessage.isNotBlank()>
-      <ui-empty-state icon="branch" title="Commit history unavailable" :message="page.diffUnavailableMessage" />
+      <empty-state icon="branch" title="Commit history unavailable" :message="page.diffUnavailableMessage" />
     <else>
       <if page.pull.status.name == "MERGED">
         <p class="detail-note">Commits from the recorded merge history. Squash merges contain the single squash commit.</p>
@@ -18,7 +18,7 @@
                 <a class="commit-message" :href="page.commitHref(commit.sha)">{ commit.message.lineSequence().first() }</a>
                 <div class="commit-meta">
                   <span class="commit-author">{ commit.authorName }</span>
-                  <span class="commit-time"><ui-time :value="commit.authorDate" relative ago inheritTypography /></span>
+                  <span class="commit-time"><time :value="commit.authorDate" relative ago inheritTypography /></span>
                 </div>
               </div>
               <a class="commit-sha" :href="page.commitHref(commit.sha)" :title="commit.sha">

@@ -4,21 +4,21 @@
     <if page.failed>
       <alert>{ page.message }</alert>
     <else-if page.id.isBlank()>
-      <ui-empty-state
+      <empty-state
         icon="folder"
         title="No repositories available"
         message="Choose an accessible repository to search its content and file paths."
       />
     <else-if page.query.isBlank()>
-      <ui-empty-state
+      <empty-state
         icon="search"
         title="Search this repository"
         message="Enter text to find matching content, or choose Paths to find a file by name."
       />
     <else-if page.notice.isNotBlank()>
-      <ui-empty-state icon="branch" :message="page.notice" />
+      <empty-state icon="branch" :message="page.notice" />
     <else-if page.hits.isEmpty()>
-      <ui-empty-state
+      <empty-state
         icon="search"
         :title='"No matches for “" + page.query.trim() + "”"'
         message="Try another query, repository or ref."

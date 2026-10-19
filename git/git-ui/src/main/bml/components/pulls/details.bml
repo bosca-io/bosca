@@ -47,12 +47,12 @@
       </div>
       <div class="info-row">
         <dt class="info-label">Created</dt>
-        <dd class="info-value"><ui-time :value="page.pull.created" format="MMM d, yyyy" inheritTypography /></dd>
+        <dd class="info-value"><time :value="page.pull.created" format="MMM d, yyyy" inheritTypography /></dd>
       </div>
       <if page.pull.mergedAt != null>
         <div class="info-row">
           <dt class="info-label">Merged</dt>
-          <dd class="info-value"><ui-time :value="page.pull.mergedAt.orEmpty()" format="MMM d, yyyy" inheritTypography /></dd>
+          <dd class="info-value"><time :value="page.pull.mergedAt.orEmpty()" format="MMM d, yyyy" inheritTypography /></dd>
         </div>
       </if>
       <if page.pull.mergeStrategy != null>

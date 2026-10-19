@@ -25,7 +25,7 @@
               <span class="pipeline-name">{ pipeline.name }</span>
               <code class="pipeline-path">{ pipeline.filePath }</code>
             </div>
-            <span class="pipeline-updated">Updated <ui-time :value="pipeline.updated" relative ago inheritTypography /></span>
+            <span class="pipeline-updated">Updated <time :value="pipeline.updated" relative ago inheritTypography /></span>
             <if bosca.git.ui.graphql.GitPipelineTriggerType.MANUAL in pipeline.triggerTypes && pipeline.repositoryId in page.executableRepositories>
               <a class="button-link" :href="page.triggerHref(pipeline.repositoryId, pipeline.id)">
                 <span class="run-icon"><icon name="play" :size="14" /></span>
@@ -63,7 +63,7 @@
                   <code class="run-ref">{ pipeline.runs.first().ref }</code>
                   <code class="run-sha">{ pipeline.runs.first().commitSha.take(8) }</code>
                   <code class="run-duration">{ bosca.git.ui.pipelineDuration(pipeline.runs.first().durationSeconds) }</code>
-                  <span class="run-time"><ui-time :value="pipeline.runs.first().created" inheritTypography /></span>
+                  <span class="run-time"><time :value="pipeline.runs.first().created" inheritTypography /></span>
                   <git-status-badge :status="pipeline.runs.first().status.name" run />
                 <else>
                   <span class="no-runs-label">No runs</span>

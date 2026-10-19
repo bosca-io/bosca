@@ -60,7 +60,7 @@
                   <span class="commit-message">{ commit.message.lineSequence().first() }</span>
                   <span class="commit-meta">
                     <span class="commit-author">{ commit.authorName }</span>
-                    <span class="commit-time"><ui-time :value="commit.authorDate" relative ago inheritTypography /></span>
+                    <span class="commit-time"><time :value="commit.authorDate" relative ago inheritTypography /></span>
                   </span>
                 </span>
                 <code class="commit-sha">{ commit.sha.take(8) }</code>

@@ -9,7 +9,7 @@
         <alert :tone='if (model.failed) "error" else "success"'>{ model.message }</alert>
       </if>
       <card :padded="false">
-        <ui-section-heading
+        <section-heading
           title="Repository details"
           subtitle="Name, description and defaults for this repository."
         >
@@ -66,7 +66,7 @@
               </footer>
             </form>
           </dialog>
-        </ui-section-heading>
+        </section-heading>
         <dl class="repository-details">
           <div>
             <dt>Name</dt>

@@ -124,10 +124,10 @@ await call("Network.setCookie", {
   ),
   url: base,
 });
-const foundationTags = ["button", "input", "field", "card", "switch", "alert", "badge", "spinner", "loading-state", "icon", "confirm-dialog"];
+const foundationTags = ["button", "input", "field", "card", "switch", "alert", "badge", "spinner", "loading-state", "icon", "confirm-dialog", "section-heading", "table-scroll", "disclosure-heading", "empty-state", "time"];
 const foundationPrefix = `bml-${Buffer.from("io.bosca:bml-design").toString("hex")}-`;
 const seenFoundations = new Set();
-const clientControls = ["icon-button", "icon-link", "tooltip", "copy", "copy-field", "popover", "dialog", "select", "search-input", "segmented-control"];
+const clientControls = ["icon-button", "icon-link", "tooltip", "copy", "copy-field", "popover", "dialog", "select", "search-input", "segmented-control", "toast"];
 const seenClientControls = new Set();
 async function checkFoundationComponents() {
   const mounts = await ev(`[...document.querySelectorAll('[data-bml-component]')].map(e=>e.dataset.bmlComponent)`);

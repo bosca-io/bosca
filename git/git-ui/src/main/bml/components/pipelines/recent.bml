@@ -23,7 +23,7 @@
           </for>
         </div>
         <code class="run-duration">{ bosca.git.ui.pipelineDuration(run.durationSeconds) }</code>
-        <span class="run-time"><ui-time :value="run.created" relative ago inheritTypography /></span>
+        <span class="run-time"><time :value="run.created" relative ago inheritTypography /></span>
         <git-status-badge :status="run.status.name" run />
       </a>
     </for>

@@ -127,7 +127,7 @@
         <div class="job-list" aria-label="Jobs">
           <if model.run.jobs.isEmpty()>
             <card :padded="false">
-              <ui-empty-state icon="workflow" title="No jobs" message="This run contains no jobs." />
+              <empty-state icon="workflow" title="No jobs" message="This run contains no jobs." />
             </card>
           </if>
           <for job in model.run.jobs>
@@ -172,7 +172,7 @@
         </div>
         <if model.run.artifacts.isNotEmpty()>
           <card :padded="false">
-            <ui-section-heading title="Artifacts" />
+            <section-heading title="Artifacts" />
             <div class="artifact-list">
               <for artifact in model.run.artifacts>
                 <a
@@ -183,7 +183,7 @@
                   <icon name="boxes" :size="14" :strokeWidth="2.0" />
                   <code class="artifact-name">{ artifact.name }</code>
                   <code class="artifact-size">{ bosca.git.ui.formatSize(artifact.sizeBytes) }</code>
-                  <ui-time :value="artifact.created" />
+                  <time :value="artifact.created" />
                   <icon name="download" :size="14" />
                 </a>
               </for>
@@ -191,7 +191,7 @@
           </card>
         </if>
         <card :padded="false">
-          <ui-section-heading title="Details" />
+          <section-heading title="Details" />
           <dl class="detail-grid">
             <div><dt>Run ID</dt><dd><code>{ model.run.id }</code></dd></div>
             <div><dt>Pipeline ID</dt><dd><code>{ model.run.pipelineId }</code></dd></div>
@@ -199,9 +199,9 @@
             <if model.run.concurrencyGroup != null>
               <div><dt>Concurrency Group</dt><dd><code>{ model.run.concurrencyGroup }</code></dd></div>
             </if>
-            <div><dt>Created</dt><dd><ui-time :value="model.run.created" /></dd></div>
-            <div><dt>Started</dt><dd><if model.run.started != null><ui-time :value="model.run.started.orEmpty()" /><else>—</if></dd></div>
-            <div><dt>Finished</dt><dd><if model.run.finished != null><ui-time :value="model.run.finished.orEmpty()" /><else>—</if></dd></div>
+            <div><dt>Created</dt><dd><time :value="model.run.created" /></dd></div>
+            <div><dt>Started</dt><dd><if model.run.started != null><time :value="model.run.started.orEmpty()" /><else>—</if></dd></div>
+            <div><dt>Finished</dt><dd><if model.run.finished != null><time :value="model.run.finished.orEmpty()" /><else>—</if></dd></div>
           </dl>
         </card>
       </div>
