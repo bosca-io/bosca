@@ -63,6 +63,42 @@ h1 {
   font: 17px/24px serif;
   color: var(--accent);
 }
+.source-example {
+  height: 380px;
+  flex: none;
+  margin-top: 16px;
+}
+.source-cases {
+  display: grid;
+  gap: 16px;
+  padding: 16px;
+  margin-top: 20px;
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+.source-theme.light {
+  --source-keyword: #7e22ce;
+  --source-string: #15803d;
+  --source-comment: #475569;
+  --source-selection: #bfdbfe;
+}
+.source-theme.purple {
+  --source-keyword: #e9d5ff;
+  --source-string: #86efac;
+  --source-comment: #cbd5e1;
+  --source-selection: #6b21a8;
+}
+.source-theme.alternate {
+  --source-bg: #eff6ff;
+  --source-fg: #1e3a8a;
+  --source-keyword: #1d4ed8;
+  --source-string: #166534;
+  --source-gutter: #1e40af;
+  --source-active-line: #dbeafe;
+  --source-selection: #93c5fd;
+  --source-panel-bg: #dbeafe;
+}
 .actions {
   display: flex;
   flex-wrap: wrap;

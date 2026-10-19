@@ -121,3 +121,12 @@ controlled values and native reset. Repeated removal/remount checks listeners an
 Script-disabled checks retain comment form values, every rendered file link and server timestamps.
 Timestamp tests cover English UTC/default, custom offset formats, relative past/future/older dates,
 escaped invalid values and invalid-pattern errors. Desktop and phone screenshots cover this page.
+
+The `/source` page consumes the compiled read-only CodeMirror viewer with no CodeMirror npm
+dependency in this application. It covers explicit and inferred languages, requested lines independent
+of URL parameters, wrapping, compact/bare and empty/plain-text cases, escaped native fallback,
+search, read-only keyboard behavior, preserved state/focus and changed caller options. Its two
+palettes and live CSS overrides exercise editor, gutter, active-line, search and syntax colors.
+Removal/remount checks CodeMirror destruction, observers and document listeners. HTTP/archive
+checks prove that ordinary button/card pages exclude viewer JS/CSS while source pages include it.
+Git's editable and preview workflows remain in the Git application; its component cutover is separate.

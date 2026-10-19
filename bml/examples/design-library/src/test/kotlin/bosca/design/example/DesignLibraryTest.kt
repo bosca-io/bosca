@@ -43,7 +43,7 @@ class DesignLibraryTest {
             assertEquals("bosca.design.generated", manifest.generatedPackage)
             assertEquals(setOf("alert", "app-header", "badge", "bosca-mark", "button", "card", "checkbox", "comment-editor", "confirm-dialog", "copy", "copy-field", "dialog", "disclosure-heading",
                 "empty-state", "field", "icon", "icon-button", "icon-link", "input", "loading-state", "page-heading", "page-shell", "panel", "popover",
-                "search-input", "select", "section", "section-heading", "segmented-control", "spinner", "switch", "table-scroll", "tabs", "time", "toast", "tree", "tree-item", "tooltip", "view-tabs"),
+                "search-input", "select", "section", "section-heading", "segmented-control", "source-view", "spinner", "switch", "table-scroll", "tabs", "time", "toast", "tree", "tree-item", "tooltip", "view-tabs"),
                 manifest.components.filter { it.exported }.map { it.tag }.toSet())
             assertTrue(manifest.requirements.isEmpty())
             assertTrue(manifest.providerRegistrars.isEmpty())
@@ -56,7 +56,7 @@ class DesignLibraryTest {
             assertEquals("List<bosca.design.model.NavigationItem>", heading.props.single { it.name == "trail" }.declaredType)
             assertTrue(jar.getJarEntry("bosca/design/model/NavigationItem.class") != null)
             assertTrue(manifest.components.single { it.tag == "app-header" }.clientModule != null)
-            assertTrue(listOf("tooltip", "icon-button", "icon-link", "dialog", "popover", "copy", "copy-field", "toast", "search-input", "segmented-control", "view-tabs", "tabs", "select", "tree", "comment-editor").all { tag ->
+            assertTrue(listOf("tooltip", "icon-button", "icon-link", "dialog", "popover", "copy", "copy-field", "toast", "search-input", "segmented-control", "view-tabs", "tabs", "select", "tree", "comment-editor", "source-view").all { tag ->
                 manifest.components.single { it.tag == tag }.clientModule != null
             })
             val toast = manifest.components.single { it.tag == "toast" }
@@ -66,7 +66,38 @@ class DesignLibraryTest {
             assertTrue(jar.getJarEntry("META-INF/bml/client-manifest.json") != null)
             val notice = jar.getInputStream(jar.getJarEntry("META-INF/licenses/bml-design/lucide.txt")).reader().readText()
             assertTrue("ISC License" in notice, notice)
+            val sourceNotice = jar.getInputStream(jar.getJarEntry("META-INF/licenses/bml-design/source-view.txt")).reader().readText()
+            assertTrue("codemirror 6.0.2" in sourceNotice && "Permission is hereby granted" in sourceNotice, sourceNotice)
             assertFalse(jar.entries().asSequence().any { it.name.startsWith("bosca/git/") })
+        }
+    }
+
+    @Test
+    fun `source viewer assets are reachable only on source pages with readable server fallback`() {
+        val application = classpath.split(File.pathSeparator).map(::File).single { it.name.startsWith("design-library-") }
+        JarFile(application).use { jar ->
+            fun script(name: String): String {
+                val entry = jar.entries().asSequence().single { it.name.endsWith("/prod/$name.page.js") }
+                return jar.getInputStream(entry).reader().readText()
+            }
+            val basic = script("index")
+            assertFalse("cm-editor" in basic || "source-keyword" in basic)
+            val source = script("source")
+            assertTrue("cm-editor" in source && "source-keyword" in source)
+            assertFalse("Discard your uncommitted changes?" in source || "Rendering preview" in source)
+            assertFalse(Regex("""(?:from|import)\s*["'](?:@codemirror|codemirror|@lezer)""").containsMatchIn(source))
+        }
+        for (development in listOf(false, true)) withServer(development) { base, client ->
+            fun styles(html: String): List<String> = Regex("<link[^>]+href=\"([^\"]+)\"").findAll(html)
+                .map { it.groupValues[1].replace("&amp;", "&") }.filter { it.substringBefore('?').endsWith(".css") }
+                .map { request(client, base, it).also { response -> assertEquals(200, response.statusCode()) }.body() }.toList()
+            val basic = request(client, base, "/").body()
+            assertFalse(styles(basic).any { ".source-keyword" in it || ".cm-editor" in it })
+            val source = request(client, base, "/source").body()
+            assertTrue("data-bml-source-view" in source && "data-source=\"light\"" in source, source)
+            assertTrue("&lt;script&gt;unsafe()&lt;/script&gt;" in source, source)
+            assertFalse("<script>unsafe()</script>" in source, source)
+            assertTrue(styles(source).any { ".source-keyword" in it && ".cm-editor" in it })
         }
     }
 

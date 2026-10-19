@@ -80,6 +80,7 @@ import provides `<design:button>` with the same runtime identity and assets as `
 | `tree-item` | Required `path: String` and `label: String`; `href: String = ""`; `directory`, `expanded`, `selected`, `wrap`: `Boolean = false`; `depth: Int = 0` | Flat ARIA tree item. Additional attributes/classes/actions target its native directory button or native file anchor. Paths identify hierarchy, depth controls indentation/ARIA level, and selected file links use `aria-current="page"`. No child content. |
 | `time` | Required `value: String`; `relative`, `ago`, `inheritTypography`: `Boolean = false`; `format: String = ""` | Native time receives additional attributes/classes, its original value as datetime/title and an English server-rendered label. No child content. Use `html:time` for a native timestamp after importing this component. |
 | `comment-editor` | Required `id: String` and `label: String`; `value`, `error`, `hint`, `describedBy`: `String = ""`; `submitDisabled: Boolean = false`; `submitLabel: String = "comment"`; `placeholder: String = "Write a comment…"`; `name: String = "body"` | Native required textarea receives additional attributes/classes, its ID and preservation key. Default children supply action controls. The caller owns its surrounding form, submission and error outcomes. |
+| `source-view` | Required `content: String`; `path`, `language`, `preserveKey`: `String = ""`; `label: String = "File source"`; `line: Int = 0`; `compact`, `bare`, `wrapped`: `Boolean = false` | Section receives additional attributes/classes and default toolbar action children. CodeMirror enhances escaped, focusable source markup into a read-only viewer. The application owns the content, requested line and surrounding layout. |
 
 Regular controls are 32px high, compact controls 30px, and extra-small buttons 24px. Field labels use
 an 18px line and a 6px control gap. Buttons support the `ghost`, `danger`, `block`, and `icon-only`
@@ -298,6 +299,56 @@ default. Change `id` to reset after successful submission, including when the se
 empty. The helper reconnects to the current form, and unmount removes its listeners and observer.
 It supplies no storage, transport, permissions or rich-text formatting.
 
+## Read-only source
+
+`source-view` displays supplied text. `path` infers the language and adds context to the accessible
+label; an explicit `language` takes priority. Existing inference covers JavaScript/TypeScript/JSX/TSX,
+Kotlin, Python, Java, Rust, Go, JSON, Markdown, HTML/BML/Vue markup, CSS/SCSS, YAML and SQL. An
+unknown language uses plain text. `line` optionally selects and scrolls to a valid one-based line;
+zero, negative and out-of-range values do not move the selection. The viewer does not read URLs.
+
+The toolbar supplies a line-wrap toggle and projected application actions. `wrapped` controls initial
+wrapping and changed server values. `compact` keeps the source's 110/180/240px snippet sizes for up
+to three, up to eight and longer source texts. `bare` removes the toolbar and allows a 225–800px
+source surface with a smaller phone viewport bound. When both are set, compact sizing applies and
+the toolbar stays hidden. Normal viewers can use a caller class to size their surrounding surface.
+
+CodeMirror remains read-only, with selection, search, line numbers and its normal folding controls.
+Escape then Tab restores native focus navigation, including for bare viewers.
+Use a stable `preserveKey` to retain CodeMirror state, scroll, focus and local wrapping through
+unrelated island patches. Its children stay client-owned; change/remove the key when changing
+`content` or toolbar children. Label, path/language, requested line and changed `wrapped` props
+reconcile on a preserved root. Unmount destroys that instance's CodeMirror view and listeners.
+Without scripts, escaped source remains in a focusable, scrollable `pre` with the supplied wrapping.
+
+CodeMirror and its styles ship inside the ordinary compiled library dependency. Consuming apps
+need no CodeMirror npm installation. Its helper and CSS are reached through `source-view`, so pages
+using only ordinary controls do not load viewer JS/CSS. The current viewer includes the existing
+language set together; it does not claim loading one parser per file. The producer's private npm
+manifest and lockfile pin its dependencies, and bundled dependency notices are packaged at
+`META-INF/licenses/bml-design/source-view.txt`.
+
+Git retains repository/ref preview, editing, commits, dirty-navigation confirmation and post-save
+routing. Its existing components remain until the application's component cutover. The shared
+viewer provides none of those behaviors.
+
+Viewer colors inherit ordinary design variables. Optional `--source-*` overrides control its
+background/foreground, gutter, active line, selection, panels, search match and syntax groups:
+
+| Variable | Default |
+| --- | --- |
+| `--source-bg`, `--source-fg`, `--source-gutter` | `--bg-1`, `--fg-1`, `--fg-3` |
+| `--source-active-line`, `--source-panel-bg` | `--bg-2` |
+| `--source-selection` | 25% accent mixed with transparent |
+| `--source-search-match` | 30% warning mixed with transparent |
+| `--source-keyword`, `--source-function`, `--source-operator`, `--source-heading` | `--purple`, `--info`, `--info`, `--info` |
+| `--source-name`, `--source-definition`, `--source-constant`, `--source-type` | `--fg-1`, `--fg-0`, `--warn`, `--warn` |
+| `--source-string`, `--source-comment` | `--ok`, `--fg-3` |
+
+Invalid syntax uses `--err`; focus, cursor and matching-bracket outlines use `--accent`. These rules
+live in real CSS under the viewer root, including CodeMirror-created descendants and search panels.
+Switching an ancestor's theme updates existing viewers without remounting or a theme runtime.
+
 ## Consumer CSS
 
 Library defaults load before application CSS. Override ordinary custom properties on the root or a
@@ -411,6 +462,10 @@ Dynamic option/tag rules live in the real library stylesheet under its owning se
 | `components/tree-item.bml` | `components/ui/tree-item.bml` |
 | `components/time.bml` | `components/ui/time.bml` |
 | `components/comment-editor.bml` | `components/ui/comment-editor.bml` |
+| `components/source-view.bml` | `components/ui/source-view.bml` |
+| `client/helpers/source-view.ts` | Read-only setup, wrapping and cleanup from `src/main/client/editor.ts` |
+| `client/helpers/source-language.ts` | Existing language inference from `src/main/client/editor.ts` |
+| `client/helpers/source-view.css` | Viewer layout from `git-ui.css`, with CodeMirror colors mapped to consumer variables |
 | `client/helpers/tree.ts` | `src/main/client/tree.ts` |
 | `client/helpers/comment-editor.ts` | `src/main/client/comment-editor.ts` |
 | `client/helpers/select.ts` | `src/main/client/select.ts` |

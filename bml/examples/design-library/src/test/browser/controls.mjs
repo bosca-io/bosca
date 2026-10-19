@@ -13,6 +13,7 @@ import { checkSelection } from './selection-checks.mjs';
 import { checkNavigation } from './navigation-checks.mjs';
 import { checkSelects } from './select-checks.mjs';
 import { checkComposition } from './composition-checks.mjs';
+import { checkSource } from './source-checks.mjs';
 
 const base = process.argv[2];
 const mode = process.argv[3] ?? 'fixture';
@@ -247,6 +248,7 @@ try {
   await checkNavigation({ call, evaluate, until, base, mode, artifacts });
   await checkSelects({ call, evaluate, until, base, mode, artifacts });
   await checkComposition({ call, evaluate, until, base, mode, artifacts });
+  await checkSource({ call, evaluate, until, base, mode, artifacts });
   await call('Emulation.setScriptExecutionDisabled', { value: true });
   await call('Page.navigate', { url: base + '/' });
   await until('document.readyState === "complete" && document.querySelector("[data-input=light]")');
@@ -304,6 +306,17 @@ try {
       links:[...document.querySelectorAll('[data-local-tree=light] a')].every(link=>link.getBoundingClientRect().height>0),
       timestamp:document.querySelector('[data-default-time]').textContent};})()`),
     {native:true,value:'Server draft 3',links:true,timestamp:'Oct 18, 13:15 UTC'},'No-script native comments, every file link and server timestamps remain available');
+  await call('Page.navigate', { url: base + '/source' });
+  await until('document.readyState === "complete" && document.querySelector("[data-source=light] pre")');
+  assert.ok(await evaluate(`(() => {const root=document.querySelector('[data-source=light]'),fallback=root.querySelector('pre');
+    return fallback.tabIndex===0&&fallback.textContent.includes('replacement = 1')&&!document.querySelector('.cm-editor')&&
+      document.querySelector('[data-source-long] pre').textContent.includes('<script>unsafe()</script>')&&
+      !window.unsafe&&getComputedStyle(document.querySelector('[data-source-bare] pre')).whiteSpace==='pre-wrap';})()`),
+    'Script-disabled source remains readable, escaped and keyboard-scrollable');
+  await evaluate(`document.querySelector('[data-source-long] pre').scrollIntoView({block:'center'});document.querySelector('[data-source-long] pre').focus()`);
+  await call('Input.dispatchKeyEvent', { type: 'keyDown', key: 'PageDown', code: 'PageDown', windowsVirtualKeyCode: 34 });
+  await call('Input.dispatchKeyEvent', { type: 'keyUp', key: 'PageDown', code: 'PageDown', windowsVirtualKeyCode: 34 });
+  await until(`document.querySelector('[data-source-long] pre').scrollTop>0`);
   assert.deepEqual(exceptions, []);
   console.log(`Design library browser checks passed (${mode}); screenshots: ${artifacts}`);
 } finally {
