@@ -1,5 +1,5 @@
 import type { ClientContext, IslandUpdate } from "@bosca/bml";
-import type { SelectOption, SelectPage, SelectSearch } from "../contracts/select";
+import type { SelectOption, SelectPage, SelectSearch } from "@bosca/bml-design/select";
 
 /** Enhances a native form select; the native values remain the form submission contract. */
 export function richSelect(ctx: ClientContext) {

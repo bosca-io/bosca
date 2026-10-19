@@ -210,6 +210,11 @@ export async function bundleLibraryAssets({ manifestPath, inDir, sourceRoot, cli
   }
   for (const file of files(join(stylesDir, "resources"))) copy(file, join(outdir, relative(join(stylesDir, "resources"), file)))
   for (const file of files(publicDir)) copy(file, join(root, "public", relative(publicDir, file)))
+  // Authored declarations travel in the binary too. Ambient modules provide stable type-only
+  // imports without an npm package or a dependency on the producer's source attachment.
+  for (const file of files(clientDir).filter((file) => file.endsWith(".d.ts"))) {
+    copy(file, join(root, "client", relative(clientDir, file)))
+  }
   // Original auxiliary files accompany the BML/Kotlin source attachment. Generated stubs and private
   // npm dependency sources are excluded; their executable code is already bundled above.
   const originals = new Map()

@@ -63,8 +63,9 @@ object BmlLibraryClientLinker {
                     require(ContentDigest.sha256(content) == entry.digest) { "BML library resource digest mismatch: ${entry.path} in ${dependency.artifact}" }
                     File(inputDirectory, "$key/${entry.path}").apply { parentFile.mkdirs(); writeBytes(content) }
                     // Producer ESM is a bundler input. Only the selected, rebundled application
-                    // entries are served; public resources retain their explicit URL contract.
-                    if (entry.path.startsWith("public/") || entry.path.substringAfterLast('.') !in setOf("js", "mjs")) {
+                    // entries are served; declarations are compiler inputs, not browser resources.
+                    if (!entry.path.endsWith(".d.ts") &&
+                        (entry.path.startsWith("public/") || entry.path.substringAfterLast('.') !in setOf("js", "mjs"))) {
                         File(resourceDirectory, "libraries/$key/${entry.path}").apply { parentFile.mkdirs(); writeBytes(content) }
                     }
                 }

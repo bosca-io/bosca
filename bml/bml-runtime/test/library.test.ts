@@ -9,7 +9,7 @@ import { afterEach, describe, expect, it } from "vitest"
 // @ts-expect-error - plain .mjs build helper
 import { bundleLibraryAssets, bundleLibraryStyles, libraryAssetNamespace } from "../tools/library.mjs"
 // @ts-expect-error - plain .mjs build helper
-import { bundleIslands } from "../tools/bundle.mjs"
+import { bundleGlobalAssets, bundleIslands } from "../tools/bundle.mjs"
 
 const directories: string[] = []
 afterEach(() => directories.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true })))
@@ -33,6 +33,28 @@ function fixture(projectDir = mkdtempSync(join(tmpdir(), "bml-library-assets-"))
 }
 
 describe("published library assets", () => {
+  it("inventories authored declarations in binary and source output without executing them", async () => {
+    const f = fixture()
+    const declaration = "declare module '@example/design/select' { export interface Selection { value: string } }\n"
+    f.write(join(f.clientDir, "contracts/select.d.ts"), declaration)
+    f.write(join(f.clientDir, "index.d.ts"), "/// <reference path=\"./contracts/select.d.ts\" />\n")
+    f.write(join(f.clientDir, "node_modules/private-types/index.d.ts"), "declare const privateType: string;")
+    await bundleLibraryAssets(f)
+    const metadata = JSON.parse(readFileSync(join(f.outdir, "META-INF/bml/client-manifest.json"), "utf8"))
+    const binary = join(f.outdir, metadata.resourcePrefix, "client/contracts/select.d.ts")
+    expect(readFileSync(binary, "utf8")).toBe(declaration)
+    expect(readFileSync(join(f.sourcesOut, "client/contracts/select.d.ts"), "utf8")).toBe(declaration)
+    expect(metadata.files.find((file: { path: string }) => file.path === "client/contracts/select.d.ts").digest)
+      .toBe(`sha256:${createHash("sha256").update(declaration).digest("hex")}`)
+    expect(metadata.files.some((file: { path: string }) => /private-types|select\.js|index\.js/.test(file.path))).toBe(false)
+    expect(metadata.globalScripts).toEqual([])
+    expect(await bundleGlobalAssets({ inDir: f.clientDir, outdir: join(f.projectDir, "global") })).toEqual([])
+    rmSync(join(f.clientDir, "contracts/select.d.ts"))
+    rmSync(join(f.clientDir, "index.d.ts"))
+    await bundleLibraryAssets(f)
+    expect(existsSync(binary)).toBe(false)
+  })
+
   it.each(["external modules", "local modules", "scope"])("preserves package ownership under linked %s directories", async (layout) => {
     const f = fixture(), shared = mkdtempSync(join(tmpdir(), "bml-installed-packages-"))
     directories.push(shared)

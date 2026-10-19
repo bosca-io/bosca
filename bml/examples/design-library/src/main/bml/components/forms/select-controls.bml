@@ -67,7 +67,8 @@
   </card>
   <script client scoped>
     import { bmlContractCall } from "@bosca/bml";
-    ctx.on<CustomEvent>(ctx.root, "selectsearch", event => {
+    import type { SelectSearch } from "@bosca/bml-design/select";
+    ctx.on<CustomEvent<SelectSearch>>(ctx.root, "selectsearch", event => {
       event.stopPropagation();
       const { query, offset, resolve, reject } = event.detail;
       bmlContractCall<Record<string, string>[]>("SelectChoices", "search", [query, offset]).then(rows => resolve({

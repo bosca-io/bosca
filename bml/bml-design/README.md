@@ -236,10 +236,23 @@ The popup stays under its owning root, inherits ordinary CSS, escapes clipping a
 viewports. Unmount closes it, cancels debounce work, ignores pending results and removes listeners
 and ResizeObservers. Each instance owns its options and requests.
 
-The producer owns the `SelectOption`, `SelectPage` and `SelectSearch` declarations in
-`client/contracts/select.ts`. A stable TypeScript import for binary-only consumers is still pending;
-applications should not import a private helper or a hashed generated asset path. The isolated
-consumer currently handles the event directly and uses BML's same-origin contract client.
+Import the producer-owned event types through their stable type-only module:
+
+```ts
+import type { SelectOption, SelectPage, SelectSearch } from "@bosca/bml-design/select";
+
+ctx.on<CustomEvent<SelectSearch>>(ctx.root, "selectsearch", event => {
+  const { query, offset, resolve, reject } = event.detail;
+  // Call the application's search transport, then resolve options or a SelectPage.
+});
+```
+
+The compiled library JAR contains `client/contracts/select.d.ts`; the existing library linker
+verifies and extracts it when linking the selected components. Run `bmlPrepareClient` and include
+`build/generated/bml/ts/**/*.ts` in the application's TypeScript configuration. This includes the
+declarations without a paths alias to the producer, a sources JAR or a separate npm package.
+Type-only imports add no browser code. The independent consumer's adapter uses this import with
+BML's same-origin contract client. The library's own helper uses the same declaration.
 
 ## Consumer CSS
 
@@ -351,7 +364,7 @@ Dynamic option/tag rules live in the real library stylesheet under its owning se
 | `components/tabs.bml` | `components/ui/tabs.bml` |
 | `components/select.bml` | `components/ui/select.bml` |
 | `client/helpers/select.ts` | `src/main/client/select.ts` |
-| `client/contracts/select.ts` | Public event interfaces from `src/main/client/select.ts` |
+| `client/contracts/select.d.ts` | Public event interfaces from `src/main/client/select.ts` |
 | `client/helpers/tabs.ts` | `src/main/client/tabs.ts` |
 | `client/helpers/search-input.ts` | Scoped client script in `components/ui/search-input.bml` |
 | `client/helpers/segmented-control.ts` | Scoped client script in `components/ui/segmented-control.bml` |

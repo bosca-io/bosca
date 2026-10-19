@@ -93,9 +93,18 @@ controls, keyboard choices, local search/custom choices and tag removal/limits. 
 control only emits `selectsearch`. Browser checks cover minimum query/debounce, offsets, explicit
 persistent options, error/retry and stale results, native values across pages, remote multiple/custom
 choices, preserved query/caret/focus, native reset, live CSS themes, clipping/short screens and disposal.
-Script-disabled checks retain styled native selects and form values. Stable binary-consumer imports
-for the producer's TypeScript event declarations are still pending; the adapter handles the event
-directly through the existing same-origin contract client.
+Script-disabled checks retain styled native selects and form values. The adapter imports
+`SelectSearch` from `@bosca/bml-design/select` with `import type` and uses the existing same-origin
+contract client. Its TypeScript configuration includes the generated client tree, where the library
+linker extracts declarations from the dependency JAR. The type checks cover `SelectOption`,
+`SelectPage` and `SelectSearch`, including invalid option values and pagination offsets.
+
+From the workspace root, prepare and check the consumer TypeScript with:
+
+```bash
+./gradlew :bml:examples:design-library:bmlPrepareClient
+node bml/bml-runtime/node_modules/typescript/bin/tsc --project bml/examples/design-library/tsconfig.json
+```
 
 Chrome defaults to the installed Google Chrome app on macOS or `google-chrome` on Linux. Set
 `BML_DESIGN_CHROME_BINARY` for another executable. Screenshots land in this project's

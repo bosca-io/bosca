@@ -131,7 +131,7 @@ export async function bundleProduction({ manifestPath, inDir, outdir, runtime })
 export async function bundleGlobalAssets({ inDir, outdir }) {
   if (!existsSync(inDir)) return []
   const sources = readdirSync(inDir)
-  const scripts = sources.filter((file) => /\.(?:js|ts)$/.test(file)).map((file) => join(inDir, file))
+  const scripts = sources.filter((file) => /\.(?:js|ts)$/.test(file) && !file.endsWith(".d.ts")).map((file) => join(inDir, file))
   const styles = sources.filter((file) => file.endsWith(".css")).map((file) => join(inDir, file))
   if (scripts.length === 0 && styles.length === 0) return []
   await Promise.all([
@@ -239,7 +239,7 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
     process.exit(0)
   }
   const entryPoints = existsSync(inDir)
-    ? readdirSync(inDir).filter((f) => f.endsWith(".ts")).map((f) => join(inDir, f))
+    ? readdirSync(inDir).filter((f) => f.endsWith(".ts") && !f.endsWith(".d.ts")).map((f) => join(inDir, f))
     : []
   const jobs = []
   if (entryPoints.length > 0) {

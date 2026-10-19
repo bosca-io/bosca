@@ -24,6 +24,18 @@ class DesignLibraryTest {
     private val designJar = classpath.split(File.pathSeparator).map(::File).single { it.name.startsWith("bml-design-") }
 
     @Test
+    fun `generated adapter and public select payloads type check against linked binary declarations`() {
+        val log = File.createTempFile("design-types-", ".log")
+        val process = ProcessBuilder(System.getProperty("design.fixture.node"),
+            System.getProperty("design.fixture.typechecker"), "--project", System.getProperty("design.fixture.tsconfig"))
+            .redirectErrorStream(true).redirectOutput(log).start()
+        try {
+            assertTrue(process.waitFor(30, TimeUnit.SECONDS), "Type check timed out: ${log.readText()}")
+            assertEquals(0, process.exitValue(), log.readText())
+        } finally { process.destroyForcibly(); log.delete() }
+    }
+
+    @Test
     fun `binary publishes implemented short exports with typed props assets and icon notice`() {
         JarFile(designJar).use { jar ->
             val manifest = BmlLibraryArtifacts.decode(jar.getInputStream(jar.getJarEntry(BmlLibraryArtifacts.MANIFEST_PATH)).reader().readText())
