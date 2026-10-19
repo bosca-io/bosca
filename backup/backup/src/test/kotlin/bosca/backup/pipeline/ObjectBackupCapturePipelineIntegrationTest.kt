@@ -115,6 +115,8 @@ class ObjectBackupCapturePipelineIntegrationTest {
     private val administrator = Group(UUID.random(), "administrators", "", GroupType.SYSTEM)
     private val requests = CopyOnWriteArrayList<String>()
     private val signatures = CopyOnWriteArrayList<String>()
+    private val discoveryRequests = CopyOnWriteArrayList<String>()
+    private var currentVersion = "v1"
     private var denied = false
     private var failedKey: String? = null
     private val selection = ObjectBackupCaptureInventory(
@@ -139,12 +141,29 @@ class ObjectBackupCapturePipelineIntegrationTest {
                     URLDecoder.decode(it.substringBefore('='), Charsets.UTF_8) to
                         URLDecoder.decode(it.substringAfter('=', ""), Charsets.UTF_8)
                 }
-                val version = query["versionId"]
                 val key = exchange.requestURI.path.substringAfterLast('/')
+                if (query["list-type"] == "2") {
+                    discoveryRequests.add("LIST")
+                    val xml = "<ListBucketResult><IsTruncated>false</IsTruncated>" +
+                        listOf("a", "b").joinToString("") { "<Contents><Key>$it</Key><Size>4</Size></Contents>" } +
+                        "</ListBucketResult>"
+                    val bytes = xml.toByteArray()
+                    exchange.sendResponseHeaders(200, bytes.size.toLong())
+                    exchange.responseBody.write(bytes)
+                    return@use
+                }
+                if (exchange.requestMethod == "HEAD") {
+                    discoveryRequests.add("HEAD $key")
+                    exchange.responseHeaders.add("x-amz-version-id", if (key == "b") currentVersion else "v1")
+                    exchange.responseHeaders.add("Content-Length", "4")
+                    exchange.sendResponseHeaders(200, -1)
+                    return@use
+                }
+                val version = query["versionId"]
                 requests.add("$key@$version")
                 signatures.add(exchange.requestHeaders.getFirst("Authorization").orEmpty())
-                val success = key != failedKey && version == "v1" && key in setOf("a", "b")
-                val bytes = if (success) (if (key == "a") "data" else "more").toByteArray()
+                val success = key != failedKey && version in setOf("v1", "v2") && key in setOf("a", "b")
+                val bytes = if (success) (if (version == "v2") "next" else if (key == "a") "data" else "more").toByteArray()
                     else "<Error><Code>AccessDenied</Code></Error>".toByteArray()
                 if (success) exchange.responseHeaders.add("x-amz-version-id", version)
                 exchange.sendResponseHeaders(if (success) 200 else 403, bytes.size.toLong())
@@ -310,6 +329,89 @@ class ObjectBackupCapturePipelineIntegrationTest {
         assertTrue(requests.isEmpty())
         assertFalse(directory.resolve("retained").exists())
         coVerify(exactly = 0) { security.getPrincipalByIdentifier(any()) }
+    }
+
+    @Test
+    fun `discovery action creates fresh inventories and unchanged later runs avoid source payloads`(): Unit = runBlocking {
+        useDiscoveryPipeline()
+        suspend fun runBackup(): ObjectBackupManifest {
+            val initial = start()
+            executeNext()
+            assertEquals(PipelineRunStatus.SUSPENDED, get(initial.id).status)
+            executeNext()
+            val complete = get(initial.id)
+            assertEquals(PipelineRunStatus.OK, complete.status)
+            return json.decodeFromJsonElement(ObjectBackupManifest.serializer(), assertNotNull(complete.output))
+        }
+        val first = runBackup()
+        assertEquals(listOf("a@v1", "b@v1"), requests.toList())
+        assertTrue(discoveryRequests.containsAll(listOf("LIST", "HEAD a", "HEAD b")))
+        requests.clear()
+        discoveryRequests.clear()
+        val unchanged = runBackup()
+        assertTrue(requests.isEmpty())
+        assertEquals(first.objects, unchanged.objects)
+        assertTrue(first.id != unchanged.id)
+        currentVersion = "v2"
+        requests.clear()
+        val later = runBackup()
+        assertEquals(listOf("b@v2"), requests.toList())
+        assertEquals(first.objects.first(), later.objects.first())
+        for (manifest in listOf(first, unchanged, later)) {
+            assertEquals(manifest, json.decodeFromString(ObjectBackupManifest.serializer(),
+                directory.resolve("retained/manifests/${manifest.id}.json").toFile().readText()))
+        }
+        coVerify(exactly = 0) { security.getPrincipalByIdentifier(any()) }
+    }
+
+    @Test
+    fun `discovery action retry reuses saved versions after restart and source mutation`(): Unit = runBlocking {
+        useDiscoveryPipeline()
+        failedKey = "b"
+        val initial = start()
+        executeNext()
+        val failure = failNext(retry = true)
+        val discovered = withConnectionManager { captures.listPlans(selection.sourceId, "retained", selection.scope, 0, 20) }
+            .single { it.inventory.id != "selected" }
+        assertFalse(directory.resolve("retained").resolve(discovered.path).exists())
+        assertNull(withConnectionManager { captures.getWriter(discovered.key) })
+        failedKey = null
+        currentVersion = "v2"
+        requests.clear()
+        discoveryRequests.clear()
+        install()
+        val retry = assertNotNull(queue.dequeue(40.seconds))
+        assertEquals(failure.first.getId(), retry.getId())
+        execute(retry)
+        assertEquals(PipelineRunStatus.OK, get(initial.id).status)
+        assertTrue(discoveryRequests.isEmpty())
+        assertEquals(listOf("b@v1"), requests.toList())
+        assertTrue(directory.resolve("retained").resolve(discovered.path).exists())
+    }
+
+    @Test
+    fun `discovery action denied caller performs no inventory or payload requests`(): Unit = runBlocking {
+        useDiscoveryPipeline()
+        denied = true
+        val initial = start()
+        executeNext()
+        failNext(retry = false)
+        assertEquals(PipelineRunStatus.FAILED, get(initial.id).status)
+        assertTrue(requests.isEmpty())
+        assertTrue(discoveryRequests.isEmpty())
+        assertFalse(directory.resolve("retained").exists())
+    }
+
+    private suspend fun useDiscoveryPipeline() {
+        val declared = Pipeline(id = UUID.NIL, name = "discover and back up", acceptedInputType = "JSON", nodes = listOf(
+            InputNode("in", acceptedType = "JSON"), ObjectBackupNode("backup", sourceId = selection.sourceId, scope = selection.scope, destinationId = "retained",
+                sources = """{"content":{"storageKey":"source"}}"""), OutputNode("out"),
+        ), edges = listOf(PipelineEdge("result", source = "backup", target = "out")))
+        pipeline = withConnectionManager {
+            val saved = provide<PipelineRepository>().add(PipelineRecord(name = declared.name,
+                acceptedInputType = declared.acceptedInputType, graph = pipelines.graphAsJsonElement(declared)))
+            assertNotNull(pipelines.get(saved.id))
+        }
     }
 
     private suspend fun install() {

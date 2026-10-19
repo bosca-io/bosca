@@ -27,6 +27,86 @@ class ObjectBackupCaptureServiceImpl(
     private val repository: ObjectBackupCaptureRepository,
     private val storageService: ObjectProvider<ObjectBackupStorageService>,
 ) : ObjectBackupCaptureService {
+    override suspend fun discoverConfigured(request: ObjectBackupDiscoveryRequest): ObjectBackupCapturePlan {
+        check(connectionOrNull()?.inTransaction != true) {
+            "Configured discovery must run outside an active database transaction"
+        }
+        val selected = request.copy(stores = request.stores.toSortedMap())
+        require(selected.id.isNotBlank() && selected.sourceId.isNotBlank() && selected.scope.isNotBlank()) {
+            "Discovery, source and scope identities are required"
+        }
+        validateOutputPaths(selected.destinationId, selected.payloadPrefix, selected.manifestPath)
+        require(selected.stores.isNotEmpty()) { "At least one logical source store is required" }
+        for ((store, source) in selected.stores) {
+            require(store.isNotBlank() && source.storageKey.isNotBlank()) { "Logical source and storage identities are required" }
+            val prefix = source.prefix.removeSuffix("/")
+            require(source.prefix.isEmpty() || prefix.isNotEmpty() && prefix.split('/').all {
+                it.isNotEmpty() && it != "." && it != ".."
+            }) { "Invalid source prefix: ${source.prefix}" }
+            require(source.storageKey != selected.destinationId) { "Backup storage must be independent of source stores" }
+        }
+        val key = objectBackupIdentity(
+            ObjectBackupOperation.BACKUP, listOf(selected.sourceId, selected.destinationId, selected.scope, selected.id),
+        )
+        val existing = withConnectionManager { getPlan(key) }
+        if (existing != null) {
+            require(existing.discovery == selected) { "Conflicting discovery intent: $key" }
+            return existing
+        }
+
+        val addresses = storageService.get()
+        val sourceKeys = selected.stores.values.map { it.storageKey }.toSet()
+        val available = addresses.configurations(sourceKeys + selected.destinationId)
+        // Validate every address together, including source/destination aliases, before opening sources.
+        withConnectionManager {
+            transaction {
+                for ((storageKey, configuration) in available.toSortedMap()) addresses.bind(storageKey, configuration)
+            }
+        }
+        val observed = addresses.withStorages(available.filterKeys { it in sourceKeys }) { sources ->
+            selected.stores.mapValues { (_, source) ->
+                val storage = sources.getValue(source.storageKey)
+                val entries = mutableListOf<ObjectStorageEntry>()
+                var offset = 0L
+                var previous: String? = null
+                while (true) {
+                    currentCoroutineContext().ensureActive()
+                    val page = storage.listObjects(source.prefix, offset, DISCOVERY_PAGE_SIZE)
+                    require(page.size <= DISCOVERY_PAGE_SIZE) { "Source listing exceeded the requested page size" }
+                    if (page.isEmpty()) break
+                    for (entry in page) {
+                        require(entry.key.startsWith(source.prefix) && previous?.let { entry.key > it } != false) {
+                            "Source listing changed order or escaped its prefix: ${entry.key}"
+                        }
+                        previous = entry.key
+                        val observedEntry = ObjectStorageEntry(entry.key, storage.getObjectInfo(StringObjectPath(entry.key)))
+                        require(!observedEntry.info.version.isNullOrBlank() && observedEntry.info.version != "null") {
+                            "A retained provider object version is required: ${entry.key}"
+                        }
+                        entries.add(observedEntry)
+                    }
+                    offset = Math.addExact(offset, page.size.toLong())
+                }
+                entries.toList()
+            }
+        }
+        val inventory = ObjectBackupCaptureInventory(
+            selected.id, selected.sourceId, selected.scope, OffsetDateTime.now().toInstant().toString(), observed,
+        )
+        inventory.validate()
+        return withConnectionManager {
+            transaction {
+                repository.add(ObjectBackupCapturePlan(
+                    key, selected.destinationId, inventory, selected.payloadPrefix, selected.manifestPath, discovery = selected,
+                ))
+                val saved = checkNotNull(repository.get(key)) { "Discovered capture plan is missing: $key" }
+                require(saved.discovery == selected) { "Conflicting discovery intent: $key" }
+                configureStorage(key, selected.stores.mapValues { it.value.storageKey })
+                saved
+            }
+        }
+    }
+
     override suspend fun getWriter(key: String): ObjectBackupCaptureWriter? {
         require(key.isNotBlank()) { "Capture plan key is required" }
         return repository.getWriter(key)
@@ -472,5 +552,9 @@ class ObjectBackupCaptureServiceImpl(
         }
 
         return version
+    }
+
+    private companion object {
+        const val DISCOVERY_PAGE_SIZE = 100
     }
 }

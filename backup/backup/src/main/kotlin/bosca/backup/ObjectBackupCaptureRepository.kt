@@ -62,8 +62,8 @@ interface ObjectBackupCaptureRepository {
     /** Inserts one selected capture intent without changing an existing plan. */
     @Query(
         """
-        insert into backup.object_capture_plans (key, destination_id, inventory, payload_prefix, path)
-        values (:key, :destinationId, :inventory, :payloadPrefix, :path)
+        insert into backup.object_capture_plans (key, destination_id, inventory, payload_prefix, path, discovery)
+        values (:key, :destinationId, :inventory, :payloadPrefix, :path, :discovery)
         on conflict (key) do nothing
         """,
         returnUpdateCount = true,

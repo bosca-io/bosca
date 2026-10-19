@@ -18,5 +18,6 @@ class BackupMigration : Migration {
         "V10__object_backup_capture_plans.sql",
         "V11__object_backup_capture_storage.sql",
         "V12__object_backup_capture_writers.sql",
+        "V13__object_backup_discovery.sql",
     )
 }

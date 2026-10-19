@@ -14,6 +14,49 @@ Run these commands from the **workspace root**. `backup` is part of the root Gra
 ./gradlew :backup:core-backup:test :backup:backup:test  # Test contracts, backup and restore
 ```
 
+## Recurring object-storage backups
+
+The **Back Up Object Storage** Pipeline action (`objectBackup.backup`) discovers source
+objects, saves their selected provider revisions, and runs the incremental capture service.
+It does not require a manually prepared inventory. Use the existing Pipeline schedules to
+choose when it runs; the action installs no schedule and starts no production backup.
+
+Configure independent source and backup IDs under `backup.objectStores`. In the action,
+set a stable source identity, backup scope and destination storage ID. The **Source stores**
+JSON setting maps logical names to configured IDs and literal prefixes, for example:
+
+```json
+{
+  "content": { "storageKey": "source-content", "prefix": "" }
+}
+```
+
+An empty prefix observes the whole configured source namespace. Include every namespace
+needed for the declared scope. Keep the Pipeline's standard Input node, add this action,
+and connect its manifest output to Output. Its optional `verifiedSince` input overrides
+the checksum recheck setting; it can remain unconnected.
+
+Each new backing job creates a distinct inventory and manifest. Retries of that job reuse
+its saved selection, even after worker restart or changes to current source objects.
+Discovery uses offset listing and per-object metadata requests without downloading asset
+bodies. Capture reads only new, changed or unfinished source revisions; verified unchanged
+payloads retain their existing paths. Older manifests and payloads remain available.
+
+Choose **Checksum recheck interval (days)** to allow metadata-only reuse of recent retained
+provider-version verification, with full checksum reads when that proof is older. Omitting
+it verifies retained payloads in full on every run. The cutoff derives from the Pipeline's
+saved run time, so a delayed retry does not move it. Destinations without stable
+provider versions, including filesystem storage, always receive full verification.
+
+Sources must expose exact retained provider versions and keep them readable until capture
+finishes. Missing or unsupported versions fail the operation; current bytes are never
+substituted. This has been exercised with signed S3 SDK calls against an isolated local
+endpoint, not a live Spaces installation. Source writes continue, and changes during
+pagination can affect which keys a pass observes. This is an observed object inventory,
+not a point-in-time database snapshot or proof that a PostgreSQL recovery point is covered.
+It does not infer source deletions, remove retained payloads, or copy Bosca database content
+between instances. Exact database/object reference association and retention remain open work.
+
 ## Architecture
 
 `core-backup` defines the object backup service contracts and shared models. `backup` implements persistence, object transfers, manifest publication, GraphQL administration, and background jobs. Service implementations use `@ServiceImplementation` for generated DI registration.

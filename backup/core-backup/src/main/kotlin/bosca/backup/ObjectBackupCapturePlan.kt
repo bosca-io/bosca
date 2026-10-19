@@ -16,4 +16,7 @@ data class ObjectBackupCapturePlan(
     val payloadPrefix: String,
     val path: String,
     val created: OffsetDateTime = OffsetDateTime.now(),
+    /** Saved discovery intent; null for caller-selected inventories. */
+    @property:DbMapper(JsonbMapper::class)
+    val discovery: ObjectBackupDiscoveryRequest? = null,
 )

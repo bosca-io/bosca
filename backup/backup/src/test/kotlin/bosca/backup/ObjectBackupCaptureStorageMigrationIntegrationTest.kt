@@ -15,6 +15,8 @@ import bosca.storage.service.ObjectStorageEntry
 import bosca.storage.service.ObjectStorageInfo
 import bosca.test.resources.SharedPostgreSQLContainer
 import java.sql.DriverManager
+import java.sql.Types
+import java.time.OffsetDateTime
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlin.test.AfterTest
@@ -22,6 +24,7 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /** Upgrades saved selections without inventing storage locations or logical mappings. */
@@ -66,7 +69,24 @@ class ObjectBackupCaptureStorageMigrationIntegrationTest {
         val service = provide<ObjectBackupCaptureService>()
         val inventory = ObjectBackupCaptureInventory("saved", "source", "content", "2026-10-18T00:00:00Z",
             mapOf("content" to listOf(ObjectStorageEntry("asset", ObjectStorageInfo(4, version = "v1")))))
-        val before = withConnectionManager { service.prepareInventory(inventory, "retained", "payloads", "manifests/saved.json") }
+        val before = ObjectBackupCapturePlan(
+            "saved", "retained", inventory, "payloads", "manifests/saved.json",
+            created = OffsetDateTime.parse("2026-10-18T00:00:00Z"),
+        )
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { connection ->
+            connection.prepareStatement("""
+                insert into backup.object_capture_plans (key, destination_id, inventory, payload_prefix, path, created)
+                values (?, ?, ?, ?, ?, ?)
+            """.trimIndent()).use {
+                it.setString(1, before.key)
+                it.setString(2, before.destinationId)
+                it.setObject(3, Json.encodeToString(ObjectBackupCaptureInventory.serializer(), inventory), Types.OTHER)
+                it.setString(4, before.payloadPrefix)
+                it.setString(5, before.path)
+                it.setObject(6, before.created)
+                assertEquals(1, it.executeUpdate())
+            }
+        }
         FlywayMigration(pool).migrate(listOf(BackupMigration()))
         FlywayMigration(pool).migrate(listOf(BackupMigration()))
         DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { connection ->
@@ -84,5 +104,6 @@ class ObjectBackupCaptureStorageMigrationIntegrationTest {
             }
         }
         assertEquals(before, withConnectionManager { service.getPlan(before.key) })
+        assertNull(withConnectionManager { assertNotNull(service.getPlan(before.key)).discovery })
     }
 }

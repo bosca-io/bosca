@@ -8,6 +8,17 @@ import java.time.OffsetDateTime
 
 /** Creates verified retained payloads from explicitly selected provider revisions. */
 interface ObjectBackupCaptureService : Service {
+    /**
+     * Observes configured source prefixes using listings and metadata-only exact revision lookup,
+     * then atomically saves the selected inventory and storage mapping. Matching retries return
+     * the saved selection without rediscovery; changed intent fails. Partial discovery never
+     * publishes a plan. Requires no active caller transaction and independent retained storage.
+     * Source writes continue, so this is an observation over time, not a closed database snapshot.
+     * Providers must expose retained versions and preserve them until capture finishes; missing
+     * or unsupported revisions fail rather than substituting current bytes.
+     */
+    suspend fun discoverConfigured(request: ObjectBackupDiscoveryRequest): ObjectBackupCapturePlan
+
     /** Reads this plan's active configured writer in the caller's database context, without storage I/O. */
     suspend fun getWriter(key: String): ObjectBackupCaptureWriter?
 
