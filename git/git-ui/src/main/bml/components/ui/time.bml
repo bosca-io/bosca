@@ -46,7 +46,7 @@
         value
     }
   </script>
-  <time :datetime="value" :title="value" :data-inherit-typography="inheritTypography">{ label }</time>
+  <html:time :datetime="value" :title="value" :data-inherit-typography="inheritTypography">{ label }</html:time>
   <style scoped>
     time {
       white-space: nowrap;

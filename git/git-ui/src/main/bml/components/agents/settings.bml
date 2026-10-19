@@ -4,23 +4,23 @@
     bosca.git.ui.AgentSettingsModel(page)
   </script>
   <island name="git-agent-settings" :key='page.selected?.id ?: ""'>
-    <section class="agent-settings" :data-next-href="model.nextHref">
+    <html:section class="agent-settings" :data-next-href="model.nextHref">
       <if model.message.isNotBlank()>
         <div class="order-alert">
-          <ui-alert :tone='if (model.failed) "error" else "success"'>{ model.message }</ui-alert>
+          <alert :tone='if (model.failed) "error" else "success"'>{ model.message }</alert>
         </div>
       </if>
       <form id="agent-form" class="settings-form order-agent" @submit="model.save(form.name, form.labels, ctx)">
-        <ui-card title="Agent" :padded="false">
+        <card title="Agent" :padded="false">
           <div class="agent-grid">
-            <ui-field label="Name">
-              <ui-input name="name" :value="model.name" placeholder="build-runner-01" required />
-            </ui-field>
-            <ui-field label="Labels">
-              <ui-input name="labels" :value="model.labels" placeholder="linux, x64, docker" mono />
-            </ui-field>
+            <field label="Name">
+              <input name="name" :value="model.name" placeholder="build-runner-01" required />
+            </field>
+            <field label="Labels">
+              <input name="labels" :value="model.labels" placeholder="linux, x64, docker" mono />
+            </field>
           </div>
-        </ui-card>
+        </card>
       </form>
       <if model.page.selected?.mode?.name == "ORCHESTRATOR">
         <form
@@ -28,56 +28,56 @@
           class="settings-form orchestrator-form"
           @submit="model.configure(form.provider, form.scope, form.region, form.size, form.image, form.profiles, form.sinks, form.concurrent, form.jobTimeout, form.lifetime, ctx)"
         >
-          <ui-card title="Provider" :padded="false">
+          <card title="Provider" :padded="false">
             <div class="agent-grid">
-              <ui-field label="Provider">
-                <ui-input name="provider" :value="model.provider" placeholder="digitalocean" mono required />
-              </ui-field>
-              <ui-field label="Self-Destruct Token Scope">
-                <ui-input name="scope" :value="model.scope" placeholder="Optional" mono />
-              </ui-field>
+              <field label="Provider">
+                <input name="provider" :value="model.provider" placeholder="digitalocean" mono required />
+              </field>
+              <field label="Self-Destruct Token Scope">
+                <input name="scope" :value="model.scope" placeholder="Optional" mono />
+              </field>
             </div>
             <p class="form-note">Provider API credentials are supplied by the CLI's local configuration.</p>
-          </ui-card>
-          <ui-card title="VM Defaults" :padded="false">
+          </card>
+          <card title="VM Defaults" :padded="false">
             <div class="agent-grid agent-grid-3">
-              <ui-field label="Region">
-                <ui-input name="region" :value="model.region" placeholder="nyc3" mono required />
-              </ui-field>
-              <ui-field label="Size">
-                <ui-input name="size" :value="model.size" placeholder="s-2vcpu-4gb" mono required />
-              </ui-field>
-              <ui-field label="Image">
-                <ui-input name="image" :value="model.image" placeholder="ubuntu-24-04-x64" mono required />
-              </ui-field>
+              <field label="Region">
+                <input name="region" :value="model.region" placeholder="nyc3" mono required />
+              </field>
+              <field label="Size">
+                <input name="size" :value="model.size" placeholder="s-2vcpu-4gb" mono required />
+              </field>
+              <field label="Image">
+                <input name="image" :value="model.image" placeholder="ubuntu-24-04-x64" mono required />
+              </field>
             </div>
-          </ui-card>
-          <ui-card title="Limits" :padded="false">
+          </card>
+          <card title="Limits" :padded="false">
             <div class="agent-grid agent-grid-3">
-              <ui-field label="Max Concurrent VMs">
-                <ui-input name="concurrent" type="number" min="1" :value="model.concurrent.toString()" required />
-              </ui-field>
-              <ui-field label="Max Job Timeout (min)">
-                <ui-input name="jobTimeout" type="number" min="1" :value="model.jobTimeout.toString()" required />
-              </ui-field>
-              <ui-field label="Max VM Lifetime (min)">
-                <ui-input name="lifetime" type="number" min="1" :value="model.lifetime.toString()" required />
-              </ui-field>
+              <field label="Max Concurrent VMs">
+                <input name="concurrent" type="number" min="1" :value="model.concurrent.toString()" required />
+              </field>
+              <field label="Max Job Timeout (min)">
+                <input name="jobTimeout" type="number" min="1" :value="model.jobTimeout.toString()" required />
+              </field>
+              <field label="Max VM Lifetime (min)">
+                <input name="lifetime" type="number" min="1" :value="model.lifetime.toString()" required />
+              </field>
             </div>
-          </ui-card>
-          <ui-card title="Runner Profiles" :padded="false">
+          </card>
+          <card title="Runner Profiles" :padded="false">
             <div class="editor-body">
-              <ui-json-editor name="profiles" :value="model.profiles" />
+              <json-editor name="profiles" :value="model.profiles" label="Runner profiles" preserveKey="json-profiles" />
             </div>
-          </ui-card>
-          <ui-card title="Alert Sinks" :padded="false">
+          </card>
+          <card title="Alert Sinks" :padded="false">
             <div class="editor-body">
-              <ui-json-editor name="sinks" :value="model.sinks" />
+              <json-editor name="sinks" :value="model.sinks" label="Alert sinks" preserveKey="json-sinks" />
             </div>
-          </ui-card>
+          </card>
         </form>
       </if>
-    </section>
+    </html:section>
   </island>
   <style scoped>
     /* Studio agent settings cards; the page orders them with the status cards. */

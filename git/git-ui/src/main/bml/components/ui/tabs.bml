@@ -9,12 +9,12 @@
           { item.label }
         </a>
       </for>
-      <button ref="more" class="more" type="button" aria-expanded="false" hidden>
+      <html:button ref="more" class="more" type="button" aria-expanded="false" hidden>
         More
         <span class="tab-chevron">
-          <ui-icon name="chevron" :size="12" />
+          <icon name="chevron" :size="12" />
         </span>
-      </button>
+      </html:button>
     </div>
     <slot />
     <div ref="menu" class="tabs-menu" hidden></div>

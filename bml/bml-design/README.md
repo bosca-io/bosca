@@ -80,6 +80,7 @@ import provides `<design:button>` with the same runtime identity and assets as `
 | `tree-item` | Required `path: String` and `label: String`; `href: String = ""`; `directory`, `expanded`, `selected`, `wrap`: `Boolean = false`; `depth: Int = 0` | Flat ARIA tree item. Additional attributes/classes/actions target its native directory button or native file anchor. Paths identify hierarchy, depth controls indentation/ARIA level, and selected file links use `aria-current="page"`. No child content. |
 | `time` | Required `value: String`; `relative`, `ago`, `inheritTypography`: `Boolean = false`; `format: String = ""` | Native time receives additional attributes/classes, its original value as datetime/title and an English server-rendered label. No child content. Use `html:time` for a native timestamp after importing this component. |
 | `comment-editor` | Required `id: String` and `label: String`; `value`, `error`, `hint`, `describedBy`: `String = ""`; `submitDisabled: Boolean = false`; `submitLabel: String = "comment"`; `placeholder: String = "Write a comment…"`; `name: String = "body"` | Native required textarea receives additional attributes/classes, its ID and preservation key. Default children supply action controls. The caller owns its surrounding form, submission and error outcomes. |
+| `json-editor` | Required `name: String`; `value: String = "{}"`; `label: String = "JSON editor"`; `mode: String = "tree"` (`tree`, `text`, `table`); `readOnly: Boolean = false`; `disabled: Boolean = false`; `error: String = ""`; `preserveKey: String = ""` | Structured editor with a native textarea form value and escaped no-script fallback. Additional attributes/classes target its labelled group. Syntax and caller feedback appear in a live status. No child content. |
 | `source-view` | Required `content: String`; `path`, `language`, `preserveKey`: `String = ""`; `label: String = "File source"`; `line: Int = 0`; `compact`, `bare`, `wrapped`: `Boolean = false` | Section receives additional attributes/classes and default toolbar action children. CodeMirror enhances escaped, focusable source markup into a read-only viewer. The application owns the content, requested line and surrounding layout. |
 
 Regular controls are 32px high, compact controls 30px, and extra-small buttons 24px. Field labels use
@@ -482,7 +483,7 @@ Dynamic option/tag rules live in the real library stylesheet under its owning se
 | `client/design.css` | Shared control token defaults from `src/main/client/git-ui.css` |
 
 `src/main/kotlin/bosca/design/model/NavigationItem.kt` owns the shared navigation model formerly
-defined in Git UI. The original Git components remain until the application's component cutover.
+defined in Git UI. Git's remaining local components await application adoption and cleanup.
 
 Component paths are relative to each module's `src/main/bml`; `client/design.css` is under `src/main`.
 Lucide glyphs retain their [ISC notice](src/main/resources/META-INF/licenses/bml-design/lucide.txt),
@@ -493,3 +494,45 @@ Build and validate the binary and original source archive from the workspace roo
 ```sh
 ./gradlew :bml:bml-design:bmlValidateLibrary :bml:examples:design-library:test
 ```
+
+## Structured JSON
+
+```html
+<form @submit="settings.save(form.configuration)">
+  <json-editor name="configuration" :value="settings.draft" label="Configuration"
+               :error="settings.error" preserveKey="configuration-editor" />
+  <button type="submit">Save</button>
+</form>
+```
+
+This BML adapter uses the same `vanilla-jsoneditor` structured engine that Studio uses through
+`json-editor-vue`. BML supplies its own scoped mounting, updates and disposal. Consumers need no
+Vue application or editor npm dependency; the engine and its notices travel in the compiled library.
+Git's agent settings consume this compiled adapter and keep configuration validation and actions in the application.
+
+The form field retains exact malformed and empty text. Tree mode can show the engine's repair
+preview; the form value changes only when the user edits or accepts a repair. The caller owns
+validation policy and submission, and can return the same draft with an `error` message. Syntax
+feedback does not block submission or replace the draft. Text edits are flushed before declarative
+form submission and before controlled replacements or reset.
+
+Supply a unique `preserveKey` for each editor that should survive unrelated island updates. Its
+engine DOM, selection, focus and draft remain mounted while the root attributes reconcile. A
+changed `value` replaces the draft; unchanged server values leave local edits alone. Name, label,
+mode, readonly, disabled and error props reconcile on retained roots. Local engine mode choices
+survive unrelated updates; a changed `mode` prop selects that mode. Use a new key to replace the
+whole editor. Native reset restores the latest server value. Pending BML forms make editing read-only;
+disabled editors are inert and excluded from form data. The caller supplies surrounding labels and
+actions and owns transport and navigation.
+
+The editor viewport defaults to 320px high with a 240px minimum. Set `--json-height` in consumer CSS
+to resize it. The component owns its editor frame, toolbar, scrollable body and feedback geometry.
+Ordinary shared design colors style surfaces, text, controls, menus, errors, selection and syntax.
+Optional inherited overrides are `--json-bg`, `--json-fg`, `--json-panel-bg`, `--json-accent`,
+`--json-key`, `--json-string`, `--json-number`, `--json-boolean`, `--json-selection`, and
+`--json-scheme` (`light` or `dark`). More specific changes can set the engine's `--jse-*` variables
+on the component root. These variables update live through CSS; no theme registration is needed.
+Editor JS and its CSS mappings are component-reachable, so ordinary button/card and source-only
+pages exclude JSON editor assets. The `/json` consumer fixture checks both palettes, live overrides,
+structured tree editing, text syntax, invalid submissions, reset, keyboard exit, readonly/disabled and
+pending states, repeated disposal, fallback forms and desktop/phone geometry.

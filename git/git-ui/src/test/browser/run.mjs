@@ -66,6 +66,7 @@ try {
     "tags.mjs",
     "statistics.mjs",
     "pipelines.mjs",
+    "json-editor.mjs",
     "pulls.mjs",
     "review.mjs",
     "search.mjs",

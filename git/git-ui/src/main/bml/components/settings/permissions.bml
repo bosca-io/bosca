@@ -4,11 +4,11 @@
     bosca.git.ui.RepositoryPermissionsModel(page)
   </script>
   <island name="git-repository-permissions" :key="page.repository.id">
-    <section class="settings-stack" :data-next-href="model.nextHref">
+    <html:section class="settings-stack" :data-next-href="model.nextHref">
       <if model.message.isNotBlank()>
-        <ui-alert :tone='if (model.failed) "error" else "success"'>{ model.message }</ui-alert>
+        <alert :tone='if (model.failed) "error" else "success"'>{ model.message }</alert>
       </if>
-      <ui-card :padded="false">
+      <card :padded="false">
         <ui-section-heading
           title="Group permissions"
           :subtitle='model.page.permissions.size.toString() + (if (model.page.permissions.size == 1) " permission" else " permissions") + " assigned to security groups."'
@@ -27,11 +27,11 @@
             >
               <div class="modal-fields">
                 <if model.failed && !model.removing>
-                  <ui-alert :tone='if (model.failed) "error" else "success"'>
+                  <alert :tone='if (model.failed) "error" else "success"'>
                     { model.message }
-                  </ui-alert>
+                  </alert>
                 </if>
-                <ui-field label="Group">
+                <field label="Group">
                   <ui-select name="group" searchable required>
                     <option value="">Choose a group</option>
                     <for group in model.page.groups>
@@ -40,8 +40,8 @@
                       </option>
                     </for>
                   </ui-select>
-                </ui-field>
-                <ui-field label="Permission">
+                </field>
+                <field label="Permission">
                   <ui-select name="action">
                     <for action in bosca.git.ui.graphql.PermissionAction.entries>
                       <option :value="action.name" :selected="action.name == model.action">
@@ -49,11 +49,11 @@
                       </option>
                     </for>
                   </ui-select>
-                </ui-field>
+                </field>
               </div>
               <footer class="modal-footer">
-                <ui-button ref="cancel">Cancel</ui-button>
-                <ui-button type="submit" primary>Add permission</ui-button>
+                <button ref="cancel">Cancel</button>
+                <button type="submit" primary>Add permission</button>
               </footer>
             </form>
           </ui-dialog>
@@ -80,15 +80,15 @@
                     <td>
                       <div class="identity-cell">
                         <span class="record-icon">
-                          <ui-icon name="users" />
+                          <icon name="users" />
                         </span>
                         <span>{ permission.group.name }</span>
                       </div>
                     </td>
                     <td>
-                      <ui-badge>
+                      <badge>
                         { permission.action.name.lowercase().replaceFirstChar(Char::uppercase) }
-                      </ui-badge>
+                      </badge>
                     </td>
                     <td class="actions-column">
                       <ui-confirm-dialog
@@ -100,8 +100,8 @@
                           @submit="model.change(permission.group.id, permission.action.name, true, true, ctx)"
                         >
                           <footer class="modal-footer">
-                            <ui-button ref="cancel">Cancel</ui-button>
-                            <ui-button type="submit" class="danger">Remove permission</ui-button>
+                            <button ref="cancel">Cancel</button>
+                            <button type="submit" class="danger">Remove permission</button>
                           </footer>
                         </form>
                       </ui-confirm-dialog>
@@ -112,8 +112,8 @@
             </table>
           </ui-table-scroll>
         </if>
-      </ui-card>
-    </section>
+      </card>
+    </html:section>
   </island>
   <script client scoped>
     ctx.onUpdate(() => {

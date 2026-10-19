@@ -1,27 +1,27 @@
 <component tag="git-reset-form">
   <div class="auth-flow">
-    <ui-alert ref="error" hidden />
+    <alert ref="error" hidden />
     <form ref="form" class="auth-form">
-      <ui-field label="New password">
-        <ui-input
+      <field label="New password">
+        <input
           ref="password"
           name="password"
           type="password"
           autocomplete="new-password"
           required
         />
-      </ui-field>
+      </field>
       <p ref="strength" class="password-strength" role="status">Use a long, unique password.</p>
-      <ui-field label="Confirm password">
-        <ui-input
+      <field label="Confirm password">
+        <input
           ref="confirmPassword"
           name="confirmPassword"
           type="password"
           autocomplete="new-password"
           required
         />
-      </ui-field>
-      <ui-button ref="submit" type="submit" class="auth-primary">Reset password</ui-button>
+      </field>
+      <button ref="submit" type="submit" class="auth-primary">Reset password</button>
     </form>
     <p class="auth-footer">
       <a ref="forgot" href="/auth/forgot">Request a new reset link</a>

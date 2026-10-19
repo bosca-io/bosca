@@ -12,7 +12,7 @@
       <if model.allowed>
         <git-github-users :initial="model" />
       <else>
-        <ui-alert>Administrator access is required.</ui-alert>
+        <alert>Administrator access is required.</alert>
       </if>
     </ui-page>
   </git-layout>

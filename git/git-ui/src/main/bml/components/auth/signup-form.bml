@@ -1,42 +1,42 @@
 <component tag="git-signup-form">
   <div class="auth-flow">
     <git-auth-providers />
-    <ui-alert ref="error" hidden />
+    <alert ref="error" hidden />
     <form ref="form" class="auth-form">
       <div class="auth-name-grid">
-        <ui-field label="First name">
-          <ui-input
+        <field label="First name">
+          <input
             ref="firstName"
             name="firstName"
             type="text"
             autocomplete="given-name"
             required
           />
-        </ui-field>
-        <ui-field label="Last name">
-          <ui-input
+        </field>
+        <field label="Last name">
+          <input
             ref="lastName"
             name="lastName"
             type="text"
             autocomplete="family-name"
             required
           />
-        </ui-field>
+        </field>
       </div>
-      <ui-field label="Email">
-        <ui-input ref="identifier" name="identifier" type="email" autocomplete="email" required />
-      </ui-field>
-      <ui-field label="Password">
-        <ui-input
+      <field label="Email">
+        <input ref="identifier" name="identifier" type="email" autocomplete="email" required />
+      </field>
+      <field label="Password">
+        <input
           ref="password"
           name="password"
           type="password"
           autocomplete="new-password"
           required
         />
-      </ui-field>
+      </field>
       <p ref="strength" class="password-strength" role="status">Use a long, unique password.</p>
-      <ui-button ref="submit" type="submit" class="auth-primary">Create account</ui-button>
+      <button ref="submit" type="submit" class="auth-primary">Create account</button>
     </form>
     <p class="auth-footer">Already have an account? <a ref="login" href="/login">Sign in</a></p>
   </div>

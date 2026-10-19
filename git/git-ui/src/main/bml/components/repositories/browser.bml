@@ -18,7 +18,7 @@
       <if page.secrets.allowed>
         <git-repository-secrets :page="page.secrets" />
       <else>
-        <ui-alert>Manage permission is required.</ui-alert>
+        <alert>Manage permission is required.</alert>
       </if>
     <else-if page.settings != null>
       <git-repository-settings :page="page.settings" />
@@ -38,19 +38,19 @@
           <else>
             <git-repository-tree :entries="page.entries" :editable="page.canWriteRef" />
             <if page.readmeHtml.isNotBlank() && page.readmeEntry != null>
-              <section class="readme-card">
+              <html:section class="readme-card">
                 <a class="readme-header" :href="page.readmeEntry?.href.orEmpty()">
-                  <span class="readme-icon"><ui-icon name="book-open" :size="14" /></span>
+                  <span class="readme-icon"><icon name="book-open" :size="14" /></span>
                   { page.readmeEntry?.name.orEmpty() }
                 </a>
                 <git-markdown :html="page.readmeHtml" />
-              </section>
+              </html:section>
             </if>
             <if page.description.isNotBlank() && page.path.isBlank()>
-              <section class="side-card about-card">
+              <html:section class="side-card about-card">
                 <h2 class="side-card-title">About</h2>
                 <p>{ page.description }</p>
-              </section>
+              </html:section>
             </if>
           </if>
         </if>

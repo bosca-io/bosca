@@ -3,12 +3,12 @@
   <prop name="label" type="String" required />
   <prop name="copyLabel" type="String" default="Copy value" />
   <div class="copy-field">
-    <ui-field :label="label">
+    <field :label="label">
       <div class="copy-field-row">
-        <ui-input ref="value" :value="value" :aria-label="label" size="sm" mono readonly />
+        <input ref="value" :value="value" :aria-label="label" size="sm" mono readonly />
         <ui-copy :value="value" :label="copyLabel" :showStatus="false" />
       </div>
-    </ui-field>
+    </field>
     <p ref="error" class="copy-error" role="alert" hidden>
       Clipboard access is unavailable. Select and copy the value.
     </p>

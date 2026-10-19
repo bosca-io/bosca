@@ -1,9 +1,9 @@
 <component tag="git-verify-form">
   <div class="auth-flow">
-    <ui-alert ref="error" hidden />
+    <alert ref="error" hidden />
     <p ref="notice" class="auth-notice" role="status" hidden></p>
     <p ref="email" class="auth-copy"></p>
-    <ui-button ref="resend" class="auth-primary">Resend verification email</ui-button>
+    <button ref="resend" class="auth-primary">Resend verification email</button>
     <p class="auth-footer">
       <a ref="signup" href="/auth/signup">Use a different email</a>
     </p>

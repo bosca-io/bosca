@@ -4,11 +4,11 @@
     bosca.git.ui.RepositoryRefModel(page, page.id, page.ref, page.listHref)
   </script>
   <island name="git-repository-refs" :key="model.page.id + model.page.ref + model.page.file">
-    <section class="settings-stack" :data-next-href="model.nextHref">
+    <html:section class="settings-stack" :data-next-href="model.nextHref">
       <if model.message.isNotBlank()>
-        <ui-alert :tone='if (model.failed) "error" else "success"'>{ model.message }</ui-alert>
+        <alert :tone='if (model.failed) "error" else "success"'>{ model.message }</alert>
       </if>
-      <ui-card :padded="false">
+      <card :padded="false">
         <ui-section-heading
           :title='if (model.page.tab == "branches") "Branches" else "Tags"'
           :subtitle='if (model.page.tab == "branches") "Commits compared with " + model.page.defaultBranch else ""'
@@ -24,13 +24,13 @@
             <div class="ref-list">
               <for branch in model.page.branchRefs>
                 <div class="ref-row branch-row" :data-default="branch.name == model.page.defaultBranch">
-                  <span class="ref-icon"><ui-icon name="branch" :size="14" /></span>
+                  <span class="ref-icon"><icon name="branch" :size="14" /></span>
                   <a class="ref-name" :href="model.page.href(ref = branch.name)">{ branch.name }</a>
                   <if branch.name == model.page.defaultBranch>
-                    <ui-badge tone="accent">default</ui-badge>
+                    <badge tone="accent">default</badge>
                   </if>
                   <if branch.name == model.page.ref && branch.name != model.page.defaultBranch>
-                    <ui-badge>selected</ui-badge>
+                    <badge>selected</badge>
                   </if>
                   <if branch.ahead != 0 || branch.behind != 0>
                     <span
@@ -57,8 +57,8 @@
                     >
                       <form class="modal-form" @submit='model.remove(branch.name, "branch", true, ctx)'>
                         <footer class="modal-footer">
-                          <ui-button ref="cancel">Cancel</ui-button>
-                          <ui-button type="submit" class="danger">Delete branch</ui-button>
+                          <button ref="cancel">Cancel</button>
+                          <button type="submit" class="danger">Delete branch</button>
                         </footer>
                       </form>
                     </ui-confirm-dialog>
@@ -74,7 +74,7 @@
             <div class="ref-list">
               <for tag in model.page.tags>
                 <div class="ref-row">
-                  <span class="ref-icon tag-icon"><ui-icon name="tag" :size="14" /></span>
+                  <span class="ref-icon tag-icon"><icon name="tag" :size="14" /></span>
                   <a class="ref-name" :href="model.page.href(ref = tag.name)">{ tag.name }</a>
                   <if tag.message.isNotBlank()>
                     <span class="tag-message">{ tag.message.lineSequence().first() }</span>
@@ -89,8 +89,8 @@
                     >
                       <form class="modal-form" @submit='model.remove(tag.name, "tag", true, ctx)'>
                         <footer class="modal-footer">
-                          <ui-button ref="cancel">Cancel</ui-button>
-                          <ui-button type="submit" class="danger">Delete tag</ui-button>
+                          <button ref="cancel">Cancel</button>
+                          <button type="submit" class="danger">Delete tag</button>
                         </footer>
                       </form>
                     </ui-confirm-dialog>
@@ -110,8 +110,8 @@
             </if>
           </nav>
         </if>
-      </ui-card>
-    </section>
+      </card>
+    </html:section>
   </island>
   <style scoped>
     /* Studio branch and tag lists. */

@@ -10,7 +10,7 @@
         <if page.view == "overview">
           <div class="pull-workspace">
             <div class="pull-main">
-              <ui-card title="Description" :padded="false">
+              <card title="Description" :padded="false">
                 <div class="pull-description">
                   <if page.descriptionHtml.isNotBlank()>
                     <git-markdown :html="page.descriptionHtml" />
@@ -18,7 +18,7 @@
                     <p class="muted">No description provided.</p>
                   </if>
                 </div>
-              </ui-card>
+              </card>
               <git-pull-review :page="page" />
               <if page.pull.conflictingFiles.isNotEmpty()>
                 <git-pull-conflicts :page="page" />

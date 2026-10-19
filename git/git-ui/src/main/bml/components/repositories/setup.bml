@@ -1,36 +1,36 @@
 <component tag="git-repository-setup">
   <prop name="page" type="bosca.git.ui.RepositoryPage" required />
   <div class="setup-stack">
-    <section class="setup-banner">
-      <span class="setup-banner-icon"><ui-icon name="folder" :size="20" /></span>
+    <html:section class="setup-banner">
+      <span class="setup-banner-icon"><icon name="folder" :size="20" /></span>
       <div class="setup-banner-text">
         <h2>Quick setup — if you've done this kind of thing before</h2>
         <div class="clone-url-row">
-          <input class="clone-url-input" :value="page.cloneUrl" readonly aria-label="Clone URL" />
+          <html:input class="clone-url-input" :value="page.cloneUrl" readonly aria-label="Clone URL" />
           <ui-copy :value="page.cloneUrl" label="Copy clone URL" />
         </div>
         <if page.canEdit && !page.archived>
           <a class="button-link primary create-first" :href='page.href() + "&new=true"'>
-            <span class="create-icon"><ui-icon name="plus" :size="14" /></span>
+            <span class="create-icon"><icon name="plus" :size="14" /></span>
             Create first file
           </a>
         </if>
       </div>
-    </section>
-    <section class="setup-section">
+    </html:section>
+    <html:section class="setup-section">
       <header>
-        <span class="setup-icon"><ui-icon name="code" :size="16" /></span>
+        <span class="setup-icon"><icon name="code" :size="16" /></span>
         …or create a new repository on the command line
       </header>
       <pre>{ "echo \"# " + page.name + "\" >> README.md\ngit init\ngit add README.md\ngit commit -m \"first commit\"\ngit branch -M " + page.defaultBranch + "\ngit remote add origin " + page.cloneUrl + "\ngit push -u origin " + page.defaultBranch }</pre>
-    </section>
-    <section class="setup-section">
+    </html:section>
+    <html:section class="setup-section">
       <header>
-        <span class="setup-icon"><ui-icon name="upload" :size="16" /></span>
+        <span class="setup-icon"><icon name="upload" :size="16" /></span>
         …or push an existing repository from the command line
       </header>
       <pre>{ "git remote add origin " + page.cloneUrl + "\ngit branch -M " + page.defaultBranch + "\ngit push -u origin " + page.defaultBranch }</pre>
-    </section>
+    </html:section>
   </div>
   <style scoped>
     /* Studio's empty-repository Quick setup. */

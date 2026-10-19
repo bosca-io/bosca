@@ -12,9 +12,9 @@
     :aria-label="label"
     :data-bml-preserve="preserveKey.takeIf(String::isNotBlank)"
   >
-    <input ref="value" type="hidden" :name="name" :value="value" />
+    <html:input ref="value" type="hidden" :name="name" :value="value" />
     <for index in options.indices>
-      <button
+      <html:button
         type="button"
         role="radio"
         :data-value="(values.getOrNull(index) ?: options[index])"
@@ -22,10 +22,10 @@
         :tabindex="if ((values.getOrNull(index) ?: options[index]) == value) 0 else -1"
       >
         <if icons.getOrNull(index).orEmpty().isNotBlank()>
-          <ui-icon :name="icons[index]" :size="12" />
+          <icon :name="icons[index]" :size="12" />
         </if>
         { options[index] }
-      </button>
+      </html:button>
     </for>
   </div>
   <style scoped>

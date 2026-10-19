@@ -23,7 +23,7 @@
   >
     <if showTrigger>
       <if triggerIconOnly>
-        <ui-icon-button
+        <icon-button
           ref="trigger"
           :icon="triggerIcon.ifBlank { icon }"
           :label="triggerLabel"
@@ -32,12 +32,12 @@
           :class='if (triggerStyle == "ghost") "ghost" else ""'
         />
       <else-if triggerStyle == "link">
-        <button type="button" class="link-trigger" ref="trigger" :disabled="triggerDisabled">
-          <span class="link-trigger-icon"><ui-icon :name='triggerIcon.ifBlank { "plus" }' :size="12" /></span>
+        <html:button type="button" class="link-trigger" ref="trigger" :disabled="triggerDisabled">
+          <span class="link-trigger-icon"><icon :name='triggerIcon.ifBlank { "plus" }' :size="12" /></span>
           { triggerLabel }
-        </button>
+        </html:button>
       <else>
-        <ui-button
+        <button
           size="sm"
           ref="trigger"
           :class='if (triggerStyle == "block") "block" else ""'
@@ -46,17 +46,17 @@
           :disabled="triggerDisabled"
         >
           { triggerLabel }
-        </ui-button>
+        </button>
       </if>
     </if>
-    <dialog :class='"dialog size-" + size' ref="dialog" :aria-label="title">
+    <html:dialog :class='"dialog size-" + size' ref="dialog" :aria-label="title">
       <div class="dialog-content">
         <header class="dialog-header">
           <div class="dialog-heading">
             <h2>
               <if icon.isNotBlank()>
                 <span class="dialog-icon">
-                  <ui-icon :name="icon" />
+                  <icon :name="icon" />
                 </span>
               </if>
               { title }
@@ -65,11 +65,11 @@
               <p class="dialog-subtitle">{ subtitle }</p>
             </if>
           </div>
-          <ui-icon-button ref="close" label="Close dialog" icon="close" />
+          <icon-button ref="close" label="Close dialog" icon="close" />
         </header>
         <slot />
       </div>
-    </dialog>
+    </html:dialog>
   </div>
   <style scoped>
     .programmatic-dialog {

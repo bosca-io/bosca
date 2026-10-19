@@ -11,9 +11,9 @@
     :data-placeholder="placeholder"
   >
     <span class="search-icon">
-      <ui-icon name="search" :size="16" />
+      <icon name="search" :size="16" />
     </span>
-    <input
+    <html:input
       ref="query"
       type="search"
       :name="name"
@@ -26,7 +26,7 @@
       autofocus
     />
     <div class="search-actions">
-      <ui-icon-button
+      <icon-button
         ref="clear"
         icon="close"
         label="Clear search"

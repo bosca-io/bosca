@@ -3,14 +3,14 @@
   <prop name="heading" type="String" default="" />
   <prop name="local" type="Boolean" default="false" />
   <prop name="embedded" type="Boolean" default="false" />
-  <section class="ui-tree" :data-local="local" :data-embedded="embedded">
+  <html:section class="ui-tree" :data-local="local" :data-embedded="embedded">
     <if heading.isNotBlank()>
       <h3>{ heading }</h3>
     </if>
     <div role="tree" :aria-label="label">
       <slot />
     </div>
-  </section>
+  </html:section>
   <style scoped>
     .ui-tree {
       min-width: 0;

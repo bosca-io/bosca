@@ -4,15 +4,15 @@
     bosca.git.ui.GitHubHistoryModel(page)
   </script>
   <island name="git-github-history" :key="page.id + page.view">
-    <section class="settings-stack">
-      <ui-card :padded="false">
+    <html:section class="settings-stack">
+      <card :padded="false">
         <ui-section-heading
           title="Synchronization history"
           subtitle="Observed state of paired repositories."
         >
-          <ui-button size="sm" icon="refresh" @click="model.refresh(ctx)">
+          <button size="sm" icon="refresh" @click="model.refresh(ctx)">
             Refresh history
-          </ui-button>
+          </button>
           <if model.page.pair?.enabled == true && model.page.view != "deliveries">
             <ui-dialog title="Synchronize repository" triggerLabel="Synchronize" icon="refresh">
               <form class="modal-form" @submit="model.synchronize(form.action, true, ctx)">
@@ -20,7 +20,7 @@
                   <p class="form-help">
                     Choose the transfer to perform for this paired repository.
                   </p>
-                  <ui-field label="Synchronization action">
+                  <field label="Synchronization action">
                     <ui-select name="action">
                       <if model.page.view == "refs">
                         <option value="refs">Reconcile branches and tags</option>
@@ -30,11 +30,11 @@
                         <option value="pulls">Reconcile pull requests</option>
                       </if>
                     </ui-select>
-                  </ui-field>
+                  </field>
                 </div>
                 <footer class="modal-footer">
-                  <ui-button ref="cancel">Cancel</ui-button>
-                  <ui-button type="submit" primary>Synchronize</ui-button>
+                  <button ref="cancel">Cancel</button>
+                  <button type="submit" primary>Synchronize</button>
                 </footer>
               </form>
             </ui-dialog>
@@ -42,7 +42,7 @@
         </ui-section-heading>
         <ui-tabs label="Synchronization history" :items="model.page.tabs" />
         <if model.message.isNotBlank()>
-          <ui-alert :tone='if (model.failed) "error" else "success"'>{ model.message }</ui-alert>
+          <alert :tone='if (model.failed) "error" else "success"'>{ model.message }</alert>
         </if>
         <if model.page.view == "refs">
           <if model.page.refs.isEmpty()>
@@ -71,15 +71,15 @@
                         <code>{ ref.ref }</code>
                       </td>
                       <td>
-                        <ui-badge
+                        <badge
                           :tone='if (ref.conflict) "warning" else if (ref.synchronized) "success" else "neutral"'
                         >
                           { if (ref.conflict) "Conflict" else if (ref.synchronized) "Synchronized" else "Pending" }
-                        </ui-badge>
+                        </badge>
                         <if ref.conflict && model.page.pair?.enabled == true>
-                          <ui-button size="sm" @click="model.review(ref.ref)">
+                          <button size="sm" @click="model.review(ref.ref)">
                             Review conflict
-                          </ui-button>
+                          </button>
                         </if>
                       </td>
                       <td>
@@ -101,7 +101,7 @@
             </ui-table-scroll>
           </if>
           <for state in listOfNotNull(model.reviewed)>
-            <section class="resolution">
+            <html:section class="resolution">
               <h3>Resolve { state.ref }</h3>
               <p>Reviewed Bosca SHA: <code>{ state.boscaSha ?: "Absent" }</code></p>
               <p>Reviewed GitHub SHA: <code>{ state.githubSha ?: "Absent" }</code></p>
@@ -111,24 +111,24 @@
                 are checked before changing it.
               </p>
               <form class="form-grid" @submit="model.resolve(form.choice, form.confirmed, ctx)">
-                <ui-field label="Use reviewed value from">
+                <field label="Use reviewed value from">
                   <ui-select name="choice" required>
                     <option value="">Choose a host</option>
                     <option value="BOSCA">Bosca</option>
                     <option value="GITHUB">GitHub</option>
                   </ui-select>
-                </ui-field>
-                <ui-switch
+                </field>
+                <switch
                   name="confirmed"
                   required
                   label="Confirm the reviewed replacement or deletion"
                 />
                 <div class="toolbar">
-                  <ui-button @click="model.dismiss()">Cancel</ui-button>
-                  <ui-button type="submit" primary>Resolve ref</ui-button>
+                  <button @click="model.dismiss()">Cancel</button>
+                  <button type="submit" primary>Resolve ref</button>
                 </div>
               </form>
-            </section>
+            </html:section>
           </for>
         <else-if model.page.view == "pulls">
           <if model.page.pulls.isEmpty()>
@@ -254,8 +254,8 @@
             </a>
           </if>
         </nav>
-      </ui-card>
-    </section>
+      </card>
+    </html:section>
   </island>
   <style scoped>
     article,

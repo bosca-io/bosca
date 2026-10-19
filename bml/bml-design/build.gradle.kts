@@ -17,7 +17,7 @@ bml {
     library {
         exports.set(listOf(
             "alert", "app-header", "badge", "bosca-mark", "button", "card", "checkbox", "comment-editor", "confirm-dialog", "copy", "copy-field", "dialog", "disclosure-heading",
-            "empty-state", "field", "icon", "icon-button", "icon-link", "input",
+            "empty-state", "field", "icon", "icon-button", "icon-link", "input", "json-editor",
             "loading-state", "page-heading", "page-shell", "panel", "popover", "search-input", "select", "section", "section-heading", "segmented-control", "source-view", "spinner", "switch", "table-scroll", "tabs", "time", "toast", "tree", "tree-item", "tooltip", "view-tabs",
         ))
     }

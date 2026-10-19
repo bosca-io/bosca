@@ -6,7 +6,7 @@
     props.filterKeys { it !in setOf("label", "description", "checked", "__bmlAttrs") }
   </script>
   <label class="checkbox-row">
-    <input type="checkbox" :checked="checked" {...attrs} />
+    <html:input type="checkbox" :checked="checked" {...attrs} />
     <span>
       <strong>{ label }</strong>
       <if description.isNotBlank()>

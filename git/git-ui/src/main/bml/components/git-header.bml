@@ -7,7 +7,7 @@
     <if signedIn>
       <div class="git-subsystem">
         <span class="subsystem-icon">
-          <ui-icon name="branch" />
+          <icon name="branch" />
         </span>
         <div class="subsystem-text">
           <strong>Git</strong>
@@ -15,7 +15,7 @@
         </div>
       </div>
       <a class="nav-search" href="/search" title="Search (⌘K)" ref="search">
-        <span class="nav-search-icon"><ui-icon name="search" :size="14" /></span>
+        <span class="nav-search-icon"><icon name="search" :size="14" /></span>
         <span class="nav-search-placeholder">Search…</span>
         <kbd class="nav-search-kbd">⌘K</kbd>
       </a>
@@ -23,33 +23,33 @@
         <div class="nav-group">
           <span class="nav-label">Code</span>
           <a href="/search" :aria-current='if (path == "/search") "page" else "false"'>
-            <span class="nav-icon"><ui-icon name="search" :size="15" /></span>
+            <span class="nav-icon"><icon name="search" :size="15" /></span>
             Search
           </a>
           <a
             href="/repositories"
             :aria-current='if (path.startsWith("/repositories")) "page" else "false"'
           >
-            <span class="nav-icon"><ui-icon name="folder" :size="15" /></span>
+            <span class="nav-icon"><icon name="folder" :size="15" /></span>
             Repositories
           </a>
           <a href="/pulls" :aria-current='if (path.startsWith("/pulls")) "page" else "false"'>
-            <span class="nav-icon"><ui-icon name="merge" :size="15" /></span>
+            <span class="nav-icon"><icon name="merge" :size="15" /></span>
             Pull Requests
           </a>
           <a href="/pipelines" :aria-current='if (path.startsWith("/pipelines")) "page" else "false"'>
-            <span class="nav-icon"><ui-icon name="workflow" :size="15" /></span>
+            <span class="nav-icon"><icon name="workflow" :size="15" /></span>
             Pipelines
           </a>
         </div>
         <div class="nav-group">
           <span class="nav-label">Tools</span>
           <a href="/compare" :aria-current='if (path == "/compare") "page" else "false"'>
-            <span class="nav-icon"><ui-icon name="compare" :size="15" /></span>
+            <span class="nav-icon"><icon name="compare" :size="15" /></span>
             Compare
           </a>
           <a href="/statuses" :aria-current='if (path == "/statuses") "page" else "false"'>
-            <span class="nav-icon"><ui-icon name="check" :size="15" /></span>
+            <span class="nav-icon"><icon name="check" :size="15" /></span>
             Statuses
           </a>
         </div>
@@ -59,20 +59,20 @@
         >
           <summary class="nav-label">
             Settings
-            <span class="nav-chevron"><ui-icon name="chevron" :size="12" /></span>
+            <span class="nav-chevron"><icon name="chevron" :size="12" /></span>
           </summary>
           <a
             href="/ci-agents"
             :aria-current='if (path.startsWith("/ci-agents")) "page" else "false"'
           >
-            <span class="nav-icon"><ui-icon name="wand" :size="15" /></span>
+            <span class="nav-icon"><icon name="wand" :size="15" /></span>
             CI Agents
           </a>
           <a
             href="/settings/github"
             :aria-current='if (path == "/settings/github") "page" else "false"'
           >
-            <span class="nav-icon"><ui-icon name="users" :size="15" /></span>
+            <span class="nav-icon"><icon name="users" :size="15" /></span>
             GitHub User Mappings
           </a>
         </details>

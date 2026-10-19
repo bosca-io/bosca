@@ -33,7 +33,7 @@
     :data-expanded="expanded"
   >
     <if directory>
-      <button
+      <html:button
         class="ui-tree-row"
         type="button"
         tabindex="-1"
@@ -42,16 +42,16 @@
         {...attrs}
       >
         <span class="tree-chevron">
-          <ui-icon name="chevron" :size="11" />
+          <icon name="chevron" :size="11" />
         </span>
         <span class="folder-closed">
-          <ui-icon name="folder" :size="13" />
+          <icon name="folder" :size="13" />
         </span>
         <span class="folder-open">
-          <ui-icon name="folder-open" :size="13" />
+          <icon name="folder-open" :size="13" />
         </span>
         <span class="tree-label">{ label }</span>
-      </button>
+      </html:button>
     <else>
       <a
         class="ui-tree-row"
@@ -62,7 +62,7 @@
         :aria-current='if (selected) "page" else null'
       >
         <span class="tree-spacer" aria-hidden="true"></span>
-        <span class="tree-file-icon"><ui-icon name="file" :size="13" /></span>
+        <span class="tree-file-icon"><icon name="file" :size="13" /></span>
         <span class="tree-label">{ label }</span>
       </a>
     </if>

@@ -26,12 +26,12 @@
       <div class="heading-title">
         <if icon.isNotBlank()>
           <span class="title-mark" :style='"background: " + iconColor'>
-            <ui-icon :name="icon" />
+            <icon :name="icon" />
           </span>
         </if>
         <h1>{ title }</h1>
         <if badge.isNotBlank()>
-          <ui-badge :tone="badgeTone" :color="badgeColor">{ badge }</ui-badge>
+          <badge :tone="badgeTone" :color="badgeColor">{ badge }</badge>
         </if>
         <if subtitle.isNotBlank()>
           <p class="heading-subtitle">{ subtitle }</p>

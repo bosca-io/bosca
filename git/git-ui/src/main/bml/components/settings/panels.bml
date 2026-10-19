@@ -3,7 +3,7 @@
   <div class="settings-stack">
     <ui-tabs label="Repository settings" :items="page.tabs" />
     <if !page.repository.canManage>
-      <ui-alert>The required repository permission is not granted.</ui-alert>
+      <alert>The required repository permission is not granted.</alert>
     <else-if page.panel == "metadata">
       <git-repository-metadata :page="page" />
     <else-if page.panel == "webhooks">
@@ -20,9 +20,9 @@
         class="sync-link"
         :href='"/repositories/" + bosca.git.ui.encode(page.repository.id) + "/github"'
       >
-        <ui-icon name="refresh" :size="14" />
+        <icon name="refresh" :size="14" />
         GitHub synchronization
-        <ui-icon name="external" :size="12" />
+        <icon name="external" :size="12" />
       </a>
     </if>
   </div>

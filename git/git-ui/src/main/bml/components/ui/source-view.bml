@@ -14,11 +14,11 @@
                 }
         } else if (bare) " bare-code" else ""
   </script>
-  <section :class="widgetClass" :data-path="path">
+  <html:section :class="widgetClass" :data-path="path">
     <if !bare>
       <div class="toolbar source-toolbar">
         <slot />
-        <ui-icon-button ref="wrap" icon="wrap" label="Toggle line wrapping" aria-pressed="false" />
+        <icon-button ref="wrap" icon="wrap" label="Toggle line wrapping" aria-pressed="false" />
         <span class="muted editor-mode" title="Escape then Tab leaves the editor">Read-only</span>
       </div>
     </if>
@@ -26,7 +26,7 @@
     <div ref="editor" class="code-editor">
       <pre ref="fallback" class="source"><code>{ content }</code></pre>
     </div>
-  </section>
+  </html:section>
   <style scoped>
     .code-widget.compact-code {
       flex: none;

@@ -1,8 +1,8 @@
 <component tag="git-search-results">
   <prop name="page" type="bosca.git.ui.SearchModel" required />
-  <section class="search-results" aria-label="Search results">
+  <html:section class="search-results" aria-label="Search results">
     <if page.failed>
-      <ui-alert>{ page.message }</ui-alert>
+      <alert>{ page.message }</alert>
     <else-if page.id.isBlank()>
       <ui-empty-state
         icon="folder"
@@ -44,16 +44,16 @@
             >
               <if page.mode == "content">
                 <div class="result-location">
-                  <ui-icon name="file" :size="13" />
+                  <icon name="file" :size="13" />
                   <code class="result-path">{ hit.path }</code>
                   <span class="result-line">Line { hit.line }</span>
                   <span class="result-open">
-                    <ui-icon name="arrow-right" :size="13" />
+                    <icon name="arrow-right" :size="13" />
                   </span>
                 </div>
                 <pre class="result-snippet"><for part in hit.parts(page.query)><if part.matched><mark>{ part.text }</mark><else>{ part.text }</if></for></pre>
               <else>
-                <ui-icon :name="hit.icon" :size="14" />
+                <icon :name="hit.icon" :size="14" />
                 <span class="path-copy">
                   <span class="result-name">{ hit.name }</span>
                   <code class="result-full-path">{ hit.path }</code>
@@ -65,7 +65,7 @@
                   <span class="result-size">{ hit.sizeLabel }</span>
                 </if>
                 <span class="result-open">
-                  <ui-icon name="arrow-right" :size="13" />
+                  <icon name="arrow-right" :size="13" />
                 </span>
               </if>
             </a>
@@ -73,7 +73,7 @@
         </for>
       </ul>
     </if>
-  </section>
+  </html:section>
   <style scoped>
     .search-results {
       margin-top: 16px;

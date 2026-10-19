@@ -20,7 +20,7 @@
       :data-bml-preserve="id"
     >{ value }</textarea>
     <if error.isNotBlank()>
-      <ui-alert ref="commentError" :id='id + "-error"' compact>{ error }</ui-alert>
+      <alert ref="commentError" :id='id + "-error"' compact>{ error }</alert>
     </if>
     <footer class="comment-footer">
       <small ref="shortcut" :id='id + "-hint"' :data-hint="hint.isNotBlank()">

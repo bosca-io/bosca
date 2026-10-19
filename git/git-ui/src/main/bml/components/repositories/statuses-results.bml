@@ -2,7 +2,7 @@
   <prop name="page" type="bosca.git.ui.ExplorePage" required />
   <div class="status-layout">
     <div class="commit-panel">
-      <ui-card :padded="false">
+      <card :padded="false">
         <ui-section-heading
           title="Recent Commits"
           :subtitle='if (page.id.isBlank()) "Select a repository" else page.recent.size.toString() + " commits"'
@@ -27,24 +27,24 @@
             </for>
           </div>
         </if>
-      </ui-card>
+      </card>
     </div>
     <div class="status-panel">
       <form method="get" class="sha-input-row" :action="page.shaFormAction">
         <for field in page.shaFormFields>
-          <input type="hidden" :name="field.first" :value="field.second" />
+          <html:input type="hidden" :name="field.first" :value="field.second" />
         </for>
-        <ui-input name="sha" :value="page.sha" mono placeholder="Enter or select a commit SHA…" aria-label="Commit SHA" />
-        <ui-button type="submit" size="sm" primary>Load Statuses</ui-button>
+        <input name="sha" :value="page.sha" mono placeholder="Enter or select a commit SHA…" aria-label="Commit SHA" />
+        <button type="submit" size="sm" primary>Load Statuses</button>
       </form>
       <if page.sha.isNotBlank() && page.statuses.isNotEmpty()>
-        <ui-card :padded="false">
+        <card :padded="false">
           <ui-section-heading title="Status Checks" :subtitle='page.statuses.size.toString() + " checks"' />
           <div class="status-list">
             <for status in page.statuses>
               <div class="status-row" :style='"--state-color: " + bosca.git.ui.statusColor(status.state.name)'>
                 <span class="status-icon">
-                  <ui-icon :name='when (status.state.name) { "SUCCESS" -> "check-plain"; "FAILURE", "ERROR" -> "close"; else -> "more" }' :size="14" />
+                  <icon :name='when (status.state.name) { "SUCCESS" -> "check-plain"; "FAILURE", "ERROR" -> "close"; else -> "more" }' :size="14" />
                 </span>
                 <div class="status-info">
                   <div class="status-context">{ status.context }</div>
@@ -63,13 +63,13 @@
                     :aria-label='"Open " + status.context + " check"'
                     title="View check"
                   >
-                    <ui-icon name="external" :size="12" />
+                    <icon name="external" :size="12" />
                   </a>
                 </if>
               </div>
             </for>
           </div>
-        </ui-card>
+        </card>
       <else-if page.sha.isNotBlank()>
         <div class="panel-empty">
           <p>No status checks found for this commit.</p>

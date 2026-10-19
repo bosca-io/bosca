@@ -1,5 +1,5 @@
 <component tag="git-session-button">
-  <ui-button ref="signout" disabled>Sign out</ui-button>
+  <button ref="signout" disabled>Sign out</button>
   <script client scoped>
     const button = ctx.ref<HTMLButtonElement>("signout");
     if (button) button.disabled = false;

@@ -1,16 +1,16 @@
 <component tag="git-diff-file-header">
   <prop name="file" type="bosca.git.ui.DiffView" required />
   <header class="diff-file-header">
-    <button
+    <html:button
       class="diff-file-toggle"
       type="button"
       aria-expanded="true"
       :aria-controls='file.anchor + "-body"'
       :aria-label='"Collapse " + file.path'
     >
-      <ui-icon name="chevron" :size="12" />
-    </button>
-    <ui-badge :color="bosca.git.ui.pullFileChangeColor(file.changeType)">{ bosca.git.ui.pullFileChangeLabel(file.changeType) }</ui-badge>
+      <icon name="chevron" :size="12" />
+    </html:button>
+    <badge :color="bosca.git.ui.pullFileChangeColor(file.changeType)">{ bosca.git.ui.pullFileChangeLabel(file.changeType) }</badge>
     <code class="file-path" :title="file.displayPath">{ file.displayPath }</code>
     <ui-copy :value="file.path" label="Copy file path" :showStatus="false" />
     <span class="file-stats">

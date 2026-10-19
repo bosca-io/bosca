@@ -14,7 +14,7 @@
         </ui-select>
       </div>
       <a class="swap-button" :href="page.swapHref" title="Swap base and head" aria-label="Swap base and head">
-        <ui-icon name="arrows-left-right" :size="14" />
+        <icon name="arrows-left-right" :size="14" />
       </a>
       <div class="ref-group">
         <span class="ref-label">Compare</span>
@@ -40,7 +40,7 @@
           </for>
         </ui-select>
       </div>
-      <ui-button type="submit" size="sm" primary ref="compare" :disabled="page.head.isBlank()">Compare</ui-button>
+      <button type="submit" size="sm" primary ref="compare" :disabled="page.head.isBlank()">Compare</button>
     </div>
   </form>
   <style scoped>

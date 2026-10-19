@@ -1,6 +1,6 @@
 <component tag="git-pull-details">
   <prop name="page" type="bosca.git.ui.PullPage" required />
-  <section class="side-card" aria-label="Pull request details">
+  <html:section class="side-card" aria-label="Pull request details">
     <h2 class="side-card-title">Details</h2>
     <dl class="info-list">
       <div class="info-row">
@@ -10,9 +10,9 @@
       <div class="info-row">
         <dt class="info-label">Mergeable</dt>
         <dd class="info-value">
-          <ui-badge :color='if (page.pull.mergeable) "#34d99a" else "#ff5d6c"'>
+          <badge :color='if (page.pull.mergeable) "#34d99a" else "#ff5d6c"'>
             { if (page.pull.mergeable) "Yes" else "No" }
-          </ui-badge>
+          </badge>
         </dd>
       </div>
       <div class="info-row">
@@ -79,7 +79,7 @@
         </div>
       </if>
     </dl>
-  </section>
+  </html:section>
   <style scoped>
     .info-link {
       color: var(--accent);

@@ -15,13 +15,13 @@
   >
     <div class="toast">
       <span class="toast-icon" aria-hidden="true">
-        <span data-tone-icon="success"><ui-icon name="check" :size="16" /></span>
-        <span data-tone-icon="error"><ui-icon name="close" :size="16" /></span>
-        <span data-tone-icon="warning"><ui-icon name="alert" :size="16" /></span>
-        <span data-tone-icon="info"><ui-icon name="info" :size="16" /></span>
+        <span data-tone-icon="success"><icon name="check" :size="16" /></span>
+        <span data-tone-icon="error"><icon name="close" :size="16" /></span>
+        <span data-tone-icon="warning"><icon name="alert" :size="16" /></span>
+        <span data-tone-icon="info"><icon name="info" :size="16" /></span>
       </span>
       <span ref="message" class="toast-message" role="status" aria-live="polite" aria-atomic="true"></span>
-      <ui-icon-button ref="dismiss" class="toast-close" icon="close" label="Dismiss notification" size="xs" />
+      <icon-button ref="dismiss" class="toast-close" icon="close" label="Dismiss notification" size="xs" />
     </div>
   </div>
   <style scoped>

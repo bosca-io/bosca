@@ -6,7 +6,7 @@
   <div class="pipeline-trigger">
     <if page.selected.isNotBlank()>
       <island name="git-pipeline-trigger" :key="page.selected">
-        <section :data-next-href="model.nextHref">
+        <html:section :data-next-href="model.nextHref">
           <ui-dialog
             title="Run pipeline"
             triggerLabel="Run pipeline"
@@ -18,9 +18,9 @@
             <form class="modal-form" data-pipeline-trigger @submit="model.start(form.inputs, ctx)">
               <div class="modal-fields">
                 <if model.message.isNotBlank()>
-                  <ui-alert>{ model.message }</ui-alert>
+                  <alert>{ model.message }</alert>
                 </if>
-                <ui-field
+                <field
                   label="Ref"
                   hint="The pipeline definition and inputs come from the selected branch or tag."
                 >
@@ -42,10 +42,10 @@
                       </for>
                     </ui-select>
                   </git-ref-search>
-                </ui-field>
-                <input name="inputs" type="hidden" value="[]" />
+                </field>
+                <html:input name="inputs" type="hidden" value="[]" />
                 <for input in model.page.inputs>
-                  <ui-field :label="input.name" :hint="input.description.orEmpty()">
+                  <field :label="input.name" :hint="input.description.orEmpty()">
                     <if input.type.name == "CHOICE" || input.type.name == "BOOLEAN">
                       <ui-select
                         :data-pipeline-input="input.name"
@@ -65,7 +65,7 @@
                         </for>
                       </ui-select>
                     <else>
-                      <ui-input
+                      <input
                         :type='if (input.type.name == "NUMBER") "number" else "text"'
                         step="any"
                         :data-pipeline-input="input.name"
@@ -73,26 +73,26 @@
                         :required="input.required"
                       />
                     </if>
-                  </ui-field>
+                  </field>
                 </for>
                 <if !model.page.canExecute>
-                  <ui-alert>Execute permission is required to run this pipeline.</ui-alert>
+                  <alert>Execute permission is required to run this pipeline.</alert>
                 </if>
               </div>
               <footer class="modal-footer">
-                <ui-button ref="cancel">Cancel</ui-button>
-                <ui-button
+                <button ref="cancel">Cancel</button>
+                <button
                   type="submit"
                   primary
                   icon="play"
                   :disabled="!model.page.canExecute || model.page.ref.isBlank()"
                 >
                   Run pipeline
-                </ui-button>
+                </button>
               </footer>
             </form>
           </ui-dialog>
-        </section>
+        </html:section>
       </island>
     </if>
   </div>

@@ -4,7 +4,7 @@
     bosca.git.ui.PullActionsModel(page)
   </script>
   <island name="git-pull-assignees" :key="page.pull.id">
-    <section class="side-card assignees" :data-next-href="model.nextHref">
+    <html:section class="side-card assignees" :data-next-href="model.nextHref">
       <h2 class="side-card-title">Assignees</h2>
       <if model.page.pull.assignees.isEmpty()>
         <p class="side-empty">No assignees</p>
@@ -18,7 +18,7 @@
               <span class="side-row-name" :title='profile.slug?.let { "@" + it } ?: profile.id'>{ profile.name }</span>
               <if model.page.canEdit && (model.page.pull.status.name == "OPEN" || model.page.pull.status.name == "DRAFT")>
                 <span class="side-row-remove">
-                  <ui-icon-button
+                  <icon-button
                     type="submit"
                     size="xs"
                     class="ghost"
@@ -32,7 +32,7 @@
         </div>
       </if>
       <if model.failed && model.selectedAction == "unassign">
-        <ui-alert>{ model.message }</ui-alert>
+        <alert>{ model.message }</alert>
       </if>
       <if model.page.canEdit && (model.page.pull.status.name == "OPEN" || model.page.pull.status.name == "DRAFT")>
         <ui-dialog
@@ -45,7 +45,7 @@
           <form class="modal-form" @submit="model.assign(form.profile, false, ctx)">
             <div class="modal-fields">
               <if model.message.isNotBlank()>
-                <ui-alert>{ model.message }</ui-alert>
+                <alert>{ model.message }</alert>
               </if>
               <git-owner-picker
                 :allowAll="false"
@@ -56,13 +56,13 @@
               />
             </div>
             <footer class="modal-footer">
-              <ui-button ref="cancel">Cancel</ui-button>
-              <ui-button type="submit" primary>Add assignee</ui-button>
+              <button ref="cancel">Cancel</button>
+              <button type="submit" primary>Add assignee</button>
             </footer>
           </form>
         </ui-dialog>
       </if>
-    </section>
+    </html:section>
   </island>
   <script client scoped>
     ctx.onUpdate(() => {

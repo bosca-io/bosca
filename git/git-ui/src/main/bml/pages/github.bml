@@ -12,7 +12,7 @@
           :trail='listOf(bosca.design.model.NavigationItem("Repositories", "/repositories", false), bosca.design.model.NavigationItem(page.name, "/repositories/" + bosca.git.ui.encode(page.id), false))'
         />
         <if !page.allowed>
-          <ui-alert>Administrator access is required.</ui-alert>
+          <alert>Administrator access is required.</alert>
         <else>
           <git-github-history :page="page" />
           <details class="github-configuration" :open="page.pair == null">

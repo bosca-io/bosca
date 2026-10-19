@@ -38,6 +38,7 @@ class GitUiRoutesTest {
     fun resetWrites() {
         storedFiles.clear()
         userMappings.clear()
+        orchestratorConfigs.clear()
         treeRetries.clear()
         commitSha = "abc"
         requestProbe = null
@@ -333,7 +334,7 @@ class GitUiRoutesTest {
     }
 
     @Test
-    fun `local controls preserve native form attributes and island refs`() {
+    fun `library controls preserve native form attributes and island refs`() {
         val html = get("/login", authenticated = false).body()
         val identifier =
             Regex("<input[^>]*data-bml-ref=\"identifier\"[^>]*>").find(html)?.value.orEmpty()
@@ -356,6 +357,56 @@ class GitUiRoutesTest {
             Regex("<p[^>]*data-bml-ref=\"error\"[^>]*\\bhidden[ >]").containsMatchIn(html),
             html,
         )
+    }
+
+    @Test
+    fun `Git foundation callers resolve to the compiled design library`() {
+        val html =
+            listOf(
+                get("/login", authenticated = false),
+                get("/ci-agents/orchestrator"),
+                get("/search?repo=repo&q=snippet"),
+                get("/pulls?repo=repo&new=true"),
+                get("/repositories/repo?tab=branches"),
+            ).joinToString("\n") { response ->
+                assertEquals(200, response.statusCode(), response.body())
+                response.body()
+            }
+        for (tag in listOf("button", "input", "field", "card", "switch", "alert", "badge", "spinner", "loading-state")) {
+            val id = bosca.bml.library.BmlLibraryArtifacts.componentId("io.bosca:bml-design", tag)
+            assertTrue("data-bml-c=\"$id\"" in html, "Missing library $tag")
+            assertFalse("data-bml-c=\"ui-$tag\"" in html, "Local $tag is still rendered")
+        }
+    }
+
+    @Test
+    fun `migrated controls have no local registrations and icon actions use library mounts`() {
+        val migrated = listOf(
+            "button", "input", "field", "card", "switch", "alert", "badge", "spinner", "loading-state",
+            "icon", "icon-button", "icon-link", "tooltip",
+        )
+        val registered = bml.generated.BmlComponents.all.map { it.tag }.toSet()
+        for (tag in migrated) {
+            val id = bosca.bml.library.BmlLibraryArtifacts.componentId("io.bosca:bml-design", tag)
+            assertTrue(id in registered, "Missing library registration for $tag")
+            assertFalse("ui-$tag" in registered, "Unused local registration for $tag")
+        }
+        val html = listOf(
+            "/repositories/repo?file=README.md",
+            "/pulls/pull?repo=repo&number=1&view=files",
+        ).joinToString("\n") { path ->
+            val response = get(path)
+            assertEquals(200, response.statusCode(), response.body())
+            response.body()
+        }
+        for (tag in listOf("icon-button", "icon-link", "tooltip")) {
+            val id = bosca.bml.library.BmlLibraryArtifacts.componentId("io.bosca:bml-design", tag)
+            assertTrue("data-bml-component=\"$id\"" in html, "Missing library mount for $tag")
+            assertFalse("data-bml-component=\"ui-$tag\"" in html)
+        }
+        val download = Regex("<a[^>]*aria-label=\"Download file\"[^>]*>").find(html)?.value.orEmpty()
+        assertTrue(Regex("\\bdownload(?:[ >])").containsMatchIn(download), download)
+        assertTrue("href=\"" in download && "button-link icon-only" in download, download)
     }
 
     @Test
@@ -1856,7 +1907,8 @@ class GitUiRoutesTest {
         )
         val orchestrator = get("/ci-agents/orchestrator")
         assertEquals(200, orchestrator.statusCode(), orchestrator.body())
-        assertTrue("ui-json-editor" in orchestrator.body(), orchestrator.body())
+        assertTrue("data-bml-json-editor" in orchestrator.body(), orchestrator.body())
+        assertFalse("data-bml-component=\"ui-json-editor\"" in orchestrator.body(), orchestrator.body())
         val invalid =
             action(
                 "/ci-agents/orchestrator",
@@ -1866,6 +1918,59 @@ class GitUiRoutesTest {
             )
         assertEquals(true, actionState(invalid)["failed"]?.jsonPrimitive?.boolean, invalid.body())
         assertEquals("[]", actionState(invalid)["profiles"]?.jsonPrimitive?.content)
+    }
+
+    @Test
+    fun `orchestrator configuration posts structured JSON and retains failed drafts`() {
+        val profiles = """{"linux":{"size":"large","enabled":true,"count":3}}"""
+        val sinks = """[{"type":"webhook","url":"https://example.test/changed"}]"""
+        fun configure(provider: String = "digitalocean", draft: String = profiles) = action(
+            "/ci-agents/orchestrator", "git-agent-settings.model", "configure",
+            listOf(provider, "scope", "nyc1", "small", "ubuntu", draft, sinks, 7, 45, 90),
+        )
+        val before = requests.count { it.operation == "GitUiConfigureOrchestrator" }
+        val invalid = configure(draft = "{invalid: ")
+        assertEquals(true, actionState(invalid)["failed"]?.jsonPrimitive?.boolean, invalid.body())
+        assertEquals("{invalid: ", actionState(invalid)["profiles"]?.jsonPrimitive?.content)
+        assertEquals(sinks, actionState(invalid)["sinks"]?.jsonPrimitive?.content)
+        assertEquals(before, requests.count { it.operation == "GitUiConfigureOrchestrator" })
+        val rejected = configure(provider = "rejected-provider")
+        assertEquals(true, actionState(rejected)["failed"]?.jsonPrimitive?.boolean, rejected.body())
+        assertEquals("Configuration rejected", actionState(rejected)["message"]?.jsonPrimitive?.content)
+        assertEquals(profiles, actionState(rejected)["profiles"]?.jsonPrimitive?.content)
+        assertEquals(sinks, actionState(rejected)["sinks"]?.jsonPrimitive?.content)
+        val saved = configure()
+        assertEquals(false, actionState(saved)["failed"]?.jsonPrimitive?.boolean, saved.body())
+        assertEquals("/ci-agents/orchestrator", actionState(saved)["nextHref"]?.jsonPrimitive?.content)
+        val sent = requests.last { it.operation == "GitUiConfigureOrchestrator" }
+        assertEquals("Bearer ui-test-token", sent.authorization)
+        assertEquals("orchestrator", sent.variables["id"]?.jsonPrimitive?.content)
+        val config = sent.variables.getValue("config").jsonObject
+        assertEquals(Json.parseToJsonElement(profiles), config["runnerProfiles"])
+        assertEquals(Json.parseToJsonElement(sinks), config["alertSinks"])
+        assertEquals(7, config["maxConcurrentVms"]?.jsonPrimitive?.int)
+        assertEquals(45, config["maxJobTimeoutMinutes"]?.jsonPrimitive?.int)
+        assertEquals(90, config["maxVmLifetimeMinutes"]?.jsonPrimitive?.int)
+        assertEquals("scope", config["credentials"]?.jsonObject?.get("selfDestructTokenScope")?.jsonPrimitive?.content)
+        assertTrue("enabled" in get("/ci-agents/orchestrator").body())
+    }
+
+    @Test
+    fun `Git JSON editors use the compiled design library without loading it on ordinary pages`() {
+        val html = get("/ci-agents/orchestrator").body()
+        val component = bosca.bml.library.BmlLibraryArtifacts.componentId("io.bosca:bml-design", "json-editor")
+        assertEquals(2, Regex("data-bml-component=\"$component\"").findAll(html).count(), html)
+        assertTrue("name=\"profiles\"" in html && "name=\"sinks\"" in html, html)
+        assertTrue("aria-label=\"Runner profiles\"" in html && "aria-label=\"Alert sinks\"" in html, html)
+        assertTrue("data-bml-preserve=\"json-profiles\"" in html && "data-bml-preserve=\"json-sinks\"" in html, html)
+        fun script(page: String): String = Regex("src=\"(/_bml/js/[^\"]+)\"").findAll(page)
+            .joinToString("\n") { get(it.groupValues[1]).body() }
+        val editorScript = script(html)
+        assertTrue("data-json-ready" in editorScript && "jse-main" in editorScript)
+        val ordinary = script(get("/repositories/repo").body())
+        assertFalse("data-json-ready" in ordinary || "jse-main" in ordinary)
+        val style = get("/_bml/app.css").body()
+        assertTrue("--json-bg" in style && "--json-key" in style, style)
     }
 
     @Test
@@ -2485,6 +2590,7 @@ class GitUiRoutesTest {
                 java.util.concurrent.atomic.AtomicInteger,
             >()
         private val userMappings = CopyOnWriteArrayList<JsonObject>()
+        private val orchestratorConfigs = java.util.concurrent.ConcurrentHashMap<String, JsonObject>()
         @Volatile private var commitSha = "abc"
         private var port = 0
         private lateinit var upstream: HttpServer
@@ -2791,8 +2897,15 @@ class GitUiRoutesTest {
                             """{"data":{"git":{"registerAgent":{"agent":{"id":"agent"},"token":"one-time-agent-token"}}}}"""
                         operation == "GitUiUpdateAgent" ->
                             """{"data":{"git":{"updateAgent":{"id":"agent"}}}}"""
+                        operation == "GitUiConfigureOrchestrator" &&
+                            variables.getValue("config").jsonObject["provider"]?.jsonPrimitive?.content == "rejected-provider" ->
+                            """{"errors":[{"message":"Configuration rejected"}]}"""
+                        operation == "GitUiConfigureOrchestrator" -> {
+                            orchestratorConfigs[requireNotNull(id)] = variables.getValue("config").jsonObject
+                            """{"data":{"git":{"configureOrchestrator":{"id":${variables.getValue("id")}}}}}"""
+                        }
                         operation == "GitUiOrchestrator" ->
-                            """{"data":{"git":{"getOrchestratorConfig":$orchestrator}}}"""
+                            """{"data":{"git":{"getOrchestratorConfig":${id?.let { orchestratorConfigs[it] } ?: orchestrator}}}}"""
                         operation == "GitUiGitHubPair" ->
                             """{"data":{"github":{"pair":$pair},"pipelines":{"secrets":[{"name":"token"},{"name":"webhook"}]}}}"""
                         operation == "GitUiGitHubRefs" ->

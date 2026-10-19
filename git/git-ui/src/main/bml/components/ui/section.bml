@@ -1,7 +1,7 @@
 <component tag="ui-section">
-  <section class="ui-section">
+  <html:section class="ui-section">
     <slot />
-  </section>
+  </html:section>
   <style scoped>
     .ui-section {
       min-width: 0;

@@ -10,7 +10,7 @@
           <code class="runner-label">{ job.runnerLabel }</code>
           <if job.agent != null>
             <a class="agent-link" :href='"/ci-agents/" + bosca.git.ui.encode(job.agent.id)'>
-              <ui-icon name="monitor" :size="11" />{ job.agent.name }
+              <icon name="monitor" :size="11" />{ job.agent.name }
             </a>
           </if>
           <if job.attempt != 1>
@@ -32,11 +32,11 @@
       <code class="job-duration">{ bosca.git.ui.pipelineElapsed(job.started, job.finished) }</code>
     </header>
     <if job.errorMessage != null>
-      <div class="job-error"><ui-icon name="close" :size="12" /><span>{ job.errorMessage }</span></div>
+      <div class="job-error"><icon name="close" :size="12" /><span>{ job.errorMessage }</span></div>
     </if>
     <if job.requirementsBypassedAt != null>
       <div class="job-override">
-        <ui-icon name="alert" :size="14" />
+        <icon name="alert" :size="14" />
         <div>
           <strong>External requirements bypassed</strong>
           <span><ui-time :value="job.requirementsBypassedAt" /></span>
@@ -46,7 +46,7 @@
     </if>
     <if job.awaitingRequirements>
       <div class="job-waiting">
-        <strong class="waiting-heading"><ui-icon name="clock" :size="14" />This job is queued until its requirements are available.</strong>
+        <strong class="waiting-heading"><icon name="clock" :size="14" />This job is queued until its requirements are available.</strong>
         <if bosca.git.ui.artifactRequirementLabels(job.requirements).isNotEmpty()>
           <div class="waiting-group">
             <span class="waiting-label">{ if (bosca.git.ui.artifactRequirementLabels(job.requirements).size == 1) "Waiting on artifact" else "Waiting on artifacts" }</span>

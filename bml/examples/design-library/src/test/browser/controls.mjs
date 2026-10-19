@@ -14,6 +14,7 @@ import { checkNavigation } from './navigation-checks.mjs';
 import { checkSelects } from './select-checks.mjs';
 import { checkComposition } from './composition-checks.mjs';
 import { checkSource } from './source-checks.mjs';
+import { checkJson } from './json-checks.mjs';
 
 const base = process.argv[2];
 const mode = process.argv[3] ?? 'fixture';
@@ -249,6 +250,7 @@ try {
   await checkSelects({ call, evaluate, until, base, mode, artifacts });
   await checkComposition({ call, evaluate, until, base, mode, artifacts });
   await checkSource({ call, evaluate, until, base, mode, artifacts });
+  await checkJson({ call, evaluate, until, base, mode, artifacts });
   await call('Emulation.setScriptExecutionDisabled', { value: true });
   await call('Page.navigate', { url: base + '/' });
   await until('document.readyState === "complete" && document.querySelector("[data-input=light]")');
@@ -317,6 +319,12 @@ try {
   await call('Input.dispatchKeyEvent', { type: 'keyDown', key: 'PageDown', code: 'PageDown', windowsVirtualKeyCode: 34 });
   await call('Input.dispatchKeyEvent', { type: 'keyUp', key: 'PageDown', code: 'PageDown', windowsVirtualKeyCode: 34 });
   await until(`document.querySelector('[data-source-long] pre').scrollTop>0`);
+  await call('Page.navigate', { url: base + '/json' });
+  await until('document.readyState === "complete" && document.querySelector("[data-json=light] textarea")');
+  assert.ok(await evaluate(`(() => {const field=document.querySelector('[data-json=light] textarea');
+    return !field.hidden&&field.value==='{"replacement":2}'&&new FormData(field.form).get('settings')===field.value&&
+      document.querySelector('[data-json-invalid] textarea').value==='{invalid: '&&!document.querySelector('.jse-main');})()`),
+    'No-script fallback keeps exact drafts and native form values');
   assert.deepEqual(exceptions, []);
   console.log(`Design library browser checks passed (${mode}); screenshots: ${artifacts}`);
 } finally {

@@ -10,8 +10,8 @@
     )
   </script>
   <island name="git-github-users" :key='"shared"'>
-    <section class="settings-stack">
-      <ui-card title="GitHub user mappings">
+    <html:section class="settings-stack">
+      <card title="GitHub user mappings">
         <p class="help">
           Enter a GitHub username and choose the same person's Bosca user. Bosca looks up the account
           automatically. Mappings apply to all paired repositories; repository Edit comes from the user's
@@ -21,10 +21,10 @@
           <p role="alert" class="error">{ model.message }</p>
         </if>
         <form class="mapping-form" @submit="model.save(form.username, form.principal, ctx)">
-          <div class="mapping-field"><ui-field label="GitHub username">
-            <ui-input name="username" :value="model.username" placeholder="octocat" mono required />
-          </ui-field></div>
-          <div class="mapping-field"><ui-field label="Bosca user">
+          <div class="mapping-field"><field label="GitHub username">
+            <input name="username" :value="model.username" placeholder="octocat" mono required />
+          </field></div>
+          <div class="mapping-field"><field label="Bosca user">
             <ui-select searchable name="principal" required>
               <option value="">Select…</option>
               <if model.principal.isNotBlank() && model.principals.none { it.id == model.principal }>
@@ -39,22 +39,22 @@
                 </option>
               </for>
             </ui-select>
-          </ui-field></div>
-          <ui-button primary type="submit">Save mapping</ui-button>
+          </field></div>
+          <button primary type="submit">Save mapping</button>
           <div class="pager">
-            <ui-button
+            <button
               :disabled="model.principalOffset == 0L"
               @click="model.move(model.offset, model.principalOffset - 25, form.username, form.principal, ctx)"
             >
               Previous principals
-            </ui-button>
+            </button>
             <span>Principals page { model.principalOffset / 25 + 1 }</span>
-            <ui-button
+            <button
               :disabled="model.principals.size != 26"
               @click="model.move(model.offset, model.principalOffset + 25, form.username, form.principal, ctx)"
             >
               Next principals
-            </ui-button>
+            </button>
           </div>
           <if !model.failed && model.message.isNotBlank()>
             <p role="status" class="status-message">{ model.message }</p>
@@ -87,10 +87,10 @@
                       >
                         <div class="modal-form">
                           <footer class="modal-footer">
-                            <ui-button ref="cancel">Cancel</ui-button>
-                            <ui-button class="danger" @click="model.remove(mapping.githubUserId, true, ctx)">
+                            <button ref="cancel">Cancel</button>
+                            <button class="danger" @click="model.remove(mapping.githubUserId, true, ctx)">
                               Remove mapping
-                            </ui-button>
+                            </button>
                           </footer>
                         </div>
                       </ui-confirm-dialog>
@@ -101,28 +101,28 @@
             </if>
           </div>
           <div class="pager">
-            <ui-button
+            <button
               :disabled="model.offset == 0L"
               @click="model.move(model.offset - 25, model.principalOffset, form.username, form.principal, ctx)"
             >
               Previous mappings
-            </ui-button>
+            </button>
             <span>Mappings page { model.offset / 25 + 1 }</span>
-            <ui-button
+            <button
               :disabled="model.mappings.size != 26"
               @click="model.move(model.offset + 25, model.principalOffset, form.username, form.principal, ctx)"
             >
               Next mappings
-            </ui-button>
-            <ui-button
+            </button>
+            <button
               @click="model.move(model.offset, model.principalOffset, form.username, form.principal, ctx)"
             >
               Refresh mappings
-            </ui-button>
+            </button>
           </div>
         </form>
-      </ui-card>
-    </section>
+      </card>
+    </html:section>
   </island>
   <style scoped>
     /* Studio's GitHub user mapping card. */

@@ -115,6 +115,54 @@ class BmlImportedProjectTest {
     }
 
     @Test
+    fun `reordered imports keep revisions while swapped aliases change their target`() = fixture { root, source, binary ->
+        val other = binary(root, BmlImportFixtures.manifest("example:other", packageName = "example.other"), "other.jar")
+        val global = source.resolve("imports.bml")
+        write(source, "page.bml", """<page route="/"><a:button/><b:button/></page>""")
+        val generator = BmlProjectGenerator("consumer")
+        fun generated(): String {
+            val result = generator.generateAll(source, File(root, "out"), listOf(binary, other))
+            assertTrue(result.errors.isEmpty(), result.errors.toString())
+            return result.written.single().readText()
+        }
+        global.writeText("""<import library="example:design" as="a"/><import library="example:other" as="b"/>""")
+        val first = generated()
+        global.writeText("""<import library="example:other" as="b"/><import library="example:design" as="a"/>""")
+        assertEquals(first, generated())
+        global.writeText("""<import library="example:design" as="b"/><import library="example:other" as="a"/>""")
+        val swapped = generated()
+        assertNotEquals(first.lineSequence().first { "renderRevision" in it }, swapped.lineSequence().first { "renderRevision" in it })
+    }
+
+    @Test
+    fun `many project imports keep deterministic revisions and notice changed component styles`() = fixture { root, source, _ ->
+        val components = (0 until 40).map { index ->
+            BmlImportFixtures.component("control-$index").copy(styles = ".control-$index { color: var(--fg-0); }".repeat(128))
+        }
+        val manifest = BmlImportFixtures.manifest(components = components)
+        val binary = binary(root, manifest)
+        source.resolve("imports.bml").writeText("""<import library="example:design"/>""")
+        write(source, "page.bml", """<page route="/"><control-0/><control-39/></page>""")
+        val generator = BmlProjectGenerator("consumer")
+        fun generated(): String {
+            val result = generator.generateAll(source, File(root, "out"), listOf(binary))
+            assertTrue(result.errors.isEmpty(), result.errors.toString())
+            return result.written.single().readText()
+        }
+        val first = generated()
+        binary(root, manifest.copy(components = components.reversed()))
+        val reordered = generated()
+        assertNotEquals(first.lineSequence().first { "renderRevision" in it }, reordered.lineSequence().first { "renderRevision" in it })
+        assertEquals(reordered, generated())
+        binary(root, manifest.copy(components = components.reversed().map { component ->
+            if (component.tag == "control-39") component.copy(styles = ".changed { color: var(--accent); }") else component
+        }))
+        val changed = generated()
+        assertNotEquals(reordered.lineSequence().first { "renderRevision" in it }, changed.lineSequence().first { "renderRevision" in it })
+        assertTrue("example.design.Control0Component.render" in changed && "example.design.Control39Component.render" in changed)
+    }
+
+    @Test
     fun `imported capabilities propagate through cross-file wrappers without leaking aliases`() = fixture { root, source, _ ->
         val deferred = BmlImportFixtures.component().copy(hasDeferredIslands = true)
         val binary = binary(root, BmlImportFixtures.manifest(components = listOf(deferred)))

@@ -12,10 +12,10 @@
   >
     <if iconOnly>
       <span class="state-icon" role="img" :aria-label="status.lowercase()">
-        <ui-icon name="pull" :size="14" />
+        <icon name="pull" :size="14" />
       </span>
     <else>
-      <ui-badge :color="color">{ status.lowercase() }</ui-badge>
+      <badge :color="color">{ status.lowercase() }</badge>
     </if>
   </span>
   <style scoped>

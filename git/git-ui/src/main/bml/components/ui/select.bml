@@ -50,7 +50,7 @@
     :data-min-query="minQuery"
     :data-debounce="debounce"
   >
-    <select
+    <html:select
       :ref="ref"
       :name="name.takeIf(String::isNotBlank)"
       {...attrs}
@@ -60,12 +60,12 @@
       :aria-label="label"
     >
       <slot />
-    </select>
+    </html:select>
     <span class="select-native-chevron" aria-hidden="true">
-      <ui-icon name="chevron" :size="13" />
+      <icon name="chevron" :size="13" />
     </span>
     <div ref="control" class="select-control" hidden>
-      <button
+      <html:button
         ref="trigger"
         class="select-trigger"
         type="button"
@@ -75,17 +75,17 @@
         :aria-label="label"
       >
         <if icon.isNotBlank()>
-          <ui-icon :name="icon" :size="14" />
+          <icon :name="icon" :size="14" />
         </if>
         <span ref="selection" class="select-selection">{ placeholder }</span>
         <span class="select-chevron">
-          <ui-icon name="chevron" :size="13" />
+          <icon name="chevron" :size="13" />
         </span>
-      </button>
+      </html:button>
       <div ref="tags" class="select-tags" hidden></div>
     </div>
     <div ref="popup" class="select-popup" popover="manual" hidden>
-      <input
+      <html:input
         ref="query"
         class="select-query"
         type="search"
@@ -98,13 +98,13 @@
       <ul ref="options" class="select-options" role="listbox" :aria-label="label"></ul>
       <div class="select-status-row">
         <span class="select-progress">
-          <ui-spinner />
+          <spinner />
         </span>
         <p ref="status" class="select-status" role="status"></p>
       </div>
       <nav ref="pagination" class="select-pagination" aria-label="Option pages" hidden>
-        <button ref="previous" type="button">Previous</button>
-        <button ref="next" type="button">Next</button>
+        <html:button ref="previous" type="button">Previous</html:button>
+        <html:button ref="next" type="button">Next</html:button>
       </nav>
     </div>
   </div>

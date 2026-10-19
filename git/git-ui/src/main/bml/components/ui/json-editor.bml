@@ -3,7 +3,7 @@
   <prop name="value" type="String" default="{}" />
   <div :data-bml-preserve='"json-" + name'>
     <div class="json-editor">
-      <input type="hidden" :name="name" :value="value" ref="value" />
+      <html:input type="hidden" :name="name" :value="value" ref="value" />
       <div ref="editor" />
     </div>
   </div>

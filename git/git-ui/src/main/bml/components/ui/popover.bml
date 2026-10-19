@@ -11,7 +11,7 @@
       :aria-label="label"
     >
       <if icon.isNotBlank()>
-        <ui-icon :name="icon" :size="14" />
+        <icon :name="icon" :size="14" />
       </if>
       <if !iconOnly>
         { label }

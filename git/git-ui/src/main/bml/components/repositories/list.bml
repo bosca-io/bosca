@@ -10,7 +10,7 @@
         :subtitle="model.subtitle"
       >
         <form method="get" class="owner-toolbar">
-          <input type="hidden" name="state" :value="model.state.queryValue" />
+          <html:input type="hidden" name="state" :value="model.state.queryValue" />
           <git-owner-picker
             compact
             :id="model.owner.id"

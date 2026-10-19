@@ -35,6 +35,8 @@
   --warn: #ffb547;
   --err: #ff5470;
   --info: #5ec5ff;
+  --purple: #a78bff;
+  --tooltip-border: #2e3447;
 
   --r-xs: 6px;
   --r-sm: 9px;
@@ -350,7 +352,7 @@ textarea {
 }
 /* Studio modals, menus and popovers render outside the glass layout and keep the base surface tokens. */
 .git-document dialog,
-.git-document [popover]:not(.ui-tooltip),
+.git-document [popover]:not([role="tooltip"]),
 .git-document .select-popup,
 .git-document .tabs-menu,
 .git-document .repository-menu {
@@ -997,23 +999,6 @@ input[type="checkbox"] {
   cursor: pointer;
 }
 
-form[data-bml-action-pending] button[type="submit"].button .button-content {
-  opacity: 0;
-}
-form[data-bml-action-pending] button[type="submit"].button .button-progress {
-  display: flex;
-}
-form[data-bml-action-pending] button[type="submit"].button {
-  cursor: progress;
-}
-
-.button-link.icon-only {
-  width: 30px;
-  height: 30px;
-  padding: 0;
-  flex: none;
-}
-
 /* Matches the Nuxt Tooltip component's Bosca theme. */
 .ui-tooltip {
   position: fixed;
@@ -1313,4 +1298,21 @@ form.code-widget .cm-editor {
 /* Agent detail islands contribute cards directly to the page's ordered column. */
 .agent-main > [data-bml-island] {
   display: contents;
+}
+
+/* Git's structured JSON palette belongs to the consuming application. */
+[data-bml-json-editor] {
+  --json-scheme: dark;
+  --json-accent: #7c5cff;
+  --json-bg: #161a25;
+  --json-fg: #e5e7eb;
+  --json-panel-bg: #242938;
+  --json-key: #9cdcfe;
+  --json-string: #ce9178;
+  --json-number: #b5cea8;
+  --json-boolean: #569cd6;
+  --json-selection: #38445c;
+  --on-accent: #fff;
+  --jse-theme-color-highlight: #947dff;
+  --jse-main-border: 1px solid #3a4050;
 }

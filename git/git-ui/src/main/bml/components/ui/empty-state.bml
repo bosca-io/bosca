@@ -4,7 +4,7 @@
   <prop name="icon" type="String" default="folder" />
   <div class="empty-state">
     <span class="empty-icon">
-      <ui-icon :name="icon" :size="24" />
+      <icon :name="icon" :size="24" />
     </span>
     <if title.isNotBlank()>
       <h3>{ title }</h3>

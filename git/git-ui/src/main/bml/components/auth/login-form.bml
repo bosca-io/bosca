@@ -1,23 +1,23 @@
 <component tag="git-login-form">
   <div class="auth-flow">
     <git-auth-providers />
-    <ui-alert ref="error" hidden />
+    <alert ref="error" hidden />
     <p ref="notice" class="auth-notice" role="status" hidden></p>
     <form ref="form" class="auth-form">
-      <ui-field label="Email">
-        <ui-input ref="identifier" name="identifier" type="text" autocomplete="username" required />
-      </ui-field>
-      <ui-field label="Password">
-        <ui-input
+      <field label="Email">
+        <input ref="identifier" name="identifier" type="text" autocomplete="username" required />
+      </field>
+      <field label="Password">
+        <input
           ref="password"
           name="password"
           type="password"
           autocomplete="current-password"
           required
         />
-      </ui-field>
+      </field>
       <a ref="forgot" href="/auth/forgot">Forgot password?</a>
-      <ui-button ref="submit" type="submit" class="auth-primary">Sign in</ui-button>
+      <button ref="submit" type="submit" class="auth-primary">Sign in</button>
     </form>
     <p class="auth-footer">
       New to Bosca?

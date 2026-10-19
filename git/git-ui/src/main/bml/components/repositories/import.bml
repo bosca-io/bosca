@@ -18,28 +18,28 @@
         >
           <div class="modal-fields">
             <if model.message.isNotBlank()>
-              <ui-alert>{ model.message }</ui-alert>
+              <alert>{ model.message }</alert>
             </if>
-            <ui-field label="Clone URL">
-              <ui-input
+            <field label="Clone URL">
+              <input
                 name="cloneUrl"
                 type="url"
                 placeholder="https://git.example.com/team/project.git"
                 :value="model.draft.cloneUrl"
                 required
               />
-            </ui-field>
-            <ui-field label="Name">
-              <ui-input
+            </field>
+            <field label="Name">
+              <input
                 name="name"
                 type="text"
                 placeholder="my-project"
                 :value="model.draft.name"
                 required
               />
-            </ui-field>
-            <ui-field label="Slug">
-              <ui-input
+            </field>
+            <field label="Slug">
+              <input
                 name="slug"
                 type="text"
                 placeholder="my-project"
@@ -47,7 +47,7 @@
                 :value="model.draft.slug"
                 required
               />
-            </ui-field>
+            </field>
             <git-owner-picker
               :allowAll="false"
               name="ownerId"
@@ -56,8 +56,8 @@
             />
           </div>
           <footer class="modal-footer">
-            <ui-button type="button" ref="cancel">Cancel</ui-button>
-            <ui-button type="submit" primary>Import repository</ui-button>
+            <button type="button" ref="cancel">Cancel</button>
+            <button type="submit" primary>Import repository</button>
           </footer>
         </form>
       </ui-dialog>

@@ -9,7 +9,7 @@
         :subtitle='page.agents.size.toString() + " agents · " + page.agents.count { it.status.toString() == "ONLINE" } + " online · " + page.agents.count { it.status.toString() == "BUSY" } + " busy"'
       >
         <a class="button-link" :href='"/ci-agents" + if (page.status.isNotBlank()) "?status=" + bosca.git.ui.encode(page.status) else ""'>
-          <span class="refresh-icon"><ui-icon name="pulse" :size="14" /></span>
+          <span class="refresh-icon"><icon name="pulse" :size="14" /></span>
           Refresh
         </a>
         <if page.allowed>
@@ -17,7 +17,7 @@
         </if>
       </ui-page-heading>
       <if !page.allowed>
-        <ui-alert>Administrator access is required.</ui-alert>
+        <alert>Administrator access is required.</alert>
       <else>
         <git-agent-list :page="page" />
       </if>

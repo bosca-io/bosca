@@ -5,9 +5,9 @@
       <prop name="id" type="String" />
       <fallback>
         <div class="stats-state">
-          <span class="stats-loading"><ui-loading-state label="Loading statistics…" compact /></span>
+          <span class="stats-loading"><loading-state label="Loading statistics…" compact /></span>
           <span class="stats-error" role="alert">Statistics could not be loaded.</span>
-          <button class="stats-retry" type="button" data-bml-deferred-retry>Retry</button>
+          <html:button class="stats-retry" type="button" data-bml-deferred-retry>Retry</html:button>
         </div>
       </fallback>
       <script server provides="stats">bosca.git.ui.repositoryStats(id)</script>

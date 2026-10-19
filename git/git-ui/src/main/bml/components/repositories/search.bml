@@ -5,7 +5,7 @@
   </script>
   <div class="search-workspace">
     <island name="git-search" :key='"search"'>
-      <section
+      <html:section
         :data-search-query="model.query"
         :data-search-repo="model.id"
         :data-search-mode="model.mode"
@@ -25,7 +25,7 @@
             preserveKey="git-search-query"
             :disabled="model.repositories.isEmpty()"
           >
-            <ui-icon-button
+            <icon-button
               type="submit"
               icon="search"
               label="Search repository"
@@ -33,7 +33,7 @@
             />
           </ui-search-input>
           <div class="search-options">
-            <ui-field label="Search" hideLabel>
+            <field label="Search" hideLabel>
               <ui-segmented-control
                 label="Search mode"
                 name="mode"
@@ -43,9 +43,9 @@
                 :value="model.mode"
                 preserveKey="git-search-mode"
               />
-            </ui-field>
+            </field>
             <div class="repository-choice">
-              <ui-field label="Repository" hideLabel>
+              <field label="Repository" hideLabel>
                 <ui-select
                   name="repo"
                   label="Repository"
@@ -70,10 +70,10 @@
                     </option>
                   </for>
                 </ui-select>
-              </ui-field>
+              </field>
             </div>
             <div class="ref-choice">
-              <ui-field :label='if (model.mode == "paths") "Ref" else "Branch"' hideLabel>
+              <field :label='if (model.mode == "paths") "Ref" else "Branch"' hideLabel>
                 <git-ref-search :id="model.id" mode="search" :branchesOnly='model.mode == "content"'>
                   <ui-select
                     name="ref"
@@ -99,14 +99,14 @@
                     </for>
                   </ui-select>
                 </git-ref-search>
-              </ui-field>
+              </field>
             </div>
           </div>
         </form>
         <git-search-results :page="model" />
-      </section>
+      </html:section>
     </island>
-    <ui-loading-state ref="loading" label="Searching…" hidden />
+    <loading-state ref="loading" label="Searching…" hidden />
     <p ref="transportError" class="search-error" role="alert" hidden>
       Search could not be completed. Try again.
     </p>

@@ -11,7 +11,7 @@
     )
   </script>
   <island name="git-pipeline-job-actions" :key="job.id">
-    <section :data-next-href="model.nextHref">
+    <html:section :data-next-href="model.nextHref">
       <div class="toolbar job-controls">
         <if model.canExecute && model.buildAnyway(model.job)>
           <ui-dialog
@@ -29,18 +29,18 @@
                   Build anyway bypasses external requirements. Dependencies, conditions and approvals still apply.
                 </p>
                 <if model.failed>
-                  <ui-alert>{ model.message }</ui-alert>
+                  <alert>{ model.message }</alert>
                 </if>
-                <ui-field
+                <field
                   label="Reason"
                   hint="Record why this job should bypass its external requirements."
                 >
-                  <ui-input name="reason" :value="model.reason" maxlength="1000" />
-                </ui-field>
+                  <input name="reason" :value="model.reason" maxlength="1000" />
+                </field>
               </div>
               <footer class="modal-footer">
-                <ui-button ref="cancel">Cancel</ui-button>
-                <ui-button type="submit" primary>Build anyway</ui-button>
+                <button ref="cancel">Cancel</button>
+                <button type="submit" primary>Build anyway</button>
               </footer>
             </form>
           </ui-dialog>
@@ -59,8 +59,8 @@
               @submit='model.action("cancelJob", model.job.id, "", true, ctx)'
             >
               <footer class="modal-footer">
-                <ui-button ref="cancel">Keep running</ui-button>
-                <ui-button type="submit" class="danger">Cancel job</ui-button>
+                <button ref="cancel">Keep running</button>
+                <button type="submit" class="danger">Cancel job</button>
               </footer>
             </form>
           </ui-confirm-dialog>
@@ -79,17 +79,17 @@
               @submit='model.action("rerunJob", model.job.id, "", true, ctx)'
             >
               <footer class="modal-footer">
-                <ui-button ref="cancel">Cancel</ui-button>
-                <ui-button type="submit" primary>Rerun job</ui-button>
+                <button ref="cancel">Cancel</button>
+                <button type="submit" primary>Rerun job</button>
               </footer>
             </form>
           </ui-confirm-dialog>
         </if>
       </div>
       <if model.message.isNotBlank()>
-        <ui-alert :tone='if (model.failed) "error" else "success"'>{ model.message }</ui-alert>
+        <alert :tone='if (model.failed) "error" else "success"'>{ model.message }</alert>
       </if>
-    </section>
+    </html:section>
   </island>
   <style scoped>
     .job-controls {

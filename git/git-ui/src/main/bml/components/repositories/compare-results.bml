@@ -26,18 +26,18 @@
       <div class="results-bar">
         <div class="tab-toggle" role="radiogroup" aria-label="Comparison view">
           <label class="tab-btn view-files">
-            <input type="radio" name="compare-view" value="files" checked />
-            <ui-icon name="file" :size="12" />
+            <html:input type="radio" name="compare-view" value="files" checked />
+            <icon name="file" :size="12" />
             Files ({ comparison.files.size })
           </label>
           <label class="tab-btn view-commits">
-            <input type="radio" name="compare-view" value="commits" />
-            <ui-icon name="commit" :size="12" />
+            <html:input type="radio" name="compare-view" value="commits" />
+            <icon name="commit" :size="12" />
             Commits ({ comparison.commits.size })
           </label>
         </div>
         <a class="button-link" :href="page.createPullHref">
-          <span class="action-icon-muted"><ui-icon name="pull" :size="14" /></span>
+          <span class="action-icon-muted"><icon name="pull" :size="14" /></span>
           Create pull request
         </a>
       </div>
@@ -55,7 +55,7 @@
           <div class="commit-list">
             <for commit in comparison.commits>
               <a class="commit-row" :href="page.browseHref(commit.sha)">
-                <span class="commit-icon"><ui-icon name="commit" :size="14" /></span>
+                <span class="commit-icon"><icon name="commit" :size="14" /></span>
                 <span class="commit-body">
                   <span class="commit-message">{ commit.message.lineSequence().first() }</span>
                   <span class="commit-meta">

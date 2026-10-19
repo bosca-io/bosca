@@ -2,7 +2,7 @@
   <prop name="page" type="bosca.git.ui.RepositoryPage" required />
   <nav class="path-bar" aria-label="Repository path">
     <a class="path-segment root" :href="page.rootHref">
-      <span class="path-icon"><ui-icon name="folder" :size="13" /></span>
+      <span class="path-icon"><icon name="folder" :size="13" /></span>
       { page.name }
     </a>
     <for crumb in page.breadcrumbs>
@@ -13,7 +13,7 @@
     <if page.file.isBlank() && !page.editing && !page.creating && page.canWriteRef>
       <div class="path-actions">
         <a class="button-link" :href='page.href(path = page.path) + "&new=true"'>
-          <span class="link-icon"><ui-icon name="plus" :size="14" /></span>
+          <span class="link-icon"><icon name="plus" :size="14" /></span>
           New file
         </a>
         <git-file-actions :page="page" />

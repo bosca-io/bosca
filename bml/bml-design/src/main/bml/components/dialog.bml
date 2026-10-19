@@ -126,7 +126,7 @@
       box-sizing: border-box;
       font-family: var(--font-sans);
       width: 520px;
-      max-width: calc(100vw - 32px);
+      max-width: calc(100% - 32px);
       max-height: min(90dvh, calc(100dvh - 40px));
       padding: 0;
       color: var(--fg-1);

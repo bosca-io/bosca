@@ -42,7 +42,7 @@ class DesignLibraryTest {
             assertEquals("io.bosca:bml-design", manifest.library)
             assertEquals("bosca.design.generated", manifest.generatedPackage)
             assertEquals(setOf("alert", "app-header", "badge", "bosca-mark", "button", "card", "checkbox", "comment-editor", "confirm-dialog", "copy", "copy-field", "dialog", "disclosure-heading",
-                "empty-state", "field", "icon", "icon-button", "icon-link", "input", "loading-state", "page-heading", "page-shell", "panel", "popover",
+                "empty-state", "field", "icon", "icon-button", "icon-link", "input", "json-editor", "loading-state", "page-heading", "page-shell", "panel", "popover",
                 "search-input", "select", "section", "section-heading", "segmented-control", "source-view", "spinner", "switch", "table-scroll", "tabs", "time", "toast", "tree", "tree-item", "tooltip", "view-tabs"),
                 manifest.components.filter { it.exported }.map { it.tag }.toSet())
             assertTrue(manifest.requirements.isEmpty())
@@ -56,7 +56,7 @@ class DesignLibraryTest {
             assertEquals("List<bosca.design.model.NavigationItem>", heading.props.single { it.name == "trail" }.declaredType)
             assertTrue(jar.getJarEntry("bosca/design/model/NavigationItem.class") != null)
             assertTrue(manifest.components.single { it.tag == "app-header" }.clientModule != null)
-            assertTrue(listOf("tooltip", "icon-button", "icon-link", "dialog", "popover", "copy", "copy-field", "toast", "search-input", "segmented-control", "view-tabs", "tabs", "select", "tree", "comment-editor", "source-view").all { tag ->
+            assertTrue(listOf("tooltip", "icon-button", "icon-link", "dialog", "popover", "copy", "copy-field", "toast", "search-input", "segmented-control", "view-tabs", "tabs", "select", "tree", "comment-editor", "source-view", "json-editor").all { tag ->
                 manifest.components.single { it.tag == tag }.clientModule != null
             })
             val toast = manifest.components.single { it.tag == "toast" }
@@ -68,12 +68,14 @@ class DesignLibraryTest {
             assertTrue("ISC License" in notice, notice)
             val sourceNotice = jar.getInputStream(jar.getJarEntry("META-INF/licenses/bml-design/source-view.txt")).reader().readText()
             assertTrue("codemirror 6.0.2" in sourceNotice && "Permission is hereby granted" in sourceNotice, sourceNotice)
+            val jsonNotice = jar.getInputStream(jar.getJarEntry("META-INF/licenses/bml-design/json-editor.txt")).reader().readText()
+            assertTrue("vanilla-jsoneditor 3.13.0" in jsonNotice && "Font Awesome Free License" in jsonNotice, jsonNotice)
             assertFalse(jar.entries().asSequence().any { it.name.startsWith("bosca/git/") })
         }
     }
 
     @Test
-    fun `source viewer assets are reachable only on source pages with readable server fallback`() {
+    fun `editor assets are component reachable with readable server fallbacks`() {
         val application = classpath.split(File.pathSeparator).map(::File).single { it.name.startsWith("design-library-") }
         JarFile(application).use { jar ->
             fun script(name: String): String {
@@ -81,8 +83,12 @@ class DesignLibraryTest {
                 return jar.getInputStream(entry).reader().readText()
             }
             val basic = script("index")
-            assertFalse("cm-editor" in basic || "source-keyword" in basic)
+            assertFalse("cm-editor" in basic || "source-keyword" in basic || "jse-main" in basic)
+            val json = script("json")
+            assertTrue("jse-main" in json && "jse-tree-mode" in json && "jse-table-mode" in json)
+            assertFalse(Regex("""(?:from|import)\s*["'](?:vanilla-jsoneditor(?:/index.js)?|svelte|@fortawesome/free-(?:regular|solid)-svg-icons)["']""").containsMatchIn(json))
             val source = script("source")
+            assertFalse("jse-main" in source)
             assertTrue("cm-editor" in source && "source-keyword" in source)
             assertFalse("Discard your uncommitted changes?" in source || "Rendering preview" in source)
             assertFalse(Regex("""(?:from|import)\s*["'](?:@codemirror|codemirror|@lezer)""").containsMatchIn(source))
@@ -92,12 +98,19 @@ class DesignLibraryTest {
                 .map { it.groupValues[1].replace("&amp;", "&") }.filter { it.substringBefore('?').endsWith(".css") }
                 .map { request(client, base, it).also { response -> assertEquals(200, response.statusCode()) }.body() }.toList()
             val basic = request(client, base, "/").body()
-            assertFalse(styles(basic).any { ".source-keyword" in it || ".cm-editor" in it })
+            assertFalse(styles(basic).any { ".source-keyword" in it || ".cm-editor" in it || "--jse-background-color" in it })
             val source = request(client, base, "/source").body()
             assertTrue("data-bml-source-view" in source && "data-source=\"light\"" in source, source)
             assertTrue("&lt;script&gt;unsafe()&lt;/script&gt;" in source, source)
             assertFalse("<script>unsafe()</script>" in source, source)
             assertTrue(styles(source).any { ".source-keyword" in it && ".cm-editor" in it })
+            assertFalse(styles(source).any { "--jse-background-color" in it })
+            val json = request(client, base, "/json").body()
+            assertTrue("data-bml-json-editor" in json && "name=\"settings\"" in json && "Invalid draft" in json, json)
+            assertTrue("&lt;script&gt;unsafe()&lt;/script&gt;" in json && "{invalid: " in json, json)
+            assertFalse("<script>unsafe()</script>" in json || "/_git/" in json, json)
+            assertTrue(styles(json).any { "--jse-background-color" in it })
+            assertFalse(styles(json).any { ".source-keyword" in it })
         }
     }
 

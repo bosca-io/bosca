@@ -147,16 +147,20 @@ class BmlCodeGenerator(
     /**
      * Adds resolved binary component contracts before generation. Producer-owned prop checks retain
      * Kotlin type resolution in the compiled library; aliases affect lookup, not its renderer.
+     * Tag mappings and each reachable library contract contribute to the render revision once.
      */
     fun withImports(bindings: Map<String, BmlImportResolver.Binding>): BmlCodeGenerator {
         importedComponents.putAll(bindings)
         if (bindings.isNotEmpty()) {
-            sourceRevision = bmlRenderRevision(sourceRevision + "\n" + bindings.toSortedMap().entries.joinToString("\n") {
-                val binding = it.value
-                it.key + "=" + binding.graph.closure(binding.dependency.manifest.library, binding.component.tag)
-                    .map { resolved -> resolved.dependency.manifest }.distinctBy { manifest -> manifest.library }
-                    .sortedBy { manifest -> manifest.library }.joinToString("\n", transform = BmlLibraryArtifacts::encode)
-            })
+            val names = bindings.toSortedMap().entries.joinToString("\n") { (name, binding) ->
+                name + "=" + BmlLibraryArtifacts.componentId(binding.dependency.manifest.library, binding.component.tag)
+            }
+            val manifests = bindings.values.flatMap { binding ->
+                binding.graph.closure(binding.dependency.manifest.library, binding.component.tag)
+                    .map { it.dependency.manifest }
+            }.distinctBy { it.library }.sortedBy { it.library }
+            sourceRevision = bmlRenderRevision(sourceRevision + "\n" + names + "\n" +
+                manifests.joinToString("\n", transform = BmlLibraryArtifacts::encode))
         }
         for ((name, binding) in bindings) {
             knownComponents[name] = binding.component.renderer

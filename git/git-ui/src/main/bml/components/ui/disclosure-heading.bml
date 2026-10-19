@@ -2,7 +2,7 @@
   <prop name="framed" type="Boolean" default="false" />
   <summary class="disclosure-heading" :data-framed="framed">
     <span class="disclosure-chevron">
-      <ui-icon name="chevron" :size="12" />
+      <icon name="chevron" :size="12" />
     </span>
     <span class="disclosure-label">
       <slot />

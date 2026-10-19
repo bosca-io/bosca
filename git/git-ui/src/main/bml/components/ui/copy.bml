@@ -3,16 +3,16 @@
   <prop name="label" type="String" default="Copy" />
   <prop name="showStatus" type="Boolean" default="true" />
   <div class="copy-control">
-    <ui-tooltip :content="label">
-      <ui-button ref="copy" size="sm" class="icon-only" :aria-label="label" :data-copy="value">
+    <tooltip :content="label">
+      <button ref="copy" size="sm" class="icon-only" :aria-label="label" :data-copy="value">
         <span ref="idleIcon" class="copy-icon">
-          <ui-icon name="copy" :size="14" />
+          <icon name="copy" :size="14" />
         </span>
         <span ref="doneIcon" class="copy-icon" hidden>
-          <ui-icon name="check" :size="14" />
+          <icon name="check" :size="14" />
         </span>
-      </ui-button>
-    </ui-tooltip>
+      </button>
+    </tooltip>
     <span ref="message" :class='"copy-message" + if (showStatus) "" else " quiet"' role="status" />
   </div>
   <style scoped>

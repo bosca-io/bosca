@@ -2,11 +2,11 @@
   <prop name="page" type="bosca.git.ui.PipelinePage" required />
   <div class="pipeline-list">
     <for failure in page.failures>
-      <ui-alert>{ failure }</ui-alert>
+      <alert>{ failure }</alert>
     </for>
     <if page.pipelines.isEmpty()>
       <div class="pipeline-empty">
-        <span class="empty-icon"><ui-icon name="workflow" :size="32" /></span>
+        <span class="empty-icon"><icon name="workflow" :size="32" /></span>
         <p>No pipelines found.</p>
         <p class="empty-hint">
           <if page.repositoryContext || page.repository.isNotBlank()>
@@ -18,7 +18,7 @@
       </div>
     <else-if page.repositoryContext>
       <for pipeline in page.pipelines>
-        <section class="pipeline-card" :aria-label='pipeline.name + " pipeline"'>
+        <html:section class="pipeline-card" :aria-label='pipeline.name + " pipeline"'>
           <header class="pipeline-header">
             <span class="pipeline-status-dot" :style='"background: " + bosca.git.ui.statusColor(pipeline.runs.firstOrNull()?.status?.name ?: "NONE")'></span>
             <div class="pipeline-heading-copy">
@@ -28,7 +28,7 @@
             <span class="pipeline-updated">Updated <ui-time :value="pipeline.updated" relative ago inheritTypography /></span>
             <if bosca.git.ui.graphql.GitPipelineTriggerType.MANUAL in pipeline.triggerTypes && pipeline.repositoryId in page.executableRepositories>
               <a class="button-link" :href="page.triggerHref(pipeline.repositoryId, pipeline.id)">
-                <span class="run-icon"><ui-icon name="play" :size="14" /></span>
+                <span class="run-icon"><icon name="play" :size="14" /></span>
                 Run
               </a>
             </if>
@@ -38,13 +38,13 @@
           <else>
             <git-pipeline-recent :repository="pipeline.repositoryId" :pipeline="pipeline" />
           </if>
-        </section>
+        </html:section>
       </for>
     <else>
       <for repository in page.groups>
-        <section class="repo-group" :aria-label='repository.name + " pipelines"'>
+        <html:section class="repo-group" :aria-label='repository.name + " pipelines"'>
           <div class="repo-heading">
-            <span class="repo-icon"><ui-icon name="folder" :size="12" /></span>
+            <span class="repo-icon"><icon name="folder" :size="12" /></span>
             <a :href="repository.href">{ repository.name }</a>
             <span class="repo-count">{ page.pipelines.count { it.repositoryId == repository.id } }</span>
           </div>
@@ -72,24 +72,24 @@
                 <if bosca.git.ui.graphql.GitPipelineTriggerType.MANUAL in pipeline.triggerTypes>
                   <if repository.id in page.executableRepositories>
                     <a class="button-link run-button" :href="page.triggerHref(repository.id, pipeline.id)">
-                      <span class="run-icon"><ui-icon name="play" :size="14" /></span>
+                      <span class="run-icon"><icon name="play" :size="14" /></span>
                       Run
                     </a>
                   <else>
-                    <ui-button
+                    <button
                       size="sm"
                       icon="play"
                       disabled
                       :title='"Execute permission is required to run " + pipeline.name'
                     >
                       Run
-                    </ui-button>
+                    </button>
                   </if>
                 </if>
               </div>
             </for>
           </div>
-        </section>
+        </html:section>
       </for>
     </if>
     <if page.repository.isNotBlank()>

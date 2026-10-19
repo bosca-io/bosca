@@ -15,7 +15,7 @@
     </if>
     <if page.canReview>
       <a class="button-link" :href='page.href + "&view=reviews&review=true"'>
-        <span class="review-icon"><ui-icon name="eye" :size="14" /></span>
+        <span class="review-icon"><icon name="eye" :size="14" /></span>
         Review
       </a>
     </if>

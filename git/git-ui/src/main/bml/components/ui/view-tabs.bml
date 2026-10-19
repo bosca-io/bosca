@@ -4,7 +4,7 @@
   <prop name="selected" type="String" required />
   <div class="view-tabs" role="tablist" :aria-label="label">
     <for tab in tabs>
-      <button
+      <html:button
         type="button"
         role="tab"
         :data-tab="tab"
@@ -12,7 +12,7 @@
         :tabindex="if (tab == selected) 0 else -1"
       >
         { tab }
-      </button>
+      </html:button>
     </for>
   </div>
   <style scoped>

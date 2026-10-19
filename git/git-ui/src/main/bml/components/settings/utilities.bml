@@ -6,14 +6,14 @@
   <island name="git-repository-utilities" :key="page.repository.id">
     <div class="settings-stack">
       <if model.message.isNotBlank()>
-        <ui-alert :tone='if (model.failed) "error" else "success"'>{ model.message }</ui-alert>
+        <alert :tone='if (model.failed) "error" else "success"'>{ model.message }</alert>
       </if>
-      <ui-card :padded="false">
+      <card :padded="false">
         <ui-section-heading title="Storage" subtitle="Current repository object storage." />
         <div class="storage-row">
           <div class="identity-cell">
             <span class="record-icon">
-              <ui-icon name="folder" />
+              <icon name="folder" />
             </span>
             <strong>{ model.page.repository.name }</strong>
           </div>
@@ -22,11 +22,11 @@
             <code>{ bosca.git.ui.formatSize(model.size) }</code>
           </div>
         </div>
-      </ui-card>
-      <ui-card :padded="false">
+      </card>
+      <card :padded="false">
         <div class="settings-action">
           <span class="action-icon">
-            <ui-icon name="refresh" :size="20" />
+            <icon name="refresh" :size="20" />
           </span>
           <div class="action-copy">
             <h3>Garbage collection</h3>
@@ -40,17 +40,17 @@
           >
             <form class="modal-form" @submit='model.run("gc", true, ctx)'>
               <footer class="modal-footer">
-                <ui-button ref="cancel">Cancel</ui-button>
-                <ui-button type="submit" primary>Run garbage collection</ui-button>
+                <button ref="cancel">Cancel</button>
+                <button type="submit" primary>Run garbage collection</button>
               </footer>
             </form>
           </ui-confirm-dialog>
         </div>
-      </ui-card>
-      <ui-card :padded="false">
+      </card>
+      <card :padded="false">
         <div class="settings-action">
           <span class="action-icon">
-            <ui-icon name="server" :size="20" />
+            <icon name="server" :size="20" />
           </span>
           <div class="action-copy">
             <h3>Repair repository</h3>
@@ -64,13 +64,13 @@
           >
             <form class="modal-form" @submit='model.run("repair", true, ctx)'>
               <footer class="modal-footer">
-                <ui-button ref="cancel">Cancel</ui-button>
-                <ui-button type="submit" primary>Run repair</ui-button>
+                <button ref="cancel">Cancel</button>
+                <button type="submit" primary>Run repair</button>
               </footer>
             </form>
           </ui-confirm-dialog>
         </div>
-      </ui-card>
+      </card>
     </div>
   </island>
   <style scoped>

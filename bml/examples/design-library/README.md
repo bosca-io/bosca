@@ -130,3 +130,13 @@ palettes and live CSS overrides exercise editor, gutter, active-line, search and
 Removal/remount checks CodeMirror destruction, observers and document listeners. HTTP/archive
 checks prove that ordinary button/card pages exclude viewer JS/CSS while source pages include it.
 Git's editable and preview workflows remain in the Git application; its component cutover is separate.
+
+
+The `/json` page consumes the compiled structured JSON editor. Its two independent caller-owned
+forms retain exact invalid drafts across failed submissions and unrelated updates, and support
+controlled replacements, native reset, tree/text/table views, readonly/disabled states and pending
+submission feedback. The browser checks real tree-cell editing and immediate text submission,
+keyboard exit, two palettes/live CSS changes, repeated disposal and non-overlapping desktop/phone
+viewports. With scripts disabled, escaped textarea drafts remain native form values. Archive and HTTP
+checks ensure basic and source-only pages exclude JSON editor assets. Git's existing adapter remains
+in Git; this fixture does not establish its later library import cutover.

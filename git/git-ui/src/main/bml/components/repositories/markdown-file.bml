@@ -3,7 +3,7 @@
   <script server provides="showSource">
     ctx.query["line"]?.toIntOrNull()?.let { it > 0 } == true || ctx.query["view"] == "source"
   </script>
-  <section class="markdown-file">
+  <html:section class="markdown-file">
     <header class="markdown-toolbar">
       <ui-view-tabs
         label="Markdown view"
@@ -23,7 +23,7 @@
     >
       <ui-source-view :content="page.content.orEmpty()" :path="page.file" bare />
     </div>
-  </section>
+  </html:section>
   <style scoped>
     .markdown-file {
       display: flex;

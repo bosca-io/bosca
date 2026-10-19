@@ -1,11 +1,11 @@
 <component tag="git-pull-checks">
   <prop name="page" type="bosca.git.ui.PullPage" required />
-  <section class="ui-card pull-checks" aria-label="Status checks">
+  <html:section class="ui-card pull-checks" aria-label="Status checks">
     <header class="checks-heading">
       <h3>Status Checks</h3>
-      <ui-badge :tone="page.checkTone">{ page.checkSummary }</ui-badge>
+      <badge :tone="page.checkTone">{ page.checkSummary }</badge>
       <if page.headSha.isNotBlank()>
-        <ui-icon-link
+        <icon-link
           icon="external"
           label="View all status checks"
           :href='"/repositories/" + bosca.git.ui.encode(page.sourceRepository) + "?tab=statuses&sha=" + bosca.git.ui.encode(page.headSha)'
@@ -19,7 +19,7 @@
         <for check in page.checks>
           <li class="check-row">
             <span class="check-icon" :data-state="check.state.name">
-              <ui-icon :name='when (check.state.name) { "SUCCESS" -> "check"; "PENDING" -> "clock"; else -> "close" }' :size="15" />
+              <icon :name='when (check.state.name) { "SUCCESS" -> "check"; "PENDING" -> "clock"; else -> "close" }' :size="15" />
             </span>
             <div class="check-copy">
               <strong>{ check.context }</strong>
@@ -27,11 +27,11 @@
                 <p>{ check.description.orEmpty() }</p>
               </if>
             </div>
-            <ui-badge :tone='when (check.state.name) { "SUCCESS" -> "success"; "PENDING" -> "warning"; else -> "error" }'>
+            <badge :tone='when (check.state.name) { "SUCCESS" -> "success"; "PENDING" -> "warning"; else -> "error" }'>
               { when (check.state.name) { "SUCCESS" -> "Passed"; "FAILURE" -> "Failed"; "ERROR" -> "Error"; else -> "Pending" } }
-            </ui-badge>
+            </badge>
             <if bosca.git.ui.safeWebHref(check.targetUrl).isNotBlank()>
-              <ui-icon-link
+              <icon-link
                 icon="external"
                 :label='"Open " + check.context + " check"'
                 :href="bosca.git.ui.safeWebHref(check.targetUrl)"
@@ -43,7 +43,7 @@
         </for>
       </ul>
     </if>
-  </section>
+  </html:section>
   <style scoped>
     .pull-checks {
       min-width: 0;

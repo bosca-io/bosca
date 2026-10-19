@@ -35,7 +35,7 @@
       margin: 0;
       padding: 0;
       width: max-content;
-      max-width: calc(100vw - 32px);
+      max-width: calc(100% - 32px);
       border: 0;
       background: transparent;
       overflow: visible;

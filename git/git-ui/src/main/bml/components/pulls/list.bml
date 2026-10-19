@@ -47,10 +47,10 @@
     <if page.offset != 0L || page.rows.size == 50>
       <nav class="pull-pagination" aria-label="Pull request pages">
         <if page.offset != 0L>
-          <ui-icon-link icon="arrow-left" label="Previous page" :href="page.href(offset = (page.offset - 50).coerceAtLeast(0))" />
+          <icon-link icon="arrow-left" label="Previous page" :href="page.href(offset = (page.offset - 50).coerceAtLeast(0))" />
         </if>
         <if page.rows.size == 50>
-          <ui-icon-link icon="arrow-right" label="Next page" :href="page.href(offset = page.offset + 50)" />
+          <icon-link icon="arrow-right" label="Next page" :href="page.href(offset = page.offset + 50)" />
         </if>
       </nav>
     </if>

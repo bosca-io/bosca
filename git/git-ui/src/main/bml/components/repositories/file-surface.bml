@@ -1,11 +1,11 @@
 <component tag="git-file-surface">
   <prop name="page" type="bosca.git.ui.RepositoryPage" required />
-  <section class="file-viewer file-surface" :aria-label="page.file">
+  <html:section class="file-viewer file-surface" :aria-label="page.file">
     <header class="file-header">
       <a class="back-button" :href="page.href(path = page.path)" aria-label="Back to folder" title="Back to folder">
-        <ui-icon name="arrow-left" :size="14" />
+        <icon name="arrow-left" :size="14" />
       </a>
-      <span class="file-icon"><ui-icon name="file" :size="14" /></span>
+      <span class="file-icon"><icon name="file" :size="14" /></span>
       <span class="file-path">{ page.file }</span>
       <if page.content != null>
         <code class="file-size">{ bosca.git.ui.formatSize(page.content.orEmpty().encodeToByteArray().size.toLong()) }</code>
@@ -16,12 +16,12 @@
           <a class="button-link" :href='page.href(path = page.path, file = page.file) + "&edit=true"'>Rename</a>
           <git-file-actions :page="page" />
           <a class="button-link primary" :href='page.href(path = page.path, file = page.file) + "&edit=true"'>
-            <span class="edit-icon"><ui-icon name="edit" :size="14" /></span>
+            <span class="edit-icon"><icon name="edit" :size="14" /></span>
             Edit
           </a>
         </if>
         <if page.rawHref.isNotBlank()>
-          <ui-icon-link icon="download" label="Download file" :href="page.rawHref" download />
+          <icon-link icon="download" label="Download file" :href="page.rawHref" download />
         </if>
       </div>
     </header>
@@ -36,7 +36,7 @@
     <else-if page.content != null>
       <ui-source-view :content="page.content" :path="page.file" bare />
     </if>
-  </section>
+  </html:section>
   <style scoped>
     /* Studio repository file viewer card. */
     .file-viewer {

@@ -1,7 +1,7 @@
 <component tag="ui-panel">
-  <section class="panel">
+  <html:section class="panel">
     <slot />
-  </section>
+  </html:section>
   <style scoped>
     .panel {
       min-width: 0;

@@ -4,17 +4,17 @@
   <prop name="runs" type="List<bosca.git.ui.graphql.GitUiPipelineRunsData.Git.PipelineRuns>" required />
   <script server provides="model">bosca.git.ui.PipelineHistoryModel(repository, offset, runs, offset > 0L)</script>
   <island name="git-pipeline-history" :key="repository">
-    <section class="run-history">
+    <html:section class="run-history">
       <header class="history-header">
         <h2>Run History</h2>
         <if model.loaded>
           <code class="history-meta">{ model.runs.size } runs</code>
         <else>
-          <ui-button size="sm" class="ghost" icon="clock" @click="model.load(0L, ctx)">Show history</ui-button>
+          <button size="sm" class="ghost" icon="clock" @click="model.load(0L, ctx)">Show history</button>
         </if>
       </header>
       <if model.message.isNotBlank()>
-        <div class="history-alert"><ui-alert>{ model.message }</ui-alert></div>
+        <div class="history-alert"><alert>{ model.message }</alert></div>
       </if>
       <if model.loaded>
         <if model.runs.isEmpty()>
@@ -41,15 +41,15 @@
         <if model.offset != 0L || model.runs.size == 50>
           <nav class="history-pages" aria-label="Run history pages">
             <if model.offset != 0L>
-              <ui-button size="sm" @click="model.load((model.offset - 50).coerceAtLeast(0), ctx)">Previous</ui-button>
+              <button size="sm" @click="model.load((model.offset - 50).coerceAtLeast(0), ctx)">Previous</button>
             </if>
             <if model.runs.size == 50>
-              <ui-button size="sm" @click="model.load(model.offset + 50, ctx)">Next</ui-button>
+              <button size="sm" @click="model.load(model.offset + 50, ctx)">Next</button>
             </if>
           </nav>
         </if>
       </if>
-    </section>
+    </html:section>
   </island>
   <style scoped>
     /* Run history in Studio's pipeline card language. */

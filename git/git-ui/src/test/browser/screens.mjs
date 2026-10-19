@@ -124,8 +124,79 @@ await call("Network.setCookie", {
   ),
   url: base,
 });
+const foundationTags = ["button", "input", "field", "card", "switch", "alert", "badge", "spinner", "loading-state", "icon"];
+const foundationPrefix = `bml-${Buffer.from("io.bosca:bml-design").toString("hex")}-`;
+const seenFoundations = new Set();
+const iconActions = ["icon-button", "icon-link", "tooltip"];
+const seenIconActions = new Set();
+async function checkFoundationComponents() {
+  const mounts = await ev(`[...document.querySelectorAll('[data-bml-component]')].map(e=>e.dataset.bmlComponent)`);
+  for (const tag of iconActions) {
+    assert.ok(!mounts.includes(`ui-${tag}`), `Git must mount the library ${tag}`);
+    if (mounts.includes(foundationPrefix + tag)) seenIconActions.add(tag);
+  }
+  const ids = await ev(`[...document.querySelectorAll('[data-bml-c]')].map(e=>e.getAttribute('data-bml-c'))`);
+  for (const tag of foundationTags) {
+    assert.ok(!ids.includes(`ui-${tag}`), `Git must render the library ${tag}`);
+    if (ids.includes(foundationPrefix + tag)) seenFoundations.add(tag);
+  }
+}
+async function checkFoundationPalette() {
+  const changed = await ev(`(() => {
+    const input = document.querySelector('dialog[open] input[name=title]');
+    const button = document.querySelector('dialog[open] button.primary[type=submit]');
+    const field = input.closest('.field');
+    const controls = [input, button, field];
+    const dimensions = () => controls.map(e=>{const r=e.getBoundingClientRect();return [r.width,r.height]});
+    const before = dimensions();
+    const style = document.createElement('style');
+    style.textContent = '.git-document, .git-document dialog { --control-bg: #eaf2f5; --accent: #225566; --fg-0: #225566; --fg-2: #304858; }';
+    document.head.append(style);
+    try {
+      return {before, after:dimensions(), background:getComputedStyle(input).backgroundColor,
+        primary:getComputedStyle(button).color, label:getComputedStyle(field).color};
+    } finally { style.remove(); }
+  })()`);
+  assert.equal(changed.background, "rgb(234, 242, 245)");
+  assert.equal(changed.primary, "rgb(34, 85, 102)");
+  assert.equal(changed.label, "rgb(48, 72, 88)");
+  assert.deepEqual(changed.after, changed.before, "Consumer CSS changes colors without changing control geometry");
+}
+async function checkIconTooltip() {
+  const appearance = await ev(`(() => {
+    const trigger = document.querySelector('.file-toolbar [aria-label="Download file"]');
+    const tooltip = document.querySelector('.bosca-tooltip:popover-open');
+    const style = document.createElement('style');
+    const before = trigger.getBoundingClientRect();
+    const border = getComputedStyle(tooltip).borderTopColor;
+    style.textContent = '.file-toolbar { --tooltip-bg: #edf6f8; --tooltip-fg: #214858; --tooltip-border: #527987; }';
+    document.head.append(style);
+    try {
+      const theme = getComputedStyle(tooltip), bounds = tooltip.getBoundingClientRect();
+      const after = trigger.getBoundingClientRect();
+      return {owned:trigger.contains(tooltip), described:trigger.getAttribute('aria-describedby').split(/\\s+/).includes(tooltip.id),
+        border, background:theme.backgroundColor, color:theme.color, themedBorder:theme.borderTopColor,
+        before:[before.width,before.height], after:[after.width,after.height],
+        fits:bounds.left>=8 && bounds.right<=document.documentElement.clientWidth-8 && bounds.top>=8 && bounds.bottom<=innerHeight-8};
+    } finally { style.remove(); }
+  })()`);
+  assert.equal(appearance.owned, true, "The library tooltip stays inside its action and inherits consumer CSS");
+  assert.equal(appearance.described, true);
+  assert.equal(appearance.border, "rgb(46, 52, 71)", "Git keeps its existing tooltip border color");
+  assert.equal(appearance.background, "rgb(237, 246, 248)");
+  assert.equal(appearance.color, "rgb(33, 72, 88)");
+  assert.equal(appearance.themedBorder, "rgb(82, 121, 135)");
+  assert.deepEqual(appearance.before, [30, 30], "Icon links keep their 30px geometry");
+  assert.deepEqual(appearance.after, appearance.before);
+  assert.equal(appearance.fits, true);
+  const point = await ev(`(() => {const box=document.querySelector('.bosca-tooltip:popover-open').getBoundingClientRect();return {x:box.left+box.width/2,y:box.top+box.height/2}})()`);
+  await call("Input.dispatchMouseEvent", { type:"mouseMoved", ...point });
+  await new Promise(resolve=>setTimeout(resolve, 300));
+  assert.ok(await ev(`Boolean(document.querySelector('.bosca-tooltip:popover-open'))`), "Tooltip text remains available while hovered");
+}
 // Check rendered dimensions, including inherited typography and component wrappers.
 async function checkControlLayout(scope = "main") {
+  await checkFoundationComponents();
   const dimensions = await ev(`(() => {
     const root = document.querySelector(${JSON.stringify(scope)});
     return [...root.querySelectorAll('.input, .select-trigger, .button, .segmented-control [role=radio]')]
@@ -581,6 +652,7 @@ for (const width of [1920, 1440, 1024, 390]) {
   await call("Emulation.setScriptExecutionDisabled", { value: false });
   for (const path of paths) {
     await nav(path);
+    if (path === "/pulls?repo=repo&new=true") await checkFoundationPalette();
     if (await ev("Boolean(document.querySelector('.repository-summary [data-bml-deferred]'))")) {
       await until("document.querySelector('.repository-summary [data-bml-deferred]')?.dataset.bmlDeferredState==='loaded'");
     }
@@ -1593,6 +1665,7 @@ for (const width of [1920, 1440, 1024, 390]) {
           "base64",
         ),
       );
+      await checkIconTooltip();
       await pressKey("Escape");
       assert.ok(
         await ev(
@@ -2007,9 +2080,15 @@ assert.deepEqual(
   "Screen matrix has missing page headings",
 );
 assert.deepEqual(errors, [], "Screen matrix raised browser exceptions");
+assert.deepEqual([...seenFoundations].sort(), [...foundationTags].sort());
+assert.deepEqual([...seenIconActions].sort(), [...iconActions].sort());
 console.log(
   JSON.stringify({
     screens: results.length,
+    libraryFoundations: [...seenFoundations].sort(),
+    foundationPalette: "passed",
+    libraryIconActions: [...seenIconActions].sort(),
+    iconTooltipPaletteAndHover: "passed",
     overflow: results.filter((r) => r.scroll > r.viewport + 1),
     errors,
     liveLogs: "passed",

@@ -226,3 +226,8 @@ form {
 .select-theme.alternate { --bg-2: #dbeafe; --bg-3: #bfdbfe; --fg-1: #1e3a8a; --line-2: #2563eb; }
 .select-required-fixture { max-width: 280px; margin: 24px 0; }
 .select-clip { max-width: 260px; height: 40px; overflow: hidden; margin: 24px 0; }
+.json-example { margin: 16px 0; --json-height: 340px; }
+.json-theme.light { --json-key: #7e22ce; --json-string: #15803d; --json-number: #a16207; --json-selection: #bfdbfe; }
+.json-theme.purple { --on-accent: #10131c; --json-scheme: dark; --json-key: #e9d5ff; --json-string: #86efac; --json-number: #fcd34d; --json-selection: #6b21a8; }
+.json-theme.alternate { --json-bg: #eff6ff; --json-fg: #1e3a8a; --json-panel-bg: #dbeafe; --json-key: #1d4ed8; --json-string: #166534; --json-selection: #93c5fd; }
+.json-cases { display: grid; gap: 16px; margin-top: 20px; padding: 16px; }
