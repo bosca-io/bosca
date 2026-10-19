@@ -32,23 +32,23 @@
                   </alert>
                 </if>
                 <field label="Group">
-                  <ui-select name="group" searchable required>
+                  <select name="group" searchable required>
                     <option value="">Choose a group</option>
                     <for group in model.page.groups>
                       <option :value="group.id" :selected="group.id == model.group">
                         { group.name }
                       </option>
                     </for>
-                  </ui-select>
+                  </select>
                 </field>
                 <field label="Permission">
-                  <ui-select name="action">
+                  <select name="action">
                     <for action in bosca.git.ui.graphql.PermissionAction.entries>
                       <option :value="action.name" :selected="action.name == model.action">
                         { action.name.lowercase().replaceFirstChar(Char::uppercase) }
                       </option>
                     </for>
-                  </ui-select>
+                  </select>
                 </field>
               </div>
               <footer class="modal-footer">

@@ -3,14 +3,14 @@
   <html:section class="agent-list">
     <form method="get" class="filter-bar">
       <div class="status-filter">
-        <ui-select name="status" label="Status" size="sm">
+        <select name="status" label="Status" size="sm">
           <option value="">Status</option>
           <for status in bosca.git.ui.graphql.GitAgentStatus.entries>
             <option :value="status.name" :selected="status.name == page.status">
               { status.name.lowercase().replaceFirstChar(Char::uppercase) }
             </option>
           </for>
-        </ui-select>
+        </select>
       </div>
       <span class="filter-spacer"></span>
       <code class="count-label">{ page.agents.size } agents</code>

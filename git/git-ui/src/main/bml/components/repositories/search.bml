@@ -18,7 +18,7 @@
           data-bml-coalesce
           aria-label="Repository search"
         >
-          <ui-search-input
+          <search-input
             :value="model.query"
             :placeholder="model.placeholder"
             label="Search repository content or paths"
@@ -31,10 +31,10 @@
               label="Search repository"
               :disabled="model.repositories.isEmpty()"
             />
-          </ui-search-input>
+          </search-input>
           <div class="search-options">
             <field label="Search" hideLabel>
-              <ui-segmented-control
+              <segmented-control
                 label="Search mode"
                 name="mode"
                 :options='listOf("Content", "Paths")'
@@ -46,7 +46,7 @@
             </field>
             <div class="repository-choice">
               <field label="Repository" hideLabel>
-                <ui-select
+                <select
                   name="repo"
                   label="Repository"
                   size="sm"
@@ -69,13 +69,13 @@
                       { model.repositoryLabel(repository) }
                     </option>
                   </for>
-                </ui-select>
+                </select>
               </field>
             </div>
             <div class="ref-choice">
               <field :label='if (model.mode == "paths") "Ref" else "Branch"' hideLabel>
                 <git-ref-search :id="model.id" mode="search" :branchesOnly='model.mode == "content"'>
-                  <ui-select
+                  <select
                     name="ref"
                     label="Search ref"
                     size="sm"
@@ -97,7 +97,7 @@
                         { choice.name + if (choice.kind == "tag") " (tag)" else "" }
                       </option>
                     </for>
-                  </ui-select>
+                  </select>
                 </git-ref-search>
               </field>
             </div>

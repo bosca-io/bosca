@@ -376,7 +376,13 @@ export function richSelect(ctx: ClientContext) {
   ctx.on<FocusEvent>(popup, "focusin", event => {
     if (event.target instanceof HTMLElement) focused = event.target;
   });
-  ctx.on<FocusEvent>(popup, "focusout", () => {
+  ctx.on<FocusEvent>(popup, "focusout", event => {
+    // The focus destination is available before activeElement settles during a native Tab move.
+    if (event.relatedTarget === trigger) {
+      focused = null;
+      return;
+    }
+    if (event.relatedTarget instanceof Node && popup.contains(event.relatedTarget)) return;
     queueMicrotask(() => {
       if (!expanded || disposed || popup.contains(document.activeElement)) return;
       focused = null;

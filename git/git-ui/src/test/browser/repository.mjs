@@ -271,15 +271,19 @@ for (const [query, message] of [
     "true",
     "Search feedback stays available for retry",
   );
+  assert.ok(
+    await ev(`[...document.querySelectorAll('.owner-toolbar [role=option]')].some(option => option.textContent === 'All accessible repositories')`),
+    "The caller-owned All choice remains available after empty or failed async searches",
+  );
 }
 await ev(
   'document.querySelector(".owner-toolbar .select-query").value="Alice";document.querySelector(".owner-toolbar .select-query").dispatchEvent(new Event("input",{bubbles:true}))',
 );
 await until(
-  'document.querySelectorAll(".owner-toolbar .select-options li").length>=2',
+  `[...document.querySelectorAll('.owner-toolbar [role=option]')].some(option=>option.textContent === 'Alice · @alice')`,
 );
 await ev(
-  'document.querySelector(".owner-toolbar .select-options li").dispatchEvent(new PointerEvent("pointerdown",{bubbles:true}))',
+  `[...document.querySelectorAll('.owner-toolbar [role=option]')].find(option=>option.textContent === 'Alice · @alice').dispatchEvent(new PointerEvent('pointerdown',{bubbles:true}))`,
 );
 await until(
   'new URLSearchParams(location.search).get("owner") && document.readyState === "complete" && document.querySelector(".owner-toolbar .select-query")',
@@ -288,6 +292,7 @@ assert.ok(
   await ev('new URLSearchParams(location.search).get("owner")'),
   "Owner selection applies without another submit button",
 );
+assert.equal(await ev('new URLSearchParams(location.search).get("owner")'), "owner", "The async profile result is selected separately from the persistent All choice");
 const create = '[data-bml-component="git-repository-create"]';
 await until(`document.querySelector('${create} [data-bml-ref=trigger]')`);
 await ev(

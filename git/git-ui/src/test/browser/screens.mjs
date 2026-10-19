@@ -127,7 +127,7 @@ await call("Network.setCookie", {
 const foundationTags = ["button", "input", "field", "card", "switch", "alert", "badge", "spinner", "loading-state", "icon", "confirm-dialog"];
 const foundationPrefix = `bml-${Buffer.from("io.bosca:bml-design").toString("hex")}-`;
 const seenFoundations = new Set();
-const clientControls = ["icon-button", "icon-link", "tooltip", "copy", "copy-field", "popover", "dialog"];
+const clientControls = ["icon-button", "icon-link", "tooltip", "copy", "copy-field", "popover", "dialog", "select", "search-input", "segmented-control"];
 const seenClientControls = new Set();
 async function checkFoundationComponents() {
   const mounts = await ev(`[...document.querySelectorAll('[data-bml-component]')].map(e=>e.dataset.bmlComponent)`);
@@ -181,6 +181,26 @@ async function checkFoundationPalette() {
   assert.equal(changed.border, "rgb(85, 123, 136)");
   assert.equal(changed.footer, "rgb(217, 232, 237)");
   assert.deepEqual(changed.after, changed.before, "Consumer CSS changes colors without changing control geometry");
+}
+async function checkSelectPalette(selector) {
+  const theme = await ev(`(() => {
+    const widget = document.querySelector(${JSON.stringify(selector)});
+    const trigger = widget.querySelector('.select-trigger'), popup = widget.querySelector('.select-popup');
+    const controls = [widget, trigger, popup, ...popup.querySelectorAll('[role=option]')];
+    const dimensions = () => controls.map(e=>{const r=e.getBoundingClientRect();return [r.x,r.y,r.width,r.height]});
+    const before = dimensions(), style = document.createElement('style');
+    style.textContent = '.git-document [data-bml-design-select], .git-document [data-bml-design-select] [popover] { --select-active-border:#347a91; --fg-4:#347a91; --bg-2:#f0f5f7; --fg-1:#1f4554; --fg-0:#183745; --accent:#347a91; } [data-bml-design-select] [role=combobox] { transition:none; }';
+    document.head.append(style);
+    try {
+      return {before,after:dimensions(),owned:widget.contains(popup),border:getComputedStyle(trigger).borderColor,
+        background:getComputedStyle(popup).backgroundColor,color:getComputedStyle(popup).color};
+    } finally { style.remove(); }
+  })()`);
+  assert.ok(theme.owned, "The top-layer select popup stays in its owning theme subtree");
+  assert.equal(theme.border, "rgb(52, 122, 145)");
+  assert.equal(theme.background, "rgb(240, 245, 247)");
+  assert.equal(theme.color, "rgb(31, 69, 84)");
+  assert.deepEqual(theme.after, theme.before, "Consumer CSS recolors select surfaces without moving controls/options");
 }
 async function checkIconTooltip() {
   const appearance = await ev(`(() => {
@@ -1293,6 +1313,7 @@ for (const width of [1920, 1440, 1024, 390]) {
       await until(
         `getComputedStyle(document.querySelector('${owner} .select-chevron')).transform === 'matrix(-1, 0, 0, -1, 0, 0)'`,
       );
+      await checkSelectPalette(owner);
       const menu = await ev(`(() => {
         const widget = document.querySelector('${owner}');
         const bounds = widget.querySelector('.select-popup').getBoundingClientRect();

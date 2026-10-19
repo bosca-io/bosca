@@ -149,7 +149,7 @@ async function openEdit() {
   assert.equal(await ev(`document.activeElement?.name`), "title", "Edit dialog focuses the title");
 }
 async function chooseEditBranch(name) {
-  await click(`${editDialog} [data-bml-component="ui-select"]:has(select[name="${name}"]) [data-bml-ref="trigger"]`);
+  await click(`${editDialog} [data-bml-design-select]:has(select[name="${name}"]) [data-bml-ref="trigger"]`);
   await pressKey("End");
   await pressKey("Enter");
 }

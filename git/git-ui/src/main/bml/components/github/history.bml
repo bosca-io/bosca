@@ -21,7 +21,7 @@
                     Choose the transfer to perform for this paired repository.
                   </p>
                   <field label="Synchronization action">
-                    <ui-select name="action">
+                    <select name="action">
                       <if model.page.view == "refs">
                         <option value="refs">Reconcile branches and tags</option>
                         <option value="pull">Pull refs from GitHub</option>
@@ -29,7 +29,7 @@
                       <else>
                         <option value="pulls">Reconcile pull requests</option>
                       </if>
-                    </ui-select>
+                    </select>
                   </field>
                 </div>
                 <footer class="modal-footer">
@@ -112,11 +112,11 @@
               </p>
               <form class="form-grid" @submit="model.resolve(form.choice, form.confirmed, ctx)">
                 <field label="Use reviewed value from">
-                  <ui-select name="choice" required>
+                  <select name="choice" required>
                     <option value="">Choose a host</option>
                     <option value="BOSCA">Bosca</option>
                     <option value="GITHUB">GitHub</option>
-                  </ui-select>
+                  </select>
                 </field>
                 <switch
                   name="confirmed"

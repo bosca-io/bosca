@@ -25,7 +25,7 @@
                   hint="The pipeline definition and inputs come from the selected branch or tag."
                 >
                   <git-ref-search :id="model.page.repository" mode="qualified">
-                    <ui-select
+                    <select
                       searchable
                       async
                       name="ref"
@@ -40,14 +40,14 @@
                           )
                         </option>
                       </for>
-                    </ui-select>
+                    </select>
                   </git-ref-search>
                 </field>
                 <html:input name="inputs" type="hidden" value="[]" />
                 <for input in model.page.inputs>
                   <field :label="input.name" :hint="input.description.orEmpty()">
                     <if input.type.name == "CHOICE" || input.type.name == "BOOLEAN">
-                      <ui-select
+                      <select
                         :data-pipeline-input="input.name"
                         :label="input.name"
                         :required="input.required"
@@ -63,7 +63,7 @@
                             { value }
                           </option>
                         </for>
-                      </ui-select>
+                      </select>
                     <else>
                       <input
                         :type='if (input.type.name == "NUMBER") "number" else "text"'

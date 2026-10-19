@@ -2,7 +2,7 @@
   <prop name="page" type="bosca.git.ui.PullListPage" required />
   <form method="get" class="pull-filter">
     <field label="Repository">
-      <ui-select searchable size="sm" name="repo">
+      <select searchable size="sm" name="repo">
         <option value="" :selected="page.repository.isBlank()">All repositories</option>
         <for repository in page.repositories>
           <option :value="repository.id" :selected="repository.id == page.repository">
@@ -11,7 +11,7 @@
             { repository.slug }
           </option>
         </for>
-      </ui-select>
+      </select>
     </field>
     <html:input name="status" type="hidden" :value="page.status" />
   </form>

@@ -48,13 +48,13 @@
                 <input name="labels" :value="model.labels" placeholder="linux, arm64" />
               </field>
               <field label="Mode">
-                <ui-select name="mode">
+                <select name="mode">
                   <for mode in bosca.git.ui.graphql.GitAgentMode.entries>
                     <option :value="mode.name" :selected="mode.name == model.mode">
                       { mode.name.lowercase().replaceFirstChar(Char::uppercase) }
                     </option>
                   </for>
-                </ui-select>
+                </select>
               </field>
             </div>
             <footer class="modal-footer">

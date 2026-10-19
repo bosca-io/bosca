@@ -66,7 +66,7 @@ try {
   function call(method, params = {}) {
     return new Promise((resolve, reject) => {
       const id = ++sequence;
-      const timeout = setTimeout(() => { pending.delete(id); reject(new Error(`CDP timeout: ${method}`)); }, 10000);
+      const timeout = setTimeout(() => { pending.delete(id); reject(new Error(`CDP timeout: ${method}${params.expression ? `: ${params.expression}` : ""}`)); }, 10000);
       pending.set(id, { resolve, reject, timeout });
       ws.send(JSON.stringify({ id, method, params }));
     });

@@ -238,18 +238,6 @@ a:hover {
   cursor: pointer;
   padding: 8px 0;
 }
-select {
-  max-width: 100%;
-  font: inherit;
-  color: inherit;
-  background: var(--control-bg);
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  height: 32px;
-  padding: 0 10px;
-  font-size: 13px;
-  line-height: normal;
-}
 .status {
   padding: 12px;
   border: 1px solid var(--line);
@@ -328,6 +316,7 @@ textarea {
 /* Descendants rendered by child components and client widgets have their own scope markers. */
 /* Studio's glass sidebar-layout tokens and ambient background for the Git subsystem accent. */
 .git-document {
+  --select-active-border: var(--brand-2);
   --r-xs: 8px;
   --r-sm: 12px;
   --r-md: 16px;
@@ -646,50 +635,6 @@ input[type="checkbox"] {
 .ui-card details > summary {
   cursor: pointer;
   font-weight: 500;
-}
-
-/* Select options and selected tags are created by the component's client controller. */
-.select-widget > select.enhanced {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  opacity: 0;
-  pointer-events: none;
-}
-.select-options li {
-  padding: 7px 8px;
-  font-size: 13px;
-  line-height: 1.4;
-  border-radius: 6px;
-  cursor: pointer;
-  overflow-wrap: anywhere;
-}
-.select-options li[data-highlighted] {
-  background: var(--bg-3);
-}
-.select-options li[aria-selected="true"] {
-  color: var(--fg-0);
-  background: color-mix(in srgb, var(--accent) 16%, var(--bg-2));
-}
-.select-options li[aria-disabled="true"] {
-  opacity: 0.35;
-  cursor: not-allowed;
-}
-.select-tag {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 6px;
-  border-radius: 5px;
-  background: color-mix(in srgb, var(--accent) 16%, var(--bg-2));
-  font-size: 11px;
-}
-.select-tag button {
-  padding: 0 2px;
-  border: 0;
-  background: transparent;
-  color: var(--fg-2);
-  cursor: pointer;
 }
 
 .field .select-widget {

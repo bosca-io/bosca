@@ -86,6 +86,13 @@ export async function checkSelects({ call, evaluate, until, base, mode, artifact
   await until(`${part('async','options')}.textContent.includes('alpha choice 0')`);
   assert.deepEqual(await evaluate('window.selectRequests'),[{query:'alpha',offset:0}],'Debounce dispatches the newest query once');
   assert.equal(await evaluate(`${part('async','previous')}.disabled`),true);
+  await key('Tab');
+  assert.ok(await evaluate(`document.activeElement===${part('async','next')}&&${opened('async')}`),
+    'Tab reaches the enabled pagination action without closing its popup');
+  await key('Escape');
+  assert.ok(await evaluate(`!(${opened('async')})&&document.activeElement===${part('async','trigger')}`),
+    'Escape from pagination returns focus to the select trigger');
+  await open('async');await type('async','alpha');await until(`${part('async','options')}.textContent.includes('alpha choice 0')`);
   await key('End');await key('Enter');await until(`!(${opened('async')})`);
   assert.equal(await evaluate(`document.querySelector('${native('async')}').value`),'alpha-0');
   await open('async');await type('async','alpha');await until(`${part('async','options')}.textContent.includes('alpha choice 0')`);

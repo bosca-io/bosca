@@ -176,7 +176,7 @@
       transform: rotate(180deg);
     }
     .select-trigger[aria-expanded="true"] {
-      border-color: var(--accent);
+      border-color: var(--select-active-border, var(--accent));
     }
     @media (prefers-reduced-motion: reduce) {
       .select-chevron {

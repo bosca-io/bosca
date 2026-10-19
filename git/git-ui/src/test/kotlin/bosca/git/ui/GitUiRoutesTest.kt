@@ -383,7 +383,7 @@ class GitUiRoutesTest {
     fun `migrated controls have no local registrations and use library client mounts`() {
         val migrated = listOf(
             "button", "input", "field", "card", "switch", "alert", "badge", "spinner", "loading-state",
-            "icon", "icon-button", "icon-link", "tooltip", "copy", "copy-field", "popover", "dialog", "confirm-dialog",
+            "icon", "icon-button", "icon-link", "tooltip", "copy", "copy-field", "popover", "dialog", "confirm-dialog", "select", "search-input", "segmented-control",
         )
         val registered = bml.generated.BmlComponents.all.map { it.tag }.toSet()
         for (tag in migrated) {
@@ -391,15 +391,17 @@ class GitUiRoutesTest {
             assertTrue(id in registered, "Missing library registration for $tag")
             assertFalse("ui-$tag" in registered, "Unused local registration for $tag")
         }
+        assertFalse("ui-checkbox" in registered, "Unused local checkbox registration")
         val html = listOf(
             "/repositories/repo?file=README.md",
             "/pulls/pull?repo=repo&number=1&view=files",
+            "/search?repo=repo&q=snippet",
         ).joinToString("\n") { path ->
             val response = get(path)
             assertEquals(200, response.statusCode(), response.body())
             response.body()
         }
-        for (tag in listOf("icon-button", "icon-link", "tooltip", "copy", "copy-field", "popover", "dialog")) {
+        for (tag in listOf("icon-button", "icon-link", "tooltip", "copy", "copy-field", "popover", "dialog", "select", "search-input", "segmented-control")) {
             val id = bosca.bml.library.BmlLibraryArtifacts.componentId("io.bosca:bml-design", tag)
             assertTrue("data-bml-component=\"$id\"" in html, "Missing library mount for $tag")
             assertFalse("data-bml-component=\"ui-$tag\"" in html)

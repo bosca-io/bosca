@@ -25,7 +25,7 @@
                     <alert>{ model.message }</alert>
                   </if>
                   <field label="Review outcome">
-                    <ui-select name="status">
+                    <select name="status">
                       <option value="COMMENT_ONLY" :selected='model.reviewStatus == "COMMENT_ONLY"'>
                         Comment
                       </option>
@@ -38,7 +38,7 @@
                       >
                         Request changes
                       </option>
-                    </ui-select>
+                    </select>
                   </field>
                   <field label="Comment">
                     <textarea name="body" rows="6" placeholder="Share feedback about these changes">{ model.reviewBody }</textarea>

@@ -45,13 +45,13 @@
                 </field>
                 <field label="Events" hint="Choose the repository events to deliver.">
                   <html:input name="events" type="hidden" value="[]" />
-                  <ui-select data-webhook-events multiple required>
+                  <select data-webhook-events multiple required>
                     <for event in bosca.git.ui.graphql.GitWebhookEvent.entries>
                       <option :value="event.name" :selected="event.name in model.events">
                         { event.name.lowercase().replace('_', ' ').replaceFirstChar(Char::uppercase) }
                       </option>
                     </for>
-                  </ui-select>
+                  </select>
                 </field>
                 <switch
                   name="active"

@@ -55,7 +55,7 @@
               :label='if (model.owner.id == "all") "Choose an owner" else model.owner.label'
             />
             <field label="Visibility">
-              <ui-select name="visibility">
+              <select name="visibility">
                 <option value="PRIVATE" :selected='model.draft.visibility == "PRIVATE"'>
                   Private
                 </option>
@@ -65,10 +65,10 @@
                 <option value="PUBLIC" :selected='model.draft.visibility == "PUBLIC"'>
                   Public
                 </option>
-              </ui-select>
+              </select>
             </field>
             <field label="Content type">
-              <ui-select name="contentType">
+              <select name="contentType">
                 <option value="GENERAL" :selected='model.draft.contentType == "GENERAL"'>
                   General
                 </option>
@@ -102,7 +102,7 @@
                 >
                   Pipeline project
                 </option>
-              </ui-select>
+              </select>
             </field>
             <field label="Default branch">
               <input name="branch" type="text" mono :value="model.draft.branch" required />
@@ -111,21 +111,21 @@
             <details class="modal-options">
               <ui-disclosure-heading>Initialization options</ui-disclosure-heading>
               <field label="Gitignore template">
-                <ui-select name="gitignore">
+                <select name="gitignore">
                   <option value="">None</option>
                   <option :selected='model.draft.gitignore == "Kotlin"'>Kotlin</option>
                   <option :selected='model.draft.gitignore == "Java"'>Java</option>
                   <option :selected='model.draft.gitignore == "Python"'>Python</option>
                   <option :selected='model.draft.gitignore == "Node"'>Node</option>
-                </ui-select>
+                </select>
               </field>
               <field label="License">
-                <ui-select name="license">
+                <select name="license">
                   <option value="">None</option>
                   <option :selected='model.draft.license == "MIT"'>MIT</option>
                   <option :selected='model.draft.license == "Apache-2.0"'>Apache-2.0</option>
                   <option :selected='model.draft.license == "BSD-3-Clause"'>BSD-3-Clause</option>
-                </ui-select>
+                </select>
               </field>
             </details>
           </div>

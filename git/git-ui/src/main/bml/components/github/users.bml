@@ -25,7 +25,7 @@
             <input name="username" :value="model.username" placeholder="octocat" mono required />
           </field></div>
           <div class="mapping-field"><field label="Bosca user">
-            <ui-select searchable name="principal" required>
+            <select searchable name="principal" required>
               <option value="">Select…</option>
               <if model.principal.isNotBlank() && model.principals.none { it.id == model.principal }>
                 <option :value="model.principal" selected>
@@ -38,7 +38,7 @@
                   { model.label(principal) }
                 </option>
               </for>
-            </ui-select>
+            </select>
           </field></div>
           <button primary type="submit">Save mapping</button>
           <div class="pager">

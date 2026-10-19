@@ -5,7 +5,7 @@
     <html:input type="hidden" name="return" :value="page.listHref" />
     <div class="ref-choice">
       <git-ref-search :id="page.id">
-        <ui-select
+        <select
           size="sm"
           name="ref"
           label="Branch, tag or commit"
@@ -23,7 +23,7 @@
           <for tag in page.tags>
             <option :value="tag.name" :selected="tag.name == page.ref">{ tag.name } (tag)</option>
           </for>
-        </ui-select>
+        </select>
       </git-ref-search>
     </div>
   </form>

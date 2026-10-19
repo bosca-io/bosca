@@ -33,13 +33,13 @@
             <if model.page.pull.status.name == "OPEN">
               <form class="merge-form" @submit="model.prepare(form.strategy, ctx)">
                 <div class="merge-row">
-                  <ui-select name="strategy" size="sm" label="Merge method">
+                  <select name="strategy" size="sm" label="Merge method">
                     <for strategy in listOf("MERGE_COMMIT", "SQUASH", "REBASE", "FAST_FORWARD")>
                       <option :value="strategy" :selected="model.strategy == strategy">
                         { bosca.git.ui.mergeStrategyOptionLabel(strategy) }
                       </option>
                     </for>
-                  </ui-select>
+                  </select>
                 </div>
                 <button type="submit" size="sm" primary class="block" :disabled="model.page.hasMergeBlockers">
                   Merge Pull Request

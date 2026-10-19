@@ -43,14 +43,14 @@
                 <alert>{ model.message }</alert>
               </if>
               <field label="Pull request">
-                <ui-select searchable name="dependency" required>
+                <select searchable name="dependency" required>
                   <option value="">Choose a pull request</option>
                   <for pull in model.dependencyCandidates>
                     <option :value="pull.id">
                       { "#" + pull.number + " " + pull.title + " · " + model.page.repositoryLabel(pull.repository) + " · " + pull.status.lowercase() }
                     </option>
                   </for>
-                </ui-select>
+                </select>
               </field>
               <if model.dependencyCandidates.isEmpty()>
                 <p class="detail-note">No available pull requests on this page.</p>

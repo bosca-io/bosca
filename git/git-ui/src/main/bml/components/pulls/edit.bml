@@ -35,23 +35,23 @@
             <if model.canChangeBranches>
               <div class="branch-fields">
                 <field label="Source branch">
-                  <ui-select name="source" label="Source branch" searchable required>
+                  <select name="source" label="Source branch" searchable required>
                     <for branch in (listOf(model.source) + model.sourceBranches).distinct()>
                       <option :value="branch" :selected="branch == model.source">
                         { branch + if (branch in model.sourceBranches) "" else " (unavailable)" }
                       </option>
                     </for>
-                  </ui-select>
+                  </select>
                   <small>{ model.page.sourceRepositoryName }</small>
                 </field>
                 <field label="Target branch">
-                  <ui-select name="target" label="Target branch" searchable required>
+                  <select name="target" label="Target branch" searchable required>
                     <for branch in (listOf(model.target) + model.targetBranches).distinct()>
                       <option :value="branch" :selected="branch == model.target">
                         { branch + if (branch in model.targetBranches) "" else " (unavailable)" }
                       </option>
                     </for>
-                  </ui-select>
+                  </select>
                   <small>{ model.page.repositoryName }</small>
                 </field>
               </div>

@@ -34,7 +34,7 @@
             <div class="comparison-grid">
               <div class="comparison-column">
                 <field label="Target repository">
-                  <ui-select
+                  <select
                     searchable
                     name="repo"
                     label="Target repository"
@@ -47,10 +47,10 @@
                         { repository.name + " · " + repository.slug }
                       </option>
                     </for>
-                  </ui-select>
+                  </select>
                 </field>
                 <field label="Target branch">
-                  <ui-select
+                  <select
                     searchable
                     name="target"
                     label="Target branch"
@@ -61,12 +61,12 @@
                     <for branch in model.page.targetBranches>
                       <option :value="branch" :selected="branch == model.target">{ branch }</option>
                     </for>
-                  </ui-select>
+                  </select>
                 </field>
               </div>
               <div class="comparison-column">
                 <field label="Source repository">
-                  <ui-select
+                  <select
                     searchable
                     name="sourceRepo"
                     label="Source repository"
@@ -79,10 +79,10 @@
                         { repository.name + " · " + repository.slug }
                       </option>
                     </for>
-                  </ui-select>
+                  </select>
                 </field>
                 <field label="Source branch">
-                  <ui-select
+                  <select
                     searchable
                     name="source"
                     label="Source branch"
@@ -93,7 +93,7 @@
                     <for branch in model.page.branches>
                       <option :value="branch" :selected="branch == model.source">{ branch }</option>
                     </for>
-                  </ui-select>
+                  </select>
                 </field>
               </div>
             </div>

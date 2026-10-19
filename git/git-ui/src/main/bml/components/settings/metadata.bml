@@ -38,22 +38,22 @@
                 </field>
                 <div class="field-pair">
                   <field label="Visibility">
-                    <ui-select name="visibility">
+                    <select name="visibility">
                       <for value in bosca.git.ui.graphql.GitVisibility.entries>
                         <option :value="value.name" :selected="value.name == model.visibility">
                           { value.name.lowercase().replaceFirstChar(Char::uppercase) }
                         </option>
                       </for>
-                    </ui-select>
+                    </select>
                   </field>
                   <field label="Content type">
-                    <ui-select name="contentType">
+                    <select name="contentType">
                       <for value in bosca.git.ui.graphql.GitRepositoryContentType.entries>
                         <option :value="value.name" :selected="value.name == model.contentType">
                           { value.name.lowercase().replace('_', ' ').replaceFirstChar(Char::uppercase) }
                         </option>
                       </for>
-                    </ui-select>
+                    </select>
                   </field>
                 </div>
                 <field label="Default branch">

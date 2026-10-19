@@ -417,7 +417,8 @@ Their overflow surface inherits `--bg-2`, `--fg-1`, `--bg-3` and `--line-2`;
 `--tabs-menu-shadow` overrides the default `0 14px 40px #0006` shadow.
 
 Select surfaces use `--control-bg`, `--bg-2`, `--bg-3`, `--fg-0` through `--fg-4`, `--line`,
-`--line-2`, `--accent`, `--err` and `--r-sm`; `--select-shadow` overrides the popup shadow.
+`--line-2`, `--accent`, `--err` and `--r-sm`. `--select-shadow` overrides the popup shadow;
+`--select-active-border` overrides the expanded trigger border (default `--accent`).
 Dynamic option/tag rules live in the real library stylesheet under its owning select marker.
 
 ## Source ownership
