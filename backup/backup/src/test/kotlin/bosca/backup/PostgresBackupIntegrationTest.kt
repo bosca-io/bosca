@@ -50,6 +50,9 @@ class PostgresBackupIntegrationTest {
     private lateinit var application: BoscaApplication
     private lateinit var service: PostgresBackupService
     private lateinit var tool: Path
+    private lateinit var restoreTool: Path
+    private lateinit var psqlTool: Path
+    private var targetName = "recovered"
     private val output get() = root.resolve("capture")
     private val user = "backup_test"
     private val password = "local-test-only"
@@ -73,6 +76,11 @@ class PostgresBackupIntegrationTest {
             "[native capture]\nhost=127.0.0.1\nport=5432\ndbname=source\nuser=$user\npassword=$password\n",
         )
         tool = writeTool("exec docker exec -e PGSERVICEFILE=\"\$PGSERVICEFILE\" ${postgres.containerId} pg_dump \"\$@\"")
+        restoreTool = writeTool("exec docker exec -e PGSERVICEFILE=\"\$PGSERVICEFILE\" ${postgres.containerId} pg_restore \"\$@\"")
+        psqlTool = writeTool("exec docker exec -e PGSERVICEFILE=\"\$PGSERVICEFILE\" ${postgres.containerId} psql \"\$@\"")
+        root.resolve("restore.conf").writeText(
+            "[native restore]\nhost=127.0.0.1\nport=5432\ndbname=recovered\nuser=recovered_owner\npassword=$password\n",
+        )
         pool = ConnectionPool(ConnectionFactoryImpl(ConnectionConfig(url + "source", user, password, maxConnections = 2), "native-capture"))
         ProviderRegistry.clear()
         provides<ConnectionPool>(singleton = true) { pool }
@@ -340,14 +348,176 @@ class PostgresBackupIntegrationTest {
         assertEquals(0, pool.activeConnections)
     }
 
-    private suspend fun install(configured: Boolean = true) {
+    @Test
+    fun `restore rejects occupied targets without invoking pg_restore or changing their data`(): Unit = runBlocking {
+        service.capture("source", output)
+        createTarget()
+        val entered = root.resolve("restore-entered")
+        restoreTool = writeTool("touch ${quote(entered)}; exit 0")
+        install()
+        val occupied = listOf(
+            "create table public.existing(id int); insert into public.existing values (123)",
+            "create schema existing",
+            "create function public.existing() returns int language sql as 'select 1'",
+            "create type public.existing as enum ('value')",
+            "create extension vector",
+            "select lo_from_bytea(0, decode('0102', 'hex'))",
+            "create publication existing",
+            "alter default privileges grant select on tables to public",
+        )
+        for (query in occupied) {
+            sql(query, "recovered")
+            val failure = assertFailsWith<IllegalStateException> { service.restore(output) }
+            assertTrue(failure.message.orEmpty().contains("empty"), "$query: $failure")
+            assertFalse(Files.exists(entered))
+            if (query.startsWith("create table")) assertEquals("123", scalar("select id::text from public.existing", "recovered"))
+            sql("drop database recovered with (force)", "postgres")
+            sql("create database recovered owner recovered_owner template template0", "postgres")
+        }
+        assertEquals(setOf("database.dump", "manifest.json"), output.toFile().list()?.toSet())
+    }
+
+    @Test
+    fun `restore refuses a libpq service whose database differs from the declared target`(): Unit = runBlocking {
+        service.capture("source", output)
+        createTarget()
+        targetName = "somewhere_else"
+        install()
+        val failure = assertFailsWith<IllegalStateException> { service.restore(output) }
+        assertTrue(failure.message.orEmpty().contains("destination database"), failure.toString())
+        assertEquals("0", scalar("select count(*)::text from pg_class where relnamespace='public'::regnamespace", "recovered"))
+        assertEquals("captured", scalar("select body->>'name' from workops.tasks"))
+    }
+
+    @Test
+    fun `corrupt restore artifacts fail before any destination process`(): Unit = runBlocking {
+        service.capture("source", output)
+        val entered = root.resolve("destination-entered")
+        psqlTool = writeTool("touch ${quote(entered)}; exit 0")
+        restoreTool = psqlTool
+        install()
+        val dump = output.resolve("database.dump")
+        Files.write(dump, Files.readAllBytes(dump).dropLast(1).toByteArray())
+        assertFailsWith<BackupPayloadMismatchException> { service.restore(output) }
+        assertFalse(Files.exists(entered))
+        assertTrue(Files.exists(output.resolve("manifest.json")))
+    }
+
+    @Test
+    fun `restore requires separate target configuration and no caller transaction`(): Unit = runBlocking {
+        service.capture("source", output)
+        install(restoreConfigured = false)
+        val failure = assertFailsWith<IllegalStateException> { service.restore(output) }
+        assertTrue(failure.message.orEmpty().contains("backup.postgres.restore"), failure.toString())
+        val transactionFailure = assertFailsWith<IllegalStateException> {
+            withConnectionManager { transaction { service.restore(output) } }
+        }
+        assertTrue(transactionFailure.message.orEmpty().contains("active caller transaction"))
+        assertEquals(0, pool.activeConnections)
+    }
+
+    @Test
+    fun `failed native restore rolls back all restored schemas and rows`(): Unit = runBlocking {
+        sql("create table public.only_source(id int check (current_database() <> 'recovered')); insert into public.only_source values (1)")
+        val manifest = service.capture("source", output)
+        createTarget()
+        val failure = assertFailsWith<IllegalStateException> { service.restore(output) }
+        assertTrue(failure.message.orEmpty().contains("pg_restore"), failure.toString())
+        assertTrue(failure.message.orEmpty().contains("check constraint"), failure.toString())
+        assertEquals("0", scalar("select count(*)::text from pg_namespace where nspname in ('workops','git','content','artifacts','migrations')", "recovered"))
+        assertEquals("0", scalar("select count(*)::text from pg_class where relnamespace='public'::regnamespace", "recovered"))
+        assertEquals(manifest, service.verify(output))
+        assertEquals(0, pool.activeConnections)
+    }
+
+    @Test
+    fun `missing restore tools fail without altering target or artifact`(): Unit = runBlocking {
+        val manifest = service.capture("source", output)
+        createTarget()
+        restoreTool = root.resolve("missing-pg-restore")
+        install()
+        assertFailsWith<java.io.IOException> { service.restore(output) }
+        psqlTool = root.resolve("missing-psql")
+        install()
+        assertFailsWith<java.io.IOException> { service.restore(output) }
+        assertEquals("0", scalar("select count(*)::text from pg_class where relnamespace='public'::regnamespace", "recovered"))
+        assertEquals(manifest, service.verify(output))
+    }
+
+    @Test
+    fun `restore cancellation stops local native process and preserves the artifact`(): Unit = runBlocking {
+        val manifest = service.capture("source", output)
+        createTarget()
+        val entered = root.resolve("restore-process")
+        restoreTool = writeTool("echo \$\$ > ${quote(entered)}\nexec sleep 60")
+        install()
+        val attempt = async { service.restore(output) }
+        awaitFile(entered)
+        val pid = entered.readText().trim().toLong()
+        withTimeout(5_000) { attempt.cancelAndJoin() }
+        assertFalse(ProcessHandle.of(pid).map { it.isAlive }.orElse(false))
+        assertEquals(manifest, service.verify(output))
+        assertEquals(setOf("database.dump", "manifest.json"), output.toFile().list()?.toSet())
+        assertEquals("0", scalar("select count(*)::text from pg_class where relnamespace='public'::regnamespace", "recovered"))
+    }
+
+    @Test
+    fun `restore treats quoted database names and dollar delimiters as literal configuration`(): Unit = runBlocking {
+        val manifest = service.capture("source", output)
+        createTarget()
+        targetName = "recovered'${'$'}bosca${'$'}"
+        sql("alter database recovered rename to \"$targetName\"", "postgres")
+        root.resolve("restore.conf").writeText(root.resolve("restore.conf").readText().replace("dbname=recovered", "dbname=$targetName"))
+        install()
+        assertEquals(manifest, service.restore(output))
+        assertEquals("captured", scalar("select body->>'name' from workops.tasks", targetName))
+    }
+
+    @Test
+    fun `restore preflight rejects incompatible server encoding and extension requirements`(): Unit = runBlocking {
+        val manifest = service.capture("source", output)
+        createTarget()
+        val variants = listOf(
+            manifest.copy(serverVersionNumber = 990000),
+            manifest.copy(encoding = "LATIN1"),
+            manifest.copy(extensions = manifest.extensions + ("vector" to "9999.0")),
+        )
+        for (variant in variants) {
+            output.resolve("manifest.json").writeText(Json.encodeToString(PostgresBackupManifest.serializer(), variant))
+            val failure = assertFailsWith<IllegalStateException> { service.restore(output) }
+            assertTrue(failure.message.orEmpty().contains("psql restore preflight"), failure.toString())
+            assertEquals("0", scalar("select count(*)::text from pg_class where relnamespace='public'::regnamespace", "recovered"))
+        }
+    }
+
+    @Test
+    fun `a restored destination rejects replay without changing recovered content`(): Unit = runBlocking {
+        val manifest = service.capture("source", output)
+        restore()
+        sql("update workops.tasks set body='{\"name\":\"after-restore\"}'", "recovered")
+        val failure = assertFailsWith<IllegalStateException> { service.restore(output) }
+        assertTrue(failure.message.orEmpty().contains("empty"), failure.toString())
+        assertEquals("after-restore", scalar("select body->>'name' from workops.tasks", "recovered"))
+        assertEquals(manifest, service.verify(output))
+    }
+
+    private suspend fun install(configured: Boolean = true, restoreConfigured: Boolean = true) {
         if (::application.isInitialized) application.shutdown()
         val config = buildJsonObject {
-            if (configured) put("backup", buildJsonObject {
+            put("backup", buildJsonObject {
                 put("postgres", buildJsonObject {
-                    put("service", "native capture")
-                    put("serviceFile", root.resolve("services.conf").toString())
-                    put("pgDump", tool.toString())
+                    if (configured) {
+                        put("service", "native capture")
+                        put("serviceFile", root.resolve("services.conf").toString())
+                        put("pgDump", tool.toString())
+                    }
+                    if (restoreConfigured) put("restore", buildJsonObject {
+                        put("service", "native restore")
+                        put("database", targetName)
+                        put("serviceFile", root.resolve("restore.conf").toString())
+                        put("pgRestore", restoreTool.toString())
+                        put("psql", psqlTool.toString())
+                    })
                 })
             })
         }
@@ -382,11 +552,15 @@ class PostgresBackupIntegrationTest {
             }
         }
 
-    private fun restore(directory: Path = output) {
-        sql("create role recovered_owner superuser", "postgres")
-        sql("create database recovered owner recovered_owner", "postgres")
-        val result = postgres.execInContainer("pg_restore", "--exit-on-error", "--single-transaction", "--no-owner", "--no-acl", "--no-tablespaces", "--role=recovered_owner", "--username=$user", "--dbname=recovered", directory.resolve("database.dump").toString())
-        assertEquals(0, result.exitCode, result.stderr)
+    private fun createTarget() {
+        sql("create role recovered_owner superuser login password '$password'", "postgres")
+        sql("create database recovered owner recovered_owner template template0", "postgres")
+    }
+
+    private suspend fun restore(directory: Path = output) {
+        createTarget()
+        val expected = service.verify(directory)
+        assertEquals(expected, service.restore(directory))
     }
 
     private fun quote(path: Path) = "'" + path.toString().replace("'", "'\\''") + "'"

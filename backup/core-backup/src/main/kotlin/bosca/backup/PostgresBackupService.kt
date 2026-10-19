@@ -4,7 +4,7 @@ import bosca.service.Service
 import bosca.storage.service.ObjectStorageService
 import java.nio.file.Path
 
-/** Captures PostgreSQL-native artifacts without replacing existing database backup operations. */
+/** Manages PostgreSQL-native artifacts without replacing existing database backup operations. */
 interface PostgresBackupService : Service {
     /**
      * Creates a new [directory] with a custom-format database.dump and a final manifest.json.
@@ -27,6 +27,21 @@ interface PostgresBackupService : Service {
      * manifest authenticity or the destination's ability to restore extensions and other dependencies.
      */
     suspend fun verify(directory: Path): PostgresBackupManifest
+
+    /**
+     * Verifies [directory] and restores its native dump into the separately configured
+     * backup.postgres.restore libpq service. Requires an explicit expected database name,
+     * a fresh empty destination and exclusive offline access throughout preflight and restore.
+     * Preflight requires the same encoding, no older server major version, and available default
+     * extension versions matching the manifest. Source data and the manifest must be trusted.
+     * Uses a single transaction without source database ownership, grants or tablespaces;
+     * application permission rows remain ordinary data. Needs no source connection/configuration
+     * and rejects an active caller transaction. Runtime credentials stay outside the artifact.
+     * Failures preserve the artifact and are propagated. Cancellation stops the native process;
+     * a commit may already have succeeded, so inspect the destination before retrying. This
+     * never drops/cleans an existing database and does not restore object storage or deployment state.
+     */
+    suspend fun restore(directory: Path): PostgresBackupManifest
 
     /**
      * Uploads a verified local artifact into independently retained [backup] under [prefix].

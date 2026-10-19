@@ -3,9 +3,12 @@
 #
 # The native binary is pre-built by CI using Gradle nativeCompile.
 #
-# Build context is the repository root.
+# Build context is server/ (as selected by scripts/release/build-image.sh).
 # =============================================================================
 FROM debian:bookworm-slim
+
+COPY scripts/install-postgresql-client.sh /tmp/install-postgresql-client.sh
+RUN sh /tmp/install-postgresql-client.sh && rm /tmp/install-postgresql-client.sh
 
 ARG ARTIFACT_SHA
 RUN mkdir /app

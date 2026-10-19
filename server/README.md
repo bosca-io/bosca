@@ -52,6 +52,29 @@ Use `native` only when every deployment node supports the build host's CPU featu
 An explicit shared target, such as `-Pbosca.native.march=x86-64-v3`, can be used for
 AMD64 fleets. The property also applies to the other server native builds listed above.
 
+## PostgreSQL backup clients
+
+The server JVM/native and runner images include PostgreSQL 18 `pg_dump`, `pg_restore`
+and `psql` on PATH. Their Docker builds use `server/` as the context and install the client
+package through the PostgreSQL project's signed Apt repository for the base distribution.
+They do not install a PostgreSQL server. See [backup configuration](../backup/README.md#native-postgresql-database-artifacts)
+for libpq services, authentication, scratch space and destination requirements. Local JVM
+runs and custom images still need compatible native clients.
+
+Run the image integration checks from the workspace root:
+
+```bash
+python3 -m unittest discover -s server/tests -p postgres_runtime_images_test.py -v
+```
+
+These checks require Docker and package-repository access. They build all three production
+Dockerfiles for `linux/amd64`, matching the release script, with isolated shell fixtures in
+place of application artifacts. Each image runs native dump/restore against an isolated
+PostgreSQL 18/pgvector database and verifies data, application permission rows and destination
+ownership. The checks cover client packaging and existing JVM/media tools; they do not build
+or execute a Bosca native binary or exercise a complete instance recovery. Test containers,
+networks, tagged images and scratch files are removed afterward.
+
 ## Local Infrastructure
 
 From the workspace root:

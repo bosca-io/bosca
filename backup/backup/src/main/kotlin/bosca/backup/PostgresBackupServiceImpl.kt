@@ -16,15 +16,18 @@ import java.util.UUID
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.builtins.MapSerializer
 import kotlinx.serialization.builtins.serializer
-import org.slf4j.LoggerFactory
 
-/** Produces a native database artifact from one exported PostgreSQL snapshot. */
+/** Captures, transfers and restores native PostgreSQL database artifacts. */
 @ServiceImplementation
 class PostgresBackupServiceImpl(private val application: BoscaApplication) : PostgresBackupService {
+    override suspend fun restore(directory: Path): PostgresBackupManifest = withContext(StorageDispatcher) {
+        check(connectionOrNull()?.inTransaction != true) { "PostgreSQL restore must run outside an active caller transaction" }
+        PostgresBackupRestore(application).restore(directory, verify(directory))
+    }
+
     override suspend fun upload(
         directory: Path,
         backup: ObjectStorageService,
@@ -159,45 +162,22 @@ class PostgresBackupServiceImpl(private val application: BoscaApplication) : Pos
             it.verifyComplete()
         }
 
-    private suspend fun runDump(executable: String, service: String, serviceFile: String?, snapshot: String, dump: Path, errors: Path) {
-        currentCoroutineContext().ensureActive()
+    private suspend fun runDump(
+        executable: String,
+        service: String,
+        serviceFile: String?,
+        snapshot: String,
+        dump: Path,
+        errors: Path,
+    ) {
         val escapedService = service.replace("\\", "\\\\").replace("'", "\\'")
-        val process = ProcessBuilder(
-            executable, "--format=custom", "--no-password", "--dbname=service='$escapedService'",
-            "--snapshot=$snapshot", "--file=$dump", "--lock-wait-timeout=10s",
-        ).apply {
-            redirectOutput(ProcessBuilder.Redirect.DISCARD)
-            redirectError(errors.toFile())
-            if (serviceFile != null) environment()["PGSERVICEFILE"] = serviceFile
-        }.start()
-        var failure: Throwable? = null
-        try {
-            process.outputStream.close()
-            val exit = runInterruptible(StorageDispatcher) { process.waitFor() }
-            val diagnostics = Files.newInputStream(errors).use { it.readNBytes(8192).toString(Charsets.UTF_8) }.trim()
-            check(exit == 0) { "pg_dump exited with status $exit: $diagnostics" }
-            if (diagnostics.isNotEmpty()) log.warn("pg_dump completed with diagnostics: {}", diagnostics)
-        } catch (error: Throwable) {
-            failure = error
-            throw error
-        } finally {
-            withContext(NonCancellable) {
-                try {
-                    if (process.isAlive) {
-                        process.descendants().use { children -> children.forEach { it.destroyForcibly() } }
-                        process.destroyForcibly().waitFor()
-                    }
-                    process.inputStream.close()
-                    process.errorStream.close()
-                    Files.deleteIfExists(errors)
-                } catch (cleanup: Throwable) {
-                    failure?.addSuppressed(cleanup) ?: throw cleanup
-                }
-            }
-        }
-    }
-
-    companion object {
-        private val log = LoggerFactory.getLogger(PostgresBackupServiceImpl::class.java)
+        runPostgresBackupProcess(
+            "pg_dump", executable,
+            listOf(
+                "--format=custom", "--no-password", "--dbname=service='$escapedService'",
+                "--snapshot=$snapshot", "--file=$dump", "--lock-wait-timeout=10s",
+            ),
+            serviceFile, errors,
+        )
     }
 }

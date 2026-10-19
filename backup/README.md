@@ -123,8 +123,9 @@ backup:
 libpq uses its ordinary service-file lookup; `pgDump` defaults to `pg_dump` on PATH.
 The service must connect to the same primary database as Bosca's connection pool.
 Keep its authentication and TLS settings in runtime libpq configuration and mounted secrets.
-Install a compatible native PostgreSQL client before invoking capture; the current Bosca
-runtime images do not install one. Missing configuration/tools fail on use, not at startup.
+The server JVM/native and runner images include PostgreSQL 18 clients on PATH. For local
+JVM runs or custom images, install compatible clients or select their executable paths.
+Missing configuration/tools fail on use, not at startup.
 
 Capture exports a read-only REPEATABLE READ snapshot through the pool, passes it to
 `pg_dump --snapshot`, and keeps the exporting transaction alive until the dump exits.
@@ -183,11 +184,52 @@ unknown data. Failure/cancellation preserves unfinished retained data for retry.
 dump into a new local directory. It verifies length, SHA-256 and the native header before
 publishing the local manifest, without source database/configuration access or capture tools.
 It rejects existing output and cleans up failed/cancelled downloads without deleting retained
-data. Use `pg_restore` separately under the destination's database ownership and extension setup.
+data. `restore(newDirectory)` can then execute native restoration under the destination role.
 
 The native integration test uploads through signed S3 SDK multipart calls, drops the source
 database, removes the original local capture, downloads into new files and restores those files
-with `pg_restore`. This uses an isolated local S3-compatible endpoint, not a live cloud provider.
+through the service's native restore operation. This uses an isolated local S3-compatible endpoint,
+not a live cloud provider.
+
+`PostgresBackupService.restore(directory)` verifies the completed local artifact before any
+connection to the destination. Configure its destination separately from capture:
+
+```yaml
+backup:
+  postgres:
+    restore:
+      service: bosca-recovery
+      database: recovered_bosca
+      serviceFile: /run/secrets/recovery-pg-service.conf
+      psql: /opt/postgresql/bin/psql
+      pgRestore: /opt/postgresql/bin/pg_restore
+```
+
+Create the destination database beforehand, preferably from `template0`, under its intended
+owner. Keep the application and other writers stopped on that destination throughout restore.
+Source writes can continue. `service` and `database` are required on use. `serviceFile` uses
+ordinary libpq lookup when omitted; `psql` and `pgRestore` default to the tools on PATH. Capture
+configuration and source database access are unnecessary. The runtime images provide PostgreSQL
+18 clients; custom runtimes need compatible tools. The destination role needs the privileges
+required by the dump, including extension creation. The real pgvector test uses a separate
+privileged destination role.
+
+A read-only `psql` preflight checks the actual database name, writable primary, server major
+version, encoding and extension defaults. The target must use the same encoding, a server
+major version at least as new, and available default extension versions matching the manifest.
+User schemas, public-schema objects, extra extensions, large objects and other checked
+application state make it nonempty and prevent restoration. Keep exclusive destination access:
+preflight and `pg_restore` use separate connections and do not fence concurrent writers.
+
+Restore uses `--single-transaction --exit-on-error --no-owner --no-acl --no-tablespaces`.
+It does not clean/drop existing data, create a database or apply source database grants.
+Restored objects belong to the destination connection role; application permission rows remain
+data. Native failures propagate, and a failure while loading data rolls back the transaction.
+Cancellation stops the local client and removes temporary diagnostics without deleting the
+artifact. Cancellation or lost acknowledgement may arrive after commit; inspect the destination
+before retrying. A populated destination is rejected rather than automatically cleared/replayed.
+Only restore trusted artifacts: checksums verify integrity, not source trust or authenticity.
+
 The service still needs Pipeline/API/Studio/CLI orchestration, independently protected retention
 and encryption, and a matching committed object inventory before it can form a complete snapshot.
 
