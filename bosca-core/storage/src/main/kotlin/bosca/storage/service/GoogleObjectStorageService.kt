@@ -13,7 +13,6 @@ import kotlinx.coroutines.withContext
 import java.io.FilterInputStream
 import java.io.IOException
 import java.io.InputStream
-import java.io.OutputStream
 import java.nio.channels.Channels
 import java.time.ZoneOffset
 
@@ -94,16 +93,39 @@ class GoogleObjectStorageService(
         }
     }
 
-    private fun getOutputStream(path: ObjectPath): OutputStream {
-        val id = BlobId.of(bucket, path.toString())
-        // Replacing an object keeps its settings (content type, custom metadata, cache control), as
-        // writing through the existing blob always did; a new object starts from a bare BlobInfo.
-        val writer = storage.writer(storage.get(id) ?: BlobInfo.newBuilder(id).build())
-        return Channels.newOutputStream(writer)
-    }
+    override suspend fun setInputStream(path: ObjectPath, stream: InputStream, length: Long?): Long =
+        setInputStreamWithInfo(path, stream, length).length
 
-    override suspend fun setInputStream(path: ObjectPath, stream: InputStream, length: Long?) = withContext(StorageDispatcher) {
-        getOutputStream(path).use { stream.copyTo(it) }
+    override suspend fun setInputStreamWithInfo(
+        path: ObjectPath,
+        stream: InputStream,
+        length: Long?,
+    ): ObjectStorageInfo = withContext(StorageDispatcher) {
+        val id = BlobId.of(bucket, path.toString())
+        // Preserve editable settings when replacing content. Only the create response identifies
+        // this write; a lookup after finalization could select a concurrent replacement instead.
+        val settings = storage.get(id) ?: BlobInfo.newBuilder(id).build()
+        val context = currentCoroutineContext()
+        var written = 0L
+        val measured = object : FilterInputStream(stream) {
+            override fun read(): Int {
+                context.ensureActive()
+                return stream.read().also { if (it >= 0) written++ }
+            }
+
+            override fun read(bytes: ByteArray, offset: Int, count: Int): Int {
+                context.ensureActive()
+                return stream.read(bytes, offset, count).also { if (it > 0) written += it }
+            }
+
+            override fun close() {}
+        }
+        val completed = storage.createFrom(settings, measured, 512 * 1024)
+        check(completed.size == written) { "Written object length does not match the upload: $path" }
+        check(completed.generation == null || completed.generation > 0) {
+            "Written object generation must be positive: $path"
+        }
+        objectInfo(completed, path.toString())
     }
 
     override suspend fun getInputStreamRange(

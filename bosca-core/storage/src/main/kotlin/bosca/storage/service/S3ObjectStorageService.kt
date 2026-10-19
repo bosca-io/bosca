@@ -11,6 +11,7 @@ import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.s3.model.AbortMultipartUploadRequest
 import software.amazon.awssdk.services.s3.model.ChecksumAlgorithm
 import software.amazon.awssdk.services.s3.model.CompleteMultipartUploadRequest
+import software.amazon.awssdk.services.s3.model.CompleteMultipartUploadResponse
 import software.amazon.awssdk.services.s3.model.CompletedMultipartUpload
 import software.amazon.awssdk.services.s3.model.CompletedPart
 import software.amazon.awssdk.services.s3.model.CreateMultipartUploadRequest
@@ -150,7 +151,14 @@ class S3ObjectStorageService(
         }
     }
 
-    override suspend fun setInputStream(path: ObjectPath, stream: InputStream, length: Long?): Long = withContext(StorageDispatcher) {
+    override suspend fun setInputStream(path: ObjectPath, stream: InputStream, length: Long?): Long =
+        setInputStreamWithInfo(path, stream, length).length
+
+    override suspend fun setInputStreamWithInfo(
+        path: ObjectPath,
+        stream: InputStream,
+        length: Long?,
+    ): ObjectStorageInfo = withContext(StorageDispatcher) {
         val key = path.toString()
         // Stream unknown-length input without buffering entire content using S3 Multipart Upload
         val create = client.createMultipartUpload(
@@ -170,9 +178,11 @@ class S3ObjectStorageService(
         val buffer = ByteArray(partSize)
         try {
             while (true) {
+                currentCoroutineContext().ensureActive()
                 var bytesReadTotal = 0
                 // Read up to partSize bytes into buffer
                 while (bytesReadTotal < partSize) {
+                    currentCoroutineContext().ensureActive()
                     val read = stream.read(buffer, bytesReadTotal, partSize - bytesReadTotal)
                     if (read == -1) break
                     bytesReadTotal += read
@@ -210,7 +220,8 @@ class S3ObjectStorageService(
                 partNumber += 1
             }
 
-            client.completeMultipartUpload(
+            currentCoroutineContext().ensureActive()
+            val completed = client.completeMultipartUpload(
                 CompleteMultipartUploadRequest.builder()
                     .bucket(bucket)
                     .key(key)
@@ -222,7 +233,7 @@ class S3ObjectStorageService(
                     )
                     .build()
             )
-            total
+            writeInfo(total, completed)
         } catch (t: Throwable) {
             try {
                 client.abortMultipartUpload(
@@ -232,8 +243,8 @@ class S3ObjectStorageService(
                         .uploadId(uploadId)
                         .build()
                 )
-            } catch (_: Exception) {
-                // ignore abort failure
+            } catch (cleanup: Throwable) {
+                t.addSuppressed(cleanup)
             }
             throw t
         }
@@ -306,7 +317,16 @@ class S3ObjectStorageService(
         uploadId: String,
         partCount: Int,
         totalLength: Long,
-    ) = withContext(StorageDispatcher) {
+    ) {
+        completeMultipartUploadWithInfo(path, uploadId, partCount, totalLength)
+    }
+
+    override suspend fun completeMultipartUploadWithInfo(
+        path: ObjectPath,
+        uploadId: String,
+        partCount: Int,
+        totalLength: Long,
+    ): ObjectStorageInfo = withContext(StorageDispatcher) {
         require(partCount in 1..MAX_MULTIPART_PARTS) {
             "partCount must be between 1 and $MAX_MULTIPART_PARTS"
         }
@@ -337,26 +357,33 @@ class S3ObjectStorageService(
             "multipart upload $uploadId contains $uploadedLength bytes, expected $totalLength"
         }
         val completedParts = listedParts.map { part ->
-                CompletedPart.builder()
-                    .partNumber(part.partNumber())
-                    .eTag(part.eTag())
-                    .build()
+            CompletedPart.builder()
+                .partNumber(part.partNumber())
+                .eTag(part.eTag())
+                .build()
         }
 
-        client.completeMultipartUpload(
+        val completed = client.completeMultipartUpload(
             CompleteMultipartUploadRequest.builder()
                 .bucket(bucket)
                 .key(path.toString())
                 .uploadId(uploadId)
                 .multipartUpload(
-                        CompletedMultipartUpload.builder()
-                            .parts(completedParts)
+                    CompletedMultipartUpload.builder()
+                        .parts(completedParts)
                         .build()
                 )
                 .build()
         )
-        Unit
+        writeInfo(totalLength, completed)
     }
+
+    private fun writeInfo(length: Long, response: CompleteMultipartUploadResponse) =
+        ObjectStorageInfo(
+            length = length,
+            etag = response.eTag()?.takeIf { it.isNotBlank() },
+            version = response.versionId()?.takeIf { it.isNotBlank() && it != "null" },
+        )
 
     override suspend fun abortMultipartUpload(path: ObjectPath, uploadId: String, partCount: Int) = withContext(StorageDispatcher) {
         require(partCount in 0..MAX_MULTIPART_PARTS) {
