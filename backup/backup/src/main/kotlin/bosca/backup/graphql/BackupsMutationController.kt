@@ -6,6 +6,8 @@ import bosca.backup.BackupJob
 import bosca.backup.BackupRecord
 import bosca.backup.BackupRepository
 import bosca.backup.ConflictStrategy
+import bosca.backup.PostgresBackupRun
+import bosca.backup.PostgresBackupRunService
 import bosca.backup.RestoreJob
 import bosca.backup.enqueue
 import bosca.content.metadata.service.MetadataService
@@ -34,7 +36,8 @@ class BackupsMutationController(
     private val backupRepository: BackupRepository,
     private val groupEvaluator: GroupEvaluator,
     private val metadataService: MetadataService,
-    private val objectStorageService: ObjectStorageService
+    private val objectStorageService: ObjectStorageService,
+    private val postgres: PostgresBackupRunService,
 ) : GraphQLController<BackupsMutation> {
 
     /** Opens inventory preparation under the existing backup administration boundary. */
@@ -42,6 +45,18 @@ class BackupsMutationController(
     fun objectRuns(authorization: AuthenticationContext): ObjectBackupRunsMutation {
         groupEvaluator.verifyHasSaGroup(authorization)
         return ObjectBackupRunsMutation
+    }
+
+    /** Recovers only the exact native execution an administrator has established is stopped. */
+    @Field
+    suspend fun recoverPostgresRun(
+        authorization: AuthenticationContext,
+        key: String,
+        expectedToken: String,
+    ): PostgresBackupRun {
+        groupEvaluator.verifyHasSaGroup(authorization)
+        postgres.recover(key, expectedToken)
+        return checkNotNull(postgres.get(key)) { "Recovered PostgreSQL backup request is missing" }
     }
 
     /**

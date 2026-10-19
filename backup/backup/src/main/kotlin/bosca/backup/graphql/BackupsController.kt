@@ -2,6 +2,8 @@ package bosca.backup.graphql
 
 import bosca.backup.BackupRecord
 import bosca.backup.BackupRepository
+import bosca.backup.PostgresBackupRun
+import bosca.backup.PostgresBackupRunService
 import bosca.graphql.GraphQLController
 import bosca.graphql.annotations.Field
 import bosca.graphql.annotations.TypeController
@@ -22,7 +24,8 @@ object Backups
 @TypeController
 class BackupsController(
     private val backupRepository: BackupRepository,
-    private val groupEvaluator: GroupEvaluator
+    private val groupEvaluator: GroupEvaluator,
+    private val postgres: PostgresBackupRunService,
 ) : GraphQLController<Backups> {
 
     companion object {
@@ -34,6 +37,26 @@ class BackupsController(
     fun objectRuns(authorization: AuthenticationContext): ObjectBackupRuns {
         groupEvaluator.verifyHasSaGroup(authorization)
         return ObjectBackupRuns
+    }
+
+    /** Reads native database request state and its stopped-writer recovery token. */
+    @Field
+    suspend fun postgresRun(authorization: AuthenticationContext, key: String): PostgresBackupRun? {
+        groupEvaluator.verifyHasSaGroup(authorization)
+        return postgres.get(key)
+    }
+
+    /** Lists one native source/storage pair using the established offset pagination. */
+    @Field
+    suspend fun postgresRuns(
+        authorization: AuthenticationContext,
+        sourceId: String,
+        storageKey: String,
+        offset: Int,
+        limit: Int,
+    ): List<PostgresBackupRun> {
+        groupEvaluator.verifyHasSaGroup(authorization)
+        return postgres.list(sourceId, storageKey, offset.toLong(), objectBackupPageSize(offset, limit))
     }
 
     /** Lists all backup records with pagination, ordered by creation date descending. */

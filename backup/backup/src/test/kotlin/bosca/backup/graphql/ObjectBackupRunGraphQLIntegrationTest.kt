@@ -339,7 +339,7 @@ class ObjectBackupRunGraphQLIntegrationTest : ObjectBackupGraphQLTest() {
         }
         assertEquals(mapOf("offset" to "0", "limit" to "20"), defaults)
         val mutations = types.getValue("mutation").jsonObject.getValue("fields").jsonArray.associateBy { it.jsonObject.string("name") }
-        assertEquals(setOf("create", "importBackup", "restore", "delete", "objectRuns"), mutations.keys)
+        assertEquals(setOf("create", "importBackup", "restore", "delete", "objectRuns", "recoverPostgresRun"), mutations.keys)
         val create = mutations.getValue("create").jsonObject.getValue("args").jsonArray.single().jsonObject
         assertEquals("true", create.string("defaultValue"))
         val restoreArgs = mutations.getValue("restore").jsonObject.getValue("args").jsonArray.associateBy { it.jsonObject.string("name") }

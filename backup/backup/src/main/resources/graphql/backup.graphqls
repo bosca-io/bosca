@@ -36,6 +36,10 @@ type Backups {
     backup(id: UUID!): Backup
     "Inspect persisted object backup and restore runs. Requires backup administration access."
     objectRuns: ObjectBackupRuns!
+    "Read native database request state and its observed stopped-writer recovery token."
+    postgresRun(key: String!): PostgresBackupRun
+    "List native database requests in one exact source/storage scope."
+    postgresRuns(sourceId: String!, storageKey: String!, offset: Int! = 0, limit: Int! = 20): [PostgresBackupRun!]!
 }
 
 "The operation tracked by an object inventory run or checkpoint."
@@ -231,6 +235,9 @@ type ObjectBackupRunSummary {
 
 "Mutation operations for creating backups and restoring from them."
 type BackupsMutation {
+    "Recover an exact execution token only after establishing that its process and writer stopped. Never expires/takes over a live writer."
+    recoverPostgresRun(key: String!, expectedToken: String!): PostgresBackupRun!
+
     "Prepare, configure and dispatch object inventory runs. Requires backup administration access."
     objectRuns: ObjectBackupRunsMutation!
     "Initiate a new backup of all system data. Returns the backup tracking record immediately; the actual backup runs asynchronously."
@@ -251,4 +258,57 @@ extend type Query {
 extend type Mutation {
     "Access backup mutation operations for creating backups and restoring from them."
     backups: BackupsMutation!
+}
+
+"Lifecycle of a native database request; a failed attempt may retry at a new snapshot boundary."
+enum PostgresBackupRunStatus {
+    PENDING
+    RUNNING
+    COMPLETED
+    FAILED
+    CANCELLED
+}
+
+"Native database request intent and its latest recorded attempt."
+type PostgresBackupRun {
+    key: String!
+    sourceId: String!
+    storageKey: String!
+    prefix: String!
+    status: PostgresBackupRunStatus!
+    attempts: Int!
+    writerToken: String
+    error: String
+    result: PostgresBackupReceipt
+    version: Long!
+    created: DateTime!
+    modified: DateTime!
+}
+
+"A verified independently retained native database artifact selected by a completed request."
+type PostgresBackupReceipt {
+    key: String!
+    storageKey: String!
+    path: String!
+    manifest: PostgresBackupManifest!
+}
+
+"Native database artifact provenance and byte identity, excluding object storage coverage."
+type PostgresBackupManifest {
+    id: String!
+    sourceId: String!
+    database: String!
+    created: String!
+    completed: String!
+    snapshotId: String!
+    snapshot: String!
+    serverVersion: String!
+    serverVersionNumber: Int!
+    encoding: String!
+    extensions: JSON!
+    length: Long!
+    sha256: String!
+    payloadPath: String!
+    version: Int!
+    format: String!
 }

@@ -2,6 +2,7 @@ package bosca.backup
 
 import bosca.db.ConnectionConfig
 import bosca.db.ConnectionFactoryImpl
+import bosca.db.migrations.FlywayMigration
 import bosca.db.ConnectionPool
 import bosca.db.transaction
 import bosca.db.withConnectionManager
@@ -13,7 +14,12 @@ import bosca.di.provide
 import bosca.di.provides
 import bosca.server.BoscaApplication
 import bosca.server.config.ApplicationConfig
+import bosca.storage.configuration.StorageConfiguration
+import bosca.storage.service.ObjectStorageService
 import bosca.storage.service.ObjectStorageServiceFactory
+import bosca.storage.service.ObjectPath
+import java.io.InputStream
+import java.io.IOException
 import io.mockk.mockk
 import java.nio.file.Files
 import java.nio.file.Path
@@ -53,6 +59,7 @@ class PostgresBackupIntegrationTest {
     private lateinit var restoreTool: Path
     private lateinit var psqlTool: Path
     private var targetName = "recovered"
+    private var retained: StorageConfiguration? = null
     private val output get() = root.resolve("capture")
     private val user = "backup_test"
     private val password = "local-test-only"
@@ -67,7 +74,7 @@ class PostgresBackupIntegrationTest {
             withEnv("POSTGRES_DB", "source")
             withExposedPorts(5432)
             withFileSystemBind(root.toString(), root.toString())
-            waitingFor(Wait.forListeningPort())
+            waitingFor(Wait.forLogMessage(".*database system is ready to accept connections.*\\s", 2))
             start()
         }
         // The tool container has the same pg_dump major version as the real database and sees
@@ -83,10 +90,7 @@ class PostgresBackupIntegrationTest {
         )
         pool = ConnectionPool(ConnectionFactoryImpl(ConnectionConfig(url + "source", user, password, maxConnections = 2), "native-capture"))
         ProviderRegistry.clear()
-        provides<ConnectionPool>(singleton = true) { pool }
-        provides<Json>(singleton = true) { Json }
         install()
-        StorageProviderRegistrar().register()
         sql("""
             create extension vector;
             create schema workops;
@@ -501,11 +505,346 @@ class PostgresBackupIntegrationTest {
         assertEquals(manifest, service.verify(output))
     }
 
+    private suspend fun runService(): PostgresBackupRunService {
+        retained = StorageConfiguration("fs", "", basePath = root.resolve("retained").toString())
+        install()
+        FlywayMigration(pool).migrate(listOf(BackupMigration()))
+        return provide()
+    }
+
+    @Test
+    fun `configured database backup publishes a durable receipt and survives source removal`(): Unit = runBlocking {
+        val runs = runService()
+        val receipt = runs.backupConfigured("request", "instance", "retained", "database-backups")
+        val saved = withConnectionManager { assertNotNull(runs.get("request")) }
+        assertEquals(PostgresBackupRunStatus.COMPLETED, saved.status)
+        assertEquals(1, saved.attempts)
+        assertEquals(receipt, saved.result)
+        assertEquals("retained", saved.storageKey)
+        assertEquals("instance", receipt.manifest.sourceId)
+        assertEquals("source", receipt.manifest.database)
+        assertEquals("0", scalar("select count(*)::text from backup.object_store_writers"))
+        assertEquals("0", scalar("select count(*)::text from backup.postgres_runs where writer_token is not null"))
+        assertTrue(Files.exists(root.resolve("retained/${receipt.path}/manifest.json")))
+        assertFalse(root.toFile().list().orEmpty().any { it.startsWith("postgres-backup-") })
+        pool.close()
+        sql("drop database source with (force)", "postgres")
+        val downloaded = root.resolve("run-download")
+        provide<ObjectStorageServiceFactory>().withStorage(assertNotNull(retained)) { store ->
+            service.download(store, receipt.path, downloaded)
+        }
+        restore(downloaded)
+        assertEquals("captured", scalar("select body->>'name' from workops.tasks", "recovered"))
+    }
+
+    @Test
+    fun `matching completed requests replay after service restart without recapture or storage writes`(): Unit = runBlocking {
+        val runs = runService()
+        val first = runs.backupConfigured("request", "instance", "retained", "database-backups")
+        tool = root.resolve("missing-dump")
+        retained = null
+        install(configured = false)
+        val restarted = provide<PostgresBackupRunService>()
+        assertEquals(first, restarted.backupConfigured("request", "instance", "retained", "database-backups"))
+        assertEquals(1, withConnectionManager { assertNotNull(restarted.get("request")).attempts })
+        assertFailsWith<IllegalArgumentException> { restarted.backupConfigured("request", "other", "retained", "database-backups") }
+        assertFailsWith<IllegalArgumentException> { restarted.backupConfigured("request", "instance", "different", "database-backups") }
+        assertFailsWith<IllegalArgumentException> { restarted.backupConfigured("request", "instance", "retained", "different") }
+    }
+
+    @Test
+    fun `later database requests capture a new point without replacing old recovery data`(): Unit = runBlocking {
+        val runs = runService()
+        val first = runs.backupConfigured("first", "instance", "retained", "database-backups")
+        sql("update workops.tasks set body='{\"name\":\"later\"}'")
+        val second = runs.backupConfigured("second", "instance", "retained", "database-backups")
+        assertTrue(first.path != second.path)
+        assertTrue(first.manifest.id != second.manifest.id)
+        val saved = withConnectionManager { runs.list("instance", "retained", 0, 10) }
+        assertEquals(listOf("second", "first"), saved.map { it.key })
+        assertEquals(listOf("first"), withConnectionManager { runs.list("instance", "retained", 1, 1) }.map { it.key })
+        assertTrue(Files.exists(root.resolve("retained/${first.path}/manifest.json")))
+        assertTrue(Files.exists(root.resolve("retained/${second.path}/manifest.json")))
+    }
+
+    @Test
+    fun `failed native attempt records failure cleans scratch and retries through a fresh capture`(): Unit = runBlocking {
+        val runs = runService()
+        val real = tool
+        tool = writeTool("echo 'native failure' >&2; exit 7")
+        install()
+        val failure = assertFailsWith<IllegalStateException> { provide<PostgresBackupRunService>().backupConfigured("retry", "instance", "retained", "database-backups") }
+        assertTrue(failure.message.orEmpty().contains("native failure"))
+        val failed = withConnectionManager { assertNotNull(runs.get("retry")) }
+        assertEquals(PostgresBackupRunStatus.FAILED, failed.status)
+        assertTrue(failed.error.orEmpty().contains("native failure"))
+        assertEquals(null, failed.result)
+        assertEquals(null, failed.writerToken)
+        assertEquals("0", scalar("select count(*)::text from backup.object_store_writers"))
+        assertFalse(root.toFile().list().orEmpty().any { it.startsWith("postgres-backup-") })
+        tool = real
+        install()
+        provide<PostgresBackupRunService>().backupConfigured("retry", "instance", "retained", "database-backups")
+        assertEquals(2, withConnectionManager { assertNotNull(runs.get("retry")).attempts })
+    }
+
+    @Test
+    fun `configured requests reject invalid intent and active caller transactions`(): Unit = runBlocking {
+        val runs = runService()
+        for ((key, prefix) in listOf("../escape" to "backups", "valid" to "../backups", "valid" to "/absolute", "valid" to "backups//bad")) {
+            assertFailsWith<IllegalArgumentException> { runs.backupConfigured(key, "instance", "retained", prefix) }
+        }
+        assertFailsWith<IllegalStateException> { withConnectionManager {
+            transaction { runs.backupConfigured("transaction", "instance", "retained", "backups") }
+        } }
+        assertEquals(emptyList(), withConnectionManager { runs.list("instance", "retained", 0, 10) })
+        assertFalse(Files.exists(root.resolve("retained")))
+    }
+
+    @Test
+    fun `queued native backup preserves caller and completes with a source-independent artifact`(): Unit = runBlocking {
+        val runService = runService()
+        PostgresBackupPipelineFixture.create(application, pool, root).use { pipeline ->
+            val initial = pipeline.start()
+            assertEquals(pipeline.caller.id, initial.principalId)
+            val parent = pipeline.next()
+            pipeline.execute(parent)
+            assertEquals(bosca.pipelines.model.PipelineRunStatus.SUSPENDED, pipeline.get(initial.id).status)
+            val child = pipeline.next()
+            assertEquals(parent.getId(), child.getParentId())
+            assertFalse(child.getDefinition().toString().contains(password))
+            pipeline.execute(child)
+            val complete = pipeline.get(initial.id)
+            assertEquals(bosca.pipelines.model.PipelineRunStatus.OK, complete.status)
+            val receipt = application.json.decodeFromJsonElement(PostgresBackupReceipt.serializer(), assertNotNull(complete.output))
+            assertEquals(receipt, withConnectionManager { assertNotNull(runService.get(receipt.key)).result })
+            assertEquals("0", scalar("select count(*)::text from backup.object_store_writers"))
+            pipeline.verifyNoServiceAccountFallback()
+            provide<ObjectStorageServiceFactory>().withStorage(assertNotNull(retained)) { store ->
+                service.download(store, receipt.path, output)
+            }
+            pool.close()
+            sql("drop database source with (force)", "postgres")
+            install(configured = false)
+            restore()
+            assertEquals("captured", scalar("select body->>'name' from workops.tasks", "recovered"))
+        }
+    }
+
+    @Test
+    fun `native backing job retry survives service restart and an unauthorized child does no capture`(): Unit = runBlocking {
+        val runService = runService()
+        val blocked = root.resolve("fail-dump")
+        blocked.writeText("fail")
+        tool = writeTool("""
+            if [ -f ${quote(blocked)} ]; then echo 'queued native failure' >&2; exit 7; fi
+            exec docker exec -e PGSERVICEFILE="${'$'}PGSERVICEFILE" ${postgres.containerId} pg_dump "${'$'}@"
+        """.trimIndent())
+        install()
+        PostgresBackupPipelineFixture.create(application, pool, root).use { pipeline ->
+            val initial = pipeline.start()
+            pipeline.execute(pipeline.next())
+            val child = pipeline.next()
+            pipeline.fail(child, retry = true)
+            val failed = withConnectionManager { runService.list("instance", "retained", 0, 10).single() }
+            assertEquals(PostgresBackupRunStatus.FAILED, failed.status)
+            assertEquals(null, pipeline.get(initial.id).output)
+            Files.delete(blocked)
+            install()
+            pipeline.register()
+            val retry = pipeline.retry()
+            assertEquals(child.getId(), retry.getId())
+            pipeline.execute(retry)
+            assertEquals(bosca.pipelines.model.PipelineRunStatus.OK, pipeline.get(initial.id).status)
+            assertEquals(2, withConnectionManager { assertNotNull(runService.get(failed.key)).attempts })
+            pipeline.denied = true
+            val denied = pipeline.start()
+            pipeline.execute(pipeline.next())
+            pipeline.fail(pipeline.next(), retry = false)
+            assertEquals(bosca.pipelines.model.PipelineRunStatus.FAILED, pipeline.get(denied.id).status)
+            assertEquals(1, withConnectionManager { runService.list("instance", "retained", 0, 10).size })
+            pipeline.verifyNoServiceAccountFallback()
+        }
+    }
+
+    @Test
+    fun `native destinations contend with object runs capture plans and other native requests`(): Unit = runBlocking {
+        val runs = runService()
+        withConnectionManager { provide<ObjectBackupStorageService>().bindConfigured(setOf("retained")) }
+        val objectRun = withConnectionManager { provide<ObjectBackupRunService>().prepare(
+            ObjectBackupManifest("inventory", "instance", "scope", "2026-10-19T00:00:00Z", emptyList()), "retained",
+        ) }
+        withConnectionManager { assertEquals(1, provide<ObjectBackupRunRepository>().claimWriter("retained", objectRun.key)) }
+        assertFailsWith<ObjectBackupDestinationBusyException> { runs.backupConfigured("native", "instance", "retained", "backups") }
+        assertEquals(null, withConnectionManager { runs.get("native") })
+        withConnectionManager { provide<ObjectBackupRunRepository>().releaseWriters(objectRun.key) }
+        val plan = withConnectionManager { provide<ObjectBackupCaptureService>().prepareInventory(
+            ObjectBackupCaptureInventory("selection", "instance", "scope", "2026-10-19T00:00:00Z", emptyMap()),
+            "retained", "payloads", "selected.json",
+        ) }
+        withConnectionManager { provide<ObjectBackupCaptureRepository>().claimWriter(plan.key, "retained", "capture-token") }
+        assertFailsWith<ObjectBackupDestinationBusyException> { runs.backupConfigured("native", "instance", "retained", "backups") }
+        withConnectionManager { provide<ObjectBackupCaptureService>().releaseWriter(plan.key, "capture-token") }
+        val repository = provide<PostgresBackupRunRepository>()
+        withConnectionManager { transaction {
+            repository.add("owner", "instance", "retained", "backups")
+            repository.begin("owner", "native-token")
+            repository.claim("owner", "retained")
+        } }
+        assertFailsWith<ObjectBackupDestinationBusyException> { runs.backupConfigured("native", "instance", "retained", "backups") }
+        withConnectionManager {
+            assertEquals(0, provide<ObjectBackupRunRepository>().claimWriter("retained", objectRun.key))
+            assertEquals(0, provide<ObjectBackupCaptureRepository>().claimWriter(plan.key, "retained", "later"))
+        }
+        assertEquals("native-token", withConnectionManager { assertNotNull(runs.get("owner")).writerToken })
+        assertFailsWith<IllegalStateException> { runs.recover("owner", "wrong-token") }
+        assertEquals("1", scalar("select count(*)::text from backup.object_store_writers"))
+        runs.recover("owner", "native-token")
+        assertEquals(PostgresBackupRunStatus.FAILED, withConnectionManager { assertNotNull(runs.get("owner")).status })
+        runs.backupConfigured("owner", "instance", "retained", "backups")
+        assertEquals(2, withConnectionManager { assertNotNull(runs.get("owner")).attempts })
+    }
+
+    @Test
+    fun `native backup cancellation releases ownership cleans scratch and can be retried`(): Unit = runBlocking {
+        runService()
+        val real = tool
+        val entered = root.resolve("native-running")
+        tool = writeTool("echo \$\$ > ${quote(entered)}\nexec sleep 60")
+        install()
+        val runs = provide<PostgresBackupRunService>()
+        val attempt = async { runs.backupConfigured("cancelled", "instance", "retained", "backups") }
+        awaitFile(entered)
+        val pid = entered.readText().trim().toLong()
+        withTimeout(5_000) { attempt.cancelAndJoin() }
+        assertFalse(ProcessHandle.of(pid).map { it.isAlive }.orElse(false))
+        val cancelled = withConnectionManager { assertNotNull(runs.get("cancelled")) }
+        assertEquals(PostgresBackupRunStatus.CANCELLED, cancelled.status)
+        assertEquals(null, cancelled.result)
+        assertEquals(null, cancelled.writerToken)
+        assertEquals("0", scalar("select count(*)::text from backup.object_store_writers"))
+        assertFalse(root.toFile().list().orEmpty().any { it.startsWith("postgres-backup-") })
+        tool = real
+        install()
+        provide<PostgresBackupRunService>().backupConfigured("cancelled", "instance", "retained", "backups")
+        assertEquals(2, withConnectionManager { assertNotNull(runs.get("cancelled")).attempts })
+    }
+
+    @Test
+    fun `partial native upload is not published and a later attempt retains different output`(): Unit = runBlocking {
+        runService()
+        var fail = true
+        val paths = mutableListOf<String>()
+        faultStorage { actual -> object : ObjectStorageService by actual {
+            override suspend fun setInputStream(path: ObjectPath, stream: InputStream, length: Long?): Long {
+                assertEquals(0, pool.activeConnections)
+                if (path.toString().endsWith("database.dump")) {
+                    paths.add(path.toString())
+                    if (fail) {
+                        actual.setInputStream(path, stream.readNBytes(10).inputStream(), 10)
+                        throw IOException("interrupted upload")
+                    }
+                }
+                return actual.setInputStream(path, stream, length)
+            }
+        } }
+        val runs = provide<PostgresBackupRunService>()
+        assertFailsWith<IOException> { runs.backupConfigured("partial", "instance", "retained", "backups") }
+        assertEquals(null, withConnectionManager { assertNotNull(runs.get("partial")).result })
+        val partial = root.resolve("retained").resolve(paths.single())
+        val original = Files.readAllBytes(partial)
+        val abandoned = Json.decodeFromString(PostgresBackupManifest.serializer(), partial.parent.resolve("intent.json").readText())
+        assertFalse(Files.exists(partial.parent.resolve("manifest.json")))
+        assertFalse(root.toFile().list().orEmpty().any { it.startsWith("postgres-backup-") })
+        fail = false
+        sql("update workops.tasks set body='{\"name\":\"later-attempt\"}'")
+        val receipt = runs.backupConfigured("partial", "instance", "retained", "backups")
+        assertTrue(abandoned.id != receipt.manifest.id)
+        assertTrue(Instant.parse(receipt.manifest.created) >= Instant.parse(abandoned.completed))
+        assertEquals(2, paths.size)
+        assertTrue(paths[0] != paths[1])
+        assertTrue(original.contentEquals(Files.readAllBytes(partial)))
+        assertTrue(Files.exists(root.resolve("retained/${receipt.path}/manifest.json")))
+        assertEquals(2, withConnectionManager { assertNotNull(runs.get("partial")).attempts })
+        provide<ObjectStorageServiceFactory>().withStorage(assertNotNull(retained)) { store ->
+            service.download(store, receipt.path, output)
+        }
+        restore()
+        assertEquals("later-attempt", scalar("select body->>'name' from workops.tasks", "recovered"))
+    }
+
+    @Test
+    fun `native request cannot complete after short writes or storage close failures`(): Unit = runBlocking {
+        runService()
+        var short = true
+        faultStorage { actual -> object : ObjectStorageService by actual {
+            override suspend fun setInputStream(path: ObjectPath, stream: InputStream, length: Long?): Long {
+                val written = actual.setInputStream(path, stream, length)
+                return if (short && path.toString().endsWith("database.dump")) written - 1 else written
+            }
+            override fun close() {
+                actual.close()
+                if (!short) throw IOException("backup store close failed")
+            }
+        } }
+        val runs = provide<PostgresBackupRunService>()
+        assertFailsWith<IllegalStateException> { runs.backupConfigured("short", "instance", "retained", "backups") }
+        short = false
+        assertFailsWith<IOException> { runs.backupConfigured("close", "instance", "retained", "backups") }
+        for (key in listOf("short", "close")) {
+            val failed = withConnectionManager { assertNotNull(runs.get(key)) }
+            assertEquals(PostgresBackupRunStatus.FAILED, failed.status)
+            assertEquals(null, failed.result)
+        }
+        assertEquals("0", scalar("select count(*)::text from backup.object_store_writers"))
+    }
+
+    @Test
+    fun `competing execution cannot replace the active native owner`(): Unit = runBlocking {
+        runService()
+        val entered = root.resolve("native-entered")
+        val release = root.resolve("native-release")
+        tool = writeTool("""
+            touch ${quote(entered)}
+            while [ ! -f ${quote(release)} ]; do sleep 0.03; done
+            exec docker exec -e PGSERVICEFILE="${'$'}PGSERVICEFILE" ${postgres.containerId} pg_dump "${'$'}@"
+        """.trimIndent())
+        install()
+        val runs = provide<PostgresBackupRunService>()
+        val owner = async { runs.backupConfigured("owned", "instance", "retained", "backups") }
+        awaitFile(entered)
+        val running = withConnectionManager { assertNotNull(runs.get("owned")) }
+        assertEquals(PostgresBackupRunStatus.RUNNING, running.status)
+        assertNotNull(running.writerToken)
+        assertFailsWith<IllegalStateException> { runs.backupConfigured("owned", "instance", "retained", "backups") }
+        assertFailsWith<ObjectBackupDestinationBusyException> { runs.backupConfigured("contender", "instance", "retained", "backups") }
+        assertEquals(running.writerToken, withConnectionManager { assertNotNull(runs.get("owned")).writerToken })
+        release.writeText("go")
+        withTimeout(30_000) { owner.await() }
+        assertEquals(1, withConnectionManager { assertNotNull(runs.get("owned")).attempts })
+    }
+
+    private suspend fun faultStorage(wrap: (ObjectStorageService) -> ObjectStorageService) {
+        val actual = provide<ObjectStorageServiceFactory>()
+        provides<ObjectStorageServiceFactory>(singleton = true, overrideExisting = true) {
+            object : ObjectStorageServiceFactory by actual {
+                override suspend fun create(configuration: StorageConfiguration): ObjectStorageService = wrap(actual.create(configuration))
+                override suspend fun <T> withStorage(configuration: StorageConfiguration, block: suspend (ObjectStorageService) -> T): T =
+                    create(configuration).use { block(it) }
+            }
+        }
+        BackupProviderRegistrar().register()
+    }
+
     private suspend fun install(configured: Boolean = true, restoreConfigured: Boolean = true) {
         if (::application.isInitialized) application.shutdown()
         val config = buildJsonObject {
             put("backup", buildJsonObject {
+                retained?.let { put("objectStores", buildJsonObject {
+                    put("retained", Json.encodeToJsonElement(StorageConfiguration.serializer(), it))
+                }) }
                 put("postgres", buildJsonObject {
+                    put("scratchDirectory", root.toString())
                     if (configured) {
                         put("service", "native capture")
                         put("serviceFile", root.resolve("services.conf").toString())
@@ -522,7 +861,11 @@ class PostgresBackupIntegrationTest {
             })
         }
         application = BoscaApplication(ApplicationConfig.load(config.toString().byteInputStream()), ownsServices = false)
-        provides<BoscaApplication>(singleton = true, overrideExisting = true) { application }
+        ProviderRegistry.clear()
+        provides<ConnectionPool>(singleton = true) { pool }
+        provides<Json>(singleton = true) { Json }
+        provides<BoscaApplication>(singleton = true) { application }
+        StorageProviderRegistrar().register()
         BackupProviderRegistrar().register()
         service = provide()
     }

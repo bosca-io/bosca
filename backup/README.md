@@ -102,12 +102,69 @@ reads, stops the source server, removes its catalog entry and restores through r
 Pipeline jobs into independent files. Live cloud-provider and Kubernetes-cluster recovery
 have not been exercised.
 
+## Back up PostgreSQL through Pipelines
+
+The **Back Up PostgreSQL** action (`postgresBackup.backup`) captures the configured primary
+database and retains its verified native artifact in one queued operation. Set **Source identity**,
+**Backup storage ID** (an entry under `backup.objectStores`) and **Backup prefix**. Keep the
+Pipeline's Input node, connect the action's receipt output to Output, and use the existing
+Pipeline run/schedule controls. No new schedule is installed.
+
+Configure `backup.postgres.service` for that same primary database as described below. The
+server and runner images provide PostgreSQL 18 clients. Optional `backup.postgres.scratchDirectory`
+selects an existing writable parent directory; otherwise the Java temporary directory is used.
+Each attempt needs local space for one database dump. It does not need shared scratch between
+workers or ReadWriteMany storage.
+
+A backing job and node identify one fixed request. Its source identity, storage ID and prefix
+cannot change on retry. A completed request returns its recorded receipt without another dump
+or object-store access; its journal database must still be available. A new Pipeline run creates
+a new request. An unfinished attempt may capture a **new point in time** when retried on any
+worker. The successful receipt records that attempt's actual database boundary, byte identity
+and retained location. It never reports an abandoned attempt's boundary as completed.
+
+Artifacts use a new `<prefix>/<requestKey>/<attemptId>` directory containing `intent.json`,
+`database.dump` and, after retained verification, `manifest.json`. The receipt's `path` selects
+that directory for `PostgresBackupService.download`. Local scratch is removed on ordinary exit
+or cancellation. Incomplete remote attempts remain untouched and need explicit retention cleanup;
+a process crash may also leave local scratch. A receipt is recorded only after storage closes.
+Ordinary retries belong to Pipelines. A completed receipt records the successful attempt's outcome,
+not a continuing audit of retained storage health.
+
+Native requests share destination ownership with configured object backups, object restores and
+capture plans. Contention fails without taking over another writer. Crashed writers retain their
+claim; an administrator must establish that the process and storage writer stopped before recovery.
+Inspect the request through the existing backup administration namespace:
+
+```graphql
+query {
+  backups {
+    postgresRun(key: "request-key") {
+      key status attempts error writerToken
+      result { storageKey path manifest { created completed length sha256 } }
+    }
+    postgresRuns(sourceId: "instance", storageKey: "retained", offset: 0, limit: 20) {
+      key status
+    }
+  }
+}
+```
+
+After stopping the observed writer, recover its exact token with
+`backups { recoverPostgresRun(key: ..., expectedToken: ...) { key status } }` in a mutation,
+then use the Pipeline's retry control. Tokens do not expire or authorize live-writer takeover.
+All these operations require backup administration access. Runtime credentials stay in
+configuration, outside job definitions and run records.
+
+This action captures database state only. Matching database/object recovery points, protected
+retention and keys, full-instance restore and deployment rebinding remain separate work.
+
 ## Native PostgreSQL database artifacts
 
 `PostgresBackupService.capture(sourceId, directory)` creates a custom-format `database.dump`
 and a final `manifest.json` in a new local directory. Its parent must already exist. This is
-the database-artifact service for portable snapshots; it has no Pipeline, GraphQL or CLI
-entry point yet. Existing scheduled PostgreSQL backups and the legacy ZIP jobs are unchanged.
+the database-artifact service used by the **Back Up PostgreSQL** Pipeline action described
+above. Existing scheduled PostgreSQL backups and the legacy ZIP jobs are unchanged.
 
 Configure the native client and a libpq connection service on the process invoking capture:
 
