@@ -163,6 +163,34 @@ Kubernetes recovery drill remain open. See the PostgreSQL documentation for
 [pg_restore](https://www.postgresql.org/docs/18/app-pgrestore.html) and
 [libpq services](https://www.postgresql.org/docs/18/libpq-pgservice.html).
 
+`PostgresBackupService.upload(directory, backup, prefix)` transfers the verified local
+artifact through `ObjectStorageService` into independent storage. Use a new relative prefix
+for each captured artifact, such as `postgresql/<manifest.id>`. Keep the local files immutable
+and available until upload completes, and serialize writers to that prefix. Coordinate with
+configured object runs that claim the same destination; this caller-owned transfer does not
+acquire their destination claims. It does not open or close the supplied store.
+
+Upload saves and reads back exact `intent.json` metadata before writing a new payload.
+Matching retry verifies existing bytes and avoids uploading them again. The same verified
+local artifact can repair owned missing/corrupt output; a different capture cannot replace it.
+Unowned pre-existing payloads, changed intent and valid conflicting completion manifests fail.
+The final `manifest.json` is written and read back only after retained length/SHA-256 verification.
+A partial completion manifest can be repaired when exact intent survives. Malformed intent
+or unsupported metadata needs inspection and a fresh prefix; it cannot authorize overwriting
+unknown data. Failure/cancellation preserves unfinished retained data for retry.
+
+`download(backup, prefix, newDirectory)` requires the completed manifest and streams its
+dump into a new local directory. It verifies length, SHA-256 and the native header before
+publishing the local manifest, without source database/configuration access or capture tools.
+It rejects existing output and cleans up failed/cancelled downloads without deleting retained
+data. Use `pg_restore` separately under the destination's database ownership and extension setup.
+
+The native integration test uploads through signed S3 SDK multipart calls, drops the source
+database, removes the original local capture, downloads into new files and restores those files
+with `pg_restore`. This uses an isolated local S3-compatible endpoint, not a live cloud provider.
+The service still needs Pipeline/API/Studio/CLI orchestration, independently protected retention
+and encryption, and a matching committed object inventory before it can form a complete snapshot.
+
 ## Architecture
 
 `core-backup` defines the object backup service contracts and shared models. `backup` implements persistence, object transfers, manifest publication, GraphQL administration, and background jobs. Service implementations use `@ServiceImplementation` for generated DI registration.

@@ -7,11 +7,14 @@ import bosca.db.transaction
 import bosca.db.withConnectionManager
 import bosca.di.BackupProviderRegistrar
 import bosca.di.ProviderRegistry
+import bosca.di.StorageProviderRegistrar
 import bosca.di.annotation.InternalDI
 import bosca.di.provide
 import bosca.di.provides
 import bosca.server.BoscaApplication
 import bosca.server.config.ApplicationConfig
+import bosca.storage.service.ObjectStorageServiceFactory
+import io.mockk.mockk
 import java.nio.file.Files
 import java.nio.file.Path
 import java.sql.DriverManager
@@ -75,6 +78,7 @@ class PostgresBackupIntegrationTest {
         provides<ConnectionPool>(singleton = true) { pool }
         provides<Json>(singleton = true) { Json }
         install()
+        StorageProviderRegistrar().register()
         sql("""
             create extension vector;
             create schema workops;
@@ -293,6 +297,49 @@ class PostgresBackupIntegrationTest {
         assertFailsWith<IllegalArgumentException> { service.verify(output) }
     }
 
+    @Test
+    fun `retained native backup restores through signed S3 calls after source and local capture are removed`(): Unit = runBlocking {
+        val manifest = service.capture("original-instance", output)
+        val factory = provide<ObjectStorageServiceFactory>()
+        PostgresBackupS3TestStore { assertEquals(0, pool.activeConnections) }.use { retained ->
+            val prefix = "postgres/${manifest.id}"
+            factory.withStorage(retained.configuration) { backup ->
+                assertEquals(manifest, service.upload(output, backup, prefix))
+                assertEquals(manifest, service.upload(output, backup, prefix))
+            }
+            assertEquals(1, retained.writes.count { it.endsWith("database.dump") })
+            pool.close()
+            sql("drop database source with (force)", "postgres")
+            output.toFile().deleteRecursively()
+            install(configured = false)
+            val recovered = root.resolve("recovered-files")
+            factory.withStorage(retained.configuration) { backup ->
+                assertEquals(manifest, service.download(backup, prefix, recovered))
+            }
+            assertEquals(manifest, service.verify(recovered))
+            restore(recovered)
+            assertEquals("captured", scalar("select body->>'name' from workops.tasks", "recovered"))
+            assertEquals("retained", scalar("select value from artifacts.events", "recovered"))
+            assertEquals("[1,2,3]", scalar("select value::text from content.embeddings", "recovered"))
+            assertEquals("{VIEW,EDIT}", scalar("select permissions::text from content.permissions", "recovered"))
+            assertTrue(retained.signatures.isNotEmpty())
+            assertTrue(retained.signatures.all { it.contains("Credential=POSTGRES_TRANSFER_KEY/") })
+        }
+    }
+
+    @Test
+    fun `independent transfer rejects active caller transactions before storage access`(): Unit = runBlocking {
+        val backup = mockk<bosca.storage.service.ObjectStorageService>()
+        assertFailsWith<IllegalStateException> {
+            withConnectionManager { transaction { service.upload(output, backup, "postgres/capture") } }
+        }
+        assertFailsWith<IllegalStateException> {
+            withConnectionManager { transaction { service.download(backup, "postgres/capture", root.resolve("download")) } }
+        }
+        assertFalse(Files.exists(root.resolve("download")))
+        assertEquals(0, pool.activeConnections)
+    }
+
     private suspend fun install(configured: Boolean = true) {
         if (::application.isInitialized) application.shutdown()
         val config = buildJsonObject {
@@ -335,10 +382,10 @@ class PostgresBackupIntegrationTest {
             }
         }
 
-    private fun restore() {
+    private fun restore(directory: Path = output) {
         sql("create role recovered_owner superuser", "postgres")
         sql("create database recovered owner recovered_owner", "postgres")
-        val result = postgres.execInContainer("pg_restore", "--exit-on-error", "--single-transaction", "--no-owner", "--no-acl", "--no-tablespaces", "--role=recovered_owner", "--username=$user", "--dbname=recovered", output.resolve("database.dump").toString())
+        val result = postgres.execInContainer("pg_restore", "--exit-on-error", "--single-transaction", "--no-owner", "--no-acl", "--no-tablespaces", "--role=recovered_owner", "--username=$user", "--dbname=recovered", directory.resolve("database.dump").toString())
         assertEquals(0, result.exitCode, result.stderr)
     }
 

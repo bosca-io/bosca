@@ -6,6 +6,7 @@ import bosca.db.withConnectionManager
 import bosca.server.BoscaApplication
 import bosca.service.annotation.ServiceImplementation
 import bosca.storage.service.StorageDispatcher
+import bosca.storage.service.ObjectStorageService
 import java.io.OutputStream
 import java.nio.file.Files
 import java.nio.file.LinkOption.NOFOLLOW_LINKS
@@ -24,6 +25,25 @@ import org.slf4j.LoggerFactory
 /** Produces a native database artifact from one exported PostgreSQL snapshot. */
 @ServiceImplementation
 class PostgresBackupServiceImpl(private val application: BoscaApplication) : PostgresBackupService {
+    override suspend fun upload(
+        directory: Path,
+        backup: ObjectStorageService,
+        prefix: String,
+    ): PostgresBackupManifest = withContext(StorageDispatcher) {
+        check(connectionOrNull()?.inTransaction != true) { "PostgreSQL upload must run outside an active caller transaction" }
+        val store = PostgresBackupArtifactStore(backup, application.json, prefix)
+        store.upload(directory, verify(directory))
+    }
+
+    override suspend fun download(
+        backup: ObjectStorageService,
+        prefix: String,
+        directory: Path,
+    ): PostgresBackupManifest = withContext(StorageDispatcher) {
+        check(connectionOrNull()?.inTransaction != true) { "PostgreSQL download must run outside an active caller transaction" }
+        PostgresBackupArtifactStore(backup, application.json, prefix).download(directory)
+    }
+
     override suspend fun capture(sourceId: String, directory: Path): PostgresBackupManifest = withContext(StorageDispatcher) {
         check(connectionOrNull()?.inTransaction != true) { "PostgreSQL capture must run outside an active caller transaction" }
         require(sourceId.isNotBlank()) { "PostgreSQL backup source identity is required" }
@@ -90,7 +110,7 @@ class PostgresBackupServiceImpl(private val application: BoscaApplication) : Pos
                     }
                 }
             }
-            requireNativeDump(dump)
+            requireNativePostgresDump(dump)
             val length = Files.size(dump)
             val digest = digest(dump, length)
             val manifest = boundary.copy(length = length, sha256 = digest)
@@ -129,7 +149,7 @@ class PostgresBackupServiceImpl(private val application: BoscaApplication) : Pos
         require(Files.isRegularFile(dump, NOFOLLOW_LINKS)) { "PostgreSQL dump must be a regular file" }
         val actual = digest(dump, manifest.length)
         if (actual != manifest.sha256) throw BackupPayloadMismatchException("PostgreSQL dump SHA-256 mismatch")
-        requireNativeDump(dump)
+        requireNativePostgresDump(dump)
         manifest
     }
 
@@ -138,13 +158,6 @@ class PostgresBackupServiceImpl(private val application: BoscaApplication) : Pos
             it.transferTo(OutputStream.nullOutputStream())
             it.verifyComplete()
         }
-
-    private fun requireNativeDump(path: Path) {
-        check(Files.isRegularFile(path, NOFOLLOW_LINKS) && Files.size(path) >= 5) { "pg_dump did not produce a native database artifact" }
-        Files.newInputStream(path).use {
-            check(it.readNBytes(5).contentEquals("PGDMP".toByteArray(Charsets.US_ASCII))) { "pg_dump output is not a custom-format archive" }
-        }
-    }
 
     private suspend fun runDump(executable: String, service: String, serviceFile: String?, snapshot: String, dump: Path, errors: Path) {
         currentCoroutineContext().ensureActive()
