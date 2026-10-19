@@ -124,17 +124,29 @@ await call("Network.setCookie", {
   ),
   url: base,
 });
-const foundationTags = ["button", "input", "field", "card", "switch", "alert", "badge", "spinner", "loading-state", "icon"];
+const foundationTags = ["button", "input", "field", "card", "switch", "alert", "badge", "spinner", "loading-state", "icon", "confirm-dialog"];
 const foundationPrefix = `bml-${Buffer.from("io.bosca:bml-design").toString("hex")}-`;
 const seenFoundations = new Set();
-const iconActions = ["icon-button", "icon-link", "tooltip"];
-const seenIconActions = new Set();
+const clientControls = ["icon-button", "icon-link", "tooltip", "copy", "copy-field", "popover", "dialog"];
+const seenClientControls = new Set();
 async function checkFoundationComponents() {
   const mounts = await ev(`[...document.querySelectorAll('[data-bml-component]')].map(e=>e.dataset.bmlComponent)`);
-  for (const tag of iconActions) {
+  for (const tag of clientControls) {
     assert.ok(!mounts.includes(`ui-${tag}`), `Git must mount the library ${tag}`);
-    if (mounts.includes(foundationPrefix + tag)) seenIconActions.add(tag);
+    if (mounts.includes(foundationPrefix + tag)) seenClientControls.add(tag);
   }
+  assert.ok(
+    await ev(`(() => {
+      const roots = [...document.querySelectorAll('[data-bml-design-dialog]')];
+      return roots.every(root => {
+        const panel = root.querySelector(':scope > dialog');
+        const trigger = root.querySelector(':scope > [data-bml-ref=trigger]');
+        return panel?.id && panel.hasAttribute('data-bml-design-dialog-panel') &&
+          (!trigger || (trigger.getAttribute('aria-controls') === panel.id && trigger.getAttribute('aria-haspopup') === 'dialog'));
+      }) && new Set(roots.map(root => root.querySelector(':scope > dialog').id)).size === roots.length;
+    })()`),
+    "Library dialogs own unique native panels and expose their relationship on each trigger",
+  );
   const ids = await ev(`[...document.querySelectorAll('[data-bml-c]')].map(e=>e.getAttribute('data-bml-c'))`);
   for (const tag of foundationTags) {
     assert.ok(!ids.includes(`ui-${tag}`), `Git must render the library ${tag}`);
@@ -150,16 +162,24 @@ async function checkFoundationPalette() {
     const dimensions = () => controls.map(e=>{const r=e.getBoundingClientRect();return [r.width,r.height]});
     const before = dimensions();
     const style = document.createElement('style');
-    style.textContent = '.git-document, .git-document dialog { --control-bg: #eaf2f5; --accent: #225566; --fg-0: #225566; --fg-2: #304858; }';
+    style.textContent = '.git-document, .git-document dialog { --control-bg: #eaf2f5; --accent: #225566; --fg-0: #225566; --fg-2: #304858; --bg-1: #edf3f5; --bg-2: #d9e8ed; --fg-1: #16323c; --line-2: #557b88; }';
     document.head.append(style);
     try {
       return {before, after:dimensions(), background:getComputedStyle(input).backgroundColor,
-        primary:getComputedStyle(button).color, label:getComputedStyle(field).color};
+        primary:getComputedStyle(button).color, label:getComputedStyle(field).color,
+        panel:getComputedStyle(input.closest('dialog')).backgroundColor,
+        foreground:getComputedStyle(input.closest('dialog')).color,
+        border:getComputedStyle(input.closest('dialog')).borderColor,
+        footer:getComputedStyle(input.closest('dialog').querySelector('.modal-footer')).backgroundColor};
     } finally { style.remove(); }
   })()`);
   assert.equal(changed.background, "rgb(234, 242, 245)");
   assert.equal(changed.primary, "rgb(34, 85, 102)");
   assert.equal(changed.label, "rgb(48, 72, 88)");
+  assert.equal(changed.panel, "rgb(237, 243, 245)");
+  assert.equal(changed.foreground, "rgb(22, 50, 60)");
+  assert.equal(changed.border, "rgb(85, 123, 136)");
+  assert.equal(changed.footer, "rgb(217, 232, 237)");
   assert.deepEqual(changed.after, changed.before, "Consumer CSS changes colors without changing control geometry");
 }
 async function checkIconTooltip() {
@@ -371,6 +391,7 @@ const paths = [
 ];
 const results = [];
 const nativeSelectFallbacks = [];
+const nativePopoverFallbacks = [];
 const loadingStates = [];
 async function holdRequests(path) {
   pausedRequests.length = 0;
@@ -649,6 +670,25 @@ for (const width of [1920, 1440, 1024, 390]) {
       "base64",
     ),
   );
+  await call("Page.navigate", { url: base + "/repositories/repo" });
+  await until(`location.pathname==='/repositories/repo' && document.readyState==='complete' && Boolean(document.querySelector('.repository-controls .popover summary'))`);
+  await ev("document.fonts.ready");
+  const fallbackPoint = await ev(`(() => {const r=document.querySelector('.repository-controls .popover summary').getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2}})()`);
+  for (const type of ["mousePressed", "mouseReleased"])
+    await call("Input.dispatchMouseEvent", {type, ...fallbackPoint, button:"left", clickCount:1});
+  await until(`document.querySelector('.repository-controls .popover').open && document.querySelector('.popover-content').checkVisibility()`);
+  const fallback = await ev(`(() => {
+    const content=document.querySelector('.popover-content'), input=content.querySelector('input'), r=content.getBoundingClientRect();
+    return {enhanced:content.hasAttribute('popover'), value:input.value, readonly:input.readOnly,
+      left:r.left,right:r.right,viewport:document.documentElement.clientWidth};
+  })()`);
+  assert.equal(fallback.enhanced, false);
+  assert.equal(fallback.readonly, true);
+  assert.ok(fallback.value.endsWith('/repo.git'));
+  assert.ok(fallback.left>=0 && fallback.right<=fallback.viewport+1, `Native clone disclosure fits: ${JSON.stringify(fallback)}`);
+  nativePopoverFallbacks.push({width,...fallback});
+  await writeFile(`${process.env.GIT_UI_ARTIFACT_DIR}/bosca-git-ui-native-clone-${width}.png`,
+    Buffer.from((await call("Page.captureScreenshot",{format:"png",captureBeyondViewport:false})).data,"base64"));
   await call("Emulation.setScriptExecutionDisabled", { value: false });
   for (const path of paths) {
     await nav(path);
@@ -880,7 +920,7 @@ for (const width of [1920, 1440, 1024, 390]) {
         ),
         "Repository tabs must remain visible at every viewport",
       );
-      const clone = '[data-bml-component="ui-popover"]';
+      const clone = `[data-bml-component="${foundationPrefix}popover"]`;
       await ev(`document.querySelector('${clone} summary').click()`);
       await until(
         `document.querySelector('${clone} .popover-content').matches(':popover-open')`,
@@ -1007,19 +1047,16 @@ for (const width of [1920, 1440, 1024, 390]) {
     }
     if (path.endsWith("&view=reviews")) {
       const composer =
-        '[data-bml-component="git-pull-review"] [data-bml-component="ui-dialog"]';
+        '[data-bml-component="git-pull-review"] [data-bml-design-dialog]';
       assert.ok(
         await ev(`!document.querySelector('${composer} dialog').open`),
         "Review dialog starts closed",
       );
-      await ev(
-        `document.querySelector('${composer} [data-bml-ref=trigger]').click()`,
-      );
+      await ev(`document.querySelector('.page-heading a[href*="review=true"]').click()`);
+      await until(`document.querySelector('${composer} dialog')?.matches(':modal')`);
       assert.ok(
-        await ev(
-          `document.querySelector('${composer} dialog').matches(':modal')`,
-        ),
-        "Review is a modal with background containment",
+        await ev(`!document.querySelector('${composer} > [data-bml-ref=trigger]')`),
+        "The programmatic review dialog opens through the page action without adopting its select trigger",
       );
       await ev(
         `document.querySelector('${composer} textarea').value = 'Rejected'; document.querySelector('${composer} button[type=submit]').click()`,
@@ -1062,7 +1099,7 @@ for (const width of [1920, 1440, 1024, 390]) {
         "Pairing configuration remains available",
       );
       await ev(
-        `document.querySelector('[data-bml-island="component:git-github-secret:git-github-secret"] [data-bml-component="ui-dialog"] [data-bml-ref=trigger]').click()`,
+        `document.querySelector('[data-bml-island="component:git-github-secret:git-github-secret"] [data-bml-design-dialog] [data-bml-ref=trigger]').click()`,
       );
       await inspectDialog("pairing-credential-dialog", width);
       await ev(
@@ -1070,7 +1107,7 @@ for (const width of [1920, 1440, 1024, 390]) {
       );
       if (!path.includes("deliveries")) {
         await ev(
-          `document.querySelector('[data-bml-island="component:git-github-history:git-github-history"] [data-bml-component="ui-dialog"] [data-bml-ref=trigger]').click()`,
+          `document.querySelector('[data-bml-island="component:git-github-history:git-github-history"] [data-bml-design-dialog] [data-bml-ref=trigger]').click()`,
         );
         await inspectDialog("synchronization-dialog", width);
       }
@@ -1175,6 +1212,10 @@ for (const width of [1920, 1440, 1024, 390]) {
         );
       }
       const row = '[data-bml-component="git-repository-row"]';
+      await ev(`document.querySelector('${row} summary').focus()`);
+      await until(`[...document.querySelectorAll('.bosca-tooltip:popover-open')].some(t=>t.textContent==='Repository actions')`);
+      assert.ok(await ev(`document.querySelector('${row} summary').closest('[data-bml-component="${foundationPrefix}tooltip"]').contains(document.querySelector('.bosca-tooltip:popover-open'))`));
+      await pressKey("Escape");
       await ev(`document.querySelector('${row} summary').click()`);
       assert.ok(
         await ev(
@@ -1407,6 +1448,15 @@ for (const width of [1920, 1440, 1024, 390]) {
           ),
           "Tab stays in the modal",
         );
+        await ev(`document.querySelector('${component} [data-bml-ref=close]').focus()`);
+        for (const type of ["keyDown", "keyUp"])
+          await call("Input.dispatchKeyEvent", {
+            type, key: "Tab", code: "Tab", windowsVirtualKeyCode: 9, modifiers: 8,
+          });
+        assert.ok(
+          await ev(`document.activeElement === document.querySelector('${component} button[type=submit]')`),
+          "Shift+Tab wraps from the close action to the final submit control",
+        );
         await ev(
           `document.querySelector('${component} [data-bml-ref=cancel]').click()`,
         );
@@ -1490,7 +1540,7 @@ for (const width of [1920, 1440, 1024, 390]) {
     }
     if (path === "/pipelines/run") {
       await ev(
-        `document.querySelector('.run-controls [data-bml-component="ui-dialog"] [data-bml-ref=trigger]').click()`,
+        `document.querySelector('.run-controls [data-bml-design-dialog] [data-bml-ref=trigger]').click()`,
       );
       await inspectDialog("run-cancel-dialog", width);
     }
@@ -1516,7 +1566,7 @@ for (const width of [1920, 1440, 1024, 390]) {
       path.includes("/settings?panel=utilities")
     ) {
       const dialog = await ev(
-        `(() => { const button=[...document.querySelectorAll('[data-bml-component="ui-dialog"] [data-bml-ref=trigger]')].find(e => e.getClientRects().length); if (!button) return false; button.click(); return true; })()`,
+        `(() => { const button=[...document.querySelectorAll('[data-bml-design-dialog] [data-bml-ref=trigger]')].find(e => e.getClientRects().length); if (!button) return false; button.click(); return true; })()`,
       );
       if (dialog) {
         assert.ok(
@@ -1589,7 +1639,7 @@ for (const width of [1920, 1440, 1024, 390]) {
         ),
       );
       await ev(
-        `document.querySelector('${mappings} .mapping-table [data-bml-component="ui-dialog"] [data-bml-ref=trigger]').click()`,
+        `document.querySelector('${mappings} .mapping-table [data-bml-design-dialog] [data-bml-ref=trigger]').click()`,
       );
       assert.ok(
         await ev(
@@ -2047,6 +2097,7 @@ await writeFile(
     {
       results,
       nativeSelectFallbacks,
+      nativePopoverFallbacks,
       loadingStates,
       errors,
       checks: [
@@ -2081,13 +2132,14 @@ assert.deepEqual(
 );
 assert.deepEqual(errors, [], "Screen matrix raised browser exceptions");
 assert.deepEqual([...seenFoundations].sort(), [...foundationTags].sort());
-assert.deepEqual([...seenIconActions].sort(), [...iconActions].sort());
+assert.deepEqual([...seenClientControls].sort(), [...clientControls].sort());
 console.log(
   JSON.stringify({
     screens: results.length,
     libraryFoundations: [...seenFoundations].sort(),
     foundationPalette: "passed",
-    libraryIconActions: [...seenIconActions].sort(),
+    nativeCloneFallbacks: nativePopoverFallbacks.length,
+    libraryClientControls: [...seenClientControls].sort(),
     iconTooltipPaletteAndHover: "passed",
     overflow: results.filter((r) => r.scroll > r.viewport + 1),
     errors,

@@ -7,7 +7,7 @@
     <if page.selected.isNotBlank()>
       <island name="git-pipeline-trigger" :key="page.selected">
         <html:section :data-next-href="model.nextHref">
-          <ui-dialog
+          <dialog
             title="Run pipeline"
             triggerLabel="Run pipeline"
             icon="play"
@@ -91,7 +91,7 @@
                 </button>
               </footer>
             </form>
-          </ui-dialog>
+          </dialog>
         </html:section>
       </island>
     </if>

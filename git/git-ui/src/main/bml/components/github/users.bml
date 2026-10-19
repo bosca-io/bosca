@@ -78,7 +78,7 @@
                       { model.principals.firstOrNull { it.id == mapping.principalId }?.let { model.label(it) } ?: mapping.principalId }
                     </span>
                     <span class="gt-cell mapping-action">
-                      <ui-confirm-dialog
+                      <confirm-dialog
                         title="Remove user mapping?"
                         description="Future synchronized changes will no longer use this identity. Previous deliveries retain their attribution."
                         triggerLabel="Remove mapping"
@@ -93,7 +93,7 @@
                             </button>
                           </footer>
                         </div>
-                      </ui-confirm-dialog>
+                      </confirm-dialog>
                     </span>
                   </div>
                 </for>

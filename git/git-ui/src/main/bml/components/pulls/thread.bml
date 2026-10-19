@@ -13,11 +13,13 @@
     <if !inline || thread.outdated || thread.resolved>
       <header class="thread-location">
         <if !inline>
-          <a ref="locationLink" :href="page.discussionHref(thread)" :title='"View discussion on " + thread.location + " in Files Changed"'>
-            <icon name="file" :size="13" />
-            <span>{ thread.location }</span>
-            <icon name="arrow-right" :size="12" />
-          </a>
+          <tooltip :content='"View discussion on " + thread.location + " in Files Changed"'>
+            <a ref="locationLink" :href="page.discussionHref(thread)" :title='"View discussion on " + thread.location + " in Files Changed"'>
+              <icon name="file" :size="13" />
+              <span>{ thread.location }</span>
+              <icon name="arrow-right" :size="12" />
+            </a>
+          </tooltip>
         </if>
         <span class="thread-state">
           <if thread.outdated><badge>Outdated</badge></if>
@@ -102,9 +104,4 @@
       overflow-wrap: anywhere;
     }
   </style>
-  <script client scoped>
-    import { attachTooltip } from "@client/tooltip";
-    const link = ctx.ref("locationLink");
-    if (link) attachTooltip(ctx, link);
-  </script>
 </component>

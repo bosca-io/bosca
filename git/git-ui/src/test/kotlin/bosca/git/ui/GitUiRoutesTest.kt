@@ -380,10 +380,10 @@ class GitUiRoutesTest {
     }
 
     @Test
-    fun `migrated controls have no local registrations and icon actions use library mounts`() {
+    fun `migrated controls have no local registrations and use library client mounts`() {
         val migrated = listOf(
             "button", "input", "field", "card", "switch", "alert", "badge", "spinner", "loading-state",
-            "icon", "icon-button", "icon-link", "tooltip",
+            "icon", "icon-button", "icon-link", "tooltip", "copy", "copy-field", "popover", "dialog", "confirm-dialog",
         )
         val registered = bml.generated.BmlComponents.all.map { it.tag }.toSet()
         for (tag in migrated) {
@@ -399,11 +399,13 @@ class GitUiRoutesTest {
             assertEquals(200, response.statusCode(), response.body())
             response.body()
         }
-        for (tag in listOf("icon-button", "icon-link", "tooltip")) {
+        for (tag in listOf("icon-button", "icon-link", "tooltip", "copy", "copy-field", "popover", "dialog")) {
             val id = bosca.bml.library.BmlLibraryArtifacts.componentId("io.bosca:bml-design", tag)
             assertTrue("data-bml-component=\"$id\"" in html, "Missing library mount for $tag")
             assertFalse("data-bml-component=\"ui-$tag\"" in html)
         }
+        val confirmationId = bosca.bml.library.BmlLibraryArtifacts.componentId("io.bosca:bml-design", "confirm-dialog")
+        assertTrue("data-bml-c=\"$confirmationId\"" in html, "Missing projected library confirmation description")
         val download = Regex("<a[^>]*aria-label=\"Download file\"[^>]*>").find(html)?.value.orEmpty()
         assertTrue(Regex("\\bdownload(?:[ >])").containsMatchIn(download), download)
         assertTrue("href=\"" in download && "button-link icon-only" in download, download)

@@ -14,7 +14,7 @@
             Refresh history
           </button>
           <if model.page.pair?.enabled == true && model.page.view != "deliveries">
-            <ui-dialog title="Synchronize repository" triggerLabel="Synchronize" icon="refresh">
+            <dialog title="Synchronize repository" triggerLabel="Synchronize" icon="refresh">
               <form class="modal-form" @submit="model.synchronize(form.action, true, ctx)">
                 <div class="modal-fields">
                   <p class="form-help">
@@ -37,7 +37,7 @@
                   <button type="submit" primary>Synchronize</button>
                 </footer>
               </form>
-            </ui-dialog>
+            </dialog>
           </if>
         </ui-section-heading>
         <ui-tabs label="Synchronization history" :items="model.page.tabs" />

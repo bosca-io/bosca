@@ -13,7 +13,7 @@
           title="Group permissions"
           :subtitle='model.page.permissions.size.toString() + (if (model.page.permissions.size == 1) " permission" else " permissions") + " assigned to security groups."'
         >
-          <ui-dialog
+          <dialog
             title="Add group permission"
             triggerLabel="Add permission"
             triggerIcon="plus"
@@ -56,7 +56,7 @@
                 <button type="submit" primary>Add permission</button>
               </footer>
             </form>
-          </ui-dialog>
+          </dialog>
         </ui-section-heading>
         <if model.page.permissions.isEmpty()>
           <ui-empty-state
@@ -91,7 +91,7 @@
                       </badge>
                     </td>
                     <td class="actions-column">
-                      <ui-confirm-dialog
+                      <confirm-dialog
                         :title='"Remove " + permission.action.name.lowercase() + " permission?"'
                         :description='"The " + permission.group.name + " group will lose this permission on the repository."'
                       >
@@ -104,7 +104,7 @@
                             <button type="submit" class="danger">Remove permission</button>
                           </footer>
                         </form>
-                      </ui-confirm-dialog>
+                      </confirm-dialog>
                     </td>
                   </tr>
                 </for>

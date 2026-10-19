@@ -5,7 +5,7 @@
   </script>
   <island name="git-pull-create" :key="page.repository">
     <html:section :data-next-href="model.nextHref">
-      <ui-dialog
+      <dialog
         title="New Pull Request"
         triggerLabel="New Pull Request"
         icon="pull"
@@ -131,7 +131,7 @@
             </button>
           </footer>
         </form>
-      </ui-dialog>
+      </dialog>
     </html:section>
   </island>
   <style scoped>

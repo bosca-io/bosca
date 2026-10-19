@@ -36,7 +36,7 @@
                     <button size="sm" icon="edit" @click="model.edit(rule.id)">
                       Edit rule
                     </button>
-                    <ui-confirm-dialog
+                    <confirm-dialog
                       title="Delete branch protection?"
                       :description='"Protection for branches matching " + rule.pattern + " will be removed."'
                       triggerLabel="Delete"
@@ -47,7 +47,7 @@
                           <button type="submit" class="danger">Delete rule</button>
                         </footer>
                       </form>
-                    </ui-confirm-dialog>
+                    </confirm-dialog>
                   </div>
                 </div>
                 <div class="rule-badges">
@@ -84,7 +84,7 @@
         </if>
       </card>
       <if model.editing>
-        <ui-dialog
+        <dialog
           :title='if (model.id.isBlank()) "New branch protection rule" else "Edit branch protection rule"'
           triggerLabel="Continue editing"
           :showTrigger="false"
@@ -146,7 +146,7 @@
               <button type="submit" primary>Save rule</button>
             </footer>
           </form>
-        </ui-dialog>
+        </dialog>
       </if>
     </html:section>
   </island>

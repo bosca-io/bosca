@@ -5,7 +5,7 @@
   </script>
   <island name="git-repository-create" :key="initial.owner.id">
     <div :data-next-href="model.nextHref">
-      <ui-dialog
+      <dialog
         title="New Repository"
         triggerLabel="New Repository"
         icon="folder"
@@ -134,7 +134,7 @@
             <button type="submit" primary>Create repository</button>
           </footer>
         </form>
-      </ui-dialog>
+      </dialog>
     </div>
   </island>
   <script client scoped>

@@ -32,7 +32,7 @@
             <h3>Garbage collection</h3>
             <p>Compact loose objects and remove unreachable objects to reclaim storage.</p>
           </div>
-          <ui-confirm-dialog
+          <confirm-dialog
             title="Run garbage collection?"
             description="The repository's loose objects will be compacted and unreachable objects removed."
             triggerLabel="Run GC"
@@ -44,7 +44,7 @@
                 <button type="submit" primary>Run garbage collection</button>
               </footer>
             </form>
-          </ui-confirm-dialog>
+          </confirm-dialog>
         </div>
       </card>
       <card :padded="false">
@@ -56,7 +56,7 @@
             <h3>Repair repository</h3>
             <p>Rebuild repository packs without bitmaps when object storage needs repair.</p>
           </div>
-          <ui-confirm-dialog
+          <confirm-dialog
             title="Repair repository?"
             description="Repository packs will be rebuilt without bitmaps. This may take time for larger repositories."
             triggerLabel="Run repair"
@@ -68,7 +68,7 @@
                 <button type="submit" primary>Run repair</button>
               </footer>
             </form>
-          </ui-confirm-dialog>
+          </confirm-dialog>
         </div>
       </card>
     </div>

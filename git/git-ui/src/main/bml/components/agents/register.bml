@@ -5,7 +5,7 @@
   </script>
   <island name="git-agent-register" :key="page.status">
     <div class="agent-actions" :data-next-href="model.nextHref">
-      <ui-dialog
+      <dialog
         title="Register CI agent"
         triggerLabel="Register Agent"
         triggerIcon="plus"
@@ -63,7 +63,7 @@
             </footer>
           </form>
         </if>
-      </ui-dialog>
+      </dialog>
     </div>
   </island>
   <style scoped>

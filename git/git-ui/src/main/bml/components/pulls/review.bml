@@ -9,7 +9,7 @@
         <div class="review-toolbar">
           <span class="review-count">{ model.viewSummary }</span>
           <if model.page.canReview>
-            <ui-dialog
+            <dialog
               title="Review changes"
               triggerLabel="Review changes"
               icon="eye"
@@ -49,7 +49,7 @@
                   <button type="submit" primary>Submit review</button>
                 </footer>
               </form>
-            </ui-dialog>
+            </dialog>
           </if>
         </div>
       </if>

@@ -35,7 +35,7 @@
         <alert>{ model.message }</alert>
       </if>
       <if model.page.canEdit && (model.page.pull.status.name == "OPEN" || model.page.pull.status.name == "DRAFT")>
-        <ui-dialog
+        <dialog
           title="Add assignee"
           triggerLabel="Add assignee"
           icon="users"
@@ -60,7 +60,7 @@
               <button type="submit" primary>Add assignee</button>
             </footer>
           </form>
-        </ui-dialog>
+        </dialog>
       </if>
     </html:section>
   </island>

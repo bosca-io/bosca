@@ -17,7 +17,7 @@
         <alert :tone='if (model.failed) "error" else "success"'>{ model.message }</alert>
       </if>
       <if model.page.file.isNotBlank()>
-        <ui-confirm-dialog
+        <confirm-dialog
           title="Delete file?"
           :description='"A commit removing " + model.page.file + " will be added to " + model.page.ref + "."'
           triggerLabel="Delete"
@@ -30,9 +30,9 @@
               <button type="submit" class="danger">Delete file</button>
             </footer>
           </form>
-        </ui-confirm-dialog>
+        </confirm-dialog>
       <else>
-        <ui-dialog
+        <dialog
           title="New folder"
           triggerLabel="New folder"
           triggerIcon="folder"
@@ -58,7 +58,7 @@
               <button type="submit" primary>Create folder</button>
             </footer>
           </form>
-        </ui-dialog>
+        </dialog>
       </if>
     </div>
   </island>

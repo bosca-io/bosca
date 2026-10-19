@@ -5,7 +5,7 @@
   </script>
   <island name="git-agent-deregister" :key="page.selected?.id.orEmpty()">
     <div class="agent-deregister" :data-next-href="model.nextHref">
-      <ui-confirm-dialog
+      <confirm-dialog
         title="Deregister CI agent"
         description="The agent's token will be revoked and it will no longer accept jobs."
         triggerLabel="Deregister"
@@ -21,7 +21,7 @@
             <button type="submit" class="danger">Deregister agent</button>
           </footer>
         </form>
-      </ui-confirm-dialog>
+      </confirm-dialog>
     </div>
   </island>
   <style scoped>

@@ -5,7 +5,7 @@
   </script>
   <island name="git-tag-create" :key="model.page.id + model.page.ref">
     <div class="tag-create" :data-next-href="model.nextHref">
-      <ui-dialog
+      <dialog
         title="New Tag"
         triggerLabel="New Tag"
         triggerIcon="plus"
@@ -33,7 +33,7 @@
             <button type="submit" primary>Create tag</button>
           </footer>
         </form>
-      </ui-dialog>
+      </dialog>
     </div>
   </island>
   <style scoped>

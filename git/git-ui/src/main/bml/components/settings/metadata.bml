@@ -13,7 +13,7 @@
           title="Repository details"
           subtitle="Name, description and defaults for this repository."
         >
-          <ui-dialog
+          <dialog
             title="Edit repository"
             triggerLabel="Edit details"
             icon="edit"
@@ -65,7 +65,7 @@
                 <button primary type="submit">Save repository</button>
               </footer>
             </form>
-          </ui-dialog>
+          </dialog>
         </ui-section-heading>
         <dl class="repository-details">
           <div>
@@ -110,7 +110,7 @@
             <p>Changing the slug changes the clone URL. Update existing remotes after renaming.</p>
             <code class="clone-address">{ model.page.repository.cloneUrl }</code>
           </div>
-          <ui-dialog
+          <dialog
             title="Rename repository slug"
             triggerLabel="Rename slug"
             icon="edit"
@@ -135,7 +135,7 @@
                 <button type="submit" primary>Rename slug</button>
               </footer>
             </form>
-          </ui-dialog>
+          </dialog>
         </div>
       </card>
     </div>

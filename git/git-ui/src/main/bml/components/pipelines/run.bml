@@ -25,7 +25,7 @@
           :data-bml-preserve='"run-actions-" + model.run.status.name + model.rerunnableJobCount'
         >
           <if model.active && model.canEdit>
-            <ui-confirm-dialog
+            <confirm-dialog
               :triggerIconOnly="false"
               title="Cancel pipeline run?"
               description="Running jobs will be stopped and pending jobs cancelled."
@@ -39,10 +39,10 @@
                   <button type="submit" class="danger">Cancel run</button>
                 </footer>
               </form>
-            </ui-confirm-dialog>
+            </confirm-dialog>
           </if>
           <if model.canExecute>
-            <ui-confirm-dialog
+            <confirm-dialog
               :triggerIconOnly="false"
               title="Rerun pipeline?"
               description="Start a new pipeline run using this run's commit."
@@ -56,9 +56,9 @@
                   <button type="submit" primary>Rerun pipeline</button>
                 </footer>
               </form>
-            </ui-confirm-dialog>
+            </confirm-dialog>
             <if model.hasMultipleRerunnableJobs>
-              <ui-confirm-dialog
+              <confirm-dialog
                 :triggerIconOnly="false"
                 title="Rerun failed jobs?"
                 description="Retry the failed or cancelled jobs in this run."
@@ -72,11 +72,11 @@
                     <button type="submit" primary>Rerun failed jobs</button>
                   </footer>
                 </form>
-              </ui-confirm-dialog>
+              </confirm-dialog>
             </if>
           </if>
           <if !model.active && model.canManage>
-            <ui-confirm-dialog
+            <confirm-dialog
               :triggerIconOnly="false"
               title="Delete pipeline run?"
               description="This permanently removes the run, its logs and artifacts."
@@ -89,7 +89,7 @@
                   <button type="submit" class="danger">Delete run</button>
                 </footer>
               </form>
-            </ui-confirm-dialog>
+            </confirm-dialog>
           </if>
           <button size="sm" icon="pulse" @click="model.refresh(ctx)">Refresh</button>
         </div>

@@ -612,43 +612,8 @@ input[type="checkbox"] {
   margin-bottom: 0;
 }
 
-/* Dialog contents cross component scopes; their form body scrolls independently of the footer. */
-.modal-form {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  margin: 0;
-}
-.modal-fields {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  padding: 18px;
-  overflow: auto;
-  min-height: 0;
-}
-.modal-footer {
-  flex: none;
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  padding: 12px 18px;
-  border-top: 1px solid var(--line);
-  background: var(--bg-2);
-}
-.dialog-content .dialog-header .close-button {
-  padding: 5px;
-  min-height: 28px;
-  background: transparent;
-  border-color: transparent;
-}
 .dialog-content .modal-fields .owner-picker {
   width: 100%;
-}
-.modal-fields > label:not(.field) {
-  display: flex;
-  gap: 8px;
-  align-items: center;
 }
 
 .heading-actions {
@@ -997,24 +962,6 @@ input[type="checkbox"] {
   padding: 0;
   font: inherit;
   cursor: pointer;
-}
-
-/* Matches the Nuxt Tooltip component's Bosca theme. */
-.ui-tooltip {
-  position: fixed;
-  inset: auto;
-  margin: 0;
-  max-width: min(280px, calc(100vw - 16px));
-  padding: 4px 8px;
-  border: 1px solid var(--line-2);
-  border-radius: 6px;
-  background: var(--bg-3);
-  color: var(--fg-0);
-  font-size: 11.5px;
-  font-weight: 500;
-  line-height: 1.5;
-  box-shadow: 0 4px 12px #0005;
-  pointer-events: none;
 }
 
 details[open] > .disclosure-heading > .disclosure-chevron {

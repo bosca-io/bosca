@@ -14,7 +14,7 @@
     <html:section :data-next-href="model.nextHref">
       <div class="toolbar job-controls">
         <if model.canExecute && model.buildAnyway(model.job)>
-          <ui-dialog
+          <dialog
             title="Build anyway?"
             triggerLabel="Build anyway"
             icon="play"
@@ -43,10 +43,10 @@
                 <button type="submit" primary>Build anyway</button>
               </footer>
             </form>
-          </ui-dialog>
+          </dialog>
         </if>
         <if bosca.git.ui.activeRun(model.job.status) && model.canEdit>
-          <ui-confirm-dialog
+          <confirm-dialog
             :triggerIconOnly="false"
             title="Cancel job?"
             description="Stop this job and its running steps."
@@ -63,10 +63,10 @@
                 <button type="submit" class="danger">Cancel job</button>
               </footer>
             </form>
-          </ui-confirm-dialog>
+          </confirm-dialog>
         </if>
         <if model.canRerunJob(model.job)>
-          <ui-confirm-dialog
+          <confirm-dialog
             :triggerIconOnly="false"
             title="Rerun job?"
             description="Retry this job using the existing run's commit."
@@ -83,7 +83,7 @@
                 <button type="submit" primary>Rerun job</button>
               </footer>
             </form>
-          </ui-confirm-dialog>
+          </confirm-dialog>
         </if>
       </div>
       <if model.message.isNotBlank()>

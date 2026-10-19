@@ -34,34 +34,36 @@
       </span>
       <span class="gt-actions">
       <if model.repository.canManage>
-        <details class="row-actions" ref="panel">
-          <summary ref="trigger" aria-label="Repository actions" title="Repository actions">
-            <span class="row-menu-icon"><icon name="list" :size="14" /></span>
-          </summary>
-          <div class="repository-menu" role="menu" aria-label="Repository actions">
-            <a
-              role="menuitem"
-              :href='"/repositories/" + bosca.git.ui.encode(model.repository.id) + "/settings"'
-            >
-              <icon name="edit" :size="14" />
-              Settings
-            </a>
-            <if model.repository.archived>
-              <button role="menuitem" icon="refresh" @click='model.prepare("restore")'>
-                Restore repository
+        <tooltip content="Repository actions">
+          <details class="row-actions" ref="panel">
+            <summary ref="trigger" aria-label="Repository actions" title="Repository actions" tabindex="0">
+              <span class="row-menu-icon"><icon name="list" :size="14" /></span>
+            </summary>
+            <div class="repository-menu" role="menu" aria-label="Repository actions">
+              <a
+                role="menuitem"
+                :href='"/repositories/" + bosca.git.ui.encode(model.repository.id) + "/settings"'
+              >
+                <icon name="edit" :size="14" />
+                Settings
+              </a>
+              <if model.repository.archived>
+                <button role="menuitem" icon="refresh" @click='model.prepare("restore")'>
+                  Restore repository
+                </button>
+              <else>
+                <button role="menuitem" icon="archive" @click='model.prepare("archive")'>
+                  Archive repository
+                </button>
+              </if>
+              <button class="danger" role="menuitem" icon="trash" @click='model.prepare("delete")'>
+                Delete repository
               </button>
-            <else>
-              <button role="menuitem" icon="archive" @click='model.prepare("archive")'>
-                Archive repository
-              </button>
-            </if>
-            <button class="danger" role="menuitem" icon="trash" @click='model.prepare("delete")'>
-              Delete repository
-            </button>
-          </div>
-        </details>
+            </div>
+          </details>
+        </tooltip>
         <if model.pendingAction.isNotBlank()>
-          <ui-dialog
+          <dialog
             :title='model.pendingAction.replaceFirstChar(Char::uppercase) + " repository?"'
             triggerLabel="Confirm action"
             :showTrigger="false"
@@ -91,7 +93,7 @@
                 </button>
               </footer>
             </form>
-          </ui-dialog>
+          </dialog>
         </if>
       </if>
       </span>
@@ -213,10 +215,7 @@
   </style>
   <script client scoped>
     import { dismissibleDisclosure } from "@client/disclosure";
-    import { attachTooltip } from "@client/tooltip";
     dismissibleDisclosure(ctx);
-    const trigger = ctx.ref<HTMLElement>("trigger");
-    if (trigger) attachTooltip(ctx, trigger);
     ctx.onUpdate(() => {
       const next =
         ctx.root.querySelector<HTMLElement>("[data-next-href]")?.dataset.nextHref;

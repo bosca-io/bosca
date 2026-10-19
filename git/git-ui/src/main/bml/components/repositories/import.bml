@@ -5,7 +5,7 @@
   </script>
   <island name="git-repository-import" :key="initial.owner.id">
     <div :data-next-href="model.nextHref">
-      <ui-dialog
+      <dialog
         title="Import repository"
         triggerLabel="Import"
         icon="download"
@@ -60,7 +60,7 @@
             <button type="submit" primary>Import repository</button>
           </footer>
         </form>
-      </ui-dialog>
+      </dialog>
     </div>
   </island>
   <script client scoped>

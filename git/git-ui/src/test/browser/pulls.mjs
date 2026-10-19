@@ -465,7 +465,7 @@ for (const width of [1920, 1440, 1024, 390]) {
   await screenshot("reviews-discussions", width);
   const locationLink = `${discussion} [data-bml-ref="locationLink"]`;
   await ev(`document.querySelector('${locationLink}').focus()`);
-  await until(`document.querySelector('.ui-tooltip:popover-open')?.innerText === 'View discussion on a.txt:1 in Files Changed'`);
+  await until(`document.querySelector('.bosca-tooltip:popover-open')?.innerText === 'View discussion on a.txt:1 in Files Changed'`);
   await click(locationLink);
   await until(`new URL(location.href).searchParams.get('view') === 'files'
     && location.hash === '#discussion-comment' && document.activeElement?.id === 'discussion-comment'`);

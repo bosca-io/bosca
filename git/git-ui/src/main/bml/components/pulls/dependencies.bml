@@ -29,7 +29,7 @@
         <alert>{ model.message }</alert>
       </if>
       <if model.page.canEdit && (model.page.pull.status.name == "OPEN" || model.page.pull.status.name == "DRAFT")>
-        <ui-dialog
+        <dialog
           title="Add dependency"
           triggerLabel="Add dependency"
           icon="link"
@@ -69,7 +69,7 @@
               <button type="submit" primary :disabled="model.dependencyCandidates.isEmpty()">Add dependency</button>
             </footer>
           </form>
-        </ui-dialog>
+        </dialog>
       </if>
       <if model.page.pull.dependents.isNotEmpty()>
         <div class="side-divider"></div>

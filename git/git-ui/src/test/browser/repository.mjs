@@ -612,6 +612,26 @@ await writeFile(
     "base64",
   ),
 );
+for (const width of [1920,1440,1024,390]) {
+  await call("Emulation.setDeviceMetricsOverride",{width,height:width===390?844:900,deviceScaleFactor:1,mobile:width===390});
+  await call("Page.navigate",{url:base+"/repositories/empty"});
+  await until(`location.pathname==='/repositories/empty' && document.readyState==='complete' && document.querySelector('.clone-url-input') && !document.querySelector('[data-bml-ref=signout]').disabled`);
+  const initial = await ev(`(() => {const r=document.querySelector('.clone-url-input').getBoundingClientRect();return {width:r.width,height:r.height,value:document.querySelector('.clone-url-input').value}})()`);
+  await ev(`window.originalClipboardWrite=navigator.clipboard.writeText;
+    navigator.clipboard.writeText=async()=>{throw new DOMException('Denied','NotAllowedError')};
+    document.querySelector('.setup-banner .copy-control button').click()`);
+  await until(`document.activeElement===document.querySelector('.clone-url-input') && document.activeElement.selectionStart===0 && document.activeElement.selectionEnd===document.activeElement.value.length`);
+  assert.ok(await ev(`document.querySelector('.setup-banner [role=status]').textContent.includes('Select and copy')`), "Denied setup copy retains an accessible status and selects the native URL");
+  await ev(`navigator.clipboard.writeText=window.originalClipboardWrite;delete window.originalClipboardWrite;
+    document.querySelector('.setup-banner .copy-control button').click()`);
+  await until(`document.querySelector('.setup-banner .copy-control button').getAttribute('aria-label')==='Copied'`);
+  assert.equal(await ev("navigator.clipboard.readText()"),initial.value);
+  const final = await ev(`(() => {const r=document.querySelector('.clone-url-input').getBoundingClientRect();return {width:r.width,height:r.height,overflow:document.documentElement.scrollWidth>innerWidth}})()`);
+  assert.deepEqual(final,{width:initial.width,height:initial.height,overflow:false}, "Copy success and failure preserve the quick-setup URL geometry");
+  await writeFile(`${process.env.GIT_UI_ARTIFACT_DIR}/bosca-git-ui-setup-copy-${width}.png`,Buffer.from((await call("Page.captureScreenshot",{format:"png",captureBeyondViewport:false})).data,"base64"));
+}
+assert.deepEqual(errors, [], "Quick-setup clipboard checks raised browser exceptions");
+console.log("Quick-setup clipboard success, denied-copy selection and stable geometry passed at four widths.");
 await call("Emulation.setDeviceMetricsOverride", {
   width: 1440,
   height: 900,

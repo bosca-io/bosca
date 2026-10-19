@@ -49,7 +49,7 @@
                   </if>
                   <code class="ref-sha" :title="branch.sha">{ branch.sha.take(7) }</code>
                   <if model.page.canEdit && !model.page.archived && branch.name != model.page.defaultBranch>
-                    <ui-confirm-dialog
+                    <confirm-dialog
                       :title='"Delete branch " + branch.name + "?"'
                       :description='"The branch " + branch.name + " will be deleted from this repository."'
                       triggerLabel="Delete branch"
@@ -61,7 +61,7 @@
                           <button type="submit" class="danger">Delete branch</button>
                         </footer>
                       </form>
-                    </ui-confirm-dialog>
+                    </confirm-dialog>
                   </if>
                 </div>
               </for>
@@ -81,7 +81,7 @@
                   </if>
                   <code class="ref-sha" :title="tag.sha">{ tag.sha.take(7) }</code>
                   <if model.page.canEdit && !model.page.archived>
-                    <ui-confirm-dialog
+                    <confirm-dialog
                       :title='"Delete tag " + tag.name + "?"'
                       :description='"The tag " + tag.name + " will be deleted from this repository."'
                       triggerLabel="Delete tag"
@@ -93,7 +93,7 @@
                           <button type="submit" class="danger">Delete tag</button>
                         </footer>
                       </form>
-                    </ui-confirm-dialog>
+                    </confirm-dialog>
                   </if>
                 </div>
               </for>

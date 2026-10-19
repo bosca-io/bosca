@@ -10,7 +10,7 @@
           <h2 class="side-card-title">Actions</h2>
           <div class="action-stack">
             <if model.page.pull.status.name == "DRAFT">
-              <ui-dialog
+              <dialog
                 title="Ready for review"
                 triggerLabel="Mark Ready for Review"
                 icon="eye"
@@ -28,7 +28,7 @@
                     <button type="submit" primary>Ready for review</button>
                   </footer>
                 </form>
-              </ui-dialog>
+              </dialog>
             </if>
             <if model.page.pull.status.name == "OPEN">
               <form class="merge-form" @submit="model.prepare(form.strategy, ctx)">
@@ -53,7 +53,7 @@
               <if model.failed && model.selectedAction == "merge" && model.plan.isEmpty()>
                 <alert>{ model.message }</alert>
               </if>
-              <ui-dialog
+              <dialog
                 title="Merge pull request"
                 triggerLabel="Merge pull request"
                 icon="merge"
@@ -96,10 +96,10 @@
                     </button>
                   </footer>
                 </form>
-              </ui-dialog>
+              </dialog>
             </if>
             <if model.page.pull.status.name == "CLOSED">
-              <ui-dialog
+              <dialog
                 title="Reopen pull request"
                 triggerLabel="Reopen"
                 icon="pull"
@@ -117,10 +117,10 @@
                     <button type="submit" primary>Reopen pull request</button>
                   </footer>
                 </form>
-              </ui-dialog>
+              </dialog>
             </if>
             <if model.page.pull.status.name == "OPEN" || model.page.pull.status.name == "DRAFT">
-              <ui-dialog
+              <dialog
                 title="Close pull request"
                 triggerLabel="Close"
                 icon="close"
@@ -138,7 +138,7 @@
                     <button type="submit" class="danger">Close pull request</button>
                   </footer>
                 </form>
-              </ui-dialog>
+              </dialog>
             </if>
           </div>
         </div>

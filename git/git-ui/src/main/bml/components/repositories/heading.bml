@@ -31,9 +31,9 @@
             Refresh
           </a>
         </if>
-        <ui-popover label="Clone repository" icon="download" iconOnly :width="420">
-          <ui-copy-field :value="page.cloneUrl" label="Clone URL" copyLabel="Copy clone URL" />
-        </ui-popover>
+        <popover label="Clone repository" icon="download" iconOnly :width="420">
+          <copy-field :value="page.cloneUrl" label="Clone URL" copyLabel="Copy clone URL" />
+        </popover>
       </div>
     </ui-page-heading>
   </div>

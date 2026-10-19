@@ -6,7 +6,7 @@
   <island name="git-pull-edit" :key="page.pull.id">
     <div :data-next-href="model.nextHref">
       <icon-button icon="edit" label="Edit pull request" @click="model.open(ctx)" />
-      <ui-dialog
+      <dialog
         title="Edit pull request"
         triggerLabel="Edit pull request"
         icon="edit"
@@ -69,7 +69,7 @@
             <button type="submit" primary icon="check">Save changes</button>
           </footer>
         </form>
-      </ui-dialog>
+      </dialog>
     </div>
   </island>
   <style scoped>

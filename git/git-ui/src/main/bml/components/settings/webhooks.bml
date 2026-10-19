@@ -13,7 +13,7 @@
           title="Webhooks"
           subtitle="Send repository events to an external service."
         >
-          <ui-dialog
+          <dialog
             title="New webhook"
             triggerLabel="New webhook"
             icon="webhook"
@@ -65,7 +65,7 @@
                 <button type="submit" primary>Create webhook</button>
               </footer>
             </form>
-          </ui-dialog>
+          </dialog>
         </ui-section-heading>
         <if model.page.webhooks.isEmpty()>
           <ui-empty-state
@@ -92,7 +92,7 @@
                     <ui-time :value="hook.created" />
                   </div>
                 </div>
-                <ui-confirm-dialog
+                <confirm-dialog
                   title="Delete webhook?"
                   :description='"Events will no longer be delivered to " + hook.url + "."'
                   triggerLabel="Delete"
@@ -104,7 +104,7 @@
                       <button type="submit" class="danger">Delete webhook</button>
                     </footer>
                   </form>
-                </ui-confirm-dialog>
+                </confirm-dialog>
               </div>
             </for>
           </div>

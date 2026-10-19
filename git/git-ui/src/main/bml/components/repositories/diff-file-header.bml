@@ -12,7 +12,7 @@
     </html:button>
     <badge :color="bosca.git.ui.pullFileChangeColor(file.changeType)">{ bosca.git.ui.pullFileChangeLabel(file.changeType) }</badge>
     <code class="file-path" :title="file.displayPath">{ file.displayPath }</code>
-    <ui-copy :value="file.path" label="Copy file path" :showStatus="false" />
+    <copy :value="file.path" label="Copy file path" :showStatus="false" />
     <span class="file-stats">
       <if file.additions != 0>
         <span class="additions">+{ file.additions }</span>
