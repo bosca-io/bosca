@@ -39,6 +39,30 @@ h1 {
 .alternate {
   --accent: #2563eb;
 }
+.composition-theme form {
+  margin-top: 18px;
+}
+.composition-theme .ui-tree {
+  margin-top: 16px;
+}
+.timestamp-examples,
+.comment-edge-cases {
+  margin-top: 20px;
+  padding: 16px;
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+.timestamp-examples {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+}
+.inherited-time {
+  font: 17px/24px serif;
+  color: var(--accent);
+}
 .actions {
   display: flex;
   flex-wrap: wrap;

@@ -12,6 +12,7 @@ import { checkToasts } from './toast-checks.mjs';
 import { checkSelection } from './selection-checks.mjs';
 import { checkNavigation } from './navigation-checks.mjs';
 import { checkSelects } from './select-checks.mjs';
+import { checkComposition } from './composition-checks.mjs';
 
 const base = process.argv[2];
 const mode = process.argv[3] ?? 'fixture';
@@ -245,6 +246,7 @@ try {
   await checkSelection({ call, evaluate, until, base, mode, artifacts });
   await checkNavigation({ call, evaluate, until, base, mode, artifacts });
   await checkSelects({ call, evaluate, until, base, mode, artifacts });
+  await checkComposition({ call, evaluate, until, base, mode, artifacts });
   await call('Emulation.setScriptExecutionDisabled', { value: true });
   await call('Page.navigate', { url: base + '/' });
   await until('document.readyState === "complete" && document.querySelector("[data-input=light]")');
@@ -295,6 +297,13 @@ try {
     const form=new FormData(document.querySelector('[data-select-form=light]'));
     return n instanceof HTMLSelectElement&&n.required&&n.value==='a'&&!n.classList.contains('enhanced')&&getComputedStyle(n).height==='32px'&&
       m.multiple&&JSON.stringify(form.getAll('toppings'))==='["a","b"]'&&n.closest('[data-bml-design-select]').querySelector('[data-bml-ref=control]').hidden;})()`), 'No-script native single/multiple selects retain their names, form values and presentation');
+  await call('Page.navigate', { url: base + '/composition' });
+  await until('document.readyState === "complete" && document.querySelector("[data-comment=light]")');
+  assert.deepEqual(await evaluate(`(() => {const field=document.querySelector('[data-comment=light]');
+    return {native:field instanceof HTMLTextAreaElement&&field.required,value:new FormData(field.form).get('body'),
+      links:[...document.querySelectorAll('[data-local-tree=light] a')].every(link=>link.getBoundingClientRect().height>0),
+      timestamp:document.querySelector('[data-default-time]').textContent};})()`),
+    {native:true,value:'Server draft 3',links:true,timestamp:'Oct 18, 13:15 UTC'},'No-script native comments, every file link and server timestamps remain available');
   assert.deepEqual(exceptions, []);
   console.log(`Design library browser checks passed (${mode}); screenshots: ${artifacts}`);
 } finally {

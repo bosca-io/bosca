@@ -76,6 +76,10 @@ import provides `<design:button>` with the same runtime identity and assets as `
 | `view-tabs` | Required `label: String`, `tabs: List<String>` and `selected: String` | Tablist receives additional attributes/classes/events. Emits bubbling `viewchange` with the selected label as its string detail. The application owns panels, IDs, accessible relationships and visibility. No child content. |
 | `tabs` | Required `label: String` and `items: List<NavigationItem>`; `header: Boolean = false` | Native nav receives additional attributes/classes and default trailing action children. Destinations remain native anchors with `aria-current="page"` on the current item. The scoped helper fits links around the current destination and a `More` overflow disclosure. |
 | `select` | `name: String = ""`; `ref: String = "native"`; `placeholder: String = "Select…"`; `label: String = "Selection"`; `icon: String = ""`; `searchable`, `async`, `multiple`, `allowCustom`, `disabled`, `loading`, `required`: `Boolean = false`; `size: String = "md"`; `maxTags: Int = 3`; `minQuery: Int = 0`; `debounce: Int = 250` (milliseconds); `preserveKey: String = ""` | Additional attributes/classes target the native select. Default children are caller-owned options/optgroups. The helper enhances it with a labelled combobox, listbox, optional search/pagination and selected tags; native values remain the form submission contract. |
+| `tree` | Required `label: String`; `heading: String = ""`; `local: Boolean = false`; `embedded: Boolean = false`; `preserveKey: String = ""` | Section receives additional attributes/classes and contains a labelled tree with default item children. `local` manages disclosure of already-rendered rows; otherwise caller actions own folder loading. |
+| `tree-item` | Required `path: String` and `label: String`; `href: String = ""`; `directory`, `expanded`, `selected`, `wrap`: `Boolean = false`; `depth: Int = 0` | Flat ARIA tree item. Additional attributes/classes/actions target its native directory button or native file anchor. Paths identify hierarchy, depth controls indentation/ARIA level, and selected file links use `aria-current="page"`. No child content. |
+| `time` | Required `value: String`; `relative`, `ago`, `inheritTypography`: `Boolean = false`; `format: String = ""` | Native time receives additional attributes/classes, its original value as datetime/title and an English server-rendered label. No child content. Use `html:time` for a native timestamp after importing this component. |
+| `comment-editor` | Required `id: String` and `label: String`; `value`, `error`, `hint`, `describedBy`: `String = ""`; `submitDisabled: Boolean = false`; `submitLabel: String = "comment"`; `placeholder: String = "Write a comment…"`; `name: String = "body"` | Native required textarea receives additional attributes/classes, its ID and preservation key. Default children supply action controls. The caller owns its surrounding form, submission and error outcomes. |
 
 Regular controls are 32px high, compact controls 30px, and extra-small buttons 24px. Field labels use
 an 18px line and a 6px control gap. Buttons support the `ghost`, `danger`, `block`, and `icon-only`
@@ -254,6 +258,46 @@ declarations without a paths alias to the producer, a sources JAR or a separate 
 Type-only imports add no browser code. The independent consumer's adapter uses this import with
 BML's same-origin contract client. The library's own helper uses the same declaration.
 
+## Trees, timestamps and comments
+
+Use `tree-item` as flat children of `tree`, with unique, stable slash-separated paths and explicit
+depths. File destinations remain native links; directory controls remain separate native buttons.
+Down/Up, Home/End, Right to expand/enter, Left to collapse/return and type-ahead operate on visible
+items with one roving tab stop. Repeating a letter cycles matching labels. Enter follows a file link
+or activates its directory button. The helper does not load data, persist expansion or change routes.
+
+`local` trees disclose descendants already in the child list and honor initial `expanded` props.
+Use a stable `preserveKey` to retain the whole local tree, disclosure state and focus through unrelated
+updates. Its children remain client-owned; change/remove that key when replacing the item list or
+its props. For server-loaded trees, the application supplies directory actions, expanded state and
+new rows. Preserve the native directory control with an additional `data-bml-preserve` attribute so
+Right Arrow can enter an asynchronously added child after the update. The helper follows the
+currently focused control and does not take focus back from another element. Nonnegative depth
+sets the ARIA level; indentation is capped at twelve levels. `wrap` makes long labels wrap.
+Without scripts, the rendered file links remain available.
+
+`time` parses offset timestamps. Its default label converts to UTC and displays `MMM d, HH:mm UTC`.
+A custom Java date/time pattern takes priority and retains the supplied offset. Relative labels use
+`just now`, minutes, hours and days for ages below a week, then `MMM d`; future labels use `in` and
+`ago` optionally adds the past suffix. Labels use English and are computed at server render time,
+with no browser refresh timer. Invalid timestamp text remains escaped literal text; invalid format
+patterns raise their normal error. `inheritTypography` inherits the surrounding font and color.
+
+Give each `comment-editor` a unique `id` and place it in a caller-owned form, projecting its action
+buttons into the default slot. The default form field name is `body`. The helper grows the textarea
+from 78px to 320px, blocks blank submissions, and supports Ctrl+Enter or Command+Enter. Native
+`readonly` and `disabled` attrs are respected. `submitDisabled` blocks submission while retaining an
+editable draft; a custom `hint` can explain that state. The default shortcut hint follows the platform
+and hides on touch-only devices. `describedBy` adds application description IDs to the current
+hint/error relationships. Form pending state makes the field readonly, blocks actions and temporarily
+hides the prior error. Completion restores the normal state; `error` supplies the caller's alert.
+
+The textarea's preservation key retains its native value, focus and caret when its form is replaced.
+An unchanged server `value` retains a draft; a changed value replaces it and becomes its native reset
+default. Change `id` to reset after successful submission, including when the server value was already
+empty. The helper reconnects to the current form, and unmount removes its listeners and observer.
+It supplies no storage, transport, permissions or rich-text formatting.
+
 ## Consumer CSS
 
 Library defaults load before application CSS. Override ordinary custom properties on the root or a
@@ -363,6 +407,12 @@ Dynamic option/tag rules live in the real library stylesheet under its owning se
 | `components/view-tabs.bml` | `components/ui/view-tabs.bml` |
 | `components/tabs.bml` | `components/ui/tabs.bml` |
 | `components/select.bml` | `components/ui/select.bml` |
+| `components/tree.bml` | `components/ui/tree.bml` |
+| `components/tree-item.bml` | `components/ui/tree-item.bml` |
+| `components/time.bml` | `components/ui/time.bml` |
+| `components/comment-editor.bml` | `components/ui/comment-editor.bml` |
+| `client/helpers/tree.ts` | `src/main/client/tree.ts` |
+| `client/helpers/comment-editor.ts` | `src/main/client/comment-editor.ts` |
 | `client/helpers/select.ts` | `src/main/client/select.ts` |
 | `client/contracts/select.d.ts` | Public event interfaces from `src/main/client/select.ts` |
 | `client/helpers/tabs.ts` | `src/main/client/tabs.ts` |

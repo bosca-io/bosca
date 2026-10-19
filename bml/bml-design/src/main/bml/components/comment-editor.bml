@@ -1,0 +1,98 @@
+<component tag="comment-editor">
+  <prop name="id" type="String" required />
+  <prop name="label" type="String" required />
+  <prop name="value" type="String" default="" />
+  <prop name="error" type="String" default="" />
+  <prop name="submitDisabled" type="Boolean" default="false" />
+  <prop name="hint" type="String" default="" />
+  <prop name="submitLabel" type="String" default="comment" />
+  <prop name="placeholder" type="String" default="Write a comment…" />
+  <prop name="describedBy" type="String" default="" />
+  <prop name="name" type="String" default="body" />
+  <div class="comment-editor" :data-submit-disabled="submitDisabled" :data-submit-label="submitLabel" :data-value="value">
+    <textarea
+      ref="commentBody"
+      :name="name"
+      :id="id"
+      rows="3"
+      required
+      :placeholder="placeholder"
+      :aria-label="label"
+      :aria-invalid="error.isNotBlank().toString()"
+      :aria-describedby='(if (describedBy.isNotBlank()) describedBy + " " else "") + id + "-hint" + if (error.isNotBlank()) " " + id + "-error" else ""'
+      :data-bml-preserve="id"
+      {...attrs}
+    >{ value }</textarea>
+    <if error.isNotBlank()>
+      <alert ref="commentError" :id='id + "-error"' compact>{ error }</alert>
+    </if>
+    <footer class="comment-footer">
+      <small ref="shortcut" :id='id + "-hint"' :data-hint="hint.isNotBlank()">
+        { hint.ifBlank { "Ctrl+Enter to " + submitLabel } }
+      </small>
+      <div class="comment-actions"><slot /></div>
+    </footer>
+  </div>
+  <style scoped>
+    .comment-editor {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      min-width: 0;
+    }
+    textarea {
+      box-sizing: border-box;
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: var(--r-md);
+      resize: vertical;
+      overflow-y: auto;
+      margin: 0;
+      padding: 8px 10px;
+      min-height: 78px;
+      max-height: 320px;
+      background: var(--bg-1);
+      color: var(--fg-0);
+      font: 13px/20px var(--font-sans);
+    }
+    textarea:focus-visible {
+      outline: 1px solid var(--accent);
+      outline-offset: 0;
+      border-color: var(--accent);
+    }
+    .comment-footer,
+    .comment-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .comment-footer {
+      justify-content: space-between;
+      flex-wrap: wrap;
+    }
+    .comment-actions {
+      margin-left: auto;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+    small {
+      color: var(--fg-3);
+      font: 11px/18px var(--font-sans);
+    }
+    small[data-hint] {
+      flex: 1 1 200px;
+      color: var(--fg-2);
+      font-size: 12px;
+    }
+    @media (max-width: 720px) {
+      small[data-hint] { flex-basis: 100%; }
+    }
+    @media (hover: none) {
+      small:not([data-hint]) { display: none; }
+    }
+  </style>
+  <script client scoped>
+    import { commentEditor } from "@client/helpers/comment-editor";
+    commentEditor(ctx);
+  </script>
+</component>

@@ -41,9 +41,9 @@ class DesignLibraryTest {
             val manifest = BmlLibraryArtifacts.decode(jar.getInputStream(jar.getJarEntry(BmlLibraryArtifacts.MANIFEST_PATH)).reader().readText())
             assertEquals("io.bosca:bml-design", manifest.library)
             assertEquals("bosca.design.generated", manifest.generatedPackage)
-            assertEquals(setOf("alert", "app-header", "badge", "bosca-mark", "button", "card", "checkbox", "confirm-dialog", "copy", "copy-field", "dialog", "disclosure-heading",
+            assertEquals(setOf("alert", "app-header", "badge", "bosca-mark", "button", "card", "checkbox", "comment-editor", "confirm-dialog", "copy", "copy-field", "dialog", "disclosure-heading",
                 "empty-state", "field", "icon", "icon-button", "icon-link", "input", "loading-state", "page-heading", "page-shell", "panel", "popover",
-                "search-input", "select", "section", "section-heading", "segmented-control", "spinner", "switch", "table-scroll", "tabs", "toast", "tooltip", "view-tabs"),
+                "search-input", "select", "section", "section-heading", "segmented-control", "spinner", "switch", "table-scroll", "tabs", "time", "toast", "tree", "tree-item", "tooltip", "view-tabs"),
                 manifest.components.filter { it.exported }.map { it.tag }.toSet())
             assertTrue(manifest.requirements.isEmpty())
             assertTrue(manifest.providerRegistrars.isEmpty())
@@ -56,7 +56,7 @@ class DesignLibraryTest {
             assertEquals("List<bosca.design.model.NavigationItem>", heading.props.single { it.name == "trail" }.declaredType)
             assertTrue(jar.getJarEntry("bosca/design/model/NavigationItem.class") != null)
             assertTrue(manifest.components.single { it.tag == "app-header" }.clientModule != null)
-            assertTrue(listOf("tooltip", "icon-button", "icon-link", "dialog", "popover", "copy", "copy-field", "toast", "search-input", "segmented-control", "view-tabs", "tabs", "select").all { tag ->
+            assertTrue(listOf("tooltip", "icon-button", "icon-link", "dialog", "popover", "copy", "copy-field", "toast", "search-input", "segmented-control", "view-tabs", "tabs", "select", "tree", "comment-editor").all { tag ->
                 manifest.components.single { it.tag == tag }.clientModule != null
             })
             val toast = manifest.components.single { it.tag == "toast" }
@@ -161,6 +161,11 @@ class DesignLibraryTest {
             assertTrue("data-persistent" in selects && "name=\"toppings\"" in selects && " multiple" in selects, selects)
             assertTrue("id=\"native-select\"" in selects && "data-bml-preserve=\"remote-light-0\"" in selects, selects)
             assertFalse("bosca.git" in selects || "/_git/" in selects, selects)
+            val composition = request(client, base, "/composition").body()
+            assertTrue("role=\"tree\"" in composition && "data-remote-directory=\"light\"" in composition, composition)
+            assertTrue("data-comment=\"light\"" in composition && "name=\"body\"" in composition, composition)
+            assertTrue("Oct 18, 13:15 UTC" in composition && "2026-10-18 08:15 -05:00" in composition, composition)
+            assertFalse("bosca.git" in composition || "/_git/" in composition, composition)
             val choices = request(client, base, "/_bml/contract/SelectChoices/search", "[\"apple\",0]")
             assertEquals(200, choices.statusCode(), choices.body())
             assertTrue("apple-0" in choices.body() && "apple choice 2" in choices.body(), choices.body())

@@ -1,0 +1,48 @@
+<component tag="tree">
+  <prop name="label" type="String" required />
+  <prop name="heading" type="String" default="" />
+  <prop name="local" type="Boolean" default="false" />
+  <prop name="embedded" type="Boolean" default="false" />
+  <prop name="preserveKey" type="String" default="" />
+  <html:section class="ui-tree" :data-local="local" :data-embedded="embedded" :data-bml-preserve="preserveKey.takeIf(String::isNotBlank)" {...attrs}>
+    <if heading.isNotBlank()>
+      <h3>{ heading }</h3>
+    </if>
+    <div role="tree" :aria-label="label">
+      <slot />
+    </div>
+  </html:section>
+  <style scoped>
+    .ui-tree {
+      min-width: 0;
+      max-height: 100%;
+      overflow: auto;
+      padding: 8px;
+    }
+    h3 {
+      margin: 2px 6px 8px;
+      color: var(--fg-3);
+      font-size: 11px;
+      font-weight: 600;
+    }
+    [role="tree"] {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+    @media (max-width: 700px) {
+      .ui-tree {
+        max-height: 220px;
+      }
+    }
+    .ui-tree[data-embedded] {
+      max-height: none;
+      overflow: visible;
+      padding: 0;
+    }
+  </style>
+  <script client scoped>
+    import { keyboardTree } from "@client/helpers/tree";
+    keyboardTree(ctx);
+  </script>
+</component>

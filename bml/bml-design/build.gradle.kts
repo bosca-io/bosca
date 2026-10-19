@@ -16,9 +16,9 @@ bml {
     packageName.set("bosca.design.generated")
     library {
         exports.set(listOf(
-            "alert", "app-header", "badge", "bosca-mark", "button", "card", "checkbox", "confirm-dialog", "copy", "copy-field", "dialog", "disclosure-heading",
+            "alert", "app-header", "badge", "bosca-mark", "button", "card", "checkbox", "comment-editor", "confirm-dialog", "copy", "copy-field", "dialog", "disclosure-heading",
             "empty-state", "field", "icon", "icon-button", "icon-link", "input",
-            "loading-state", "page-heading", "page-shell", "panel", "popover", "search-input", "select", "section", "section-heading", "segmented-control", "spinner", "switch", "table-scroll", "tabs", "toast", "tooltip", "view-tabs",
+            "loading-state", "page-heading", "page-shell", "panel", "popover", "search-input", "select", "section", "section-heading", "segmented-control", "spinner", "switch", "table-scroll", "tabs", "time", "toast", "tree", "tree-item", "tooltip", "view-tabs",
         ))
     }
 }

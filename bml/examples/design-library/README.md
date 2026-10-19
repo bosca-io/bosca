@@ -110,3 +110,14 @@ Chrome defaults to the installed Google Chrome app on macOS or `google-chrome` o
 `BML_DESIGN_CHROME_BINARY` for another executable. Screenshots land in this project's
 `build/reports/browser/`. The fixture is an application and is excluded from aggregate Maven
 publication.
+
+The `/composition` page combines local and server-loaded trees, plain comment forms and timestamps.
+Its own state supplies directory actions, delayed submissions, permission changes, rejected drafts
+and controlled values. Two themes exercise native links, initial local disclosure, roving focus,
+type-ahead, focus into asynchronously added children and preservation across server updates.
+Comment checks cover native names/values, blank/readonly/disabled/permission states, sizing,
+Ctrl+Enter, pending feedback, failure/retry, current descriptions, retained draft/caret/focus,
+controlled values and native reset. Repeated removal/remount checks listeners and observers.
+Script-disabled checks retain comment form values, every rendered file link and server timestamps.
+Timestamp tests cover English UTC/default, custom offset formats, relative past/future/older dates,
+escaped invalid values and invalid-pattern errors. Desktop and phone screenshots cover this page.
