@@ -2,6 +2,8 @@ package bosca.design.example
 
 import bosca.bml.codegen.BmlProjectGenerator
 import bosca.bml.library.BmlLibraryArtifacts
+import bosca.bml.library.BmlLibraryClientManifest
+import bosca.bml.project.ContentDigest
 import java.io.File
 import java.net.CookieManager
 import java.net.CookiePolicy
@@ -12,6 +14,7 @@ import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.time.Duration
 import java.util.concurrent.TimeUnit
+import java.util.Properties
 import java.util.jar.JarFile
 import kotlin.io.path.createTempDirectory
 import kotlin.test.Test
@@ -71,6 +74,68 @@ class DesignLibraryTest {
             val jsonNotice = jar.getInputStream(jar.getJarEntry("META-INF/licenses/bml-design/json-editor.txt")).reader().readText()
             assertTrue("vanilla-jsoneditor 3.13.0" in jsonNotice && "Font Awesome Free License" in jsonNotice, jsonNotice)
             assertFalse(jar.entries().asSequence().any { it.name.startsWith("bosca/git/") })
+        }
+    }
+
+    @Test
+    fun `jar-only consumer serves original fonts once with source assets and license notices`() {
+        val hashes = Properties().apply {
+            requireNotNull(DesignLibraryTest::class.java.getResourceAsStream("/geist-sha256.properties")).use { load(it) }
+        }
+        val expected = hashes.stringPropertyNames().associateWith { "sha256:${hashes.getProperty(it)}" }
+        assertEquals(11, expected.size)
+        val originalBytes = JarFile(designJar).use { binary ->
+            val manifest = BmlLibraryClientManifest.decode(binary.getInputStream(binary.getJarEntry(BmlLibraryClientManifest.PATH)).reader().readText())
+            val fonts = manifest.files.filter { it.path.endsWith(".woff2") }
+            assertEquals(11, fonts.size)
+            val bytesByDigest = fonts.associate { font ->
+                val bytes = binary.getInputStream(binary.getJarEntry("${manifest.resourcePrefix}/${font.path}")).readBytes()
+                assertEquals(font.digest, ContentDigest.sha256(bytes))
+                font.digest to bytes
+            }
+            assertEquals(expected.values.toSet(), bytesByDigest.keys)
+            JarFile(File(designJar.parentFile, "${designJar.nameWithoutExtension}-sources.jar")).use { sources ->
+                for ((name, digest) in expected) {
+                    val bytes = sources.getInputStream(sources.getJarEntry("client/fonts/$name")).readBytes()
+                    assertEquals(digest, ContentDigest.sha256(bytes), name)
+                    assertTrue(bytes.contentEquals(bytesByDigest.getValue(digest)), name)
+                }
+                for (name in listOf("geist", "lucide", "source-view", "json-editor")) {
+                    val path = "META-INF/licenses/bml-design/$name.txt"
+                    val notice = binary.getInputStream(binary.getJarEntry(path)).readBytes()
+                    assertTrue(notice.isNotEmpty(), path)
+                    assertTrue(notice.contentEquals(sources.getInputStream(sources.getJarEntry(path)).readBytes()), path)
+                    if (name == "geist") assertTrue("SIL OPEN FONT LICENSE Version 1.1" in notice.decodeToString())
+                }
+            }
+            bytesByDigest
+        }
+        for (development in listOf(false, true)) withServer(development) { base, client ->
+            val html = request(client, base, "/aliases").body()
+            val links = Regex("<link[^>]+href=\"([^\"]+)\"").findAll(html)
+                .map { it.groupValues[1].replace("&amp;", "&") }
+                .filter { it.startsWith("/_bml/libraries/") && it.substringBefore('?').endsWith(".css") }.toList()
+            assertEquals(links.distinct(), links)
+            val styles = links.map { request(client, base, it).also { response -> assertEquals(200, response.statusCode()) }.body() }
+            val fontStyles = styles.filter { "@font-face" in it }
+            assertEquals(1, fontStyles.size)
+            val css = fontStyles.single()
+            assertFalse("/_git/" in css || "https://" in css || "file:" in css)
+            assertEquals(11, Regex("@font-face").findAll(css).count())
+            val urls = Regex("""url\(["']?(/_bml/libraries/[^)"']+\.woff2)["']?\)""").findAll(css).map { it.groupValues[1] }.toList()
+            assertEquals(11, urls.size)
+            assertEquals(urls.distinct(), urls)
+            val served = urls.map { url ->
+                val response = client.send(HttpRequest.newBuilder(URI(base + url)).GET().build(), HttpResponse.BodyHandlers.ofByteArray())
+                assertEquals(200, response.statusCode(), url)
+                assertEquals("font/woff2", response.headers().firstValue("Content-Type").orElse(""))
+                assertEquals("no-cache", response.headers().firstValue("Cache-Control").orElse(""))
+                val digest = ContentDigest.sha256(response.body())
+                assertTrue(response.body().contentEquals(originalBytes.getValue(digest)), url)
+                digest
+            }
+            assertEquals(expected.values.toSet(), served.toSet())
+            assertEquals(404, request(client, base, urls.first().substringBeforeLast('/') + "/missing.woff2").statusCode())
         }
     }
 

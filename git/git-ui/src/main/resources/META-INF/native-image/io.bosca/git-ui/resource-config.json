@@ -1,0 +1,8 @@
+{
+  "resources": {
+    "includes": [
+      { "pattern": "bml/applications/bml\\.generated/.*" },
+      { "pattern": "META-INF/licenses/bml-design/.*\\.txt" }
+    ]
+  }
+}

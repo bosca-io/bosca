@@ -30,7 +30,7 @@ application {
 
 val fixtureRuntime = configurations.named("runtimeClasspath")
 tasks.test {
-    dependsOn(tasks.jar, fixtureRuntime)
+    dependsOn(tasks.jar, fixtureRuntime, ":bml:bml-design:sourcesJar")
     inputs.dir(layout.projectDirectory.dir("src/test/browser"))
         .withPropertyName("browserChecks").withPathSensitivity(PathSensitivity.RELATIVE)
     inputs.dir(layout.projectDirectory.dir("src/test/types"))

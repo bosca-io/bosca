@@ -37,6 +37,30 @@ Use `<html:button>`, `<html:input>` and `<html:section>` for native elements aft
 Local component definitions take precedence throughout their module. An optional `as="design"`
 import provides `<design:button>` with the same runtime identity and assets as `<button>`.
 
+## Fonts and notices
+
+The library packages the existing Geist v5 and Geist Mono v6 WOFF2 subsets formerly owned by
+Git UI. Font bytes, Unicode ranges, normal style, variable weights 400–700 and `font-display: swap`
+are preserved. Its global stylesheet declares the faces; BML bundles their relative URLs into
+same-origin `/_bml/libraries/` assets. Consumers need no font copies, external font service or
+private Git asset route. Unversioned asset requests follow BML's revalidation cache policy.
+
+The original font files are in `src/main/client/fonts/` and in the source archive under
+`client/fonts/`. The binary and source archives retain the [Geist OFL notice](src/main/resources/META-INF/licenses/bml-design/geist.txt)
+and the existing Lucide, source viewer and JSON editor notices under `META-INF/licenses/bml-design/`.
+The Bosca mark remains the library's SVG component, and Lucide glyphs remain compiled icons.
+
+Applications choose their document font and can override `--font-sans` and `--font-mono` in ordinary
+CSS, globally or on a themed container. Declaring the packaged faces does not force their use:
+
+```css
+.brand {
+  --font-sans: system-ui, sans-serif;
+  --font-mono: ui-monospace, monospace;
+  font-family: var(--font-sans);
+}
+```
+
 ## Components
 
 | Export | Props and defaults | Native target and children |

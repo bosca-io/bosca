@@ -227,13 +227,21 @@ class GitServerIntegrationTest {
                 assertFalse(result.containsKey("errors"), result.toString())
                 return result.getValue("data").jsonObject
             }
-            assertEquals(200, request("/login").statusCode())
+            val loginPage = request("/login")
+            assertEquals(200, loginPage.statusCode())
+            val designStyles = Regex("<link[^>]+href=\"([^\"]+)\"").findAll(loginPage.body())
+                .map { it.groupValues[1].replace("&amp;", "&") }
+                .filter { it.startsWith("/_bml/libraries/") && it.substringBefore('?').endsWith(".css") }
+                .map { request(it).also { response -> assertEquals(200, response.statusCode()) }.body() }
+                .joinToString("\n")
+            assertFalse("/_git/" in designStyles)
             val designFonts =
-                Regex("url\\((/_git/fonts/[^)]+)\\)")
-                    .findAll(request("/_bml/app.css").body())
+                Regex("""url\(["']?(/_bml/libraries/[^)"']+\.woff2)["']?\)""")
+                    .findAll(designStyles)
                     .map { it.groupValues[1] }
                     .toList()
             assertEquals(11, designFonts.size)
+            assertEquals(designFonts.distinct(), designFonts)
             designFonts.forEach { path ->
                 val font = request(path)
                 assertEquals(200, font.statusCode(), path)

@@ -308,15 +308,33 @@ class GitUiRoutesTest {
 
     @Test
     fun `design fonts are packaged and publicly served with their binary content type`() {
-        val stylesheet = get("/_bml/app.css", authenticated = false)
-        assertEquals(200, stylesheet.statusCode())
+        val html = get("/login", authenticated = false).body()
+        val styles = Regex("<link[^>]+href=\"([^\"]+)\"").findAll(html)
+            .map { it.groupValues[1].replace("&amp;", "&") }
+            .filter { it.startsWith("/_bml/libraries/") && it.substringBefore('?').endsWith(".css") }
+            .map { get(it, authenticated = false).also { response -> assertEquals(200, response.statusCode()) }.body() }
+            .joinToString("\n")
+        assertFalse("/_git/" in styles)
         val paths =
-            Regex("url\\((/_git/fonts/[^)]+)\\)")
-                .findAll(stylesheet.body())
+            Regex("""url\(["']?(/_bml/libraries/[^)"']+\.woff2)["']?\)""")
+                .findAll(styles)
                 .map { it.groupValues[1] }
                 .toList()
         assertEquals(11, paths.size)
+        assertEquals(paths.distinct(), paths)
+        val nativeConfig = requireNotNull(GitUiAssets::class.java.getResourceAsStream(
+            "/META-INF/native-image/io.bosca/git-ui/resource-config.json",
+        )).use { Json.parseToJsonElement(it.readBytes().decodeToString()).jsonObject }
+        val nativePatterns = nativeConfig.getValue("resources").jsonObject.getValue("includes").jsonArray
+            .map { Regex(it.jsonObject.getValue("pattern").jsonPrimitive.content) }
+        val manifestPath = "bml/applications/bml.generated/client-manifest.json"
+        assertTrue(nativePatterns.any { it.matches(manifestPath) })
+        assertNotNull(GitUiAssets::class.java.getResourceAsStream("/$manifestPath")?.use { it.readBytes() })
+        assertTrue(nativePatterns.any { it.matches("META-INF/licenses/bml-design/geist.txt") })
         paths.forEach { path ->
+            val resource = "bml/applications/bml.generated/" + path.removePrefix("/_bml/")
+            assertTrue(nativePatterns.any { it.matches(resource) }, resource)
+            assertNotNull(GitUiAssets::class.java.getResourceAsStream("/$resource")?.use { it.readBytes() })
             val response =
                 client.send(
                     HttpRequest.newBuilder(URI("http://localhost:$port$path")).GET().build(),
@@ -326,10 +344,11 @@ class GitUiRoutesTest {
             assertEquals("font/woff2", response.headers().firstValue("Content-Type").orElse(""))
             assertEquals("wOF2", response.body().take(4).toByteArray().decodeToString())
             assertEquals(
-                "public, max-age=31536000, immutable",
+                "no-cache",
                 response.headers().firstValue("Cache-Control").orElse(""),
             )
         }
+        assertEquals(404, get(paths.first().substringBeforeLast('/') + "/missing.woff2", authenticated = false).statusCode())
         assertEquals(404, get("/_git/fonts/missing.woff2", authenticated = false).statusCode())
     }
 

@@ -95,6 +95,21 @@ try {
   await call('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
   await call('Page.navigate', { url: base + '/' });
   await until('document.readyState === "complete" && document.querySelector("[data-save=light]")?.dataset.bmlActionBound === "true" || document.readyState === "complete" && document.querySelector("[data-form=light]")?.dataset.bmlActionBound === "true"');
+  await evaluate(`Promise.all(['Geist', 'Geist Mono'].map(family => document.fonts.load('400 14px "' + family + '"', 'Bosca Ā Ж Ԁ Việt ┌')))`);
+  const fonts = await evaluate(`Array.from(document.fonts, face => [face.family, face.status]).sort()`);
+  assert.deepEqual(fonts, [...Array.from({ length: 5 }, () => ['Geist', 'loaded']),
+    ...Array.from({ length: 6 }, () => ['Geist Mono', 'loaded'])].sort());
+  const fontOverride = await evaluate(`(() => {
+    const style = document.createElement('style');
+    style.textContent = '[data-palette=light] { --font-sans: serif; --font-mono: monospace; font-family: var(--font-sans); }';
+    document.head.append(style);
+    const family = name => getComputedStyle(document.querySelector('[data-' + name + '=light]')).fontFamily;
+    const result = [family('save'), family('input'),
+      getComputedStyle(document.querySelector('[data-palette=light]')).getPropertyValue('--font-mono').trim()];
+    style.remove();
+    return result;
+  })()`);
+  assert.deepEqual(fontOverride, ['serif', 'serif', 'monospace']);
   const controls = await evaluate(`(() => {
     const get = name => document.querySelector('[data-' + name + '=light]');
     const input = get('input');
@@ -172,6 +187,7 @@ try {
   await until('document.readyState === "complete" && document.querySelector("[data-alias=qualified]")');
   assert.ok(await evaluate(`document.querySelector('[data-alias=plain]').getAttribute('data-bml-c') === document.querySelector('[data-alias=qualified]').getAttribute('data-bml-c')`));
   assert.ok(await evaluate(`(() => { const links=Array.from(document.querySelectorAll('link[rel=stylesheet]'), e=>e.href); return links.length === new Set(links).size })()`));
+  assert.equal(await evaluate('document.fonts.size'), 11, 'aliases must not duplicate font faces');
   await call('Page.navigate', { url: base + '/foundation' });
   await until('document.readyState === "complete" && document.querySelector("[data-foundation-form=light]")?.dataset.bmlActionBound === "true"');
   const foundation = await evaluate(`(() => {
