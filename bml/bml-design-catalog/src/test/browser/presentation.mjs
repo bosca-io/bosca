@@ -3,7 +3,7 @@ import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 /** Measures the rendered examples, including translucent badge backgrounds and themed native controls. */
-export function contrastSamples(textSelector = '.catalog-nav a, .catalog-link, .catalog-description, .example-note, .eyebrow, .catalog-footer, .switch-copy strong, .switch-copy small, .field > span, .field small, .catalog-title h1, .catalog-title p, button:not(:disabled) .button-content, .badge, [data-catalog-name], [data-catalog-error]') {
+export function contrastSamples(textSelector = '.catalog-nav a, .catalog-link, .catalog-description, .example-note, .eyebrow, .catalog-footer, .switch-copy strong, .switch-copy small, .field > span, .field small, .catalog-title h1, .catalog-title p, button:not(:disabled) .button-content, .badge, [data-catalog-name], [data-catalog-error]', foregroundPseudo = null) {
   const canvas = document.createElement('canvas');
   canvas.width = canvas.height = 1;
   const context = canvas.getContext('2d', { willReadFrequently: true });
@@ -29,7 +29,7 @@ export function contrastSamples(textSelector = '.catalog-nav a, .catalog-link, .
   const text = [...document.querySelectorAll(textSelector)]
     .filter(element => element.checkVisibility() && !element.closest(':disabled, [inert]'))
     .map(element => ({ label: element.textContent.trim() || element.getAttribute('aria-label') || element.name,
-      ratio: contrast(over(rgba(getComputedStyle(element).color), background(element)), background(element)) }));
+      ratio: contrast(over(rgba(getComputedStyle(element, foregroundPseudo).color), background(element)), background(element)) }));
   const controls = [...document.querySelectorAll('[data-catalog-name]')].map(element => ({
     label: 'Input border', ratio: contrast(rgba(getComputedStyle(element).borderTopColor), background(element)),
   }));

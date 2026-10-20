@@ -55,6 +55,10 @@
       color: var(--fg-0);
       font: 13px/20px var(--font-sans);
     }
+    textarea::placeholder {
+      color: var(--fg-3);
+      opacity: 1;
+    }
     textarea:focus-visible {
       outline: 1px solid var(--accent);
       outline-offset: 0;

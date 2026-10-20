@@ -55,7 +55,7 @@ class CatalogApplicationTest {
             assertTrue(jar.getInputStream(manifest).readBytes().isNotEmpty())
         }
         for (development in listOf(false, true)) withServer(development) { base, client ->
-            for (path in listOf("/", "/foundation", "/themes", "/selection", "/source", "/json", "/components", "/components/controls",
+            for (path in listOf("/", "/foundation", "/themes", "/selection", "/source", "/json", "/comments", "/components", "/components/controls",
                 "/components/layout", "/components/feedback", "/components/overlays", "/components/content", "/components/aliases")) {
                 val response = request(client, base, path)
                 assertEquals(200, response.statusCode(), path + response.body())

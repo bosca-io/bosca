@@ -14,11 +14,11 @@ data class CatalogContent(
     var saved: String = "",
     var saves: Int = 0,
 ) {
-    suspend fun comment(draft: String) {
+    suspend fun comment(draft: String, accepted: Boolean = true) {
         delay(150)
         value = draft
         error = if (draft.trim().length < 8) "Use at least eight characters." else ""
-        if (error.isEmpty()) {
+        if (error.isEmpty() && accepted) {
             saved = draft
             saves++
         }

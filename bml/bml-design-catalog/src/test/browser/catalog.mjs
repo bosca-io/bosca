@@ -10,6 +10,7 @@ import { checkPickers } from './picker.mjs';
 import { checkSources } from './source.mjs';
 import { checkToastNavigation } from './toast-navigation.mjs';
 import { checkJsonEditors } from './json.mjs';
+import { checkComments } from './comments.mjs';
 
 const base = process.argv[2];
 const mode = process.argv[3] ?? 'fixture';
@@ -161,6 +162,7 @@ try {
   await checkSources({navigate,evaluate,until,key,call,artifacts,mode});
   await checkToastNavigation({navigate,evaluate,until,call});
   await checkJsonEditors({navigate,evaluate,until,call,artifacts,mode});
+  await checkComments({navigate,evaluate,until,call,artifacts,mode});
   assert.deepEqual(exceptions,[]);
   console.log(`Catalog ${mode}: foundation, themes, 41 packaged export contracts, references, overlays, views, trees, comments, editors, aliases and native fallbacks passed`);
 } finally {

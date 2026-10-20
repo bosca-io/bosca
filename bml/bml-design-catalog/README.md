@@ -77,6 +77,14 @@ restores the latest server value. The page includes independent table, empty, ma
 disabled and escaped-string cases. A small catalog-owned client helper retains each Example states
 disclosure while its server-owned controls update; the picker and source examples use it too.
 
+The `/comments` page reuses the reference comment composition with optional state controls in two
+independent palettes. The application owns validation, simulated post rejection, availability and draft
+revisions. Validation stays beside the field; rejected actions and successful posts use toasts. The
+working examples clear a successful draft by changing its ID; the basic reference retains the posted
+value. Stable IDs retain local edits through unrelated updates, while changed supplied values become
+the latest native reset default. Readonly, disabled, paused submission, validation, long drafts and
+escaped markup also have individual examples. No comment is published to a product.
+
 The content route reaches both source and structured JSON engines. The source route reaches only
 the standalone source viewer; the JSON route reaches only the structured editor. Ordinary control
 pages exclude both engines. The optional alias declaration stays in its
@@ -114,6 +122,11 @@ choices, independent instances, retained engine/focus, repeated disposal, native
 strings, 320px editor viewports, 16px action spacing and 24px stacked card gaps. Sampled themed JSON
 text, toolbar and invalid-draft feedback contrast is measured at both widths. `build` also runs strict TypeScript checking of
 generated catalog islands against the runtime and linked producer declarations.
+Comment checks cover blank and composing keyboard input, exact invalid/rejected draft retention,
+caret/focus preservation, pending locks, rejection/retry, fresh drafts after success, controlled values,
+reset, native readonly/disabled form rules, independent instances, repeated removal/remount and
+script-disabled fields. Desktop/phone geometry and themed text, field-error and placeholder contrast
+are sampled as well. Comment placeholders use the shared muted-text token in consuming CSS.
 No authenticated product session is used. Runtime failures use the application's
 console logging backend and are included in integration-test diagnostics.
 

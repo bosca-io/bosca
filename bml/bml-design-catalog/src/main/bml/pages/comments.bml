@@ -1,0 +1,41 @@
+<page route="/comments">
+  <catalog-document title="Comment editors" description="Native drafts, keyboard submission and caller-owned outcomes." current="/comments">
+    <p class="page-intro">Write a comment and post with Ctrl+Enter or Command+Enter. Open Example states to try rejection, paused posting, readonly and controlled updates. Each palette keeps its own draft. These examples do not publish comments to a product.</p>
+    <div class="catalog-grid">
+      <div class="catalog-palette-dark" data-comment-palette="dark"><card title="Dark palette"><comment-example id="dark" advanced /></card></div>
+      <div class="catalog-palette-light" data-comment-palette="light"><card title="Light palette"><comment-example id="light" advanced /></card></div>
+    </div>
+    <div class="catalog-grid" data-comment-cases>
+      <card title="Readonly"><div class="catalog-stack">
+        <comment-editor id="comment-readonly" label="Readonly comment" value="This comment can be selected and copied." hint="Select and copy the comment text." readonly />
+        <p class="example-note">Readonly keeps the native form value while editing and posting stay unavailable.</p>
+      </div></card>
+      <card title="Unavailable"><div class="catalog-stack">
+        <comment-editor id="comment-unavailable" label="Unavailable comment" value="This editor is currently unavailable." hint="Editing is unavailable." disabled />
+        <p class="example-note">Disabled editors are excluded from their form's submitted values.</p>
+      </div></card>
+      <card title="Posting paused"><div class="catalog-stack">
+        <comment-editor id="comment-paused" label="Paused comment" value="You can continue editing this draft." submitDisabled hint="Posting is paused. You can keep editing your draft.">
+          <button type="submit" primary disabled>Post comment</button>
+        </comment-editor>
+        <p class="example-note">Submission can be locked while the draft stays editable.</p>
+      </div></card>
+      <card title="Field validation"><div class="catalog-stack">
+        <comment-editor id="comment-invalid" label="Invalid comment" value="Short" error="Use at least eight characters." hint="Keep editing to correct this draft." />
+        <p class="example-note">Validation is linked to the field. Action rejection uses a toast and keeps the draft.</p>
+      </div></card>
+      <card title="Long draft"><div class="catalog-stack">
+        <comment-editor id="comment-long" label="Long comment" :value='(1..30).joinToString("\n") { "Line " + it + ": a comment draft that remains inside its editor." }' hint="A native textarea with a growing draft." />
+        <p class="example-note">The textarea grows with its content up to 320px, then scrolls.</p>
+      </div></card>
+      <card title="Text stays text"><div class="catalog-stack">
+        <comment-editor id="comment-escaped" label="Comment containing markup" :value='"</textarea><script>window.catalogCommentExecuted = true;</script>\nA deliberately long line of comment text that wraps within this editor on a narrow screen."' hint="Plain text stays in this field." />
+        <p class="example-note">Markup stays text, including in the native textarea without scripts.</p>
+      </div></card>
+    </div>
+    <card title="Use in your application"><div class="catalog-stack">
+      <p class="catalog-description">The caller owns the form, validation, availability and post action. A stable ID keeps an editable draft through surrounding updates. Changed values become the new reset default. Change the ID to start a new draft after posting. Pending actions lock editing and projected buttons until the action settles.</p>
+      <a class="catalog-link" href="/components/content#ref-comment-editor">Comment API and authoring</a>
+    </div></card>
+  </catalog-document>
+</page>

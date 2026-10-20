@@ -1,14 +1,45 @@
 <component tag="comment-example">
   <prop name="id" type="String" required />
-  <script server provides="comment" scope="server-session">bosca.design.catalog.CatalogContent(id)</script>
+  <prop name="advanced" type="Boolean" default="false" />
+  <script server provides="comment" scope="server-session">bosca.design.catalog.CatalogComment(id, advanced)</script>
   <island name="comment" :key="id">
-    <form @submit="comment.comment(form.body)" :data-catalog-comment="comment.id">
-      <comment-editor :id='"comment-" + comment.id' label="Example comment" :value="comment.value" :error="comment.error"
-                      hint="Use at least eight characters. Ctrl+Enter submits.">
-        <button type="reset" size="sm">Reset draft</button><button type="submit" primary>Post comment</button>
-      </comment-editor>
-    </form>
-    <toast :id='"comment-posted-" + comment.id' :message='if (comment.saves > 0) "Comment posted." else ""'
-           :sequence="comment.saves" tone="success" :data-catalog-comment-toast="comment.id" />
+    <div class="catalog-stack" :data-catalog-comment-owner="comment.id">
+      <form @submit="comment.post(form.body)" class="example-stack" :data-catalog-comment="comment.id">
+        <p class="example-note" :id='"comment-context-" + comment.id'>Use at least eight characters.</p>
+        <if comment.visible>
+          <comment-editor :id='"comment-" + comment.id + "-" + comment.revision' label="Example comment"
+                          :value="comment.draft.value" :error="comment.draft.error" :describedBy='"comment-context-" + comment.id'
+                          :submitDisabled="comment.locked" :readonly="comment.readOnly" :disabled="comment.disabled"
+                          :hint='if (comment.locked) "Posting is paused. You can keep editing your draft." else ""' submitLabel="post comment">
+            <button type="reset" size="sm" :disabled="comment.readOnly || comment.disabled" :data-comment-reset="comment.id">Reset draft</button>
+            <button type="submit" primary :disabled="comment.readOnly || comment.disabled || comment.locked" :data-comment-post="comment.id">Post comment</button>
+          </comment-editor>
+        </if>
+      </form>
+      <if comment.advanced>
+        <details data-example-states>
+          <disclosure-heading>Example states</disclosure-heading>
+          <div class="catalog-stack comment-state-options">
+            <switch label="Reject posts" :checked="comment.rejectPosts" @change="comment.toggleRejection" :data-comment-reject="comment.id" />
+            <switch label="Pause posting" :checked="comment.locked" @change="comment.toggleLocked" :data-comment-locked="comment.id" />
+            <switch label="Readonly" :checked="comment.readOnly" @change="comment.toggleReadOnly" :data-comment-readonly="comment.id" />
+            <switch label="Disable the editor" :checked="comment.disabled" @change="comment.toggleDisabled" :data-comment-disabled="comment.id" />
+            <switch label="Show editor" :checked="comment.visible" @change="comment.toggleVisible" :data-comment-visible="comment.id" />
+            <div class="example-actions">
+              <button @click="comment.replace" :disabled="!comment.visible || comment.readOnly || comment.disabled" :data-comment-replace="comment.id">Replace draft</button>
+              <button @click="comment.clear" :disabled="!comment.visible || comment.readOnly || comment.disabled" :data-comment-clear="comment.id">Clear draft</button>
+              <button @click="comment.refresh" :data-comment-refresh="comment.id">Refresh example</button>
+            </div>
+            <p class="example-note">Turn rejection off to retry the same draft. Refresh keeps local edits. Reset restores the latest supplied value. Posting successfully or clearing starts a new draft.</p>
+          </div>
+        </details>
+      </if>
+      <toast :id='"comment-posted-" + comment.id' :message="comment.notice" :sequence="comment.noticeSequence"
+             :tone="comment.noticeTone" :data-catalog-comment-toast="comment.id" />
+    </div>
   </island>
+  <script client scoped>
+    import { retainDisclosure } from "@client/catalog-disclosure";
+    retainDisclosure(ctx);
+  </script>
 </component>
