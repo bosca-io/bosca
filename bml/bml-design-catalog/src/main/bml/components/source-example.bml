@@ -15,7 +15,7 @@
             </source-view>
           </div>
         </if>
-        <details>
+        <details data-example-states>
           <disclosure-heading>Example states</disclosure-heading>
           <div class="catalog-stack source-state-options">
             <switch label="Wrap lines" :checked="source.wrapped" @change="source.toggleWrap" :data-source-wrap="source.id" />
@@ -34,4 +34,8 @@
       </div>
     </island>
   </card>
+  <script client scoped>
+    import { retainDisclosure } from "@client/catalog-disclosure";
+    retainDisclosure(ctx);
+  </script>
 </component>

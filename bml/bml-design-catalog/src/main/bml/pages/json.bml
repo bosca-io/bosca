@@ -1,0 +1,39 @@
+<page route="/json">
+  <catalog-document title="JSON editors" description="Structured drafts, native form values and caller-owned validation." current="/json">
+    <p class="page-intro">Edit in tree, text or table view. Save validates the current draft and reports completion in a toast. Open Example states to try readonly, disabled and controlled updates. Each palette keeps its own state.</p>
+    <div class="catalog-grid">
+      <div class="catalog-palette-dark" data-json-palette="dark"><card title="Dark palette"><json-example id="dark" advanced /></card></div>
+      <div class="catalog-palette-light" data-json-palette="light"><card title="Light palette"><json-example id="light" advanced /></card></div>
+    </div>
+    <div class="catalog-grid" data-json-cases>
+      <card title="Table view"><div class="catalog-stack">
+        <json-editor name="dimensions" label="Component dimensions" mode="table" :value='"[{\"component\":\"Button\",\"height\":32},{\"component\":\"Compact button\",\"height\":30},{\"component\":\"Small button\",\"height\":24}]"' data-json-table />
+        <p class="example-note">An array of records can be edited as rows and columns.</p>
+      </div></card>
+      <card title="Empty draft"><div class="catalog-stack">
+        <json-editor name="empty" label="Empty JSON draft" :value='""' mode="text" data-json-empty />
+        <p class="example-note">Empty text stays empty. Syntax feedback does not replace your draft.</p>
+      </div></card>
+      <card title="Malformed draft"><div class="catalog-stack">
+        <json-editor name="malformed" label="Malformed JSON draft" :value='"{ \"title\": "' mode="text" data-json-malformed />
+        <p class="example-note">Keep editing or use the editor's repair controls. A repair preview does not change the form value until accepted.</p>
+      </div></card>
+      <card title="Readonly"><div class="catalog-stack">
+        <json-editor name="readonly" label="Readonly JSON" :value='"{\"enabled\":true}"' readOnly data-json-readonly-case />
+        <p class="example-note">The value can be selected and submitted, while editing stays unavailable.</p>
+      </div></card>
+      <card title="Unavailable"><div class="catalog-stack">
+        <json-editor name="unavailable" label="Unavailable JSON" disabled data-json-disabled-case />
+        <p class="example-note">Disabled editors are inert and excluded from their form's submitted values.</p>
+      </div></card>
+      <card title="Text stays text"><div class="catalog-stack">
+        <json-editor name="strings" label="JSON text values" mode="text" :value='"{\"markup\":\"</textarea><script>window.catalogJsonExecuted = true;</script>\",\"label\":\"A deliberately long text value that stays inside the editor on a narrow screen\"}"' data-json-strings />
+        <p class="example-note">Markup in a string remains data, including in the native textarea fallback.</p>
+      </div></card>
+    </div>
+    <card title="Use in your application"><div class="catalog-stack">
+      <p class="catalog-description">A stable preservation key keeps the engine and local edits through surrounding updates. Changed values replace the draft. Disabled editors are excluded from form data; readonly editors retain their value. Without scripts, the labelled textarea remains the native form field.</p>
+      <a class="catalog-link" href="/components/content#ref-json-editor">JSON API and authoring</a>
+    </div></card>
+  </catalog-document>
+</page>

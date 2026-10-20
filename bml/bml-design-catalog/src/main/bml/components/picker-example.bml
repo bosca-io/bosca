@@ -25,7 +25,7 @@
             <button type="reset">Reset choice</button>
           </div>
         </form>
-        <details :data-picker-states="picker.id">
+        <details data-example-states :data-picker-states="picker.id">
           <disclosure-heading>Example states</disclosure-heading>
           <div class="catalog-stack picker-state-options">
             <switch label="Reject searches" description="Turn off to retry the same search." :checked="picker.failSearch"
@@ -40,8 +40,10 @@
     </island>
   </card>
   <script client scoped>
+    import { retainDisclosure } from "@client/catalog-disclosure";
     import { bmlContractCall } from "@bosca/bml";
     import type { SelectPage, SelectSearch } from "@bosca/bml-design/select";
+    retainDisclosure(ctx);
     ctx.on<CustomEvent<SelectSearch>>(ctx.root, "selectsearch", event => {
       const owner = event.target instanceof Element ? event.target.closest("[data-picker-example]") : null;
       if (!owner) return;

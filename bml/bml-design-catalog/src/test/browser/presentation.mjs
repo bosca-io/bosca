@@ -3,7 +3,7 @@ import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 /** Measures the rendered examples, including translucent badge backgrounds and themed native controls. */
-function contrastSamples() {
+export function contrastSamples(textSelector = '.catalog-nav a, .catalog-link, .catalog-description, .example-note, .eyebrow, .catalog-footer, .switch-copy strong, .switch-copy small, .field > span, .field small, .catalog-title h1, .catalog-title p, button:not(:disabled) .button-content, .badge, [data-catalog-name], [data-catalog-error]') {
   const canvas = document.createElement('canvas');
   canvas.width = canvas.height = 1;
   const context = canvas.getContext('2d', { willReadFrequently: true });
@@ -26,7 +26,7 @@ function contrastSamples() {
     const values = [luminance(first), luminance(second)].sort((a, b) => a - b);
     return (values[1] + 0.05) / (values[0] + 0.05);
   };
-  const text = [...document.querySelectorAll('.catalog-nav a, .catalog-link, .catalog-description, .example-note, .eyebrow, .catalog-footer, .switch-copy strong, .switch-copy small, .field > span, .field small, .catalog-title h1, .catalog-title p, button:not(:disabled) .button-content, .badge, [data-catalog-name], [data-catalog-error]')]
+  const text = [...document.querySelectorAll(textSelector)]
     .filter(element => element.checkVisibility() && !element.closest(':disabled, [inert]'))
     .map(element => ({ label: element.textContent.trim() || element.getAttribute('aria-label') || element.name,
       ratio: contrast(over(rgba(getComputedStyle(element).color), background(element)), background(element)) }));

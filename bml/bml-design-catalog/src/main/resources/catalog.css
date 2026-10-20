@@ -47,6 +47,7 @@
 .catalog-field { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .picker-state-options { margin-top: 16px; }
 .source-state-options { margin-top: 16px; }
+.json-state-options { margin-top: 16px; }
 .catalog-source-frame { display: flex; height: 320px; min-width: 0; overflow: hidden; border: 1px solid var(--line); border-radius: var(--r-sm); }
 .overview-intro { display: flex; flex-direction: column; gap: 16px; max-width: 620px; margin: 0; font-size: 17px; color: var(--fg-1); }
 .overview-intro p, .page-intro { margin: 0; }

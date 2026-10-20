@@ -61,6 +61,7 @@ export async function checkPickers({ navigate, evaluate, until: poll, call, arti
 
   await evaluate(`window.retainedPicker=${root('dark')};window.retainedQuery=${part('dark', 'query')};window.retainedQuery.setSelectionRange(1,4);document.querySelector('[data-picker-states=dark]').open=true;document.querySelector('[data-picker-failure=dark]').click()`);
   await until(`document.querySelector('[data-picker-example=dark]').hasAttribute('data-search-failure')`);
+  assert.ok(await evaluate(`document.querySelector('[data-picker-states=dark]').open`), 'Picker state controls remain available after an action');
   assert.ok(await evaluate(`${root('dark')}===window.retainedPicker&&${part('dark', 'query')}===window.retainedQuery&&window.retainedQuery.value==='control'&&window.retainedQuery.selectionStart===1&&window.retainedQuery.selectionEnd===4`));
   await type('dark', 'control');
   await until(`${part('dark', 'status')}.textContent==='Search failed. Please try again.'`);

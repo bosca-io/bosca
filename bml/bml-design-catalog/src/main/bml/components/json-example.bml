@@ -1,13 +1,42 @@
 <component tag="json-example">
   <prop name="id" type="String" required />
-  <script server provides="settings" scope="server-session">bosca.design.catalog.CatalogContent(id, "{\"enabled\": true, \"count\": 3}")</script>
+  <prop name="advanced" type="Boolean" default="false" />
+  <script server provides="settings" scope="server-session">bosca.design.catalog.CatalogJson(id, advanced)</script>
   <island name="settings" :key="id">
-    <form @submit="settings.settings(form.settings)" class="example-stack" :data-catalog-json="settings.id">
-      <json-editor name="settings" label="Example settings" :value="settings.value" :error="settings.error"
-                   :preserveKey='"settings-" + settings.id' />
-      <div class="example-actions"><button type="submit" primary>Save JSON</button><button type="reset">Reset JSON</button></div>
-    </form>
-    <toast :id='"json-saved-" + settings.id' :message='if (settings.saves > 0) "Settings saved." else ""'
-           :sequence="settings.saves" tone="success" :data-catalog-json-toast="settings.id" />
+    <div class="catalog-stack" :data-catalog-json-owner="settings.id">
+      <form @submit="settings.save(form.settings)" class="example-stack" :data-catalog-json="settings.id">
+        <if settings.visible>
+          <json-editor name="settings" label="Example settings" :value="settings.draft.value" :error="settings.draft.error"
+                       :mode="settings.mode" :readOnly="settings.readOnly" :disabled="settings.disabled"
+                       :preserveKey='"settings-" + settings.id' :data-catalog-json-editor="settings.id" />
+        </if>
+        <div class="example-actions">
+          <button type="submit" primary :disabled="!settings.visible || settings.readOnly || settings.disabled" :data-json-save="settings.id">Save JSON</button>
+          <button type="reset" :disabled="!settings.visible || settings.readOnly || settings.disabled" :data-json-reset="settings.id">Reset JSON</button>
+        </div>
+      </form>
+      <if settings.advanced>
+        <details data-example-states>
+          <disclosure-heading>Example states</disclosure-heading>
+          <div class="catalog-stack json-state-options">
+            <switch label="Readonly" :checked="settings.readOnly" @change="settings.toggleReadOnly" :data-json-readonly="settings.id" />
+            <switch label="Disable the editor" :checked="settings.disabled" @change="settings.toggleDisabled" :data-json-disabled="settings.id" />
+            <switch label="Show editor" :checked="settings.visible" @change="settings.toggleVisible" :data-json-visible="settings.id" />
+            <div class="example-actions">
+              <button @click="settings.nextMode" :disabled="!settings.visible" :data-json-mode="settings.id">Change view mode</button>
+              <button @click="settings.replace" :disabled="!settings.visible || settings.readOnly || settings.disabled" :data-json-replace="settings.id">Replace JSON</button>
+              <button @click="settings.refresh" :data-json-refresh="settings.id">Refresh example</button>
+            </div>
+            <p class="example-note">Change view mode cycles through tree, text and table. Refresh keeps your draft. Reset restores the latest value supplied by this example.</p>
+          </div>
+        </details>
+      </if>
+      <toast :id='"json-saved-" + settings.id' :message="settings.notice" :sequence="settings.noticeSequence"
+             :tone="settings.noticeTone" :data-catalog-json-toast="settings.id" />
+    </div>
   </island>
+  <script client scoped>
+    import { retainDisclosure } from "@client/catalog-disclosure";
+    retainDisclosure(ctx);
+  </script>
 </component>

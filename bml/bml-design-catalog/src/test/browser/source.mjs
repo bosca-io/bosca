@@ -36,6 +36,7 @@ export async function checkSources({ navigate, evaluate, until: poll, key, call,
   await evaluate(`document.querySelector('[data-catalog-source-owner=dark] details').open=true;document.querySelector('[data-catalog-source-owner=light] details').open=true`);
   await action('dark', 'line', `${root('dark')}.dataset.line==='40'&&${root('dark')}.querySelector('.cm-activeLine')?.textContent.includes('row40')`);
   assert.equal(await evaluate(`${root('light')}.dataset.line`), '1');
+  assert.ok(await evaluate(`document.querySelector('[data-catalog-source-owner=dark] details').open`), 'Source options remain open after an action');
   try { await until(`${root('dark')}.querySelector('.cm-scroller').scrollTop>100`); }
   catch (error) {
     const geometry=await evaluate(`(() => {const root=${root('dark')};return [root,root.querySelector('.code-editor'),root.querySelector('.cm-editor'),root.querySelector('.cm-scroller')].map(el=>({class:el.className,height:el.getBoundingClientRect().height,client:el.clientHeight,scroll:el.scrollHeight,top:el.scrollTop,flex:getComputedStyle(el).flex}));})()`);
