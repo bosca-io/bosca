@@ -1,0 +1,20 @@
+<page route="/themes">
+  <catalog-document title="Application-owned themes" description="The same unprefixed components in two CSS palettes." current="/themes">
+    <p class="page-intro">Each section below uses the same form component. Only the enclosing class and its CSS variables change.</p>
+    <div class="catalog-grid">
+      <div class="catalog-palette-dark" data-catalog-palette="dark"><foundation-form id="dark" title="Default dark palette" /></div>
+      <div class="catalog-palette-light" data-catalog-palette="light"><foundation-form id="light" title="A light, green palette" /></div>
+    </div>
+    <card title="Set a palette in your CSS">
+      <pre class="code-sample"><code>.product-theme &#123;
+  --bg-1: #fff;
+  --bg-2: #f0fdf4;
+  --fg-0: #052e16;
+  --line-2: #86b49a;
+  --accent: #166534;
+  color-scheme: light;
+&#125;</code></pre>
+      <p class="catalog-description">This application’s complete palette also sets text, border, status and brand-mark colors. Controls derive their local background from <code>--bg-2</code>; no component copy or theme service is needed.</p>
+    </card>
+  </catalog-document>
+</page>

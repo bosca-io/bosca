@@ -11,6 +11,7 @@ server-rendered pages, interactive islands, reusable components, and email or pu
 - [Compiled library localization](docs/library-localization.md)
 - [Compiled library client types](docs/library-client-types.md)
 - [Design library components](bml-design/README.md)
+- [Design library catalog](bml-design-catalog/README.md)
 - [Design library consumer example](examples/design-library/README.md)
 - [Examples](docs/examples/README.md)
 - [Performance benchmarks](docs/benchmarks.md)

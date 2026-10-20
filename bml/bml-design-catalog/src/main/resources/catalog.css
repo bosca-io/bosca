@@ -1,0 +1,129 @@
+/* The catalog owns its document and navigation; component presentation stays in bml-design. */
+* { box-sizing: border-box; }
+.catalog-document {
+  margin: 0;
+  min-height: 100dvh;
+  display: flex;
+  background: var(--bg-0);
+  color: var(--fg-0);
+  font: 14px/1.6 var(--font-sans);
+  color-scheme: dark;
+}
+.catalog-document > .app-header {
+  position: sticky;
+  top: 0;
+  height: 100dvh;
+  border-right: 1px solid var(--line);
+  background: var(--bg-1);
+}
+.catalog-nav { display: flex; flex-direction: column; gap: 4px; padding: 12px; }
+.catalog-nav a {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: var(--r-sm);
+  color: var(--fg-2);
+  text-decoration: none;
+}
+.catalog-nav a:hover { background: var(--bg-2); color: var(--fg-0); }
+.catalog-nav a[aria-current="page"] { background: var(--bg-3); color: var(--fg-0); }
+.catalog-nav a:focus-visible, .catalog-link:focus-visible, .skip-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.catalog-appearance { margin-top: auto; padding: 20px; }
+.catalog-appearance p { margin: 12px 0 0; color: var(--fg-3); font-size: 11.5px; }
+.catalog-content { max-width: 1120px; margin: 0 auto; padding: 40px 12px 0; }
+.eyebrow { margin: 0; color: var(--accent); text-transform: uppercase; font-size: 11px; font-weight: 650; letter-spacing: .12em; }
+.catalog-content > .page-heading { margin-bottom: 26px; }
+.overview-intro { max-width: 620px; margin-bottom: 28px; font-size: 17px; color: var(--fg-1); }
+.catalog-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; margin: 24px 0; }
+.catalog-content > .ui-card { margin: 24px 0; }
+.catalog-description { color: var(--fg-2); }
+.catalog-link { display: inline-flex; align-items: center; gap: 8px; color: var(--accent); text-decoration: none; font-size: 13px; font-weight: 600; }
+.catalog-link:hover { text-decoration: underline; }
+.example-form, .example-stack { display: flex; flex-direction: column; gap: 18px; }
+.example-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.example-meta, .example-note { margin: 0; font-size: 12px; color: var(--fg-2); }
+.catalog-footer { margin-top: 40px; padding: 24px 0; border-top: 1px solid var(--line); color: var(--fg-3); font-size: 12px; }
+.code-sample {
+  margin: 18px 0;
+  max-width: 100%;
+  overflow: auto;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg-0);
+  color: var(--fg-1);
+  font: 12px/1.8 var(--font-mono);
+}
+code { font-family: var(--font-mono); }
+.skip-link { position: fixed; top: -80px; left: 16px; z-index: 10; padding: 10px 16px; border-radius: var(--r-sm); background: var(--bg-1); color: var(--fg-0); }
+.skip-link:focus { top: 16px; }
+
+/* Consumers explicitly define each palette; no runtime configuration or copied control rules. */
+.catalog-document:has([data-catalog-light]:checked), .catalog-palette-light {
+  --bg-0: #f7faf8;
+  --bg-1: #fff;
+  --bg-2: #f0fdf4;
+  --bg-3: #e1f2e8;
+  --fg-0: #052e16;
+  --fg-1: #183d2a;
+  --fg-2: #3f5f4c;
+  --fg-3: #526b5b;
+  --fg-4: #6b8575;
+  --line: #c6dbce;
+  --line-2: #86b49a;
+  --accent: #166534;
+  --on-accent: #fff;
+  --ok: #166534;
+  --warn: #854d0e;
+  --err: #b91c1c;
+  --info: #1e40af;
+  --purple: #7e22ce;
+  --mark-top: #166534;
+  --mark-right: #25804a;
+  --mark-left: #12532b;
+  --shadow-color: #183d2a;
+  --backdrop-color: #183d2a;
+  color-scheme: light;
+  color: var(--fg-0);
+}
+.catalog-palette-dark {
+  --bg-0: #0a0c12;
+  --bg-1: #10131c;
+  --bg-2: #161a25;
+  --bg-3: #1d2230;
+  --fg-0: #f3f5fb;
+  --fg-1: #cdd2e2;
+  --fg-2: #969cb1;
+  --fg-3: #6c7388;
+  --fg-4: #454b60;
+  --line: #232839;
+  --line-2: #2e3447;
+  --accent: #64748b;
+  --ok: #34d99a;
+  --warn: #ffb547;
+  --err: #ff5470;
+  --info: #5ec5ff;
+  --purple: #a78bff;
+  --on-accent: #fff;
+  --mark-top: #5ec5ff;
+  --mark-right: #79d3ff;
+  --mark-left: #409dcc;
+  --shadow-color: #000;
+  --backdrop-color: #000;
+  color-scheme: dark;
+  color: var(--fg-0);
+}
+@media (max-width: 900px) { .catalog-grid { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 700px) {
+  .catalog-document { flex-direction: column; }
+  .catalog-document > .app-header { position: static; height: auto; border-right: 0; }
+  .catalog-nav { flex-direction: row; width: 100%; padding: 0 0 8px; gap: 2px; }
+  .catalog-nav a { padding: 8px; flex: none; font-size: 12px; }
+  .catalog-appearance { width: 100%; margin: 0; padding: 8px 0 16px; }
+  .catalog-appearance p { display: none; }
+  .catalog-content { padding: 24px 0 0; }
+}

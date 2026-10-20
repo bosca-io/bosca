@@ -33,6 +33,8 @@ Pages and local components, including nested source directories, can then use:
 
 The containing page or component declares the application's state and island as usual. The example
 consumer in [examples/design-library](../examples/design-library/README.md) demonstrates this wiring.
+The [catalog application](../bml-design-catalog/README.md) provides foundation and theme examples
+with its own navigation, local actions and CSS palettes.
 Use `<html:button>`, `<html:input>` and `<html:section>` for native elements after importing their library counterparts.
 Local component definitions take precedence throughout their module. An optional `as="design"`
 import provides `<design:button>` with the same runtime identity and assets as `<button>`.

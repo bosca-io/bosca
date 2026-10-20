@@ -1,0 +1,34 @@
+<component tag="catalog-document">
+  <prop name="title" type="String" required />
+  <prop name="description" type="String" required />
+  <prop name="current" type="String" required />
+  <html lang="en">
+    <head>
+      <meta charset="utf-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1" />
+      <title>{ title } · Bosca Design Library</title>
+    </head>
+    <body class="catalog-document">
+      <a class="skip-link" href="#catalog-content">Skip to content</a>
+      <app-header brand="Bosca" product="Design library" href="/">
+        <nav class="catalog-nav" aria-label="Design library">
+          <a href="/" :aria-current='if (current == "/") "page" else null'><icon name="book-open" />Overview</a>
+          <a href="/foundation" :aria-current='if (current == "/foundation") "page" else null'><icon name="code" />Foundation</a>
+          <a href="/themes" :aria-current='if (current == "/themes") "page" else null'><icon name="settings" />Themes</a>
+        </nav>
+        <div class="catalog-appearance">
+          <switch label="Light appearance" name="lightAppearance" data-catalog-light />
+          <p>Appearance is set by this application’s CSS.</p>
+        </div>
+      </app-header>
+      <page-shell class="catalog-main">
+        <div class="catalog-content" id="catalog-content" tabindex="-1">
+          <p class="eyebrow">Bosca Design Library</p>
+          <page-heading :title="title" :subtitle="description" />
+          <slot />
+          <footer class="catalog-footer">Shared BML components. Application-owned styles and actions.</footer>
+        </div>
+      </page-shell>
+    </body>
+  </html>
+</component>

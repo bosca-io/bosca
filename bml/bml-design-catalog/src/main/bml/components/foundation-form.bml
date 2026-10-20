@@ -1,0 +1,24 @@
+<component tag="foundation-form">
+  <prop name="id" type="String" required />
+  <prop name="title" type="String" required />
+  <script server provides="example" scope="server-session">bosca.design.catalog.CatalogForm(id)</script>
+  <card :title="title">
+    <island name="example" :key="id">
+      <form @submit="example.save(form.displayName)" :data-catalog-form="example.id" class="example-form">
+        <field label="Display name" hint="Use at least three characters. Validation belongs to the application.">
+          <input name="displayName" :value="example.displayName" required autocomplete="off"
+                 :data-catalog-name="example.id" :aria-invalid='example.error.isNotEmpty().toString()' />
+        </field>
+        <switch label="Receive example updates" description="Each example keeps its own state."
+                :checked="example.updates" @change="example.toggleUpdates" :data-catalog-updates="example.id" />
+        <div class="example-actions">
+          <button type="submit" primary icon="save" :data-catalog-save="example.id">Save settings</button>
+          <button type="reset" size="sm">Reset fields</button>
+        </div>
+        <alert compact :hidden="example.error.isEmpty()" :data-catalog-error="example.id">{ example.error }</alert>
+        <alert tone="success" compact :hidden="example.message.isEmpty()" :data-catalog-success="example.id">{ example.message }</alert>
+        <p class="example-meta" :data-catalog-saves="example.id">Saved { example.saves } times</p>
+      </form>
+    </island>
+  </card>
+</component>

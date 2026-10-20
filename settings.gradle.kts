@@ -205,6 +205,7 @@ includeComponent("bml", listOf(
     "bml-annotations",
     "bml-compiler",
     "bml-design",
+    "bml-design-catalog",
     "core-bml",
     "bml",
     "bml-server",
