@@ -86,7 +86,8 @@ form values, one clear/input event, caller-controlled autofocus, readonly/disabl
 drafts/caret/focus through unrelated patches, changed controlled props, rejected search recovery,
 roving arrows/Home/End and wrapping, local view events, caller-owned panel relationships, empty and
 unmatched selections, independent roots and live CSS overrides. Repeated unmounts check root and
-document listener cleanup. Script-disabled search and initial segmented values remain native.
+document listener cleanup. Script-disabled search and initial segmented values remain native. Long groups verify that keyboard
+focus reveals the selected option and a horizontal scrollbar does not clip segmented buttons.
 
 The `/navigation` page uses native route tabs, shared `NavigationItem` values and projected actions.
 Checks cover current/overflow destinations, keyboard navigation and dismissal, container/viewport

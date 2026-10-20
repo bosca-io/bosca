@@ -32,7 +32,11 @@ export function viewTabs(ctx: ClientContext) {
     event.preventDefault();
     const button = buttons[event.key === "Home" ? 0 : event.key === "End" ? buttons.length - 1
       : (index + (event.key === "ArrowRight" ? 1 : buttons.length - 1)) % buttons.length];
-    if (button) { select(button); button.focus(); }
+    if (button) {
+      select(button);
+      button.focus();
+      button.scrollIntoView({ block: "nearest", inline: "nearest" });
+    }
   });
   ctx.on<CustomEvent<IslandUpdate>>(document, "bml:update", event => {
     if (event.detail.target.contains(ctx.root)) sync();

@@ -206,7 +206,9 @@ need client scripts. Application controllers own debounce, search requests, URL 
 
 Segmented controls and local tabs use roving Tab entry, Left/Right wrapping and Home/End. If the
 selected value is absent, the first option remains keyboard reachable without inventing a selection.
-Empty groups contain no focus target. Wide groups scroll within their available width.
+Empty groups contain no focus target. Wide groups scroll within their available width; keyboard
+selection reveals the focused option. Segmented rows grow to accommodate a visible horizontal
+scrollbar without clipping their buttons. Search boundaries use the control-border token `--line-2`.
 
 Use a stable `preserveKey` on search/segments, or `data-bml-preserve` on view tabs, to retain the
 query draft, selection/caret, focused option and DOM through unrelated island updates. A changed

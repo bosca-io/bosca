@@ -38,7 +38,7 @@
       overflow-x: auto;
       display: inline-flex;
       gap: 2px;
-      height: 30px;
+      min-height: 30px;
       align-items: center;
       padding: 2px;
       border: 1px solid var(--line);

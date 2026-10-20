@@ -120,6 +120,13 @@ export async function checkSelection({ call, evaluate, until, base, mode, artifa
   for(const width of [1440,390]) {
     await call('Emulation.setDeviceMetricsOverride',{width,height:1100,deviceScaleFactor:1,mobile:false});
     await until(`document.documentElement.scrollWidth<=innerWidth && document.querySelector('${query}').closest('.search-input').getBoundingClientRect().right<=innerWidth`);
+    for(const [selector,role,selected] of [['[data-long-segments]','radio','aria-checked'],['[data-long-views]','tab','aria-selected']]) {
+      await evaluate(`document.querySelector('${selector} [role=${role}]').focus()`);
+      await key('End');
+      const geometry=await evaluate(`(()=>{const root=document.querySelector('${selector}'),button=root.querySelector('[${selected}=true]');return {root:root.getBoundingClientRect().toJSON(),button:button.getBoundingClientRect().toJSON(),clientHeight:root.clientHeight,focused:document.activeElement===button};})()`);
+      assert.ok(geometry.focused&&geometry.button.right<=geometry.root.right+1&&geometry.button.left>=geometry.root.left-1,JSON.stringify(geometry));
+      if(role==='radio')assert.ok(geometry.clientHeight>=28&&geometry.button.top>=geometry.root.top&&geometry.button.bottom<=geometry.root.top+geometry.clientHeight+1,JSON.stringify(geometry));
+    }
     const shot=await call('Page.captureScreenshot',{format:'png'});
     await writeFile(join(artifacts,`selection-${mode}-${width}.png`),Buffer.from(shot.data,'base64'));
   }

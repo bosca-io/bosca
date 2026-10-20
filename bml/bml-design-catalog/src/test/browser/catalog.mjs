@@ -13,6 +13,7 @@ import { checkJsonEditors } from './json.mjs';
 import { checkComments } from './comments.mjs';
 import { checkOverlays } from './overlays.mjs';
 import { checkLocalChoices } from './choices.mjs';
+import { checkSearchViews } from './views.mjs';
 
 const base = process.argv[2];
 const mode = process.argv[3] ?? 'fixture';
@@ -167,6 +168,7 @@ try {
   await checkComments({navigate,evaluate,until,call,artifacts,mode});
   await checkOverlays({navigate,evaluate,until,call,artifacts,mode});
   await checkLocalChoices({navigate,evaluate,until,call,artifacts,mode});
+  await checkSearchViews({navigate,evaluate,until,call,artifacts,mode});
   assert.deepEqual(exceptions,[]);
   console.log(`Catalog ${mode}: foundation, themes, 41 packaged export contracts, references, overlays, views, trees, comments, editors, aliases and native fallbacks passed`);
 } finally {

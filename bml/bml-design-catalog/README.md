@@ -22,6 +22,7 @@ Open `http://localhost:9093/`. Pass another port with `--args=9094` if needed.
 | `/overlays` | Independent modal forms, retained drafts, rejected confirmations, popover forms and menus, sizes and trigger variants |
 | `/json` | Independent dark/light JSON drafts, retained engine state, pending/rejected saves, native reset, controlled options and tree/text/table/empty/invalid/readonly/disabled variants |
 | `/source` | Independent dark/light source viewers, requested lines, language/wrap changes, preserved state, content replacement and compact/bare/empty layouts |
+| `/views` | Search queries, native category values and caller-owned tab panels, retained drafts, rejected searches, changing tab lists and long/empty/readonly/disabled variants |
 | `/choices` | Local required/custom choices, multiple native values, tag limits, loading/disabled controls and controlled defaults in two palettes |
 | `/selection` | Server-filtered, offset-paged picker in independent dark/light roots, with failed-search retry, loading/disabled controls, native reset and toast saves |
 | `/components` | Linked index of all 41 exports and normal unprefixed authoring |
@@ -73,6 +74,16 @@ own preserved native state. Replace defaults changes all three keys; ordinary re
 DOM, selection, query/caret/focus and popup state. Controls can change required/custom/disabled/loading
 state and tag limits. Static cases cover empty, compact, loading, disabled, long labels and tag limits.
 Both local and server-paged compositions are shown in the select authoring reference.
+
+The `/views` composition uses native query and category values to filter deterministic local
+examples. The application owns accepted results, rejected drafts, selected views and uniquely linked
+tab panels. Editing a query or category keeps previous results until the next accepted search.
+Refresh retains query DOM, caret/focus and unsaved category choices. Controlled replacements change
+supplied values; changing the tab list changes only its preservation key. Search outcomes use toasts.
+Repeated controls disable autofocus. Static examples include readonly/disabled queries, empty and
+unmatched groups and long scrolling labels. The search, segment and tab references include the
+complete composition source. Keyboard choices reveal their selected option; segmented rows grow
+when a visible scrollbar needs space. Search borders use the consumer's control-border color.
 
 The `/source` examples keep a stable preservation key for surrounding updates and change it for
 content revisions. The application owns requested lines and server options; the compiled viewer owns
@@ -162,6 +173,12 @@ groups, repeated multiple values, custom choices, tag removal and Backspace, ret
 held pending saves, rejection/retry, controlled reset defaults, live custom-choice availability,
 loading/disabled form rules, repeated disposal, independent palettes, empty feedback, narrow long tags,
 sampled text contrast and native listbox fallback geometry. Local filtering makes no search requests.
+Search/view checks cover native form values, clear events, roving keyboard navigation, accepted
+results and rejected drafts, pending geometry, retained query/caret/focus and category choices,
+controlled values, tab-list revisions, caller-owned panel relationships, independent roots and
+repeated listener disposal. Desktop/phone checks measure search and segmented heights, form/panel
+spacing, internal horizontal scrolling, text/placeholder and search-border contrast. Script-disabled
+checks retain native query/category values, initial results and the initial panel.
 No authenticated product session is used. Runtime failures use the application's
 console logging backend and are included in integration-test diagnostics.
 
