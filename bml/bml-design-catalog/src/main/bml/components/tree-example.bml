@@ -1,0 +1,60 @@
+<component tag="tree-example">
+  <prop name="id" type="String" required />
+  <script server provides="files" scope="server-session">bosca.design.catalog.CatalogTree(id)</script>
+  <island name="files" :key="id">
+    <div class="catalog-stack" :data-tree-example="files.id">
+      <if files.visible>
+        <div class="catalog-stack" data-tree-local-block>
+          <p class="example-note">Local disclosure keeps all file links in the document. Use Right to open a folder and enter its first child.</p>
+          <div class="catalog-tree-frame">
+            <tree label="Local example files" heading="Component files" local
+                  :preserveKey='"catalog-local-files-" + files.id + "-" + files.revision' :data-tree-local="files.id">
+              <tree-item path="src" label="Source" directory expanded />
+              <tree-item path="src/components" :label='if (files.alternate) "Revised components" else "Components"' directory expanded :depth="1" />
+              <for choice in bosca.design.catalog.CatalogChoiceSearch.options.filter { !it.disabled && it.label.endsWith("· control") }>
+                <tree-item :path='"src/components/" + choice.value + ".bml"' :label='choice.value + ".bml"'
+                           :href='"/components/controls#ref-" + choice.value' :depth="2"
+                           :selected='choice.value == (if (files.alternate) "input" else "button")' />
+              </for>
+              <tree-item path="docs" label="Documents" directory />
+              <tree-item path="docs/guide.md" label="Guide" href="/foundation" :depth="1" />
+              <tree-item path="LICENSE" label="License notices" href="/components" />
+              <tree-item path="long-example.bml" label="veryLongComponentIdentifierThatWrapsAcrossNarrowTreesWithoutAnySpaces.bml" href="/components/content#ref-tree-item" wrap />
+            </tree>
+          </div>
+        </div>
+        <div class="catalog-stack" data-tree-server-block>
+          <p class="example-note">The application loads this folder with a BML action. Rejection keeps it closed; a successful retry adds the file links.</p>
+          <tree label="Server-loaded example files" heading="Loaded examples" embedded :data-tree-server="files.id">
+            <tree-item path="remote" label="Examples" directory :expanded="files.expanded"
+                       @click="files.toggleDirectory" :data-bml-preserve='"catalog-remote-directory-" + files.id' :data-tree-directory="files.id" />
+            <if files.expanded>
+              <tree-item path="remote/button.bml" label="Button example" href="/components/controls#ref-button" :depth="1"
+                         :data-bml-preserve='"catalog-remote-button-" + files.id' />
+              <tree-item path="remote/input.bml" label="Input example" href="/components/controls#ref-input" :depth="1"
+                         :data-bml-preserve='"catalog-remote-input-" + files.id' />
+            </if>
+          </tree>
+        </div>
+      </if>
+      <details data-example-states>
+        <disclosure-heading>Example states</disclosure-heading>
+        <div class="catalog-stack tree-state-options">
+          <switch label="Reject directory loading" :checked="files.rejectLoad" @change="files.toggleRejection" :data-tree-reject="files.id" />
+          <switch label="Show trees" :checked="files.visible" @change="files.toggleVisible" :data-tree-visible="files.id" />
+          <div class="example-actions">
+            <button @click="files.replace" :disabled="!files.visible" :data-tree-replace="files.id">Replace local files</button>
+            <button @click="files.refresh" :data-tree-refresh="files.id">Refresh example</button>
+          </div>
+          <p class="example-note">Refresh retains local disclosure, scroll and focus. Replacing local files changes their key. The server-loaded folder keeps its native directory button while children change.</p>
+        </div>
+      </details>
+      <toast :id='"tree-notice-" + files.id' :message="files.notice" :sequence="files.noticeSequence"
+             :tone="files.noticeTone" :data-tree-toast="files.id" />
+    </div>
+  </island>
+  <script client scoped>
+    import { retainDisclosure } from "@client/catalog-disclosure";
+    retainDisclosure(ctx);
+  </script>
+</component>

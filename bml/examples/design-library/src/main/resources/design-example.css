@@ -267,3 +267,5 @@ form {
 }
 .token-custom.explicit-controls { --control-bg: #fef3c7; --control-radius: 5px; }
 .json-theme.json-accent-only { --json-accent: #0f766e; --json-selection: initial; }
+
+.composition-theme .ui-tree.fixture-local-scroll { max-height: 160px; overflow: auto; }

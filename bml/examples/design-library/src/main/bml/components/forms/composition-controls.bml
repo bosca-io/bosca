@@ -12,7 +12,7 @@
           <button @click="composition.toggle()" :data-composition-toggle="composition.id">Toggle controls</button>
         </div>
         <if composition.mounted>
-          <tree :label='"Local files " + composition.id' heading="Local files" local embedded :preserveKey='"files-" + composition.id' :data-local-tree="composition.id">
+          <tree :label='"Local files " + composition.id' heading="Local files" local :preserveKey='"files-" + composition.id' :data-local-tree="composition.id" class="fixture-local-scroll">
             <tree-item path="src" label="Source" directory expanded />
             <tree-item path="src/lib" label="Library" directory expanded :depth="1" />
             <tree-item path="src/lib/helper.ts" label="helper.ts" href="#helper" :depth="2" />

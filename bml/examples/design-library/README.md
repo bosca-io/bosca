@@ -127,7 +127,8 @@ type-ahead, focus into asynchronously added children and preservation across ser
 Comment checks cover native names/values, blank/readonly/disabled/permission states, sizing,
 Ctrl+Enter, pending feedback, failure/retry, current descriptions, retained draft/caret/focus,
 controlled values and native reset. Repeated removal/remount checks listeners and observers.
-Script-disabled checks retain comment form values, every rendered file link and server timestamps.
+Disabled native directories are skipped during keyboard traversal. Script-disabled checks retain
+comment form values, native Tab stops for every rendered file link and server timestamps.
 Timestamp tests cover English UTC/default, custom offset formats, relative past/future/older dates,
 escaped invalid values and invalid-pattern errors. Desktop and phone screenshots cover this page.
 

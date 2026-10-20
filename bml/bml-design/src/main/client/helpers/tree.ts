@@ -12,10 +12,12 @@ export function keyboardTree(ctx: ClientContext) {
   let ownedFocus = false;
   let search = "";
   let searchedAt = 0;
+  let scrollTop = ctx.root.scrollTop;
+  let scrollLeft = ctx.root.scrollLeft;
   const allRows = () => [...ctx.root.querySelectorAll<HTMLElement>('[role="treeitem"]')]
     .filter(row => row.closest('[role="tree"]') === tree);
-  const rows = () => allRows().filter(row => !row.hidden);
   const control = (row?: HTMLElement) => row?.querySelector<HTMLElement>(".ui-tree-row");
+  const rows = () => allRows().filter(row => !row.hidden && !control(row)?.matches(":disabled"));
   const rowOf = (target: EventTarget | null) => target instanceof Element
     ? target.closest<HTMLElement>('[role="treeitem"]') : null;
   const focus = (row?: HTMLElement) => {
@@ -131,9 +133,21 @@ export function keyboardTree(ctx: ClientContext) {
         entry.querySelector(".tree-label")?.textContent?.trim().toLowerCase().startsWith(prefix)));
     }
   });
-  ctx.onUpdate(sync);
+  const update = (event: IslandUpdate) => {
+    const top = scrollTop, left = scrollLeft;
+    sync();
+    if (event.retained.some(root => root.contains(ctx.root))) {
+      ctx.root.scrollTop = top;
+      ctx.root.scrollLeft = left;
+    }
+  };
+  ctx.on(ctx.root, "scroll", () => {
+    scrollTop = ctx.root.scrollTop;
+    scrollLeft = ctx.root.scrollLeft;
+  }, { passive: true });
+  ctx.onUpdate(update);
   ctx.on<CustomEvent<IslandUpdate>>(document, "bml:update", event => {
-    if (event.detail.target.contains(ctx.root)) sync();
+    if (event.detail.target.contains(ctx.root)) update(event.detail);
   });
   sync();
 }

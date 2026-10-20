@@ -22,6 +22,7 @@ Open `http://localhost:9093/`. Pass another port with `--args=9094` if needed.
 | `/overlays` | Independent modal forms, retained drafts, rejected confirmations, popover forms and menus, sizes and trigger variants |
 | `/json` | Independent dark/light JSON drafts, retained engine state, pending/rejected saves, native reset, controlled options and tree/text/table/empty/invalid/readonly/disabled variants |
 | `/source` | Independent dark/light source viewers, requested lines, language/wrap changes, preserved state, content replacement and compact/bare/empty layouts |
+| `/trees` | Local file disclosure, server-loaded children, failed-load retry, retained scroll/focus, disabled folders and native links in two palettes |
 | `/views` | Search queries, native category values and caller-owned tab panels, retained drafts, rejected searches, changing tab lists and long/empty/readonly/disabled variants |
 | `/choices` | Local required/custom choices, multiple native values, tag limits, loading/disabled controls and controlled defaults in two palettes |
 | `/selection` | Server-filtered, offset-paged picker in independent dark/light roots, with failed-search retry, loading/disabled controls, native reset and toast saves |
@@ -74,6 +75,16 @@ own preserved native state. Replace defaults changes all three keys; ordinary re
 DOM, selection, query/caret/focus and popup state. Controls can change required/custom/disabled/loading
 state and tag limits. Static cases cover empty, compact, loading, disabled, long labels and tag limits.
 Both local and server-paged compositions are shown in the select authoring reference.
+
+The `/trees` examples supply local component links and a separately loaded folder in each palette.
+The application owns paths, selected files, loading, rejection and toast sequences. Local trees keep
+stable keys for disclosure, scroll and focus through surrounding updates; replacing files changes
+that key. Server-loaded directories preserve their native buttons so Right Arrow can enter a new
+child after loading. Moving focus elsewhere during loading leaves it there. Native disabled folder
+buttons are skipped by roving navigation. Without scripts, every rendered file link retains its native
+Tab stop. Static cases cover empty trees, unavailable directories, truncated names and wrapped/deep
+labels. The tree and tree-item references include the complete composition source. Declarative tree
+item actions bind to their row; native attributes and preservation keys target its button or link.
 
 The `/views` composition uses native query and category values to filter deterministic local
 examples. The application owns accepted results, rejected drafts, selected views and uniquely linked
@@ -179,6 +190,12 @@ controlled values, tab-list revisions, caller-owned panel relationships, indepen
 repeated listener disposal. Desktop/phone checks measure search and segmented heights, form/panel
 spacing, internal horizontal scrolling, text/placeholder and search-border contrast. Script-disabled
 checks retain native query/category values, initial results and the initial panel.
+Tree checks cover labelled roles, depths and selected/current links, roving arrows/Home/End,
+type-ahead and repeated letters, local disclosure and scroll/focus retention, independent roots,
+rejected loading and retry, pending geometry/busy state, entry into newly loaded children, focus
+continuity outside the tree, local key changes, native destinations and repeated disposal. Both
+widths check 30px rows, 16px composition gaps, contained scroll, wrapped/deep names, palette contrast
+and script-disabled keyboard-reachable links.
 No authenticated product session is used. Runtime failures use the application's
 console logging backend and are included in integration-test diagnostics.
 

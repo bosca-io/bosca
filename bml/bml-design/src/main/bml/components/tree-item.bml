@@ -39,7 +39,6 @@
     <else>
       <a
         class="ui-tree-row"
-        tabindex="-1"
         :href="href"
         :title="path"
         :aria-label="path"
@@ -79,9 +78,13 @@
       line-height: normal;
       cursor: pointer;
     }
-    .ui-tree-row:hover {
+    .ui-tree-row:hover:not(:disabled) {
       background: var(--bg-2);
       color: var(--fg-1);
+    }
+    .ui-tree-row:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
     }
     .ui-tree-row:focus-visible {
       outline: var(--focus-width) solid var(--accent);

@@ -336,7 +336,7 @@ try {
   await until('document.readyState === "complete" && document.querySelector("[data-comment=light]")');
   assert.deepEqual(await evaluate(`(() => {const field=document.querySelector('[data-comment=light]');
     return {native:field instanceof HTMLTextAreaElement&&field.required,value:new FormData(field.form).get('body'),
-      links:[...document.querySelectorAll('[data-local-tree=light] a')].every(link=>link.getBoundingClientRect().height>0),
+      links:[...document.querySelectorAll('[data-local-tree=light] a')].every(link=>link.getBoundingClientRect().height>0&&link.tabIndex===0),
       timestamp:document.querySelector('[data-default-time]').textContent};})()`),
     {native:true,value:'Server draft 3',links:true,timestamp:'Oct 18, 13:15 UTC'},'No-script native comments, every file link and server timestamps remain available');
   await call('Page.navigate', { url: base + '/source' });

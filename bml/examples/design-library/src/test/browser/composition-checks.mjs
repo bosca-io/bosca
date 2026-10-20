@@ -40,6 +40,12 @@ export async function checkComposition({ call, evaluate, until, base, mode, arti
   };})()`),{label:'Local files light',level:'3',tabStops:1,selected:'src/main.kt',rowHeight:30,depthPadding:'34px',native:true,
     field:['body',true,'Comment light',false,'comment-light-0','comment-context comment-light-0-hint'],
     times:['Oct 18, 13:15 UTC','2026-10-18 08:15 -05:00','not a timestamp'],inherited:['17px','rgb(21, 128, 61)'],nativeTime:true,empty:true});
+  assert.ok(await evaluate(`document.querySelector('[data-disabled-tree] [tabindex="0"]').closest('[role=treeitem]').dataset.path==='ready'`));
+  await evaluate(`document.querySelector('[data-disabled-tree] [tabindex="0"]').focus()`);
+  await key('End');await key('ArrowUp');
+  assert.equal(await evaluate(`document.activeElement.closest('[role=treeitem]').dataset.path`),'ready/file','Keyboard traversal skips unavailable native buttons');
+  await key('Home');
+  assert.equal(await evaluate(`document.activeElement.closest('[role=treeitem]').dataset.path`),'ready');
   await evaluate(`${local}.querySelector('[tabindex="0"]').focus()`);await key('Home');assert.ok(await focused('src'));
   await key('ArrowRight');assert.ok(await focused('src/lib'));
   await key('ArrowRight');assert.ok(await focused('src/lib/helper.ts'));
@@ -52,9 +58,10 @@ export async function checkComposition({ call, evaluate, until, base, mode, arti
   await key('ArrowLeft');await key('ArrowLeft');assert.ok(await evaluate(`${row('docs/guide.md')}.hidden`));
   await key('Home');await key('l');assert.ok(await focused('src/lib'));await key('l');assert.ok(await focused('LICENSE'));
   await key('Home');await key('ArrowRight');await key('ArrowLeft');
-  await evaluate(`window.savedLocalTree=${local}`);await click('[data-composition-update=light]');
+  await evaluate(`window.savedLocalTree=${local};${row('long.txt')}.querySelector('a').focus();${local}.scrollTop=${local}.scrollHeight;window.savedTreeScroll=${local}.scrollTop`);
+  assert.ok(await evaluate('window.savedTreeScroll>0'));await click('[data-composition-update=light]');
   await until(`document.querySelector('[data-composition-update=light]').textContent.includes('Update 1')`);
-  assert.ok(await evaluate(`${local}===window.savedLocalTree&&${row('src/lib/helper.ts')}.hidden&&document.activeElement===${row('src/lib')}.querySelector('button')`),'Local collapse state and focus survive an unrelated server update');
+  assert.ok(await evaluate(`${local}===window.savedLocalTree&&${row('src/lib/helper.ts')}.hidden&&document.activeElement===${row('long.txt')}.querySelector('a')&&${local}.scrollTop===window.savedTreeScroll`),'Local collapse state, scroll and focus survive an unrelated server update');
   assert.ok(await evaluate(`!document.querySelector('[data-local-tree=purple] [data-path="src/lib/helper.ts"]').hidden`),'Separate tree instances retain independent state');
   await evaluate(`window.remoteDirectory=document.querySelector('[data-remote-directory=light]');window.remoteDirectory.focus()`);
   await key('ArrowRight');

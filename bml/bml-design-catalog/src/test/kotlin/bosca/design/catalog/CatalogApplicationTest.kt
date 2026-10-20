@@ -55,7 +55,7 @@ class CatalogApplicationTest {
             assertTrue(jar.getInputStream(manifest).readBytes().isNotEmpty())
         }
         for (development in listOf(false, true)) withServer(development) { base, client ->
-            for (path in listOf("/", "/foundation", "/themes", "/selection", "/source", "/json", "/comments", "/overlays", "/choices", "/views", "/components", "/components/controls",
+            for (path in listOf("/", "/foundation", "/themes", "/selection", "/source", "/json", "/comments", "/overlays", "/choices", "/views", "/trees", "/components", "/components/controls",
                 "/components/layout", "/components/feedback", "/components/overlays", "/components/content", "/components/aliases")) {
                 val response = request(client, base, path)
                 assertEquals(200, response.statusCode(), path + response.body())
@@ -140,6 +140,10 @@ class CatalogApplicationTest {
     private fun request(client: HttpClient, base: String, path: String, body: String? = null): HttpResponse<String> {
         val builder = HttpRequest.newBuilder(URI(base + path)).timeout(Duration.ofSeconds(10))
         if (body == null) builder.GET() else builder.header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofString(body))
-        return client.send(builder.build(), HttpResponse.BodyHandlers.ofString())
+        return try {
+            client.send(builder.build(), HttpResponse.BodyHandlers.ofString())
+        } catch (failure: java.net.http.HttpTimeoutException) {
+            throw AssertionError("Timed out requesting $path from $base", failure)
+        }
     }
 }

@@ -52,6 +52,8 @@
 .overlay-state-options { margin-top: 16px; }
 .local-choice-state-options { margin-top: 16px; }
 .views-state-options { margin-top: 16px; }
+.tree-state-options { margin-top: 16px; }
+.catalog-tree-frame { height: 260px; min-width: 0; overflow: hidden; border: 1px solid var(--line); border-radius: var(--r-sm); }
 .catalog-view-panel { min-width: 0; }
 .catalog-view-panel:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .catalog-result-list { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; list-style: none; }
@@ -173,6 +175,7 @@ code { font-family: var(--font-mono); }
   .catalog-nav a { padding: 8px; flex: none; font-size: 12px; }
   .catalog-appearance { width: 100%; margin: 0; padding: 12px 0 20px; border-top: 0; }
   .catalog-content { padding: 24px 0 0; }
+  .catalog-tree-frame { height: 220px; }
   .reference-demo { padding: 16px; }
   .reference-index { columns: 1; }
 }

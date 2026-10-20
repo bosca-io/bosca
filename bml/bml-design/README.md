@@ -103,7 +103,7 @@ CSS, globally or on a themed container. Declaring the packaged faces does not fo
 | `tabs` | Required `label: String` and `items: List<NavigationItem>`; `header: Boolean = false` | Native nav receives additional attributes/classes and default trailing action children. Destinations remain native anchors with `aria-current="page"` on the current item. The scoped helper fits links around the current destination and a `More` overflow disclosure. |
 | `select` | `name: String = ""`; `ref: String = "native"`; `placeholder: String = "Select…"`; `label: String = "Selection"`; `icon: String = ""`; `searchable`, `async`, `multiple`, `allowCustom`, `disabled`, `loading`, `required`: `Boolean = false`; `size: String = "md"`; `maxTags: Int = 3`; `minQuery: Int = 0`; `debounce: Int = 250` (milliseconds); `preserveKey: String = ""` | Additional attributes/classes target the native select. Default children are caller-owned options/optgroups. The helper enhances it with a labelled combobox, listbox, optional search/pagination and selected tags; native values remain the form submission contract. |
 | `tree` | Required `label: String`; `heading: String = ""`; `local: Boolean = false`; `embedded: Boolean = false`; `preserveKey: String = ""` | Section receives additional attributes/classes and contains a labelled tree with default item children. `local` manages disclosure of already-rendered rows; otherwise caller actions own folder loading. |
-| `tree-item` | Required `path: String` and `label: String`; `href: String = ""`; `directory`, `expanded`, `selected`, `wrap`: `Boolean = false`; `depth: Int = 0` | Flat ARIA tree item. Additional attributes/classes/actions target its native directory button or native file anchor. Paths identify hierarchy, depth controls indentation/ARIA level, and selected file links use `aria-current="page"`. No child content. |
+| `tree-item` | Required `path: String` and `label: String`; `href: String = ""`; `directory`, `expanded`, `selected`, `wrap`: `Boolean = false`; `depth: Int = 0` | Flat ARIA tree item. Additional attributes/classes target its native directory button or native file anchor; declarative actions bind to the item row. Paths identify hierarchy, depth controls indentation/ARIA level, and selected file links use `aria-current="page"`. No child content. |
 | `time` | Required `value: String`; `relative`, `ago`, `inheritTypography`: `Boolean = false`; `format: String = ""` | Native time receives additional attributes/classes, its original value as datetime/title and an English server-rendered label. No child content. Use `html:time` for a native timestamp after importing this component. |
 | `comment-editor` | Required `id: String` and `label: String`; `value`, `error`, `hint`, `describedBy`: `String = ""`; `submitDisabled: Boolean = false`; `submitLabel: String = "comment"`; `placeholder: String = "Write a comment…"`; `name: String = "body"` | Native required textarea receives additional attributes/classes, its ID and preservation key. Default children supply action controls. The caller owns its surrounding form, submission and error outcomes. |
 | `json-editor` | Required `name: String`; `value: String = "{}"`; `label: String = "JSON editor"`; `mode: String = "tree"` (`tree`, `text`, `table`); `readOnly: Boolean = false`; `disabled: Boolean = false`; `error: String = ""`; `preserveKey: String = ""` | Structured editor with a native textarea form value and escaped no-script fallback. Additional attributes/classes target its labelled group. Syntax and caller feedback appear in a live status. No child content. |
@@ -307,18 +307,20 @@ BML's same-origin contract client. The library's own helper uses the same declar
 Use `tree-item` as flat children of `tree`, with unique, stable slash-separated paths and explicit
 depths. File destinations remain native links; directory controls remain separate native buttons.
 Down/Up, Home/End, Right to expand/enter, Left to collapse/return and type-ahead operate on visible
-items with one roving tab stop. Repeating a letter cycles matching labels. Enter follows a file link
+items with one roving tab stop, skipping disabled native directory buttons. Repeating a letter cycles
+matching labels. Enter follows a file link
 or activates its directory button. The helper does not load data, persist expansion or change routes.
 
 `local` trees disclose descendants already in the child list and honor initial `expanded` props.
-Use a stable `preserveKey` to retain the whole local tree, disclosure state and focus through unrelated
+Use a stable `preserveKey` to retain the whole local tree, disclosure state, scroll and focus through unrelated
 updates. Its children remain client-owned; change/remove that key when replacing the item list or
 its props. For server-loaded trees, the application supplies directory actions, expanded state and
 new rows. Preserve the native directory control with an additional `data-bml-preserve` attribute so
 Right Arrow can enter an asynchronously added child after the update. The helper follows the
 currently focused control and does not take focus back from another element. Nonnegative depth
 sets the ARIA level; indentation is capped at twelve levels. `wrap` makes long labels wrap.
-Without scripts, the rendered file links remain available.
+Without scripts, rendered file links retain their native Tab stops. The helper installs roving focus
+only when scripts run.
 
 `time` parses offset timestamps. Its default label converts to UTC and displays `MMM d, HH:mm UTC`.
 A custom Java date/time pattern takes priority and retains the supplied offset. Relative labels use
