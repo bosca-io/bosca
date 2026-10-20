@@ -1,5 +1,6 @@
 package bosca.design.catalog
 
+import bosca.bml.library.BmlLibraryManifest
 import java.io.File
 import java.net.CookieManager
 import java.net.CookiePolicy
@@ -13,6 +14,7 @@ import java.util.concurrent.TimeUnit
 import java.util.jar.JarFile
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.put
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -29,13 +31,32 @@ class CatalogApplicationTest {
         assertTrue(files.all { it.isFile && it.extension == "jar" })
         assertFalse(files.any { it.name.startsWith("git-") || it.name.startsWith("core-git") || it.name.startsWith("design-library-") })
         val catalog = files.single { it.name.startsWith("bml-design-catalog-") }
+        val library = files.single { it.name.startsWith("bml-design-") && !it.name.startsWith("bml-design-catalog-") }
+        val exports = JarFile(library).use { jar ->
+            Json.decodeFromString(BmlLibraryManifest.serializer(), jar.getInputStream(jar.getJarEntry("META-INF/bml/library-manifest.json"))
+                .bufferedReader().use { it.readText() }).components.filter { it.exported }
+        }
+        assertEquals(41, exports.size)
+        val expectedApi = buildJsonObject {
+            for (component in exports) put(component.tag, buildJsonObject {
+                put("scoped", component.styles.isNotBlank())
+                put("props", buildJsonArray {
+                    for (prop in component.props) add(buildJsonObject {
+                        put("name", prop.name)
+                        put("type", prop.declaredType)
+                        put("hasDefault", prop.hasDefault)
+                    })
+                })
+            })
+        }.toString()
         JarFile(catalog).use { jar ->
             assertFalse(jar.entries().asSequence().any { it.name.startsWith("bosca/git/") })
             val manifest = jar.entries().asSequence().single { it.name.endsWith("/client-manifest.json") }
             assertTrue(jar.getInputStream(manifest).readBytes().isNotEmpty())
         }
         for (development in listOf(false, true)) withServer(development) { base, client ->
-            for (path in listOf("/", "/foundation", "/themes")) {
+            for (path in listOf("/", "/foundation", "/themes", "/components", "/components/controls",
+                "/components/layout", "/components/feedback", "/components/overlays", "/components/content", "/components/aliases")) {
                 val response = request(client, base, path)
                 assertEquals(200, response.statusCode(), path + response.body())
                 assertTrue("Bosca Design Library" in response.body(), response.body())
@@ -74,7 +95,7 @@ class CatalogApplicationTest {
             }
             val log = File.createTempFile("catalog-browser-", ".log")
             val process = ProcessBuilder(System.getProperty("catalog.node"), System.getProperty("catalog.browser"), base,
-                if (development) "development" else "production").redirectErrorStream(true).redirectOutput(log).start()
+                if (development) "development" else "production", expectedApi).redirectErrorStream(true).redirectOutput(log).start()
             try {
                 assertTrue(process.waitFor(60, TimeUnit.SECONDS), "Browser timed out: ${log.readText()}")
                 assertEquals(0, process.exitValue(), log.readText())

@@ -1,0 +1,20 @@
+<import library="io.bosca:bml-design" as="design" />
+<page route="/components/aliases">
+  <catalog-document title="Optional aliases" description="Explicit names for component collisions." current="/components">
+    <p class="overview-intro">The root import makes short names available throughout the application. An optional alias gives this page an explicit spelling for the same library components.</p>
+    <div class="catalog-grid">
+      <card title="Short names">
+        <div class="catalog-stack">
+          <div class="example-actions"><button primary data-catalog-unprefixed>Save</button></div>
+        </div>
+      </card>
+      <design:card title="Optional alias">
+        <div class="catalog-stack">
+          <div class="example-actions"><design:button primary data-catalog-aliased>Save</design:button></div>
+        </div>
+      </design:card>
+    </div>
+    <pre class="code-sample"><code>&lt;import library="io.bosca:bml-design" as="design" /&gt;&#10;&lt;design:button primary&gt;Save&lt;/design:button&gt;</code></pre>
+    <a class="catalog-link" href="/components">All components</a>
+  </catalog-document>
+</page>

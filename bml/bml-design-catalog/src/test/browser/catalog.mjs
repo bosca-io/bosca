@@ -4,6 +4,8 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { checkReferences } from './references.mjs';
+import { checkPresentation } from './presentation.mjs';
 
 const base = process.argv[2];
 const mode = process.argv[3] ?? 'fixture';
@@ -93,7 +95,7 @@ try {
   }
 
   await call('Page.enable');await call('Runtime.enable');await call('Network.enable');await call('Page.bringToFront');
-  const key=async value=>{for(const type of ['keyDown','keyUp'])await call('Input.dispatchKeyEvent',{type,key:value,windowsVirtualKeyCode:{Enter:13,Tab:9,ArrowRight:39}[value],...(type==='keyDown'&&value==='Enter'?{text:'\r'}:{})});};
+  const key=async value=>{for(const type of ['keyDown','keyUp'])await call('Input.dispatchKeyEvent',{type,key:value,windowsVirtualKeyCode:{Enter:13,Tab:9,ArrowRight:39,ArrowLeft:37,ArrowDown:40,ArrowUp:38,Escape:27}[value],...(type==='keyDown'&&value==='Enter'?{text:'\r'}:{})});};
   const navigate=async path=>{await call('Page.navigate',{url:base+path});await until(`document.readyState==='complete'&&document.querySelector('main')&&location.pathname===${JSON.stringify(path)}`);};
   await call('Emulation.setDeviceMetricsOverride',{width:1440,height:1000,deviceScaleFactor:1,mobile:false});
   await navigate('/');
@@ -113,21 +115,24 @@ try {
   await until(`document.querySelector('[data-catalog-form=foundation]').hasAttribute('data-bml-action-pending')&&typeof window.releaseCatalogSave==='function'`);
   assert.equal(await evaluate(`getComputedStyle(document.querySelector('[data-catalog-save=foundation] .button-content')).opacity`),'0');
   await evaluate('window.releaseCatalogSave()');
-  await until(`document.querySelector('[data-catalog-saves=foundation]').textContent.includes('Saved 1 times')`);
-  assert.equal(await evaluate(`document.querySelector('[data-catalog-success=foundation]').textContent.trim()`),'Saved Catalog example.');
+  await until(`document.querySelector('[data-catalog-save-toast=foundation]').matches(':popover-open')`);
+  assert.equal(await evaluate(`document.querySelector('[data-catalog-save-toast=foundation] [role=status]').textContent.trim()`),'Saved Catalog example.');
+  assert.ok(await evaluate(`!document.querySelector('[data-catalog-success], [data-catalog-saves]')`));
+  await evaluate(`document.querySelector('[data-catalog-form=foundation]').requestSubmit()`);
+  await until(`document.querySelector('[data-catalog-save-toast=foundation]').dataset.sequence==='2'`);
   await evaluate(`document.querySelector('[data-catalog-updates=foundation]').click()`);
   await until(`document.querySelector('[data-catalog-updates=foundation]').hasAttribute('checked')`);
   await evaluate(`document.querySelector('[data-catalog-light]').click()`);
-  assert.equal(await evaluate(`getComputedStyle(document.body).backgroundColor`),'rgb(247, 250, 248)');
-  assert.equal(await evaluate(`getComputedStyle(document.querySelector('[data-catalog-name=foundation]')).backgroundColor`),'rgb(240, 253, 244)');
-  assert.equal(await evaluate(`getComputedStyle(document.querySelector('[data-catalog-success=foundation]')).color`),'rgb(22, 101, 52)');
+  assert.equal(await evaluate(`getComputedStyle(document.body).backgroundColor`),'rgb(248, 250, 252)');
+  assert.equal(await evaluate(`getComputedStyle(document.querySelector('[data-catalog-name=foundation]')).backgroundColor`),'rgb(241, 245, 249)');
+  assert.equal(await evaluate(`getComputedStyle(document.querySelector('[data-catalog-save-toast=foundation]')).color`),'rgb(22, 101, 52)');
   const desktop=await call('Page.captureScreenshot',{format:'png'});await writeFile(join(artifacts,`catalog-${mode}-desktop.png`),Buffer.from(desktop.data,'base64'));
   await navigate('/themes');
   await until(`document.querySelector('[data-catalog-form=light]')?.dataset.bmlActionBound==='true'`);
   assert.deepEqual(await evaluate(`['dark','light'].map(id=>getComputedStyle(document.querySelector('[data-catalog-palette='+id+'] .ui-card')).backgroundColor)`),['rgb(16, 19, 28)','rgb(255, 255, 255)']);
   await evaluate(`document.querySelector('[data-catalog-name=light]').value='Light example';document.querySelector('[data-catalog-form=light]').requestSubmit()`);
-  await until(`document.querySelector('[data-catalog-saves=light]').textContent.includes('Saved 1 times')`);
-  assert.ok(await evaluate(`document.querySelector('[data-catalog-saves=dark]').textContent.includes('Saved 0 times')`));
+  await until(`document.querySelector('[data-catalog-save-toast=light]').matches(':popover-open')`);
+  assert.ok(await evaluate(`document.querySelector('[data-catalog-save-toast=dark]').dataset.sequence==='0'&&!document.querySelector('[data-catalog-save-toast=dark]').matches(':popover-open')`));
   await evaluate(`document.querySelector('[data-catalog-light]').click()`);
   assert.deepEqual(await evaluate(`['dark','light'].map(id=>getComputedStyle(document.querySelector('[data-catalog-palette='+id+'] .ui-card')).backgroundColor)`),['rgb(16, 19, 28)','rgb(255, 255, 255)']);
   for(const width of [1440,390]){
@@ -142,12 +147,14 @@ try {
   await navigate('/foundation');
   assert.ok(await evaluate(`(() => {const n=document.querySelector('[data-catalog-name=foundation]');return n instanceof HTMLInputElement&&n.name==='displayName'&&n.required&&n.labels.length===1;})()`));
   await evaluate(`document.querySelector('[data-catalog-light]').click()`);
-  assert.equal(await evaluate(`getComputedStyle(document.body).backgroundColor`),'rgb(247, 250, 248)');
+  assert.equal(await evaluate(`getComputedStyle(document.body).backgroundColor`),'rgb(248, 250, 252)');
   await evaluate(`document.querySelector('nav a[href="/themes"]').click()`);
   await until(`location.pathname==='/themes'&&document.readyState==='complete'`);
   await call('Emulation.setScriptExecutionDisabled',{value:false});
+  await checkReferences({navigate,evaluate,until,key,call,artifacts,mode,expected:JSON.parse(process.argv[4])});
+  await checkPresentation({navigate,evaluate,until,key,call,artifacts,mode});
   assert.deepEqual(exceptions,[]);
-  console.log(`Catalog ${mode}: packaged navigation, form validation/save/pending state, independent palettes, CSS-only appearance and native fallbacks passed`);
+  console.log(`Catalog ${mode}: foundation, themes, 41 packaged export contracts, references, overlays, views, trees, comments, editors, aliases and native fallbacks passed`);
 } finally {
   if(ws)ws.close();browser.kill('SIGTERM');
   await new Promise(resolve=>{if(browser.exitCode!==null)resolve();else{browser.once('exit',resolve);setTimeout(resolve,2000);}});

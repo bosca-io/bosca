@@ -10,22 +10,25 @@
     </head>
     <body class="catalog-document">
       <a class="skip-link" href="#catalog-content">Skip to content</a>
-      <app-header brand="Bosca" product="Design library" href="/">
+      <app-header brand="Bosca" product="Design library" href="/" class="catalog-header">
         <nav class="catalog-nav" aria-label="Design library">
           <a href="/" :aria-current='if (current == "/") "page" else null'><icon name="book-open" />Overview</a>
           <a href="/foundation" :aria-current='if (current == "/foundation") "page" else null'><icon name="code" />Foundation</a>
+          <a href="/components" :aria-current='if (current == "/components") "page" else null'><icon name="folder" />Components</a>
           <a href="/themes" :aria-current='if (current == "/themes") "page" else null'><icon name="settings" />Themes</a>
         </nav>
         <div class="catalog-appearance">
           <switch label="Light appearance" name="lightAppearance" data-catalog-light />
-          <p>Appearance is set by this application’s CSS.</p>
         </div>
       </app-header>
       <page-shell class="catalog-main">
         <div class="catalog-content" id="catalog-content" tabindex="-1">
           <p class="eyebrow">Bosca Design Library</p>
-          <page-heading :title="title" :subtitle="description" />
-          <slot />
+          <header class="catalog-title">
+            <h1>{ title }</h1>
+            <p>{ description }</p>
+          </header>
+          <div class="catalog-sections"><slot /></div>
           <footer class="catalog-footer">Shared BML components. Application-owned styles and actions.</footer>
         </div>
       </page-shell>

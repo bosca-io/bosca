@@ -1,0 +1,14 @@
+<component tag="comment-example">
+  <prop name="id" type="String" required />
+  <script server provides="comment" scope="server-session">bosca.design.catalog.CatalogContent(id)</script>
+  <island name="comment" :key="id">
+    <form @submit="comment.comment(form.body)" :data-catalog-comment="comment.id">
+      <comment-editor :id='"comment-" + comment.id' label="Example comment" :value="comment.value" :error="comment.error"
+                      hint="Use at least eight characters. Ctrl+Enter submits.">
+        <button type="reset" size="sm">Reset draft</button><button type="submit" primary>Post comment</button>
+      </comment-editor>
+    </form>
+    <toast :id='"comment-posted-" + comment.id' :message='if (comment.saves > 0) "Comment posted." else ""'
+           :sequence="comment.saves" tone="success" :data-catalog-comment-toast="comment.id" />
+  </island>
+</component>

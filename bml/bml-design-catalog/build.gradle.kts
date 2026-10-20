@@ -15,6 +15,7 @@ dependencies {
     implementation(project(":bml:bml-annotations"))
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.kotlinx.coroutines.core)
+    runtimeOnly(libs.logback.classic)
     testImplementation(libs.kotlin.test.junit)
 }
 

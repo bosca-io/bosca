@@ -1,6 +1,6 @@
 <component tag="json-editor">
   <prop name="name" type="String" required />
-  <prop name="value" type="String" default="{}" />
+  <prop name="value" type="String" :default='"{}"' />
   <prop name="label" type="String" default="JSON editor" />
   <prop name="mode" type="String" default="tree" />
   <prop name="readOnly" type="Boolean" default="false" />

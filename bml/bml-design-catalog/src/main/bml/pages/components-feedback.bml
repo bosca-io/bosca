@@ -1,0 +1,114 @@
+<page route="/components/feedback">
+  <catalog-document title="Feedback and utilities" description="Status, identity, copying and notifications." current="/components">
+    <nav class="reference-jumps" aria-label="On this page">
+      <a href="#ref-alert">alert</a>
+      <a href="#ref-badge">badge</a>
+      <a href="#ref-empty-state">empty-state</a>
+      <a href="#ref-loading-state">loading-state</a>
+      <a href="#ref-spinner">spinner</a>
+      <a href="#ref-icon">icon</a>
+      <a href="#ref-bosca-mark">bosca-mark</a>
+      <a href="#ref-tooltip">tooltip</a>
+      <a href="#ref-copy">copy</a>
+      <a href="#ref-copy-field">copy-field</a>
+      <a href="#ref-toast">toast</a>
+      <a href="#ref-time">time</a>
+    </nav>
+    <reference-entry name="alert"
+      :api='"ref: String = \"\"\nhidden: Boolean = false\ntone: String = \"error\"\ncompact: Boolean = false"'
+      :contract='"Native paragraph with role=\"alert\", forwarded attributes/classes and default children. Compact text is 12px with an 18px line."'
+      :keyboard='"Assertive live feedback. An alert does not take focus; associate validation text with its field when appropriate. Use error or success tone, and compact for inline form feedback."'
+      :css='"Palette and typography inherit from the consuming application. Component hooks: --err, --error-fg, --ok. Forward an application class only through the documented native target; generated scope markers are private."'
+      :snippet='"<div class=\"example-stack\"><alert>Check the value and try again.</alert><alert compact tone=\"success\">Preferences saved.</alert></div>"'>
+      <div class="example-stack"><alert>Check the value and try again.</alert><alert compact tone="success">Preferences saved.</alert></div>
+    </reference-entry>
+    <reference-entry name="badge"
+      :api='"tone: String = \"neutral\"\ncolor: String = \"\""'
+      :contract='"Native span with forwarded attributes/classes and default children. A supplied CSS color overrides the tone."'
+      :keyboard='"Text status with no additional keyboard behavior. Supported tones: neutral, purple, info, success, warning, error, accent. A caller-provided color overrides tone."'
+      :css='"Palette and typography inherit from the consuming application. Component hooks: --accent, --err, --fg-3, --info, --ok, --purple, --warn. Forward an application class only through the documented native target; generated scope markers are private."'
+      :snippet='"<div class=\"example-actions\"><badge>Neutral</badge><badge tone=\"accent\">Accent</badge><badge tone=\"purple\">Purple</badge><badge tone=\"info\">Information</badge><badge tone=\"success\">Success</badge><badge tone=\"warning\">Warning</badge><badge tone=\"error\">Error</badge></div>"'>
+      <div class="example-actions"><badge>Neutral</badge><badge tone="accent">Accent</badge><badge tone="purple">Purple</badge><badge tone="info">Information</badge><badge tone="success">Success</badge><badge tone="warning">Warning</badge><badge tone="error">Error</badge></div>
+    </reference-entry>
+    <reference-entry name="empty-state"
+      :api='"message: String = \"\"\ntitle: String = \"\"\nicon: String = \"folder\""'
+      :contract='"Native div with forwarded attributes/classes, decorative icon, optional title/message and default action children."'
+      :keyboard='"Noninteractive icon/title/message, with optional caller-owned action children. The icon is decorative."'
+      :css='"Palette and typography inherit from the consuming application. Component hooks: --bg-2, --fg-3, --line. Forward an application class only through the documented native target; generated scope markers are private."'
+      :snippet='"<empty-state title=\"No examples selected\" message=\"Choose an example to see its details.\"><a class=\"catalog-link\" href=\"/foundation\">Explore foundations</a></empty-state>"'>
+      <empty-state title="No examples selected" message="Choose an example to see its details."><a class="catalog-link" href="/foundation">Explore foundations</a></empty-state>
+    </reference-entry>
+    <reference-entry name="loading-state"
+      :api='"label: String = \"Loading…\"\ncompact: Boolean = false\nref: String = \"\""'
+      :contract='"Native div with role=\"status\", forwarded attributes/classes, decorative spinner and visible label. No child content."'
+      :keyboard='"Polite status with visible label and decorative spinner; compact is the inline layout. It does not move focus."'
+      :css='"Palette and typography inherit from the consuming application. Component hooks: --fg-3. Forward an application class only through the documented native target; generated scope markers are private."'
+      :snippet='"<div class=\"example-stack\"><loading-state label=\"Loading example…\" /><loading-state compact label=\"Loading more…\" /></div>"'>
+      <div class="example-stack"><loading-state label="Loading example…" /><loading-state compact label="Loading more…" /></div>
+    </reference-entry>
+    <reference-entry name="spinner"
+      :api='"size: String = \"sm\""'
+      :contract='"Aria-hidden spinner, 12/14/20px respectively; stops animation for reduced motion. No child content."'
+      :keyboard='"Decorative and aria-hidden; supply a visible or live loading label in the surrounding control. xs, sm and md sizes are 12, 14 and 20px. Reduced motion stops rotation."'
+      :css='"Palette and typography inherit from the consuming application. Child controls use their own documented tokens; icon strokes inherit currentColor. Forward an application class only through the documented native target; generated scope markers are private."'
+      :snippet='"<div class=\"example-actions\"><spinner size=\"xs\" /><spinner /><spinner size=\"md\" /><span>Loading example…</span></div>"'>
+      <div class="example-actions"><spinner size="xs" /><spinner /><spinner size="md" /><span>Loading example…</span></div>
+    </reference-entry>
+    <reference-entry name="icon"
+      :api='"size: Int = 16\nname: String (required)\nstrokeWidth: Double = 2.0"'
+      :contract='"Decorative, aria-hidden Lucide SVG. No child content."'
+      :keyboard='"Decorative Lucide icon, aria-hidden. Put accessible names on the containing control. name selects an available glyph; size and strokeWidth change geometry."'
+      :css='"Palette and typography inherit from the consuming application. Child controls use their own documented tokens; icon strokes inherit currentColor. Forward an application class only through the documented native target; generated scope markers are private."'
+      :snippet='"<div class=\"example-actions\"><icon name=\"folder\" /><icon name=\"code\" :size=\"24\" :strokeWidth=\"1.5\" /><span>Icons have adjacent text labels.</span></div>"'>
+      <div class="example-actions"><icon name="folder" /><icon name="code" :size="24" :strokeWidth="1.5" /><span>Icons have adjacent text labels.</span></div>
+    </reference-entry>
+    <reference-entry name="bosca-mark"
+      :api='"No named props."'
+      :contract='"The actual 22×22px Bosca SVG, labelled Bosca, with forwarded attributes/classes. aria-hidden can mark it decorative. No child content."'
+      :keyboard='"The original Bosca mark is labelled Bosca; pass aria-hidden when another adjacent label already names it."'
+      :css='"Palette and typography inherit from the consuming application. Component hooks: --mark-left, --mark-right, --mark-top. Forward an application class only through the documented native target; generated scope markers are private."'
+      :snippet='"<div class=\"example-actions\"><bosca-mark aria-hidden=\"true\" /><span>Bosca</span></div>"'>
+      <div class="example-actions"><bosca-mark aria-hidden="true" /><span>Bosca</span></div>
+    </reference-entry>
+    <reference-entry name="tooltip"
+      :api='"content: String (required)\nplacement: String = \"top\"\ndelay: Int = 200"'
+      :contract='"Inline span with default children. The first descendant button/link/tabbable element is its trigger, falling back to the root. Additional attributes/classes target the span."'
+      :keyboard='"Hover or focus opens the description. Escape, activation or departure dismisses it. The description can stay open while hovered. Placement top/bottom/left/right can flip to fit the viewport."'
+      :css='"Palette and typography inherit from the consuming application. Component hooks: --tooltip-bg, --tooltip-border, --tooltip-fg, --tooltip-shadow. Forward an application class only through the documented native target; generated scope markers are private."'
+      :snippet='"<tooltip content=\"This description also opens on focus\" placement=\"bottom\"><button size=\"sm\">Hover or focus</button></tooltip>"'>
+      <tooltip content="This description also opens on focus" placement="bottom"><button size="sm">Hover or focus</button></tooltip>
+    </reference-entry>
+    <reference-entry name="copy"
+      :api='"value: String (required)\nlabel: String = \"Copy\"\nshowStatus: Boolean = true"'
+      :contract='"Root div receives additional attributes/classes. Its 30×30px native button copies the value, switches decorative icons and reports status. No child content. Visible status reserves 26ch so feedback does not move neighboring content; showStatus=\"false\" keeps status accessible with no visible message space."'
+      :keyboard='"Native button activation copies the string. A live message reports success or manual-copy guidance; copyresult contains copied. showStatus=false retains accessible feedback without visible reserved space."'
+      :css='"Palette and typography inherit from the consuming application. Child controls use their own documented tokens; icon strokes inherit currentColor. Forward an application class only through the documented native target; generated scope markers are private."'
+      :snippet='"<copy value=\"A sample value\" label=\"Copy sample text\" />"'>
+      <copy value="A sample value" label="Copy sample text" />
+    </reference-entry>
+    <reference-entry name="copy-field"
+      :api='"value: String (required)\nlabel: String (required)\ncopyLabel: String = \"Copy value\""'
+      :contract='"Root div receives additional attributes/classes. A labelled readonly input and compact copy action display a single-line value. No child content. Focus selects the value; denied/unavailable clipboard access selects it and exposes manual-copy guidance."'
+      :keyboard='"Focus selects the readonly value. A denied or unavailable clipboard leaves it selectable and reports manual-copy guidance. No-script users can select and copy it themselves."'
+      :css='"Palette and typography inherit from the consuming application. Component hooks: --fg-2. Forward an application class only through the documented native target; generated scope markers are private."'
+      :snippet='"<copy-field value=\"io.bosca:bml-design\" label=\"Dependency coordinate\" />"'>
+      <copy-field value="io.bosca:bml-design" label="Dependency coordinate" />
+    </reference-entry>
+    <reference-entry name="toast"
+      :api='"id: String (required)\nmessage: String = \"\"\nsequence: Int = 0\ntone: String = \"info\"\nduration: Int = 4000"'
+      :contract='"Manual-popover root receives additional attributes/classes. id supplies its stable data-bml-preserve key, rather than a native DOM ID. No child content. The caller issues each nonempty notice with a new positive sequence; ordinary updates and same/older sequences do not replay it."'
+      :keyboard='"New positive sequence values issue notices, including repeated text. Hover, focus and document invisibility pause expiry; Escape or the dismiss button closes it. Error is assertive, other tones are polite. A notice never takes focus."'
+      :css='"Palette and typography inherit from the consuming application. Component hooks: --accent, --bg-1, --err, --fg-1, --focus-width, --font-sans, --info, --ok, --r-md, --shadow-color, --toast-left, --toast-message-max-height, --toast-shadow, --toast-top, --warn. Forward an application class only through the documented native target; generated scope markers are private."'
+      :snippet='"<component tag=\"notice-example\">\n  <prop name=\"id\" type=\"String\" required />\n  <script server provides=\"notice\" scope=\"server-session\">bosca.design.catalog.CatalogNotice(id)</script>\n  <island name=\"notice\" :key=\"id\">\n    <button @click=\"notice.notify\" :data-catalog-notify=\"notice.id\">Show notification</button>\n    <toast :id=\u0027\"notice-\" + notice.id\u0027 :message=\u0027if (notice.sequence > 0) \"Example saved.\" else \"\"\u0027\n           :sequence=\"notice.sequence\" tone=\"success\" :data-catalog-toast=\"notice.id\" />\n  </island>\n</component>"'>
+      <notice-example id="reference" />
+    </reference-entry>
+    <reference-entry name="time"
+      :api='"relative: Boolean = false\nago: Boolean = false\nformat: String = \"\"\ninheritTypography: Boolean = false\nvalue: String (required)"'
+      :contract='"Native time receives additional attributes/classes, its original value as datetime/title and an English server-rendered label. No child content. Use html:time for a native timestamp after importing this component."'
+      :keyboard='"Native time keeps the original datetime/title and a server-rendered English label. relative/ago/format select presentation; inheritTypography uses surrounding text styles. Invalid input remains visible."'
+      :css='"Palette and typography inherit from the consuming application. Component hooks: --fg-2. Forward an application class only through the documented native target; generated scope markers are private."'
+      :snippet='"<div class=\"example-stack\"><time value=\"2026-10-18T08:15:00Z\" /><time value=\"2026-10-18T08:15:00Z\" format=\"yyyy-MM-dd HH:mm XXX\" /><time value=\"invalid timestamp\" /></div>"'>
+      <div class="example-stack"><time value="2026-10-18T08:15:00Z" /><time value="2026-10-18T08:15:00Z" format="yyyy-MM-dd HH:mm XXX" /><time value="invalid timestamp" /></div>
+    </reference-entry>
+  </catalog-document>
+</page>

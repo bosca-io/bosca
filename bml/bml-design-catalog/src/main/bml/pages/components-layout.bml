@@ -1,0 +1,87 @@
+<page route="/components/layout">
+  <catalog-document title="Layout and navigation" description="Surfaces, headings and caller-owned destinations." current="/components">
+    <nav class="reference-jumps" aria-label="On this page">
+      <a href="#ref-card">card</a>
+      <a href="#ref-page-shell">page-shell</a>
+      <a href="#ref-panel">panel</a>
+      <a href="#ref-section">section</a>
+      <a href="#ref-page-heading">page-heading</a>
+      <a href="#ref-section-heading">section-heading</a>
+      <a href="#ref-disclosure-heading">disclosure-heading</a>
+      <a href="#ref-app-header">app-header</a>
+      <a href="#ref-tabs">tabs</a>
+    </nav>
+    <reference-entry name="card"
+      :api='"title: String = \"\"\npadded: Boolean = true"'
+      :contract='"Native section with an optional heading and a default child body. Only named props and children are consumed."'
+      :keyboard='"A structural surface with an optional title, padded by default. It adds no keyboard interaction; use normal heading order in its child content."'
+      :css='"Palette and typography inherit from the consuming application. Component hooks: --bg-1, --line. Forward an application class only through the documented native target; generated scope markers are private."'
+      :snippet='"<card title=\"Preferences\"><p class=\"catalog-description\">Content belongs to this application.</p><button size=\"sm\">Save preferences</button></card>"'>
+      <card title="Preferences"><p class="catalog-description">Content belongs to this application.</p><button size="sm">Save preferences</button></card>
+    </reference-entry>
+    <reference-entry name="page-shell"
+      :api='"fill: Boolean = false\nnarrow: Boolean = false"'
+      :contract='"Native main with default children, merged classes, and additional attributes. fill allocates a flex column; narrow uses a centered 400px form surface."'
+      :keyboard='"Native main landmark. A document should contain one main landmark; this embedded illustration uses aria-hidden and inert. fill and narrow are layout variants."'
+      :css='"Palette and typography inherit from the consuming application. Child controls use their own documented tokens; icon strokes inherit currentColor. Forward an application class only through the documented native target; generated scope markers are private."'
+      :snippet='"<div class=\"reference-shell\" aria-hidden=\"true\" inert><page-shell narrow><p>A narrow page surface.</p></page-shell></div>"'>
+      <div class="reference-shell" aria-hidden="true" inert><page-shell narrow><p>A narrow page surface.</p></page-shell></div>
+    </reference-entry>
+    <reference-entry name="panel"
+      :api='"No named props."'
+      :contract='"Native section with a surface, border, 20px padding and default children. Additional attributes/classes target the section."'
+      :keyboard='"Structural surface with native section semantics. Supply an accessible label when it represents a distinct landmark."'
+      :css='"Palette and typography inherit from the consuming application. Component hooks: --bg-1, --line, --r-md. Forward an application class only through the documented native target; generated scope markers are private."'
+      :snippet='"<panel aria-label=\"Example panel\"><p class=\"catalog-description\">A bordered content surface.</p></panel>"'>
+      <panel aria-label="Example panel"><p class="catalog-description">A bordered content surface.</p></panel>
+    </reference-entry>
+    <reference-entry name="section"
+      :api='"No named props."'
+      :contract='"Native section with 16px vertical spacing, a bottom border and default children. Additional attributes/classes target the section."'
+      :keyboard='"Structural spacing and divider. Use html:section to author a native section after importing this component."'
+      :css='"Palette and typography inherit from the consuming application. Component hooks: --line. Forward an application class only through the documented native target; generated scope markers are private."'
+      :snippet='"<section aria-label=\"Example section\"><p class=\"catalog-description\">A section divider around caller content.</p></section>"'>
+      <section aria-label="Example section"><p class="catalog-description">A section divider around caller content.</p></section>
+    </reference-entry>
+    <reference-entry name="page-heading"
+      :api='"title: String (required)\nsubtitle: String = \"\"\ntrail: List<bosca.design.model.NavigationItem> = emptyList()\ncrumb: String = \"\"\nicon: String = \"\"\niconColor: String = \"var(--accent)\"\nbadge: String = \"\"\nbadgeTone: String = \"neutral\"\nbadgeColor: String = \"\""'
+      :contract='"Header with breadcrumbs, title/icon, optional badge/subtitle and default action children. Additional attributes/classes target the header. The current crumb defaults to the title."'
+      :keyboard='"Breadcrumbs remain native links. The application supplies NavigationItem labels, hrefs and selected flags; the final crumb defaults to title. Project action controls in its children."'
+      :css='"Palette and typography inherit from the consuming application. Component hooks: --accent, --fg-1, --fg-3, --fg-4, --on-accent. Forward an application class only through the documented native target; generated scope markers are private."'
+      :snippet='"<page-heading title=\"Component examples\" subtitle=\"Application-owned navigation and actions\" icon=\"code\" badge=\"Preview\" badgeTone=\"info\" :trail=\u0027listOf(bosca.design.model.NavigationItem(\"Components\", \"/components\", false))\u0027><button size=\"sm\">Add example</button></page-heading>"'>
+      <page-heading title="Component examples" subtitle="Application-owned navigation and actions" icon="code" badge="Preview" badgeTone="info" :trail='listOf(bosca.design.model.NavigationItem("Components", "/components", false))'><button size="sm">Add example</button></page-heading>
+    </reference-entry>
+    <reference-entry name="section-heading"
+      :api='"title: String (required)\nsubtitle: String = \"\""'
+      :contract='"Header with a title, subtitle and default action children. Additional attributes/classes target the header."'
+      :keyboard='"A section title and optional subtitle; child action controls keep their native keyboard behavior."'
+      :css='"Palette and typography inherit from the consuming application. Component hooks: --fg-2, --line. Forward an application class only through the documented native target; generated scope markers are private."'
+      :snippet='"<section-heading title=\"Recent examples\" subtitle=\"Action content is projected\"><button size=\"sm\">Add example</button></section-heading>"'>
+      <section-heading title="Recent examples" subtitle="Action content is projected"><button size="sm">Add example</button></section-heading>
+    </reference-entry>
+    <reference-entry name="disclosure-heading"
+      :api='"framed: Boolean = false"'
+      :contract='"Native summary inside caller-owned details, with default label children and a decorative chevron that follows the open state. Additional attributes/classes target the summary."'
+      :keyboard='"Place directly inside native details. Enter or Space toggles disclosure, including without scripts. framed adds a surrounding surface."'
+      :css='"Palette and typography inherit from the consuming application. Component hooks: --accent, --bg-1, --fg-0, --fg-2, --focus-width, --line. Forward an application class only through the documented native target; generated scope markers are private."'
+      :snippet='"<details><disclosure-heading framed>Read more about this example</disclosure-heading><p class=\"catalog-description\">Native disclosure content remains usable without scripts.</p></details>"'>
+      <details><disclosure-heading framed>Read more about this example</disclosure-heading><p class="catalog-description">Native disclosure content remains usable without scripts.</p></details>
+    </reference-entry>
+    <reference-entry name="app-header"
+      :api='"brand: String (required)\nproduct: String = \"\"\nhref: String (required)"'
+      :contract='"Header with a brand link/mark and default navigation children. Extra attributes/classes target the header. A 224px sidebar becomes a wrapping header at 700px. Scoped client code reveals the active item in overflowing navigation on mount, resize and updates within the header."'
+      :keyboard='"Brand and navigation remain native links. The application owns destinations and current-page calculation. The header reveals the current link when its navigation overflows."'
+      :css='"Palette and typography inherit from the consuming application. Component hooks: --bg-1, --fg-0, --fg-1, --fg-2, --line. Forward an application class only through the documented native target; generated scope markers are private."'
+      :snippet='"<app-header brand=\"Bosca\" product=\"Example\" href=\"/components\"><nav class=\"reference-header-nav\" aria-label=\"Example application\"><a href=\"/foundation\">Foundation</a><a href=\"/themes\">Themes</a></nav></app-header>"'>
+      <app-header brand="Bosca" product="Example" href="/components"><nav class="reference-header-nav" aria-label="Example application"><a href="/foundation">Foundation</a><a href="/themes">Themes</a></nav></app-header>
+    </reference-entry>
+    <reference-entry name="tabs"
+      :api='"label: String (required)\nitems: List<bosca.design.model.NavigationItem> (required)\nheader: Boolean = false"'
+      :contract='"Native nav receives additional attributes/classes and default trailing action children. Destinations remain native anchors with aria-current=\"page\" on the current item. The scoped helper fits links around the current destination and a More overflow disclosure."'
+      :keyboard='"Native route anchors with aria-current on the selected destination. More exposes overflow destinations; arrows/Home/End navigate the open menu, Escape returns focus. header changes spacing."'
+      :css='"Palette and typography inherit from the consuming application. Component hooks: --accent, --bg-2, --bg-3, --fg-0, --fg-1, --fg-3, --focus-width, --line, --line-2, --shadow-color, --tabs-menu-shadow. Forward an application class only through the documented native target; generated scope markers are private."'
+      :snippet='"<tabs label=\"Example routes\" :items=\u0027listOf(bosca.design.model.NavigationItem(\"Components\", \"/components\", false), bosca.design.model.NavigationItem(\"Layout\", \"/components/layout\", true), bosca.design.model.NavigationItem(\"Foundation\", \"/foundation\", false))\u0027 />"'>
+      <tabs label="Example routes" :items='listOf(bosca.design.model.NavigationItem("Components", "/components", false), bosca.design.model.NavigationItem("Layout", "/components/layout", true), bosca.design.model.NavigationItem("Foundation", "/foundation", false))' />
+    </reference-entry>
+  </catalog-document>
+</page>

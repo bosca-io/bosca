@@ -1,0 +1,13 @@
+<component tag="json-example">
+  <prop name="id" type="String" required />
+  <script server provides="settings" scope="server-session">bosca.design.catalog.CatalogContent(id, "{\"enabled\": true, \"count\": 3}")</script>
+  <island name="settings" :key="id">
+    <form @submit="settings.settings(form.settings)" class="example-stack" :data-catalog-json="settings.id">
+      <json-editor name="settings" label="Example settings" :value="settings.value" :error="settings.error"
+                   :preserveKey='"settings-" + settings.id' />
+      <div class="example-actions"><button type="submit" primary>Save JSON</button><button type="reset">Reset JSON</button></div>
+    </form>
+    <toast :id='"json-saved-" + settings.id' :message='if (settings.saves > 0) "Settings saved." else ""'
+           :sequence="settings.saves" tone="success" :data-catalog-json-toast="settings.id" />
+  </island>
+</component>

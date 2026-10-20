@@ -1,0 +1,27 @@
+<component tag="reference-entry">
+  <prop name="name" type="String" required />
+  <prop name="api" type="String" required />
+  <prop name="contract" type="String" required />
+  <prop name="keyboard" type="String" required />
+  <prop name="css" type="String" required />
+  <prop name="snippet" type="String" required />
+  <html:section :id='"ref-" + name' class="reference-entry" :data-export="name" :aria-labelledby='"title-" + name'>
+    <header class="reference-heading">
+      <h2 :id='"title-" + name'><code>&lt;{ name }&gt;</code></h2>
+      <a class="catalog-link" href="/components">All components</a>
+    </header>
+    <div class="reference-demo"><slot /></div>
+    <details class="reference-details" open>
+      <summary>API and authoring</summary>
+      <h3>Props and defaults</h3>
+      <pre class="reference-api"><code>{ api }</code></pre>
+      <dl>
+        <dt>Attributes, events and children</dt><dd>{ contract }</dd>
+        <dt>Keyboard and accessibility</dt><dd>{ keyboard }</dd>
+        <dt>Consumer CSS</dt><dd>{ css }</dd>
+      </dl>
+      <h3>Authoring</h3>
+      <pre class="code-sample"><code>{ snippet }</code></pre>
+    </details>
+  </html:section>
+</component>

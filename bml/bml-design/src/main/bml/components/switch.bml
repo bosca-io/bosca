@@ -72,7 +72,7 @@
     }
     input:checked + .switch-track::after {
       transform: translateX(14px);
-      background: var(--fg-0);
+      background: var(--on-accent);
     }
     input:focus-visible + .switch-track {
       outline: var(--focus-width) solid var(--accent);

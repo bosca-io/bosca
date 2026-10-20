@@ -2,24 +2,26 @@
   <catalog-document title="Foundation" description="Forms, feedback and native controls composed together." current="/foundation">
     <foundation-form id="foundation" title="A form owned by the application" />
     <card title="Button sizes and states">
-      <div class="example-actions">
-        <button primary>Regular</button><button size="sm">Compact</button><button size="xs">Small</button>
-        <button disabled>Disabled</button><button loading>Loading</button>
-        <icon-button icon="copy" label="Copy example" />
+      <div class="catalog-stack">
+        <div class="example-actions">
+          <button primary>Regular</button><button size="sm">Compact</button><button size="xs">Small</button>
+          <button disabled>Disabled</button><button loading>Loading</button>
+          <icon-button icon="copy" label="Copy example" />
+        </div>
+        <p class="example-note">Controls keep native types, labels and disabled states. Loading keeps the button’s place.</p>
       </div>
-      <p class="example-note">Controls keep native types, labels and disabled states. Loading keeps the button’s place.</p>
     </card>
     <div class="catalog-grid">
       <card title="Feedback">
-        <div class="example-stack">
-          <alert tone="success">Settings saved.</alert>
-          <alert>Check the display name and try again.</alert>
+        <div class="catalog-stack">
+          <p class="catalog-description">Action feedback appears as a toast. Field validation stays with its input.</p>
+          <notice-example id="foundation-feedback" />
           <loading-state label="Loading an example" compact />
           <div class="example-actions"><badge tone="success">Success</badge><badge tone="warning">Warning</badge><badge tone="error">Error</badge><badge tone="info">Information</badge></div>
         </div>
       </card>
       <card title="Native choices">
-        <div class="example-stack">
+        <div class="catalog-stack">
           <checkbox label="Include a summary" name="summary" value="yes" />
           <checkbox label="Unavailable choice" disabled />
           <switch label="Preview enabled" checked />
@@ -27,17 +29,23 @@
         </div>
       </card>
     </div>
-    <card title="Empty content"><empty-state title="No examples selected" message="Choose an example to see its details." /></card>
+    <card title="Empty content">
+      <div class="catalog-stack">
+        <empty-state title="No examples selected" message="Choose an example to see its details." />
+      </div>
+    </card>
     <card title="Scrollable data">
-      <table-scroll label="Example component sizes">
-        <table><thead><tr><th>Component</th><th>Example</th><th>Behavior</th></tr></thead>
-          <tbody>
-            <tr><td>Button</td><td><code>&lt;button size="sm"&gt;</code></td><td>Native button with a compact size</td></tr>
-            <tr><td>Input</td><td><code>&lt;input required&gt;</code></td><td>Native form value and browser validation</td></tr>
-            <tr><td>Table</td><td>A deliberately long label for a narrow viewport</td><td>Scroll within the labelled region</td></tr>
-          </tbody>
-        </table>
-      </table-scroll>
+      <div class="catalog-stack">
+        <table-scroll label="Example component sizes">
+          <table><thead><tr><th>Component</th><th>Example</th><th>Behavior</th></tr></thead>
+            <tbody>
+              <tr><td>Button</td><td><code>&lt;button size="sm"&gt;</code></td><td>Native button with a compact size</td></tr>
+              <tr><td>Input</td><td><code>&lt;input required&gt;</code></td><td>Native form value and browser validation</td></tr>
+              <tr><td>Table</td><td>A deliberately long label for a narrow viewport</td><td>Scroll within the labelled region</td></tr>
+            </tbody>
+          </table>
+        </table-scroll>
+      </div>
     </card>
   </catalog-document>
 </page>

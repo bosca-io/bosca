@@ -45,7 +45,7 @@ explicitly when that separate appearance is intended.
 | Token | Default | Role |
 | --- | --- | --- |
 | `--accent` | `#64748b` | Primary borders/icons, focus and selected states |
-| `--on-accent` | `#fff` | Foreground on filled heading icons and editor menus |
+| `--on-accent` | `#fff` | Foreground on filled heading icons, switch thumbs and editor menus |
 | `--bg-0` | `#0a0c12` | Base search/segmented surface |
 | `--bg-1` | `#10131c` | Cards, panels, dialogs and popovers |
 | `--bg-2` | `#161a25` | Controls, secondary panels and active editor lines |
