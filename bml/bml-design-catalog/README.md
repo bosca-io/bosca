@@ -18,6 +18,8 @@ Open `http://localhost:9093/`. Pass another port with `--args=9094` if needed.
 | `/` | Unprefixed import/authoring, buttons and feedback, links into the catalog |
 | `/foundation` | Labelled form with server validation, pending/success/error feedback, native choices, button sizes, loading/disabled states, badges, empty content and a scrolling table |
 | `/themes` | The same form in separate dark and consumer-light palettes, with independent state |
+| `/comments` | Independent dark/light comment drafts, pending/rejected posts, native reset and controlled replacements, readonly/disabled/paused/long/escaped variants |
+| `/overlays` | Independent modal forms, retained drafts, rejected confirmations, popover forms and menus, sizes and trigger variants |
 | `/json` | Independent dark/light JSON drafts, retained engine state, pending/rejected saves, native reset, controlled options and tree/text/table/empty/invalid/readonly/disabled variants |
 | `/source` | Independent dark/light source viewers, requested lines, language/wrap changes, preserved state, content replacement and compact/bare/empty layouts |
 | `/selection` | Server-filtered, offset-paged picker in independent dark/light roots, with failed-search retry, loading/disabled controls, native reset and toast saves |
@@ -85,6 +87,18 @@ value. Stable IDs retain local edits through unrelated updates, while changed su
 the latest native reset default. Readonly, disabled, paused submission, validation, long drafts and
 escaped markup also have individual examples. No comment is published to a product.
 
+The `/overlays` page demonstrates a validated name form, action rejection and retry, a retained
+server-requested draft, rejected confirmations and independent popover forms and menus. Modal
+validation stays beside its field; operation results use toasts. The retained draft uses a stable
+preservation key and server-owned open/completion attributes. Its children stay browser-owned
+through surrounding updates. A new open request reopens a dismissed draft. Projected modal forms
+use the library's scrolling `modal-fields` body and separate `modal-footer`. The popover uses a
+nested island for its local form within a preserved container. The native details open state stays
+in the browser-owned children, and the helper restores its top-layer surface after reinsertion.
+Rejection toasts remain inside the active modal so their dismiss controls are keyboard reachable.
+The native fallback fits its container; the clipping example applies only to enhanced panels. The page also shows
+all three dialog sizes, text/link/block/plain/ghost triggers and a disabled trigger.
+
 The content route reaches both source and structured JSON engines. The source route reaches only
 the standalone source viewer; the JSON route reaches only the structured editor. Ordinary control
 pages exclude both engines. The optional alias declaration stays in its
@@ -127,6 +141,12 @@ caret/focus preservation, pending locks, rejection/retry, fresh drafts after suc
 reset, native readonly/disabled form rules, independent instances, repeated removal/remount and
 script-disabled fields. Desktop/phone geometry and themed text, field-error and placeholder contrast
 are sampled as well. Comment placeholders use the shared muted-text token in consuming CSS.
+Overlay checks exercise native modal names, Tab containment and focus return; disabled triggers;
+field validation; held pending action geometry; exact rejected drafts and successful retry; keyboard
+access to modal rejection toasts; server-issued requests and completion; retained draft DOM, focus
+and caret; nested cancel/Escape; popup form submission and surrounding updates; menu navigation;
+all sizes and trigger styles; repeated disposal and listener cleanup; desktop/phone bounds, scrolling
+bodies, fixed footers, independent palettes, sampled text contrast and visible native fallbacks.
 No authenticated product session is used. Runtime failures use the application's
 console logging backend and are included in integration-test diagnostics.
 

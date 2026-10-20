@@ -107,6 +107,11 @@ export async function checkOverlays({ call, evaluate, until, base, mode, artifac
   await evaluate(`window.fixtureDraftPanel=document.querySelector('${modal(draft)}'); document.querySelector('${modal(draft)} input[name=draft]').value='Unsaved draft'`);
   await click(trigger('[data-nested-popover=light]'));
   await until(expanded('[data-nested-popover=light]'));
+  await click('[data-nested-close=light]');
+  await until(`!(${expanded('[data-nested-popover=light]')})`);
+  assert.ok(await evaluate(open(draft)), 'The nested cancel control dismisses its popup while retaining the modal');
+  await click(trigger('[data-nested-popover=light]'));
+  await until(expanded('[data-nested-popover=light]'));
   await focus(trigger('[data-nested-popover=light]'));
   await key('Escape');
   await until(`!(${expanded('[data-nested-popover=light]')})`);

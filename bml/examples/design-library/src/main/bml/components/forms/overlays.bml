@@ -36,6 +36,7 @@
                 <field label="Draft"><input name="draft" value="Keep this draft" /></field>
                 <popover label="Draft options" :data-nested-popover="state.id">
                   <p>Opening this child does not request another modal.</p>
+                  <button ref="cancel" :data-nested-close="state.id">Close options</button>
                 </popover>
                 <for number in 1..12><p>Scrollable draft content { number }</p></for>
               </div>

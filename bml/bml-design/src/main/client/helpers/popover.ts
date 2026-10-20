@@ -1,4 +1,4 @@
-import type { ClientContext } from "@bosca/bml";
+import type { ClientContext, IslandUpdate } from "@bosca/bml";
 
 /** Enhances a native disclosure with a component-owned, viewport-fitted top-layer surface. */
 export function positionedPopover(ctx: ClientContext) {
@@ -56,7 +56,10 @@ export function positionedPopover(ctx: ClientContext) {
   });
   ctx.on<MouseEvent>(ctx.root, "click", event => {
     const cancel = ctx.ref<HTMLElement>("cancel");
-    if (event.target instanceof Node && cancel?.contains(event.target)) close(true);
+    if (event.target instanceof Node && cancel?.contains(event.target)) {
+      event.stopPropagation();
+      close(true);
+    }
   });
   ctx.on<KeyboardEvent>(ctx.root, "keydown", event => {
     if (event.key === "Escape" && panel.open) {
@@ -82,6 +85,9 @@ export function positionedPopover(ctx: ClientContext) {
   ctx.on(window, "resize", position);
   ctx.on(window, "scroll", position, true);
   ctx.onUpdate(() => sync(false));
+  ctx.on<CustomEvent<IslandUpdate>>(document, "bml:update", event => {
+    if (event.detail.target.contains(ctx.root)) sync(false);
+  });
   ctx.onUnmount(() => {
     observer.disconnect();
     hide();

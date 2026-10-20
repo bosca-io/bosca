@@ -78,6 +78,7 @@
     .popover-content:not([popover]) {
       position: static;
       margin-top: 8px;
+      max-width: 100%;
     }
   </style>
   <script client scoped>

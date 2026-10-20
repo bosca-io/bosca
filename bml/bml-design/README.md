@@ -158,7 +158,14 @@ Opening focuses the first available input. Escape and a projected `ref="cancel"`
 the summary; outside pointer presses dismiss without moving focus. Menu children with `role="menu"`
 and enabled `role="menuitem"` entries support arrows and Home/End. Resize, scrolling, content-size
 changes and nested island updates reposition the panel. Listeners and ResizeObservers are removed
-when the component unmounts. A nested popover consumes Escape before its containing modal.
+when the component unmounts. A nested popover consumes Escape and its projected cancel click before
+its containing modal.
+
+Preserve an enclosing container to keep a popover's native open state and child drafts through
+surrounding server updates. Preserved root attributes remain server-owned, so a container keeps
+the details element's open attribute in its browser-owned children. The helper restores its top-layer
+surface after the container is reinserted. Change the preservation key when replacing those children.
+Without scripts, the disclosure content fits its containing element.
 
 Copy feedback changes the accessible button label to `Copied`, announces `Copied.` and resets after
 two seconds. A subsequent click restarts the timeout. A bubbling `copyresult` event carries

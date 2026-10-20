@@ -175,7 +175,7 @@ try {
     return { size: [r.width,r.height], text: button.textContent.trim(),
       content: getComputedStyle(button.querySelector('.button-content')).opacity,
       progress: getComputedStyle(button.querySelector('.button-progress')).display,
-      spinner: button.querySelector('.spinner').getBoundingClientRect().width,
+      spinner: Number.parseFloat(getComputedStyle(button.querySelector('.spinner')).width),
       color: getComputedStyle(button).getPropertyValue('--accent').trim() };
   })()`);
   assert.deepEqual(busy, { size: before, text: 'Save', content: '0', progress: 'flex', spinner: 14, color: '#15803d' });
