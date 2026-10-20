@@ -64,3 +64,11 @@ tasks.withType<KspAATask>().configureEach {
         })
     }
 }
+
+// The hard-interruption integration test launches a separate capture JVM.
+tasks.withType<Test>().configureEach {
+    val workerClasspath = classpath
+    jvmArgumentProviders.add(CommandLineArgumentProvider {
+        listOf("-Dbosca.backup.testClasspath=${workerClasspath.asPath}")
+    })
+}

@@ -286,6 +286,96 @@ class ObjectBackupCaptureWriterIntegrationTest {
     }
 
     @Test
+    fun `job redelivery resumes its saved claim and reuses completed objects after service restart`(): Unit = runBlocking {
+        val plan = configured()
+        val manifest = capture(plan)
+        val stopped = seedWriter(plan, "job-checkpoint:stopped-attempt")
+        restart()
+        var replacement: ObjectBackupCaptureWriter? = null
+        onOpen = {
+            val current = assertNotNull(writer(plan.key))
+            assertNotEquals(stopped.key, current.key)
+            assertTrue(current.key.startsWith("job-checkpoint:"))
+            replacement = current
+            assertFailsWith<IllegalStateException> {
+                withConnectionManager { service.releaseWriter(plan.key, stopped.key) }
+            }
+            assertEquals(current, writer(plan.key))
+        }
+        onRead = { error("A completed payload must not be read from the source again") }
+        assertEquals(manifest, service.captureConfigured(plan.key, configurations, null, "job-checkpoint"))
+        assertNotNull(replacement)
+        assertNull(writer(plan.key))
+    }
+
+    @Test
+    fun `job checkpoint resumes an interrupted repair without discarding verified bytes`() = runBlocking {
+        val plan = configured()
+        val manifest = capture(plan)
+        val progress = provide<ObjectBackupProgressService>()
+        val interrupted = withConnectionManager {
+            val completed = assertNotNull(progress.get(ObjectBackupOperation.BACKUP,
+                selection.sourceId, plan.destinationId, selection.scope, "content", "asset", "v1"))
+            val pending = progress.invalidate(completed.key, completed.version, "Repair interrupted")
+            progress.start(pending.key, pending.version)
+        }
+        seedWriter(plan, "job-checkpoint:stopped-attempt")
+        restart()
+        onRead = { error("Verified retained bytes must be reused") }
+        assertEquals(manifest, service.captureConfigured(plan.key, configurations, null, "job-checkpoint"))
+        val completed = withConnectionManager { assertNotNull(provide<ObjectBackupProgressService>().get(interrupted.key)) }
+        assertEquals(ObjectBackupProgressStatus.COMPLETED, completed.status)
+        assertEquals(interrupted.attempts + 1, completed.attempts)
+        assertEquals(interrupted.payload, completed.payload)
+        assertNull(writer(plan.key))
+    }
+
+    @Test
+    fun `another job checkpoint cannot resume a saved claim or reset its item progress`(): Unit = runBlocking {
+        val plan = configured()
+        val owner = seedWriter(plan, "another-job:attempt")
+        assertFailsWith<ObjectBackupDestinationBusyException> {
+            service.captureConfigured(plan.key, configurations, null, "job-checkpoint")
+        }
+        assertEquals(owner, writer(plan.key))
+        assertTrue(opened.isEmpty())
+    }
+
+    @Test
+    fun `a job checkpoint never resumes a different plan on the same destination`(): Unit = runBlocking {
+        val ownerPlan = configured()
+        val other = configured(selection.copy(id = "other-plan"))
+        val owner = seedWriter(ownerPlan, "job-checkpoint:attempt")
+        assertFailsWith<ObjectBackupDestinationBusyException> {
+            service.captureConfigured(other.key, configurations, null, "job-checkpoint")
+        }
+        assertEquals(owner, writer(ownerPlan.key))
+        assertTrue(opened.isEmpty())
+    }
+
+    @Test
+    fun `job capture saves its checkpoint identity before opening stores and closes before release`(): Unit = runBlocking {
+        val plan = configured()
+        onOpen = { assertTrue(assertNotNull(writer(plan.key)).key.startsWith("job-checkpoint:")) }
+        onClose = { assertTrue(assertNotNull(writer(plan.key)).key.startsWith("job-checkpoint:")) }
+        assertEquals(1, service.captureConfigured(plan.key, configurations, null, "job-checkpoint").objects.size)
+        assertEquals(opened.sorted(), closed.sorted())
+        assertNull(writer(plan.key))
+    }
+
+    @Test
+    fun `invalid checkpoint identities fail before claiming or opening storage`(): Unit = runBlocking {
+        val plan = configured()
+        for (checkpoint in listOf("", " ", "job:ambiguous")) {
+            assertFailsWith<IllegalArgumentException> {
+                service.captureConfigured(plan.key, configurations, null, checkpoint)
+            }
+        }
+        assertTrue(opened.isEmpty())
+        assertNull(writer(plan.key))
+    }
+
+    @Test
     fun `stale and unrelated recovery tokens leave replacement ownership intact`(): Unit = runBlocking {
         val plan = configured()
         val other = configured(selection.copy(id = "other"))

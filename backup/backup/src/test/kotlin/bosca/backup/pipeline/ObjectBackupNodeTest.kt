@@ -80,6 +80,7 @@ class ObjectBackupNodeTest {
                 request.payloadPrefix, request.manifestPath)
         }
         coEvery { service.captureConfigured("saved", any<OffsetDateTime>()) } returns manifest
+        coEvery { service.captureConfigured("saved", any<OffsetDateTime>(), any<String>()) } returns manifest
     }
 
     @AfterTest
@@ -107,7 +108,7 @@ class ObjectBackupNodeTest {
         assertEquals("retained", request.destinationId)
         assertEquals(mapOf("content" to ObjectBackupSource("source.id", "media/")), request.stores)
         assertEquals("manifests/${request.id}.json", request.manifestPath)
-        coVerify(exactly = 2) { service.captureConfigured("saved", OffsetDateTime.parse(cutoff)) }
+        coVerify(exactly = 2) { service.captureConfigured("saved", OffsetDateTime.parse(cutoff), request.id) }
     }
 
     @Test
@@ -188,6 +189,7 @@ class ObjectBackupNodeTest {
     fun `queued destination contention requests delay while inline callers retain the original error`(): Unit = runBlocking {
         val busy = ObjectBackupDestinationBusyException("retained")
         coEvery { service.captureConfigured("saved", any<OffsetDateTime>()) } throws busy
+        coEvery { service.captureConfigured("saved", any<OffsetDateTime>(), any<String>()) } throws busy
         val job = mockk<Job>()
         io.mockk.every { job.getId() } returns UUID.random()
         withContext(mockk<JobQueue>().asCoroutineContext(job)) {

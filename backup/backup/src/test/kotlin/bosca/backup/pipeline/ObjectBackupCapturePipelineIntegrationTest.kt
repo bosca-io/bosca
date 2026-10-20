@@ -7,6 +7,7 @@ import bosca.backup.ObjectBackupCaptureRepository
 import bosca.backup.ObjectBackupManifest
 import bosca.backup.ObjectBackupProgressService
 import bosca.backup.ObjectBackupOperation
+import bosca.backup.objectBackupIdentity
 import bosca.backup.ObjectBackupStorageService
 import bosca.backup.ObjectBackupRunService
 import bosca.backup.ObjectBackupRunStatus
@@ -82,6 +83,7 @@ import java.time.OffsetDateTime
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
@@ -324,6 +326,51 @@ class ObjectBackupCapturePipelineIntegrationTest {
             it.nodeId == "capture" && it.status == NodeExecutionStatus.FAILED
         })
         coVerify(exactly = 0) { security.getPrincipalByIdentifier(any()) }
+    }
+
+    @Test
+    fun `redelivered capture job resumes its own claim and completed object checkpoint`(): Unit = runBlocking {
+        val initial = start()
+        executeNext()
+        val original = assertNotNull(queue.dequeue(5.seconds))
+        val checkpoint = objectBackupIdentity(ObjectBackupOperation.BACKUP, listOf(original.getId().toString(), "capture"))
+        val addresses = provide<ObjectBackupStorageService>()
+        val configurations = addresses.configurations(setOf("source", "retained"))
+        val completed = addresses.withStorages(configurations) { opened ->
+            captures.captureTracked(
+                selection.sourceId, "retained", selection.scope, "content", selection.stores.getValue("content").first(),
+                opened.getValue("source"), opened.getValue("retained"), "payloads/completed-a", OffsetDateTime.MIN,
+            )
+        }
+        withConnectionManager {
+            assertEquals(1, provide<ObjectBackupCaptureRepository>().claimWriter(plan.key, "retained", "$checkpoint:stopped"))
+        }
+        queue.enqueueLater(original, 1.seconds)
+        assertTrue(locks.forceRelease("job-${original.getId()}"))
+        install()
+        requests.clear()
+        val redelivered = withTimeout(10_000) {
+            var next = queue.dequeue(1.seconds)
+            while (next == null) {
+                delay(50)
+                next = queue.dequeue(1.seconds)
+            }
+            next
+        }
+        assertEquals(original.getId(), redelivered.getId())
+        assertEquals(original.getContext(), redelivered.getContext())
+        execute(redelivered)
+        assertEquals(0, redelivered.serialize().failures)
+        assertEquals(listOf("b@v1"), requests.toList())
+        val result = get(initial.id)
+        assertEquals(PipelineRunStatus.OK, result.status)
+        val manifest = json.decodeFromJsonElement(ObjectBackupManifest.serializer(), assertNotNull(result.output))
+        assertEquals(completed.payload, manifest.objects.single { it.key == "a" })
+        assertEquals(load(), manifest)
+        assertNull(withConnectionManager { captures.getWriter(plan.key) })
+        assertTrue(withConnectionManager { runs.nodeTimeline(initial.id) }.none {
+            it.nodeId == "capture" && it.status == NodeExecutionStatus.FAILED
+        })
     }
 
     @Test

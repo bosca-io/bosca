@@ -90,13 +90,16 @@ class ObjectBackupNode(
             ?: OffsetDateTime.MIN
         val stores = context.json.decodeFromString(MapSerializer(String.serializer(), ObjectBackupSource.serializer()), sources)
         // Backing jobs execute with a non-suspending context; their durable job ID survives retries.
-        val invocation = jobOrNull()?.getId() ?: UUID.random()
+        val queuedInvocation = jobOrNull()?.getId()
+        val invocation = queuedInvocation ?: UUID.random()
         val selectionId = objectBackupIdentity(ObjectBackupOperation.BACKUP, listOf(invocation.toString(), id))
         val service = provide<ObjectBackupCaptureService>()
         val plan = service.discoverConfigured(ObjectBackupDiscoveryRequest(
             selectionId, sourceId, scope, destinationId, stores, payloadPrefix, "$manifestPrefix/$selectionId.json",
         ))
-        val manifest = deferBusyBackupDestination { service.captureConfigured(plan.key, verifiedSince) }
+        val manifest = deferBusyBackupDestination {
+            service.captureConfigured(plan.key, verifiedSince, selectionId.takeIf { queuedInvocation != null })
+        }
         return ObjectBackupNodeSerializer.serialize(manifest)
     }
 

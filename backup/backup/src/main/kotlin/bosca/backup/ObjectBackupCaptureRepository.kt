@@ -16,6 +16,18 @@ interface ObjectBackupCaptureRepository {
     )
     suspend fun claimWriter(key: String, storageKey: String, token: String): Int
 
+    /** Rotates only a redelivered job's own capture token, preserving other destination owners. */
+    @Query(
+        """
+        update backup.object_store_writers set capture_token = :token
+        where storage_key = :storageKey and capture_key = :key
+            and strpos(capture_token, ':') > 0
+            and split_part(capture_token, ':', 1) = :checkpointKey
+        """,
+        returnUpdateCount = true,
+    )
+    suspend fun resumeWriter(key: String, storageKey: String, checkpointKey: String, token: String): Int
+
     /** Reads the active token for one configured capture plan. */
     @Query("select capture_token, capture_key, storage_key from backup.object_store_writers where capture_key = :key")
     suspend fun getWriter(key: String): ObjectBackupCaptureWriter?

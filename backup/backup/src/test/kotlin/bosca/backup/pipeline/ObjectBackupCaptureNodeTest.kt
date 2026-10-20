@@ -3,6 +3,8 @@ package bosca.backup.pipeline
 import bosca.backup.ObjectBackupCaptureService
 import bosca.backup.ObjectBackupDestinationBusyException
 import bosca.backup.ObjectBackupManifest
+import bosca.backup.ObjectBackupOperation
+import bosca.backup.objectBackupIdentity
 import bosca.di.ProviderRegistry
 import bosca.di.annotation.InternalDI
 import bosca.di.provides
@@ -34,6 +36,7 @@ import bosca.sharedqueue.jobs.JobQueue
 import bosca.sharedqueue.jobs.asCoroutineContext
 import io.mockk.coEvery
 import io.mockk.coVerify
+import io.mockk.every
 import io.mockk.mockk
 import java.io.IOException
 import java.time.OffsetDateTime
@@ -199,12 +202,30 @@ class ObjectBackupCaptureNodeTest {
     fun `queued saved capture defers destination contention instead of failing the job`(): Unit = runBlocking {
         val busy = ObjectBackupDestinationBusyException("retained")
         coEvery { service.captureConfigured("saved-plan", any<OffsetDateTime>()) } throws busy
-        withContext(mockk<JobQueue>().asCoroutineContext(mockk<Job>())) {
+        coEvery { service.captureConfigured("saved-plan", any<OffsetDateTime>(), any<String>()) } throws busy
+        val job = mockk<Job> { every { getId() } returns UUID.random() }
+        withContext(mockk<JobQueue>().asCoroutineContext(job)) {
             val delayed = assertFailsWith<DelayException> { ObjectBackupCaptureNode("capture").run(context(), inputs()) }
             assertEquals(5.seconds, delayed.time)
             assertTrue(delayed.cause === busy)
         }
-        coVerify(exactly = 1) { service.captureConfigured("saved-plan", null) }
+        coVerify(exactly = 1) { service.captureConfigured("saved-plan", null, any<String>()) }
+    }
+
+    @Test
+    fun `queued retries reuse the same job checkpoint and distinct nodes remain independent`(): Unit = runBlocking {
+        coEvery { service.captureConfigured("saved-plan", any<OffsetDateTime>(), any<String>()) } returns manifest
+        val invocation = UUID.random()
+        val job = mockk<Job> { every { getId() } returns invocation }
+        withContext(mockk<JobQueue>().asCoroutineContext(job)) {
+            repeat(2) { ObjectBackupCaptureNode("capture").run(context(), inputs()) }
+            ObjectBackupCaptureNode("other").run(context(), inputs())
+        }
+        val checkpoint = objectBackupIdentity(ObjectBackupOperation.BACKUP, listOf(invocation.toString(), "capture"))
+        val other = objectBackupIdentity(ObjectBackupOperation.BACKUP, listOf(invocation.toString(), "other"))
+        coVerify(exactly = 2) { service.captureConfigured("saved-plan", null, checkpoint) }
+        coVerify(exactly = 1) { service.captureConfigured("saved-plan", null, other) }
+        coVerify(exactly = 0) { service.captureConfigured("saved-plan", null) }
     }
 
     @Test

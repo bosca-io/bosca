@@ -164,19 +164,28 @@ class ObjectBackupCaptureServiceImpl(
         key: String,
         configurations: Map<String, StorageConfiguration>,
         verifiedSince: OffsetDateTime?,
+        checkpointKey: String?,
     ): ObjectBackupManifest {
         val captured = configurations.toMap()
-        return captureConfiguredPlan(key, verifiedSince) { _, _ -> captured }
+        return captureConfiguredPlan(key, verifiedSince, checkpointKey) { _, _ -> captured }
     }
 
-    override suspend fun captureConfigured(key: String, verifiedSince: OffsetDateTime?): ObjectBackupManifest =
-        captureConfiguredPlan(key, verifiedSince) { addresses, keys -> addresses.configurations(keys) }
+    override suspend fun captureConfigured(
+        key: String,
+        verifiedSince: OffsetDateTime?,
+        checkpointKey: String?,
+    ): ObjectBackupManifest =
+        captureConfiguredPlan(key, verifiedSince, checkpointKey) { addresses, keys -> addresses.configurations(keys) }
 
     private suspend fun captureConfiguredPlan(
         key: String,
         verifiedSince: OffsetDateTime?,
+        checkpointKey: String?,
         configurations: suspend (ObjectBackupStorageService, Set<String>) -> Map<String, StorageConfiguration>,
     ): ObjectBackupManifest {
+        require(checkpointKey == null || checkpointKey.isNotBlank() && ':' !in checkpointKey) {
+            "Job checkpoint identity must be nonblank and contain no colon"
+        }
         check(connectionOrNull()?.inTransaction != true) {
             "Configured capture must run outside an active database transaction"
         }
@@ -191,7 +200,8 @@ class ObjectBackupCaptureServiceImpl(
         val selected = required.associateWith { storageKey ->
             requireNotNull(available[storageKey]) { "Missing storage configuration: $storageKey" }
         }
-        val token = UUID.randomUUID().toString()
+        val attempt = UUID.randomUUID().toString()
+        val token = checkpointKey?.let { "$it:$attempt" } ?: attempt
         var acquired = false
         var failure: Throwable? = null
         try {
@@ -199,9 +209,13 @@ class ObjectBackupCaptureServiceImpl(
             withContext(NonCancellable) {
                 withConnectionManager {
                     transaction {
-                        if (repository.claimWriter(key, mapping.backupKey, token) != 1) {
+                        val claimed = repository.claimWriter(key, mapping.backupKey, token) == 1
+                        val resumed = !claimed && checkpointKey != null &&
+                            repository.resumeWriter(key, mapping.backupKey, checkpointKey, token) == 1
+                        if (!claimed && !resumed) {
                             throw ObjectBackupDestinationBusyException(mapping.backupKey)
                         }
+                        if (checkpointKey != null) resumeCheckpoints(plan)
                     }
                 }
                 acquired = true
@@ -226,6 +240,20 @@ class ObjectBackupCaptureServiceImpl(
                 } catch (releaseFailure: Throwable) {
                     if (failure == null) throw releaseFailure
                     if (failure !== releaseFailure) failure.addSuppressed(releaseFailure)
+                }
+            }
+        }
+    }
+
+    private suspend fun resumeCheckpoints(plan: ObjectBackupCapturePlan) {
+        for ((store, entries) in plan.inventory.stores) {
+            for (entry in entries) {
+                val progress = progressService.get(
+                    ObjectBackupOperation.BACKUP, plan.inventory.sourceId, plan.destinationId,
+                    plan.inventory.scope, store, entry.key, captureRevision(entry),
+                ) ?: continue
+                if (progress.status == ObjectBackupProgressStatus.RUNNING) {
+                    progressService.fail(progress.key, progress.version, "Resuming interrupted backup job capture")
                 }
             }
         }

@@ -2,6 +2,8 @@ package bosca.backup.pipeline
 
 import bosca.backup.ObjectBackupCaptureService
 import bosca.backup.ObjectBackupManifest
+import bosca.backup.ObjectBackupOperation
+import bosca.backup.objectBackupIdentity
 import bosca.di.provide
 import bosca.pipelines.PipelineContext
 import bosca.pipelines.annotation.InputSlot
@@ -14,6 +16,7 @@ import bosca.pipelines.node.NodeInputs
 import bosca.pipelines.node.NodePosition
 import bosca.pipelines.node.PipelineValue
 import bosca.security.service.GroupEvaluator
+import bosca.sharedqueue.jobs.jobOrNull
 import java.time.OffsetDateTime
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -59,8 +62,11 @@ class ObjectBackupCaptureNode(
         val input = ObjectBackupCaptureNodeSerializer.deserialize(context, inputs)
         require(input.planKey.isNotBlank()) { "Capture plan key is required" }
         val verifiedSince = input.verifiedSince?.let(OffsetDateTime::parse)
+        val checkpointKey = jobOrNull()?.getId()?.let {
+            objectBackupIdentity(ObjectBackupOperation.BACKUP, listOf(it.toString(), id))
+        }
         val manifest = deferBusyBackupDestination {
-            provide<ObjectBackupCaptureService>().captureConfigured(input.planKey, verifiedSince)
+            provide<ObjectBackupCaptureService>().captureConfigured(input.planKey, verifiedSince, checkpointKey)
         }
         return ObjectBackupCaptureNodeSerializer.serialize(manifest)
     }

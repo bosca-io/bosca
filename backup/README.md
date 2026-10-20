@@ -43,7 +43,10 @@ and connect its manifest output to Output. Its optional `verifiedSince` input ov
 the checksum recheck setting; it can remain unconnected.
 
 Each new backing job creates a distinct inventory and manifest. Retries of that job reuse
-its saved selection after worker restart. A changed unversioned object that has not yet been
+its saved selection and configured capture claim after worker restart. Completed object
+checkpoints keep their verified payloads; interrupted repairs retry from their saved intent.
+Other jobs continue to wait on that destination through the existing queue retry path.
+A changed unversioned object that has not yet been
 copied fails that selection; a new run observes its current contents.
 Discovery uses offset listing and per-object metadata requests without downloading asset
 bodies. Capture reads only new, changed or unfinished source objects; verified unchanged

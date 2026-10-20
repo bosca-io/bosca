@@ -48,20 +48,32 @@ interface ObjectBackupCaptureService : Service {
      * failure or cancellation. Unrelated configurations are ignored; credentials are not persisted.
      * Holds a token-fenced destination claim, shared with configured backup and restore runs,
      * from before the first store opens until all stores close. Contention fails before asset I/O.
-     * Claims survive a process crash; recover only a stopped writer through [releaseWriter].
+     * Without [checkpointKey], claims survive a process crash and need stopped-writer
+     * recovery through [releaseWriter].
      * Requires no active caller transaction, stable storage accounts, readable selected sources
      * and exclusion of writers outside this progress database. [verifiedSince] remains an
      * explicit execution-time cutoff. A failed ownership release is loud and preserves the claim;
      * if capture also failed, the release failure is suppressed on that original failure.
+     * A queued job may supply its stable [checkpointKey] to resume its own interrupted capture.
+     * The caller serializes deliveries of that job. Completed object checkpoints are retained;
+     * unfinished selected checkpoints are retried. Another job's claim is never resumed.
      */
     suspend fun captureConfigured(
         key: String,
         configurations: Map<String, StorageConfiguration>,
         verifiedSince: OffsetDateTime?,
+        checkpointKey: String? = null,
     ): ObjectBackupManifest
 
-    /** Uses only saved IDs from backup.objectStores with the same scoped storage/capture contracts. */
-    suspend fun captureConfigured(key: String, verifiedSince: OffsetDateTime?): ObjectBackupManifest
+    /**
+     * Uses saved IDs from backup.objectStores with the same scoped storage/capture contracts.
+     * Queued deliveries reuse [checkpointKey] to resume their saved capture and object progress.
+     */
+    suspend fun captureConfigured(
+        key: String,
+        verifiedSince: OffsetDateTime?,
+        checkpointKey: String? = null,
+    ): ObjectBackupManifest
 
     /**
      * Records a canonical selected inventory and output intent in the caller's database context.
