@@ -1,0 +1,38 @@
+<component tag="navigation-example">
+  <prop name="id" type="String" required />
+  <script server provides="navigation" scope="server-session">bosca.design.catalog.CatalogNavigation(id)</script>
+  <island name="navigation" :key="id">
+    <div class="catalog-stack" :data-catalog-navigation="navigation.id">
+      <if navigation.visible>
+        <div class="catalog-route-host" :data-narrow="navigation.narrow" :data-navigation-host="navigation.id">
+          <tabs label="Catalog destinations" :items="navigation.items()"
+                :data-bml-preserve='"catalog-routes-" + navigation.id + "-" + navigation.revision'
+                :data-navigation-tabs="navigation.id">
+            <button size="sm" @click="navigation.refresh" :data-navigation-action="navigation.id">Refresh</button>
+          </tabs>
+        </div>
+      </if>
+      <p class="example-note">Destinations are native links. More contains links that do not fit beside the current item and the projected action.</p>
+      <details data-example-states>
+        <disclosure-heading>Example states</disclosure-heading>
+        <div class="catalog-stack navigation-state-options">
+          <switch label="Narrow the container" :checked="navigation.narrow" @change="navigation.toggleNarrow" :data-navigation-narrow="navigation.id" />
+          <switch label="Use a long current label" :checked="navigation.longLabel" @change="navigation.toggleLong" :data-navigation-long="navigation.id" />
+          <switch label="Show navigation" :checked="navigation.visible" @change="navigation.toggleVisible" :data-navigation-visible="navigation.id" />
+          <div class="example-actions">
+            <button @click="navigation.changeCurrent" :disabled="!navigation.visible" :data-navigation-current="navigation.id">Change selected destination</button>
+            <button @click="navigation.replace" :disabled="!navigation.visible" :data-navigation-replace="navigation.id">Replace destinations</button>
+            <button @click="navigation.refresh" :data-navigation-refresh="navigation.id">Refresh example</button>
+          </div>
+          <p class="example-note">Refresh keeps the open menu and focused link. Changing items changes the preservation key. The selected flag belongs to this example; following a link navigates normally.</p>
+        </div>
+      </details>
+      <toast :id='"navigation-notice-" + navigation.id' :message="navigation.notice" :sequence="navigation.noticeSequence"
+             tone="info" :data-navigation-toast="navigation.id" />
+    </div>
+  </island>
+  <script client scoped>
+    import { retainDisclosure } from "@client/catalog-disclosure";
+    retainDisclosure(ctx);
+  </script>
+</component>

@@ -53,6 +53,14 @@
 .local-choice-state-options { margin-top: 16px; }
 .views-state-options { margin-top: 16px; }
 .tree-state-options { margin-top: 16px; }
+.navigation-state-options { margin-top: 16px; }
+.catalog-route-host { width: 100%; min-width: 0; }
+.catalog-route-host[data-narrow] { max-width: 420px; }
+.catalog-route-host > nav.tabs, .catalog-route-case > nav.tabs { margin-bottom: 0; }
+.catalog-route-host > nav.tabs > button { align-self: center; }
+.catalog-route-clip { max-width: 100%; min-width: 0; }
+.catalog-route-clip:has([data-tabs-enhanced]) { height: 44px; overflow: hidden; }
+.catalog-route-header { padding: 22px; min-width: 0; border: 1px solid var(--line); border-radius: var(--r-sm); }
 .catalog-tree-frame { height: 260px; min-width: 0; overflow: hidden; border: 1px solid var(--line); border-radius: var(--r-sm); }
 .catalog-view-panel { min-width: 0; }
 .catalog-view-panel:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
@@ -179,3 +187,5 @@ code { font-family: var(--font-mono); }
   .reference-demo { padding: 16px; }
   .reference-index { columns: 1; }
 }
+
+@media (max-width: 600px) { .catalog-route-header { padding: 22px 16px; } }

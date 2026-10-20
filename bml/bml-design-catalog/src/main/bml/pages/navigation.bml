@@ -1,0 +1,20 @@
+<page route="/navigation">
+  <script server provides="examples">bosca.design.catalog.CatalogNavigation.examples()</script>
+  <catalog-document title="Route navigation" description="Native destinations, overflow menus and caller-owned current items." current="/navigation">
+    <p class="page-intro">Open More to explore destinations that do not fit. Compare wide and narrow containers, change the current item and try long labels. Each palette keeps its own example state.</p>
+    <div class="catalog-palette-dark" data-navigation-palette="dark"><card title="Dark palette"><navigation-example id="dark" /></card></div>
+    <div class="catalog-palette-light" data-navigation-palette="light"><card title="Light palette"><navigation-example id="light" /></card></div>
+    <div class="catalog-grid" data-navigation-cases>
+      <card title="Empty navigation"><div class="catalog-stack catalog-route-case"><tabs label="Empty destinations" :items="emptyList()" data-navigation-empty /><p class="example-note">An empty list has no link or More action.</p></div></card>
+      <card title="Short navigation"><div class="catalog-stack catalog-route-case"><tabs label="Short destinations" :items='listOf(bosca.design.model.NavigationItem("Foundation", "/foundation", true), bosca.design.model.NavigationItem("Components", "/components", false))' data-navigation-short /><p class="example-note">When every destination fits, More stays hidden.</p></div></card>
+      <card title="No current item"><div class="catalog-stack catalog-route-case"><tabs label="Unselected destinations" :items="examples.map { it.copy(selected = false) }" data-navigation-unselected /><p class="example-note">The application can supply a list without a current destination.</p></div></card>
+      <card title="Long current item"><div class="catalog-stack catalog-route-case"><tabs label="Long current destination" :items='examples.map { if (it.selected) it.copy(label = "A deliberately long current destination with its full accessible name") else it }' data-navigation-long-case /><p class="example-note">The current link remains in the row and truncates visually when needed.</p></div></card>
+      <card title="Clipped ancestor"><div class="catalog-stack catalog-route-case"><div class="catalog-route-clip"><tabs label="Clipped destinations" :items="examples" data-navigation-clipped /></div><p class="example-note">The enhanced native popover can escape this clipped container. Without scripts, every link remains in the scrolling row.</p></div></card>
+      <card title="Header spacing"><div class="catalog-stack"><div class="catalog-route-header"><tabs label="Header destinations" :items="examples" header data-navigation-header /><p class="catalog-description">The header variant spans the container gutters.</p></div><p class="example-note">Header gutters are 22px, and 16px below 600px.</p></div></card>
+    </div>
+    <card title="Use in your application"><div class="catalog-stack">
+      <p class="catalog-description">Supply NavigationItem labels, destinations and current flags. Use a stable key for an unchanged list, and change it when replacing items or projected actions. The library fits and presents links; the application owns routes and page state.</p>
+      <a class="catalog-link" href="/components/layout#ref-tabs">Route tabs API and complete authoring</a>
+    </div></card>
+  </catalog-document>
+</page>

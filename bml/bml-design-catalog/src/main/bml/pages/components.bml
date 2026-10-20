@@ -1,6 +1,6 @@
 <page route="/components">
   <catalog-document title="Components" description="Public APIs and rendered examples for all 41 library exports." current="/components">
-    <p class="overview-intro">Import the library once. Use short component names throughout your application, then set colors in your own CSS.</p>
+    <p class="page-intro">Import the library once. Use short component names throughout your application, then set colors in your own CSS.</p>
     <pre class="code-sample"><code>&lt;import library="io.bosca:bml-design" /&gt;</code></pre>
     <div class="catalog-grid">
       <card title="Controls">

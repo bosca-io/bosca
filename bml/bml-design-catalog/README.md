@@ -22,6 +22,7 @@ Open `http://localhost:9093/`. Pass another port with `--args=9094` if needed.
 | `/overlays` | Independent modal forms, retained drafts, rejected confirmations, popover forms and menus, sizes and trigger variants |
 | `/json` | Independent dark/light JSON drafts, retained engine state, pending/rejected saves, native reset, controlled options and tree/text/table/empty/invalid/readonly/disabled variants |
 | `/source` | Independent dark/light source viewers, requested lines, language/wrap changes, preserved state, content replacement and compact/bare/empty layouts |
+| `/navigation` | Native route destinations, retained overflow menus, projected actions, changing/current/long lists, clipping and header spacing in two palettes |
 | `/trees` | Local file disclosure, server-loaded children, failed-load retry, retained scroll/focus, disabled folders and native links in two palettes |
 | `/views` | Search queries, native category values and caller-owned tab panels, retained drafts, rejected searches, changing tab lists and long/empty/readonly/disabled variants |
 | `/choices` | Local required/custom choices, multiple native values, tag limits, loading/disabled controls and controlled defaults in two palettes |
@@ -75,6 +76,15 @@ own preserved native state. Replace defaults changes all three keys; ordinary re
 DOM, selection, query/caret/focus and popup state. Controls can change required/custom/disabled/loading
 state and tag limits. Static cases cover empty, compact, loading, disabled, long labels and tag limits.
 Both local and server-paged compositions are shown in the select authoring reference.
+
+The `/navigation` page gives each palette a full-width route example with an optional narrow
+container. The application supplies public `NavigationItem` values and revision keys. Refresh uses
+a toast and retains the open menu, focused link and unchanged DOM; changing current flags, labels
+or destinations changes the key. A projected refresh action keeps its pending footprint. Wide
+containers can show every destination, while narrow containers retain the current link beside More.
+Static cases cover empty/short/unselected lists, long current labels, clipping and header gutters.
+Every link points to an actual catalog page or reference anchor. The tabs reference includes the
+complete local composition. Component-index and example page introductions use the same typography.
 
 The `/trees` examples supply local component links and a separately loaded folder in each palette.
 The application owns paths, selected files, loading, rejection and toast sequences. Local trees keep
@@ -196,6 +206,13 @@ rejected loading and retry, pending geometry/busy state, entry into newly loaded
 continuity outside the tree, local key changes, native destinations and repeated disposal. Both
 widths check 30px rows, 16px composition gaps, contained scroll, wrapped/deep names, palette contrast
 and script-disabled keyboard-reachable links.
+Route-navigation checks cover native links and current flags, unique overflow relationships,
+keyboard and Tab dismissal, outside focus, retained popup/link focus through surrounding and
+projected actions, pending geometry, focus following a destination into the visible row, list/key
+changes, long labels, repeated listener/observer disposal and native overflow navigation. Desktop,
+phone and short-screen checks measure row fit, 16px spacing, header gutters, popup bounds, clipped
+ancestors and text contrast. Script-disabled checks retain all native scrolling links. Browser
+checks also compare computed description and introduction typography on Components and Selection.
 No authenticated product session is used. Runtime failures use the application's
 console logging backend and are included in integration-test diagnostics.
 
