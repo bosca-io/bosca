@@ -19,7 +19,7 @@ class ObjectBackupTransfer(
     /**
      * Copies a fixed inventory in order, preparing every object's progress before byte transfer.
      *
-     * The caller pins all source revisions and owns exclusive writer access to every payload
+     * The caller supplies exact source lengths/digests and owns exclusive writer access to every payload
      * path for the operation. Failure or cancellation propagates, leaving unstarted items pending.
      * Repeated inventories reuse verified output. This method does not publish a manifest.
      */
@@ -61,7 +61,7 @@ class ObjectBackupTransfer(
      *
      * The caller owns exclusive writer access to [BackupObject.payloadPath], including other
      * scopes referencing that path, and must establish that any previous writer has stopped
-     * before invoking this method. Source revision pinning follows the ordinary [copy] contract.
+     * before invoking this method. Source bytes must match the ordinary [copy] contract.
      * Invoke outside an active database transaction so storage I/O does not retain its connection.
      *
      * Completed output is verified before reuse. Missing or mismatching output is invalidated
@@ -148,7 +148,7 @@ class ObjectBackupTransfer(
     /**
      * Streams a declared source revision and verifies its persisted destination before returning.
      *
-     * The caller configures source storage by [BackupObject.store], pins the source revision,
+     * The caller configures source storage by [BackupObject.store], supplies its expected bytes,
      * and serializes writes to the immutable destination [BackupObject.payloadPath]. Existing
      * verified output is reused without opening the source. Missing or mismatching output is
      * copied and verified; other storage errors and cancellation propagate.

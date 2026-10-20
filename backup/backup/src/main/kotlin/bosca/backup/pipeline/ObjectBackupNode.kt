@@ -34,7 +34,7 @@ import kotlinx.serialization.json.put
 @PipelineNodeType(
     category = NodeCategory.ACTION,
     label = "Back Up Object Storage",
-    description = "Discover configured object prefixes and incrementally retain their selected revisions.",
+    description = "Copy new and changed objects from configured source prefixes to backup storage.",
     group = "Backups",
     subgroup = "Objects",
     inputs = [

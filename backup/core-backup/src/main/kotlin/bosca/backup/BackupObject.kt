@@ -3,11 +3,13 @@ package bosca.backup
 import kotlinx.serialization.Serializable
 
 /**
- * An exact source object revision and the verified payload retained in backup storage.
+ * A source object selection and the verified payload retained in backup storage.
  *
- * [store] identifies a logical source namespace and [key] is its object key. [revision] must
- * identify the same source bytes for the lifetime of the capture. [sha256] is the lowercase
- * digest of the entire payload, and [payloadPath] is its retained destination object key.
+ * [store] identifies a logical source namespace and [key] is its existing object key.
+ * [revision] is the backup checkpoint's change identity, derived from observed source metadata
+ * or a selected provider version. An observation does not freeze an unversioned source.
+ * [sha256] and [length] identify the captured bytes independently of source metadata;
+ * [payloadPath] is their retained destination object key.
  */
 @Serializable
 data class BackupObject(

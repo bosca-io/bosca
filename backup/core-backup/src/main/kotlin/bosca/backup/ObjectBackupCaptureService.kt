@@ -6,16 +6,17 @@ import bosca.storage.service.ObjectStorageEntry
 import bosca.storage.service.ObjectStorageService
 import java.time.OffsetDateTime
 
-/** Creates verified retained payloads from explicitly selected provider revisions. */
+/** Captures selected source objects into independent storage without requiring provider versioning. */
 interface ObjectBackupCaptureService : Service {
     /**
-     * Observes configured source prefixes using listings and metadata-only exact revision lookup,
+     * Observes configured source prefixes using listings and metadata-only lookups,
      * then atomically saves the selected inventory and storage mapping. Matching retries return
      * the saved selection without rediscovery; changed intent fails. Partial discovery never
      * publishes a plan. Requires no active caller transaction and independent retained storage.
      * Source writes continue, so this is an observation over time, not a closed database snapshot.
-     * Providers must expose retained versions and preserve them until capture finishes; missing
-     * or unsupported revisions fail rather than substituting current bytes.
+     * Unversioned selections require an entity tag or modification time. Capture checks those
+     * observations before and after reading current bytes. Selected provider versions, when
+     * available, are read directly. Missing or changed source objects fail capture.
      */
     suspend fun discoverConfigured(request: ObjectBackupDiscoveryRequest): ObjectBackupCapturePlan
 
@@ -48,7 +49,7 @@ interface ObjectBackupCaptureService : Service {
      * Holds a token-fenced destination claim, shared with configured backup and restore runs,
      * from before the first store opens until all stores close. Contention fails before asset I/O.
      * Claims survive a process crash; recover only a stopped writer through [releaseWriter].
-     * Requires no active caller transaction, stable storage accounts, retained source versions
+     * Requires no active caller transaction, stable storage accounts, readable selected sources
      * and exclusion of writers outside this progress database. [verifiedSince] remains an
      * explicit execution-time cutoff. A failed ownership release is loud and preserves the claim;
      * if capture also failed, the release failure is suppressed on that original failure.
@@ -100,16 +101,17 @@ interface ObjectBackupCaptureService : Service {
     ): ObjectBackupManifest
 
     /**
-     * Captures all explicitly selected revisions and publishes their verified portable manifest.
+     * Captures all selected objects and publishes their verified portable manifest.
      *
      * Snapshots and validates [inventory] and required [sources] before asset I/O. Results are
-     * ordered by logical store, key and provider revision. Completed entries survive partial
+     * ordered by logical store, key and optional provider version. Completed entries survive partial
      * failure/restart and reuse their recorded paths. Unknown revisions use new paths under
      * [payloadPrefix]; the caller owns [manifestPath] and independent [destination] storage.
      * [verifiedSince] applies to both capture reuse and publication; null forces full checks.
      *
-     * Source revisions must remain readable. Requires stable source/destination identities,
-     * exclusive writers and no active caller transaction. No source writes are paused. This
+     * Unversioned sources must still match their saved observations when read; a changed or
+     * missing source fails rather than substituting different content. Requires stable source and
+     * destination identities, exclusive writers and no active caller transaction. No source writes are paused. This
      * neither discovers a closed snapshot, persists initial unknown-digest intent, establishes
      * database recovery coverage nor schedules later captures. Supplied stores remain caller-owned.
      */
@@ -129,7 +131,8 @@ interface ObjectBackupCaptureService : Service {
      * Uses stable [sourceId], [destinationId] and [scope] identities. Known revisions retain their
      * recorded payload path, even if a different new [payloadPath] is proposed. Completed bytes
      * are verified without opening the source; missing/corrupt known output is repaired from the
-     * selected provider version against the recorded digest. A running checkpoint is rejected;
+     * selected source against the recorded digest. Unversioned repair also checks the saved
+     * source observation before and after transfer. A running checkpoint is rejected;
      * the caller must establish that its writer stopped before recording failure and retrying.
      *
      * New captures use [capture] and atomically record completion after verification. A failed
@@ -154,18 +157,20 @@ interface ObjectBackupCaptureService : Service {
     ): ObjectBackupProgress
 
     /**
-     * Captures [entry]'s retained provider version and returns a manifest-ready [BackupObject].
+     * Captures [entry] through its existing object key and returns a manifest-ready [BackupObject].
      *
      * Derives the SHA-256 digest while streaming, checks the exact declared length and EOF,
-     * then verifies retained bytes before acknowledging the entry. Requires a nonblank logical
-     * [store] and provider version, and canonical relative object key and [payloadPath]. Existing
-     * output is rejected before opening the source. No current-content fallback is permitted.
+     * then verifies retained bytes before acknowledging the entry. Unversioned objects are read
+     * normally, checking their selected length, entity tag and modification time before and after
+     * copying. These observations detect reported changes; they do not freeze source bytes or
+     * establish an atomic snapshot. A selected provider version is read directly when available.
+     * Requires a nonblank logical [store], source change metadata, and canonical relative object
+     * key and [payloadPath]. Existing output is rejected before opening the source.
      *
      * The caller owns independent immutable backup storage, exclusive writers and a unique new
-     * payload path, including when separate services address the same backend. Provider retention
-     * must keep the selected revision readable. This method neither reserves destinations globally
-     * nor associates object revisions with database references. Invoke outside an active database
-     * transaction. Blocking I/O runs on the storage dispatcher; supplied stores remain caller-owned.
+     * payload path, including when separate services address the same backend. This method neither
+     * reserves destinations globally nor associates objects with database references. Invoke outside
+     * an active database transaction. Blocking I/O runs on the storage dispatcher; supplied stores remain caller-owned.
      *
      * Failure or cancellation attempts to delete newly attempted output while preserving the
      * original failure and attaching cleanup failures, including output remaining after deletion.

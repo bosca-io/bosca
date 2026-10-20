@@ -19,7 +19,7 @@ import kotlinx.serialization.json.Json
 import java.time.OffsetDateTime
 import java.util.UUID
 
-/** Streams a selected retained revision into new independent backup storage and verifies it. */
+/** Streams selected source objects into independent backup storage and verifies the retained bytes. */
 @ServiceImplementation
 class ObjectBackupCaptureServiceImpl(
     private val progressService: ObjectBackupProgressService,
@@ -80,9 +80,7 @@ class ObjectBackupCaptureServiceImpl(
                         }
                         previous = entry.key
                         val observedEntry = ObjectStorageEntry(entry.key, storage.getObjectInfo(StringObjectPath(entry.key)))
-                        require(!observedEntry.info.version.isNullOrBlank() && observedEntry.info.version != "null") {
-                            "A retained provider object version is required: ${entry.key}"
-                        }
+                        captureRevision(observedEntry)
                         entries.add(observedEntry)
                     }
                     offset = Math.addExact(offset, page.size.toLong())
@@ -318,7 +316,7 @@ class ObjectBackupCaptureServiceImpl(
             for ((store, entry) in entries) {
                 val known = progressService.get(
                     ObjectBackupOperation.BACKUP, selected.sourceId, destinationId, selected.scope,
-                    store, entry.key, requireNotNull(entry.info.version),
+                    store, entry.key, captureRevision(entry),
                 ) ?: continue
                 check(known.status != ObjectBackupProgressStatus.RUNNING) {
                     "Object capture is already running: ${known.key}"
@@ -359,9 +357,9 @@ class ObjectBackupCaptureServiceImpl(
         require(sourceId.isNotBlank() && destinationId.isNotBlank() && scope.isNotBlank()) {
             "Object capture source, destination and scope identities are required"
         }
-        val version = validateCapture(store, entry, source, destination, payloadPath)
+        val revision = validateCapture(store, entry, source, destination, payloadPath)
         val known = withConnectionManager {
-            progressService.get(ObjectBackupOperation.BACKUP, sourceId, destinationId, scope, store, entry.key, version)
+            progressService.get(ObjectBackupOperation.BACKUP, sourceId, destinationId, scope, store, entry.key, revision)
         }
         if (known == null) {
             val (captured, objectVersion) = capturePayload(store, entry, source, destination, payloadPath)
@@ -415,10 +413,14 @@ class ObjectBackupCaptureServiceImpl(
         }
         val running = withConnectionManager { progressService.start(pending.key, pending.version) }
         return try {
-            ObjectBackupTransfer(mapOf(store to source), destination).copyVersion(known.payload, version)
+            withContext(StorageDispatcher) { verifySourceObservation(entry, source) }
+            val transfer = ObjectBackupTransfer(mapOf(store to source), destination)
+            val version = retainedVersion(entry)
+            if (version == null) transfer.copy(known.payload) else transfer.copyVersion(known.payload, version)
             val objectVersion = withContext(StorageDispatcher) {
                 val observed = destination.observeBackupPayload(known.payload)
                 destination.verifyBackupPayload(known.payload, observed)
+                verifySourceObservation(entry, source)
                 observed.version
             }
             currentCoroutineContext().ensureActive()
@@ -455,7 +457,7 @@ class ObjectBackupCaptureServiceImpl(
         destination: ObjectStorageService,
         payloadPath: String,
     ): Pair<BackupObject, String?> {
-        val version = validateCapture(store, entry, source, destination, payloadPath)
+        val revision = validateCapture(store, entry, source, destination, payloadPath)
         val path = StringObjectPath(payloadPath)
         var writeStarted = false
         try {
@@ -468,8 +470,11 @@ class ObjectBackupCaptureServiceImpl(
                 }
                 check(!exists) { "Object capture payload already exists: $payloadPath" }
                 currentCoroutineContext().ensureActive()
+                verifySourceObservation(entry, source)
+                val sourcePath = StringObjectPath(entry.key)
+                val version = retainedVersion(entry)
                 val input = BackupPayloadInputStream(
-                    source.getInputStream(StringObjectPath(entry.key), version),
+                    if (version == null) source.getInputStream(sourcePath) else source.getInputStream(sourcePath, version),
                     entry.info.length,
                     payloadPath,
                     currentCoroutineContext(),
@@ -484,10 +489,11 @@ class ObjectBackupCaptureServiceImpl(
                     }
                     digest
                 }
-                val captured = BackupObject(store, entry.key, version, entry.info.length, sha256, payloadPath)
+                val captured = BackupObject(store, entry.key, revision, entry.info.length, sha256, payloadPath)
                 captured.validate()
                 val observed = destination.observeBackupPayload(captured)
                 destination.verifyBackupPayload(captured, observed)
+                verifySourceObservation(entry, source)
                 currentCoroutineContext().ensureActive()
                 captured to observed.version
             }
@@ -537,9 +543,7 @@ class ObjectBackupCaptureServiceImpl(
         payloadPath: String,
     ): String {
         require(store.isNotBlank() && entry.key.isNotBlank()) { "Object store and key are required" }
-        val version = requireNotNull(entry.info.version?.takeIf { it.isNotBlank() }) {
-            "A retained provider object version is required"
-        }
+        val revision = captureRevision(entry)
         require(entry.key.split('/').all { it.isNotEmpty() && it != "." && it != ".." }) {
             "Invalid capture object key: ${entry.key}"
         }
@@ -551,7 +555,28 @@ class ObjectBackupCaptureServiceImpl(
             "Object capture must run outside an active database transaction"
         }
 
-        return version
+        return revision
+    }
+
+    private fun retainedVersion(entry: ObjectStorageEntry): String? =
+        entry.info.version?.takeIf { it.isNotBlank() && it != "null" }
+
+    private fun captureRevision(entry: ObjectStorageEntry): String {
+        retainedVersion(entry)?.let { return it }
+        val etag = entry.info.etag?.takeIf { it.isNotBlank() }.orEmpty()
+        val modified = entry.info.modified?.toInstant()?.toString().orEmpty()
+        require(etag.isNotEmpty() || modified.isNotEmpty()) { "Source change metadata is required: ${entry.key}" }
+        return "observation:" + objectBackupIdentity(
+            ObjectBackupOperation.BACKUP, listOf(entry.info.length.toString(), etag, modified),
+        )
+    }
+
+    private suspend fun verifySourceObservation(entry: ObjectStorageEntry, source: ObjectStorageService) {
+        if (retainedVersion(entry) != null) return
+        val current = source.getObjectInfo(StringObjectPath(entry.key))
+        if (captureRevision(entry.copy(info = current)) != captureRevision(entry)) {
+            throw BackupPayloadMismatchException("Source object changed after selection: ${entry.key}")
+        }
     }
 
     private companion object {

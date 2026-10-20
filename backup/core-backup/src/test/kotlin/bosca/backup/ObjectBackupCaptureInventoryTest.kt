@@ -2,12 +2,17 @@ package bosca.backup
 
 import bosca.storage.service.ObjectStorageEntry
 import bosca.storage.service.ObjectStorageInfo
+import bosca.serialization.OffsetDateTimeSerializer
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.modules.SerializersModule
+import kotlinx.serialization.modules.contextual
+import java.time.OffsetDateTime
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 
 class ObjectBackupCaptureInventoryTest {
+    private val json = Json { serializersModule = SerializersModule { contextual(OffsetDateTimeSerializer()) } }
     private val entry = ObjectStorageEntry("metadata/item/content", ObjectStorageInfo(4, version = "provider-v1"))
     private val inventory = ObjectBackupCaptureInventory(
         "selected", "source", "content", "2026-10-18T00:00:00Z", mapOf("content" to listOf(entry)),
@@ -15,8 +20,8 @@ class ObjectBackupCaptureInventoryTest {
 
     @Test
     fun `selected provider inventory round trips with an explicit serializer`() {
-        val encoded = Json.encodeToString(ObjectBackupCaptureInventory.serializer(), inventory)
-        val decoded = Json.decodeFromString(ObjectBackupCaptureInventory.serializer(), encoded)
+        val encoded = json.encodeToString(ObjectBackupCaptureInventory.serializer(), inventory)
+        val decoded = json.decodeFromString(ObjectBackupCaptureInventory.serializer(), encoded)
         decoded.validate()
         assertEquals(inventory, decoded)
     }
@@ -40,11 +45,26 @@ class ObjectBackupCaptureInventoryTest {
     }
 
     @Test
-    fun `every selected object needs a retained provider version`() {
+    fun `selected objects without a provider version need source change metadata`() {
         for (version in listOf(null, "", " ", "null")) {
             assertFailsWith<IllegalArgumentException> {
                 inventory.copy(stores = mapOf("content" to listOf(entry.copy(info = entry.info.copy(version = version))))).validate()
             }
+        }
+    }
+
+    @Test
+    fun `unversioned selections round trip using ordinary object change metadata`() {
+        for (info in listOf(
+            ObjectStorageInfo(4, etag = "opaque-tag"),
+            ObjectStorageInfo(4, modified = OffsetDateTime.parse("2026-10-20T00:00:00Z")),
+            ObjectStorageInfo(4, etag = "opaque-tag", version = "null"),
+        )) {
+            val selected = inventory.copy(stores = mapOf("content" to listOf(entry.copy(info = info))))
+            val decoded = json.decodeFromString(ObjectBackupCaptureInventory.serializer(),
+                json.encodeToString(ObjectBackupCaptureInventory.serializer(), selected))
+            decoded.validate()
+            assertEquals(selected, decoded)
         }
     }
 

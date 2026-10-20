@@ -122,6 +122,7 @@ class ObjectBackupCapturePipelineIntegrationTest {
     private val signatures = CopyOnWriteArrayList<String>()
     private val discoveryRequests = CopyOnWriteArrayList<String>()
     private var currentVersion = "v1"
+    private var unversioned = false
     private val restoreWrites = CopyOnWriteArrayList<String>()
     private var failedRestoreKey: String? = null
     private var denied = false
@@ -161,18 +162,23 @@ class ObjectBackupCapturePipelineIntegrationTest {
                 }
                 if (exchange.requestMethod == "HEAD") {
                     discoveryRequests.add("HEAD $key")
-                    exchange.responseHeaders.add("x-amz-version-id", if (key == "b") currentVersion else "v1")
+                    if (!unversioned) exchange.responseHeaders.add("x-amz-version-id", if (key == "b") currentVersion else "v1")
+                    exchange.responseHeaders.add("ETag", "\"opaque-$key-${if (key == "b") currentVersion else "v1"}\"")
                     exchange.responseHeaders.add("Content-Length", "4")
                     exchange.sendResponseHeaders(200, -1)
                     return@use
                 }
-                val version = query["versionId"]
-                requests.add("$key@$version")
+                val selectedVersion = query["versionId"]
+                val version = if (unversioned && selectedVersion == null) {
+                    if (key == "b") currentVersion else "v1"
+                } else selectedVersion
+                requests.add("$key@$selectedVersion")
                 signatures.add(exchange.requestHeaders.getFirst("Authorization").orEmpty())
-                val success = key != failedKey && version in setOf("v1", "v2") && key in setOf("a", "b")
+                val success = key != failedKey && version in setOf("v1", "v2") && key in setOf("a", "b") &&
+                    (!unversioned || selectedVersion == null)
                 val bytes = if (success) (if (version == "v2") "next" else if (key == "a") "data" else "more").toByteArray()
                     else "<Error><Code>AccessDenied</Code></Error>".toByteArray()
-                if (success) exchange.responseHeaders.add("x-amz-version-id", version)
+                if (success && !unversioned) exchange.responseHeaders.add("x-amz-version-id", version)
                 exchange.sendResponseHeaders(if (success) 200 else 403, bytes.size.toLong())
                 exchange.responseBody.write(bytes)
             }
@@ -372,6 +378,53 @@ class ObjectBackupCapturePipelineIntegrationTest {
     }
 
     @Test
+    fun `unversioned Pipeline copy retries unfinished content and restores after the source is offline`(): Unit = runBlocking {
+        unversioned = true
+        useDiscoveryPipeline()
+        failedKey = "b"
+        val initial = start()
+        executeNext()
+        val failed = failNext(retry = true)
+        assertEquals(listOf("a@null", "b@null"), requests.toList())
+        assertNull(get(initial.id).output)
+        failedKey = null
+        requests.clear()
+        install()
+        val retry = assertNotNull(queue.dequeue(40.seconds))
+        assertEquals(failed.first.getId(), retry.getId())
+        execute(retry)
+        assertEquals(PipelineRunStatus.OK, get(initial.id).status)
+        assertEquals(listOf("b@null"), requests.toList())
+        val first = json.decodeFromJsonElement(ObjectBackupManifest.serializer(), assertNotNull(get(initial.id).output))
+
+        suspend fun runBackup(): ObjectBackupManifest {
+            val run = start()
+            executeNext()
+            executeNext()
+            assertEquals(PipelineRunStatus.OK, get(run.id).status)
+            return json.decodeFromJsonElement(ObjectBackupManifest.serializer(), assertNotNull(get(run.id).output))
+        }
+        requests.clear()
+        assertEquals(first.objects, runBackup().objects)
+        assertTrue(requests.isEmpty())
+        currentVersion = "v2"
+        val later = runBackup()
+        assertEquals(listOf("b@null"), requests.toList())
+        assertEquals(first.objects.first(), later.objects.first())
+        assertTrue(first.objects.last().revision != later.objects.last().revision)
+        assertTrue(signatures.all { "Credential=PIPELINE_CAPTURE_KEY/" in it })
+        useRestorePipeline(later)
+        val restore = start("manifests/${later.id}.json")
+        executeNext()
+        executeNext()
+        assertEquals(PipelineRunStatus.OK, get(restore.id).status)
+        assertEquals("data", directory.resolve("restored/a").toFile().readText())
+        assertEquals("next", directory.resolve("restored/b").toFile().readText())
+        assertTrue(requests.isEmpty())
+        assertTrue(discoveryRequests.isEmpty())
+    }
+
+    @Test
     fun `discovery action retry reuses saved versions after restart and source mutation`(): Unit = runBlocking {
         useDiscoveryPipeline()
         failedKey = "b"
@@ -510,8 +563,8 @@ class ObjectBackupCapturePipelineIntegrationTest {
         provide<ObjectBackupRunService>().list(ObjectBackupOperation.RESTORE, selection.sourceId, "recovery-target", selection.scope, 0, 20).single()
     }
 
-    private suspend fun useRestorePipeline(): ObjectBackupManifest {
-        val captured = captures.captureConfigured(plan.key, null)
+    private suspend fun useRestorePipeline(previous: ObjectBackupManifest? = null): ObjectBackupManifest {
+        val captured = previous ?: captures.captureConfigured(plan.key, null)
         server.stop(0)
         val configurations = mapOf(
             "retained" to StorageConfiguration("fs", "", basePath = directory.resolve("retained").toString()),

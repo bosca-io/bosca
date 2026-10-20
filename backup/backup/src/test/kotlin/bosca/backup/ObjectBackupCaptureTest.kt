@@ -17,6 +17,7 @@ import java.io.IOException
 import java.io.InputStream
 import java.nio.file.Path
 import java.security.MessageDigest
+import java.time.OffsetDateTime
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.serialization.json.Json
 import kotlinx.coroutines.CancellationException
@@ -67,6 +68,65 @@ class ObjectBackupCaptureTest {
         coVerify(exactly = 0) { source.getInputStream(any()) }
         coVerify(exactly = 0) { source.getObjectInfo(any()) }
         verify(exactly = 0) { source.close() }
+    }
+
+    @Test
+    fun `captures an unversioned object through its existing key and hashes the actual bytes`() = runTest {
+        val entry = selected.copy(info = ObjectStorageInfo(bytes.size.toLong(), etag = "opaque-tag"))
+        coEvery { source.getObjectInfo(any()) } returns entry.info
+        coEvery { source.getInputStream(any()) } answers { stream(bytes) }
+        val result = capture(entry = entry)
+        assertEquals(entry.key, result.key)
+        assertEquals(sha256(bytes), result.sha256)
+        assertEquals(bytes.size.toLong(), result.length)
+        assertEquals(bytes.decodeToString(), retained.getString(StringObjectPath(payload)))
+        coVerify(exactly = 1) { source.getInputStream(match { it.toString() == entry.key }) }
+        coVerify(exactly = 0) { source.getInputStream(any(), any<String>()) }
+        coVerify(exactly = 2) { source.getObjectInfo(any()) }
+        assertTrue(closed.get())
+    }
+
+    @Test
+    fun `unversioned source metadata changed before capture prevents any payload write`() = runTest {
+        val entry = selected.copy(info = ObjectStorageInfo(bytes.size.toLong(), etag = "before"))
+        coEvery { source.getObjectInfo(any()) } returns entry.info.copy(etag = "after")
+        assertFailsWith<BackupPayloadMismatchException> { capture(entry = entry) }
+        assertMissing()
+        coVerify(exactly = 0) { source.getInputStream(any()) }
+    }
+
+    @Test
+    fun `a same length unversioned source mutation during capture removes the attempted output`() = runTest {
+        val entry = selected.copy(info = ObjectStorageInfo(bytes.size.toLong(), etag = "before"))
+        coEvery { source.getObjectInfo(any()) } returnsMany listOf(entry.info, entry.info.copy(etag = "after"))
+        coEvery { source.getInputStream(any()) } answers { stream(bytes) }
+        assertFailsWith<BackupPayloadMismatchException> { capture(entry = entry) }
+        assertMissing()
+        assertTrue(closed.get())
+    }
+
+    @Test
+    fun `unversioned filesystem style modification metadata detects a concurrent change`() = runTest {
+        val entry = selected.copy(info = ObjectStorageInfo(bytes.size.toLong(),
+            modified = OffsetDateTime.parse("2026-10-20T00:00:00Z")))
+        coEvery { source.getObjectInfo(any()) } returnsMany listOf(entry.info,
+            entry.info.copy(modified = entry.info.modified?.plusSeconds(1)))
+        coEvery { source.getInputStream(any()) } answers { stream(bytes) }
+        assertFailsWith<BackupPayloadMismatchException> { capture(entry = entry) }
+        assertMissing()
+    }
+
+    @Test
+    fun `an unversioned source that disappears during capture fails and cleans attempted output`() = runTest {
+        val entry = selected.copy(info = ObjectStorageInfo(bytes.size.toLong(), etag = "before"))
+        var observations = 0
+        coEvery { source.getObjectInfo(any()) } coAnswers {
+            if (observations++ == 0) entry.info else throw ObjectNotFoundException(StringObjectPath(entry.key))
+        }
+        coEvery { source.getInputStream(any()) } answers { stream(bytes) }
+        assertFailsWith<ObjectNotFoundException> { capture(entry = entry) }
+        assertMissing()
+        assertTrue(closed.get())
     }
 
     @Test

@@ -195,10 +195,11 @@ type ObjectBackupManifest {
     objects(offset: Int! = 0, limit: Int! = 20): [BackupObject!]!
 }
 
-"An exact source revision and the retained payload described by an inventory or checkpoint."
+"A selected source object and its verified retained payload."
 type BackupObject {
     store: String!
     key: String!
+    "Backup change identity from observed source metadata or a selected provider version."
     revision: String!
     length: Long!
     sha256: String!

@@ -21,11 +21,16 @@ import bosca.storage.service.ObjectPath
 import bosca.storage.service.ObjectStorageInfo
 import bosca.storage.service.ObjectStorageService
 import bosca.storage.service.ObjectStorageServiceFactory
+import bosca.storage.service.StringObjectPath
 import bosca.test.resources.SharedPostgreSQLContainer
 import com.sun.net.httpserver.HttpServer
 import java.net.InetSocketAddress
 import java.net.URLDecoder
 import java.nio.file.Path
+import java.nio.file.Files
+import java.nio.file.attribute.FileTime
+import java.time.Instant
+import java.io.InputStream
 import java.time.OffsetDateTime
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
@@ -63,9 +68,11 @@ class ObjectBackupDiscoveryIntegrationTest {
     private val requests = CopyOnWriteArrayList<String>()
     private val opened = CopyOnWriteArrayList<String>()
     private val closed = CopyOnWriteArrayList<String>()
+    private val sourceReads = CopyOnWriteArrayList<String>()
     private var failKey: String? = null
     private var cancelKey: String? = null
     private var unversionedKey: String? = null
+    private var unversioned = false
     private var checkPool = true
 
     @BeforeTest
@@ -111,7 +118,8 @@ class ObjectBackupDiscoveryIntegrationTest {
                         if (value == null) {
                             exchange.sendResponseHeaders(404, -1)
                         } else {
-                            if (key != unversionedKey) exchange.responseHeaders.add("x-amz-version-id", version)
+                            if (!unversioned && key != unversionedKey) exchange.responseHeaders.add("x-amz-version-id", version)
+                            exchange.responseHeaders.add("ETag", "\"opaque-$key-$version\"")
                             exchange.responseHeaders.add("Content-Length", value.toByteArray().size.toString())
                             if (exchange.requestMethod == "HEAD") exchange.sendResponseHeaders(200, -1)
                             else {
@@ -150,6 +158,10 @@ class ObjectBackupDiscoveryIntegrationTest {
                             assertNull(connectionOrNull())
                             if (path.toString() == cancelKey) throw CancellationException("discovery cancelled")
                             return actual.getObjectInfo(path)
+                        }
+                        override suspend fun getInputStream(path: ObjectPath): InputStream {
+                            if (configuration.basePath?.endsWith("/source") == true) sourceReads.add(path.toString())
+                            return actual.getInputStream(path)
                         }
                         override fun close() {
                             if (checkPool) assertEquals(0, pool.activeConnections)
@@ -260,11 +272,107 @@ class ObjectBackupDiscoveryIntegrationTest {
     }
 
     @Test
-    fun `sources without retained provider versions fail instead of claiming a usable selection`(): Unit = runBlocking {
+    fun `discovery and capture accept an ordinary unversioned source object`(): Unit = runBlocking {
         unversionedKey = "media/b"
-        assertFailsWith<IllegalArgumentException> { service.discoverConfigured(request()) }
-        assertTrue(plans().isEmpty())
+        val selected = service.discoverConfigured(request())
+        assertNull(selected.inventory.stores.getValue("content").last().info.version)
+        val result = service.captureConfigured(selected.key, null)
+        assertEquals(2, result.objects.size)
+        assertTrue(requests.contains("GET media/b"))
+        assertFalse(requests.any { it.startsWith("GET media/b?") })
         assertEquals(opened.sorted(), closed.sorted())
+    }
+
+    @Test
+    fun `unversioned S3 copies only changed objects and preserves earlier retained bytes`(): Unit = runBlocking {
+        unversioned = true
+        val first = service.captureConfigured(service.discoverConfigured(request()).key, null)
+        assertEquals(listOf("GET media/a", "GET media/b"), requests.filter { it.startsWith("GET media/") })
+        requests.clear()
+        install()
+        val same = service.captureConfigured(service.discoverConfigured(request("same")).key, null)
+        assertEquals(first.objects, same.objects)
+        assertTrue(requests.none { it.startsWith("GET media/") })
+        put("media/b", "v2", "delta")
+        requests.clear()
+        val later = service.captureConfigured(service.discoverConfigured(request("changed")).key, null)
+        assertEquals(listOf("GET media/b"), requests.filter { it.startsWith("GET media/") })
+        assertEquals(first.objects.first(), later.objects.first())
+        assertTrue(first.objects.last().revision != later.objects.last().revision)
+        assertEquals("bravo", directory.resolve("retained").resolve(first.objects.last().payloadPath).toFile().readText())
+        assertEquals("delta", directory.resolve("retained").resolve(later.objects.last().payloadPath).toFile().readText())
+    }
+
+    @Test
+    fun `an unversioned saved selection rejects changed current bytes without publishing a manifest`(): Unit = runBlocking {
+        unversioned = true
+        val selected = service.discoverConfigured(request())
+        put("media/b", "v2", "delta")
+        assertFailsWith<BackupPayloadMismatchException> { service.captureConfigured(selected.key, null) }
+        assertFalse(Files.exists(directory.resolve("retained/manifests/first.json")))
+        assertNull(withConnectionManager { service.getWriter(selected.key) })
+        val fresh = service.captureConfigured(service.discoverConfigured(request("fresh")).key, null)
+        assertEquals(2, fresh.objects.size)
+        assertEquals("delta", directory.resolve("retained").resolve(fresh.objects.last().payloadPath).toFile().readText())
+    }
+
+    @Test
+    fun `unversioned repair refuses changed source bytes and preserves the retained manifest`(): Unit = runBlocking {
+        unversioned = true
+        val selected = service.discoverConfigured(request())
+        val first = service.captureConfigured(selected.key, null)
+        val manifest = directory.resolve("retained/manifests/first.json")
+        val published = Files.readString(manifest)
+        val path = directory.resolve("retained").resolve(first.objects.last().payloadPath)
+        Files.delete(path)
+        put("media/b", "v2", "delta")
+        requests.clear()
+        assertFailsWith<BackupPayloadMismatchException> { service.captureConfigured(selected.key, null) }
+        assertFalse(Files.exists(path))
+        assertEquals(published, Files.readString(manifest))
+        assertTrue(requests.none { it.startsWith("GET media/") })
+        val progress = withConnectionManager {
+            provide<ObjectBackupProgressService>().list(ObjectBackupOperation.BACKUP,
+                "source-instance", "retained", "content", 0, 20)
+        }
+        assertEquals(ObjectBackupProgressStatus.FAILED, progress.single { it.payload.key == "media/b" }.status)
+    }
+
+    @Test
+    fun `filesystem content paths copy incrementally and missing retained bytes repair from the existing key`(): Unit = runBlocking {
+        val sourceConfiguration = StorageConfiguration("fs", "", basePath = directory.resolve("source").toString())
+        val key = "metadata/27e3ad7a-64dd-4bd8-8a9e-85db16539550/1/content"
+        val keys = listOf(key,
+            "metadata/27e3ad7a-64dd-4bd8-8a9e-85db16539550/1/supplementary/701f41ed-cd6e-4c3f-b62f-a16473958fb3",
+            "collection/f0bec0cc-9327-4d52-b203-0f5dfb46ec01/content",
+            "collection/f0bec0cc-9327-4d52-b203-0f5dfb46ec01/supplementary/701f41ed-cd6e-4c3f-b62f-a16473958fb3")
+        provide<ObjectStorageServiceFactory>().withStorage(sourceConfiguration) { source ->
+            for (sourceKey in keys) source.setInputStream(StringObjectPath(sourceKey), "first".byteInputStream(), 5)
+        }
+        install(configurations + ("source.id" to sourceConfiguration))
+        fun selected(id: String) = request(id).copy(stores = mapOf("content" to ObjectBackupSource("source.id")))
+        val first = service.captureConfigured(service.discoverConfigured(selected("fs-first")).key, null)
+        assertEquals(keys.sorted(), first.objects.map { it.key })
+        assertEquals(keys.sorted(), sourceReads.sorted())
+        sourceReads.clear()
+        install(configurations + ("source.id" to sourceConfiguration))
+        val same = service.captureConfigured(service.discoverConfigured(selected("fs-same")).key, null)
+        assertEquals(first.objects, same.objects)
+        assertTrue(sourceReads.isEmpty())
+        val firstPayload = first.objects.single { it.key == key }.payloadPath
+        Files.delete(directory.resolve("retained").resolve(firstPayload))
+        val repaired = service.captureConfigured(service.discoverConfigured(selected("fs-repair")).key, null)
+        assertEquals(first.objects, repaired.objects)
+        assertEquals(listOf(key), sourceReads.toList())
+        sourceReads.clear()
+        assertEquals("first", directory.resolve("retained").resolve(firstPayload).toFile().readText())
+        Files.writeString(directory.resolve("source").resolve(key), "later")
+        Files.setLastModifiedTime(directory.resolve("source").resolve(key), FileTime.from(Instant.parse("2026-10-21T00:00:00Z")))
+        val changed = service.captureConfigured(service.discoverConfigured(selected("fs-changed")).key, null)
+        assertTrue(first.objects.single { it.key == key }.revision != changed.objects.single { it.key == key }.revision)
+        assertEquals(listOf(key), sourceReads.toList())
+        assertEquals("later", directory.resolve("retained").resolve(changed.objects.single { it.key == key }.payloadPath).toFile().readText())
+        assertEquals("first", directory.resolve("retained").resolve(firstPayload).toFile().readText())
     }
 
     @Test
@@ -341,6 +449,7 @@ class ObjectBackupDiscoveryIntegrationTest {
         val config = buildJsonObject { put("backup", buildJsonObject { put("objectStores", catalog) }) }
         application = BoscaApplication(ApplicationConfig.load(config.toString().byteInputStream()), ownsServices = false)
         provides<BoscaApplication>(singleton = true, overrideExisting = true) { application }
+        provides<Json>(singleton = true, overrideExisting = true) { application.json }
         BackupProviderRegistrar().register()
         service = provide()
     }
