@@ -1,0 +1,54 @@
+<component tag="picker-example">
+  <prop name="id" type="String" required />
+  <prop name="title" type="String" required />
+  <script server provides="picker" scope="server-session">bosca.design.catalog.CatalogPicker(id)</script>
+  <card :title="title">
+    <island name="picker" :key="id">
+      <div class="catalog-stack" :data-picker-example="picker.id" :data-search-failure="picker.failSearch">
+        <form @submit="picker.save(form.example)" class="example-form" :data-picker-form="picker.id">
+          <div class="catalog-field">
+            <field label="Example" hint="Search control, layout or overlay. Use at least two characters.">
+              <select name="example" label="Example" placeholder="Choose an example…" searchable async required
+                      :minQuery="2" :debounce="150" :disabled="picker.disabled" :loading="picker.loading"
+                      :preserveKey='"picker-" + picker.id' :data-picker-native="picker.id"
+                      :aria-invalid="picker.error.isNotBlank().toString()" :aria-describedby='"picker-error-" + picker.id'>
+                <option value="" :selected="picker.value.isEmpty()">Choose an example…</option>
+                <for option in bosca.design.catalog.CatalogChoiceSearch.options>
+                  <option :value="option.value" :selected="picker.value == option.value" :disabled="option.disabled">{ option.label }</option>
+                </for>
+              </select>
+            </field>
+            <alert compact :id='"picker-error-" + picker.id' :hidden="picker.error.isEmpty()">{ picker.error }</alert>
+          </div>
+          <div class="example-actions">
+            <button type="submit" primary :disabled="picker.disabled || picker.loading" :data-picker-save="picker.id">Save choice</button>
+            <button type="reset">Reset choice</button>
+          </div>
+        </form>
+        <details :data-picker-states="picker.id">
+          <disclosure-heading>Example states</disclosure-heading>
+          <div class="catalog-stack picker-state-options">
+            <switch label="Reject searches" description="Turn off to retry the same search." :checked="picker.failSearch"
+                    @change="picker.toggleFailure" :data-picker-failure="picker.id" />
+            <switch label="Disable the picker" :checked="picker.disabled" @change="picker.toggleDisabled" :data-picker-disable="picker.id" />
+            <switch label="Show a loading state" :checked="picker.loading" @change="picker.toggleLoading" :data-picker-loading="picker.id" />
+          </div>
+        </details>
+        <toast :id='"choice-saved-" + picker.id' :message="picker.message" :sequence="picker.saves"
+               tone="success" :data-picker-toast="picker.id" />
+      </div>
+    </island>
+  </card>
+  <script client scoped>
+    import { bmlContractCall } from "@bosca/bml";
+    import type { SelectPage, SelectSearch } from "@bosca/bml-design/select";
+    ctx.on<CustomEvent<SelectSearch>>(ctx.root, "selectsearch", event => {
+      const owner = event.target instanceof Element ? event.target.closest("[data-picker-example]") : null;
+      if (!owner) return;
+      event.stopPropagation();
+      const { query, offset, resolve, reject } = event.detail;
+      bmlContractCall<SelectPage>("CatalogChoices", "search", [{ query, offset, fail: owner.hasAttribute("data-search-failure") }])
+        .then(resolve, reject);
+    });
+  </script>
+</component>

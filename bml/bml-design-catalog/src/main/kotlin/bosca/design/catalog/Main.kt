@@ -17,6 +17,7 @@ fun main(args: Array<String>) {
         componentRenderers = BmlComponents.renderers,
         islandDispatchers = BmlIslands.dispatchers,
         componentIslandDispatchers = BmlIslands.componentDispatchers,
+        contracts = listOf(CatalogChoiceSearch()),
         installationEndpoint = null,
         port = args.firstOrNull()?.toIntOrNull() ?: 9093,
         globalCss = css,

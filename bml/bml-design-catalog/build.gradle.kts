@@ -47,3 +47,13 @@ tasks.register<Test>("browserTest") {
     classpath = sourceSets.test.get().runtimeClasspath
     filter { includeTestsMatching("bosca.design.catalog.CatalogApplicationTest") }
 }
+
+val typecheckClient by tasks.registering(Exec::class) {
+    group = "verification"
+    description = "Type-check catalog islands against the runtime and linked library declarations."
+    dependsOn("compileKotlin", "bmlPrepareClient")
+    commandLine(bml.nodeExecutable.get(), rootProject.layout.projectDirectory.file("bml/bml-runtime/node_modules/typescript/bin/tsc").asFile,
+        "--project", layout.projectDirectory.file("tsconfig.json").asFile)
+}
+
+tasks.check { dependsOn(typecheckClient) }

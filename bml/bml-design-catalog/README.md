@@ -18,8 +18,9 @@ Open `http://localhost:9093/`. Pass another port with `--args=9094` if needed.
 | `/` | Unprefixed import/authoring, buttons and feedback, links into the catalog |
 | `/foundation` | Labelled form with server validation, pending/success/error feedback, native choices, button sizes, loading/disabled states, badges, empty content and a scrolling table |
 | `/themes` | The same form in separate dark and consumer-light palettes, with independent state |
+| `/selection` | Server-filtered, offset-paged picker in independent dark/light roots, with failed-search retry, loading/disabled controls, native reset and toast saves |
 | `/components` | Linked index of all 41 exports and normal unprefixed authoring |
-| `/components/controls` | Buttons, inputs, choices, search, segments, accessible local tabs and static searchable selects |
+| `/components/controls` | Buttons, inputs, choices, search, segments, accessible local tabs, native selects and the paged picker's authoring source |
 | `/components/layout` | Surfaces, headings, native disclosure, application header and route tabs |
 | `/components/feedback` | Alerts, badges, empty/loading states, icons, mark, tooltips, copy controls, repeatable notifications and timestamps |
 | `/components/overlays` | Native modal focus/return, a failed confirmation that retains its draft, and a popover |
@@ -45,8 +46,16 @@ Every export has a rendered example, prop/type/default reference, native attribu
 contract, keyboard notes, CSS hooks and an escaped authoring snippet. Local composition snippets
 include their BML state wiring; the corresponding `Catalog*` models live in this application's Kotlin
 sources. The shared [API](../bml-design/README.md) and [CSS token reference](../bml-design/css-tokens.md)
-also live with the library. The searchable selects currently use local native options; a server-driven
-offset-paged picker and the complete state/accessibility matrix remain to be added to this catalog.
+also live with the library. The `/selection` composition uses the public `SelectSearch`/`SelectPage`
+types and BML's same-origin contract client. `CatalogChoiceSearch` filters deterministic local options
+before applying three-item offset pages, returning explicit previous/next offsets. It has no product
+API or GraphQL dependency. The complete state/accessibility matrix remains open.
+
+Each picker retains its native form value when another result page is shown. Its state disclosure
+can reject searches, disable the control or demonstrate loading; turning rejection off allows the same
+query to succeed. Search feedback stays in the control, validation stays beside its field and saves use
+toasts. The complete option list remains available in the native select without scripts. The select
+reference includes the actual composition source and a link to the working page.
 
 Only the content route reaches the source and structured JSON engines. Other reference pages consume
 the same library without eagerly loading those editors. The optional alias declaration stays in its
@@ -57,6 +66,7 @@ Build and verify:
 ```sh
 ./gradlew :bml:bml-design-catalog:build
 ./gradlew :bml:bml-design-catalog:browserTest
+./gradlew :bml:bml-design-catalog:typecheckClient
 ```
 
 The ordinary `test` task also includes the browser test. Tests launch separate production and
@@ -68,7 +78,12 @@ names/types/default presence with the library manifest from its built JAR, then 
 routes at 1440px and 390px. It also checks modal focus/return and failed drafts, local tab/panel
 relationships, segment values, repeated toast sequences, keyboard tree traversal, comment validation
 and keyboard submission, JSON rejection/save, readonly source, alias identity and script-disabled
-content fallbacks. No authenticated product session is used. Runtime failures use the application's
+content fallbacks. Picker checks exercise real contract requests, page boundaries, minimum-query
+suppression, disabled options, busy and empty states, failure/retry, stale responses, retained DOM/query
+state, independent instances, loading/disabled form rules, native reset and validation, long labels,
+short-screen popup fit and script-disabled options. `build` also runs strict TypeScript checking of
+generated catalog islands against the runtime and linked producer declarations.
+No authenticated product session is used. Runtime failures use the application's
 console logging backend and are included in integration-test diagnostics.
 
 Presentation checks measure the rendered overview/foundation examples in both appearances at

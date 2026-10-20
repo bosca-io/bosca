@@ -15,6 +15,7 @@
           <a href="/" :aria-current='if (current == "/") "page" else null'><icon name="book-open" />Overview</a>
           <a href="/foundation" :aria-current='if (current == "/foundation") "page" else null'><icon name="code" />Foundation</a>
           <a href="/components" :aria-current='if (current == "/components") "page" else null'><icon name="folder" />Components</a>
+          <a href="/selection" :aria-current='if (current == "/selection") "page" else null'><icon name="search" />Selection</a>
           <a href="/themes" :aria-current='if (current == "/themes") "page" else null'><icon name="settings" />Themes</a>
         </nav>
         <div class="catalog-appearance">

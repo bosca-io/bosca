@@ -45,6 +45,7 @@
 .catalog-sections { display: flex; flex-direction: column; gap: 24px; min-width: 0; }
 .catalog-stack { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 .catalog-field { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.picker-state-options { margin-top: 16px; }
 .overview-intro { display: flex; flex-direction: column; gap: 16px; max-width: 620px; margin: 0; font-size: 17px; color: var(--fg-1); }
 .overview-intro p, .page-intro { margin: 0; }
 .catalog-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }

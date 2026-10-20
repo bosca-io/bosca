@@ -55,7 +55,7 @@ class CatalogApplicationTest {
             assertTrue(jar.getInputStream(manifest).readBytes().isNotEmpty())
         }
         for (development in listOf(false, true)) withServer(development) { base, client ->
-            for (path in listOf("/", "/foundation", "/themes", "/components", "/components/controls",
+            for (path in listOf("/", "/foundation", "/themes", "/selection", "/components", "/components/controls",
                 "/components/layout", "/components/feedback", "/components/overlays", "/components/content", "/components/aliases")) {
                 val response = request(client, base, path)
                 assertEquals(200, response.statusCode(), path + response.body())
@@ -79,6 +79,15 @@ class CatalogApplicationTest {
             }
             assertTrue("Use at least three characters." in save("x"))
             assertTrue("Saved Catalog test." in save("Catalog test"))
+            fun search(body: String) = request(client, base, "/_bml/contract/CatalogChoices/search", body)
+            val first = search("""[{"query":"layout","offset":0}]""")
+            assertEquals(200, first.statusCode(), first.body())
+            assertEquals(3, Json.decodeFromString(CatalogChoicePage.serializer(), first.body()).nextOffset)
+            val last = search("""[{"query":"layout","offset":3}]""")
+            assertEquals(200, last.statusCode(), last.body())
+            assertEquals(listOf("page-heading", "section"), Json.decodeFromString(CatalogChoicePage.serializer(), last.body()).options.map { it.value })
+            assertEquals(500, search("""[{"query":"layout","offset":0,"fail":true}]""").statusCode())
+            assertEquals(200, search("""[{"query":"layout","offset":0}]""").statusCode())
             val links = Regex("<link[^>]+href=\"([^\"]+)\"").findAll(foundation)
                 .map { it.groupValues[1].replace("&amp;", "&") }
                 .filter { it.startsWith("/_bml/libraries/") && it.substringBefore('?').endsWith(".css") }.toList()
@@ -130,7 +139,7 @@ class CatalogApplicationTest {
 
     private fun request(client: HttpClient, base: String, path: String, body: String? = null): HttpResponse<String> {
         val builder = HttpRequest.newBuilder(URI(base + path)).timeout(Duration.ofSeconds(10))
-        if (body == null) builder.GET() else builder.POST(HttpRequest.BodyPublishers.ofString(body))
+        if (body == null) builder.GET() else builder.header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofString(body))
         return client.send(builder.build(), HttpResponse.BodyHandlers.ofString())
     }
 }

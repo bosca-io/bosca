@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { checkReferences } from './references.mjs';
 import { checkPresentation } from './presentation.mjs';
+import { checkPickers } from './picker.mjs';
 
 const base = process.argv[2];
 const mode = process.argv[3] ?? 'fixture';
@@ -153,6 +154,7 @@ try {
   await call('Emulation.setScriptExecutionDisabled',{value:false});
   await checkReferences({navigate,evaluate,until,key,call,artifacts,mode,expected:JSON.parse(process.argv[4])});
   await checkPresentation({navigate,evaluate,until,key,call,artifacts,mode});
+  await checkPickers({navigate,evaluate,until,call,artifacts,mode});
   assert.deepEqual(exceptions,[]);
   console.log(`Catalog ${mode}: foundation, themes, 41 packaged export contracts, references, overlays, views, trees, comments, editors, aliases and native fallbacks passed`);
 } finally {
