@@ -160,7 +160,7 @@ class ObjectBackupStorageMigrationIntegrationTest {
         connection.createStatement().use { statement ->
             statement.executeQuery("""
                 select jsonb_build_object(
-                    'runs', (select jsonb_agg(to_jsonb(r) order by key) from backup.object_runs r),
+                    'runs', (select jsonb_agg(to_jsonb(r) - 'checkpoint_key' order by key) from backup.object_runs r),
                     'progress', (select jsonb_agg(to_jsonb(p) - 'verified_version' - 'verified_info' - 'verified' order by key)
                         from backup.object_progress p),
                     'items', (select jsonb_agg(to_jsonb(i) order by run_key, position) from backup.object_run_items i)

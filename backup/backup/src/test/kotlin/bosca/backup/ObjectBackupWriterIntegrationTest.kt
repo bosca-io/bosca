@@ -32,6 +32,8 @@ import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import kotlin.io.path.createTempDirectory
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
@@ -429,14 +431,17 @@ class ObjectBackupWriterIntegrationTest {
         setLegacyStatus(restore.key, "running")
         setLegacyStatus(failed.key, "failed")
         setLegacyStatus(legacy.key, "running")
-        val previous = request { listOf(backup, restore, failed, legacy).map { service.get(it.key) } }
+        val previous = listOf(backup, restore, failed, legacy).map { legacyRun(it.key) }
         val items = legacyItems(backup.key)
 
         upgrade()
         FlywayMigration(pool).migrate(listOf(provide<Migration>(name = "backup-migrations")))
 
         assertEquals(mapOf("backup-a" to backup.key, "target-a" to restore.key), writers())
-        assertEquals(previous, request { listOf(backup, restore, failed, legacy).map { service.get(it.key) } })
+        assertEquals(previous, listOf(backup, restore, failed, legacy).map { legacyRun(it.key) })
+        for (run in listOf(backup, restore, failed, legacy)) {
+            assertNull(request { assertNotNull(service.get(run.key)).checkpointKey })
+        }
         assertEquals(items, legacyItems(backup.key))
         assertEquals(inventory.objects, request { service.items(backup.key, 0, 10) }.map { it.payload })
         assertNull(request { service.getStorage(legacy.key) })
@@ -457,12 +462,23 @@ class ObjectBackupWriterIntegrationTest {
                 }
             }
         }
-        assertEquals(ObjectBackupRunStatus.RUNNING, request { service.get(firstRun.key) }?.status)
-        assertEquals(ObjectBackupRunStatus.RUNNING, request { service.get(secondRun.key) }?.status)
+        assertEquals("running", legacyRun(firstRun.key).getValue("status").jsonPrimitive.content)
+        assertEquals("running", legacyRun(secondRun.key).getValue("status").jsonPrimitive.content)
         setLegacyStatus(secondRun.key, "failed")
         upgrade()
         assertEquals(mapOf("backup-a" to firstRun.key), writers())
     }
+
+    private fun legacyRun(key: String) =
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { connection ->
+            connection.prepareStatement("select (to_jsonb(r) - 'checkpoint_key')::text from backup.object_runs r where key = ?").use { sql ->
+                sql.setString(1, key)
+                sql.executeQuery().use { rows ->
+                    assertTrue(rows.next())
+                    Json.parseToJsonElement(rows.getString(1)).jsonObject
+                }
+            }
+        }
 
     private suspend fun backup(
         id: String,
@@ -538,16 +554,29 @@ class ObjectBackupWriterIntegrationTest {
                     insert into backup.object_run_items (run_key, position, progress_key) values (?, ?, ?)
                 """.trimIndent(), key, position, progressKey)
             }
-            connection.commit()
-        }
-        return request {
             if (configured) {
                 val backupKey = if (operation == ObjectBackupOperation.BACKUP) destination else "backup-a"
                 val storageKey = if (operation == ObjectBackupOperation.BACKUP) "source" else "target-a"
-                service.configureStorage(key, backupKey, selected.objects.associate { it.store to storageKey })
+                connection.seed("insert into backup.object_run_storage (key, backup_key) values (?, ?)", key, backupKey)
+                for (store in selected.objects.map { it.store }.distinct()) {
+                    if (operation == ObjectBackupOperation.RESTORE) {
+                        connection.seed("""
+                            insert into backup.object_restore_stores (destination_id, store, storage_key) values (?, ?, ?)
+                        """.trimIndent(), destination, store, storageKey)
+                        connection.seed("""
+                            insert into backup.object_run_stores (run_key, store, storage_key, restore_destination_id)
+                            values (?, ?, ?, ?)
+                        """.trimIndent(), key, store, storageKey, destination)
+                    } else {
+                        connection.seed("""
+                            insert into backup.object_run_stores (run_key, store, storage_key) values (?, ?, ?)
+                        """.trimIndent(), key, store, storageKey)
+                    }
+                }
             }
-            assertNotNull(service.get(key))
+            connection.commit()
         }
+        return ObjectBackupRun(key, id, destination, selected.scope, operation, selected, path)
     }
 
     private fun java.sql.Connection.seed(sql: String, vararg values: Any) {

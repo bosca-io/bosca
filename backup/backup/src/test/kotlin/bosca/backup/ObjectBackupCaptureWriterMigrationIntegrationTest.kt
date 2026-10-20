@@ -16,11 +16,13 @@ import java.sql.DriverManager
 import java.sql.SQLException
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /** Existing run ownership survives the addition of token-fenced capture writers. */
@@ -66,23 +68,34 @@ class ObjectBackupCaptureWriterMigrationIntegrationTest {
         val repository = provide<ObjectBackupRunRepository>()
         val run = ObjectBackupRun("existing-run", "source", "retained", "content", ObjectBackupOperation.BACKUP,
             inventory, "manifests/saved.json")
-        val before = withConnectionManager {
+        withConnectionManager {
             provide<ObjectBackupProgressService>().reserveManifest(run.destinationId, run.path, run.key)
             assertEquals(1, repository.add(run))
-            checkNotNull(repository.start(run.key, 0))
         }
-        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { connection ->
+        val before = DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { connection ->
             connection.createStatement().use { sql ->
+                val original = sql.executeQuery("""
+                    update backup.object_runs r set status = 'running', attempts = 1, version = 1, modified = now()
+                    where key = 'existing-run' returning to_jsonb(r)::text
+                """.trimIndent()).use { rows ->
+                    assertTrue(rows.next())
+                    Json.parseToJsonElement(rows.getString(1)).jsonObject
+                }
                 sql.execute("insert into backup.object_stores (key, type, base_path) values ('retained', 'fs', '/retained'), ('other', 'fs', '/other')")
                 sql.execute("insert into backup.object_store_writers (storage_key, run_key) values ('retained', 'existing-run')")
                 sql.execute("insert into backup.object_capture_plans (key, destination_id, inventory, payload_prefix, path) values ('plan', 'other', '{}', 'payloads', 'manifest.json')")
+                original
             }
         }
         FlywayMigration(pool).migrate(listOf(BackupMigration()))
         FlywayMigration(pool).migrate(listOf(BackupMigration()))
-        assertEquals(before, withConnectionManager { repository.get(run.key) })
+        assertNull(withConnectionManager { repository.get(run.key) }?.checkpointKey)
         DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { connection ->
             connection.createStatement().use { sql ->
+                sql.executeQuery("select to_jsonb(r)::text from backup.object_runs r where key = 'existing-run'").use { rows ->
+                    assertTrue(rows.next())
+                    assertEquals(before, Json.parseToJsonElement(rows.getString(1)).jsonObject.filterKeys { it != "checkpoint_key" })
+                }
                 sql.executeQuery("select column_name from information_schema.columns where table_schema = 'backup' and table_name = 'object_store_writers'").use { rows ->
                     val columns = buildSet { while (rows.next()) add(rows.getString(1)) }
                     assertTrue(columns.containsAll(setOf("capture_key", "capture_token")), "Capture owner columns must exist")

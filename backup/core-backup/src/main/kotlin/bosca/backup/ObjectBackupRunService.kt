@@ -60,29 +60,39 @@ interface ObjectBackupRunService : Service {
      *
      * Captures configuration inputs, validates/binds all selected stores before opening any, and
      * closes them after work, failure or cancellation. Unrelated configurations are ignored.
-     * Completed/cancelled outcomes return without opening stores; running attempts are rejected.
+     * Completed/cancelled outcomes return without opening stores. A queued job may supply its
+     * stable [checkpointKey] to resume its own running attempt and saved object checkpoints;
+     * other running attempts are rejected. The caller serializes deliveries of that job.
      * Requires no active caller transaction. Configured runs in this progress database serialize
      * write destinations. The caller pins source revisions, preserves storage accounts and excludes
      * writers that do not participate in these claims, including other progress databases.
      * This does not dispatch a job.
      */
-    suspend fun executeConfigured(key: String, configurations: Map<String, StorageConfiguration>): ObjectBackupRun
+    suspend fun executeConfigured(
+        key: String,
+        configurations: Map<String, StorageConfiguration>,
+        checkpointKey: String? = null,
+    ): ObjectBackupRun
 
     /**
      * Executes through the saved mapping and selected backup.objectStores application configuration.
      * Uses the same storage, revision and writer contracts as the explicit-configuration overload.
      * Terminal/active outcomes are checked before configuration lookup; missing or malformed selected
-     * entries fail before starting an attempt. Credentials remain outside the persisted run.
+     * entries fail before starting an attempt. [checkpointKey] enables the same job-owned
+     * resumption as the explicit-configuration overload. Credentials remain outside the persisted run.
      */
-    suspend fun executeConfigured(key: String): ObjectBackupRun
+    suspend fun executeConfigured(key: String, checkpointKey: String? = null): ObjectBackupRun
 
     /**
-     * Executes only the exact pending version recorded by a dispatch request, using application
-     * configuration. Changed or non-pending versions return their current state without storage I/O.
-     * The version is checked again atomically with starting the attempt, after configuration lookup.
-     * A failed/cancelled attempt requires explicit [retry] and a new dispatch request.
+     * Executes the exact pending dispatch version using application configuration. With a stable
+     * [checkpointKey], redelivery can resume that job's running attempt and existing object progress.
+     * Its saved checkpoint binds both job identity and [expectedVersion], so an older dispatch
+     * cannot resume a newer attempt even if supplied the same job identity. Other changed or
+     * non-pending versions return current state without storage I/O. Checks repeat atomically
+     * after configuration lookup. A recorded failed/cancelled attempt requires explicit [retry]
+     * and a new dispatch request. The caller serializes deliveries of the job.
      */
-    suspend fun executeConfigured(key: String, expectedVersion: Long): ObjectBackupRun
+    suspend fun executeConfigured(key: String, expectedVersion: Long, checkpointKey: String? = null): ObjectBackupRun
 
     /** Lists runs of one operation within a source/destination scope using offset pagination. */
     suspend fun list(

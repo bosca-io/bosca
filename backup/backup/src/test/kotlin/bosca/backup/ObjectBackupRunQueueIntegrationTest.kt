@@ -27,15 +27,19 @@ import bosca.sharedqueue.jobs.JobQueueFactory
 import bosca.sharedqueue.jobs.JobRunner
 import bosca.sharedqueue.jobs.JobStatus
 import bosca.sharedqueue.jobs.SerializedJob
+import bosca.sharedqueue.jobs.asCoroutineContext
 import bosca.sharedqueue.jobs.nats.NatsJobQueueFactory
 import bosca.storage.configuration.StorageConfiguration
 import bosca.storage.service.ObjectNotFoundException
+import bosca.storage.service.ObjectPath
+import bosca.storage.service.ObjectStorageService
 import bosca.storage.service.ObjectStorageServiceFactory
 import bosca.storage.service.StringObjectPath
 import bosca.test.resources.SharedNatsContainer
 import bosca.test.resources.SharedPostgreSQLContainer
 import io.mockk.mockk
 import java.io.IOException
+import java.io.InputStream
 import java.nio.file.Path
 import java.security.MessageDigest
 import kotlinx.coroutines.async
@@ -45,6 +49,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -58,6 +63,7 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
 
 /** Generated job helpers/executors, real NATS JobRunner, PostgreSQL and application-selected stores. */
 @OptIn(InternalDI::class)
@@ -70,7 +76,10 @@ class ObjectBackupRunQueueIntegrationTest {
     private lateinit var directory: Path
     private lateinit var queue: JobQueue
     private lateinit var runner: JobRunner
+    private lateinit var locks: NatsDistributedLockFactory
     private lateinit var runs: ObjectBackupRunService
+    private var interruptedStorage: String? = null
+    private val payloadWrites = java.util.concurrent.CopyOnWriteArrayList<String>()
     private var publicationFailure: Exception? = null
     private lateinit var configurations: Map<String, StorageConfiguration>
     private val first = entry("items/a", "data")
@@ -107,7 +116,7 @@ class ObjectBackupRunQueueIntegrationTest {
         provides<ConnectionPool>(singleton = true) { pool }
         provides<CacheManager> { mockk(relaxed = true) }
         provides<RequestCacheSerializer> { mockk(relaxed = true) }
-        val locks = NatsDistributedLockFactory(natsPool)
+        locks = NatsDistributedLockFactory(natsPool)
         val factory = NatsJobQueueFactory(
             natsPool, application.json, locks, enqueueEventChannel = null,
             enqueueCallbacks = emptyList(), processExpiredJobs = false,
@@ -132,6 +141,30 @@ class ObjectBackupRunQueueIntegrationTest {
             }
         }
         StorageProviderRegistrar().register()
+        val actualFactory = provide<ObjectStorageServiceFactory>()
+        provides<ObjectStorageServiceFactory>(singleton = true, overrideExisting = true) {
+            object : ObjectStorageServiceFactory by actualFactory {
+                override suspend fun create(configuration: StorageConfiguration): ObjectStorageService {
+                    val actual = actualFactory.create(configuration)
+                    return object : ObjectStorageService by actual {
+                        override suspend fun setInputStream(path: ObjectPath, stream: InputStream, length: Long?): Long {
+                            if (!path.toString().startsWith("manifests/")) {
+                                payloadWrites.add(path.toString())
+                                if (configuration.basePath == interruptedStorage && payloadWrites.size == 2) {
+                                    throw AssertionError("worker stopped before the second payload")
+                                }
+                            }
+                            return actual.setInputStream(path, stream, length)
+                        }
+                    }
+                }
+
+                override suspend fun <T> withStorage(
+                    configuration: StorageConfiguration,
+                    block: suspend (ObjectStorageService) -> T,
+                ): T = create(configuration).use { block(it) }
+            }
+        }
         BackupProviderRegistrar().register()
         FlywayMigration(pool).migrate(listOf(provide<Migration>(name = "backup-migrations")))
         runs = provide()
@@ -141,6 +174,7 @@ class ObjectBackupRunQueueIntegrationTest {
         request { stores.bindConfigured(configurations.keys) }
         write("source", first.key, "data")
         write("source", second.key, "more")
+        payloadWrites.clear()
     }
 
     @AfterTest
@@ -179,6 +213,56 @@ class ObjectBackupRunQueueIntegrationTest {
         assertEquals("more", read("target", second.key))
         assertEquals(1, request { runs.get(backup.key) }?.attempts)
         assertEquals(1, request { runs.get(restore.key) }?.attempts)
+    }
+
+    @Test
+    fun `redelivered inventory backup job resumes its own running checkpoint`(): Unit = runBlocking {
+        resumeRedelivery(restore = false)
+    }
+
+    @Test
+    fun `redelivered restore job resumes its own running checkpoint`(): Unit = runBlocking {
+        resumeRedelivery(restore = true)
+    }
+
+    private suspend fun resumeRedelivery(restore: Boolean) {
+        val backup = prepare("interrupted")
+        val selected = if (restore) {
+            runs.executeConfigured(backup.key)
+            request {
+                runs.prepareRestore(backup.inventory, "restore-instance", backup.path).also {
+                    runs.configureStorage(it.key, "retained", mapOf("content" to "target"))
+                }
+            }
+        } else backup
+        val target = if (restore) "target" else "retained"
+        interruptedStorage = directory.resolve(target).toFile().canonicalPath
+        payloadWrites.clear()
+        val dispatch = request { provide<ObjectBackupDispatchService>().request(selected.key, selected.version) }
+        val original = assertNotNull(queue.dequeue(5.seconds))
+        assertEquals(dispatch.key, original.getId())
+        assertFailsWith<AssertionError> {
+            request { withContext(queue.asCoroutineContext(original)) { original.newExecutor().execute() } }
+        }
+        val stopped = assertNotNull(request { runs.get(selected.key) })
+        assertEquals(ObjectBackupRunStatus.RUNNING, stopped.status)
+        val firstCheckpoint = request { runs.items(selected.key, 0, 10) }.first()
+        assertEquals(ObjectBackupProgressStatus.COMPLETED, firstCheckpoint.status)
+        assertTrue(directory.resolve("source").resolve(first.key).toFile().delete())
+        queue.enqueueLater(original, 1.seconds)
+        assertTrue(locks.forceRelease("job-${original.getId()}"))
+        interruptedStorage = null
+        payloadWrites.clear()
+        runner.run()
+        awaitDrained(dispatch.key)
+
+        val completed = assertNotNull(request { runs.get(selected.key) })
+        assertEquals(ObjectBackupRunStatus.COMPLETED, completed.status)
+        assertEquals(2, completed.attempts)
+        assertEquals(firstCheckpoint, request { runs.items(selected.key, 0, 10) }.first())
+        assertEquals(listOf(if (restore) second.key else second.payloadPath), payloadWrites.toList())
+        assertEquals("data", read(target, if (restore) first.key else first.payloadPath))
+        assertEquals("more", read(target, if (restore) second.key else second.payloadPath))
     }
 
     @Test

@@ -26,4 +26,7 @@ data class ObjectBackupRun(
     val version: Long = 0,
     val created: OffsetDateTime = OffsetDateTime.now(),
     val modified: OffsetDateTime = created,
+    /** Opaque job checkpoint bound to its original dispatch version; null for unqueued execution. */
+    @ColumnName("checkpoint_key")
+    val checkpointKey: String? = null,
 )

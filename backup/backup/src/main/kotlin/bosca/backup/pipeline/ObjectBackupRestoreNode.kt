@@ -68,12 +68,15 @@ class ObjectBackupRestoreNode(
         val input = ObjectBackupRestoreNodeSerializer.deserialize(context, inputs)
         require(input.manifestPath.isNotBlank()) { "Restore manifest path is required" }
         val stores = context.json.decodeFromString(MapSerializer(String.serializer(), String.serializer()), targets)
-        val invocation = jobOrNull()?.getId() ?: UUID.random()
+        val queuedInvocation = jobOrNull()?.getId()
+        val invocation = queuedInvocation ?: UUID.random()
         val requestKey = objectBackupIdentity(ObjectBackupOperation.RESTORE, listOf(invocation.toString(), id))
         val service = provide<ObjectBackupRunService>()
         val prepared = service.prepareRestoreConfigured(requestKey, destinationId, backupKey, input.manifestPath, stores)
         check(prepared.status != ObjectBackupRunStatus.CANCELLED) { "Object restore was cancelled: ${prepared.key}" }
-        val result = deferBusyBackupDestination { service.executeConfigured(prepared.key) }
+        val result = deferBusyBackupDestination {
+            service.executeConfigured(prepared.key, requestKey.takeIf { queuedInvocation != null })
+        }
         check(result.status == ObjectBackupRunStatus.COMPLETED) {
             "Object restore did not complete: ${result.key} (${result.status})"
         }

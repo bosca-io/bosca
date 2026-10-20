@@ -23,6 +23,7 @@ import bosca.test.resources.SharedPostgreSQLContainer
 import java.io.InputStream
 import java.nio.file.Files
 import java.nio.file.Path
+import java.security.MessageDigest
 import java.time.OffsetDateTime
 import java.util.Properties
 import java.util.UUID
@@ -40,6 +41,7 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
@@ -65,7 +67,7 @@ class ObjectBackupJobCheckpointIntegrationTest {
         Files.createDirectories(root.resolve("source"))
         Files.writeString(root.resolve("source/a"), "data")
         Files.writeString(root.resolve("source/b"), "more")
-        configurations = listOf("source", "retained").associateWith {
+        configurations = listOf("source", "retained", "target").associateWith {
             StorageConfiguration("fs", "", basePath = root.resolve(it).toString())
         }
         val config = buildJsonObject {
@@ -104,27 +106,7 @@ class ObjectBackupJobCheckpointIntegrationTest {
             mapOf("content" to ObjectBackupSource("source", "")), "payloads", "manifests/selected.json",
         ))
         val checkpoint = UUID.randomUUID().toString()
-        val settingsPath = root.resolve("worker.properties")
-        Properties().apply {
-            setProperty("root", root.toString())
-            setProperty("jdbcUrl", postgres.jdbcUrl)
-            setProperty("username", postgres.username)
-            setProperty("password", postgres.password)
-            setProperty("planKey", plan.key)
-            setProperty("checkpointKey", checkpoint)
-        }.also { settings -> Files.newOutputStream(settingsPath).use { settings.store(it, null) } }
-        val classpath = checkNotNull(System.getProperty("bosca.backup.testClasspath"))
-        val process = ProcessBuilder(
-            Path.of(System.getProperty("java.home"), "bin/java").toString(), "-cp", classpath,
-            ObjectBackupCheckpointWorker::class.java.name, settingsPath.toString(),
-        ).redirectErrorStream(true).redirectOutput(root.resolve("worker.log").toFile()).start()
-        worker = process
-        withTimeout(30_000) {
-            while (!root.resolve("worker-ready").exists()) {
-                check(process.isAlive) { "Capture worker exited before its checkpoint: ${Files.readString(root.resolve("worker.log"))}" }
-                delay(25)
-            }
-        }
+        val process = startWorker(mapOf("planKey" to plan.key, "checkpointKey" to checkpoint))
         val owner = withConnectionManager { assertNotNull(service.getWriter(plan.key)) }
         val before = withConnectionManager {
             provide<ObjectBackupProgressService>().list(
@@ -176,6 +158,112 @@ class ObjectBackupJobCheckpointIntegrationTest {
             assertEquals(resumed, published)
             ObjectBackupManifestStore(retained, application.json).verify(published)
         }
+    }
+
+    @Test
+    fun `hard-stopped pinned inventory job resumes its original request and copied objects`(): Unit = runBlocking {
+        interruptedRun(restore = false)
+    }
+
+    @Test
+    fun `hard-stopped restore resumes saved targets without rewriting completed objects`(): Unit = runBlocking {
+        interruptedRun(restore = true)
+    }
+
+    private suspend fun interruptedRun(restore: Boolean) {
+        val factory = provide<ObjectStorageServiceFactory>()
+        val objects = listOf("a" to "data", "b" to "more").map { (key, value) ->
+            BackupObject("content", key, "snapshot", 4,
+                MessageDigest.getInstance("SHA-256").digest(value.toByteArray()).toHexString(), "payloads/$key")
+        }
+        val inventory = ObjectBackupManifest("fixed", "source-instance", "content", "2026-10-20T00:00:00Z", objects)
+        val runs = provide<ObjectBackupRunService>()
+        val storage = provide<ObjectBackupStorageService>()
+        withConnectionManager { storage.bindConfigured(configurations.keys) }
+        if (restore) factory.withStorage(configurations.getValue("retained")) { retained ->
+            for ((key, value) in listOf("a" to "data", "b" to "more")) {
+                retained.setInputStream(StringObjectPath("payloads/$key"), value.byteInputStream(), 4)
+            }
+            ObjectBackupManifestStore(retained, application.json).save(StringObjectPath("manifests/fixed.json"), inventory)
+        }
+        val run = withConnectionManager {
+            val prepared = if (restore) runs.prepareRestore(inventory, "restored", "manifests/fixed.json")
+                else runs.prepare(inventory, "retained")
+            runs.configureStorage(prepared.key, "retained", mapOf("content" to if (restore) "target" else "source"))
+            prepared
+        }
+        val checkpoint = UUID.randomUUID().toString()
+        val target = if (restore) "target" else "retained"
+        val intent = mutableMapOf("runKey" to run.key, "checkpointKey" to checkpoint, "targetStorage" to target)
+        if (!restore) intent["version"] = run.version.toString()
+        val process = startWorker(intent)
+        val stopped = withConnectionManager { assertNotNull(runs.get(run.key)) }
+        val items = withConnectionManager { runs.items(run.key, 0, 10) }
+        assertEquals(ObjectBackupRunStatus.RUNNING, stopped.status)
+        assertNotNull(stopped.checkpointKey)
+        assertEquals(listOf(ObjectBackupProgressStatus.COMPLETED, ObjectBackupProgressStatus.RUNNING), items.map { it.status })
+        process.destroyForcibly()
+        assertTrue(process.waitFor(10, TimeUnit.SECONDS))
+        assertNotEquals(0, process.exitValue())
+        assertEquals(stopped, withConnectionManager { runs.get(run.key) })
+        Files.delete(root.resolve("source/a"))
+        if (restore) Files.delete(root.resolve("source/b"))
+        install()
+        val actualFactory = provide<ObjectStorageServiceFactory>()
+        val writes = mutableListOf<String>()
+        provides<ObjectStorageServiceFactory>(singleton = true, overrideExisting = true) {
+            object : ObjectStorageServiceFactory by actualFactory {
+                override suspend fun <T> withStorage(
+                    configuration: StorageConfiguration,
+                    block: suspend (ObjectStorageService) -> T,
+                ): T = actualFactory.withStorage(configuration) { actual ->
+                    block(object : ObjectStorageService by actual {
+                        override suspend fun setInputStream(path: ObjectPath, stream: InputStream, length: Long?): Long {
+                            if (configuration.basePath == root.resolve(target).toString()) writes.add(path.toString())
+                            return actual.setInputStream(path, stream, length)
+                        }
+                    })
+                }
+            }
+        }
+        val restarted = provide<ObjectBackupRunService>()
+        val result = if (restore) restarted.executeConfigured(run.key, checkpoint)
+            else restarted.executeConfigured(run.key, run.version, checkpoint)
+        assertEquals(ObjectBackupRunStatus.COMPLETED, result.status)
+        assertEquals(2, result.attempts)
+        assertEquals(listOf(if (restore) "b" else "payloads/b"), writes.filterNot { it.startsWith("manifests/") })
+        assertEquals(items.first(), withConnectionManager { restarted.items(run.key, 0, 10) }.first())
+        assertFailsWith<IllegalStateException> {
+            withConnectionManager { restarted.fail(run.key, stopped.version, "late failure") }
+        }
+        actualFactory.withStorage(configurations.getValue(target)) { output ->
+            assertEquals("data", output.getString(StringObjectPath(if (restore) "a" else "payloads/a")))
+            assertEquals("more", output.getString(StringObjectPath(if (restore) "b" else "payloads/b")))
+        }
+    }
+
+    private suspend fun startWorker(intent: Map<String, String>): Process {
+        val settingsPath = root.resolve("worker.properties")
+        Properties().apply {
+            setProperty("root", root.toString())
+            setProperty("jdbcUrl", postgres.jdbcUrl)
+            setProperty("username", postgres.username)
+            setProperty("password", postgres.password)
+            for ((key, value) in intent) setProperty(key, value)
+        }.also { settings -> Files.newOutputStream(settingsPath).use { settings.store(it, null) } }
+        val process = ProcessBuilder(
+            Path.of(System.getProperty("java.home"), "bin/java").toString(), "-cp",
+            checkNotNull(System.getProperty("bosca.backup.testClasspath")),
+            ObjectBackupCheckpointWorker::class.java.name, settingsPath.toString(),
+        ).redirectErrorStream(true).redirectOutput(root.resolve("worker.log").toFile()).start()
+        worker = process
+        withTimeout(30_000) {
+            while (!root.resolve("worker-ready").exists()) {
+                check(process.isAlive) { "Backup worker exited before its checkpoint: ${Files.readString(root.resolve("worker.log"))}" }
+                delay(25)
+            }
+        }
+        return process
     }
 
     private fun install() {

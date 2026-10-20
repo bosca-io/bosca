@@ -136,6 +136,7 @@ class ObjectBackupCapturePipelineIntegrationTest {
     private var unversioned = false
     private val restoreWrites = CopyOnWriteArrayList<String>()
     private var failedRestoreKey: String? = null
+    private var stoppedRestoreKey: String? = null
     private var denied = false
     private var failedKey: String? = null
     private val selection = ObjectBackupCaptureInventory(
@@ -630,6 +631,43 @@ class ObjectBackupCapturePipelineIntegrationTest {
     }
 
     @Test
+    fun `redelivered restore action resumes running inventory and saved object checkpoints`(): Unit = runBlocking {
+        useRestorePipeline()
+        stoppedRestoreKey = "b"
+        val initial = start(plan.path)
+        executeNext()
+        val original = assertNotNull(queue.dequeue(5.seconds))
+        assertFailsWith<AssertionError> { execute(original) }
+        val stopped = restoreRun()
+        assertEquals(ObjectBackupRunStatus.RUNNING, stopped.status)
+        assertEquals(PipelineRunStatus.SUSPENDED, get(initial.id).status)
+        assertNull(get(initial.id).output)
+        assertEquals(listOf("a", "b"), restoreWrites.toList())
+        queue.enqueueLater(original, 1.seconds)
+        assertTrue(locks.forceRelease("job-${original.getId()}"))
+        stoppedRestoreKey = null
+        restoreWrites.clear()
+        install()
+        val redelivered = withTimeout(10_000) {
+            var next = queue.dequeue(1.seconds)
+            while (next == null) {
+                delay(50)
+                next = queue.dequeue(1.seconds)
+            }
+            next
+        }
+        assertEquals(original.getId(), redelivered.getId())
+        execute(redelivered)
+        assertEquals(PipelineRunStatus.OK, get(initial.id).status)
+        assertEquals(ObjectBackupRunStatus.COMPLETED, restoreRun().status)
+        assertEquals(stopped.key, restoreRun().key)
+        assertEquals(2, restoreRun().attempts)
+        assertEquals(listOf("b"), restoreWrites.toList())
+        assertEquals(0, redelivered.serialize().failures)
+        assertTrue(requests.isEmpty())
+    }
+
+    @Test
     fun `restore action corrupt retained payload fails before target writes and emits no output`(): Unit = runBlocking {
         val captured = useRestorePipeline()
         directory.resolve("retained").resolve(captured.objects.last().payloadPath).toFile().writeText("bad")
@@ -738,6 +776,7 @@ class ObjectBackupCapturePipelineIntegrationTest {
                         override suspend fun setInputStream(path: ObjectPath, stream: InputStream, length: Long?): Long {
                             assertEquals(0, pool.activeConnections)
                             restoreWrites.add(path.toString())
+                            if (path.toString() == stoppedRestoreKey) throw AssertionError("restore worker stopped")
                             if (path.toString() == failedRestoreKey) {
                                 actual.setInputStream(path, "x".byteInputStream(), 1)
                                 throw IOException("restore write failed")

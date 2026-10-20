@@ -58,7 +58,9 @@ interface ObjectBackupRunRepository {
     @Query(
         """
         insert into backup.object_store_writers (storage_key, run_key)
-        values (:storageKey, :runKey) on conflict (storage_key) do nothing
+        values (:storageKey, :runKey) on conflict (storage_key) do update
+            set run_key = excluded.run_key
+            where backup.object_store_writers.run_key = excluded.run_key
         """,
         returnUpdateCount = true,
     )
@@ -172,18 +174,31 @@ interface ObjectBackupRunRepository {
         """
         update backup.object_runs
         set status = 'running', attempts = attempts + 1, error = null, result = null,
-            version = version + 1, modified = now()
+            checkpoint_key = :checkpointKey, version = version + 1, modified = now()
         where key = :key and version = :expectedVersion and status in ('pending', 'partial', 'failed')
         returning *
         """
     )
-    suspend fun start(key: String, expectedVersion: Long): ObjectBackupRun?
+    suspend fun start(key: String, expectedVersion: Long, checkpointKey: String?): ObjectBackupRun?
+
+    /** Resumes only the observed running job checkpoint; a new version rejects stale acknowledgements. */
+    @Query(
+        """
+        update backup.object_runs
+        set attempts = attempts + 1, version = version + 1, modified = now()
+        where key = :key and version = :expectedVersion and status = 'running'
+            and checkpoint_key = :checkpointKey
+        returning *
+        """,
+    )
+    suspend fun resume(key: String, expectedVersion: Long, checkpointKey: String): ObjectBackupRun?
 
     /** Explicitly queues another attempt without treating cancelled delivery as a retry request. */
     @Query(
         """
         update backup.object_runs
-        set status = 'pending', error = null, result = null, version = version + 1, modified = now()
+        set status = 'pending', error = null, result = null, checkpoint_key = null,
+            version = version + 1, modified = now()
         where key = :key and version = :expectedVersion and status in ('partial', 'failed', 'cancelled')
         returning *
         """

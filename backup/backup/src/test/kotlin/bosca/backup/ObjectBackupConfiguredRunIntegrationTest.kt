@@ -16,11 +16,13 @@ import bosca.di.provides
 import bosca.server.BoscaApplication
 import bosca.server.config.ApplicationConfig
 import bosca.storage.configuration.StorageConfiguration
+import bosca.storage.service.ObjectPath
 import bosca.storage.service.ObjectStorageService
 import bosca.storage.service.ObjectStorageServiceFactory
 import bosca.storage.service.StringObjectPath
 import bosca.test.resources.SharedPostgreSQLContainer
 import java.io.IOException
+import java.io.InputStream
 import java.nio.file.Path
 import java.security.MessageDigest
 import java.sql.DriverManager
@@ -33,6 +35,7 @@ import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
 import kotlin.io.path.createTempDirectory
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
@@ -70,10 +73,17 @@ class ObjectBackupConfiguredRunIntegrationTest {
             ConnectionConfig(postgres.jdbcUrl, postgres.username, postgres.password, maxConnections = 3),
             key = "object-backup-configured-run-test",
         ))
+        directory = createTempDirectory("bosca-configured-run-")
+        configurations = (mapping.values + targets.values + "retained").associateWith { key ->
+            StorageConfiguration("fs", "", basePath = directory.resolve(key).toString())
+        }
         ProviderRegistry.clear()
         provides<ConnectionPool>(singleton = true) { pool }
         provides<Json>(singleton = true) { Json }
-        application = BoscaApplication(ApplicationConfig.load("".byteInputStream()), ownsServices = false)
+        val config = JsonObject(mapOf("backup" to JsonObject(mapOf("objectStores" to JsonObject(
+            configurations.mapValues { Json.encodeToJsonElement(StorageConfiguration.serializer(), it.value) },
+        )))))
+        application = BoscaApplication(ApplicationConfig.load(config.toString().byteInputStream()), ownsServices = false)
         provides<BoscaApplication>(singleton = true) { application }
         StorageProviderRegistrar().register()
         BackupProviderRegistrar().register()
@@ -81,10 +91,6 @@ class ObjectBackupConfiguredRunIntegrationTest {
         runs = provide()
         storage = provide()
         factory = provide()
-        directory = createTempDirectory("bosca-configured-run-")
-        configurations = (mapping.values + targets.values + "retained").associateWith { key ->
-            StorageConfiguration("fs", "", basePath = directory.resolve(key).toString())
-        }
         request { for ((key, configuration) in configurations) storage.bind(key, configuration) }
         write("source-content", first.key, "content")
         write("source-artifacts", second.key, "artifact")
@@ -211,6 +217,101 @@ class ObjectBackupConfiguredRunIntegrationTest {
         assertEquals("content", read("retained", first.payloadPath))
         assertEquals("artifact", read("retained", second.payloadPath))
         assertEquals(targets, request { runs.getStorage(run.key) }?.stores)
+    }
+
+    @Test
+    fun `job redelivery resumes backup and restore checkpoints without rewriting completed objects`(): Unit = runBlocking {
+        for (restore in listOf(false, true)) {
+            val run = if (restore) configureRestore() else configureBackup()
+            val jobKey = "job-$restore"
+            val stopped = interrupt(run, jobKey)
+            val completedItem = request { runs.items(run.key, 0, 10) }.first()
+            assertEquals(ObjectBackupProgressStatus.COMPLETED, completedItem.status)
+            if (!restore) assertTrue(directory.resolve("source-content/${first.key}").toFile().delete())
+            BackupProviderRegistrar().register()
+            runs = provide()
+            val writes = mutableListOf<Pair<String, String>>()
+            val observed = withWrites { store, path -> writes.add(store to path) }
+            val result = observed.executeConfigured(run.key, configurations, jobKey)
+            assertEquals(ObjectBackupRunStatus.COMPLETED, result.status)
+            assertEquals(2, result.attempts)
+            assertEquals(2L, result.result?.completed)
+            assertEquals(1, writes.count { !it.second.startsWith("manifests/") })
+            assertEquals(completedItem, request { runs.items(run.key, 0, 10) }.first())
+            assertFailsWith<IllegalStateException> { request { runs.fail(run.key, stopped.version, "late failure") } }
+            assertFailsWith<IllegalStateException> { request { runs.complete(run.key, stopped.version) } }
+            assertEquals(result, request { runs.get(run.key) })
+            assertEquals(result, observed.executeConfigured(run.key, emptyMap(), jobKey))
+        }
+    }
+
+    @Test
+    fun `another job and unqueued calls cannot resume an interrupted running attempt`(): Unit = runBlocking {
+        val run = configureBackup()
+        val stopped = interrupt(run, "original-job")
+        var opened = false
+        val observed = withWrites { _, _ -> opened = true }
+        for (jobKey in listOf(null, "another-job")) {
+            assertFailsWith<IllegalStateException> { observed.executeConfigured(run.key, emptyMap(), jobKey) }
+            assertEquals(stopped, request { runs.get(run.key) })
+        }
+        assertEquals(false, opened)
+    }
+
+    @Test
+    fun `pinned job redelivery resumes only its original dispatch version`(): Unit = runBlocking {
+        val run = configureBackup()
+        val stopped = interrupt(run, "job", run.version)
+        val completed = runs.executeConfigured(run.key, run.version, "job")
+        assertEquals(ObjectBackupRunStatus.COMPLETED, completed.status)
+        assertEquals(2, completed.attempts)
+        assertTrue(completed.version > stopped.version)
+    }
+
+    @Test
+    fun `old dispatch cannot resume a newer attempt even when given the same checkpoint identity`(): Unit = runBlocking {
+        val run = configureBackup()
+        val stopped = interrupt(run, "job", run.version)
+        val next = request {
+            val failed = runs.fail(run.key, stopped.version, "stopped writer")
+            runs.retry(run.key, failed.version)
+        }
+        val current = interrupt(next, "job", next.version)
+        assertEquals(current, runs.executeConfigured(run.key, run.version, "job"))
+        assertEquals(current, request { runs.get(run.key) })
+        assertEquals(ObjectBackupRunStatus.COMPLETED, runs.executeConfigured(run.key, next.version, "job").status)
+    }
+
+    @Test
+    fun `resuming restore rolls back when a destination belongs to another run`(): Unit = runBlocking {
+        val run = configureRestore()
+        val stopped = interrupt(run, "restore-job")
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { connection ->
+            connection.prepareStatement("delete from backup.object_store_writers where storage_key = 'target-content' and run_key = ?").use {
+                it.setString(1, run.key)
+                assertEquals(1, it.executeUpdate())
+            }
+        }
+        val other = request {
+            val selected = runs.prepare(inventory.copy(id = "other"), "target-content")
+            runs.configureStorage(selected.key, "target-content", mapping)
+            runs.start(selected.key, selected.version)
+        }
+        val failure = assertFailsWith<ObjectBackupDestinationBusyException> {
+            runs.executeConfigured(run.key, configurations, "restore-job")
+        }
+        assertEquals("target-content", failure.storageKey)
+        assertEquals(stopped, request { runs.get(run.key) })
+        assertEquals(other, request { runs.get(other.key) })
+    }
+
+    @Test
+    fun `blank job checkpoint fails before configuration or state changes`(): Unit = runBlocking {
+        val run = configureBackup()
+        for (key in listOf("", " ")) {
+            assertFailsWith<IllegalArgumentException> { runs.executeConfigured(run.key, configurations, key) }
+            assertEquals(run, request { runs.get(run.key) })
+        }
     }
 
     @Test
@@ -493,6 +594,39 @@ class ObjectBackupConfiguredRunIntegrationTest {
 
     private suspend fun prepare(selected: ObjectBackupManifest = inventory): ObjectBackupRun =
         request { runs.prepare(selected, "retained") }
+
+    private suspend fun withWrites(beforeWrite: suspend (String, String) -> Unit): ObjectBackupRunService {
+        val observed = object : ObjectStorageServiceFactory by factory {
+            override suspend fun <T> withStorage(
+                configuration: StorageConfiguration,
+                block: suspend (ObjectStorageService) -> T,
+            ): T = factory.withStorage(configuration) { actual ->
+                val store = Path.of(requireNotNull(configuration.basePath)).fileName.toString()
+                block(object : ObjectStorageService by actual {
+                    override suspend fun setInputStream(path: ObjectPath, stream: InputStream, length: Long?): Long {
+                        assertEquals(0, pool.activeConnections)
+                        beforeWrite(store, path.toString())
+                        return actual.setInputStream(path, stream, length)
+                    }
+                })
+            }
+        }
+        return ObjectBackupRunServiceImpl(provide(), provide(), provide(), Json,
+            ObjectBackupStorageServiceImpl(provide(), observed, application))
+    }
+
+    /** Models an abrupt attempt without recording failure; the separate-JVM tests cover process death. */
+    private suspend fun interrupt(run: ObjectBackupRun, jobKey: String, dispatchVersion: Long? = null): ObjectBackupRun {
+        val stop = AssertionError("interrupted worker")
+        val service = withWrites { store, path ->
+            if (store == "retained" && path == second.payloadPath || store == "target-artifacts" && path == second.key) throw stop
+        }
+        assertFailsWith<AssertionError> {
+            if (dispatchVersion == null) service.executeConfigured(run.key, configurations, jobKey)
+            else service.executeConfigured(run.key, dispatchVersion, jobKey)
+        }
+        return request { assertNotNull(runs.get(run.key)) }.also { assertEquals(ObjectBackupRunStatus.RUNNING, it.status) }
+    }
 
     private suspend fun configureBackup(selected: ObjectBackupManifest = inventory): ObjectBackupRun {
         val run = prepare(selected)

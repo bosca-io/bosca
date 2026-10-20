@@ -3,6 +3,7 @@ package bosca.backup
 import bosca.queue.annotations.JobDefinition
 import bosca.sharedqueue.jobs.AbstractJobExecutor
 import bosca.sharedqueue.jobs.DelayException
+import bosca.sharedqueue.jobs.job
 import kotlin.time.Duration.Companion.seconds
 
 /** Runs persisted backup/restore intent through the owning service and selected application stores. */
@@ -15,7 +16,7 @@ class ObjectBackupRunExecutor(
     override suspend fun execute() {
         val definition = getJobDefinition()
         try {
-            service.executeConfigured(definition.key, definition.version)
+            service.executeConfigured(definition.key, definition.version, job().getId().toString())
         } catch (busy: ObjectBackupDestinationBusyException) {
             throw DelayException(5.seconds).also { it.initCause(busy) }
         }

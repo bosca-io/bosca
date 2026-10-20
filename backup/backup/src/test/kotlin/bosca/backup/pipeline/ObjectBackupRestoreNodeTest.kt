@@ -79,6 +79,7 @@ class ObjectBackupRestoreNodeTest {
             prepared
         }
         coEvery { service.executeConfigured("run") } returns prepared.copy(status = ObjectBackupRunStatus.COMPLETED)
+        coEvery { service.executeConfigured("run", any<String>()) } returns prepared.copy(status = ObjectBackupRunStatus.COMPLETED)
     }
 
     @AfterTest
@@ -101,15 +102,18 @@ class ObjectBackupRestoreNodeTest {
         every { job.getId() } returns UUID.random()
         withContext(queue.asCoroutineContext(job)) { perform(); perform() }
         assertEquals(observedKeys[0], observedKeys[1])
+        coVerify(exactly = 2) { service.executeConfigured("run", observedKeys[0]) }
         every { job.getId() } returns UUID.random()
         withContext(queue.asCoroutineContext(job)) { perform() }
         assertTrue(observedKeys[0] != observedKeys[2])
+        coVerify(exactly = 1) { service.executeConfigured("run", observedKeys[2]) }
     }
 
     @Test
     fun `queued restore contention defers the same request while inline callers retain the original error`(): Unit = runBlocking {
         val busy = ObjectBackupDestinationBusyException("target")
         coEvery { service.executeConfigured("run") } throws busy
+        coEvery { service.executeConfigured("run", any<String>()) } throws busy
         val job = mockk<Job>()
         every { job.getId() } returns UUID.random()
         withContext(mockk<JobQueue>().asCoroutineContext(job)) {

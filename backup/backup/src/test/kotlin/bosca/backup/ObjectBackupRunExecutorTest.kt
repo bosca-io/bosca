@@ -98,17 +98,28 @@ class ObjectBackupRunExecutorTest {
 
     @Test
     fun `executor delegates the persisted key and pinned version to configured execution`(): Unit = runBlocking {
-        coEvery { service.executeConfigured(key, 7) } returns mockk()
+        coEvery { service.executeConfigured(key, 7, any<String>()) } returns mockk()
         withExecutor(key) { it.execute() }
-        coVerify(exactly = 1) { service.executeConfigured(key, 7) }
+        coVerify(exactly = 1) { service.executeConfigured(key, 7, any<String>()) }
         coVerify(exactly = 0) { service.executeConfigured(any()) }
         coVerify(exactly = 0) { service.executeConfigured(any(), any<Map<String, StorageConfiguration>>()) }
     }
 
     @Test
+    fun `redelivery uses the same job identity for its checkpoint and keeps distinct jobs separate`(): Unit = runBlocking {
+        val first = ObjectBackupRunJob(key, 7).prepare().apply { setPersistentId(UUID.random()) }
+        val other = ObjectBackupRunJob(key, 7).prepare().apply { setPersistentId(UUID.random()) }
+        coEvery { service.executeConfigured(key, 7, any<String>()) } returns mockk()
+        withContext(queue.asCoroutineContext(first)) { repeat(2) { first.newExecutor().execute() } }
+        withContext(queue.asCoroutineContext(other)) { other.newExecutor().execute() }
+        coVerify(exactly = 2) { service.executeConfigured(key, 7, first.getId().toString()) }
+        coVerify(exactly = 1) { service.executeConfigured(key, 7, other.getId().toString()) }
+    }
+
+    @Test
     fun `destination contention becomes delayed redelivery with its original cause`(): Unit = runBlocking {
         val failure = ObjectBackupDestinationBusyException("retained")
-        coEvery { service.executeConfigured(key, 7) } throws failure
+        coEvery { service.executeConfigured(key, 7, any<String>()) } throws failure
         val delayed = assertFailsWith<DelayException> { withExecutor(key) { it.execute() } }
         assertEquals(5.seconds, delayed.time)
         assertSame(failure, delayed.cause)
@@ -117,7 +128,7 @@ class ObjectBackupRunExecutorTest {
     @Test
     fun `ordinary failures and cancellation propagate unchanged`(): Unit = runBlocking {
         for (failure in listOf(IOException("storage failed"), CancellationException("worker stopped"))) {
-            coEvery { service.executeConfigured(key, 7) } throws failure
+            coEvery { service.executeConfigured(key, 7, any<String>()) } throws failure
             val thrown = assertFailsWith<Exception> { withExecutor(key) { it.execute() } }
             assertEquals(failure::class, thrown::class)
             assertTrue(generateSequence(thrown as Throwable) { it.cause }.any { it === failure })

@@ -105,12 +105,20 @@ No target store is opened during preparation. Credentials remain in runtime conf
 Execution uses the existing restore service: it verifies retained lengths and SHA-256
 digests, rejects conflicting target data before asset writes, and reuses matching objects.
 A recorded partial failure can retry after service restart without rewriting completed
-objects. Redelivery of the same completed request returns its historical result without
-storage work. A fresh request creates a distinct run that verifies current targets again,
+objects. Redelivery of an interrupted backing job resumes its saved running inventory and
+object checkpoints, without rewriting completed targets. Redelivery of the same completed
+request returns its historical result without storage work. A fresh request creates a distinct
+run that verifies current targets again,
 reuses matching files and repairs missing owned output through the shared checkpoints.
-Cancelled runs need the existing explicit retry control; a surviving running writer needs
-stopped-writer recovery. The Pipeline action does not take over active writers or report
+Cancelled runs need the existing explicit retry control. A different job or a call without
+the original job checkpoint cannot resume a surviving running writer. The Pipeline action does not report
 cancelled/incomplete outcomes as successful.
+
+Dispatched inventory backups and restores bind their checkpoint to the original job and requested
+run version. A redelivery advances the run version so an older completion cannot release its
+destination claims. An explicit retry needs a new dispatch version; an old delivery cannot
+resume it. Queue execution serializes deliveries; direct service callers must do the same
+when supplying a job checkpoint. Other writers retain their claims.
 
 Use isolated target namespaces and keep restore progress outside any application database
 being replaced. This action restores the declared objects only. PostgreSQL restoration,

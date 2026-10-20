@@ -44,6 +44,7 @@ object ObjectBackupCheckpointWorker {
         provides<Json>(singleton = true) { application.json }
         StorageProviderRegistrar().register()
         val factory = provide<ObjectStorageServiceFactory>()
+        val target = settings.getProperty("targetStorage", "retained")
         var payloads = 0
         provides<ObjectStorageServiceFactory>(singleton = true, overrideExisting = true) {
             object : ObjectStorageServiceFactory by factory {
@@ -51,7 +52,7 @@ object ObjectBackupCheckpointWorker {
                     configuration: StorageConfiguration,
                     block: suspend (ObjectStorageService) -> T,
                 ): T = factory.withStorage(configuration) { actual ->
-                    val store = if (configuration.basePath != root.resolve("retained").toString()) actual else
+                    val store = if (configuration.basePath != root.resolve(target).toString()) actual else
                         object : ObjectStorageService by actual {
                             override suspend fun setInputStream(path: ObjectPath, stream: InputStream, length: Long?): Long {
                                 if (!path.toString().endsWith(".json") && ++payloads == 2) {
@@ -67,9 +68,17 @@ object ObjectBackupCheckpointWorker {
         }
         BackupProviderRegistrar().register()
         try {
-            provide<ObjectBackupCaptureService>().captureConfigured(
-                settings.getProperty("planKey"), OffsetDateTime.MIN, settings.getProperty("checkpointKey"),
-            )
+            val runKey = settings.getProperty("runKey")
+            if (runKey == null) {
+                provide<ObjectBackupCaptureService>().captureConfigured(
+                    settings.getProperty("planKey"), OffsetDateTime.MIN, settings.getProperty("checkpointKey"),
+                )
+            } else {
+                val runs = provide<ObjectBackupRunService>()
+                val version = settings.getProperty("version")?.toLong()
+                if (version == null) runs.executeConfigured(runKey, settings.getProperty("checkpointKey"))
+                else runs.executeConfigured(runKey, version, settings.getProperty("checkpointKey"))
+            }
             error("Worker unexpectedly completed before interruption")
         } finally {
             application.shutdown()

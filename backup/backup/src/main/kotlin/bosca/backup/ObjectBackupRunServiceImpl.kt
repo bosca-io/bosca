@@ -99,12 +99,12 @@ class ObjectBackupRunServiceImpl(
         }
     }
 
-    override suspend fun executeConfigured(key: String): ObjectBackupRun =
-        executeConfiguredRun(key) { storageService.configurations(it) }
+    override suspend fun executeConfigured(key: String, checkpointKey: String?): ObjectBackupRun =
+        executeConfiguredRun(key, checkpointKey = checkpointKey) { storageService.configurations(it) }
 
-    override suspend fun executeConfigured(key: String, expectedVersion: Long): ObjectBackupRun {
+    override suspend fun executeConfigured(key: String, expectedVersion: Long, checkpointKey: String?): ObjectBackupRun {
         validateVersion(key, expectedVersion)
-        return executeConfiguredRun(key, expectedVersion) { storageService.configurations(it) }
+        return executeConfiguredRun(key, expectedVersion, checkpointKey) { storageService.configurations(it) }
     }
 
     override suspend fun configureStorage(
@@ -174,26 +174,34 @@ class ObjectBackupRunServiceImpl(
     override suspend fun executeConfigured(
         key: String,
         configurations: Map<String, StorageConfiguration>,
+        checkpointKey: String?,
     ): ObjectBackupRun {
         val captured = configurations.toMap()
-        return executeConfiguredRun(key) { captured }
+        return executeConfiguredRun(key, checkpointKey = checkpointKey) { captured }
     }
 
     private suspend fun executeConfiguredRun(
         key: String,
         expectedVersion: Long? = null,
+        checkpointKey: String? = null,
         configurations: suspend (Set<String>) -> Map<String, StorageConfiguration>,
     ): ObjectBackupRun {
+        require(checkpointKey == null || checkpointKey.isNotBlank()) { "Job checkpoint identity is required" }
         check(connectionOrNull()?.inTransaction != true) {
             "Configured object runs must execute outside an active database transaction"
         }
         val prepared = withConnectionManager {
             checkNotNull(get(key)) { "Object backup run is missing: $key" }
         }
-        if (!matchesDispatch(prepared, expectedVersion)) return prepared
+        val checkpoint = checkpointKey?.let {
+            objectBackupIdentity(prepared.operation, listOf(it, expectedVersion?.toString() ?: "request"))
+        }
+        if (!matchesDispatch(prepared, expectedVersion, checkpoint)) return prepared
         when (prepared.status) {
             ObjectBackupRunStatus.COMPLETED, ObjectBackupRunStatus.CANCELLED -> return prepared
-            ObjectBackupRunStatus.RUNNING -> error("Object run is already running: $key")
+            ObjectBackupRunStatus.RUNNING -> check(checkpoint != null && prepared.checkpointKey == checkpoint) {
+                "Object run is already running: $key"
+            }
             else -> Unit
         }
         val mapping = withConnectionManager {
@@ -204,7 +212,7 @@ class ObjectBackupRunServiceImpl(
         val selected = required.associateWith { storageKey ->
             requireNotNull(available[storageKey]) { "Missing storage configuration: $storageKey" }
         }
-        return executeRun(key, prepared.operation, expectedVersion) { run ->
+        return executeRun(key, prepared.operation, expectedVersion, checkpoint) { run ->
             storageService.withStorages(selected) { opened ->
                 val stores = mapping.stores.mapValues { (_, storageKey) -> opened.getValue(storageKey) }
                 val retained = opened.getValue(mapping.backupKey)
@@ -339,23 +347,33 @@ class ObjectBackupRunServiceImpl(
         }
     }
 
-    override suspend fun start(key: String, expectedVersion: Long): ObjectBackupRun {
+    override suspend fun start(key: String, expectedVersion: Long): ObjectBackupRun =
+        startRun(key, expectedVersion, null)
+
+    private suspend fun startRun(key: String, expectedVersion: Long, checkpointKey: String?): ObjectBackupRun {
         validateVersion(key, expectedVersion)
         return transaction {
-            val run = updated(repository.start(key, expectedVersion), key, expectedVersion)
-            val storage = repository.getStorage(key)
-            if (storage != null) {
-                val destinations = when (run.operation) {
-                    ObjectBackupOperation.BACKUP -> setOf(storage.backupKey)
-                    ObjectBackupOperation.RESTORE -> storage.stores.values.toSet()
-                }
-                for (storageKey in destinations.sorted()) {
-                    if (repository.claimWriter(storageKey, key) != 1) {
-                        throw ObjectBackupDestinationBusyException(storageKey)
-                    }
-                }
-            }
+            val run = updated(repository.start(key, expectedVersion, checkpointKey), key, expectedVersion)
+            claimWriters(run)
             run
+        }
+    }
+
+    private suspend fun resumeRun(run: ObjectBackupRun, checkpointKey: String?): ObjectBackupRun {
+        check(checkpointKey != null && run.checkpointKey == checkpointKey) { "Object run is already running: ${run.key}" }
+        val resumed = updated(repository.resume(run.key, run.version, checkpointKey), run.key, run.version)
+        claimWriters(resumed)
+        return resumed
+    }
+
+    private suspend fun claimWriters(run: ObjectBackupRun) {
+        val storage = repository.getStorage(run.key) ?: return
+        val destinations = when (run.operation) {
+            ObjectBackupOperation.BACKUP -> setOf(storage.backupKey)
+            ObjectBackupOperation.RESTORE -> storage.stores.values.toSet()
+        }
+        for (storageKey in destinations.sorted()) {
+            if (repository.claimWriter(storageKey, run.key) != 1) throw ObjectBackupDestinationBusyException(storageKey)
         }
     }
 
@@ -421,6 +439,7 @@ class ObjectBackupRunServiceImpl(
         key: String,
         operation: ObjectBackupOperation,
         expectedVersion: Long? = null,
+        checkpointKey: String? = null,
         transfer: suspend (ObjectBackupRun) -> Unit,
     ): ObjectBackupRun {
         val (running, started) = withConnectionManager {
@@ -429,13 +448,13 @@ class ObjectBackupRunServiceImpl(
                 require(prepared.operation == operation) {
                     "Object run operation is ${prepared.operation}; expected $operation: $key"
                 }
-                if (!matchesDispatch(prepared, expectedVersion)) {
+                if (!matchesDispatch(prepared, expectedVersion, checkpointKey)) {
                     prepared to false
                 } else {
                     when (prepared.status) {
                         ObjectBackupRunStatus.COMPLETED, ObjectBackupRunStatus.CANCELLED -> prepared to false
-                        ObjectBackupRunStatus.RUNNING -> error("Object run is already running: $key")
-                        else -> start(prepared.key, prepared.version) to true
+                        ObjectBackupRunStatus.RUNNING -> resumeRun(prepared, checkpointKey) to true
+                        else -> startRun(prepared.key, prepared.version, checkpointKey) to true
                     }
                 }
             }
@@ -525,8 +544,11 @@ class ObjectBackupRunServiceImpl(
         }
     }
 
-    private fun matchesDispatch(run: ObjectBackupRun, expectedVersion: Long?): Boolean =
-        expectedVersion == null || (run.version == expectedVersion && run.status == ObjectBackupRunStatus.PENDING)
+    private fun matchesDispatch(run: ObjectBackupRun, expectedVersion: Long?, checkpointKey: String?): Boolean =
+        expectedVersion == null ||
+            (run.version == expectedVersion && run.status == ObjectBackupRunStatus.PENDING) ||
+            (run.status == ObjectBackupRunStatus.RUNNING && run.version > expectedVersion &&
+                checkpointKey != null && run.checkpointKey == checkpointKey)
 
     private fun validateVersion(key: String, expectedVersion: Long) {
         validateKey(key)

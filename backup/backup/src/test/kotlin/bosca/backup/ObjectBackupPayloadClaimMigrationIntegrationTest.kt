@@ -117,18 +117,23 @@ class ObjectBackupPayloadClaimMigrationIntegrationTest {
         seed("a", payload)
         seedRun("f")
         val service: ObjectBackupRunService = provide()
-        val before = withConnectionManager { assertNotNull(service.get("f".repeat(64))) }
+        val before = runSnapshot("f".repeat(64))
 
         FlywayMigration(pool).migrate(listOf(migration))
 
-        assertEquals(before, withConnectionManager { service.get(before.key) })
+        assertEquals(before, runSnapshot("f".repeat(64)))
+        val upgraded = withConnectionManager { assertNotNull(service.get("f".repeat(64))) }
+        assertEquals(1, queryInt("""
+            select count(*) from backup.object_runs
+            where key = '${upgraded.key}' and retained_manifest_key = key and retained_manifest_path = path
+        """.trimIndent()))
         assertEquals(2, queryInt("select count(*) from backup.object_paths"))
         val progress: ObjectBackupProgressService = provide()
         assertFailsWith<IllegalArgumentException> {
             withConnectionManager {
                 progress.prepare(
                     ObjectBackupOperation.BACKUP, "other", "destination-1", "other",
-                    payload.copy(key = "other", payloadPath = before.path),
+                    payload.copy(key = "other", payloadPath = upgraded.path),
                 )
             }
         }
@@ -256,6 +261,19 @@ class ObjectBackupPayloadClaimMigrationIntegrationTest {
             statement.executeQuery().use {
                 assertTrue(it.next())
                 Json.parseToJsonElement(it.getString(1)).jsonObject
+            }
+        }
+    }
+
+    private fun runSnapshot(key: String) = jdbc { connection ->
+        connection.prepareStatement("""
+            select (to_jsonb(r) - 'checkpoint_key' - 'retained_manifest_key' - 'retained_manifest_path')::text
+            from backup.object_runs r where key = ?
+        """.trimIndent()).use {
+            it.setString(1, key)
+            it.executeQuery().use { rows ->
+                assertTrue(rows.next())
+                Json.parseToJsonElement(rows.getString(1)).jsonObject
             }
         }
     }

@@ -1,0 +1,5 @@
+{
+  "resources": [
+    { "glob": "db/migrations/V17__object_backup_job_checkpoints.sql" }
+  ]
+}
