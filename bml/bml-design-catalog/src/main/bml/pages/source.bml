@@ -1,0 +1,21 @@
+<page route="/source">
+  <catalog-document title="Source viewers" description="Read-only code, wrapping and caller-owned viewer state." current="/source">
+    <p class="page-intro">Select and search the code, or use Escape then Tab to leave the viewer. Open Example states to request a line, change the language, replace the content or refresh the surrounding example.</p>
+    <div class="catalog-grid">
+      <div class="catalog-palette-dark" data-source-palette="dark"><source-example id="dark" title="Dark palette" /></div>
+      <div class="catalog-palette-light" data-source-palette="light"><source-example id="light" title="Light palette" /></div>
+    </div>
+    <div class="catalog-grid" data-source-snippets>
+      <card title="Short snippet"><div class="catalog-stack"><source-view content="const enabled = true;" path="short.ts" compact data-source-short /><p class="example-note">One to three lines use a 110px surface.</p></div></card>
+      <card title="Medium snippet"><div class="catalog-stack"><source-view :content='"const theme = {\n  surface: \"white\",\n  text: \"slate\",\n  accent: \"green\"\n};"' path="theme.ts" compact data-source-medium /><p class="example-note">Four to eight lines use a 180px surface.</p></div></card>
+      <card title="Long snippet"><div class="catalog-stack"><source-view :content='(1..12).joinToString("\n") { "const item$it = $it;" }' path="items.ts" compact data-source-long /><p class="example-note">Longer snippets use a 240px surface with internal scrolling.</p></div></card>
+      <card title="Compact without a toolbar"><div class="catalog-stack"><source-view content="const compact = true;" path="compact.ts" compact bare data-source-compact-bare /><p class="example-note">Compact sizing also applies when the toolbar is hidden.</p></div></card>
+      <card title="Wrapped markup"><div class="catalog-stack"><source-view :content='"<!-- Supplied source stays text, including closing tags. -->\n<section aria-label=\"A deliberately long label that wraps inside a narrow read-only source surface\">\n  <textarea></textarea>\n  <script>window.catalogSourceExecuted = true;</script>\n</section>"' path="sample.bml" label="Markup preview" bare wrapped data-source-markup /><p class="example-note">Bare viewers omit the toolbar. Supplied markup remains text.</p></div></card>
+      <card title="Empty source"><div class="catalog-stack"><source-view :content='""' label="Empty source" bare data-source-empty /><p class="example-note">No content supplied. The viewer remains read-only and keyboard accessible.</p></div></card>
+    </div>
+    <card title="Use in your application"><div class="catalog-stack">
+      <p class="catalog-description">Keep a stable preservation key for updates around a viewer. Change that key when replacing its content or toolbar children. Colors and surface dimensions come from your application's CSS.</p>
+      <a class="catalog-link" href="/components/content#ref-source-view">Source API and authoring</a>
+    </div></card>
+  </catalog-document>
+</page>

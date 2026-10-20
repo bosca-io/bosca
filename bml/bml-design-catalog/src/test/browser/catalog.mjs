@@ -7,6 +7,8 @@ import { join, resolve } from 'node:path';
 import { checkReferences } from './references.mjs';
 import { checkPresentation } from './presentation.mjs';
 import { checkPickers } from './picker.mjs';
+import { checkSources } from './source.mjs';
+import { checkToastNavigation } from './toast-navigation.mjs';
 
 const base = process.argv[2];
 const mode = process.argv[3] ?? 'fixture';
@@ -155,6 +157,8 @@ try {
   await checkReferences({navigate,evaluate,until,key,call,artifacts,mode,expected:JSON.parse(process.argv[4])});
   await checkPresentation({navigate,evaluate,until,key,call,artifacts,mode});
   await checkPickers({navigate,evaluate,until,call,artifacts,mode});
+  await checkSources({navigate,evaluate,until,key,call,artifacts,mode});
+  await checkToastNavigation({navigate,evaluate,until,call});
   assert.deepEqual(exceptions,[]);
   console.log(`Catalog ${mode}: foundation, themes, 41 packaged export contracts, references, overlays, views, trees, comments, editors, aliases and native fallbacks passed`);
 } finally {

@@ -56,7 +56,6 @@ class NoticeState(val id: String) {
 
     fun toggle() {
         mounted = !mounted
-        if (mounted) message = ""
     }
 
     private fun notify(tone: String, duration: Int, message: String) {

@@ -24,7 +24,7 @@ export async function checkToasts({ call, evaluate, until, base, mode, artifacts
     for(const expression of ['document','window']) {
       const object=await call('Runtime.evaluate',{expression});
       const result=await call('DOMDebugger.getEventListeners',{objectId:object.result.objectId});
-      counts[expression]=result.listeners.filter(listener=>['visibilitychange','bml:update','keydown','resize'].includes(listener.type)).length;
+      counts[expression]=result.listeners.filter(listener=>['visibilitychange','bml:update','keydown','resize','pagehide'].includes(listener.type)).length;
       await call('Runtime.releaseObject',{objectId:object.result.objectId});
     }
     return counts;
@@ -190,7 +190,8 @@ export async function checkToasts({ call, evaluate, until, base, mode, artifacts
     assert.ok(await evaluate('!window.fixtureRemovedNotice.isConnected && !window.fixtureRemovedNotice.matches(":popover-open")'));
     await click('[data-toggle-notice=light]');
     await until(`document.querySelector('${root('light')}') && !document.querySelector('${dismiss('light')}').hasAttribute('title')`);
-    assert.equal(Boolean(await evaluate(shown('light'))),false);
+    assert.ok(await evaluate(`document.querySelector('${root('light')}').dataset.message==='Information for light'`),'Remount retains the caller message rather than clearing saved state');
+    assert.equal(Boolean(await evaluate(shown('light'))),false,'A remounted toast treats the retained sequence as its baseline');
   }
   assert.deepEqual(await listeners(),baseline,'Notice disposal removes document/window listeners');
   assert.equal(await evaluate('window.fixtureNoticeObservers.size'),observers,'Notice disposal disconnects ResizeObservers');

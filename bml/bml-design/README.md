@@ -96,7 +96,7 @@ CSS, globally or on a themed container. Declaring the packaged faces does not fo
 | `popover` | Required `label: String`; `icon: String = ""`; `iconOnly: Boolean = false`; `width: Int = 360` | Native details with a labelled summary and default children in a labelled region. Additional attributes/classes target details. Scripts enhance its content into a viewport-fitted manual popover; without scripts it remains a native disclosure. |
 | `copy` | Required `value: String`; `label: String = "Copy"`; `showStatus: Boolean = true` | Root div receives additional attributes/classes. Its 30×30px native button copies the value, switches decorative icons and reports status. No child content. Visible status reserves 26ch so feedback does not move neighboring content; `showStatus="false"` keeps status accessible with no visible message space. |
 | `copy-field` | Required `value: String` and `label: String`; `copyLabel: String = "Copy value"` | Root div receives additional attributes/classes. A labelled readonly input and compact copy action display a single-line value. No child content. Focus selects the value; denied/unavailable clipboard access selects it and exposes manual-copy guidance. |
-| `toast` | Required `id: String`; `message: String = ""`; `sequence: Int = 0`; `tone: String = "info"` (`info`, `success`, `warning`, `error`); `duration: Int = 4000` (milliseconds) | Manual-popover root receives additional attributes/classes. `id` supplies its stable `data-bml-preserve` key, rather than a native DOM ID. No child content. The caller issues each nonempty notice with a new positive sequence; ordinary updates and same/older sequences do not replay it. |
+| `toast` | Required `id: String`; `message: String = ""`; `sequence: Int = 0`; `tone: String = "info"` (`info`, `success`, `warning`, `error`); `duration: Int = 4000` (milliseconds) | Manual-popover root receives additional attributes/classes. `id` supplies its stable `data-bml-preserve` key, rather than a native DOM ID. No child content. The caller issues each nonempty notice with a new positive sequence while mounted; initial state, ordinary updates and same/older sequences do not replay it. |
 | `search-input` | `value: String = ""`; `name: String = "q"`; `placeholder: String = "Search…"`; `label: String = "Search"`; `preserveKey: String = ""`; `disabled: Boolean = false`; `autofocus: Boolean = true` | Search wrapper with decorative icon, clear action and default trailing action children. Additional attributes/classes/events target the native search input. The clear action emits one bubbling `input` event and returns focus to the query. |
 | `segmented-control` | Required `label: String`, `name: String`, `options: List<String>` and `value: String`; `values: List<String> = emptyList()`; `icons: List<String> = emptyList()`; `preserveKey: String = ""` | Radiogroup receives additional attributes/classes/events. A hidden native input supplies the selected form value. Buttons use indexed `values` or fall back to option labels; optional indexed icons are decorative. Emits bubbling `segmentchange` after updating its native value. No child content. |
 | `view-tabs` | Required `label: String`, `tabs: List<String>` and `selected: String` | Tablist receives additional attributes/classes/events. Emits bubbling `viewchange` with the selected label as its string detail. The application owns panels, IDs, accessible relationships and visibility. No child content. |
@@ -174,8 +174,10 @@ event. Timers and tooltip listeners are removed on disposal. Visible status rese
 preserves an icon-only footprint. Icon visibility uses local hidden-state rules and needs no document reset.
 
 Toast state belongs to the application. Give each toast a stable key within its updating region,
-keep its sequence monotonic, and increment it for every notice, including repeated text. A new
-sequence restarts its timeout; unrelated patches retain the active notice and remaining time.
+keep it mounted while issuing notices, and increment its monotonic sequence for every notice,
+including repeated text. The initial sequence is a baseline: navigation, reload and remount do not
+announce a message retained in server state. A subsequent sequence increase shows a new notice and
+restarts its timeout; unrelated patches retain the active notice and remaining time.
 Success/info/warning use a polite status region; errors use an assertive alert. Notifications do
 not take focus from the caller or move page content. Dismissal returns focus when the viewer had
 focused the notification, using the remembered target or an available control in the owning island.
@@ -183,6 +185,7 @@ focused the notification, using the remembered target or an available control in
 Hover, keyboard focus and document visibility pause expiry. Focus and pointer interest survive a
 preserved root's temporary removal from the native top layer. Escape, the dismiss button or expiry
 close it. Long text scrolls with a keyboard focus indicator while the close action stays visible.
+Leaving the page closes its current notice, including when Browser Back restores a cached document.
 The surface fits the viewport, including short screens; reduced motion removes the entrance animation.
 Unmount removes timers, listeners and ResizeObservers. Each instance owns one notice; queues and
 progress notifications are application concerns. Live notification behavior requires client scripts.

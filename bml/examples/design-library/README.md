@@ -78,7 +78,8 @@ Checks cover live-region priorities, repeated text, same/older/empty sequences, 
 retained DOM and announcements/timeouts across unrelated updates, hover/focus pausing, return focus,
 new-notice timeouts, reduced motion, two live CSS themes, long-message keyboard scrolling and narrow/
 short viewport fit. Document visibility is controlled through an isolated getter/event override for
-its pause/resume check. Repeated disposal verifies timer, listener and ResizeObserver cleanup.
+its pause/resume check. Repeated disposal verifies timer, listener and ResizeObserver cleanup,
+and remounting a retained nonempty message does not replay the earlier notice.
 
 The `/selection` page uses search input, segmented controls and local view tabs. Checks cover native
 form values, one clear/input event, caller-controlled autofocus, readonly/disabled search, typed

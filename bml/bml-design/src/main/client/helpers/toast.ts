@@ -1,8 +1,9 @@
 import type { ClientContext, IslandUpdate } from "@bosca/bml";
 
-/** Presents each caller-issued sequence once, retaining the active notice through island updates. */
+/** Announces new sequences after mounting; rendered session state is not a new notification. */
 export function toast(ctx: ClientContext) {
-  let sequence = 0;
+  const initialSequence = Number(ctx.root.dataset.sequence);
+  let sequence = Number.isFinite(initialSequence) ? Math.max(0, initialSequence) : 0;
   let visible = false;
   let disposed = false;
   let hovered = false;
@@ -98,6 +99,7 @@ export function toast(ctx: ClientContext) {
     }
   });
   ctx.on(document, "visibilitychange", () => document.hidden ? pause() : resume());
+  ctx.on(window, "pagehide", close);
   ctx.on<CustomEvent<IslandUpdate>>(document, "bml:update", event => {
     if (event.detail.target.contains(ctx.root)) sync();
   });
