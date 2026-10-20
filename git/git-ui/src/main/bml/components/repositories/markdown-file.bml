@@ -21,7 +21,7 @@
       aria-label="Source"
       :hidden="!showSource"
     >
-      <ui-source-view :content="page.content.orEmpty()" :path="page.file" bare />
+      <source-view :content="page.content.orEmpty()" :path="page.file" :line='ctx.query["line"]?.toIntOrNull() ?: 0' bare />
     </div>
   </html:section>
   <style scoped>

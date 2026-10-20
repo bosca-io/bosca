@@ -34,7 +34,7 @@
     <else-if page.isMarkdown>
       <git-markdown-file :page="page" />
     <else-if page.content != null>
-      <ui-source-view :content="page.content" :path="page.file" bare />
+      <source-view :content="page.content" :path="page.file" :line='ctx.query["line"]?.toIntOrNull() ?: 0' bare />
     </if>
   </html:section>
   <style scoped>

@@ -39,6 +39,11 @@ export async function checkSource({ call, evaluate, until: poll, base, mode, art
   };})()`),{readonly:'true',editable:false,label:'File source: Example.txt',tabindex:0,forwarded:true,fallback:false,
     line:'return "Hello, " + name;',wrapping:'false',sizes:[110,180,240],bare:true,inferred:true,plain:true,empty:'',
     colors:['rgb(255, 255, 255)','rgb(126, 34, 206)','rgb(16, 19, 28)','rgb(233, 213, 255)']});
+  await until('document.querySelector("[data-source-literals] .source-constant")&&document.querySelector("[data-source-markup] .source-link")');
+  assert.equal(await evaluate('document.querySelector("[data-source-literals] .source-constant").textContent'),'true','Boolean literals retain their syntax category');
+  assert.deepEqual(await evaluate(`(() => {const root=document.querySelector('[data-source-markup]'),link=[...root.querySelectorAll('.source-link')].find(e=>e.textContent.includes('Guide')),marker=root.querySelector('.source-string');return [[...root.querySelectorAll('.source-link')].some(e=>e.textContent.includes('Guide')),getComputedStyle(link).textDecorationLine,marker.textContent];})()`),[true,'underline','#'],'Markdown links retain underlines and marker highlighting');
+  const colors=await evaluate(`(() => {const style=document.createElement('style');style.textContent='[data-source-literals], [data-source-markup] {--source-constant:#6b3e8f;--source-link:#145c72;--source-string:#377548;}';document.head.append(style);try{return [getComputedStyle(document.querySelector('[data-source-literals] .source-constant')).color,getComputedStyle([...document.querySelectorAll('[data-source-markup] .source-link')].find(e=>e.textContent.includes('Guide'))).color,getComputedStyle(document.querySelector('[data-source-markup] .source-string')).color];}finally{style.remove();}})()`);
+  assert.deepEqual(colors,['rgb(107, 62, 143)','rgb(20, 92, 114)','rgb(55, 117, 72)'],'Consumer CSS controls literal and link syntax colors');
   assert.equal(await listeners('window',['beforeunload']),0,'A source viewer adds no dirty-navigation handler');
   await evaluate(`window.sourceTextBefore=${content}.textContent;${content}.focus()`);
   await call('Input.insertText',{text:'SHOULD NOT EDIT'});await key('Backspace');

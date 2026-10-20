@@ -18,6 +18,8 @@
           <source-view :content="bosca.design.example.SourceSamples.long" path="Sample.ts" compact data-source-long />
           <source-view :content="bosca.design.example.SourceSamples.long" path="Sample.ts" bare :line="2" wrapped data-source-bare />
           <source-view content="" :line="-1" compact data-source-empty />
+          <source-view :content="bosca.design.example.SourceSamples.literals" path="Literals.ts" compact data-source-literals />
+          <source-view :content="bosca.design.example.SourceSamples.markup" path="Guide.md" compact data-source-markup />
           <source-view content="Plain text" language="unknown" :line="999" compact data-source-plain />
         </div>
         <p id="source-after" tabindex="0">After the source viewers.</p>

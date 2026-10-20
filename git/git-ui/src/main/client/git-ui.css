@@ -298,10 +298,6 @@ a:hover {
 .file-toolbar [data-bml-island] {
   display: contents;
 }
-.source-toolbar .file-toolbar {
-  padding: 0;
-  gap: 8px;
-}
 textarea {
   font: inherit;
   color: inherit;
@@ -1098,22 +1094,36 @@ a.info-value {
   }
 }
 
-/* File-card source views size like Studio's file viewer: at least ten lines, scrolling past 800px. */
-.bare-code .cm-editor {
-  min-height: 225px;
-  max-height: 800px;
-}
-.bare-code .cm-scroller {
-  overflow: auto;
-}
 form.code-widget .cm-editor {
   min-height: 320px;
   max-height: 800px;
 }
-@media (max-width: 600px) {
-  .bare-code .cm-editor {
-    max-height: calc(100dvh - 160px);
-  }
+
+/* Git retains its code palette and spacing on the shared read-only viewer. */
+.git-document .code-widget[data-bml-source-view] {
+  --source-keyword: #c678dd;
+  --source-name: #e06c75;
+  --source-function: #61afef;
+  --source-constant: #d19a66;
+  --source-definition: #abb2bf;
+  --source-type: #e5c07b;
+  --source-operator: #56b6c2;
+  --source-string: #98c379;
+  --source-comment: #7d8799;
+  --source-heading: #e06c75;
+  --source-link: #7d8799;
+  --source-invalid: #ffffff;
+  color: var(--fg-0);
+  background: transparent;
+}
+.git-document [data-bml-source-view] > .code-editor {
+  overflow: hidden;
+}
+.git-document [data-bml-source-view] .cm-scroller {
+  line-height: 1.4;
+}
+.git-document [data-bml-source-view] .source-heading {
+  font-weight: bold;
 }
 
 /* Agent detail islands contribute cards directly to the page's ordered column. */

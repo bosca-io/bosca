@@ -330,8 +330,8 @@ manifest and lockfile pin its dependencies, and bundled dependency notices are p
 `META-INF/licenses/bml-design/source-view.txt`.
 
 Git retains repository/ref preview, editing, commits, dirty-navigation confirmation and post-save
-routing. Its existing components remain until the application's component cutover. The shared
-viewer provides none of those behaviors.
+routing. Its read-only file surfaces use the shared viewer and pass requested lines explicitly. The shared
+viewer provides none of those editing behaviors.
 
 Viewer colors inherit ordinary design variables. Optional `--source-*` overrides control its
 background/foreground, gutter, active line, selection, panels, search match and syntax groups:
@@ -345,8 +345,10 @@ background/foreground, gutter, active line, selection, panels, search match and 
 | `--source-keyword`, `--source-function`, `--source-operator`, `--source-heading` | `--purple`, `--info`, `--info`, `--info` |
 | `--source-name`, `--source-definition`, `--source-constant`, `--source-type` | `--fg-1`, `--fg-0`, `--warn`, `--warn` |
 | `--source-string`, `--source-comment` | `--ok`, `--fg-3` |
+| `--source-link`, `--source-invalid` | `--info`, `--err` |
 
-Invalid syntax uses `--err`; focus, cursor and matching-bracket outlines use `--accent`. These rules
+Literal booleans and atoms use the constant color; markup markers use the string color.
+Links retain an underline. Focus, cursor and matching-bracket outlines use `--accent`. These rules
 live in real CSS under the viewer root, including CodeMirror-created descendants and search panels.
 Switching an ancestor's theme updates existing viewers without remounting or a theme runtime.
 
@@ -484,7 +486,7 @@ Dynamic option/tag rules live in the real library stylesheet under its owning se
 | `client/design.css` | Shared control token defaults from `src/main/client/git-ui.css` |
 
 `src/main/kotlin/bosca/design/model/NavigationItem.kt` owns the shared navigation model formerly
-defined in Git UI. Git's remaining local components await application adoption and cleanup.
+defined in Git UI. Git's generic visual components consume the compiled library through one unaliased import.
 
 Component paths are relative to each module's `src/main/bml`; `client/design.css` is under `src/main`.
 Lucide glyphs retain their [ISC notice](src/main/resources/META-INF/licenses/bml-design/lucide.txt),

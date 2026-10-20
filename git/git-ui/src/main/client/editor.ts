@@ -41,7 +41,6 @@ export function codeLanguage(path: string) {
 /** Owns one editor's draft and releases all listeners and CodeMirror state on unmount. */
 export function mountCodeEditor(
   ctx: ClientContext,
-  readonly: boolean,
   preview?: (
     id: string,
     ref: string,
@@ -66,12 +65,10 @@ export function mountCodeEditor(
         basicSetup,
         oneDark,
         language.of(codeLanguage(container.dataset.path ?? "")),
-        EditorState.readOnly.of(readonly),
-        EditorView.editable.of(!readonly),
         EditorView.contentAttributes.of({
           tabindex: "0",
-          "aria-readonly": String(readonly),
-          "aria-label": readonly ? "File source" : "File editor",
+          "aria-readonly": "false",
+          "aria-label": "File editor",
           "aria-description": "Escape then Tab leaves the editor",
         }),
         wrap.of([]),
@@ -97,7 +94,7 @@ export function mountCodeEditor(
         EditorView.updateListener.of((update) => {
           if (!update.docChanged) return;
           if (textarea) textarea.value = view.state.doc.toString();
-          dirty = !readonly && view.state.doc.toString() !== original;
+          dirty = view.state.doc.toString() !== original;
           container.dataset.dirty = String(dirty);
         }),
         Prec.highest(

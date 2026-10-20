@@ -36,10 +36,11 @@
 [data-bml-source-view] .source-definition { color: var(--source-definition, var(--fg-0)); }
 [data-bml-source-view] .source-type { color: var(--source-type, var(--warn)); }
 [data-bml-source-view] .source-operator { color: var(--source-operator, var(--info)); }
-[data-bml-source-view] .source-string { color: var(--source-string, var(--ok)); }
 [data-bml-source-view] .source-comment { color: var(--source-comment, var(--fg-3)); }
-[data-bml-source-view] .source-invalid { color: var(--err); }
+[data-bml-source-view] .source-link { color: var(--source-link, var(--info)); text-decoration: underline; }
 [data-bml-source-view] .source-heading { color: var(--source-heading, var(--info)); font-weight: 600; }
+[data-bml-source-view] .source-string { color: var(--source-string, var(--ok)); }
+[data-bml-source-view] .source-invalid { color: var(--source-invalid, var(--err)); }
 [data-bml-source-view] .source-emphasis { font-style: italic; }
 [data-bml-source-view] .source-strong { font-weight: bold; }
 [data-bml-source-view] .source-strikethrough { text-decoration: line-through; }

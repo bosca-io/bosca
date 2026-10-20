@@ -383,7 +383,7 @@ class GitUiRoutesTest {
     fun `migrated controls have no local registrations and use library client mounts`() {
         val migrated = listOf(
             "button", "input", "field", "card", "switch", "alert", "badge", "spinner", "loading-state",
-            "icon", "icon-button", "icon-link", "tooltip", "copy", "copy-field", "popover", "dialog", "confirm-dialog", "select", "search-input", "segmented-control", "section-heading", "table-scroll", "disclosure-heading", "empty-state", "time", "comment-editor", "toast", "app-header", "bosca-mark", "page-shell", "page-heading", "tabs", "view-tabs",
+            "icon", "icon-button", "icon-link", "tooltip", "copy", "copy-field", "popover", "dialog", "confirm-dialog", "select", "search-input", "segmented-control", "section-heading", "table-scroll", "disclosure-heading", "empty-state", "time", "comment-editor", "toast", "app-header", "bosca-mark", "page-shell", "page-heading", "tabs", "view-tabs", "tree", "tree-item", "source-view", "json-editor",
         )
         val registered = bml.generated.BmlComponents.all.map { it.tag }.toSet()
         for (tag in migrated) {
@@ -400,18 +400,19 @@ class GitUiRoutesTest {
             "/search?repo=repo&q=snippet",
             "/pulls?status=CLOSED",
             "/repositories/repo/github",
+            "/ci-agents/orchestrator",
         ).joinToString("\n") { path ->
             val response = get(path)
             assertEquals(200, response.statusCode(), response.body())
             response.body()
         }
         assertTrue("data-bml-component=\"git-search-link\"" in html, "Git search shortcut needs its own native link mount")
-        for (tag in listOf("icon-button", "icon-link", "tooltip", "copy", "copy-field", "popover", "dialog", "select", "search-input", "segmented-control", "toast", "app-header", "tabs", "view-tabs")) {
+        for (tag in listOf("icon-button", "icon-link", "tooltip", "copy", "copy-field", "popover", "dialog", "select", "search-input", "segmented-control", "toast", "app-header", "tabs", "view-tabs", "tree", "source-view", "json-editor")) {
             val id = bosca.bml.library.BmlLibraryArtifacts.componentId("io.bosca:bml-design", tag)
             assertTrue("data-bml-component=\"$id\"" in html, "Missing library mount for $tag")
             assertFalse("data-bml-component=\"ui-$tag\"" in html)
         }
-        for (tag in listOf("section-heading", "table-scroll", "disclosure-heading", "empty-state", "time", "bosca-mark", "page-shell", "page-heading")) {
+        for (tag in listOf("section-heading", "table-scroll", "disclosure-heading", "empty-state", "time", "bosca-mark", "page-shell", "page-heading", "tree-item")) {
             val id = bosca.bml.library.BmlLibraryArtifacts.componentId("io.bosca:bml-design", tag)
             assertTrue("data-bml-c=\"$id\"" in html, "Missing library scope for $tag")
         }
@@ -881,6 +882,9 @@ class GitUiRoutesTest {
     fun `markdown line navigation opens its numbered source view`() {
         val html = get("/repositories/repo?file=search-result.md&line=2").body()
         assertTrue("matching line" in html, html)
+        assertTrue("data-line=\"2\"" in html, html)
+        assertTrue("data-line=\"1\"" in get("/repositories/repo?file=a.txt&line=1").body())
+        assertTrue("data-line=\"0\"" in get("/repositories/repo?file=a.txt&line=invalid").body())
         assertTrue("data-tab=\"Source\" aria-selected=\"true\"" in html, html)
         assertFalse(Regex("<div[^>]+ref=\"sourceSurface\"[^>]+hidden").containsMatchIn(html), html)
     }

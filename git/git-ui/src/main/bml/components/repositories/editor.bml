@@ -53,7 +53,7 @@
   <script client scoped>
     import { GitMarkdownPreview } from "./GitMarkdownPreview";
     import { mountCodeEditor } from "@client/editor";
-    mountCodeEditor(ctx, false, (id, ref, path, source) =>
+    mountCodeEditor(ctx, (id, ref, path, source) =>
       GitMarkdownPreview.render(id, ref, path, source),
     );
   </script>

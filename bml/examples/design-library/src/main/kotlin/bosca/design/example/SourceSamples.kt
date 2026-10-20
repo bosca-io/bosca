@@ -2,6 +2,8 @@ package bosca.design.example
 
 /** Local source text for viewer, fallback, language and layout checks. */
 object SourceSamples {
+    val literals: String = "const ready = true;"
+    val markup: String = "# Heading\n[Guide](docs/guide.md)"
     val short: String = "fun greeting() = \"Hello\""
     val medium: String = (1..5).joinToString("\n") { "line $it" }
     val long: String = buildString {

@@ -15,13 +15,15 @@ const highlight = HighlightStyle.define([
   { tag: [tags.definition(tags.name), tags.separator], class: "source-definition" },
   { tag: [tags.typeName, tags.className, tags.number, tags.changed, tags.annotation, tags.modifier, tags.self, tags.namespace], class: "source-type" },
   { tag: [tags.operator, tags.operatorKeyword, tags.url, tags.escape, tags.regexp, tags.link, tags.special(tags.string)], class: "source-operator" },
-  { tag: [tags.string, tags.inserted], class: "source-string" },
   { tag: [tags.meta, tags.comment], class: "source-comment" },
-  { tag: tags.invalid, class: "source-invalid" },
-  { tag: tags.heading, class: "source-heading" },
-  { tag: tags.emphasis, class: "source-emphasis" },
   { tag: tags.strong, class: "source-strong" },
+  { tag: tags.emphasis, class: "source-emphasis" },
   { tag: tags.strikethrough, class: "source-strikethrough" },
+  { tag: tags.link, class: "source-link" },
+  { tag: tags.heading, class: "source-heading" },
+  { tag: [tags.atom, tags.bool, tags.special(tags.variableName)], class: "source-constant" },
+  { tag: [tags.processingInstruction, tags.string, tags.inserted], class: "source-string" },
+  { tag: tags.invalid, class: "source-invalid" },
 ]);
 
 /** Mount one read-only viewer. The application owns content, URLs, requested lines and updates. */
