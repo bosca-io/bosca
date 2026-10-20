@@ -100,7 +100,7 @@
       overflow-wrap: anywhere;
     }
     .source:focus-visible {
-      outline: 2px solid var(--accent);
+      outline: var(--focus-width) solid var(--accent);
       outline-offset: -2px;
     }
   </style>

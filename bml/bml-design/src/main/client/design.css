@@ -143,13 +143,19 @@
   --fg-4: #454b60;
   --accent: #64748b;
   --on-accent: #fff;
+  --shadow-color: #000;
+  --backdrop-color: #000;
+  --control-height-md: 32px;
+  --control-height-sm: 30px;
+  --control-height-xs: 24px;
+  --control-gap: 6px;
+  --focus-width: 2px;
+  --focus-offset: 3px;
   --err: #ff5470;
   --ok: #34d99a;
   --warn: #ffb547;
   --info: #5ec5ff;
   --purple: #a78bff;
-  --control-bg: #161a25;
-  --control-radius: 9px;
   --r-sm: 9px;
   --r-md: 12px;
   --r-lg: 16px;
@@ -221,7 +227,7 @@
   line-height: 1.5;
   text-align: left;
   white-space: normal;
-  box-shadow: var(--tooltip-shadow, 0 4px 12px #0005);
+  box-shadow: var(--tooltip-shadow, 0 4px 12px color-mix(in srgb, var(--shadow-color) 33.3333333333%, transparent));
   pointer-events: auto;
   cursor: default;
 }
@@ -292,5 +298,5 @@
   font: inherit;
   cursor: pointer;
 }
-[data-bml-design-select] .select-tag button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+[data-bml-design-select] .select-tag button:focus-visible { outline: var(--focus-width) solid var(--accent); outline-offset: 2px; }
 [data-bml-design-select] .select-tag button:disabled { opacity: 0.35; cursor: not-allowed; }

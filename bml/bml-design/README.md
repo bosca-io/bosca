@@ -378,6 +378,9 @@ Switching an ancestor's theme updates existing viewers without remounting or a t
 
 ## Consumer CSS
 
+The [CSS token reference](css-tokens.md) lists public defaults, optional component/editor hooks,
+shared control dimensions and spacing, focus values, and application-owned branding.
+
 Library defaults load before application CSS. Override ordinary custom properties on the root or a
 themed container. For example:
 
@@ -406,7 +409,9 @@ they are used, so two themed containers can coexist in one document.
 
 Feedback uses `--ok`, `--warn`, `--info`, `--err` and `--purple`; alerts can override `--error-fg`
 within a theme and otherwise use `--err`. Table cells use the same foreground/border tokens.
-The library's table stylesheet targets only its scrolling wrapper, including caller-owned table
+`--control-bg` and `--control-radius` fall back at use to the local `--bg-2` and `--r-sm`;
+they do not mask a subtree's base-token changes. The library's table stylesheet targets only its
+scrolling wrapper, including caller-owned table
 children; unrelated tables keep their own styles.
 
 Layout adds `--r-md` for panel radius, `--fg-4` for breadcrumb separators and `--on-accent` for the
@@ -418,12 +423,14 @@ Tooltip nodes stay inside their owning component and use native manual popovers 
 CSS custom properties inherit normally, including live theme-class changes. The library-owned
 `.bosca-tooltip` surface uses `--bg-3`, `--fg-0` and `--line-2`; optional `--tooltip-bg`, `--tooltip-fg`,
 `--tooltip-border` and `--tooltip-shadow` overrides provide specific tooltip styling. Default shadow
-is `0 4px 12px #0005`. This surface rule lives in the real library stylesheet because the node is
+is `0 4px 12px` using `--shadow-color` at one-third opacity. This surface rule lives in the real
+library stylesheet because the node is
 created at runtime. Consumers do not copy colors into JavaScript or configure a theme service.
 
 Dialogs and popovers retain their owning DOM subtree in the top layer, so they use consumer colors
 without a copied palette. Their surfaces use `--bg-1`, `--fg-1`, `--line-2` and the shared accent;
-modal footers use `--bg-2`. `--r-sm` and `--r-lg` default to 9px and 16px. Optional `--dialog-shadow`,
+modal footers use `--bg-2`. `--r-sm` and `--r-lg` default to 9px and 16px. Shared `--shadow-color`
+and `--backdrop-color` let local CSS change default elevation and dimming colors. Optional `--dialog-shadow`,
 `--dialog-backdrop` and `--popover-shadow` override the default shadows and backdrop color.
 
 Projected modal forms use the documented `modal-form`, `modal-fields` and `modal-footer` classes.

@@ -70,7 +70,7 @@
     .tab-row .tab-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
     .more { max-width: 100%; }
     .more-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-    .tab-row > a:focus-visible, .more:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+    .tab-row > a:focus-visible, .more:focus-visible { outline: var(--focus-width) solid var(--accent); outline-offset: -2px; }
     .tab-row > a:hover,
     .more:hover {
       color: var(--fg-1);
@@ -115,7 +115,7 @@
       background: var(--bg-2);
       border: 1px solid var(--line-2);
       border-radius: 10px;
-      box-shadow: var(--tabs-menu-shadow, 0 14px 40px #0006);
+      box-shadow: var(--tabs-menu-shadow, 0 14px 40px color-mix(in srgb, var(--shadow-color) 40%, transparent));
       color: var(--fg-1);
       font: inherit;
       font-size: 13px;
@@ -128,7 +128,7 @@
       border-radius: 6px;
       text-decoration: none;
     }
-    .tabs-menu a:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+    .tabs-menu a:focus-visible { outline: var(--focus-width) solid var(--accent); outline-offset: -2px; }
     .tabs-menu a:hover,
     .tabs-menu a:focus-visible {
       background: var(--bg-3);

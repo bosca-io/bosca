@@ -22,7 +22,7 @@
 [data-bml-source-view] .cm-panels,
 [data-bml-source-view] .cm-tooltip { background: var(--source-panel-bg, var(--bg-2)); color: var(--source-fg, var(--fg-1)); border-color: var(--line); }
 [data-bml-source-view] .cm-panels .cm-textfield,
-[data-bml-source-view] .cm-panels .cm-button { background: var(--control-bg); color: var(--fg-0); border: 1px solid var(--line-2); border-radius: var(--r-sm); }
+[data-bml-source-view] .cm-panels .cm-button { background: var(--control-bg, var(--bg-2)); color: var(--fg-0); border: 1px solid var(--line-2); border-radius: var(--r-sm); }
 [data-bml-source-view] .cm-panels input { accent-color: var(--accent); }
 [data-bml-source-view] .cm-searchMatch { background: var(--source-search-match, color-mix(in oklch, var(--warn) 30%, transparent)); outline: 1px solid var(--warn); }
 [data-bml-source-view] .cm-searchMatch.cm-searchMatch-selected { background: var(--source-selection, color-mix(in oklch, var(--accent) 25%, transparent)); }

@@ -91,6 +91,19 @@ export async function checkJson({ call, evaluate, until: poll, base, mode, artif
   assert.deepEqual(await evaluate(`(() => {const r=${root};return [getComputedStyle(r.querySelector('.jse-main')).backgroundColor,
     getComputedStyle(r.querySelector('.jse-key')).color,getComputedStyle(r).getPropertyValue('--jse-selection-background-color').trim()];})()`),
     ['rgb(239, 246, 255)','rgb(29, 78, 216)','#93c5fd']);
+  await evaluate(`document.querySelector('[data-palette=light]').classList.add('json-accent-only');
+    ${root}.querySelector('.jse-menu button').focus()`);
+  assert.equal(await evaluate(`getComputedStyle(${surface}).outlineColor`), 'rgb(15, 118, 110)');
+  assert.deepEqual(await evaluate(`(() => {
+    const r=${root}, probe=document.createElement('span');r.append(probe);
+    const color=value=>{probe.style.color=value;return getComputedStyle(probe).color;};
+    const result=[color('var(--jse-theme-color)'),
+      color('var(--jse-theme-color-highlight)')===color('color-mix(in oklch, #0f766e 80%, var(--fg-0))'),
+      color('var(--jse-selection-background-color)')===color('color-mix(in oklch, #0f766e 25%, var(--bg-1))'),
+      getComputedStyle(document.querySelector('[data-json=purple]')).getPropertyValue('--jse-theme-color').trim()];
+    probe.remove();return result;
+  })()`), ['rgb(15, 118, 110)', true, true, '#c084fc']);
+  await evaluate(`document.querySelector('[data-palette=light]').classList.remove('json-accent-only')`);
   for(const width of [1440,390]) {
     await call('Emulation.setDeviceMetricsOverride',{width,height:1100,deviceScaleFactor:1,mobile:false});
     await evaluate('window.scrollTo(0,0)');await until('document.documentElement.scrollWidth<=innerWidth');

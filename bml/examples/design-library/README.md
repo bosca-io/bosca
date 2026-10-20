@@ -23,6 +23,13 @@ Application CSS and the full HTML document are owned here. The library supplies 
 and component styles through the normal BML asset pipeline. The server uses the compiler-generated
 aggregate registries and packaged application assets.
 
+The `/themes` page tests the [public CSS token contract](../../bml-design/css-tokens.md) with the same
+unprefixed controls in default and customized roots. Base surface/radius overrides flow into controls
+without repeated aliases. Shared heights, content gaps, focus rings and shadow/backdrop colors change
+through consumer CSS. Checks cover explicit aliases, open overlays, live class changes, independent
+neighbors and native select presentation with scripts disabled. JSON checks also override only the
+editor accent and verify its derived hover, selection and focus colors.
+
 ```sh
 ./gradlew :bml:bml-design:bmlValidateLibrary :bml:examples:design-library:test
 ```
@@ -129,7 +136,7 @@ search, read-only keyboard behavior, preserved state/focus and changed caller op
 palettes and live CSS overrides exercise editor, gutter, active-line, search and syntax colors.
 Removal/remount checks CodeMirror destruction, observers and document listeners. HTTP/archive
 checks prove that ordinary button/card pages exclude viewer JS/CSS while source pages include it.
-Git's editable and preview workflows remain in the Git application; its component cutover is separate.
+Git also consumes this viewer; its editable and preview workflows remain in the Git application.
 
 
 The `/json` page consumes the compiled structured JSON editor. Its two independent caller-owned
@@ -138,5 +145,5 @@ controlled replacements, native reset, tree/text/table views, readonly/disabled 
 submission feedback. The browser checks real tree-cell editing and immediate text submission,
 keyboard exit, two palettes/live CSS changes, repeated disposal and non-overlapping desktop/phone
 viewports. With scripts disabled, escaped textarea drafts remain native form values. Archive and HTTP
-checks ensure basic and source-only pages exclude JSON editor assets. Git's existing adapter remains
-in Git; this fixture does not establish its later library import cutover.
+checks ensure basic and source-only pages exclude JSON editor assets. Git consumes the same library
+editor and retains its own configuration validation and actions.

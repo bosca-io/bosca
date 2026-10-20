@@ -133,10 +133,10 @@
       background: var(--bg-1);
       border: 1px solid var(--line-2);
       border-radius: var(--r-lg);
-      box-shadow: var(--dialog-shadow, 0 30px 100px #0008);
+      box-shadow: var(--dialog-shadow, 0 30px 100px color-mix(in srgb, var(--shadow-color) 53.3333333333%, transparent));
     }
     dialog::backdrop {
-      background: var(--dialog-backdrop, #0009);
+      background: var(--dialog-backdrop, color-mix(in srgb, var(--backdrop-color) 60%, transparent));
       backdrop-filter: blur(4px);
     }
     .dialog-content {

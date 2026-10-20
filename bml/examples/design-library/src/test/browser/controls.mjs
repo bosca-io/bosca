@@ -15,6 +15,7 @@ import { checkSelects } from './select-checks.mjs';
 import { checkComposition } from './composition-checks.mjs';
 import { checkSource } from './source-checks.mjs';
 import { checkJson } from './json-checks.mjs';
+import { checkThemes } from './theme-checks.mjs';
 
 const base = process.argv[2];
 const mode = process.argv[3] ?? 'fixture';
@@ -52,9 +53,18 @@ try {
   let sequence = 0;
   const pending = new Map();
   const exceptions = [];
+  const responses = [];
+  const consoleErrors = [];
   ws.addEventListener('message', event => {
     const message = JSON.parse(event.data);
     if (message.method === 'Runtime.exceptionThrown') exceptions.push(message.params.exceptionDetails);
+    if (message.method === 'Runtime.consoleAPICalled' && message.params.type === 'error') {
+      consoleErrors.push(message.params.args.map(arg => arg.value ?? arg.description));
+    }
+    if (message.method === 'Network.responseReceived' && message.params.response.url.startsWith(base)) {
+      responses.push({ id: message.params.requestId, url: message.params.response.url, status: message.params.response.status });
+      if (responses.length > 20) responses.shift();
+    }
     if (!message.id) return;
     const item = pending.get(message.id);
     if (!item) return;
@@ -81,12 +91,16 @@ try {
       if (await evaluate(expression)) return;
       await new Promise(resolve => setTimeout(resolve, 50));
     }
-    const context = await evaluate(`(() => { const input=document.querySelector('[data-switch=light]');
-      return input ? { html: input.closest('label').outerHTML, checked: input.checked,
-        background: getComputedStyle(input.nextElementSibling).backgroundColor,
-        accent: getComputedStyle(input).getPropertyValue('--accent'),
-        rules: Array.from(document.styleSheets).flatMap(sheet => Array.from(sheet.cssRules, rule => rule.cssText)).filter(rule => rule.includes('switch-track')) } : null })()`);
-    throw new Error(`Timed out: ${expression}\n${JSON.stringify(context)}`);
+    const context = await evaluate(`({ url: location.href, ready: document.readyState,
+      active: document.activeElement?.outerHTML.slice(0, 1500),
+      actions: Array.from(document.querySelectorAll('[data-bml-method]'), el => ({ text: el.textContent.trim(),
+        method: el.dataset.bmlMethod, bound: el.dataset.bmlActionBound, pending: el.dataset.bmlActionPending })) })`);
+    const failures = [];
+    for (const response of responses.filter(response => response.status >= 400).slice(-4)) {
+      const body = await call('Network.getResponseBody', { requestId: response.id });
+      failures.push({ ...response, body: body.body.slice(0, 2000) });
+    }
+    throw new Error(`Timed out: ${expression}\n${JSON.stringify({ context, responses, failures, consoleErrors })}`);
   }
   await call('Page.enable');
   await call('Runtime.enable');
@@ -267,6 +281,7 @@ try {
   await checkComposition({ call, evaluate, until, base, mode, artifacts });
   await checkSource({ call, evaluate, until, base, mode, artifacts });
   await checkJson({ call, evaluate, until, base, mode, artifacts });
+  await checkThemes({ call, evaluate, until, base });
   await call('Emulation.setScriptExecutionDisabled', { value: true });
   await call('Page.navigate', { url: base + '/' });
   await until('document.readyState === "complete" && document.querySelector("[data-input=light]")');

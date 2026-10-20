@@ -103,13 +103,13 @@
       border: 1px solid var(--line-2);
       border-radius: var(--r-sm);
       padding: 4px 8px;
-      background: var(--control-bg);
+      background: var(--control-bg, var(--bg-2));
       color: var(--fg-1);
       font: inherit;
       font-size: 12px;
       cursor: pointer;
     }
-    .select-pagination button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .select-pagination button:focus-visible { outline: var(--focus-width) solid var(--accent); outline-offset: 2px; }
     .select-pagination button:disabled { opacity: 0.35; cursor: not-allowed; }
     .select-pagination[hidden] { display: none; }
     .select-widget {
@@ -120,13 +120,13 @@
     }
     .select-widget > select {
       box-sizing: border-box;
-      height: 32px;
+      height: var(--control-height-md);
       padding: 0 10px;
       font: inherit;
       font-size: 13px;
       line-height: normal;
       color: var(--fg-1);
-      background: var(--control-bg);
+      background: var(--control-bg, var(--bg-2));
       border: 1px solid var(--line);
       border-radius: 6px;
       width: 100%;
@@ -141,23 +141,23 @@
       opacity: 0;
       pointer-events: none;
     }
-    .select-widget > select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .select-widget > select:focus-visible { outline: var(--focus-width) solid var(--accent); outline-offset: 2px; }
     .select-control[hidden], .select-tags[hidden], .select-popup[hidden], .select-query[hidden] { display: none; }
     .select-native-chevron {
       position: absolute;
       top: 0;
       right: 11px;
-      height: 32px;
+      height: var(--control-height-md);
       display: flex;
       align-items: center;
       color: var(--fg-4);
       pointer-events: none;
     }
     .size-sm .select-native-chevron {
-      height: 30px;
+      height: var(--control-height-sm);
     }
     .select-widget.size-sm > select {
-      height: 30px;
+      height: var(--control-height-sm);
       font-size: 12.5px;
     }
     select:disabled + .select-native-chevron {
@@ -189,7 +189,7 @@
       align-items: center;
       gap: 5px;
       width: 100%;
-      height: 32px;
+      height: var(--control-height-md);
       padding: 0 10px;
       border: 1px solid var(--line-2);
       border-radius: var(--r-sm);
@@ -213,10 +213,10 @@
       white-space: nowrap;
     }
     .size-sm .select-trigger {
-      height: 30px;
+      height: var(--control-height-sm);
       font-size: 12.5px;
     }
-    .select-trigger:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .select-trigger:focus-visible { outline: var(--focus-width) solid var(--accent); outline-offset: 2px; }
     .select-trigger:hover:not(:disabled) {
       border-color: var(--fg-4);
     }
@@ -239,13 +239,13 @@
       border-radius: 10px;
       color: var(--fg-1);
       background: var(--bg-2);
-      box-shadow: var(--select-shadow, 0 12px 40px #0006);
+      box-shadow: var(--select-shadow, 0 12px 40px color-mix(in srgb, var(--shadow-color) 40%, transparent));
       overflow: auto;
     }
     .select-query {
       box-sizing: border-box;
       width: 100%;
-      height: 30px;
+      height: var(--control-height-sm);
       padding: 0 8px;
       margin-bottom: 4px;
       background: transparent;

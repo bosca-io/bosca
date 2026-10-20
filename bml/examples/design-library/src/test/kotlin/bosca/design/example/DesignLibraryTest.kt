@@ -326,6 +326,9 @@ class DesignLibraryTest {
             assertTrue(ready, log.readText())
             val client = HttpClient.newBuilder().cookieHandler(CookieManager(null, CookiePolicy.ACCEPT_ALL)).build()
             test(base, client)
+        } catch (failure: Throwable) {
+            failure.addSuppressed(IllegalStateException("Design fixture development=$development at $base: ${log.readText()}"))
+            throw failure
         } finally {
             process.destroy()
             if (!process.waitFor(5, TimeUnit.SECONDS)) process.destroyForcibly()

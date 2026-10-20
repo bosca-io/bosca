@@ -52,10 +52,10 @@
   --jse-collapsed-items-link-color-highlight: var(--json-accent, var(--accent));
   --jse-button-primary-background: var(--json-accent, var(--accent));
   --jse-tooltip-action-button-background: var(--json-accent, var(--accent));
-  --jse-theme-color-highlight: color-mix(in oklch, var(--accent) 80%, var(--fg-0));
-  --jse-modal-editor-theme-color-highlight: color-mix(in oklch, var(--accent) 80%, var(--fg-0));
-  --jse-button-primary-background-highlight: color-mix(in oklch, var(--accent) 80%, var(--fg-0));
-  --jse-a-color-highlight: color-mix(in oklch, var(--accent) 80%, var(--fg-0));
+  --jse-theme-color-highlight: color-mix(in oklch, var(--json-accent, var(--accent)) 80%, var(--fg-0));
+  --jse-modal-editor-theme-color-highlight: color-mix(in oklch, var(--json-accent, var(--accent)) 80%, var(--fg-0));
+  --jse-button-primary-background-highlight: color-mix(in oklch, var(--json-accent, var(--accent)) 80%, var(--fg-0));
+  --jse-a-color-highlight: color-mix(in oklch, var(--json-accent, var(--accent)) 80%, var(--fg-0));
   --jse-button-primary-color: var(--on-accent);
   --jse-tooltip-action-button-color: var(--on-accent);
   --jse-error-color: var(--err);
@@ -67,8 +67,8 @@
   --jse-value-color-null: var(--json-boolean, var(--info));
   --jse-value-color-string: var(--json-string, var(--ok));
   --jse-value-color-url: var(--json-string, var(--ok));
-  --jse-selection-background-color: var(--json-selection, color-mix(in oklch, var(--accent) 25%, var(--bg-1)));
-  --jse-selection-background-inactive-color: var(--json-selection, color-mix(in oklch, var(--accent) 25%, var(--bg-1)));
+  --jse-selection-background-color: var(--json-selection, color-mix(in oklch, var(--json-accent, var(--accent)) 25%, var(--bg-1)));
+  --jse-selection-background-inactive-color: var(--json-selection, color-mix(in oklch, var(--json-accent, var(--accent)) 25%, var(--bg-1)));
   --jse-active-line-background-color: var(--bg-2);
   --jse-hover-background-color: var(--bg-2);
   --jse-table-row-odd-background: var(--bg-2);
@@ -81,10 +81,10 @@
   --jse-panel-border: 1px solid var(--line);
   --jse-input-border: 1px solid var(--line);
   --jse-svelte-select-border: 1px solid var(--line);
-  --jse-input-border-focus: 1px solid var(--accent);
-  --jse-search-match-outline: 1px solid var(--accent);
-  --jse-search-match-active-outline: 1px solid var(--accent);
-  --jse-edit-outline: 2px solid var(--accent);
+  --jse-input-border-focus: 1px solid var(--json-accent, var(--accent));
+  --jse-search-match-outline: 1px solid var(--json-accent, var(--accent));
+  --jse-search-match-active-outline: 1px solid var(--json-accent, var(--accent));
+  --jse-edit-outline: var(--focus-width) solid var(--json-accent, var(--accent));
   --jse-controls-box-shadow: 0 4px 12px color-mix(in oklch, var(--fg-0) 20%, transparent);
   --jse-color-picker-border-box-shadow: 0 0 0 1px var(--line);
   --jse-overlay-background: color-mix(in oklch, var(--bg-0) 65%, transparent);
@@ -110,5 +110,5 @@
   --jse-context-menu-pointer-color: var(--jse-context-menu-color);
 }
 [data-bml-json-editor] .jse-main { box-sizing: border-box; height: 100%; background: var(--jse-background-color); border-radius: var(--r-md); overflow: hidden; min-height: 0; }
-[data-bml-json-editor] .jse-main:focus-within { outline: 1px solid var(--accent); outline-offset: -1px; }
+[data-bml-json-editor] .jse-main:focus-within { outline: 1px solid var(--json-accent, var(--accent)); outline-offset: -1px; }
 [data-bml-json-editor][data-disabled] .json-surface { opacity: 0.6; }

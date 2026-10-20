@@ -231,3 +231,39 @@ form {
 .json-theme.purple { --on-accent: #10131c; --json-scheme: dark; --json-key: #e9d5ff; --json-string: #86efac; --json-number: #fcd34d; --json-selection: #6b21a8; }
 .json-theme.alternate { --json-bg: #eff6ff; --json-fg: #1e3a8a; --json-panel-bg: #dbeafe; --json-key: #1d4ed8; --json-string: #166534; --json-selection: #93c5fd; }
 .json-cases { display: grid; gap: 16px; margin-top: 20px; padding: 16px; }
+
+/* Base roles alone customize these controls; optional control aliases stay unset. */
+.token-custom {
+  --bg-0: #f0f9ff;
+  --bg-1: #fff;
+  --bg-2: #e0f2fe;
+  --bg-3: #bae6fd;
+  --fg-0: #082f49;
+  --fg-1: #0c4a6e;
+  --fg-2: #075985;
+  --fg-3: #0369a1;
+  --fg-4: #0284c7;
+  --line: #7dd3fc;
+  --line-2: #38bdf8;
+  --accent: #0369a1;
+  --shadow-color: #164e63;
+  --backdrop-color: #164e63;
+  --r-sm: 13px;
+  --control-height-md: 40px;
+  --control-height-sm: 36px;
+  --control-height-xs: 28px;
+  --control-gap: 10px;
+  --focus-width: 3px;
+  --focus-offset: 4px;
+  color-scheme: light;
+  color: var(--fg-0);
+}
+.token-custom.alternate {
+  --bg-2: #dcfce7;
+  --r-sm: 15px;
+  --shadow-color: #166534;
+  --backdrop-color: #166534;
+  --accent: #166534;
+}
+.token-custom.explicit-controls { --control-bg: #fef3c7; --control-radius: 5px; }
+.json-theme.json-accent-only { --json-accent: #0f766e; --json-selection: initial; }

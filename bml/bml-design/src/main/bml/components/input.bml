@@ -23,17 +23,17 @@
       min-width: 0;
       font: inherit;
       color: var(--fg-0);
-      background: var(--control-bg);
+      background: var(--control-bg, var(--bg-2));
       border: 1px solid var(--line-2);
-      border-radius: var(--control-radius);
-      height: 32px;
+      border-radius: var(--control-radius, var(--r-sm));
+      height: var(--control-height-md);
       padding: 0 10px;
       font-size: 13px;
       line-height: normal;
       outline: none;
     }
     .input.size-sm {
-      height: 30px;
+      height: var(--control-height-sm);
       font-size: 12.5px;
     }
     .input::placeholder {
