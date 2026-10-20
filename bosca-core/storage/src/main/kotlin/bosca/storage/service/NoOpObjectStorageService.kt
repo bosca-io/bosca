@@ -48,13 +48,6 @@ class NoOpObjectStorageService : ObjectStorageService {
         TODO("Not yet implemented")
     }
 
-    override suspend fun completeMultipartUploadWithInfo(
-        path: ObjectPath,
-        uploadId: String,
-        partCount: Int,
-        totalLength: Long,
-    ): ObjectStorageInfo = throw UnsupportedOperationException("No-op storage does not complete uploads")
-
     override suspend fun delete(path: ObjectPath) {
         TODO("Not yet implemented")
     }

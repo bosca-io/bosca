@@ -31,6 +31,8 @@ class ObjectBackupManifestStore(
      * of recent exact-version checksum proof; null forces full verification. Stores without
      * provider versions always require full reads. Metadata-only checks never extend proof age.
      * Requires independent immutable storage, exclusive writers and no active transaction.
+     * Reserves [path] for this exact inventory before publication; another inventory or a
+     * retained payload cannot share it. Successful writes are read back and compared.
      * Missing/corrupt output invalidates its completed proof and prevents publication; other
      * storage failures and cancellation propagate without invalidating prior evidence.
      */
@@ -55,6 +57,18 @@ class ObjectBackupManifestStore(
                     "Capture checkpoint is not completed: ${checkpoint.key}"
                 }
                 checkpoint
+            }
+        }
+        withConnectionManager {
+            transaction {
+                progressService.reserveManifest(
+                    destinationId,
+                    path.toString(),
+                    objectBackupIdentity(
+                        ObjectBackupOperation.BACKUP,
+                        listOf("captured-manifest", Json.encodeToString(ObjectBackupManifest.serializer(), inventory)),
+                    ),
+                )
             }
         }
         val verified = mutableListOf<ObjectBackupProgress>()
@@ -108,6 +122,7 @@ class ObjectBackupManifestStore(
         check(written == bytes.size.toLong()) {
             "Incomplete manifest write: expected ${bytes.size}, wrote $written"
         }
+        check(load(path) == inventory) { "Persisted object backup manifest differs from its selected inventory: $path" }
     }
 
     /** Reads and validates inventory metadata without downloading the referenced payloads. */

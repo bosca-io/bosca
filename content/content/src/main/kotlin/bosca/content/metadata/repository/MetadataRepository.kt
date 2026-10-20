@@ -77,7 +77,7 @@ interface MetadataRepository {
     @Query("update metadata set workflow_state_pending_id = null, workflow_state_valid = null, modified = now() where id = :id")
     suspend fun clearPendingState(id: UUID)
 
-    @Query("update metadata set uploaded = null, modified = now(), content_type = null, content_length = null, recommendation_contexts = :recommendationContexts where id = :id")
+    @Query("update metadata set uploaded = null, modified = now(), content_length = null, recommendation_contexts = :recommendationContexts where id = :id")
     suspend fun clearUploaded(id: UUID, recommendationContexts: List<String>)
 
     @Query("update metadata set ready = now(), modified = now() where id = :id")

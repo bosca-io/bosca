@@ -183,11 +183,20 @@ class ObjectBackupTrackedManifestIntegrationTest {
     fun `filesystem publication always verifies payload bytes and returns a portable manifest`(): Unit = runBlocking {
         val completed = complete(prepare())
         publish()
-        assertEquals(1, reads)
+        assertEquals(2, reads)
         assertEquals(1, metadata)
         assertEquals(1, writes)
         assertEquals(completed, withConnectionManager { progress.get(completed.key) })
         assertEquals(inventory, ObjectBackupManifestStore(storage, Json).load(path))
+    }
+
+    @Test
+    fun `manifest ownership is independent of JSON formatting settings`(): Unit = runBlocking {
+        complete(prepare())
+        publish()
+        val manifests = ObjectBackupManifestStore(storage, Json { prettyPrint = true })
+        manifests.saveTracked(path, inventory, "retained", progress, OffsetDateTime.MIN)
+        assertEquals(inventory, manifests.load(path))
     }
 
     @Test
@@ -233,7 +242,7 @@ class ObjectBackupTrackedManifestIntegrationTest {
         val selected = inventory.copy(objects = emptyList())
         publish(selected)
         assertEquals(0, metadata)
-        assertEquals(0, reads)
+        assertEquals(1, reads)
         assertEquals(1, writes)
         assertEquals(selected, ObjectBackupManifestStore(storage, Json).load(path))
     }

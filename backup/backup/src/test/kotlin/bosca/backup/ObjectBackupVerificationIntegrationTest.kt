@@ -69,6 +69,7 @@ class ObjectBackupVerificationIntegrationTest {
     private val sourceReads = AtomicInteger()
     private val heads = AtomicInteger()
     private val bodies = AtomicInteger()
+    private val manifestReads = AtomicInteger()
     private val writes = AtomicInteger()
     private val versionReads = CopyOnWriteArrayList<String>()
     private val signatures = CopyOnWriteArrayList<String>()
@@ -119,7 +120,8 @@ class ObjectBackupVerificationIntegrationTest {
                         exchange.sendResponseHeaders(status, -1)
                     }
                     "GET" -> {
-                        bodies.incrementAndGet()
+                        if (key.startsWith("manifests/")) manifestReads.incrementAndGet()
+                        else bodies.incrementAndGet()
                         if (requested != null) versionReads.add(requested)
                         val status = bodyFailure.get().takeIf { it != 0 } ?: if (file == null) 404 else 200
                         val errorCode = if (status == 404) {
@@ -398,6 +400,7 @@ class ObjectBackupVerificationIntegrationTest {
         val captured = verifiedCapture()
         resetCounters()
         publish(captured)
+        assertEquals(1, manifestReads.get())
         assertEquals(1, heads.get())
         assertEquals(0, bodies.get())
         assertEquals(0, sourceReads.get())
@@ -687,6 +690,7 @@ class ObjectBackupVerificationIntegrationTest {
         sourceReads.set(0)
         heads.set(0)
         bodies.set(0)
+        manifestReads.set(0)
         writes.set(0)
         versionReads.clear()
     }

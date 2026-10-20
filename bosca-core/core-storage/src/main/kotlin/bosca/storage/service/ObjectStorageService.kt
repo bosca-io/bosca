@@ -171,23 +171,6 @@ interface ObjectStorageService : AutoCloseable {
     suspend fun setInputStream(path: ObjectPath, stream: InputStream, length: Long? = null): Long
 
     /**
-     * Writes [stream] and returns metadata from this write's successful completion, without a
-     * later lookup of the current object. The caller retains ownership of [stream].
-     *
-     * [ObjectStorageInfo.version] identifies the written provider revision when available;
-     * `null` means this result cannot select immutable bytes. This does not enable retention.
-     * A failure may leave bytes in storage but never returns a successful result.
-     *
-     * @throws UnsupportedOperationException when the backend cannot report write results;
-     * the default implementation fails before consuming [stream] or writing anything
-     */
-    suspend fun setInputStreamWithInfo(
-        path: ObjectPath,
-        stream: InputStream,
-        length: Long? = null,
-    ): ObjectStorageInfo = throw UnsupportedOperationException("Storage does not report write results")
-
-    /**
      * Starts a multipart upload whose completed object will be stored at [path].
      *
      * The returned identifier is opaque and must be supplied to the remaining multipart methods.
@@ -258,29 +241,47 @@ interface ObjectStorageService : AutoCloseable {
         partCount: Int,
         totalLength: Long,
     ) {
-        assembleMultipartUpload(path, uploadId, partCount, totalLength) { input ->
-            setInputStream(path, input, totalLength)
+        require(partCount > 0) { "partCount must be positive" }
+        require(totalLength > 0) { "multipart upload must not be empty" }
+        var tempFile: File? = null
+        var failure: Throwable? = null
+        try {
+            withContext(StorageDispatcher) {
+                val assembled = File.createTempFile("object-multipart-", ".tmp").also { tempFile = it }
+                var copied = 0L
+                BufferedOutputStream(assembled.outputStream()).use { output ->
+                    for (partNumber in 1..partCount) {
+                        getInputStream(MultipartPartPath(path, uploadId, partNumber)).use { input ->
+                            copied += input.copyTo(output)
+                        }
+                    }
+                }
+                check(copied == totalLength) {
+                    "multipart upload $uploadId contains $copied bytes, expected $totalLength"
+                }
+                assembled.inputStream().use { setInputStream(path, it, totalLength) }
+            }
+        } catch (caught: Throwable) {
+            failure = caught
+            throw caught
+        } finally {
+            val originalFailure = failure
+            withContext(NonCancellable + StorageDispatcher) {
+                try {
+                    abortMultipartUpload(path, uploadId, partCount)
+                } catch (cleanup: Throwable) {
+                    val prior = failure
+                    if (prior == null) failure = cleanup else if (prior !== cleanup) prior.addSuppressed(cleanup)
+                }
+                try {
+                    tempFile?.let { Files.deleteIfExists(it.toPath()) }
+                } catch (cleanup: Throwable) {
+                    val prior = failure
+                    if (prior == null) failure = cleanup else if (prior !== cleanup) prior.addSuppressed(cleanup)
+                }
+            }
+            if (originalFailure == null) failure?.let { throw it }
         }
-    }
-
-    /**
-     * Completes an upload and returns metadata from that exact finalization, without a later
-     * current-object lookup. [partCount] and [totalLength] describe the assembled object.
-     * A nullable [ObjectStorageInfo.version] cannot select immutable bytes or promise retention.
-     *
-     * Native multipart uploads remain caller-owned on failure and may require explicit abort.
-     * The default implementation assembles temporary parts like [completeMultipartUpload],
-     * writes through [setInputStreamWithInfo], and removes its parts on exit.
-     *
-     * @throws UnsupportedOperationException when the backend cannot report write results
-     */
-    suspend fun completeMultipartUploadWithInfo(
-        path: ObjectPath,
-        uploadId: String,
-        partCount: Int,
-        totalLength: Long,
-    ): ObjectStorageInfo = assembleMultipartUpload(path, uploadId, partCount, totalLength) { input ->
-        setInputStreamWithInfo(path, input, totalLength)
     }
 
     /**
@@ -384,56 +385,6 @@ interface ObjectStorageService : AutoCloseable {
         collection: Collection,
         supplementaryId: UUID?
     ): SignedUrl
-}
-
-private suspend fun <T> ObjectStorageService.assembleMultipartUpload(
-    path: ObjectPath,
-    uploadId: String,
-    partCount: Int,
-    totalLength: Long,
-    write: suspend (InputStream) -> T,
-): T {
-    require(partCount > 0) { "partCount must be positive" }
-    require(totalLength > 0) { "multipart upload must not be empty" }
-    var tempFile: File? = null
-    var failure: Throwable? = null
-    try {
-        return withContext(StorageDispatcher) {
-            val assembled = File.createTempFile("object-multipart-", ".tmp").also { tempFile = it }
-            var copied = 0L
-            BufferedOutputStream(assembled.outputStream()).use { output ->
-                for (partNumber in 1..partCount) {
-                    getInputStream(MultipartPartPath(path, uploadId, partNumber)).use { input ->
-                        copied += input.copyTo(output)
-                    }
-                }
-            }
-            check(copied == totalLength) {
-                "multipart upload $uploadId contains $copied bytes, expected $totalLength"
-            }
-            assembled.inputStream().use { write(it) }
-        }
-    } catch (caught: Throwable) {
-        failure = caught
-        throw caught
-    } finally {
-        val originalFailure = failure
-        withContext(NonCancellable + StorageDispatcher) {
-            try {
-                abortMultipartUpload(path, uploadId, partCount)
-            } catch (cleanup: Throwable) {
-                val prior = failure
-                if (prior == null) failure = cleanup else if (prior !== cleanup) prior.addSuppressed(cleanup)
-            }
-            try {
-                tempFile?.let { Files.deleteIfExists(it.toPath()) }
-            } catch (cleanup: Throwable) {
-                val prior = failure
-                if (prior == null) failure = cleanup else if (prior !== cleanup) prior.addSuppressed(cleanup)
-            }
-        }
-        if (originalFailure == null) failure?.let { throw it }
-    }
 }
 
 private class MultipartPartPath(

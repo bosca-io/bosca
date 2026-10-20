@@ -5,7 +5,7 @@ import kotlinx.serialization.Contextual
 import kotlinx.serialization.Serializable
 
 /**
- * Object metadata reported by a lookup or the successful completion of a write.
+ * Object metadata reported by a lookup.
  *
  * [etag] and [version] are opaque provider identifiers, when available. An entity tag is not
  * a SHA-256 digest; neither it nor [modified] establishes immutable source bytes or retention.

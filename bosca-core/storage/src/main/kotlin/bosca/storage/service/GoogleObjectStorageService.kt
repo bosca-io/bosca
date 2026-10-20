@@ -93,17 +93,9 @@ class GoogleObjectStorageService(
         }
     }
 
-    override suspend fun setInputStream(path: ObjectPath, stream: InputStream, length: Long?): Long =
-        setInputStreamWithInfo(path, stream, length).length
-
-    override suspend fun setInputStreamWithInfo(
-        path: ObjectPath,
-        stream: InputStream,
-        length: Long?,
-    ): ObjectStorageInfo = withContext(StorageDispatcher) {
+    override suspend fun setInputStream(path: ObjectPath, stream: InputStream, length: Long?): Long = withContext(StorageDispatcher) {
         val id = BlobId.of(bucket, path.toString())
-        // Preserve editable settings when replacing content. Only the create response identifies
-        // this write; a lookup after finalization could select a concurrent replacement instead.
+        // Preserve editable settings when replacing content.
         val settings = storage.get(id) ?: BlobInfo.newBuilder(id).build()
         val context = currentCoroutineContext()
         var written = 0L
@@ -122,10 +114,7 @@ class GoogleObjectStorageService(
         }
         val completed = storage.createFrom(settings, measured, 512 * 1024)
         check(completed.size == written) { "Written object length does not match the upload: $path" }
-        check(completed.generation == null || completed.generation > 0) {
-            "Written object generation must be positive: $path"
-        }
-        objectInfo(completed, path.toString())
+        written
     }
 
     override suspend fun getInputStreamRange(

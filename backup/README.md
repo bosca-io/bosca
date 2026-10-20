@@ -16,6 +16,12 @@ Run these commands from the **workspace root**. `backup` is part of the root Gra
 
 ## Recurring object-storage backups
 
+Configured object capture currently requires retained provider object versions. It cannot
+capture Bosca's unversioned source storage. Metadata IDs and the existing content paths
+remain the application lookup model; no provider versioning or new metadata storage-reference
+fields are required by that model. Native database capture and object capture are separate
+operations and do not yet establish a combined restorable recovery point.
+
 The **Back Up Object Storage** Pipeline action (`objectBackup.backup`) discovers source
 objects, saves their selected provider revisions, and runs the incremental capture service.
 It does not require a manually prepared inventory. Use the existing Pipeline schedules to

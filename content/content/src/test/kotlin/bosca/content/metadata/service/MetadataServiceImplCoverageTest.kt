@@ -495,15 +495,14 @@ class MetadataServiceImplCoverageTest {
     }
 
     @Test
-    fun `clearUploaded violates content_type not-null against the real schema`() = runTest(timeout = kotlin.time.Duration.parse("60s")) {
-        val m = insertMetadata()
-        withRequest { service.setUploaded(m.id, "image/png", 42L) }
-        // MetadataRepository.clearUploaded issues `content_type = null`, but metadata.content_type is
-        // NOT NULL (check (length(content_type) > 0)) for the entire migration history — so the UPDATE
-        // raises a not-null violation before the service ever reaches getById. Assert the real behavior.
-        assertFailsWith<Exception> {
-            withRequest { service.clearUploaded(m.id) }
-        }
+    fun `clearUploaded clears content status and preserves the existing content type`() = runTest(timeout = kotlin.time.Duration.parse("60s")) {
+        val metadata = insertMetadata()
+        withRequest { service.setUploaded(metadata.id, "image/png", 42L) }
+        withRequest { service.clearUploaded(metadata.id) }
+        val saved = assertNotNull(withRequest { service.getById(metadata.id) })
+        assertNull(saved.uploaded)
+        assertNull(saved.contentLength)
+        assertEquals("image/png", saved.contentType)
     }
 
     @Test

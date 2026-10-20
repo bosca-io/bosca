@@ -141,15 +141,8 @@ class FileSystemObjectStorageService(
         return file.outputStream()
     }
 
-    override suspend fun setInputStream(path: ObjectPath, stream: InputStream, length: Long?): Long =
-        setInputStreamWithInfo(path, stream, length).length
-
-    override suspend fun setInputStreamWithInfo(
-        path: ObjectPath,
-        stream: InputStream,
-        length: Long?,
-    ): ObjectStorageInfo = withContext(StorageDispatcher) {
-        ObjectStorageInfo(getOutputStream(path).use { stream.copyTo(it) })
+    override suspend fun setInputStream(path: ObjectPath, stream: InputStream, length: Long?): Long = withContext(StorageDispatcher) {
+        getOutputStream(path).use { stream.copyTo(it) }
     }
 
     @OptIn(ExperimentalAtomicApi::class)

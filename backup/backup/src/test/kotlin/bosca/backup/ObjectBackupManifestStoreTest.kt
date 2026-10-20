@@ -2,6 +2,7 @@ package bosca.backup
 
 import bosca.storage.service.FileSystemObjectStorageService
 import bosca.storage.service.ObjectNotFoundException
+import bosca.storage.service.ObjectPath
 import bosca.storage.service.ObjectStorageService
 import bosca.storage.service.StringObjectPath
 import io.mockk.coEvery
@@ -191,6 +192,21 @@ class ObjectBackupManifestStoreTest {
         coEvery { backend.getInputStream(any()) } answers { data.inputStream() }
         coEvery { backend.setInputStream(any(), any(), any()) } returns 0
 
+        assertFailsWith<IllegalStateException> { ObjectBackupManifestStore(backend, Json).save(path, manifest) }
+    }
+
+    @Test
+    fun `an acknowledged manifest write must match its persisted inventory`() = runTest {
+        writePayload(data)
+        val backend = object : ObjectStorageService by storage {
+            override suspend fun setInputStream(path: ObjectPath, stream: InputStream, length: Long?): Long {
+                val consumed = stream.readBytes()
+                val different = manifest.copy(id = "different")
+                val replacement = Json.encodeToString(ObjectBackupManifest.serializer(), different).toByteArray()
+                storage.setInputStream(path, replacement.inputStream(), replacement.size.toLong())
+                return consumed.size.toLong()
+            }
+        }
         assertFailsWith<IllegalStateException> { ObjectBackupManifestStore(backend, Json).save(path, manifest) }
     }
 

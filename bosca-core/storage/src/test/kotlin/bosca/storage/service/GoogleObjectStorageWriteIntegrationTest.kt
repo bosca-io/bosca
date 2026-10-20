@@ -8,18 +8,16 @@ import com.sun.net.httpserver.HttpServer
 import io.mockk.mockk
 import kotlinx.coroutines.runBlocking
 import java.net.InetSocketAddress
-import java.net.URLDecoder
-import java.time.OffsetDateTime
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
-/** Uses the real Google SDK's resumable upload and completed-object response. */
+/** Uses the real Google SDK to verify streaming uploads and preserved content settings. */
 class GoogleObjectStorageWriteIntegrationTest {
     @Test
-    fun `upload result retains the completed generation after a concurrent replacement`(): Unit = runBlocking {
+    fun `upload preserves content settings and reports actual consumed bytes`(): Unit = runBlocking {
         val requests = CopyOnWriteArrayList<Pair<String, String>>()
         var uploaded = ""
         var settings = ""
@@ -35,29 +33,17 @@ class GoogleObjectStorageWriteIntegrationTest {
                 }
                 exchange.requestMethod == "PUT" -> {
                     uploaded = exchange.requestBody.readBytes().decodeToString()
-                    // The response belongs to 42 even if a replacement has already made 43 current.
                     respond(exchange, 200, metadata("42", "written-etag", uploaded.toByteArray().size))
-                }
-                exchange.requestURI.path.startsWith("/download/") -> {
-                    val query = query(exchange)
-                    exchange.responseHeaders.add("x-goog-generation", query["generation"] ?: "43")
-                    respond(exchange, 200, if (query["generation"] == "42") uploaded else "replacement", "application/octet-stream")
                 }
                 else -> respond(exchange, 404, "")
             }
         }) { storage ->
-            val info = storage.setInputStreamWithInfo(StringObjectPath("asset"), "written".byteInputStream())
-            assertEquals(ObjectStorageInfo(7, "written-etag", "42", OffsetDateTime.parse("2026-10-19T10:00:00Z")), info)
+            val count = storage.setInputStream(StringObjectPath("asset"), "written".byteInputStream())
+            assertEquals(7L, count)
             assertEquals("written", uploaded)
             assertTrue(settings.contains("text/plain"))
             assertTrue(settings.contains("preserved"))
             assertEquals(1, requests.count { it.first == "GET" })
-            assertEquals("written", storage.getInputStream(StringObjectPath("asset"), "42").use {
-                it.readAllBytes().decodeToString()
-            })
-            assertEquals("replacement", storage.getInputStream(StringObjectPath("asset"), "43").use {
-                it.readAllBytes().decodeToString()
-            })
         }
         assertEquals(1, requests.count { it.first == "POST" })
         assertEquals(1, requests.count { it.first == "PUT" })
@@ -83,7 +69,7 @@ class GoogleObjectStorageWriteIntegrationTest {
             }
         }) { storage ->
             val failure = assertFailsWith<StorageException> {
-                storage.setInputStreamWithInfo(StringObjectPath("asset"), "written".byteInputStream())
+                storage.setInputStream(StringObjectPath("asset"), "written".byteInputStream())
             }
             assertEquals(403, failure.code)
         }
@@ -114,12 +100,6 @@ class GoogleObjectStorageWriteIntegrationTest {
          "generation":"$generation","etag":"$etag","updated":"2026-10-19T10:00:00Z",
          "contentType":"text/plain","metadata":{"setting":"preserved"}}
     """.trimIndent()
-
-    private fun query(exchange: HttpExchange) = exchange.requestURI.rawQuery.orEmpty()
-        .split('&').filter { it.isNotEmpty() }.associate {
-            URLDecoder.decode(it.substringBefore('='), Charsets.UTF_8) to
-                URLDecoder.decode(it.substringAfter('=', ""), Charsets.UTF_8)
-        }
 
     private fun respond(exchange: HttpExchange, status: Int, body: String, contentType: String = "application/json") {
         val bytes = body.toByteArray()

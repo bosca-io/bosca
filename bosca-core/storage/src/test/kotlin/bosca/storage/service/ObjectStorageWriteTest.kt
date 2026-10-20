@@ -5,7 +5,6 @@ import com.google.cloud.storage.BlobId
 import com.google.cloud.storage.BlobInfo
 import com.google.cloud.storage.Storage
 import com.google.cloud.storage.StorageException
-import io.mockk.Called
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -37,7 +36,6 @@ import software.amazon.awssdk.services.s3.model.UploadPartResponse
 import java.io.ByteArrayInputStream
 import java.io.IOException
 import java.io.InputStream
-import java.time.OffsetDateTime
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -47,14 +45,14 @@ import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
-class ObjectStorageWriteInfoTest {
+class ObjectStorageWriteTest {
     @get:Rule
     val temporaryFolder = TemporaryFolder()
 
     private val path = StringObjectPath("asset")
 
     @Test
-    fun `S3 streamed result belongs to this completion without a current object lookup`() = runTest {
+    fun `S3 streamed upload reports actual bytes without a current object lookup`() = runTest {
         val client = s3Client("written-version", "written-etag")
         val caller = Thread.currentThread()
         var writer: Thread? = null
@@ -71,8 +69,8 @@ class ObjectStorageWriteInfoTest {
         val input = object : ByteArrayInputStream(source) {
             override fun close() { closed = true; super.close() }
         }
-        val info = s3(client).setInputStreamWithInfo(path, input)
-        assertEquals(ObjectStorageInfo(source.size.toLong(), "written-etag", "written-version"), info)
+        val written = s3(client).setInputStream(path, input)
+        assertEquals(source.size.toLong(), written)
         assertEquals(source.size.toLong(), count)
         assertNotSame(caller, writer)
         assertFalse(closed)
@@ -82,10 +80,9 @@ class ObjectStorageWriteInfoTest {
     }
 
     @Test
-    fun `S3 explicit multipart result uses the exact completion response`() = runTest {
+    fun `S3 explicit multipart completion submits the selected uploaded parts`() = runTest {
         val client = s3Client("selected-version", "selected-etag")
-        val info = s3(client).completeMultipartUploadWithInfo(path, "upload", 1, 4)
-        assertEquals(ObjectStorageInfo(4, "selected-etag", "selected-version"), info)
+        s3(client).completeMultipartUpload(path, "upload", 1, 4)
         verify(exactly = 1) {
             client.completeMultipartUpload(match<CompleteMultipartUploadRequest> {
                 it.key() == "asset" && it.uploadId() == "upload" &&
@@ -96,11 +93,11 @@ class ObjectStorageWriteInfoTest {
     }
 
     @Test
-    fun `S3 mutable null and absent versions never become immutable identities`() = runTest {
+    fun `S3 writes do not require provider versioning`() = runTest {
         for (version in listOf(null, "", " ", "null")) {
             val client = s3Client(version, " ")
-            assertEquals(ObjectStorageInfo(4), s3(client).setInputStreamWithInfo(path, "data".byteInputStream(), 4))
-            assertEquals(ObjectStorageInfo(4), s3(client).completeMultipartUploadWithInfo(path, "upload", 1, 4))
+            assertEquals(4L, s3(client).setInputStream(path, "data".byteInputStream(), 4))
+            s3(client).completeMultipartUpload(path, "upload", 1, 4)
             verify(exactly = 0) { client.headObject(any<HeadObjectRequest>()) }
         }
     }
@@ -112,11 +109,22 @@ class ObjectStorageWriteInfoTest {
         val cleanup = IOException("abort failed")
         every { client.abortMultipartUpload(any<AbortMultipartUploadRequest>()) } throws cleanup
         val input = object : InputStream() { override fun read(): Int = throw failure }
-        val observed = assertFailsWith<IOException> { s3(client).setInputStreamWithInfo(path, input) }
+        val observed = assertFailsWith<IOException> { s3(client).setInputStream(path, input) }
         assertTrue(generateSequence<Throwable>(observed) { it.cause }.any { it === failure })
         assertTrue(generateSequence<Throwable>(observed) { it.cause }.any { cause ->
             cause.suppressed.any { it === cleanup }
         })
+        verify(exactly = 0) { client.completeMultipartUpload(any<CompleteMultipartUploadRequest>()) }
+    }
+
+    @Test
+    fun `S3 abort reporting the original failure cannot mask it with self suppression`() = runTest {
+        val client = s3Client(null, null)
+        val failure = IOException("storage unavailable")
+        every { client.abortMultipartUpload(any<AbortMultipartUploadRequest>()) } throws failure
+        val input = object : InputStream() { override fun read(): Int = throw failure }
+        val observed = assertFailsWith<IOException> { s3(client).setInputStream(path, input) }
+        assertTrue(generateSequence<Throwable>(observed) { it.cause }.any { it === failure })
         verify(exactly = 0) { client.completeMultipartUpload(any<CompleteMultipartUploadRequest>()) }
     }
 
@@ -126,7 +134,7 @@ class ObjectStorageWriteInfoTest {
         val failure = CancellationException("upload cancelled")
         every { client.uploadPart(any<UploadPartRequest>(), any<RequestBody>()) } throws failure
         val observed = assertFailsWith<CancellationException> {
-            s3(client).setInputStreamWithInfo(path, "data".byteInputStream())
+            s3(client).setInputStream(path, "data".byteInputStream())
         }
         assertTrue(generateSequence<Throwable>(observed) { it.cause }.any { it === failure })
         verify(exactly = 1) { client.abortMultipartUpload(any<AbortMultipartUploadRequest>()) }
@@ -139,18 +147,17 @@ class ObjectStorageWriteInfoTest {
         val failure = S3Exception.builder().statusCode(503).message("completion failed").build()
         every { client.completeMultipartUpload(any<CompleteMultipartUploadRequest>()) } throws failure
         assertSame(failure, assertFailsWith<S3Exception> {
-            s3(client).completeMultipartUploadWithInfo(path, "upload", 1, 4)
+            s3(client).completeMultipartUpload(path, "upload", 1, 4)
         })
         verify(exactly = 0) { client.abortMultipartUpload(any<AbortMultipartUploadRequest>()) }
     }
 
     @Test
-    fun `Google result pins the created generation and preserves existing content settings`() = runTest {
+    fun `Google uploads preserve content settings and caller stream ownership`() = runTest {
         val client = mockk<Storage>()
         val existing = mockk<Blob>()
         every { client.get(BlobId.of("bucket", "asset")) } returns existing
-        val modified = OffsetDateTime.parse("2026-10-19T10:00:00Z")
-        val written = googleBlob(4, 42, "written-etag", modified)
+        val written = googleBlob(4)
         val caller = Thread.currentThread()
         var writer: Thread? = null
         every { client.createFrom(existing, any<InputStream>(), any<Int>(), *anyVararg()) } answers {
@@ -162,35 +169,25 @@ class ObjectStorageWriteInfoTest {
         val input = object : ByteArrayInputStream("data".toByteArray()) {
             override fun close() { closed = true; super.close() }
         }
-        assertEquals(ObjectStorageInfo(4, "written-etag", "42", modified), google(client).setInputStreamWithInfo(path, input))
+        assertEquals(4L, google(client).setInputStream(path, input))
         assertNotSame(caller, writer)
         assertFalse(closed)
         verify(exactly = 1) { client.get(BlobId.of("bucket", "asset")) }
     }
 
     @Test
-    fun `Google new object result has no invented version when generation is absent`() = runTest {
-        val client = googleClient(googleBlob(4, null, " "))
-        assertEquals(ObjectStorageInfo(4), google(client).setInputStreamWithInfo(path, "data".byteInputStream(), 4))
+    fun `Google new object upload reports consumed bytes without another lookup`() = runTest {
+        val client = googleClient(googleBlob(4))
+        assertEquals(4L, google(client).setInputStream(path, "data".byteInputStream(), 4))
         verify(exactly = 1) { client.get(BlobId.of("bucket", "asset")) }
     }
 
     @Test
     fun `Google rejects response sizes different from the bytes actually consumed`() = runTest {
         for (size in listOf(null, 3L, 5L)) {
-            val client = googleClient(googleBlob(size, 42))
+            val client = googleClient(googleBlob(size))
             assertFailsWith<IllegalStateException> {
-                google(client).setInputStreamWithInfo(path, "data".byteInputStream())
-            }
-        }
-    }
-
-    @Test
-    fun `Google rejects invalid returned generations rather than claiming an exact revision`() = runTest {
-        for (generation in listOf(0L, -1L)) {
-            val client = googleClient(googleBlob(4, generation))
-            assertFailsWith<IllegalStateException> {
-                google(client).setInputStreamWithInfo(path, "data".byteInputStream())
+                google(client).setInputStream(path, "data".byteInputStream())
             }
         }
     }
@@ -198,29 +195,29 @@ class ObjectStorageWriteInfoTest {
     @Test
     fun `Google backend write failures and cancellation propagate without another metadata lookup`() = runTest {
         for (failure in listOf(IOException("stream failed"), StorageException(503, "upload failed"), CancellationException("cancelled"))) {
-            val client = googleClient(googleBlob(4, 42))
+            val client = googleClient(googleBlob(4))
             every { client.createFrom(any<BlobInfo>(), any<InputStream>(), any<Int>(), *anyVararg()) } throws failure
-            val observed = assertFailsWith<Exception> { google(client).setInputStreamWithInfo(path, "data".byteInputStream()) }
+            val observed = assertFailsWith<Exception> { google(client).setInputStream(path, "data".byteInputStream()) }
             assertTrue(generateSequence<Throwable>(observed) { it.cause }.any { it === failure })
             verify(exactly = 1) { client.get(BlobId.of("bucket", "asset")) }
         }
     }
 
     @Test
-    fun `filesystem write result reports actual bytes without inventing a retained revision`() = runTest {
+    fun `filesystem upload reports actual bytes without a provider revision`() = runTest {
         val service = filesystem()
-        assertEquals(ObjectStorageInfo(4), service.setInputStreamWithInfo(path, "data".byteInputStream()))
+        assertEquals(4L, service.setInputStream(path, "data".byteInputStream()))
         assertEquals("data", service.getString(path))
         assertNull(service.getObjectInfo(path).version)
     }
 
     @Test
-    fun `default multipart completion reports the final write and removes staged parts`() = runTest {
+    fun `default multipart completion writes all bytes and removes staged parts`() = runTest {
         val service = filesystem()
         val upload = service.createMultipartUpload(path)
         service.uploadMultipartPart(path, upload, 1, "da".byteInputStream(), 2)
         service.uploadMultipartPart(path, upload, 2, "ta".byteInputStream(), 2)
-        assertEquals(ObjectStorageInfo(4), service.completeMultipartUploadWithInfo(path, upload, 2, 4))
+        service.completeMultipartUpload(path, upload, 2, 4)
         assertEquals("data", service.getString(path))
         assertTrue(temporaryFolder.root.walkTopDown().filter { it.isFile }.map { it.name }.toList() == listOf("asset"))
     }
@@ -231,19 +228,9 @@ class ObjectStorageWriteInfoTest {
         service.setInputStream(path, "original".byteInputStream())
         val upload = service.createMultipartUpload(path)
         service.uploadMultipartPart(path, upload, 1, "data".byteInputStream(), 4)
-        assertFailsWith<IllegalStateException> { service.completeMultipartUploadWithInfo(path, upload, 1, 5) }
+        assertFailsWith<IllegalStateException> { service.completeMultipartUpload(path, upload, 1, 5) }
         assertEquals("original", service.getString(path))
         assertEquals(listOf("asset"), temporaryFolder.root.walkTopDown().filter { it.isFile }.map { it.name }.toList())
-    }
-
-    @Test
-    fun `unsupported write results fail before reading or closing the caller stream`() = runTest {
-        val input = mockk<InputStream>()
-        assertFailsWith<UnsupportedOperationException> { NoOpObjectStorageService().setInputStreamWithInfo(path, input) }
-        assertFailsWith<UnsupportedOperationException> {
-            NoOpObjectStorageService().completeMultipartUploadWithInfo(path, "upload", 1, 4)
-        }
-        verify { input wasNot Called }
     }
 
     @Test
@@ -253,10 +240,10 @@ class ObjectStorageWriteInfoTest {
         service.uploadMultipartPart(path, upload, 1, "data".byteInputStream(), 4)
         val failure = IOException("final write failed")
         val cleanup = IOException("part cleanup failed")
-        coEvery { service.setInputStreamWithInfo(path, any(), any()) } throws failure
+        coEvery { service.setInputStream(path, any(), any()) } throws failure
         coEvery { service.abortMultipartUpload(path, upload, 1) } throws cleanup
         val observed = assertFailsWith<IOException> {
-            service.completeMultipartUploadWithInfo(path, upload, 1, 4)
+            service.completeMultipartUpload(path, upload, 1, 4)
         }
         assertTrue(generateSequence<Throwable>(observed) { it.cause }.any { it === failure })
         assertTrue(generateSequence<Throwable>(observed) { it.cause }.any { cause ->
@@ -272,7 +259,7 @@ class ObjectStorageWriteInfoTest {
         val cleanup = IOException("part cleanup failed")
         coEvery { service.abortMultipartUpload(path, upload, 1) } throws cleanup
         val observed = assertFailsWith<IOException> {
-            service.completeMultipartUploadWithInfo(path, upload, 1, 4)
+            service.completeMultipartUpload(path, upload, 1, 4)
         }
         assertTrue(generateSequence<Throwable>(observed) { it.cause }.any { it === cleanup })
         assertEquals("data", service.getString(path))
@@ -285,11 +272,11 @@ class ObjectStorageWriteInfoTest {
         val upload = service.createMultipartUpload(path)
         service.uploadMultipartPart(path, upload, 1, "data".byteInputStream(), 4)
         val writing = CompletableDeferred<Unit>()
-        coEvery { service.setInputStreamWithInfo(path, any(), any()) } coAnswers {
+        coEvery { service.setInputStream(path, any(), any()) } coAnswers {
             writing.complete(Unit)
             awaitCancellation()
         }
-        val work = async { service.completeMultipartUploadWithInfo(path, upload, 1, 4) }
+        val work = async { service.completeMultipartUpload(path, upload, 1, 4) }
         writing.await()
         work.cancel()
         assertFailsWith<CancellationException> { work.await() }
@@ -312,13 +299,9 @@ class ObjectStorageWriteInfoTest {
             AbortMultipartUploadResponse.builder().build()
     }
 
-    private fun googleBlob(size: Long?, generation: Long?, etag: String? = null, modified: OffsetDateTime? = null) =
-        mockk<Blob> {
-            every { this@mockk.size } returns size
-            every { this@mockk.generation } returns generation
-            every { this@mockk.etag } returns etag
-            every { updateTimeOffsetDateTime } returns modified
-        }
+    private fun googleBlob(size: Long?) = mockk<Blob> {
+        every { this@mockk.size } returns size
+    }
 
     private fun googleClient(written: Blob) = mockk<Storage>().also { client ->
         every { client.get(BlobId.of("bucket", "asset")) } returns null

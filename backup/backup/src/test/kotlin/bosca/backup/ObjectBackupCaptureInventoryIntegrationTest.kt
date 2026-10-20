@@ -178,6 +178,34 @@ class ObjectBackupCaptureInventoryIntegrationTest {
     }
 
     @Test
+    fun `a different capture cannot replace an earlier manifest at the same path`(): Unit = runBlocking {
+        val previous = capture()
+        requests.clear()
+        writes.clear()
+        assertFailsWith<IllegalArgumentException> {
+            capture(selected.copy(id = "different", stores = emptyMap()))
+        }
+        assertEquals(previous, ObjectBackupManifestStore(target, Json).load(StringObjectPath(outputPath)))
+        assertTrue(requests.isEmpty())
+        assertTrue(writes.isEmpty())
+    }
+
+    @Test
+    fun `an empty capture cannot publish over an unrelated retained payload`(): Unit = runBlocking {
+        val previous = capture()
+        val payload = previous.objects.first()
+        requests.clear()
+        writes.clear()
+        assertFailsWith<IllegalArgumentException> {
+            capture(selected.copy(id = "empty", stores = emptyMap()), path = payload.payloadPath)
+        }
+        assertEquals("aaaa", target.getString(StringObjectPath(payload.payloadPath)))
+        assertEquals(previous, ObjectBackupManifestStore(target, Json).load(StringObjectPath(outputPath)))
+        assertTrue(requests.isEmpty())
+        assertTrue(writes.isEmpty())
+    }
+
+    @Test
     fun `partial capture failure preserves completed entries and retry only reads unfinished revisions`(): Unit = runBlocking {
         failSource = "content/b@v1"
         assertFailsWith<IOException> { capture() }
