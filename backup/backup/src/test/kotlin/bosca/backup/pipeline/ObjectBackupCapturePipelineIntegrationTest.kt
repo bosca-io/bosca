@@ -3,6 +3,7 @@ package bosca.backup.pipeline
 import bosca.backup.ObjectBackupCaptureInventory
 import bosca.backup.ObjectBackupCapturePlan
 import bosca.backup.ObjectBackupCaptureService
+import bosca.backup.ObjectBackupCaptureRepository
 import bosca.backup.ObjectBackupManifest
 import bosca.backup.ObjectBackupProgressService
 import bosca.backup.ObjectBackupOperation
@@ -54,7 +55,9 @@ import bosca.server.BoscaApplication
 import bosca.server.config.ApplicationConfig
 import bosca.sharedqueue.jobs.Job
 import bosca.sharedqueue.jobs.JobQueue
+import bosca.sharedqueue.jobs.JobRunner
 import bosca.sharedqueue.jobs.asCoroutineContext
+import bosca.sharedqueue.jobs.serialize
 import bosca.sharedqueue.jobs.configuration.RegisterJobsConfiguration
 import bosca.sharedqueue.jobs.nats.NatsJobQueueFactory
 import bosca.storage.configuration.StorageConfiguration
@@ -77,8 +80,11 @@ import java.nio.file.Path
 import java.sql.DriverManager
 import java.time.OffsetDateTime
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -96,6 +102,7 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
+import kotlin.time.Duration
 
 /** Real stored Pipelines, PostgreSQL progress, NATS child jobs and signed version-specific S3 reads. */
 @OptIn(InternalDI::class)
@@ -104,6 +111,8 @@ class ObjectBackupCapturePipelineIntegrationTest {
     private lateinit var pool: ConnectionPool
     private lateinit var nats: SharedNatsContainer
     private lateinit var queue: JobQueue
+    private lateinit var locks: NatsDistributedLockFactory
+    private var runner: JobRunner? = null
     private lateinit var server: HttpServer
     private lateinit var directory: Path
     private lateinit var application: BoscaApplication
@@ -206,7 +215,8 @@ class ObjectBackupCapturePipelineIntegrationTest {
             if (firstArg<UUID>() == caller.id && denied) emptyList() else listOf(administrator)
         }
         val natsPool = nats.newConnectionPool(1)
-        queue = NatsJobQueueFactory(natsPool, json, NatsDistributedLockFactory(natsPool), null, emptyList(),
+        locks = NatsDistributedLockFactory(natsPool)
+        queue = NatsJobQueueFactory(natsPool, json, locks, null, emptyList(),
             processExpiredJobs = false).create("capture-pipeline-${UUID.random()}")
         ProviderRegistry.clear()
         StorageProviderRegistrar().register()
@@ -245,6 +255,7 @@ class ObjectBackupCapturePipelineIntegrationTest {
     @AfterTest
     fun tearDown(): Unit = runBlocking {
         try {
+            runner?.shutdown()
             if (::staging.isInitialized) staging.close()
             if (::application.isInitialized) application.shutdown()
             if (::server.isInitialized) server.stop(0)
@@ -313,6 +324,50 @@ class ObjectBackupCapturePipelineIntegrationTest {
             it.nodeId == "capture" && it.status == NodeExecutionStatus.FAILED
         })
         coVerify(exactly = 0) { security.getPrincipalByIdentifier(any()) }
+    }
+
+    @Test
+    fun `real runner defers a busy destination without consuming failures then completes the same child`(): Unit = runBlocking {
+        withConnectionManager {
+            assertEquals(1, provide<ObjectBackupCaptureRepository>().claimWriter(plan.key, "retained", "active-writer"))
+        }
+        val owner = assertNotNull(withConnectionManager { captures.getWriter(plan.key) })
+        val initial = start()
+        executeNext()
+        val delayed = CompletableDeferred<UUID>()
+        val completed = CompletableDeferred<Unit>()
+        val delayCount = AtomicInteger()
+        val childIds = CopyOnWriteArrayList<UUID>()
+        val observed = object : JobQueue by queue {
+            override suspend fun markComplete(job: Job) {
+                queue.markComplete(job)
+                if (get(initial.id).status == PipelineRunStatus.OK) completed.complete(Unit)
+            }
+
+            override suspend fun enqueueLater(job: Job, timeout: Duration): UUID {
+                assertEquals(5.seconds, timeout)
+                assertEquals(0, job.serialize().failures)
+                childIds.add(job.getId())
+                val id = queue.enqueueLater(job, timeout)
+                if (delayCount.incrementAndGet() >= 2) delayed.complete(id)
+                return id
+            }
+        }
+        runner = JobRunner(observed, 1, locks).also { it.run() }
+        val child = withTimeout(20_000) { delayed.await() }
+        assertEquals(setOf(child), childIds.toSet())
+        assertEquals(PipelineRunStatus.SUSPENDED, get(initial.id).status)
+        assertTrue(withConnectionManager { runs.nodeTimeline(initial.id) }.none { it.status == NodeExecutionStatus.FAILED })
+        assertEquals(owner, withConnectionManager { captures.getWriter(plan.key) })
+        assertTrue(requests.isEmpty())
+        assertFalse(directory.resolve("retained").exists())
+        withConnectionManager { captures.releaseWriter(plan.key, owner.key) }
+        withTimeout(20_000) { completed.await() }
+        assertEquals(PipelineRunStatus.OK, get(initial.id).status)
+        assertEquals(listOf("a@v1", "b@v1"), requests.toList())
+        assertEquals(load(), json.decodeFromJsonElement(ObjectBackupManifest.serializer(), assertNotNull(get(initial.id).output)))
+        assertNull(withConnectionManager { captures.getWriter(plan.key) })
+        assertTrue(withConnectionManager { runs.nodeTimeline(initial.id) }.none { it.status == NodeExecutionStatus.FAILED })
     }
 
     @Test

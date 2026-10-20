@@ -20,6 +20,7 @@ import bosca.security.model.Principal
 import bosca.security.service.SecurityService
 import bosca.serialization.UUID
 import bosca.sharedqueue.jobs.InternalJobConstructor
+import bosca.sharedqueue.jobs.DelayException
 import bosca.sharedqueue.jobs.JobQueue
 import bosca.sharedqueue.jobs.asCoroutineContext
 import io.mockk.coEvery
@@ -43,6 +44,8 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertSame
+import kotlin.time.Duration.Companion.seconds
 import kotlin.uuid.ExperimentalUuidApi
 
 /**
@@ -134,6 +137,18 @@ class ExecuteNodeInJobExecutorTest {
         coEvery { node.run(any(), any()) } throws kotlinx.coroutines.CancellationException("stopping")
         coEvery { pipelineService.decodeGraph(any()) } returns PipelineGraph(nodes = listOf(node))
         assertFailsWith<kotlinx.coroutines.CancellationException> { runExecutor(emptyMap()) }
+        coVerify(exactly = 0) { runService.recordNodeAttemptFailure(any(), any(), any()) }
+        coVerify(exactly = 0) { resultStore.put(any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun `queue delay does not record a failed node attempt or stage an output`() = runTest {
+        val delayed = DelayException(5.seconds)
+        val node = mockk<ActionNode>()
+        every { node.id } returns "n"
+        coEvery { node.run(any(), any()) } throws delayed
+        coEvery { pipelineService.decodeGraph(any()) } returns PipelineGraph(nodes = listOf(node))
+        assertSame(delayed, assertFailsWith<DelayException> { runExecutor(emptyMap()) })
         coVerify(exactly = 0) { runService.recordNodeAttemptFailure(any(), any(), any()) }
         coVerify(exactly = 0) { resultStore.put(any(), any(), any(), any()) }
     }

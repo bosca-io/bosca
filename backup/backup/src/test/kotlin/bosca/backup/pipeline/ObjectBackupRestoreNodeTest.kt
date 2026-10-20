@@ -1,6 +1,7 @@
 package bosca.backup.pipeline
 
 import bosca.backup.ObjectBackupManifest
+import bosca.backup.ObjectBackupDestinationBusyException
 import bosca.backup.ObjectBackupOperation
 import bosca.backup.ObjectBackupRun
 import bosca.backup.ObjectBackupRunService
@@ -27,6 +28,7 @@ import bosca.security.service.ScopedAuthenticatedPrincipal
 import bosca.security.service.SecurityException
 import bosca.serialization.UUID
 import bosca.sharedqueue.jobs.Job
+import bosca.sharedqueue.jobs.DelayException
 import bosca.sharedqueue.jobs.JobQueue
 import bosca.sharedqueue.jobs.asCoroutineContext
 import io.mockk.coEvery
@@ -54,6 +56,7 @@ import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.seconds
 
 @OptIn(InternalDI::class)
 class ObjectBackupRestoreNodeTest {
@@ -101,6 +104,23 @@ class ObjectBackupRestoreNodeTest {
         every { job.getId() } returns UUID.random()
         withContext(queue.asCoroutineContext(job)) { perform() }
         assertTrue(observedKeys[0] != observedKeys[2])
+    }
+
+    @Test
+    fun `queued restore contention defers the same request while inline callers retain the original error`(): Unit = runBlocking {
+        val busy = ObjectBackupDestinationBusyException("target")
+        coEvery { service.executeConfigured("run") } throws busy
+        val job = mockk<Job>()
+        every { job.getId() } returns UUID.random()
+        withContext(mockk<JobQueue>().asCoroutineContext(job)) {
+            repeat(2) {
+                val delayed = assertFailsWith<DelayException> { perform() }
+                assertEquals(5.seconds, delayed.time)
+                assertTrue(delayed.cause === busy)
+            }
+        }
+        assertEquals(observedKeys[0], observedKeys[1])
+        assertTrue(assertFailsWith<ObjectBackupDestinationBusyException> { perform() } === busy)
     }
 
     @Test

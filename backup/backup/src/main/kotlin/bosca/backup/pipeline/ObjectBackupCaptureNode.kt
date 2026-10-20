@@ -59,7 +59,9 @@ class ObjectBackupCaptureNode(
         val input = ObjectBackupCaptureNodeSerializer.deserialize(context, inputs)
         require(input.planKey.isNotBlank()) { "Capture plan key is required" }
         val verifiedSince = input.verifiedSince?.let(OffsetDateTime::parse)
-        val manifest = provide<ObjectBackupCaptureService>().captureConfigured(input.planKey, verifiedSince)
+        val manifest = deferBusyBackupDestination {
+            provide<ObjectBackupCaptureService>().captureConfigured(input.planKey, verifiedSince)
+        }
         return ObjectBackupCaptureNodeSerializer.serialize(manifest)
     }
 

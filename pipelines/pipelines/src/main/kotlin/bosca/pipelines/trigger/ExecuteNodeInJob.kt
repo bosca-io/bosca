@@ -21,6 +21,7 @@ import bosca.security.service.SecurityService
 import bosca.security.service.impersonate
 import bosca.serialization.UUID
 import bosca.sharedqueue.jobs.AbstractJobExecutor
+import bosca.sharedqueue.jobs.DelayException
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.Contextual
 import kotlinx.serialization.Serializable
@@ -40,6 +41,7 @@ import kotlin.uuid.ExperimentalUuidApi
  * own job. Because the work runs in a job, the job system's retry/timeout apply, and a thrown
  * `execute()` becomes a job failure that the run resume routes to the node's `error` port (or fails
  * the run if unwired) — exactly the contract a purpose-built backing job (e.g. a HubSpot write) gives.
+ * A [DelayException] defers through the queue without recording a failed node attempt or staging output.
  */
 @Serializable
 data class ExecuteNodeInJob(
@@ -104,6 +106,8 @@ class ExecuteNodeInJobExecutor(
         val value = try {
             (node.run(context, inputs) as? NodeResult.Output)?.value
         } catch (e: CancellationException) {
+            throw e
+        } catch (e: DelayException) {
             throw e
         } catch (e: Exception) {
             runService.recordNodeAttemptFailure(jobDef.runId, jobDef.nodeId, e.message ?: e.toString())

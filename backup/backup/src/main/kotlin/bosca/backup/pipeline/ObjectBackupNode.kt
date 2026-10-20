@@ -96,7 +96,8 @@ class ObjectBackupNode(
         val plan = service.discoverConfigured(ObjectBackupDiscoveryRequest(
             selectionId, sourceId, scope, destinationId, stores, payloadPrefix, "$manifestPrefix/$selectionId.json",
         ))
-        return ObjectBackupNodeSerializer.serialize(service.captureConfigured(plan.key, verifiedSince))
+        val manifest = deferBusyBackupDestination { service.captureConfigured(plan.key, verifiedSince) }
+        return ObjectBackupNodeSerializer.serialize(manifest)
     }
 
     override suspend fun dryRun(context: PipelineContext, inputs: NodeInputs): PipelineValue? {

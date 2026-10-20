@@ -28,6 +28,10 @@ import bosca.security.service.ScopedAuthenticatedPrincipal
 import bosca.security.service.SecurityException
 import bosca.serialization.UUID
 import bosca.serialization.UUIDSerializer
+import bosca.sharedqueue.jobs.DelayException
+import bosca.sharedqueue.jobs.Job
+import bosca.sharedqueue.jobs.JobQueue
+import bosca.sharedqueue.jobs.asCoroutineContext
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
@@ -36,6 +40,7 @@ import java.time.OffsetDateTime
 import java.time.format.DateTimeParseException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
@@ -55,6 +60,7 @@ import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.seconds
 
 @OptIn(InternalDI::class)
 class ObjectBackupCaptureNodeTest {
@@ -187,6 +193,18 @@ class ObjectBackupCaptureNodeTest {
             assertEquals(failure.message, actual.message)
         }
         coVerify(exactly = 3) { service.captureConfigured("saved-plan", null) }
+    }
+
+    @Test
+    fun `queued saved capture defers destination contention instead of failing the job`(): Unit = runBlocking {
+        val busy = ObjectBackupDestinationBusyException("retained")
+        coEvery { service.captureConfigured("saved-plan", any<OffsetDateTime>()) } throws busy
+        withContext(mockk<JobQueue>().asCoroutineContext(mockk<Job>())) {
+            val delayed = assertFailsWith<DelayException> { ObjectBackupCaptureNode("capture").run(context(), inputs()) }
+            assertEquals(5.seconds, delayed.time)
+            assertTrue(delayed.cause === busy)
+        }
+        coVerify(exactly = 1) { service.captureConfigured("saved-plan", null) }
     }
 
     @Test

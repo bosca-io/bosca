@@ -351,6 +351,12 @@ The **Capture Object Backup** Pipeline action (`objectBackup.capture`) executes 
 
 Durable runs park on the framework's ordinary `ExecuteNodeInJob` child and resume through its staged output and parent completion callback. Backing execution checks the run identity with the same `verifyHasSaGroup` authorization as backup mutations; scoped execution contexts also require the existing token scope. Failures and cancellation propagate to the existing job machinery. Durable backing retries use queue policy; the node's inline retry settings do not replace it. A retry reloads the saved plan and reuses completed revision checkpoints. Dry runs trace supplied intent without service calls, storage access or an invented manifest. The action adds no schedule and does not establish a closed live inventory or PostgreSQL recovery coverage; stopped-writer recovery still applies.
 
+Queued object backup, saved capture and restore actions wait five seconds when a destination
+has another writer, then retry through the existing queue. Waiting preserves the job identity
+and failure budget, records no failed node attempt and emits no output. Inline callers receive
+the original destination-busy error. Destination ownership stays with its current writer;
+persisted claims from a crashed worker still require stopped-writer recovery.
+
 `ObjectBackupRestoreService` restores a verified object manifest from independent backup storage to configured logical stores, preserving original object keys. It checks all retained payloads and target conflicts before writing assets, reuses matching files, and resumes interrupted writes through the existing progress service. Callers provide isolated destination namespaces, exclusive writers, and a progress database outside any application database being replaced. Object restore does not restore a PostgreSQL database or establish database recovery-point coverage.
 
 Its `inspect` method verifies the retained payloads and reports each destination object as missing, matching, repairable from an earlier attempt, or conflicting. Inspection does not write assets or create/update progress. Restore repeats the inspection when it runs.

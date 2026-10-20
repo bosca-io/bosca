@@ -73,7 +73,7 @@ class ObjectBackupRestoreNode(
         val service = provide<ObjectBackupRunService>()
         val prepared = service.prepareRestoreConfigured(requestKey, destinationId, backupKey, input.manifestPath, stores)
         check(prepared.status != ObjectBackupRunStatus.CANCELLED) { "Object restore was cancelled: ${prepared.key}" }
-        val result = service.executeConfigured(prepared.key)
+        val result = deferBusyBackupDestination { service.executeConfigured(prepared.key) }
         check(result.status == ObjectBackupRunStatus.COMPLETED) {
             "Object restore did not complete: ${result.key} (${result.status})"
         }

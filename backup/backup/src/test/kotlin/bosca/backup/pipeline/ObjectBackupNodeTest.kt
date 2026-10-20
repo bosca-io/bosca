@@ -4,6 +4,7 @@ import bosca.backup.ObjectBackupCaptureInventory
 import bosca.backup.ObjectBackupCapturePlan
 import bosca.backup.ObjectBackupCaptureService
 import bosca.backup.ObjectBackupDiscoveryRequest
+import bosca.backup.ObjectBackupDestinationBusyException
 import bosca.backup.ObjectBackupManifest
 import bosca.backup.ObjectBackupSource
 import bosca.di.ProviderRegistry
@@ -25,6 +26,7 @@ import bosca.security.service.AuthenticationContext
 import bosca.security.service.GroupEvaluator
 import bosca.security.service.SecurityException
 import bosca.sharedqueue.jobs.Job
+import bosca.sharedqueue.jobs.DelayException
 import bosca.sharedqueue.jobs.JobQueue
 import bosca.sharedqueue.jobs.asCoroutineContext
 import bosca.serialization.UUID
@@ -53,6 +55,7 @@ import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.seconds
 
 @OptIn(InternalDI::class)
 class ObjectBackupNodeTest {
@@ -179,6 +182,22 @@ class ObjectBackupNodeTest {
         setUp()
         coEvery { service.captureConfigured("saved", any<OffsetDateTime>()) } throws CancellationException("stopped")
         assertEquals("stopped", assertFailsWith<CancellationException> { node().perform(context(), NodeInputs(emptyMap())) }.message)
+    }
+
+    @Test
+    fun `queued destination contention requests delay while inline callers retain the original error`(): Unit = runBlocking {
+        val busy = ObjectBackupDestinationBusyException("retained")
+        coEvery { service.captureConfigured("saved", any<OffsetDateTime>()) } throws busy
+        val job = mockk<Job>()
+        io.mockk.every { job.getId() } returns UUID.random()
+        withContext(mockk<JobQueue>().asCoroutineContext(job)) {
+            val delayed = assertFailsWith<DelayException> { node().perform(context(), NodeInputs(emptyMap())) }
+            assertEquals(5.seconds, delayed.time)
+            assertTrue(delayed.cause === busy)
+        }
+        assertTrue(assertFailsWith<ObjectBackupDestinationBusyException> {
+            node().perform(context(), NodeInputs(emptyMap()))
+        } === busy)
     }
 
     @Test
