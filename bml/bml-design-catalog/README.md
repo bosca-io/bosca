@@ -22,6 +22,7 @@ Open `http://localhost:9093/`. Pass another port with `--args=9094` if needed.
 | `/overlays` | Independent modal forms, retained drafts, rejected confirmations, popover forms and menus, sizes and trigger variants |
 | `/json` | Independent dark/light JSON drafts, retained engine state, pending/rejected saves, native reset, controlled options and tree/text/table/empty/invalid/readonly/disabled variants |
 | `/source` | Independent dark/light source viewers, requested lines, language/wrap changes, preserved state, content replacement and compact/bare/empty layouts |
+| `/choices` | Local required/custom choices, multiple native values, tag limits, loading/disabled controls and controlled defaults in two palettes |
 | `/selection` | Server-filtered, offset-paged picker in independent dark/light roots, with failed-search retry, loading/disabled controls, native reset and toast saves |
 | `/components` | Linked index of all 41 exports and normal unprefixed authoring |
 | `/components/controls` | Buttons, inputs, choices, search, segments, accessible local tabs, native selects and the paged picker's authoring source |
@@ -63,6 +64,15 @@ can reject searches, disable the control or demonstrate loading; turning rejecti
 query to succeed. Search feedback stays in the control, validation stays beside its field and saves use
 toasts. The complete option list remains available in the native select without scripts. The select
 reference includes the actual composition source and a link to the working page.
+
+The `/choices` page uses local options with a native required component field, an optional custom
+label and a separate multiple-value tag form. Component saves and rejected operations use toasts;
+the multiple example demonstrates repeated native values without a save action. Successful component
+saves change its key and custom-label key so native reset restores the new defaults. Tags keep their
+own preserved native state. Replace defaults changes all three keys; ordinary refresh retains their
+DOM, selection, query/caret/focus and popup state. Controls can change required/custom/disabled/loading
+state and tag limits. Static cases cover empty, compact, loading, disabled, long labels and tag limits.
+Both local and server-paged compositions are shown in the select authoring reference.
 
 The `/source` examples keep a stable preservation key for surrounding updates and change it for
 content revisions. The application owns requested lines and server options; the compiled viewer owns
@@ -147,6 +157,11 @@ access to modal rejection toasts; server-issued requests and completion; retaine
 and caret; nested cancel/Escape; popup form submission and surrounding updates; menu navigation;
 all sizes and trigger styles; repeated disposal and listener cleanup; desktop/phone bounds, scrolling
 bodies, fixed footers, independent palettes, sampled text contrast and visible native fallbacks.
+Local-choice checks cover native required validation and keyboard selection, disabled options and
+groups, repeated multiple values, custom choices, tag removal and Backspace, retained query/selection,
+held pending saves, rejection/retry, controlled reset defaults, live custom-choice availability,
+loading/disabled form rules, repeated disposal, independent palettes, empty feedback, narrow long tags,
+sampled text contrast and native listbox fallback geometry. Local filtering makes no search requests.
 No authenticated product session is used. Runtime failures use the application's
 console logging backend and are included in integration-test diagnostics.
 

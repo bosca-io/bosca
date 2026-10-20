@@ -71,6 +71,13 @@ export async function checkSelects({ call, evaluate, until, base, mode, artifact
   assert.deepEqual(await evaluate(`new FormData(document.querySelector('[data-select-form=light]')).getAll('toppings')`),['b']);
   await open('custom');await type('custom','a new value');await key('End');await key('Enter');
   assert.ok(await evaluate(`document.querySelector('${native('custom')}').value==='a new value'&&${part('custom','selection')}.textContent==='a new value'`));
+  await open('custom');await type('custom','Another custom value');
+  for(const allowed of [false,true]) {
+    await evaluate(`window.customToggle=document.querySelector('[data-select-custom-toggle=light]');window.customToggle.click()`);
+    await until(`!window.customToggle.isConnected&&${root('custom')}.hasAttribute('data-allow-custom')===${allowed}&&${part('custom','options')}.textContent.includes('Use “Another custom value”')===${allowed}`);
+    assert.equal(await evaluate(`${part('custom','query')}.value`),'Another custom value');
+  }
+  await key('Escape');
   await click('[data-select-disable=light]');await until(`document.querySelector('${native('single')}').disabled&&${part('multiple','trigger')}.disabled`);
   assert.equal(await evaluate(`new FormData(document.querySelector('[data-select-form=light]')).get('flavor')`),null);
   assert.ok(await evaluate(`[...${part('multiple','tags')}.querySelectorAll('button')].every(button=>button.disabled)`));
@@ -130,6 +137,23 @@ export async function checkSelects({ call, evaluate, until, base, mode, artifact
   await choose('remote-multiple',1);await key('End');await key('Enter');
   assert.deepEqual(await evaluate(`new FormData(document.querySelector('[data-select-form=light]')).getAll('remoteTags')`),['saved','tags-0','tags-2','tags']);
   assert.ok(await evaluate(`${part('remote-multiple','tags')}.querySelectorAll('.select-tag').length===2&&${part('remote-multiple','tags')}.textContent.includes('+2')`),'Multiple remote/native choices and custom values survive pagination with tag limits');
+  const requestCount=await evaluate('window.selectRequests.length');
+  for(const allowed of [false,true]) {
+    await evaluate(`window.customToggle=document.querySelector('[data-select-custom-toggle=light]');window.customToggle.click()`);
+    await until(`!window.customToggle.isConnected&&${root('remote-multiple')}.hasAttribute('data-allow-custom')===${allowed}&&${part('remote-multiple','options')}.textContent.includes('Use “tags”')===${allowed}`);
+    assert.deepEqual(await evaluate(`new FormData(document.querySelector('[data-select-form=light]')).getAll('remoteTags')`),['saved','tags-0','tags-2','tags']);
+  }
+  assert.equal(await evaluate('window.selectRequests.length'),requestCount,'Changing custom choices reconciles current results without another search');
+  await type('remote-multiple','fail');
+  await until(`${part('remote-multiple','status')}.textContent==='Search failed. Please try again.'`);
+  const failedRequestCount=await evaluate('window.selectRequests.length');
+  for(const allowed of [false,true]) {
+    await evaluate(`window.customToggle=document.querySelector('[data-select-custom-toggle=light]');window.customToggle.click()`);
+    await until(`!window.customToggle.isConnected&&${root('remote-multiple')}.hasAttribute('data-allow-custom')===${allowed}`);
+    assert.equal(await evaluate(`${part('remote-multiple','status')}.textContent`),'Search failed. Please try again.');
+    assert.deepEqual(await evaluate(`new FormData(document.querySelector('[data-select-form=light]')).getAll('remoteTags')`),['saved','tags-0','tags-2','tags']);
+  }
+  assert.equal(await evaluate('window.selectRequests.length'),failedRequestCount,'Custom-choice updates retain failed-search feedback without issuing a retry');
   await key('Escape');
   for(const width of [1440,390]){
     await call('Emulation.setDeviceMetricsOverride',{width,height:1100,deviceScaleFactor:1,mobile:false});

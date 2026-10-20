@@ -16,6 +16,7 @@
           <a href="/foundation" :aria-current='if (current == "/foundation") "page" else null'><icon name="code" />Foundation</a>
           <a href="/components" :aria-current='if (current == "/components") "page" else null'><icon name="folder" />Components</a>
           <a href="/selection" :aria-current='if (current == "/selection") "page" else null'><icon name="search" />Selection</a>
+          <a href="/choices" :aria-current='if (current == "/choices") "page" else null'><icon name="list" />Local choices</a>
           <a href="/source" :aria-current='if (current == "/source") "page" else null'><icon name="code" />Source</a>
           <a href="/json" :aria-current='if (current == "/json") "page" else null'><icon name="code" />JSON</a>
           <a href="/comments" :aria-current='if (current == "/comments") "page" else null'><icon name="message" />Comments</a>

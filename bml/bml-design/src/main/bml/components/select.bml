@@ -160,6 +160,14 @@
       height: var(--control-height-sm);
       font-size: 12.5px;
     }
+    .select-widget > select[multiple]:not(.enhanced) {
+      height: auto;
+      min-height: var(--control-height-md);
+      padding: 6px 10px;
+    }
+    select[multiple] + .select-native-chevron {
+      display: none;
+    }
     select:disabled + .select-native-chevron {
       opacity: 0.35;
     }

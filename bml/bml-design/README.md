@@ -254,9 +254,13 @@ Multiple choices retain repeated native form values, show up to `maxTags` remova
 remaining count, and support Backspace removal when the query is empty. Disabled optgroups remain
 disabled. `loading` disables enhanced interaction while retaining native submission values.
 Native form resets refresh the displayed selection, including after a retained-root action patch.
+Without scripts, multiple controls use a native listbox without a dropdown chevron. Long selected
+tag labels wrap inside their control while their removal buttons remain available.
 
 Local searchable choices filter their native labels/values. `allowCustom` adds a `Use “…”` choice
-and stores its actual value as the native option and displayed selection. Async controls emit
+and stores its actual value as the native option and displayed selection. Changing allowCustom
+reconciles an open local or fetched list without changing its query or native selection; fetched
+results do not request another search. Async controls emit
 `selectsearch` with `{ query, offset, resolve, reject }` after `debounce`; zero disables the delay.
 The caller supplies the search transport through its existing BML server/proxy abstractions.
 `resolve` accepts an option array or `{ options, previousOffset?, nextOffset? }`; options have

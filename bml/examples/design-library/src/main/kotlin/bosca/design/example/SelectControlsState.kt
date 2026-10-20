@@ -19,6 +19,8 @@ class SelectControlsState(val id: String) {
         private set
     var mounted: Boolean = true
         private set
+    var allowCustom: Boolean = true
+        private set
     var error: String = ""
         private set
 
@@ -48,6 +50,10 @@ class SelectControlsState(val id: String) {
 
     fun toggleLoading() {
         loading = !loading
+    }
+
+    fun toggleCustom() {
+        allowCustom = !allowCustom
     }
 
     fun toggle() {

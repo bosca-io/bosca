@@ -178,7 +178,7 @@ export function richSelect(ctx: ClientContext) {
   };
   const choose = (index: number) => {
     const option = choices[index];
-    if (!option || option.disabled || native.disabled || trigger.disabled || disposed) return;
+    if (!option || option.disabled || (option.custom && !allowCustom) || native.disabled || trigger.disabled || disposed) return;
     remembered.set(
       option.value,
       option.custom ? { ...option, label: option.value } : option,
@@ -442,7 +442,9 @@ export function richSelect(ctx: ClientContext) {
     placeholder = ctx.root.dataset.placeholder || "Select…";
     searchable = ctx.root.hasAttribute("data-searchable");
     asynchronous = ctx.root.hasAttribute("data-async");
-    allowCustom = ctx.root.hasAttribute("data-allow-custom");
+    const nextAllowCustom = ctx.root.hasAttribute("data-allow-custom");
+    const customChanged = allowCustom !== nextAllowCustom;
+    allowCustom = nextAllowCustom;
     maxTags = Math.max(1, number("maxTags", 3));
     minQuery = number("minQuery", 0);
     debounce = number("debounce", 250);
@@ -451,6 +453,21 @@ export function richSelect(ctx: ClientContext) {
     measure();
     if (expanded && trigger.disabled) close();
     if (expanded) {
+      if (customChanged) {
+        if (!asynchronous) filter();
+        else {
+          const options = choices.filter(option => !option.custom);
+          const value = query.value.trim();
+          const busy = popup.hasAttribute("aria-busy");
+          if (allowCustom && !busy && value.length >= minQuery && value && !options.some(option => option.value === value)) {
+            options.push({ value, label: `Use “${value}”`, custom: true });
+          }
+          if (!busy && value.length >= minQuery && (!status.textContent || status.textContent === "No options found.")) {
+            status.textContent = options.length ? "" : "No options found.";
+          }
+          render(options);
+        }
+      }
       if (!popup.matches(":popover-open")) popup.showPopover();
       position();
       if (focused?.isConnected) focused.focus({ preventScroll: true });

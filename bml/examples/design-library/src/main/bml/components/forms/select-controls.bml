@@ -9,6 +9,7 @@
           <button @click="choices.change" :data-select-change="choices.id">Change controlled choice</button>
           <button @click="choices.toggleDisabled" :data-select-disable="choices.id">Toggle disabled</button>
           <button @click="choices.toggleLoading" :data-select-loading="choices.id">Toggle loading</button>
+          <button @click="choices.toggleCustom" :data-select-custom-toggle="choices.id">Toggle custom choices</button>
           <button @click="choices.toggle" :data-select-toggle="choices.id">Toggle controls</button>
         </div>
         <p :data-select-updates="choices.id">Updates { choices.updates }</p>
@@ -35,7 +36,7 @@
               </select>
             </field>
             <field label="Custom choice">
-              <select label="Custom choice" name="custom" searchable allowCustom :preserveKey='"custom-" + choices.id + "-" + choices.revision' :data-select-custom="choices.id">
+              <select label="Custom choice" name="custom" searchable :allowCustom="choices.allowCustom" :preserveKey='"custom-" + choices.id + "-" + choices.revision' :data-select-custom="choices.id">
                 <option value="" selected>Choose or enter a value</option><option value="known">Known choice</option>
               </select>
             </field>
@@ -48,7 +49,7 @@
               </select>
             </field>
             <field label="Remote tags">
-              <select label="Remote tags" name="remoteTags" searchable async multiple allowCustom :minQuery="2" :debounce="0" :maxTags="2"
+              <select label="Remote tags" name="remoteTags" searchable async multiple :allowCustom="choices.allowCustom" :minQuery="2" :debounce="0" :maxTags="2"
                       :preserveKey='"remote-tags-" + choices.id + "-" + choices.revision' :data-select-remote-multiple="choices.id">
                 <option value="any" data-persistent>Any option</option><option value="saved" selected>Saved tag</option>
               </select>

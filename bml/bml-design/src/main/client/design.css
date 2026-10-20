@@ -282,15 +282,23 @@
 }
 [data-bml-design-select] .select-options > [aria-disabled="true"] { opacity: 0.35; cursor: not-allowed; }
 [data-bml-design-select] .select-tag {
+  box-sizing: border-box;
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  min-width: 0;
+  max-width: 100%;
   padding: 2px 6px;
   border-radius: 5px;
   background: color-mix(in srgb, var(--accent) 16%, var(--bg-2));
   font-size: 11px;
 }
+[data-bml-design-select] .select-tag > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
 [data-bml-design-select] .select-tag button {
+  flex: none;
   padding: 0 2px;
   border: 0;
   background: transparent;
