@@ -4,9 +4,9 @@
   </script>
   <if page != null>
     <git-layout :title="page.pull.title">
-      <ui-page>
+      <page-shell>
         <git-pull-heading :page="page" />
-        <ui-tabs label="Pull request" :items="page.tabs" header />
+        <tabs label="Pull request" :items="page.tabs" header />
         <if page.view == "overview">
           <div class="pull-workspace">
             <div class="pull-main">
@@ -39,7 +39,7 @@
         <else>
           <git-pull-review :page="page" />
         </if>
-      </ui-page>
+      </page-shell>
     </git-layout>
   </if>
   <style scoped>

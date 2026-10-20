@@ -358,6 +358,16 @@ textarea {
   --control-bg: var(--bg-2);
   --control-radius: var(--r-sm);
 }
+.git-document .tabs .tabs-menu {
+  font-size: 14px;
+  color: var(--fg-0);
+}
+.git-document .markdown-toolbar [role="tablist"] {
+  overflow: visible;
+}
+.git-document .markdown-toolbar [role="tab"]::after {
+  bottom: -1px;
+}
 .git-main {
   flex: 1;
   min-width: 0;

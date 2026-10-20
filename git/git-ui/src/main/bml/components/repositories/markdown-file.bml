@@ -5,7 +5,7 @@
   </script>
   <html:section class="markdown-file">
     <header class="markdown-toolbar">
-      <ui-view-tabs
+      <view-tabs
         label="Markdown view"
         :tabs='listOf("Preview", "Source")'
         :selected='if (showSource) "Source" else "Preview"'

@@ -3,8 +3,8 @@
     bosca.git.ui.agentPage()
   </script>
   <git-layout title="CI agents">
-    <ui-page>
-      <ui-page-heading
+    <page-shell>
+      <page-heading :trail='listOf(bosca.design.model.NavigationItem("Git", "", false))'
         title="CI Agents"
         :subtitle='page.agents.size.toString() + " agents · " + page.agents.count { it.status.toString() == "ONLINE" } + " online · " + page.agents.count { it.status.toString() == "BUSY" } + " busy"'
       >
@@ -15,13 +15,13 @@
         <if page.allowed>
           <git-agent-register :page="page" />
         </if>
-      </ui-page-heading>
+      </page-heading>
       <if !page.allowed>
         <alert>Administrator access is required.</alert>
       <else>
         <git-agent-list :page="page" />
       </if>
-    </ui-page>
+    </page-shell>
   </git-layout>
   <style scoped>
     .refresh-icon {

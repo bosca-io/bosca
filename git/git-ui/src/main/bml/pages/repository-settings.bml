@@ -4,15 +4,15 @@
   </script>
   <if page != null>
     <git-layout :title='page.repository.name + " settings"'>
-      <ui-page>
-        <ui-page-heading
+      <page-shell>
+        <page-heading
           :title='page.repository.name'
           crumb="Settings"
           icon="folder"
-          :trail='listOf(bosca.design.model.NavigationItem("Repositories", "/repositories", false), bosca.design.model.NavigationItem(page.repository.name, "/repositories/" + bosca.git.ui.encode(page.repository.id), false))'
+          :trail='listOf(bosca.design.model.NavigationItem("Git", "", false), bosca.design.model.NavigationItem("Repositories", "/repositories", false), bosca.design.model.NavigationItem(page.repository.name, "/repositories/" + bosca.git.ui.encode(page.repository.id), false))'
         />
         <git-repository-settings :page="page" />
-      </ui-page>
+      </page-shell>
     </git-layout>
   </if>
 </page>

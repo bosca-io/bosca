@@ -71,6 +71,7 @@ try {
     "review.mjs",
     "search.mjs",
     "screens.mjs",
+    "navigation.mjs",
   ];
   const selected = process.env.GIT_UI_BROWSER_TESTS?.split(",") ?? available;
   for (const test of selected) {

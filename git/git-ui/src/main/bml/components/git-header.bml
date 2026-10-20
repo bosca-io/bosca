@@ -3,7 +3,7 @@
   <script server provides="path">
     ctx.requestPath
   </script>
-  <ui-app-header brand="Bosca" product="Git" href="/repositories">
+  <app-header brand="Bosca" product="Git" href="/repositories">
     <if signedIn>
       <div class="git-subsystem">
         <span class="subsystem-icon">
@@ -14,11 +14,7 @@
           <p>Browse repositories, review pull requests, and search code</p>
         </div>
       </div>
-      <a class="nav-search" href="/search" title="Search (⌘K)" ref="search">
-        <span class="nav-search-icon"><icon name="search" :size="14" /></span>
-        <span class="nav-search-placeholder">Search…</span>
-        <kbd class="nav-search-kbd">⌘K</kbd>
-      </a>
+      <git-search-link />
       <nav class="git-navigation" aria-label="Git">
         <div class="nav-group">
           <span class="nav-label">Code</span>
@@ -81,7 +77,7 @@
         <git-session-button />
       </div>
     </if>
-  </ui-app-header>
+  </app-header>
   <style scoped>
     .git-subsystem {
       display: flex;
@@ -119,38 +115,6 @@
       color: var(--fg-3);
     }
 
-    .nav-search {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      margin: 14px 12px;
-      padding: 7px 10px;
-      border-radius: 9px;
-      border: 1px solid color-mix(in oklch, var(--line) 60%, transparent);
-      background: color-mix(in oklch, var(--bg-2) 55%, transparent);
-      color: var(--fg-3);
-      font-size: 12.5px;
-      text-decoration: none;
-      transition: background 0.15s, border-color 0.15s;
-    }
-    .nav-search:hover {
-      background: color-mix(in oklch, var(--bg-3) 70%, transparent);
-      border-color: color-mix(in oklch, var(--line) 90%, transparent);
-      text-decoration: none;
-    }
-    .nav-search-icon {
-      display: inline-flex;
-    }
-    .nav-search-placeholder {
-      flex: 1;
-    }
-    .nav-search-kbd {
-      padding: 1px 5px;
-      border-radius: 4px;
-      border: 1px solid color-mix(in oklch, var(--line) 60%, transparent);
-      font-family: var(--font-mono);
-      font-size: 10px;
-    }
     .git-navigation {
       display: flex;
       flex-direction: column;
@@ -241,8 +205,7 @@
       }
     }
     @media (max-width: 700px) {
-      .git-subsystem,
-      .nav-search {
+      .git-subsystem {
         display: none;
       }
       .git-navigation {
@@ -287,13 +250,4 @@
       }
     }
   </style>
-  <script client scoped>
-    const search = ctx.ref<HTMLAnchorElement>("search");
-    ctx.on<KeyboardEvent>(window, "keydown", (event) => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k" && search) {
-        event.preventDefault();
-        location.assign(search.href);
-      }
-    });
-  </script>
 </component>

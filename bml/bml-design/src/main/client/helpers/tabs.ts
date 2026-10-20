@@ -114,7 +114,12 @@ export function overflowTabs(ctx: ClientContext) {
   ctx.on<FocusEvent>(menu, "focusin", event => {
     if (event.target instanceof HTMLAnchorElement) focusedEntry = event.target;
   });
-  ctx.on<FocusEvent>(menu, "focusout", () => {
+  ctx.on<FocusEvent>(menu, "focusout", event => {
+    if (event.relatedTarget === more) {
+      focusedEntry = null;
+      return;
+    }
+    if (event.relatedTarget instanceof Node && menu.contains(event.relatedTarget)) return;
     queueMicrotask(() => {
       if (!menu.contains(document.activeElement)) {
         focusedEntry = null;

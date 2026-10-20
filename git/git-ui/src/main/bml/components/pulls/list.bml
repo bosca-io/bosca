@@ -2,7 +2,7 @@
   <prop name="page" type="bosca.git.ui.PullListPage" required />
   <div class="pull-panel">
     <if page.baseHref.isBlank()>
-      <ui-tabs label="Pull request state" :items="page.tabs" header />
+      <tabs label="Pull request state" :items="page.tabs" header />
     <else>
       <div class="pr-toolbar">
         <nav class="pr-filters" aria-label="Pull request state">

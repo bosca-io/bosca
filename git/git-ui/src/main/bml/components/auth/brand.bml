@@ -33,7 +33,7 @@
       </svg>
     </div>
     <a class="brand-top" href="/login">
-      <ui-bosca-mark />
+      <bosca-mark />
       <strong>Bosca</strong>
       <span class="brand-separator"></span>
       <span>Git</span>

@@ -11,9 +11,9 @@ export async function checkNavigation({ call, evaluate, until, base, mode, artif
   const row=root=>`${root} [data-bml-ref=row]`;
   const open=root=>`document.querySelector(${JSON.stringify(menu(root))})?.matches(':popover-open')`;
   const click=selector=>evaluate(`document.querySelector(${JSON.stringify(selector)}).click()`);
-  const key=async value=>{
+  const key=async (value,modifiers=0)=>{
     const code={Enter:13,Escape:27,Tab:9,ArrowDown:40,ArrowUp:38,Home:36,End:35}[value];
-    for(const type of ['keyDown','keyUp'])await call('Input.dispatchKeyEvent',{type,key:value,code:value,windowsVirtualKeyCode:code,
+    for(const type of ['keyDown','keyUp'])await call('Input.dispatchKeyEvent',{type,key:value,code:value,windowsVirtualKeyCode:code,modifiers,
       ...(value==='Enter'&&type==='keyDown'?{text:'\r'}:{})});
   };
   const listeners=async()=>{
@@ -61,6 +61,10 @@ export async function checkNavigation({ call, evaluate, until, base, mode, artif
   await until(open(light));
   assert.ok(await evaluate(`document.activeElement===document.querySelector('${menu(light)} > a') && document.querySelector('${more(light)}').getAttribute('aria-expanded')==='true'`));
   await until(popupFit(light));
+  await key('Tab');
+  assert.ok(await evaluate(`${open(light)}&&document.activeElement===document.querySelector('${menu(light)}').children[1]`),'Native Tab between overflow destinations retains the open menu');
+  await key('Tab',8);
+  assert.ok(await evaluate(`${open(light)}&&document.activeElement===document.querySelector('${menu(light)}').firstElementChild`),'Native Shift+Tab between overflow destinations retains the open menu');
   await key('End');
   assert.ok(await evaluate(`document.activeElement===document.querySelector('${menu(light)}').lastElementChild`));
   await key('ArrowDown');

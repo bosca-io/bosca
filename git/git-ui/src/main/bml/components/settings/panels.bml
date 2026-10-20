@@ -1,7 +1,7 @@
 <component tag="git-repository-settings">
   <prop name="page" type="bosca.git.ui.RepositorySettingsPage" required />
   <div class="settings-stack">
-    <ui-tabs label="Repository settings" :items="page.tabs" />
+    <tabs label="Repository settings" :items="page.tabs" />
     <if !page.repository.canManage>
       <alert>The required repository permission is not granted.</alert>
     <else-if page.panel == "metadata">

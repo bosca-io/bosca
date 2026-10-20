@@ -14,10 +14,10 @@
   </script>
   <island name="git-pipeline-run" :key="initial.run.id">
     <html:section class="run-page" :data-next-href="model.nextHref" :data-run-active="model.active">
-      <ui-page-heading
+      <page-heading
         :title="model.title"
         :subtitle='model.run.status.name + " · " + bosca.git.ui.pipelineDuration(model.run.durationSeconds)'
-        :trail="model.trail"
+        :trail='listOf(bosca.design.model.NavigationItem("Git", "", false)) + (model.trail)'
         :crumb='"Run #" + model.run.number'
       >
         <div
@@ -93,7 +93,7 @@
           </if>
           <button size="sm" icon="pulse" @click="model.refresh(ctx)">Refresh</button>
         </div>
-      </ui-page-heading>
+      </page-heading>
       <div class="settings-stack">
         <if model.message.isNotBlank()>
           <alert :tone='if (model.failed) "error" else "success"'>{ model.message }</alert>

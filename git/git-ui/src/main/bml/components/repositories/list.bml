@@ -4,8 +4,8 @@
     bosca.git.ui.RepositoryListModel(page.state, page.owner, repositories = page.repositories)
   </script>
   <island name="git-repository-list">
-    <ui-page :data-next-href="model.nextHref">
-      <ui-page-heading
+    <page-shell :data-next-href="model.nextHref">
+      <page-heading :trail='listOf(bosca.design.model.NavigationItem("Git", "", false))'
         title="Repositories"
         :subtitle="model.subtitle"
       >
@@ -19,8 +19,8 @@
         </form>
         <git-repository-import :initial="model" />
         <git-repository-create :initial="model" />
-      </ui-page-heading>
-      <ui-tabs label="Repository state" :items="model.tabs" header />
+      </page-heading>
+      <tabs label="Repository state" :items="model.tabs" header />
       <if model.message.isNotBlank()>
         <p role="status" :class='if (model.failed) "status error" else "status"'>
           { model.message }
@@ -46,7 +46,7 @@
           </ul>
         </if>
       </div>
-    </ui-page>
+    </page-shell>
   </island>
   <style scoped>
     .owner-toolbar {

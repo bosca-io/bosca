@@ -40,7 +40,7 @@
             </dialog>
           </if>
         </section-heading>
-        <ui-tabs label="Synchronization history" :items="model.page.tabs" />
+        <tabs label="Synchronization history" :items="model.page.tabs" />
         <if model.message.isNotBlank()>
           <alert :tone='if (model.failed) "error" else "success"'>{ model.message }</alert>
         </if>

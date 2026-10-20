@@ -3,9 +3,9 @@
     bosca.git.ui.searchPage()
   </script>
   <git-layout title="Search">
-    <ui-page>
-      <ui-page-heading title="Search" subtitle="Search file content and paths across repositories" />
+    <page-shell>
+      <page-heading :trail='listOf(bosca.design.model.NavigationItem("Git", "", false))' title="Search" subtitle="Search file content and paths across repositories" />
       <git-search :page="page" />
-    </ui-page>
+    </page-shell>
   </git-layout>
 </page>

@@ -1,13 +1,13 @@
 <component tag="git-repository-heading">
   <prop name="page" type="bosca.git.ui.RepositoryPage" required />
   <div class="repository-heading">
-    <ui-page-heading
+    <page-heading
       icon="folder"
       :badge="page.visibility.lowercase()"
       :badgeTone='when (page.visibility) { "PUBLIC" -> "success"; "INTERNAL" -> "warning"; else -> "neutral" }'
       :subtitle='page.slug + " · " + page.visibility.lowercase() + " · " + page.defaultBranch'
       :title="page.name"
-      :trail='listOf(bosca.design.model.NavigationItem("Repositories", page.listHref, false))'
+      :trail='listOf(bosca.design.model.NavigationItem("Git", "", false), bosca.design.model.NavigationItem("Repositories", page.listHref, false))'
     >
       <div class="repository-controls">
         <if page.tab == "code" || page.tab == "commits" || page.tab == "statuses">
@@ -35,7 +35,7 @@
           <copy-field :value="page.cloneUrl" label="Clone URL" copyLabel="Copy clone URL" />
         </popover>
       </div>
-    </ui-page-heading>
+    </page-heading>
   </div>
   <style scoped>
     .repository-heading {
