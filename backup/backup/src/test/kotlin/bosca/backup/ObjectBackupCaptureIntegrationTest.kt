@@ -75,7 +75,7 @@ class ObjectBackupCaptureIntegrationTest {
         ))
         ProviderRegistry.clear()
         provides<ConnectionPool>(singleton = true) { pool }
-        provides<Json>(singleton = true) { Json }
+        provides<Json>(singleton = true) { backupTestJson }
         StorageProviderRegistrar().register()
         BackupProviderRegistrar().register()
         FlywayMigration(pool).migrate(listOf(provide<Migration>(name = "backup-migrations")))
@@ -343,7 +343,7 @@ class ObjectBackupCaptureIntegrationTest {
             override suspend fun getInputStream(path: ObjectPath): InputStream = throw failure
         }
         val source = mockk<ObjectStorageService>()
-        val observed = assertFailsWith<IOException> { tracked(source, target) }
+        val observed = assertFailsWith<IOException> { tracked(source, target, cutoff = null) }
         assertTrue(generateSequence<Throwable>(observed) { it.cause }.any { it === failure })
         assertEquals(first, checkpoint())
         coVerify(exactly = 0) { source.getInputStream(any(), any<String>()) }
@@ -364,7 +364,7 @@ class ObjectBackupCaptureIntegrationTest {
         val progress = provide<ObjectBackupProgressService>()
         val failure = IOException("checkpoint commit failed")
         capture = ObjectBackupCaptureServiceImpl(object : ObjectBackupProgressService by progress {
-            override suspend fun completeVerified(key: String, expectedVersion: Long, objectVersion: String?): ObjectBackupProgress = throw failure
+            override suspend fun completeVerified(key: String, expectedVersion: Long, info: ObjectStorageInfo?): ObjectBackupProgress = throw failure
         }, Json, provide(), mockk())
         provide<ObjectStorageServiceFactory>().withStorage(configuration()) { source ->
             val observed = assertFailsWith<IOException> { tracked(source) }
@@ -385,7 +385,7 @@ class ObjectBackupCaptureIntegrationTest {
         val failure = IOException("completion acknowledgement failed")
         val recording = IOException("failure recording failed")
         capture = ObjectBackupCaptureServiceImpl(object : ObjectBackupProgressService by progress {
-            override suspend fun completeVerified(key: String, expectedVersion: Long, objectVersion: String?): ObjectBackupProgress = throw failure
+            override suspend fun completeVerified(key: String, expectedVersion: Long, info: ObjectStorageInfo?): ObjectBackupProgress = throw failure
             override suspend fun fail(key: String, expectedVersion: Long, error: String): ObjectBackupProgress = throw recording
         }, Json, provide(), mockk())
         provide<ObjectStorageServiceFactory>().withStorage(configuration()) { source ->
@@ -470,7 +470,7 @@ class ObjectBackupCaptureIntegrationTest {
     }
 
     @Test
-    fun `filesystem capture still verifies retained bytes when metadata-only reuse is requested`(): Unit = runBlocking {
+    fun `filesystem capture reuses its recorded checksum check when metadata-only reuse is requested`(): Unit = runBlocking {
         val first = provide<ObjectStorageServiceFactory>().withStorage(configuration()) { tracked(it) }
         endpoint.stop(0)
         var reads = 0
@@ -485,7 +485,7 @@ class ObjectBackupCaptureIntegrationTest {
             "old-instance", "retained-store", "content", "content", selected, source, target, payloadPath, OffsetDateTime.MIN,
         )
         assertEquals(first, reused)
-        assertEquals(1, reads)
+        assertEquals(0, reads)
         coVerify(exactly = 0) { source.getInputStream(any(), any<String>()) }
     }
 
@@ -494,7 +494,8 @@ class ObjectBackupCaptureIntegrationTest {
         target: ObjectStorageService = retained,
         path: String = payloadPath,
         entry: ObjectStorageEntry = selected,
-    ) = capture.captureTracked("old-instance", "retained-store", "content", "content", entry, source, target, path, null)
+        cutoff: OffsetDateTime? = OffsetDateTime.MIN,
+    ) = capture.captureTracked("old-instance", "retained-store", "content", "content", entry, source, target, path, cutoff)
 
     private fun knownPayload() = BackupObject(
         "content", "asset", version, selected.info.length,

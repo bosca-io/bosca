@@ -36,6 +36,9 @@ class ObjectBackupProgressController : GraphQLController<ObjectBackupProgress> {
     fun verifiedBytes(progress: ObjectBackupProgress) = progress.verifiedBytes
 
     @Field
+    fun verified(progress: ObjectBackupProgress) = progress.verified
+
+    @Field
     fun error(progress: ObjectBackupProgress) = progress.error
 
     @Field

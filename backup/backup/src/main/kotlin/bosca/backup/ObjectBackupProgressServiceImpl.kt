@@ -2,6 +2,7 @@ package bosca.backup
 
 import bosca.db.transaction
 import bosca.service.annotation.ServiceImplementation
+import bosca.storage.service.ObjectStorageInfo
 
 /** Persists guarded per-revision progress through the backup repository. */
 @ServiceImplementation
@@ -11,21 +12,21 @@ class ObjectBackupProgressServiceImpl(
     override suspend fun completeVerified(
         key: String,
         expectedVersion: Long,
-        objectVersion: String?,
+        info: ObjectStorageInfo?,
     ): ObjectBackupProgress {
         validateVersion(key, expectedVersion)
-        validateObjectVersion(objectVersion)
-        return updated(repository.completeVerified(key, expectedVersion, objectVersion), key, expectedVersion)
+        validateObservation(info)
+        return updated(repository.completeVerified(key, expectedVersion, info), key, expectedVersion)
     }
 
     override suspend fun recordVerification(
         key: String,
         expectedVersion: Long,
-        objectVersion: String?,
+        info: ObjectStorageInfo?,
     ): ObjectBackupProgress {
         validateVersion(key, expectedVersion)
-        validateObjectVersion(objectVersion)
-        return updated(repository.recordVerification(key, expectedVersion, objectVersion), key, expectedVersion)
+        validateObservation(info)
+        return updated(repository.recordVerification(key, expectedVersion, info), key, expectedVersion)
     }
 
     override suspend fun get(
@@ -200,7 +201,8 @@ class ObjectBackupProgressServiceImpl(
         }
     }
 
-    private fun validateObjectVersion(value: String?) {
+    private fun validateObservation(info: ObjectStorageInfo?) {
+        val value = info?.version
         require(value == null || (value.isNotBlank() && value != "null")) {
             "An immutable provider object version or null is required"
         }

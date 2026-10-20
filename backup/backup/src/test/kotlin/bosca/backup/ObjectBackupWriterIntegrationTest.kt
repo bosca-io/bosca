@@ -560,7 +560,7 @@ class ObjectBackupWriterIntegrationTest {
     private fun legacyItems(key: String) =
         DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { connection ->
             connection.prepareStatement("""
-                select jsonb_agg(to_jsonb(p) - 'verified_version' - 'verified' order by i.position)::text
+                select jsonb_agg(to_jsonb(p) - 'verified_version' - 'verified_info' - 'verified' order by i.position)::text
                 from backup.object_run_items i join backup.object_progress p on p.key = i.progress_key
                 where i.run_key = ?
             """.trimIndent()).use { statement ->

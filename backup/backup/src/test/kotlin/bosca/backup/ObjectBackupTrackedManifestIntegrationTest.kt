@@ -63,7 +63,7 @@ class ObjectBackupTrackedManifestIntegrationTest {
         ))
         ProviderRegistry.clear()
         provides<ConnectionPool>(singleton = true) { pool }
-        provides<Json>(singleton = true) { Json }
+        provides<Json>(singleton = true) { backupTestJson }
         StorageProviderRegistrar().register()
         BackupProviderRegistrar().register()
         FlywayMigration(pool).migrate(listOf(provide<Migration>(name = "backup-migrations")))
@@ -180,13 +180,18 @@ class ObjectBackupTrackedManifestIntegrationTest {
     }
 
     @Test
-    fun `filesystem publication always verifies payload bytes and returns a portable manifest`(): Unit = runBlocking {
+    fun `filesystem publication establishes a checksum baseline and returns a portable manifest`(): Unit = runBlocking {
         val completed = complete(prepare())
         publish()
         assertEquals(2, reads)
-        assertEquals(1, metadata)
+        assertEquals(2, metadata)
         assertEquals(1, writes)
-        assertEquals(completed, withConnectionManager { progress.get(completed.key) })
+        val checked = assertNotNull(withConnectionManager { progress.get(completed.key) })
+        assertEquals(completed.payload, checked.payload)
+        assertEquals(completed.attempts, checked.attempts)
+        assertEquals(completed.version + 1, checked.version)
+        assertNotNull(checked.verifiedInfo)
+        assertNotNull(checked.verified)
         assertEquals(inventory, ObjectBackupManifestStore(storage, Json).load(path))
     }
 

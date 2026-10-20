@@ -152,6 +152,12 @@ class ObjectBackupNodeTest {
     }
 
     @Test
+    fun `ordinary copies reuse verified destination observations without requiring a checksum schedule`(): Unit = runBlocking {
+        node().perform(context(), NodeInputs(emptyMap()))
+        coVerify(exactly = 1) { service.captureConfigured("saved", OffsetDateTime.MIN) }
+    }
+
+    @Test
     fun `explicit cutoff overrides interval and invalid intervals fail before discovery`(): Unit = runBlocking {
         val cutoff = OffsetDateTime.parse("2026-10-18T00:00:00Z")
         ObjectBackupNode("backup", sources = "{}", verificationMaxAgeDays = 7).perform(context(),

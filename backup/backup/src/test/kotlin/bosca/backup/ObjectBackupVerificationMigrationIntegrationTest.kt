@@ -21,7 +21,7 @@ import kotlin.test.assertTrue
 class ObjectBackupVerificationMigrationIntegrationTest {
     private lateinit var postgres: SharedPostgreSQLContainer
     private lateinit var pool: ConnectionPool
-    private val proofColumns = setOf("verified_version", "verified")
+    private val proofColumns = setOf("verified_info", "verified")
 
     @BeforeTest
     fun setUp(): Unit = runBlocking {
@@ -80,7 +80,7 @@ class ObjectBackupVerificationMigrationIntegrationTest {
                 statement.executeQuery("""
                     select count(*) from information_schema.columns
                     where table_schema = 'backup' and table_name = 'object_progress'
-                        and column_name in ('verified_version', 'verified')
+                        and column_name in ('verified_info', 'verified')
                 """.trimIndent()).use { result ->
                     assertTrue(result.next())
                     result.getInt(1)

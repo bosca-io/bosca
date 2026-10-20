@@ -96,7 +96,7 @@ class ObjectBackupCaptureConfiguredIntegrationTest {
         directory = createTempDirectory("bosca-capture-configured-")
         ProviderRegistry.clear()
         provides<ConnectionPool>(singleton = true) { pool }
-        provides<Json>(singleton = true) { Json }
+        provides<Json>(singleton = true) { backupTestJson }
         StorageProviderRegistrar().register()
         val factory = provide<ObjectStorageServiceFactory>()
         val tracked = object : ObjectStorageServiceFactory by factory {

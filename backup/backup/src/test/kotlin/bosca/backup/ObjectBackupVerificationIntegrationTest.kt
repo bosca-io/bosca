@@ -89,7 +89,7 @@ class ObjectBackupVerificationIntegrationTest {
         ))
         ProviderRegistry.clear()
         provides<ConnectionPool>(singleton = true) { pool }
-        provides<Json>(singleton = true) { Json }
+        provides<Json>(singleton = true) { backupTestJson }
         StorageProviderRegistrar().register()
         BackupProviderRegistrar().register()
         FlywayMigration(pool).migrate(listOf(provide<Migration>(name = "backup-migrations")))
@@ -185,9 +185,9 @@ class ObjectBackupVerificationIntegrationTest {
     @Test
     fun `new capture records the exact retained version whose checksum was read`(): Unit = runBlocking {
         val result = capture()
-        assertEquals(current[payloadPath], result.verifiedVersion)
+        assertEquals(current[payloadPath], result.verifiedInfo?.version)
         assertNotNull(result.verified)
-        assertEquals(listOf(result.verifiedVersion), versionReads.toList())
+        assertEquals(listOf(result.verifiedInfo?.version), versionReads.toList())
         assertEquals(1, bodies.get())
         assertEquals(1, sourceReads.get())
         assertTrue(signatures.all { it.contains("Credential=VERIFY_KEY/") })
@@ -225,7 +225,7 @@ class ObjectBackupVerificationIntegrationTest {
         assertEquals(first.version + 1, refreshed.version)
         assertEquals(first.attempts, refreshed.attempts)
         assertEquals(first.payload, refreshed.payload)
-        assertEquals(listOf(first.verifiedVersion), versionReads.toList())
+        assertEquals(listOf(first.verifiedInfo?.version), versionReads.toList())
         assertEquals(1, bodies.get())
         assertEquals(0, sourceReads.get())
     }
@@ -237,7 +237,7 @@ class ObjectBackupVerificationIntegrationTest {
         val result = capture(null)
         assertEquals(first.version + 1, result.version)
         assertEquals(1, bodies.get())
-        assertEquals(listOf(first.verifiedVersion), versionReads.toList())
+        assertEquals(listOf(first.verifiedInfo?.version), versionReads.toList())
     }
 
     @Test
@@ -247,7 +247,7 @@ class ObjectBackupVerificationIntegrationTest {
         val replacement = current[payloadPath]
         resetCounters()
         val result = capture(checkNotNull(first.verified).minusSeconds(1))
-        assertEquals(replacement, result.verifiedVersion)
+        assertEquals(replacement, result.verifiedInfo?.version)
         assertEquals(first.version + 1, result.version)
         assertEquals(first.attempts, result.attempts)
         assertEquals(listOf(replacement), versionReads.toList())
@@ -264,7 +264,7 @@ class ObjectBackupVerificationIntegrationTest {
         assertEquals(ObjectBackupProgressStatus.COMPLETED, result.status)
         assertEquals(2, result.attempts)
         assertEquals(first.payload, result.payload)
-        assertEquals(current[payloadPath], result.verifiedVersion)
+        assertEquals(current[payloadPath], result.verifiedInfo?.version)
         assertEquals(1, sourceReads.get())
         assertEquals(content.decodeToString(), Files.readString(checkNotNull(versions[payloadPath to checkNotNull(current[payloadPath])])))
     }
@@ -272,7 +272,7 @@ class ObjectBackupVerificationIntegrationTest {
     @Test
     fun `forced periodic verification detects corruption under an unchanged provider version`(): Unit = runBlocking {
         val first = verifiedCapture()
-        Files.write(checkNotNull(versions[payloadPath to checkNotNull(first.verifiedVersion)]), ByteArray(content.size) { 1 })
+        Files.write(checkNotNull(versions[payloadPath to checkNotNull(first.verifiedInfo?.version)]), ByteArray(content.size) { 1 })
         resetCounters()
         assertEquals(first, capture(checkNotNull(first.verified).minusSeconds(1)))
         assertEquals(0, bodies.get())
@@ -289,23 +289,23 @@ class ObjectBackupVerificationIntegrationTest {
         resetCounters()
         val result = capture(checkNotNull(first.verified).minusSeconds(1))
         assertEquals(2, result.attempts)
-        assertEquals(current[payloadPath], result.verifiedVersion)
+        assertEquals(current[payloadPath], result.verifiedInfo?.version)
         assertEquals(1, sourceReads.get())
     }
 
     @Test
-    fun `unversioned metadata does not reuse etags timestamps or lengths as verification proof`(): Unit = runBlocking {
+    fun `unversioned observations reuse a real checksum check without treating metadata as a digest`(): Unit = runBlocking {
         val first = verifiedCapture()
         exposeVersion.set(false)
         resetCounters()
         val result = capture(checkNotNull(first.verified).minusSeconds(1))
-        assertNull(result.verifiedVersion)
-        assertNull(result.verified)
+        assertNull(result.verifiedInfo?.version)
+        assertNotNull(result.verified)
         assertEquals(1, bodies.get())
         assertTrue(versionReads.isEmpty())
         resetCounters()
-        capture(OffsetDateTime.MIN)
-        assertEquals(1, bodies.get())
+        assertEquals(result, capture(OffsetDateTime.MIN))
+        assertEquals(0, bodies.get())
     }
 
     @Test
@@ -314,7 +314,7 @@ class ObjectBackupVerificationIntegrationTest {
         clearProof(old.key)
         resetCounters()
         val verified = capture(OffsetDateTime.MIN)
-        assertEquals(current[payloadPath], verified.verifiedVersion)
+        assertEquals(current[payloadPath], verified.verifiedInfo?.version)
         assertNotNull(verified.verified)
         assertEquals(1, bodies.get())
         resetCounters()
@@ -348,7 +348,7 @@ class ObjectBackupVerificationIntegrationTest {
     @Test
     fun `changed length cannot be reused even when the provider version is unchanged`(): Unit = runBlocking {
         val first = verifiedCapture()
-        Files.write(checkNotNull(versions[payloadPath to checkNotNull(first.verifiedVersion)]), byteArrayOf(1))
+        Files.write(checkNotNull(versions[payloadPath to checkNotNull(first.verifiedInfo?.version)]), byteArrayOf(1))
         resetCounters()
         val repaired = capture(checkNotNull(first.verified).minusSeconds(1))
         assertEquals(2, repaired.attempts)
@@ -384,7 +384,7 @@ class ObjectBackupVerificationIntegrationTest {
         val failure = IOException("verification record failed")
         val progress = provide<ObjectBackupProgressService>()
         service = ObjectBackupCaptureServiceImpl(object : ObjectBackupProgressService by progress {
-            override suspend fun recordVerification(key: String, expectedVersion: Long, objectVersion: String?): ObjectBackupProgress =
+            override suspend fun recordVerification(key: String, expectedVersion: Long, info: ObjectStorageInfo?): ObjectBackupProgress =
                 throw failure
         }, Json, provide(), mockk())
         resetCounters()
@@ -416,7 +416,7 @@ class ObjectBackupVerificationIntegrationTest {
             resetCounters()
             publish(captured, cutoff)
             assertEquals(1, bodies.get())
-            assertEquals(listOf(captured.verifiedVersion), versionReads.toList())
+            assertEquals(listOf(captured.verifiedInfo?.version), versionReads.toList())
             assertEquals(0, sourceReads.get())
             val refreshed = checkpoint(captured.key)
             assertEquals(captured.version + 1, refreshed.version)
@@ -434,20 +434,20 @@ class ObjectBackupVerificationIntegrationTest {
         publish(captured)
         assertEquals(1, bodies.get())
         assertEquals(listOf(replacement), versionReads.toList())
-        assertEquals(replacement, checkpoint(captured.key).verifiedVersion)
+        assertEquals(replacement, checkpoint(captured.key).verifiedInfo?.version)
         assertEquals(captured.attempts, checkpoint(captured.key).attempts)
     }
 
     @Test
     fun `publication corruption invalidates completed proof and prevents manifest output`(): Unit = runBlocking {
         val captured = verifiedCapture()
-        Files.write(checkNotNull(versions[payloadPath to checkNotNull(captured.verifiedVersion)]), ByteArray(content.size) { 1 })
+        Files.write(checkNotNull(versions[payloadPath to checkNotNull(captured.verifiedInfo?.version)]), ByteArray(content.size) { 1 })
         resetCounters()
         assertFailsWith<BackupPayloadMismatchException> { publish(captured, null) }
         val failed = checkpoint(captured.key)
         assertEquals(ObjectBackupProgressStatus.FAILED, failed.status)
         assertNull(failed.verified)
-        assertNull(failed.verifiedVersion)
+        assertNull(failed.verifiedInfo?.version)
         assertEquals(0, writes.get())
         assertEquals(0, sourceReads.get())
     }
@@ -503,7 +503,7 @@ class ObjectBackupVerificationIntegrationTest {
             override suspend fun recordVerification(
                 key: String,
                 expectedVersion: Long,
-                objectVersion: String?,
+                info: ObjectStorageInfo?,
             ): ObjectBackupProgress = throw failure
         }
         resetCounters()
@@ -532,7 +532,7 @@ class ObjectBackupVerificationIntegrationTest {
         )
         assertEquals(1, heads.get())
         assertEquals(1, bodies.get())
-        assertEquals(captured.verifiedVersion, checkpoint(other.key).verifiedVersion)
+        assertEquals(captured.verifiedInfo?.version, checkpoint(other.key).verifiedInfo?.version)
         assertNotNull(checkpoint(other.key).verified)
         assertEquals(selected, ObjectBackupManifestStore(target, Json).load(manifestPath))
     }
@@ -592,15 +592,20 @@ class ObjectBackupVerificationIntegrationTest {
     }
 
     @Test
-    fun `publication without retained version IDs performs full reads and clears unsupported proof`(): Unit = runBlocking {
+    fun `publication records unversioned observations once and reuses them without refreshing checksum age`(): Unit = runBlocking {
         val captured = verifiedCapture()
         exposeVersion.set(false)
         resetCounters()
-        repeat(2) { publish(captured) }
-        assertEquals(2, bodies.get())
+        publish(captured)
+        val checked = checkpoint(captured.key)
+        assertEquals(1, bodies.get())
         assertTrue(versionReads.isEmpty())
-        assertNull(checkpoint(captured.key).verifiedVersion)
-        assertNull(checkpoint(captured.key).verified)
+        assertNull(checked.verifiedInfo?.version)
+        assertNotNull(checked.verified)
+        resetCounters()
+        publish(captured)
+        assertEquals(0, bodies.get())
+        assertEquals(checked, checkpoint(captured.key))
     }
 
     @Test
@@ -668,14 +673,14 @@ class ObjectBackupVerificationIntegrationTest {
 
     private suspend fun verifiedCapture(): ObjectBackupProgress {
         val captured = capture()
-        assertNotNull(captured.verifiedVersion)
+        assertNotNull(captured.verifiedInfo?.version)
         assertNotNull(captured.verified)
         return captured
     }
 
     private fun clearProof(key: String) {
         DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { connection ->
-            connection.prepareStatement("update backup.object_progress set verified_version = null, verified = null where key = ?").use {
+            connection.prepareStatement("update backup.object_progress set verified_info = null, verified = null where key = ?").use {
                 it.setString(1, key)
                 assertEquals(1, it.executeUpdate())
             }

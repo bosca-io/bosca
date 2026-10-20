@@ -16,6 +16,7 @@ import bosca.server.BoscaApplication
 import bosca.server.config.ApplicationConfig
 import bosca.test.resources.SharedPostgreSQLContainer
 import java.sql.DriverManager
+import java.time.OffsetDateTime
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlin.test.AfterTest
@@ -66,13 +67,43 @@ class ObjectBackupRestoreRequestMigrationIntegrationTest {
         val runs = provide<ObjectBackupRunService>()
         val inventory = ObjectBackupManifest("historical", "source", "content", "2026-10-18T00:00:00Z",
             listOf(BackupObject("content", "asset", "v1", 4, "a".repeat(64), "payloads/asset")))
-        val before = withConnectionManager { runs.prepareRestore(inventory, "destination", "manifests/historical.json") }
-        val checkpoints = withConnectionManager { runs.items(before.key, 0, 20) }
+        val before = ObjectBackupRun("historical-run", "source", "destination", "content", ObjectBackupOperation.RESTORE,
+            inventory, "manifests/historical.json", created = OffsetDateTime.parse("2026-10-20T00:00:00Z"))
+        val checkpoint = ObjectBackupProgress("historical-checkpoint", "source", "destination", "content",
+            ObjectBackupOperation.RESTORE, inventory.objects.single().copy(payloadPath = "asset"), created = before.created)
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { connection ->
+            connection.prepareStatement("""
+                insert into backup.object_runs (key, source_id, destination_id, scope, operation, inventory, path, created, modified)
+                values (?, 'source', 'destination', 'content', 'restore', ?::jsonb, ?, ?, ?)
+            """.trimIndent()).use {
+                it.setString(1, before.key)
+                it.setString(2, Json.encodeToString(ObjectBackupManifest.serializer(), inventory))
+                it.setString(3, before.path)
+                it.setObject(4, before.created)
+                it.setObject(5, before.modified)
+                assertEquals(1, it.executeUpdate())
+            }
+            connection.prepareStatement("""
+                insert into backup.object_progress (key, source_id, destination_id, scope, operation, payload, created, modified)
+                values (?, 'source', 'destination', 'content', 'restore', ?::jsonb, ?, ?)
+            """.trimIndent()).use {
+                it.setString(1, checkpoint.key)
+                it.setString(2, Json.encodeToString(BackupObject.serializer(), checkpoint.payload))
+                it.setObject(3, checkpoint.created)
+                it.setObject(4, checkpoint.modified)
+                assertEquals(1, it.executeUpdate())
+            }
+            connection.prepareStatement("insert into backup.object_run_items (run_key, position, progress_key) values (?, 0, ?)").use {
+                it.setString(1, before.key)
+                it.setString(2, checkpoint.key)
+                assertEquals(1, it.executeUpdate())
+            }
+        }
         val migrations = listOf(provide<Migration>(name = "backup-migrations"))
         FlywayMigration(pool).migrate(migrations)
         FlywayMigration(pool).migrate(migrations)
         assertEquals(before, withConnectionManager { runs.get(before.key) })
-        assertEquals(checkpoints, withConnectionManager { runs.items(before.key, 0, 20) })
+        assertEquals(listOf(checkpoint), withConnectionManager { runs.items(before.key, 0, 20) })
         assertNull(withConnectionManager { provide<ObjectBackupRunRepository>().getRestoreRequest("unknown") })
         DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { connection ->
             connection.createStatement().use { statement ->

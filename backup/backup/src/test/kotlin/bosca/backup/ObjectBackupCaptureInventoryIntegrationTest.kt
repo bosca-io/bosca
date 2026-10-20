@@ -78,7 +78,7 @@ class ObjectBackupCaptureInventoryIntegrationTest {
         ))
         ProviderRegistry.clear()
         provides<ConnectionPool>(singleton = true) { pool }
-        provides<Json>(singleton = true) { Json }
+        provides<Json>(singleton = true) { backupTestJson }
         StorageProviderRegistrar().register()
         BackupProviderRegistrar().register()
         FlywayMigration(pool).migrate(listOf(provide<Migration>(name = "backup-migrations")))
@@ -368,7 +368,7 @@ class ObjectBackupCaptureInventoryIntegrationTest {
             override suspend fun completeVerified(
                 key: String,
                 expectedVersion: Long,
-                objectVersion: String?,
+                info: ObjectStorageInfo?,
             ): ObjectBackupProgress = throw IOException("checkpoint unavailable")
         }, Json, provide(), mockk())
         assertFailsWith<IOException> { capture() }

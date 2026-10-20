@@ -1,6 +1,7 @@
 package bosca.backup
 
 import bosca.service.Service
+import bosca.storage.service.ObjectStorageInfo
 
 /**
  * Manages per-revision progress using the caller's connection-manager context.
@@ -75,19 +76,21 @@ interface ObjectBackupProgressService : Service {
     suspend fun complete(key: String, expectedVersion: Long): ObjectBackupProgress
 
     /**
-     * Completes an attempt after the caller verifies bytes read from exactly [objectVersion].
-     * Null records completion without a provider identity. Non-null identities must be immutable;
-     * modification times and entity tags are not accepted as substitutes for provider versions.
+     * Completes an attempt after a full checksum check, recording the observed destination metadata.
+     * [info] must describe the verified payload length. Entity tags and modification times are
+     * change observations, not digests or immutable versions. Null records completion without
+     * reusable metadata or a verification time. The caller excludes concurrent destination writers
+     * and checks unversioned metadata before and after reading bytes.
      */
-    suspend fun completeVerified(key: String, expectedVersion: Long, objectVersion: String?): ObjectBackupProgress
+    suspend fun completeVerified(key: String, expectedVersion: Long, info: ObjectStorageInfo?): ObjectBackupProgress
 
     /**
-     * Refreshes a completed checkpoint after a full checksum check of exactly [objectVersion].
+     * Refreshes a completed checkpoint after a full checksum check of its retained bytes.
      * Requires the observed completed version, preserves attempts, and advances its version.
-     * Null clears provider verification evidence. Callers must never invoke this after a
+     * Null clears saved metadata and the verification time. Callers must never invoke this after a
      * metadata-only check; those checks cannot extend the full-verification interval.
      */
-    suspend fun recordVerification(key: String, expectedVersion: Long, objectVersion: String?): ObjectBackupProgress
+    suspend fun recordVerification(key: String, expectedVersion: Long, info: ObjectStorageInfo?): ObjectBackupProgress
 
     /** Records a failed or interrupted attempt after its writer has stopped. */
     suspend fun fail(key: String, expectedVersion: Long, error: String): ObjectBackupProgress

@@ -13,13 +13,26 @@ internal suspend fun ObjectStorageService.observeBackupPayload(entry: BackupObje
     return observed.copy(version = observed.version?.takeIf { it.isNotBlank() && it != "null" })
 }
 
-/** Metadata-only checks preserve the age of the exact-version checksum verification. */
+/** Compares change observations without treating entity tags or timestamps as content hashes. */
+private fun ObjectStorageInfo.matchesObservation(other: ObjectStorageInfo): Boolean {
+    if (length != other.length) return false
+    if (version != null) return version == other.version
+    return other.version == null &&
+        etag?.takeIf { it.isNotBlank() } == other.etag?.takeIf { it.isNotBlank() } &&
+        modified?.toInstant() == other.modified?.toInstant()
+}
+
+/** Reuses a recorded checksum check under the caller's policy without extending its age. */
 internal fun ObjectBackupProgress.canReuseVerification(
     observed: ObjectStorageInfo,
     verifiedSince: OffsetDateTime?,
-): Boolean = verifiedSince != null && verifiedVersion != null &&
-    verified?.isBefore(verifiedSince) == false &&
-    observed.length == payload.length && observed.version == verifiedVersion
+): Boolean {
+    val checked = verifiedInfo ?: return false
+    return verifiedSince != null && verified?.isBefore(verifiedSince) == false &&
+        observed.length == payload.length &&
+        (checked.version != null || !checked.etag.isNullOrBlank() || checked.modified != null) &&
+        checked.matchesObservation(observed)
+}
 
 /** Distinguishes missing or mismatching output from storage failures that must stop a transfer. */
 internal suspend fun ObjectStorageService.hasVerifiedBackupPayload(entry: BackupObject): Boolean = try {
@@ -46,7 +59,7 @@ internal suspend fun ObjectStorageService.verifyBackupPayload(entry: BackupObjec
     }
 }
 
-/** Verifies bytes addressed by the observed provider identity, rather than a later current version. */
+/** Verifies the declared bytes and checks that an unversioned observation stayed unchanged during the read. */
 internal suspend fun ObjectStorageService.verifyBackupPayload(entry: BackupObject, observed: ObjectStorageInfo) {
     if (observed.length != entry.length) {
         throw BackupPayloadMismatchException("Backup payload length mismatch: ${entry.payloadPath}")
@@ -59,5 +72,8 @@ internal suspend fun ObjectStorageService.verifyBackupPayload(entry: BackupObjec
         while (input.read(buffer) != -1) {
             // The stream verifies complete length and SHA-256 at EOF.
         }
+    }
+    if (version == null && !observed.matchesObservation(observeBackupPayload(entry))) {
+        throw BackupPayloadMismatchException("Retained object changed during verification: ${entry.payloadPath}")
     }
 }

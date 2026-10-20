@@ -140,9 +140,10 @@ interface ObjectBackupCaptureService : Service {
      * otherwise use a fresh proposed path. Pending intent before the first unknown-digest capture
      * is not recorded. Existing storage isolation, retention and transaction restrictions apply.
      * [verifiedSince] permits metadata-only reuse when a recorded checksum verification is at
-     * least that recent and current length/provider version still match. Null forces full
-     * verification. Stores without a stable provider version always receive full verification.
-     * The caller chooses the periodic recheck cutoff; metadata-only reuse never refreshes it.
+     * least that recent and the saved destination metadata still matches. Entity tags and
+     * timestamps are change observations, not checksum evidence or immutable versions. Null
+     * forces full verification. Destinations without useful change metadata still need full
+     * reads. The caller chooses the recheck cutoff; metadata-only reuse never refreshes it.
      */
     suspend fun captureTracked(
         sourceId: String,

@@ -18,7 +18,7 @@ import java.time.OffsetDateTime
 /**
  * Reads and publishes object inventories in a selected backup destination.
  *
- * The caller owns revision pinning, retention, and immutable destination payload paths.
+ * The caller owns source selection, retention, and immutable destination payload paths.
  */
 class ObjectBackupManifestStore(
     private val storage: ObjectStorageService,
@@ -28,8 +28,10 @@ class ObjectBackupManifestStore(
      * Publishes using matching completed backup checkpoints in [progressService].
      *
      * [destinationId] must address this storage. [verifiedSince] permits metadata-only reuse
-     * of recent exact-version checksum proof; null forces full verification. Stores without
-     * provider versions always require full reads. Metadata-only checks never extend proof age.
+     * of a recent full checksum check while the saved destination observation still matches;
+     * null forces full verification. Missing change metadata requires a full check.
+     * Entity tags and timestamps are observations, not digests or immutable versions.
+     * Metadata-only checks never extend the recorded checksum age.
      * Requires independent immutable storage, exclusive writers and no active transaction.
      * Reserves [path] for this exact inventory before publication; another inventory or a
      * retained payload cannot share it. Successful writes are read back and compared.
@@ -163,8 +165,7 @@ class ObjectBackupManifestStore(
         return withConnectionManager {
             transaction {
                 shared.map { checkpoint ->
-                    if (observed.version == null && checkpoint.verifiedVersion == null) checkpoint
-                    else progressService.recordVerification(checkpoint.key, checkpoint.version, observed.version)
+                    progressService.recordVerification(checkpoint.key, checkpoint.version, observed)
                 }
             }
         }

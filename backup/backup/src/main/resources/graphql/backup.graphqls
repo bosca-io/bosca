@@ -217,6 +217,8 @@ type ObjectBackupProgress {
     status: ObjectBackupProgressStatus!
     attempts: Int!
     verifiedBytes: Long!
+    "Last recorded full checksum check. Metadata-only checks preserve this time."
+    verified: DateTime
     error: String
     version: Long!
     created: DateTime!

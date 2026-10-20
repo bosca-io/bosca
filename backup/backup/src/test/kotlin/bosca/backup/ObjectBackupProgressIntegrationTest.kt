@@ -14,12 +14,14 @@ import bosca.di.annotation.InternalDI
 import bosca.di.provide
 import bosca.di.provides
 import bosca.test.resources.SharedPostgreSQLContainer
+import bosca.storage.service.ObjectStorageInfo
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import java.sql.DriverManager
+import java.time.OffsetDateTime
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -57,7 +59,7 @@ class ObjectBackupProgressIntegrationTest {
         ))
         ProviderRegistry.clear()
         provides<ConnectionPool>(singleton = true) { pool }
-        provides<Json>(singleton = true) { Json }
+        provides<Json>(singleton = true) { backupTestJson }
         BackupProviderRegistrar().register()
         migration = provide<Migration>(name = "backup-migrations")
         FlywayMigration(pool).migrate(listOf(migration))
@@ -357,38 +359,61 @@ class ObjectBackupProgressIntegrationTest {
         val completed = request {
             val prepared = prepare()
             val running = service.start(prepared.key, prepared.version)
-            service.completeVerified(running.key, running.version, "provider-v1")
+            service.completeVerified(running.key, running.version, ObjectStorageInfo(payload.length, version = "provider-v1"))
         }
-        assertEquals("provider-v1", completed.verifiedVersion)
+        assertEquals("provider-v1", completed.verifiedInfo?.version)
         assertNotNull(completed.verified)
         assertEquals(1, completed.attempts)
         assertEquals(completed, request { service.get(completed.key) })
-        val refreshed = request { service.recordVerification(completed.key, completed.version, "provider-v2") }
-        assertEquals("provider-v2", refreshed.verifiedVersion)
+        val refreshed = request { service.recordVerification(completed.key, completed.version, ObjectStorageInfo(payload.length, version = "provider-v2")) }
+        assertEquals("provider-v2", refreshed.verifiedInfo?.version)
         assertEquals(completed.attempts, refreshed.attempts)
         assertEquals(completed.version + 1, refreshed.version)
         assertNotNull(refreshed.verified)
         assertFailsWith<IllegalStateException> {
-            request { service.recordVerification(completed.key, completed.version, "stale") }
+            request { service.recordVerification(completed.key, completed.version, ObjectStorageInfo(payload.length, version = "stale")) }
         }
         assertEquals(refreshed, request { service.get(completed.key) })
+    }
+
+    @Test
+    fun `unversioned verification round trips typed destination metadata and its real checksum time`(): Unit = runBlocking {
+        val info = ObjectStorageInfo(payload.length, etag = "opaque-tag",
+            modified = OffsetDateTime.parse("2026-10-20T01:02:03.123456789Z"))
+        val checked = request {
+            val prepared = prepare()
+            val running = service.start(prepared.key, prepared.version)
+            service.completeVerified(running.key, running.version, info)
+        }
+        assertEquals(info, checked.verifiedInfo)
+        assertNotNull(checked.verified)
+        assertEquals(checked, request { ObjectBackupProgressServiceImpl(repository).get(checked.key) })
+    }
+
+    @Test
+    fun `verification metadata cannot complete a payload with a different length`(): Unit = runBlocking {
+        val running = request { val prepared = prepare(); service.start(prepared.key, prepared.version) }
+        assertFailsWith<Exception> {
+            request { service.completeVerified(running.key, running.version, ObjectStorageInfo(payload.length + 1, etag = "tag")) }
+        }
+        assertEquals(running, request { service.get(running.key) })
     }
 
     @Test
     fun `verification cannot be recorded before completion or with invalid provider identities`(): Unit = runBlocking {
         val prepared = request { prepare() }
         assertFailsWith<IllegalStateException> {
-            request { service.recordVerification(prepared.key, prepared.version, "provider-v1") }
+            request { service.recordVerification(prepared.key, prepared.version, ObjectStorageInfo(payload.length, version = "provider-v1")) }
         }
         val running = request { service.start(prepared.key, prepared.version) }
         for (value in listOf("", " ", "null")) {
             assertFailsWith<IllegalArgumentException> {
-                request { service.completeVerified(running.key, running.version, value) }
+                request { service.completeVerified(running.key, running.version, ObjectStorageInfo(payload.length, version = value)) }
             }
         }
         assertEquals(running, request { service.get(running.key) })
         val completed = request { service.completeVerified(running.key, running.version, null) }
-        assertNull(completed.verifiedVersion)
+        assertNull(completed.verifiedInfo?.version)
         assertNull(completed.verified)
     }
 
@@ -397,14 +422,14 @@ class ObjectBackupProgressIntegrationTest {
         val completed = request {
             val prepared = prepare()
             val running = service.start(prepared.key, prepared.version)
-            service.completeVerified(running.key, running.version, "provider-v1")
+            service.completeVerified(running.key, running.version, ObjectStorageInfo(payload.length, version = "provider-v1"))
         }
         val invalid = request { service.invalidate(completed.key, completed.version, "missing") }
-        assertNull(invalid.verifiedVersion)
+        assertNull(invalid.verifiedInfo?.version)
         assertNull(invalid.verified)
         val running = request { service.start(invalid.key, invalid.version) }
         val failed = request { service.fail(running.key, running.version, "failed") }
-        assertNull(failed.verifiedVersion)
+        assertNull(failed.verifiedInfo?.version)
         assertNull(failed.verified)
     }
 
@@ -413,12 +438,12 @@ class ObjectBackupProgressIntegrationTest {
         val completed = request {
             val prepared = prepare()
             val running = service.start(prepared.key, prepared.version)
-            service.completeVerified(running.key, running.version, "provider-v1")
+            service.completeVerified(running.key, running.version, ObjectStorageInfo(payload.length, version = "provider-v1"))
         }
         val cleared = request { service.recordVerification(completed.key, completed.version, null) }
         assertEquals(ObjectBackupProgressStatus.COMPLETED, cleared.status)
         assertEquals(completed.attempts, cleared.attempts)
-        assertNull(cleared.verifiedVersion)
+        assertNull(cleared.verifiedInfo?.version)
         assertNull(cleared.verified)
     }
 

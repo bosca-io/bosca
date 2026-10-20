@@ -248,7 +248,7 @@ class ObjectBackupPayloadClaimMigrationIntegrationTest {
 
     private fun progressSnapshot(key: String) = jdbc { connection ->
         connection.prepareStatement("""
-            select (to_jsonb(p) - 'verified_version' - 'verified'
+            select (to_jsonb(p) - 'verified_version' - 'verified_info' - 'verified'
                 - 'retained_path' - 'retained_length' - 'retained_sha256')::text
             from backup.object_progress p where key = ?
         """.trimIndent()).use { statement ->

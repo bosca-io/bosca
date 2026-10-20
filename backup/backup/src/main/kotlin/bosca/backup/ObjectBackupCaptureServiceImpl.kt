@@ -8,6 +8,7 @@ import bosca.service.annotation.ServiceImplementation
 import bosca.storage.configuration.StorageConfiguration
 import bosca.storage.service.ObjectNotFoundException
 import bosca.storage.service.ObjectStorageEntry
+import bosca.storage.service.ObjectStorageInfo
 import bosca.storage.service.ObjectStorageService
 import bosca.storage.service.StorageDispatcher
 import bosca.storage.service.StringObjectPath
@@ -362,7 +363,7 @@ class ObjectBackupCaptureServiceImpl(
             progressService.get(ObjectBackupOperation.BACKUP, sourceId, destinationId, scope, store, entry.key, revision)
         }
         if (known == null) {
-            val (captured, objectVersion) = capturePayload(store, entry, source, destination, payloadPath)
+            val (captured, observed) = capturePayload(store, entry, source, destination, payloadPath)
             currentCoroutineContext().ensureActive()
             return withConnectionManager {
                 transaction {
@@ -373,7 +374,7 @@ class ObjectBackupCaptureServiceImpl(
                         "Capture checkpoint changed before acknowledgement: ${prepared.key}"
                     }
                     val running = progressService.start(prepared.key, prepared.version)
-                    progressService.completeVerified(running.key, running.version, objectVersion)
+                    progressService.completeVerified(running.key, running.version, observed)
                 }
             }
         }
@@ -396,10 +397,8 @@ class ObjectBackupCaptureServiceImpl(
                     false
                 }
                 if (verified) {
-                    val objectVersion = observed?.version
-                    if (objectVersion == null && known.verifiedVersion == null) return known
                     return withConnectionManager {
-                        progressService.recordVerification(known.key, known.version, objectVersion)
+                        progressService.recordVerification(known.key, known.version, observed)
                     }
                 }
                 withConnectionManager {
@@ -417,14 +416,14 @@ class ObjectBackupCaptureServiceImpl(
             val transfer = ObjectBackupTransfer(mapOf(store to source), destination)
             val version = retainedVersion(entry)
             if (version == null) transfer.copy(known.payload) else transfer.copyVersion(known.payload, version)
-            val objectVersion = withContext(StorageDispatcher) {
+            val observed = withContext(StorageDispatcher) {
                 val observed = destination.observeBackupPayload(known.payload)
                 destination.verifyBackupPayload(known.payload, observed)
                 verifySourceObservation(entry, source)
-                observed.version
+                observed
             }
             currentCoroutineContext().ensureActive()
-            withConnectionManager { progressService.completeVerified(running.key, running.version, objectVersion) }
+            withConnectionManager { progressService.completeVerified(running.key, running.version, observed) }
         } catch (failure: Exception) {
             try {
                 withContext(NonCancellable) {
@@ -456,7 +455,7 @@ class ObjectBackupCaptureServiceImpl(
         source: ObjectStorageService,
         destination: ObjectStorageService,
         payloadPath: String,
-    ): Pair<BackupObject, String?> {
+    ): Pair<BackupObject, ObjectStorageInfo> {
         val revision = validateCapture(store, entry, source, destination, payloadPath)
         val path = StringObjectPath(payloadPath)
         var writeStarted = false
@@ -495,7 +494,7 @@ class ObjectBackupCaptureServiceImpl(
                 destination.verifyBackupPayload(captured, observed)
                 verifySourceObservation(entry, source)
                 currentCoroutineContext().ensureActive()
-                captured to observed.version
+                captured to observed
             }
         } catch (failure: Throwable) {
             if (writeStarted) {

@@ -49,11 +49,15 @@ Discovery uses offset listing and per-object metadata requests without downloadi
 bodies. Capture reads only new, changed or unfinished source objects; verified unchanged
 payloads retain their existing paths. Older manifests and payloads remain available.
 
-Choose **Checksum recheck interval (days)** to allow metadata-only reuse of recent retained
-provider-version verification, with full checksum reads when that proof is older. Omitting
-it verifies retained payloads in full on every run. The cutoff derives from the Pipeline's
-saved run time, so a delayed retry does not move it. Destinations without stable
-provider versions, including filesystem storage, always receive full verification.
+Ordinary runs compare retained metadata with the observation recorded at the last full
+checksum check. Unchanged objects need no asset-body reads at either end. Metadata checks
+preserve the recorded checksum time; they do not count as another integrity check.
+
+Set **Checksum recheck interval (days)** to require full reads once that check is too old.
+Omitting it uses metadata checks until an explicit integrity check. The cutoff derives from
+the Pipeline's saved run time, so a delayed retry does not move it. New copies and restores
+always verify full lengths and SHA-256 digests. Storage without a useful change observation
+still requires full reads.
 
 Unversioned source changes are observed through length, opaque entity tags and modification
 times. An entity tag or modification time is required for incremental selection. Capture checks
@@ -309,9 +313,23 @@ and encryption, and a matching committed object inventory before it can form a c
 
 `captureTracked` records verified captures in the existing per-revision progress ledger. A later call or restarted service finds the known digest and reuses its recorded payload path without source reads, or repairs missing/corrupt output from the selected source against its recorded digest and saved observation. Known pending/failed checkpoints resume; running checkpoints require stopped-writer recovery. New completion and payload reservation commit atomically after verification. Before the first digest is known, failures have no durable pending checkpoint; an interrupted write or failed checkpoint commit can leave unreferenced output, requiring a fresh proposed path when no checkpoint committed.
 
-Its required `verifiedSince` argument controls retained-payload verification. Null always repeats the full length and SHA-256 check. A cutoff permits metadata-only reuse when the current retained provider version and length match a version fully verified at or after that cutoff. Metadata-only reuse leaves the original verification time unchanged. New or changed provider versions are checksum-verified through an exact version-addressed read before their proof is saved. Stores without stable version IDs, including filesystem storage, always require full reads; ETags and timestamps are not digest evidence. Callers choose the integrity-check interval and retain provider versions. The migration leaves historical checkpoints without verification proof until their next full check. The Back Up Object Storage action supplies discovery and capture for existing Pipeline schedules.
+Its required `verifiedSince` argument separates routine checks from full integrity checks.
+A cutoff allows reuse when the saved destination observation still matches and the last
+checksum check is recent enough. Entity tags and timestamps are change observations, not
+content digests. Null forces a full read and checksum check. Metadata-only checks never
+refresh the stored checksum time. Unversioned full checks compare metadata before and after
+reading; observed changes prevent publication. Unknown observations get a full baseline check.
 
-`ObjectBackupManifestStore.saveTracked` publishes a captured inventory using the same explicit verification cutoff. Every revision must have an exact matching completed backup checkpoint for the source, destination and scope before asset I/O begins. Shared payloads need one metadata/full check, while every associated checkpoint remains required. Full checks refresh provider proof; metadata-only checks preserve its age. Missing/corrupt assets invalidate their completed checkpoints and prevent publication. Other storage failures and cancellation propagate without invalidating prior evidence. Checkpoint versions are checked again before writing the manifest, and database contexts end before storage I/O. Call outside an active transaction with the same independent storage and exclusive-writer guarantees as capture. Ordinary `save` and `verify` always read payloads in full. The inventory capture flow and Back Up Object Storage action use this publication path.
+Verification observations are typed `ObjectStorageInfo` values in the existing progress
+record. The registered V16 migration replaces the provider-only field, preserves prior
+provider verification times, and leaves unverified historical records without invented proof.
+Apply V16 with old backup writers stopped and run matching application/schema versions;
+ordinary source content writes can continue.
+GraphQL checkpoint `verified` exposes the last recorded full-check time, or null when unknown.
+The Back Up Object Storage action uses metadata checks by default; its optional interval or
+cutoff requests periodic rechecks. Ordinary manifest `verify` always checks every payload in full.
+
+`ObjectBackupManifestStore.saveTracked` publishes a captured inventory using the same explicit verification cutoff. Every revision must have an exact matching completed backup checkpoint for the source, destination and scope before asset I/O begins. Shared payloads need one metadata/full check, while every associated checkpoint remains required. Full checks refresh the saved destination observation and checksum time; metadata-only checks preserve their age. Missing/corrupt assets invalidate their completed checkpoints and prevent publication. Other storage failures and cancellation propagate without invalidating prior evidence. Checkpoint versions are checked again before writing the manifest, and database contexts end before storage I/O. Call outside an active transaction with the same independent storage and exclusive-writer guarantees as capture. Ordinary `save` and `verify` always read payloads in full. The inventory capture flow and Back Up Object Storage action use this publication path.
 
 `ObjectBackupCaptureService.captureInventory` captures and publishes an explicit `ObjectBackupCaptureInventory` selection. The core model carries identity, scope, creation time and observed object metadata grouped by logical store. The service snapshots caller collections, validates every selection/mapping and known checkpoint before asset I/O, then processes revisions in store/key/version order. Unknown revisions receive new unique paths under the selected payload prefix; known revisions reuse their recorded paths. Successful entries remain available after partial failure, cancellation or a failed manifest write, so retry/restart reads only unfinished source revisions. The same explicit verification cutoff applies to capture and publication. Supplied stores remain caller-owned.
 

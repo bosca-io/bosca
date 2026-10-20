@@ -3,12 +3,14 @@ package bosca.backup.graphql
 import bosca.backup.BackupObject
 import bosca.backup.ObjectBackupManifestStore
 import bosca.backup.ObjectBackupOperation
+import bosca.backup.ObjectBackupProgressService
 import bosca.di.annotation.InternalDI
 import bosca.di.provide
 import bosca.security.model.Group
 import bosca.security.model.GroupType
 import bosca.security.model.Principal
 import bosca.security.service.ImpersonatedAuthenticationContext
+import bosca.storage.service.ObjectStorageInfo
 import bosca.storage.service.ObjectStorageService
 import bosca.storage.service.StringObjectPath
 import io.mockk.coEvery
@@ -86,6 +88,23 @@ class ObjectBackupRunGraphQLIntegrationTest : ObjectBackupGraphQLTest() {
         assertEquals(expected.created.toInstant(), OffsetDateTime.parse(item.string("created")).toInstant())
         assertEquals(expected.modified.toInstant(), OffsetDateTime.parse(item.string("modified")).toInstant())
         assertPayload(second, item.getValue("payload").jsonObject)
+    }
+
+    @Test
+    fun `checkpoint verification age is exposed independently of upload and modification time`(): Unit = runBlocking {
+        val pending = request { runs.items(run.key, 0, 100) }.first()
+        val unverified = result("run(key: \"${run.key}\") { items { key verified } }")
+            .getValue("run").jsonObject.getValue("items").jsonArray
+        assertTrue(unverified.all { it.jsonObject.getValue("verified") == JsonNull })
+        val checked = request {
+            val progress = provide<ObjectBackupProgressService>()
+            val active = progress.start(pending.key, pending.version)
+            progress.completeVerified(active.key, active.version, ObjectStorageInfo(pending.payload.length, version = "retained-version"))
+        }
+        val values = result("run(key: \"${run.key}\") { items { key verified } }")
+            .getValue("run").jsonObject.getValue("items").jsonArray
+        val saved = values.single { it.jsonObject.string("key") == pending.key }.jsonObject
+        assertEquals(assertNotNull(checked.verified).toInstant(), OffsetDateTime.parse(saved.string("verified")).toInstant())
     }
 
     @Test

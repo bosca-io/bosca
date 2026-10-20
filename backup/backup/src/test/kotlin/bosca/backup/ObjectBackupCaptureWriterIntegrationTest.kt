@@ -87,7 +87,7 @@ class ObjectBackupCaptureWriterIntegrationTest {
         ProviderRegistry.clear()
         provides<BoscaApplication>(singleton = true) { application }
         provides<ConnectionPool>(singleton = true) { pool }
-        provides<Json>(singleton = true) { Json }
+        provides<Json>(singleton = true) { backupTestJson }
         StorageProviderRegistrar().register()
         val factory = provide<ObjectStorageServiceFactory>()
         observedFactory = object : ObjectStorageServiceFactory by factory {
@@ -476,7 +476,7 @@ class ObjectBackupCaptureWriterIntegrationTest {
         ProviderRegistry.clear()
         provides<BoscaApplication>(singleton = true) { application }
         provides<ConnectionPool>(singleton = true) { pool }
-        provides<Json>(singleton = true) { Json }
+        provides<Json>(singleton = true) { backupTestJson }
         StorageProviderRegistrar().register()
         provides<ObjectStorageServiceFactory>(singleton = true, overrideExisting = true) { observedFactory }
         BackupProviderRegistrar().register()

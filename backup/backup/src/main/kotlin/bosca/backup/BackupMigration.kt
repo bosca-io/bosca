@@ -21,5 +21,6 @@ class BackupMigration : Migration {
         "V13__object_backup_discovery.sql",
         "V14__object_backup_restore_requests.sql",
         "V15__postgres_backup_runs.sql",
+        "V16__object_backup_verification_observations.sql",
     )
 }

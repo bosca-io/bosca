@@ -58,7 +58,7 @@ import kotlinx.serialization.json.put
         SettingSlot(name = "manifestPrefix", control = SettingControl.TEXT, label = "Manifest prefix", default = "manifests"),
         SettingSlot(
             name = "verificationMaxAgeDays", control = SettingControl.INTEGER, label = "Checksum recheck interval (days)",
-            description = "Reuse retained provider-version proof for this many days. Omit to verify every run. The cutoff input overrides this setting.",
+            description = "Read retained bytes again after this many days. Omit to use metadata checks until an explicit integrity check. The cutoff input overrides this setting.",
         ),
     ],
 )
@@ -87,6 +87,7 @@ class ObjectBackupNode(
         }
         val verifiedSince = input.verifiedSince?.let(OffsetDateTime::parse)
             ?: verificationMaxAgeDays?.let { context.inputCreated.minusDays(it.toLong()) }
+            ?: OffsetDateTime.MIN
         val stores = context.json.decodeFromString(MapSerializer(String.serializer(), ObjectBackupSource.serializer()), sources)
         // Backing jobs execute with a non-suspending context; their durable job ID survives retries.
         val invocation = jobOrNull()?.getId() ?: UUID.random()
