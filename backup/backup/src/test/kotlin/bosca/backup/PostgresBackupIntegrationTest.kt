@@ -4,6 +4,7 @@ import bosca.db.ConnectionConfig
 import bosca.db.ConnectionFactoryImpl
 import bosca.db.migrations.FlywayMigration
 import bosca.db.ConnectionPool
+import bosca.db.connection
 import bosca.db.transaction
 import bosca.db.withConnectionManager
 import bosca.di.BackupProviderRegistrar
@@ -28,6 +29,8 @@ import java.time.Instant
 import java.util.Properties
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
@@ -190,6 +193,90 @@ class PostgresBackupIntegrationTest {
         assertEquals("1", scalar("select count(*)::text from workops.tasks", "recovered"))
         assertEquals("retained", scalar("select value from artifacts.events", "recovered"))
         assertEquals(manifest, service.verify(output))
+    }
+
+    @Test
+    fun `snapshot callback enumerates the exact rows restored from the exported database view`(): Unit = runBlocking {
+        sql("insert into workops.tasks values (3, '{\"name\":\"removed\"}')")
+        var observed = emptyList<String>()
+        var calls = 0
+        val manifest = service.capture("source", output) {
+            calls++
+            assertEquals("on", connection().useStatement("show transaction_read_only") { sql ->
+                sql.executeQuery().use { rows -> assertTrue(rows.next()); rows.getString(1) }
+            })
+            observed = snapshotTaskNames()
+            sql("""
+                update workops.tasks set body='{"name":"later"}' where id=1;
+                insert into workops.tasks values (2, '{"name":"new"}');
+                delete from workops.tasks where id=3
+            """.trimIndent())
+            assertEquals(observed, snapshotTaskNames())
+            assertFalse(Files.exists(output.resolve("manifest.json")))
+        }
+        assertEquals(1, calls)
+        assertEquals(listOf("1:captured", "3:removed"), observed)
+        assertEquals(manifest, service.verify(output))
+        assertEquals("later", scalar("select body->>'name' from workops.tasks where id=1"))
+        assertEquals(0, pool.activeConnections)
+        restore()
+        assertEquals("captured", scalar("select body->>'name' from workops.tasks where id=1", "recovered"))
+        assertEquals("removed", scalar("select body->>'name' from workops.tasks where id=3", "recovered"))
+        assertEquals("2", scalar("select count(*)::text from workops.tasks", "recovered"))
+    }
+
+    @Test
+    fun `snapshot callback failure prevents dump execution and publication`(): Unit = runBlocking {
+        val entered = root.resolve("dump-entered")
+        tool = writeTool("touch ${quote(entered)}; exit 7")
+        install()
+        val failure = assertFailsWith<IOException> {
+            service.capture("source", output) { throw IOException("reference enumeration failed") }
+        }
+        assertEquals("reference enumeration failed", failure.message)
+        assertFalse(Files.exists(entered))
+        assertFalse(Files.exists(output))
+        assertEquals(0, pool.activeConnections)
+    }
+
+    @Test
+    fun `snapshot callback cancellation releases its view without publishing an artifact`(): Unit = runBlocking {
+        val entered = CompletableDeferred<Unit>()
+        val attempt = async {
+            service.capture("source", output) {
+                entered.complete(Unit)
+                awaitCancellation()
+            }
+        }
+        try {
+            withTimeout(5_000) { entered.await() }
+            assertFalse(Files.exists(output.resolve("manifest.json")))
+            assertEquals(1, pool.activeConnections)
+        } finally {
+            withTimeout(5_000) { attempt.cancelAndJoin() }
+        }
+        assertFalse(Files.exists(output))
+        assertEquals(0, pool.activeConnections)
+        service.capture("fresh", output)
+        assertEquals("fresh", service.verify(output).sourceId)
+    }
+
+    @Test
+    fun `snapshot callback cannot mutate the exported read-only database view`(): Unit = runBlocking {
+        assertFailsWith<java.sql.SQLException> {
+            service.capture("source", output) {
+                connection().useStatement("update workops.tasks set body='{}'") { it.executeUpdate() }
+            }
+        }
+        assertFalse(Files.exists(output))
+        assertEquals(0, pool.activeConnections)
+        assertEquals("captured", scalar("select body->>'name' from workops.tasks"))
+    }
+
+    private suspend fun snapshotTaskNames(): List<String> = connection().useStatement(
+        "select id::text || ':' || (body->>'name') from workops.tasks order by id",
+    ) { sql ->
+        sql.executeQuery().use { rows -> buildList { while (rows.next()) add(rows.getString(1)) } }
     }
 
     @Test

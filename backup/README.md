@@ -225,6 +225,14 @@ sources. Cluster-global roles/tablespaces, external data and object-storage byte
 this artifact. PostgreSQL sequence values follow native dump semantics rather than an
 MVCC history of each counter value.
 
+The optional `onSnapshot` callback on `capture` enumerates database references in that same
+read-only view before `pg_dump` starts. It uses the current connection-manager context;
+caches and other connections are outside the captured view. Callback failure or cancellation
+prevents publication and releases the transaction. Associate the enumerated results with the
+returned manifest only after capture succeeds. This supplies the database view for later
+asset-coverage work; it does not freeze object storage, enumerate all Bosca content references
+by itself, or prove that retained assets match the database.
+
 The manifest records the source identity, database, exported/logical snapshot, source-clock
 boundary observation and dump completion, PostgreSQL version/encoding, extension versions,
 and the dump's byte length and SHA-256. The exported snapshot identifier cannot be reused

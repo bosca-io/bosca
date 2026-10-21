@@ -47,7 +47,11 @@ class PostgresBackupServiceImpl(private val application: BoscaApplication) : Pos
         PostgresBackupArtifactStore(backup, application.json, prefix).download(directory)
     }
 
-    override suspend fun capture(sourceId: String, directory: Path): PostgresBackupManifest = withContext(StorageDispatcher) {
+    override suspend fun capture(
+        sourceId: String,
+        directory: Path,
+        onSnapshot: suspend () -> Unit,
+    ): PostgresBackupManifest = withContext(StorageDispatcher) {
         check(connectionOrNull()?.inTransaction != true) { "PostgreSQL capture must run outside an active caller transaction" }
         require(sourceId.isNotBlank()) { "PostgreSQL backup source identity is required" }
         val config = application.environment.config
@@ -94,6 +98,9 @@ class PostgresBackupServiceImpl(private val application: BoscaApplication) : Pos
                             )
                         }
                     }
+                    currentCoroutineContext().ensureActive()
+                    onSnapshot()
+                    currentCoroutineContext().ensureActive()
                     runDump(executable, service, serviceFile, metadata.snapshotId, dump, destination.resolve("pg_dump.stderr"))
                     val completed = connection.useStatement("select clock_timestamp()") { statement ->
                         statement.executeQuery().use { rows ->

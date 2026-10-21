@@ -17,8 +17,20 @@ interface PostgresBackupService : Service {
      * Process death may leave incomplete output; stop any surviving dump before removing it.
      * Credentials remain in runtime libpq configuration. This captures database state only;
      * matching object revisions, independent retention and whole-instance recovery are separate.
+     *
+     * [onSnapshot] runs once before pg_dump in the exported read-only transaction, allowing
+     * reference enumeration from the exact database view used by the dump. Queries must use
+     * the current connection-manager context; caches and other connections are outside that view.
+     * The callback must perform database reads only, without committing/rolling back, parallel
+     * queries or asset I/O. Failure or cancellation prevents artifact publication and releases
+     * the snapshot. Save the enumerated result only after capture succeeds. This callback does
+     * not freeze object storage or prove that retained asset bytes match these database references.
      */
-    suspend fun capture(sourceId: String, directory: Path): PostgresBackupManifest
+    suspend fun capture(
+        sourceId: String,
+        directory: Path,
+        onSnapshot: suspend () -> Unit = {},
+    ): PostgresBackupManifest
 
     /**
      * Reads manifest.json and verifies the complete local database.dump length and SHA-256.
