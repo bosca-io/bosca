@@ -179,7 +179,9 @@ Build and verify:
 
 The ordinary `test` task also includes the browser test. Tests launch separate production and
 development JVMs using only built JARs, exercise HTTP assets and actions, and use an isolated headless
-Chrome profile. They check navigation, rejected-draft retention, pending and saved form state,
+Chrome profile. Each child binds its own ephemeral port; readiness requires its successful bind log
+and a catalog HTTP response. Fixture checks also run both modes together beside occupied IPv4 and
+IPv6 endpoints. They check navigation, rejected-draft retention, pending and saved form state,
 independent instances, CSS-only light appearance, two palettes, narrow layouts, native fallbacks and
 the 11 packaged Geist/Geist Mono assets. Notification regressions cover dismissed/expired/visible
 toasts through native navigation and Browser Back, reload, retained form values, unrelated updates

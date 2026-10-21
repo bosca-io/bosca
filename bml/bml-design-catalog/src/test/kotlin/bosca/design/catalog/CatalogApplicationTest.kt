@@ -4,11 +4,14 @@ import bosca.bml.library.BmlLibraryManifest
 import java.io.File
 import java.net.CookieManager
 import java.net.CookiePolicy
-import java.net.ServerSocket
+import java.net.InetAddress
+import java.net.InetSocketAddress
+import java.net.StandardProtocolFamily
 import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
+import java.nio.channels.ServerSocketChannel
 import java.time.Duration
 import java.util.concurrent.TimeUnit
 import java.util.jar.JarFile
@@ -127,6 +130,29 @@ class CatalogApplicationTest {
         }
     }
 
+    @Test
+    fun `catalog children bind distinct ports alongside occupied IPv4 and IPv6 endpoints`() {
+        ServerSocketChannel.open(StandardProtocolFamily.INET).use { ipv4 ->
+            ipv4.bind(InetSocketAddress(InetAddress.getByName("127.0.0.1"), 0))
+            ServerSocketChannel.open(StandardProtocolFamily.INET6).use { ipv6 ->
+                ipv6.bind(InetSocketAddress(InetAddress.getByName("::1"), 0))
+                val occupied = listOf(ipv4, ipv6).map { (it.localAddress as InetSocketAddress).port }
+                withServer(false) { production, productionClient ->
+                    withServer(true) { development, developmentClient ->
+                        assertFalse(URI(production).port in occupied)
+                        assertFalse(URI(development).port in occupied)
+                        assertFalse(production == development)
+                        for ((base, client) in listOf(production to productionClient, development to developmentClient)) {
+                            val response = request(client, base, "/components")
+                            assertEquals(200, response.statusCode(), response.body())
+                            assertTrue("Bosca Design Library" in response.body(), response.body())
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     private fun runBrowser(base: String, development: Boolean, argument: String, timeoutSeconds: Long) {
         val log = File.createTempFile("catalog-browser-", ".log")
         val process = ProcessBuilder(System.getProperty("catalog.node"), System.getProperty("catalog.browser"), base,
@@ -138,23 +164,30 @@ class CatalogApplicationTest {
     }
 
     private fun withServer(development: Boolean, test: (String, HttpClient) -> Unit) {
-        val port = ServerSocket(0).use { it.localPort }
-        val base = "http://localhost:$port"
+        var base: String? = null
         val log = File.createTempFile("catalog-server-", ".log")
         val process = ProcessBuilder(System.getProperty("catalog.java"), "-Dbml.dev=$development", "-cp", classpath,
-            "bosca.design.catalog.MainKt", port.toString()).redirectErrorStream(true).redirectOutput(log).start()
+            "bosca.design.catalog.MainKt", "0").redirectErrorStream(true).redirectOutput(log).start()
         try {
-            var ready = false
+            var boundPort: Int? = null
             for (attempt in 0 until 200) {
                 assertTrue(process.isAlive, log.readText())
-                try { java.net.Socket("localhost", port).use { ready = true; break } }
-                catch (_: java.net.ConnectException) { Thread.sleep(25) }
+                boundPort = catalogBoundPort(log.readText())
+                if (boundPort != null) break
+                Thread.sleep(25)
             }
-            assertTrue(ready, log.readText())
-            test(base, HttpClient.newBuilder().cookieHandler(CookieManager(null, CookiePolicy.ACCEPT_ALL)).build())
+            val port = requireNotNull(boundPort) { "Catalog did not report a successful bind: ${log.readText()}" }
+            val endpoint = "http://localhost:$port"
+            base = endpoint
+            val client = HttpClient.newBuilder().cookieHandler(CookieManager(null, CookiePolicy.ACCEPT_ALL)).build()
+            val response = request(client, endpoint, "/")
+            assertEquals(200, response.statusCode(), response.body())
+            assertTrue("Bosca Design Library" in response.body(), response.body())
+            assertTrue(process.isAlive, log.readText())
+            test(endpoint, client)
         } catch (failure: Throwable) {
             val state = if (process.isAlive) "running" else "exited ${process.exitValue()}"
-            failure.addSuppressed(IllegalStateException("Catalog development=$development at $base ($state): ${log.readText()}"))
+            failure.addSuppressed(IllegalStateException("Catalog development=$development at ${base ?: "unbound port"} ($state): ${log.readText()}"))
             throw failure
         } finally {
             process.destroy()
