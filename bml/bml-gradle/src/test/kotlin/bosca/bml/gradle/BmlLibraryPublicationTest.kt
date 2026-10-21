@@ -342,7 +342,8 @@ class BmlLibraryPublicationTest {
         }
     }
 
+    // Fixture files change outside Gradle; scan synchronously before reusing configuration.
     private fun runner(project: File, task: String, vararg options: String) = GradleRunner.create().withProjectDir(project).withPluginClasspath()
-        .withArguments(listOf(task, "--stacktrace", "--configuration-cache", "--max-workers=2") + options)
+        .withArguments(listOf(task, "--stacktrace", "--configuration-cache", "--no-watch-fs", "--max-workers=2") + options)
 
 }

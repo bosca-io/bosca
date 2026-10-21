@@ -417,8 +417,14 @@ generated CSS and JS URL. The digest covers the build ID, the project version, g
 component source, compiled asset maps, global assets, and bundled client files. The build ID is the
 build time, which the `io.bosca.bml` Gradle plugin's `bmlBuildId` task writes to
 `META-INF/bosca/bml/build-id` when that file does not exist yet: a local build keeps it until `clean`,
-and every CI build gets a new one, so a deploy that changes only server code also changes the digest.
+and every fresh CI build gets a new one, so a deploy that changes only server code also changes the digest.
 Replicas running the same deployment therefore emit the same URLs.
+An application host that embeds compiled BML without compiling its own `.bml` files applies
+`io.bosca.bml.host` alongside `application`. This supplies the same `bmlBuildId` resource without
+compiler registries or client bundles; the full `io.bosca.bml` plugin enables it automatically for
+applications. Library projects do not generate an identity. When an application embeds another
+runnable host, all packaged host identities contribute to the deployment digest in a stable order.
+Native hosts must include `META-INF/bosca/bml/build-id` in their resource configuration.
 The generated asset responses use `Cache-Control: public, max-age=31536000, immutable`; the token
 makes that one-year TTL safe by changing the URL on the next deployment. The underlying routes stay
 unchanged. Production JS uses syntax, whitespace, and local-identifier minification without

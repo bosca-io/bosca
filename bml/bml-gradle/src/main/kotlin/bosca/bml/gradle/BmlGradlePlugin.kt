@@ -119,9 +119,8 @@ class BmlGradlePlugin : KotlinCompilerPluginSupportPlugin {
                 }
             }
 
-            // Only a runnable site identifies a build; a BML library applying this plugin must not
-            // ship a build-id resource that a site's server could read instead of its own.
-            target.plugins.withId("application") { registerBuildIdTask(target) }
+            // Only runnable hosts identify builds; a reusable library has no deployment identity.
+            target.plugins.withId("application") { target.pluginManager.apply(BmlHostGradlePlugin::class.java) }
             registerBundleTask(target, ext)
             registerMetricsTask(target, ext)
             registerDevelopmentTask(target)
@@ -496,32 +495,6 @@ class BmlGradlePlugin : KotlinCompilerPluginSupportPlugin {
     }
 
     /**
-     * `bmlBuildId` (application projects only): writes the build's identity, the current UTC time, to
-     * `META-INF/bosca/bml/build-id` in the main resources, but only when the file does not exist yet. It lives under `build/`, so a
-     * local build keeps one stable value until `clean`, and every fresh CI checkout gets a new one.
-     * bml-server includes it in the deployment token, so a deploy that changes only server code still
-     * changes shared-shell validators, without hashing anything at startup.
-     */
-    private fun registerBuildIdTask(target: Project) {
-        val outputDir = target.layout.buildDirectory.dir("generated/bml/build-id")
-        val buildId = target.tasks.register("bmlBuildId") { task ->
-            task.group = "bml"
-            task.description = "Write the BML build identity (the build time) unless it already exists."
-            val file = outputDir.map { it.file(BUILD_ID_RESOURCE) }
-            task.outputs.file(file)
-            task.doLast {
-                val idFile = file.get().asFile
-                if (!idFile.exists()) {
-                    idFile.parentFile.mkdirs()
-                    idFile.writeText(java.time.Instant.now().toString())
-                }
-            }
-        }
-        target.extensions.getByType(org.gradle.api.tasks.SourceSetContainer::class.java)
-            .getByName("main").resources.srcDir(buildId.map { outputDir.get() })
-    }
-
-    /**
      * `bmlMetrics`: joins the compiler-written metrics manifest with the bundled island
      * JS and the site's global tier to report per-page first-load payloads (raw + gzip) — console
      * table plus `build/reports/bml/site-metrics.json`. Always re-runs: it exists to be read.
@@ -683,6 +656,3 @@ private val publishedPluginVersion: String by lazy {
     properties.getProperty("version")?.takeIf { it.isNotBlank() }
         ?: error("Missing version in bml-gradle-plugin.properties")
 }
-
-/** Classpath resource holding the build identity read by bml-server (see `bmlBuildId`). */
-internal const val BUILD_ID_RESOURCE: String = "META-INF/bosca/bml/build-id"

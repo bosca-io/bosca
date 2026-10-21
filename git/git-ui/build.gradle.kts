@@ -91,12 +91,15 @@ tasks.register<Test>("nativeUiHostTest") {
         if (org.gradle.internal.os.OperatingSystem.current().isWindows) ".exe" else ""
     val executable = nativeDirectory.map { it.file(executableName) }
     val resources = nativeDirectory.map { it.file("embedded-resources.json") }
+    val buildId = project(":git:git-ui-server").layout.buildDirectory.file("generated/bml/build-id/META-INF/bosca/bml/build-id")
     inputs.file(executable).withPropertyName("nativeUiExecutable").withPathSensitivity(PathSensitivity.NONE)
     inputs.file(resources).withPropertyName("nativeUiResources").withPathSensitivity(PathSensitivity.NONE)
+    inputs.file(buildId).withPropertyName("nativeUiBuildId").withPathSensitivity(PathSensitivity.NONE)
     inputs.dir(layout.projectDirectory.dir("src/test/browser"))
         .withPropertyName("nativeBrowserChecks").withPathSensitivity(PathSensitivity.RELATIVE)
     systemProperty("gitUi.native.binary", executable.get().asFile.absolutePath)
     systemProperty("gitUi.native.resourceReport", resources.get().asFile.absolutePath)
+    systemProperty("gitUi.native.buildId", buildId.get().asFile.absolutePath)
     systemProperty("gitUi.native.browser", layout.projectDirectory.file("src/test/browser/run.mjs").asFile.absolutePath)
     systemProperty("gitUi.native.node", bml.nodeExecutable.get())
     outputs.upToDateWhen { false }

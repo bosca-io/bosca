@@ -36,6 +36,11 @@ Root Compose serves both at `http://bosca.localhost:8091`, configurable with
 `BOSCA_GIT_PORT`. Direct JVM development still uses the two local listeners.
 Use a matching rebuilt Git image.
 
+Both runnable hosts apply `io.bosca.bml.host` to package their own build identity, including in native
+images. The compiled `git-ui` library has no identity. A local identity stays stable until `clean`;
+fresh CI builds receive a new one. The combined host includes both application identities in BML's
+deployment digest, so classpath order cannot hide changes to either host.
+
 Build and validate:
 
 ```bash

@@ -6,6 +6,7 @@ plugins {
     id("org.graalvm.buildtools.native")
     alias(libs.plugins.shadow)
     application
+    id("io.bosca.bml.host")
 }
 
 java {
@@ -89,11 +90,12 @@ ksp {
 
 tasks.shadowJar {
     isZip64 = true
-    // Service descriptors must reach the transformer before duplicate filtering.
-    filesMatching("META-INF/services/**") {
+    // Merged resources must reach their transformers before duplicate filtering.
+    filesMatching(listOf("META-INF/services/**", "META-INF/bosca/bml/build-id")) {
         duplicatesStrategy = DuplicatesStrategy.INCLUDE
     }
     mergeServiceFiles()
+    append("META-INF/bosca/bml/build-id")
 }
 
 afterEvaluate {

@@ -12,6 +12,7 @@ import java.util.concurrent.TimeUnit
 import kotlin.io.path.createTempDirectory
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlinx.serialization.json.JsonPrimitive
 
@@ -70,6 +71,7 @@ class GitUiNativeHostTest {
             assertTrue(checks.waitFor(180, TimeUnit.SECONDS), "Native browser checks timed out: ${browserLog.readText()}")
             assertEquals(0, checks.exitValue(), browserLog.readText() + "\nNative host:\n" + log.readText())
             assertTrue(process.isAlive, log.readText())
+            assertFalse("bml: no META-INF/bosca/bml/build-id resource" in log.readText(), log.readText())
             File(artifacts, "executable.txt").writeText("name=${binary.name}\nbytes=${binary.length()}\nsha256=${digest(binary.readBytes())}\norigin=$base\n")
         } finally {
             browserProcess?.let { stop(it) }

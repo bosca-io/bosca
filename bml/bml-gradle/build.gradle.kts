@@ -107,6 +107,10 @@ gradlePlugin {
             id = "io.bosca.bml"
             implementationClass = "bosca.bml.gradle.BmlGradlePlugin"
         }
+        create("bmlHost") {
+            id = "io.bosca.bml.host"
+            implementationClass = "bosca.bml.gradle.BmlHostGradlePlugin"
+        }
     }
 }
 

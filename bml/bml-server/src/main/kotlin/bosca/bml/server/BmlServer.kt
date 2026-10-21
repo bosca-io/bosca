@@ -1784,25 +1784,31 @@ internal fun bmlDeploymentCacheToken(
     return ContentDigest.sha256(material).removePrefix("sha256:")
 }
 
-/** Classpath resource written by the `io.bosca.bml` Gradle plugin's `bmlBuildId` task (the build time). */
+/** Classpath resource written by the BML host Gradle plugin's `bmlBuildId` task (the build time). */
 internal const val BML_BUILD_ID_RESOURCE: String = "META-INF/bosca/bml/build-id"
 
 /**
- * The build identity from [BML_BUILD_ID_RESOURCE]: the time of the build that produced the site.
- * Replicas of one build share it and every CI build changes it. Returns "" with a warning when the
- * site was not built with the `io.bosca.bml` plugin; the token then relies on
- * [CompiledProject.version] and the generated render revisions alone.
+ * The identities from [BML_BUILD_ID_RESOURCE], ordered independently of classpath enumeration.
+ * A composed application can embed another runnable host; both builds must affect its deployment
+ * token. Replicas share these identities. Returns "" with a warning when none are present, leaving
+ * the token to rely on [CompiledProject.version] and generated render revisions alone.
  */
 internal fun bmlBuildId(loader: ClassLoader): String {
-    val id = loader.getResourceAsStream(BML_BUILD_ID_RESOURCE)?.use { it.readBytes().decodeToString().trim() }
-    if (id.isNullOrEmpty()) {
+    val identities = loader.getResources(BML_BUILD_ID_RESOURCE).asSequence()
+        .flatMap { url -> url.openStream().use { it.readBytes().decodeToString() }.lineSequence() }
+        .map(String::trim)
+        .filter(String::isNotEmpty)
+        .distinct()
+        .sorted()
+        .toList()
+    if (identities.isEmpty()) {
         LoggerFactory.getLogger(BmlServer::class.java).warn(
             "bml: no {} resource; shared-shell validators will not change on deploys that only change server code",
             BML_BUILD_ID_RESOURCE,
         )
         return ""
     }
-    return id
+    return identities.joinToString("\n")
 }
 
 /** Prepends the public BML runtime configuration before application client code executes. */

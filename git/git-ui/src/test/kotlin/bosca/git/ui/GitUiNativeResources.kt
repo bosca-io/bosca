@@ -10,7 +10,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -29,6 +28,9 @@ internal fun verifyGitUiNativeResources(report: File, retainedReport: File) {
     val manifest = Json.decodeFromString(BmlClientManifest.serializer(), manifestBytes.decodeToString())
     BmlApplicationAssets.validateFiles(manifest.files)
     val expected = manifest.files.associate { "$root/${it.path}" to it.digest }.toMutableMap()
+    val buildId = File(requireNotNull(System.getProperty("gitUi.native.buildId"))).readBytes()
+    java.time.Instant.parse(buildId.decodeToString())
+    expected["META-INF/bosca/bml/build-id"] = ContentDigest.sha256(buildId)
     expected[manifestPath] = ContentDigest.sha256(manifestBytes)
     for (name in listOf("geist", "lucide", "source-view", "json-editor")) {
         val path = "META-INF/licenses/bml-design/$name.txt"

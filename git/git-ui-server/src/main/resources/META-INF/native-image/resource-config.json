@@ -2,6 +2,9 @@
   "resources": {
     "includes": [
       {
+        "pattern": "META-INF/bosca/bml/build-id"
+      },
+      {
         "pattern": "git-ui-server\\.yaml"
       },
       {

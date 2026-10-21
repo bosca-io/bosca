@@ -205,6 +205,7 @@ class GitServerIntegrationTest {
                 Thread.sleep(100)
             }
             assertTrue(uiReady, "UI server failed to start. ${log.readText().takeLast(12_000)}")
+            assertFalse("bml: no META-INF/bosca/bml/build-id resource" in log.readText(), log.readText())
             assertEquals(404, request("/login", base = apiOrigin).statusCode())
             assertEquals(404, request("/_bml/app.css", base = apiOrigin).statusCode())
             fun graphql(

@@ -1,6 +1,7 @@
 plugins {
     id("org.jetbrains.kotlin.jvm")
     application
+    id("io.bosca.bml.host")
     id("org.graalvm.buildtools.native")
 }
 

@@ -104,6 +104,42 @@ class BmlProductionCacheBustingTest {
     }
 
     @Test
+    fun `composed host identities affect deployment tokens independently of classpath order`() {
+        val resources = java.nio.file.Files.createTempDirectory("bml-composed-build-ids").toFile()
+        try {
+            val embedded = resources.resolve("embedded/$BML_BUILD_ID_RESOURCE").apply {
+                parentFile.mkdirs(); writeText("2026-10-20T10:00:00Z\n")
+            }
+            val host = resources.resolve("host/$BML_BUILD_ID_RESOURCE").apply {
+                parentFile.mkdirs(); writeText("2026-10-21T10:00:00Z")
+            }
+            resources.resolve("blank/$BML_BUILD_ID_RESOURCE").apply { parentFile.mkdirs(); writeText(" \n") }
+            fun identity(vararg names: String) = java.net.URLClassLoader(
+                names.map { resources.resolve(it).toURI().toURL() }.toTypedArray(), null,
+            ).use { bmlBuildId(it) }
+            fun token(id: String) = bmlDeploymentCacheToken(CompiledProject("test", "1"), emptyList(), emptyList(), null, null, null, id)
+            val first = identity("host", "embedded", "blank")
+            assertEquals(embedded.readText().trim() + "\n" + host.readText(), first)
+            assertEquals(first, identity("embedded", "host", "blank"))
+            resources.resolve("merged/$BML_BUILD_ID_RESOURCE").apply {
+                parentFile.mkdirs(); writeText("${host.readText()}\n${embedded.readText()}\n${host.readText()}")
+            }
+            assertEquals(first, identity("merged"))
+            assertEquals(first, identity("merged", "embedded", "host"))
+            host.writeText("2026-10-22T10:00:00Z")
+            val changedHost = identity("embedded", "host")
+            assertNotEquals(token(first), token(changedHost))
+            embedded.writeText("2026-10-23T10:00:00Z")
+            assertNotEquals(token(changedHost), token(identity("embedded", "host")))
+            host.writeText(embedded.readText())
+            assertEquals(embedded.readText(), identity("host", "embedded"))
+            assertEquals("", identity("blank"))
+        } finally {
+            resources.deleteRecursively()
+        }
+    }
+
+    @Test
     fun `production page gives every generated css and js url one deployment token`() {
         val html = client.send(
             HttpRequest.newBuilder(URI.create("http://localhost:$port/")).GET().build(),
