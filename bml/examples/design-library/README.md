@@ -41,6 +41,15 @@ geometry/accessibility, alias identity/resource deduplication, and native elemen
 disabled. Additional compiler checks cover local precedence, import collisions, and typed prop
 diagnostics against the actual design-library artifact.
 
+Fixture HTTP requests have a ten-second deadline through the complete response body. A deadline
+failure identifies the method and URL; an expired or interrupted wait cancels its pending exchange.
+Transport failures retain their original cause. Controlled local-server checks cover missing
+headers, unfinished/truncated bodies, complete responses and caller interruption:
+
+```sh
+./gradlew :bml:examples:design-library:test --tests bosca.design.example.DesignFixtureHttpTest
+```
+
 The foundation page checks native form values, controlled checkbox/switch change actions, disabled
 controls, independent instances, switch accessibility names, status/alert semantics, feedback colors
 from consuming CSS, and keyboard scrolling inside a narrow table region. These controls also work

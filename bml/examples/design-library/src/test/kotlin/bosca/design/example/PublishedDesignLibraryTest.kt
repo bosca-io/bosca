@@ -8,7 +8,6 @@ import java.net.ServerSocket
 import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
-import java.net.http.HttpResponse
 import java.nio.file.Files
 import java.time.Duration
 import java.util.concurrent.TimeUnit
@@ -160,8 +159,8 @@ class PublishedDesignLibraryTest {
             }
             assertTrue(ready, log.readText())
             val base = "http://localhost:$port"
-            val response = HttpClient.newHttpClient().send(HttpRequest.newBuilder(URI(base)).timeout(Duration.ofSeconds(10))
-                .GET().build(), HttpResponse.BodyHandlers.ofString())
+            val response = requestDesignFixture(HttpClient.newHttpClient(),
+                HttpRequest.newBuilder(URI(base)).timeout(Duration.ofSeconds(10)).GET().build())
             assertEquals(200, response.statusCode(), response.body())
             check(base)
         } catch (failure: Throwable) {

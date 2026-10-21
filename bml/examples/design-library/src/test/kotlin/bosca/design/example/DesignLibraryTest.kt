@@ -390,6 +390,6 @@ class DesignLibraryTest {
     private fun request(client: HttpClient, base: String, path: String, body: String? = null): HttpResponse<String> {
         val builder = HttpRequest.newBuilder(URI(base + path)).timeout(Duration.ofSeconds(10))
         if (body == null) builder.GET() else builder.POST(HttpRequest.BodyPublishers.ofString(body))
-        return client.send(builder.build(), HttpResponse.BodyHandlers.ofString())
+        return requestDesignFixture(client, builder.build())
     }
 }
