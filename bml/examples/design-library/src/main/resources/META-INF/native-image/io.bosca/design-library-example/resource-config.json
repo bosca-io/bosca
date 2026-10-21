@@ -1,0 +1,15 @@
+{
+  "resources": {
+    "includes": [
+      {
+        "pattern": "bml/applications/bosca\\.design\\.example\\.generated/.*"
+      },
+      {
+        "pattern": "design-example\\.css"
+      },
+      {
+        "pattern": "META-INF/licenses/bml-design/.*\\.txt"
+      }
+    ]
+  }
+}

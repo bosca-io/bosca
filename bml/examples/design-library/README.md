@@ -175,3 +175,20 @@ Run that check alone from the workspace root:
 
 Build, type-check and server/browser diagnostics and captures are retained under
 `build/reports/published-consumer/`. Temporary files are removed without following symbolic links.
+
+For native verification, build and exercise the standalone executable from the workspace root:
+
+```sh
+./gradlew :bml:examples:design-library:nativeCompile --build-args=-Ob :bml:examples:design-library:nativeConsumerTest
+```
+
+This uses GraalVM quick optimization. The dedicated task reuses the consumer integration class,
+copying only the executable into a fresh working directory for each launch. Production/development
+HTTP and browser checks therefore use embedded assets, without external JARs or source directories.
+The binary's `--check-resources` command reports the SHA-256 digests of the application stylesheet
+and four dependency notices; the tests compare them with the JAR resources. Font checks also compare
+all 11 original hashes and verify MIME types, caching and deduplication. Application-owned native
+metadata includes the compiled BML resources, stylesheet, notices and established Netty registrations.
+This consumer check does not establish Git-host native or IDE source-navigation acceptance.
+Native browser captures use `native-production` and `native-development` filename prefixes under
+`build/reports/browser/`, alongside the ordinary JVM captures.

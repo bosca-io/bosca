@@ -9,6 +9,16 @@ import java.io.File
 
 /** Runs the isolated design-library consumer with its local form and choice fixtures. */
 fun main(args: Array<String>) {
+    if (args.firstOrNull() == "--check-resources") {
+        for (path in listOf("design-example.css", "META-INF/licenses/bml-design/geist.txt",
+            "META-INF/licenses/bml-design/lucide.txt", "META-INF/licenses/bml-design/source-view.txt",
+            "META-INF/licenses/bml-design/json-editor.txt")) {
+            val bytes = checkNotNull(BmlPages::class.java.getResourceAsStream("/$path")) { "Missing resource: $path" }
+                .use { it.readBytes() }
+            println("$path\t${bosca.bml.project.ContentDigest.sha256(bytes)}")
+        }
+        return
+    }
     val css = checkNotNull(BmlPages::class.java.getResourceAsStream("/design-example.css"))
         .bufferedReader().use { it.readText() }
     BmlServer(

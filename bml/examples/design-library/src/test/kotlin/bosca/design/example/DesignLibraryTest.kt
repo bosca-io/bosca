@@ -12,6 +12,8 @@ import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import java.time.Duration
 import java.util.concurrent.TimeUnit
 import java.util.Properties
@@ -25,6 +27,29 @@ import kotlin.test.assertTrue
 class DesignLibraryTest {
     private val classpath = System.getProperty("design.fixture.classpath")
     private val designJar = classpath.split(File.pathSeparator).map(::File).single { it.name.startsWith("bml-design-") }
+
+    @Test
+    fun `standalone consumer embeds application stylesheet and dependency notices`() {
+        val log = File.createTempFile("design-resources-", ".log")
+        withLauncher { command, directory ->
+            val process = ProcessBuilder(command + "--check-resources").directory(directory)
+                .redirectErrorStream(true).redirectOutput(log).start()
+            try {
+                assertTrue(process.waitFor(10, TimeUnit.SECONDS), "Resource check timed out: ${log.readText()}")
+                assertEquals(0, process.exitValue(), log.readText())
+                val actual = log.readLines().filter { '\t' in it }.associate {
+                    val (path, digest) = it.split('\t'); path to digest
+                }
+                val expected = listOf("design-example.css", "META-INF/licenses/bml-design/geist.txt",
+                    "META-INF/licenses/bml-design/lucide.txt", "META-INF/licenses/bml-design/source-view.txt",
+                    "META-INF/licenses/bml-design/json-editor.txt").associateWith { path ->
+                    val bytes = checkNotNull(DesignLibraryTest::class.java.getResourceAsStream("/$path")).use { it.readBytes() }
+                    ContentDigest.sha256(bytes)
+                }
+                assertEquals(expected, actual)
+            } finally { process.destroyForcibly(); log.delete() }
+        }
+    }
 
     @Test
     fun `generated adapter and public select payloads type check against linked binary declarations`() {
@@ -298,8 +323,10 @@ class DesignLibraryTest {
     fun `browser preserves native semantics geometry themes and action context`() {
         for (development in listOf(false, true)) withServer(development) { base, _ ->
             val log = File.createTempFile("design-browser-", ".log")
+            val mode = (if (System.getProperty("design.fixture.binary") == null) "" else "native-") +
+                if (development) "development" else "production"
             val process = ProcessBuilder(System.getProperty("design.fixture.node"), System.getProperty("design.fixture.browser"), base,
-                if (development) "development" else "production")
+                mode)
                 .redirectErrorStream(true).redirectOutput(log).start()
             try {
                 assertTrue(process.waitFor(90, TimeUnit.SECONDS), "Browser check timed out: ${log.readText()}")
@@ -309,12 +336,36 @@ class DesignLibraryTest {
     }
 
     private fun withServer(development: Boolean, test: (String, HttpClient) -> Unit) {
+        withLauncher { command, directory -> withServer(command, directory, development, test) }
+    }
+
+    private fun withLauncher(test: (List<String>, File?) -> Unit) {
+        val binary = System.getProperty("design.fixture.binary")?.let(::File)
+        if (binary == null) {
+            test(listOf(System.getProperty("design.fixture.java"), "-cp", classpath, "bosca.design.example.MainKt"), null)
+            return
+        }
+        assertTrue(binary.isFile && binary.canExecute(), binary.path)
+        val directory = createTempDirectory("native-design-consumer-").toFile().canonicalFile
+        try {
+            val executable = File(directory, binary.name)
+            Files.copy(binary.toPath(), executable.toPath(), StandardCopyOption.COPY_ATTRIBUTES)
+            assertEquals(listOf(binary.name), directory.listFiles()?.map { it.name })
+            test(listOf(executable.absolutePath), directory)
+        } finally {
+            Files.walk(directory.toPath()).use { paths -> paths.sorted(Comparator.reverseOrder()).forEach { Files.deleteIfExists(it) } }
+        }
+    }
+
+    private fun withServer(command: List<String>, directory: File?, development: Boolean, test: (String, HttpClient) -> Unit) {
         assertTrue(classpath.split(File.pathSeparator).all { File(it).isFile && it.endsWith(".jar") }, classpath)
         val port = ServerSocket(0).use { it.localPort }
         val base = "http://localhost:$port"
         val log = File.createTempFile("design-fixture-", ".log")
-        val process = ProcessBuilder(System.getProperty("design.fixture.java"), "-Dbml.dev=$development", "-cp", classpath,
-            "bosca.design.example.MainKt", port.toString())
+        val launch = if (System.getProperty("design.fixture.binary") == null) command.toMutableList().apply {
+            add(1, "-Dbml.dev=$development")
+        } else command + "-Dbml.dev=$development"
+        val process = ProcessBuilder(launch + port.toString()).directory(directory)
             .redirectErrorStream(true).redirectOutput(log).start()
         try {
             var ready = false

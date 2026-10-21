@@ -2,6 +2,7 @@ plugins {
     id("org.jetbrains.kotlin.jvm")
     alias(libs.plugins.kotlin.plugin.serialization)
     id("io.bosca.bml")
+    id("org.graalvm.buildtools.native")
     application
 }
 
@@ -13,6 +14,7 @@ dependencies {
     implementation(project(":bml:bml-design"))
     implementation(project(":bml:bml-server"))
     implementation(project(":bml:bml-annotations"))
+    implementation(project(":bosca-core:core-graalvm"))
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.kotlinx.coroutines.core)
     testImplementation(libs.kotlin.test.junit)
@@ -28,6 +30,21 @@ bml {
 application {
     mainClass.set("bosca.design.example.MainKt")
 }
+
+graalvmNative {
+    testSupport.set(false)
+    agent { enabled.set(false) }
+    metadataRepository { enabled = true }
+    binaries {
+        named("main") {
+            imageName.set("bml-design-consumer")
+            mainClass.set("bosca.design.example.MainKt")
+            buildArgs.addAll(listOf("--exclude-config", ".*/.*.jar", "^/META-INF/native-image/org\\.jline/.*"))
+        }
+    }
+}
+
+tasks.named("nativeRun") { outputs.upToDateWhen { false } }
 
 val fixtureRuntime = configurations.named("runtimeClasspath")
 val publishedFixturePlugin = configurations.create("publishedFixturePlugin") { isCanBeConsumed = false }
@@ -85,4 +102,18 @@ tasks.register<Test>("publishedConsumerTest") {
     testClassesDirs = sourceSets.test.get().output.classesDirs
     classpath = sourceSets.test.get().runtimeClasspath
     filter { includeTestsMatching("bosca.design.example.PublishedDesignLibraryTest") }
+}
+
+tasks.register<Test>("nativeConsumerTest") {
+    group = "verification"
+    description = "Exercise the standalone native consumer over HTTP and in an isolated browser."
+    dependsOn("nativeCompile")
+    testClassesDirs = sourceSets.test.get().output.classesDirs
+    classpath = sourceSets.test.get().runtimeClasspath
+    filter { includeTestsMatching("bosca.design.example.DesignLibraryTest") }
+    val binary = layout.buildDirectory.file("native/nativeCompile/bml-design-consumer" +
+        if (org.gradle.internal.os.OperatingSystem.current().isWindows) ".exe" else "")
+    inputs.file(binary).withPropertyName("nativeConsumerBinary").withPathSensitivity(PathSensitivity.NONE)
+    systemProperty("design.fixture.binary", binary.get().asFile.absolutePath)
+    outputs.upToDateWhen { false }
 }
