@@ -28,7 +28,6 @@ dependencies {
 
 bml {
     generateKotlinSources.set(true)
-    clientBundler.set(layout.projectDirectory.file("node_modules/@bosca/bml/tools/bundle.mjs"))
     clientRuntime.set(layout.projectDirectory.file("../../bml/bml-runtime/src/index.ts"))
 }
 

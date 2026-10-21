@@ -57,6 +57,14 @@ internal class GitUiAssetAudit(private val client: HttpClient, private val base:
             assertEquals("source" in engines, "data-bml-source-view" in js, "$path source helper")
             assertEquals("json" in engines, "jse-main" in js, "$path structured editor engine")
             assertEquals(engines.isNotEmpty(), "cm-editor" in js, "$path CodeMirror engine")
+            assertEquals(if (engines.isNotEmpty()) 1 else 0,
+                Regex("multiple instances of @codemirror/state").findAll(js).count(),
+                "$path must include at most one CodeMirror state implementation")
+            if (engines.isNotEmpty()) {
+                val budget = if ("source" in engines) 380_000 else 360_000
+                assertTrue((scripts + styles).sumOf { gzipSize(asset(it)) } < budget,
+                    "$path exceeds its measured editor asset budget of $budget gzip bytes")
+            }
 
             val fonts = styles.flatMap { style ->
                 Regex("""url\(["']?([^)'"\s]+\.woff2)["']?\)""")

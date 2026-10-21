@@ -7,6 +7,10 @@ import bosca.bml.project.ContentDigest
 import java.io.File
 import java.util.jar.JarFile
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
 
 /** Links only reachable binary component entries into an application's existing client build. */
 object BmlLibraryClientLinker {
@@ -34,6 +38,10 @@ object BmlLibraryClientLinker {
     ): LinkedBmlClientAssets {
         val clientMarker = File(tsDirectory, "bml-linked-client")
         clientMarker.delete()
+        val dependencyIndex = File(tsDirectory, "bml-client-dependencies.json")
+        dependencyIndex.delete()
+        val dependencyModules = mutableListOf<BmlLibraryClientDependency>()
+        val sharedEntries = linkedMapOf<String, String>()
         val inputDirectory = File(tsDirectory, "libraries")
         require(inputDirectory.deleteRecursively()) { "Cannot clear linked BML client inputs" }
         require(File(resourceDirectory, "libraries").deleteRecursively()) { "Cannot clear linked BML resources" }
@@ -68,6 +76,10 @@ object BmlLibraryClientLinker {
                         (entry.path.startsWith("public/") || entry.path.substringAfterLast('.') !in setOf("js", "mjs"))) {
                         File(resourceDirectory, "libraries/$key/${entry.path}").apply { parentFile.mkdirs(); writeBytes(content) }
                     }
+                }
+                dependencyModules += manifest.dependencyModules.map { it.copy(path = "./libraries/$key/${it.path}") }
+                manifest.sharedEntries.forEach { (original, shared) ->
+                    sharedEntries["./libraries/$key/$original"] = "./libraries/$key/$shared"
                 }
                 selected.filter { it.dependency == dependency }.mapNotNull { it.component.clientModule }.distinct().forEach { module ->
                     val entry = requireNotNull(manifest.modules[module]) { "Missing BML client module $module in ${dependency.artifact}" }
@@ -111,6 +123,12 @@ object BmlLibraryClientLinker {
             }
         }
         if (scripts.isNotEmpty() || selected.any { it.component.clientModule != null }) clientMarker.writeText("1\n")
+        if (dependencyModules.isNotEmpty()) dependencyIndex.writeText(
+            buildJsonObject {
+                put("modules", Json.encodeToJsonElement(ListSerializer(BmlLibraryClientDependency.serializer()), dependencyModules))
+                put("entries", JsonObject(sharedEntries.mapValues { JsonPrimitive(it.value) }))
+            }.toString(),
+        )
         return LinkedBmlClientAssets(styles, scripts)
     }
 

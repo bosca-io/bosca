@@ -1,12 +1,25 @@
 import { build } from "esbuild"
 import { bundleLibraryAssets } from "./library.mjs"
+import { dependencyGraph, dependencyPlugin, installedPackageRoots, linkedDependencies } from "./dependencies.mjs"
 import { readdirSync, readFileSync, existsSync, mkdirSync, rmSync, writeFileSync, cpSync } from "node:fs"
 import { createHash } from "node:crypto"
-import { join, resolve, relative } from "node:path"
+import { dirname, join, resolve, relative } from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 
 function globalBootstrapPath() {
   return fileURLToPath(new URL("../src/identity-bootstrap.ts", import.meta.url))
+}
+
+async function buildApplication(options, linkedDir) {
+  const linked = linkedDependencies(linkedDir)
+  if (linked.modules.size === 0) return build(options)
+  const scan = await build({ ...options, write: false, metafile: true })
+  const directory = options.absWorkingDir ?? process.cwd()
+  const inputs = options.entryPoints ?? []
+  const roots = installedPackageRoots([directory, options.stdin?.resolveDir, ...inputs.map((it) => dirname(it)),
+    ...Object.keys(scan.metafile.inputs).map((input) => dirname(resolve(directory, input)))].filter(Boolean))
+  const graph = dependencyGraph(scan.metafile, directory, roots)
+  return build({ ...options, plugins: [...(options.plugins ?? []), dependencyPlugin(graph, linked.modules, linked.entries)] })
 }
 
 /**
@@ -19,10 +32,10 @@ function globalBootstrapPath() {
  * runtime entry — needed when `@bosca/bml` isn't installed in node_modules (e.g. this monorepo,
  * where it's local source). Omit it when consumers have the package installed.
  *
- * @param {{ entryPoints: string[], outdir: string, minify?: boolean, runtime?: string, splitting?: boolean }} options
+ * @param {{ entryPoints: string[], outdir: string, minify?: boolean, runtime?: string, splitting?: boolean, linkedDir?: string }} options
  */
-export async function bundleIslands({ entryPoints, outdir, minify = false, runtime, splitting = false }) {
-  return build({
+export async function bundleIslands({ entryPoints, outdir, minify = false, runtime, splitting = false, linkedDir }) {
+  return buildApplication({
     entryPoints,
     outdir,
     bundle: true,
@@ -34,7 +47,7 @@ export async function bundleIslands({ entryPoints, outdir, minify = false, runti
     sourcemap: !minify,
     logLevel: "silent",
     ...(runtime ? { alias: { "@bosca/bml": resolve(runtime) } } : {}),
-  })
+  }, linkedDir)
 }
 
 /** Mirrors `BmlProductionAssets.slug` in bml-server: `/lists/{id}` -> `lists-id`, `/` -> `index`. */
@@ -97,7 +110,7 @@ export async function bundleProduction({ manifestPath, inDir, outdir, runtime })
       written.push(`${slug}.page.js`)
       continue
     }
-    await build({
+    await buildApplication({
       stdin: {
         contents: entries.map((m) => `import "./${m}"`).join("\n"),
         resolveDir: resolve(inDir),
@@ -113,7 +126,7 @@ export async function bundleProduction({ manifestPath, inDir, outdir, runtime })
       ...productionOptimization,
       logLevel: "silent",
       ...(runtime ? { alias: { "@bosca/bml": resolve(runtime) } } : {}),
-    })
+    }, inDir)
     written.push(`${slug}.page.js`)
   }
   return written
@@ -243,7 +256,7 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
     : []
   const jobs = []
   if (entryPoints.length > 0) {
-    jobs.push(bundleIslands({ entryPoints, outdir: outDir, runtime, splitting: true }))
+    jobs.push(bundleIslands({ entryPoints, outdir: outDir, runtime, splitting: true, linkedDir: inDir }))
   }
   // Production bundles follow the manifest, not the .ts inputs: a page whose declared client modules
   // produced no TypeScript still needs its (empty) <slug>.page.js, because bml-server links it.

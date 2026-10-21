@@ -1,4 +1,5 @@
 import { build } from "esbuild"
+import { dependencyGraph, dependencyPlugin, installedPackageRoots } from "./dependencies.mjs"
 import { createHash } from "node:crypto"
 import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync, copyFileSync } from "node:fs"
 import { basename, dirname, join, relative, resolve, sep } from "node:path"
@@ -23,31 +24,6 @@ function files(dir, ancestors = new Set()) {
 const readJson = (file) => JSON.parse(readFileSync(file, "utf8"))
 const write = (file, content) => { mkdirSync(dirname(file), { recursive: true }); writeFileSync(file, content) }
 const copy = (from, to) => { mkdirSync(dirname(to), { recursive: true }); copyFileSync(from, to) }
-
-// Esbuild reports canonical inputs. Track every installed package root, including ordinary
-// directories beneath a linked node_modules or scope, to keep private sources out of the archive.
-function installedPackageRoots(directories) {
-  const visited = new Set(), roots = new Set()
-  function packages(directory) {
-    if (!existsSync(directory)) return
-    for (const entry of readdirSync(directory, { withFileTypes: true })) {
-      const path = join(directory, entry.name)
-      if (entry.name.startsWith("@")) packages(path)
-      else if ((entry.isDirectory() || entry.isSymbolicLink()) && existsSync(path)) roots.add(realpathSync(path))
-    }
-  }
-  for (let directory of directories) {
-    directory = resolve(directory)
-    while (!visited.has(directory)) {
-      visited.add(directory)
-      packages(join(directory, "node_modules"))
-      const parent = dirname(directory)
-      if (parent === directory) break
-      directory = parent
-    }
-  }
-  return [...roots]
-}
 
 /** Shared by the CSS preparation and module bundling stages; independent of a producer checkout. */
 export function libraryAssetNamespace(library, version) {
@@ -176,35 +152,85 @@ export async function bundleLibraryAssets({ manifestPath, inDir, sourceRoot, cli
     entryPoints.push({ in: entry, out: path.replace(/\.(js|css)$/, "") })
     entryKinds.set(path, { global: dirname(entry) === resolve(clientDir), css: entry.endsWith(".css") })
   }
+  const dependencyModules = [], sharedEntries = {}
   if (entryPoints.length > 0) {
-    const result = await build({ ...sharedOptions, entryPoints, outdir: root, splitting: true,
-      chunkNames: "chunks/[name]-[hash]", plugins: [...sharedOptions.plugins, originPlugin] })
-    const workingDirectory = realpathSync(projectDir)
-    const outputMetadata = new Map(Object.entries(result.metafile.outputs).map(([path, info]) => [resolve(workingDirectory, path), info]))
-    for (const output of result.outputFiles) {
-      const info = outputMetadata.get(output.path)
-      if (!info) throw new Error(`Missing esbuild output metadata for ${output.path}`)
-      let content = output.contents
-      if (output.path.endsWith(".js")) {
-        let code = output.text
-        // Asset URLs remain absolute, while ESM chunks use relative imports so a consumer can
-        // rebundle the archive on disk. These specifiers come from esbuild's output metadata.
-        for (const imported of info.imports.filter((it) => !it.external && ["import-statement", "dynamic-import"].includes(it.kind))) {
-          const chunk = resolve(workingDirectory, imported.path)
-          const specifier = `${publicPath(library, version)}/${slash(relative(root, chunk))}`
-          const rel = slash(relative(dirname(output.path), chunk))
-          code = code.split(JSON.stringify(specifier)).join(JSON.stringify(rel.startsWith(".") ? rel : `./${rel}`))
+    const buildOptions = { ...sharedOptions, entryPoints, outdir: root, splitting: true,
+      chunkNames: "chunks/[name]-[hash]", plugins: [...sharedOptions.plugins, originPlugin] }
+    const ordinary = await build(buildOptions)
+    const sharedRoot = join(root, "shared")
+    const sharedPoints = entryPoints.filter((it) => !it.in.endsWith(".css"))
+    buildOptions.entryPoints = sharedPoints
+    buildOptions.outdir = sharedRoot
+    buildOptions.publicPath = `${publicPath(library, version)}/shared`
+    const dependencyEntries = new Map()
+    let result
+    // Export full ESM dependency surfaces, not just the symbols used by this producer. A
+    // consumer can then share the compiled module while tree-shaking its own selected exports.
+    for (;;) {
+      result = sharedPoints.length > 0 ? await build(buildOptions) : ordinary
+      const packageRoots = installedPackageRoots([projectDir, sourceRoot, clientDir,
+        ...Object.keys(result.metafile.inputs).map((input) => dirname(resolve(projectDir, input)))])
+      const graph = dependencyGraph(result.metafile, projectDir, packageRoots)
+      const additions = [...graph].filter(([path]) => !dependencyEntries.has(path))
+      if (additions.length === 0) {
+        for (const [path, digest] of graph) {
+          if (!dependencyModules.some((it) => it.digest === digest)) dependencyModules.push({ digest, path: "shared/" + dependencyEntries.get(path) + ".js" })
         }
-        content = code
+        break
       }
-      write(output.path, content)
-      const path = slash(relative(root, output.path))
-      const kind = entryKinds.get(path)
-      const css = info.cssBundle ? slash(relative(root, resolve(workingDirectory, info.cssBundle))) : null
-      if (kind?.module && css) modules[kind.module].styles.push(css)
-      if (kind?.global) {
-        if (kind.css) globalStyles.push(path)
-        else { globalScripts.push(path); if (css) globalStyles.push(css) }
+      const canonical = new Map()
+      for (const [path, digest] of graph) if (!canonical.has(digest)) canonical.set(digest, path)
+      buildOptions.plugins = [...sharedOptions.plugins, originPlugin, dependencyPlugin(graph, canonical)]
+      const emitted = new Set(dependencyEntries.values())
+      for (const [path, digest] of additions) {
+        const output = `dependencies/${digest.slice(7)}`
+        dependencyEntries.set(path, output)
+        if (!emitted.has(output)) { sharedPoints.push({ in: path, out: output }); emitted.add(output) }
+      }
+    }
+    // Keep the ordinary entry graph for pages without matching application dependencies.
+    // Full dependency exports can retain otherwise unused initializers after rebundling.
+    const ordinaryFiles = new Map(ordinary.outputFiles.map((it) => [it.path, it]))
+    const sharedFiles = new Map(result.outputFiles.map((it) => [it.path, it]))
+    const workingDirectory = realpathSync(projectDir)
+    const componentStyles = Object.values(ordinary.metafile.outputs)
+      .filter((it) => it.cssBundle && !it.entryPoint?.endsWith(".css")).map((it) => resolve(workingDirectory, it.cssBundle))
+    const compatibleStyles = componentStyles.every((path) => {
+      const other = sharedFiles.get(join(sharedRoot, relative(root, path)))
+      return other && other.text.split(`${publicPath(library, version)}/shared/`).join(`${publicPath(library, version)}/`) === ordinaryFiles.get(path).text
+    })
+    const outputs = [{ result: ordinary }]
+    if (dependencyModules.length > 0 && compatibleStyles) {
+      outputs.push({ result })
+      for (const path of entryKinds.keys()) if (path.endsWith(".js") && ordinaryFiles.has(join(root, path)) && sharedFiles.has(join(sharedRoot, path))) sharedEntries[path] = `shared/${path}`
+    } else dependencyModules.splice(0)
+    for (const { result } of outputs) {
+      const outputMetadata = new Map(Object.entries(result.metafile.outputs).map(([path, info]) => [resolve(workingDirectory, path), info]))
+      for (const output of result.outputFiles) {
+        const info = outputMetadata.get(output.path)
+        if (!info) throw new Error(`Missing esbuild output metadata for ${output.path}`)
+        let content = output.contents
+        if (output.path.endsWith(".js")) {
+          let code = output.text
+          // Asset URLs remain absolute, while ESM chunks use relative imports so a consumer can
+          // rebundle the archive on disk. These specifiers come from esbuild's output metadata.
+          for (const imported of info.imports.filter((it) => !it.external && ["import-statement", "dynamic-import"].includes(it.kind))) {
+            const chunk = resolve(workingDirectory, imported.path)
+            const specifier = `${publicPath(library, version)}/${slash(relative(root, chunk))}`
+            const rel = slash(relative(dirname(output.path), chunk))
+            code = code.split(JSON.stringify(specifier)).join(JSON.stringify(rel.startsWith(".") ? rel : `./${rel}`))
+          }
+          content = code
+        }
+        write(output.path, content)
+        const path = slash(relative(root, output.path))
+        const kind = entryKinds.get(path)
+        const css = info.cssBundle ? slash(relative(root, resolve(workingDirectory, info.cssBundle))) : null
+        if (kind?.module && css) modules[kind.module].styles.push(css)
+        if (kind?.global) {
+          if (kind.css) globalStyles.push(path)
+          else { globalScripts.push(path); if (css) globalStyles.push(css) }
+        }
       }
     }
   }
@@ -253,7 +279,7 @@ export async function bundleLibraryAssets({ manifestPath, inDir, sourceRoot, cli
   const inventory = files(root).map((file) => ({ path: slash(relative(root, file)), digest: digest(readFileSync(file)) }))
   write(join(outdir, "META-INF/bml/client-manifest.json"), JSON.stringify({
     formatVersion: 1, library, version, resourcePrefix, urlPrefix: publicPath(library, version),
-    modules, globalScripts, globalStyles: [...new Set(globalStyles)], files: inventory, sources,
+    modules, globalScripts, globalStyles: [...new Set(globalStyles)], dependencyModules, sharedEntries, files: inventory, sources,
   }, null, 2))
   // Every file this build read, so the build tool can track exactly these (plus their siblings).
   if (inputsOut) write(inputsOut, JSON.stringify([...inputs].sort()))

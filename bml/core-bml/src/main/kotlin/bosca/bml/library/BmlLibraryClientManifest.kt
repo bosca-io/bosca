@@ -18,6 +18,8 @@ data class BmlLibraryClientManifest(
     val globalScripts: List<String>,
     val globalStyles: List<String>,
     val files: List<BmlAssetFile>,
+    val dependencyModules: List<BmlLibraryClientDependency> = emptyList(),
+    val sharedEntries: Map<String, String> = emptyMap(),
 ) {
     /** Rejects incompatible identities, unsafe paths, and entries absent from the file inventory. */
     fun validate(expectedLibrary: String, expectedVersion: String) {
@@ -27,9 +29,15 @@ data class BmlLibraryClientManifest(
         require(resourcePrefix == "bml/libraries/$key" && urlPrefix == "/_bml/libraries/$key") { "Invalid BML client resource namespace" }
         BmlApplicationAssets.validateFiles(files)
         val paths = files.map { it.path }.toSet()
-        require((globalScripts + globalStyles + modules.values.flatMap { listOf(it.path) + it.styles }).all { it in paths }) {
+        require((globalScripts + globalStyles + modules.values.flatMap { listOf(it.path) + it.styles } + dependencyModules.map { it.path }).all { it in paths }) {
             "BML client entry is missing from the resource inventory"
         }
+        require(dependencyModules.all { Regex("sha256:[a-f0-9]{64}").matches(it.digest) && it.path.endsWith(".js") }) {
+            "Invalid BML dependency module"
+        }
+        require(sharedEntries.all { (original, shared) ->
+            original in paths && shared in paths && original.endsWith(".js") && shared.endsWith(".js")
+        }) { "Invalid BML shared client entry" }
         require(modules.keys.all { Regex("[A-Za-z_][A-Za-z0-9_]*\\.js").matches(it) }) { "Invalid BML client module name" }
     }
 

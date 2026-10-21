@@ -33,6 +33,18 @@ function fixture(projectDir = mkdtempSync(join(tmpdir(), "bml-library-assets-"))
 }
 
 describe("published library assets", () => {
+  it("preserves stylesheet-only libraries without introducing client entries", async () => {
+    const f = fixture()
+    f.write(f.manifestPath, JSON.stringify({ library: "example:design", version: "1.0", components: [] }))
+    f.write(join(f.clientDir, "theme.css"), ':root { --brand: #123456; }')
+    await bundleLibraryAssets(f)
+    const metadata = JSON.parse(readFileSync(join(f.outdir, "META-INF/bml/client-manifest.json"), "utf8"))
+    expect(metadata.globalScripts).toEqual([])
+    expect(metadata.dependencyModules).toEqual([])
+    expect(metadata.globalStyles).toEqual(['styles/theme.css'])
+    expect(readFileSync(join(f.outdir, metadata.resourcePrefix, 'styles/theme.css'), 'utf8')).toContain('--brand: #123456')
+  })
+
   it("inventories authored declarations in binary and source output without executing them", async () => {
     const f = fixture()
     const declaration = "declare module '@example/design/select' { export interface Selection { value: string } }\n"

@@ -451,6 +451,24 @@ await ev(
   'document.querySelector("form.code-widget [name=path]").value="protected.txt";document.querySelector("[name=message]").value="Keep my commit";document.querySelector(".cm-content").focus()',
 );
 await call("Input.insertText", { text: "draft edit\n" });
+await ev(`(() => {
+  window.editorBeforePreview = document.querySelector('.cm-editor');
+  document.querySelector('form.code-widget [data-bml-ref=preview]').click();
+})()`);
+await until(`!document.querySelector('form.code-widget [data-bml-ref=previewSurface]').hidden &&
+  document.querySelector('form.code-widget [data-bml-ref=previewSurface]').textContent.includes('draft edit') &&
+  document.querySelector('form.code-widget [data-bml-ref=previewStatus]').hidden`);
+assert.ok(await ev(`document.querySelector('form.code-widget [data-bml-ref=editor]').hidden`),
+  "Markdown preview renders the unsaved editor draft");
+await ev(`document.querySelector('form.code-widget [data-bml-ref=preview]').click()`);
+assert.ok(await ev(`document.querySelector('.cm-editor') === window.editorBeforePreview &&
+  !document.querySelector('form.code-widget [data-bml-ref=editor]').hidden &&
+  document.querySelector('.cm-content').textContent.includes('draft edit')`),
+  "Returning from preview retains the editable view and its draft");
+await ev(`delete window.editorBeforePreview; document.querySelector('form.code-widget [data-bml-ref=wrap]').click()`);
+assert.ok(await ev(`document.querySelector('.cm-content').classList.contains('cm-lineWrapping')`),
+  "Git can reconfigure the shared CodeMirror editor");
+await ev(`document.querySelector('form.code-widget [data-bml-ref=wrap]').click()`);
 await ev(
   'document.querySelector("form.code-widget button[type=submit]").click()',
 );

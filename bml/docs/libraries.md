@@ -107,6 +107,14 @@ reachability selects implementation assets: importing the Design Library module 
 source viewer or JSON editor implementation to a page that only renders basic controls.
 Fonts and resources are packaged and served from the consuming application's origin.
 
+When application code imports the same npm ESM dependencies as a compiled library, the bundler
+can reuse the library's compiled modules. Reuse requires matching source bytes, package metadata,
+static dependency resolution and bundler version. Different versions or modified dependency graphs
+keep their own implementations. Libraries remain self-contained for consumers without those npm
+packages. Pages without matching application dependencies retain their ordinary library entries.
+Production still emits one merged client bundle per page; this adds no public helper imports or
+component props.
+
 The Design Library's [CSS variables](../bml-design/css-tokens.md) let applications set colors,
 fonts, spacing, radii, focus and editor presentation in their own CSS, globally or on a themed
 container. The application still chooses its document font, reset and layout.
