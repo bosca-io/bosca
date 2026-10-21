@@ -55,8 +55,10 @@ podDisruptionBudget:
   minAvailable: 1
 
 # Comma-separated list of URL prefixes the service will fetch images from.
-# Scheme, hostname and port must match; any path prefix is also enforced.
-# Redirect destinations must pass the same check. Requests outside the
+# Full URL prefixes match scheme, hostname and port and enforce any path prefix.
+# Scheme-only prefixes (http:// or https://) permit any host for that scheme;
+# SUPPORTED_URLS: "http://,https://" permits both HTTP and HTTPS sources.
+# Redirect destinations must pass the same checks. Requests outside the
 # allowed prefixes are rejected with 401. Required —
 # the service is otherwise unusable. Example:
 #   extraEnv:
