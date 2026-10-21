@@ -167,6 +167,11 @@ class PostgresBackupServiceImpl(
         report
     }
 
+    override suspend fun preflightRestore(directory: Path): PostgresBackupManifest = withContext(StorageDispatcher) {
+        check(connectionOrNull()?.inTransaction != true) { "PostgreSQL restore preflight must run outside an active caller transaction" }
+        PostgresBackupRestore(application).preflight(verify(directory))
+    }
+
     override suspend fun restore(directory: Path): PostgresBackupManifest = withContext(StorageDispatcher) {
         check(connectionOrNull()?.inTransaction != true) { "PostgreSQL restore must run outside an active caller transaction" }
         PostgresBackupRestore(application).restore(directory, verify(directory))

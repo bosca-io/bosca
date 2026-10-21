@@ -697,6 +697,132 @@ class PostgresBackupIntegrationTest {
     }
 
     @Test
+    fun `native restore preflight verifies an empty target without source services or pg_restore`(): Unit = runBlocking {
+        contentCaptureServices()
+        contentAsset("10000000-0000-0000-0000-000000000001")
+        val manifest = service.capture("instance", output, includeContentReferences = true)
+        createTarget()
+        restoreTool = root.resolve("missing-pg-restore")
+        tool = root.resolve("missing-pg-dump")
+        install(configured = false)
+        assertTrue(root.resolve("operation-source").toFile().deleteRecursively())
+        pool.close()
+        sql("drop database source with (force)", "postgres")
+        assertEquals(manifest, service.preflightRestore(output))
+        assertEquals(manifest, service.verify(output))
+        assertEquals(setOf("database.dump", "manifest.json", "content-references.json"), output.toFile().list()?.toSet())
+        assertEquals("0", scalar("select count(*)::text from pg_class where relnamespace='public'::regnamespace", "recovered"))
+        assertEquals("0", scalar("select count(*)::text from pg_extension where extname <> 'plpgsql'", "recovered"))
+    }
+
+    @Test
+    fun `native restore preflight rejects occupied and incorrectly named destinations without changing data`(): Unit = runBlocking {
+        val manifest = service.capture("instance", output)
+        createTarget()
+        sql("create table public.existing(id int); insert into public.existing values (123)", "recovered")
+        val occupied = assertFailsWith<IllegalStateException> { service.preflightRestore(output) }
+        assertTrue(occupied.message.orEmpty().contains("empty"), occupied.toString())
+        targetName = "somewhere_else"
+        install()
+        val named = assertFailsWith<IllegalStateException> { service.preflightRestore(output) }
+        assertTrue(named.message.orEmpty().contains("destination database"), named.toString())
+        assertEquals("123", scalar("select id::text from public.existing", "recovered"))
+        assertEquals(manifest, service.verify(output))
+    }
+
+    @Test
+    fun `native restore preflight rejects incompatible server encoding and extension requirements`(): Unit = runBlocking {
+        val manifest = service.capture("instance", output)
+        createTarget()
+        for (variant in listOf(
+            manifest.copy(serverVersionNumber = 990000),
+            manifest.copy(encoding = "LATIN1"),
+            manifest.copy(extensions = manifest.extensions + ("vector" to "9999.0")),
+        )) {
+            output.resolve("manifest.json").writeText(Json.encodeToString(PostgresBackupManifest.serializer(), variant))
+            val failure = assertFailsWith<IllegalStateException> { service.preflightRestore(output) }
+            assertTrue(failure.message.orEmpty().contains("psql restore preflight"), failure.toString())
+            assertEquals("0", scalar("select count(*)::text from pg_class where relnamespace='public'::regnamespace", "recovered"))
+        }
+    }
+
+    @Test
+    fun `native restore preflight rejects corrupt references before any destination process`(): Unit = runBlocking {
+        contentCaptureServices()
+        val manifest = service.capture("instance", output, includeContentReferences = true)
+        val entered = root.resolve("destination-entered")
+        psqlTool = writeTool("touch ${quote(entered)}; exit 0")
+        install()
+        val inventory = assertNotNull(manifest.contentInventory)
+        output.resolve(inventory.path).writeText("corrupt")
+        assertFailsWith<BackupPayloadMismatchException> { service.preflightRestore(output) }
+        assertFalse(Files.exists(entered))
+        assertTrue(Files.exists(output.resolve("manifest.json")))
+    }
+
+    @Test
+    fun `native restore preflight requires target configuration and rejects caller transactions`(): Unit = runBlocking {
+        val manifest = service.capture("instance", output)
+        install(restoreConfigured = false)
+        val missing = assertFailsWith<IllegalStateException> { service.preflightRestore(output) }
+        assertTrue(missing.message.orEmpty().contains("backup.postgres.restore.service"), missing.toString())
+        val entered = root.resolve("destination-entered")
+        psqlTool = writeTool("touch ${quote(entered)}; exit 0")
+        install()
+        val transactionFailure = assertFailsWith<IllegalStateException> {
+            withConnectionManager { transaction { service.preflightRestore(output) } }
+        }
+        assertTrue(transactionFailure.message.orEmpty().contains("transaction"), transactionFailure.toString())
+        assertFalse(Files.exists(entered))
+        assertEquals(manifest, service.verify(output))
+        assertEquals(0, pool.activeConnections)
+    }
+
+    @Test
+    fun `native restore preflight missing psql preserves target and artifact`(): Unit = runBlocking {
+        val manifest = service.capture("instance", output)
+        createTarget()
+        psqlTool = root.resolve("missing-psql")
+        install()
+        assertFailsWith<IOException> { service.preflightRestore(output) }
+        assertEquals(manifest, service.verify(output))
+        assertEquals("0", scalar("select count(*)::text from pg_class where relnamespace='public'::regnamespace", "recovered"))
+    }
+
+    @Test
+    fun `native restore preflight cancellation stops its local client and preserves data`(): Unit = runBlocking {
+        val manifest = service.capture("instance", output)
+        createTarget()
+        val entered = root.resolve("preflight-process")
+        psqlTool = writeTool("echo \$\$ > ${quote(entered)}\nexec sleep 60")
+        install()
+        val attempt = async { service.preflightRestore(output) }
+        awaitFile(entered)
+        val pid = entered.readText().trim().toLong()
+        withTimeout(5_000) { attempt.cancelAndJoin() }
+        assertFalse(ProcessHandle.of(pid).map { it.isAlive }.orElse(false))
+        assertEquals(manifest, service.verify(output))
+        assertEquals(setOf("database.dump", "manifest.json"), output.toFile().list()?.toSet())
+        assertEquals("0", scalar("select count(*)::text from pg_class where relnamespace='public'::regnamespace", "recovered"))
+    }
+
+    @Test
+    fun `native restore preflight does not bypass later restore checks`(): Unit = runBlocking {
+        val manifest = service.capture("instance", output)
+        createTarget()
+        val entered = root.resolve("restore-entered")
+        restoreTool = writeTool("touch ${quote(entered)}; exit 0")
+        install()
+        assertEquals(manifest, service.preflightRestore(output))
+        assertFalse(Files.exists(entered))
+        sql("create table public.existing(id int); insert into public.existing values (123)", "recovered")
+        val changed = assertFailsWith<IllegalStateException> { service.restore(output) }
+        assertTrue(changed.message.orEmpty().contains("empty"), changed.toString())
+        assertFalse(Files.exists(entered))
+        assertEquals("123", scalar("select id::text from public.existing", "recovered"))
+    }
+
+    @Test
     fun `restore rejects occupied targets without invoking pg_restore or changing their data`(): Unit = runBlocking {
         service.capture("source", output)
         createTarget()

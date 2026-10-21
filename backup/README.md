@@ -494,6 +494,18 @@ backup:
       pgRestore: /opt/postgresql/bin/pg_restore
 ```
 
+`preflightRestore(directory)` verifies the local artifact and runs the same read-only
+destination checks independently of restoration. It returns the verified manifest after checking
+the expected database name, empty primary database, PostgreSQL version, encoding and available
+extension versions. It needs the restore libpq service and `psql`; `pg_restore`, capture
+configuration, source database access and content services are unnecessary. Declared content
+references are checked locally with the other artifact components.
+
+Use this after downloading an artifact to check its database destination before starting
+recovery writes. It leaves the artifact and destination data unchanged. Keep that destination
+offline and exclude concurrent writers. The check reserves nothing, and `restore` repeats it
+before executing `pg_restore`. Object coverage and whole-instance recovery remain separate.
+
 Create the destination database beforehand, preferably from `template0`, under its intended
 owner. Keep the application and other writers stopped on that destination throughout restore.
 Source writes can continue. `service` and `database` are required on use. `serviceFile` uses

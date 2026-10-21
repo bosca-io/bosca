@@ -195,6 +195,20 @@ interface PostgresBackupService : Service {
     suspend fun downloadContentReport(backup: ObjectStorageService, prefix: String, file: Path): PostgresBackupContentReport
 
     /**
+     * Verifies the local artifact and checks the independently configured restore destination using
+     * the same read-only PostgreSQL preflight as [restore], returning the verified manifest.
+     * Requires the expected destination database name, libpq restore service and psql; pg_restore
+     * and source capture configuration/services are not needed. The destination must be an empty
+     * primary database compatible with the artifact's PostgreSQL major version, encoding and extensions.
+     * Runs outside an active caller transaction on the storage dispatcher. Leaves the artifact and
+     * destination data unchanged; cancellation stops the local client and cleans owned scratch.
+     * The caller keeps the destination offline and excludes concurrent writers. This reserves
+     * nothing: [restore] repeats the checks before writing. Asset coverage and full-instance
+     * recovery requirements remain separate from this database-artifact preflight.
+     */
+    suspend fun preflightRestore(directory: Path): PostgresBackupManifest
+
+    /**
      * Verifies [directory] and restores its native dump into the separately configured
      * backup.postgres.restore libpq service. Requires an explicit expected database name,
      * a fresh empty destination and exclusive offline access throughout preflight and restore.
