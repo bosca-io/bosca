@@ -69,6 +69,20 @@ sizes against digest-checked JAR inputs, including indexed assets and dependency
 font bytes are also checked over HTTP. Logs, the input-resource digest record, executable identity
 and browser captures are retained under `git/git-ui/build/reports/native-ui/`. `-Ob` selects quick
 optimization for validation; omit it to use the host's normal `-O3` build. Combined API/UI native
-acceptance uses the separate Git server integration path.
+acceptance uses:
+
+```bash
+./gradlew :git:git-server:nativeCompile --build-args=-Ob :git:git-server:nativeHostTest
+```
+
+This dedicated task runs both `GitServerIntegrationTest` cases from a copy of the production
+executable in a fresh directory with explicit fixture configuration and isolated PostgreSQL/NATS.
+It checks both listeners, the default and custom cookie prefixes, authentication, SSR/actions,
+repository/file/search/subscription delivery and graceful shutdown. It verifies all indexed Design
+Library resources and notices against native build inputs, both application identities, and exact
+served font bytes. Per-case logs, executable identity and resource/font records are retained under
+`git/git-server/build/reports/native-host/`. Explicit invocation always runs the acceptance checks.
+The standalone native task above supplies the editor browser checks; this combined task exercises
+the real API/UI composition over HTTP.
 
 See the [Git application specification](../../specs/git/bml-git-application-spec.md) and [validation record](../../specs/git/parity-validation.md). Studio and the main server remain in place until their separate cutover gates pass.

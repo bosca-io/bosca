@@ -84,6 +84,33 @@ tasks.test {
     systemProperty("workspaceRoot", rootProject.projectDir.absolutePath)
 }
 
+tasks.register<Test>("nativeHostTest") {
+    group = "verification"
+    description = "Exercise both production Git listeners from the combined native executable."
+    dependsOn(tasks.testClasses, "nativeCompile")
+    testClassesDirs = sourceSets.test.get().output.classesDirs
+    classpath = sourceSets.test.get().runtimeClasspath
+    filter { includeTestsMatching("bosca.git.server.GitServerIntegrationTest") }
+    val nativeDirectory = layout.buildDirectory.dir("native/nativeCompile")
+    val executableName = "bosca-git-server" +
+        if (org.gradle.internal.os.OperatingSystem.current().isWindows) ".exe" else ""
+    val executable = nativeDirectory.map { it.file(executableName) }
+    val resources = nativeDirectory.map { it.file("embedded-resources.json") }
+    val buildIdPath = "generated/bml/build-id/META-INF/bosca/bml/build-id"
+    val hostBuildId = layout.buildDirectory.file(buildIdPath)
+    val uiBuildId = project(":git:git-ui-server").layout.buildDirectory.file(buildIdPath)
+    inputs.file(executable).withPropertyName("nativeExecutable").withPathSensitivity(PathSensitivity.NONE)
+    inputs.file(resources).withPropertyName("nativeResources").withPathSensitivity(PathSensitivity.NONE)
+    inputs.files(hostBuildId, uiBuildId).withPropertyName("nativeBuildIds").withPathSensitivity(PathSensitivity.NONE)
+    environment("GIT_SERVER_TEST_BINARY", executable.get().asFile.absolutePath)
+    systemProperty("workspaceRoot", rootProject.projectDir.absolutePath)
+    systemProperty("gitServer.native.resourceReport", resources.get().asFile.absolutePath)
+    systemProperty("gitServer.native.hostBuildId", hostBuildId.get().asFile.absolutePath)
+    systemProperty("gitServer.native.uiBuildId", uiBuildId.get().asFile.absolutePath)
+    systemProperty("gitServer.test.artifacts", layout.buildDirectory.dir("reports/native-host").get().asFile.absolutePath)
+    outputs.upToDateWhen { false }
+}
+
 ksp {
     arg("ProviderRegistrarPrefix", "GitServer")
 }
@@ -134,6 +161,7 @@ graalvmNative {
             imageName = "bosca-git-server"
             mainClass = "bosca.git.server.ApplicationKt"
             buildArgs.add("-O3")
+            buildArgs.add("-H:+GenerateEmbeddedResourcesFile")
             buildArgs.addAll(providers.gradleProperty("bosca.native.march")
                 .map { listOf("-march=$it") }
                 .orElse(emptyList()))
@@ -144,5 +172,17 @@ graalvmNative {
                 buildArgs.add("--gc=G1")
             }
         }
+    }
+}
+
+tasks.named("nativeCompile") {
+    val embeddedResources = layout.buildDirectory.file("native/nativeCompile/embedded-resources.json")
+    outputs.file(embeddedResources).withPropertyName("embeddedResources")
+    doFirst {
+        val report = embeddedResources.get().asFile
+        check(!report.exists() || report.delete()) { "Cannot clear the native resource report" }
+    }
+    doLast {
+        check(embeddedResources.get().asFile.isFile) { "Native compilation did not emit its resource report" }
     }
 }
