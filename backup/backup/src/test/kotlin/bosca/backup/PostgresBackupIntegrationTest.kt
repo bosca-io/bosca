@@ -1777,6 +1777,8 @@ class PostgresBackupIntegrationTest {
             val plans = withConnectionManager { provide<ObjectBackupCaptureService>().listPlans("source", "retained", "snapshot", 0, 10) }
             assertEquals(2, plans.size)
             assertTrue(plans.all { it.contentSelectionCounts == first.selectionCounts })
+            tool = root.resolve("missing-pg-dump")
+            install(configured = false)
             sql("create database recovery_journal", "postgres")
             val journal = ConnectionPool(ConnectionFactoryImpl(ConnectionConfig(url + "recovery_journal", user, password), "capture-operation-journal"))
             try {
@@ -1791,13 +1793,28 @@ class PostgresBackupIntegrationTest {
                 val report = service.downloadContentReport(backup, "exports/reports/${first.database.id}", root.resolve("recovered-report.json"))
                 assertEquals(first, report)
                 assertEquals(first.database, service.download(backup, report.databasePath, output))
+                createTarget()
+                assertEquals(report.database, service.preflightRestore(output))
+                backup.delete(bosca.storage.service.StringObjectPath("exports/objects/${first.database.id}.json"))
                 val factory = provide<ObjectStorageServiceFactory>()
                 factory.withStorage(StorageConfiguration("fs", "", basePath = root.resolve("operation-restored").toString())) { target ->
-                    assertEquals(report.objects, provide<ObjectBackupRestoreService>().restore(report.objects, backup,
-                        mapOf("content" to target), "recovered-assets"))
+                    val restores = provide<ObjectBackupRestoreService>()
+                    val inspection = restores.inspect(report.objects, backup, mapOf("content" to target), "recovered-assets")
+                    assertEquals(report.objects, inspection.inventory)
+                    assertEquals(ObjectBackupRestoreObjectStatus.MISSING, inspection.objects.single().status)
+                    assertEquals(null, inspection.objects.single().progress)
+                    assertEquals("0", scalar("select count(*)::text from backup.object_progress", "recovery_journal"))
+                    assertEquals("0", scalar("select count(*)::text from pg_class where relnamespace='public'::regnamespace", "recovered"))
+                    assertFailsWith<bosca.storage.service.ObjectNotFoundException> {
+                        target.getInputStream(bosca.storage.service.StringObjectPath(key))
+                    }
+                    assertEquals(report.objects, restores.restore(report.objects, backup, mapOf("content" to target), "recovered-assets"))
                     assertEquals("image", target.getString(bosca.storage.service.StringObjectPath(key)))
+                    val completed = restores.inspect(report.objects, backup, mapOf("content" to target), "recovered-assets")
+                    assertEquals(ObjectBackupRestoreObjectStatus.MATCHING, completed.objects.single().status)
+                    assertEquals(ObjectBackupProgressStatus.COMPLETED, completed.objects.single().progress?.status)
                 }
-                restore()
+                assertEquals(report.database, service.restore(output))
                 assertEquals("Saved image", scalar("select name from metadata where id='$id'", "recovered"))
             } finally {
                 journal.close()

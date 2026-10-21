@@ -114,6 +114,14 @@ Cancelled runs need the existing explicit retry control. A different job or a ca
 the original job checkpoint cannot resume a surviving running writer. The Pipeline action does not report
 cancelled/incomplete outcomes as successful.
 
+`ObjectBackupRestoreService.inspect(inventory, backup, targets, destinationId)` also accepts
+the `objects` inventory embedded in a retained content report. It verifies retained bytes and
+reports current target conflicts/progress without writing assets, intent or checkpoints; no
+separate object manifest file is needed. Use it with `PostgresBackupService.preflightRestore`
+on the downloaded database artifact to check both destinations before recovery writes.
+Both restore operations repeat their checks. Keep targets isolated and backup data immutable;
+these checks reserve nothing and leave the report's content-reference coverage gaps explicit.
+
 Dispatched inventory backups and restores bind their checkpoint to the original job and requested
 run version. A redelivery advances the run version so an older completion cannot release its
 destination claims. An explicit retry needs a new dispatch version; an old delivery cannot

@@ -22,6 +22,21 @@ interface ObjectBackupRestoreService : Service {
     ): ObjectBackupRestoreInspection
 
     /**
+     * Inspects a selected inventory, including one embedded in a retained content report,
+     * without reading a separate manifest location. Copies and validates [inventory], verifies
+     * its retained bytes and reads current targets/progress under the same rules as path-based
+     * inspection. Neither the recorded report counts nor an earlier inspection replace these
+     * checks. No intent, progress or destination data is written. This checks declared objects;
+     * database recovery and complete content-reference coverage remain separate.
+     */
+    suspend fun inspect(
+        inventory: ObjectBackupManifest,
+        backup: ObjectStorageService,
+        destinations: Map<String, ObjectStorageService>,
+        destinationId: String,
+    ): ObjectBackupRestoreInspection
+
+    /**
      * Restores the manifest at [path] to its original logical store/key locations.
      *
      * Validates all mappings and retained payloads before writing destination assets. Matching

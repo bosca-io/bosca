@@ -28,11 +28,11 @@ class ObjectBackupRestoreServiceImpl(
             "Object restore destination identity is required"
         }
         val inventory = ObjectBackupManifestStore(backup, json).load(path)
-        return inspectInventory(inventory, backup, destinations, destinationId)
+        return inspect(inventory, backup, destinations, destinationId)
     }
 
-    private suspend fun inspectInventory(
-        selected: ObjectBackupManifest,
+    override suspend fun inspect(
+        inventory: ObjectBackupManifest,
         backup: ObjectStorageService,
         destinations: Map<String, ObjectStorageService>,
         destinationId: String,
@@ -43,20 +43,20 @@ class ObjectBackupRestoreServiceImpl(
 
         val targets = destinations.toMap()
         val manifests = ObjectBackupManifestStore(backup, json)
-        val inventory = selected.copy(objects = selected.objects.toList())
-        inventory.validate()
-        val required = inventory.restoreObjects()
+        val selected = inventory.copy(objects = inventory.objects.toList())
+        selected.validate()
+        val required = selected.restoreObjects()
         validateDestinations(required, targets)
 
-        manifests.verify(inventory)
+        manifests.verify(selected)
 
         val context = currentCoroutineContext()
-        val objects = inventory.objects.map { entry ->
+        val objects = selected.objects.map { entry ->
             context.ensureActive()
             val targetPayload = entry.copy(payloadPath = entry.key)
             val checkpoint = withConnectionManager {
                 progress.get(
-                    ObjectBackupOperation.RESTORE, inventory.sourceId, destinationId, inventory.scope, targetPayload,
+                    ObjectBackupOperation.RESTORE, selected.sourceId, destinationId, selected.scope, targetPayload,
                 )
             }
             val status = inspectTarget(targets.getValue(entry.store), targetPayload, checkpoint)
@@ -64,7 +64,7 @@ class ObjectBackupRestoreServiceImpl(
         }
 
         context.ensureActive()
-        return ObjectBackupRestoreInspection(inventory, objects)
+        return ObjectBackupRestoreInspection(selected, objects)
     }
 
     override suspend fun restore(
@@ -85,7 +85,7 @@ class ObjectBackupRestoreServiceImpl(
         destinationId: String,
     ): ObjectBackupManifest {
         val targets = destinations.toMap()
-        val inspection = inspectInventory(inventory, backup, targets, destinationId)
+        val inspection = inspect(inventory, backup, targets, destinationId)
         return restoreInventory(inspection, backup, targets, destinationId)
     }
 

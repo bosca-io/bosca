@@ -279,6 +279,116 @@ class ObjectBackupRestoreInspectionIntegrationTest {
         assertTrue(checkpoints().isEmpty())
     }
 
+    @Test
+    fun `selected inventory needs no separate manifest and creates no progress`(): Unit = runBlocking {
+        backup.delete(path)
+
+        val inspection = service.inspect(inventory, backup, targets(), "new-instance")
+
+        assertEquals(inventory, inspection.inventory)
+        assertEquals(inventory.objects, inspection.objects.map { it.payload })
+        assertEquals(List(2) { ObjectBackupRestoreObjectStatus.MISSING }, inspection.objects.map { it.status })
+        assertTrue(inspection.objects.all { it.progress == null })
+        assertTrue(checkpoints().isEmpty())
+        assertMissing(content, first.key)
+        assertMissing(artifacts, second.key)
+        assertMissing(backup, path.toString())
+    }
+
+    @Test
+    fun `selected inventory reports target conflicts and owned repairs without changing data or progress`(): Unit = runBlocking {
+        val failed = withConnectionManager {
+            val prepared = progress.prepare(RESTORE, inventory.sourceId, "new-instance", inventory.scope, restorePayload(first))
+            val running = progress.start(prepared.key, prepared.version)
+            progress.fail(running.key, running.version, "interrupted")
+        }
+        write(content, first.key, "da")
+        write(artifacts, second.key, "independent data")
+        BackupProviderRegistrar().register()
+
+        val inspection = provide<ObjectBackupRestoreService>().inspect(inventory, backup, targets(), "new-instance")
+
+        assertEquals(
+            listOf(ObjectBackupRestoreObjectStatus.REPAIRABLE, ObjectBackupRestoreObjectStatus.CONFLICTING),
+            inspection.objects.map { it.status },
+        )
+        assertEquals(failed, inspection.objects.first().progress)
+        assertEquals(listOf(failed), checkpoints())
+        assertEquals("da", read(content, first.key))
+        assertEquals("independent data", read(artifacts, second.key))
+    }
+
+    @Test
+    fun `selected inventory validates identity keys revisions and mappings before storage access`(): Unit = runBlocking {
+        val retained = mockk<ObjectStorageService>()
+        val target = mockk<ObjectStorageService>()
+        val targets = mapOf("content" to target, "artifacts" to target)
+        assertFailsWith<IllegalArgumentException> { service.inspect(inventory, retained, targets, " ") }
+        assertFailsWith<IllegalArgumentException> { service.inspect(inventory, retained, emptyMap(), "new-instance") }
+        for (objects in listOf(
+            listOf(first.copy(key = "../outside")),
+            listOf(first, first.copy(revision = "other")),
+            listOf(first, second.copy(key = first.key)),
+        )) {
+            assertFailsWith<IllegalArgumentException> {
+                service.inspect(inventory.copy(objects = objects), retained, targets, "new-instance")
+            }
+        }
+        coVerify(exactly = 0) { retained.getInputStream(any()) }
+        coVerify(exactly = 0) { target.getInputStream(any()) }
+        coVerify(exactly = 0) { target.setInputStream(any(), any(), any()) }
+        assertTrue(checkpoints().isEmpty())
+    }
+
+    @Test
+    fun `selected inventory checks retained bytes before destinations on every inspection`(): Unit = runBlocking {
+        service.inspect(inventory, backup, targets(), "new-instance")
+        val target = mockk<ObjectStorageService>()
+        backup.delete(StringObjectPath(second.payloadPath))
+        assertFailsWith<ObjectNotFoundException> {
+            service.inspect(inventory, backup, mapOf("content" to target, "artifacts" to target), "new-instance")
+        }
+        write(backup, second.payloadPath, "oops")
+        assertFailsWith<BackupPayloadMismatchException> {
+            service.inspect(inventory, backup, mapOf("content" to target, "artifacts" to target), "new-instance")
+        }
+        coVerify(exactly = 0) { target.getInputStream(any()) }
+        coVerify(exactly = 0) { target.setInputStream(any(), any(), any()) }
+        assertTrue(checkpoints().isEmpty())
+    }
+
+    @Test
+    fun `selected inventory propagates access errors and cancellation without progress writes`(): Unit = runBlocking {
+        val target = delegate(artifacts)
+        coEvery { target.getInputStream(any()) } throws IOException("destination unavailable")
+        assertFailsWith<IOException> {
+            service.inspect(inventory, backup, mapOf("content" to content, "artifacts" to target), "new-instance")
+        }
+        coEvery { target.getInputStream(any()) } throws CancellationException("inspection cancelled")
+        assertFailsWith<CancellationException> {
+            service.inspect(inventory, backup, mapOf("content" to content, "artifacts" to target), "new-instance")
+        }
+        coVerify(exactly = 0) { target.setInputStream(any(), any(), any()) }
+        assertTrue(checkpoints().isEmpty())
+        assertMissing(content, first.key)
+    }
+
+    @Test
+    fun `selected inventory restore rechecks targets after successful inspection`(): Unit = runBlocking {
+        assertTrue(service.inspect(inventory, backup, targets(), "new-instance").objects.all {
+            it.status == ObjectBackupRestoreObjectStatus.MISSING
+        })
+        write(artifacts, second.key, "new independent data")
+
+        assertFailsWith<IllegalStateException> { service.restore(inventory, backup, targets(), "new-instance") }
+
+        val inspection = service.inspect(inventory, backup, targets(), "new-instance")
+        assertEquals(ObjectBackupRestoreObjectStatus.CONFLICTING, inspection.objects.last().status)
+        assertEquals("new independent data", read(artifacts, second.key))
+        assertMissing(content, first.key)
+        assertTrue(checkpoints().isEmpty())
+    }
+
     private suspend fun inspect(
         contentTarget: ObjectStorageService = content,
         artifactTarget: ObjectStorageService = artifacts,
