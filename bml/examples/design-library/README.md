@@ -94,6 +94,9 @@ roving arrows/Home/End and wrapping, local view events, caller-owned panel relat
 unmatched selections, independent roots and live CSS overrides. Repeated unmounts check root and
 document listener cleanup. Script-disabled search and initial segmented values remain native. Long groups verify that keyboard
 focus reveals the selected option and a horizontal scrollbar does not clip segmented buttons.
+Plain-text panels have their own Tab stop and preservation key. Their visibility changes locally
+before the view action completes. Delayed-response checks verify forward/reverse keyboard focus
+through the completed patch in both palettes at desktop and phone widths.
 
 The `/navigation` page uses native route tabs, shared `NavigationItem` values and projected actions.
 Checks cover current/overflow destinations, keyboard navigation and dismissal, container/viewport

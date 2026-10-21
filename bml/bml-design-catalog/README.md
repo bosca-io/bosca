@@ -127,6 +127,10 @@ Repeated controls disable autofocus. Static examples include readonly/disabled q
 unmatched groups and long scrolling labels. The search, segment and tab references include the
 complete composition source. Keyboard choices reveal their selected option; segmented rows grow
 when a visible scrollbar needs space. Search borders use the consumer's control-border color.
+Panels change visibility immediately and retain their own DOM through the view action response;
+the result-panel key changes with accepted search content. Delayed-response checks cover panel and
+link focus, forward/reverse Tab traversal and focus left outside the example in both palettes and
+viewport sizes. The local-only reference also makes plain-text panels keyboard reachable.
 
 The `/source` examples keep a stable preservation key for surrounding updates and change it for
 content revisions. The application owns requested lines and server options; the compiled viewer owns

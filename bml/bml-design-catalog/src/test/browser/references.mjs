@@ -36,6 +36,8 @@ export async function checkReferences({ navigate, evaluate, until: poll, key, ca
   await until(`document.querySelector('[data-local-views] [role=tab]')?.hasAttribute('aria-controls')`);
   await evaluate(`document.querySelector('[data-local-views] [role=tab]').focus()`); await key('ArrowRight');
   assert.ok(await evaluate(`(() => {const tab=document.querySelector('[data-local-views] [aria-selected=true]'),panel=document.getElementById(tab.getAttribute('aria-controls'));return tab.textContent.trim()==='Details'&&!panel.hidden&&panel.getAttribute('aria-labelledby')===tab.id;})()`));
+  await key('Tab');
+  assert.ok(await evaluate(`document.activeElement===document.querySelector('[data-local-views] [data-view=Details]')`),'The copyable local-tab example has a keyboard-reachable text panel');
   await evaluate(`document.querySelector('[data-export=segmented-control] [role=radio]').focus()`); await key('ArrowRight');
   assert.equal(await evaluate(`document.querySelector('[data-export=segmented-control] input').value`), 'Code');
 

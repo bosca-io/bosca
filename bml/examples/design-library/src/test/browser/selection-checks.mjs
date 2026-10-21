@@ -143,4 +143,49 @@ export async function checkSelection({ call, evaluate, until, base, mode, artifa
     if(cycle<2){await click('[data-selection-toggle=light]');await until(`!document.querySelector('${query}')`);}
   }
   await evaluate('window.selectionEventController.abort()');
+  const pendingFocus=[];
+  const originalCookies=(await call('Network.getCookies',{urls:[base]})).cookies.map(cookie=>({
+    name:cookie.name,value:cookie.value,domain:cookie.domain,path:cookie.path,
+    secure:cookie.secure,httpOnly:cookie.httpOnly,
+    ...(cookie.sameSite?{sameSite:cookie.sameSite}:{}),
+    ...(cookie.expires>0?{expires:cookie.expires}:{}),
+  }));
+  try {
+  for(const width of [1440,390])for(const palette of ['light','purple']) {
+    await call('Emulation.setDeviceMetricsOverride',{width,height:1100,deviceScaleFactor:1,mobile:false});
+    await call('Network.clearBrowserCookies');
+    await call('Page.navigate',{url:base+'/selection'});
+    const tabs=`document.querySelector('[data-views=${palette}]')`;
+    const panel=`document.querySelector('[data-view-panel=${palette}][data-view=Source]')`;
+    await until(`document.readyState==='complete'&&${tabs}?.querySelector('[role=tab]')?.hasAttribute('aria-controls')`);
+    await evaluate(`(()=>{
+      const original=window.fetch.bind(window);
+      window.fetch=async(...args)=>{
+        const response=await original(...args);
+        if(String(args[0]).includes('/_bml/action')){
+          window.fetch=original;
+          await new Promise(resolve=>window.releaseSelectionTab=resolve);
+        }
+        return response;
+      };
+      ${tabs}.querySelector('[data-tab=Preview]').focus();
+    })()`);
+    await key('ArrowRight');
+    await until(`typeof window.releaseSelectionTab==='function'`);
+    assert.equal(await evaluate(`!${panel}.hidden`),true,'Panel visibility follows local selection before the response');
+    for(const type of ['keyDown','keyUp'])await call('Input.dispatchKeyEvent',{type,key:'Tab',windowsVirtualKeyCode:9});
+    assert.equal(await evaluate(`document.activeElement===${panel}`),true,'Plain panel text is keyboard reachable while the update is pending');
+    await evaluate(`window.selectionPanel=${panel};window.releaseSelectionTab()`);
+    await until(`${tabs}.dataset.selected==='Source'&&${panel}.hasAttribute('aria-labelledby')`);
+    const result=await evaluate(`({focused:document.activeElement===${panel},retained:window.selectionPanel===${panel},visible:!${panel}.hidden})`);
+    pendingFocus.push({width,palette,...result});
+    await writeFile(join(artifacts,`${mode}-selection-pending-focus.json`),JSON.stringify(pendingFocus,null,2));
+    assert.ok(result.focused&&result.retained&&result.visible,JSON.stringify(result));
+    for(const type of ['keyDown','keyUp'])await call('Input.dispatchKeyEvent',{type,key:'Tab',windowsVirtualKeyCode:9,modifiers:8});
+    assert.equal(await evaluate(`document.activeElement===${tabs}.querySelector('[data-tab=Source]')`),true,'Shift+Tab returns to the selected tab after the patch');
+  }
+  } finally {
+    await call('Network.clearBrowserCookies');
+    await call('Network.setCookies',{cookies:originalCookies});
+  }
 }

@@ -49,11 +49,15 @@ export async function checkSearchViews({navigate,evaluate,until:poll,call,artifa
   await action('refresh',`${node('toast')}.matches(':popover-open')`);
   assert.deepEqual(await evaluate(`[${node('query')}===window.viewsQuery,${node('category')}===window.viewsCategory,${node('tabs')}===window.viewsTabs,${node('query')}.value,${node('query')}.selectionStart,${node('query')}.selectionEnd,document.activeElement===window.viewsQuery,${node('category')}.querySelector('input').value,${owner('dark')}.querySelector('details').open]`),[true,true,true,'Draft & <retained>',2,8,true,'control',true]);
   await evaluate(`${node('toast')}.querySelector('[data-bml-ref=dismiss]').click()`);
+  await evaluate(`window.resultsPanel=document.querySelector('[data-views-panel=dark][data-view=Preview]')`);
   await type('Search');await submit();
+  assert.ok(await truth(`window.resultsPanel!==document.querySelector('[data-views-panel=dark][data-view=Preview]')&&!window.resultsPanel.isConnected`),'Accepted results replace their preserved panel content');
   assert.equal(await evaluate(`${node('toast')}.querySelector('[role=status]').textContent`),'Search updated.');
   assert.deepEqual(await evaluate(`[...${owner('dark')}.querySelectorAll('.catalog-result-list a')].map(link=>link.getAttribute('href'))`),['/components/controls#ref-select','/components/controls#ref-search-input']);
   await action('reject',`${node('reject')}.checked`);
+  await evaluate(`window.resultsPanel=document.querySelector('[data-views-panel=dark][data-view=Preview]')`);
   await type('Rejected & exact');await submit();
+  assert.ok(await truth(`window.resultsPanel===document.querySelector('[data-views-panel=dark][data-view=Preview]')`),'Rejected search retains the accepted result panel');
   assert.ok(await truth(`${node('query')}.value==='Rejected & exact'&&${node('toast')}.querySelector('[role=alert]').textContent==='Search rejected. Your draft and previous results were kept.'&&${owner('dark')}.querySelectorAll('.catalog-result-list a').length===2&&${node('toast','light')}.dataset.sequence==='0'`));
   await action('reject',`!${node('reject')}.checked`);
   await type('not-present');

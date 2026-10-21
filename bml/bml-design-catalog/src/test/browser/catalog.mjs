@@ -21,6 +21,7 @@ import { checkCopyOverflow } from './copy-overflow.mjs';
 import { checkControlBorders } from './control-borders.mjs';
 import { checkSurfaces } from './surfaces.mjs';
 import { checkAccessibility } from './accessibility.mjs';
+import { checkTabFocus } from './tab-focus.mjs';
 
 const base = process.argv[2];
 const mode = process.argv[3] ?? 'fixture';
@@ -114,6 +115,8 @@ try {
   const navigate=async path=>{await call('Page.navigate',{url:base+path});await until(`document.readyState==='complete'&&document.querySelector('main')&&location.pathname===${JSON.stringify(path)}`);};
   if(process.argv[4]==='--accessibility') {
     await checkAccessibility({navigate,evaluate,until,call,artifacts,mode});
+  } else if(process.argv[4]==='--tab-focus') {
+    await checkTabFocus({navigate,evaluate,until,call,artifacts,mode});
   } else if(process.argv[4]==='--copy-overflow') {
     await checkCopyOverflow({navigate,evaluate,until,call,artifacts,mode});
   } else if(process.argv[4]==='--control-borders') {

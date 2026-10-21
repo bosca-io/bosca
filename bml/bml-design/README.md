@@ -235,6 +235,12 @@ The `/selection` consumer uses declarative form and segment actions, a scoped ca
 `viewchange`, and caller-owned labelled panels with unique `aria-controls`/`aria-labelledby` links.
 It demonstrates rejected search drafts, controlled changes, independent instances and consumer CSS.
 
+Give plain-text panels `tabindex="0"` so Tab can enter their content. Update panel visibility in the
+`viewchange` handler before waiting for a server response. Preserve unchanged panels with their own
+`data-bml-preserve` keys so a response keeps focus on the panel or a link inside it. Change the panel's
+key when its server-rendered content changes, such as accepted search results. Preserving the tablist
+alone does not retain its sibling panels.
+
 Route tabs use the same `NavigationItem` model as breadcrumbs. Applications supply every label,
 destination and current-page flag; the library does not intercept link navigation or own URL state.
 `header` retains the full-width page-heading spacing (22px gutters, 16px below 600px).

@@ -30,7 +30,8 @@
           <view-tabs label="Document view" :tabs='listOf("Preview", "Source", "Details")' :selected="selection.selected"
                      :data-bml-preserve='"views-" + selection.id' :data-views="selection.id" class="fixture-views" />
           <for view in listOf("Preview", "Source", "Details")>
-            <div role="tabpanel" :aria-label="view" :hidden="selection.selected != view" :data-view-panel="selection.id" :data-view="view">
+            <div role="tabpanel" tabindex="0" :aria-label="view" :hidden="selection.selected != view" :data-view-panel="selection.id" :data-view="view"
+                 :data-bml-preserve='"view-panel-" + selection.id + "-" + view'>
               { view } content for { selection.id }
             </div>
           </for>
@@ -54,6 +55,7 @@
       }
     };
     ctx.on<CustomEvent<string>>(ctx.root, "viewchange", event => {
+      for (const panel of ctx.root.querySelectorAll<HTMLElement>("[role=tabpanel]")) panel.hidden = panel.dataset.view !== event.detail;
       ctx.dispatch(selection.chooseView(event.detail));
     });
     ctx.onUpdate(connectPanels);

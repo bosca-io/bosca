@@ -124,6 +124,13 @@ class CatalogApplicationTest {
     }
 
     @Test
+    fun `local view focus survives delayed action completion`() {
+        for (development in listOf(false, true)) withServer(development) { base, _ ->
+            runBrowser(base, development, "--tab-focus", 60)
+        }
+    }
+
+    @Test
     fun `packaged catalog passes accessibility checks`() {
         for (development in listOf(false, true)) withServer(development) { base, _ ->
             runBrowser(base, development, "--accessibility", 120)

@@ -19,7 +19,8 @@
           <view-tabs label="Search example view" :tabs="views.tabs()" :selected="views.selected"
                      :data-bml-preserve='"views-tabs-" + views.id + "-" + views.revision' :data-views-tabs="views.id" />
           <for view in views.tabs()>
-            <div role="tabpanel" tabindex="0" class="catalog-view-panel" :data-views-panel="views.id" :data-view="view" :hidden="views.selected != view">
+            <div role="tabpanel" tabindex="0" class="catalog-view-panel" :data-views-panel="views.id" :data-view="view" :hidden="views.selected != view"
+                 :data-bml-preserve='"views-panel-" + views.id + "-" + view + if (view == "Preview") "-" + views.resultQuery + "-" + views.resultMode else ""'>
               <if view == "Preview">
                 <if views.results().isEmpty()><empty-state icon="search" title="No matching examples" message="Try another query or choose All categories." />
                 <else><ul class="catalog-result-list"><for choice in views.results()>
