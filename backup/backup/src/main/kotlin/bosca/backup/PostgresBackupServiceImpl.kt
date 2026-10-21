@@ -95,6 +95,29 @@ class PostgresBackupServiceImpl(
         PostgresBackupContentReportFile(application.json).read(file)
     }
 
+    override suspend fun uploadContentReport(
+        file: Path,
+        backup: ObjectStorageService,
+        prefix: String,
+    ): PostgresBackupContentReport = withContext(StorageDispatcher) {
+        check(connectionOrNull()?.inTransaction != true) { "Content report upload must run outside an active caller transaction" }
+        val retained = PostgresBackupContentReportStore(backup, application.json, prefix)
+        retained.upload(PostgresBackupContentReportFile(application.json).read(file))
+    }
+
+    override suspend fun downloadContentReport(
+        backup: ObjectStorageService,
+        prefix: String,
+        file: Path,
+    ): PostgresBackupContentReport = withContext(StorageDispatcher) {
+        check(connectionOrNull()?.inTransaction != true) { "Content report download must run outside an active caller transaction" }
+        val local = PostgresBackupContentReportFile(application.json)
+        val destination = local.destination(file)
+        val report = PostgresBackupContentReportStore(backup, application.json, prefix).load()
+        local.write(destination, report)
+        report
+    }
+
     override suspend fun restore(directory: Path): PostgresBackupManifest = withContext(StorageDispatcher) {
         check(connectionOrNull()?.inTransaction != true) { "PostgreSQL restore must run outside an active caller transaction" }
         PostgresBackupRestore(application).restore(directory, verify(directory))

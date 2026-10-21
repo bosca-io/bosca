@@ -66,6 +66,7 @@ class PostgresBackupTransferTest {
     private val payload get() = retained.resolve("$prefix/database.dump")
     private val intent get() = retained.resolve("$prefix/intent.json")
     private val completed get() = retained.resolve("$prefix/manifest.json")
+    private val prettyJson = Json { prettyPrint = true }
 
     @BeforeTest
     fun setUp() {
@@ -162,6 +163,220 @@ class PostgresBackupTransferTest {
                 else -> 0L
             }
         }
+
+    private fun reportEvidence(): PostgresBackupContentReport {
+        val database = withReferences(reference())
+        return PostgresBackupContentReport(prefix, database, objectManifest().copy(id = database.id),
+            selectionCounts(0, 1), PostgresBackupContentInspectionSummary(database.id, database.id, "content",
+                PostgresBackupContentStatus.entries.associateWith {
+                    if (it == PostgresBackupContentStatus.NOT_RETAINED) 1L else 0L
+                }))
+    }
+
+    private fun saveReport(report: PostgresBackupContentReport): Path = root.resolve("source-report.json").also {
+        it.writeText(application.json.encodeToString(PostgresBackupContentReport.serializer(), report))
+    }
+
+    @Test
+    fun `report transfer retains evidence then retrieves without local source or asset reads`(): Unit = runBlocking {
+        val report = reportEvidence()
+        val file = saveReport(report)
+        val reportPrefix = "reports/capture"
+        assertEquals(report, service.uploadContentReport(file, backup, reportPrefix))
+        assertEquals(listOf("$reportPrefix/intent.json", "$reportPrefix/report.json"), writes)
+        assertEquals(report, application.json.decodeFromString(PostgresBackupContentReport.serializer(),
+            retained.resolve("$reportPrefix/report.json").readText()))
+        Files.delete(file)
+        assertTrue(local.toFile().deleteRecursively())
+        writes.clear()
+        reads.clear()
+        val output = root.resolve("restored-report.json")
+        assertEquals(report, service.downloadContentReport(backup, reportPrefix, output))
+        assertEquals(report, service.readContentReport(output))
+        assertEquals(listOf("$reportPrefix/report.json"), reads)
+        assertTrue(writes.isEmpty())
+        assertEquals(opened, closed)
+        assertFalse(storageClosed)
+    }
+
+    @Test
+    fun `report transfer matching replay is independent of formatting and never replaces different evidence`(): Unit = runBlocking {
+        val report = reportEvidence()
+        val file = saveReport(report)
+        val reportPrefix = "reports/capture"
+        service.uploadContentReport(file, backup, reportPrefix)
+        val before = retained.resolve("$reportPrefix/report.json").readText()
+        writes.clear()
+        file.writeText(prettyJson.encodeToString(PostgresBackupContentReport.serializer(), report))
+        assertEquals(report, service.uploadContentReport(file, backup, reportPrefix))
+        assertTrue(writes.isEmpty())
+        file.writeText(application.json.encodeToString(PostgresBackupContentReport.serializer(), report.copy(
+            selectionCounts = selectionCounts())))
+        assertFailsWith<IllegalArgumentException> { service.uploadContentReport(file, backup, reportPrefix) }
+        assertEquals(before, retained.resolve("$reportPrefix/report.json").readText())
+        assertTrue(writes.isEmpty())
+    }
+
+    @Test
+    fun `report transfer repairs interrupted publication only with matching intent`(): Unit = runBlocking {
+        val report = reportEvidence()
+        val file = saveReport(report)
+        val reportPrefix = "reports/capture"
+        write = { path, input, length ->
+            if (path.toString() == "$reportPrefix/report.json") {
+                storage.setInputStream(path, "{partial".byteInputStream(), 8)
+                throw IOException("interrupted report write")
+            }
+            storage.setInputStream(path, input, length)
+        }
+        assertFailsWith<IOException> { service.uploadContentReport(file, backup, reportPrefix) }
+        assertTrue(Files.exists(retained.resolve("$reportPrefix/intent.json")))
+        assertFailsWith<SerializationException> {
+            service.downloadContentReport(backup, reportPrefix, root.resolve("partial.json"))
+        }
+        val changed = report.copy(selectionCounts = selectionCounts())
+        file.writeText(application.json.encodeToString(PostgresBackupContentReport.serializer(), changed))
+        assertFailsWith<IllegalArgumentException> { service.uploadContentReport(file, backup, reportPrefix) }
+        file.writeText(application.json.encodeToString(PostgresBackupContentReport.serializer(), report))
+        write = null
+        writes.clear()
+        assertEquals(report, service.uploadContentReport(file, backup, reportPrefix))
+        assertEquals(listOf("$reportPrefix/report.json"), writes)
+        assertFalse(Files.exists(root.resolve("partial.json")))
+        assertEquals(opened, closed)
+    }
+
+    @Test
+    fun `report transfer requires published output and refuses unowned malformed or unsupported metadata`(): Unit = runBlocking {
+        val report = reportEvidence()
+        val file = saveReport(report)
+        val reportPrefix = "reports/capture"
+        val directory = Files.createDirectories(retained.resolve(reportPrefix))
+        val output = root.resolve("report.json")
+        directory.resolve("intent.json").writeText(file.readText())
+        assertFailsWith<bosca.storage.service.ObjectNotFoundException> {
+            service.downloadContentReport(backup, reportPrefix, output)
+        }
+        Files.delete(directory.resolve("intent.json"))
+        for (text in listOf("{partial", application.json.encodeToString(PostgresBackupContentReport.serializer(), report.copy(version = 2)))) {
+            directory.resolve("report.json").writeText(text)
+            if (text == "{partial") {
+                assertFailsWith<SerializationException> { service.uploadContentReport(file, backup, reportPrefix) }
+            } else {
+                directory.resolve("intent.json").writeText(file.readText())
+                assertFailsWith<IllegalArgumentException> { service.uploadContentReport(file, backup, reportPrefix) }
+            }
+            assertFalse(Files.exists(output))
+            assertTrue(writes.isEmpty())
+            assertEquals(text, directory.resolve("report.json").readText())
+        }
+    }
+
+    @Test
+    fun `report transfer rejects invalid prefixes and database or asset collisions before writes`(): Unit = runBlocking {
+        val report = reportEvidence()
+        val file = saveReport(report)
+        for (invalid in listOf("", "/absolute", "../outside", "reports//capture", prefix)) {
+            assertFailsWith<IllegalArgumentException> { service.uploadContentReport(file, backup, invalid) }
+        }
+        val reportPrefix = "reports/capture"
+        for (name in listOf("intent.json", "report.json")) {
+            val collision = report.copy(objects = report.objects.copy(objects = listOf(retainedEntry("image", "$reportPrefix/$name"))))
+            saveReport(collision)
+            assertFailsWith<IllegalArgumentException> { service.uploadContentReport(file, backup, reportPrefix) }
+        }
+        assertTrue(reads.isEmpty())
+        assertTrue(writes.isEmpty())
+    }
+
+    @Test
+    fun `report transfer never repairs malformed conflicting or unsupported intent and validates local input first`(): Unit = runBlocking {
+        val report = reportEvidence()
+        val file = saveReport(report)
+        val reportPrefix = "reports/capture"
+        val intent = Files.createDirectories(retained.resolve(reportPrefix)).resolve("intent.json")
+        val invalidIntents = listOf("{partial",
+            application.json.encodeToString(PostgresBackupContentReport.serializer(), report.copy(selectionCounts = selectionCounts())),
+            application.json.encodeToString(PostgresBackupContentReport.serializer(), report.copy(version = 2)))
+        for ((index, text) in invalidIntents.withIndex()) {
+            intent.writeText(text)
+            if (index == 0) {
+                assertFailsWith<SerializationException> { service.uploadContentReport(file, backup, reportPrefix) }
+            } else {
+                assertFailsWith<IllegalArgumentException> { service.uploadContentReport(file, backup, reportPrefix) }
+            }
+            assertEquals(text, intent.readText())
+            assertTrue(writes.isEmpty())
+        }
+        reads.clear()
+        file.writeText("{partial")
+        assertFailsWith<SerializationException> { service.uploadContentReport(file, backup, reportPrefix) }
+        saveReport(report.copy(selectionCounts = selectionCounts(-1, 2)))
+        assertFailsWith<IllegalArgumentException> { service.uploadContentReport(file, backup, reportPrefix) }
+        assertTrue(reads.isEmpty())
+        assertTrue(writes.isEmpty())
+    }
+
+    @Test
+    fun `report transfer verifies acknowledged writes and repairs with exact retained intent`(): Unit = runBlocking {
+        val report = reportEvidence()
+        val file = saveReport(report)
+        val reportPrefix = "reports/capture"
+        for (short in listOf(true, false)) {
+            write = { path, input, length ->
+                if (path.toString() == "$reportPrefix/report.json") {
+                    if (short) {
+                        storage.setInputStream(path, "{partial".byteInputStream(), 8)
+                        8L
+                    } else {
+                        val other = application.json.encodeToString(PostgresBackupContentReport.serializer(),
+                            report.copy(selectionCounts = selectionCounts()))
+                        storage.setInputStream(path, other.byteInputStream(), other.toByteArray().size.toLong())
+                        requireNotNull(length)
+                    }
+                } else storage.setInputStream(path, input, length)
+            }
+            assertFailsWith<IllegalStateException> { service.uploadContentReport(file, backup, reportPrefix) }
+            Files.deleteIfExists(retained.resolve("$reportPrefix/report.json"))
+        }
+        write = null
+        assertEquals(report, service.uploadContentReport(file, backup, reportPrefix))
+        assertEquals(opened, closed)
+    }
+
+    @Test
+    fun `report transfer preserves local output and propagates backend failures and cancellation`(): Unit = runBlocking {
+        val report = reportEvidence()
+        val file = saveReport(report)
+        val reportPrefix = "reports/capture"
+        service.uploadContentReport(file, backup, reportPrefix)
+        val output = root.resolve("report.json")
+        output.writeText("keep")
+        reads.clear()
+        assertFailsWith<IllegalArgumentException> { service.downloadContentReport(backup, reportPrefix, output) }
+        assertEquals("keep", output.readText())
+        assertTrue(reads.isEmpty())
+        Files.delete(output)
+        assertFailsWith<IllegalArgumentException> {
+            service.downloadContentReport(backup, reportPrefix, root.resolve("absent/report.json"))
+        }
+        assertTrue(reads.isEmpty())
+        read = { throw IOException("report backend failed") }
+        assertEquals("report backend failed", assertFailsWith<IOException> {
+            service.downloadContentReport(backup, reportPrefix, output)
+        }.message)
+        read = { throw CancellationException("report download cancelled") }
+        assertFailsWith<CancellationException> { service.downloadContentReport(backup, reportPrefix, output) }
+        read = null
+        Files.delete(retained.resolve("$reportPrefix/report.json"))
+        write = { _, _, _ -> throw CancellationException("report upload cancelled") }
+        assertFailsWith<CancellationException> { service.uploadContentReport(file, backup, reportPrefix) }
+        assertFalse(Files.exists(output))
+        assertFalse(root.toFile().list().orEmpty().any { it.endsWith(".tmp") })
+        assertTrue(Files.exists(retained.resolve("$reportPrefix/intent.json")))
+        assertEquals(opened, closed)
+        assertFalse(storageClosed)
+    }
 
     @Test
     fun `content report embeds retained artifacts and fresh inspection without source services or storage writes`(): Unit = runBlocking {

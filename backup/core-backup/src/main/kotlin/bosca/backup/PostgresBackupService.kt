@@ -129,6 +129,31 @@ interface PostgresBackupService : Service {
     suspend fun readContentReport(file: Path): PostgresBackupContentReport
 
     /**
+     * Retains a validated local evidence report as [prefix]/report.json in [backup]. The caller
+     * owns immutable input, independent storage and exclusive writer access to this new relative
+     * prefix, coordinating with other backup writers. Saves exact report intent before publication;
+     * matching replay reuses existing output and can repair a partial report only with matching
+     * intent. Conflicting reports, unsupported formats and unowned malformed output fail.
+     * Report files cannot occupy declared database or asset component paths. Acknowledged writes
+     * are read back and compared. Failure/cancellation leaves retained intent for retry, without
+     * deleting backup data. Requires no active caller transaction; storage remains caller-owned.
+     * This transfers recorded evidence, including gaps. It does not recheck referenced payloads,
+     * refresh inspection counts, protect retention or publish a complete recovery point.
+     */
+    suspend fun uploadContentReport(file: Path, backup: ObjectStorageService, prefix: String): PostgresBackupContentReport
+
+    /**
+     * Retrieves a published retained report into a new local [file] with an existing parent.
+     * Retained intent alone is insufficient. Needs no source, native tools or database access,
+     * rejects active caller transactions and never replaces existing local output. Validates
+     * report structure without fetching referenced database/asset bytes or refreshing counts.
+     * Failure/cancellation before local publication removes owned temporary output; retained
+     * storage is untouched and remains open. The caller owns immutable retained metadata and
+     * exclusive access to the local destination. Successful retrieval is not recovery verification.
+     */
+    suspend fun downloadContentReport(backup: ObjectStorageService, prefix: String, file: Path): PostgresBackupContentReport
+
+    /**
      * Verifies [directory] and restores its native dump into the separately configured
      * backup.postgres.restore libpq service. Requires an explicit expected database name,
      * a fresh empty destination and exclusive offline access throughout preflight and restore.

@@ -684,6 +684,12 @@ class PostgresBackupIntegrationTest {
                     emptyMap(), "content", backup, root.resolve("report.json"))
             } }
         }
+        assertFailsWith<IllegalStateException> {
+            withConnectionManager { transaction { service.uploadContentReport(root.resolve("report.json"), backup, "reports/capture") } }
+        }
+        assertFailsWith<IllegalStateException> {
+            withConnectionManager { transaction { service.downloadContentReport(backup, "reports/capture", root.resolve("report.json")) } }
+        }
         assertFalse(Files.exists(root.resolve("download")))
         assertFalse(Files.exists(root.resolve("report.json")))
         assertEquals(0, pool.activeConnections)
@@ -1222,13 +1228,16 @@ class PostgresBackupIntegrationTest {
                     val reportPath = root.resolve("content-report.json")
                     val exported = service.writeContentReport(output, "database", objects,
                         assertNotNull(plan.contentSelectionCounts), "content", backup, reportPath)
-                    val report = service.readContentReport(reportPath)
+                    assertEquals(exported, service.uploadContentReport(reportPath, backup, "reports/capture"))
+                    Files.delete(reportPath)
+                    assertTrue(output.toFile().deleteRecursively())
+                    val report = service.downloadContentReport(backup, "reports/capture", reportPath)
+                    assertEquals(report, service.readContentReport(reportPath))
                     assertEquals(exported, report)
                     assertEquals(plan.contentSelectionCounts, report.selectionCounts)
                     assertEquals(manifest, report.database)
                     assertEquals(1L, report.inspection.counts.getValue(PostgresBackupContentStatus.VERIFIED))
                     assertTrue(report.inspection.counts.filterKeys { it != PostgresBackupContentStatus.VERIFIED }.values.all { it == 0L })
-                    assertTrue(output.toFile().deleteRecursively())
                     assertEquals(manifest, service.download(backup, report.databasePath, output))
                     factory.withStorage(targetConfiguration) { target ->
                         assertEquals(objects, provide<ObjectBackupRestoreService>().restore(report.objects, backup, mapOf("content" to target), "recovered-assets"))

@@ -332,6 +332,16 @@ prefix can be passed to `download`, and its embedded object manifest to the obje
 service. Reading the report does not recheck retained bytes. This is a portable diagnostic
 record, not complete recovery-set publication or proof of database/object snapshot consistency.
 
+`uploadContentReport(file, backup, prefix)` retains that evidence under a separate relative
+prefix as `intent.json` and `report.json`. It reads back acknowledged writes and preserves
+the exact report across retries. Matching intent permits repair of partial report output;
+conflicting or unowned malformed metadata fails. Report files cannot replace declared native
+or asset components. The caller coordinates exclusive access to the retained prefix.
+`downloadContentReport(backup, prefix, file)` retrieves a published report into a new local
+file without source access. Intent alone cannot be downloaded as a report. These operations
+transfer recorded evidence without fetching database/asset payloads or refreshing inspection
+counts. They neither publish a completed recovery point nor establish protected retention.
+
 The manifest records the source identity, database, exported/logical snapshot, source-clock
 boundary observation and dump completion, PostgreSQL version/encoding, extension versions,
 and the dump's byte length and SHA-256. The exported snapshot identifier cannot be reused
