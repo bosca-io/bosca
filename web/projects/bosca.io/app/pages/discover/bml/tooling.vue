@@ -78,7 +78,7 @@ useDiscoverSeo([
           </p>
           <h2>Save the file. <em>The browser follows.</em></h2>
           <p class="section-sub">
-            <code>bosca bml dev</code> watches application sources, rebuilds the
+            <code>bosca bml dev</code> watches application and editable BML library sources, rebuilds the
             affected output, and swaps the new application generation into the
             running server. The process, port, and active sessions stay put,
             while the server pushes a live-reload event so the browser follows
@@ -86,9 +86,15 @@ useDiscoverSeo([
           </p>
           <p class="section-sub">
             If a build fails, the last good generation keeps serving while the
-            diagnostics point back to the source. Framework or dependency
-            changes still ask for a deliberate restart; ordinary application
-            work stays in the fast loop.
+            diagnostics point back to the source. Compiled BML libraries reload
+            with the application, including transitive libraries. Changes to
+            the framework or ordinary JVM dependencies require a restart.
+          </p>
+          <p class="section-sub">
+            The <NuxtLink to="/bml-reference/libraries">library reference</NuxtLink>
+            covers project-wide imports and source navigation. The
+            <NuxtLink to="/bml-reference/design-library">Design Library</NuxtLink>
+            supplies shared components styled through application CSS.
           </p>
           <p class="section-sub">
             The GraphQL endpoint is configuration, so local development can

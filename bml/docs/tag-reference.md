@@ -32,6 +32,7 @@ Bosca owns the entire tag vocabulary. Full grammar: [grammar.md](grammar.md).
 | `<slot [name]>` | component children; named slots currently use the default children and emit a warning |
 | `<component tag="…" [scope="page\|site"]>` | declare a custom tag or override a built-in; live state has page lifetime by default or site lifetime explicitly |
 | `<prop name type [required] [default\|:default]>` | a typed component input |
+| `<import library="group:artifact" [as="alias"]/>` | select exports from a resolved binary library, globally in `imports.bml` or at file scope |
 | `<for item in expr>` / `<for (i, item) in expr>` | iteration |
 | `<if expr> … <else-if expr> … <else> … </if>` | Kotlin conditionals (one `</if>`; bare separators) |
 | `<if flag="key" [variation="name" \| :when="expr"]>` | feature-flag boolean, variation, or full-evaluation condition |
@@ -142,7 +143,9 @@ Declarative action markers continue to follow the component root.
 
 ## Resolution order
 
-`<name>` resolves: special tag → registered custom/override → built-in HTML → error.
+`<name>` resolves: protected syntax → local component/override → unprefixed library export → native HTML/SVG → error.
+Aliased imports use `<alias:name>`. Two different unaliased libraries exporting the same name produce
+a diagnostic; alias one to disambiguate.
 The `html:` namespace always resolves to the native HTML handler, bypassing overrides.
 
 ## Scoped styles

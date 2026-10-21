@@ -2,6 +2,13 @@
 import anchorExample from '~/data/bml-reference/examples/anchor.bml?raw'
 import cardExample from '~/data/bml-reference/examples/card.bml?raw'
 import gettingStarted from '~/data/bml-reference/getting-started.md?raw'
+import libraries from '~/data/bml-reference/libraries.md?raw'
+import libraryProviders from '~/data/bml-reference/library-providers.md?raw'
+import libraryLocalization from '~/data/bml-reference/library-localization.md?raw'
+import libraryClientTypes from '~/data/bml-reference/library-client-types.md?raw'
+import designLibrary from '~/data/bml-reference/design-library.md?raw'
+import designTokens from '~/data/bml-reference/design-tokens.md?raw'
+import designMigration from '~/data/bml-reference/design-migration.md?raw'
 import grammar from '~/data/bml-reference/grammar.md?raw'
 import examplesOverview from '~/data/bml-reference/examples.md?raw'
 import islands from '~/data/bml-reference/islands.md?raw'
@@ -17,7 +24,9 @@ import welcomeEmailExample from '~/data/bml-reference/examples/welcome-email.bml
 definePageMeta({
   layout: 'bml-reference',
   validate: route => typeof route.params.slug === 'string'
-    && ['getting-started', 'grammar', 'tag-reference', 'islands', 'examples'].includes(route.params.slug)
+    && ['getting-started', 'grammar', 'tag-reference', 'islands', 'examples', 'libraries',
+      'library-providers', 'library-localization', 'library-client-types', 'design-library',
+      'design-tokens', 'design-migration'].includes(route.params.slug)
 })
 
 interface BmlDoc {
@@ -72,6 +81,41 @@ const docs = {
     title: 'BML Examples',
     description: 'Representative BML pages, components, islands, contracts, ViewModels, and message markup.',
     source: examples
+  },
+  'libraries': {
+    title: 'Compiled BML Libraries',
+    description: 'Build and consume compiled component libraries with project-wide imports, original-source navigation, and development reload.',
+    source: libraries
+  },
+  'library-providers': {
+    title: 'BML Library Providers',
+    description: 'Compose compiled library providers with application-owned services and host bindings.',
+    source: libraryProviders
+  },
+  'library-localization': {
+    title: 'BML Library Localization',
+    description: 'Include library messages in the consuming application’s localization catalog.',
+    source: libraryLocalization
+  },
+  'library-client-types': {
+    title: 'BML Library Client Types',
+    description: 'Publish TypeScript event declarations with compiled components and use them in application adapters.',
+    source: libraryClientTypes
+  },
+  'design-library': {
+    title: 'Bosca Design Library',
+    description: 'Use the 41 shared BML components with short tags, native semantics, application state, and consumer CSS.',
+    source: designLibrary
+  },
+  'design-tokens': {
+    title: 'Design Library CSS Variables',
+    description: 'Set component colors, fonts, spacing, focus, surfaces, and editor styles in consuming application CSS.',
+    source: designTokens
+  },
+  'design-migration': {
+    title: 'Migrating Git UI Components',
+    description: 'Map the original Git UI components to shared exports and retain application-owned state, styles, and actions.',
+    source: designMigration
   }
 } satisfies Record<string, BmlDoc>
 
@@ -141,6 +185,10 @@ useSeoMeta({
   font-size: 13px;
   overflow-wrap: normal;
   white-space: pre;
+}
+
+[data-theme="light"] .bml-reference :deep(:not(pre) > code) {
+  color: var(--fg-1);
 }
 
 .bml-reference :deep(blockquote) {

@@ -14,6 +14,23 @@ const groups = [
     ]
   },
   {
+    title: 'Compiled Libraries',
+    links: [
+      { label: 'Setup & Imports', to: '/bml-reference/libraries' },
+      { label: 'Providers', to: '/bml-reference/library-providers' },
+      { label: 'Localization', to: '/bml-reference/library-localization' },
+      { label: 'Client Event Types', to: '/bml-reference/library-client-types' }
+    ]
+  },
+  {
+    title: 'Design Library',
+    links: [
+      { label: 'Components', to: '/bml-reference/design-library' },
+      { label: 'CSS Variables', to: '/bml-reference/design-tokens' },
+      { label: 'Git UI Migration', to: '/bml-reference/design-migration' }
+    ]
+  },
+  {
     title: 'Runtime',
     links: [
       { label: 'Islands', to: '/bml-reference/islands' },
