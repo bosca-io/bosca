@@ -1223,6 +1223,18 @@ class MetadataMutationController(
     }
 
     @Field
+    suspend fun setLabels(
+        authentication: AuthenticationContext,
+        labels: List<String>,
+        metadataId: UUID
+    ): Boolean {
+        val metadata = service.getById(metadataId) ?: throw NoSuchElementException("Metadata not found: $metadataId")
+        permissionEvaluator.verifyAllowed(authentication, metadata, PermissionAction.EDIT)
+        service.setLabels(metadataId, labels)
+        return true
+    }
+
+    @Field
     suspend fun addTrait(
         authentication: AuthenticationContext,
         metadataId: UUID,

@@ -875,6 +875,32 @@ class MetadataServiceImplCoverageTest {
         // No exception implies FK-valid category inserts succeeded.
     }
 
+    @Test
+    fun `setLabels persists replacements and clears cached labels without changing other fields`() = runTest(timeout = kotlin.time.Duration.parse("60s")) {
+        val metadata = insertMetadata(name = "Labeled metadata")
+        val replacements = listOf(listOf("featured", "Summer reading", "été"), listOf("archived"), emptyList())
+
+        for (labels in replacements) {
+            withRequest {
+                val before = assertNotNull(service.getById(metadata.id))
+                assertNotNull(service.getById(metadata.id, metadata.version))
+                service.setLabels(metadata.id, labels)
+                val updated = assertNotNull(service.getById(metadata.id))
+                assertEquals(before.copy(labels = labels, modified = updated.modified), updated)
+                assertEquals(labels, service.getById(metadata.id, metadata.version)?.labels)
+            }
+            assertEquals(labels, withRequest { service.getById(metadata.id)?.labels })
+            assertEquals(labels, withRequest { repository.getById(metadata.id)?.labels })
+        }
+    }
+
+    @Test
+    fun `setLabels fails for missing metadata`() = runTest(timeout = kotlin.time.Duration.parse("60s")) {
+        assertFailsWith<IllegalStateException> {
+            withRequest { service.setLabels(UUID.random(), listOf("featured")) }
+        }
+    }
+
     // ── Traits ───────────────────────────────────────────────────────────────
 
     @Test
