@@ -24,6 +24,9 @@ export async function checkTrees({navigate,evaluate,until:poll,call,artifacts,mo
   const fallback=await evaluate(`({links:[...document.querySelectorAll('[data-tree-local=light] a')].length,keyboard:[...document.querySelectorAll('[data-tree-local=light] a')].every(link=>link.tabIndex===0),visible:[...document.querySelectorAll('[data-tree-local=light] a')].every(link=>link.checkVisibility())})`);
   await call('Emulation.setScriptExecutionDisabled',{value:false});await navigate('/trees');
   await until(`${node('refresh')}?.dataset.bmlActionBound==='true'&&${row('docs/guide.md')}.hidden`);
+  assert.ok(await truth(`document.querySelector('[data-tree-empty]').parentElement.querySelector('.empty-state p')?.checkVisibility()`), 'Empty tree guidance is visible');
+  assert.ok((await call('Accessibility.getFullAXTree')).nodes.some(node => node.role?.value === 'StaticText'
+    && node.name?.value === 'The application supplies empty-state content beside the tree.'), 'Empty tree guidance reaches the accessibility tree');
   const disabled=await evaluate(`(()=>{const root=document.querySelector('[data-tree-disabled]');return {disabled:root.querySelector('[data-path=locked] button').disabled,entry:root.querySelector('[tabindex="0"]')?.closest('[role=treeitem]').dataset.path};})()`);
   assert.deepEqual({fallback,disabled},{fallback:{links:11,keyboard:true,visible:true},disabled:{disabled:true,entry:'ready'}});
   const baseline=await listeners('document');

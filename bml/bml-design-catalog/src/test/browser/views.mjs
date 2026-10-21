@@ -62,6 +62,9 @@ export async function checkSearchViews({navigate,evaluate,until:poll,call,artifa
   assert.ok(await truth(`(()=>{const button=${node('submit')},box=button.getBoundingClientRect();return box.height===window.viewsButtonSize.height&&box.width===window.viewsButtonSize.width&&getComputedStyle(button.querySelector('.button-progress')).display==='flex';})()`));
   await evaluate('window.releaseViewsSearch()');
   await until(`${owner('dark')}.querySelector('.empty-state')&&!${node('form')}.hasAttribute('data-bml-action-pending')`);
+  assert.ok(await truth(`${owner('dark')}.querySelector('.empty-state p')?.checkVisibility()`), 'Empty search guidance is visible');
+  assert.ok((await call('Accessibility.getFullAXTree')).nodes.some(node => node.role?.value === 'StaticText'
+    && node.name?.value === 'Try another query or choose All categories.'), 'Empty search guidance reaches the accessibility tree');
   await selectView('Source');
   await evaluate(`${node('tabs')}.querySelector('[aria-selected=true]').focus()`);
   for(const [keyName,value] of [['ArrowRight','Preview'],['End','Source'],['Home','Preview'],['ArrowLeft','Source']]) {

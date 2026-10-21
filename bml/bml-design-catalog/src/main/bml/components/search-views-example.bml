@@ -21,7 +21,7 @@
           <for view in views.tabs()>
             <div role="tabpanel" tabindex="0" class="catalog-view-panel" :data-views-panel="views.id" :data-view="view" :hidden="views.selected != view">
               <if view == "Preview">
-                <if views.results().isEmpty()><empty-state icon="search" title="No matching examples" description="Try another query or choose All categories." />
+                <if views.results().isEmpty()><empty-state icon="search" title="No matching examples" message="Try another query or choose All categories." />
                 <else><ul class="catalog-result-list"><for choice in views.results()>
                   <li><a class="catalog-link" :href='"/components/" + (if (choice.label.endsWith("· layout")) "layout" else if (choice.label.endsWith("· overlay")) "overlays" else "controls") + "#ref-" + choice.value'>{ choice.label }</a></li>
                 </for></ul></if>

@@ -6,7 +6,7 @@
       <div class="catalog-palette-light" data-tree-palette="light"><card title="Light palette"><tree-example id="light" /></card></div>
     </div>
     <div class="catalog-grid" data-tree-cases>
-      <card title="Empty files"><div class="catalog-stack"><tree label="Empty files" embedded data-tree-empty /><empty-state icon="folder" title="No files" description="The application supplies empty-state content beside the tree." /></div></card>
+      <card title="Empty files"><div class="catalog-stack"><tree label="Empty files" embedded data-tree-empty /><empty-state icon="folder" title="No files" message="The application supplies empty-state content beside the tree." /></div></card>
       <card title="Unavailable directory"><div class="catalog-stack">
         <tree label="Available and unavailable files" local embedded data-tree-disabled>
           <tree-item path="locked" label="Unavailable directory" directory disabled />
