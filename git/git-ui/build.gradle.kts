@@ -23,6 +23,7 @@ dependencies {
     implementation(libs.commonmark.ext.gfm.strikethrough)
     testImplementation(libs.kotlin.test.junit)
     testImplementation(libs.kotlinx.coroutines.test)
+    testRuntimeOnly(libs.logback.classic)
 }
 
 bml {

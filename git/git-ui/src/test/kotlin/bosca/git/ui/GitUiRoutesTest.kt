@@ -307,6 +307,11 @@ class GitUiRoutesTest {
     }
 
     @Test
+    fun `production design assets stay isolated to their consuming pages`() {
+        GitUiAssetAudit(client, URI("http://localhost:$port")).verify()
+    }
+
+    @Test
     fun `design fonts are packaged and publicly served with their binary content type`() {
         val html = get("/login", authenticated = false).body()
         val styles = Regex("<link[^>]+href=\"([^\"]+)\"").findAll(html)
