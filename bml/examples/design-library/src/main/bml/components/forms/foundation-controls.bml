@@ -20,16 +20,16 @@
         <badge tone="success" :data-badge="controls.id">Enabled</badge>
         <badge tone="purple" :data-purple-badge="controls.id">Preview</badge>
       </div>
+      <loading-state label="Loading records" compact :data-status="controls.id" class="fixture-status" />
+      <empty-state title="No records" message="Create a record to get started">
+        <button size="sm">Create record</button>
+      </empty-state>
+      <table-scroll label="Records" :data-table="controls.id" class="fixture-table" :data-bml-preserve='"foundation-table-" + controls.id'>
+        <table>
+          <thead><tr><th>Name</th><th>Path</th><th>Status</th></tr></thead>
+          <tbody><for index in 1..12><tr><td>Example { index }</td><td><code>content/examples/a-long-record-name-for-horizontal-scrolling.bml</code></td><td>Ready</td></tr></for></tbody>
+        </table>
+      </table-scroll>
     </island>
-    <loading-state label="Loading records" compact :data-status="id" class="fixture-status" />
-    <empty-state title="No records" message="Create a record to get started">
-      <button size="sm">Create record</button>
-    </empty-state>
-    <table-scroll label="Records" :data-table="id" class="fixture-table">
-      <table>
-        <thead><tr><th>Name</th><th>Path</th><th>Status</th></tr></thead>
-        <tbody><tr><td>Example</td><td><code>content/examples/a-long-record-name-for-horizontal-scrolling.bml</code></td><td>Ready</td></tr></tbody>
-      </table>
-    </table-scroll>
   </card>
 </component>

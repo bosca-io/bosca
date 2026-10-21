@@ -22,6 +22,7 @@ Open `http://localhost:9093/`. Pass another port with `--args=9094` if needed.
 | `/overlays` | Independent modal forms, retained drafts, rejected confirmations, popover forms and menus, sizes and trigger variants |
 | `/json` | Independent dark/light JSON drafts, retained engine state, pending/rejected saves, native reset, controlled options and tree/text/table/empty/invalid/readonly/disabled variants |
 | `/source` | Independent dark/light source viewers, requested lines, language/wrap changes, preserved state, content replacement and compact/bare/empty layouts |
+| `/surfaces` | Panels, padded/unpadded/untitled cards, retained native disclosures, empty/loading/table views and long labels in two palettes |
 | `/feedback` | Independent copy outcomes, tooltip placements, repeated toast tones, long notifications and native selectable values |
 | `/navigation` | Native route destinations, retained overflow menus, projected actions, changing/current/long lists, clipping and header spacing in two palettes |
 | `/trees` | Local file disclosure, server-loaded children, failed-load retry, retained scroll/focus, disabled folders and native links in two palettes |
@@ -77,6 +78,15 @@ own preserved native state. Replace defaults changes all three keys; ordinary re
 DOM, selection, query/caret/focus and popup state. Controls can change required/custom/disabled/loading
 state and tag limits. Static cases cover empty, compact, loading, disabled, long labels and tag limits.
 Both local and server-paged compositions are shown in the select authoring reference.
+
+The `/surfaces` page composes panels, section headings, section dividers and native disclosures
+with local empty, loading and table views. Loading and rejected operations use local example data;
+completion messages use toasts. The application reserves a 280px data area so pending actions keep
+their footprint, while the labelled native table region contains horizontal and vertical overflow.
+A stable native disclosure retains its local note, and unchanged tables have stable preservation keys.
+State controls demonstrate rejected loads, long labels and compact loading. Both palettes also show
+padded, unpadded and untitled cards, a plain disclosure and a minimal empty state. The panel reference
+includes the complete local composition. The catalog owns content gaps and projected-body gutters.
 
 The `/feedback` page combines copy fields, quiet copy actions, four tooltip placements and all four
 notification tones in independent palettes. The application handles `copyresult` and issues a toast;

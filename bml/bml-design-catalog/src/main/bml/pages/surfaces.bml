@@ -1,0 +1,11 @@
+<page route="/surfaces">
+  <catalog-document title="Surfaces" description="Panels, cards, native disclosures and contained data views." current="/surfaces">
+    <p class="page-intro">Load the local examples, keep a note open and compare padded, unpadded and untitled cards. Each palette owns its data and actions.</p>
+    <html:section class="catalog-palette-dark" aria-label="Dark palette" data-surface-palette="dark"><surface-example id="dark" /></html:section>
+    <html:section class="catalog-palette-light" aria-label="Light palette" data-surface-palette="light"><surface-example id="light" /></html:section>
+    <card title="Use in your application"><div class="catalog-stack">
+      <p class="catalog-description">Surfaces provide their documented padding and borders. Use application stacks for content gaps and a labelled table region for overflowing data. Native details own disclosure state; action outcomes use toasts.</p>
+      <a class="catalog-link" href="/components/layout#ref-panel">Surface APIs and complete authoring</a>
+    </div></card>
+  </catalog-document>
+</page>

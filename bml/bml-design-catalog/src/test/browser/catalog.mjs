@@ -17,6 +17,7 @@ import { checkSearchViews } from './views.mjs';
 import { checkTrees } from './trees.mjs';
 import { checkRouteNavigation } from './navigation.mjs';
 import { checkFeedback } from './feedback.mjs';
+import { checkSurfaces } from './surfaces.mjs';
 
 const base = process.argv[2];
 const mode = process.argv[3] ?? 'fixture';
@@ -175,6 +176,7 @@ try {
   await checkTrees({navigate,evaluate,until,call,artifacts,mode});
   await checkRouteNavigation({navigate,evaluate,until,call,artifacts,mode});
   await checkFeedback({navigate,evaluate,until,call,artifacts,mode});
+  await checkSurfaces({navigate,evaluate,until,call,artifacts,mode});
   assert.deepEqual(exceptions,[]);
   console.log(`Catalog ${mode}: foundation, themes, 41 packaged export contracts, references, overlays, views, trees, comments, editors, aliases and native fallbacks passed`);
 } finally {

@@ -55,6 +55,20 @@
 .tree-state-options { margin-top: 16px; }
 .navigation-state-options { margin-top: 16px; }
 .feedback-state-options { margin-top: 16px; }
+.surface-state-options { margin-top: 16px; }
+.catalog-surface-stage { min-width: 0; height: 280px; }
+.catalog-surface-results, .catalog-surface-stage > .catalog-surface-pending { height: 100%; }
+.catalog-surface-results { overflow: auto; }
+.catalog-surface-results > .empty-state { min-height: 100%; }
+.catalog-surface-form .catalog-surface-stage > .catalog-surface-pending { display: none; }
+.catalog-surface-form[data-bml-action-pending] .catalog-surface-pending { display: flex; }
+.catalog-surface-form[data-bml-action-pending] .catalog-surface-results { display: none; }
+.catalog-surface-table { max-height: 280px; }
+.catalog-surface-table table { min-width: 680px; white-space: nowrap; }
+.catalog-surface-table caption { text-align: left; color: var(--fg-2); padding: 0 0 12px; font-size: 12px; }
+.catalog-surface-disclosure-body { padding: 16px 14px 0; }
+.catalog-surface-title { margin: 0; font-size: 13px; font-weight: 600; }
+.catalog-surface-unpadded-body { padding: 16px 18px; }
 .catalog-tooltip-placements { gap: 12px; }
 .catalog-tooltip-clip { width: 180px; max-width: 100%; height: 34px; overflow: hidden; }
 .catalog-route-host { width: 100%; min-width: 0; }

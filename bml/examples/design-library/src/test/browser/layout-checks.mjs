@@ -69,6 +69,7 @@ export async function checkLayout({ call, evaluate, until, base, mode, artifacts
     await until(`(() => { const nav=document.querySelector('.fixture-nav'); const active=nav.querySelector('[aria-current=page]');
       const outer=nav.getBoundingClientRect(); const item=active.getBoundingClientRect(); return item.left >= outer.left - 1 && item.right <= outer.right + 1 })()`);
     assert.ok(await evaluate('document.documentElement.scrollWidth <= innerWidth'), `Layout overflow at ${width}px`);
+    assert.ok(await evaluate(`(()=>{const header=document.querySelector('[data-long-section-heading]'),bounds=header.getBoundingClientRect();return [...header.querySelectorAll('h2,p,button')].every(node=>node.getBoundingClientRect().right<=bounds.right+1);})()`),'Long section titles, subtitles and projected actions fit their container');
     const measured = await evaluate(`(() => {
       const header=document.querySelector('[data-app-header]').getBoundingClientRect();
       const main=document.querySelector('main').getBoundingClientRect();

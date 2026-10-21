@@ -262,6 +262,11 @@ try {
       await call('Input.dispatchKeyEvent', { type: 'keyUp', key: 'ArrowRight', code: 'ArrowRight', windowsVirtualKeyCode: 39 });
       await until('document.querySelector("[data-table=light]").scrollLeft > 0');
       assert.equal(await evaluate('getComputedStyle(document.querySelector("[data-table=light]")).outlineColor'), 'rgb(21, 128, 61)');
+      await evaluate(`document.querySelector('[data-table=light]').scrollTo({left:80,top:90,behavior:'instant'})`);
+      await evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
+      await evaluate(`window.fixtureRetainedTable=document.querySelector('[data-table=light]');window.fixtureTableScroll=[window.fixtureRetainedTable.scrollLeft,window.fixtureRetainedTable.scrollTop];document.querySelector('[data-foundation-form=light]').requestSubmit()`);
+      await until(`document.querySelector('[data-feedback=light]').textContent.includes('Saved yes (2)')`);
+      assert.ok(await evaluate(`window.fixtureRetainedTable===document.querySelector('[data-table=light]')&&document.activeElement===window.fixtureRetainedTable&&window.fixtureTableScroll[0]>0&&window.fixtureTableScroll[1]>0&&window.fixtureRetainedTable.scrollLeft===window.fixtureTableScroll[0]&&window.fixtureRetainedTable.scrollTop===window.fixtureTableScroll[1]`),'A retained native table keeps focus and both scroll positions through a real surrounding save');
     }
     const shot = await call('Page.captureScreenshot', { format: 'png' });
     await writeFile(join(artifacts, `foundation-${mode}-${width}.png`), Buffer.from(shot.data, 'base64'));

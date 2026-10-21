@@ -123,6 +123,12 @@ The compiler excludes declared props, combines caller and component classes, and
 component's explicit attribute values. Components do not maintain exclusion lists or handle BML's
 internal action-marker props. See [attribute forwarding](../docs/tag-reference.md#forwarding-component-attributes).
 
+A `table-scroll` region keeps its native horizontal and vertical scroll positions when a stable
+`data-bml-preserve` key retains the region or an enclosing subtree through a surrounding island
+update. Changing that key installs new table content. Without scripts, the labelled region remains
+focusable and scrolls with the keyboard. Long section-heading titles and subtitles wrap within their
+available width beside projected actions.
+
 Checkbox and switch state belongs to the caller. Use `checked` with a declarative `@change` action
 when server state controls the value; use native `name`/`value` attributes to include checked controls
 in form submission. Disabled and unchecked controls follow native form rules. The compiled

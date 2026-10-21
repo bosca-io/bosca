@@ -52,6 +52,10 @@ update application state. Consuming CSS changes the mark colors and panel radius
 cover desktop/phone geometry, active-navigation visibility, disclosure keyboard operation and
 the preserved Bosca SVG paths. Native sections remain available through `<html:section>`.
 
+The foundation table is retained inside its state island, with a bounded height and enough rows to
+exercise both scroll axes. A real save keeps its DOM, keyboard focus and scroll positions. Long
+section-heading titles and subtitles also stay inside their container beside projected actions.
+
 The `/actions` page demonstrates native icon buttons/links, labelled form submission and tooltips
 in two themed roots. Checks cover pointer and keyboard use, viewport placement, clipped ancestors,
 live CSS overrides, description IDs, changed labels/triggers, delayed-show cancellation, pending

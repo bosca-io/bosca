@@ -41,6 +41,9 @@
             </section>
           </panel>
           <page-heading title="Standalone heading" data-empty-trail />
+          <section-heading :title='"A long heading " + "component".repeat(20)' :subtitle='"A long subtitle " + "description".repeat(12)' data-long-section-heading>
+            <button size="sm">First action</button><button size="sm">Second action</button>
+          </section-heading>
         </island>
         <html:section data-native-section>Native section</html:section>
       </page-shell>
