@@ -1,6 +1,7 @@
 package bosca.cli
 
 import bosca.cli.analytics.AnalyticsCommand
+import bosca.cli.backup.BackupCommand
 import bosca.cli.analytics.AnalyticsDashboardAddVisualizationCommand
 import bosca.cli.analytics.AnalyticsDashboardCommand
 import bosca.cli.analytics.AnalyticsDashboardCreateCommand
@@ -258,6 +259,7 @@ fun main(args: Array<String>) {
         LoginCommand(),
         LogoutCommand(),
         ConfigCommand(),
+        BackupCommand(),
         ProfileCommand().subcommands(
             ProfileListCommand(),
             ProfileShowCommand(),

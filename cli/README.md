@@ -113,6 +113,24 @@ server. On first use after an upgrade, the former single-account
 `endpoint`/`auth` configuration is migrated automatically to a profile named
 `default`.
 
+## Backup reports
+
+Inspect a downloaded PostgreSQL/content report without connecting to a Bosca instance:
+
+```bash
+bosca backup inspect --report ./content-report.json
+bosca backup inspect --report ./content-report.json --json
+```
+
+The command validates the portable report and shows its database artifact location, identity,
+declared assets and recorded reference outcomes. It requires no profile or authentication and
+leaves local files unchanged. `--json` emits the complete report on stdout; notices go to stderr.
+
+Exit status `0` means every reference was recorded as `VERIFIED`, `2` means recorded inspection
+gaps remain, and `1` indicates unreadable or invalid input. Selection outcomes are shown separately.
+These are recorded results: the command does not contact storage, verify current payload bytes,
+check destination compatibility or establish that the backup is ready to restore.
+
 ## Analytics
 
 Saved analytics queries, visualization definitions, and dashboards are

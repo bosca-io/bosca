@@ -36,6 +36,7 @@ kotlin {
 
 dependencies {
     implementation(project(":bosca-core:core"))
+    implementation(project(":backup:core-backup"))
 
     // BML — .bml project compile
     implementation(project(":bml:bml-compiler"))
