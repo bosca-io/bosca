@@ -1195,7 +1195,10 @@ class PostgresBackupIntegrationTest {
                 assertEquals(manifest.id, selected.inventory.id)
                 assertEquals(1L, selected.counts.getValue(PostgresBackupContentSelectionStatus.SELECTED))
                 assertEquals(0, sourceReads)
-                val plan = withConnectionManager { captures.prepareInventory(selected.inventory, "retained", "assets", "objects.json") }
+                val plan = withConnectionManager { captures.prepareInventory(selected, "retained", "assets", "objects.json") }
+                assertEquals(selected.counts, plan.contentSelectionCounts)
+                BackupProviderRegistrar().register()
+                assertEquals(plan, withConnectionManager { provide<ObjectBackupCaptureService>().getPlan(plan.key) })
                 factory.withStorage(retainedConfiguration) { backup ->
                     val objects = captures.captureInventory(plan.key, mapOf("content" to source), backup, null)
                     assertEquals(1, sourceReads)

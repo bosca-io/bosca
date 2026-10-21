@@ -11,4 +11,18 @@ import kotlinx.serialization.Serializable
 data class PostgresBackupContentSelectionSummary(
     val inventory: ObjectBackupCaptureInventory,
     val counts: Map<PostgresBackupContentSelectionStatus, Long>,
-)
+) {
+    /** Validates explicit nonnegative outcomes and their relation to the distinct selected paths. */
+    fun validate() {
+        inventory.validate()
+        require(counts.keys == PostgresBackupContentSelectionStatus.entries.toSet()) {
+            "Every content selection outcome must be counted"
+        }
+        require(counts.values.all { it >= 0 }) { "Content selection counts must not be negative" }
+        val selected = counts.getValue(PostgresBackupContentSelectionStatus.SELECTED)
+        val paths = inventory.stores.values.sumOf { it.size.toLong() }
+        require(selected >= paths && (selected == 0L) == (paths == 0L)) {
+            "Selected reference count must account for the selected paths"
+        }
+    }
+}

@@ -260,22 +260,46 @@ class ObjectBackupCaptureServiceImpl(
     }
 
     override suspend fun prepareInventory(
+        selection: PostgresBackupContentSelectionSummary,
+        destinationId: String,
+        payloadPrefix: String,
+        manifestPath: String,
+    ): ObjectBackupCapturePlan = prepare(
+        selection.inventory, destinationId, payloadPrefix, manifestPath, selection.counts.toMap(),
+    )
+
+    override suspend fun prepareInventory(
         inventory: ObjectBackupCaptureInventory,
         destinationId: String,
         payloadPrefix: String,
         manifestPath: String,
+    ): ObjectBackupCapturePlan = prepare(inventory, destinationId, payloadPrefix, manifestPath, null)
+
+    private suspend fun prepare(
+        inventory: ObjectBackupCaptureInventory,
+        destinationId: String,
+        payloadPrefix: String,
+        manifestPath: String,
+        contentSelectionCounts: Map<PostgresBackupContentSelectionStatus, Long>?,
     ): ObjectBackupCapturePlan {
         val selected = canonicalSelection(inventory)
-        selected.validate()
+        if (contentSelectionCounts == null) selected.validate()
+        else PostgresBackupContentSelectionSummary(selected, contentSelectionCounts).validate()
         validateOutputPaths(destinationId, payloadPrefix, manifestPath)
         val key = objectBackupIdentity(
             ObjectBackupOperation.BACKUP, listOf(selected.sourceId, destinationId, selected.scope, selected.id),
         )
         return transaction {
-            repository.add(ObjectBackupCapturePlan(key, destinationId, selected, payloadPrefix, manifestPath))
+            repository.add(ObjectBackupCapturePlan(
+                key, destinationId, selected, payloadPrefix, manifestPath,
+                contentSelectionCounts = contentSelectionCounts,
+            ))
             val plan = checkNotNull(repository.get(key)) { "Prepared capture plan is missing: $key" }
-            require(plan.destinationId == destinationId && plan.inventory == selected &&
-                plan.payloadPrefix == payloadPrefix && plan.path == manifestPath) {
+            require(
+                plan.destinationId == destinationId && plan.inventory == selected &&
+                    plan.payloadPrefix == payloadPrefix && plan.path == manifestPath &&
+                    plan.contentSelectionCounts == contentSelectionCounts,
+            ) {
                 "Conflicting capture plan intent: $key"
             }
             plan

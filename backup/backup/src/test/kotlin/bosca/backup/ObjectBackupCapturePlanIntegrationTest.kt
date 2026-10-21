@@ -209,6 +209,89 @@ class ObjectBackupCapturePlanIntegrationTest {
         assertTrue(list().isEmpty())
     }
 
+    private fun referenceSelection() = PostgresBackupContentSelectionSummary(selected,
+        PostgresBackupContentSelectionStatus.entries.associateWith { when (it) {
+            PostgresBackupContentSelectionStatus.SELECTED -> 4L
+            PostgresBackupContentSelectionStatus.MISSING -> 2L
+            PostgresBackupContentSelectionStatus.UNRESOLVED -> 1L
+            PostgresBackupContentSelectionStatus.LENGTH_MISMATCH -> 0L
+        } })
+
+    @Test
+    fun `content counts persist with capture intent across restart without creating transfer progress`(): Unit = runBlocking {
+        val selection = referenceSelection()
+        val plan = withConnectionManager { service.prepareInventory(selection, "retained", "payloads", "manifests/selected.json") }
+        assertEquals(selection.counts, plan.contentSelectionCounts)
+        BackupProviderRegistrar().register()
+        service = provide()
+        assertEquals(plan, withConnectionManager { service.getPlan(plan.key) })
+        assertEquals(listOf(plan), list())
+        assertTrue(withConnectionManager {
+            provide<ObjectBackupProgressService>().list(ObjectBackupOperation.BACKUP, "source", "retained", "content", 0, 100)
+        }.isEmpty())
+    }
+
+    @Test
+    fun `content counts cannot be changed dropped or retrofitted through replay`(): Unit = runBlocking {
+        val selection = referenceSelection()
+        val plan = withConnectionManager { service.prepareInventory(selection, "retained", "payloads", "manifests/selected.json") }
+        val reordered = selection.copy(counts = selection.counts.entries.reversed().associate { it.key to it.value })
+        assertEquals(plan, withConnectionManager { service.prepareInventory(reordered, "retained", "payloads", "manifests/selected.json") })
+        val changed = selection.copy(counts = selection.counts + (PostgresBackupContentSelectionStatus.MISSING to 3L))
+        assertFailsWith<IllegalArgumentException> { withConnectionManager {
+            service.prepareInventory(changed, "retained", "payloads", "manifests/selected.json")
+        } }
+        assertFailsWith<IllegalArgumentException> { prepare() }
+        assertEquals(plan, withConnectionManager { service.getPlan(plan.key) })
+        val ordinary = prepare(selected.copy(id = "ordinary"))
+        assertNull(ordinary.contentSelectionCounts)
+        assertFailsWith<IllegalArgumentException> { withConnectionManager {
+            service.prepareInventory(selection.copy(inventory = ordinary.inventory), "retained", "payloads", "manifests/selected.json")
+        } }
+    }
+
+    @Test
+    fun `content counts validate every outcome and selected path before creating intent`(): Unit = runBlocking {
+        val selection = referenceSelection()
+        for (counts in listOf(selection.counts - PostgresBackupContentSelectionStatus.MISSING,
+            selection.counts + (PostgresBackupContentSelectionStatus.MISSING to -1L),
+            selection.counts + (PostgresBackupContentSelectionStatus.SELECTED to 2L),
+            selection.counts + (PostgresBackupContentSelectionStatus.SELECTED to 0L))) {
+            assertFailsWith<IllegalArgumentException> { withConnectionManager {
+                service.prepareInventory(selection.copy(counts = counts), "retained", "payloads", "manifests/selected.json")
+            } }
+        }
+        assertFailsWith<IllegalArgumentException> { withConnectionManager {
+            service.prepareInventory(selection.copy(inventory = selected.copy(stores = emptyMap())), "retained", "payloads", "manifests/selected.json")
+        } }
+        assertTrue(list().isEmpty())
+    }
+
+    @Test
+    fun `content counts preserve a valid empty reference selection`(): Unit = runBlocking {
+        val selection = PostgresBackupContentSelectionSummary(selected.copy(id = "empty", stores = mapOf("content" to emptyList())),
+            PostgresBackupContentSelectionStatus.entries.associateWith { 0L })
+        val plan = withConnectionManager { service.prepareInventory(selection, "retained", "payloads", "manifests/empty.json") }
+        assertEquals(selection.counts, plan.contentSelectionCounts)
+        assertTrue(plan.inventory.stores.getValue("content").isEmpty())
+        assertEquals(plan, withConnectionManager { service.getPlan(plan.key) })
+    }
+
+    @Test
+    fun `content counts roll back with caller intent and snapshot caller collections`(): Unit = runBlocking {
+        val selection = referenceSelection()
+        assertFailsWith<IOException> { withConnectionManager { transaction {
+            service.prepareInventory(selection, "retained", "payloads", "manifests/selected.json")
+            throw IOException("rollback")
+        } } }
+        assertTrue(list().isEmpty())
+        val counts = selection.counts.toMutableMap()
+        val plan = withConnectionManager { service.prepareInventory(selection.copy(counts = counts), "retained", "payloads", "manifests/selected.json") }
+        counts.clear()
+        assertEquals(selection.counts, plan.contentSelectionCounts)
+        assertEquals(plan, withConnectionManager { service.getPlan(plan.key) })
+    }
+
     private suspend fun prepare(
         inventory: ObjectBackupCaptureInventory = selected,
         destination: String = "retained",

@@ -1,6 +1,7 @@
 {
   "resources": [
     { "glob": "db/migrations/V17__object_backup_job_checkpoints.sql" },
-    { "glob": "db/migrations/V18__postgres_backup_content_selection.sql" }
+    { "glob": "db/migrations/V18__postgres_backup_content_selection.sql" },
+    { "glob": "db/migrations/V19__object_backup_content_selection_counts.sql" }
   ]
 }

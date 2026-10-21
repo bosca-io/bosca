@@ -87,6 +87,19 @@ interface ObjectBackupCaptureService : Service {
         manifestPath: String,
     ): ObjectBackupCapturePlan
 
+    /**
+     * Saves [selection]'s inventory and every reference-outcome count as immutable capture intent.
+     * Matching replay preserves these counts; changing or omitting them for the same plan fails.
+     * Validates counts before persistence. Participates in the caller's transaction, performs no
+     * storage access and does not classify required coverage or publish a recovery point.
+     */
+    suspend fun prepareInventory(
+        selection: PostgresBackupContentSelectionSummary,
+        destinationId: String,
+        payloadPrefix: String,
+        manifestPath: String,
+    ): ObjectBackupCapturePlan
+
     /** Reads immutable capture intent in the caller's database context without opening stores. */
     suspend fun getPlan(key: String): ObjectBackupCapturePlan?
 

@@ -277,7 +277,9 @@ and counts for every reference, including duplicate, pending, deleted and histor
 Only selected paths enter the capture inventory, once each in key order. Present objects with
 unknown upload evidence remain selectable. Missing historical supplementary IDs are never
 guessed. Keep the outcome counts with the inventory and evaluate gaps before treating a recovery
-point as covered. `ObjectBackupCaptureService.prepareInventory` can persist this selection;
+point as covered. Pass the full selection result to `ObjectBackupCaptureService.prepareInventory`
+to persist the inventory and its outcome counts in the same immutable plan. Matching replay keeps
+the counts; changed or omitted counts fail. Existing plans have no invented reference counts.
 `captureInventory` performs the existing incremental transfer and retained verification.
 
 Selection uses the database artifact's ID/source identity and records its own observation start

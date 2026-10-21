@@ -16,11 +16,14 @@ import java.sql.DriverManager
 import java.time.OffsetDateTime
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /** Registered plan migration preserves historical object progress without inventing source selections. */
@@ -104,5 +107,44 @@ class ObjectBackupCapturePlanMigrationIntegrationTest {
             }
         }
         assertEquals(before, withConnectionManager { progress.get(before.key) })
+    }
+
+    @Test
+    fun `content outcome migration preserves old plans without inventing reference counts`(): Unit = runBlocking {
+        FlywayMigration(pool).migrate(listOf(object : Migration {
+            override val schema = "backup"
+            override val resources = BackupMigration().resources.takeWhile { !it.startsWith("V19__") }
+        }))
+        val inventory = ObjectBackupCaptureInventory("legacy", "source", "content", "2026-10-21T00:00:00Z", emptyMap())
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { connection ->
+            connection.prepareStatement("""
+                insert into backup.object_capture_plans (key, destination_id, inventory, payload_prefix, path)
+                values ('legacy', 'retained', ?::jsonb, 'assets', 'objects.json')
+            """.trimIndent()).use {
+                it.setString(1, Json.encodeToString(ObjectBackupCaptureInventory.serializer(), inventory))
+                assertEquals(1, it.executeUpdate())
+            }
+        }
+        fun snapshot(): String = DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { connection ->
+            connection.createStatement().use { statement ->
+                statement.executeQuery("select (to_jsonb(p) - 'content_selection_counts')::text from backup.object_capture_plans p where key='legacy'").use { rows ->
+                    assertTrue(rows.next())
+                    rows.getString(1)
+                }
+            }
+        }
+        val before = snapshot()
+        FlywayMigration(pool).migrate(listOf(BackupMigration()))
+        FlywayMigration(pool).migrate(listOf(BackupMigration()))
+        assertEquals(before, snapshot())
+        val plan = withConnectionManager { assertNotNull(provide<ObjectBackupCaptureService>().getPlan("legacy")) }
+        assertEquals(inventory, plan.inventory)
+        assertNull(plan.contentSelectionCounts)
+        val resource = "db/migrations/V19__object_backup_content_selection_counts.sql"
+        assertNotNull(javaClass.classLoader.getResource(resource))
+        val native = assertNotNull(javaClass.classLoader.getResourceAsStream(
+            "META-INF/native-image/io.bosca/backup/reachability-metadata.json",
+        )).bufferedReader().use { Json.parseToJsonElement(it.readText()).jsonObject }
+        assertTrue(native.getValue("resources").jsonArray.any { it.jsonObject["glob"]?.toString() == "\"$resource\"" })
     }
 }

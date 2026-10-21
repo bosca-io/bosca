@@ -19,4 +19,8 @@ data class ObjectBackupCapturePlan(
     /** Saved discovery intent; null for caller-selected inventories. */
     @property:DbMapper(JsonbMapper::class)
     val discovery: ObjectBackupDiscoveryRequest? = null,
+    /** Saved reference outcomes; null for inventories not prepared from content-reference selection. */
+    @ColumnName("content_selection_counts")
+    @property:DbMapper(JsonbMapper::class)
+    val contentSelectionCounts: Map<PostgresBackupContentSelectionStatus, Long>? = null,
 )
