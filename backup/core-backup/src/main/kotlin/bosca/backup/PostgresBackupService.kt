@@ -209,6 +209,37 @@ interface PostgresBackupService : Service {
     suspend fun preflightRestore(directory: Path): PostgresBackupManifest
 
     /**
+     * Restores the native artifact and declared assets selected by a retained content [report].
+     * Requires the verified local artifact in [directory] to match the report exactly. Rechecks
+     * every saved reference against retained bytes; missing, corrupt, ambiguous or unresolved
+     * references block writes, including gaps without an upload timestamp. Recorded report
+     * counts are not current verification. Verifies every declared asset, destination conflicts
+     * and the empty PostgreSQL target before writing anything, using the existing restore services.
+     *
+     * Copies assets to their original keys in [destination] through the shared checkpoints,
+     * then restores the native database in one transaction. Native restore repeats its checks.
+     * Needs no source database, content services, capture configuration or separate object manifest.
+     * Runs on the storage dispatcher outside an active caller transaction. The caller owns immutable
+     * local/retained input, independent backup storage, isolated offline destinations, exclusive
+     * writers and a stable [destinationId]. Progress must live outside the database being replaced.
+     * Stores remain open; failures/cancellation preserve input, copied assets and transfer progress.
+     * After a failed asset copy or rolled-back database restore, retry can reuse verified assets.
+     * A native commit may already have succeeded when an acknowledgement is lost: inspect the
+     * destination before retrying; a populated database is never cleared or silently merged.
+     *
+     * Returns the restored native manifest. This materializes the selected components without
+     * proving atomic database/object correspondence or publishing a complete recovery-point receipt.
+     * Required keys, deployment rebinding and application activation remain separate.
+     */
+    suspend fun restoreContent(
+        directory: Path,
+        report: PostgresBackupContentReport,
+        backup: ObjectStorageService,
+        destination: ObjectStorageService,
+        destinationId: String,
+    ): PostgresBackupManifest
+
+    /**
      * Verifies [directory] and restores its native dump into the separately configured
      * backup.postgres.restore libpq service. Requires an explicit expected database name,
      * a fresh empty destination and exclusive offline access throughout preflight and restore.

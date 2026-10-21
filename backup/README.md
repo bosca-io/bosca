@@ -514,6 +514,27 @@ recovery writes. It leaves the artifact and destination data unchanged. Keep tha
 offline and exclude concurrent writers. The check reserves nothing, and `restore` repeats it
 before executing `pg_restore`. Object coverage and whole-instance recovery remain separate.
 
+`restoreContent(directory, report, backup, destination, destinationId)` restores a downloaded
+native artifact and the assets declared in its retained content report through one service call.
+The local manifest must match the report exactly. It freshly checks saved references, every
+declared retained payload, target asset conflicts and the empty PostgreSQL destination before
+writing assets. Gaps block the operation, including pending or historical references without
+verified files; missing upload timestamps are not treated as permission to skip them.
+
+Assets are restored first to their original keys through the existing checkpoints. The service
+then rechecks the local artifact and database destination before running the transactional
+native restore. A failed asset copy leaves the database empty. After partial asset failure or a
+rolled-back database restore, retry reuses verified target assets. Keep progress in a separate
+recovery database and keep both destinations isolated with exclusive writers throughout.
+The caller owns immutable input and independent backup storage; supplied stores stay open.
+The source database, capture configuration, content services and standalone object manifest
+are unnecessary. This is a service operation; no Pipeline or CLI restore command is added.
+
+If the native acknowledgement is lost, inspect the target before retrying: its commit may have
+succeeded, and a populated database is rejected. Successful return identifies the restored native
+artifact and declared assets. Required keys, deployment configuration, application activation
+and proof of an atomic database/object recovery point remain separate.
+
 Create the destination database beforehand, preferably from `template0`, under its intended
 owner. Keep the application and other writers stopped on that destination throughout restore.
 Source writes can continue. `service` and `database` are required on use. `serviceFile` uses

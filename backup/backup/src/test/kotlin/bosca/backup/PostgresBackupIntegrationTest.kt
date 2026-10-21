@@ -1731,6 +1731,364 @@ class PostgresBackupIntegrationTest {
         }
     }
 
+    private suspend fun withContentRecovery(
+        beforeCapture: () -> Unit = {},
+        includeAssets: Boolean = true,
+        block: suspend (PostgresBackupContentReport, ObjectStorageService, ObjectStorageService) -> Unit,
+    ) {
+        contentCaptureServices()
+        if (includeAssets) {
+            contentAsset("10000000-0000-0000-0000-000000000001")
+            contentAsset("10000000-0000-0000-0000-000000000002", "other")
+        }
+        beforeCapture()
+        contentCaptureStorage { source, backup ->
+            val report = service.captureContent("source", output, "content", "snapshot", source, "retained", backup, "exports")
+            createTarget()
+            tool = root.resolve("missing-pg-dump")
+            install(configured = false)
+            sql("create database content_recovery_journal", "postgres")
+            val journal = ConnectionPool(ConnectionFactoryImpl(
+                ConnectionConfig(url + "content_recovery_journal", user, password), "content-recovery-journal",
+            ))
+            try {
+                provides<ConnectionPool>(singleton = true, overrideExisting = true) { journal }
+                provides<Json>(singleton = true, overrideExisting = true) { backupTestJson }
+                BackupProviderRegistrar().register()
+                FlywayMigration(journal).migrate(listOf(BackupMigration()))
+                service = provide()
+                if (Files.exists(root.resolve("operation-source"))) {
+                    assertTrue(root.resolve("operation-source").toFile().deleteRecursively())
+                }
+                pool.close()
+                sql("drop database source with (force)", "postgres")
+                backup.delete(bosca.storage.service.StringObjectPath("exports/objects/${report.database.id}.json"))
+                provide<ObjectStorageServiceFactory>().withStorage(
+                    StorageConfiguration("fs", "", basePath = root.resolve("content-recovered-assets").toString()),
+                ) { target -> block(report, backup, target) }
+                assertEquals(report.database, service.verify(output))
+                assertEquals(0, journal.activeConnections)
+            } finally {
+                journal.close()
+            }
+        }
+    }
+
+    private fun assertContentRecoveryUnwritten() {
+        assertEquals("0", scalar("select count(*)::text from backup.object_progress", "content_recovery_journal"))
+        assertEquals("0", scalar("select count(*)::text from pg_class where relnamespace='public'::regnamespace", "recovered"))
+        assertFalse(Files.exists(root.resolve("content-recovered-assets")))
+    }
+
+    @Test
+    fun `combined content restore recovers selected database and original asset keys without a source`(): Unit = runBlocking {
+        withContentRecovery { report, backup, actual ->
+            var backupClosed = false
+            var targetClosed = false
+            val retained = object : ObjectStorageService by backup {
+                override fun close() { backupClosed = true }
+            }
+            val target = object : ObjectStorageService by actual {
+                override suspend fun setInputStream(path: ObjectPath, stream: InputStream, length: Long?): Long {
+                    assertEquals("0", scalar("select count(*)::text from pg_class where relnamespace='public'::regnamespace", "recovered"))
+                    return actual.setInputStream(path, stream, length)
+                }
+                override fun close() { targetClosed = true }
+            }
+
+            assertEquals(report.database, service.restoreContent(output, report, retained, target, "recovered-assets"))
+
+            assertEquals(listOf("image", "other"), report.objects.objects.map {
+                actual.getString(bosca.storage.service.StringObjectPath(it.key))
+            })
+            assertEquals("2", scalar("select count(*)::text from metadata where name='Saved image'", "recovered"))
+            assertEquals("{VIEW,EDIT}", scalar("select permissions::text from content.permissions", "recovered"))
+            assertEquals("2", scalar("select count(*)::text from backup.object_progress where status='completed'", "content_recovery_journal"))
+            assertFalse(backupClosed)
+            assertFalse(targetClosed)
+        }
+    }
+
+    @Test
+    fun `combined content restore rejects mismatched native identity and malformed reports before storage access`(): Unit = runBlocking {
+        withContentRecovery { report, _, _ ->
+            val entered = root.resolve("restore-preflight-entered")
+            psqlTool.writeText("#!/bin/sh\ntouch ${quote(entered)}\nexit 0\n")
+            val manifestFile = output.resolve("manifest.json")
+            manifestFile.writeText(application.json.encodeToString(PostgresBackupManifest.serializer(), report.database.copy(id = "another-capture")))
+            val mismatch = assertFailsWith<IllegalArgumentException> {
+                service.restoreContent(output, report, mockk(), mockk(), "recovered-assets")
+            }
+            assertTrue(mismatch.message.orEmpty().contains("match"), mismatch.toString())
+            manifestFile.writeText(application.json.encodeToString(PostgresBackupManifest.serializer(), report.database))
+            assertFailsWith<IllegalArgumentException> {
+                service.restoreContent(output, report.copy(version = 999), mockk(), mockk(), "recovered-assets")
+            }
+            assertFalse(Files.exists(entered))
+            assertContentRecoveryUnwritten()
+        }
+    }
+
+    @Test
+    fun `combined content restore rejects caller transactions invalid destination identity and shared backup storage`(): Unit = runBlocking {
+        withContentRecovery { report, backup, target ->
+            assertFailsWith<IllegalStateException> {
+                withConnectionManager { transaction { service.restoreContent(output, report, backup, target, "recovered-assets") } }
+            }
+            assertFailsWith<IllegalArgumentException> { service.restoreContent(output, report, backup, target, " ") }
+            assertFailsWith<IllegalArgumentException> { service.restoreContent(output, report, backup, backup, "recovered-assets") }
+            assertContentRecoveryUnwritten()
+        }
+    }
+
+    @Test
+    fun `combined content restore rechecks retained bytes instead of trusting report counts`(): Unit = runBlocking {
+        withContentRecovery { report, backup, target ->
+            assertEquals(2L, report.inspection.counts.getValue(PostgresBackupContentStatus.VERIFIED))
+            val path = bosca.storage.service.StringObjectPath(report.objects.objects.first().payloadPath)
+            backup.delete(path)
+            val missing = assertFailsWith<IllegalStateException> {
+                service.restoreContent(output, report, backup, target, "recovered-assets")
+            }
+            assertTrue(missing.message.orEmpty().contains("MISSING"), missing.toString())
+            backup.setInputStream(path, "oops!".byteInputStream(), 5)
+            val corrupt = assertFailsWith<IllegalStateException> {
+                service.restoreContent(output, report, backup, target, "recovered-assets")
+            }
+            assertTrue(corrupt.message.orEmpty().contains("CORRUPT"), corrupt.toString())
+            assertContentRecoveryUnwritten()
+            backup.setInputStream(path, "image".byteInputStream(), 5)
+            assertEquals(report.database, service.restoreContent(output, report, backup, target, "recovered-assets"))
+        }
+    }
+
+    @Test
+    fun `combined content restore blocks unknown historical reference coverage`(): Unit = runBlocking {
+        withContentRecovery(beforeCapture = {
+            sql("insert into metadata_versions (id, version, name, content_type, content_length) values ('10000000-0000-0000-0000-000000000001', 6, 'Historical image', 'image/png', 5)")
+        }) { report, backup, target ->
+            val failure = assertFailsWith<IllegalStateException> {
+                service.restoreContent(output, report, backup, target, "recovered-assets")
+            }
+            assertTrue(failure.message.orEmpty().contains("NOT_RETAINED"), failure.toString())
+            assertTrue(failure.message.orEmpty().contains("METADATA_VERSION"), failure.toString())
+            assertContentRecoveryUnwritten()
+        }
+    }
+
+    @Test
+    fun `combined content restore does not silently discard pending reference gaps`(): Unit = runBlocking {
+        withContentRecovery(beforeCapture = {
+            sql("insert into metadata (name, content_type) values ('Pending upload', 'image/png')")
+        }) { report, backup, target ->
+            val failure = assertFailsWith<IllegalStateException> {
+                service.restoreContent(output, report, backup, target, "recovered-assets")
+            }
+            assertTrue(failure.message.orEmpty().contains("NOT_RETAINED"), failure.toString())
+            assertContentRecoveryUnwritten()
+        }
+    }
+
+    @Test
+    fun `combined content restore verifies unreferenced declared payloads before target or database writes`(): Unit = runBlocking {
+        withContentRecovery { report, backup, target ->
+            val extra = report.objects.objects.first().copy(key = "other/asset", payloadPath = "missing/extra")
+            val selected = report.copy(objects = report.objects.copy(objects = report.objects.objects + extra))
+            selected.validate()
+            assertFailsWith<bosca.storage.service.ObjectNotFoundException> {
+                service.restoreContent(output, selected, backup, target, "recovered-assets")
+            }
+            assertContentRecoveryUnwritten()
+        }
+    }
+
+    @Test
+    fun `combined content restore rejects target asset conflicts before PostgreSQL processes`(): Unit = runBlocking {
+        withContentRecovery { report, backup, target ->
+            val path = bosca.storage.service.StringObjectPath(report.objects.objects.last().key)
+            target.setInputStream(path, "independent".byteInputStream(), 11)
+            val entered = root.resolve("restore-preflight-entered")
+            psqlTool.writeText("#!/bin/sh\ntouch ${quote(entered)}\nexit 0\n")
+
+            val failure = assertFailsWith<IllegalStateException> {
+                service.restoreContent(output, report, backup, target, "recovered-assets")
+            }
+
+            assertTrue(failure.message.orEmpty().contains(path.toString()), failure.toString())
+            assertEquals("independent", target.getString(path))
+            assertFailsWith<bosca.storage.service.ObjectNotFoundException> {
+                target.getInputStream(bosca.storage.service.StringObjectPath(report.objects.objects.first().key))
+            }
+            assertFalse(Files.exists(entered))
+            assertEquals("0", scalar("select count(*)::text from backup.object_progress", "content_recovery_journal"))
+            assertEquals("0", scalar("select count(*)::text from pg_class where relnamespace='public'::regnamespace", "recovered"))
+        }
+    }
+
+    @Test
+    fun `combined content restore rejects wrong incompatible and occupied databases before asset writes`(): Unit = runBlocking {
+        withContentRecovery { report, backup, target ->
+            val serviceFile = root.resolve("restore.conf")
+            val connection = serviceFile.readText()
+            serviceFile.writeText(connection.replace("dbname=recovered", "dbname=postgres"))
+            assertFailsWith<IllegalStateException> { service.restoreContent(output, report, backup, target, "recovered-assets") }
+            serviceFile.writeText(connection)
+            val incompatible = report.database.copy(serverVersionNumber = 990000)
+            output.resolve("manifest.json").writeText(application.json.encodeToString(PostgresBackupManifest.serializer(), incompatible))
+            assertFailsWith<IllegalStateException> {
+                service.restoreContent(output, report.copy(database = incompatible), backup, target, "recovered-assets")
+            }
+            output.resolve("manifest.json").writeText(application.json.encodeToString(PostgresBackupManifest.serializer(), report.database))
+            assertContentRecoveryUnwritten()
+            sql("create table public.existing(id int); insert into public.existing values (123)", "recovered")
+            assertFailsWith<IllegalStateException> { service.restoreContent(output, report, backup, target, "recovered-assets") }
+            assertEquals("123", scalar("select id::text from public.existing", "recovered"))
+            assertEquals("0", scalar("select count(*)::text from backup.object_progress", "content_recovery_journal"))
+            assertFalse(Files.exists(root.resolve("content-recovered-assets")))
+        }
+    }
+
+    @Test
+    fun `combined content restore retries partial asset writes without repeating completed objects`(): Unit = runBlocking {
+        withContentRecovery { report, backup, target ->
+            val first = report.objects.objects.first().key
+            val second = report.objects.objects.last().key
+            val writes = mutableListOf<String>()
+            var fail = true
+            val interrupted = object : ObjectStorageService by target {
+                override suspend fun setInputStream(path: ObjectPath, stream: InputStream, length: Long?): Long {
+                    assertEquals("0", scalar("select count(*)::text from pg_class where relnamespace='public'::regnamespace", "recovered"))
+                    writes += path.toString()
+                    if (path.toString() == second && fail) {
+                        target.setInputStream(path, "o".byteInputStream(), 1)
+                        throw IOException("partial asset transfer")
+                    }
+                    return target.setInputStream(path, stream, length)
+                }
+            }
+            assertFailsWith<IOException> { service.restoreContent(output, report, backup, interrupted, "recovered-assets") }
+            assertEquals(listOf(first, second), writes)
+            assertEquals("0", scalar("select count(*)::text from pg_class where relnamespace='public'::regnamespace", "recovered"))
+            assertEquals("1", scalar("select count(*)::text from backup.object_progress where status='completed'", "content_recovery_journal"))
+            BackupProviderRegistrar().register()
+            service = provide()
+            fail = false
+
+            assertEquals(report.database, service.restoreContent(output, report, backup, interrupted, "recovered-assets"))
+
+            assertEquals(listOf(first, second, second), writes)
+            assertEquals("image", target.getString(bosca.storage.service.StringObjectPath(first)))
+            assertEquals("other", target.getString(bosca.storage.service.StringObjectPath(second)))
+            assertEquals("2", scalar("select count(*)::text from metadata where name='Saved image'", "recovered"))
+        }
+    }
+
+    @Test
+    fun `combined content restore retries a rolled back database restore without rewriting assets`(): Unit = runBlocking {
+        withContentRecovery(beforeCapture = {
+            sql("""
+                create table public.restore_gate(id int check (
+                    current_database() <> 'recovered' or coalesce(current_setting('bosca.restore_allowed', true), 'off') = 'on'
+                ));
+                insert into public.restore_gate values (1);
+            """.trimIndent())
+        }) { report, backup, target ->
+            var writes = 0
+            val counted = object : ObjectStorageService by target {
+                override suspend fun setInputStream(path: ObjectPath, stream: InputStream, length: Long?): Long {
+                    writes++
+                    return target.setInputStream(path, stream, length)
+                }
+            }
+            val failure = assertFailsWith<IllegalStateException> {
+                service.restoreContent(output, report, backup, counted, "recovered-assets")
+            }
+            assertTrue(failure.message.orEmpty().contains("check constraint"), failure.toString())
+            assertEquals(2, writes)
+            assertEquals("0", scalar("select count(*)::text from pg_class where relnamespace='public'::regnamespace", "recovered"))
+            assertEquals("2", scalar("select count(*)::text from backup.object_progress where status='completed'", "content_recovery_journal"))
+            assertEquals("0", scalar("select count(*)::text from pg_namespace where nspname in ('workops','git','content','artifacts','migrations')", "recovered"))
+            sql("alter database recovered set bosca.restore_allowed='on'", "postgres")
+            BackupProviderRegistrar().register()
+            service = provide()
+
+            assertEquals(report.database, service.restoreContent(output, report, backup, counted, "recovered-assets"))
+            assertEquals(2, writes)
+            assertEquals("1", scalar("select id::text from public.restore_gate", "recovered"))
+        }
+    }
+
+    @Test
+    fun `combined content restore propagates cancellation and leaves the database empty for retry`(): Unit = runBlocking {
+        withContentRecovery { report, backup, target ->
+            val cancelled = object : ObjectStorageService by target {
+                override suspend fun setInputStream(path: ObjectPath, stream: InputStream, length: Long?): Long {
+                    throw kotlinx.coroutines.CancellationException("asset restore cancelled")
+                }
+            }
+            assertFailsWith<kotlinx.coroutines.CancellationException> {
+                service.restoreContent(output, report, backup, cancelled, "recovered-assets")
+            }
+            assertEquals("0", scalar("select count(*)::text from pg_class where relnamespace='public'::regnamespace", "recovered"))
+            assertEquals("0", scalar("select count(*)::text from backup.object_progress where status='completed'", "content_recovery_journal"))
+            assertEquals(report.database, service.restoreContent(output, report, backup, target, "recovered-assets"))
+        }
+    }
+
+    @Test
+    fun `combined content restore repeats database checks after asset copying`(): Unit = runBlocking {
+        withContentRecovery { report, backup, target ->
+            var populated = false
+            val changed = object : ObjectStorageService by target {
+                override suspend fun setInputStream(path: ObjectPath, stream: InputStream, length: Long?): Long {
+                    if (!populated) {
+                        populated = true
+                        sql("create table public.existing(id int); insert into public.existing values (123)", "recovered")
+                    }
+                    return target.setInputStream(path, stream, length)
+                }
+            }
+            assertFailsWith<IllegalStateException> { service.restoreContent(output, report, backup, changed, "recovered-assets") }
+            assertTrue(populated)
+            assertEquals("123", scalar("select id::text from public.existing", "recovered"))
+            assertEquals("2", scalar("select count(*)::text from backup.object_progress where status='completed'", "content_recovery_journal"))
+        }
+    }
+
+    @Test
+    fun `combined content restore rejects a changed local artifact before database writes`(): Unit = runBlocking {
+        withContentRecovery { report, backup, target ->
+            val manifestFile = output.resolve("manifest.json")
+            val changed = object : ObjectStorageService by target {
+                override suspend fun setInputStream(path: ObjectPath, stream: InputStream, length: Long?): Long {
+                    manifestFile.writeText(application.json.encodeToString(
+                        PostgresBackupManifest.serializer(), report.database.copy(id = "another-capture"),
+                    ))
+                    return target.setInputStream(path, stream, length)
+                }
+            }
+            val failure = assertFailsWith<IllegalStateException> {
+                service.restoreContent(output, report, backup, changed, "recovered-assets")
+            }
+            assertTrue(failure.message.orEmpty().contains("changed"), failure.toString())
+            assertEquals("0", scalar("select count(*)::text from pg_class where relnamespace='public'::regnamespace", "recovered"))
+            assertEquals("2", scalar("select count(*)::text from backup.object_progress where status='completed'", "content_recovery_journal"))
+            manifestFile.writeText(application.json.encodeToString(PostgresBackupManifest.serializer(), report.database))
+        }
+    }
+
+    @Test
+    fun `combined content restore accepts an empty saved content inventory`(): Unit = runBlocking {
+        withContentRecovery(includeAssets = false) { report, backup, target ->
+            assertTrue(report.objects.objects.isEmpty())
+            assertEquals(0L, assertNotNull(report.database.contentInventory).count)
+            assertEquals(report.database, service.restoreContent(output, report, backup, target, "recovered-assets"))
+            assertEquals("0", scalar("select count(*)::text from metadata", "recovered"))
+            assertEquals("0", scalar("select count(*)::text from backup.object_progress", "content_recovery_journal"))
+            assertFalse(Files.exists(root.resolve("content-recovered-assets")))
+        }
+    }
+
     @Test
     fun `content capture operation retains new points reuses assets and restores without the source`(): Unit = runBlocking {
         contentCaptureServices()

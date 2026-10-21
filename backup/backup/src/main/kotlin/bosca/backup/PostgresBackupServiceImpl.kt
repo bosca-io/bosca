@@ -30,6 +30,7 @@ class PostgresBackupServiceImpl(
     private val metadataService: ObjectProvider<MetadataService>,
     private val collectionService: ObjectProvider<CollectionService>,
     private val captureService: ObjectProvider<ObjectBackupCaptureService>,
+    private val restoreService: ObjectProvider<ObjectBackupRestoreService>,
 ) : PostgresBackupService {
     override suspend fun captureContent(
         sourceId: String,
@@ -170,6 +171,49 @@ class PostgresBackupServiceImpl(
     override suspend fun preflightRestore(directory: Path): PostgresBackupManifest = withContext(StorageDispatcher) {
         check(connectionOrNull()?.inTransaction != true) { "PostgreSQL restore preflight must run outside an active caller transaction" }
         PostgresBackupRestore(application).preflight(verify(directory))
+    }
+
+    override suspend fun restoreContent(
+        directory: Path,
+        report: PostgresBackupContentReport,
+        backup: ObjectStorageService,
+        destination: ObjectStorageService,
+        destinationId: String,
+    ): PostgresBackupManifest = withContext(StorageDispatcher) {
+        check(connectionOrNull()?.inTransaction != true) { "Content restore must run outside an active caller transaction" }
+        require(destinationId.isNotBlank()) { "Content restore destination identity is required" }
+        require(backup !== destination) { "Backup storage must be independent of the restore destination" }
+        report.validate()
+        val database = verify(directory)
+        require(database == report.database) { "Local database artifact does not match the selected content report" }
+        val objects = report.objects.copy(objects = report.objects.objects.toList())
+        val store = report.inspection.store
+        var unverified = 0L
+        var firstGap: String? = null
+        PostgresBackupContentInspector(application.json).inspect(directory, database, objects, store, backup) { inspection ->
+            if (inspection.status != PostgresBackupContentStatus.VERIFIED) {
+                unverified++
+                if (firstGap == null) {
+                    firstGap = "${inspection.reference.kind} ${inspection.reference.contentId}, " +
+                        "path ${inspection.path ?: "unresolved"}: ${inspection.status}"
+                }
+            }
+        }
+        check(unverified == 0L) { "$unverified saved content references are not fully verified; first: $firstGap" }
+
+        val restores = restoreService.get()
+        val targets = mapOf(store to destination)
+        val inspection = restores.inspect(objects, backup, targets, destinationId)
+        for (item in inspection.objects) {
+            check(item.status != ObjectBackupRestoreObjectStatus.CONFLICTING) {
+                "Existing destination object conflicts with restore: ${item.payload.store}/${item.payload.key}"
+            }
+        }
+        val native = PostgresBackupRestore(application)
+        native.preflight(database)
+        restores.restore(objects, backup, targets, destinationId)
+        check(verify(directory) == database) { "Local database artifact changed during content restore" }
+        native.restore(directory, database)
     }
 
     override suspend fun restore(directory: Path): PostgresBackupManifest = withContext(StorageDispatcher) {
