@@ -1,4 +1,4 @@
-import type { ClientContext } from "@bosca/bml";
+import type { ClientContext, IslandUpdate } from "@bosca/bml";
 
 /** Keeps one tooltip with its component so custom properties inherit through the popover layer. */
 export function attachTooltip(
@@ -11,6 +11,7 @@ export function attachTooltip(
   let hideTimer: ReturnType<typeof setTimeout> | undefined;
   let nativeTitle: string | undefined;
   let label = "";
+  let visible = false;
   let hovered = false;
   let focused = false;
   let tooltipHovered = false;
@@ -24,6 +25,7 @@ export function attachTooltip(
     if (nativeTitle != null && !trigger.hasAttribute("title")) trigger.setAttribute("title", nativeTitle);
   };
   const hide = () => {
+    visible = false;
     cancelTimers();
     if (!tooltip) return;
     if (tooltip.matches(":popover-open")) tooltip.hidePopover();
@@ -95,6 +97,7 @@ export function attachTooltip(
     }
     tooltip.textContent = label;
     if (!tooltip.matches(":popover-open")) tooltip.showPopover();
+    visible = true;
     position();
     const ids = new Set((trigger.getAttribute("aria-describedby") ?? "").split(/\s+/).filter(Boolean));
     ids.add(tooltip.id);
@@ -151,6 +154,12 @@ export function attachTooltip(
   }, true);
   ctx.on(window, "resize", position);
   ctx.onUpdate(readLabel);
+  ctx.on<CustomEvent<IslandUpdate>>(document, "bml:update", event => {
+    if (!event.detail.target.contains(ctx.root)) return;
+    readLabel();
+    // Retained DOM leaves the native top layer during a surrounding replacement.
+    if (visible) show();
+  });
   ctx.onUnmount(() => {
     hide();
     tooltip?.remove();

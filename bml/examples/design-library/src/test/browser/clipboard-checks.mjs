@@ -89,8 +89,12 @@ export async function checkClipboard({ call, evaluate, until, base, mode, artifa
   await until(`${label(retained)}==='Copy token'`);
   await evaluate(`window.fixtureRetainedCopy=document.querySelector('${retained}'); window.fixtureClipboardMode='pending'; window.fixtureClipboardPending=[]`);
   await click(button(retained));
+  await evaluate(`window.fixtureDescription=document.querySelector('[data-copy-description=light]');window.fixtureDescription.querySelector('button').focus()`);
+  await until(`window.fixtureDescription.querySelector('.bosca-tooltip:popover-open')`);
+  await evaluate(`window.fixtureDescriptionPopup=window.fixtureDescription.querySelector('.bosca-tooltip');window.fixtureDescriptionTrigger=document.activeElement`);
   await click('[data-change-copy=light]');
   await until(`${label(retained)}==='Copy updated value' && ${label(standalone)}==='Copy updated value'`);
+  assert.ok(await evaluate(`window.fixtureDescription===document.querySelector('[data-copy-description=light]')&&window.fixtureDescription.querySelector('.bosca-tooltip')===window.fixtureDescriptionPopup&&window.fixtureDescriptionPopup.matches(':popover-open')&&window.fixtureDescriptionPopup.textContent==='Copy updated value'&&document.activeElement===window.fixtureDescriptionTrigger`),'A retained tooltip refreshes its description and restores its native top-layer surface without moving focus');
   assert.ok(await evaluate(`window.fixtureRetainedCopy===document.querySelector('${retained}')`));
   const beforeStale=await evaluate('window.fixtureCopyEvents.length');
   await evaluate('window.fixtureClipboardPending[0].resolve()');

@@ -55,7 +55,7 @@ class CatalogApplicationTest {
             assertTrue(jar.getInputStream(manifest).readBytes().isNotEmpty())
         }
         for (development in listOf(false, true)) withServer(development) { base, client ->
-            for (path in listOf("/", "/foundation", "/themes", "/selection", "/source", "/json", "/comments", "/overlays", "/choices", "/views", "/trees", "/navigation", "/components", "/components/controls",
+            for (path in listOf("/", "/foundation", "/themes", "/selection", "/source", "/json", "/comments", "/overlays", "/choices", "/views", "/trees", "/navigation", "/feedback", "/components", "/components/controls",
                 "/components/layout", "/components/feedback", "/components/overlays", "/components/content", "/components/aliases")) {
                 val response = request(client, base, path)
                 assertEquals(200, response.statusCode(), path + response.body())
@@ -128,7 +128,8 @@ class CatalogApplicationTest {
             assertTrue(ready, log.readText())
             test(base, HttpClient.newBuilder().cookieHandler(CookieManager(null, CookiePolicy.ACCEPT_ALL)).build())
         } catch (failure: Throwable) {
-            failure.addSuppressed(IllegalStateException("Catalog development=$development at $base: ${log.readText()}"))
+            val state = if (process.isAlive) "running" else "exited ${process.exitValue()}"
+            failure.addSuppressed(IllegalStateException("Catalog development=$development at $base ($state): ${log.readText()}"))
             throw failure
         } finally {
             process.destroy()
@@ -144,6 +145,8 @@ class CatalogApplicationTest {
             client.send(builder.build(), HttpResponse.BodyHandlers.ofString())
         } catch (failure: java.net.http.HttpTimeoutException) {
             throw AssertionError("Timed out requesting $path from $base", failure)
+        } catch (failure: java.io.IOException) {
+            throw AssertionError("Failed requesting $path from $base", failure)
         }
     }
 }

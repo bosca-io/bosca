@@ -72,6 +72,8 @@ timeouts, overlapping results, preserved value/label updates and disposal during
 Two themes and desktop/phone layouts use the same library exports. Browser tests stub clipboard
 outcomes to avoid changing the system clipboard; rendering, server actions and lifecycle are real.
 Script-disabled values remain manually selectable.
+The clipboard page also retains a focused tooltip through surrounding value/label updates, checking
+its DOM identity, updated plain-text description, top-layer state and focus.
 
 The `/notifications` page issues notices through caller-owned actions and monotonic sequences.
 Checks cover live-region priorities, repeated text, same/older/empty sequences, failed actions,

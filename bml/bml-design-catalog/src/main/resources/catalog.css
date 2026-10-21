@@ -54,6 +54,9 @@
 .views-state-options { margin-top: 16px; }
 .tree-state-options { margin-top: 16px; }
 .navigation-state-options { margin-top: 16px; }
+.feedback-state-options { margin-top: 16px; }
+.catalog-tooltip-placements { gap: 12px; }
+.catalog-tooltip-clip { width: 180px; max-width: 100%; height: 34px; overflow: hidden; }
 .catalog-route-host { width: 100%; min-width: 0; }
 .catalog-route-host[data-narrow] { max-width: 420px; }
 .catalog-route-host > nav.tabs, .catalog-route-case > nav.tabs { margin-bottom: 0; }

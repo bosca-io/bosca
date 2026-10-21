@@ -137,6 +137,9 @@ there is no fixed product prefix. Git's existing presentation models use this sa
 Tooltips open on pointer hover or keyboard focus and dismiss on Escape, activation or departure.
 Their text remains available while hovered. Placement can flip or clamp at viewport edges.
 Each visible tooltip adds its own ID to `aria-describedby`, preserving existing descriptions.
+An open tooltip on a preserved root retains its description, focus and top-layer surface through
+surrounding island updates. Changed root attributes supply its current description and placement;
+a dismissed tooltip stays closed until the next hover or focus.
 The helper follows a replaced trigger and removes timers, listeners and tooltip nodes when its
 component unmounts. Clicking tooltip text does not activate its parent button or anchor.
 Icon actions retain native `title` labels when scripts are disabled.

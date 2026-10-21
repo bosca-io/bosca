@@ -22,6 +22,7 @@ Open `http://localhost:9093/`. Pass another port with `--args=9094` if needed.
 | `/overlays` | Independent modal forms, retained drafts, rejected confirmations, popover forms and menus, sizes and trigger variants |
 | `/json` | Independent dark/light JSON drafts, retained engine state, pending/rejected saves, native reset, controlled options and tree/text/table/empty/invalid/readonly/disabled variants |
 | `/source` | Independent dark/light source viewers, requested lines, language/wrap changes, preserved state, content replacement and compact/bare/empty layouts |
+| `/feedback` | Independent copy outcomes, tooltip placements, repeated toast tones, long notifications and native selectable values |
 | `/navigation` | Native route destinations, retained overflow menus, projected actions, changing/current/long lists, clipping and header spacing in two palettes |
 | `/trees` | Local file disclosure, server-loaded children, failed-load retry, retained scroll/focus, disabled folders and native links in two palettes |
 | `/views` | Search queries, native category values and caller-owned tab panels, retained drafts, rejected searches, changing tab lists and long/empty/readonly/disabled variants |
@@ -76,6 +77,15 @@ own preserved native state. Replace defaults changes all three keys; ordinary re
 DOM, selection, query/caret/focus and popup state. Controls can change required/custom/disabled/loading
 state and tag limits. Static cases cover empty, compact, loading, disabled, long labels and tag limits.
 Both local and server-paged compositions are shown in the select authoring reference.
+
+The `/feedback` page combines copy fields, quiet copy actions, four tooltip placements and all four
+notification tones in independent palettes. The application handles `copyresult` and issues a toast;
+manual-copy guidance remains beside a selectable readonly value if clipboard access is unavailable.
+Stable keys retain controls across refreshes. Replacing values updates clipboard data and descriptions;
+changing the field key installs the new native value. State controls demonstrate long scrollable
+notifications and repeated mount/unmount. A clipped ancestor demonstrates top-layer tooltip placement.
+The copy API includes the complete local composition. Browser checks stub clipboard outcomes inside
+an isolated profile, preserving the system clipboard.
 
 The `/navigation` page gives each palette a full-width route example with an optional narrow
 container. The application supplies public `NavigationItem` values and revision keys. Refresh uses
