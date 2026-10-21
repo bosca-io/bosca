@@ -136,23 +136,29 @@ database and retains its verified native artifact in one queued operation. Set *
 Pipeline's Input node, connect the action's receipt output to Output, and use the existing
 Pipeline run/schedule controls. No new schedule is installed.
 
+Enable **Include content references** to retain `content-references.json` from the same
+exported database view as the dump. The option defaults to false and is saved as fixed
+request intent, so retries and receipt replay cannot change it. It requires Bosca's content
+schema and services. This saves reference evidence; it does not copy the referenced assets.
+
 Configure `backup.postgres.service` for that same primary database as described below. The
 server and runner images provide PostgreSQL 18 clients. Optional `backup.postgres.scratchDirectory`
 selects an existing writable parent directory; otherwise the Java temporary directory is used.
 Each attempt needs local space for one database dump. It does not need shared scratch between
 workers or ReadWriteMany storage.
 
-A backing job and node identify one fixed request. Its source identity, storage ID and prefix
-cannot change on retry. A completed request returns its recorded receipt without another dump
-or object-store access; its journal database must still be available. A new Pipeline run creates
+A backing job and node identify one fixed request. Its source identity, storage ID, prefix
+and content-reference selection cannot change on retry. A completed request returns its receipt
+without another dump or object-store access; its journal database must still be available. A new Pipeline run creates
 a new request. An unfinished attempt may capture a **new point in time** when retried on any
 worker. The successful receipt records that attempt's actual database boundary, byte identity
 and retained location. It never reports an abandoned attempt's boundary as completed.
 
 Artifacts use a new `<prefix>/<requestKey>/<attemptId>` directory containing `intent.json`,
-`database.dump` and, after retained verification, `manifest.json`. The receipt's `path` selects
-that directory for `PostgresBackupService.download`. Local scratch is removed on ordinary exit
-or cancellation. Incomplete remote attempts remain untouched and need explicit retention cleanup;
+`database.dump`, an optional `content-references.json` and, after retained verification,
+`manifest.json`. The receipt's `path` selects that directory for `PostgresBackupService.download`.
+Local scratch is removed on ordinary exit or cancellation. Incomplete remote attempts remain
+untouched and need explicit retention cleanup;
 a process crash may also leave local scratch. A receipt is recorded only after storage closes.
 Ordinary retries belong to Pipelines. A completed receipt records the successful attempt's outcome,
 not a continuing audit of retained storage health.
@@ -188,8 +194,9 @@ then use the Pipeline's retry control. Tokens do not expire or authorize live-wr
 All these operations require backup administration access. Runtime credentials stay in
 configuration, outside job definitions and run records.
 
-This action captures database state only. Matching database/object recovery points, protected
-retention and keys, full-instance restore and deployment rebinding remain separate work.
+This action captures database state and optional reference evidence. Matching database/object
+recovery points, protected retention and keys, full-instance restore and deployment rebinding
+remain separate work.
 
 ## Native PostgreSQL database artifacts
 
@@ -250,8 +257,9 @@ Upload and download include every declared component. A retained manifest is pub
 after the dump and inventory bytes verify. Matching retries reuse verified files and repair
 only missing or damaged owned output. Retrieval verifies the inventory's JSON encoding and
 record count before publishing the local manifest, and needs no source database or configuration.
-The native Pipeline action currently uses database-only capture. Neither an inventory nor its
-successful transfer establishes that matching asset bytes have been retained.
+The native Pipeline action selects this inventory through **Include content references**;
+database-only capture remains the default. Neither an inventory nor its successful transfer
+establishes that matching asset bytes have been retained.
 
 `PostgresBackupService.inspectContent(directory, objects, store, backup)` inspects a saved
 inventory against one object-backup manifest and logical content store. It verifies the local

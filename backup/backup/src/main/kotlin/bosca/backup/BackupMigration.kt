@@ -23,5 +23,6 @@ class BackupMigration : Migration {
         "V15__postgres_backup_runs.sql",
         "V16__object_backup_verification_observations.sql",
         "V17__object_backup_job_checkpoints.sql",
+        "V18__postgres_backup_content_selection.sql",
     )
 }

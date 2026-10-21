@@ -36,6 +36,10 @@ import kotlinx.serialization.json.put
         SettingSlot(name = "sourceId", control = SettingControl.TEXT, label = "Source identity", required = true),
         SettingSlot(name = "storageKey", control = SettingControl.TEXT, label = "Backup storage ID", required = true),
         SettingSlot(name = "prefix", control = SettingControl.TEXT, label = "Backup prefix", default = "postgresql"),
+        SettingSlot(
+            name = "includeContentReferences", control = SettingControl.BOOLEAN,
+            label = "Include content references", default = "false",
+        ),
     ],
 )
 @Serializable
@@ -47,6 +51,7 @@ class PostgresBackupNode(
     val sourceId: String = "",
     val storageKey: String = "",
     val prefix: String = "postgresql",
+    val includeContentReferences: Boolean = false,
     override val position: NodePosition = NodePosition(),
 ) : ActionNode() {
     override val willSuspend = true
@@ -56,7 +61,7 @@ class PostgresBackupNode(
         val invocation = queuedInvocation ?: UUID.random()
         val key = objectBackupIdentity(ObjectBackupOperation.BACKUP, listOf("postgresql", invocation.toString(), id))
         val receipt = provide<PostgresBackupRunService>().backupConfigured(
-            key, sourceId, storageKey, prefix, key.takeIf { queuedInvocation != null },
+            key, sourceId, storageKey, prefix, key.takeIf { queuedInvocation != null }, includeContentReferences,
         )
         return PostgresBackupNodeSerializer.serialize(receipt)
     }
@@ -67,6 +72,7 @@ class PostgresBackupNode(
             put("sourceId", sourceId)
             put("storageKey", storageKey)
             put("prefix", prefix)
+            put("includeContentReferences", includeContentReferences)
         })
         return null
     }

@@ -18,7 +18,11 @@ interface PostgresBackupRunService : Service {
      * the execution token and takes a fresh snapshot at a new retained path; it cannot reuse a
      * dead worker's exported snapshot. Other jobs and unqueued callers retain the explicit
      * stopped-writer [recover] contract. Checkpoint identities must be nonblank and contain no colon.
-     * Pipelines own retries. This captures database state only, not a matched database/object snapshot.
+     * [includeContentReferences] saves the owning content services' reference inventory in that
+     * attempt's exported database view and retains it with the dump. It is part of fixed request
+     * intent and cannot change on replay or retry. The default captures the database alone.
+     * Pipelines own retries. Neither mode retains asset bytes or establishes a matched
+     * database/object snapshot.
      */
     suspend fun backupConfigured(
         key: String,
@@ -26,6 +30,7 @@ interface PostgresBackupRunService : Service {
         storageKey: String,
         prefix: String,
         checkpointKey: String? = null,
+        includeContentReferences: Boolean = false,
     ): PostgresBackupReceipt
 
     /** Reads request state and its observed recovery token in the caller's database context. */

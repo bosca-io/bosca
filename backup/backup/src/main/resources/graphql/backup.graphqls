@@ -278,6 +278,8 @@ type PostgresBackupRun {
     sourceId: String!
     storageKey: String!
     prefix: String!
+    "Whether this fixed request includes the database's content-reference inventory."
+    includeContentReferences: Boolean!
     status: PostgresBackupRunStatus!
     attempts: Int!
     writerToken: String

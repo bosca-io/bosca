@@ -30,6 +30,7 @@ class PostgresBackupRunServiceImpl(
         storageKey: String,
         prefix: String,
         checkpointKey: String?,
+        includeContentReferences: Boolean,
     ): PostgresBackupReceipt = withContext(StorageDispatcher) {
         outsideTransaction()
         validateKey(key)
@@ -41,7 +42,10 @@ class PostgresBackupRunServiceImpl(
             "PostgreSQL backup prefix must be a canonical relative path"
         }
         fun checkIntent(run: PostgresBackupRun) {
-            require(run.sourceId == sourceId && run.storageKey == storageKey && run.prefix == prefix) {
+            require(
+                run.sourceId == sourceId && run.storageKey == storageKey && run.prefix == prefix &&
+                    run.includeContentReferences == includeContentReferences,
+            ) {
                 "Conflicting PostgreSQL backup request: $key"
             }
         }
@@ -61,7 +65,7 @@ class PostgresBackupRunServiceImpl(
                 withConnectionManager {
                     transaction {
                         storage.bind(storageKey, configuration)
-                        repository.add(key, sourceId, storageKey, prefix)
+                        repository.add(key, sourceId, storageKey, prefix, includeContentReferences)
                         checkIntent(checkNotNull(repository.get(key)))
                         val started = repository.begin(key, token) == 1
                         val resumed = !started && checkpointKey != null && repository.resume(key, checkpointKey, token) == 1
@@ -72,7 +76,7 @@ class PostgresBackupRunServiceImpl(
                 acquired = true
             }
             currentCoroutineContext().ensureActive()
-            val receipt = capture(key, sourceId, storageKey, prefix, configuration)
+            val receipt = capture(key, sourceId, storageKey, prefix, configuration, includeContentReferences)
             currentCoroutineContext().ensureActive()
             withContext(NonCancellable) {
                 withConnectionManager {
@@ -111,6 +115,7 @@ class PostgresBackupRunServiceImpl(
         storageKey: String,
         prefix: String,
         configuration: StorageConfiguration,
+        includeContentReferences: Boolean,
     ): PostgresBackupReceipt {
         val configured = application.environment.config.propertyOrNull("backup.postgres.scratchDirectory")?.getString()
         require(configured == null || configured.isNotBlank()) { "PostgreSQL scratch directory must not be blank" }
@@ -119,7 +124,7 @@ class PostgresBackupRunServiceImpl(
         val directory = scratch.resolve("capture")
         var failure: Throwable? = null
         try {
-            val manifest = artifacts.capture(sourceId, directory)
+            val manifest = artifacts.capture(sourceId, directory, includeContentReferences = includeContentReferences)
             val path = "$prefix/$key/${UUID.randomUUID()}"
             storage.withStorage(storageKey, configuration) { backup ->
                 check(artifacts.upload(directory, backup, path) == manifest) { "Transferred PostgreSQL artifact changed" }
@@ -131,7 +136,10 @@ class PostgresBackupRunServiceImpl(
         } finally {
             withContext(NonCancellable) {
                 try {
-                    for (file in listOf("database.dump", "database.dump.tmp", "manifest.json", "manifest.json.tmp", "pg_dump.stderr")) {
+                    for (file in listOf(
+                        "database.dump", "database.dump.tmp", "manifest.json", "manifest.json.tmp", "pg_dump.stderr",
+                        "content-references.json", "content-references.json.tmp",
+                    )) {
                         Files.deleteIfExists(directory.resolve(file))
                     }
                     Files.deleteIfExists(directory)

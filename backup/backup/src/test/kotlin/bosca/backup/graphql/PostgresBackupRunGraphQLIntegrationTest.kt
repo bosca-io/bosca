@@ -23,10 +23,10 @@ import kotlin.test.assertTrue
 /** Real schema, dispatchers, authorization and native backup journal mapping. */
 @OptIn(InternalDI::class)
 class PostgresBackupRunGraphQLIntegrationTest : ObjectBackupGraphQLTest() {
-    private suspend fun prepare(key: String = "native") = request {
+    private suspend fun prepare(key: String = "native", includeContentReferences: Boolean = false) = request {
         provide<ObjectBackupStorageService>().bind("native-store",
             StorageConfiguration("fs", "", basePath = directory.resolve("native").toString()))
-        provide<PostgresBackupRunRepository>().add(key, "source", "native-store", "postgresql")
+        provide<PostgresBackupRunRepository>().add(key, "source", "native-store", "postgresql", includeContentReferences)
     }
 
     private suspend fun running() {
@@ -35,6 +35,17 @@ class PostgresBackupRunGraphQLIntegrationTest : ObjectBackupGraphQLTest() {
             provide<PostgresBackupRunRepository>().begin("native", "observed-token")
             provide<PostgresBackupRunRepository>().claim("native", "native-store")
         } }
+    }
+
+    @Test
+    fun `native request exposes persisted content inventory selection`(): Unit = runBlocking {
+        prepare("plain")
+        prepare("selected", includeContentReferences = true)
+        for ((key, expected) in listOf("plain" to "false", "selected" to "true")) {
+            val value = nativeData(execute("""{ backups { postgresRun(key: "$key") { includeContentReferences } } }"""))
+                .getValue("postgresRun").jsonObject
+            assertEquals(expected, value.string("includeContentReferences"))
+        }
     }
 
     @Test

@@ -990,11 +990,12 @@ class PostgresBackupIntegrationTest {
         token: String,
         claim: Boolean = true,
         prefix: String = "backups",
+        includeContentReferences: Boolean = false,
     ) = withConnectionManager {
         transaction {
             provide<ObjectBackupStorageService>().bindConfigured(setOf("retained"))
             val repository = provide<PostgresBackupRunRepository>()
-            assertEquals(1, repository.add(key, "instance", "retained", prefix))
+            assertEquals(1, repository.add(key, "instance", "retained", prefix, includeContentReferences))
             assertEquals(1, repository.begin(key, token))
             if (claim) assertEquals(1, repository.claim(key, "retained"))
         }
@@ -1144,6 +1145,127 @@ class PostgresBackupIntegrationTest {
         } }
         assertEquals(emptyList(), withConnectionManager { runs.list("instance", "retained", 0, 10) })
         assertFalse(Files.exists(root.resolve("retained")))
+    }
+
+    private suspend fun contentReferenceServices() {
+        provides<CacheManager>(singleton = true) { mockk(relaxed = true) }
+        provides<MetadataService>(singleton = true) { metadataReferenceService() }
+        provides<CollectionService>(singleton = true) { collectionReferenceService() }
+        BackupProviderRegistrar().register()
+        service = provide()
+    }
+
+    @Test
+    fun `selected content inventory checkpoint resumes only its original request intent`(): Unit = runBlocking {
+        runService()
+        FlywayMigration(pool).migrate(listOf(CoreMigration()))
+        contentReferenceServices()
+        sql("insert into metadata (name, content_type) values ('Pending', 'image/png')")
+        seedNativeWriter("selected", "job:stopped", includeContentReferences = true)
+        val runs = provide<PostgresBackupRunService>()
+        val stopped = withConnectionManager { assertNotNull(runs.get("selected")) }
+        assertTrue(stopped.includeContentReferences)
+        assertFailsWith<IllegalArgumentException> {
+            runs.backupConfigured("selected", "instance", "retained", "backups", "job")
+        }
+        assertEquals(stopped, withConnectionManager { runs.get("selected") })
+        install()
+        contentReferenceServices()
+        val restarted = provide<PostgresBackupRunService>()
+        val receipt = restarted.backupConfigured("selected", "instance", "retained", "backups", "job", true)
+        assertEquals(1L, assertNotNull(receipt.manifest.contentInventory).count)
+        val completed = withConnectionManager { assertNotNull(restarted.get("selected")) }
+        assertTrue(completed.includeContentReferences)
+        assertEquals(2, completed.attempts)
+        assertEquals(receipt, completed.result)
+        assertEquals("0", scalar("select count(*)::text from backup.object_store_writers"))
+        assertFalse(root.toFile().list().orEmpty().any { it.startsWith("postgres-backup-") })
+    }
+
+    @Test
+    fun `queued native content inventory is fixed retained cleaned and recoverable without the source`(): Unit = runBlocking {
+        runService()
+        FlywayMigration(pool).migrate(listOf(CoreMigration()))
+        contentReferenceServices()
+        val runs = provide<PostgresBackupRunService>()
+        val id = "10000000-0000-0000-0000-000000000001"
+        sql("insert into metadata (id, name, content_type, content_length, uploaded) values ('$id', 'Saved image', 'image/png', 42, now())")
+        val configuration = assertNotNull(retained)
+        PostgresBackupPipelineFixture.create(application, pool, root, includeContentReferences = true).use { pipeline ->
+            val initial = pipeline.start()
+            pipeline.execute(pipeline.next())
+            pipeline.execute(pipeline.next())
+            val complete = pipeline.get(initial.id)
+            assertEquals(bosca.pipelines.model.PipelineRunStatus.OK, complete.status)
+            val receipt = application.json.decodeFromJsonElement(PostgresBackupReceipt.serializer(), assertNotNull(complete.output))
+            val inventory = assertNotNull(receipt.manifest.contentInventory)
+            assertEquals(1L, inventory.count)
+            val saved = withConnectionManager { assertNotNull(runs.get(receipt.key)) }
+            assertTrue(saved.includeContentReferences)
+            assertEquals(receipt, saved.result)
+            assertFalse(root.toFile().list().orEmpty().any { it.startsWith("postgres-backup-") })
+            assertEquals("0", scalar("select count(*)::text from backup.object_store_writers"))
+            tool = root.resolve("missing-dump")
+            retained = null
+            install(configured = false)
+            val restarted = provide<PostgresBackupRunService>()
+            assertEquals(receipt, restarted.backupConfigured(receipt.key, "instance", "retained", "postgresql", includeContentReferences = true))
+            assertFailsWith<IllegalArgumentException> { restarted.backupConfigured(receipt.key, "instance", "retained", "postgresql") }
+            pool.close()
+            sql("drop database source with (force)", "postgres")
+            provide<ObjectStorageServiceFactory>().withStorage(configuration) { store -> service.download(store, receipt.path, output) }
+            val references = application.json.decodeFromString(kotlinx.serialization.builtins.ListSerializer(ContentStorageReference.serializer()),
+                output.resolve(inventory.path).readText())
+            assertEquals(id, references.single().contentId.toString())
+            restore()
+            assertEquals("Saved image", scalar("select name from metadata where id='$id'", "recovered"))
+        }
+    }
+
+    @Test
+    fun `selected inventory upload failures and cancellation clean scratch and retain fixed retry intent`(): Unit = runBlocking {
+        runService()
+        FlywayMigration(pool).migrate(listOf(CoreMigration()))
+        contentReferenceServices()
+        sql("insert into metadata (name, content_type) values ('Pending', 'image/png')")
+        var cancel = false
+        val entered = CompletableDeferred<Unit>()
+        faultStorage { actual -> object : ObjectStorageService by actual {
+            override suspend fun setInputStream(path: ObjectPath, stream: InputStream, length: Long?): Long {
+                if (path.toString().endsWith("/content-references.json")) {
+                    if (cancel) { entered.complete(Unit); awaitCancellation() }
+                    throw IOException("inventory upload failed")
+                }
+                return actual.setInputStream(path, stream, length)
+            }
+        } }
+        val runs = provide<PostgresBackupRunService>()
+        val failure = assertFailsWith<IOException> { runs.backupConfigured("selected", "instance", "retained", "backups", includeContentReferences = true) }
+        assertEquals("inventory upload failed", failure.message)
+        assertFalse(root.toFile().list().orEmpty().any { it.startsWith("postgres-backup-") })
+        val failed = withConnectionManager { assertNotNull(runs.get("selected")) }
+        assertTrue(failed.includeContentReferences)
+        assertEquals(PostgresBackupRunStatus.FAILED, failed.status)
+        assertEquals(null, failed.result)
+        assertEquals("0", scalar("select count(*)::text from backup.object_store_writers"))
+        assertFailsWith<IllegalArgumentException> { runs.backupConfigured("selected", "instance", "retained", "backups") }
+        assertEquals(failed, withConnectionManager { runs.get("selected") })
+        cancel = true
+        val attempt = async { runs.backupConfigured("cancelled-inventory", "instance", "retained", "backups", includeContentReferences = true) }
+        withTimeout(30_000) { entered.await() }
+        withTimeout(5_000) { attempt.cancelAndJoin() }
+        assertFalse(root.toFile().list().orEmpty().any { it.startsWith("postgres-backup-") })
+        assertEquals(PostgresBackupRunStatus.CANCELLED, withConnectionManager { assertNotNull(runs.get("cancelled-inventory")).status })
+        assertEquals("0", scalar("select count(*)::text from backup.object_store_writers"))
+        install()
+        contentReferenceServices()
+        val restarted = provide<PostgresBackupRunService>()
+        for (key in listOf("selected", "cancelled-inventory")) {
+            val receipt = restarted.backupConfigured(key, "instance", "retained", "backups", includeContentReferences = true)
+            assertEquals(1L, assertNotNull(receipt.manifest.contentInventory).count)
+            assertEquals(2, withConnectionManager { assertNotNull(restarted.get(key)).attempts })
+        }
+        assertFalse(root.toFile().list().orEmpty().any { it.startsWith("postgres-backup-") })
     }
 
     @Test

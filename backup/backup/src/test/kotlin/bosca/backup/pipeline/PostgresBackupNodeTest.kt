@@ -61,7 +61,7 @@ class PostgresBackupNodeTest {
         ProviderRegistry.clear()
         provides<GroupEvaluator> { GroupEvaluator(mockk()) }
         provides<PostgresBackupRunService> { service }
-        coEvery { service.backupConfigured(any(), "instance", "retained", "postgresql", any()) } answers {
+        coEvery { service.backupConfigured(any(), "instance", "retained", "postgresql", any(), any()) } answers {
             val key = firstArg<String>()
             keys.add(key)
             PostgresBackupReceipt(key, "retained", "postgresql/$key/artifact", manifest)
@@ -83,7 +83,7 @@ class PostgresBackupNodeTest {
             perform(node("other"))
         }
         assertEquals(keys[0], keys[1])
-        coVerify(exactly = 2) { service.backupConfigured(keys[0], "instance", "retained", "postgresql", keys[0]) }
+        coVerify(exactly = 2) { service.backupConfigured(keys[0], "instance", "retained", "postgresql", keys[0], false) }
         assertTrue(keys[0] != keys[2])
         every { job.getId() } returns UUID.random()
         withContext(queue.asCoroutineContext(job)) { perform(node()) }
@@ -96,7 +96,7 @@ class PostgresBackupNodeTest {
         assertFailsWith<SecurityException> {
             node().run(PipelineContext(AuthenticationContext(null, null), json), NodeInputs(emptyMap()))
         }
-        coVerify(exactly = 0) { service.backupConfigured(any(), any(), any(), any(), any()) }
+        coVerify(exactly = 0) { service.backupConfigured(any(), any(), any(), any(), any(), any()) }
     }
 
     @Test
@@ -104,7 +104,7 @@ class PostgresBackupNodeTest {
         repeat(2) { perform(node()) }
         assertTrue(keys[0] != keys[1])
         for (key in keys) coVerify(exactly = 1) {
-            service.backupConfigured(key, "instance", "retained", "postgresql", null)
+            service.backupConfigured(key, "instance", "retained", "postgresql", null, false)
         }
     }
 
@@ -121,9 +121,9 @@ class PostgresBackupNodeTest {
 
     @Test
     fun `cancellation and native failures propagate without successful output`(): Unit = runBlocking {
-        coEvery { service.backupConfigured(any(), any(), any(), any(), any()) } throws CancellationException("stopped")
+        coEvery { service.backupConfigured(any(), any(), any(), any(), any(), any()) } throws CancellationException("stopped")
         assertEquals("stopped", assertFailsWith<CancellationException> { perform(node()) }.message)
-        coEvery { service.backupConfigured(any(), any(), any(), any(), any()) } throws java.io.IOException("upload failed")
+        coEvery { service.backupConfigured(any(), any(), any(), any(), any(), any()) } throws java.io.IOException("upload failed")
         assertEquals("upload failed", assertFailsWith<java.io.IOException> { perform(node()) }.message)
     }
 
@@ -131,11 +131,26 @@ class PostgresBackupNodeTest {
     fun `generated catalog and graph serializer expose ordinary settings and typed receipt`() {
         val descriptors = BackupPipelineNodeSerializersProvider()
         val entry = descriptors.descriptors.single { it.key == "postgresBackup.backup" }
-        assertEquals(listOf("sourceId", "storageKey", "prefix"), entry.settings.map { it.name })
+        assertEquals(listOf("sourceId", "storageKey", "prefix", "includeContentReferences"), entry.settings.map { it.name })
         assertEquals(PostgresBackupReceipt.serializer().descriptor.serialName, entry.outputs.single().type)
         val restored = assertIs<PostgresBackupNode>(json.decodeFromString(PipelineNode.serializer(), json.encodeToString(PipelineNode.serializer(), node())))
         assertEquals("retained", restored.storageKey)
+        assertEquals(false, restored.includeContentReferences)
         assertTrue(restored.willSuspend)
+    }
+
+    @Test
+    fun `selected content inventory survives serialization execution and dry run`(): Unit = runBlocking {
+        val selected = PostgresBackupNode("backup", sourceId = "instance", storageKey = "retained", includeContentReferences = true)
+        val restored = assertIs<PostgresBackupNode>(json.decodeFromString(PipelineNode.serializer(),
+            json.encodeToString(PipelineNode.serializer(), selected)))
+        assertTrue(restored.includeContentReferences)
+        perform(restored)
+        coVerify(exactly = 1) { service.backupConfigured(keys.single(), "instance", "retained", "postgresql", null, true) }
+        val trace = DryRunTrace()
+        ProviderRegistry.clear()
+        restored.run(PipelineContext(AuthenticationContext(null, null), json, dryRun = true, trace = trace), NodeInputs(emptyMap()))
+        assertEquals(JsonPrimitive(true), trace.actions.getValue("backup").jsonObject["includeContentReferences"])
     }
 
     private fun node(id: String = "backup") = PostgresBackupNode(id, sourceId = "instance", storageKey = "retained")

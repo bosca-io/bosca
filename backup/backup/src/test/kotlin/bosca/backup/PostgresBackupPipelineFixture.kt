@@ -149,7 +149,12 @@ internal class PostgresBackupPipelineFixture private constructor(
     }
 
     companion object {
-        suspend fun create(application: BoscaApplication, pool: ConnectionPool, directory: Path): PostgresBackupPipelineFixture {
+        suspend fun create(
+            application: BoscaApplication,
+            pool: ConnectionPool,
+            directory: Path,
+            includeContentReferences: Boolean = false,
+        ): PostgresBackupPipelineFixture {
             val json = application.json
             val nats = SharedNatsContainer().apply { start() }
             var staging: ObjectStorageService? = null
@@ -164,13 +169,22 @@ internal class PostgresBackupPipelineFixture private constructor(
                 val fixture = PostgresBackupPipelineFixture(nats, queue, staging, json, locks)
                 fixture.register()
                 withConnectionManager {
-                    connection().useStatement("create table groups (id uuid primary key)") { it.execute() }
-                    connection().useStatement("create type permission_action as enum ('view', 'edit', 'manage', 'delete', 'execute')") { it.execute() }
+                    connection().useStatement("create table if not exists groups (id uuid primary key)") { it.execute() }
+                    val hasPermissionAction = connection().useStatement("select to_regtype('permission_action') is not null") {
+                        it.executeQuery().use { rows ->
+                            check(rows.next())
+                            rows.getBoolean(1)
+                        }
+                    }
+                    if (!hasPermissionAction) {
+                        connection().useStatement("create type permission_action as enum ('view', 'edit', 'manage', 'delete', 'execute')") { it.execute() }
+                    }
                 }
                 FlywayMigration(pool).migrate(listOf(provide<Migration>(name = "pipelines-migrations")))
                 val declared = Pipeline(id = UUID.NIL, name = "native database backup", acceptedInputType = "JSON",
                     nodes = listOf(InputNode("in", acceptedType = "JSON"),
-                        PostgresBackupNode("backup", sourceId = "instance", storageKey = "retained"), OutputNode("out")),
+                        PostgresBackupNode("backup", sourceId = "instance", storageKey = "retained",
+                            includeContentReferences = includeContentReferences), OutputNode("out")),
                     edges = listOf(PipelineEdge("result", source = "backup", target = "out")))
                 fixture.pipeline = withConnectionManager {
                     val saved = provide<PipelineRepository>().add(PipelineRecord(name = declared.name,
