@@ -22,6 +22,13 @@ the declarative `@click` live-island actions compile to BML runtime bundles, whi
 executes server-side over the token-scoped GraphQL operations (`tokenNotificationPreferences`,
 `updateTokenNotificationPreference`, `unsubscribe`).
 
+The preference switches, action buttons and outcome toasts come from the compiled Bosca Design
+Library through one unaliased `imports.bml`. Native attributes and declarative change/submit actions
+pass through the short tags. This application owns the token-scoped models, confirmation forms,
+navigation and light palette in `src/main/client/notifications.css`. Deployment branding still
+overrides its validated primary/accent colors. Repeated outcomes advance a toast sequence; navigation
+does not replay them. Invalid links and the final unsubscribe confirmation remain page content.
+
 Branding is configurable per deployment and **Bosca by default**:
 
 - `BRAND_NAME` — name used in titles and copy
@@ -51,7 +58,23 @@ takes everything else via a catch-all HTTPRoute (Gateway API longest-prefix prec
 ```bash
 ./gradlew :notifications-web:run                        # from the bosca-workspace root → http://localhost:9094/
 ./gradlew :notifications-web:downloadBoscaGraphqlSchema # refresh src/main/graphql/schema.graphqls
+./gradlew :notifications-web:test                      # unit + isolated product/browser/Maven-fixture checks
+./gradlew :notifications-web:nativeCompile --build-args=-Ob :notifications-web:nativeDesignAdoptionTest
 ```
+
+The product checks use an isolated token-scoped GraphQL fixture and Chrome profile, with successful,
+rejected and pending actions, repeated toasts, navigation/Back, consumer CSS changes and desktop/phone
+geometry. They exercise packaged workspace and source-free Maven-fixture builds in production and
+development. The fixture repository contains the real compiled library and runtime JARs, with no
+producer BML or source archives; a copied application compiles its authored source and generated API
+clients against those artifacts. Clean and cached builds must retain identical reachable assets.
+This does not publish a remote release. Reports and captures are under `build/reports/design-adoption/`.
+
+The dedicated native check uses the production executable from an isolated directory with the same
+API/browser contracts and exact shared font checks. Reports are under
+`build/reports/native-design-adoption/`. `-Ob` is a quick validation build; omit it for the normal
+release optimization. Workspace builds use the local BML toolchain and need no site npm install;
+standalone builds retain the configured published package and npm registry setup above.
 
 `BML_GRAPHQL_ENDPOINT` points loaders and the same-origin `/graphql` proxy at the Bosca API
 (default `http://localhost:8080/graphql`; in-cluster it is the bosca-server service).

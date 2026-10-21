@@ -13,6 +13,24 @@
   --accent: #047a52;
   --error: #b3261e;
   --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --bg-0: var(--page);
+  --bg-1: var(--card);
+  --bg-2: var(--panel);
+  --bg-3: #edf0f4;
+  --fg-0: var(--ink);
+  --fg-1: #28323e;
+  --fg-2: #485464;
+  --fg-3: var(--muted);
+  --line: var(--hairline);
+  --line-2: #7b8795;
+  --control-border: var(--line-2);
+  --on-accent: #ffffff;
+  --ok: var(--accent);
+  --err: var(--error);
+  --warn: #875500;
+  --info: #0369a1;
+  --font-sans: var(--sans);
+  --control-height-md: 42px;
 }
 
 * {
@@ -109,26 +127,36 @@ h1 {
   color: var(--error);
 }
 
-button.primary,
-button.ghost {
-  font: inherit;
-  font-size: 14px;
-  font-weight: 600;
-  border-radius: 8px;
-  padding: 9px 16px;
-  cursor: pointer;
+.actions button.button.size-md {
+  height: auto;
+  min-height: var(--control-height-md);
+  padding: 10px 16px;
+  white-space: normal;
+  text-align: center;
 }
 
-button.primary {
+.actions button.button.primary {
   border: 1px solid var(--primary);
   background: var(--primary);
   color: #ffffff;
 }
 
-button.ghost {
-  border: 1px solid var(--hairline);
-  background: var(--card);
-  color: var(--ink);
+.actions button.button.primary:hover:not(:disabled) {
+  background: var(--primary);
+  filter: brightness(1.15);
+}
+
+.matrix .switch-cell label {
+  min-height: 44px;
+  align-items: center;
+}
+
+@media (max-width: 480px) {
+  .card { padding: 20px; }
+  .matrix .row { flex-wrap: wrap; gap: 8px 16px; }
+  .matrix .row-text { flex-basis: 100%; }
+  .matrix .row.head { display: none; }
+  .matrix .switch-cell { justify-content: flex-start; }
 }
 
 a {
@@ -141,3 +169,81 @@ a {
   font-size: 12.5px;
   color: var(--muted);
 }
+
+/* Notification matrix and confirmation layout belong to this application. */
+
+.matrix {
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--hairline);
+  background: var(--card);
+}
+
+.row:last-child {
+  border-bottom: none;
+}
+
+.row.head {
+  padding: 8px 16px;
+  background: var(--panel);
+}
+
+.col-label {
+  flex: none;
+  width: 84px;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.row-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.row-name {
+  font-weight: 500;
+}
+
+.row-desc {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.always {
+  flex: none;
+  width: 180px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--muted);
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  padding: 3px 0;
+  background: var(--panel);
+}
+
+.switch-cell {
+  display: flex;
+  flex: none;
+  width: 84px;
+  justify-content: center;
+}
+
+.actions {
+  margin-top: 18px;
+}
+
+.alt { margin: 18px 0 0; font-size: 14px; }
