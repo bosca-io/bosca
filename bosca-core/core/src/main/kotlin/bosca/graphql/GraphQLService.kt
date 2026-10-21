@@ -43,6 +43,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -53,6 +54,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import org.slf4j.LoggerFactory
+import kotlin.coroutines.cancellation.CancellationException
 
 @Serializable
 data class GraphQLSubscriptionRequest(
@@ -322,7 +324,10 @@ abstract class GraphQLService(
                     }
                 }
             } catch (e: Exception) {
-                log.error("Failed to execute GraphQL subscription query: ${e.message}", e)
+                // A source-local timeout is a failure while the subscription itself is still active.
+                if (e !is CancellationException || currentCoroutineContext().isActive) {
+                    log.error("Failed to execute GraphQL subscription query: ${e.message}", e)
+                }
                 throw e
             } finally {
                 span.end()
