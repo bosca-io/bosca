@@ -30,9 +30,16 @@ export function contrastSamples(textSelector = '.catalog-nav a, .catalog-link, .
     .filter(element => element.checkVisibility() && !element.closest(':disabled, [inert]'))
     .map(element => ({ label: element.textContent.trim() || element.getAttribute('aria-label') || element.name,
       ratio: contrast(over(rgba(getComputedStyle(element, foregroundPseudo).color), background(element)), background(element)) }));
-  const controls = [...document.querySelectorAll(controlSelector)].map(element => ({
-    label: 'Input border', ratio: contrast(rgba(getComputedStyle(element).borderTopColor), background(element)),
-  }));
+  const controls = [...document.querySelectorAll(controlSelector)]
+    .filter(element => element.checkVisibility() && !element.closest(':disabled, [inert], .disabled'))
+    .map(element => {
+      const css = getComputedStyle(element);
+      const side = ['Top', 'Bottom', 'Left', 'Right'].find(side => parseFloat(css[`border${side}Width`]) > 0);
+      const border = rgba(css[`border${side ?? 'Top'}Color`]);
+      return { label: element.getAttribute('aria-label') || element.name || element.className,
+        border: css[`border${side ?? 'Top'}Color`], ratio: contrast(border, background(element)),
+        outsideRatio: contrast(border, background(element.parentElement)) };
+    });
   const switches = [...document.querySelectorAll('input[role=switch]:not(:disabled)')].map(input => {
     const track = input.nextElementSibling;
     return { label: input.getAttribute('aria-label'), checked: input.checked,

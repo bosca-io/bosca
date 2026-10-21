@@ -80,7 +80,7 @@
       font: inherit;
       color: var(--fg-1);
       background: var(--control-bg, var(--bg-2));
-      border: 1px solid var(--line-2);
+      border: 1px solid var(--control-border, var(--line-2));
       border-radius: var(--control-radius, var(--r-sm));
       padding: 0 10px;
       display: inline-flex;

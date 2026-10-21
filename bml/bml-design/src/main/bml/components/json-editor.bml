@@ -24,7 +24,7 @@
       width: 100%;
       min-height: 240px;
       padding: 12px;
-      border: 1px solid var(--line);
+      border: 1px solid var(--control-border, var(--line));
       border-radius: var(--r-md);
       background: var(--bg-1);
       color: var(--fg-1);

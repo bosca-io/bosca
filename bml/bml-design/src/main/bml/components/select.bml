@@ -100,7 +100,7 @@
       border-top: 1px solid var(--line);
     }
     .select-pagination button {
-      border: 1px solid var(--line-2);
+      border: 1px solid var(--control-border, var(--line-2));
       border-radius: var(--r-sm);
       padding: 4px 8px;
       background: var(--control-bg, var(--bg-2));
@@ -127,7 +127,7 @@
       line-height: normal;
       color: var(--fg-1);
       background: var(--control-bg, var(--bg-2));
-      border: 1px solid var(--line);
+      border: 1px solid var(--control-border, var(--line));
       border-radius: 6px;
       width: 100%;
       appearance: none;
@@ -199,7 +199,7 @@
       width: 100%;
       height: var(--control-height-md);
       padding: 0 10px;
-      border: 1px solid var(--line-2);
+      border: 1px solid var(--control-border, var(--line-2));
       border-radius: var(--r-sm);
       transition: border-color 0.15s;
       background: var(--bg-2);
@@ -258,7 +258,7 @@
       margin-bottom: 4px;
       background: transparent;
       border: 0;
-      border-bottom: 1px solid var(--line);
+      border-bottom: 1px solid var(--control-border, var(--line));
       border-radius: 0;
       color: var(--fg-0);
       font: inherit;

@@ -18,6 +18,7 @@ import { checkTrees } from './trees.mjs';
 import { checkRouteNavigation } from './navigation.mjs';
 import { checkFeedback } from './feedback.mjs';
 import { checkCopyOverflow } from './copy-overflow.mjs';
+import { checkControlBorders } from './control-borders.mjs';
 import { checkSurfaces } from './surfaces.mjs';
 import { checkAccessibility } from './accessibility.mjs';
 
@@ -115,6 +116,8 @@ try {
     await checkAccessibility({navigate,evaluate,until,call,artifacts,mode});
   } else if(process.argv[4]==='--copy-overflow') {
     await checkCopyOverflow({navigate,evaluate,until,call,artifacts,mode});
+  } else if(process.argv[4]==='--control-borders') {
+    await checkControlBorders({navigate,evaluate,until,call,artifacts,mode});
   } else {
   await call('Emulation.setDeviceMetricsOverride',{width:1440,height:1000,deviceScaleFactor:1,mobile:false});
   await navigate('/');

@@ -218,7 +218,8 @@ Segmented controls and local tabs use roving Tab entry, Left/Right wrapping and 
 selected value is absent, the first option remains keyboard reachable without inventing a selection.
 Empty groups contain no focus target. Wide groups scroll within their available width; keyboard
 selection reveals the focused option. Segmented rows grow to accommodate a visible horizontal
-scrollbar without clipping their buttons. Search boundaries use the control-border token `--line-2`.
+scrollbar without clipping their buttons. Search boundaries use `--control-border`, falling back to
+the local `--line-2`.
 
 Use a stable `preserveKey` on search/segments, or `data-bml-preserve` on view tabs, to retain the
 query draft, selection/caret, focused option and DOM through unrelated island updates. A changed
@@ -421,6 +422,7 @@ themed container. For example:
   --bg-1: #fff;
   --bg-3: #e2e8f0;
   --control-bg: #f8fafc;
+  --control-border: #64748b;
   --line: #cbd5e1;
   --line-2: #94a3b8;
   --fg-0: #0f172a;
@@ -433,7 +435,8 @@ themed container. For example:
 ```
 
 Search and segmented controls add `--bg-0` for their base surface. The initial controls use surface tokens `--bg-1`, `--bg-3`, and `--control-bg`; foreground tokens
-`--fg-0` through `--fg-3`; borders `--line` and `--line-2`; `--accent` for focus/primary actions;
+`--fg-0` through `--fg-3`; borders `--line` and `--line-2`; optional `--control-border` for neutral
+control boundaries independently of surface frames and dividers; `--accent` for focus/primary actions;
 `--err` for danger actions; `--control-radius`; and `--font-mono` for monospaced inputs.
 `--font-sans` supplies a font stack applications can apply to their document. Defaults do not set
 document margins, backgrounds, font sizes, or a color scheme. Component states derive colors where

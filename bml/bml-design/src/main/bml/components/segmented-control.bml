@@ -41,7 +41,7 @@
       min-height: 30px;
       align-items: center;
       padding: 2px;
-      border: 1px solid var(--line);
+      border: 1px solid var(--control-border, var(--line));
       border-radius: 7px;
       background: var(--bg-0);
     }

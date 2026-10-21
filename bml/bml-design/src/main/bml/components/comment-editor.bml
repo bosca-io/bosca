@@ -43,7 +43,7 @@
     textarea {
       box-sizing: border-box;
       width: 100%;
-      border: 1px solid var(--line);
+      border: 1px solid var(--control-border, var(--line));
       border-radius: var(--r-md);
       resize: vertical;
       overflow-y: auto;

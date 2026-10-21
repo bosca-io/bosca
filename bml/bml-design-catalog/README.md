@@ -52,8 +52,10 @@ closes the current notice, including cached Browser Back navigation. Toasts sit 
 bottom edge in this application.
 
 The application stylesheet owns a dark palette with a blue accent and a light palette with neutral
-surfaces/text and a green accent. It defines content stacks and section gaps explicitly, including
-space between button rows, notes and badges. The sidebar allows the product name to stay on one line.
+surfaces/text and a green accent. Each palette sets `--control-border` independently of its surface
+borders, keeping neutral control boundaries visible while dividers stay subtle. It defines content
+stacks and section gaps explicitly, including space between button rows, notes and badges. The sidebar
+allows the product name to stay on one line.
 
 Every export has a rendered example, prop/type/default reference, native attribute/event and child
 contract, keyboard notes, CSS hooks and an escaped authoring snippet. Local composition snippets

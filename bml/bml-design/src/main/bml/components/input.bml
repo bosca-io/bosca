@@ -24,7 +24,7 @@
       font: inherit;
       color: var(--fg-0);
       background: var(--control-bg, var(--bg-2));
-      border: 1px solid var(--line-2);
+      border: 1px solid var(--control-border, var(--line-2));
       border-radius: var(--control-radius, var(--r-sm));
       height: var(--control-height-md);
       padding: 0 10px;

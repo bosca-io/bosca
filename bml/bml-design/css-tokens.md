@@ -19,6 +19,7 @@ or `dark` where native controls need it.
   --fg-4: #0284c7;
   --line: #7dd3fc;
   --line-2: #38bdf8;
+  --control-border: #0369a1;
   --accent: #0369a1;
   --ok: #15803d;
   --warn: #a16207;
@@ -36,7 +37,8 @@ or `dark` where native controls need it.
 Two differently themed roots can coexist. Component states derive values at their point of use;
 changing a parent class updates mounted controls and open overlays. Optional control, overlay and
 editor overrides below are intentionally unset by default. In particular, `--control-bg` falls back
-to the local `--bg-2`, and `--control-radius` to the local `--r-sm`. Defining those aliases at the
+to the local `--bg-2`, `--control-border` to each control's existing local `--line-2` or `--line`,
+and `--control-radius` to the local `--r-sm`. Defining those aliases at the
 document root would resolve them there and hide a subtree's later base-token changes. Set an alias
 explicitly when that separate appearance is intended.
 
@@ -56,7 +58,7 @@ explicitly when that separate appearance is intended.
 | `--fg-3` | `#6c7388` | Hints, placeholders and muted text |
 | `--fg-4` | `#454b60` | Separators and quiet control adornments |
 | `--line` | `#232839` | Ordinary borders and dividers |
-| `--line-2` | `#2e3447` | Control and overlay borders |
+| `--line-2` | `#2e3447` | Control fallback and overlay borders |
 | `--ok`, `--warn` | `#34d99a`, `#ffb547` | Success and warning |
 | `--err`, `--info` | `#ff5470`, `#5ec5ff` | Error/danger and information |
 | `--purple` | `#a78bff` | Purple badge tone and source keywords |
@@ -78,6 +80,7 @@ source and JSON editors expose selection hooks below, and applications own ordin
 | Token | Default | Applies to |
 | --- | --- | --- |
 | `--control-bg` | Local `--bg-2` fallback | Buttons, inputs, native selects, popover triggers and source search controls |
+| `--control-border` | Existing local `--line-2` or `--line` fallback | Neutral buttons/icon links, inputs/textareas, selects, search controls, switch tracks, segmented frames, popover triggers and source-search fields/buttons; surface frames and dividers keep their palette tokens |
 | `--control-radius` | Local `--r-sm` fallback | Buttons and inputs |
 | `--control-height-md`, `--control-height-sm`, `--control-height-xs` | `32px`, `30px`, `24px` | Button/input/select sizes, icon actions and popover triggers; picker query rows use the small height |
 | `--control-gap` | `6px` | Button icon/content spacing and popover trigger spacing |
@@ -86,6 +89,10 @@ source and JSON editors expose selection hooks below, and applications own ordin
 | `--r-sm`, `--r-md`, `--r-lg` | `9px`, `12px`, `16px` | Compact surfaces, cards/panels/editors, modal corners |
 | `--font-sans` | `"Geist", "Inter", -apple-system, system-ui, sans-serif` | Inherited control typography and overlay/editor text |
 | `--font-mono` | `"Geist Mono", "JetBrains Mono", ui-monospace, monospace` | Monospaced inputs, source and JSON text |
+
+Set `--control-border` separately when controls need clearer boundaries than surrounding dividers.
+The catalog keeps subtle surface borders and sets this override in each palette. Focus, expanded,
+primary, danger, ghost and disabled states retain their existing styling.
 
 Focus color follows `--accent`, or `--json-accent` inside the structured editor. Tab rows, trees,
 scrolling regions and popup options retain their existing inset offsets to keep outlines visible

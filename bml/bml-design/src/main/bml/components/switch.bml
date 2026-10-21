@@ -50,7 +50,7 @@
     .switch-track {
       position: absolute;
       inset: 0;
-      border: 1px solid var(--line-2);
+      border: 1px solid var(--control-border, var(--line-2));
       border-radius: 10px;
       background: var(--bg-3);
       transition: background 0.15s;
