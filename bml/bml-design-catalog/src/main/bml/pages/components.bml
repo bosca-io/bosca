@@ -1,7 +1,7 @@
 <page route="/components">
   <catalog-document title="Components" description="Public APIs and rendered examples for all 41 library exports." current="/components">
     <p class="page-intro">Import the library once. Use short component names throughout your application, then set colors in your own CSS.</p>
-    <pre class="code-sample"><code>&lt;import library="io.bosca:bml-design" /&gt;</code></pre>
+    <pre class="code-sample" role="group" tabindex="0" aria-label="Library import"><code>&lt;import library="io.bosca:bml-design" /&gt;</code></pre>
     <div class="catalog-grid">
       <card title="Controls">
         <div class="catalog-stack">
@@ -83,7 +83,7 @@
     <card title="Optional aliases">
       <div class="catalog-stack">
         <p class="catalog-description">Use an alias when you want an explicit name for a collision. Normal examples use the root unaliased import.</p>
-        <pre class="code-sample"><code>&lt;import library="io.bosca:bml-design" as="design" /&gt;&#10;&lt;design:button&gt;Save&lt;/design:button&gt;</code></pre>
+        <pre class="code-sample" role="group" tabindex="0" aria-label="Aliased import"><code>&lt;import library="io.bosca:bml-design" as="design" /&gt;&#10;&lt;design:button&gt;Save&lt;/design:button&gt;</code></pre>
         <a class="catalog-link" href="/components/aliases">Open the compiled alias example</a>
       </div>
     </card>

@@ -17,7 +17,7 @@
       </div></card>
       <card title="Truncated labels"><div class="catalog-stack">
         <tree label="Truncated file names" embedded data-tree-truncated><tree-item path="components/a-very-long-component-file-name.bml" label="A deliberately long component file name that exceeds a narrow tree’s available width.bml" href="/components/content#ref-tree-item" selected /></tree>
-        <p class="example-note">The complete path remains the native link’s accessible name and title.</p>
+        <p class="example-note">The complete label remains the native link’s accessible name. Its title supplies the full path.</p>
       </div></card>
       <card title="Wrapped and deeply indented"><div class="catalog-stack">
         <tree label="Deeply indented file names" embedded data-tree-deep><tree-item path="components/a/b/c/d/e/f/g/h/i/j/k/deep-example.bml" label="veryLongComponentIdentifierThatRemainsReadableWithoutSpaces.bml" href="/components/content#ref-tree-item" :depth="12" wrap /></tree>

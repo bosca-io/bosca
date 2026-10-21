@@ -41,6 +41,8 @@ export async function checkComposition({ call, evaluate, until, base, mode, arti
     field:['body',true,'Comment light',false,'comment-light-0','comment-context comment-light-0-hint'],
     times:['Oct 18, 13:15 UTC','2026-10-18 08:15 -05:00','not a timestamp'],inherited:['17px','rgb(21, 128, 61)'],nativeTime:true,empty:true});
   assert.ok(await evaluate(`document.querySelector('[data-disabled-tree] [tabindex="0"]').closest('[role=treeitem]').dataset.path==='ready'`));
+  assert.ok(await evaluate(`(() => {const link=${local}.querySelector('[data-file-link]');return link.getAttribute('aria-label')===link.querySelector('.tree-label').textContent.trim()&&
+    link.title===link.closest('[role=treeitem]').dataset.path;})()`),'File links use their visible label as their name and retain the path as a title');
   await evaluate(`document.querySelector('[data-disabled-tree] [tabindex="0"]').focus()`);
   await key('End');await key('ArrowUp');
   assert.equal(await evaluate(`document.activeElement.closest('[role=treeitem]').dataset.path`),'ready/file','Keyboard traversal skips unavailable native buttons');

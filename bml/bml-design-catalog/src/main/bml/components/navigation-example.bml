@@ -5,7 +5,7 @@
     <div class="catalog-stack" :data-catalog-navigation="navigation.id">
       <if navigation.visible>
         <div class="catalog-route-host" :data-narrow="navigation.narrow" :data-navigation-host="navigation.id">
-          <tabs label="Catalog destinations" :items="navigation.items()"
+          <tabs :label='"Catalog destinations · " + navigation.id' :items="navigation.items()"
                 :data-bml-preserve='"catalog-routes-" + navigation.id + "-" + navigation.revision'
                 :data-navigation-tabs="navigation.id">
             <button size="sm" @click="navigation.refresh" :data-navigation-action="navigation.id">Refresh</button>

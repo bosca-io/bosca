@@ -112,3 +112,4 @@
 [data-bml-json-editor] .jse-main { box-sizing: border-box; height: 100%; background: var(--jse-background-color); border-radius: var(--r-md); overflow: hidden; min-height: 0; }
 [data-bml-json-editor] .jse-main:focus-within { outline: 1px solid var(--json-accent, var(--accent)); outline-offset: -1px; }
 [data-bml-json-editor][data-disabled] .json-surface { opacity: 0.6; }
+[data-bml-json-editor] .json-row-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }

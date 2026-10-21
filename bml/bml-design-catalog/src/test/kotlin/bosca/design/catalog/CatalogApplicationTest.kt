@@ -102,14 +102,25 @@ class CatalogApplicationTest {
                 assertEquals("font/woff2", response.headers().firstValue("Content-Type").orElse(""))
                 assertEquals("wOF2", response.body().take(4).toByteArray().decodeToString())
             }
-            val log = File.createTempFile("catalog-browser-", ".log")
-            val process = ProcessBuilder(System.getProperty("catalog.node"), System.getProperty("catalog.browser"), base,
-                if (development) "development" else "production", expectedApi).redirectErrorStream(true).redirectOutput(log).start()
-            try {
-                assertTrue(process.waitFor(60, TimeUnit.SECONDS), "Browser timed out: ${log.readText()}")
-                assertEquals(0, process.exitValue(), log.readText())
-            } finally { process.destroyForcibly(); log.delete() }
+            runBrowser(base, development, expectedApi, 60)
         }
+    }
+
+    @Test
+    fun `packaged catalog passes accessibility checks`() {
+        for (development in listOf(false, true)) withServer(development) { base, _ ->
+            runBrowser(base, development, "--accessibility", 120)
+        }
+    }
+
+    private fun runBrowser(base: String, development: Boolean, argument: String, timeoutSeconds: Long) {
+        val log = File.createTempFile("catalog-browser-", ".log")
+        val process = ProcessBuilder(System.getProperty("catalog.node"), System.getProperty("catalog.browser"), base,
+            if (development) "development" else "production", argument).redirectErrorStream(true).redirectOutput(log).start()
+        try {
+            assertTrue(process.waitFor(timeoutSeconds, TimeUnit.SECONDS), "Browser timed out: ${log.readText()}")
+            assertEquals(0, process.exitValue(), log.readText())
+        } finally { process.destroyForcibly(); log.delete() }
     }
 
     private fun withServer(development: Boolean, test: (String, HttpClient) -> Unit) {

@@ -7,7 +7,7 @@
     </div>
     <card title="Set a palette in your CSS">
       <div class="catalog-stack">
-        <pre class="code-sample"><code>.product-theme &#123;
+        <pre class="code-sample" role="group" tabindex="0" aria-label="Consumer palette CSS"><code>.product-theme &#123;
   --bg-1: #fff;
   --bg-2: #f1f5f9;
   --fg-0: #0f172a;

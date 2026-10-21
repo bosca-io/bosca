@@ -78,7 +78,7 @@
         :aria-label='"Search " + label.lowercase()'
         autocomplete="off"
       />
-      <ul ref="options" class="select-options" role="listbox" :aria-label="label"></ul>
+      <ul ref="options" class="select-options" role="listbox" :tabindex='if (searchable) -1 else 0' :aria-label="label"></ul>
       <div class="select-status-row">
         <span class="select-progress">
           <spinner />
@@ -274,6 +274,10 @@
       list-style: none;
       padding: 0;
       margin: 0;
+    }
+    .select-options:focus-visible {
+      outline: var(--focus-width) solid var(--accent);
+      outline-offset: -2px;
     }
     .select-status-row {
       display: flex;

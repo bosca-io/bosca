@@ -9,6 +9,9 @@ export async function checkJson({ call, evaluate, until: poll, base, mode, artif
   const field=`${root}.querySelector('textarea')`;
   const surface=`${root}.querySelector('.jse-main')`;
   const text=`${root}.querySelector('.cm-content')`;
+  const treeSemantics=`(() => {const tree=${root}.querySelector('[role=tree]');return tree?.getAttribute('aria-label')==='Settings light'&&
+    [...tree.querySelectorAll('[role=treeitem]')].every(item=>['tree','group'].includes(item.parentElement.getAttribute('role')))&&
+    [...tree.querySelectorAll('.jse-json-node.jse-expanded')].every(item=>item.getAttribute('aria-expanded')==='true');})()`;
   const click=selector=>evaluate(`document.querySelector(${JSON.stringify(selector)}).click()`);
   const key=async (value,modifiers=0)=>{
     for(const type of ['keyDown','keyUp']) await call('Input.dispatchKeyEvent',{type,key:value,modifiers,
@@ -31,6 +34,15 @@ export async function checkJson({ call, evaluate, until: poll, base, mode, artif
   await call('Emulation.setDeviceMetricsOverride',{width:1440,height:1100,deviceScaleFactor:1,mobile:false});
   await call('Page.navigate',{url:base+'/json'});
   await until(`document.readyState==='complete'&&${root}?.hasAttribute('data-json-ready')&&document.querySelector('[data-json-table] .jse-main')`);
+  await until(treeSemantics);
+  await evaluate(`document.querySelector('[data-json-table]').scrollIntoView({block:'center'})`);
+  await until(`document.querySelector('[data-json-table] th[scope=row]')`);
+  assert.ok(await evaluate(`(() => {const table=document.querySelector('[data-json-table] table');return table.getAttribute('aria-label')==='Readonly table'&&
+    [...table.rows[0].cells].every(header=>header.tagName==='TH'&&header.scope==='col'&&header.textContent.trim())&&
+    [...table.rows].slice(1).flatMap(row=>[...row.querySelectorAll('th')]).every(header=>header.scope==='row')&&
+    [...document.querySelectorAll('[data-bml-json-editor] .jse-navigation-bar-arrow')].every(button=>button.getAttribute('aria-label'))&&
+    !document.querySelector('[data-bml-json-editor] svg[role=presentation][aria-label=""]');})()`),
+    'The packaged JSON editor exposes named navigation and native table headers');
   assert.ok(await evaluate(`(() => {const r=${root},f=${field};return f.hidden&&f.name==='settings'&&f.value.includes('<script>unsafe()</script>')&&
     r.title==='Application settings'&&r.classList.contains('json-example')&&r.getAttribute('aria-label')==='Settings light'&&
     r.querySelector('.jse-key')&&r.querySelector('.jse-value')&&!window.unsafe&&
@@ -67,6 +79,7 @@ export async function checkJson({ call, evaluate, until: poll, base, mode, artif
   await click('[data-json-readonly=light]');await until(`${root}.hasAttribute('data-readonly')&&${text}.getAttribute('aria-readonly')==='true'`);
   await evaluate(`${root}.querySelector('button[title^="Switch to tree"]').click()`);
   await until(`${root}.querySelector('.jse-tree-mode')`);
+  await until(treeSemantics);
   await evaluate(`${root}.querySelector('button[title^="Switch to text"]').click()`);
   await until(`${text}?.getAttribute('aria-readonly')==='true'`);
   await evaluate(`window.readonlyJson=${field}.value;${text}.focus()`);await call('Input.insertText',{text:'FORBIDDEN'});

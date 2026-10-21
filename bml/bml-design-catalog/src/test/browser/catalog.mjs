@@ -18,6 +18,7 @@ import { checkTrees } from './trees.mjs';
 import { checkRouteNavigation } from './navigation.mjs';
 import { checkFeedback } from './feedback.mjs';
 import { checkSurfaces } from './surfaces.mjs';
+import { checkAccessibility } from './accessibility.mjs';
 
 const base = process.argv[2];
 const mode = process.argv[3] ?? 'fixture';
@@ -109,6 +110,9 @@ try {
   await call('Page.enable');await call('Runtime.enable');await call('Network.enable');await call('Page.bringToFront');
   const key=async value=>{for(const type of ['keyDown','keyUp'])await call('Input.dispatchKeyEvent',{type,key:value,windowsVirtualKeyCode:{Enter:13,Tab:9,ArrowRight:39,ArrowLeft:37,ArrowDown:40,ArrowUp:38,Escape:27}[value],...(type==='keyDown'&&value==='Enter'?{text:'\r'}:{})});};
   const navigate=async path=>{await call('Page.navigate',{url:base+path});await until(`document.readyState==='complete'&&document.querySelector('main')&&location.pathname===${JSON.stringify(path)}`);};
+  if(process.argv[4]==='--accessibility') {
+    await checkAccessibility({navigate,evaluate,until,call,artifacts,mode});
+  } else {
   await call('Emulation.setDeviceMetricsOverride',{width:1440,height:1000,deviceScaleFactor:1,mobile:false});
   await navigate('/');
   await evaluate(`document.fonts.ready`);
@@ -177,8 +181,9 @@ try {
   await checkRouteNavigation({navigate,evaluate,until,call,artifacts,mode});
   await checkFeedback({navigate,evaluate,until,call,artifacts,mode});
   await checkSurfaces({navigate,evaluate,until,call,artifacts,mode});
+  }
   assert.deepEqual(exceptions,[]);
-  console.log(`Catalog ${mode}: foundation, themes, 41 packaged export contracts, references, overlays, views, trees, comments, editors, aliases and native fallbacks passed`);
+  if(process.argv[4]!=='--accessibility') console.log(`Catalog ${mode}: foundation, themes, 41 packaged export contracts, references, overlays, views, trees, comments, editors, aliases and native fallbacks passed`);
 } finally {
   if(ws)ws.close();browser.kill('SIGTERM');
   await new Promise(resolve=>{if(browser.exitCode!==null)resolve();else{browser.once('exit',resolve);setTimeout(resolve,2000);}});

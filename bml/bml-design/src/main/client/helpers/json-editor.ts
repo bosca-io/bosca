@@ -2,6 +2,7 @@ import type { ClientContext, IslandUpdate } from "@bosca/bml";
 import type { Content } from "vanilla-jsoneditor";
 import { createJSONEditor, Mode, toTextContent } from "vanilla-jsoneditor/index.js";
 import "./json-editor.css";
+import { attachJsonAccessibility } from "./json-accessibility";
 
 /** Adapts the structured engine shared with Studio to BML's lifecycle and native form values. */
 export function mountJsonEditor(ctx: ClientContext) {
@@ -31,6 +32,7 @@ export function mountJsonEditor(ctx: ClientContext) {
     report();
   };
   const editor = createJSONEditor({ target, props: { content: { text: field.value }, mode: Mode.tree, onChange: publish, onChangeMode: report } });
+  attachJsonAccessibility(ctx, target);
   const observer = new MutationObserver(() => sync());
   const sync = () => {
     if (disposed) return;

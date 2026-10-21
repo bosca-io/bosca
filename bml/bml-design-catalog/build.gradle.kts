@@ -34,6 +34,8 @@ tasks.withType<Test>().configureEach {
     dependsOn(tasks.jar, catalogRuntime)
     inputs.dir(layout.projectDirectory.dir("src/test/browser"))
         .withPropertyName("browserChecks").withPathSensitivity(PathSensitivity.RELATIVE)
+    inputs.file(layout.projectDirectory.file("package-lock.json"))
+        .withPropertyName("accessibilityDependency").withPathSensitivity(PathSensitivity.RELATIVE)
     systemProperty("catalog.classpath", catalogClasspath)
     systemProperty("catalog.java", javaToolchains.launcherFor(java.toolchain).get().executablePath.asFile.absolutePath)
     systemProperty("catalog.node", bml.nodeExecutable.get())
@@ -46,6 +48,14 @@ tasks.register<Test>("browserTest") {
     testClassesDirs = sourceSets.test.get().output.classesDirs
     classpath = sourceSets.test.get().runtimeClasspath
     filter { includeTestsMatching("bosca.design.catalog.CatalogApplicationTest") }
+}
+
+tasks.register<Test>("accessibilityTest") {
+    group = "verification"
+    description = "Run full-document axe checks against the packaged catalog in both runtime modes."
+    testClassesDirs = sourceSets.test.get().output.classesDirs
+    classpath = sourceSets.test.get().runtimeClasspath
+    filter { includeTestsMatching("bosca.design.catalog.CatalogApplicationTest.*accessibility*") }
 }
 
 val typecheckClient by tasks.registering(Exec::class) {

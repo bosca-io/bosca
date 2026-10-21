@@ -156,3 +156,5 @@ keyboard exit, two palettes/live CSS changes, repeated disposal and non-overlapp
 viewports. With scripts disabled, escaped textarea drafts remain native form values. Archive and HTTP
 checks ensure basic and source-only pages exclude JSON editor assets. Git consumes the same library
 editor and retains its own configuration validation and actions.
+Checks also verify labelled tree groups after mode changes, named property-navigation controls,
+native table headers, direct listbox keyboard selection and visible names on native file links.

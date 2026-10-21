@@ -41,7 +41,7 @@
         class="ui-tree-row"
         :href="href"
         :title="path"
-        :aria-label="path"
+        :aria-label="label"
         :aria-current='if (selected) "page" else null'
         {...attrs}
       >

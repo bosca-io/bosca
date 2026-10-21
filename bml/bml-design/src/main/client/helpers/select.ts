@@ -99,6 +99,7 @@ export function richSelect(ctx: ClientContext) {
     query.setAttribute("aria-expanded", "false");
     query.removeAttribute("aria-activedescendant");
     trigger.removeAttribute("aria-activedescendant");
+    list.removeAttribute("aria-activedescendant");
     focused = null;
     if (restore && trigger.isConnected && !trigger.disabled) trigger.focus({ preventScroll: true });
   };
@@ -109,8 +110,12 @@ export function richSelect(ctx: ClientContext) {
     const target = searchable ? query : trigger;
     if (active >= 0) {
       target.setAttribute("aria-activedescendant", `${id}-${active}`);
+      list.setAttribute("aria-activedescendant", `${id}-${active}`);
       list.children[active]?.scrollIntoView({ block: "nearest" });
-    } else target.removeAttribute("aria-activedescendant");
+    } else {
+      target.removeAttribute("aria-activedescendant");
+      list.removeAttribute("aria-activedescendant");
+    }
   };
   const renderLabel = () => {
     const values = selected();
@@ -369,6 +374,7 @@ export function richSelect(ctx: ClientContext) {
   };
   ctx.on<KeyboardEvent>(trigger, "keydown", keydown);
   ctx.on<KeyboardEvent>(query, "keydown", keydown);
+  ctx.on<KeyboardEvent>(list, "keydown", keydown);
   ctx.on(native, "change", () => {
     renderLabel();
     if (expanded) render(choices);

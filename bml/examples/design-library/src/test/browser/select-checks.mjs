@@ -54,6 +54,14 @@ export async function checkSelects({ call, evaluate, until, base, mode, artifact
   await key('End');await key('Enter');await until(`!(${opened('single')})`);
   assert.ok(await evaluate(`document.querySelector('${native('single')}').value==='c'&&document.activeElement===${part('single','trigger')}`));
   assert.equal(await evaluate('window.selectChanges.length'),1,'Choosing emits one ordinary native change');
+  await open('single');
+  await evaluate(`${part('single','options')}.focus()`);await key('Home');await key('ArrowDown');
+  assert.ok(await evaluate(`(() => {const list=${part('single','options')},active=document.getElementById(list.getAttribute('aria-activedescendant'));
+    return document.activeElement===list&&active?.role==='option'&&active.textContent==='Apple'&&active.getAttribute('aria-disabled')!=='true';})()`),
+    'The scrollable listbox supports direct keyboard focus and announces its active option');
+  await key('End');await key('Enter');await until(`!(${opened('single')})`);
+  assert.ok(await evaluate(`document.querySelector('${native('single')}').value==='c'&&document.activeElement===${part('single','trigger')}&&
+    !${part('single','options')}.hasAttribute('aria-activedescendant')`),'Selection from the listbox returns focus and clears its closed active descendant');
   await evaluate('document.querySelector("[data-select-form=light]").requestSubmit()');
   await until('document.querySelector("[data-select-result=light]").textContent.includes("Saved c (1)")');
   await click('[data-select-reject=light]');await until('document.querySelector("[data-select-error=light]")?.textContent.includes("Choice rejected")');
@@ -172,7 +180,7 @@ export async function checkSelects({ call, evaluate, until, base, mode, artifact
   await evaluate(`window.removedSelect=${root('async')};window.removedSelectOptions=${part('async','options')};window.removedSelectText=window.removedSelectOptions.textContent`);
   await click('[data-select-toggle=light]');await until(`!document.querySelector('${native('async')}')&&window.selectObservers.size===${observers-5}`);await pause(750);
   assert.ok(await evaluate('!window.removedSelect.querySelector(".select-popup").matches(":popover-open")&&window.removedSelectOptions.textContent===window.removedSelectText'),'Disposal closes the popup and rejects late HTTP results');
-  for(const expression of ['window.removedSelect','window.removedSelect.querySelector("select")','window.removedSelect.querySelector("[data-bml-ref=trigger]")','window.removedSelect.querySelector("[data-bml-ref=query]")']){
+  for(const expression of ['window.removedSelect','window.removedSelect.querySelector("select")','window.removedSelect.querySelector("[data-bml-ref=trigger]")','window.removedSelect.querySelector("[data-bml-ref=query]")','window.removedSelectOptions']){
     const handle=await call('Runtime.evaluate',{expression});const result=await call('DOMDebugger.getEventListeners',{objectId:handle.result.objectId});
     await call('Runtime.releaseObject',{objectId:handle.result.objectId});assert.equal(result.listeners.length,0,'Disposal removes helper root/native/trigger/query listeners');
   }

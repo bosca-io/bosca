@@ -8,9 +8,9 @@
       <card title="One import">
         <div class="catalog-stack">
           <p class="catalog-description">Declare the library once in your application’s <code>imports.bml</code>.</p>
-          <pre class="code-sample"><code>&lt;import library="io.bosca:bml-design" /&gt;</code></pre>
+          <pre class="code-sample" role="group" tabindex="0" aria-label="Library import"><code>&lt;import library="io.bosca:bml-design" /&gt;</code></pre>
           <p class="catalog-description">Then use unprefixed tags in pages and local components.</p>
-          <pre class="code-sample"><code>&lt;button primary icon="save"&gt;Save&lt;/button&gt;</code></pre>
+          <pre class="code-sample" role="group" tabindex="0" aria-label="Button authoring"><code>&lt;button primary icon="save"&gt;Save&lt;/button&gt;</code></pre>
         </div>
       </card>
       <card title="Familiar controls">

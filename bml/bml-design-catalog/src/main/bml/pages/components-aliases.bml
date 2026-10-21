@@ -14,7 +14,7 @@
         </div>
       </design:card>
     </div>
-    <pre class="code-sample"><code>&lt;import library="io.bosca:bml-design" as="design" /&gt;&#10;&lt;design:button primary&gt;Save&lt;/design:button&gt;</code></pre>
+    <pre class="code-sample" role="group" tabindex="0" aria-label="Aliased import"><code>&lt;import library="io.bosca:bml-design" as="design" /&gt;&#10;&lt;design:button primary&gt;Save&lt;/design:button&gt;</code></pre>
     <a class="catalog-link" href="/components">All components</a>
   </catalog-document>
 </page>

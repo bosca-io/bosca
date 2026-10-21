@@ -14,14 +14,14 @@
     <details class="reference-details" open>
       <summary>API and authoring</summary>
       <h3>Props and defaults</h3>
-      <pre class="reference-api"><code>{ api }</code></pre>
+      <pre class="reference-api" role="group" tabindex="0" :aria-label='name + " props and defaults"'><code>{ api }</code></pre>
       <dl>
         <dt>Attributes, events and children</dt><dd>{ contract }</dd>
         <dt>Keyboard and accessibility</dt><dd>{ keyboard }</dd>
         <dt>Consumer CSS</dt><dd>{ css }</dd>
       </dl>
       <h3>Authoring</h3>
-      <pre class="code-sample"><code>{ snippet }</code></pre>
+      <pre class="code-sample" role="group" tabindex="0" :aria-label='name + " authoring source"'><code>{ snippet }</code></pre>
     </details>
   </html:section>
 </component>

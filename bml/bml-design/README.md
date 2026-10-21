@@ -261,6 +261,7 @@ Additional native `aria-describedby`/`aria-labelledby` values reach the enhanced
 Keyboard arrows, Home/End, Enter and non-searchable Space choose enabled options. Escape returns
 focus and Tab leaves the popup, with access to page buttons when present. Native required validation
 focuses the trigger and marks it invalid. Selection emits one bubbling native `change` event.
+The scrollable listbox also accepts direct keyboard focus and exposes its active option while open.
 Multiple choices retain repeated native form values, show up to `maxTags` removable tags and a
 remaining count, and support Backspace removal when the query is empty. Disabled optgroups remain
 disabled. `loading` disables enhanced interaction while retaining native submission values.
@@ -315,6 +316,7 @@ BML's same-origin contract client. The library's own helper uses the same declar
 
 Use `tree-item` as flat children of `tree`, with unique, stable slash-separated paths and explicit
 depths. File destinations remain native links; directory controls remain separate native buttons.
+File links use their visible label as their accessible name and retain the full path in their title.
 Down/Up, Home/End, Right to expand/enter, Left to collapse/return and type-ahead operate on visible
 items with one roving tab stop, skipping disabled native directory buttons. Repeating a letter cycles
 matching labels. Enter follows a file link
@@ -587,6 +589,11 @@ survive unrelated updates; a changed `mode` prop selects that mode. Use a new ke
 whole editor. Native reset restores the latest server value. Pending BML forms make editing read-only;
 disabled editors are inert and excluded from form data. The caller supplies surrounding labels and
 actions and owns transport and navigation.
+
+Tree mode exposes a labelled tree with grouped child items and expanded state. Table mode keeps
+the native table, labelled from the editor, with column and row headers and a screen-reader row-column
+label. Property-navigation buttons have accessible names. These semantics follow engine mode changes
+and retained-root label updates; their observer is disconnected with the editor.
 
 The editor viewport defaults to 320px high with a 240px minimum. Set `--json-height` in consumer CSS
 to resize it. The component owns its editor frame, toolbar, scrollable body and feedback geometry.

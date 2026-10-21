@@ -171,6 +171,7 @@ Build and verify:
 ```sh
 ./gradlew :bml:bml-design-catalog:build
 ./gradlew :bml:bml-design-catalog:browserTest
+./gradlew :bml:bml-design-catalog:accessibilityTest
 ./gradlew :bml:bml-design-catalog:typecheckClient
 ```
 
@@ -242,6 +243,14 @@ least 4.5:1, and at least 3:1 for sampled input borders, switch thumbs and keybo
 They wait for CSS transitions to finish before measuring colors and include translucent badge fills.
 These are targeted checks, not a complete accessibility audit. Results are saved as
 `build/reports/browser/catalog-<mode>-presentation.json` beside the screenshots.
+
+The ordinary test suite also runs axe-core against all 21 routes in packaged production and
+development applications at 1440px and 390px, in both document appearances. Additional scans cover
+open choices, navigation menus, dialogs, tooltips, error toasts, validation, pending/loaded tables and
+example-state disclosures. Confirmed violations fail the test without disabling rules. Findings
+requiring manual review remain in `catalog-<mode>-accessibility.json`; a passing scan does not replace
+screen-reader or complete manual accessibility acceptance. The pinned axe-core dependency is used
+only by the isolated browser tests. The suite also checks native keyboard scrolling of reference code.
 
 Chrome defaults to the installed Google Chrome app on macOS or `google-chrome` on Linux. Set
 `BML_DESIGN_CHROME_BINARY` for another executable. Desktop/phone screenshots are written under
