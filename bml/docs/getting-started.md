@@ -146,17 +146,21 @@ plugin:
 `bmlDev` builds the application and client bundles, starts its configured main class in BML
 development mode, and then lets Gradle watch the real inputs of that task graph. An edit to BML,
 Kotlin, GraphQL, resources, client TypeScript/CSS, or a configured local client runtime triggers an
-incremental rebuild. After a successful build, Gradle snapshots the application classes and
-resources and the persistent launcher loads them in a fresh child classloader. The new `BmlServer`
+incremental rebuild. After a successful build, Gradle snapshots the application classes, resources
+and compiled BML library dependencies, including transitive libraries. The persistent launcher loads
+that ordered classpath in a fresh child classloader. The new `BmlServer`
 configuration atomically replaces the current page/component/contract state; Netty keeps the same
 PID and port, and server-scoped sessions remain intact. The server announces the new generation over
 SSE so open browser tabs reload themselves. A compilation failure leaves the last good generation
 serving while Gradle keeps watching; fixing the source swaps the next successful generation in.
 
-The hot-swap boundary is the application output: BML-generated code, project Kotlin, generated
-GraphQL code, and project resources. Client bundles are rebuilt and served from their live output
-directory. Changes to BML framework or other runtime dependency jars require stopping and starting
-`bmlDev`, because those libraries intentionally stay in the parent classloader.
+The hot-swap boundary includes application output and dependency entries carrying a BML library
+manifest. Editable project libraries use the same Gradle dependency graph: their Kotlin, BML,
+client helpers, CSS, assets, resources and exports rebuild the consumer. Creating, editing or removing
+`imports.bml` also participates in the build. Each generation keeps separate immutable class/resource
+directories and library JARs, preserving resource ownership and classpath order. Client bundles are
+rebuilt and served from their live output directory. Changes to the BML framework or ordinary JVM
+runtime dependencies require stopping and starting `bmlDev`; those types stay in the parent loader.
 
 In IntelliJ, run **Tasks → bml → bmlDev** from the Gradle tool window (or create a Gradle run
 configuration for the `bmlDev` task). The task enters Gradle's reloadable-deployment mode itself;

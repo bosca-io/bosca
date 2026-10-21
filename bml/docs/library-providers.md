@@ -72,8 +72,10 @@ provides<example.design.Counter>(overrideExisting = true) {
 Hosts that need this ordering can use `install` with their existing Bosca application/listener
 lifecycle. During a development hot swap, the server retains existing library registrar types and
 their singleton instances; newly introduced types register before the replacement pages become
-active. Changes to parent-loaded library dependencies still require the normal development-server
-restart described in [getting started](getting-started.md).
+active. Compiled BML library dependencies load with their consuming application's development
+generation; registrar types loaded with that generation register before its pages become active.
+Changes to framework or ordinary JVM dependencies in the parent loader require the normal
+development-server restart described in [getting started](getting-started.md).
 
 ## Other hosts
 

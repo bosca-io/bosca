@@ -11,6 +11,7 @@ import org.jetbrains.kotlin.gradle.plugin.SubpluginArtifact
 import org.jetbrains.kotlin.gradle.plugin.SubpluginOption
 import java.util.Properties
 import java.io.File
+import java.util.jar.JarFile
 
 /**
  * The `io.bosca.bml` Gradle plugin. A `KotlinCompilerPluginSupportPlugin` that wires
@@ -573,6 +574,12 @@ class BmlGradlePlugin : KotlinCompilerPluginSupportPlugin {
                 // before every composite project is in a resolvable lifecycle state.
                 task.classpath.from(run.classpath)
                 task.reloadClasspath.from(mainOutput)
+                task.reloadClasspath.from(run.classpath.filter { entry ->
+                    if (entry.isDirectory) entry.resolve("META-INF/bml/library-manifest.json").isFile
+                    else entry.isFile && entry.extension == "jar" && JarFile(entry).use {
+                        it.getJarEntry("META-INF/bml/library-manifest.json") != null
+                    }
+                })
                 task.mainClass.set(run.mainClass)
                 task.mainModule.set(run.mainModule)
                 task.inferModulePath.set(run.modularity.inferModulePath)

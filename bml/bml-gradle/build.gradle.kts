@@ -47,6 +47,25 @@ tasks.test {
         .withPropertyName("bmlClientToolchain").withPathSensitivity(PathSensitivity.RELATIVE)
 }
 
+val developmentFixtureClasspath = configurations.create("developmentFixtureClasspath") {
+    isCanBeConsumed = false
+    attributes {
+        attribute(Usage.USAGE_ATTRIBUTE, objects.named(Usage.JAVA_RUNTIME))
+        attribute(Category.CATEGORY_ATTRIBUTE, objects.named(Category.LIBRARY))
+        attribute(LibraryElements.LIBRARY_ELEMENTS_ATTRIBUTE, objects.named(LibraryElements.JAR))
+    }
+}
+dependencies {
+    add(developmentFixtureClasspath.name, project(":bml:bml-server"))
+    add(developmentFixtureClasspath.name, libs.logback.classic)
+}
+tasks.test {
+    dependsOn(developmentFixtureClasspath)
+    inputs.files(developmentFixtureClasspath).withPropertyName("developmentFixtureClasspath")
+        .withNormalizer(ClasspathNormalizer::class.java)
+    systemProperty("bml.developmentFixtureClasspath", developmentFixtureClasspath.asPath)
+}
+
 // Exercise the real GraphQL plugin's independently generated browser output in cache tests.
 val graphqlFixturePlugin = configurations.create("graphqlFixturePlugin") {
     isCanBeConsumed = false

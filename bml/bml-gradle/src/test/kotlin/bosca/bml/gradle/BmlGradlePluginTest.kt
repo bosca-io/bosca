@@ -117,6 +117,7 @@ class BmlGradlePluginTest {
         val projectDir = kotlin.io.path.createTempDirectory("bml-gradle-plugin").toFile()
         try {
             val project = ProjectBuilder.builder().withProjectDir(projectDir).build()
+            project.extensions.extraProperties.set("kotlin.stdlib.default.dependency", "false")
             project.pluginManager.apply("org.jetbrains.kotlin.jvm")
             project.pluginManager.apply("application")
             project.pluginManager.apply(BmlGradlePlugin::class.java)

@@ -7,6 +7,7 @@ import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.tasks.Internal
 import org.gradle.api.tasks.OutputFile
 import org.gradle.api.tasks.TaskAction
+import org.gradle.work.DisableCachingByDefault
 
 /**
  * `bmlMetrics`: reports the compiled site's per-page first-load payload — the global
@@ -17,6 +18,7 @@ import org.gradle.api.tasks.TaskAction
  * Page HTML is intentionally absent here: it depends on live data, so it is measured against a
  * running site with `bosca bml audit` instead.
  */
+@DisableCachingByDefault(because = "Metrics are measured from current build outputs on each invocation")
 abstract class BmlMetricsTask : DefaultTask() {
 
     /** The compiler-written metrics directory (`manifest.tsv` + `css/<tag>.css` chunks). */

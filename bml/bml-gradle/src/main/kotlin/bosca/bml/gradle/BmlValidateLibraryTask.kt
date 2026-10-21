@@ -13,11 +13,13 @@ import org.gradle.api.tasks.OutputFile
 import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
+import org.gradle.work.DisableCachingByDefault
 import java.security.MessageDigest
 import java.util.HexFormat
 import java.util.jar.JarFile
 
 /** Checks the packaged library manifest against its binary and original source archives. */
+@DisableCachingByDefault(because = "Validation is local to the current build's archives and source locations")
 abstract class BmlValidateLibraryTask : DefaultTask() {
     @get:Input abstract val libraryId: Property<String>
     @get:Input abstract val artifactVersion: Property<String>
