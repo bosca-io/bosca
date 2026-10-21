@@ -25,9 +25,15 @@ interface PostgresBackupService : Service {
      * transaction and exclusive destination writer access coordinated with other backup operations.
      * Stores stay open. After native capture succeeds, failures/cancellation preserve its local
      * artifact and retained progress; no report is acknowledged before all stages succeed.
-     * Missing/unresolved content remains explicit in the returned report. This does not classify
-     * required coverage, prove atomic database/object correspondence, publish a completed recovery
-     * point, install a schedule or provide queued request recovery.
+     * A saved upload timestamp requires a VERIFIED retained asset. Missing, unresolved, ambiguous,
+     * length-mismatched or corrupt uploaded references fail capture after the diagnostic report is
+     * retained; the error identifies its retained path and the first affected reference. This check
+     * uses the report's existing inspection pass without rereading assets. Soft deletion does not
+     * remove an uploaded reference's requirement. References without upload evidence remain explicit
+     * gaps without being classified as optional or covered. No upload timestamp is inferred for
+     * historical metadata. Use [writeContentReport] to export diagnostics independently of capture.
+     * This does not establish full required coverage, prove atomic database/object correspondence,
+     * publish a completed recovery point, install a schedule or provide queued request recovery.
      */
     suspend fun captureContent(
         sourceId: String,

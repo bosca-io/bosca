@@ -16,6 +16,9 @@ interface PostgresBackupRunService : Service {
      * resumption, just as for native stopped-writer recovery. The receipt's path downloads the native
      * artifact; contentReportPath retrieves its retained evidence report. Completed matching replay
      * needs only the journal.
+     * An unverified reference with a saved upload timestamp fails without a receipt, after retaining
+     * the diagnostic report identified in the error. Both stores close and scratch is cleaned before
+     * failure is recorded. References lacking upload evidence remain explicit and unclassified.
      * Source writes continue. Report gaps remain explicit: request completion does not classify
      * required coverage or declare a complete database/object recovery point. Pipelines own retries;
      * this does not add a schedule or change runner behavior.

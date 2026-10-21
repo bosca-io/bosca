@@ -866,6 +866,119 @@ class PostgresBackupIntegrationTest {
     private val configuredContentSource = PostgresBackupContentSource("content", "content-source", "snapshot")
 
     @Test
+    fun `configured content coverage rejects missing uploaded bytes retains evidence and retries at a fresh point`(): Unit = runBlocking {
+        val runs = contentRunService()
+        val first = contentAsset("10000000-0000-0000-0000-000000000001")
+        val missing = contentAsset("10000000-0000-0000-0000-000000000002", "other")
+        Files.delete(root.resolve("operation-source/$missing"))
+        var firstReads = 0
+        faultStorage { actual -> object : ObjectStorageService by actual {
+            override suspend fun getInputStream(path: ObjectPath): InputStream {
+                if (path.toString() == first) firstReads++
+                return actual.getInputStream(path)
+            }
+        } }
+        val failure = assertFailsWith<IllegalStateException> {
+            provide<PostgresBackupRunService>().backupContentConfigured("coverage", "instance", configuredContentSource, "retained", "backups")
+        }
+        val failed = withConnectionManager { assertNotNull(runs.get("coverage")) }
+        assertEquals(PostgresBackupRunStatus.FAILED, failed.status)
+        assertEquals(null, failed.result)
+        assertEquals(failure.message, failed.error)
+        val reports = retainedContentReports()
+        val (reportPath, report) = reports.entries.single()
+        assertTrue(failure.message.orEmpty().contains(reportPath))
+        assertTrue(failure.message.orEmpty().contains("10000000-0000-0000-0000-000000000002"))
+        assertEquals(1L, report.inspection.counts.getValue(PostgresBackupContentStatus.NOT_RETAINED))
+        assertEquals("0", scalar("select count(*)::text from backup.object_store_writers"))
+        assertFalse(root.toFile().list().orEmpty().any { it.startsWith("postgres-backup-") })
+        root.resolve("operation-source/$missing").writeText("other")
+        val receipt = provide<PostgresBackupRunService>().backupContentConfigured("coverage", "instance", configuredContentSource, "retained", "backups")
+        assertTrue(report.database.id != receipt.manifest.id)
+        assertEquals(2, withConnectionManager { assertNotNull(runs.get("coverage")).attempts })
+        assertEquals(1, firstReads)
+        assertEquals(report, retainedContentReports().getValue(reportPath))
+        assertEquals(2L, retainedContentReports().getValue(assertNotNull(receipt.contentReportPath))
+            .inspection.counts.getValue(PostgresBackupContentStatus.VERIFIED))
+    }
+
+    @Test
+    fun `configured content coverage rejects uploaded deleted length mismatches and unresolved history`(): Unit = runBlocking {
+        val runs = contentRunService()
+        val id = "10000000-0000-0000-0000-000000000001"
+        contentAsset(id)
+        sql("update metadata set content_length=6, deleted=true where id='$id'")
+        sql("insert into metadata_versions_supplementary (metadata_id, version, key, name, content_type, content_length, uploaded) values ('$id', 6, 'old', 'Old image', 'image/png', 5, now())")
+        sql("insert into metadata_supplementary (metadata_id, key, name, content_type, content_length, uploaded) values ('$id', 'current', 'Current image', 'image/png', 5, now())")
+        sql("insert into collections (id, name, deleted) values ('30000000-0000-0000-0000-000000000001', 'Deleted collection', true)")
+        sql("insert into collection_supplementary (collection_id, key, name, content_type, content_length, uploaded) values ('30000000-0000-0000-0000-000000000001', 'cover', 'Cover', 'image/png', 5, now())")
+        val failure = assertFailsWith<IllegalStateException> {
+            runs.backupContentConfigured("coverage", "instance", configuredContentSource, "retained", "backups")
+        }
+        assertTrue(failure.message.orEmpty().contains("4 uploaded content references"))
+        val report = retainedContentReports().values.single()
+        assertEquals(1L, report.selectionCounts.getValue(PostgresBackupContentSelectionStatus.LENGTH_MISMATCH))
+        assertEquals(1L, report.inspection.counts.getValue(PostgresBackupContentStatus.UNRESOLVED))
+        assertEquals(3L, report.inspection.counts.getValue(PostgresBackupContentStatus.NOT_RETAINED))
+        assertEquals(PostgresBackupRunStatus.FAILED, withConnectionManager { assertNotNull(runs.get("coverage")).status })
+        assertEquals(null, withConnectionManager { assertNotNull(runs.get("coverage")).result })
+        assertEquals("0", scalar("select count(*)::text from backup.object_store_writers"))
+    }
+
+    @Test
+    fun `configured content coverage keeps missing upload evidence explicit without declaring it required`(): Unit = runBlocking {
+        val runs = contentRunService()
+        val id = "10000000-0000-0000-0000-000000000001"
+        contentAsset(id)
+        sql("insert into metadata (name, content_type, content_length) values ('Pending', 'image/png', 5)")
+        sql("insert into metadata_versions (id, version, name, content_type, content_length) values ('$id', 6, 'Historical', 'image/png', 5)")
+        val receipt = runs.backupContentConfigured("coverage", "instance", configuredContentSource, "retained", "backups")
+        val report = retainedContentReports().getValue(assertNotNull(receipt.contentReportPath))
+        assertEquals(1L, report.inspection.counts.getValue(PostgresBackupContentStatus.VERIFIED))
+        assertEquals(2L, report.inspection.counts.getValue(PostgresBackupContentStatus.NOT_RETAINED))
+        assertEquals(PostgresBackupRunStatus.COMPLETED, withConnectionManager { assertNotNull(runs.get("coverage")).status })
+    }
+
+    @Test
+    fun `configured content coverage rejects retained corruption discovered during final inspection`(): Unit = runBlocking {
+        contentRunService()
+        contentAsset("10000000-0000-0000-0000-000000000001")
+        var corrupt = true
+        faultStorage { actual -> object : ObjectStorageService by actual {
+            override suspend fun setInputStream(path: ObjectPath, stream: InputStream, length: Long?): Long {
+                val written = actual.setInputStream(path, stream, length)
+                if (corrupt && path.toString().contains("/objects/") && path.toString().endsWith(".json")) {
+                    corrupt = false
+                    val payload = withConnectionManager {
+                        provide<ObjectBackupProgressService>().list(ObjectBackupOperation.BACKUP, "instance", "retained", "snapshot", 0, 10).single().payload
+                    }
+                    root.resolve("retained/${payload.payloadPath}").writeText("wrong")
+                }
+                return written
+            }
+        } }
+        val runs = provide<PostgresBackupRunService>()
+        assertFailsWith<IllegalStateException> {
+            runs.backupContentConfigured("coverage", "instance", configuredContentSource, "retained", "backups")
+        }
+        val report = retainedContentReports().values.single()
+        assertEquals(1L, report.inspection.counts.getValue(PostgresBackupContentStatus.CORRUPT))
+        assertEquals(null, withConnectionManager { assertNotNull(runs.get("coverage")).result })
+        val receipt = runs.backupContentConfigured("coverage", "instance", configuredContentSource, "retained", "backups")
+        val repaired = retainedContentReports().getValue(assertNotNull(receipt.contentReportPath))
+        assertEquals(1L, repaired.inspection.counts.getValue(PostgresBackupContentStatus.VERIFIED))
+        assertEquals(report.objects.objects, repaired.objects.objects)
+    }
+
+    private suspend fun retainedContentReports(): Map<String, PostgresBackupContentReport> {
+        val directory = root.resolve("retained")
+        val files = Files.walk(directory).use { paths -> paths.filter { it.fileName.toString() == "report.json" }.toList() }
+        val reports = linkedMapOf<String, PostgresBackupContentReport>()
+        for (file in files) reports[directory.relativize(file.parent).toString()] = service.readContentReport(file)
+        return reports
+    }
+
+    @Test
     fun `configured content backup retains a report and replays without source configuration`(): Unit = runBlocking {
         val runs = contentRunService()
         val id = "10000000-0000-0000-0000-000000000001"
@@ -1571,7 +1684,11 @@ class PostgresBackupIntegrationTest {
         contentCaptureServices()
         sql("insert into metadata (name, content_type, content_length, uploaded) values ('Missing image', 'image/png', 5, now())")
         contentCaptureStorage { source, backup ->
-            val report = service.captureContent("source", output, "content", "snapshot", source, "retained", backup, "exports")
+            assertFailsWith<IllegalStateException> {
+                service.captureContent("source", output, "content", "snapshot", source, "retained", backup, "exports")
+            }
+            val report = service.readContentReport(output.resolve("content-report.json"))
+            assertEquals(report.database, service.verify(output))
             assertEquals(1L, report.selectionCounts.getValue(PostgresBackupContentSelectionStatus.MISSING))
             assertEquals(1L, report.inspection.counts.getValue(PostgresBackupContentStatus.NOT_RETAINED))
             assertTrue(report.objects.objects.isEmpty())
@@ -1859,6 +1976,56 @@ class PostgresBackupIntegrationTest {
         assertEquals(receipt, completed.result)
         assertEquals("0", scalar("select count(*)::text from backup.object_store_writers"))
         assertFalse(root.toFile().list().orEmpty().any { it.startsWith("postgres-backup-") })
+    }
+
+    @Test
+    fun `queued content coverage rejects missing uploaded assets and retries without recopying completed bytes`(): Unit = runBlocking {
+        val runs = contentRunService()
+        val first = contentAsset("10000000-0000-0000-0000-000000000001")
+        val missing = contentAsset("10000000-0000-0000-0000-000000000002", "other")
+        Files.delete(root.resolve("operation-source/$missing"))
+        var firstReads = 0
+        var closes = 0
+        faultStorage { actual -> object : ObjectStorageService by actual {
+            override suspend fun getInputStream(path: ObjectPath): InputStream {
+                if (path.toString() == first) firstReads++
+                return actual.getInputStream(path)
+            }
+            override fun close() { closes++; actual.close() }
+        } }
+        val setting = application.json.encodeToString(PostgresBackupContentSource.serializer(), configuredContentSource)
+        PostgresBackupPipelineFixture.create(application, pool, root, contentSource = setting).use { pipeline ->
+            val initial = pipeline.start()
+            pipeline.execute(pipeline.next())
+            val child = pipeline.next()
+            pipeline.fail(child, retry = true)
+            val failed = withConnectionManager { runs.list("instance", "retained", 0, 10).single() }
+            assertEquals(PostgresBackupRunStatus.FAILED, failed.status)
+            assertEquals(null, failed.result)
+            assertEquals(null, pipeline.get(initial.id).output)
+            assertEquals(bosca.pipelines.model.PipelineRunStatus.SUSPENDED, pipeline.get(initial.id).status)
+            assertEquals(2, closes)
+            assertEquals("0", scalar("select count(*)::text from backup.object_store_writers"))
+            assertFalse(root.toFile().list().orEmpty().any { it.startsWith("postgres-backup-") })
+            val (reportPath, report) = retainedContentReports().entries.single()
+            assertTrue(failed.error.orEmpty().contains(reportPath))
+            root.resolve("operation-source/$missing").writeText("other")
+            val retry = pipeline.retry()
+            assertEquals(child.getId(), retry.getId())
+            pipeline.execute(retry)
+            val completed = pipeline.get(initial.id)
+            assertEquals(bosca.pipelines.model.PipelineRunStatus.OK, completed.status)
+            val receipt = application.json.decodeFromJsonElement(PostgresBackupReceipt.serializer(), assertNotNull(completed.output))
+            assertEquals(failed.key, receipt.key)
+            assertTrue(report.database.id != receipt.manifest.id)
+            assertEquals(2, withConnectionManager { assertNotNull(runs.get(failed.key)).attempts })
+            assertEquals(1, firstReads)
+            assertEquals(4, closes)
+            assertEquals(report, retainedContentReports().getValue(reportPath))
+            assertEquals(2L, retainedContentReports().getValue(assertNotNull(receipt.contentReportPath))
+                .inspection.counts.getValue(PostgresBackupContentStatus.VERIFIED))
+            pipeline.verifyNoServiceAccountFallback()
+        }
     }
 
     @Test

@@ -155,6 +155,20 @@ Both stores must be configured under `backup.objectStores`, with an independent 
 Source writes continue; report gaps remain explicit, and a completed request does not declare
 a complete database/object recovery point.
 
+Every saved reference with an upload timestamp must have a verified retained asset, including
+soft-deleted content and supplementary files. Missing, unresolved, ambiguous, length-mismatched
+or corrupt uploaded references fail the combined backup without a receipt or successful Pipeline
+output. The error includes the retained diagnostic report path and the first affected reference.
+The report and captured data remain available; both stores close and owned scratch is cleaned.
+Ordinary Pipeline retry takes a fresh database point and reuses already verified assets.
+The check runs on new capture attempts. Replaying a completed request still returns its
+historical receipt without inspecting retained storage again.
+
+References without upload evidence remain explicit in the report. This includes pending uploads
+and historical metadata whose schema did not save an upload timestamp. They are not declared
+optional or covered. The uploaded-reference check does not prove complete asset coverage or
+that the copied bytes match one database transaction.
+
 Configure `backup.postgres.service` for that same primary database as described below. The
 server and runner images provide PostgreSQL 18 clients. Optional `backup.postgres.scratchDirectory`
 selects an existing writable parent directory; otherwise the Java temporary directory is used.
@@ -257,11 +271,15 @@ snapshot transaction ends.
 Under the prefix, `databases/<capture-id>` holds the native artifact,
 `objects/<capture-id>.json` the object manifest, `reports/<capture-id>` the retained report,
 and `assets` the shared payloads. The local native directory also contains `content-report.json`.
-Missing references remain explicit in that report. Native failure cleans its incomplete attempt;
-later failure preserves the captured local files and retained progress. Use a new local directory
-to retry the whole operation at a fresh point. Callers coordinate exclusive destination writes
-and close their stores. This programmatic operation does not provide queued request recovery,
-classify required asset coverage or declare a complete database/object recovery point.
+The report preserves missing references. An unverified reference with a saved upload timestamp
+fails capture after the report is retained. Raw callers keep the captured local files as well;
+configured requests clean their owned scratch. The check uses the existing inspection pass,
+without another asset-body read. Native failure cleans its incomplete attempt; later failures
+preserve retained progress. Use a new local directory to retry the raw operation at a fresh point.
+Callers coordinate exclusive destination writes and close their stores. References without
+upload evidence remain unclassified. This raw operation does not provide queued request recovery
+or declare a complete database/object recovery point. `writeContentReport` remains available
+for exporting diagnostics with gaps independently of capture.
 
 `PostgresBackupService.capture(sourceId, directory)` creates a custom-format `database.dump`
 and a final `manifest.json` in a new local directory. Its parent must already exist. This is

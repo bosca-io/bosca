@@ -60,8 +60,23 @@ class PostgresBackupServiceImpl(
         upload(directory, backup, databasePath)
         val objects = captures.captureInventory(plan.key, mapOf(store to source), backup, verifiedSince)
         val file = directory.resolve("content-report.json")
-        writeContentReport(directory, databasePath, objects, requireNotNull(plan.contentSelectionCounts), store, backup, file)
-        uploadContentReport(file, backup, "$prefix/reports/${database.id}")
+        var unverified = 0L
+        var firstGap: String? = null
+        writeContentReport(directory, databasePath, objects, requireNotNull(plan.contentSelectionCounts), store, backup, file) { inspection ->
+            if (inspection.reference.uploaded != null && inspection.status != PostgresBackupContentStatus.VERIFIED) {
+                unverified++
+                if (firstGap == null) {
+                    firstGap = "${inspection.reference.kind} ${inspection.reference.contentId}, " +
+                        "path ${inspection.path ?: "unresolved"}: ${inspection.status}"
+                }
+            }
+        }
+        val reportPath = "$prefix/reports/${database.id}"
+        val report = uploadContentReport(file, backup, reportPath)
+        check(unverified == 0L) {
+            "$unverified uploaded content references are not verified; first: $firstGap; retained report: $reportPath"
+        }
+        report
     }
 
     override suspend fun selectContent(
