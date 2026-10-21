@@ -2,6 +2,7 @@ package bosca.backup.graphql
 
 import bosca.backup.ObjectBackupStorageService
 import bosca.backup.PostgresBackupManifest
+import bosca.backup.PostgresBackupContentInventory
 import bosca.backup.PostgresBackupReceipt
 import bosca.backup.PostgresBackupRunRepository
 import bosca.db.transaction
@@ -34,6 +35,31 @@ class PostgresBackupRunGraphQLIntegrationTest : ObjectBackupGraphQLTest() {
             provide<PostgresBackupRunRepository>().begin("native", "observed-token")
             provide<PostgresBackupRunRepository>().claim("native", "native-store")
         } }
+    }
+
+    @Test
+    fun `native receipt exposes the saved content reference inventory descriptor`(): Unit = runBlocking {
+        running()
+        val inventory = PostgresBackupContentInventory(4, 100, "b".repeat(64))
+        val manifest = PostgresBackupManifest(
+            "artifact", "source", "database", "2026-10-19T00:00:00Z", "2026-10-19T00:00:01Z",
+            "exported", "1:2:", "18", 180000, "UTF8", emptyMap(), 5, "a".repeat(64),
+            contentInventory = inventory,
+        )
+        val receipt = PostgresBackupReceipt("native", "native-store", "postgresql/native/artifact", manifest)
+        request { transaction {
+            provide<PostgresBackupRunRepository>().complete("native", "observed-token", receipt)
+            provide<PostgresBackupRunRepository>().release("native")
+        } }
+        val value = nativeData(execute("""{ backups { postgresRun(key: "native") { result { manifest {
+            contentInventory { count length sha256 path version }
+        } } } } }""")).getValue("postgresRun").jsonObject.getValue("result").jsonObject
+            .getValue("manifest").jsonObject.getValue("contentInventory").jsonObject
+        assertEquals("4", value.string("count"))
+        assertEquals("100", value.string("length"))
+        assertEquals(inventory.sha256, value.string("sha256"))
+        assertEquals(inventory.path, value.string("path"))
+        assertEquals("1", value.string("version"))
     }
 
     @Test
@@ -82,7 +108,7 @@ class PostgresBackupRunGraphQLIntegrationTest : ObjectBackupGraphQLTest() {
             provide<PostgresBackupRunRepository>().release("native")
         } }
         val value = nativeData(execute("""{ backups { postgresRun(key: "native") { status result {
-            key storageKey path manifest { id sourceId database created completed snapshotId snapshot serverVersion serverVersionNumber encoding extensions length sha256 payloadPath version format }
+            key storageKey path manifest { id sourceId database created completed snapshotId snapshot serverVersion serverVersionNumber encoding extensions length sha256 payloadPath version format contentInventory { count } }
         } } } }""")).getValue("postgresRun").jsonObject
         assertEquals("COMPLETED", value.string("status"))
         val result = value.getValue("result").jsonObject
@@ -93,6 +119,7 @@ class PostgresBackupRunGraphQLIntegrationTest : ObjectBackupGraphQLTest() {
         assertEquals(manifest.sha256, actual.string("sha256"))
         assertEquals("0.8.0", actual.getValue("extensions").jsonObject.string("vector"))
         assertEquals("5", actual.string("length"))
+        assertEquals(JsonNull, actual.getValue("contentInventory"))
     }
 
     @Test

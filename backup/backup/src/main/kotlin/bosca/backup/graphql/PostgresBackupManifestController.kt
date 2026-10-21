@@ -56,5 +56,8 @@ class PostgresBackupManifestController : GraphQLController<PostgresBackupManifes
     fun format(value: PostgresBackupManifest) = value.format
 
     @Field
+    fun contentInventory(value: PostgresBackupManifest) = value.contentInventory
+
+    @Field
     fun extensions(value: PostgresBackupManifest) = JsonObject(value.extensions.mapValues { JsonPrimitive(it.value) })
 }

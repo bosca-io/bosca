@@ -1,8 +1,11 @@
 package bosca.backup
 
+import bosca.content.collection.service.CollectionService
+import bosca.content.metadata.service.MetadataService
 import bosca.db.connection
 import bosca.db.connectionOrNull
 import bosca.db.withConnectionManager
+import bosca.di.ObjectProvider
 import bosca.server.BoscaApplication
 import bosca.service.annotation.ServiceImplementation
 import bosca.storage.service.StorageDispatcher
@@ -22,7 +25,11 @@ import kotlinx.serialization.builtins.serializer
 
 /** Captures, transfers and restores native PostgreSQL database artifacts. */
 @ServiceImplementation
-class PostgresBackupServiceImpl(private val application: BoscaApplication) : PostgresBackupService {
+class PostgresBackupServiceImpl(
+    private val application: BoscaApplication,
+    private val metadataService: ObjectProvider<MetadataService>,
+    private val collectionService: ObjectProvider<CollectionService>,
+) : PostgresBackupService {
     override suspend fun restore(directory: Path): PostgresBackupManifest = withContext(StorageDispatcher) {
         check(connectionOrNull()?.inTransaction != true) { "PostgreSQL restore must run outside an active caller transaction" }
         PostgresBackupRestore(application).restore(directory, verify(directory))
@@ -50,6 +57,7 @@ class PostgresBackupServiceImpl(private val application: BoscaApplication) : Pos
     override suspend fun capture(
         sourceId: String,
         directory: Path,
+        includeContentReferences: Boolean,
         onSnapshot: suspend () -> Unit,
     ): PostgresBackupManifest = withContext(StorageDispatcher) {
         check(connectionOrNull()?.inTransaction != true) { "PostgreSQL capture must run outside an active caller transaction" }
@@ -99,6 +107,11 @@ class PostgresBackupServiceImpl(private val application: BoscaApplication) : Pos
                         }
                     }
                     currentCoroutineContext().ensureActive()
+                    val inventory = if (includeContentReferences) {
+                        PostgresBackupContentInventoryFile(application.json).write(
+                            destination, metadataService.get(), collectionService.get(),
+                        )
+                    } else null
                     onSnapshot()
                     currentCoroutineContext().ensureActive()
                     runDump(executable, service, serviceFile, metadata.snapshotId, dump, destination.resolve("pg_dump.stderr"))
@@ -108,7 +121,7 @@ class PostgresBackupServiceImpl(private val application: BoscaApplication) : Pos
                             rows.getObject(1, OffsetDateTime::class.java).toInstant().toString()
                         }
                     }
-                    metadata.copy(completed = completed)
+                    metadata.copy(completed = completed, contentInventory = inventory)
                 } catch (error: Throwable) {
                     snapshotFailure = error
                     throw error
@@ -126,6 +139,9 @@ class PostgresBackupServiceImpl(private val application: BoscaApplication) : Pos
             val manifest = boundary.copy(length = length, sha256 = digest)
             manifest.validate()
             Files.move(dump, destination.resolve(manifest.payloadPath))
+            manifest.contentInventory?.let { inventory ->
+                Files.move(destination.resolve("${inventory.path}.tmp"), destination.resolve(inventory.path))
+            }
             val manifestFile = destination.resolve("manifest.json.tmp")
             Files.writeString(manifestFile, application.json.encodeToString(PostgresBackupManifest.serializer(), manifest))
             currentCoroutineContext().ensureActive()
@@ -138,7 +154,11 @@ class PostgresBackupServiceImpl(private val application: BoscaApplication) : Pos
         } finally {
             if (!published) withContext(NonCancellable) {
                 try {
-                    for (name in listOf("database.dump.tmp", "database.dump", "pg_dump.stderr", "manifest.json.tmp", "manifest.json")) {
+                    for (name in listOf(
+                        "database.dump.tmp", "database.dump", "pg_dump.stderr",
+                        "content-references.json.tmp", "content-references.json",
+                        "manifest.json.tmp", "manifest.json",
+                    )) {
                         Files.deleteIfExists(destination.resolve(name))
                     }
                     Files.delete(destination)
@@ -160,6 +180,7 @@ class PostgresBackupServiceImpl(private val application: BoscaApplication) : Pos
         val actual = digest(dump, manifest.length)
         if (actual != manifest.sha256) throw BackupPayloadMismatchException("PostgreSQL dump SHA-256 mismatch")
         requireNativePostgresDump(dump)
+        manifest.contentInventory?.let { PostgresBackupContentInventoryFile(application.json).verify(directory, it) }
         manifest
     }
 

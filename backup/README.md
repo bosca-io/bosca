@@ -239,8 +239,19 @@ They include current metadata, historical metadata, supplementary records and so
 owners. Records without upload evidence remain visible. Historical supplementary rows contain
 their old key but no supplementary UUID; historical metadata has no upload timestamp. These
 gaps remain explicit, without inventing paths or borrowing current attachment identities.
-The native Pipeline action still captures the database only; it does not yet save this reference
-inventory or associate it with retained object bytes.
+Pass `includeContentReferences = true` to `PostgresBackupService.capture` to save
+`content-references.json` alongside the dump. The service reads sequential pages in the exported
+view and writes a JSON array without holding the full inventory in memory. The native manifest
+binds its record count, byte length and SHA-256 to that database artifact. Capture failures and
+cancellation remove staged references before publication. This option requires Bosca's content
+schema and services; ordinary database capture does not resolve those services.
+
+Upload and download include every declared component. A retained manifest is published only
+after the dump and inventory bytes verify. Matching retries reuse verified files and repair
+only missing or damaged owned output. Retrieval verifies the inventory's JSON encoding and
+record count before publishing the local manifest, and needs no source database or configuration.
+The native Pipeline action currently uses database-only capture. Neither an inventory nor its
+successful transfer establishes that matching asset bytes have been retained.
 
 The manifest records the source identity, database, exported/logical snapshot, source-clock
 boundary observation and dump completion, PostgreSQL version/encoding, extension versions,
@@ -264,9 +275,9 @@ without bundling asset bytes.
 The integration tests run real `pg_dump` and `pg_restore` with pgvector, restore after dropping
 the source database, verify a different destination owner and application permission rows, and
 prove that later source writes are excluded. Restoration uses `--no-owner --no-acl
---no-tablespaces` under a destination role with extension-creation privileges. Exact object
-references, matching recovery-set publication, retention, deployment rebinding and a real
-Kubernetes recovery drill remain open. See the PostgreSQL documentation for
+--no-tablespaces` under a destination role with extension-creation privileges. Resolving
+references to retained asset bytes, matching recovery-set publication, retention, deployment rebinding
+and a real Kubernetes recovery drill remain open. See the PostgreSQL documentation for
 [pg_dump](https://www.postgresql.org/docs/18/app-pgdump.html),
 [pg_restore](https://www.postgresql.org/docs/18/app-pgrestore.html) and
 [libpq services](https://www.postgresql.org/docs/18/libpq-pgservice.html).
@@ -288,8 +299,9 @@ or unsupported metadata needs inspection and a fresh prefix; it cannot authorize
 unknown data. Failure/cancellation preserves unfinished retained data for retry.
 
 `download(backup, prefix, newDirectory)` requires the completed manifest and streams its
-dump into a new local directory. It verifies length, SHA-256 and the native header before
-publishing the local manifest, without source database/configuration access or capture tools.
+declared components into a new local directory. It verifies lengths, SHA-256, the native header
+and any inventory's encoding/count before publishing the local manifest, without source
+database/configuration access or capture tools.
 It rejects existing output and cleans up failed/cancelled downloads without deleting retained
 data. `restore(newDirectory)` can then execute native restoration under the destination role.
 

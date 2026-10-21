@@ -28,6 +28,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlin.test.assertNotNull
 
 /** Real filesystem stores with fault injection at the object-storage boundary. */
 class PostgresBackupTransferTest {
@@ -66,7 +67,7 @@ class PostgresBackupTransferTest {
         Files.write(local.resolve("database.dump"), bytes)
         local.resolve("manifest.json").writeText(encoded())
         application = BoscaApplication(ApplicationConfig.load("{}".byteInputStream()), ownsServices = false)
-        service = PostgresBackupServiceImpl(application)
+        service = PostgresBackupServiceImpl(application, mockk(), mockk())
         storage = FileSystemObjectStorageService("", "", mockk(), retained.toString(), mockk())
         backup = object : ObjectStorageService by storage {
             override suspend fun getObjectInfo(path: ObjectPath): ObjectStorageInfo {
@@ -106,6 +107,160 @@ class PostgresBackupTransferTest {
     fun tearDown(): Unit = runBlocking {
         if (::application.isInitialized) application.shutdown()
         if (::root.isInitialized) root.toFile().deleteRecursively()
+    }
+
+    private fun withContentInventory(text: String = "[]", count: Long = 0): PostgresBackupManifest {
+        val data = text.toByteArray()
+        val inventory = PostgresBackupContentInventory(
+            count, data.size.toLong(), MessageDigest.getInstance("SHA-256").digest(data).toHexString(),
+        )
+        Files.write(local.resolve(inventory.path), data)
+        return manifest.copy(contentInventory = inventory).also {
+            local.resolve("manifest.json").writeText(encoded(it))
+        }
+    }
+
+    @Test
+    fun `corrupt inventory writes cannot publish and a matching retry repairs only that file`(): Unit = runBlocking {
+        val selected = withContentInventory()
+        write = { path, stream, length ->
+            if (path.toString().endsWith("content-references.json")) {
+                storage.setInputStream(path, "{}".byteInputStream(), 2)
+            } else storage.setInputStream(path, stream, length)
+        }
+        assertFailsWith<BackupPayloadMismatchException> { service.upload(local, backup, prefix) }
+        assertFalse(Files.exists(completed))
+        write = null
+        writes.clear()
+        assertEquals(selected, service.upload(local, backup, prefix))
+        assertEquals(listOf("$prefix/content-references.json", "$prefix/manifest.json"), writes)
+    }
+
+    @Test
+    fun `short reported inventory writes fail publication and retry reuses verified inventory bytes`(): Unit = runBlocking {
+        val selected = withContentInventory()
+        write = { path, stream, length ->
+            storage.setInputStream(path, stream, length).let { written ->
+                if (path.toString().endsWith("content-references.json")) written - 1 else written
+            }
+        }
+        assertFailsWith<IllegalStateException> { service.upload(local, backup, prefix) }
+        assertFalse(Files.exists(completed))
+        write = null
+        writes.clear()
+        assertEquals(selected, service.upload(local, backup, prefix))
+        assertEquals(listOf("$prefix/manifest.json"), writes)
+    }
+
+    @Test
+    fun `inventory download cancellation removes staged components and preserves retained publication`(): Unit = runBlocking {
+        withContentInventory()
+        service.upload(local, backup, prefix)
+        read = { path ->
+            if (path.toString().endsWith("content-references.json")) {
+                throw CancellationException("inventory download cancelled")
+            }
+            storage.getInputStream(path)
+        }
+        assertFailsWith<CancellationException> { service.download(backup, prefix, downloaded) }
+        assertFalse(Files.exists(downloaded))
+        assertTrue(Files.exists(completed))
+        assertEquals(opened, closed)
+    }
+
+    @Test
+    fun `valid inventory bytes with a mismatched retained record count cannot publish a download`(): Unit = runBlocking {
+        val selected = withContentInventory()
+        service.upload(local, backup, prefix)
+        completed.writeText(encoded(selected.copy(contentInventory = assertNotNull(selected.contentInventory).copy(count = 1))))
+        assertFailsWith<IllegalArgumentException> { service.download(backup, prefix, downloaded) }
+        assertFalse(Files.exists(downloaded))
+        assertTrue(Files.exists(completed))
+        assertEquals(opened, closed)
+    }
+
+    @Test
+    fun `content inventory round trips with its database and reuses verified retained files`(): Unit = runBlocking {
+        val selected = withContentInventory()
+        assertEquals(selected, service.upload(local, backup, prefix))
+        val inventory = assertNotNull(selected.contentInventory)
+        val retainedInventory = retained.resolve("$prefix/${inventory.path}")
+        assertEquals("[]", retainedInventory.readText())
+        writes.clear()
+        assertEquals(selected, service.upload(local, backup, prefix))
+        assertTrue(writes.isEmpty())
+        local.toFile().deleteRecursively()
+        assertEquals(selected, service.download(backup, prefix, downloaded))
+        assertEquals("[]", downloaded.resolve(inventory.path).readText())
+        assertEquals(selected, service.verify(downloaded))
+        assertEquals(opened, closed)
+    }
+
+    @Test
+    fun `interrupted content inventory transfer resumes without rewriting the verified database`(): Unit = runBlocking {
+        val selected = withContentInventory()
+        write = { path, stream, length ->
+            if (path.toString().endsWith("content-references.json")) throw IOException("inventory interrupted")
+            storage.setInputStream(path, stream, length)
+        }
+        assertFailsWith<IOException> { service.upload(local, backup, prefix) }
+        assertFalse(Files.exists(completed))
+        assertEquals(selected, decode(intent))
+        assertContentEquals(bytes, Files.readAllBytes(payload))
+        write = null
+        writes.clear()
+        assertEquals(selected, service.upload(local, backup, prefix))
+        assertEquals(listOf("$prefix/content-references.json", "$prefix/manifest.json"), writes)
+    }
+
+    @Test
+    fun `unowned content inventory is rejected before writing any intent or database bytes`(): Unit = runBlocking {
+        withContentInventory()
+        val inventory = retained.resolve("$prefix/content-references.json")
+        Files.createDirectories(inventory.parent)
+        inventory.writeText("[]")
+        assertFailsWith<IllegalArgumentException> { service.upload(local, backup, prefix) }
+        assertTrue(writes.isEmpty())
+        assertFalse(Files.exists(intent))
+        assertFalse(Files.exists(payload))
+    }
+
+    @Test
+    fun `invalid local inventory count syntax bytes and links prevent storage writes`(): Unit = runBlocking {
+        val selected = withContentInventory()
+        val inventory = assertNotNull(selected.contentInventory)
+        for (text in listOf("[ ", "{}", "[{}]", "[] trailing")) {
+            withContentInventory(text)
+            assertFailsWith<SerializationException> { service.upload(local, backup, prefix) }
+            assertTrue(writes.isEmpty())
+        }
+        withContentInventory(count = 1)
+        assertFailsWith<IllegalArgumentException> { service.verify(local) }
+        withContentInventory()
+        local.resolve(inventory.path).writeText("{}")
+        assertFailsWith<BackupPayloadMismatchException> { service.verify(local) }
+        val external = root.resolve("external.json").also { it.writeText("[]") }
+        Files.delete(local.resolve(inventory.path))
+        Files.createSymbolicLink(local.resolve(inventory.path), external)
+        assertFailsWith<IllegalArgumentException> { service.upload(local, backup, prefix) }
+        assertTrue(writes.isEmpty())
+    }
+
+    @Test
+    fun `missing or corrupt retained content inventory removes every unpublished download file`(): Unit = runBlocking {
+        val selected = withContentInventory()
+        val inventory = assertNotNull(selected.contentInventory)
+        service.upload(local, backup, prefix)
+        val saved = retained.resolve("$prefix/${inventory.path}")
+        saved.writeText("{}")
+        assertFailsWith<BackupPayloadMismatchException> { service.download(backup, prefix, downloaded) }
+        assertFalse(Files.exists(downloaded))
+        Files.delete(saved)
+        assertFailsWith<bosca.storage.service.ObjectNotFoundException> { service.download(backup, prefix, downloaded) }
+        assertFalse(Files.exists(downloaded))
+        assertTrue(Files.exists(completed))
+        assertContentEquals(bytes, Files.readAllBytes(payload))
+        assertEquals(opened, closed)
     }
 
     @Test
@@ -167,7 +322,7 @@ class PostgresBackupTransferTest {
         assertEquals(manifest, decode(intent))
         assertFalse(Files.exists(completed))
         write = null
-        service = PostgresBackupServiceImpl(application)
+        service = PostgresBackupServiceImpl(application, mockk(), mockk())
         assertEquals(manifest, service.upload(local, backup, prefix))
         assertEquals(2, writes.count { it.endsWith("database.dump") })
         assertContentEquals(bytes, Files.readAllBytes(payload))

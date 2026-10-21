@@ -215,6 +215,9 @@ class PostgresBackupIntegrationTest {
         provides<CacheManager>(singleton = true) { mockk(relaxed = true) }
         val metadata: MetadataService = metadataReferenceService()
         val collections: CollectionService = collectionReferenceService()
+        provides<MetadataService>(singleton = true) { metadata }
+        provides<CollectionService>(singleton = true) { collections }
+        service = PostgresBackupServiceImplProvider().get()
         val id = "10000000-0000-0000-0000-000000000001"
         val deletedId = "10000000-0000-0000-0000-000000000002"
         val supplementaryId = "20000000-0000-0000-0000-000000000001"
@@ -252,7 +255,7 @@ class PostgresBackupIntegrationTest {
             }
         }
         var observed = emptyList<ContentStorageReference>()
-        val manifest = service.capture("source", output) {
+        val manifest = service.capture("source", output, includeContentReferences = true) {
             observed = references()
             assertEquals(6, observed.size)
             val legacy = observed.single { it.kind == ContentStorageReferenceKind.METADATA_VERSION_SUPPLEMENTARY }
@@ -267,9 +270,30 @@ class PostgresBackupIntegrationTest {
             """.trimIndent())
             assertEquals(observed, references())
         }
+        val inventory = assertNotNull(manifest.contentInventory)
+        assertEquals(6L, inventory.count)
+        val saved = application.json.decodeFromString(
+            kotlinx.serialization.builtins.ListSerializer(ContentStorageReference.serializer()),
+            output.resolve(inventory.path).readText(),
+        )
+        assertEquals(observed, saved)
         assertEquals(manifest, service.verify(output))
         withConnectionManager { assertFalse(observed == references()) }
-        restore()
+        val independent = StorageConfiguration("fs", "", basePath = root.resolve("content-inventory-retained").toString())
+        val factory = provide<ObjectStorageServiceFactory>()
+        factory.withStorage(independent) { store -> service.upload(output, store, "with-references") }
+        output.toFile().deleteRecursively()
+        pool.close()
+        sql("drop database source with (force)", "postgres")
+        val downloaded = root.resolve("content-inventory-download")
+        factory.withStorage(independent) { store ->
+            assertEquals(manifest, service.download(store, "with-references", downloaded))
+        }
+        assertEquals(saved, application.json.decodeFromString(
+            kotlinx.serialization.builtins.ListSerializer(ContentStorageReference.serializer()),
+            downloaded.resolve(inventory.path).readText(),
+        ))
+        restore(downloaded)
         val recoveredPool = ConnectionPool(ConnectionFactoryImpl(
             ConnectionConfig(url + "recovered", user, password), "restored-content-inventory",
         ))
@@ -283,6 +307,52 @@ class PostgresBackupIntegrationTest {
         } finally {
             recoveredPool.close()
         }
+        assertEquals(0, pool.activeConnections)
+    }
+
+    @Test
+    fun `content inventory enumeration failure leaves no artifact or snapshot`(): Unit = runBlocking {
+        val metadata = mockk<MetadataService>()
+        provides<MetadataService>(singleton = true) { metadata }
+        provides<CollectionService>(singleton = true) { mockk() }
+        service = PostgresBackupServiceImplProvider().get()
+        io.mockk.coEvery { metadata.getStorageReferences(0, any()) } throws IOException("inventory failed")
+        assertFailsWith<IOException> { service.capture("source", output, includeContentReferences = true) }
+        assertFalse(Files.exists(output))
+        assertEquals(0, pool.activeConnections)
+    }
+
+    @Test
+    fun `content inventory cancellation removes staged references and releases the snapshot`(): Unit = runBlocking {
+        val entered = CompletableDeferred<Unit>()
+        val metadata = mockk<MetadataService>()
+        provides<MetadataService>(singleton = true) { metadata }
+        provides<CollectionService>(singleton = true) { mockk() }
+        service = PostgresBackupServiceImplProvider().get()
+        io.mockk.coEvery { metadata.getStorageReferences(0, any()) } coAnswers {
+            entered.complete(Unit)
+            awaitCancellation()
+        }
+        val attempt = async { service.capture("source", output, includeContentReferences = true) }
+        withTimeout(5_000) { entered.await() }
+        withTimeout(5_000) { attempt.cancelAndJoin() }
+        assertFalse(Files.exists(output))
+        assertEquals(0, pool.activeConnections)
+    }
+
+    @Test
+    fun `native dump failure removes a staged content inventory without publishing`(): Unit = runBlocking {
+        tool = writeTool("exit 7")
+        install()
+        val metadata = mockk<MetadataService>()
+        val collections = mockk<CollectionService>()
+        io.mockk.coEvery { metadata.getStorageReferences(0, any()) } returns emptyList()
+        io.mockk.coEvery { collections.getStorageReferences(0, any()) } returns emptyList()
+        provides<MetadataService>(singleton = true) { metadata }
+        provides<CollectionService>(singleton = true) { collections }
+        service = PostgresBackupServiceImplProvider().get()
+        assertFailsWith<IllegalStateException> { service.capture("source", output, includeContentReferences = true) }
+        assertFalse(Files.exists(output))
         assertEquals(0, pool.activeConnections)
     }
 

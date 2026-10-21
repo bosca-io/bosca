@@ -25,15 +25,24 @@ interface PostgresBackupService : Service {
      * queries or asset I/O. Failure or cancellation prevents artifact publication and releases
      * the snapshot. Save the enumerated result only after capture succeeds. This callback does
      * not freeze object storage or prove that retained asset bytes match these database references.
+     *
+     * [includeContentReferences] also stages an inventory through the owning metadata/collection
+     * services in that same view, before [onSnapshot]. It streams a JSON array of current,
+     * historical and supplementary reference evidence, including deleted/pending records and gaps.
+     * Its byte identity and record count are bound to the returned manifest. This requires Bosca's
+     * content schema and services; ordinary database-only capture does not resolve those services.
+     * Neither the inventory nor its successful transfer establishes retained asset coverage.
      */
     suspend fun capture(
         sourceId: String,
         directory: Path,
+        includeContentReferences: Boolean = false,
         onSnapshot: suspend () -> Unit = {},
     ): PostgresBackupManifest
 
     /**
-     * Reads manifest.json and verifies the complete local database.dump length and SHA-256.
+     * Reads manifest.json and verifies every declared local component's length and SHA-256.
+     * A declared content-reference inventory must also decode as a JSON array with the recorded count.
      * Needs neither database/configuration access nor PostgreSQL tools. The caller owns the
      * directory and prevents concurrent modification. This checks artifact integrity, not
      * manifest authenticity or the destination's ability to restore extensions and other dependencies.
@@ -56,7 +65,7 @@ interface PostgresBackupService : Service {
     suspend fun restore(directory: Path): PostgresBackupManifest
 
     /**
-     * Uploads a verified local artifact into independently retained [backup] under [prefix].
+     * Uploads a verified local artifact, including its declared inventory, into [backup] under [prefix].
      * The caller owns immutable local files and exclusive writer access to this relative prefix,
      * coordinating with configured runs that claim the same storage destination. New uploads save
      * exact manifest intent before payload writes. Matching saved intent or completion metadata
@@ -73,7 +82,8 @@ interface PostgresBackupService : Service {
     /**
      * Downloads a completed retained native artifact into a new local [directory]. Requires no
      * source database, capture configuration or PostgreSQL tools, and no active caller transaction.
-     * Verifies the full length, digest and native header before publishing the local manifest.
+     * Verifies all component lengths/digests, the native header, and any inventory's encoding/count
+     * before publishing the local manifest.
      * The parent directory must exist; existing output is never replaced. Before publication,
      * failure/cancellation removes this attempt's local files and leaves retained storage untouched.
      * The caller owns storage, exclusive access to the selected prefix and destination directory,

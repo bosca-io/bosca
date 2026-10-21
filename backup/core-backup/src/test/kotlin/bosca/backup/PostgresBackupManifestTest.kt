@@ -16,6 +16,22 @@ class PostgresBackupManifestTest {
     )
 
     @Test
+    fun `content inventory records its byte identity and rejects unsupported descriptors`() {
+        val inventory = PostgresBackupContentInventory(0, 2, "b".repeat(64))
+        val selected = manifest.copy(contentInventory = inventory)
+        val encoded = Json.encodeToString(PostgresBackupManifest.serializer(), selected)
+        assertEquals(selected, Json.decodeFromString(PostgresBackupManifest.serializer(), encoded))
+        selected.validate()
+        for (invalid in listOf(
+            inventory.copy(count = -1), inventory.copy(length = -1), inventory.copy(length = 1),
+            inventory.copy(sha256 = "etag"), inventory.copy(path = "../outside"),
+            inventory.copy(path = "database.dump"), inventory.copy(version = 2),
+        )) {
+            assertFailsWith<IllegalArgumentException> { manifest.copy(contentInventory = invalid).validate() }
+        }
+    }
+
+    @Test
     fun `native database provenance round trips with required headers`() {
         val encoded = Json.encodeToString(PostgresBackupManifest.serializer(), manifest)
         val decoded = Json.decodeFromString(PostgresBackupManifest.serializer(), encoded)

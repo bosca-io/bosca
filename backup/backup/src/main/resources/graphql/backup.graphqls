@@ -314,4 +314,14 @@ type PostgresBackupManifest {
     payloadPath: String!
     version: Int!
     format: String!
+    contentInventory: PostgresBackupContentInventory
+}
+
+"Reference evidence captured from the database view; this does not establish retained asset coverage."
+type PostgresBackupContentInventory {
+    count: Long!
+    length: Long!
+    sha256: String!
+    path: String!
+    version: Int!
 }
