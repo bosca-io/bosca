@@ -2,6 +2,36 @@ const {test} = require('node:test')
 const assert = require('node:assert/strict')
 const {parseSupportedUrls, isSupportedUrl, fetchSupportedImage, ImageUrlNotAllowed} = require('../lib/allowed-url.js')
 
+test('scheme prefixes allow any host only for the configured HTTP schemes', () => {
+    const http = parseSupportedUrls([' http:// '])
+    const https = parseSupportedUrls([' HTTPS:// '])
+    const both = parseSupportedUrls('http://,https://'.split(','))
+    assert.equal(http.length, 1)
+    assert.equal(https.length, 1)
+    assert.equal(both.length, 2)
+    for (const url of ['http://images.example/image.png', 'http://localhost:8000/private/image.png']) {
+        assert.equal(isSupportedUrl(new URL(url), http), true, url)
+        assert.equal(isSupportedUrl(new URL(url), https), false, url)
+        assert.equal(isSupportedUrl(new URL(url), both), true, url)
+    }
+    for (const url of ['https://images.example/image.png', 'https://cdn.example:8443/image.png?key=image']) {
+        assert.equal(isSupportedUrl(new URL(url), https), true, url)
+        assert.equal(isSupportedUrl(new URL(url), http), false, url)
+        assert.equal(isSupportedUrl(new URL(url), both), true, url)
+    }
+    for (const url of ['file:///tmp/image.png', 'ftp://images.example/image.png', 'https://user:password@images.example/image.png']) {
+        assert.equal(isSupportedUrl(new URL(url), both), false, url)
+    }
+})
+
+test('scheme prefixes can be combined with restricted URL prefixes', () => {
+    const prefixes = parseSupportedUrls(['https://', 'http://images.example/allowed/'])
+    assert.equal(isSupportedUrl(new URL('https://cdn.example/image.png'), prefixes), true)
+    assert.equal(isSupportedUrl(new URL('http://images.example/allowed/image.png'), prefixes), true)
+    assert.equal(isSupportedUrl(new URL('http://images.example/private/image.png'), prefixes), false)
+    assert.equal(isSupportedUrl(new URL('http://other.example/allowed/image.png'), prefixes), false)
+})
+
 test('URL prefixes restrict origins and preserve paths and queries', () => {
     const prefixes = parseSupportedUrls(['https://example.com/images/', 'http://localhost:8000/public/?key=example'])
     assert.equal(isSupportedUrl(new URL('https://EXAMPLE.com/images/image.png?size=100'), prefixes), true)
@@ -46,6 +76,15 @@ test('redirects cannot escape the configured origins or paths', async () => {
         }), ImageUrlNotAllowed)
         assert.deepEqual(requests, ['https://example.com/images/start'])
     }
+})
+
+test('scheme prefixes are enforced on redirect destinations', async () => {
+    const requests = []
+    await assert.rejects(fetchSupportedImage(new URL('https://images.example/start'), parseSupportedUrls(['https://']), async url => {
+        requests.push(url.toString())
+        return new Response(null, {status: 302, headers: {Location: 'http://images.example/image.png'}})
+    }), ImageUrlNotAllowed)
+    assert.deepEqual(requests, ['https://images.example/start'])
 })
 
 test('allowed relative and cross-origin redirects reach the image', async () => {
