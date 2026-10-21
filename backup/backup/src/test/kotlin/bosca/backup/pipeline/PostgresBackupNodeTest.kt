@@ -61,7 +61,7 @@ class PostgresBackupNodeTest {
         ProviderRegistry.clear()
         provides<GroupEvaluator> { GroupEvaluator(mockk()) }
         provides<PostgresBackupRunService> { service }
-        coEvery { service.backupConfigured(any(), "instance", "retained", "postgresql") } answers {
+        coEvery { service.backupConfigured(any(), "instance", "retained", "postgresql", any()) } answers {
             val key = firstArg<String>()
             keys.add(key)
             PostgresBackupReceipt(key, "retained", "postgresql/$key/artifact", manifest)
@@ -83,6 +83,7 @@ class PostgresBackupNodeTest {
             perform(node("other"))
         }
         assertEquals(keys[0], keys[1])
+        coVerify(exactly = 2) { service.backupConfigured(keys[0], "instance", "retained", "postgresql", keys[0]) }
         assertTrue(keys[0] != keys[2])
         every { job.getId() } returns UUID.random()
         withContext(queue.asCoroutineContext(job)) { perform(node()) }
@@ -95,7 +96,16 @@ class PostgresBackupNodeTest {
         assertFailsWith<SecurityException> {
             node().run(PipelineContext(AuthenticationContext(null, null), json), NodeInputs(emptyMap()))
         }
-        coVerify(exactly = 0) { service.backupConfigured(any(), any(), any(), any()) }
+        coVerify(exactly = 0) { service.backupConfigured(any(), any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun `inline calls have independent requests without resumable job checkpoints`(): Unit = runBlocking {
+        repeat(2) { perform(node()) }
+        assertTrue(keys[0] != keys[1])
+        for (key in keys) coVerify(exactly = 1) {
+            service.backupConfigured(key, "instance", "retained", "postgresql", null)
+        }
     }
 
     @Test
@@ -111,9 +121,9 @@ class PostgresBackupNodeTest {
 
     @Test
     fun `cancellation and native failures propagate without successful output`(): Unit = runBlocking {
-        coEvery { service.backupConfigured(any(), any(), any(), any()) } throws CancellationException("stopped")
+        coEvery { service.backupConfigured(any(), any(), any(), any(), any()) } throws CancellationException("stopped")
         assertEquals("stopped", assertFailsWith<CancellationException> { perform(node()) }.message)
-        coEvery { service.backupConfigured(any(), any(), any(), any()) } throws java.io.IOException("upload failed")
+        coEvery { service.backupConfigured(any(), any(), any(), any(), any()) } throws java.io.IOException("upload failed")
         assertEquals("upload failed", assertFailsWith<java.io.IOException> { perform(node()) }.message)
     }
 

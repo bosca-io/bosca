@@ -13,10 +13,20 @@ interface PostgresBackupRunService : Service {
      * path. Only successful capture, retained verification and store closure publish a receipt.
      * Abandoned retained attempts remain untouched; scratch is removed on ordinary exit/cancellation.
      * Uses the shared destination writer claim, rejecting active caller transactions and contention.
-     * Process death retains ownership; [recover] is only for a writer known to have stopped.
+     * A queued caller may supply its stable [checkpointKey] to resume only that job's RUNNING
+     * request after interruption. The caller serializes deliveries of the job. Resumption rotates
+     * the execution token and takes a fresh snapshot at a new retained path; it cannot reuse a
+     * dead worker's exported snapshot. Other jobs and unqueued callers retain the explicit
+     * stopped-writer [recover] contract. Checkpoint identities must be nonblank and contain no colon.
      * Pipelines own retries. This captures database state only, not a matched database/object snapshot.
      */
-    suspend fun backupConfigured(key: String, sourceId: String, storageKey: String, prefix: String): PostgresBackupReceipt
+    suspend fun backupConfigured(
+        key: String,
+        sourceId: String,
+        storageKey: String,
+        prefix: String,
+        checkpointKey: String? = null,
+    ): PostgresBackupReceipt
 
     /** Reads request state and its observed recovery token in the caller's database context. */
     suspend fun get(key: String): PostgresBackupRun?

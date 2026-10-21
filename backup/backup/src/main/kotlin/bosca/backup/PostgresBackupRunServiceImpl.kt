@@ -29,9 +29,13 @@ class PostgresBackupRunServiceImpl(
         sourceId: String,
         storageKey: String,
         prefix: String,
+        checkpointKey: String?,
     ): PostgresBackupReceipt = withContext(StorageDispatcher) {
         outsideTransaction()
         validateKey(key)
+        require(checkpointKey == null || checkpointKey.isNotBlank() && ':' !in checkpointKey) {
+            "Job checkpoint identity must be nonblank and contain no colon"
+        }
         require(sourceId.isNotBlank() && storageKey.isNotBlank()) { "Source and backup storage identities are required" }
         require(prefix.isNotBlank() && prefix.split('/').all { it.isNotEmpty() && it != "." && it != ".." }) {
             "PostgreSQL backup prefix must be a canonical relative path"
@@ -48,7 +52,8 @@ class PostgresBackupRunServiceImpl(
         }
         val configurations = storage.configurations(setOf(storageKey))
         val configuration = configurations.getValue(storageKey)
-        val token = UUID.randomUUID().toString()
+        val attempt = UUID.randomUUID().toString()
+        val token = checkpointKey?.let { "$it:$attempt" } ?: attempt
         var acquired = false
         var completed = false
         try {
@@ -58,7 +63,9 @@ class PostgresBackupRunServiceImpl(
                         storage.bind(storageKey, configuration)
                         repository.add(key, sourceId, storageKey, prefix)
                         checkIntent(checkNotNull(repository.get(key)))
-                        check(repository.begin(key, token) == 1) { "PostgreSQL backup request is already running or completed: $key" }
+                        val started = repository.begin(key, token) == 1
+                        val resumed = !started && checkpointKey != null && repository.resume(key, checkpointKey, token) == 1
+                        check(started || resumed) { "PostgreSQL backup request is already running or completed: $key" }
                         if (repository.claim(key, storageKey) != 1) throw ObjectBackupDestinationBusyException(storageKey)
                     }
                 }

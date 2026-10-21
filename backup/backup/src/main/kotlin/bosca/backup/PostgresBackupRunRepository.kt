@@ -32,10 +32,21 @@ interface PostgresBackupRunRepository {
     """, returnUpdateCount = true)
     suspend fun begin(key: String, token: String): Int
 
+    /** Restarts only the original job's running request with a new token and independent capture. */
+    @Query("""
+        update backup.postgres_runs set writer_token = :token,
+            attempts = attempts + 1, modified = now(), version = version + 1
+        where key = :key and status = 'running' and strpos(writer_token, ':') > 0
+            and split_part(writer_token, ':', 1) = :checkpointKey
+    """, returnUpdateCount = true)
+    suspend fun resume(key: String, checkpointKey: String, token: String): Int
+
     /** Claims the configured destination without taking over another owner. */
     @Query("""
         insert into backup.object_store_writers (storage_key, postgres_key)
-        values (:storageKey, :key) on conflict (storage_key) do nothing
+        values (:storageKey, :key) on conflict (storage_key) do update
+            set postgres_key = excluded.postgres_key
+            where backup.object_store_writers.postgres_key = excluded.postgres_key
     """, returnUpdateCount = true)
     suspend fun claim(key: String, storageKey: String): Int
 

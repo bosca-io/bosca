@@ -24,7 +24,7 @@ import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 
-/** Separate JVM stopped forcibly after one completed object, without executing capture cleanup. */
+/** Separate JVM stopped during transfer, without executing backup cleanup. */
 @OptIn(InternalDI::class)
 object ObjectBackupCheckpointWorker {
     @JvmStatic
@@ -45,6 +45,7 @@ object ObjectBackupCheckpointWorker {
         StorageProviderRegistrar().register()
         val factory = provide<ObjectStorageServiceFactory>()
         val target = settings.getProperty("targetStorage", "retained")
+        val nativeKey = settings.getProperty("nativeKey")
         var payloads = 0
         provides<ObjectStorageServiceFactory>(singleton = true, overrideExisting = true) {
             object : ObjectStorageServiceFactory by factory {
@@ -55,6 +56,11 @@ object ObjectBackupCheckpointWorker {
                     val store = if (configuration.basePath != root.resolve(target).toString()) actual else
                         object : ObjectStorageService by actual {
                             override suspend fun setInputStream(path: ObjectPath, stream: InputStream, length: Long?): Long {
+                                if (nativeKey != null && path.toString().endsWith("/database.dump")) {
+                                    actual.setInputStream(path, stream.readNBytes(10).inputStream(), 10)
+                                    Files.writeString(root.resolve("worker-ready"), "partial database dump")
+                                    awaitCancellation()
+                                }
                                 if (!path.toString().endsWith(".json") && ++payloads == 2) {
                                     Files.writeString(root.resolve("worker-ready"), "second payload")
                                     awaitCancellation()
@@ -69,7 +75,11 @@ object ObjectBackupCheckpointWorker {
         BackupProviderRegistrar().register()
         try {
             val runKey = settings.getProperty("runKey")
-            if (runKey == null) {
+            if (nativeKey != null) {
+                provide<PostgresBackupRunService>().backupConfigured(
+                    nativeKey, "instance", target, "backups", settings.getProperty("checkpointKey"),
+                )
+            } else if (runKey == null) {
                 provide<ObjectBackupCaptureService>().captureConfigured(
                     settings.getProperty("planKey"), OffsetDateTime.MIN, settings.getProperty("checkpointKey"),
                 )

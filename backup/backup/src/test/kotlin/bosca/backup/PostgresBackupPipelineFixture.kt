@@ -36,6 +36,7 @@ import bosca.serialization.UUID
 import bosca.server.BoscaApplication
 import bosca.sharedqueue.jobs.Job
 import bosca.sharedqueue.jobs.JobQueue
+import bosca.sharedqueue.jobs.JobRunner
 import bosca.sharedqueue.jobs.asCoroutineContext
 import bosca.sharedqueue.jobs.configuration.RegisterJobsConfiguration
 import bosca.sharedqueue.jobs.nats.NatsJobQueueFactory
@@ -49,10 +50,13 @@ import io.mockk.mockk
 import java.nio.file.Path
 import java.time.OffsetDateTime
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonPrimitive
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 
 /** Real Pipeline persistence and NATS dispatch around the real native backup service. */
@@ -62,6 +66,7 @@ internal class PostgresBackupPipelineFixture private constructor(
     val queue: JobQueue,
     private val staging: ObjectStorageService,
     private val json: Json,
+    private val locks: NatsDistributedLockFactory,
 ) : AutoCloseable {
     private val security = mockk<SecurityService>()
     val caller = Principal(id = UUID.random())
@@ -115,6 +120,22 @@ internal class PostgresBackupPipelineFixture private constructor(
 
     suspend fun retry(): Job = assertNotNull(queue.dequeue(40.seconds))
 
+    suspend fun redeliver(job: Job) {
+        queue.enqueueLater(job, 1.seconds)
+        assertTrue(locks.forceRelease("job-${job.getId()}"))
+    }
+
+    fun runner() = JobRunner(queue, 2, locks)
+
+    suspend fun awaitComplete(id: UUID): PipelineRun = withTimeout(30_000) {
+        var current = get(id)
+        while (!current.status.isTerminal) {
+            delay(25)
+            current = get(id)
+        }
+        current
+    }
+
     fun verifyNoServiceAccountFallback() {
         coVerify(exactly = 0) { security.getPrincipalByIdentifier(any()) }
     }
@@ -134,12 +155,13 @@ internal class PostgresBackupPipelineFixture private constructor(
             var staging: ObjectStorageService? = null
             try {
                 val natsPool = nats.newConnectionPool(1)
-                val queue = NatsJobQueueFactory(natsPool, json, NatsDistributedLockFactory(natsPool), null, emptyList(),
+                val locks = NatsDistributedLockFactory(natsPool)
+                val queue = NatsJobQueueFactory(natsPool, json, locks, null, emptyList(),
                     processExpiredJobs = false).create("postgres-backup-${UUID.random()}")
                 staging = provide<ObjectStorageServiceFactory>().create(
                     StorageConfiguration("fs", "", basePath = directory.resolve("pipeline-results").toString()),
                 )
-                val fixture = PostgresBackupPipelineFixture(nats, queue, staging, json)
+                val fixture = PostgresBackupPipelineFixture(nats, queue, staging, json, locks)
                 fixture.register()
                 withConnectionManager {
                     connection().useStatement("create table groups (id uuid primary key)") { it.execute() }

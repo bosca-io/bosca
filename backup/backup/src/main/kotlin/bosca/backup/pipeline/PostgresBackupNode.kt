@@ -52,9 +52,12 @@ class PostgresBackupNode(
     override val willSuspend = true
     override suspend fun execute(context: PipelineContext, inputs: NodeInputs): PipelineValue {
         provide<GroupEvaluator>().verifyHasSaGroup(context.authentication)
-        val invocation = jobOrNull()?.getId() ?: UUID.random()
+        val queuedInvocation = jobOrNull()?.getId()
+        val invocation = queuedInvocation ?: UUID.random()
         val key = objectBackupIdentity(ObjectBackupOperation.BACKUP, listOf("postgresql", invocation.toString(), id))
-        val receipt = provide<PostgresBackupRunService>().backupConfigured(key, sourceId, storageKey, prefix)
+        val receipt = provide<PostgresBackupRunService>().backupConfigured(
+            key, sourceId, storageKey, prefix, key.takeIf { queuedInvocation != null },
+        )
         return PostgresBackupNodeSerializer.serialize(receipt)
     }
 

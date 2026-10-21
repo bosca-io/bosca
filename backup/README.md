@@ -158,8 +158,14 @@ Ordinary retries belong to Pipelines. A completed receipt records the successful
 not a continuing audit of retained storage health.
 
 Native requests share destination ownership with configured object backups, object restores and
-capture plans. Contention fails without taking over another writer. Crashed writers retain their
-claim; an administrator must establish that the process and storage writer stopped before recovery.
+capture plans. Contention fails without taking over another writer. Redelivery of the same backing
+job and node resumes its own request, rotates the execution token and starts an independent capture.
+An old acknowledgement cannot publish a receipt or release the replacement's destination claim.
+Other jobs and unqueued calls cannot adopt that running request. Queue execution serializes deliveries;
+direct service callers supplying a job checkpoint must do the same.
+
+Unqueued requests and writers created without a job checkpoint retain their claim after process death.
+An administrator must establish that the process and storage writer stopped before explicit recovery.
 Inspect the request through the existing backup administration namespace:
 
 ```graphql
@@ -233,8 +239,9 @@ and prevents concurrent modification. Verification checks integrity, not authent
 extension compatibility. Capture never replaces an existing output directory. Failures and
 cancellation before publication stop the child process, roll back the exporting transaction and
 remove the attempt's files. Published output remains complete if cancellation arrives afterward.
-A process crash can leave partial output; stop any surviving dump and remove that incomplete
-directory before a new capture. A dump needs local scratch space for the database artifact,
+A process crash can leave partial output. Before reusing that local directory, stop any surviving
+dump and remove its incomplete output. Queued requests use independent per-attempt directories.
+A dump needs local scratch space for the database artifact,
 without bundling asset bytes.
 
 The integration tests run real `pg_dump` and `pg_restore` with pgvector, restore after dropping
