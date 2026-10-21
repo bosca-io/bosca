@@ -1,7 +1,5 @@
 package bosca.backup
 
-import bosca.content.model.ContentStorageReference
-import bosca.content.model.ContentStorageReferenceKind
 import bosca.storage.service.ObjectNotFoundException
 import bosca.storage.service.ObjectStorageService
 import java.nio.file.Path
@@ -26,7 +24,7 @@ internal class PostgresBackupContentInspector(private val json: Json) {
         val counts = PostgresBackupContentStatus.entries.associateWith { 0L }.toMutableMap()
         PostgresBackupContentInventoryFile(json).forEach(directory, inventory) { reference ->
             context.ensureActive()
-            val path = resolve(reference)
+            val path = contentObjectPath(reference)
             val candidates = path?.let { byPath[it] }.orEmpty()
             val payload = candidates.singleOrNull()
             val status = when {
@@ -43,19 +41,6 @@ internal class PostgresBackupContentInspector(private val json: Json) {
             onReference(PostgresBackupContentInspection(reference, path, status, payload))
         }
         return PostgresBackupContentInspectionSummary(database.id, objects.id, store, counts.toMap())
-    }
-
-    private fun resolve(reference: ContentStorageReference): String? = when (reference.kind) {
-        ContentStorageReferenceKind.METADATA, ContentStorageReferenceKind.METADATA_VERSION ->
-            if (reference.supplementaryId == null) {
-                reference.version?.let { metadataObjectPath(reference.contentId, it) }
-            } else null
-        ContentStorageReferenceKind.METADATA_SUPPLEMENTARY,
-        ContentStorageReferenceKind.METADATA_VERSION_SUPPLEMENTARY -> reference.version?.let { version ->
-            reference.supplementaryId?.let { metadataObjectPath(reference.contentId, version, it) }
-        }
-        ContentStorageReferenceKind.COLLECTION_SUPPLEMENTARY ->
-            reference.supplementaryId?.let { collectionObjectPath(reference.contentId, it) }
     }
 
     private suspend fun inspectPayload(backup: ObjectStorageService, payload: BackupObject): PostgresBackupContentStatus =

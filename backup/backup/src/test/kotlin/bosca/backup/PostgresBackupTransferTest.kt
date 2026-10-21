@@ -175,6 +175,129 @@ class PostgresBackupTransferTest {
     }
 
     @Test
+    fun `content selection uses existing paths once and produces capture input without reading asset bodies`(): Unit = runBlocking {
+        val primary = reference()
+        val historical = reference(ContentStorageReferenceKind.METADATA_VERSION, id = primary.contentId, version = 1)
+        val attachment = reference(ContentStorageReferenceKind.METADATA_SUPPLEMENTARY, supplementaryId = UUID.random())
+        val oldAttachment = attachment.copy(kind = ContentStorageReferenceKind.METADATA_VERSION_SUPPLEMENTARY, version = 1)
+        val collection = reference(ContentStorageReferenceKind.COLLECTION_SUPPLEMENTARY, version = null, supplementaryId = UUID.random())
+        val references = listOf(primary, primary.copy(deleted = true), historical, attachment, oldAttachment, collection)
+        val paths = listOf("metadata/${primary.contentId}/7/content", "metadata/${primary.contentId}/1/content",
+            "metadata/${attachment.contentId}/7/supplementary/${attachment.supplementaryId}",
+            "metadata/${attachment.contentId}/1/supplementary/${attachment.supplementaryId}",
+            "collection/${collection.contentId}/supplementary/${collection.supplementaryId}")
+        val selected = withReferences(*references.toTypedArray())
+        for (path in paths) retain(retainedEntry(path, path))
+        val rows = mutableListOf<PostgresBackupContentSelection>()
+        val result = service.selectContent(local, "content", "snapshot", backup) { rows.add(it) }
+        assertEquals(selected.id, result.inventory.id)
+        assertEquals(selected.sourceId, result.inventory.sourceId)
+        assertEquals("snapshot", result.inventory.scope)
+        java.time.Instant.parse(result.inventory.created)
+        assertEquals(6L, result.counts.getValue(PostgresBackupContentSelectionStatus.SELECTED))
+        assertEquals(references, rows.map { it.reference })
+        assertEquals(paths.sorted(), result.inventory.stores.getValue("content").map { it.key })
+        assertEquals(paths, stats)
+        assertTrue(rows.all { it.entry?.info?.length == 5L && it.status == PostgresBackupContentSelectionStatus.SELECTED })
+        assertEquals(result, application.json.decodeFromString(PostgresBackupContentSelectionSummary.serializer(),
+            application.json.encodeToString(PostgresBackupContentSelectionSummary.serializer(), result)))
+        result.inventory.validate()
+        assertTrue(reads.isEmpty())
+        assertTrue(writes.isEmpty())
+        assertFalse(storageClosed)
+    }
+
+    @Test
+    fun `content selection preserves pending deleted and historical gaps without inventing source paths`(): Unit = runBlocking {
+        val legacy = reference(ContentStorageReferenceKind.METADATA_VERSION_SUPPLEMENTARY).copy(supplementaryKey = "thumbnail")
+        val noVersion = reference(version = null)
+        val noAttachment = reference(ContentStorageReferenceKind.METADATA_SUPPLEMENTARY)
+        val noCollectionAttachment = reference(ContentStorageReferenceKind.COLLECTION_SUPPLEMENTARY, version = null)
+        val missing = reference().copy(deleted = true)
+        val mismatch = reference(length = 9)
+        val pending = reference(length = null)
+        withReferences(legacy, noVersion, noAttachment, noCollectionAttachment, missing, missing, mismatch, pending)
+        val mismatchPath = "metadata/${mismatch.contentId}/7/content"
+        val pendingPath = "metadata/${pending.contentId}/7/content"
+        for (path in listOf(mismatchPath, pendingPath)) retain(retainedEntry(path, path))
+        val rows = mutableListOf<PostgresBackupContentSelection>()
+        val result = service.selectContent(local, "content", "snapshot", backup) { rows.add(it) }
+        assertEquals(mapOf(PostgresBackupContentSelectionStatus.SELECTED to 1L,
+            PostgresBackupContentSelectionStatus.UNRESOLVED to 4L, PostgresBackupContentSelectionStatus.MISSING to 2L,
+            PostgresBackupContentSelectionStatus.LENGTH_MISMATCH to 1L), result.counts)
+        assertTrue(rows.take(4).all { it.path == null && it.entry == null })
+        assertEquals(pending, rows.last().reference)
+        assertEquals(listOf(pendingPath), result.inventory.stores.getValue("content").map { it.key })
+        assertEquals(3, stats.size)
+        assertTrue(reads.isEmpty())
+    }
+
+    @Test
+    fun `content selection verifies all local evidence and arguments before source observations`(): Unit = runBlocking {
+        val selected = withReferences(reference())
+        assertFailsWith<IllegalArgumentException> { service.selectContent(local, " ", "snapshot", backup) }
+        assertFailsWith<IllegalArgumentException> { service.selectContent(local, "content", " ", backup) }
+        local.resolve("manifest.json").writeText(encoded(manifest))
+        assertFailsWith<IllegalArgumentException> { service.selectContent(local, "content", "snapshot", backup) }
+        local.resolve("manifest.json").writeText(encoded(selected))
+        local.resolve(assertNotNull(selected.contentInventory).path).writeText("[]")
+        assertFailsWith<BackupPayloadMismatchException> { service.selectContent(local, "content", "snapshot", backup) }
+        assertTrue(stats.isEmpty())
+        assertTrue(reads.isEmpty())
+        assertTrue(writes.isEmpty())
+    }
+
+    @Test
+    fun `content selection propagates failures cancellation callbacks and unusable observations`(): Unit = runBlocking {
+        val ref = reference()
+        withReferences(ref)
+        val path = "metadata/${ref.contentId}/7/content"
+        retain(retainedEntry(path, path))
+        for (cause in listOf(IOException("source unavailable"), CancellationException("selection cancelled"))) {
+            val failing = object : ObjectStorageService by backup {
+                override suspend fun getObjectInfo(path: ObjectPath): ObjectStorageInfo = throw cause
+            }
+            val actual = assertFailsWith<Exception> { service.selectContent(local, "content", "snapshot", failing) }
+            assertEquals(cause::class, actual::class)
+            assertEquals(cause.message, actual.message)
+        }
+        assertEquals("callback failed", assertFailsWith<IOException> {
+            service.selectContent(local, "content", "snapshot", backup) { throw IOException("callback failed") }
+        }.message)
+        val unusable = object : ObjectStorageService by backup {
+            override suspend fun getObjectInfo(path: ObjectPath) = ObjectStorageInfo(5)
+        }
+        assertFailsWith<IllegalArgumentException> { service.selectContent(local, "content", "snapshot", unusable) }
+        assertTrue(reads.isEmpty())
+        assertTrue(writes.isEmpty())
+        assertFalse(storageClosed)
+    }
+
+    @Test
+    fun `content selection handles a large saved inventory with bounded source access and empty selections`(): Unit = runBlocking {
+        val references = List(1002) { reference() }
+        withReferences(*references.toTypedArray())
+        var lookups = 0
+        val source = object : ObjectStorageService by backup {
+            override suspend fun getObjectInfo(path: ObjectPath): ObjectStorageInfo {
+                lookups++
+                return ObjectStorageInfo(5, etag = "observed")
+            }
+        }
+        var rows = 0
+        val result = service.selectContent(local, "content", "snapshot", source) { rows++ }
+        assertEquals(1002, rows)
+        assertEquals(1002, lookups)
+        assertEquals(1002L, result.counts.getValue(PostgresBackupContentSelectionStatus.SELECTED))
+        assertEquals(1002, result.inventory.stores.getValue("content").size)
+        withReferences()
+        val empty = service.selectContent(local, "content", "snapshot", source)
+        assertEquals(emptyList(), empty.inventory.stores.getValue("content"))
+        assertTrue(empty.counts.values.all { it == 0L })
+        assertEquals(1002, lookups)
+    }
+
+    @Test
     fun `content inspection verifies existing ID paths without a source and checks shared payloads once`(): Unit = runBlocking {
         val primary = reference()
         val supplementary = reference(

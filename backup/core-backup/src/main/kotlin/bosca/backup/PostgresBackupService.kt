@@ -50,6 +50,30 @@ interface PostgresBackupService : Service {
     suspend fun verify(directory: Path): PostgresBackupManifest
 
     /**
+     * Verifies a local database artifact and selects source metadata for its saved content references.
+     * Resolves existing ID paths without source database access. Reads source metadata once per
+     * distinct resolved path, without listing or opening asset bodies. Missing identities/objects
+     * and mismatched recorded lengths are reported and excluded from the capture inventory.
+     * Pending, deleted and historical evidence is preserved; no upload state is inferred.
+     *
+     * The returned inventory uses the database artifact's ID/source identity, the selected [scope],
+     * one logical [store], and the source-observation start time. It can feed ObjectBackupCaptureService.
+     * Selected entries need usable change observations; malformed metadata, backend failures,
+     * callback errors and cancellation propagate. Caller-owned files stay immutable and [source]
+     * stays open. Runs outside active caller transactions on the storage dispatcher.
+     * [onReference] receives rows in saved order and may receive partial results before failure;
+     * save the result only after successful return. Selection neither retains bytes nor establishes
+     * complete coverage or an atomic database/object snapshot. Counts must accompany the inventory.
+     */
+    suspend fun selectContent(
+        directory: Path,
+        store: String,
+        scope: String,
+        source: ObjectStorageService,
+        onReference: suspend (PostgresBackupContentSelection) -> Unit = {},
+    ): PostgresBackupContentSelectionSummary
+
+    /**
      * Inspects saved content-reference evidence against [objects] in the selected logical [store].
      * Verifies the local native artifact before retained asset I/O; both artifacts must identify the
      * same source. Resolves existing paths from saved IDs without accessing the source database,

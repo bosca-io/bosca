@@ -674,6 +674,9 @@ class PostgresBackupIntegrationTest {
                     "content", backup)
             } }
         }
+        assertFailsWith<IllegalStateException> {
+            withConnectionManager { transaction { service.selectContent(output, "content", "snapshot", backup) } }
+        }
         assertFalse(Files.exists(root.resolve("download")))
         assertEquals(0, pool.activeConnections)
     }
@@ -1153,6 +1156,72 @@ class PostgresBackupIntegrationTest {
         provides<CollectionService>(singleton = true) { collectionReferenceService() }
         BackupProviderRegistrar().register()
         service = provide()
+    }
+
+    @Test
+    fun `saved content selection feeds incremental capture and restores database and assets after source removal`(): Unit = runBlocking {
+        FlywayMigration(pool).migrate(listOf(CoreMigration()))
+        contentReferenceServices()
+        val id = "10000000-0000-0000-0000-000000000001"
+        val bytes = "retained image bytes".toByteArray()
+        val key = "metadata/$id/7/content"
+        sql("insert into metadata (id, version, name, content_type, content_length, uploaded) values ('$id', 7, 'Saved image', 'image/png', ${bytes.size}, now())")
+        val factory = provide<ObjectStorageServiceFactory>()
+        val sourceDirectory = root.resolve("source-assets")
+        val sourceConfiguration = StorageConfiguration("fs", "", basePath = sourceDirectory.toString())
+        val retainedConfiguration = StorageConfiguration("fs", "", basePath = root.resolve("selected-retained").toString())
+        val targetConfiguration = StorageConfiguration("fs", "", basePath = root.resolve("restored-assets").toString())
+        Files.createDirectories(sourceDirectory.resolve(key).parent)
+        Files.write(sourceDirectory.resolve(key), bytes)
+        val manifest = service.capture("source", output, includeContentReferences = true)
+        sql("create database recovery_journal", "postgres")
+        val journal = ConnectionPool(ConnectionFactoryImpl(ConnectionConfig(url + "recovery_journal", user, password), "content-selection-journal"))
+        try {
+            provides<ConnectionPool>(singleton = true, overrideExisting = true) { journal }
+            provides<Json>(singleton = true, overrideExisting = true) { backupTestJson }
+            BackupProviderRegistrar().register()
+            FlywayMigration(journal).migrate(listOf(BackupMigration()))
+            val captures = provide<ObjectBackupCaptureService>()
+            factory.withStorage(sourceConfiguration) { actualSource ->
+                var sourceReads = 0
+                val source = object : ObjectStorageService by actualSource {
+                    override suspend fun getInputStream(path: ObjectPath): InputStream {
+                        assertEquals(0, journal.activeConnections)
+                        sourceReads++
+                        return actualSource.getInputStream(path)
+                    }
+                }
+                val selected = service.selectContent(output, "content", "snapshot", source)
+                assertEquals(manifest.id, selected.inventory.id)
+                assertEquals(1L, selected.counts.getValue(PostgresBackupContentSelectionStatus.SELECTED))
+                assertEquals(0, sourceReads)
+                val plan = withConnectionManager { captures.prepareInventory(selected.inventory, "retained", "assets", "objects.json") }
+                factory.withStorage(retainedConfiguration) { backup ->
+                    val objects = captures.captureInventory(plan.key, mapOf("content" to source), backup, null)
+                    assertEquals(1, sourceReads)
+                    assertEquals(key, objects.objects.single().key)
+                    service.upload(output, backup, "database")
+                    assertTrue(sourceDirectory.toFile().deleteRecursively())
+                    assertEquals(objects, captures.captureInventory(plan.key, mapOf("content" to source), backup, null))
+                    assertEquals(1, sourceReads)
+                    pool.close()
+                    sql("drop database source with (force)", "postgres")
+                    assertTrue(output.toFile().deleteRecursively())
+                    assertEquals(manifest, service.download(backup, "database", output))
+                    val inspected = service.inspectContent(output, objects, "content", backup)
+                    assertEquals(1L, inspected.counts.getValue(PostgresBackupContentStatus.VERIFIED))
+                    assertTrue(inspected.counts.filterKeys { it != PostgresBackupContentStatus.VERIFIED }.values.all { it == 0L })
+                    factory.withStorage(targetConfiguration) { target ->
+                        assertEquals(objects, provide<ObjectBackupRestoreService>().restore(objects, backup, mapOf("content" to target), "recovered-assets"))
+                        assertEquals(bytes.decodeToString(), target.getString(bosca.storage.service.StringObjectPath(key)))
+                    }
+                    restore()
+                    assertEquals("Saved image", scalar("select name from metadata where id='$id'", "recovered"))
+                }
+            }
+        } finally {
+            journal.close()
+        }
     }
 
     @Test

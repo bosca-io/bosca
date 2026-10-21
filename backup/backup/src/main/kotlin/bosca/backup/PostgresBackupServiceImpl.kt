@@ -30,6 +30,20 @@ class PostgresBackupServiceImpl(
     private val metadataService: ObjectProvider<MetadataService>,
     private val collectionService: ObjectProvider<CollectionService>,
 ) : PostgresBackupService {
+    override suspend fun selectContent(
+        directory: Path,
+        store: String,
+        scope: String,
+        source: ObjectStorageService,
+        onReference: suspend (PostgresBackupContentSelection) -> Unit,
+    ): PostgresBackupContentSelectionSummary = withContext(StorageDispatcher) {
+        check(connectionOrNull()?.inTransaction != true) { "Content selection must run outside an active caller transaction" }
+        require(store.isNotBlank() && scope.isNotBlank()) { "Content selection store and scope are required" }
+        val database = verify(directory)
+        requireNotNull(database.contentInventory) { "Database artifact has no content-reference inventory" }
+        PostgresBackupContentSelector(application.json).select(directory, database, store, scope, source, onReference)
+    }
+
     override suspend fun inspectContent(
         directory: Path,
         objects: ObjectBackupManifest,

@@ -261,6 +261,31 @@ The native Pipeline action selects this inventory through **Include content refe
 database-only capture remains the default. Neither an inventory nor its successful transfer
 establishes that matching asset bytes have been retained.
 
+`PostgresBackupService.selectContent(directory, store, scope, source)` turns a saved database
+reference inventory into input for the existing object capture service. It verifies the local
+native artifact, resolves existing ID paths and observes each distinct source path once.
+It does not list the source bucket or open asset bodies. Its result contains a capture inventory
+and counts for every reference, including duplicate, pending, deleted and historical rows.
+
+| Selection | Meaning |
+| --- | --- |
+| `SELECTED` | Source metadata can be passed to object capture. |
+| `UNRESOLVED` | Saved IDs cannot determine the existing path. |
+| `MISSING` | No source object was found at that path. |
+| `LENGTH_MISMATCH` | The saved database and observed source lengths differ. |
+
+Only selected paths enter the capture inventory, once each in key order. Present objects with
+unknown upload evidence remain selectable. Missing historical supplementary IDs are never
+guessed. Keep the outcome counts with the inventory and evaluate gaps before treating a recovery
+point as covered. `ObjectBackupCaptureService.prepareInventory` can persist this selection;
+`captureInventory` performs the existing incremental transfer and retained verification.
+
+Selection uses the database artifact's ID/source identity and records its own observation start
+time. It writes no storage or progress records, leaves the source store open, and propagates
+backend failures and cancellation. Input files stay immutable; callbacks can receive partial
+rows before failure, so save results only after successful return. Metadata observations do not
+freeze source bytes or prove an atomic database/object snapshot.
+
 `PostgresBackupService.inspectContent(directory, objects, store, backup)` inspects a saved
 inventory against one object-backup manifest and logical content store. It verifies the local
 artifact first, requires the same source identity, then streams reference results to an optional
