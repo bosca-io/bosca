@@ -1699,6 +1699,41 @@ class MetadataMutationControllerCoverageTest {
     }
 
     @Test
+    fun `setLabels replaces and clears labels with edit permission`() = runTest {
+        val id = UUID.random()
+        val md = metadata(id = id)
+        coEvery { metadataService.getById(id) } returns md
+        coEvery { metadataPermissionEvaluator.verifyAllowed(authentication, md, PermissionAction.EDIT) } returns Unit
+        coEvery { metadataService.setLabels(id, any()) } returns Unit
+
+        for (labels in listOf(listOf("featured", "Summer reading"), emptyList())) {
+            assertTrue(controller.setLabels(authentication, labels, id))
+            coVerify(exactly = 1) { metadataService.setLabels(id, labels) }
+        }
+        coVerify(exactly = 2) { metadataPermissionEvaluator.verifyAllowed(authentication, md, PermissionAction.EDIT) }
+    }
+
+    @Test
+    fun `setLabels rejects missing metadata`() = runTest {
+        val id = UUID.random()
+        coEvery { metadataService.getById(id) } returns null
+
+        assertFailsExc<NoSuchElementException> { controller.setLabels(authentication, emptyList(), id) }
+        coVerify(exactly = 0) { metadataService.setLabels(any(), any()) }
+    }
+
+    @Test
+    fun `setLabels does not write when edit permission is denied`() = runTest {
+        val id = UUID.random()
+        val md = metadata(id = id)
+        coEvery { metadataService.getById(id) } returns md
+        coEvery { metadataPermissionEvaluator.verifyAllowed(authentication, md, PermissionAction.EDIT) } throws SecurityException("denied")
+
+        assertFailsExc<SecurityException> { controller.setLabels(authentication, listOf("featured"), id) }
+        coVerify(exactly = 0) { metadataService.setLabels(any(), any()) }
+    }
+
+    @Test
     fun `addTrait happy and not found`() = runTest {
         val id = UUID.random()
         val md = metadata(id = id)

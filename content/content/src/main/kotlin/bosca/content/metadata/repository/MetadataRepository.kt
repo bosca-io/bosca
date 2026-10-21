@@ -26,6 +26,10 @@ interface MetadataRepository {
     @Query("update metadata set name = :name, modified = now() where id = :id returning *")
     suspend fun setName(id: UUID, name: String): Metadata?
 
+    /** Replaces the current metadata entry's labels and updates its modification time. */
+    @Query("update metadata set labels = :labels, modified = now() where id = :id")
+    suspend fun setLabels(id: UUID, labels: List<String>)
+
     @Query("select id from metadata where (parent_id = (select parent_id from metadata where id = :id limit 1) or id = (select parent_id from metadata where id = :id limit 1) or parent_id = :id) and language_tag = :languageTag limit 1")
     suspend fun getLanguageVariantById(id: UUID, languageTag: String): UUID?
 

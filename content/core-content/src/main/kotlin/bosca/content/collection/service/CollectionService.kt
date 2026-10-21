@@ -613,6 +613,14 @@ interface CollectionService : PermissionService<ICollection, UUID>, Transitionin
     suspend fun setCategories(id: UUID, categoryIds: List<UUID>)
 
     /**
+     * Replaces all freeform labels on a collection.
+     *
+     * @param id the collection identifier
+     * @param labels the labels to store; an empty list clears all labels
+     */
+    suspend fun setLabels(id: UUID, labels: List<String>)
+
+    /**
      * Assigns a template to a collection, defining its structure and configuration.
      *
      * @param collectionId the collection identifier

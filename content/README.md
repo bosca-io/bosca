@@ -84,6 +84,31 @@ In CI (`CI=true`), missing bundle configuration or a failed download fails the b
 
 The project follows a core/impl split where `core-*` modules define contracts (interfaces, models, annotations) and implementation modules provide PostgreSQL-backed repositories with GraphQL exposure. Content items move through states via a workflow engine with permission-gated transitions and job history tracking. Collections and metadata support supplementary attachments with source tracking. All content is language-tagged with localization as a first-class concern. The Bible compiler is a specialized module for parsing and compiling Bible text into the platform's content model.
 
+## Reading and editing labels
+
+Metadata and collections expose their freeform labels through the `labels` field:
+
+```graphql
+query ContentLabels($metadataId: UUID!, $collectionId: UUID!) {
+    content {
+        metadata(id: $metadataId) { labels }
+        collection(id: $collectionId) { labels }
+    }
+}
+```
+
+Use `setLabels` to replace labels without submitting a full content edit. Pass an
+empty list to clear them. Both mutations require edit permission on the item.
+
+```graphql
+mutation SetContentLabels($metadataId: UUID!, $collectionId: UUID!, $labels: [String!]!) {
+    content {
+        metadata { setLabels(metadataId: $metadataId, labels: $labels) }
+        collection { setLabels(id: $collectionId, labels: $labels) }
+    }
+}
+```
+
 ## Finding a guide from a step
 
 When a search result contains a step's metadata ID, query `Metadata.parentGuides`

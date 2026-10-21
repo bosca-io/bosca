@@ -251,6 +251,8 @@ type MetadataMutation {
     permanentlyDelete(metadataId: UUID!): Boolean!
     "Replace all category assignments on a metadata item"
     setCategories(categoryIds: [UUID!]!, metadataId: UUID!): Boolean!
+    "Replace all freeform labels on a metadata item; an empty list clears them"
+    setLabels(labels: [String!]!, metadataId: UUID!): Boolean!
     "Set the start date for a calendar-based guide"
     setGuideStartDate(date: DateTime!, metadataId: UUID!, metadataVersion: Int!): Metadata
     "Lock or unlock a metadata item from modifications"
