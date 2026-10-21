@@ -2,9 +2,13 @@ package bosca.git.ui
 
 import bosca.graphql.GraphQLWebSocketProtocolHandler
 import bosca.server.BoscaApplication
+import bosca.server.ServerCall
 import bosca.server.config.ApplicationConfig
+import bosca.server.middleware.CallMiddleware
 import bosca.server.netty.NettyServerEngine
+import bosca.server.websocket.WebSocketFrame
 import java.net.ServerSocket
+import java.net.Socket
 import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.WebSocket
@@ -24,6 +28,62 @@ import kotlinx.serialization.json.*
  * Exercises real Netty upgrades and the established GraphQL protocol through the app-origin relay.
  */
 class GitSubscriptionProxyTest {
+    @Test
+    fun `browser close without status and application close cross the relay cleanly`() {
+        val upstreamPort = ServerSocket(0).use { it.localPort }
+        val uiPort = ServerSocket(0).use { it.localPort }
+        val closes = LinkedBlockingQueue<WebSocketFrame.Close>()
+        val failures = CopyOnWriteArrayList<Throwable>()
+        val finished = LinkedBlockingQueue<Unit>()
+        val upstream = application(upstreamPort)
+        upstream.router.webSocket("/graphqlws", "graphql-transport-ws") {
+            send("ready")
+            for (frame in incoming) {
+                frameConsumed()
+                if (frame is WebSocketFrame.Close) {
+                    closes.add(frame)
+                    break
+                }
+            }
+        }
+        val ui = application(uiPort)
+        ui.install(object : CallMiddleware {
+            override suspend fun onException(call: ServerCall, cause: Throwable) {
+                failures.add(cause)
+            }
+
+            override suspend fun afterCall(call: ServerCall) {
+                finished.add(Unit)
+            }
+        })
+        installGitSubscriptions(ui, "http://localhost:$upstreamPort/graphql")
+        val engines = listOf(start(upstream, upstreamPort), start(ui, uiPort))
+        try {
+            for (code in listOf(null, 1000, 4200)) {
+                openSubscriptionSocket(uiPort).use { socket ->
+                    assertEquals("ready", readPayload(socket, 1).toString(Charsets.UTF_8))
+                    val reason = if (code == null) "" else "finished"
+                    val payload = if (code == null) byteArrayOf() else {
+                        byteArrayOf((code ushr 8).toByte(), code.toByte()) + reason.toByteArray()
+                    }
+                    // A masked, empty close is what a browser's WebSocket.close() sends.
+                    socket.getOutputStream().apply {
+                        write(byteArrayOf(0x88.toByte(), (0x80 or payload.size).toByte(), 0, 0, 0, 0) + payload)
+                        flush()
+                    }
+                    assertTrue(payload.contentEquals(readPayload(socket, 8)), "The browser receives its close echo")
+                    assertTrue(finished.poll(5, TimeUnit.SECONDS) != null, "Relay must finish")
+                    assertTrue(failures.isEmpty(), "Relay failures: $failures")
+                    val close = requireNotNull(closes.poll(5, TimeUnit.SECONDS)) { "Upstream did not receive a close" }
+                    assertEquals(code ?: 1000, close.code)
+                    assertEquals(reason, close.reason)
+                }
+            }
+        } finally {
+            engines.forEach { it.stopWithoutHalting() }
+        }
+    }
+
     @Test
     fun `SDK init subscription results completion and auth rejection cross the relay`() {
         val upstreamPort = ServerSocket(0).use { it.localPort }
@@ -143,6 +203,42 @@ class GitSubscriptionProxyTest {
                     .byteInputStream()
             )
         )
+
+    private fun openSubscriptionSocket(port: Int): Socket {
+        val socket = Socket("localhost", port).apply { soTimeout = 5_000 }
+        try {
+            socket.getOutputStream().apply {
+                write((
+                    "GET /_git/subscriptions HTTP/1.1\r\n" +
+                        "Host: localhost:$port\r\n" +
+                        "Upgrade: websocket\r\nConnection: Upgrade\r\n" +
+                        "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n" +
+                        "Sec-WebSocket-Version: 13\r\n" +
+                        "Sec-WebSocket-Protocol: graphql-transport-ws\r\n\r\n"
+                    ).toByteArray(Charsets.US_ASCII))
+                flush()
+            }
+            val headers = StringBuilder()
+            while (!headers.endsWith("\r\n\r\n")) {
+                val byte = socket.getInputStream().read()
+                check(byte >= 0) { "Connection ended during handshake" }
+                headers.append(byte.toChar())
+            }
+            assertTrue(headers.startsWith("HTTP/1.1 101"), headers.toString())
+            return socket
+        } catch (cause: Throwable) {
+            socket.close()
+            throw cause
+        }
+    }
+
+    private fun readPayload(socket: Socket, opcode: Int): ByteArray {
+        val input = socket.getInputStream()
+        assertEquals(0x80 or opcode, input.read())
+        val length = input.read()
+        check(length in 0..125) { "Expected a short, unmasked frame, got length byte $length" }
+        return input.readNBytes(length).also { assertEquals(length, it.size) }
+    }
 
     private fun start(application: BoscaApplication, port: Int): NettyServerEngine {
         application.freezeMiddleware()
