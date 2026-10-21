@@ -535,6 +535,22 @@ succeeded, and a populated database is rejected. Successful return identifies th
 artifact and declared assets. Required keys, deployment configuration, application activation
 and proof of an atomic database/object recovery point remain separate.
 
+`restoreContentConfigured(reportPath, backupStorageKey, destinationStorageKey)` manages the
+downloads and storage lifecycle for that operation. Pass the retained report directory from
+`receipt.contentReportPath` and two literal IDs under `backup.objectStores`. The existing storage
+service binds both addresses atomically before opening either store. The destination storage ID
+also identifies its asset checkpoints, so retain the same IDs when retrying a partial restore.
+The source database, source configuration and original local capture files can be unavailable.
+
+Each call downloads the report and its verified native artifact into owned temporary storage,
+then uses the combined restore above. `backup.postgres.scratchDirectory` selects an existing
+local parent; otherwise Java's temporary directory is used. Both stores close and owned downloads
+are removed before return, including ordinary failure or cancellation. Retained backup data,
+destination assets and checkpoints remain. Keep the destinations offline, exclude other writers
+and use a separate recovery journal. Each call reads the selected report again; this service
+operation has no completed-request replay. A close or cleanup failure can follow a committed
+database, so inspect that target before retrying.
+
 Create the destination database beforehand, preferably from `template0`, under its intended
 owner. Keep the application and other writers stopped on that destination throughout restore.
 Source writes can continue. `service` and `database` are required on use. `serviceFile` uses

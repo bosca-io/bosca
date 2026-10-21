@@ -240,6 +240,29 @@ interface PostgresBackupService : Service {
     ): PostgresBackupManifest
 
     /**
+     * Downloads the report at [reportPath] and its native artifact from [backupStorageKey], then
+     * invokes [restoreContent] with [destinationStorageKey] as the stable checkpoint destination.
+     * The report path is its retained directory prefix, as recorded by contentReportPath receipts.
+     * Both literal storage IDs select backup.objectStores; addresses bind atomically before either
+     * store opens. They must be distinct and address independent storage. The existing PostgreSQL
+     * restore configuration selects the empty database destination.
+     *
+     * Owns temporary downloads under backup.postgres.scratchDirectory, or the Java temporary
+     * directory when unset. Requires an existing configured parent. Closes both stores and cleans
+     * owned downloads before returning, including failure/cancellation; retained data, copied assets
+     * and checkpoints remain. The caller provides immutable retained input, isolated offline targets,
+     * exclusive writers and a journal outside the target database. Active caller transactions fail.
+     * Retry uses the same IDs/report path to reuse verified assets. This is a direct service operation
+     * with no completed-request replay: a failure during native acknowledgement or later close/cleanup
+     * can follow a committed database. Inspect that target before retrying; populated targets fail.
+     */
+    suspend fun restoreContentConfigured(
+        reportPath: String,
+        backupStorageKey: String,
+        destinationStorageKey: String,
+    ): PostgresBackupManifest
+
+    /**
      * Verifies [directory] and restores its native dump into the separately configured
      * backup.postgres.restore libpq service. Requires an explicit expected database name,
      * a fresh empty destination and exclusive offline access throughout preflight and restore.

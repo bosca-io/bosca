@@ -31,6 +31,7 @@ class PostgresBackupServiceImpl(
     private val collectionService: ObjectProvider<CollectionService>,
     private val captureService: ObjectProvider<ObjectBackupCaptureService>,
     private val restoreService: ObjectProvider<ObjectBackupRestoreService>,
+    private val storageService: ObjectProvider<ObjectBackupStorageService>,
 ) : PostgresBackupService {
     override suspend fun captureContent(
         sourceId: String,
@@ -214,6 +215,57 @@ class PostgresBackupServiceImpl(
         restores.restore(objects, backup, targets, destinationId)
         check(verify(directory) == database) { "Local database artifact changed during content restore" }
         native.restore(directory, database)
+    }
+
+    override suspend fun restoreContentConfigured(
+        reportPath: String,
+        backupStorageKey: String,
+        destinationStorageKey: String,
+    ): PostgresBackupManifest = withContext(StorageDispatcher) {
+        check(connectionOrNull()?.inTransaction != true) { "Configured content restore must run outside an active caller transaction" }
+        require(reportPath.isNotBlank() && reportPath.split('/').all { it.isNotEmpty() && it != "." && it != ".." }) {
+            "Content report path must be a canonical relative prefix"
+        }
+        require(backupStorageKey.isNotBlank() && destinationStorageKey.isNotBlank() && backupStorageKey != destinationStorageKey) {
+            "Distinct backup and restore storage identities are required"
+        }
+        val storage = storageService.get()
+        val configurations = storage.configurations(setOf(backupStorageKey, destinationStorageKey))
+        val parent = application.environment.config.propertyOrNull("backup.postgres.scratchDirectory")?.getString()
+        require(parent == null || parent.isNotBlank()) { "PostgreSQL scratch directory must not be blank" }
+        currentCoroutineContext().ensureActive()
+        val scratch = if (parent == null) Files.createTempDirectory("postgres-restore-")
+            else Files.createTempDirectory(Path.of(parent), "postgres-restore-")
+        val directory = scratch.resolve("database")
+        val reportFile = scratch.resolve("report.json")
+        var failure: Throwable? = null
+        try {
+            storage.withStorages(configurations) { stores ->
+                val backup = stores.getValue(backupStorageKey)
+                val report = downloadContentReport(backup, reportPath, reportFile)
+                download(backup, report.databasePath, directory)
+                restoreContent(directory, report, backup, stores.getValue(destinationStorageKey), destinationStorageKey)
+            }
+        } catch (cause: Throwable) {
+            failure = cause
+            throw cause
+        } finally {
+            withContext(NonCancellable) {
+                try {
+                    for (name in listOf(
+                        "database.dump", "database.dump.tmp", "manifest.json", "manifest.json.tmp",
+                        "content-references.json", "content-references.json.tmp",
+                    )) {
+                        Files.deleteIfExists(directory.resolve(name))
+                    }
+                    Files.deleteIfExists(directory)
+                    Files.deleteIfExists(reportFile)
+                    Files.delete(scratch)
+                } catch (cleanup: Throwable) {
+                    failure?.addSuppressed(cleanup) ?: throw cleanup
+                }
+            }
+        }
     }
 
     override suspend fun restore(directory: Path): PostgresBackupManifest = withContext(StorageDispatcher) {

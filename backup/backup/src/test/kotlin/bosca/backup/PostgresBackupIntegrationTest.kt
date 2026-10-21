@@ -80,6 +80,8 @@ class PostgresBackupIntegrationTest {
     private var targetName = "recovered"
     private var retained: StorageConfiguration? = null
     private var contentStorage: StorageConfiguration? = null
+    private var recoveryStorage: StorageConfiguration? = null
+    private var scratchDirectory: String? = null
     private val output get() = root.resolve("capture")
     private val user = "backup_test"
     private val password = "local-test-only"
@@ -1734,6 +1736,8 @@ class PostgresBackupIntegrationTest {
     private suspend fun withContentRecovery(
         beforeCapture: () -> Unit = {},
         includeAssets: Boolean = true,
+        configured: Boolean = false,
+        beforeRecovery: () -> Unit = {},
         block: suspend (PostgresBackupContentReport, ObjectStorageService, ObjectStorageService) -> Unit,
     ) {
         contentCaptureServices()
@@ -1746,6 +1750,11 @@ class PostgresBackupIntegrationTest {
             val report = service.captureContent("source", output, "content", "snapshot", source, "retained", backup, "exports")
             createTarget()
             tool = root.resolve("missing-pg-dump")
+            if (configured) {
+                retained = StorageConfiguration("fs", "", basePath = root.resolve("operation-retained").toString())
+                recoveryStorage = StorageConfiguration("fs", "", basePath = root.resolve("content-recovered-assets").toString())
+            }
+            beforeRecovery()
             install(configured = false)
             sql("create database content_recovery_journal", "postgres")
             val journal = ConnectionPool(ConnectionFactoryImpl(
@@ -1763,10 +1772,12 @@ class PostgresBackupIntegrationTest {
                 pool.close()
                 sql("drop database source with (force)", "postgres")
                 backup.delete(bosca.storage.service.StringObjectPath("exports/objects/${report.database.id}.json"))
+                if (configured) assertTrue(output.toFile().deleteRecursively())
                 provide<ObjectStorageServiceFactory>().withStorage(
                     StorageConfiguration("fs", "", basePath = root.resolve("content-recovered-assets").toString()),
                 ) { target -> block(report, backup, target) }
-                assertEquals(report.database, service.verify(output))
+                if (configured) assertFalse(Files.exists(output))
+                else assertEquals(report.database, service.verify(output))
                 assertEquals(0, journal.activeConnections)
             } finally {
                 journal.close()
@@ -1778,6 +1789,320 @@ class PostgresBackupIntegrationTest {
         assertEquals("0", scalar("select count(*)::text from backup.object_progress", "content_recovery_journal"))
         assertEquals("0", scalar("select count(*)::text from pg_class where relnamespace='public'::regnamespace", "recovered"))
         assertFalse(Files.exists(root.resolve("content-recovered-assets")))
+    }
+
+    private fun assertRecoveryScratchClean() {
+        assertFalse(root.toFile().list().orEmpty().any { it.startsWith("postgres-restore-") })
+    }
+
+    private fun contentReportPath(report: PostgresBackupContentReport) = "exports/reports/${report.database.id}"
+
+    @Test
+    fun `configured content restore downloads independent artifacts closes stores and removes owned scratch`(): Unit = runBlocking {
+        withContentRecovery(configured = true) { report, _, target ->
+            val untouched = root.resolve("operator-owned.txt").also { it.writeText("keep") }
+            var opened = 0
+            var closed = 0
+            faultStorage { actual ->
+                opened++
+                object : ObjectStorageService by actual {
+                    override fun close() { closed++; actual.close() }
+                }
+            }
+            service = provide()
+
+            assertEquals(report.database, service.restoreContentConfigured(contentReportPath(report), "retained", "recovery-target"))
+
+            assertEquals(2, opened)
+            assertEquals(2, closed)
+            assertEquals("keep", untouched.readText())
+            assertRecoveryScratchClean()
+            assertEquals("2", scalar("select count(*)::text from metadata where name='Saved image'", "recovered"))
+            assertEquals(listOf("image", "other"), report.objects.objects.map {
+                target.getString(bosca.storage.service.StringObjectPath(it.key))
+            })
+            assertEquals("2", scalar("select count(*)::text from backup.object_progress where status='completed' and destination_id='recovery-target'", "content_recovery_journal"))
+            assertNotNull(withConnectionManager { provide<ObjectBackupStorageService>().get("retained") })
+            assertNotNull(withConnectionManager { provide<ObjectBackupStorageService>().get("recovery-target") })
+        }
+    }
+
+    @Test
+    fun `configured content restore retries partial copies across fresh scratch without rewriting completed assets`(): Unit = runBlocking {
+        withContentRecovery(configured = true) { report, _, _ ->
+            val first = report.objects.objects.first().key
+            val second = report.objects.objects.last().key
+            var closed = 0
+            var fail = true
+            val writes = mutableListOf<String>()
+            faultStorage { actual -> object : ObjectStorageService by actual {
+                override suspend fun setInputStream(path: ObjectPath, stream: InputStream, length: Long?): Long {
+                    writes += path.toString()
+                    if (path.toString() == second && fail) {
+                        actual.setInputStream(path, "o".byteInputStream(), 1)
+                        throw IOException("partial configured restore")
+                    }
+                    return actual.setInputStream(path, stream, length)
+                }
+                override fun close() { closed++; actual.close() }
+            } }
+            service = provide()
+            assertFailsWith<IOException> { service.restoreContentConfigured(contentReportPath(report), "retained", "recovery-target") }
+            assertEquals(listOf(first, second), writes)
+            assertEquals(2, closed)
+            assertEquals("0", scalar("select count(*)::text from pg_class where relnamespace='public'::regnamespace", "recovered"))
+            assertRecoveryScratchClean()
+            fail = false
+            BackupProviderRegistrar().register()
+            service = provide()
+
+            assertEquals(report.database, service.restoreContentConfigured(contentReportPath(report), "retained", "recovery-target"))
+            assertEquals(listOf(first, second, second), writes)
+            assertEquals(4, closed)
+            assertRecoveryScratchClean()
+        }
+    }
+
+    @Test
+    fun `configured content restore cancellation closes stores cleans downloads and preserves checkpoints for retry`(): Unit = runBlocking {
+        withContentRecovery(configured = true) { report, _, _ ->
+            var closed = 0
+            var cancel = true
+            faultStorage { actual -> object : ObjectStorageService by actual {
+                override suspend fun setInputStream(path: ObjectPath, stream: InputStream, length: Long?): Long {
+                    if (cancel) throw kotlinx.coroutines.CancellationException("configured restore cancelled")
+                    return actual.setInputStream(path, stream, length)
+                }
+                override fun close() { closed++; actual.close() }
+            } }
+            service = provide()
+            assertFailsWith<kotlinx.coroutines.CancellationException> {
+                service.restoreContentConfigured(contentReportPath(report), "retained", "recovery-target")
+            }
+            assertEquals(2, closed)
+            assertRecoveryScratchClean()
+            assertEquals("0", scalar("select count(*)::text from pg_class where relnamespace='public'::regnamespace", "recovered"))
+            cancel = false
+            assertEquals(report.database, service.restoreContentConfigured(contentReportPath(report), "retained", "recovery-target"))
+            assertEquals(4, closed)
+            assertRecoveryScratchClean()
+        }
+    }
+
+    @Test
+    fun `configured content restore malformed report closes stores without touching destinations`(): Unit = runBlocking {
+        withContentRecovery(configured = true) { report, backup, _ ->
+            backup.setInputStream(bosca.storage.service.StringObjectPath("${contentReportPath(report)}/report.json"), "{".byteInputStream(), 1)
+            var closed = 0
+            faultStorage { actual -> object : ObjectStorageService by actual {
+                override fun close() { closed++; actual.close() }
+            } }
+            service = provide()
+            assertFailsWith<kotlinx.serialization.SerializationException> {
+                service.restoreContentConfigured(contentReportPath(report), "retained", "recovery-target")
+            }
+            assertEquals(2, closed)
+            assertContentRecoveryUnwritten()
+            assertRecoveryScratchClean()
+        }
+    }
+
+    @Test
+    fun `configured content restore rejects mismatched or corrupt native downloads and cleans scratch`(): Unit = runBlocking {
+        withContentRecovery(configured = true) { report, backup, _ ->
+            val metadata = bosca.storage.service.StringObjectPath("${report.databasePath}/manifest.json")
+            val original = backup.getString(metadata)
+            val mismatched = application.json.encodeToString(PostgresBackupManifest.serializer(), report.database.copy(id = "different-capture"))
+            backup.setInputStream(metadata, mismatched.byteInputStream(), mismatched.toByteArray().size.toLong())
+            var closed = 0
+            faultStorage { actual -> object : ObjectStorageService by actual {
+                override fun close() { closed++; actual.close() }
+            } }
+            service = provide()
+            assertFailsWith<IllegalArgumentException> {
+                service.restoreContentConfigured(contentReportPath(report), "retained", "recovery-target")
+            }
+            assertEquals(2, closed)
+            assertRecoveryScratchClean()
+            backup.setInputStream(metadata, original.byteInputStream(), original.toByteArray().size.toLong())
+            backup.setInputStream(bosca.storage.service.StringObjectPath("${report.databasePath}/database.dump"), "bad".byteInputStream(), 3)
+            assertFailsWith<BackupPayloadMismatchException> {
+                service.restoreContentConfigured(contentReportPath(report), "retained", "recovery-target")
+            }
+            assertEquals(4, closed)
+            assertContentRecoveryUnwritten()
+            assertRecoveryScratchClean()
+        }
+    }
+
+    @Test
+    fun `configured content restore coverage gaps clean successfully downloaded artifacts`(): Unit = runBlocking {
+        withContentRecovery(configured = true, beforeCapture = {
+            sql("insert into metadata (name, content_type) values ('Pending upload', 'image/png')")
+        }) { report, _, _ ->
+            var closed = 0
+            faultStorage { actual -> object : ObjectStorageService by actual {
+                override fun close() { closed++; actual.close() }
+            } }
+            service = provide()
+            val failure = assertFailsWith<IllegalStateException> {
+                service.restoreContentConfigured(contentReportPath(report), "retained", "recovery-target")
+            }
+            assertTrue(failure.message.orEmpty().contains("NOT_RETAINED"), failure.toString())
+            assertEquals(2, closed)
+            assertContentRecoveryUnwritten()
+            assertRecoveryScratchClean()
+        }
+    }
+
+    @Test
+    fun `configured content restore validates arguments and caller transaction before opening storage`(): Unit = runBlocking {
+        withContentRecovery(configured = true) { report, _, _ ->
+            var opened = 0
+            faultStorage { actual -> opened++; actual }
+            service = provide()
+            for (path in listOf("", " ", "/absolute", "../escape", "folder//report", "folder/./report")) {
+                assertFailsWith<IllegalArgumentException> { service.restoreContentConfigured(path, "retained", "recovery-target") }
+            }
+            for ((backupKey, targetKey) in listOf(" " to "recovery-target", "retained" to "", "retained" to "retained")) {
+                assertFailsWith<IllegalArgumentException> { service.restoreContentConfigured(contentReportPath(report), backupKey, targetKey) }
+            }
+            assertFailsWith<IllegalStateException> {
+                withConnectionManager { transaction { service.restoreContentConfigured(contentReportPath(report), "retained", "recovery-target") } }
+            }
+            assertEquals(0, opened)
+            assertContentRecoveryUnwritten()
+            assertRecoveryScratchClean()
+        }
+    }
+
+    @Test
+    fun `configured content restore missing catalog fails on use without source storage fallback`(): Unit = runBlocking {
+        withContentRecovery(configured = true, beforeRecovery = { retained = null }) { report, _, _ ->
+            var opened = 0
+            faultStorage { actual -> opened++; actual }
+            service = provide()
+            assertFailsWith<IllegalStateException> { service.restoreContentConfigured(contentReportPath(report), "retained", "recovery-target") }
+            assertEquals(0, opened)
+            assertContentRecoveryUnwritten()
+            assertRecoveryScratchClean()
+        }
+    }
+
+    @Test
+    fun `configured content restore missing selected target fails before opening backup storage`(): Unit = runBlocking {
+        withContentRecovery(configured = true, beforeRecovery = { recoveryStorage = null }) { report, _, _ ->
+            var opened = 0
+            faultStorage { actual -> opened++; actual }
+            service = provide()
+            assertFailsWith<IllegalArgumentException> { service.restoreContentConfigured(contentReportPath(report), "retained", "recovery-target") }
+            assertEquals(0, opened)
+            assertContentRecoveryUnwritten()
+            assertRecoveryScratchClean()
+        }
+    }
+
+    @Test
+    fun `configured content restore rejects different IDs addressing the same storage before opening either`(): Unit = runBlocking {
+        withContentRecovery(configured = true, beforeRecovery = { recoveryStorage = retained }) { report, _, _ ->
+            var opened = 0
+            faultStorage { actual -> opened++; actual }
+            service = provide()
+            assertFailsWith<IllegalArgumentException> { service.restoreContentConfigured(contentReportPath(report), "retained", "recovery-target") }
+            assertEquals(0, opened)
+            assertEquals(null, withConnectionManager { provide<ObjectBackupStorageService>().get("retained") })
+            assertEquals(null, withConnectionManager { provide<ObjectBackupStorageService>().get("recovery-target") })
+            assertContentRecoveryUnwritten()
+            assertRecoveryScratchClean()
+        }
+    }
+
+    @Test
+    fun `configured content restore preserves a conflicting address binding and rolls back new bindings`(): Unit = runBlocking {
+        withContentRecovery(configured = true) { report, _, _ ->
+            val stores = provide<ObjectBackupStorageService>()
+            val saved = withConnectionManager {
+                stores.bind("retained", StorageConfiguration("fs", "", basePath = root.resolve("another-backup").toString()))
+            }
+            var opened = 0
+            faultStorage { actual -> opened++; actual }
+            service = provide()
+            assertFailsWith<IllegalArgumentException> { service.restoreContentConfigured(contentReportPath(report), "retained", "recovery-target") }
+            assertEquals(0, opened)
+            assertEquals(saved, withConnectionManager { stores.get("retained") })
+            assertEquals(null, withConnectionManager { stores.get("recovery-target") })
+            assertContentRecoveryUnwritten()
+            assertRecoveryScratchClean()
+        }
+    }
+
+    @Test
+    fun `configured content restore invalid scratch parent fails without opening stores or removing caller files`(): Unit = runBlocking {
+        withContentRecovery(configured = true, beforeRecovery = {
+            scratchDirectory = root.resolve("operator-file").also { it.writeText("keep") }.toString()
+        }) { report, _, _ ->
+            var opened = 0
+            faultStorage { actual -> opened++; actual }
+            service = provide()
+            assertFailsWith<IOException> { service.restoreContentConfigured(contentReportPath(report), "retained", "recovery-target") }
+            assertEquals(0, opened)
+            assertEquals("keep", root.resolve("operator-file").readText())
+            assertContentRecoveryUnwritten()
+            assertRecoveryScratchClean()
+        }
+    }
+
+    @Test
+    fun `configured content restore later store open failure closes earlier stores and cleans scratch`(): Unit = runBlocking {
+        withContentRecovery(configured = true) { report, _, _ ->
+            val actual = provide<ObjectStorageServiceFactory>()
+            var closed = 0
+            provides<ObjectStorageServiceFactory>(singleton = true, overrideExisting = true) {
+                object : ObjectStorageServiceFactory by actual {
+                    override suspend fun create(configuration: StorageConfiguration): ObjectStorageService {
+                        if (configuration.basePath == root.resolve("operation-retained").toString()) throw IOException("backup unavailable")
+                        val opened = actual.create(configuration)
+                        return object : ObjectStorageService by opened {
+                            override fun close() { closed++; opened.close() }
+                        }
+                    }
+                    override suspend fun <T> withStorage(configuration: StorageConfiguration, block: suspend (ObjectStorageService) -> T): T =
+                        create(configuration).use { block(it) }
+                }
+            }
+            BackupProviderRegistrar().register()
+            service = provide()
+            assertFailsWith<IOException> { service.restoreContentConfigured(contentReportPath(report), "retained", "recovery-target") }
+            assertEquals(1, closed)
+            assertContentRecoveryUnwritten()
+            assertRecoveryScratchClean()
+        }
+    }
+
+    @Test
+    fun `configured content restore close failure after native commit remains a failure and cleans scratch`(): Unit = runBlocking {
+        withContentRecovery(configured = true) { report, _, _ ->
+            var closed = 0
+            faultStorage { actual -> object : ObjectStorageService by actual {
+                override fun close() {
+                    closed++
+                    actual.close()
+                    throw IOException("store close failed")
+                }
+            } }
+            service = provide()
+            val failure = assertFailsWith<IOException> {
+                service.restoreContentConfigured(contentReportPath(report), "retained", "recovery-target")
+            }
+            assertTrue(failure.message.orEmpty().contains("store close failed"), failure.toString())
+            assertTrue(generateSequence<Throwable>(failure) { it.cause }.any { cause ->
+                cause.suppressed.any { it is IOException && it.message == "store close failed" }
+            }, failure.stackTraceToString())
+            assertEquals(2, closed)
+            assertEquals("2", scalar("select count(*)::text from metadata where name='Saved image'", "recovered"))
+            assertEquals("2", scalar("select count(*)::text from backup.object_progress where status='completed'", "content_recovery_journal"))
+            assertRecoveryScratchClean()
+        }
     }
 
     @Test
@@ -3049,9 +3374,10 @@ class PostgresBackupIntegrationTest {
                 retained?.let { put("objectStores", buildJsonObject {
                     put("retained", Json.encodeToJsonElement(StorageConfiguration.serializer(), it))
                     contentStorage?.let { source -> put("content-source", Json.encodeToJsonElement(StorageConfiguration.serializer(), source)) }
+                    recoveryStorage?.let { target -> put("recovery-target", Json.encodeToJsonElement(StorageConfiguration.serializer(), target)) }
                 }) }
                 put("postgres", buildJsonObject {
-                    put("scratchDirectory", root.toString())
+                    put("scratchDirectory", scratchDirectory ?: root.toString())
                     if (configured) {
                         put("service", "native capture")
                         put("serviceFile", root.resolve("services.conf").toString())
