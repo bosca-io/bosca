@@ -32,7 +32,8 @@ object BmlFragmentResolver {
                     BmlPageScope.findDeclarationElement(contextHost.containingFile, it, contextHost.textOffset)
                 }
             } else {
-                r
+                // The Kotlin plugin maps binary declarations to their matching source attachment.
+                r.navigationElement
             }
         }
 

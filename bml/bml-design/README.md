@@ -187,7 +187,8 @@ and manually selectable with scripts disabled; icon buttons retain native title 
 The helper follows changed value/label props, including updates to a preserved component root.
 Older overlapping results and results after unmount cannot overwrite current feedback or emit a stale
 event. Timers and tooltip listeners are removed on disposal. Visible status reserves space; quiet status
-preserves an icon-only footprint. Icon visibility uses local hidden-state rules and needs no document reset.
+preserves an icon-only footprint and stays positioned within the control without expanding ancestor
+scroll areas. Icon visibility uses local hidden-state rules and needs no document reset.
 
 Toast state belongs to the application. Give each toast a stable key within its updating region,
 keep it mounted while issuing notices, and increment its monotonic sequence for every notice,

@@ -29,6 +29,15 @@ toolchain. Ultimate supplies the JavaScript/TypeScript support used for client-s
 - **Commenting** — `Ctrl+/` wraps selections in `{# … #}`.
 - **BML completion** — context-aware tag, attribute, render/cache mode, component, and component-prop
   suggestions, including deferred islands and shared-cache page attributes.
+- **Library imports** — component completion and Go to Declaration combine the BML source root's
+  `imports.bml` with file-local imports. Bare tags and aliases use the compiler's import resolver,
+  including local overrides, private exports, collisions, and explicit `html:` / `svg:` escapes.
+  Dependencies come from the current module's compile classpath; unrelated modules and arbitrary
+  source archives do not contribute components. Project dependencies use their compiled manifests
+  and original BML source roots. Published dependencies use their own attached sources JARs, checked
+  against the binary manifest's source digest. Changes to imports or dependency roots update bindings
+  without compiling the consumer. Missing or mismatched sources leave metadata completion available
+  and show a message explaining how to download or attach matching sources.
 - **Formatting and navigation** — BML formatting, embedded-body formatting, component references,
   Kotlin declaration navigation, and CSS class references/usages when the CSS plugin is available.
 - **Tag folding** — collapse multiline tag bodies with the editor's gutter controls or standard
@@ -41,6 +50,13 @@ toolchain. Ultimate supplies the JavaScript/TypeScript support used for client-s
     interpolated (`class="btn-{ v }"`: each `{ … }` region independently).
   - TypeScript into `<script client>` bodies (in IDEs that bundle JavaScript/TypeScript;
     looked up by language ID, so it degrades gracefully in Community).
+
+Run `./gradlew :bml:bml-ide:test` from the workspace root for the editor tests. Library acceptance
+attaches the actual Design Library binary and sources artifacts to an isolated IDE project, with
+no producer checkout. It checks component references, metadata completion, global import changes,
+source/version mismatches, module isolation, and embedded Kotlin navigation to attached view-model
+source. `buildPlugin` packages the shared BML parser and manifest/import contracts without their
+transitive server dependencies or another Kotlin compiler.
 
 ## Follow-on stages
 

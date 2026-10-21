@@ -107,6 +107,13 @@ class CatalogApplicationTest {
     }
 
     @Test
+    fun `copy confirmation does not add an outer scrollbar`() {
+        for (development in listOf(false, true)) withServer(development) { base, _ ->
+            runBrowser(base, development, "--copy-overflow", 60)
+        }
+    }
+
+    @Test
     fun `packaged catalog passes accessibility checks`() {
         for (development in listOf(false, true)) withServer(development) { base, _ ->
             runBrowser(base, development, "--accessibility", 120)

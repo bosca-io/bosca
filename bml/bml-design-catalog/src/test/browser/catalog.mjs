@@ -17,6 +17,7 @@ import { checkSearchViews } from './views.mjs';
 import { checkTrees } from './trees.mjs';
 import { checkRouteNavigation } from './navigation.mjs';
 import { checkFeedback } from './feedback.mjs';
+import { checkCopyOverflow } from './copy-overflow.mjs';
 import { checkSurfaces } from './surfaces.mjs';
 import { checkAccessibility } from './accessibility.mjs';
 
@@ -112,6 +113,8 @@ try {
   const navigate=async path=>{await call('Page.navigate',{url:base+path});await until(`document.readyState==='complete'&&document.querySelector('main')&&location.pathname===${JSON.stringify(path)}`);};
   if(process.argv[4]==='--accessibility') {
     await checkAccessibility({navigate,evaluate,until,call,artifacts,mode});
+  } else if(process.argv[4]==='--copy-overflow') {
+    await checkCopyOverflow({navigate,evaluate,until,call,artifacts,mode});
   } else {
   await call('Emulation.setDeviceMetricsOverride',{width:1440,height:1000,deviceScaleFactor:1,mobile:false});
   await navigate('/');
@@ -183,7 +186,7 @@ try {
   await checkSurfaces({navigate,evaluate,until,call,artifacts,mode});
   }
   assert.deepEqual(exceptions,[]);
-  if(process.argv[4]!=='--accessibility') console.log(`Catalog ${mode}: foundation, themes, 41 packaged export contracts, references, overlays, views, trees, comments, editors, aliases and native fallbacks passed`);
+  if(!process.argv[4]?.startsWith('--')) console.log(`Catalog ${mode}: foundation, themes, 41 packaged export contracts, references, overlays, views, trees, comments, editors, aliases and native fallbacks passed`);
 } finally {
   if(ws)ws.close();browser.kill('SIGTERM');
   await new Promise(resolve=>{if(browser.exitCode!==null)resolve();else{browser.once('exit',resolve);setTimeout(resolve,2000);}});

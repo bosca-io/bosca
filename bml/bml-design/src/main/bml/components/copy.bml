@@ -15,6 +15,7 @@
   </div>
   <style scoped>
     .copy-control {
+      position: relative;
       display: inline-flex;
       align-items: center;
       gap: 8px;
