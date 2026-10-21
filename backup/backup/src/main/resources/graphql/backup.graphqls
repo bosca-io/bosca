@@ -280,6 +280,8 @@ type PostgresBackupRun {
     prefix: String!
     "Whether this fixed request includes the database's content-reference inventory."
     includeContentReferences: Boolean!
+    "Optional fixed content-source binding for combined capture."
+    contentSource: PostgresBackupContentSource
     status: PostgresBackupRunStatus!
     attempts: Int!
     writerToken: String
@@ -296,6 +298,15 @@ type PostgresBackupReceipt {
     storageKey: String!
     path: String!
     manifest: PostgresBackupManifest!
+    "Retained content evidence report prefix; request completion does not declare full recovery coverage."
+    contentReportPath: String
+}
+
+"Fixed logical content store, configured source storage and checkpoint scope."
+type PostgresBackupContentSource {
+    store: String!
+    storageKey: String!
+    scope: String!
 }
 
 "Native database artifact provenance and byte identity, excluding object storage coverage."

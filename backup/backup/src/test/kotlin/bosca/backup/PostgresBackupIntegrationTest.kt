@@ -79,6 +79,7 @@ class PostgresBackupIntegrationTest {
     private lateinit var psqlTool: Path
     private var targetName = "recovered"
     private var retained: StorageConfiguration? = null
+    private var contentStorage: StorageConfiguration? = null
     private val output get() = root.resolve("capture")
     private val user = "backup_test"
     private val password = "local-test-only"
@@ -855,6 +856,302 @@ class PostgresBackupIntegrationTest {
         return provide()
     }
 
+    private suspend fun contentRunService(): PostgresBackupRunService {
+        contentStorage = StorageConfiguration("fs", "", basePath = root.resolve("operation-source").toString())
+        runService()
+        contentCaptureServices()
+        return provide()
+    }
+
+    private val configuredContentSource = PostgresBackupContentSource("content", "content-source", "snapshot")
+
+    @Test
+    fun `configured content backup retains a report and replays without source configuration`(): Unit = runBlocking {
+        val runs = contentRunService()
+        val id = "10000000-0000-0000-0000-000000000001"
+        val assetKey = contentAsset(id)
+        val receipt = runs.backupContentConfigured("request", "instance", configuredContentSource, "retained", "backups")
+        val saved = withConnectionManager { assertNotNull(runs.get("request")) }
+        assertEquals(configuredContentSource, saved.contentSource)
+        assertTrue(saved.includeContentReferences)
+        assertEquals(PostgresBackupRunStatus.COMPLETED, saved.status)
+        assertEquals(receipt, saved.result)
+        assertEquals(1, saved.attempts)
+        assertNotNull(receipt.contentReportPath)
+        assertEquals("0", scalar("select count(*)::text from backup.object_store_writers"))
+        assertFalse(root.toFile().list().orEmpty().any { it.startsWith("postgres-backup-") })
+        val configuration = assertNotNull(retained)
+        assertTrue(root.resolve("operation-source").toFile().deleteRecursively())
+        retained = null
+        contentStorage = null
+        tool = root.resolve("missing-dump")
+        install(configured = false)
+        val restarted = provide<PostgresBackupRunService>()
+        assertEquals(receipt, restarted.backupContentConfigured("request", "instance", configuredContentSource, "retained", "backups"))
+        assertEquals(configuredContentSource, withConnectionManager { assertNotNull(restarted.get("request")).contentSource })
+        sql("create database configured_recovery_journal", "postgres")
+        val journal = ConnectionPool(ConnectionFactoryImpl(ConnectionConfig(url + "configured_recovery_journal", user, password), "configured-content-journal"))
+        try {
+            provides<ConnectionPool>(singleton = true, overrideExisting = true) { journal }
+            provides<Json>(singleton = true, overrideExisting = true) { backupTestJson }
+            BackupProviderRegistrar().register()
+            FlywayMigration(journal).migrate(listOf(BackupMigration()))
+            pool.close()
+            sql("drop database source with (force)", "postgres")
+            val factory = provide<ObjectStorageServiceFactory>()
+            factory.withStorage(configuration) { backup ->
+                val report = service.downloadContentReport(backup, assertNotNull(receipt.contentReportPath), root.resolve("report.json"))
+                assertEquals(receipt.path, report.databasePath)
+                assertEquals(receipt.manifest, report.database)
+                assertEquals(1L, report.inspection.counts.getValue(PostgresBackupContentStatus.VERIFIED))
+                service.download(backup, receipt.path, output)
+                factory.withStorage(StorageConfiguration("fs", "", basePath = root.resolve("recovered-assets").toString())) { target ->
+                    provide<ObjectBackupRestoreService>().restore(report.objects, backup, mapOf("content" to target), "recovered")
+                    assertEquals("image", target.getString(bosca.storage.service.StringObjectPath(assetKey)))
+                }
+            }
+            restore()
+            assertEquals("Saved image", scalar("select name from metadata where id='$id'", "recovered"))
+        } finally {
+            journal.close()
+        }
+    }
+
+    @Test
+    fun `configured content backup fixes source mode and scope across replay`(): Unit = runBlocking {
+        val runs = contentRunService()
+        contentAsset("10000000-0000-0000-0000-000000000001")
+        val receipt = runs.backupContentConfigured("request", "instance", configuredContentSource, "retained", "backups")
+        val before = withConnectionManager { assertNotNull(runs.get("request")) }
+        for (changed in listOf(configuredContentSource.copy(store = "other"), configuredContentSource.copy(storageKey = "missing"),
+            configuredContentSource.copy(scope = "other"))) {
+            assertFailsWith<IllegalArgumentException> { runs.backupContentConfigured("request", "instance", changed, "retained", "backups") }
+        }
+        assertFailsWith<IllegalArgumentException> { runs.backupConfigured("request", "instance", "retained", "backups", includeContentReferences = true) }
+        assertEquals(before, withConnectionManager { runs.get("request") })
+        assertEquals(receipt, runs.backupContentConfigured("request", "instance", configuredContentSource, "retained", "backups"))
+    }
+
+    @Test
+    fun `configured content backup retry reuses completed assets and takes a new point`(): Unit = runBlocking {
+        contentRunService()
+        val first = contentAsset("10000000-0000-0000-0000-000000000001")
+        val second = contentAsset("10000000-0000-0000-0000-000000000002", "other")
+        val reads = mutableMapOf<String, Int>()
+        var fail = true
+        faultStorage { actual -> object : ObjectStorageService by actual {
+            override suspend fun getInputStream(path: ObjectPath): InputStream {
+                val key = path.toString()
+                if (key == first || key == second) reads[key] = (reads[key] ?: 0) + 1
+                if (key == second && fail) throw IOException("configured source failed")
+                return actual.getInputStream(path)
+            }
+        } }
+        val runs = provide<PostgresBackupRunService>()
+        assertEquals("configured source failed", assertFailsWith<IOException> {
+            runs.backupContentConfigured("request", "instance", configuredContentSource, "retained", "backups")
+        }.message)
+        val failed = withConnectionManager { assertNotNull(runs.get("request")) }
+        assertEquals(PostgresBackupRunStatus.FAILED, failed.status)
+        assertEquals(null, failed.result)
+        assertEquals(configuredContentSource, failed.contentSource)
+        val completed = withConnectionManager {
+            provide<ObjectBackupProgressService>().list(ObjectBackupOperation.BACKUP, "instance", "retained", "snapshot", 0, 10)
+        }.single()
+        val initialPoint = withConnectionManager {
+            provide<ObjectBackupCaptureService>().listPlans("instance", "retained", "snapshot", 0, 10)
+        }.single().inventory.id
+        assertEquals("0", scalar("select count(*)::text from backup.object_store_writers"))
+        assertFalse(root.toFile().list().orEmpty().any { it.startsWith("postgres-backup-") })
+        fail = false
+        val receipt = runs.backupContentConfigured("request", "instance", configuredContentSource, "retained", "backups")
+        assertTrue(receipt.manifest.id != initialPoint)
+        assertEquals(2, withConnectionManager { assertNotNull(runs.get("request")).attempts })
+        assertEquals(mapOf(first to 1, second to 2), reads)
+        provide<ObjectStorageServiceFactory>().withStorage(assertNotNull(retained)) { backup ->
+            val report = service.downloadContentReport(backup, assertNotNull(receipt.contentReportPath), root.resolve("retried-report.json"))
+            assertEquals(completed.payload, report.objects.objects.first { it.key == first })
+        }
+    }
+
+    @Test
+    fun `configured content backup closes stores before publishing its receipt`(): Unit = runBlocking {
+        contentRunService()
+        contentAsset("10000000-0000-0000-0000-000000000001")
+        var fail = true
+        var closes = 0
+        faultStorage { actual -> object : ObjectStorageService by actual {
+            private var written = false
+            override suspend fun setInputStream(path: ObjectPath, stream: InputStream, length: Long?): Long {
+                written = true
+                return actual.setInputStream(path, stream, length)
+            }
+            override fun close() {
+                closes++
+                actual.close()
+                if (written && fail) throw IOException("configured backup close failed")
+            }
+        } }
+        val runs = provide<PostgresBackupRunService>()
+        assertEquals("configured backup close failed", assertFailsWith<IOException> {
+            runs.backupContentConfigured("request", "instance", configuredContentSource, "retained", "backups")
+        }.message)
+        assertEquals(2, closes)
+        assertEquals(PostgresBackupRunStatus.FAILED, withConnectionManager { assertNotNull(runs.get("request")).status })
+        assertEquals(null, withConnectionManager { assertNotNull(runs.get("request")).result })
+        assertEquals("0", scalar("select count(*)::text from backup.object_store_writers"))
+        assertFalse(root.toFile().list().orEmpty().any { it.startsWith("postgres-backup-") })
+        fail = false
+        val receipt = runs.backupContentConfigured("request", "instance", configuredContentSource, "retained", "backups")
+        assertNotNull(receipt.contentReportPath)
+        assertEquals(4, closes)
+    }
+
+    @Test
+    fun `configured content backup cancellation cleans scratch releases ownership and retries`(): Unit = runBlocking {
+        contentRunService()
+        contentAsset("10000000-0000-0000-0000-000000000001")
+        var pause = true
+        val entered = CompletableDeferred<Unit>()
+        faultStorage { actual -> object : ObjectStorageService by actual {
+            override suspend fun getInputStream(path: ObjectPath): InputStream {
+                if (pause && path.toString().startsWith("metadata/")) { entered.complete(Unit); awaitCancellation() }
+                return actual.getInputStream(path)
+            }
+        } }
+        val runs = provide<PostgresBackupRunService>()
+        val pending = async { runs.backupContentConfigured("request", "instance", configuredContentSource, "retained", "backups", "job") }
+        withTimeout(30_000) { entered.await() }
+        withTimeout(5_000) { pending.cancelAndJoin() }
+        val cancelled = withConnectionManager { assertNotNull(runs.get("request")) }
+        assertEquals(PostgresBackupRunStatus.CANCELLED, cancelled.status)
+        assertEquals(null, cancelled.result)
+        assertEquals(configuredContentSource, cancelled.contentSource)
+        assertEquals("0", scalar("select count(*)::text from backup.object_store_writers"))
+        assertFalse(root.toFile().list().orEmpty().any { it.startsWith("postgres-backup-") })
+        pause = false
+        assertNotNull(runs.backupContentConfigured("request", "instance", configuredContentSource, "retained", "backups", "job").contentReportPath)
+        assertEquals(2, withConnectionManager { assertNotNull(runs.get("request")).attempts })
+    }
+
+    @Test
+    fun `configured content backup rejects invalid sources aliases and transactions before preparing requests`(): Unit = runBlocking {
+        val runs = contentRunService()
+        for (invalid in listOf(configuredContentSource.copy(store = ""), configuredContentSource.copy(storageKey = ""),
+            configuredContentSource.copy(scope = ""), configuredContentSource.copy(storageKey = "retained"))) {
+            assertFailsWith<IllegalArgumentException> { runs.backupContentConfigured("request", "instance", invalid, "retained", "backups") }
+        }
+        assertFailsWith<IllegalStateException> { withConnectionManager { transaction {
+            runs.backupContentConfigured("request", "instance", configuredContentSource, "retained", "backups")
+        } } }
+        assertEquals(null, withConnectionManager { runs.get("request") })
+        assertFalse(Files.exists(root.resolve("retained")))
+    }
+
+    @Test
+    fun `configured content backup respects another destination writer without leaving new intent`(): Unit = runBlocking {
+        val runs = contentRunService()
+        seedNativeWriter("owner", "stopped-owner")
+        assertFailsWith<ObjectBackupDestinationBusyException> {
+            runs.backupContentConfigured("request", "instance", configuredContentSource, "retained", "backups")
+        }
+        assertEquals(null, withConnectionManager { runs.get("request") })
+        assertEquals("owner", scalar("select postgres_key from backup.object_store_writers"))
+        assertFalse(root.toFile().list().orEmpty().any { it.startsWith("postgres-backup-") })
+    }
+
+    @Test
+    fun `configured content backup resumes only its original job and fixed source intent`(): Unit = runBlocking {
+        val runs = contentRunService()
+        contentAsset("10000000-0000-0000-0000-000000000001")
+        seedNativeWriter("request", "job:stopped", includeContentReferences = true, contentSource = configuredContentSource)
+        val running = withConnectionManager { assertNotNull(runs.get("request")) }
+        assertFailsWith<IllegalArgumentException> {
+            runs.backupContentConfigured("request", "instance", configuredContentSource.copy(scope = "other"), "retained", "backups", "job")
+        }
+        assertFailsWith<IllegalStateException> {
+            runs.backupContentConfigured("request", "instance", configuredContentSource, "retained", "backups", "another-job")
+        }
+        assertEquals(running, withConnectionManager { runs.get("request") })
+        BackupProviderRegistrar().register()
+        val receipt = provide<PostgresBackupRunService>().backupContentConfigured("request", "instance", configuredContentSource, "retained", "backups", "job")
+        val completed = withConnectionManager { assertNotNull(provide<PostgresBackupRunService>().get("request")) }
+        assertEquals(2, completed.attempts)
+        assertEquals(configuredContentSource, completed.contentSource)
+        assertEquals(receipt, completed.result)
+        assertNotNull(receipt.contentReportPath)
+        withConnectionManager {
+            assertEquals(0, provide<PostgresBackupRunRepository>().fail("request", "job:stopped", PostgresBackupRunStatus.FAILED, "late failure"))
+        }
+        assertEquals(completed, withConnectionManager { provide<PostgresBackupRunService>().get("request") })
+        assertEquals("0", scalar("select count(*)::text from backup.object_store_writers"))
+    }
+
+    @Test
+    fun `configured content backup resumes interrupted repairs after reclaiming its writer`(): Unit = runBlocking {
+        val runs = contentRunService()
+        contentAsset("10000000-0000-0000-0000-000000000001")
+        runs.backupContentConfigured("original", "instance", configuredContentSource, "retained", "backups")
+        val progress = provide<ObjectBackupProgressService>()
+        val original = withConnectionManager {
+            progress.list(ObjectBackupOperation.BACKUP, "instance", "retained", "snapshot", 0, 10).single()
+        }
+        val unrelated = withConnectionManager { transaction {
+            val pending = progress.prepare(
+                ObjectBackupOperation.BACKUP, "instance", "retained", "snapshot",
+                BackupObject("other-store", "other", "revision", 5, "a".repeat(64), "unrelated/payload"),
+            )
+            progress.start(pending.key, pending.version)
+        } }
+        for (queued in listOf(true, false)) {
+            val key = if (queued) "repair-job" else "repair-manual"
+            val token = if (queued) "job:stopped" else "stopped"
+            seedNativeWriter(key, token, includeContentReferences = true, contentSource = configuredContentSource)
+            Files.writeString(root.resolve("retained/${original.payload.payloadPath}"), "wrong")
+            val interrupted = withConnectionManager { transaction {
+                val completed = assertNotNull(progress.get(original.key))
+                val invalidated = progress.invalidate(completed.key, completed.version, "Damaged retained payload")
+                progress.start(invalidated.key, invalidated.version)
+            } }
+            if (!queued) runs.recover(key, token)
+            val receipt = runs.backupContentConfigured(
+                key, "instance", configuredContentSource, "retained", "backups", if (queued) "job" else null,
+            )
+            val repaired = withConnectionManager { assertNotNull(progress.get(original.key)) }
+            assertEquals(ObjectBackupProgressStatus.COMPLETED, repaired.status)
+            assertEquals(original.payload, repaired.payload)
+            assertTrue(repaired.version > interrupted.version)
+            assertEquals("image", Files.readString(root.resolve("retained/${original.payload.payloadPath}")))
+            assertEquals(unrelated, withConnectionManager { progress.get(unrelated.key) })
+            assertEquals("0", scalar("select count(*)::text from backup.object_store_writers"))
+            withConnectionManager {
+                assertFailsWith<IllegalStateException> { progress.complete(interrupted.key, interrupted.version) }
+            }
+            assertEquals(repaired, withConnectionManager { progress.get(original.key) })
+            provide<ObjectStorageServiceFactory>().withStorage(assertNotNull(retained)) { backup ->
+                val report = service.downloadContentReport(backup, assertNotNull(receipt.contentReportPath), root.resolve("$key.json"))
+                assertEquals(1L, report.inspection.counts.getValue(PostgresBackupContentStatus.VERIFIED))
+                assertEquals(original.payload, report.objects.objects.single())
+            }
+        }
+    }
+
+    @Test
+    fun `configured content backup rejects storage address aliases before opening stores`(): Unit = runBlocking {
+        contentStorage = StorageConfiguration("fs", "", basePath = root.resolve("retained").toString())
+        runService()
+        contentCaptureServices()
+        faultStorage { error("Aliased storage must not be opened") }
+        val runs = provide<PostgresBackupRunService>()
+        assertFailsWith<IllegalArgumentException> {
+            runs.backupContentConfigured("request", "instance", configuredContentSource, "retained", "backups")
+        }
+        assertEquals(null, withConnectionManager { runs.get("request") })
+        assertEquals("0", scalar("select count(*)::text from backup.object_stores"))
+        assertEquals("0", scalar("select count(*)::text from backup.object_store_writers"))
+        assertFalse(Files.exists(root.resolve("retained")))
+    }
+
     @Test
     fun `configured database backup publishes a durable receipt and survives source removal`(): Unit = runBlocking {
         val runs = runService()
@@ -1008,11 +1305,12 @@ class PostgresBackupIntegrationTest {
         claim: Boolean = true,
         prefix: String = "backups",
         includeContentReferences: Boolean = false,
+        contentSource: PostgresBackupContentSource? = null,
     ) = withConnectionManager {
         transaction {
-            provide<ObjectBackupStorageService>().bindConfigured(setOf("retained"))
+            provide<ObjectBackupStorageService>().bindConfigured(setOfNotNull("retained", contentSource?.storageKey))
             val repository = provide<PostgresBackupRunRepository>()
-            assertEquals(1, repository.add(key, "instance", "retained", prefix, includeContentReferences))
+            assertEquals(1, repository.add(key, "instance", "retained", prefix, includeContentReferences, contentSource))
             assertEquals(1, repository.begin(key, token))
             if (claim) assertEquals(1, repository.claim(key, "retained"))
         }
@@ -1890,6 +2188,7 @@ class PostgresBackupIntegrationTest {
             put("backup", buildJsonObject {
                 retained?.let { put("objectStores", buildJsonObject {
                     put("retained", Json.encodeToJsonElement(StorageConfiguration.serializer(), it))
+                    contentStorage?.let { source -> put("content-source", Json.encodeToJsonElement(StorageConfiguration.serializer(), source)) }
                 }) }
                 put("postgres", buildJsonObject {
                     put("scratchDirectory", root.toString())

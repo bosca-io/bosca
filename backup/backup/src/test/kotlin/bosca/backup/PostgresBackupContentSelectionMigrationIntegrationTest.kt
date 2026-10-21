@@ -68,16 +68,18 @@ class PostgresBackupContentSelectionMigrationIntegrationTest {
             """.trimIndent())
             sql.executeUpdate("insert into backup.object_store_writers (storage_key, postgres_key) values ('retained', 'running')")
         }
-        val before = snapshots("select (to_jsonb(r) - 'include_content_references')::text from backup.postgres_runs r order by key")
+        val before = snapshots("select (to_jsonb(r) - 'include_content_references' - 'content_source')::text from backup.postgres_runs r order by key")
         val owners = snapshots("select to_jsonb(w)::text from backup.object_store_writers w")
         FlywayMigration(pool).migrate(listOf(BackupMigration()))
         FlywayMigration(pool).migrate(listOf(BackupMigration()))
-        assertEquals(before, snapshots("select (to_jsonb(r) - 'include_content_references')::text from backup.postgres_runs r order by key"))
+        assertEquals(before, snapshots("select (to_jsonb(r) - 'include_content_references' - 'content_source')::text from backup.postgres_runs r order by key"))
         assertEquals(owners, snapshots("select to_jsonb(w)::text from backup.object_store_writers w"))
         withConnectionManager {
             val repository = provide<PostgresBackupRunRepository>()
             assertFalse(assertNotNull(repository.get("pending")).includeContentReferences)
             assertFalse(assertNotNull(repository.get("running")).includeContentReferences)
+            assertEquals(null, assertNotNull(repository.get("pending")).contentSource)
+            assertEquals(null, assertNotNull(repository.get("running")).contentSource)
             assertEquals(1, repository.add("selected", "source", "retained", "backups", true))
             assertTrue(assertNotNull(repository.get("selected")).includeContentReferences)
         }

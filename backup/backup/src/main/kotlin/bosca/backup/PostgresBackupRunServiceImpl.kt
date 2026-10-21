@@ -22,8 +22,18 @@ class PostgresBackupRunServiceImpl(
     private val repository: PostgresBackupRunRepository,
     private val artifacts: PostgresBackupService,
     private val storage: ObjectBackupStorageService,
+    private val progress: ObjectBackupProgressService,
     private val application: BoscaApplication,
 ) : PostgresBackupRunService {
+    override suspend fun backupContentConfigured(
+        key: String,
+        sourceId: String,
+        source: PostgresBackupContentSource,
+        storageKey: String,
+        prefix: String,
+        checkpointKey: String?,
+    ): PostgresBackupReceipt = backup(key, sourceId, storageKey, prefix, checkpointKey, true, source)
+
     override suspend fun backupConfigured(
         key: String,
         sourceId: String,
@@ -31,6 +41,16 @@ class PostgresBackupRunServiceImpl(
         prefix: String,
         checkpointKey: String?,
         includeContentReferences: Boolean,
+    ): PostgresBackupReceipt = backup(key, sourceId, storageKey, prefix, checkpointKey, includeContentReferences, null)
+
+    private suspend fun backup(
+        key: String,
+        sourceId: String,
+        storageKey: String,
+        prefix: String,
+        checkpointKey: String?,
+        includeContentReferences: Boolean,
+        contentSource: PostgresBackupContentSource?,
     ): PostgresBackupReceipt = withContext(StorageDispatcher) {
         outsideTransaction()
         validateKey(key)
@@ -38,13 +58,17 @@ class PostgresBackupRunServiceImpl(
             "Job checkpoint identity must be nonblank and contain no colon"
         }
         require(sourceId.isNotBlank() && storageKey.isNotBlank()) { "Source and backup storage identities are required" }
+        contentSource?.let {
+            it.validate()
+            require(it.storageKey != storageKey) { "Backup storage must be independent of the content source" }
+        }
         require(prefix.isNotBlank() && prefix.split('/').all { it.isNotEmpty() && it != "." && it != ".." }) {
             "PostgreSQL backup prefix must be a canonical relative path"
         }
         fun checkIntent(run: PostgresBackupRun) {
             require(
                 run.sourceId == sourceId && run.storageKey == storageKey && run.prefix == prefix &&
-                    run.includeContentReferences == includeContentReferences,
+                    run.includeContentReferences == includeContentReferences && run.contentSource == contentSource,
             ) {
                 "Conflicting PostgreSQL backup request: $key"
             }
@@ -54,29 +78,32 @@ class PostgresBackupRunServiceImpl(
             checkIntent(it)
             it.result?.let { result -> return@withContext result }
         }
-        val configurations = storage.configurations(setOf(storageKey))
-        val configuration = configurations.getValue(storageKey)
+        val configurations = storage.configurations(setOfNotNull(storageKey, contentSource?.storageKey))
         val attempt = UUID.randomUUID().toString()
         val token = checkpointKey?.let { "$it:$attempt" } ?: attempt
         var acquired = false
         var completed = false
         try {
-            withContext(NonCancellable) {
-                withConnectionManager {
+            val retry = withContext(NonCancellable) {
+                val retry = withConnectionManager {
                     transaction {
-                        storage.bind(storageKey, configuration)
-                        repository.add(key, sourceId, storageKey, prefix, includeContentReferences)
-                        checkIntent(checkNotNull(repository.get(key)))
+                        for ((id, configuration) in configurations.toSortedMap()) storage.bind(id, configuration)
+                        repository.add(key, sourceId, storageKey, prefix, includeContentReferences, contentSource)
+                        val current = checkNotNull(repository.get(key))
+                        checkIntent(current)
                         val started = repository.begin(key, token) == 1
                         val resumed = !started && checkpointKey != null && repository.resume(key, checkpointKey, token) == 1
                         check(started || resumed) { "PostgreSQL backup request is already running or completed: $key" }
                         if (repository.claim(key, storageKey) != 1) throw ObjectBackupDestinationBusyException(storageKey)
+                        current.attempts > 0
                     }
                 }
                 acquired = true
+                retry
             }
             currentCoroutineContext().ensureActive()
-            val receipt = capture(key, sourceId, storageKey, prefix, configuration, includeContentReferences)
+            if (retry && contentSource != null) resumeContentProgress(sourceId, storageKey, contentSource)
+            val receipt = capture(key, sourceId, storageKey, prefix, configurations, includeContentReferences, contentSource)
             currentCoroutineContext().ensureActive()
             withContext(NonCancellable) {
                 withConnectionManager {
@@ -109,13 +136,33 @@ class PostgresBackupRunServiceImpl(
         }
     }
 
+    private suspend fun resumeContentProgress(sourceId: String, storageKey: String, source: PostgresBackupContentSource) {
+        var offset = 0L
+        while (true) {
+            val size = withConnectionManager {
+                transaction {
+                    val page = progress.list(ObjectBackupOperation.BACKUP, sourceId, storageKey, source.scope, offset, 1000)
+                    for (entry in page) {
+                        if (entry.payload.store == source.store && entry.status == ObjectBackupProgressStatus.RUNNING) {
+                            progress.fail(entry.key, entry.version, "Resuming interrupted PostgreSQL content capture")
+                        }
+                    }
+                    page.size
+                }
+            }
+            if (size == 0) return
+            offset += size
+        }
+    }
+
     private suspend fun capture(
         key: String,
         sourceId: String,
         storageKey: String,
         prefix: String,
-        configuration: StorageConfiguration,
+        configurations: Map<String, StorageConfiguration>,
         includeContentReferences: Boolean,
+        contentSource: PostgresBackupContentSource?,
     ): PostgresBackupReceipt {
         val configured = application.environment.config.propertyOrNull("backup.postgres.scratchDirectory")?.getString()
         require(configured == null || configured.isNotBlank()) { "PostgreSQL scratch directory must not be blank" }
@@ -124,9 +171,18 @@ class PostgresBackupRunServiceImpl(
         val directory = scratch.resolve("capture")
         var failure: Throwable? = null
         try {
-            val manifest = artifacts.capture(sourceId, directory, includeContentReferences = includeContentReferences)
             val path = "$prefix/$key/${UUID.randomUUID()}"
-            storage.withStorage(storageKey, configuration) { backup ->
+            if (contentSource != null) {
+                return storage.withStorages(configurations) { stores ->
+                    val report = artifacts.captureContent(
+                        sourceId, directory, contentSource.store, contentSource.scope,
+                        stores.getValue(contentSource.storageKey), storageKey, stores.getValue(storageKey), path,
+                    )
+                    PostgresBackupReceipt(key, storageKey, report.databasePath, report.database, "$path/reports/${report.database.id}")
+                }
+            }
+            val manifest = artifacts.capture(sourceId, directory, includeContentReferences = includeContentReferences)
+            storage.withStorage(storageKey, configurations.getValue(storageKey)) { backup ->
                 check(artifacts.upload(directory, backup, path) == manifest) { "Transferred PostgreSQL artifact changed" }
             }
             return PostgresBackupReceipt(key, storageKey, path, manifest)
@@ -139,6 +195,7 @@ class PostgresBackupRunServiceImpl(
                     for (file in listOf(
                         "database.dump", "database.dump.tmp", "manifest.json", "manifest.json.tmp", "pg_dump.stderr",
                         "content-references.json", "content-references.json.tmp",
+                        "content-report.json",
                     )) {
                         Files.deleteIfExists(directory.resolve(file))
                     }

@@ -5,6 +5,31 @@ import bosca.service.Service
 /** Executes native database capture and independent retention without worker-local retry state. */
 interface PostgresBackupRunService : Service {
     /**
+     * Executes combined native/reference/asset capture using [source]'s configured storage and
+     * the independent backup [storageKey]. Source binding/scope are immutable request intent.
+     * Uses the same writer claims, token fencing, stopped-writer recovery and optional queued
+     * [checkpointKey] as [backupConfigured]. Every unfinished attempt takes a new database point;
+     * verified matching assets can be reused. Both stores close and owned scratch is cleaned before
+     * recording a receipt. After reclaiming a stopped request's destination, retry fails interrupted
+     * object checkpoints only within its fixed source/destination/scope/logical store so repair can
+     * restart with new checkpoint versions. Callers must exclude external destination writers before
+     * resumption, just as for native stopped-writer recovery. The receipt's path downloads the native
+     * artifact; contentReportPath retrieves its retained evidence report. Completed matching replay
+     * needs only the journal.
+     * Source writes continue. Report gaps remain explicit: request completion does not classify
+     * required coverage or declare a complete database/object recovery point. Pipelines own retries;
+     * this does not add a schedule or change runner behavior.
+     */
+    suspend fun backupContentConfigured(
+        key: String,
+        sourceId: String,
+        source: PostgresBackupContentSource,
+        storageKey: String,
+        prefix: String,
+        checkpointKey: String? = null,
+    ): PostgresBackupReceipt
+
+    /**
      * Runs one fixed [key]/[sourceId]/[storageKey]/[prefix] request using backup.objectStores.
      * Keys are 1–64 ASCII letters/digits/underscores/hyphens; prefixes are canonical relative paths.
      * A completed matching request returns its saved receipt without recapture or configuration/storage

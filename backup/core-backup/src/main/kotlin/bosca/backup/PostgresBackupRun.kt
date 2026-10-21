@@ -28,4 +28,7 @@ data class PostgresBackupRun(
     val version: Long = 0,
     val created: OffsetDateTime = OffsetDateTime.now(),
     val modified: OffsetDateTime = created,
+    @ColumnName("content_source")
+    @property:DbMapper(JsonbMapper::class)
+    val contentSource: PostgresBackupContentSource? = null,
 )

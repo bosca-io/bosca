@@ -19,8 +19,8 @@ Run these commands from the **workspace root**. `backup` is part of the root Gra
 Object capture supports ordinary unversioned S3-compatible and filesystem storage. Existing
 metadata IDs, collection IDs and supplementary paths remain unchanged. Capture records source
 change observations and verified retained bytes in backup data; it adds no content-location fields
-and requires no provider versioning. Native database capture and object capture remain separate
-operations without a combined restorable recovery point.
+and requires no provider versioning. Native database and asset capture can run together with
+retained evidence reports; complete recovery-point classification remains separate.
 
 The **Back Up Object Storage** Pipeline action (`objectBackup.backup`) discovers source
 objects, saves their observed metadata, and runs the incremental capture service.
@@ -199,6 +199,35 @@ recovery points, protected retention and keys, full-instance restore and deploym
 remain separate work.
 
 ## Native PostgreSQL database artifacts
+
+`PostgresBackupRunService.backupContentConfigured` runs combined capture using
+`backup.objectStores` IDs and the existing PostgreSQL request journal:
+
+```kotlin
+val source = PostgresBackupContentSource("content", "content", "snapshots")
+val receipt = runs.backupContentConfigured("snapshot-request", "instance", source, "retained", "snapshots")
+```
+
+The logical store, source storage ID and scope are saved as fixed request intent. Match the
+source identity, logical store, destination ID and scope used by recurring capture to reuse its
+verified asset checkpoints. Both storage addresses are bound before opening either store; the
+backup destination must be independent.
+The existing destination claim covers the whole attempt. Stores close and local scratch is
+cleaned before a receipt is recorded. `receipt.path` downloads the native artifact, while
+`receipt.contentReportPath` retrieves the retained content report. Report gaps remain explicit;
+completed request status does not declare a complete database/object recovery point.
+
+A matching completed request replays from the journal without source configuration or storage
+access. An unfinished retry captures a fresh database point and can reuse verified assets from
+an earlier attempt. Retained attempts remain untouched, including payloads reused by later
+reports. Source binding/scope or native-only mode cannot change on replay. Queued callers can
+pass their stable checkpoint identity to resume their own interrupted request using the existing
+token fencing; unqueued writers retain explicit stopped-writer recovery. After reclaiming the
+destination, a retry recovers interrupted object checkpoints in its fixed source, destination,
+scope and logical store, allowing repairs to restart while rejecting stale acknowledgements.
+Completed checkpoints and other stores remain unchanged. Exclude external destination writers
+before resuming a stopped request. Pipeline actions still use the existing database-only entry
+point; this adds a programmatic configured operation.
 
 `PostgresBackupService.captureContent` combines native capture, saved-reference selection,
 incremental asset capture and retained evidence reporting for one logical content store.

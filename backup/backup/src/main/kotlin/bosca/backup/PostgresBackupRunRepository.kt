@@ -19,8 +19,8 @@ interface PostgresBackupRunRepository {
 
     /** Inserts fixed intent, including reference selection, without replacing an existing request. */
     @Query("""
-        insert into backup.postgres_runs (key, source_id, storage_key, prefix, include_content_references)
-        values (:key, :sourceId, :storageKey, :prefix, :includeContentReferences) on conflict (key) do nothing
+        insert into backup.postgres_runs (key, source_id, storage_key, prefix, include_content_references, content_source)
+        values (:key, :sourceId, :storageKey, :prefix, :includeContentReferences, :contentSource) on conflict (key) do nothing
     """, returnUpdateCount = true)
     suspend fun add(
         key: String,
@@ -28,6 +28,7 @@ interface PostgresBackupRunRepository {
         storageKey: String,
         prefix: String,
         includeContentReferences: Boolean = false,
+        contentSource: PostgresBackupContentSource? = null,
     ): Int
 
     /** Starts only an unfinished idle request and records its exclusive execution token. */

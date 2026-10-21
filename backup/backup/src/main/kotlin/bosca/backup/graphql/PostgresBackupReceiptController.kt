@@ -19,4 +19,7 @@ class PostgresBackupReceiptController : GraphQLController<PostgresBackupReceipt>
 
     @Field
     fun manifest(value: PostgresBackupReceipt) = value.manifest
+
+    @Field
+    fun contentReportPath(value: PostgresBackupReceipt) = value.contentReportPath
 }

@@ -3,6 +3,7 @@ package bosca.backup.graphql
 import bosca.backup.ObjectBackupStorageService
 import bosca.backup.PostgresBackupManifest
 import bosca.backup.PostgresBackupContentInventory
+import bosca.backup.PostgresBackupContentSource
 import bosca.backup.PostgresBackupReceipt
 import bosca.backup.PostgresBackupRunRepository
 import bosca.db.transaction
@@ -23,10 +24,51 @@ import kotlin.test.assertTrue
 /** Real schema, dispatchers, authorization and native backup journal mapping. */
 @OptIn(InternalDI::class)
 class PostgresBackupRunGraphQLIntegrationTest : ObjectBackupGraphQLTest() {
-    private suspend fun prepare(key: String = "native", includeContentReferences: Boolean = false) = request {
+    private suspend fun prepare(
+        key: String = "native",
+        includeContentReferences: Boolean = false,
+        contentSource: PostgresBackupContentSource? = null,
+    ) = request {
         provide<ObjectBackupStorageService>().bind("native-store",
             StorageConfiguration("fs", "", basePath = directory.resolve("native").toString()))
-        provide<PostgresBackupRunRepository>().add(key, "source", "native-store", "postgresql", includeContentReferences)
+        provide<PostgresBackupRunRepository>().add(key, "source", "native-store", "postgresql", includeContentReferences, contentSource)
+    }
+
+    @Test
+    fun `content request exposes its fixed source binding without storage access`(): Unit = runBlocking {
+        prepare("plain")
+        prepare("content", true, PostgresBackupContentSource("content", "configured-source", "snapshot"))
+        val plain = nativeData(execute("""{ backups { postgresRun(key: "plain") { contentSource { store } } } }"""))
+            .getValue("postgresRun").jsonObject
+        assertEquals(JsonNull, plain.getValue("contentSource"))
+        val value = nativeData(execute("""{ backups { postgresRun(key: "content") {
+            includeContentReferences contentSource { store storageKey scope }
+        } } }""")).getValue("postgresRun").jsonObject
+        assertEquals("true", value.string("includeContentReferences"))
+        val source = value.getValue("contentSource").jsonObject
+        assertEquals("content", source.string("store"))
+        assertEquals("configured-source", source.string("storageKey"))
+        assertEquals("snapshot", source.string("scope"))
+    }
+
+    @Test
+    fun `content receipt exposes its retained report location`(): Unit = runBlocking {
+        prepare("native", true, PostgresBackupContentSource("content", "configured-source", "snapshot"))
+        val manifest = PostgresBackupManifest("artifact", "source", "database", "2026-10-19T00:00:00Z", "2026-10-19T00:00:01Z",
+            "exported", "1:2:", "18", 180000, "UTF8", emptyMap(), 5, "a".repeat(64))
+        val receipt = PostgresBackupReceipt("native", "native-store", "postgresql/native/artifact", manifest, "reports/artifact")
+        request { transaction {
+            val repository = provide<PostgresBackupRunRepository>()
+            repository.begin("native", "observed-token")
+            repository.claim("native", "native-store")
+            repository.complete("native", "observed-token", receipt)
+            repository.release("native")
+        } }
+        val value = nativeData(execute("""{ backups { postgresRun(key: "native") {
+            result { path contentReportPath }
+        } } }""")).getValue("postgresRun").jsonObject.getValue("result").jsonObject
+        assertEquals(receipt.path, value.string("path"))
+        assertEquals(receipt.contentReportPath, value.string("contentReportPath"))
     }
 
     private suspend fun running() {
@@ -119,12 +161,13 @@ class PostgresBackupRunGraphQLIntegrationTest : ObjectBackupGraphQLTest() {
             provide<PostgresBackupRunRepository>().release("native")
         } }
         val value = nativeData(execute("""{ backups { postgresRun(key: "native") { status result {
-            key storageKey path manifest { id sourceId database created completed snapshotId snapshot serverVersion serverVersionNumber encoding extensions length sha256 payloadPath version format contentInventory { count } }
+            key storageKey path contentReportPath manifest { id sourceId database created completed snapshotId snapshot serverVersion serverVersionNumber encoding extensions length sha256 payloadPath version format contentInventory { count } }
         } } } }""")).getValue("postgresRun").jsonObject
         assertEquals("COMPLETED", value.string("status"))
         val result = value.getValue("result").jsonObject
         assertEquals(receipt.path, result.string("path"))
         assertEquals(receipt.storageKey, result.string("storageKey"))
+        assertEquals(JsonNull, result.getValue("contentReportPath"))
         val actual = result.getValue("manifest").jsonObject
         assertEquals(manifest.id, actual.string("id"))
         assertEquals(manifest.sha256, actual.string("sha256"))
