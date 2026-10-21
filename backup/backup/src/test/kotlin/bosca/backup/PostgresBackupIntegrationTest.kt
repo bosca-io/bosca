@@ -677,7 +677,15 @@ class PostgresBackupIntegrationTest {
         assertFailsWith<IllegalStateException> {
             withConnectionManager { transaction { service.selectContent(output, "content", "snapshot", backup) } }
         }
+        assertFailsWith<IllegalStateException> {
+            withConnectionManager { transaction {
+                service.writeContentReport(output, "database",
+                    ObjectBackupManifest("objects", "source", "content", "2026-10-20T00:00:00Z", emptyList()),
+                    emptyMap(), "content", backup, root.resolve("report.json"))
+            } }
+        }
         assertFalse(Files.exists(root.resolve("download")))
+        assertFalse(Files.exists(root.resolve("report.json")))
         assertEquals(0, pool.activeConnections)
     }
 
@@ -1211,11 +1219,19 @@ class PostgresBackupIntegrationTest {
                     sql("drop database source with (force)", "postgres")
                     assertTrue(output.toFile().deleteRecursively())
                     assertEquals(manifest, service.download(backup, "database", output))
-                    val inspected = service.inspectContent(output, objects, "content", backup)
-                    assertEquals(1L, inspected.counts.getValue(PostgresBackupContentStatus.VERIFIED))
-                    assertTrue(inspected.counts.filterKeys { it != PostgresBackupContentStatus.VERIFIED }.values.all { it == 0L })
+                    val reportPath = root.resolve("content-report.json")
+                    val exported = service.writeContentReport(output, "database", objects,
+                        assertNotNull(plan.contentSelectionCounts), "content", backup, reportPath)
+                    val report = service.readContentReport(reportPath)
+                    assertEquals(exported, report)
+                    assertEquals(plan.contentSelectionCounts, report.selectionCounts)
+                    assertEquals(manifest, report.database)
+                    assertEquals(1L, report.inspection.counts.getValue(PostgresBackupContentStatus.VERIFIED))
+                    assertTrue(report.inspection.counts.filterKeys { it != PostgresBackupContentStatus.VERIFIED }.values.all { it == 0L })
+                    assertTrue(output.toFile().deleteRecursively())
+                    assertEquals(manifest, service.download(backup, report.databasePath, output))
                     factory.withStorage(targetConfiguration) { target ->
-                        assertEquals(objects, provide<ObjectBackupRestoreService>().restore(objects, backup, mapOf("content" to target), "recovered-assets"))
+                        assertEquals(objects, provide<ObjectBackupRestoreService>().restore(report.objects, backup, mapOf("content" to target), "recovered-assets"))
                         assertEquals(bytes.decodeToString(), target.getString(bosca.storage.service.StringObjectPath(key)))
                     }
                     restore()

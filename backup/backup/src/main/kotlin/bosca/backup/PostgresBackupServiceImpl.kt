@@ -60,6 +60,41 @@ class PostgresBackupServiceImpl(
         PostgresBackupContentInspector(application.json).inspect(directory, database, selected, store, backup, onReference)
     }
 
+    override suspend fun writeContentReport(
+        directory: Path,
+        databasePath: String,
+        objects: ObjectBackupManifest,
+        selectionCounts: Map<PostgresBackupContentSelectionStatus, Long>,
+        store: String,
+        backup: ObjectStorageService,
+        output: Path,
+        onReference: suspend (PostgresBackupContentInspection) -> Unit,
+    ): PostgresBackupContentReport = withContext(StorageDispatcher) {
+        check(connectionOrNull()?.inTransaction != true) { "Content report must run outside an active caller transaction" }
+        require(store.isNotBlank()) { "Content report store is required" }
+        val selected = objects.copy(objects = objects.objects.toList()).also { it.validate() }
+        val counts = selectionCounts.toMap()
+        val file = PostgresBackupContentReportFile(application.json)
+        val destination = file.destination(output)
+        val retained = PostgresBackupArtifactStore(backup, application.json, databasePath)
+        val database = verify(directory)
+        requireNotNull(database.contentInventory) { "Database artifact has no content-reference inventory" }
+        require(database.id == selected.id && database.sourceId == selected.sourceId) {
+            "Database and content capture identities differ"
+        }
+        require(selected.objects.all { it.store == store }) { "Report requires one matching logical content store" }
+        retained.verify(database)
+        val inspection = PostgresBackupContentInspector(application.json)
+            .inspect(directory, database, selected, store, backup, onReference)
+        val report = PostgresBackupContentReport(databasePath, database, selected, counts, inspection)
+        file.write(destination, report)
+        report
+    }
+
+    override suspend fun readContentReport(file: Path): PostgresBackupContentReport = withContext(StorageDispatcher) {
+        PostgresBackupContentReportFile(application.json).read(file)
+    }
+
     override suspend fun restore(directory: Path): PostgresBackupManifest = withContext(StorageDispatcher) {
         check(connectionOrNull()?.inTransaction != true) { "PostgreSQL restore must run outside an active caller transaction" }
         PostgresBackupRestore(application).restore(directory, verify(directory))

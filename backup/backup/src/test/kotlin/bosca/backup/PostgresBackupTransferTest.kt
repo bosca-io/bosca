@@ -154,6 +154,177 @@ class PostgresBackupTransferTest {
         }
     }
 
+    private fun selectionCounts(selected: Long = 1, missing: Long = 0) =
+        PostgresBackupContentSelectionStatus.entries.associateWith {
+            when (it) {
+                PostgresBackupContentSelectionStatus.SELECTED -> selected
+                PostgresBackupContentSelectionStatus.MISSING -> missing
+                else -> 0L
+            }
+        }
+
+    @Test
+    fun `content report embeds retained artifacts and fresh inspection without source services or storage writes`(): Unit = runBlocking {
+        val reference = reference()
+        val database = withReferences(reference, reference)
+        val entry = retainedEntry("metadata/${reference.contentId}/7/content", "assets/image")
+        retain(entry)
+        val objects = objectManifest(entry).copy(id = database.id)
+        service.upload(local, backup, prefix)
+        writes.clear()
+        reads.clear()
+        val output = root.resolve("recovery.json")
+        val rows = mutableListOf<PostgresBackupContentInspection>()
+        val report = service.writeContentReport(local, prefix, objects, selectionCounts(2), "content", backup, output) { rows.add(it) }
+        assertEquals(database, report.database)
+        assertEquals(objects, report.objects)
+        assertEquals(prefix, report.databasePath)
+        assertEquals(selectionCounts(2), report.selectionCounts)
+        assertEquals(2L, report.inspection.counts.getValue(PostgresBackupContentStatus.VERIFIED))
+        assertEquals(listOf(reference, reference), rows.map { it.reference })
+        assertEquals(1, reads.count { it == entry.payloadPath })
+        assertTrue(reads.containsAll(listOf("$prefix/manifest.json", "$prefix/database.dump", "$prefix/content-references.json")))
+        assertTrue(writes.isEmpty())
+        assertEquals(opened, closed)
+        assertFalse(storageClosed)
+        read = { error("Reading the saved report must not access retained storage") }
+        local.toFile().deleteRecursively()
+        retained.toFile().deleteRecursively()
+        assertEquals(report, service.readContentReport(output))
+        assertEquals(listOf("recovery.json"), root.toFile().list().orEmpty().toList())
+    }
+
+    @Test
+    fun `content report preserves missing corrupt unresolved and uncopied evidence`(): Unit = runBlocking {
+        val missing = reference()
+        val corrupt = reference()
+        val uncopied = reference()
+        val unresolved = reference(ContentStorageReferenceKind.METADATA_SUPPLEMENTARY)
+        val database = withReferences(missing, corrupt, uncopied, unresolved)
+        val absent = retainedEntry("metadata/${missing.contentId}/7/content", "assets/missing")
+        val damaged = retainedEntry("metadata/${corrupt.contentId}/7/content", "assets/corrupt")
+        retain(damaged, "wrong")
+        service.upload(local, backup, prefix)
+        writes.clear()
+        val counts = selectionCounts(2, 1) + (PostgresBackupContentSelectionStatus.UNRESOLVED to 1L)
+        val report = service.writeContentReport(local, prefix, objectManifest(absent, damaged).copy(id = database.id),
+            counts, "content", backup, root.resolve("gaps.json"))
+        assertEquals(counts, report.selectionCounts)
+        for (status in listOf(PostgresBackupContentStatus.MISSING, PostgresBackupContentStatus.CORRUPT,
+            PostgresBackupContentStatus.NOT_RETAINED, PostgresBackupContentStatus.UNRESOLVED)) {
+            assertEquals(1L, report.inspection.counts.getValue(status))
+        }
+        assertEquals(0L, report.inspection.counts.getValue(PostgresBackupContentStatus.VERIFIED))
+        assertTrue(writes.isEmpty())
+        assertEquals(opened, closed)
+    }
+
+    @Test
+    fun `content report requires exact completed retained native artifacts`(): Unit = runBlocking {
+        val database = withReferences(reference())
+        val objects = objectManifest().copy(id = database.id)
+        service.upload(local, backup, prefix)
+        val completion = completed.readText()
+        val referenceBytes = retained.resolve("$prefix/content-references.json").readText()
+        val output = root.resolve("report.json")
+        for ((index, damage) in listOf<suspend () -> Unit>(
+            { Files.delete(completed) },
+            { completed.writeText(encoded(database.copy(sourceId = "other"))) },
+            { Files.write(payload, bytes.copyOf().also { it[it.lastIndex] = 99 }) },
+            { retained.resolve("$prefix/content-references.json").writeText("[]") },
+        ).withIndex()) {
+            completed.writeText(completion)
+            Files.write(payload, bytes)
+            retained.resolve("$prefix/content-references.json").writeText(referenceBytes)
+            damage()
+            val attempt: suspend () -> Unit = {
+                service.writeContentReport(local, prefix, objects, selectionCounts(), "content", backup, output)
+            }
+            when (index) {
+                0 -> assertFailsWith<bosca.storage.service.ObjectNotFoundException> { attempt() }
+                1 -> assertFailsWith<IllegalArgumentException> { attempt() }
+                else -> assertFailsWith<BackupPayloadMismatchException> { attempt() }
+            }
+            assertFalse(Files.exists(output))
+            assertFalse(root.toFile().list().orEmpty().any { it.endsWith(".tmp") })
+        }
+        assertEquals(opened, closed)
+    }
+
+    @Test
+    fun `content report never replaces output and rejects invalid evidence without publishing`(): Unit = runBlocking {
+        val database = withReferences(reference())
+        service.upload(local, backup, prefix)
+        val objects = objectManifest().copy(id = database.id)
+        val output = root.resolve("report.json")
+        output.writeText("keep")
+        reads.clear()
+        assertFailsWith<IllegalArgumentException> {
+            service.writeContentReport(local, prefix, objects, selectionCounts(), "content", backup, output)
+        }
+        assertEquals("keep", output.readText())
+        assertTrue(reads.isEmpty())
+        Files.delete(output)
+        for (invalid in listOf(objects.copy(id = "other"), objects.copy(sourceId = "other"),
+            objects.copy(objects = listOf(retainedEntry("image", "assets/image", store = "other"))))) {
+            assertFailsWith<IllegalArgumentException> {
+                service.writeContentReport(local, prefix, invalid, selectionCounts(), "content", backup, output)
+            }
+            assertFalse(Files.exists(output))
+        }
+        assertFailsWith<IllegalArgumentException> {
+            service.writeContentReport(local, prefix, objects, selectionCounts(0), "content", backup, output)
+        }
+        assertFalse(Files.exists(output))
+        assertFalse(root.toFile().list().orEmpty().any { it.endsWith(".tmp") })
+    }
+
+    @Test
+    fun `content report propagates storage callback and cancellation failures without local output`(): Unit = runBlocking {
+        val reference = reference()
+        val database = withReferences(reference)
+        val entry = retainedEntry("metadata/${reference.contentId}/7/content", "assets/image")
+        retain(entry)
+        service.upload(local, backup, prefix)
+        val objects = objectManifest(entry).copy(id = database.id)
+        val output = root.resolve("report.json")
+        val failure = IOException("retained read failed")
+        read = { throw failure }
+        assertEquals(failure.message, assertFailsWith<IOException> {
+            service.writeContentReport(local, prefix, objects, selectionCounts(), "content", backup, output)
+        }.message)
+        read = { path -> if (path.toString() == entry.payloadPath) throw failure else storage.getInputStream(path) }
+        assertEquals(failure.message, assertFailsWith<IOException> {
+            service.writeContentReport(local, prefix, objects, selectionCounts(), "content", backup, output)
+        }.message)
+        read = null
+        assertEquals(failure.message, assertFailsWith<IOException> {
+            service.writeContentReport(local, prefix, objects, selectionCounts(), "content", backup, output) { throw failure }
+        }.message)
+        assertFailsWith<CancellationException> {
+            service.writeContentReport(local, prefix, objects, selectionCounts(), "content", backup, output) {
+                throw CancellationException("cancelled report")
+            }
+        }
+        assertFalse(Files.exists(output))
+        assertFalse(root.toFile().list().orEmpty().any { it.endsWith(".tmp") })
+        assertEquals(opened, closed)
+        assertFalse(storageClosed)
+    }
+
+    @Test
+    fun `content report reader validates saved evidence without storage access`(): Unit = runBlocking {
+        val output = root.resolve("report.json")
+        output.writeText("{broken")
+        assertFailsWith<SerializationException> { service.readContentReport(output) }
+        val database = withReferences(reference())
+        service.upload(local, backup, prefix)
+        val report = service.writeContentReport(local, prefix, objectManifest().copy(id = database.id),
+            selectionCounts(), "content", backup, root.resolve("valid.json"))
+        output.writeText(application.json.encodeToString(PostgresBackupContentReport.serializer(), report.copy(databasePath = "../invalid")))
+        assertFailsWith<IllegalArgumentException> { service.readContentReport(output) }
+    }
+
     @Test
     fun `offline ID paths agree with entity paths for primary and supplementary content`(): Unit = runBlocking {
         val metadata = Metadata(

@@ -26,6 +26,12 @@ internal class PostgresBackupArtifactStore(
         }
     }
 
+    /** Checks the exact completed native artifact without creating local files or repairing storage. */
+    suspend fun verify(manifest: PostgresBackupManifest) {
+        require(read("manifest.json") == manifest) { "Retained PostgreSQL manifest differs from the local artifact" }
+        for (payload in payloads(manifest)) storage.verifyBackupPayload(payload)
+    }
+
     /** Receives an already verified local manifest; source bytes are checked again during transfer. */
     suspend fun upload(directory: Path, manifest: PostgresBackupManifest): PostgresBackupManifest {
         val completionText = try {

@@ -317,6 +317,21 @@ retained data immutable and saves results only after the operation returns succe
 not prove which bytes belonged to the database snapshot. This service API does not publish a
 complete recovery set or change Pipeline execution.
 
+`PostgresBackupService.writeContentReport` exports a new local JSON evidence file linking a
+retained native database prefix, its full manifest, the embedded object manifest, saved capture
+plan selection counts and fresh retained-reference inspection counts. Both artifacts use the
+same capture/source identity and independent backup store. The method verifies the exact
+completed retained database artifact and inspects the referenced asset bytes before writing.
+It needs no source database, source object storage or content services, and writes nothing to
+the backup store. Existing local output is never replaced.
+
+Pass `plan.contentSelectionCounts` from the saved reference selection. Missing, unresolved,
+ambiguous and damaged content remains explicit in the report; gaps do not prevent exporting
+evidence. `readContentReport` validates a saved report without storage access. Its database
+prefix can be passed to `download`, and its embedded object manifest to the object restore
+service. Reading the report does not recheck retained bytes. This is a portable diagnostic
+record, not complete recovery-set publication or proof of database/object snapshot consistency.
+
 The manifest records the source identity, database, exported/logical snapshot, source-clock
 boundary observation and dump completion, PostgreSQL version/encoding, extension versions,
 and the dump's byte length and SHA-256. The exported snapshot identifier cannot be reused

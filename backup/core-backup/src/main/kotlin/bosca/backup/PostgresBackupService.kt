@@ -98,6 +98,37 @@ interface PostgresBackupService : Service {
     ): PostgresBackupContentInspectionSummary
 
     /**
+     * Exports a portable JSON evidence report to a new local [output] with an existing parent.
+     * Verifies the local native artifact, its exact completed retained copy at [databasePath],
+     * and the referenced retained assets in [backup]. Embeds both manifests, the saved capture
+     * plan's [selectionCounts] and fresh inspection counts, including gaps. Both artifacts must
+     * share capture/source identity; asset payloads use the single logical [store].
+     *
+     * Requires no source database, content services or source storage. Runs outside an active
+     * caller transaction. Caller-owned files, manifests and backup data must remain immutable;
+     * storage stays open and is never written. Existing output is never replaced. Failures and
+     * cancellation before publication remove this attempt's temporary file. [onReference] may
+     * observe partial results before failure. Successful export does not declare a complete
+     * recovery point or prove that asset bytes match the database transaction boundary.
+     */
+    suspend fun writeContentReport(
+        directory: Path,
+        databasePath: String,
+        objects: ObjectBackupManifest,
+        selectionCounts: Map<PostgresBackupContentSelectionStatus, Long>,
+        store: String,
+        backup: ObjectStorageService,
+        output: Path,
+        onReference: suspend (PostgresBackupContentInspection) -> Unit = {},
+    ): PostgresBackupContentReport
+
+    /**
+     * Reads and validates a local evidence report without database, configuration or storage
+     * access. This checks the recorded evidence structure; it does not recheck retained bytes.
+     */
+    suspend fun readContentReport(file: Path): PostgresBackupContentReport
+
+    /**
      * Verifies [directory] and restores its native dump into the separately configured
      * backup.postgres.restore libpq service. Requires an explicit expected database name,
      * a fresh empty destination and exclusive offline access throughout preflight and restore.
