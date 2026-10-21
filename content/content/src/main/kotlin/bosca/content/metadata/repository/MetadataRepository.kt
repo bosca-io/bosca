@@ -2,6 +2,7 @@ package bosca.content.metadata.repository
 
 import bosca.content.metadata.model.Metadata
 import bosca.content.metadata.model.SourceStatus
+import bosca.content.model.ContentStorageReference
 import bosca.db.annotation.Query
 import bosca.db.annotation.Repository
 import bosca.serialization.OffsetDateTime
@@ -10,6 +11,31 @@ import kotlinx.serialization.json.JsonElement
 
 @Repository
 interface MetadataRepository {
+
+    /** Reads all storage-reference evidence in a stable order using the caller's database view. */
+    @Query("""
+        select * from (
+            select 'metadata' as kind, id as content_id, version,
+                   null::uuid as supplementary_id, null::varchar as supplementary_key,
+                   content_length, uploaded, deleted
+            from metadata
+            union all
+            select 'metadata_supplementary', m.id, m.version, s.id, s.key,
+                   s.content_length, s.uploaded, m.deleted
+            from metadata_supplementary s join metadata m on m.id = s.metadata_id
+            union all
+            select 'metadata_version', v.id, v.version, null::uuid, null::varchar,
+                   v.content_length, null::timestamptz, m.deleted
+            from metadata_versions v join metadata m on m.id = v.id
+            union all
+            select 'metadata_version_supplementary', s.metadata_id, s.version, null::uuid, s.key,
+                   s.content_length, s.uploaded, m.deleted
+            from metadata_versions_supplementary s join metadata m on m.id = s.metadata_id
+        ) as refs
+        order by content_id, version, kind, supplementary_key nulls first, supplementary_id nulls first
+        limit :limit offset :offset
+    """)
+    suspend fun getStorageReferences(offset: Long, limit: Int): List<ContentStorageReference>
 
     @Query("insert into metadata (parent_id, name, type, content_type, content_length, language_tag, labels, recommendation_contexts, attributes, system_attributes, public, public_content, public_supplementary, created, modified, source_id, source_identifier, source_url, delete_workflow_id, permission_mutation, etag, locked, searchable, recommendable, sync_variant_collections, sync_variant_relationships) values (:parentId, :name, :type, :contentType, :contentLength, :languageTag, :labels, :recommendationContexts, :attributes, :systemAttributes, :public, :publicContent, :publicSupplementary, :created, :modified, :sourceId, :sourceIdentifier, :sourceUrl, :deleteWorkflowId, :permissionMutation, :etag, :locked, :searchable, :recommendable, :syncVariantCollections, :syncVariantRelationships) returning *")
     suspend fun add(metadata: Metadata): Metadata

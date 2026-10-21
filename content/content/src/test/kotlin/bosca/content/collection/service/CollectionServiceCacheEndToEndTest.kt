@@ -1,6 +1,10 @@
 package bosca.content.collection.service
 
 import bosca.cache.CacheManager
+import bosca.content.model.ContentStorageReferenceKind
+import bosca.content.collection.model.CollectionSupplementary
+import kotlin.test.assertFailsWith
+import java.time.OffsetDateTime
 import bosca.cache.RequestCache
 import bosca.cache.RequestCacheSerializer
 import bosca.cache.RequestCacheSerializerImpl
@@ -199,6 +203,75 @@ class CollectionServiceCacheEndToEndTest {
         }
         withContext(NonCancellable) {
             cm.release()
+        }
+    }
+
+    @Test
+    fun `storage references include pending and deleted collection attachments without cached values`(): Unit = runBlocking {
+        val uploaded = OffsetDateTime.parse("2026-10-20T10:00:00Z")
+        val owner = withRequest {
+            repository.add(
+                Collection(
+                    name = "Storage inventory",
+                    languageTag = "en",
+                    workflowStateId = "pending",
+                    attributes = JsonObject(emptyMap()),
+                ),
+            )
+        }
+        try {
+            val attachments = withRequest {
+                List(2) { index ->
+                    CollectionSupplementaryRepositoryImpl().add(
+                        CollectionSupplementary(
+                            collectionId = owner.id,
+                            key = "attachment-$index",
+                            name = "Attachment",
+                            created = uploaded,
+                            modified = uploaded,
+                            uploaded = if (index == 0) uploaded else null,
+                            contentType = "image/png",
+                            contentLength = if (index == 0) 12 else null,
+                        ),
+                    )
+                }.also { service.getSupplementary(owner.id) }
+            }
+            rawUpdate("update collection_supplementary set content_length = 24 where collection_id = ? and uploaded is not null", owner.id)
+            withRequest {
+                repository.markDeleted(owner.id)
+                val all = service.getStorageReferences(0, Int.MAX_VALUE)
+                val paged = buildList {
+                    var offset = 0L
+                    while (true) {
+                        val page = service.getStorageReferences(offset, 1)
+                        if (page.isEmpty()) break
+                        addAll(page)
+                        offset += page.size
+                    }
+                }
+                assertEquals(all, paged)
+                assertEquals(emptyList(), service.getStorageReferences(all.size.toLong(), 1))
+                val refs = all.filter { it.contentId == owner.id }
+                assertEquals(2, refs.size, "A collection without a primary upload record must not invent a primary reference")
+                refs.forEach { ref ->
+                    assertEquals(ContentStorageReferenceKind.COLLECTION_SUPPLEMENTARY, ref.kind)
+                    assertNull(ref.version)
+                    assertEquals(true, ref.deleted)
+                    val attachment = attachments.single { it.id == ref.supplementaryId }
+                    assertEquals(attachment.key, ref.supplementaryKey)
+                }
+                val stored = refs.single { it.supplementaryId == attachments[0].id }
+                assertEquals(24L, stored.contentLength)
+                assertEquals(uploaded.toInstant(), stored.uploaded?.toInstant())
+                val pending = refs.single { it.supplementaryId == attachments[1].id }
+                assertNull(pending.contentLength)
+                assertNull(pending.uploaded)
+                assertFailsWith<IllegalArgumentException> { service.getStorageReferences(-1, 1) }
+                assertFailsWith<IllegalArgumentException> { service.getStorageReferences(0, 0) }
+                assertFailsWith<IllegalArgumentException> { service.getStorageReferences(0, -1) }
+            }
+        } finally {
+            rawUpdate("delete from collections where id = ?", owner.id)
         }
     }
 

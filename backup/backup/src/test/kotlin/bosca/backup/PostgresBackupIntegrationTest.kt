@@ -1,5 +1,19 @@
 package bosca.backup
 
+import bosca.cache.CacheManager
+import bosca.content.model.ContentStorageReference
+import bosca.content.model.ContentStorageReferenceKind
+import bosca.content.metadata.repository.MetadataRepositoryImpl
+import bosca.content.metadata.service.MetadataService
+import bosca.content.metadata.service.MetadataServiceImpl
+import bosca.content.collection.repository.CollectionRepositoryImpl
+import bosca.content.collection.service.CollectionService
+import bosca.content.collection.service.CollectionServiceImpl
+import bosca.db.ConnectionManager
+import bosca.db.asCoroutineContext
+import bosca.db.migrations.CoreMigration
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import bosca.db.ConnectionConfig
 import bosca.db.ConnectionFactoryImpl
 import bosca.db.migrations.FlywayMigration
@@ -194,6 +208,135 @@ class PostgresBackupIntegrationTest {
         assertEquals("retained", scalar("select value from artifacts.events", "recovered"))
         assertEquals(manifest, service.verify(output))
     }
+
+    @Test
+    fun `content service references in the exported view match the independently restored native artifact`(): Unit = runBlocking {
+        FlywayMigration(pool).migrate(listOf(CoreMigration()))
+        provides<CacheManager>(singleton = true) { mockk(relaxed = true) }
+        val metadata: MetadataService = metadataReferenceService()
+        val collections: CollectionService = collectionReferenceService()
+        val id = "10000000-0000-0000-0000-000000000001"
+        val deletedId = "10000000-0000-0000-0000-000000000002"
+        val supplementaryId = "20000000-0000-0000-0000-000000000001"
+        val collectionId = "30000000-0000-0000-0000-000000000001"
+        sql("""
+            insert into metadata (id, version, name, content_type, content_length, uploaded)
+            values ('$id', 8, 'Current', 'image/png', 42, '2026-10-20T10:00:00Z');
+            insert into metadata (id, name, content_type, deleted)
+            values ('$deletedId', 'Deleted pending upload', 'image/png', true);
+            insert into metadata_supplementary (id, metadata_id, key, name, content_type, content_length, uploaded)
+            values ('$supplementaryId', '$id', 'thumbnail', 'Current thumbnail', 'image/png', 12, '2026-10-20T10:00:00Z');
+            insert into metadata_versions (id, version, name, content_type, content_length)
+            values ('$id', 7, 'Historical', 'image/png', 17);
+            insert into metadata_versions_supplementary
+                (metadata_id, version, key, name, content_type, content_length, uploaded)
+            values ('$id', 7, 'thumbnail', 'Historical thumbnail', 'image/png', 18, '2026-10-20T10:00:00Z');
+            insert into collections (id, name, deleted) values ('$collectionId', 'Deleted collection', true);
+            insert into collection_supplementary (collection_id, key, name, content_type, content_length, uploaded)
+            values ('$collectionId', 'cover', 'Cover', 'image/png', 5, '2026-10-20T10:00:00Z');
+        """.trimIndent())
+        suspend fun references(): List<ContentStorageReference> = buildList {
+            var offset = 0L
+            while (true) {
+                val page = metadata.getStorageReferences(offset, 1)
+                if (page.isEmpty()) break
+                addAll(page)
+                offset += page.size
+            }
+            offset = 0
+            while (true) {
+                val page = collections.getStorageReferences(offset, 1)
+                if (page.isEmpty()) break
+                addAll(page)
+                offset += page.size
+            }
+        }
+        var observed = emptyList<ContentStorageReference>()
+        val manifest = service.capture("source", output) {
+            observed = references()
+            assertEquals(6, observed.size)
+            val legacy = observed.single { it.kind == ContentStorageReferenceKind.METADATA_VERSION_SUPPLEMENTARY }
+            assertEquals("thumbnail", legacy.supplementaryKey)
+            assertEquals(null, legacy.supplementaryId)
+            sql("""
+                update metadata set content_length = 99, uploaded = now() where id = '$id';
+                delete from metadata_supplementary where id = '$supplementaryId';
+                insert into metadata_supplementary (metadata_id, key, name, content_type, uploaded)
+                values ('$id', 'new', 'Later upload', 'image/png', now());
+                update collection_supplementary set content_length = 9 where collection_id = '$collectionId';
+            """.trimIndent())
+            assertEquals(observed, references())
+        }
+        assertEquals(manifest, service.verify(output))
+        withConnectionManager { assertFalse(observed == references()) }
+        restore()
+        val recoveredPool = ConnectionPool(ConnectionFactoryImpl(
+            ConnectionConfig(url + "recovered", user, password), "restored-content-inventory",
+        ))
+        try {
+            val manager = ConnectionManager(recoveredPool)
+            try {
+                withContext(manager.asCoroutineContext()) { assertEquals(observed, references()) }
+            } finally {
+                withContext(NonCancellable) { manager.release() }
+            }
+        } finally {
+            recoveredPool.close()
+        }
+        assertEquals(0, pool.activeConnections)
+    }
+
+    private fun metadataReferenceService() = MetadataServiceImpl(
+        repository = MetadataRepositoryImpl(),
+        collectionService = mockk(),
+        collectionTemplateService = mockk(),
+        find = mockk(),
+        permissions = mockk(),
+        traits = mockk(),
+        categories = mockk(),
+        plans = mockk(),
+        profiles = mockk(),
+        supplementary = mockk(),
+        relationships = mockk(),
+        transitionHistory = mockk(),
+        documentService = mockk(),
+        documentTemplateService = mockk(),
+        dataTemplateService = mockk(),
+        guideService = mockk(),
+        guideTemplateService = mockk(),
+        dataService = mockk(),
+        bibleService = mockk(),
+        objectService = mockk(),
+        slugService = mockk(),
+        traitService = mockk(),
+        categoriesService = mockk(),
+        securityService = mockk(),
+        transitioner = mockk(),
+        videoService = mockk(),
+    )
+
+    private fun collectionReferenceService() = CollectionServiceImpl(
+        repository = CollectionRepositoryImpl(),
+        items = mockk(),
+        find = mockk(),
+        categories = mockk(),
+        traits = mockk(),
+        relationships = mockk(),
+        supplementary = mockk(),
+        plans = mockk(),
+        permissions = mockk(),
+        transitionHistory = mockk(),
+        objectService = mockk(),
+        json = Json,
+        slugService = mockk(),
+        collaborations = mockk(),
+        variants = mockk(),
+        collectionTemplates = mockk(),
+        collectionTemplateAttributes = mockk(),
+        metadataRepository = mockk(),
+        transitioner = mockk(),
+        securityService = mockk(),
+    )
 
     @Test
     fun `snapshot callback enumerates the exact rows restored from the exported database view`(): Unit = runBlocking {

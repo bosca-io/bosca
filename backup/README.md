@@ -233,6 +233,15 @@ returned manifest only after capture succeeds. This supplies the database view f
 asset-coverage work; it does not freeze object storage, enumerate all Bosca content references
 by itself, or prove that retained assets match the database.
 
+`MetadataService.getStorageReferences` and `CollectionService.getStorageReferences` read
+reference evidence without content caches, using offset pagination on the caller's connection.
+They include current metadata, historical metadata, supplementary records and soft-deleted
+owners. Records without upload evidence remain visible. Historical supplementary rows contain
+their old key but no supplementary UUID; historical metadata has no upload timestamp. These
+gaps remain explicit, without inventing paths or borrowing current attachment identities.
+The native Pipeline action still captures the database only; it does not yet save this reference
+inventory or associate it with retained object bytes.
+
 The manifest records the source identity, database, exported/logical snapshot, source-clock
 boundary observation and dump completion, PostgreSQL version/encoding, extension versions,
 and the dump's byte length and SHA-256. The exported snapshot identifier cannot be reused
