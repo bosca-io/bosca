@@ -38,6 +38,7 @@ graalvmNative {
             imageName.set("bosca-git-ui-server")
             mainClass.set("bosca.git.ui.server.ApplicationKt")
             buildArgs.add("-O3")
+            buildArgs.add("-H:+GenerateEmbeddedResourcesFile")
             buildArgs.addAll(providers.gradleProperty("bosca.native.march")
                 .map { listOf("-march=$it") }
                 .orElse(emptyList()))
@@ -46,5 +47,17 @@ graalvmNative {
                 buildArgs.add("--gc=G1")
             }
         }
+    }
+}
+
+tasks.named("nativeCompile") {
+    val embeddedResources = layout.buildDirectory.file("native/nativeCompile/embedded-resources.json")
+    outputs.file(embeddedResources).withPropertyName("embeddedResources")
+    doFirst {
+        val report = embeddedResources.get().asFile
+        check(!report.exists() || report.delete()) { "Cannot clear the native resource report" }
+    }
+    doLast {
+        check(embeddedResources.get().asFile.isFile) { "Native compilation did not emit its resource report" }
     }
 }

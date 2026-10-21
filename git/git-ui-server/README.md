@@ -46,4 +46,24 @@ Build and validate:
 
 `GitServerIntegrationTest` starts one production process with both listeners against isolated PostgreSQL and NATS. It checks password signup/login, profile identity, packaged assets, repository reads and mutations, deferred files, search, raw delivery, subscriptions, invalid credentials, sign-out cookies, custom prefixes, anonymous shared shells and token-override scope isolation, including graceful process shutdown releasing both ports. `GitFileProxyTest` checks encoded nested paths, binary bytes, file headers, upstream rejections and delivery before the upstream finishes producing a download. `GitServerLifecycleTest` covers API/UI bind failures, UI installation failure and sibling-listener shutdown. Tests do not send email or complete an external OAuth exchange.
 
+Run native acceptance for the standalone UI host with:
+
+```bash
+./gradlew :git:git-ui-server:nativeCompile --build-args=-Ob :git:git-ui:nativeUiHostTest
+```
+
+The dedicated test copies the executable into a fresh directory with explicit local configuration
+and starts the production entry point against the existing isolated API/file fixture. HTTP checks
+cover six representative pages, editor isolation, one CodeMirror/runtime instance, asset budgets
+and exact packaged font bytes. Real browser checks cover source search, unsaved Markdown preview,
+wrapping, rejected/successful saves, structured JSON editing and responsive layouts. The normal
+JVM test task excludes this native check; explicitly invoking it always executes the check.
+
+Native compilation emits `embedded-resources.json`. Acceptance verifies its resource origins and
+sizes against digest-checked JAR inputs, including indexed assets and dependency notices. Native
+font bytes are also checked over HTTP. Logs, the input-resource digest record, executable identity
+and browser captures are retained under `git/git-ui/build/reports/native-ui/`. `-Ob` selects quick
+optimization for validation; omit it to use the host's normal `-O3` build. Combined API/UI native
+acceptance uses the separate Git server integration path.
+
 See the [Git application specification](../../specs/git/bml-git-application-spec.md) and [validation record](../../specs/git/parity-validation.md). Studio and the main server remain in place until their separate cutover gates pass.

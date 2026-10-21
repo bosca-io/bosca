@@ -2636,6 +2636,7 @@ class GitUiRoutesTest {
         private val orchestratorConfigs = java.util.concurrent.ConcurrentHashMap<String, JsonObject>()
         @Volatile private var commitSha = "abc"
         private var port = 0
+        private var subscriptionPort = 0
         private lateinit var upstream: HttpServer
         private val upstreamExecutor = Executors.newVirtualThreadPerTaskExecutor()
         @Volatile private var requestProbe: ((String) -> Unit)? = null
@@ -2644,10 +2645,15 @@ class GitUiRoutesTest {
 
         @JvmStatic fun browserFixturePort(): Int = port
         @JvmStatic fun browserFixtureApiPort(): Int = upstream.address.port
+        fun browserFixtureGraphqlEndpoint(): String = "http://localhost:$subscriptionPort/graphql"
 
         @JvmStatic
         @BeforeClass
-        fun start() {
+        fun start() = start(true)
+
+        fun startApiFixture() = start(false)
+
+        private fun start(serveUi: Boolean) {
             upstream = HttpServer.create(InetSocketAddress("localhost", 0), 0)
             upstream.executor = upstreamExecutor
             upstream.createContext("/graphql") { exchange ->
@@ -3222,7 +3228,7 @@ class GitUiRoutesTest {
                 exchange.close()
             }
             upstream.start()
-            val subscriptionPort = ServerSocket(0).use { it.localPort }
+            subscriptionPort = ServerSocket(0).use { it.localPort }
             val subscriptionApp =
                 BoscaApplication(
                     ApplicationConfig.load(
@@ -3285,6 +3291,7 @@ class GitUiRoutesTest {
                     },
                 )
             }
+            subscriptionApp.installGitUiFixtureFiles()
             subscriptionApp.freezeMiddleware()
             subscriptionEngine = NettyServerEngine(subscriptionApp, subscriptionPort)
             thread(isDaemon = true, name = "git-ui-test-subscriptions") {
@@ -3298,6 +3305,7 @@ class GitUiRoutesTest {
                     Thread.sleep(20)
                 }
             }
+            if (!serveUi) return
             port = ServerSocket(0).use { it.localPort }
             val config =
                 "bosca:\n  server:\n    port: $port\n    drain-timeout-ms: 0\n    development: true\n"
@@ -3307,23 +3315,7 @@ class GitUiRoutesTest {
                 replyPull = Json.parseToJsonElement(pullStateFixture(pull, 10)).jsonObject
                 call.respond("reset")
             }
-            // Fixture asset delivery for browser rendering; production transport is tested in
-            // EndToEndGitCliTest.
-            app.router.get("/owner/repo/raw/{ref}/{path...}") {
-                if (call.request.cookies["_git_test"] != "ui-test-token")
-                    call.respond(bosca.server.HttpStatusCode.Forbidden)
-                else if (call.pathParameters["path"] != "images/logo.png")
-                    call.respond(bosca.server.HttpStatusCode.NotFound)
-                else
-                    call.respondBytes(
-                        java.util.Base64.getDecoder()
-                            .decode(
-                                "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aZ1sAAAAASUVORK5CYII="
-                            ),
-                        ContentType.Image.Png,
-                    )
-            }
-            app.router.get("/{owner}/{repo}") { call.respond("clone URL fallback") }
+            app.installGitUiFixtureFiles()
             app.freezeMiddleware()
             engine = NettyServerEngine(app, port)
             thread(isDaemon = true, name = "git-ui-test-server") { engine.start() }

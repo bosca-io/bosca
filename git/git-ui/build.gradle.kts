@@ -71,11 +71,35 @@ tasks.named<ProcessResources>("processResources") {
 }
 
 tasks.test {
+    filter { excludeTestsMatching("bosca.git.ui.GitUiNativeHostTest") }
     systemProperty("workspaceRoot", rootProject.projectDir.absolutePath)
     inputs.files(rootProject.fileTree(rootProject.projectDir) {
         include("**/src/main/resources/**/*.graphqls")
         exclude("**/build/**", "**/node_modules/**", "**/.intellijPlatform/**")
     })
+}
+
+tasks.register<Test>("nativeUiHostTest") {
+    group = "verification"
+    description = "Exercise the production native Git UI host with isolated API and browser fixtures."
+    dependsOn(tasks.testClasses, ":git:git-ui-server:nativeCompile")
+    testClassesDirs = sourceSets.test.get().output.classesDirs
+    classpath = sourceSets.test.get().runtimeClasspath
+    filter { includeTestsMatching("bosca.git.ui.GitUiNativeHostTest") }
+    val nativeDirectory = project(":git:git-ui-server").layout.buildDirectory.dir("native/nativeCompile")
+    val executableName = "bosca-git-ui-server" +
+        if (org.gradle.internal.os.OperatingSystem.current().isWindows) ".exe" else ""
+    val executable = nativeDirectory.map { it.file(executableName) }
+    val resources = nativeDirectory.map { it.file("embedded-resources.json") }
+    inputs.file(executable).withPropertyName("nativeUiExecutable").withPathSensitivity(PathSensitivity.NONE)
+    inputs.file(resources).withPropertyName("nativeUiResources").withPathSensitivity(PathSensitivity.NONE)
+    inputs.dir(layout.projectDirectory.dir("src/test/browser"))
+        .withPropertyName("nativeBrowserChecks").withPathSensitivity(PathSensitivity.RELATIVE)
+    systemProperty("gitUi.native.binary", executable.get().asFile.absolutePath)
+    systemProperty("gitUi.native.resourceReport", resources.get().asFile.absolutePath)
+    systemProperty("gitUi.native.browser", layout.projectDirectory.file("src/test/browser/run.mjs").asFile.absolutePath)
+    systemProperty("gitUi.native.node", bml.nodeExecutable.get())
+    outputs.upToDateWhen { false }
 }
 
 tasks.register<JavaExec>("runBrowserFixture") {

@@ -18,7 +18,11 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
 /** Measures the actual production HTTP assets without changing product records or palettes. */
-internal class GitUiAssetAudit(private val client: HttpClient, private val base: URI) {
+internal class GitUiAssetAudit(
+    private val client: HttpClient,
+    private val base: URI,
+    private val reportFile: File = File("build/reports/design-assets/git-page-assets.json"),
+) {
     private val assets = linkedMapOf<URI, Pair<ByteArray, String>>()
 
     fun verify() {
@@ -72,7 +76,14 @@ internal class GitUiAssetAudit(private val client: HttpClient, private val base:
             }
             assertEquals(11, fonts.size, "$path retains the packaged font subsets")
             assertEquals(fonts.distinct(), fonts, "$path repeats a font subset")
-            fonts.forEach { font -> assertEquals("wOF2", asset(font).take(4).toByteArray().decodeToString(), font.toString()) }
+            fonts.forEach { font ->
+                val bytes = asset(font)
+                assertEquals("wOF2", bytes.take(4).toByteArray().decodeToString(), font.toString())
+                val resource = "bml/applications/bml.generated/" + font.path.removePrefix("/_bml/")
+                val expected = requireNotNull(javaClass.classLoader.getResourceAsStream(resource)) { resource }
+                    .use { it.readAllBytes() }
+                assertEquals(digest(expected), digest(bytes), "$font must retain the packaged font bytes")
+            }
             buildJsonObject {
                 put("path", path)
                 put("engines", JsonArray(engines.map(::JsonPrimitive)))
@@ -106,7 +117,7 @@ internal class GitUiAssetAudit(private val client: HttpClient, private val base:
             } }))
             put("notices", JsonObject(notices))
         }
-        File("build/reports/design-assets/git-page-assets.json").apply {
+        reportFile.apply {
             parentFile.mkdirs()
             writeText(report.toString())
         }
