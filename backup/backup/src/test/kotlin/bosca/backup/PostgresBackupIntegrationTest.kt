@@ -1172,6 +1172,290 @@ class PostgresBackupIntegrationTest {
         service = provide()
     }
 
+    private suspend fun contentCaptureServices() {
+        FlywayMigration(pool).migrate(listOf(CoreMigration(), BackupMigration()))
+        provides<Json>(singleton = true, overrideExisting = true) { backupTestJson }
+        contentReferenceServices()
+    }
+
+    private fun contentAsset(id: String, data: String = "image"): String {
+        val key = "metadata/$id/7/content"
+        sql("insert into metadata (id, version, name, content_type, content_length, uploaded) values ('$id', 7, 'Saved image', 'image/png', ${data.toByteArray().size}, now())")
+        root.resolve("operation-source/$key").also { Files.createDirectories(it.parent) }.writeText(data)
+        return key
+    }
+
+    private suspend fun <T> contentCaptureStorage(block: suspend (ObjectStorageService, ObjectStorageService) -> T): T {
+        val factory = provide<ObjectStorageServiceFactory>()
+        return factory.withStorage(StorageConfiguration("fs", "", basePath = root.resolve("operation-source").toString())) { source ->
+            factory.withStorage(StorageConfiguration("fs", "", basePath = root.resolve("operation-retained").toString())) { backup ->
+                block(source, backup)
+            }
+        }
+    }
+
+    @Test
+    fun `content capture operation retains new points reuses assets and restores without the source`(): Unit = runBlocking {
+        contentCaptureServices()
+        val id = "10000000-0000-0000-0000-000000000001"
+        val key = contentAsset(id)
+        contentCaptureStorage { actualSource, actualBackup ->
+            var sourceReads = 0
+            var observed = false
+            var sourceClosed = false
+            var backupClosed = false
+            val backup = object : ObjectStorageService by actualBackup {
+                override fun close() { backupClosed = true }
+            }
+            val source = object : ObjectStorageService by actualSource {
+                override suspend fun getObjectInfo(path: ObjectPath): bosca.storage.service.ObjectStorageInfo {
+                    assertEquals(0, pool.activeConnections)
+                    if (!observed) {
+                        observed = true
+                        sql("update metadata set name='Written during backup' where id='$id'")
+                    }
+                    return actualSource.getObjectInfo(path)
+                }
+                override suspend fun getInputStream(path: ObjectPath): InputStream {
+                    assertEquals(0, pool.activeConnections)
+                    sourceReads++
+                    return actualSource.getInputStream(path)
+                }
+                override fun close() { sourceClosed = true }
+            }
+            val first = service.captureContent("source", output, "content", "snapshot", source, "retained", backup, "exports")
+            assertEquals(1, sourceReads)
+            assertEquals("Written during backup", scalar("select name from metadata where id='$id'"))
+            assertEquals(1L, first.selectionCounts.getValue(PostgresBackupContentSelectionStatus.SELECTED))
+            assertEquals(1L, first.inspection.counts.getValue(PostgresBackupContentStatus.VERIFIED))
+            assertEquals("exports/databases/${first.database.id}", first.databasePath)
+            assertEquals(first, service.readContentReport(output.resolve("content-report.json")))
+            val second = service.captureContent("source", root.resolve("second"), "content", "snapshot", source,
+                "retained", backup, "exports", java.time.OffsetDateTime.now().minusDays(1))
+            assertTrue(first.database.id != second.database.id)
+            assertEquals(first.objects.objects, second.objects.objects)
+            assertEquals(1, sourceReads)
+            assertFalse(sourceClosed)
+            assertFalse(backupClosed)
+            val plans = withConnectionManager { provide<ObjectBackupCaptureService>().listPlans("source", "retained", "snapshot", 0, 10) }
+            assertEquals(2, plans.size)
+            assertTrue(plans.all { it.contentSelectionCounts == first.selectionCounts })
+            sql("create database recovery_journal", "postgres")
+            val journal = ConnectionPool(ConnectionFactoryImpl(ConnectionConfig(url + "recovery_journal", user, password), "capture-operation-journal"))
+            try {
+                provides<ConnectionPool>(singleton = true, overrideExisting = true) { journal }
+                BackupProviderRegistrar().register()
+                FlywayMigration(journal).migrate(listOf(BackupMigration()))
+                assertTrue(root.resolve("operation-source").toFile().deleteRecursively())
+                pool.close()
+                sql("drop database source with (force)", "postgres")
+                assertTrue(output.toFile().deleteRecursively())
+                assertTrue(root.resolve("second").toFile().deleteRecursively())
+                val report = service.downloadContentReport(backup, "exports/reports/${first.database.id}", root.resolve("recovered-report.json"))
+                assertEquals(first, report)
+                assertEquals(first.database, service.download(backup, report.databasePath, output))
+                val factory = provide<ObjectStorageServiceFactory>()
+                factory.withStorage(StorageConfiguration("fs", "", basePath = root.resolve("operation-restored").toString())) { target ->
+                    assertEquals(report.objects, provide<ObjectBackupRestoreService>().restore(report.objects, backup,
+                        mapOf("content" to target), "recovered-assets"))
+                    assertEquals("image", target.getString(bosca.storage.service.StringObjectPath(key)))
+                }
+                restore()
+                assertEquals("Saved image", scalar("select name from metadata where id='$id'", "recovered"))
+            } finally {
+                journal.close()
+            }
+        }
+    }
+
+    @Test
+    fun `content capture operation retains missing reference evidence without inventing assets`(): Unit = runBlocking {
+        contentCaptureServices()
+        sql("insert into metadata (name, content_type, content_length, uploaded) values ('Missing image', 'image/png', 5, now())")
+        contentCaptureStorage { source, backup ->
+            val report = service.captureContent("source", output, "content", "snapshot", source, "retained", backup, "exports")
+            assertEquals(1L, report.selectionCounts.getValue(PostgresBackupContentSelectionStatus.MISSING))
+            assertEquals(1L, report.inspection.counts.getValue(PostgresBackupContentStatus.NOT_RETAINED))
+            assertTrue(report.objects.objects.isEmpty())
+            assertEquals(report, service.downloadContentReport(backup, "exports/reports/${report.database.id}", root.resolve("missing.json")))
+        }
+    }
+
+    @Test
+    fun `content capture operation native failure cleans its attempt before any asset storage access`(): Unit = runBlocking {
+        tool = writeTool("echo 'content capture native failure' >&2; exit 7")
+        install()
+        contentCaptureServices()
+        val failure = assertFailsWith<IllegalStateException> {
+            service.captureContent("source", output, "content", "snapshot", mockk(), "retained", mockk(), "exports")
+        }
+        assertTrue(failure.message.orEmpty().contains("content capture native failure"))
+        assertFalse(Files.exists(output))
+        assertEquals(0, pool.activeConnections)
+        assertTrue(withConnectionManager { provide<ObjectBackupCaptureService>().listPlans("source", "retained", "snapshot", 0, 10) }.isEmpty())
+    }
+
+    @Test
+    fun `content capture operation retries a partial copy at a fresh point without recopying completed assets`(): Unit = runBlocking {
+        contentCaptureServices()
+        val firstKey = contentAsset("10000000-0000-0000-0000-000000000001")
+        val secondKey = contentAsset("10000000-0000-0000-0000-000000000002", "other")
+        contentCaptureStorage { actualSource, backup ->
+            val reads = mutableMapOf<String, Int>()
+            var fail = true
+            val source = object : ObjectStorageService by actualSource {
+                override suspend fun getInputStream(path: ObjectPath): InputStream {
+                    val key = path.toString()
+                    reads[key] = (reads[key] ?: 0) + 1
+                    if (key == secondKey && fail) throw IOException("second source read failed")
+                    return actualSource.getInputStream(path)
+                }
+            }
+            assertEquals("second source read failed", assertFailsWith<IOException> {
+                service.captureContent("source", output, "content", "snapshot", source, "retained", backup, "exports")
+            }.message)
+            val database = service.verify(output)
+            assertTrue(Files.exists(root.resolve("operation-retained/exports/databases/${database.id}/manifest.json")))
+            assertFalse(Files.exists(root.resolve("operation-retained/exports/reports")))
+            val completed = withConnectionManager {
+                provide<ObjectBackupProgressService>().list(ObjectBackupOperation.BACKUP, "source", "retained", "snapshot", 0, 10)
+            }.single()
+            assertEquals(ObjectBackupProgressStatus.COMPLETED, completed.status)
+            assertEquals(firstKey, completed.payload.key)
+            fail = false
+            val report = service.captureContent("source", root.resolve("retry"), "content", "snapshot", source, "retained", backup, "exports")
+            assertTrue(database.id != report.database.id)
+            assertEquals(completed.payload, report.objects.objects.first { it.key == firstKey })
+            assertEquals(mapOf(firstKey to 1, secondKey to 2), reads)
+            assertEquals(2L, report.inspection.counts.getValue(PostgresBackupContentStatus.VERIFIED))
+        }
+    }
+
+    @Test
+    fun `content capture operation rejects a source replacement after selection and retries at a new point`(): Unit = runBlocking {
+        contentCaptureServices()
+        val key = contentAsset("10000000-0000-0000-0000-000000000001")
+        contentCaptureStorage { actualSource, backup ->
+            var replace = true
+            var reads = 0
+            val source = object : ObjectStorageService by actualSource {
+                override suspend fun getObjectInfo(path: ObjectPath): bosca.storage.service.ObjectStorageInfo {
+                    val observed = actualSource.getObjectInfo(path)
+                    if (replace) {
+                        replace = false
+                        val file = root.resolve("operation-source/$key")
+                        file.writeText("other")
+                        Files.setLastModifiedTime(file, java.nio.file.attribute.FileTime.from(Instant.parse("2026-10-20T00:00:00Z")))
+                    }
+                    return observed
+                }
+                override suspend fun getInputStream(path: ObjectPath): InputStream {
+                    reads++
+                    return actualSource.getInputStream(path)
+                }
+            }
+            assertFailsWith<BackupPayloadMismatchException> {
+                service.captureContent("source", output, "content", "snapshot", source, "retained", backup, "exports")
+            }
+            val database = service.verify(output)
+            assertEquals(0, reads)
+            assertFalse(Files.exists(root.resolve("operation-retained/exports/reports")))
+            val report = service.captureContent("source", root.resolve("retry"), "content", "snapshot", source, "retained", backup, "exports")
+            assertTrue(database.id != report.database.id)
+            assertEquals(1, reads)
+            assertEquals("other", backup.getString(bosca.storage.service.StringObjectPath(report.objects.objects.single().payloadPath)))
+        }
+    }
+
+    @Test
+    fun `content capture operation report publication failure preserves assets for a new point`(): Unit = runBlocking {
+        contentCaptureServices()
+        contentAsset("10000000-0000-0000-0000-000000000001")
+        contentCaptureStorage { actualSource, actualBackup ->
+            var fail = true
+            var reads = 0
+            val source = object : ObjectStorageService by actualSource {
+                override suspend fun getInputStream(path: ObjectPath): InputStream { reads++; return actualSource.getInputStream(path) }
+            }
+            val backup = object : ObjectStorageService by actualBackup {
+                override suspend fun setInputStream(path: ObjectPath, stream: InputStream, length: Long?): Long {
+                    if (fail && path.toString().endsWith("/report.json")) throw IOException("report publication failed")
+                    return actualBackup.setInputStream(path, stream, length)
+                }
+            }
+            assertEquals("report publication failed", assertFailsWith<IOException> {
+                service.captureContent("source", output, "content", "snapshot", source, "retained", backup, "exports")
+            }.message)
+            val database = service.verify(output)
+            val retainedReport = root.resolve("operation-retained/exports/reports/${database.id}")
+            assertTrue(Files.exists(retainedReport.resolve("intent.json")))
+            assertFalse(Files.exists(retainedReport.resolve("report.json")))
+            val localReport = service.readContentReport(output.resolve("content-report.json"))
+            fail = false
+            val report = service.captureContent("source", root.resolve("retry"), "content", "snapshot", source, "retained", backup, "exports")
+            assertTrue(database.id != report.database.id)
+            assertEquals(localReport.objects.objects, report.objects.objects)
+            assertEquals(1, reads)
+            assertFalse(Files.exists(retainedReport.resolve("report.json")))
+        }
+    }
+
+    @Test
+    fun `content capture operation cancellation preserves native files and can capture a new point`(): Unit = runBlocking {
+        contentCaptureServices()
+        contentAsset("10000000-0000-0000-0000-000000000001")
+        contentCaptureStorage { actualSource, backup ->
+            var cancel = true
+            val entered = CompletableDeferred<Unit>()
+            val source = object : ObjectStorageService by actualSource {
+                override suspend fun getInputStream(path: ObjectPath): InputStream {
+                    if (cancel) { entered.complete(Unit); awaitCancellation() }
+                    return actualSource.getInputStream(path)
+                }
+            }
+            val pending = async { service.captureContent("source", output, "content", "snapshot", source, "retained", backup, "exports") }
+            withTimeout(30_000) { entered.await() }
+            withTimeout(5_000) { pending.cancelAndJoin() }
+            val database = service.verify(output)
+            assertFalse(Files.exists(root.resolve("operation-retained/exports/reports")))
+            assertEquals(0, pool.activeConnections)
+            cancel = false
+            val report = service.captureContent("source", root.resolve("retry"), "content", "snapshot", source, "retained", backup, "exports")
+            assertTrue(database.id != report.database.id)
+            assertEquals(1L, report.inspection.counts.getValue(PostgresBackupContentStatus.VERIFIED))
+        }
+    }
+
+    @Test
+    fun `content capture operation rejects invalid intent transactions and existing local output before storage access`(): Unit = runBlocking {
+        val source = mockk<ObjectStorageService>()
+        val backup = mockk<ObjectStorageService>()
+        for ((sourceId, store, scope, destination, prefix) in listOf(
+            listOf("", "content", "snapshot", "retained", "exports"), listOf("source", "", "snapshot", "retained", "exports"),
+            listOf("source", "content", "", "retained", "exports"), listOf("source", "content", "snapshot", "", "exports"),
+            listOf("source", "content", "snapshot", "retained", ""), listOf("source", "content", "snapshot", "retained", "../outside"),
+            listOf("source", "content", "snapshot", "retained", "/absolute"), listOf("source", "content", "snapshot", "retained", "exports//bad"),
+        )) {
+            assertFailsWith<IllegalArgumentException> {
+                service.captureContent(sourceId, output, store, scope, source, destination, backup, prefix)
+            }
+        }
+        assertFailsWith<IllegalArgumentException> {
+            service.captureContent("source", output, "content", "snapshot", source, "retained", source, "exports")
+        }
+        val failure = assertFailsWith<IllegalStateException> { withConnectionManager { transaction {
+            service.captureContent("source", output, "content", "snapshot", source, "retained", backup, "exports")
+        } } }
+        assertTrue(failure.message.orEmpty().contains("active caller transaction"))
+        assertFalse(Files.exists(output))
+        Files.createDirectory(output).resolve("owner.txt").writeText("keep")
+        assertFailsWith<java.nio.file.FileAlreadyExistsException> {
+            service.captureContent("source", output, "content", "snapshot", source, "retained", backup, "exports")
+        }
+        assertEquals("keep", output.resolve("owner.txt").readText())
+        assertEquals(0, pool.activeConnections)
+    }
+
     @Test
     fun `saved content selection feeds incremental capture and restores database and assets after source removal`(): Unit = runBlocking {
         FlywayMigration(pool).migrate(listOf(CoreMigration()))

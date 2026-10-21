@@ -29,7 +29,41 @@ class PostgresBackupServiceImpl(
     private val application: BoscaApplication,
     private val metadataService: ObjectProvider<MetadataService>,
     private val collectionService: ObjectProvider<CollectionService>,
+    private val captureService: ObjectProvider<ObjectBackupCaptureService>,
 ) : PostgresBackupService {
+    override suspend fun captureContent(
+        sourceId: String,
+        directory: Path,
+        store: String,
+        scope: String,
+        source: ObjectStorageService,
+        destinationId: String,
+        backup: ObjectStorageService,
+        prefix: String,
+        verifiedSince: OffsetDateTime?,
+    ): PostgresBackupContentReport = withContext(StorageDispatcher) {
+        check(connectionOrNull()?.inTransaction != true) { "Content capture must run outside an active caller transaction" }
+        require(listOf(sourceId, store, scope, destinationId).all { it.isNotBlank() }) {
+            "Content capture source, store, scope and destination identities are required"
+        }
+        require(prefix.split('/').all { it.isNotEmpty() && it != "." && it != ".." }) {
+            "Invalid content capture prefix: $prefix"
+        }
+        require(source !== backup) { "Backup storage must be independent of the source" }
+        val captures = captureService.get()
+        val database = capture(sourceId, directory, includeContentReferences = true)
+        val selection = selectContent(directory, store, scope, source)
+        val plan = withConnectionManager {
+            captures.prepareInventory(selection, destinationId, "$prefix/assets", "$prefix/objects/${database.id}.json")
+        }
+        val databasePath = "$prefix/databases/${database.id}"
+        upload(directory, backup, databasePath)
+        val objects = captures.captureInventory(plan.key, mapOf(store to source), backup, verifiedSince)
+        val file = directory.resolve("content-report.json")
+        writeContentReport(directory, databasePath, objects, requireNotNull(plan.contentSelectionCounts), store, backup, file)
+        uploadContentReport(file, backup, "$prefix/reports/${database.id}")
+    }
+
     override suspend fun selectContent(
         directory: Path,
         store: String,

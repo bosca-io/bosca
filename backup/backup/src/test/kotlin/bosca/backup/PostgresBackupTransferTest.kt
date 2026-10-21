@@ -76,7 +76,7 @@ class PostgresBackupTransferTest {
         Files.write(local.resolve("database.dump"), bytes)
         local.resolve("manifest.json").writeText(encoded())
         application = BoscaApplication(ApplicationConfig.load("{}".byteInputStream()), ownsServices = false)
-        service = PostgresBackupServiceImpl(application, mockk(), mockk())
+        service = PostgresBackupServiceImpl(application, mockk(), mockk(), mockk())
         storage = FileSystemObjectStorageService("", "", mockk(), retained.toString(), mockk())
         backup = object : ObjectStorageService by storage {
             override suspend fun getObjectInfo(path: ObjectPath): ObjectStorageInfo {
@@ -1006,7 +1006,7 @@ class PostgresBackupTransferTest {
         assertEquals(manifest, decode(intent))
         assertFalse(Files.exists(completed))
         write = null
-        service = PostgresBackupServiceImpl(application, mockk(), mockk())
+        service = PostgresBackupServiceImpl(application, mockk(), mockk(), mockk())
         assertEquals(manifest, service.upload(local, backup, prefix))
         assertEquals(2, writes.count { it.endsWith("database.dump") })
         assertContentEquals(bytes, Files.readAllBytes(payload))

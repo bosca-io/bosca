@@ -200,6 +200,23 @@ remain separate work.
 
 ## Native PostgreSQL database artifacts
 
+`PostgresBackupService.captureContent` combines native capture, saved-reference selection,
+incremental asset capture and retained evidence reporting for one logical content store.
+Supply a new local directory, source identity, store/scope, caller-owned source and independent
+backup stores, a stable backup destination ID and a relative output prefix. It uses the existing
+capture plans and per-object checkpoints. A later call takes a new database point and can reuse
+unchanged retained assets. Source writes continue, and asset I/O runs after the database
+snapshot transaction ends.
+
+Under the prefix, `databases/<capture-id>` holds the native artifact,
+`objects/<capture-id>.json` the object manifest, `reports/<capture-id>` the retained report,
+and `assets` the shared payloads. The local native directory also contains `content-report.json`.
+Missing references remain explicit in that report. Native failure cleans its incomplete attempt;
+later failure preserves the captured local files and retained progress. Use a new local directory
+to retry the whole operation at a fresh point. Callers coordinate exclusive destination writes
+and close their stores. This programmatic operation does not provide queued request recovery,
+classify required asset coverage or declare a complete database/object recovery point.
+
 `PostgresBackupService.capture(sourceId, directory)` creates a custom-format `database.dump`
 and a final `manifest.json` in a new local directory. Its parent must already exist. This is
 the database-artifact service used by the **Back Up PostgreSQL** Pipeline action described

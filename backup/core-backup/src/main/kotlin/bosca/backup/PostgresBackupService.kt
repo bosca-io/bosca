@@ -3,9 +3,44 @@ package bosca.backup
 import bosca.service.Service
 import bosca.storage.service.ObjectStorageService
 import java.nio.file.Path
+import java.time.OffsetDateTime
 
 /** Manages PostgreSQL-native artifacts without replacing existing database backup operations. */
 interface PostgresBackupService : Service {
+    /**
+     * Captures a native database artifact with saved content references into a new [directory],
+     * selects and durably records those references, retains the native artifact, incrementally
+     * captures selected assets, and exports/retains their inspected evidence report.
+     * Uses the existing content capture service and checkpoints for one logical [store]/[scope].
+     * Source writes continue; asset I/O starts after the database snapshot transaction ends.
+     *
+     * [prefix] contains databases/<capture-id>, objects/<capture-id>.json and reports/<capture-id>;
+     * shared asset payloads use assets beneath that prefix. The report is also saved locally as
+     * content-report.json. Each call captures a new point; after failure use a new local directory.
+     * Matching verified asset checkpoints can be reused across points. [verifiedSince] controls
+     * existing capture verification reuse; report export still performs fresh retained inspection.
+     *
+     * Requires an existing local parent, configured native capture, content/backup schemas,
+     * independent caller-owned [source]/[backup], stable [destinationId], no active caller
+     * transaction and exclusive destination writer access coordinated with other backup operations.
+     * Stores stay open. After native capture succeeds, failures/cancellation preserve its local
+     * artifact and retained progress; no report is acknowledged before all stages succeed.
+     * Missing/unresolved content remains explicit in the returned report. This does not classify
+     * required coverage, prove atomic database/object correspondence, publish a completed recovery
+     * point, install a schedule or provide queued request recovery.
+     */
+    suspend fun captureContent(
+        sourceId: String,
+        directory: Path,
+        store: String,
+        scope: String,
+        source: ObjectStorageService,
+        destinationId: String,
+        backup: ObjectStorageService,
+        prefix: String,
+        verifiedSince: OffsetDateTime? = null,
+    ): PostgresBackupContentReport
+
     /**
      * Creates a new [directory] with a custom-format database.dump and a final manifest.json.
      * Uses the primary connection pool to export a read-only repeatable-read snapshot and
