@@ -50,6 +50,30 @@ interface PostgresBackupService : Service {
     suspend fun verify(directory: Path): PostgresBackupManifest
 
     /**
+     * Inspects saved content-reference evidence against [objects] in the selected logical [store].
+     * Verifies the local native artifact before retained asset I/O; both artifacts must identify the
+     * same source. Resolves existing paths from saved IDs without accessing the source database,
+     * services or objects. Includes pending, deleted and historical references without inferring
+     * missing supplementary IDs. Multiple candidates for one key remain ambiguous.
+     *
+     * Reads selected retained payloads in [backup] to verify their full lengths/SHA-256, once per
+     * distinct payload path. Reports missing/corrupt output; other storage failures and cancellation
+     * propagate. Files, manifests and retained bytes must remain immutable throughout inspection.
+     * Runs outside an active caller transaction on the storage dispatcher; storage is caller-owned.
+     * [onReference] receives rows sequentially without retaining the full reference inventory. It may
+     * observe partial results before a failure; save an inspection only after this method returns.
+     * Verified retained integrity, upload times and lengths do not prove database snapshot coverage.
+     * This neither writes storage nor publishes a complete recovery set.
+     */
+    suspend fun inspectContent(
+        directory: Path,
+        objects: ObjectBackupManifest,
+        store: String,
+        backup: ObjectStorageService,
+        onReference: suspend (PostgresBackupContentInspection) -> Unit = {},
+    ): PostgresBackupContentInspectionSummary
+
+    /**
      * Verifies [directory] and restores its native dump into the separately configured
      * backup.postgres.restore libpq service. Requires an explicit expected database name,
      * a fresh empty destination and exclusive offline access throughout preflight and restore.

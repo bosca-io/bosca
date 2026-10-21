@@ -253,6 +253,35 @@ record count before publishing the local manifest, and needs no source database 
 The native Pipeline action currently uses database-only capture. Neither an inventory nor its
 successful transfer establishes that matching asset bytes have been retained.
 
+`PostgresBackupService.inspectContent(directory, objects, store, backup)` inspects a saved
+inventory against one object-backup manifest and logical content store. It verifies the local
+artifact first, requires the same source identity, then streams reference results to an optional
+callback and returns counts. It uses the caller's retained backup store and needs no source
+database, source storage credentials or content service.
+Internal backup helpers format the existing `ObjectStorageService.getPath` paths;
+contract tests compare them with the storage implementation.
+
+| Result | Meaning |
+| --- | --- |
+| `VERIFIED` | Retained bytes match the selected payload's length and SHA-256. |
+| `UNRESOLVED` | Saved IDs cannot determine the existing path. |
+| `NOT_RETAINED` | The selected store has no manifest entry for that path. |
+| `AMBIGUOUS` | The manifest declares multiple candidates for that path. |
+| `LENGTH_MISMATCH` | The recorded database and payload lengths differ. |
+| `MISSING` | The selected retained payload cannot be found. |
+| `CORRUPT` | Retained bytes differ from their declared length or SHA-256. |
+
+Inspection reads each selected retained payload once per path, closes its streams and writes
+nothing to storage. Pending/deleted rows and absent upload evidence remain in each result;
+their presence does not by itself require an asset. Missing supplementary UUIDs are never
+replaced with current attachment IDs, and ambiguous candidates are never chosen automatically.
+Backend failures, callback failures and cancellation propagate. The caller keeps files and
+retained data immutable and saves results only after the operation returns successfully.
+
+`VERIFIED` checks retained integrity. A matching length or checksum of the retained object does
+not prove which bytes belonged to the database snapshot. This service API does not publish a
+complete recovery set or change Pipeline execution.
+
 The manifest records the source identity, database, exported/logical snapshot, source-clock
 boundary observation and dump completion, PostgreSQL version/encoding, extension versions,
 and the dump's byte length and SHA-256. The exported snapshot identifier cannot be reused

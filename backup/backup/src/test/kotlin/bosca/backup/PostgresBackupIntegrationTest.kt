@@ -293,6 +293,23 @@ class PostgresBackupIntegrationTest {
             kotlinx.serialization.builtins.ListSerializer(ContentStorageReference.serializer()),
             downloaded.resolve(inventory.path).readText(),
         ))
+        val assetBytes = ByteArray(42) { it.toByte() }
+        val asset = BackupObject(
+            "content", "metadata/$id/8/content", "captured-observation", assetBytes.size.toLong(),
+            java.security.MessageDigest.getInstance("SHA-256").digest(assetBytes).toHexString(), "assets/image",
+        )
+        val objects = ObjectBackupManifest("retained-assets", manifest.sourceId, "content", manifest.created, listOf(asset))
+        val inspected = mutableListOf<PostgresBackupContentInspection>()
+        factory.withStorage(independent) { store ->
+            store.setInputStream(bosca.storage.service.StringObjectPath(asset.payloadPath), assetBytes.inputStream(), asset.length)
+            val result = service.inspectContent(downloaded, objects, "content", store) { inspected.add(it) }
+            assertEquals(manifest.id, result.databaseId)
+            assertEquals(objects.id, result.objectManifestId)
+            assertEquals(1L, result.counts.getValue(PostgresBackupContentStatus.VERIFIED))
+            assertEquals(1L, result.counts.getValue(PostgresBackupContentStatus.UNRESOLVED))
+            assertEquals(4L, result.counts.getValue(PostgresBackupContentStatus.NOT_RETAINED))
+        }
+        assertEquals(saved, inspected.map { it.reference })
         restore(downloaded)
         val recoveredPool = ConnectionPool(ConnectionFactoryImpl(
             ConnectionConfig(url + "recovered", user, password), "restored-content-inventory",
@@ -649,6 +666,13 @@ class PostgresBackupIntegrationTest {
         }
         assertFailsWith<IllegalStateException> {
             withConnectionManager { transaction { service.download(backup, "postgres/capture", root.resolve("download")) } }
+        }
+        assertFailsWith<IllegalStateException> {
+            withConnectionManager { transaction {
+                service.inspectContent(output,
+                    ObjectBackupManifest("objects", "source", "content", "2026-10-20T00:00:00Z", emptyList()),
+                    "content", backup)
+            } }
         }
         assertFalse(Files.exists(root.resolve("download")))
         assertEquals(0, pool.activeConnections)

@@ -30,6 +30,22 @@ class PostgresBackupServiceImpl(
     private val metadataService: ObjectProvider<MetadataService>,
     private val collectionService: ObjectProvider<CollectionService>,
 ) : PostgresBackupService {
+    override suspend fun inspectContent(
+        directory: Path,
+        objects: ObjectBackupManifest,
+        store: String,
+        backup: ObjectStorageService,
+        onReference: suspend (PostgresBackupContentInspection) -> Unit,
+    ): PostgresBackupContentInspectionSummary = withContext(StorageDispatcher) {
+        check(connectionOrNull()?.inTransaction != true) { "Content inspection must run outside an active caller transaction" }
+        require(store.isNotBlank()) { "Content inspection store is required" }
+        val selected = objects.copy(objects = objects.objects.toList()).also { it.validate() }
+        val database = verify(directory)
+        require(database.sourceId == selected.sourceId) { "Database and object backup source identities differ" }
+        requireNotNull(database.contentInventory) { "Database artifact has no content-reference inventory" }
+        PostgresBackupContentInspector(application.json).inspect(directory, database, selected, store, backup, onReference)
+    }
+
     override suspend fun restore(directory: Path): PostgresBackupManifest = withContext(StorageDispatcher) {
         check(connectionOrNull()?.inTransaction != true) { "PostgreSQL restore must run outside an active caller transaction" }
         PostgresBackupRestore(application).restore(directory, verify(directory))

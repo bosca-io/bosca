@@ -70,10 +70,23 @@ internal class PostgresBackupContentInventoryFile(private val json: Json) {
                 throw BackupPayloadMismatchException("Content-reference inventory SHA-256 mismatch")
             }
         }
+        forEach(directory, inventory) {}
+    }
+
+    /** Streams already verified, caller-owned inventory bytes without collecting reference rows. */
+    @OptIn(ExperimentalSerializationApi::class)
+    suspend fun forEach(
+        directory: Path,
+        inventory: PostgresBackupContentInventory,
+        onReference: suspend (ContentStorageReference) -> Unit,
+    ) {
+        val context = currentCoroutineContext()
+        val file = directory.resolve(inventory.path)
         var count = 0L
         Files.newInputStream(file).use { input ->
             for (reference in json.decodeToSequence(input, ContentStorageReference.serializer(), DecodeSequenceMode.ARRAY_WRAPPED)) {
                 context.ensureActive()
+                onReference(reference)
                 count++
             }
         }

@@ -1,6 +1,14 @@
 package bosca.backup
 
+import kotlinx.serialization.json.JsonObject
+import bosca.content.metadata.model.MetadataType
+import bosca.content.metadata.model.Metadata
+import bosca.content.collection.model.Collection
 import bosca.server.BoscaApplication
+import bosca.content.model.ContentStorageReference
+import bosca.content.model.ContentStorageReferenceKind
+import bosca.serialization.UUID
+import kotlinx.serialization.builtins.ListSerializer
 import bosca.server.config.ApplicationConfig
 import bosca.storage.service.FileSystemObjectStorageService
 import bosca.storage.service.ObjectPath
@@ -109,6 +117,32 @@ class PostgresBackupTransferTest {
         if (::root.isInitialized) root.toFile().deleteRecursively()
     }
 
+    private fun reference(
+        kind: ContentStorageReferenceKind = ContentStorageReferenceKind.METADATA,
+        id: UUID = UUID.random(),
+        version: Int? = 7,
+        supplementaryId: UUID? = null,
+        length: Long? = 5,
+    ) = ContentStorageReference(kind, id, version, supplementaryId, null, length, null, false)
+
+    private fun withReferences(vararg references: ContentStorageReference): PostgresBackupManifest = withContentInventory(
+        application.json.encodeToString(ListSerializer(ContentStorageReference.serializer()), references.toList()),
+        references.size.toLong(),
+    )
+
+    private fun retainedEntry(key: String, path: String = "assets/$key", data: String = "image", store: String = "content") = BackupObject(
+        store, key, "observation", data.toByteArray().size.toLong(),
+        MessageDigest.getInstance("SHA-256").digest(data.toByteArray()).toHexString(), path,
+    )
+
+    private fun objectManifest(vararg entries: BackupObject) = ObjectBackupManifest(
+        "objects", manifest.sourceId, "content", manifest.created, entries.toList(),
+    )
+
+    private fun retain(entry: BackupObject, data: String = "image") {
+        retained.resolve(entry.payloadPath).also { Files.createDirectories(it.parent) }.writeText(data)
+    }
+
     private fun withContentInventory(text: String = "[]", count: Long = 0): PostgresBackupManifest {
         val data = text.toByteArray()
         val inventory = PostgresBackupContentInventory(
@@ -118,6 +152,147 @@ class PostgresBackupTransferTest {
         return manifest.copy(contentInventory = inventory).also {
             local.resolve("manifest.json").writeText(encoded(it))
         }
+    }
+
+    @Test
+    fun `offline ID paths agree with entity paths for primary and supplementary content`(): Unit = runBlocking {
+        val metadata = Metadata(
+            id = UUID.random(), version = 7, name = "Image", type = MetadataType.STANDARD,
+            contentType = "image/png", contentLength = null, languageTag = "en",
+            workflowStateId = "pending", attributes = JsonObject(emptyMap()),
+        )
+        val collection = Collection(id = UUID.random(), name = "Images", languageTag = "en",
+            workflowStateId = "pending", attributes = JsonObject(emptyMap()))
+        val supplementary = UUID.random()
+        assertEquals("metadata/${metadata.id}/7/content", metadataObjectPath(metadata.id, 7))
+        assertEquals("metadata/${metadata.id}/7/supplementary/$supplementary", metadataObjectPath(metadata.id, 7, supplementary))
+        assertEquals("collection/${collection.id}/content", collectionObjectPath(collection.id))
+        assertEquals("collection/${collection.id}/supplementary/$supplementary", collectionObjectPath(collection.id, supplementary))
+        assertEquals(storage.getPath(metadata).toString(), metadataObjectPath(metadata.id, metadata.version))
+        assertEquals(storage.getPath(metadata, supplementary).toString(), metadataObjectPath(metadata.id, metadata.version, supplementary))
+        assertEquals(storage.getPath(collection).toString(), collectionObjectPath(collection.id))
+        assertEquals(storage.getPath(collection, supplementary).toString(), collectionObjectPath(collection.id, supplementary))
+    }
+
+    @Test
+    fun `content inspection verifies existing ID paths without a source and checks shared payloads once`(): Unit = runBlocking {
+        val primary = reference()
+        val supplementary = reference(
+            ContentStorageReferenceKind.COLLECTION_SUPPLEMENTARY, version = null, supplementaryId = UUID.random(),
+        )
+        val attachment = reference(ContentStorageReferenceKind.METADATA_SUPPLEMENTARY, supplementaryId = UUID.random())
+        val historical = reference(ContentStorageReferenceKind.METADATA_VERSION, id = primary.contentId, version = 1)
+        val selected = withReferences(primary, primary.copy(deleted = true), supplementary, attachment, historical)
+        val first = retainedEntry("metadata/${primary.contentId}/7/content", "assets/shared")
+        val second = retainedEntry("collection/${supplementary.contentId}/supplementary/${supplementary.supplementaryId}", "assets/shared")
+        retain(first)
+        val third = retainedEntry("metadata/${attachment.contentId}/7/supplementary/${attachment.supplementaryId}", "assets/shared")
+        val fourth = retainedEntry("metadata/${primary.contentId}/1/content", "assets/shared")
+        val objects = objectManifest(first, second, third, fourth)
+        val rows = mutableListOf<PostgresBackupContentInspection>()
+        val summary = service.inspectContent(local, objects, "content", backup) { rows.add(it) }
+        assertEquals(selected.id, summary.databaseId)
+        assertEquals(objects.id, summary.objectManifestId)
+        assertEquals("content", summary.store)
+        assertEquals(5L, summary.counts.getValue(PostgresBackupContentStatus.VERIFIED))
+        assertEquals(listOf(first.key, first.key, second.key, third.key, fourth.key), rows.map { it.path })
+        assertEquals(listOf(primary, primary.copy(deleted = true), supplementary, attachment, historical), rows.map { it.reference })
+        assertEquals(listOf(first, first, second, third, fourth), rows.map { it.payload })
+        assertEquals(listOf("assets/shared"), reads)
+        assertEquals(opened, closed)
+        assertTrue(writes.isEmpty())
+        assertFalse(storageClosed)
+    }
+
+    @Test
+    fun `content inspection reports absent identities and pending evidence without inventing primary paths`(): Unit = runBlocking {
+        val legacy = reference(ContentStorageReferenceKind.METADATA_VERSION_SUPPLEMENTARY).copy(supplementaryKey = "thumbnail")
+        val noVersion = reference(version = null)
+        val noAttachment = reference(ContentStorageReferenceKind.METADATA_SUPPLEMENTARY)
+        val noCollectionAttachment = reference(ContentStorageReferenceKind.COLLECTION_SUPPLEMENTARY, version = null)
+        val pending = reference(length = null)
+        withReferences(legacy, noVersion, noAttachment, noCollectionAttachment, pending)
+        val unrelated = retainedEntry("metadata/${pending.contentId}/7/content", store = "other")
+        val rows = mutableListOf<PostgresBackupContentInspection>()
+        val summary = service.inspectContent(local, objectManifest(unrelated), "content", backup) { rows.add(it) }
+        assertEquals(4L, summary.counts.getValue(PostgresBackupContentStatus.UNRESOLVED))
+        assertEquals(1L, summary.counts.getValue(PostgresBackupContentStatus.NOT_RETAINED))
+        assertTrue(rows.take(4).all { it.path == null && it.payload == null })
+        assertEquals(pending, rows.last().reference)
+        assertEquals("metadata/${pending.contentId}/7/content", rows.last().path)
+        assertTrue(reads.isEmpty())
+    }
+
+    @Test
+    fun `content inspection never chooses an ambiguous revision or a different declared length`(): Unit = runBlocking {
+        val ambiguous = reference()
+        val mismatch = reference(length = 9)
+        withReferences(ambiguous, mismatch)
+        val entry = retainedEntry("metadata/${ambiguous.contentId}/7/content", "assets/first")
+        val other = entry.copy(revision = "another-observation", payloadPath = "assets/second")
+        val short = retainedEntry("metadata/${mismatch.contentId}/7/content", "assets/short")
+        val rows = mutableListOf<PostgresBackupContentInspection>()
+        service.inspectContent(local, objectManifest(entry, other, short), "content", backup) { rows.add(it) }
+        assertEquals(listOf(PostgresBackupContentStatus.AMBIGUOUS, PostgresBackupContentStatus.LENGTH_MISMATCH), rows.map { it.status })
+        assertEquals(null, rows.first().payload)
+        assertEquals(short, rows.last().payload)
+        assertTrue(reads.isEmpty())
+    }
+
+    @Test
+    fun `content inspection reports missing and corrupt retained bytes and closes opened streams`(): Unit = runBlocking {
+        val missing = reference()
+        val corrupt = reference()
+        withReferences(missing, corrupt)
+        val absent = retainedEntry("metadata/${missing.contentId}/7/content", "assets/missing")
+        val damaged = retainedEntry("metadata/${corrupt.contentId}/7/content", "assets/corrupt")
+        retain(damaged, "wrong")
+        val rows = mutableListOf<PostgresBackupContentInspection>()
+        val summary = service.inspectContent(local, objectManifest(absent, damaged), "content", backup) { rows.add(it) }
+        assertEquals(listOf(PostgresBackupContentStatus.MISSING, PostgresBackupContentStatus.CORRUPT), rows.map { it.status })
+        assertEquals(1L, summary.counts.getValue(PostgresBackupContentStatus.MISSING))
+        assertEquals(1L, summary.counts.getValue(PostgresBackupContentStatus.CORRUPT))
+        assertEquals(opened, closed)
+        assertTrue(writes.isEmpty())
+    }
+
+    @Test
+    fun `content inspection rejects invalid artifacts sources and store selections before asset reads`(): Unit = runBlocking {
+        val ref = reference()
+        val selected = withReferences(ref)
+        val objects = objectManifest()
+        assertFailsWith<IllegalArgumentException> { service.inspectContent(local, objects.copy(sourceId = "other"), "content", backup) }
+        assertFailsWith<IllegalArgumentException> { service.inspectContent(local, objects, " ", backup) }
+        assertFailsWith<IllegalArgumentException> { service.inspectContent(local, objects.copy(version = 2), "content", backup) }
+        local.resolve("manifest.json").writeText(encoded(manifest))
+        assertFailsWith<IllegalArgumentException> { service.inspectContent(local, objects, "content", backup) }
+        local.resolve("manifest.json").writeText(encoded(selected))
+        local.resolve(assertNotNull(selected.contentInventory).path).writeText("[]")
+        assertFailsWith<BackupPayloadMismatchException> { service.inspectContent(local, objects, "content", backup) }
+        assertTrue(reads.isEmpty())
+    }
+
+    @Test
+    fun `content inspection propagates backend failures cancellation and callback failures`(): Unit = runBlocking {
+        val ref = reference()
+        withReferences(ref)
+        val entry = retainedEntry("metadata/${ref.contentId}/7/content", "assets/image")
+        val objects = objectManifest(entry)
+        val failed = IOException("storage unavailable")
+        read = { throw failed }
+        assertEquals(failed.message, assertFailsWith<IOException> { service.inspectContent(local, objects, "content", backup) }.message)
+        val cancelled = CancellationException("inspection cancelled")
+        read = { throw cancelled }
+        assertEquals(cancelled.message, assertFailsWith<CancellationException> { service.inspectContent(local, objects, "content", backup) }.message)
+        read = null
+        retain(entry)
+        val callback = IOException("report failed")
+        assertEquals(callback.message, assertFailsWith<IOException> {
+            service.inspectContent(local, objects, "content", backup) { throw callback }
+        }.message)
+        assertEquals(opened, closed)
+        assertTrue(writes.isEmpty())
+        assertFalse(storageClosed)
     }
 
     @Test
