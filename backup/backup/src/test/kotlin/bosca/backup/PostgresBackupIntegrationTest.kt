@@ -1862,6 +1862,198 @@ class PostgresBackupIntegrationTest {
     }
 
     @Test
+    fun `queued combined backup retains reports reuses assets and restores without its source`(): Unit = runBlocking {
+        val runs = contentRunService()
+        val id = "10000000-0000-0000-0000-000000000001"
+        val asset = contentAsset(id)
+        val configuration = assertNotNull(retained)
+        var reads = 0
+        faultStorage { actual -> object : ObjectStorageService by actual {
+            override suspend fun getInputStream(path: ObjectPath): InputStream {
+                if (path.toString() == asset) reads++
+                return actual.getInputStream(path)
+            }
+        } }
+        val setting = application.json.encodeToString(PostgresBackupContentSource.serializer(), configuredContentSource)
+        PostgresBackupPipelineFixture.create(application, pool, root, contentSource = setting).use { pipeline ->
+            val initial = pipeline.start()
+            assertEquals(pipeline.caller.id, initial.principalId)
+            val parent = pipeline.next()
+            pipeline.execute(parent)
+            assertEquals(bosca.pipelines.model.PipelineRunStatus.SUSPENDED, pipeline.get(initial.id).status)
+            val child = pipeline.next()
+            assertEquals(parent.getId(), child.getParentId())
+            assertFalse(child.getDefinition().toString().contains(password))
+            pipeline.execute(child)
+            val completed = pipeline.get(initial.id)
+            assertEquals(bosca.pipelines.model.PipelineRunStatus.OK, completed.status)
+            val receipt = application.json.decodeFromJsonElement(PostgresBackupReceipt.serializer(), assertNotNull(completed.output))
+            val saved = withConnectionManager { assertNotNull(runs.get(receipt.key)) }
+            assertEquals(configuredContentSource, saved.contentSource)
+            assertTrue(saved.includeContentReferences)
+            assertEquals(receipt, saved.result)
+            val report = provide<ObjectStorageServiceFactory>().withStorage(configuration) { backup ->
+                service.downloadContentReport(backup, assertNotNull(receipt.contentReportPath), root.resolve("queued-report.json"))
+            }
+            val next = pipeline.start()
+            pipeline.execute(pipeline.next())
+            pipeline.execute(pipeline.next())
+            val later = pipeline.get(next.id)
+            assertEquals(bosca.pipelines.model.PipelineRunStatus.OK, later.status)
+            val second = application.json.decodeFromJsonElement(PostgresBackupReceipt.serializer(), assertNotNull(later.output))
+            assertTrue(receipt.key != second.key)
+            assertTrue(receipt.manifest.id != second.manifest.id)
+            provide<ObjectStorageServiceFactory>().withStorage(configuration) { backup ->
+                val repeated = service.downloadContentReport(backup, assertNotNull(second.contentReportPath), root.resolve("queued-next-report.json"))
+                assertEquals(report.objects.objects, repeated.objects.objects)
+            }
+            assertEquals(1, reads)
+            assertFalse(root.toFile().list().orEmpty().any { it.startsWith("postgres-backup-") })
+            assertEquals("0", scalar("select count(*)::text from backup.object_store_writers"))
+            pipeline.verifyNoServiceAccountFallback()
+            assertTrue(root.resolve("operation-source").toFile().deleteRecursively())
+            retained = null
+            contentStorage = null
+            tool = root.resolve("missing-dump")
+            install(configured = false)
+            assertEquals(receipt, provide<PostgresBackupRunService>().backupContentConfigured(
+                receipt.key, "instance", configuredContentSource, "retained", "postgresql",
+            ))
+            sql("create database queued_recovery_journal", "postgres")
+            val journal = ConnectionPool(ConnectionFactoryImpl(ConnectionConfig(url + "queued_recovery_journal", user, password), "queued-recovery-journal"))
+            try {
+                provides<ConnectionPool>(singleton = true, overrideExisting = true) { journal }
+                provides<Json>(singleton = true, overrideExisting = true) { backupTestJson }
+                BackupProviderRegistrar().register()
+                FlywayMigration(journal).migrate(listOf(BackupMigration()))
+                pool.close()
+                sql("drop database source with (force)", "postgres")
+                provide<ObjectStorageServiceFactory>().withStorage(configuration) { backup ->
+                    val retainedReport = service.downloadContentReport(backup, assertNotNull(receipt.contentReportPath), root.resolve("queued-recovery.json"))
+                    service.download(backup, receipt.path, output)
+                    provide<ObjectStorageServiceFactory>().withStorage(StorageConfiguration("fs", "", basePath = root.resolve("queued-recovered-assets").toString())) { target ->
+                        provide<ObjectBackupRestoreService>().restore(retainedReport.objects, backup, mapOf("content" to target), "recovered")
+                        assertEquals("image", target.getString(bosca.storage.service.StringObjectPath(asset)))
+                    }
+                }
+                restore()
+                assertEquals("Saved image", scalar("select name from metadata where id='$id'", "recovered"))
+            } finally {
+                journal.close()
+            }
+        }
+    }
+
+    @Test
+    fun `queued combined backup retries a partial copy after restart and rejects unauthorized children`(): Unit = runBlocking {
+        val runs = contentRunService()
+        val first = contentAsset("10000000-0000-0000-0000-000000000001")
+        val second = contentAsset("10000000-0000-0000-0000-000000000002", "other")
+        var fail = true
+        val reads = mutableMapOf<String, Int>()
+        val decorate: (ObjectStorageService) -> ObjectStorageService = { actual -> object : ObjectStorageService by actual {
+            override suspend fun getInputStream(path: ObjectPath): InputStream {
+                val key = path.toString()
+                if (key == first || key == second) reads[key] = (reads[key] ?: 0) + 1
+                if (key == second && fail) throw IOException("queued source failed")
+                return actual.getInputStream(path)
+            }
+        } }
+        faultStorage(decorate)
+        val setting = application.json.encodeToString(PostgresBackupContentSource.serializer(), configuredContentSource)
+        PostgresBackupPipelineFixture.create(application, pool, root, contentSource = setting).use { pipeline ->
+            val initial = pipeline.start()
+            pipeline.execute(pipeline.next())
+            val child = pipeline.next()
+            pipeline.fail(child, retry = true)
+            val failed = withConnectionManager { runs.list("instance", "retained", 0, 10).single() }
+            assertEquals(PostgresBackupRunStatus.FAILED, failed.status)
+            assertEquals(configuredContentSource, failed.contentSource)
+            assertEquals(null, failed.result)
+            assertEquals(null, pipeline.get(initial.id).output)
+            val firstPoint = withConnectionManager {
+                provide<ObjectBackupCaptureService>().listPlans("instance", "retained", "snapshot", 0, 10).single().inventory.id
+            }
+            fail = false
+            install()
+            contentCaptureServices()
+            pipeline.register()
+            faultStorage(decorate)
+            val retry = pipeline.retry()
+            assertEquals(child.getId(), retry.getId())
+            pipeline.execute(retry)
+            val completed = pipeline.get(initial.id)
+            assertEquals(bosca.pipelines.model.PipelineRunStatus.OK, completed.status)
+            val receipt = application.json.decodeFromJsonElement(PostgresBackupReceipt.serializer(), assertNotNull(completed.output))
+            assertNotNull(receipt.contentReportPath)
+            assertEquals(failed.key, receipt.key)
+            assertTrue(firstPoint != receipt.manifest.id)
+            assertEquals(2, withConnectionManager { assertNotNull(runs.get(failed.key)).attempts })
+            assertEquals(mapOf(first to 1, second to 2), reads)
+            pipeline.denied = true
+            val denied = pipeline.start()
+            pipeline.execute(pipeline.next())
+            pipeline.fail(pipeline.next(), retry = false)
+            assertEquals(bosca.pipelines.model.PipelineRunStatus.FAILED, pipeline.get(denied.id).status)
+            assertEquals(null, pipeline.get(denied.id).output)
+            assertEquals(1, withConnectionManager { runs.list("instance", "retained", 0, 10).size })
+            assertEquals(mapOf(first to 1, second to 2), reads)
+            assertEquals("0", scalar("select count(*)::text from backup.object_store_writers"))
+            pipeline.verifyNoServiceAccountFallback()
+        }
+    }
+
+    @Test
+    fun `queued combined backup redelivery repairs interrupted assets through the existing runner`(): Unit = runBlocking {
+        val runs = contentRunService()
+        contentAsset("10000000-0000-0000-0000-000000000001")
+        runs.backupContentConfigured("original", "instance", configuredContentSource, "retained", "postgresql")
+        val progress = provide<ObjectBackupProgressService>()
+        val original = withConnectionManager {
+            progress.list(ObjectBackupOperation.BACKUP, "instance", "retained", "snapshot", 0, 10).single()
+        }
+        val setting = application.json.encodeToString(PostgresBackupContentSource.serializer(), configuredContentSource)
+        PostgresBackupPipelineFixture.create(application, pool, root, contentSource = setting).use { pipeline ->
+            val initial = pipeline.start()
+            pipeline.execute(pipeline.next())
+            val child = pipeline.next()
+            val key = objectBackupIdentity(ObjectBackupOperation.BACKUP, listOf("postgresql", child.getId().toString(), "backup"))
+            seedNativeWriter(key, "$key:stopped", prefix = "postgresql", includeContentReferences = true, contentSource = configuredContentSource)
+            Files.writeString(root.resolve("retained/${original.payload.payloadPath}"), "wrong")
+            val interrupted = withConnectionManager { transaction {
+                val invalidated = progress.invalidate(original.key, original.version, "Damaged retained payload")
+                progress.start(invalidated.key, invalidated.version)
+            } }
+            pipeline.redeliver(child)
+            install()
+            contentCaptureServices()
+            pipeline.register()
+            val runner = pipeline.runner()
+            runner.run()
+            try {
+                val completed = pipeline.awaitComplete(initial.id)
+                assertEquals(bosca.pipelines.model.PipelineRunStatus.OK, completed.status)
+                val receipt = application.json.decodeFromJsonElement(PostgresBackupReceipt.serializer(), assertNotNull(completed.output))
+                assertEquals(key, receipt.key)
+                assertNotNull(receipt.contentReportPath)
+                val saved = withConnectionManager { assertNotNull(runs.get(key)) }
+                assertEquals(configuredContentSource, saved.contentSource)
+                assertEquals(2, saved.attempts)
+                assertEquals(receipt, saved.result)
+                val repaired = withConnectionManager { assertNotNull(progress.get(original.key)) }
+                assertEquals(ObjectBackupProgressStatus.COMPLETED, repaired.status)
+                assertEquals(original.payload, repaired.payload)
+                assertEquals("image", Files.readString(root.resolve("retained/${original.payload.payloadPath}")))
+                withConnectionManager { assertFailsWith<IllegalStateException> { progress.complete(interrupted.key, interrupted.version) } }
+                assertEquals("0", scalar("select count(*)::text from backup.object_store_writers"))
+                pipeline.verifyNoServiceAccountFallback()
+            } finally {
+                runner.shutdown()
+            }
+        }
+    }
+
+    @Test
     fun `queued native content inventory is fixed retained cleaned and recoverable without the source`(): Unit = runBlocking {
         runService()
         FlywayMigration(pool).migrate(listOf(CoreMigration()))

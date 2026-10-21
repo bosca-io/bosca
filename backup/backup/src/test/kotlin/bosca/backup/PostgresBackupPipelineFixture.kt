@@ -154,6 +154,7 @@ internal class PostgresBackupPipelineFixture private constructor(
             pool: ConnectionPool,
             directory: Path,
             includeContentReferences: Boolean = false,
+            contentSource: String = "",
         ): PostgresBackupPipelineFixture {
             val json = application.json
             val nats = SharedNatsContainer().apply { start() }
@@ -184,7 +185,7 @@ internal class PostgresBackupPipelineFixture private constructor(
                 val declared = Pipeline(id = UUID.NIL, name = "native database backup", acceptedInputType = "JSON",
                     nodes = listOf(InputNode("in", acceptedType = "JSON"),
                         PostgresBackupNode("backup", sourceId = "instance", storageKey = "retained",
-                            includeContentReferences = includeContentReferences), OutputNode("out")),
+                            includeContentReferences = includeContentReferences, contentSource = contentSource), OutputNode("out")),
                     edges = listOf(PipelineEdge("result", source = "backup", target = "out")))
                 fixture.pipeline = withConnectionManager {
                     val saved = provide<PipelineRepository>().add(PipelineRecord(name = declared.name,

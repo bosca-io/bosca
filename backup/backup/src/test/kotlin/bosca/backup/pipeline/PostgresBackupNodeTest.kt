@@ -1,6 +1,7 @@
 package bosca.backup.pipeline
 
 import bosca.backup.PostgresBackupManifest
+import bosca.backup.PostgresBackupContentSource
 import bosca.backup.PostgresBackupReceipt
 import bosca.backup.PostgresBackupRunService
 import bosca.di.ProviderRegistry
@@ -8,6 +9,7 @@ import bosca.di.annotation.InternalDI
 import bosca.di.provides
 import bosca.pipelines.DryRunTrace
 import bosca.pipelines.PipelineContext
+import bosca.pipelines.annotation.SettingControl
 import bosca.pipelines.node.BackupPipelineNodeSerializersProvider
 import bosca.pipelines.node.NodeInputs
 import bosca.pipelines.node.NodeResult
@@ -49,6 +51,8 @@ import kotlin.test.assertTrue
 class PostgresBackupNodeTest {
     private val service = mockk<PostgresBackupRunService>()
     private val keys = mutableListOf<String>()
+    private val source = PostgresBackupContentSource("content", "source-content", "snapshots")
+    private val contentSource = """{"store":"content","storageKey":"source-content","scope":"snapshots"}"""
     private val manifest = PostgresBackupManifest("artifact", "instance", "source", "2026-10-19T00:00:00Z", "2026-10-19T00:00:01Z",
         "snapshot", "1:2:", "18", 180000, "UTF8", emptyMap(), 5, "a".repeat(64))
     private val admin = object : AuthenticationContext(null, null) {
@@ -65,6 +69,11 @@ class PostgresBackupNodeTest {
             val key = firstArg<String>()
             keys.add(key)
             PostgresBackupReceipt(key, "retained", "postgresql/$key/artifact", manifest)
+        }
+        coEvery { service.backupContentConfigured(any(), "instance", source, "retained", "postgresql", any()) } answers {
+            val key = firstArg<String>()
+            keys.add(key)
+            PostgresBackupReceipt(key, "retained", "postgresql/$key/database", manifest, "postgresql/$key/report")
         }
     }
 
@@ -131,7 +140,7 @@ class PostgresBackupNodeTest {
     fun `generated catalog and graph serializer expose ordinary settings and typed receipt`() {
         val descriptors = BackupPipelineNodeSerializersProvider()
         val entry = descriptors.descriptors.single { it.key == "postgresBackup.backup" }
-        assertEquals(listOf("sourceId", "storageKey", "prefix", "includeContentReferences"), entry.settings.map { it.name })
+        assertEquals(listOf("sourceId", "storageKey", "prefix", "includeContentReferences", "contentSource"), entry.settings.map { it.name })
         assertEquals(PostgresBackupReceipt.serializer().descriptor.serialName, entry.outputs.single().type)
         val restored = assertIs<PostgresBackupNode>(json.decodeFromString(PipelineNode.serializer(), json.encodeToString(PipelineNode.serializer(), node())))
         assertEquals("retained", restored.storageKey)
@@ -154,6 +163,86 @@ class PostgresBackupNodeTest {
     }
 
     private fun node(id: String = "backup") = PostgresBackupNode(id, sourceId = "instance", storageKey = "retained")
+
+    private fun contentNode(id: String = "backup", setting: String = contentSource) =
+        PostgresBackupNode(id, sourceId = "instance", storageKey = "retained", contentSource = setting)
+
+    @Test
+    fun `content setting uses the generated catalog serializer and dry run without services`(): Unit = runBlocking {
+        val entry = BackupPipelineNodeSerializersProvider().descriptors.single { it.key == "postgresBackup.backup" }
+        val setting = entry.settings.single { it.name == "contentSource" }
+        assertEquals(SettingControl.CODE, setting.control)
+        assertEquals("json", setting.language)
+        assertEquals(false, setting.required)
+        val restored = assertIs<PostgresBackupNode>(json.decodeFromString(PipelineNode.serializer(),
+            json.encodeToString(PipelineNode.serializer(), contentNode())))
+        assertEquals(contentSource, restored.contentSource)
+        assertTrue(restored.willSuspend)
+        ProviderRegistry.clear()
+        val trace = DryRunTrace()
+        val result = restored.run(PipelineContext(AuthenticationContext(null, null), json, dryRun = true, trace = trace), NodeInputs(emptyMap()))
+        assertNull(assertIs<NodeResult.Output>(result).value)
+        assertEquals(JsonPrimitive(contentSource), trace.actions.getValue("backup").jsonObject["contentSource"])
+    }
+
+    @Test
+    fun `content capture keeps its backing checkpoint and emits the retained report receipt`(): Unit = runBlocking {
+        val queue = mockk<JobQueue>()
+        val job = mockk<Job>()
+        every { job.getId() } returns UUID.random()
+        withContext(queue.asCoroutineContext(job)) {
+            val receipt = perform(contentNode())
+            assertEquals("postgresql/${receipt.key}/report", receipt.contentReportPath)
+            perform(contentNode())
+            perform(contentNode("other"))
+        }
+        assertEquals(keys[0], keys[1])
+        assertTrue(keys[0] != keys[2])
+        coVerify(exactly = 2) { service.backupContentConfigured(keys[0], "instance", source, "retained", "postgresql", keys[0]) }
+        every { job.getId() } returns UUID.random()
+        withContext(queue.asCoroutineContext(job)) { perform(contentNode()) }
+        assertTrue(keys[0] != keys[3])
+        coVerify(exactly = 0) { service.backupConfigured(any(), any(), any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun `inline content capture creates independent requests without queued checkpoints`(): Unit = runBlocking {
+        repeat(2) { perform(contentNode()) }
+        assertTrue(keys[0] != keys[1])
+        for (key in keys) coVerify(exactly = 1) {
+            service.backupContentConfigured(key, "instance", source, "retained", "postgresql", null)
+        }
+        coVerify(exactly = 0) { service.backupConfigured(any(), any(), any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun `invalid content settings fail before invoking either backup mode`(): Unit = runBlocking {
+        for (invalid in listOf("{", "null", "{}", "[]")) {
+            assertFailsWith<IllegalArgumentException> { perform(contentNode(setting = invalid)) }
+        }
+        coVerify(exactly = 0) { service.backupConfigured(any(), any(), any(), any(), any(), any()) }
+        coVerify(exactly = 0) { service.backupContentConfigured(any(), any(), any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun `content authorization cancellation and storage failures do not produce success`(): Unit = runBlocking {
+        assertFailsWith<SecurityException> {
+            contentNode(setting = "{").run(PipelineContext(AuthenticationContext(null, null), json), NodeInputs(emptyMap()))
+        }
+        coVerify(exactly = 0) { service.backupContentConfigured(any(), any(), any(), any(), any(), any()) }
+        coEvery { service.backupContentConfigured(any(), any(), any(), any(), any(), any()) } throws CancellationException("stopped")
+        assertEquals("stopped", assertFailsWith<CancellationException> { perform(contentNode()) }.message)
+        coEvery { service.backupContentConfigured(any(), any(), any(), any(), any(), any()) } throws java.io.IOException("asset failed")
+        assertEquals("asset failed", assertFailsWith<java.io.IOException> { perform(contentNode()) }.message)
+        coVerify(exactly = 0) { service.backupConfigured(any(), any(), any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun `blank optional content setting retains the database only path`(): Unit = runBlocking {
+        perform(contentNode(setting = "  "))
+        coVerify(exactly = 1) { service.backupConfigured(keys.single(), "instance", "retained", "postgresql", null, false) }
+        coVerify(exactly = 0) { service.backupContentConfigured(any(), any(), any(), any(), any(), any()) }
+    }
 
     private suspend fun perform(node: PostgresBackupNode): PostgresBackupReceipt {
         val result = node.run(PipelineContext(admin, json), NodeInputs(emptyMap()))

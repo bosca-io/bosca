@@ -141,22 +141,39 @@ exported database view as the dump. The option defaults to false and is saved as
 request intent, so retries and receipt replay cannot change it. It requires Bosca's content
 schema and services. This saves reference evidence; it does not copy the referenced assets.
 
+To copy referenced assets too, set **Content source** to JSON identifying the logical store,
+configured source storage ID and backup scope:
+
+```json
+{ "store": "content", "storageKey": "source-content", "scope": "snapshots" }
+```
+
+This mode includes content references automatically and retains a content evidence report.
+Leave the setting empty for database-only capture. Use the same source identity, logical store,
+backup destination and scope as recurring object backups to reuse their verified payloads.
+Both stores must be configured under `backup.objectStores`, with an independent backup destination.
+Source writes continue; report gaps remain explicit, and a completed request does not declare
+a complete database/object recovery point.
+
 Configure `backup.postgres.service` for that same primary database as described below. The
 server and runner images provide PostgreSQL 18 clients. Optional `backup.postgres.scratchDirectory`
 selects an existing writable parent directory; otherwise the Java temporary directory is used.
 Each attempt needs local space for one database dump. It does not need shared scratch between
 workers or ReadWriteMany storage.
 
-A backing job and node identify one fixed request. Its source identity, storage ID, prefix
-and content-reference selection cannot change on retry. A completed request returns its receipt
-without another dump or object-store access; its journal database must still be available. A new Pipeline run creates
-a new request. An unfinished attempt may capture a **new point in time** when retried on any
+A backing job and node identify one fixed request. Its source identity, storage ID, prefix,
+content-reference selection and content-source binding cannot change on retry. A completed
+request returns its receipt without another dump or object-store access; its journal database
+must still be available. A new Pipeline run creates a new request. An unfinished attempt may capture a **new point in time** when retried on any
 worker. The successful receipt records that attempt's actual database boundary, byte identity
 and retained location. It never reports an abandoned attempt's boundary as completed.
 
-Artifacts use a new `<prefix>/<requestKey>/<attemptId>` directory containing `intent.json`,
+Database-only artifacts use a new `<prefix>/<requestKey>/<attemptId>` directory containing `intent.json`,
 `database.dump`, an optional `content-references.json` and, after retained verification,
 `manifest.json`. The receipt's `path` selects that directory for `PostgresBackupService.download`.
+Combined capture uses the same attempt prefix with separate database, asset and report paths.
+Its receipt's `contentReportPath` retrieves the retained report through `downloadContentReport`;
+the report includes the object manifest and inspection gaps. Native-only receipts omit that path.
 Local scratch is removed on ordinary exit or cancellation. Incomplete remote attempts remain
 untouched and need explicit retention cleanup;
 a process crash may also leave local scratch. A receipt is recorded only after storage closes.
@@ -194,9 +211,9 @@ then use the Pipeline's retry control. Tokens do not expire or authorize live-wr
 All these operations require backup administration access. Runtime credentials stay in
 configuration, outside job definitions and run records.
 
-This action captures database state and optional reference evidence. Matching database/object
-recovery points, protected retention and keys, full-instance restore and deployment rebinding
-remain separate work.
+This action captures database state, optional reference evidence and optional referenced assets.
+Matching database/object recovery points, protected retention and keys, full-instance restore
+and deployment rebinding remain separate work.
 
 ## Native PostgreSQL database artifacts
 
@@ -226,8 +243,8 @@ token fencing; unqueued writers retain explicit stopped-writer recovery. After r
 destination, a retry recovers interrupted object checkpoints in its fixed source, destination,
 scope and logical store, allowing repairs to restart while rejecting stale acknowledgements.
 Completed checkpoints and other stores remain unchanged. Exclude external destination writers
-before resuming a stopped request. Pipeline actions still use the existing database-only entry
-point; this adds a programmatic configured operation.
+before resuming a stopped request. The PostgreSQL Pipeline action uses this operation when
+its optional content source is set; otherwise it uses the database-only entry point.
 
 `PostgresBackupService.captureContent` combines native capture, saved-reference selection,
 incremental asset capture and retained evidence reporting for one logical content store.
