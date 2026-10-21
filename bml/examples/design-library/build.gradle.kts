@@ -17,6 +17,7 @@ dependencies {
     implementation(libs.kotlinx.coroutines.core)
     testImplementation(libs.kotlin.test.junit)
     testImplementation(project(":bml:bml-compiler"))
+    testImplementation(gradleTestKit())
 }
 
 bml {
@@ -29,8 +30,24 @@ application {
 }
 
 val fixtureRuntime = configurations.named("runtimeClasspath")
-tasks.test {
-    dependsOn(tasks.jar, fixtureRuntime, ":bml:bml-design:sourcesJar")
+val publishedFixturePlugin = configurations.create("publishedFixturePlugin") { isCanBeConsumed = false }
+val publishedFixtureCompiler = configurations.create("publishedFixtureCompiler") {
+    isCanBeConsumed = false
+    attributes {
+        attribute(Usage.USAGE_ATTRIBUTE, objects.named(Usage.JAVA_RUNTIME))
+        attribute(Category.CATEGORY_ATTRIBUTE, objects.named(Category.LIBRARY))
+        attribute(LibraryElements.LIBRARY_ELEMENTS_ATTRIBUTE, objects.named(LibraryElements.JAR))
+    }
+}
+dependencies {
+    add(publishedFixturePlugin.name, project(":bml:bml-gradle"))
+    add(publishedFixturePlugin.name, "org.jetbrains.kotlin:kotlin-serialization:${libs.versions.kotlin.get()}")
+    add(publishedFixtureCompiler.name, project(":bml:bml-compiler"))
+    add(publishedFixtureCompiler.name, project(":bml:bml-annotations"))
+}
+tasks.withType<Test>().configureEach {
+    dependsOn(tasks.jar, fixtureRuntime, publishedFixturePlugin, publishedFixtureCompiler,
+        ":bml:bml-design:sourcesJar", ":bml:bml-design:generatePomFileForMavenPublication")
     inputs.dir(layout.projectDirectory.dir("src/test/browser"))
         .withPropertyName("browserChecks").withPathSensitivity(PathSensitivity.RELATIVE)
     inputs.dir(layout.projectDirectory.dir("src/test/types"))
@@ -43,4 +60,29 @@ tasks.test {
     systemProperty("design.fixture.browser", layout.projectDirectory.file("src/test/browser/controls.mjs").asFile.absolutePath)
     systemProperty("design.fixture.typechecker", rootProject.layout.projectDirectory.file("bml/bml-runtime/node_modules/typescript/bin/tsc").asFile.absolutePath)
     systemProperty("design.fixture.tsconfig", layout.projectDirectory.file("tsconfig.json").asFile.absolutePath)
+    inputs.files(publishedFixturePlugin, publishedFixtureCompiler).withPropertyName("publishedFixtureTools")
+        .withNormalizer(ClasspathNormalizer::class.java)
+    inputs.files(rootProject.fileTree("bml/bml-runtime/tools"), rootProject.fileTree("bml/bml-runtime/src"),
+        rootProject.file("bml/bml-runtime/package-lock.json"))
+        .withPropertyName("publishedFixtureClientToolchain").withPathSensitivity(PathSensitivity.RELATIVE)
+    systemProperty("design.fixture.plugin", publishedFixturePlugin.asPath)
+    systemProperty("design.fixture.compiler", publishedFixtureCompiler.asPath)
+    systemProperty("design.fixture.version", project(":bml:bml-design").version.toString())
+    systemProperty("design.fixture.pom", project(":bml:bml-design").layout.buildDirectory.file("publications/maven/pom-default.xml").get().asFile.absolutePath)
+    inputs.file(project(":bml:bml-design").layout.buildDirectory.file("publications/maven/pom-default.xml"))
+        .withPropertyName("publishedDesignPom").withPathSensitivity(PathSensitivity.NONE)
+    systemProperty("design.fixture.project", layout.projectDirectory.asFile.absolutePath)
+    systemProperty("design.fixture.runtime", rootProject.layout.projectDirectory.dir("bml/bml-runtime").asFile.absolutePath)
+    systemProperty("design.fixture.artifacts", (fixtureRuntime.get().resolvedConfiguration.resolvedArtifacts +
+        publishedFixtureCompiler.resolvedConfiguration.resolvedArtifacts).distinctBy { it.file }.joinToString("\n") {
+        "${it.moduleVersion.id.group}\t${it.moduleVersion.id.name}\t${it.moduleVersion.id.version}\t${it.classifier.orEmpty()}\t${it.file.absolutePath}"
+    })
+}
+
+tasks.register<Test>("publishedConsumerTest") {
+    group = "verification"
+    description = "Compile and exercise the real Design Library from an isolated Maven repository."
+    testClassesDirs = sourceSets.test.get().output.classesDirs
+    classpath = sourceSets.test.get().runtimeClasspath
+    filter { includeTestsMatching("bosca.design.example.PublishedDesignLibraryTest") }
 }

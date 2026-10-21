@@ -158,3 +158,20 @@ checks ensure basic and source-only pages exclude JSON editor assets. Git consum
 editor and retains its own configuration validation and actions.
 Checks also verify labelled tree groups after mode changes, named property-navigation controls,
 native table headers, direct listbox keyboard selection and visible names on native file links.
+
+The normal test suite also compiles this application in a separate Gradle build using the actual
+Design Library JAR and generated Maven POM in a temporary file repository. The repository contains
+no producer sources or source archives. Framework support JARs, the Gradle/compiler plugins and the
+browser toolchain are staged separately; this check does not publish to Maven Local or a remote registry.
+It verifies cached compilation/bundling, identical asset hashes after a clean build, a JAR-only runtime,
+strict generated-client/public-type checking and the same production/development browser suite.
+It does not establish native executable or IDE source-navigation acceptance.
+
+Run that check alone from the workspace root:
+
+```sh
+./gradlew :bml:examples:design-library:publishedConsumerTest
+```
+
+Build, type-check and server/browser diagnostics and captures are retained under
+`build/reports/published-consumer/`. Temporary files are removed without following symbolic links.
