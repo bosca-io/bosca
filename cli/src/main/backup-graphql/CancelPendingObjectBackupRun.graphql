@@ -1,0 +1,7 @@
+mutation CancelPendingObjectBackupRun($key: String!, $expectedVersion: Long!, $reason: String!) {
+    backups {
+        objectRuns {
+            cancelPending(key: $key, expectedVersion: $expectedVersion, reason: $reason) { ...ObjectBackupRunFragment }
+        }
+    }
+}

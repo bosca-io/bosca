@@ -9,7 +9,7 @@ import com.github.ajalt.clikt.parameters.options.option
 import kotlinx.coroutines.runBlocking
 import kotlin.coroutines.cancellation.CancellationException
 
-/** Shares profile authentication and failure handling for backup administration queries. */
+/** Shares profile authentication and failure handling for backup administration commands. */
 abstract class BackupRemoteCommand(name: String) : BoscaCliCommand(name = name) {
     private val url by option("--url", "-u", envvar = "BOSCA_ENDPOINT", help = "Bosca GraphQL endpoint URL")
     private val token by option("--token", "-t", envvar = "BOSCA_TOKEN", help = "Bearer token for authentication")
@@ -32,10 +32,10 @@ abstract class BackupRemoteCommand(name: String) : BoscaCliCommand(name = name) 
         } catch (failure: CliktError) {
             throw failure
         } catch (failure: Exception) {
-            throw CliktError(failure.message ?: "Backup query failed")
+            throw CliktError(failure.message ?: "Backup operation failed")
         }
     }
 
-    /** Executes one read under the selected profile and the server's administration boundary. */
+    /** Executes an operation under the selected profile and the server's administration boundary. */
     protected abstract suspend fun execute(api: BackupApi)
 }

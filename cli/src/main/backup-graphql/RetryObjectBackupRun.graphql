@@ -1,0 +1,7 @@
+mutation RetryObjectBackupRun($key: String!, $expectedVersion: Long!) {
+    backups {
+        objectRuns {
+            retry(key: $key, expectedVersion: $expectedVersion) { ...ObjectBackupRunFragment }
+        }
+    }
+}

@@ -150,7 +150,26 @@ perform a fresh checksum audit.
 
 JSON output is a run object for `get` and an array for `list`/`items`. An existing run with an empty
 checkpoint page returns `[]` and exit `0`; a missing run returns `null` and exit `1`. Recorded failed
-or partial states remain readable with exit `0`. These commands do not retry or dispatch work.
+or partial states remain readable with exit `0`. These inspection commands do not retry or dispatch work.
+
+Control an existing object run with the exact version returned by `get`:
+
+```bash
+bosca backup objects retry --key run-1 --expected-version 7
+bosca backup objects dispatch --key run-1 --expected-version 8 --json
+bosca backup objects cancel-pending --key run-1 --expected-version 8 --reason "operator cancelled"
+```
+
+Use the returned versions for subsequent commands; the numbers above are examples. `retry` returns
+a failed, partial or cancelled run to pending and preserves its existing checkpoints. Dispatch that
+new version separately. `dispatch` requires a configured pending run and returns its publication
+request; execution is asynchronous. `cancel-pending` records a reason on an observed pending run
+and does not stop running writers. It is an alternative to dispatching that version.
+
+Each action requires `--expected-version`, supports `--json`, and uses the existing backup
+administration authorization. Stale versions, incompatible states and API failures exit `1`.
+The CLI does not fetch a newer version or issue a followup action automatically. A failed API
+response can follow a committed change; inspect the run before choosing the next action.
 
 Inspect a downloaded PostgreSQL/content report without connecting to a Bosca instance:
 

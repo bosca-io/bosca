@@ -1,6 +1,10 @@
 package bosca.cli.api
 
 import bosca.graphql.client.execute
+import bosca.graphql.gen.backup.CancelPendingObjectBackupRun
+import bosca.graphql.gen.backup.CancelPendingObjectBackupRunData
+import bosca.graphql.gen.backup.DispatchObjectBackupRun
+import bosca.graphql.gen.backup.DispatchObjectBackupRunData
 import bosca.graphql.gen.backup.GetObjectBackupRun
 import bosca.graphql.gen.backup.GetObjectBackupRunData
 import bosca.graphql.gen.backup.GetObjectBackupRunItems
@@ -12,8 +16,10 @@ import bosca.graphql.gen.backup.GetPostgresBackupRunData
 import bosca.graphql.gen.backup.ListPostgresBackupRuns
 import bosca.graphql.gen.backup.ListPostgresBackupRunsData
 import bosca.graphql.gen.backup.ObjectBackupOperation
+import bosca.graphql.gen.backup.RetryObjectBackupRun
+import bosca.graphql.gen.backup.RetryObjectBackupRunData
 
-/** Typed administration queries through the canonical authenticated CLI transport. */
+/** Typed backup administration operations through the canonical authenticated CLI transport. */
 class BackupApi(network: NetworkClient) : Api(network) {
     /** Reads one exact request; null means no request was returned by the administration API. */
     suspend fun postgresRun(key: String): GetPostgresBackupRunData.Backups.PostgresRun? =
@@ -56,4 +62,29 @@ class BackupApi(network: NetworkClient) : Api(network) {
         network.boscaGraphql.execute(
             GetObjectBackupRunItems, GetObjectBackupRunItems.Variables(key, offset, limit),
         ).backups.objectRuns.run
+
+    /** Returns the observed retryable run to pending without dispatching the returned version. */
+    suspend fun retryObjectRun(key: String, expectedVersion: Long): RetryObjectBackupRunData.Backups.ObjectRuns.Retry =
+        network.boscaGraphql.execute(
+            RetryObjectBackupRun, RetryObjectBackupRun.Variables(key, expectedVersion),
+        ).backups.objectRuns.retry
+
+    /** Requests asynchronous publication of the exact configured pending version. */
+    suspend fun dispatchObjectRun(
+        key: String,
+        expectedVersion: Long,
+    ): DispatchObjectBackupRunData.Backups.ObjectRuns.Dispatch =
+        network.boscaGraphql.execute(
+            DispatchObjectBackupRun, DispatchObjectBackupRun.Variables(key, expectedVersion),
+        ).backups.objectRuns.dispatch
+
+    /** Cancels only the observed pending version, preserving the server's reason and outcome. */
+    suspend fun cancelPendingObjectRun(
+        key: String,
+        expectedVersion: Long,
+        reason: String,
+    ): CancelPendingObjectBackupRunData.Backups.ObjectRuns.CancelPending =
+        network.boscaGraphql.execute(
+            CancelPendingObjectBackupRun, CancelPendingObjectBackupRun.Variables(key, expectedVersion, reason),
+        ).backups.objectRuns.cancelPending
 }

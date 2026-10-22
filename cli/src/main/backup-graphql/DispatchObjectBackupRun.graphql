@@ -1,0 +1,7 @@
+mutation DispatchObjectBackupRun($key: String!, $expectedVersion: Long!) {
+    backups {
+        objectRuns {
+            dispatch(key: $key, expectedVersion: $expectedVersion) { key runKey version created }
+        }
+    }
+}
