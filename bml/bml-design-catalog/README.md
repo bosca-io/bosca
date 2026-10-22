@@ -286,6 +286,13 @@ must preserve source text, dimensions and outside/sibling syntax colors:
 ./gradlew :bml:bml-design-catalog:test --tests 'bosca.design.catalog.CatalogApplicationTest.source search highlights retain readable text across palettes'
 ```
 
+The panel regression checks 30px controls, UI typography, target gaps and wrapping, native search
+actions and Tab order, live control-height/font overrides, and compact/bare growth and restoration:
+
+```sh
+./gradlew :bml:bml-design-catalog:test --tests 'bosca.design.catalog.CatalogApplicationTest.source search controls fit normal and compact viewers'
+```
+
 Chrome defaults to the installed Google Chrome app on macOS or `google-chrome` on Linux. Set
 `BML_DESIGN_CHROME_BINARY` for another executable. Desktop/phone screenshots are written under
 `build/reports/browser/`.

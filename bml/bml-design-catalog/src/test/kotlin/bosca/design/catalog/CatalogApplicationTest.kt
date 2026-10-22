@@ -131,6 +131,13 @@ class CatalogApplicationTest {
     }
 
     @Test
+    fun `source search controls fit normal and compact viewers`() {
+        for (development in listOf(false, true)) withServer(development) { base, _ ->
+            runBrowser(base, development, "--source-panel", 60)
+        }
+    }
+
+    @Test
     fun `source search highlights retain readable text across palettes`() {
         for (development in listOf(false, true)) withServer(development) { base, _ ->
             runBrowser(base, development, "--source-search", 60)

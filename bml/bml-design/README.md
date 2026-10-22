@@ -387,6 +387,9 @@ source surface with a smaller phone viewport bound. When both are set, compact s
 the toolbar stays hidden. Normal viewers can use a caller class to size their surrounding surface.
 
 CodeMirror remains read-only, with selection, search, line numbers and its normal folding controls.
+Search fields, buttons and option labels use the shared small-control height and UI font, with
+spaced, wrapping rows on narrow screens. Compact viewers grow to at least 240px while search is
+open so controls and code fit together; closing search restores their configured snippet size.
 Escape then Tab restores native focus navigation, including for bare viewers.
 Use a stable `preserveKey` to retain CodeMirror state, scroll, focus and local wrapping through
 unrelated island patches. Its children stay client-owned; change/remove the key when changing

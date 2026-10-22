@@ -94,7 +94,17 @@ export async function checkSource({ call, evaluate, until: poll, base, mode, art
   await until(`${root}?.hasAttribute('data-source-ready')&&${content}.textContent.includes('replacement = 1')`);
   assert.ok(await evaluate(`${root}!==window.oldSource&&!window.oldSource.isConnected`),'A caller content revision resets the preserved viewer');
   await call('Page.removeScriptToEvaluateOnNewDocument',{identifier:probe.identifier});
-  const searchReports=[],cookies=(await call('Network.getAllCookies')).cookies;
+  const searchReports=[],panels=[],cookies=(await call('Network.getAllCookies')).cookies;
+  const panelGeometry=viewer=>evaluate(`(()=>{const root=${viewer},panel=root.querySelector('.cm-search');return {
+    height:root.offsetHeight,panel:panel.getBoundingClientRect().toJSON(),viewer:root.getBoundingClientRect().toJSON(),
+    viewport:root.querySelector('.cm-scroller').clientHeight,font:getComputedStyle(panel).fontFamily,
+    targets:[...panel.children].filter(el=>el.matches('input,button,label')).map(el=>({
+      box:el.getBoundingClientRect().toJSON(),fontSize:parseFloat(getComputedStyle(el).fontSize)}))};})()`);
+  const checkPanel=(state,height=30)=>{
+    assert.equal(state.targets.length,8);assert.ok(state.viewport>=44&&state.panel.bottom<=state.viewer.bottom+0.5);
+    for(const target of state.targets)assert.ok(target.box.height>=height-0.5&&target.fontSize>=12&&
+      target.box.left>=state.panel.left+7.5&&target.box.right<=state.panel.right-7.5,JSON.stringify(target));
+  };
   try {
     for(const width of [1440,390])for(const palette of ['light','purple']) {
       await call('Network.clearBrowserCookies');
@@ -112,6 +122,7 @@ export async function checkSource({ call, evaluate, until: poll, base, mode, art
       for(const type of ['keyDown','keyUp'])await call('Input.dispatchKeyEvent',{type,key:'f',windowsVirtualKeyCode:70,
         modifiers:await evaluate('/Mac|iPhone|iPad/.test(navigator.platform)?4:2')});
       await until(`${viewer}.querySelector('input[name=search]')===document.activeElement`);
+      const panel=await panelGeometry(viewer);checkPanel(panel);
       for(const character of 'source')for(const type of ['keyDown','keyUp'])await call('Input.dispatchKeyEvent',{
         type,key:character,windowsVirtualKeyCode:character.toUpperCase().charCodeAt(0),...(type==='keyDown'?{text:character}:{})});
       await until(`${viewer}.querySelectorAll('.cm-searchMatch').length>1`);await key('Enter');
@@ -119,16 +130,32 @@ export async function checkSource({ call, evaluate, until: poll, base, mode, art
       const colors=()=>evaluate(`Array.from(${viewer}.querySelectorAll('.cm-searchMatch,.cm-searchMatch span')).map(el=>getComputedStyle(el).color)`);
       const normal=await colors();
       assert.ok(normal.length>2&&normal.every(color=>color===before.foreground),'Highlighted syntax uses the consuming viewer foreground');
-      await evaluate(`window.consumerSearchStyle=document.createElement('style');window.consumerSearchStyle.textContent='[data-search-colors] {--source-search-fg:#fff;--source-search-match:#281250;--source-selection:#481475;}';document.head.append(window.consumerSearchStyle);${viewer}.setAttribute('data-search-colors','')`);
+      await evaluate(`window.consumerSearchStyle=document.createElement('style');window.consumerSearchStyle.textContent='[data-search-colors] {--source-search-fg:#fff;--source-search-match:#281250;--source-selection:#481475;--control-height-sm:36px;--font-sans:system-ui,sans-serif;}';document.head.append(window.consumerSearchStyle);${viewer}.setAttribute('data-search-colors','')`);
       const overridden=await colors();assert.ok(overridden.every(color=>color==='rgb(255, 255, 255)'));
+      const sized=await panelGeometry(viewer);checkPanel(sized,36);assert.ok(sized.font.includes('system-ui'));
       assert.deepEqual(await snapshot(),before,'Search overrides preserve source, geometry and outside/sibling syntax');
       await evaluate(`${viewer}.removeAttribute('data-search-colors');window.consumerSearchStyle.remove()`);
       await key('Escape');await until(`!${viewer}.querySelector('.cm-search')&&!${viewer}.querySelector('.cm-searchMatch')`);
       assert.deepEqual(await snapshot(),before);
       searchReports.push({width,palette,foreground:before.foreground,normal,overridden});
+      panels.push({width,palette,panel,sized});
+    }
+    for(const width of [1440,390])for(const kind of ['short','medium','long','compact-bare']) {
+      await call('Emulation.setDeviceMetricsOverride',{width,height:1100,deviceScaleFactor:1,mobile:false});
+      const viewer=`document.querySelector('[data-source-${kind}]')`;
+      const before=await evaluate(`({height:${viewer}.offsetHeight,source:${viewer}.querySelector('textarea').value})`);
+      await evaluate(`${viewer}.scrollIntoView({block:'center'});${viewer}.querySelector('.cm-content').focus()`);
+      for(const type of ['keyDown','keyUp'])await call('Input.dispatchKeyEvent',{type,key:'f',windowsVirtualKeyCode:70,
+        modifiers:await evaluate('/Mac|iPhone|iPad/.test(navigator.platform)?4:2')});
+      await until(`${viewer}.querySelector('input[name=search]')===document.activeElement`);
+      const panel=await panelGeometry(viewer);checkPanel(panel);assert.ok(panel.height>=240);
+      await key('Escape');await until(`!${viewer}.querySelector('.cm-search')`);
+      assert.deepEqual(await evaluate(`({height:${viewer}.offsetHeight,source:${viewer}.querySelector('textarea').value})`),before);
+      panels.push({width,kind,before,panel});
     }
   } finally {
     await call('Network.clearBrowserCookies');if(cookies.length)await call('Network.setCookies',{cookies});
     await writeFile(join(artifacts,`source-search-${mode}.json`),JSON.stringify(searchReports,null,2));
+    await writeFile(join(artifacts,`source-panels-${mode}.json`),JSON.stringify(panels,null,2));
   }
 }

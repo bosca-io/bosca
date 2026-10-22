@@ -16,6 +16,7 @@
           <source-view :content="bosca.design.example.SourceSamples.short" path="Hello.kt" compact data-source-short />
           <source-view :content="bosca.design.example.SourceSamples.medium" compact data-source-medium />
           <source-view :content="bosca.design.example.SourceSamples.long" path="Sample.ts" compact data-source-long />
+          <source-view :content="bosca.design.example.SourceSamples.short" path="Hello.kt" compact bare data-source-compact-bare />
           <source-view :content="bosca.design.example.SourceSamples.long" path="Sample.ts" bare :line="2" wrapped data-source-bare />
           <source-view content="" :line="-1" compact data-source-empty />
           <source-view :content="bosca.design.example.SourceSamples.literals" path="Literals.ts" compact data-source-literals />

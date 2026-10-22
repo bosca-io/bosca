@@ -48,6 +48,8 @@ tree while the native segment form value and populated controls remain available
 Source-search checks use real keyboard input in both palettes at desktop/phone widths. Highlighted
 syntax follows the viewer foreground or a live `--source-search-fg` override, while source text,
 dimensions and outside/sibling syntax colors remain unchanged.
+Search-panel checks also cover wrapping controls, live height/font overrides and compact/bare
+viewers that grow while searching and return to their original size after closing.
 
 Fixture HTTP requests have a ten-second deadline through the complete response body. A deadline
 failure identifies the method and URL, whether response headers arrived, and any received status,
