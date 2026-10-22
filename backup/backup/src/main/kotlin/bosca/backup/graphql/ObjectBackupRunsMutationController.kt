@@ -44,6 +44,22 @@ class ObjectBackupRunsMutationController(
         return service.prepareRestore(inventory, destinationId, path)
     }
 
+    /** Fixes a retained restore selection without dispatching or transferring asset bodies. */
+    @Field
+    suspend fun prepareRestoreConfigured(
+        authorization: AuthenticationContext,
+        requestKey: String,
+        destinationId: String,
+        backupKey: String,
+        path: String,
+        stores: List<ObjectBackupStoreMapping>,
+    ): ObjectBackupRun {
+        groupEvaluator.verifyHasSaGroup(authorization)
+        val mapped = stores.associate { it.store to it.storageKey }
+        require(mapped.size == stores.size) { "Duplicate logical object store mapping" }
+        return service.prepareRestoreConfigured(requestKey, destinationId, backupKey, path, mapped)
+    }
+
     @Field
     suspend fun bindStorage(authorization: AuthenticationContext, keys: List<String>): List<ObjectBackupStorage> {
         groupEvaluator.verifyHasSaGroup(authorization)

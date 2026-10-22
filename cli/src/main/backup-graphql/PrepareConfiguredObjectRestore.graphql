@@ -1,0 +1,21 @@
+mutation PrepareConfiguredObjectRestore(
+  $requestKey: String!,
+  $destinationId: String!,
+  $backupKey: String!,
+  $path: String!,
+  $stores: [ObjectBackupStoreMappingInput!]!
+) {
+  backups {
+    objectRuns {
+      prepareRestoreConfigured(
+        requestKey: $requestKey,
+        destinationId: $destinationId,
+        backupKey: $backupKey,
+        path: $path,
+        stores: $stores
+      ) {
+        ...ObjectBackupRunFragment
+      }
+    }
+  }
+}

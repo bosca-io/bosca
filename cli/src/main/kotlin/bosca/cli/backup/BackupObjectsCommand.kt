@@ -9,6 +9,7 @@ class BackupObjectsCommand : BoscaCliCommand(name = "objects") {
     init {
         subcommands(
             BackupObjectsListCommand(), BackupObjectsGetCommand(), BackupObjectsItemsCommand(),
+            BackupObjectsPrepareRestoreCommand(),
             BackupObjectsRetryCommand(), BackupObjectsDispatchCommand(), BackupObjectsCancelPendingCommand(),
         )
     }

@@ -152,7 +152,28 @@ JSON output is a run object for `get` and an array for `list`/`items`. An existi
 checkpoint page returns `[]` and exit `0`; a missing run returns `null` and exit `1`. Recorded failed
 or partial states remain readable with exit `0`. These inspection commands do not retry or dispatch work.
 
-Control an existing object run with the exact version returned by `get`:
+Prepare an object restore against the destination instance using a retained manifest:
+
+```bash
+bosca --profile recovery backup objects prepare-restore \
+  --request recovery-1 --destination recovery --backup retained \
+  --manifest manifests/inventory.json --store content=recovered-content
+```
+
+`--backup` and each target in the repeatable `--store logical-name=target-ID` option select
+the destination's `backup.objectStores` catalog. Map every logical store declared by the manifest.
+Preparation reads the retained manifest metadata, saves its inventory and fixed target mappings,
+and returns the run key, status and version. It does not copy assets or dispatch work. The original
+instance and its credentials are unnecessary. `--json` returns the saved run.
+
+Reuse `--request` to retrieve the same prepared intent and historical outcome, including after a
+lost response. Changing its destination, backup ID, manifest path or mappings fails. A new request
+key prepares a distinct run. Preparation does not re-audit a replayed run; execution verifies the
+retained manifest and bytes. Keep retained data immutable, targets isolated, and progress outside
+any application database being replaced. This operation prepares only the declared object restore;
+PostgreSQL, deployment configuration and keys need their own recovery steps.
+
+Control an existing object run with the exact version returned by preparation or `get`:
 
 ```bash
 bosca backup objects retry --key run-1 --expected-version 7

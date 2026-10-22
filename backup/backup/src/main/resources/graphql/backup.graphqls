@@ -107,6 +107,8 @@ type ObjectBackupRunsMutation {
     prepare(inventory: ObjectBackupManifestInput!, destinationId: String!): ObjectBackupRun!
     "Prepare a declared restore inventory and input manifest path. Input storage is verified during execution."
     prepareRestore(inventory: ObjectBackupManifestInput!, destinationId: String!, path: String!): ObjectBackupRun!
+    "Read a retained manifest and fix restore targets for a stable request. Preparation does not dispatch or copy assets."
+    prepareRestoreConfigured(requestKey: String!, destinationId: String!, backupKey: String!, path: String!, stores: [ObjectBackupStoreMappingInput!]!): ObjectBackupRun!
     "Bind selected application storage IDs to their configured addresses without opening stores."
     bindStorage(keys: [String!]!): [ObjectBackupStorage!]!
     "Fix the backup and logical source or restore target IDs before the first attempt."

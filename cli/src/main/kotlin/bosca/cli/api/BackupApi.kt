@@ -16,6 +16,9 @@ import bosca.graphql.gen.backup.GetPostgresBackupRunData
 import bosca.graphql.gen.backup.ListPostgresBackupRuns
 import bosca.graphql.gen.backup.ListPostgresBackupRunsData
 import bosca.graphql.gen.backup.ObjectBackupOperation
+import bosca.graphql.gen.backup.ObjectBackupStoreMappingInput
+import bosca.graphql.gen.backup.PrepareConfiguredObjectRestore
+import bosca.graphql.gen.backup.PrepareConfiguredObjectRestoreData
 import bosca.graphql.gen.backup.RetryObjectBackupRun
 import bosca.graphql.gen.backup.RetryObjectBackupRunData
 
@@ -68,6 +71,19 @@ class BackupApi(network: NetworkClient) : Api(network) {
         network.boscaGraphql.execute(
             RetryObjectBackupRun, RetryObjectBackupRun.Variables(key, expectedVersion),
         ).backups.objectRuns.retry
+
+    /** Fixes a retained manifest and targets for an explicit request without dispatching a transfer. */
+    suspend fun prepareObjectRestore(
+        requestKey: String,
+        destinationId: String,
+        backupKey: String,
+        path: String,
+        stores: List<ObjectBackupStoreMappingInput>,
+    ): PrepareConfiguredObjectRestoreData.Backups.ObjectRuns.PrepareRestoreConfigured =
+        network.boscaGraphql.execute(
+            PrepareConfiguredObjectRestore,
+            PrepareConfiguredObjectRestore.Variables(requestKey, destinationId, backupKey, path, stores),
+        ).backups.objectRuns.prepareRestoreConfigured
 
     /** Requests asynchronous publication of the exact configured pending version. */
     suspend fun dispatchObjectRun(

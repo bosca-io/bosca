@@ -637,6 +637,33 @@ class ObjectBackupRunDispatchGraphQLIntegrationTest : ObjectBackupGraphQLTest() 
         assertTrue(queuedKeys().isEmpty())
     }
 
+    @Test
+    fun `configured manifest preparation restores through explicit dispatch after source removal`(): Unit = runBlocking {
+        val retained = complete(run)
+        directory.resolve("source").toFile().deleteRecursively()
+        val response = execute("""
+            mutation PrepareFromRetained(${'$'}path: String!) {
+                backups { objectRuns { prepareRestoreConfigured(
+                    requestKey: "offline-recovery", destinationId: "recovered", backupKey: "destination-1",
+                    path: ${'$'}path, stores: [{store: "content", storageKey: "target-1"}]
+                ) { $controlFields } } }
+            }
+        """, variables = buildJsonObject { put("path", retained.path) })
+        val prepared = data(response).getValue("prepareRestoreConfigured").jsonObject
+        assertEquals("PENDING", prepared.string("status"))
+        assertTrue(queuedKeys().isEmpty())
+        assertFalse(directory.resolve("target").toFile().exists())
+
+        data(dispatch(prepared.string("key"), prepared.getValue("version").jsonPrimitive.long))
+        runner.run()
+        val restored = awaitCompleted(prepared.string("key"))
+        assertEquals(retained.inventory, restored.inventory)
+        assertEquals("data", directory.resolve("target/items/a").toFile().readText())
+        assertEquals("more", directory.resolve("target/items/b").toFile().readText())
+        assertEquals(2L, restored.result?.completed)
+        assertEquals(1, restored.attempts)
+    }
+
     private suspend fun configured() {
         data(bind(listOf("source-1", "destination-1")))
         data(configure())
