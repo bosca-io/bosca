@@ -172,6 +172,11 @@ Ordinary Pipeline retry takes a fresh database point and reuses already verified
 The check runs on new capture attempts. Replaying a completed request still returns its
 historical receipt without inspecting retained storage again.
 
+Database-only documents and document-backed guide steps/modules retain their bodies in the
+PostgreSQL artifact. When the matching document exists and no binary upload or length is declared,
+their primary content needs no object payload. Their attachments still use object backup. Missing
+document rows and other content without upload evidence remain explicit gaps.
+
 References without upload evidence remain explicit in the report. This includes pending uploads
 and historical metadata whose schema did not save an upload timestamp. They are not declared
 optional or covered. The uploaded-reference check does not prove complete asset coverage or

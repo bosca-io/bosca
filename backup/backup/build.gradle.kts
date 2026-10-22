@@ -49,6 +49,7 @@ dependencies {
     testImplementation(libs.kotlin.test.junit)
     testImplementation(libs.mockk)
     testImplementation(project(":bosca-core:test-support"))
+    testImplementation(project(":bosca-core:security"))
     testImplementation(project(":pipelines:pipelines"))
 }
 

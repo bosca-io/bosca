@@ -75,6 +75,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import org.testcontainers.containers.GenericContainer
 import org.testcontainers.containers.wait.strategy.Wait
+import org.testcontainers.containers.wait.strategy.WaitAllStrategy
 import kotlin.io.path.createTempDirectory
 import kotlin.io.path.readText
 import kotlin.io.path.writeText
@@ -103,6 +104,7 @@ class PostgresBackupIntegrationTest {
     private var contentStorage: StorageConfiguration? = null
     private var recoveryStorage: StorageConfiguration? = null
     private var scratchDirectory: String? = null
+    private var sharedContentStorage: StorageConfiguration? = null
     private val output get() = root.resolve("capture")
     private val user = "backup_test"
     private val password = "local-test-only"
@@ -117,7 +119,9 @@ class PostgresBackupIntegrationTest {
             withEnv("POSTGRES_DB", "source")
             withExposedPorts(5432)
             withFileSystemBind(root.toString(), root.toString())
-            waitingFor(Wait.forLogMessage(".*database system is ready to accept connections.*\\s", 2))
+            waitingFor(WaitAllStrategy()
+                .withStrategy(Wait.forLogMessage(".*database system is ready to accept connections.*\\s", 2))
+                .withStrategy(Wait.forListeningPort()))
             start()
         }
         // The tool container has the same pg_dump major version as the real database and sees
@@ -2110,6 +2114,31 @@ class PostgresBackupIntegrationTest {
     private fun contentReportPath(report: PostgresBackupContentReport) = "exports/reports/${report.database.id}"
 
     @Test
+    fun `configured content restore supports application content reads after source removal`(): Unit = runBlocking {
+        val content = PostgresContentRecoveryFixture(root, backupTestJson)
+        withContentRecovery(
+            configured = true,
+            beforeCapture = { content.seed(::sql) },
+            beforeRecovery = {
+                sharedContentStorage = StorageConfiguration(
+                    "fs", "https://recovered.invalid", basePath = root.resolve("content-recovered-assets").toString(),
+                )
+            },
+        ) { report, _, _ ->
+            assertEquals(report.database, service.restoreContentConfigured(contentReportPath(report), "retained", "recovery-target"))
+            assertRecoveryScratchClean()
+            val restored = ConnectionPool(ConnectionFactoryImpl(
+                ConnectionConfig(url + "recovered", "recovered_owner", password), "recovered-content-checks",
+            ))
+            try {
+                content.verify(restored)
+            } finally {
+                restored.close()
+            }
+        }
+    }
+
+    @Test
     fun `queued content restore recovers database and original keys after source removal`(): Unit = runBlocking {
         withContentRecovery(configured = true) { report, _, target ->
             PostgresBackupPipelineFixture.create(application, provide<ConnectionPool>(), root, graph = contentRestorePipeline()).use { pipeline ->
@@ -3820,6 +3849,10 @@ class PostgresBackupIntegrationTest {
     private suspend fun install(configured: Boolean = true, restoreConfigured: Boolean = true) {
         if (::application.isInitialized) application.shutdown()
         val config = buildJsonObject {
+            sharedContentStorage?.let { target -> put("content", buildJsonObject {
+                put("storage", Json.encodeToJsonElement(StorageConfiguration.serializer(), target))
+                put("urlSigner", buildJsonObject { put("secretKey", "local-recovery-test-signing-key") })
+            }) }
             put("backup", buildJsonObject {
                 retained?.let { put("objectStores", buildJsonObject {
                     put("retained", Json.encodeToJsonElement(StorageConfiguration.serializer(), it))

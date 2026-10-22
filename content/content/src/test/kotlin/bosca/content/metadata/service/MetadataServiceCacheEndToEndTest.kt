@@ -360,6 +360,80 @@ class MetadataServiceCacheEndToEndTest {
     }
 
     @Test
+    fun `storage references exclude confirmed database-only documents while preserving possible assets`(): Unit = runBlocking {
+        val owners = mutableListOf<UUID>()
+        val expectations = mutableListOf<Triple<UUID, Int, Boolean>>()
+        suspend fun owner(
+            type: String,
+            documentVersion: Int? = 2,
+            length: Long? = null,
+            uploaded: Boolean = false,
+            historical: Boolean = false,
+            asset: Boolean,
+        ): UUID {
+            val id = UUID.random().also { owners.add(it) }
+            val mime = "'$type'"
+            rawUpdate("""
+                insert into metadata (id, version, name, content_type, content_length, uploaded)
+                values (?, 2, 'Document storage evidence', $mime, ${length ?: "null"}, ${if (uploaded) "now()" else "null"})
+            """.trimIndent(), id)
+            documentVersion?.let { version ->
+                rawUpdate("""insert into documents (metadata_id, version, title, content)
+                    values (?, $version, 'Stored in PostgreSQL', '{"document":{"type":"doc"}}')""", id)
+            }
+            if (historical) {
+                rawUpdate("""
+                    insert into metadata_versions (id, version, name, content_type, content_length)
+                    values (?, 1, 'Earlier document', $mime, ${length ?: "null"})
+                """.trimIndent(), id)
+            }
+            expectations.add(Triple(id, if (historical) 1 else 2, asset))
+            return id
+        }
+        try {
+            for (type in listOf("bosca/v-document", "bosca/v-guide-step", "bosca/v-guide-step-module")) {
+                owner(type, asset = false)
+                owner(type, documentVersion = 1, historical = true, asset = false)
+            }
+            owner("bosca/v-document", documentVersion = null, asset = true)
+            owner("bosca/v-document", documentVersion = 1, asset = true)
+            owner("bosca/v-document", uploaded = true, asset = true)
+            owner("bosca/v-document", length = 17, asset = true)
+            owner("image/png", asset = true)
+            owner("bosca/custom", asset = true)
+            owner("bosca/v-document", documentVersion = 1, length = 17, historical = true, asset = true)
+            owner("bosca/v-document", documentVersion = null, historical = true, asset = true)
+            val attached = owner("bosca/v-document", asset = false)
+            rawUpdate("""
+                insert into metadata_supplementary (metadata_id, key, name, content_type, uploaded, content_length)
+                values (?, 'thumbnail', 'Document thumbnail', 'image/png', now(), 9)
+            """.trimIndent(), attached)
+            withRequest {
+                val all = service.getStorageReferences(0, Int.MAX_VALUE)
+                for ((id, version, expected) in expectations) {
+                    assertEquals(expected, all.any {
+                        it.contentId == id && it.version == version &&
+                            it.kind in setOf(ContentStorageReferenceKind.METADATA, ContentStorageReferenceKind.METADATA_VERSION)
+                    }, "Binary reference selection for $id version $version")
+                }
+                assertEquals(ContentStorageReferenceKind.METADATA_SUPPLEMENTARY, all.single { it.contentId == attached }.kind)
+                val paged = buildList {
+                    var offset = 0L
+                    while (true) {
+                        val page = service.getStorageReferences(offset, 2)
+                        if (page.isEmpty()) break
+                        addAll(page)
+                        offset += page.size
+                    }
+                }
+                assertEquals(all, paged)
+            }
+        } finally {
+            withRequest { owners.forEach { repository.deleteById(it) } }
+        }
+    }
+
+    @Test
     fun `storage references keep the caller snapshot across pages while source rows change`(): Unit = runBlocking {
         val owner = withRequest {
             repository.add(

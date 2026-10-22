@@ -18,7 +18,12 @@ interface MetadataRepository {
             select 'metadata' as kind, id as content_id, version,
                    null::uuid as supplementary_id, null::varchar as supplementary_key,
                    content_length, uploaded, deleted
-            from metadata
+            from metadata m
+            where not (
+                m.uploaded is null and m.content_length is null
+                and m.content_type in ('bosca/v-document', 'bosca/v-guide-step', 'bosca/v-guide-step-module')
+                and exists (select 1 from documents d where d.metadata_id = m.id and d.version = m.version)
+            )
             union all
             select 'metadata_supplementary', m.id, m.version, s.id, s.key,
                    s.content_length, s.uploaded, m.deleted
@@ -27,6 +32,11 @@ interface MetadataRepository {
             select 'metadata_version', v.id, v.version, null::uuid, null::varchar,
                    v.content_length, null::timestamptz, m.deleted
             from metadata_versions v join metadata m on m.id = v.id
+            where not (
+                v.content_length is null
+                and v.content_type in ('bosca/v-document', 'bosca/v-guide-step', 'bosca/v-guide-step-module')
+                and exists (select 1 from documents d where d.metadata_id = v.id and d.version = v.version)
+            )
             union all
             select 'metadata_version_supplementary', s.metadata_id, s.version, null::uuid, s.key,
                    s.content_length, s.uploaded, m.deleted
