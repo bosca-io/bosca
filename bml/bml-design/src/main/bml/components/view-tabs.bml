@@ -16,6 +16,10 @@
     </for>
   </div>
   <style scoped>
+    .view-tabs:empty,
+    .view-tabs[hidden] {
+      display: none;
+    }
     .view-tabs {
       box-sizing: border-box;
       max-width: 100%;

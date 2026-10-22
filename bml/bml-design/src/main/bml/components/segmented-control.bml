@@ -32,6 +32,10 @@
     </for>
   </div>
   <style scoped>
+    .segmented-control:not(:has([role="radio"])),
+    .segmented-control[hidden] {
+      display: none;
+    }
     .segmented-control {
       box-sizing: border-box;
       max-width: 100%;

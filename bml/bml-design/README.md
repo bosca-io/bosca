@@ -218,7 +218,9 @@ need client scripts. Application controllers own debounce, search requests, URL 
 
 Segmented controls and local tabs use roving Tab entry, Left/Right wrapping and Home/End. If the
 selected value is absent, the first option remains keyboard reachable without inventing a selection.
-Empty groups contain no focus target. Wide groups scroll within their available width; keyboard
+Empty tab and segmented lists are hidden, including from the accessibility tree, with no focus
+target or control frame. An empty segmented list still supplies its native `name`/`value` form field.
+This also works without scripts. Wide groups scroll within their available width; keyboard
 selection reveals the focused option. Segmented rows grow to accommodate a visible horizontal
 scrollbar without clipping their buttons. Search boundaries use `--control-border`, falling back to
 the local `--line-2`.
@@ -342,6 +344,11 @@ currently focused control and does not take focus back from another element. Non
 sets the ARIA level; indentation is capped at twelve levels. `wrap` makes long labels wrap.
 Without scripts, rendered file links retain their native Tab stops. The helper installs roving focus
 only when scripts run.
+
+An empty tree body is hidden through component CSS, including without scripts. Its wrapper and any
+heading remain; put the application's `empty-state` explanation beside the tree. The tree body
+becomes visible when rendered item children return. Changing a preserved item list still requires
+changing or removing its preservation key.
 
 `time` parses offset timestamps. Its default label converts to UTC and displays `MMM d, HH:mm UTC`.
 A custom Java date/time pattern takes priority and retains the supplied offset. Relative labels use

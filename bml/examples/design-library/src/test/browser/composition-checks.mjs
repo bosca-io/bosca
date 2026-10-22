@@ -63,7 +63,13 @@ export async function checkComposition({ call, evaluate, until, base, mode, arti
   await evaluate(`window.savedLocalTree=${local};${row('long.txt')}.querySelector('a').focus();${local}.scrollTop=${local}.scrollHeight;window.savedTreeScroll=${local}.scrollTop`);
   assert.ok(await evaluate('window.savedTreeScroll>0'));await click('[data-composition-update=light]');
   await until(`document.querySelector('[data-composition-update=light]').textContent.includes('Update 1')`);
-  assert.ok(await evaluate(`${local}===window.savedLocalTree&&${row('src/lib/helper.ts')}.hidden&&document.activeElement===${row('long.txt')}.querySelector('a')&&${local}.scrollTop===window.savedTreeScroll`),'Local collapse state, scroll and focus survive an unrelated server update');
+  const retained=await evaluate(`({root:${local}===window.savedLocalTree,collapsed:${row('src/lib/helper.ts')}.hidden,
+    focused:document.activeElement===${row('long.txt')}.querySelector('a'),scroll:${local}.scrollTop,expectedScroll:window.savedTreeScroll,
+    documentFocus:document.hasFocus(),active:document.activeElement?.outerHTML.slice(0,400),
+    height:${local}.clientHeight,scrollHeight:${local}.scrollHeight,items:${local}.querySelectorAll('[role=treeitem]').length})`);
+  await writeFile(join(artifacts,`tree-retention-${mode}.json`),JSON.stringify(retained,null,2));
+  assert.ok(retained.root&&retained.collapsed&&retained.focused&&retained.scroll===retained.expectedScroll,
+    `Local collapse state, scroll and focus survive an unrelated server update: ${JSON.stringify(retained)}`);
   assert.ok(await evaluate(`!document.querySelector('[data-local-tree=purple] [data-path="src/lib/helper.ts"]').hidden`),'Separate tree instances retain independent state');
   await evaluate(`window.remoteDirectory=document.querySelector('[data-remote-directory=light]');window.remoteDirectory.focus()`);
   await key('ArrowRight');

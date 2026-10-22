@@ -15,6 +15,7 @@ import { checkSelects } from './select-checks.mjs';
 import { checkComposition } from './composition-checks.mjs';
 import { checkSource } from './source-checks.mjs';
 import { checkJson } from './json-checks.mjs';
+import { checkEmptyWidgets } from './empty-checks.mjs';
 import { checkThemes } from './theme-checks.mjs';
 
 const base = process.argv[2];
@@ -293,6 +294,7 @@ try {
   await checkSource({ call, evaluate, until, base, mode, artifacts });
   await checkJson({ call, evaluate, until, base, mode, artifacts });
   await checkThemes({ call, evaluate, until, base });
+  await checkEmptyWidgets({ call, evaluate, until, base, mode, artifacts });
   await call('Emulation.setScriptExecutionDisabled', { value: true });
   await call('Page.navigate', { url: base + '/' });
   await until('document.readyState === "complete" && document.querySelector("[data-input=light]")');

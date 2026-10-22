@@ -131,6 +131,13 @@ class CatalogApplicationTest {
     }
 
     @Test
+    fun `empty lists do not expose inaccessible widgets`() {
+        for (development in listOf(false, true)) withServer(development) { base, _ ->
+            runBrowser(base, development, "--empty-widgets", 60)
+        }
+    }
+
+    @Test
     fun `virtual JSON tables retain pending text and logical row positions`() {
         for (development in listOf(false, true)) withServer(development) { base, _ ->
             runBrowser(base, development, "--json-tables", 60)

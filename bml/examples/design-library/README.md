@@ -41,6 +41,10 @@ geometry/accessibility, alias identity/resource deduplication, and native elemen
 disabled. Additional compiler checks cover local precedence, import collisions, and typed prop
 diagnostics against the actual design-library artifact.
 
+The compiled-consumer browser checks also verify empty tabs, segments and tree bodies at desktop
+and phone widths, with scripts enabled and disabled. Empty widgets stay out of the accessibility
+tree while the native segment form value and populated controls remain available.
+
 Fixture HTTP requests have a ten-second deadline through the complete response body. A deadline
 failure identifies the method and URL, whether response headers arrived, and any received status,
 protocol, declared content length and body byte count. Transport failures retain their original cause

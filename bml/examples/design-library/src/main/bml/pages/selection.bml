@@ -18,6 +18,8 @@
           <segmented-control label="Empty choices" name="empty" :options="emptyList()" value="" data-empty-segments />
           <segmented-control label="Unmatched choice" name="unknown" :options='listOf("One", "Two")' value="unknown" data-unmatched-segments />
           <view-tabs label="Empty views" :tabs="emptyList()" selected="" data-empty-views />
+          <segmented-control label="Hidden choices" name="hidden-choice" :options='listOf("One", "Two")' value="One" hidden data-hidden-segments />
+          <view-tabs label="Hidden views" :tabs='listOf("One", "Two")' selected="One" hidden data-hidden-views />
           <view-tabs label="Unmatched view" :tabs='listOf("One", "Two")' selected="unknown" data-unmatched-views />
           <segmented-control label="Long choices" name="long" :options='listOf("Components with long descriptive labels", "Application-owned arrangements", "Overlays and layered content")' value="Components with long descriptive labels" data-long-segments />
           <view-tabs label="Long view names" :tabs='listOf("A deliberately long preview title", "Application-owned details and examples", "Complete authoring source")' selected="A deliberately long preview title" data-long-views />

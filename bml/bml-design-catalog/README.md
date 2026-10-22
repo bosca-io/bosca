@@ -269,6 +269,15 @@ widths. Caller actions also switch modes on the same retained editor. Run it fro
 ./gradlew :bml:bml-design-catalog:test --tests 'bosca.design.catalog.CatalogApplicationTest.virtual JSON tables retain pending text and logical row positions'
 ```
 
+Empty-widget acceptance checks tab/segment lists and tree bodies with scripts enabled and disabled,
+in both document appearances and desktop/phone widths. It inspects actual accessibility nodes,
+hidden geometry, retained native segment values, populated controls, adjacent empty-state guidance
+and CSS visibility after tree items are removed and restored:
+
+```sh
+./gradlew :bml:bml-design-catalog:test --tests 'bosca.design.catalog.CatalogApplicationTest.empty lists do not expose inaccessible widgets'
+```
+
 Chrome defaults to the installed Google Chrome app on macOS or `google-chrome` on Linux. Set
 `BML_DESIGN_CHROME_BINARY` for another executable. Desktop/phone screenshots are written under
 `build/reports/browser/`.
