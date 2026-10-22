@@ -19,6 +19,7 @@ import bosca.pipelines.model.PipelineEdge
 import bosca.pipelines.model.Pipeline
 
 import bosca.backup.pipeline.PostgresContentRestoreNode
+import bosca.backup.pipeline.PostgresRestoreNode
 
 import bosca.cache.CacheManager
 import bosca.content.model.ContentStorageReference
@@ -649,6 +650,297 @@ class PostgresBackupIntegrationTest {
         output.resolve("manifest.json").writeText(Json.encodeToString(PostgresBackupManifest.serializer(), manifest))
         Files.createSymbolicLink(output.resolve("database.dump"), root.resolve("services.conf"))
         assertFailsWith<IllegalArgumentException> { service.verify(output) }
+    }
+
+    private suspend fun withNativeRecovery(
+        includeReferences: Boolean = false,
+        backupConfiguration: StorageConfiguration? = null,
+        beforeRecovery: () -> Unit = {},
+        block: suspend (PostgresBackupManifest, String) -> Unit,
+    ) {
+        if (includeReferences) {
+            contentCaptureServices()
+            contentAsset("10000000-0000-0000-0000-000000000001")
+        }
+        val manifest = service.capture("original-instance", output, includeReferences)
+        val path = "native/${manifest.id}"
+        retained = backupConfiguration ?: StorageConfiguration("fs", "", basePath = root.resolve("native-retained").toString())
+        provide<ObjectStorageServiceFactory>().withStorage(assertNotNull(retained)) { backup -> service.upload(output, backup, path) }
+        createTarget()
+        tool = root.resolve("missing-pg-dump")
+        beforeRecovery()
+        install(configured = false)
+        pool.close()
+        sql("drop database source with (force)", "postgres")
+        assertTrue(output.toFile().deleteRecursively())
+        root.resolve("operation-source").toFile().deleteRecursively()
+        sql("create database native_recovery_journal", "postgres")
+        val journal = ConnectionPool(ConnectionFactoryImpl(
+            ConnectionConfig(url + "native_recovery_journal", user, password), "native-recovery-journal",
+        ))
+        try {
+            provides<ConnectionPool>(singleton = true, overrideExisting = true) { journal }
+            provides<Json>(singleton = true, overrideExisting = true) { backupTestJson }
+            BackupProviderRegistrar().register()
+            FlywayMigration(journal).migrate(listOf(BackupMigration()))
+            service = provide()
+            block(manifest, path)
+            assertEquals(0, journal.activeConnections)
+            assertFalse(Files.exists(output))
+        } finally {
+            journal.close()
+        }
+    }
+
+    private fun assertNativeRecoveryEmpty() {
+        assertEquals("0", scalar("select count(*)::text from pg_class where relnamespace='public'::regnamespace", "recovered"))
+        assertRecoveryScratchClean()
+    }
+
+    @Test
+    fun `queued native restore recovers a database-only receipt after source removal`(): Unit = runBlocking {
+        withNativeRecovery { manifest, path ->
+            PostgresBackupPipelineFixture.create(application, provide<ConnectionPool>(), root, graph = nativeRestorePipeline()).use { pipeline ->
+                val initial = pipeline.start(PipelineValue.ofJson(JsonPrimitive(path)))
+                val runner = pipeline.runner()
+                runner.run()
+                try {
+                    val completed = pipeline.awaitComplete(initial.id)
+                    assertEquals(PipelineRunStatus.OK, completed.status)
+                    assertEquals(manifest, application.json.decodeFromJsonElement(PostgresBackupManifest.serializer(), assertNotNull(completed.output)))
+                    assertEquals("captured", scalar("select body->>'name' from workops.tasks", "recovered"))
+                    assertEquals("retained", scalar("select value from artifacts.events", "recovered"))
+                    assertFalse(Files.exists(root.resolve("content-recovered-assets")))
+                    assertRecoveryScratchClean()
+                    pipeline.verifyNoServiceAccountFallback()
+                } finally {
+                    runner.shutdown()
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `queued native restore rechecks revoked caller authorization before recovery writes`(): Unit = runBlocking {
+        withNativeRecovery { _, path ->
+            PostgresBackupPipelineFixture.create(application, provide<ConnectionPool>(), root, graph = nativeRestorePipeline()).use { pipeline ->
+                val initial = pipeline.start(PipelineValue.ofJson(JsonPrimitive(path)))
+                pipeline.execute(pipeline.next())
+                pipeline.denied = true
+                pipeline.fail(pipeline.next(), retry = false)
+                assertEquals(PipelineRunStatus.FAILED, pipeline.get(initial.id).status)
+                assertEquals(null, pipeline.get(initial.id).output)
+                assertNativeRecoveryEmpty()
+                pipeline.verifyNoServiceAccountFallback()
+            }
+        }
+    }
+
+    private fun nativeRestorePipeline() = Pipeline(
+        id = UUID.NIL, name = "restore retained native database", acceptedInputType = "JSON",
+        nodes = listOf(
+            InputNode("in", acceptedType = "JSON"), ToStringNode("path"),
+            PostgresRestoreNode("restore", backupKey = "retained"), OutputNode("out"),
+        ),
+        edges = listOf(
+            PipelineEdge("input", source = "in", target = "path"),
+            PipelineEdge("path", source = "path", target = "restore", targetPort = "path"),
+            PipelineEdge("output", source = "restore", target = "out"),
+        ),
+    )
+
+    @Test
+    fun `configured native restore recovers retained artifact and cleans scratch without a source`(): Unit = runBlocking {
+        withNativeRecovery { manifest, path ->
+            val untouched = root.resolve("operator-owned.txt").also { it.writeText("keep") }
+            var opened = 0
+            var closed = 0
+            faultStorage { actual ->
+                opened++
+                object : ObjectStorageService by actual {
+                    override fun close() { closed++; actual.close() }
+                }
+            }
+            service = provide()
+            assertEquals(manifest, service.restoreConfigured(path, "retained"))
+            assertEquals(1, opened)
+            assertEquals(1, closed)
+            assertEquals("captured", scalar("select body->>'name' from workops.tasks", "recovered"))
+            assertEquals("{VIEW,EDIT}", scalar("select permissions::text from content.permissions", "recovered"))
+            assertEquals("keep", untouched.readText())
+            assertRecoveryScratchClean()
+            assertNotNull(withConnectionManager { provide<ObjectBackupStorageService>().get("retained") })
+        }
+    }
+
+    @Test
+    fun `configured native restore verifies a reference inventory without restoring assets`(): Unit = runBlocking {
+        withNativeRecovery(includeReferences = true) { manifest, path ->
+            assertNotNull(manifest.contentInventory)
+            assertEquals(manifest, service.restoreConfigured(path, "retained"))
+            assertEquals("Saved image", scalar("select name from metadata", "recovered"))
+            assertFalse(Files.exists(root.resolve("content-recovered-assets")))
+            assertRecoveryScratchClean()
+        }
+    }
+
+    @Test
+    fun `configured native restore reads signed independent S3 storage without local capture`(): Unit = runBlocking {
+        var selectedPool = pool
+        PostgresBackupS3TestStore { assertEquals(0, selectedPool.activeConnections) }.use { remote ->
+            withNativeRecovery(backupConfiguration = remote.configuration) { manifest, path ->
+                selectedPool = provide<ConnectionPool>()
+                assertEquals(manifest, service.restoreConfigured(path, "retained"))
+                assertEquals("captured", scalar("select body->>'name' from workops.tasks", "recovered"))
+                assertTrue(remote.signatures.isNotEmpty())
+                assertTrue(remote.signatures.all { "Credential=POSTGRES_TRANSFER_KEY/" in it })
+                assertRecoveryScratchClean()
+            }
+        }
+    }
+
+    @Test
+    fun `configured native restore rejects corrupt downloads before any target data`(): Unit = runBlocking {
+        withNativeRecovery { _, path ->
+            root.resolve("native-retained/$path/database.dump").writeText("corrupt")
+            assertFailsWith<Exception> { service.restoreConfigured(path, "retained") }
+            assertNativeRecoveryEmpty()
+        }
+    }
+
+    @Test
+    fun `configured native restore requires a published manifest and preserves retained bytes`(): Unit = runBlocking {
+        withNativeRecovery { _, path ->
+            val dump = root.resolve("native-retained/$path/database.dump")
+            val before = Files.readAllBytes(dump).toList()
+            Files.delete(root.resolve("native-retained/$path/manifest.json"))
+            assertFailsWith<Exception> { service.restoreConfigured(path, "retained") }
+            assertEquals(before, Files.readAllBytes(dump).toList())
+            assertNativeRecoveryEmpty()
+        }
+    }
+
+    @Test
+    fun `configured native restore validates paths identities and caller transactions before storage opens`(): Unit = runBlocking {
+        withNativeRecovery { _, path ->
+            faultStorage { error("Invalid request must not open storage") }
+            service = provide()
+            for (invalid in listOf("", "/absolute", "native/../capture", "native//capture")) {
+                assertFailsWith<IllegalArgumentException> { service.restoreConfigured(invalid, "retained") }
+            }
+            assertFailsWith<IllegalArgumentException> { service.restoreConfigured(path, " ") }
+            assertFailsWith<IllegalStateException> {
+                withConnectionManager { transaction { service.restoreConfigured(path, "retained") } }
+            }
+            assertNativeRecoveryEmpty()
+        }
+    }
+
+    @Test
+    fun `configured native restore missing selected storage fails before opening any store`(): Unit = runBlocking {
+        withNativeRecovery { _, path ->
+            faultStorage { error("Unknown storage must not be opened") }
+            service = provide()
+            assertFailsWith<IllegalArgumentException> { service.restoreConfigured(path, "unknown") }
+            assertNativeRecoveryEmpty()
+        }
+    }
+
+    @Test
+    fun `configured native restore missing catalog fails without a source fallback`(): Unit = runBlocking {
+        withNativeRecovery(beforeRecovery = { retained = null }) { _, path ->
+            assertFailsWith<IllegalStateException> { service.restoreConfigured(path, "retained") }
+            assertNativeRecoveryEmpty()
+        }
+    }
+
+    @Test
+    fun `configured native restore preserves a conflicting bound address before storage access`(): Unit = runBlocking {
+        withNativeRecovery { _, path ->
+            val original = withConnectionManager {
+                provide<ObjectBackupStorageService>().bind("retained", StorageConfiguration("fs", "", basePath = root.resolve("elsewhere").toString()))
+            }
+            faultStorage { error("Conflicting storage must not be opened") }
+            service = provide()
+            assertFailsWith<IllegalArgumentException> { service.restoreConfigured(path, "retained") }
+            assertEquals(original, withConnectionManager { provide<ObjectBackupStorageService>().get("retained") })
+            assertNativeRecoveryEmpty()
+        }
+    }
+
+    @Test
+    fun `configured native restore invalid scratch parent preserves caller files without opening storage`(): Unit = runBlocking {
+        withNativeRecovery(beforeRecovery = { scratchDirectory = root.resolve("missing-parent").toString() }) { _, path ->
+            val untouched = root.resolve("operator-owned.txt").also { it.writeText("keep") }
+            faultStorage { error("Invalid scratch must not open storage") }
+            service = provide()
+            assertFailsWith<IOException> { service.restoreConfigured(path, "retained") }
+            assertEquals("keep", untouched.readText())
+            assertNativeRecoveryEmpty()
+        }
+    }
+
+    @Test
+    fun `configured native restore cancelled download closes storage cleans scratch and can retry`(): Unit = runBlocking {
+        withNativeRecovery { manifest, path ->
+            var cancelled = true
+            var closed = 0
+            faultStorage { actual -> object : ObjectStorageService by actual {
+                override suspend fun getInputStream(path: ObjectPath): InputStream {
+                    if (cancelled && path.toString().endsWith("database.dump")) throw kotlinx.coroutines.CancellationException("download cancelled")
+                    return actual.getInputStream(path)
+                }
+                override fun close() { closed++; actual.close() }
+            } }
+            service = provide()
+            assertFailsWith<kotlinx.coroutines.CancellationException> { service.restoreConfigured(path, "retained") }
+            assertEquals(1, closed)
+            assertNativeRecoveryEmpty()
+            cancelled = false
+            assertEquals(manifest, service.restoreConfigured(path, "retained"))
+            assertEquals(2, closed)
+            assertRecoveryScratchClean()
+        }
+    }
+
+    @Test
+    fun `configured native restore process failure preserves empty target and permits a later attempt`(): Unit = runBlocking {
+        val allowed = root.resolve("allow-native-restore")
+        withNativeRecovery(beforeRecovery = {
+            val real = restoreTool
+            restoreTool = writeTool("if [ ! -f ${quote(allowed)} ]; then echo 'native restore unavailable' >&2; exit 7; fi\nexec ${quote(real)} \"\$@\"")
+        }) { manifest, path ->
+            assertFailsWith<IllegalStateException> { service.restoreConfigured(path, "retained") }
+            assertNativeRecoveryEmpty()
+            allowed.writeText("go")
+            assertEquals(manifest, service.restoreConfigured(path, "retained"))
+            assertEquals("captured", scalar("select body->>'name' from workops.tasks", "recovered"))
+            assertRecoveryScratchClean()
+        }
+    }
+
+    @Test
+    fun `configured native restore close failure after commit stays a failure and populated replay is blocked`(): Unit = runBlocking {
+        withNativeRecovery { _, path ->
+            var fail = true
+            var closed = 0
+            faultStorage { actual -> object : ObjectStorageService by actual {
+                override fun close() {
+                    actual.close()
+                    closed++
+                    if (fail) { fail = false; throw IOException("backup close failed after native commit") }
+                }
+            } }
+            service = provide()
+            assertFailsWith<IOException> { service.restoreConfigured(path, "retained") }
+            assertEquals(1, closed)
+            assertEquals("captured", scalar("select body->>'name' from workops.tasks", "recovered"))
+            assertRecoveryScratchClean()
+            assertFailsWith<IllegalStateException> { service.restoreConfigured(path, "retained") }
+            assertEquals(2, closed)
+            assertEquals("captured", scalar("select body->>'name' from workops.tasks", "recovered"))
+            assertRecoveryScratchClean()
+        }
     }
 
     @Test

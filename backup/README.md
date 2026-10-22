@@ -237,6 +237,29 @@ This action captures database state, optional reference evidence and optional re
 Matching database/object recovery points, protected retention and keys, full-instance restore
 and deployment rebinding remain separate work.
 
+## Restore native PostgreSQL backups through Pipelines
+
+The **Restore PostgreSQL** action (`postgresBackup.restore`) restores a retained native database
+artifact into an empty target. Set **Backup storage ID** to an entry under `backup.objectStores`
+and configure the database under `backup.postgres.restore` as described below.
+
+Feed the database directory from a backup receipt's `path` into the action's `path` input. For
+a JSON Pipeline input, connect Input through **To String** to that port, then connect the restored
+manifest output to Output. The action verifies the downloaded components, runs the existing native
+preflight and transactional restore, closes backup storage and removes owned scratch before emitting
+the manifest. Preview records the selection without running recovery.
+
+Run from a recovery instance with a journal outside the offline target database. Keep retained
+input immutable and exclude other target writers. The source database, capture configuration,
+capture tools and original local files are unnecessary. A declared reference inventory is verified
+with the artifact; object assets have their own restore step. The action below restores a database
+and the assets selected by a content report together.
+
+A native acknowledgement or later close/cleanup failure can follow a committed database. Inspect
+the target before retrying; populated targets remain blocked. The action does not reconcile that
+commit or replay a completed restore request. Required keys, deployment configuration, activation
+and full recovery-point classification remain separate.
+
 ## Restore PostgreSQL and content through Pipelines
 
 The **Restore PostgreSQL and Content** action (`postgresBackup.restoreContent`) reads a retained
@@ -513,6 +536,14 @@ The native integration test uploads through signed S3 SDK multipart calls, drops
 database, removes the original local capture, downloads into new files and restores those files
 through the service's native restore operation. This uses an isolated local S3-compatible endpoint,
 not a live cloud provider.
+
+`PostgresBackupService.restoreConfigured(path, backupStorageKey)` downloads a retained native
+artifact and invokes the existing local restore below. Pass the directory from a receipt's `path`
+and its literal `backup.objectStores` ID. The selected address binds before storage opens. The
+service owns downloads under `backup.postgres.scratchDirectory` or the Java temporary directory,
+closes storage and cleans known temporary files on success, failure and cancellation. Retained
+data and caller-owned files remain untouched. Run with a separate recovery journal and exclusive
+offline target access.
 
 `PostgresBackupService.restore(directory)` verifies the completed local artifact before any
 connection to the destination. Configure its destination separately from capture:

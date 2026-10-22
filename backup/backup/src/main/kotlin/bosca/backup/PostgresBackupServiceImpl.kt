@@ -231,6 +231,36 @@ class PostgresBackupServiceImpl(
         }
         val storage = storageService.get()
         val configurations = storage.configurations(setOf(backupStorageKey, destinationStorageKey))
+        withRestoreScratch { scratch ->
+            val directory = scratch.resolve("database")
+            val reportFile = scratch.resolve("report.json")
+            storage.withStorages(configurations) { stores ->
+                val backup = stores.getValue(backupStorageKey)
+                val report = downloadContentReport(backup, reportPath, reportFile)
+                download(backup, report.databasePath, directory)
+                restoreContent(directory, report, backup, stores.getValue(destinationStorageKey), destinationStorageKey)
+            }
+        }
+    }
+
+    override suspend fun restoreConfigured(path: String, backupStorageKey: String): PostgresBackupManifest = withContext(StorageDispatcher) {
+        check(connectionOrNull()?.inTransaction != true) { "Configured PostgreSQL restore must run outside an active caller transaction" }
+        require(path.isNotBlank() && path.split('/').all { it.isNotEmpty() && it != "." && it != ".." }) {
+            "Native backup path must be a canonical relative prefix"
+        }
+        require(backupStorageKey.isNotBlank()) { "Backup storage identity is required" }
+        val storage = storageService.get()
+        val configurations = storage.configurations(setOf(backupStorageKey))
+        withRestoreScratch { scratch ->
+            storage.withStorages(configurations) { stores ->
+                val directory = scratch.resolve("database")
+                download(stores.getValue(backupStorageKey), path, directory)
+                restore(directory)
+            }
+        }
+    }
+
+    private suspend fun <T> withRestoreScratch(block: suspend (Path) -> T): T {
         val parent = application.environment.config.propertyOrNull("backup.postgres.scratchDirectory")?.getString()
         require(parent == null || parent.isNotBlank()) { "PostgreSQL scratch directory must not be blank" }
         currentCoroutineContext().ensureActive()
@@ -240,12 +270,7 @@ class PostgresBackupServiceImpl(
         val reportFile = scratch.resolve("report.json")
         var failure: Throwable? = null
         try {
-            storage.withStorages(configurations) { stores ->
-                val backup = stores.getValue(backupStorageKey)
-                val report = downloadContentReport(backup, reportPath, reportFile)
-                download(backup, report.databasePath, directory)
-                restoreContent(directory, report, backup, stores.getValue(destinationStorageKey), destinationStorageKey)
-            }
+            return block(scratch)
         } catch (cause: Throwable) {
             failure = cause
             throw cause
