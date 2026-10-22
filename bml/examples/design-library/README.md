@@ -42,9 +42,12 @@ disabled. Additional compiler checks cover local precedence, import collisions, 
 diagnostics against the actual design-library artifact.
 
 Fixture HTTP requests have a ten-second deadline through the complete response body. A deadline
-failure identifies the method and URL; an expired or interrupted wait cancels its pending exchange.
-Transport failures retain their original cause. Controlled local-server checks cover missing
-headers, unfinished/truncated bodies, complete responses and caller interruption:
+failure identifies the method and URL, whether response headers arrived, and any received status,
+protocol, declared content length and body byte count. Transport failures retain their original cause
+with this progress attached. Server-fixture failures also include the child PID and alive/exit state.
+An expired or interrupted wait cancels its pending exchange. Controlled local-server checks cover
+missing headers, unfinished fixed-length/chunked bodies, truncated bodies, complete responses and
+caller interruption:
 
 ```sh
 ./gradlew :bml:examples:design-library:test --tests bosca.design.example.DesignFixtureHttpTest

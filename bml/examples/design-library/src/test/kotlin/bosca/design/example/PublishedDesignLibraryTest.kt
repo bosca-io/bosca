@@ -164,7 +164,9 @@ class PublishedDesignLibraryTest {
             assertEquals(200, response.statusCode(), response.body())
             check(base)
         } catch (failure: Throwable) {
-            failure.addSuppressed(IllegalStateException("Published design development=$development: ${log.readText()}"))
+            val state = if (process.isAlive) "alive" else "exit=${process.exitValue()}"
+            failure.addSuppressed(IllegalStateException("Published design development=$development at http://localhost:$port " +
+                "(pid=${process.pid()} $state): ${log.readText()}"))
             throw failure
         } finally {
             process.destroy()

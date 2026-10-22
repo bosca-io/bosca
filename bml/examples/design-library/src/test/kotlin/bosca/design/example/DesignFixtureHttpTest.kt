@@ -46,15 +46,23 @@ class DesignFixtureHttpTest {
     }
 
     @Test
+    fun `unfinished chunked responses report bytes without a content length`() {
+        assertDeadline(sendHeaders = true, chunked = true)
+    }
+
+    @Test
     fun `truncated bodies retain their transport failure`() {
         withServer({ exchange, _ ->
             exchange.sendResponseHeaders(200, 100)
             exchange.responseBody.write('a'.code)
             exchange.responseBody.flush()
         }) { uri, _, _ ->
-            assertFailsWith<IOException> {
+            val failure = assertFailsWith<IOException> {
                 requestDesignFixture(HttpClient.newHttpClient(), request(uri), Duration.ofSeconds(2))
             }
+            val progress = failure.suppressed.single().message.orEmpty()
+            assertTrue(progress.contains("GET $uri"), progress)
+            assertTrue(progress.contains("status=200 protocol=HTTP_1_1 contentLength=100 bodyBytes=1"), progress)
         }
     }
 
@@ -89,11 +97,11 @@ class DesignFixtureHttpTest {
 
     private fun request(uri: URI): HttpRequest = HttpRequest.newBuilder(uri).timeout(Duration.ofSeconds(10)).GET().build()
 
-    private fun assertDeadline(sendHeaders: Boolean) {
+    private fun assertDeadline(sendHeaders: Boolean, chunked: Boolean = false) {
         withServer({ exchange, release ->
             if (sendHeaders) {
-                exchange.sendResponseHeaders(200, 2)
-                exchange.responseBody.write('a'.code)
+                exchange.sendResponseHeaders(200, if (chunked) 0 else 2)
+                exchange.responseBody.write(if (chunked) "✓".toByteArray() else byteArrayOf('a'.code.toByte()))
                 exchange.responseBody.flush()
             }
             release.await(3, TimeUnit.SECONDS)
@@ -104,6 +112,12 @@ class DesignFixtureHttpTest {
             assertTrue(entered.await(1, TimeUnit.SECONDS), "The request reached the controlled server")
             assertTrue(failure.message.orEmpty().contains("GET $uri"), failure.message)
             assertTrue(failure.message.orEmpty().contains("complete HTTP response"), failure.message)
+            val expectedProgress = when {
+                !sendHeaders -> "response headers not received"
+                chunked -> "status=200 protocol=HTTP_1_1 contentLength=unspecified bodyBytes=3"
+                else -> "status=200 protocol=HTTP_1_1 contentLength=2 bodyBytes=1"
+            }
+            assertTrue(failure.message.orEmpty().contains(expectedProgress), failure.message)
             assertIs<TimeoutException>(failure.cause)
         }
     }

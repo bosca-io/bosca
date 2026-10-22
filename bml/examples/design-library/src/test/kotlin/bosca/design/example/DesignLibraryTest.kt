@@ -378,7 +378,9 @@ class DesignLibraryTest {
             val client = HttpClient.newBuilder().cookieHandler(CookieManager(null, CookiePolicy.ACCEPT_ALL)).build()
             test(base, client)
         } catch (failure: Throwable) {
-            failure.addSuppressed(IllegalStateException("Design fixture development=$development at $base: ${log.readText()}"))
+            val state = if (process.isAlive) "alive" else "exit=${process.exitValue()}"
+            failure.addSuppressed(IllegalStateException("Design fixture development=$development at $base " +
+                "(pid=${process.pid()} $state): ${log.readText()}"))
             throw failure
         } finally {
             process.destroy()
