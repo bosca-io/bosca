@@ -1,0 +1,9 @@
+query ListObjectBackupRuns($operation: ObjectBackupOperation!, $sourceId: String!, $destinationId: String!, $scope: String!, $offset: Int!, $limit: Int!) {
+    backups {
+        objectRuns {
+            runs: list(operation: $operation, sourceId: $sourceId, destinationId: $destinationId, scope: $scope, offset: $offset, limit: $limit) {
+                ...ObjectBackupRunFragment
+            }
+        }
+    }
+}

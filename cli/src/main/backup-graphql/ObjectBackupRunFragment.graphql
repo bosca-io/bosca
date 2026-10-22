@@ -1,0 +1,9 @@
+fragment ObjectBackupRunFragment on ObjectBackupRun {
+    key sourceId destinationId scope operation path status attempts error version created modified
+    inventory { id sourceId scope created version format }
+    result { ...ObjectBackupRunSummaryFragment }
+}
+
+fragment ObjectBackupRunSummaryFragment on ObjectBackupRunSummary {
+    total pending running completed failed totalBytes verifiedBytes
+}

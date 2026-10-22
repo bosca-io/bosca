@@ -133,6 +133,25 @@ A query can return a `FAILED` backup with exit status `0`: the status describes 
 Query errors and missing requests exit `1`; an unknown `get --json` result is `null`.
 Request completion does not establish full recovery coverage.
 
+Read object backup and restore progress with the same profile and administration access:
+
+```bash
+bosca backup objects list --operation BACKUP --source primary --destination retained --scope content
+bosca backup objects list --operation RESTORE --source primary --destination recovery --scope content --json
+bosca backup objects get --key run-1
+bosca backup objects items --key run-1 --offset 0 --limit 20 --json
+```
+
+`list` reads one exact operation/source/destination/scope. `get` shows the frozen last outcome
+separately from current shared checkpoint totals. `items` reads one checkpoint page in the run's
+declared order, with status, byte counts, errors and original object keys. Both paginated commands
+default to 20 entries and accept limits from 1 to 100. These queries do not load asset bytes or
+perform a fresh checksum audit.
+
+JSON output is a run object for `get` and an array for `list`/`items`. An existing run with an empty
+checkpoint page returns `[]` and exit `0`; a missing run returns `null` and exit `1`. Recorded failed
+or partial states remain readable with exit `0`. These commands do not retry or dispatch work.
+
 Inspect a downloaded PostgreSQL/content report without connecting to a Bosca instance:
 
 ```bash

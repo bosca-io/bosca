@@ -1,0 +1,11 @@
+query GetObjectBackupRun($key: String!) {
+    backups {
+        objectRuns {
+            run(key: $key) {
+                ...ObjectBackupRunFragment
+                summary { ...ObjectBackupRunSummaryFragment }
+                storage { key backupKey created stores { store storageKey } }
+            }
+        }
+    }
+}

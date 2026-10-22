@@ -1,0 +1,13 @@
+query GetObjectBackupRunItems($key: String!, $offset: Int!, $limit: Int!) {
+    backups {
+        objectRuns {
+            run(key: $key) {
+                key
+                items(offset: $offset, limit: $limit) {
+                    key sourceId destinationId scope operation status attempts verifiedBytes verified error version created modified
+                    payload { store key revision length sha256 payloadPath }
+                }
+            }
+        }
+    }
+}
