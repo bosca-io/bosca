@@ -1,0 +1,7 @@
+mutation RecoverPostgresBackupRun($key: String!, $expectedToken: String!) {
+    backups {
+        recoverPostgresRun(key: $key, expectedToken: $expectedToken) {
+            ...PostgresBackupRunFragment
+        }
+    }
+}

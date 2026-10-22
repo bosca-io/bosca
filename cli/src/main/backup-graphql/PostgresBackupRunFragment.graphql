@@ -7,6 +7,7 @@ fragment PostgresBackupRunFragment on PostgresBackupRun {
     contentSource { store storageKey scope }
     status
     attempts
+    writerToken
     error
     version
     created

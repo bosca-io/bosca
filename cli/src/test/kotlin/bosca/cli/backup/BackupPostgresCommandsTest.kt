@@ -43,7 +43,7 @@ class BackupPostgresCommandsTest {
           "key":"nightly-1", "sourceId":"old-instance", "storageKey":"retained", "prefix":"snapshots",
           "includeContentReferences":true,
           "contentSource":{"store":"content","storageKey":"spaces-source","scope":"content"},
-          "status":"COMPLETED", "attempts":2, "error":null, "version":9007199254740993,
+          "status":"COMPLETED", "attempts":2, "writerToken":null, "error":null, "version":9007199254740993,
           "created":"2026-10-21T18:00:17Z", "modified":"2026-10-21T18:01:19Z",
           "result":{
             "key":"nightly-1", "storageKey":"retained", "path":"snapshots/databases/capture",
@@ -171,6 +171,23 @@ class BackupPostgresCommandsTest {
             "Database: bosca", "Dump bytes: 9007199254740995", "References: 3",
         )) assertTrue(value in result.stdout, result.output)
         assertTrue(notice in result.stderr, result.output)
+    }
+
+    @Test
+    fun `get exposes the exact observed writer token in human and JSON output`() {
+        val item = JsonObject(run + mapOf(
+            "status" to JsonPrimitive("RUNNING"), "result" to JsonNull,
+            "writerToken" to JsonPrimitive("observed-token"),
+        ))
+        answer("postgresRun", item)
+        val human = cli().test(getArgs())
+        assertEquals(0, human.statusCode, human.output)
+        assertTrue("Writer token: observed-token" in human.stdout, human.output)
+        assertTrue("writerToken" in requests.single().getValue("query").jsonPrimitive.content)
+        val json = cli().test(getArgs("--json"))
+        assertEquals(0, json.statusCode, json.output)
+        assertEquals(item, Json.parseToJsonElement(json.stdout))
+        assertEquals(2, requests.size)
     }
 
     @Test

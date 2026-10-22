@@ -32,6 +32,7 @@ class BackupPostgresGetCommand : BackupRemoteCommand(name = "get") {
         echo("Prefix: ${run.prefix}")
         echo("Status: ${run.status}")
         echo("Attempts: ${run.attempts}")
+        echo("Writer token: ${run.writerToken ?: "-"}")
         echo("Version: ${run.version}")
         echo("Created: ${run.created}")
         echo("Modified: ${run.modified}")

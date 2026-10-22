@@ -133,6 +133,24 @@ A query can return a `FAILED` backup with exit status `0`: the status describes 
 Query errors and missing requests exit `1`; an unknown `get --json` result is `null`.
 Request completion does not establish full recovery coverage.
 
+If a native backup remains `RUNNING` after its worker stops, first establish that both the
+native PostgreSQL process and its storage writer have stopped. Read its current writer token:
+
+```bash
+bosca backup postgres get --key nightly-1
+bosca backup postgres recover --key nightly-1 --expected-token observed-token --json
+```
+
+Use the exact token returned by `get`; `observed-token` above is an example. `get` and JSON
+request output include `writerToken`, which is null when no writer is recorded. Recovery marks
+only that observed running execution failed and releases its destination claim through the
+existing administration API. It does not stop a live writer, start another backup or retry the
+Pipeline. Use the existing Pipeline retry controls separately after recovery.
+
+A stale token, missing ownership, incompatible state or API failure exits `1`. The CLI never
+fetches a replacement token or retries recovery automatically. If a response is lost or reports
+an error after a change may have committed, inspect the request again before choosing an action.
+
 Read object backup and restore progress with the same profile and administration access:
 
 ```bash

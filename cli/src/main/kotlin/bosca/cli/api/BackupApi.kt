@@ -19,6 +19,8 @@ import bosca.graphql.gen.backup.ObjectBackupOperation
 import bosca.graphql.gen.backup.ObjectBackupStoreMappingInput
 import bosca.graphql.gen.backup.PrepareConfiguredObjectRestore
 import bosca.graphql.gen.backup.PrepareConfiguredObjectRestoreData
+import bosca.graphql.gen.backup.RecoverPostgresBackupRun
+import bosca.graphql.gen.backup.RecoverPostgresBackupRunData
 import bosca.graphql.gen.backup.RetryObjectBackupRun
 import bosca.graphql.gen.backup.RetryObjectBackupRunData
 
@@ -38,6 +40,15 @@ class BackupApi(network: NetworkClient) : Api(network) {
         network.boscaGraphql.execute(
             ListPostgresBackupRuns, ListPostgresBackupRuns.Variables(sourceId, storageKey, offset, limit),
         ).backups.postgresRuns
+
+    /** Recovers only the exact native backup execution an administrator has established is stopped. */
+    suspend fun recoverPostgresRun(
+        key: String,
+        expectedToken: String,
+    ): RecoverPostgresBackupRunData.Backups.RecoverPostgresRun =
+        network.boscaGraphql.execute(
+            RecoverPostgresBackupRun, RecoverPostgresBackupRun.Variables(key, expectedToken),
+        ).backups.recoverPostgresRun
 
     /** Reads one bounded page of recorded object runs in the exact operation and scope. */
     suspend fun objectRuns(
