@@ -76,8 +76,14 @@ try {
   function call(method, params = {}) {
     return new Promise((resolve, reject) => {
       const id = ++sequence;
-      const timeout = setTimeout(() => { pending.delete(id); reject(new Error(`CDP timeout: ${method}${params.expression ? `: ${params.expression}` : ""}`)); }, 10000);
-      pending.set(id, { resolve, reject, timeout });
+      const timeout = setTimeout(() => {
+        const context={browserPid:browser.pid,browserExit:browser.exitCode,browserSignal:browser.signalCode,
+          socketState:ws.readyState,pending:[...pending.entries()].map(([id,item])=>({id,method:item.method})),
+          responses,consoleErrors,exceptions};
+        pending.delete(id);
+        reject(new Error(`CDP timeout: ${method}${params.expression ? `: ${params.expression}` : ""}\n${JSON.stringify(context)}`));
+      }, 10000);
+      pending.set(id, { resolve, reject, timeout, method });
       ws.send(JSON.stringify({ id, method, params }));
     });
   }

@@ -131,6 +131,13 @@ class CatalogApplicationTest {
     }
 
     @Test
+    fun `virtual JSON tables retain pending text and logical row positions`() {
+        for (development in listOf(false, true)) withServer(development) { base, _ ->
+            runBrowser(base, development, "--json-tables", 60)
+        }
+    }
+
+    @Test
     fun `packaged catalog passes accessibility checks`() {
         for (development in listOf(false, true)) withServer(development) { base, _ ->
             runBrowser(base, development, "--accessibility", 120)

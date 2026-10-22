@@ -171,7 +171,16 @@ export async function checkToasts({ call, evaluate, until, base, mode, artifacts
     await focus(message('light'));
     await call('Input.dispatchKeyEvent',{type:'keyDown',key:'PageDown',code:'PageDown',windowsVirtualKeyCode:34});
     await call('Input.dispatchKeyEvent',{type:'keyUp',key:'PageDown',code:'PageDown',windowsVirtualKeyCode:34});
-    await until(`document.querySelector('${message('light')}').scrollTop>0`);
+    try {
+      await until(`document.querySelector('${message('light')}').scrollTop>0`);
+    } catch (failure) {
+      const state=await evaluate(`(()=>{const message=document.querySelector('${message('light')}'),toast=message.closest('.toast');
+        return {width:innerWidth,height:innerHeight,documentFocus:document.hasFocus(),active:document.activeElement?.outerHTML.slice(0,300),
+          scrollTop:message.scrollTop,scrollHeight:message.scrollHeight,clientHeight:message.clientHeight,
+          overflow:getComputedStyle(message).overflowY,open:toast.matches(':popover-open')};})()`);
+      await writeFile(join(artifacts,`notification-scroll-failure-${mode}.json`),JSON.stringify({geometry,state},null,2));
+      throw failure;
+    }
     shot=await call('Page.captureScreenshot',{format:'png'});
     await writeFile(join(artifacts,`notification-long-${mode}-${width}-${height}.png`),Buffer.from(shot.data,'base64'));
     await escape();

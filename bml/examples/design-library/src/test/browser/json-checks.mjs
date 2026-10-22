@@ -138,4 +138,39 @@ export async function checkJson({ call, evaluate, until: poll, base, mode, artif
     if(cycle<2){await click('[data-json-toggle=light]');await until(`!${root}&&window.jsonObservers.size<${observers}`);}
   }
   await call('Page.removeScriptToEvaluateOnNewDocument',{identifier:probe.identifier});
+  const tables=[];
+  for(const width of [1440,390])for(const palette of ['light','purple']) {
+    await call('Emulation.setDeviceMetricsOverride',{width,height:1100,deviceScaleFactor:1,mobile:false});
+    await call('Page.navigate',{url:base+'/json'});
+    const editor=`document.querySelector('[data-json=${palette}]')`;
+    const table=`${editor}.querySelector('table')`;
+    const scroll=`${editor}.querySelector('.jse-table-mode .jse-contents')`;
+    await until(`${editor}?.hasAttribute('data-json-ready')`);
+    await evaluate(`${editor}.querySelector('button[title^="Switch to text"]').click()`);
+    await until(`${editor}.querySelector('.cm-content')`);
+    await evaluate(`${editor}.querySelector('.cm-content').focus()`);
+    await key('a',await evaluate('/Mac|iPhone|iPad/.test(navigator.platform)?4:2'));
+    const records=Array.from({length:300},(_,index)=>({component:`Component ${index}`,meta:index===1?{}:{index,values:[index,index+1]}}));
+    await call('Input.insertText',{text:JSON.stringify(records)});
+    await evaluate(`${editor}.querySelector('button[title^="Switch to table"]').click()`);
+    await until(`${table}`);
+    await evaluate(`${scroll}.scrollTop=4000`);
+    await until(`[...${table}.querySelectorAll('.jse-table-cell-gutter')].some(cell=>Number(cell.firstChild.textContent.trim())>100)`);
+    const state=await evaluate(`(()=>{const table=${table};return {count:table.getAttribute('aria-rowcount'),
+      rows:[...table.rows].filter(row=>row.classList.contains('jse-table-row')).map(row=>({index:row.getAttribute('aria-rowindex'),label:row.querySelector('.jse-table-cell-gutter')?.firstChild.textContent.trim()})),
+      spacers:[...table.rows].filter(row=>!row.classList.contains('jse-table-row')).map(row=>row.getAttribute('aria-hidden'))};})()`);
+    assert.equal(state.count,'-1');assert.equal(state.rows[0].index,'1');
+    assert.ok(state.rows.length<300&&state.spacers.every(hidden=>hidden==='true'));
+    for(const row of state.rows.slice(1))assert.equal(Number(row.index),Number(row.label)+2);
+    assert.deepEqual(await evaluate(`JSON.parse(new FormData(${editor}.closest('form')).get('settings'))`),records);
+    await evaluate(`${scroll}.scrollTop=0`);
+    await until(`${table}.querySelector('.jse-table-cell-gutter')?.firstChild.textContent.trim()==='0'&&${table}.rows[2].getAttribute('aria-rowindex')==='2'`);
+    assert.ok(await evaluate(`(()=>{const editor=${editor},hint=editor.querySelector('.jse-empty');
+      const probe=document.createElement('span');probe.style.color='var(--jse-text-color)';editor.append(probe);
+      const expected=getComputedStyle(probe).color;probe.remove();return hint&&getComputedStyle(hint,'::after').color===expected;})()`),
+      'Empty-value hints use the consuming palette text color');
+    assert.ok(await evaluate('document.documentElement.scrollWidth<=innerWidth'));
+    tables.push({width,palette,...state});
+  }
+  await writeFile(join(artifacts,`json-${mode}-tables.json`),JSON.stringify(tables,null,2));
 }

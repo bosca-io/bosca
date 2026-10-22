@@ -47,7 +47,7 @@ export function mountJsonEditor(ctx: ClientContext) {
     const label = ctx.root.dataset.label ?? "JSON editor", name = ctx.root.dataset.name ?? "";
     field.name = name; field.disabled = disabled; field.readOnly = readOnly;
     field.setAttribute("aria-label", label); target.inert = disabled;
-    if (mode !== previousMode) { editor.updateProps({ mode }); previousMode = mode; }
+    if (mode !== previousMode) { editor.validate(); editor.updateProps({ mode }); previousMode = mode; }
     const options = JSON.stringify([label, readOnly]);
     if (options !== previousOptions) { editor.updateProps({ ariaLabel: label, readOnly }); previousOptions = options; }
     const value = ctx.root.dataset.value ?? "{}";
@@ -64,6 +64,10 @@ export function mountJsonEditor(ctx: ClientContext) {
   ctx.on<InputEvent>(target, "input", event => {
     if (event.target instanceof Element && event.target.closest(".cm-content")) editor.validate();
   });
+  // Menu actions, including mode switches, must see the text engine's current draft.
+  ctx.on<MouseEvent>(target, "click", event => {
+    if (event.target instanceof Element && event.target.closest(".jse-menu")) editor.validate();
+  }, true);
   ctx.on<Event>(document, "submit", event => {
     if (event.target === field.form) { editor.validate(); publish(editor.get()); }
   }, true);

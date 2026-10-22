@@ -173,6 +173,9 @@ checks ensure basic and source-only pages exclude JSON editor assets. Git consum
 editor and retains its own configuration validation and actions.
 Checks also verify labelled tree groups after mode changes, named property-navigation controls,
 native table headers, direct listbox keyboard selection and visible names on native file links.
+JSON table checks enter 300 records and immediately switch from text to table mode, then verify
+virtual scrolling and return, logical row positions, hidden spacer rows and exact native form data
+in both palettes at desktop and phone widths.
 
 The normal test suite also compiles this application in a separate Gradle build using the actual
 Design Library JAR and generated Maven POM in a temporary file repository. The repository contains

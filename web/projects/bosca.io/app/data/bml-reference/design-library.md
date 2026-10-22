@@ -591,7 +591,7 @@ The form field retains exact malformed and empty text. Tree mode can show the en
 preview; the form value changes only when the user edits or accepts a repair. The caller owns
 validation policy and submission, and can return the same draft with an `error` message. Syntax
 feedback does not block submission or replace the draft. Text edits are flushed before declarative
-form submission and before controlled replacements or reset.
+form submission, mode changes, and controlled replacements or reset.
 
 Supply a unique `preserveKey` for each editor that should survive unrelated island updates. Its
 engine DOM, selection, focus and draft remain mounted while the root attributes reconcile. A
@@ -604,7 +604,8 @@ actions and owns transport and navigation.
 
 Tree mode exposes a labelled tree with grouped child items and expanded state. Table mode keeps
 the native table, labelled from the editor, with column and row headers and a screen-reader row-column
-label. Property-navigation buttons have accessible names. These semantics follow engine mode changes
+label. Virtualized rows retain their logical positions, with spacer rows excluded from the
+accessibility table. Property-navigation buttons have accessible names. These semantics follow engine mode changes
 and retained-root label updates; their observer is disconnected with the editor.
 
 The editor viewport defaults to 320px high with a 240px minimum. Set `--json-height` in consumer CSS

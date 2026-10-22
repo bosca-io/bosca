@@ -260,6 +260,15 @@ requiring manual review remain in `catalog-<mode>-accessibility.json`; a passing
 screen-reader or complete manual accessibility acceptance. The pinned axe-core dependency is used
 only by the isolated browser tests. The suite also checks native keyboard scrolling of reference code.
 
+The JSON table regression enters 500 records in text mode and immediately switches views. It checks
+virtual scrolling and return, logical row positions, spacer exclusion from the accessibility tree,
+small-table counts, nested values, native form data and cell edits in both palettes at desktop/phone
+widths. Caller actions also switch modes on the same retained editor. Run it from the workspace root:
+
+```sh
+./gradlew :bml:bml-design-catalog:test --tests 'bosca.design.catalog.CatalogApplicationTest.virtual JSON tables retain pending text and logical row positions'
+```
+
 Chrome defaults to the installed Google Chrome app on macOS or `google-chrome` on Linux. Set
 `BML_DESIGN_CHROME_BINARY` for another executable. Desktop/phone screenshots are written under
 `build/reports/browser/`.
