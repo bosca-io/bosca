@@ -124,7 +124,9 @@ redeclaring each overlay. Tooltip, select and tab popups stay in that subtree an
 layer; the library does not copy theme colors to JavaScript or move them to the document body.
 
 Source colors use the [documented `--source-*` hooks](README.md#read-only-source), with palette-derived
-defaults for surface, foreground, gutter, selection, active lines, search and syntax roles. Structured
+defaults for surface, foreground, gutter, selection, active lines, search and syntax roles.
+`--source-search-fg` supplies text over both search-match backgrounds, independently of syntax colors.
+Pair it with `--source-search-match` and `--source-selection` when overriding those backgrounds. Structured
 editing uses the [documented `--json-*` hooks](README.md#structured-json). `--json-accent` controls its
 menu/link colors and derived hover, focus, editing and selection colors together. `--json-selection`
 can override the selection separately; `--json-scheme` defaults to `light`. These hooks apply on the

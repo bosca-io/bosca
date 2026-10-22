@@ -44,6 +44,8 @@
 [data-bml-source-view] .source-emphasis { font-style: italic; }
 [data-bml-source-view] .source-strong { font-weight: bold; }
 [data-bml-source-view] .source-strikethrough { text-decoration: line-through; }
+[data-bml-source-view] .cm-searchMatch,
+[data-bml-source-view] .cm-searchMatch span { color: var(--source-search-fg, var(--source-fg, var(--fg-1))); }
 @media (max-width: 600px) {
   [data-bml-source-view].bare-code .cm-editor { max-height: calc(100dvh - 160px); }
 }

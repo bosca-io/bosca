@@ -414,6 +414,7 @@ background/foreground, gutter, active line, selection, panels, search match and 
 | `--source-active-line`, `--source-panel-bg` | `--bg-2` |
 | `--source-selection` | 25% accent mixed with transparent |
 | `--source-search-match` | 30% warning mixed with transparent |
+| `--source-search-fg` | `--source-fg`, falling back to `--fg-1` |
 | `--source-keyword`, `--source-function`, `--source-operator`, `--source-heading` | `--purple`, `--info`, `--info`, `--info` |
 | `--source-name`, `--source-definition`, `--source-constant`, `--source-type` | `--fg-1`, `--fg-0`, `--warn`, `--warn` |
 | `--source-string`, `--source-comment` | `--ok`, `--fg-3` |
@@ -423,6 +424,9 @@ Literal booleans and atoms use the constant color; markup markers use the string
 Links retain an underline. Focus, cursor and matching-bracket outlines use `--accent`. These rules
 live in real CSS under the viewer root, including CodeMirror-created descendants and search panels.
 Switching an ancestor's theme updates existing viewers without remounting or a theme runtime.
+Search matches use the viewer foreground across nested syntax spans so text remains readable over
+the highlight. Set `--source-search-fg` with `--source-search-match` and `--source-selection` when
+customizing both normal and current match colors. Syntax colors outside matches remain independent.
 
 ## Consumer CSS
 

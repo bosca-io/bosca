@@ -278,6 +278,14 @@ and CSS visibility after tree items are removed and restored:
 ./gradlew :bml:bml-design-catalog:test --tests 'bosca.design.catalog.CatalogApplicationTest.empty lists do not expose inaccessible widgets'
 ```
 
+Source-search acceptance measures current and other matches, including nested comment/string syntax,
+in both palettes, document appearances and desktop/phone widths. Live foreground/background overrides
+must preserve source text, dimensions and outside/sibling syntax colors:
+
+```sh
+./gradlew :bml:bml-design-catalog:test --tests 'bosca.design.catalog.CatalogApplicationTest.source search highlights retain readable text across palettes'
+```
+
 Chrome defaults to the installed Google Chrome app on macOS or `google-chrome` on Linux. Set
 `BML_DESIGN_CHROME_BINARY` for another executable. Desktop/phone screenshots are written under
 `build/reports/browser/`.

@@ -273,7 +273,15 @@ try {
       await evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
       await evaluate(`window.fixtureRetainedTable=document.querySelector('[data-table=light]');window.fixtureTableScroll=[window.fixtureRetainedTable.scrollLeft,window.fixtureRetainedTable.scrollTop];document.querySelector('[data-foundation-form=light]').requestSubmit()`);
       await until(`document.querySelector('[data-feedback=light]').textContent.includes('Saved yes (2)')`);
-      assert.ok(await evaluate(`window.fixtureRetainedTable===document.querySelector('[data-table=light]')&&document.activeElement===window.fixtureRetainedTable&&window.fixtureTableScroll[0]>0&&window.fixtureTableScroll[1]>0&&window.fixtureRetainedTable.scrollLeft===window.fixtureTableScroll[0]&&window.fixtureRetainedTable.scrollTop===window.fixtureTableScroll[1]`),'A retained native table keeps focus and both scroll positions through a real surrounding save');
+      const retained=await evaluate(`({root:window.fixtureRetainedTable===document.querySelector('[data-table=light]'),
+        focused:document.activeElement===window.fixtureRetainedTable,expected:window.fixtureTableScroll,
+        scroll:[window.fixtureRetainedTable.scrollLeft,window.fixtureRetainedTable.scrollTop],documentFocus:document.hasFocus(),
+        active:document.activeElement?.outerHTML.slice(0,400),size:[window.fixtureRetainedTable.clientWidth,window.fixtureRetainedTable.clientHeight,
+          window.fixtureRetainedTable.scrollWidth,window.fixtureRetainedTable.scrollHeight]})`);
+      await writeFile(join(artifacts,`table-retention-${mode}.json`),JSON.stringify(retained,null,2));
+      assert.ok(retained.root&&retained.focused&&retained.expected[0]>0&&retained.expected[1]>0&&
+        retained.scroll[0]===retained.expected[0]&&retained.scroll[1]===retained.expected[1],
+        `A retained native table keeps focus and both scroll positions through a real surrounding save: ${JSON.stringify(retained)}`);
     }
     const shot = await call('Page.captureScreenshot', { format: 'png' });
     await writeFile(join(artifacts, `foundation-${mode}-${width}.png`), Buffer.from(shot.data, 'base64'));

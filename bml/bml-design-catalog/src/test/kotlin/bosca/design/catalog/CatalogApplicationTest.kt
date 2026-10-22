@@ -131,6 +131,13 @@ class CatalogApplicationTest {
     }
 
     @Test
+    fun `source search highlights retain readable text across palettes`() {
+        for (development in listOf(false, true)) withServer(development) { base, _ ->
+            runBrowser(base, development, "--source-search", 60)
+        }
+    }
+
+    @Test
     fun `empty lists do not expose inaccessible widgets`() {
         for (development in listOf(false, true)) withServer(development) { base, _ ->
             runBrowser(base, development, "--empty-widgets", 60)

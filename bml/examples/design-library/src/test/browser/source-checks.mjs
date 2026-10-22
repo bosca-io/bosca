@@ -94,4 +94,41 @@ export async function checkSource({ call, evaluate, until: poll, base, mode, art
   await until(`${root}?.hasAttribute('data-source-ready')&&${content}.textContent.includes('replacement = 1')`);
   assert.ok(await evaluate(`${root}!==window.oldSource&&!window.oldSource.isConnected`),'A caller content revision resets the preserved viewer');
   await call('Page.removeScriptToEvaluateOnNewDocument',{identifier:probe.identifier});
+  const searchReports=[],cookies=(await call('Network.getAllCookies')).cookies;
+  try {
+    for(const width of [1440,390])for(const palette of ['light','purple']) {
+      await call('Network.clearBrowserCookies');
+      await call('Emulation.setDeviceMetricsOverride',{width,height:1100,deviceScaleFactor:1,mobile:false});
+      await call('Page.navigate',{url:base+'/source'});
+      const viewer=`document.querySelector('[data-source=${palette}]')`;
+      await until(`${viewer}?.hasAttribute('data-source-ready')`);
+      const snapshot=()=>evaluate(`(()=>{const root=${viewer},box=root.getBoundingClientRect();return {
+        source:root.querySelector('textarea').value,width:box.width,height:box.height,
+        foreground:getComputedStyle(root.querySelector('.cm-editor')).color,
+        keyword:getComputedStyle(root.querySelector('.source-keyword')).color,
+        sibling:getComputedStyle(document.querySelector('[data-source=${palette==='light'?'purple':'light'}] .source-keyword')).color};})()`);
+      const before=await snapshot();
+      await evaluate(`${viewer}.scrollIntoView({block:'center'});${viewer}.querySelector('.cm-content').focus()`);
+      for(const type of ['keyDown','keyUp'])await call('Input.dispatchKeyEvent',{type,key:'f',windowsVirtualKeyCode:70,
+        modifiers:await evaluate('/Mac|iPhone|iPad/.test(navigator.platform)?4:2')});
+      await until(`${viewer}.querySelector('input[name=search]')===document.activeElement`);
+      for(const character of 'source')for(const type of ['keyDown','keyUp'])await call('Input.dispatchKeyEvent',{
+        type,key:character,windowsVirtualKeyCode:character.toUpperCase().charCodeAt(0),...(type==='keyDown'?{text:character}:{})});
+      await until(`${viewer}.querySelectorAll('.cm-searchMatch').length>1`);await key('Enter');
+      await until(`${viewer}.querySelector('.cm-searchMatch-selected')`);
+      const colors=()=>evaluate(`Array.from(${viewer}.querySelectorAll('.cm-searchMatch,.cm-searchMatch span')).map(el=>getComputedStyle(el).color)`);
+      const normal=await colors();
+      assert.ok(normal.length>2&&normal.every(color=>color===before.foreground),'Highlighted syntax uses the consuming viewer foreground');
+      await evaluate(`window.consumerSearchStyle=document.createElement('style');window.consumerSearchStyle.textContent='[data-search-colors] {--source-search-fg:#fff;--source-search-match:#281250;--source-selection:#481475;}';document.head.append(window.consumerSearchStyle);${viewer}.setAttribute('data-search-colors','')`);
+      const overridden=await colors();assert.ok(overridden.every(color=>color==='rgb(255, 255, 255)'));
+      assert.deepEqual(await snapshot(),before,'Search overrides preserve source, geometry and outside/sibling syntax');
+      await evaluate(`${viewer}.removeAttribute('data-search-colors');window.consumerSearchStyle.remove()`);
+      await key('Escape');await until(`!${viewer}.querySelector('.cm-search')&&!${viewer}.querySelector('.cm-searchMatch')`);
+      assert.deepEqual(await snapshot(),before);
+      searchReports.push({width,palette,foreground:before.foreground,normal,overridden});
+    }
+  } finally {
+    await call('Network.clearBrowserCookies');if(cookies.length)await call('Network.setCookies',{cookies});
+    await writeFile(join(artifacts,`source-search-${mode}.json`),JSON.stringify(searchReports,null,2));
+  }
 }
