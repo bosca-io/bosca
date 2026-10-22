@@ -271,6 +271,19 @@ the preserved-query checks:
 ./gradlew :bml:bml-design-catalog:test --tests 'bosca.design.catalog.CatalogApplicationTest.selection names retain native keyboard removal and focus'
 ```
 
+Every retained contrast finding also records its computed foreground and composited solid background,
+requiring at least 4.5:1. Gradients, opacity, filters, blending and differing text-fill colors require
+explicit review rather than an assumed solid-color result. The original axe findings remain intact.
+A separate regression scrolls representative footer/reference text and source gutters into view and
+opens highlighted choices and tooltips in both palettes. It requires an unoccluded text rectangle,
+measures colors, reruns the original contrast rule, and retains any short-text, symbol or overlay
+findings. Low-contrast, gradient and opacity probes must fail and restore the exact fixture style.
+Reports are saved as `catalog-<mode>-contrast-visibility.json`. Run the focused check from the root:
+
+```sh
+./gradlew :bml:bml-design-catalog:test --tests 'bosca.design.catalog.CatalogApplicationTest.contrast findings retain readable colors when scrolled into view'
+```
+
 The JSON table regression enters 500 records in text mode and immediately switches views. It checks
 virtual scrolling and return, logical row positions, full-column spacer spans and exclusion from the
 accessibility tree, small-table counts, empty arrays and records, changing columns, nested values,

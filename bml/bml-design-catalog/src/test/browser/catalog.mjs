@@ -26,6 +26,7 @@ import { checkJsonTables } from './json-tables.mjs';
 import { checkEmptyWidgets } from './empty-widgets.mjs';
 import { checkSourceSearch } from './source-search.mjs';
 import { checkSourcePanel } from './source-panel.mjs';
+import { checkContrastVisibility } from './contrast-visibility.mjs';
 
 const base = process.argv[2];
 const mode = process.argv[3] ?? 'fixture';
@@ -119,7 +120,9 @@ try {
   await call('Page.enable');await call('Runtime.enable');await call('Network.enable');await call('Page.bringToFront');
   const key=async value=>{for(const type of ['keyDown','keyUp'])await call('Input.dispatchKeyEvent',{type,key:value,windowsVirtualKeyCode:{Enter:13,Tab:9,ArrowRight:39,ArrowLeft:37,ArrowDown:40,ArrowUp:38,Escape:27}[value],...(type==='keyDown'&&value==='Enter'?{text:'\r'}:{})});};
   const navigate=async path=>{await call('Page.navigate',{url:base+path});await until(`document.readyState==='complete'&&document.querySelector('main')&&location.pathname===${JSON.stringify(path)}`);};
-  if(process.argv[4]==='--source-panel') {
+  if(process.argv[4]==='--contrast-visibility') {
+    await checkContrastVisibility({navigate,evaluate,until,call,artifacts,mode});
+  } else if(process.argv[4]==='--source-panel') {
     await checkSourcePanel({navigate,evaluate,until,call,key,artifacts,mode});
   } else if(process.argv[4]==='--source-search') {
     await checkSourceSearch({navigate,evaluate,until,call,key,artifacts,mode});

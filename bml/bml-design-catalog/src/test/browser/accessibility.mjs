@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { reviewAccessibilityFindings } from './accessibility-review.mjs';
+import { reviewContrastFindings } from './contrast-review.mjs';
 
 /** Full-document axe checks; reports keep manual-review findings separate from confirmed violations. */
 export async function checkAccessibility({navigate,evaluate,until:poll,call,artifacts,mode,widths=[1440,390],appearances=['dark','light']}) {
@@ -14,7 +15,10 @@ export async function checkAccessibility({navigate,evaluate,until:poll,call,arti
     await evaluate('Promise.all(document.getAnimations().filter(animation=>Number.isFinite(animation.effect.getComputedTiming().iterations)).map(animation=>animation.finished)).then(()=>true)');
     const result=await evaluate(`axe.run(document,{resultTypes:['violations','incomplete','passes','inapplicable']}).then(result=>({version:result.testEngine.version,url:result.url,violations:result.violations,incomplete:result.incomplete,passes:result.passes.map(rule=>rule.id),inapplicable:result.inapplicable.map(rule=>rule.id)}))`);
     const report={path,width,appearance,state,...result,reviews:[]};reports.push(report);
-    try { await reviewAccessibilityFindings({incomplete:result.incomplete,evaluate,call,reviews:report.reviews}); }
+    try {
+      await reviewAccessibilityFindings({incomplete:result.incomplete,evaluate,call,reviews:report.reviews});
+      await reviewContrastFindings({incomplete:result.incomplete,evaluate,reviews:report.reviews});
+    }
     finally { await writeFile(join(artifacts,`catalog-${mode}-accessibility.json`),JSON.stringify(reports,null,2)); }
   };
   for(const width of widths) {
@@ -97,5 +101,7 @@ export async function checkAccessibility({navigate,evaluate,until:poll,call,arti
   assert.deepEqual(violations,[],JSON.stringify(violations,null,2));
   const reviewed=reports.flatMap(report=>report.reviews);
   for(const id of ['aria-valid-attr-value','aria-toggle-field-name','label-content-name-mismatch'])assert.ok(reviewed.some(review=>review.rule===id),`No ${id} review evidence`);
-  console.log(`Catalog ${mode}: ${reports.length} axe ${reports[0].version} scans, zero confirmed violations; ${reviewed.length} popup/name findings verified against DOM and browser accessibility evidence. Original manual findings remain in accessibility.json`);
+  const contrast=reviewed.filter(review=>review.rule==='color-contrast');
+  assert.ok(contrast.length>0,'No retained contrast evidence');
+  console.log(`Catalog ${mode}: ${reports.length} axe ${reports[0].version} scans, zero confirmed violations; ${reviewed.length-contrast.length} popup/name findings verified against DOM and browser accessibility evidence; ${contrast.length} solid foreground/background measurements. Original manual findings remain in accessibility.json`);
 }

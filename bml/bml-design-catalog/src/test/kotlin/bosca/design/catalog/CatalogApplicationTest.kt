@@ -166,6 +166,13 @@ class CatalogApplicationTest {
     }
 
     @Test
+    fun `contrast findings retain readable colors when scrolled into view`() {
+        for (development in listOf(false, true)) withServer(development) { base, _ ->
+            runBrowser(base, development, "--contrast-visibility", 60)
+        }
+    }
+
+    @Test
     fun `packaged catalog passes accessibility checks`() {
         for (development in listOf(false, true)) withServer(development) { base, _ ->
             runBrowser(base, development, "--accessibility", 120)
