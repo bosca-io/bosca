@@ -278,7 +278,8 @@ private class SingletonObjectProvider<T : Any>(private val provider: ObjectProvi
         mutex.lock()
         try {
             instance?.let { return it }
-            withTimeout(8.seconds) {
+            // Allow cold initialization and dependency resolution while keeping creation bounded.
+            withTimeout(60.seconds) {
                 instance = provider.get()
             }
         } finally {
