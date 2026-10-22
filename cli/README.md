@@ -113,7 +113,25 @@ server. On first use after an upgrade, the former single-account
 `endpoint`/`auth` configuration is migrated automatically to a profile named
 `default`.
 
-## Backup reports
+## Backups
+
+Read native database backup requests using the selected profile:
+
+```bash
+bosca --profile source backup postgres list --source primary --storage retained
+bosca --profile source backup postgres list --source primary --storage retained --offset 20 --limit 20 --json
+bosca --profile source backup postgres get --key nightly-1
+bosca --profile source backup postgres get --key nightly-1 --json
+```
+
+These queries require backup administration access. `list` reads one exact source/storage scope
+with offset pagination (default 20, maximum 100). `get` includes recorded errors and retained
+database/content-report locations. Both support the usual authentication and endpoint overrides.
+`--json` writes structured state to stdout and notices to stderr.
+
+A query can return a `FAILED` backup with exit status `0`: the status describes the saved request.
+Query errors and missing requests exit `1`; an unknown `get --json` result is `null`.
+Request completion does not establish full recovery coverage.
 
 Inspect a downloaded PostgreSQL/content report without connecting to a Bosca instance:
 

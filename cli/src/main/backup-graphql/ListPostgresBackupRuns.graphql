@@ -1,0 +1,7 @@
+query ListPostgresBackupRuns($sourceId: String!, $storageKey: String!, $offset: Int!, $limit: Int!) {
+    backups {
+        postgresRuns(sourceId: $sourceId, storageKey: $storageKey, offset: $offset, limit: $limit) {
+            ...PostgresBackupRunFragment
+        }
+    }
+}

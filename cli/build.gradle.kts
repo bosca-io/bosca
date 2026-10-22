@@ -155,6 +155,51 @@ val generateBoscaGraphqlClient = tasks.register<JavaExec>("generateBoscaGraphqlC
 kotlin.sourceSets.getByName("main").kotlin.srcDir(boscaGraphqlOut)
 tasks.named("compileKotlin") { dependsOn(generateBoscaGraphqlClient) }
 
+// Generate backup clients from the owning SDL without loading its implementation module.
+val backupSchemaSource = rootProject.layout.projectDirectory.file("backup/backup/src/main/resources/graphql/backup.graphqls")
+val backupClientSchema = layout.buildDirectory.file("generated/backup-graphql/schema.graphqls")
+val prepareBackupGraphqlSchema = tasks.register("prepareBackupGraphqlSchema") {
+    val source = backupSchemaSource
+    val destination = backupClientSchema
+    inputs.file(source)
+    outputs.file(destination)
+    doLast {
+        destination.get().asFile.apply {
+            parentFile.mkdirs()
+            writeText("type Query\ntype Mutation\nscalar UUID\nscalar DateTime\nscalar Long\nscalar JSON\n" +
+                source.asFile.readText())
+        }
+    }
+}
+val backupGraphqlOut = layout.buildDirectory.dir("generated/backup-graphql/kotlin")
+val generateBackupGraphqlClient = tasks.register<JavaExec>("generateBackupGraphqlClient") {
+    group = "bosca graphql"
+    description = "Generate typed CLI operations against the backup module's current schema."
+    dependsOn(prepareBackupGraphqlSchema)
+    classpath = configurations.getByName("runtimeClasspath")
+    mainClass.set("bosca.graphql.codegen.cli.BoscaGraphqlCodegenCliKt")
+    val queries = layout.projectDirectory.dir("src/main/backup-graphql")
+    val schema = backupClientSchema
+    val destination = backupGraphqlOut
+    inputs.file(schema)
+    inputs.dir(queries).withPathSensitivity(PathSensitivity.RELATIVE)
+    outputs.dir(destination)
+    argumentProviders.add(CommandLineArgumentProvider {
+        listOf(
+            "generate", "--schema", schema.get().asFile.absolutePath,
+            "--queries", queries.asFile.absolutePath,
+            "--out", destination.get().asFile.absolutePath,
+            "--package", "bosca.graphql.gen.backup",
+            "--scalar", "JSON:kotlinx.serialization.json.JsonElement",
+            "--scalar", "Long:kotlin.Long",
+            "--scalar", "UUID:kotlin.uuid.Uuid::bosca.cli.api.scalars.UuidSerializer",
+            "--scalar", "DateTime:java.time.ZonedDateTime::bosca.cli.api.scalars.ZonedDateTimeSerializer",
+        )
+    })
+}
+kotlin.sourceSets.getByName("main").kotlin.srcDir(backupGraphqlOut)
+tasks.named("compileKotlin") { dependsOn(generateBackupGraphqlClient) }
+
 application {
     mainClass.set("bosca.cli.MainKt")
     applicationName = "bosca"

@@ -1,0 +1,26 @@
+fragment PostgresBackupRunFragment on PostgresBackupRun {
+    key
+    sourceId
+    storageKey
+    prefix
+    includeContentReferences
+    contentSource { store storageKey scope }
+    status
+    attempts
+    error
+    version
+    created
+    modified
+    result {
+        key
+        storageKey
+        path
+        contentReportPath
+        manifest {
+            id sourceId database created completed snapshotId snapshot
+            serverVersion serverVersionNumber encoding extensions
+            length sha256 payloadPath version format
+            contentInventory { count length sha256 path version }
+        }
+    }
+}
