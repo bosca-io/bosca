@@ -618,8 +618,8 @@ actions and owns transport and navigation.
 
 Tree mode exposes a labelled tree with grouped child items and expanded state. Table mode keeps
 the native table, labelled from the editor, with column and row headers and a screen-reader row-column
-label. Virtualized rows retain their logical positions, with spacer rows excluded from the
-accessibility table. Property-navigation buttons have accessible names. These semantics follow engine mode changes
+label. Virtualized rows retain their logical positions, with spacer rows spanning the complete column
+grid and excluded from the accessibility table. Property-navigation buttons have accessible names. These semantics follow engine mode changes
 and retained-root label updates; their observer is disconnected with the editor.
 
 The editor viewport defaults to 320px high with a 240px minimum. Set `--json-height` in consumer CSS

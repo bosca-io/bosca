@@ -45,6 +45,9 @@ The compiled-consumer browser checks also verify empty tabs, segments and tree b
 and phone widths, with scripts enabled and disabled. Empty widgets stay out of the accessibility
 tree while the native segment form value and populated controls remain available.
 
+JSON table checks include virtual scrolling with spacer cells spanning the complete native column
+grid, including its row header, while retaining exact form values and logical row positions.
+
 Source-search checks use real keyboard input in both palettes at desktop/phone widths. Highlighted
 syntax follows the viewer foreground or a live `--source-search-fg` override, while source text,
 dimensions and outside/sibling syntax colors remain unchanged.

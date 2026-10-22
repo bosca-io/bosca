@@ -272,9 +272,10 @@ the preserved-query checks:
 ```
 
 The JSON table regression enters 500 records in text mode and immediately switches views. It checks
-virtual scrolling and return, logical row positions, spacer exclusion from the accessibility tree,
-small-table counts, nested values, native form data and cell edits in both palettes at desktop/phone
-widths. Caller actions also switch modes on the same retained editor. Run it from the workspace root:
+virtual scrolling and return, logical row positions, full-column spacer spans and exclusion from the
+accessibility tree, small-table counts, empty arrays and records, changing columns, nested values,
+native form data and cell edits in both palettes at desktop/phone widths. Caller actions also switch
+modes on the same retained editor. Run it from the workspace root:
 
 ```sh
 ./gradlew :bml:bml-design-catalog:test --tests 'bosca.design.catalog.CatalogApplicationTest.virtual JSON tables retain pending text and logical row positions'

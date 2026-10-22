@@ -24,7 +24,12 @@ export function attachJsonAccessibility(ctx: ClientContext, target: HTMLElement)
         attribute(content, "aria-label", label);
         const rows = Array.from(content.rows).filter(row => row.classList.contains("jse-table-row"));
         const spacers = Array.from(content.rows).filter(row => !row.classList.contains("jse-table-row"));
-        for (const spacer of spacers) attribute(spacer, "aria-hidden", "true");
+        const columns = rows.find(row => row.classList.contains("jse-table-row-header"))?.cells.length ?? 0;
+        for (const spacer of spacers) {
+          attribute(spacer, "aria-hidden", "true");
+          // Include the row-header gutter in the native table grid.
+          if (columns > 0 && spacer.cells.length === 1) attribute(spacer.cells[0], "colspan", String(columns));
+        }
         const indices = rows.map(row => row.classList.contains("jse-table-row-header") ? 1 :
           Number.parseInt(row.querySelector(".jse-table-cell-gutter")?.firstChild?.textContent ?? "", 10) + 2);
         if (indices.every((index, position) => Number.isSafeInteger(index) && index > (indices[position - 1] ?? 0))) {

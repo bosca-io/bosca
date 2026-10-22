@@ -28,7 +28,7 @@ export async function checkJsonTables({navigate,evaluate,until:poll,call,artifac
       };
       const snapshot=()=>evaluate(`(()=>{const t=${table};return {count:t.getAttribute('aria-rowcount'),
         rows:[...t.rows].filter(r=>r.classList.contains('jse-table-row')).map(r=>({index:r.getAttribute('aria-rowindex'),label:r.querySelector('.jse-table-cell-gutter')?.firstChild.textContent.trim()})),
-        spacers:[...t.rows].filter(r=>!r.classList.contains('jse-table-row')).map(r=>({hidden:r.getAttribute('aria-hidden'),height:r.getBoundingClientRect().height})),
+        spacers:[...t.rows].filter(r=>!r.classList.contains('jse-table-row')).map(r=>({hidden:r.getAttribute('aria-hidden'),height:r.getBoundingClientRect().height,columns:[...r.cells].map(c=>c.colSpan)})),
         headers:[...t.rows[0].cells].map(h=>({label:h.textContent.trim(),scope:h.scope})),scrollTop:${contents}.scrollTop};})()`);
       const validate=(state,virtual)=>{
         assert.equal(state.count,virtual?'-1':String(state.rows.length));
@@ -36,6 +36,7 @@ export async function checkJsonTables({navigate,evaluate,until:poll,call,artifac
         for(const row of state.rows.slice(1))assert.equal(Number(row.index),Number(row.label)+2);
         assert.ok(state.rows.every((row,i)=>!i||Number(row.index)>Number(state.rows[i-1].index)));
         assert.ok(state.spacers.every(row=>row.hidden==='true'));
+        assert.ok(state.spacers.every(row=>row.columns.length===1&&row.columns[0]===state.headers.length),JSON.stringify(state));
         assert.ok(state.headers.every(header=>header.label&&header.scope==='col'));
       };
       await evaluate(`${root}.querySelector('button[title^="Switch to text"]').click()`);
@@ -86,6 +87,23 @@ export async function checkJsonTables({navigate,evaluate,until:poll,call,artifac
       for(const sample of colors.text)assert.ok(sample.ratio>=4.5,JSON.stringify(sample));
       assert.ok(hints.text.length>0,'Empty table values retain visible editing hints');
       for(const sample of hints.text)assert.ok(sample.ratio>=4.5,`Empty value hint: ${JSON.stringify(sample)}`);
+      const edited=await evaluate(`${field}.value`),edges=[];
+      for(const value of ['[]','[{}]','[{"component":"Only","width":99,"enabled":true}]',edited]) {
+        await evaluate(`${root}.querySelector('button[title^="Switch to text"]').click()`);
+        await until(`${root}.querySelector('.cm-content')`);await replace(value);
+        await evaluate(`${root}.querySelector('button[title^="Switch to table"]').click()`);
+        await until(`${root}.querySelector('.jse-table-mode')`);
+        assert.deepEqual(await evaluate(`JSON.parse(${field}.value)`),JSON.parse(value));
+        if(value==='[]'||value==='[{}]') {
+          assert.ok(await evaluate(`!${table}&&${root}.querySelector('.jse-table-mode').textContent.includes('cannot be opened in table mode')`));
+          edges.push({value,table:false});
+        } else {
+          const state=await snapshot();validate(state,false);
+          assert.equal(state.headers.length,value===edited?smallState.headers.length:4);
+          edges.push({value,table:true,...state});
+        }
+      }
+      measurements.at(-1).edges=edges;
       assert.ok(await evaluate(`document.documentElement.scrollWidth<=innerWidth`));
       measurements.at(-1).small=smallState;
       const shot=await call('Page.captureScreenshot',{format:'png'});

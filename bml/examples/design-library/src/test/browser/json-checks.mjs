@@ -158,9 +158,10 @@ export async function checkJson({ call, evaluate, until: poll, base, mode, artif
     await until(`[...${table}.querySelectorAll('.jse-table-cell-gutter')].some(cell=>Number(cell.firstChild.textContent.trim())>100)`);
     const state=await evaluate(`(()=>{const table=${table};return {count:table.getAttribute('aria-rowcount'),
       rows:[...table.rows].filter(row=>row.classList.contains('jse-table-row')).map(row=>({index:row.getAttribute('aria-rowindex'),label:row.querySelector('.jse-table-cell-gutter')?.firstChild.textContent.trim()})),
-      spacers:[...table.rows].filter(row=>!row.classList.contains('jse-table-row')).map(row=>row.getAttribute('aria-hidden'))};})()`);
+      columns:table.rows[0].cells.length,
+      spacers:[...table.rows].filter(row=>!row.classList.contains('jse-table-row')).map(row=>({hidden:row.getAttribute('aria-hidden'),columns:[...row.cells].map(cell=>cell.colSpan)}))};})()`);
     assert.equal(state.count,'-1');assert.equal(state.rows[0].index,'1');
-    assert.ok(state.rows.length<300&&state.spacers.every(hidden=>hidden==='true'));
+    assert.ok(state.rows.length<300&&state.spacers.every(row=>row.hidden==='true'&&row.columns.length===1&&row.columns[0]===state.columns),JSON.stringify(state));
     for(const row of state.rows.slice(1))assert.equal(Number(row.index),Number(row.label)+2);
     assert.deepEqual(await evaluate(`JSON.parse(new FormData(${editor}.closest('form')).get('settings'))`),records);
     await evaluate(`${scroll}.scrollTop=0`);
