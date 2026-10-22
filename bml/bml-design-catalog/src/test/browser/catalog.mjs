@@ -29,6 +29,8 @@ import { checkSourcePanel } from './source-panel.mjs';
 
 const base = process.argv[2];
 const mode = process.argv[3] ?? 'fixture';
+const started=performance.now();
+const checkpoint=phase=>console.log(`Catalog ${mode} ${phase}: ${Math.round(performance.now()-started)}ms`);
 if (!base || !['localhost', '127.0.0.1', '[::1]'].includes(new URL(base).hostname)) {
   throw new Error('Pass the isolated design-library fixture URL on localhost.');
 }
@@ -125,6 +127,8 @@ try {
     await checkEmptyWidgets({navigate,evaluate,until,call,artifacts,mode});
   } else if(process.argv[4]==='--json-tables') {
     await checkJsonTables({navigate,evaluate,until,call,artifacts,mode});
+  } else if(process.argv[4]==='--choices') {
+    await checkLocalChoices({navigate,evaluate,until,call,artifacts,mode});
   } else if(process.argv[4]==='--accessibility') {
     await checkAccessibility({navigate,evaluate,until,call,artifacts,mode});
   } else if(process.argv[4]==='--tab-focus') {
@@ -197,6 +201,7 @@ try {
   await checkComments({navigate,evaluate,until,call,artifacts,mode});
   await checkOverlays({navigate,evaluate,until,call,artifacts,mode});
   await checkLocalChoices({navigate,evaluate,until,call,artifacts,mode});
+  checkpoint('choices complete');
   await checkSearchViews({navigate,evaluate,until,call,artifacts,mode});
   await checkTrees({navigate,evaluate,until,call,artifacts,mode});
   await checkRouteNavigation({navigate,evaluate,until,call,artifacts,mode});
@@ -206,7 +211,10 @@ try {
   assert.deepEqual(exceptions,[]);
   if(!process.argv[4]?.startsWith('--')) console.log(`Catalog ${mode}: foundation, themes, 41 packaged export contracts, references, overlays, views, trees, comments, editors, aliases and native fallbacks passed`);
 } finally {
+  checkpoint('cleanup started');
   if(ws)ws.close();browser.kill('SIGTERM');
   await new Promise(resolve=>{if(browser.exitCode!==null)resolve();else{browser.once('exit',resolve);setTimeout(resolve,2000);}});
+  checkpoint('browser wait finished');
   await rm(profile,{recursive:true,force:true,maxRetries:5,retryDelay:100});
+  checkpoint('profile removed');
 }

@@ -257,8 +257,19 @@ development applications at 1440px and 390px, in both document appearances. Addi
 open choices, navigation menus, dialogs, tooltips, error toasts, validation, pending/loaded tables and
 example-state disclosures. Confirmed violations fail the test without disabling rules. Findings
 requiring manual review remain in `catalog-<mode>-accessibility.json`; a passing scan does not replace
-screen-reader or complete manual accessibility acceptance. The pinned axe-core dependency is used
-only by the isolated browser tests. The suite also checks native keyboard scrolling of reference code.
+screen-reader or complete manual accessibility acceptance. Each scan also records DOM and browser
+accessibility-tree evidence for popup `aria-controls` references, full option names/listbox context
+and symbolic tag-removal names. Those checks require unique component-owned targets, matching
+exposed relationships and selected/disabled states, and `Remove` followed by the selected label.
+The original axe findings stay intact alongside that evidence; other manual findings remain open.
+The pinned axe-core dependency is used only by the isolated browser tests. The suite also checks
+native keyboard scrolling of reference code. Focused selection acceptance presses Enter on a named
+tag-removal button, checks its native values and returned combobox focus, then reopens the list for
+the preserved-query checks:
+
+```sh
+./gradlew :bml:bml-design-catalog:test --tests 'bosca.design.catalog.CatalogApplicationTest.selection names retain native keyboard removal and focus'
+```
 
 The JSON table regression enters 500 records in text mode and immediately switches views. It checks
 virtual scrolling and return, logical row positions, spacer exclusion from the accessibility tree,

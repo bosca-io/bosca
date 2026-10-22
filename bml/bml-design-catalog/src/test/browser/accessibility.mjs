@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { reviewAccessibilityFindings } from './accessibility-review.mjs';
 
 /** Full-document axe checks; reports keep manual-review findings separate from confirmed violations. */
 export async function checkAccessibility({navigate,evaluate,until:poll,call,artifacts,mode,widths=[1440,390],appearances=['dark','light']}) {
@@ -12,8 +13,9 @@ export async function checkAccessibility({navigate,evaluate,until:poll,call,arti
     await evaluate('document.fonts.ready');
     await evaluate('Promise.all(document.getAnimations().filter(animation=>Number.isFinite(animation.effect.getComputedTiming().iterations)).map(animation=>animation.finished)).then(()=>true)');
     const result=await evaluate(`axe.run(document,{resultTypes:['violations','incomplete','passes','inapplicable']}).then(result=>({version:result.testEngine.version,url:result.url,violations:result.violations,incomplete:result.incomplete,passes:result.passes.map(rule=>rule.id),inapplicable:result.inapplicable.map(rule=>rule.id)}))`);
-    reports.push({path,width,appearance,state,...result});
-    await writeFile(join(artifacts,`catalog-${mode}-accessibility.json`),JSON.stringify(reports,null,2));
+    const report={path,width,appearance,state,...result,reviews:[]};reports.push(report);
+    try { await reviewAccessibilityFindings({incomplete:result.incomplete,evaluate,call,reviews:report.reviews}); }
+    finally { await writeFile(join(artifacts,`catalog-${mode}-accessibility.json`),JSON.stringify(reports,null,2)); }
   };
   for(const width of widths) {
     await call('Emulation.setDeviceMetricsOverride',{width,height:1000,deviceScaleFactor:1,mobile:false});
@@ -93,5 +95,7 @@ export async function checkAccessibility({navigate,evaluate,until:poll,call,arti
   assert.equal(await evaluate(`${sample}.getAttribute('aria-label')`),'button authoring source');
   const violations=reports.flatMap(report=>report.violations.map(rule=>({path:report.path,width:report.width,appearance:report.appearance,state:report.state,id:rule.id,nodes:rule.nodes.map(node=>({target:node.target,summary:node.failureSummary}))})));
   assert.deepEqual(violations,[],JSON.stringify(violations,null,2));
-  console.log(`Catalog ${mode}: ${reports.length} axe ${reports[0].version} scans, zero confirmed violations; manual-review findings saved in accessibility.json`);
+  const reviewed=reports.flatMap(report=>report.reviews);
+  for(const id of ['aria-valid-attr-value','aria-toggle-field-name','label-content-name-mismatch'])assert.ok(reviewed.some(review=>review.rule===id),`No ${id} review evidence`);
+  console.log(`Catalog ${mode}: ${reports.length} axe ${reports[0].version} scans, zero confirmed violations; ${reviewed.length} popup/name findings verified against DOM and browser accessibility evidence. Original manual findings remain in accessibility.json`);
 }

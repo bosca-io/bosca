@@ -159,6 +159,13 @@ class CatalogApplicationTest {
     }
 
     @Test
+    fun `selection names retain native keyboard removal and focus`() {
+        for (development in listOf(false, true)) withServer(development) { base, _ ->
+            runBrowser(base, development, "--choices", 60)
+        }
+    }
+
+    @Test
     fun `packaged catalog passes accessibility checks`() {
         for (development in listOf(false, true)) withServer(development) { base, _ ->
             runBrowser(base, development, "--accessibility", 120)

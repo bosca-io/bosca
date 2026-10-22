@@ -65,8 +65,11 @@ export async function checkLocalChoices({ navigate, evaluate, until: poll, call,
   await type('multiple','Release candidate'); await key('End'); await key('Enter');
   assert.deepEqual(await evaluate(`new FormData(${tagsForm('dark')}).getAll('tags')`),['button','input','card','dialog','Release candidate']);
   await type('multiple',''); await key('Backspace');
-  await evaluate(`${part('multiple','tags')}.querySelector('[data-remove=button]').click()`);
+  await evaluate(`${part('multiple','tags')}.querySelector('[data-remove=button]').focus()`);await key('Enter');
   assert.deepEqual(await evaluate(`new FormData(${tagsForm('dark')}).getAll('tags')`),['input','card','dialog']);
+  assert.equal(await evaluate(`document.activeElement===${part('multiple','trigger')}`),true,'Keyboard tag removal returns focus to its combobox');
+  assert.equal(await truth(`${part('multiple','popup')}.matches(':popover-open')`),false,'Moving keyboard focus to a tag leaves the popup');
+  await open('multiple');
   await type('multiple','Unavailable');
   assert.ok(await truth(`[...${part('multiple','options')}.children].every(node=>node.getAttribute('aria-disabled')==='true'||node.textContent.startsWith('Use '))&&[...${part('multiple','options')}.children].some(node=>node.textContent==='A disabled group choice'&&node.getAttribute('aria-disabled')==='true')`));
   await type('multiple','overlay');
