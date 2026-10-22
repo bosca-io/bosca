@@ -1,5 +1,25 @@
 package bosca.backup
 
+import kotlinx.serialization.json.JsonPrimitive
+
+import bosca.serialization.UUID
+
+import bosca.pipelines.node.OutputNode
+
+import bosca.pipelines.node.InputNode
+
+import bosca.pipelines.builtin.ToStringNode
+
+import bosca.pipelines.node.PipelineValue
+
+import bosca.pipelines.model.PipelineRunStatus
+
+import bosca.pipelines.model.PipelineEdge
+
+import bosca.pipelines.model.Pipeline
+
+import bosca.backup.pipeline.PostgresContentRestoreNode
+
 import bosca.cache.CacheManager
 import bosca.content.model.ContentStorageReference
 import bosca.content.model.ContentStorageReferenceKind
@@ -1796,6 +1816,144 @@ class PostgresBackupIntegrationTest {
     }
 
     private fun contentReportPath(report: PostgresBackupContentReport) = "exports/reports/${report.database.id}"
+
+    @Test
+    fun `queued content restore recovers database and original keys after source removal`(): Unit = runBlocking {
+        withContentRecovery(configured = true) { report, _, target ->
+            PostgresBackupPipelineFixture.create(application, provide<ConnectionPool>(), root, graph = contentRestorePipeline()).use { pipeline ->
+                val initial = pipeline.start(PipelineValue.ofJson(JsonPrimitive(contentReportPath(report))))
+                val runner = pipeline.runner()
+                runner.run()
+                try {
+                    val completed = pipeline.awaitComplete(initial.id)
+                    assertEquals(PipelineRunStatus.OK, completed.status)
+                    val restored = application.json.decodeFromJsonElement(PostgresBackupManifest.serializer(), assertNotNull(completed.output))
+                    assertEquals(report.database, restored)
+                    assertEquals("2", scalar("select count(*)::text from metadata where name='Saved image'", "recovered"))
+                    assertEquals(listOf("image", "other"), report.objects.objects.map {
+                        target.getString(bosca.storage.service.StringObjectPath(it.key))
+                    })
+                    assertEquals("2", scalar("select count(*)::text from backup.object_progress where status='completed'", "content_recovery_journal"))
+                    assertRecoveryScratchClean()
+                    pipeline.verifyNoServiceAccountFallback()
+                } finally {
+                    runner.shutdown()
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `queued content restore retries partial transfers without repeating completed objects`(): Unit = runBlocking {
+        withContentRecovery(configured = true) { report, _, _ ->
+            val first = report.objects.objects.first().key
+            val second = report.objects.objects.last().key
+            var fail = true
+            val writes = mutableListOf<String>()
+            faultStorage { actual -> object : ObjectStorageService by actual {
+                override suspend fun setInputStream(path: ObjectPath, stream: InputStream, length: Long?): Long {
+                    if (path.toString() == first || path.toString() == second) writes += path.toString()
+                    if (path.toString() == second && fail) throw IOException("queued restore interrupted")
+                    return actual.setInputStream(path, stream, length)
+                }
+            } }
+            PostgresBackupPipelineFixture.create(application, provide<ConnectionPool>(), root, graph = contentRestorePipeline()).use { pipeline ->
+                val initial = pipeline.start(PipelineValue.ofJson(JsonPrimitive(contentReportPath(report))))
+                pipeline.execute(pipeline.next())
+                val child = pipeline.next()
+                pipeline.fail(child, retry = true)
+                assertEquals(null, pipeline.get(initial.id).output)
+                assertEquals("0", scalar("select count(*)::text from pg_class where relnamespace='public'::regnamespace", "recovered"))
+                assertEquals(listOf(first, second), writes)
+                fail = false
+                val retry = pipeline.retry()
+                assertEquals(child.getId(), retry.getId())
+                pipeline.execute(retry)
+                val completed = pipeline.get(initial.id)
+                assertEquals(PipelineRunStatus.OK, completed.status)
+                assertEquals(report.database, application.json.decodeFromJsonElement(PostgresBackupManifest.serializer(), assertNotNull(completed.output)))
+                assertEquals(listOf(first, second, second), writes)
+                assertEquals("2", scalar("select count(*)::text from metadata where name='Saved image'", "recovered"))
+                assertRecoveryScratchClean()
+                pipeline.verifyNoServiceAccountFallback()
+            }
+        }
+    }
+
+    @Test
+    fun `queued content restore keeps a post-commit close failure visible and refuses populated replay`(): Unit = runBlocking {
+        withContentRecovery(configured = true) { report, _, target ->
+            val keys = report.objects.objects.map { it.key }.toSet()
+            var faulted = false
+            faultStorage { actual -> object : ObjectStorageService by actual {
+                private var copied = false
+                override suspend fun setInputStream(path: ObjectPath, stream: InputStream, length: Long?): Long {
+                    if (path.toString() in keys) copied = true
+                    return actual.setInputStream(path, stream, length)
+                }
+                override fun close() {
+                    actual.close()
+                    if (copied && !faulted) {
+                        faulted = true
+                        throw IOException("target close failed after native commit")
+                    }
+                }
+            } }
+            PostgresBackupPipelineFixture.create(application, provide<ConnectionPool>(), root, graph = contentRestorePipeline()).use { pipeline ->
+                val input = PipelineValue.ofJson(JsonPrimitive(contentReportPath(report)))
+                val initial = pipeline.start(input)
+                pipeline.execute(pipeline.next())
+                pipeline.fail(pipeline.next(), retry = false)
+                assertTrue(faulted)
+                assertEquals(PipelineRunStatus.FAILED, pipeline.get(initial.id).status)
+                assertEquals(null, pipeline.get(initial.id).output)
+                assertEquals("2", scalar("select count(*)::text from metadata where name='Saved image'", "recovered"))
+
+                val repeated = pipeline.start(input)
+                pipeline.execute(pipeline.next())
+                pipeline.fail(pipeline.next(), retry = false)
+                assertEquals(PipelineRunStatus.FAILED, pipeline.get(repeated.id).status)
+                assertEquals(null, pipeline.get(repeated.id).output)
+                assertEquals("2", scalar("select count(*)::text from metadata where name='Saved image'", "recovered"))
+                assertEquals(listOf("image", "other"), report.objects.objects.map {
+                    target.getString(bosca.storage.service.StringObjectPath(it.key))
+                })
+                assertRecoveryScratchClean()
+                pipeline.verifyNoServiceAccountFallback()
+            }
+        }
+    }
+
+    @Test
+    fun `queued content restore preserves caller authorization and rejects a revoked principal`(): Unit = runBlocking {
+        withContentRecovery(configured = true) { report, _, _ ->
+            PostgresBackupPipelineFixture.create(application, provide<ConnectionPool>(), root, graph = contentRestorePipeline()).use { pipeline ->
+                val initial = pipeline.start(PipelineValue.ofJson(JsonPrimitive(contentReportPath(report))))
+                pipeline.execute(pipeline.next())
+                pipeline.denied = true
+                pipeline.fail(pipeline.next(), retry = false)
+                assertEquals(PipelineRunStatus.FAILED, pipeline.get(initial.id).status)
+                assertEquals(null, pipeline.get(initial.id).output)
+                assertContentRecoveryUnwritten()
+                assertRecoveryScratchClean()
+                pipeline.verifyNoServiceAccountFallback()
+            }
+        }
+    }
+
+    private fun contentRestorePipeline() = Pipeline(
+        id = UUID.NIL, name = "restore retained database and content", acceptedInputType = "JSON",
+        nodes = listOf(
+            InputNode("in", acceptedType = "JSON"), ToStringNode("path"),
+            PostgresContentRestoreNode("restore", backupKey = "retained", destinationKey = "recovery-target"),
+            OutputNode("out"),
+        ),
+        edges = listOf(
+            PipelineEdge("input", source = "in", target = "path"),
+            PipelineEdge("path", source = "path", target = "restore", targetPort = "reportPath"),
+            PipelineEdge("output", source = "restore", target = "out"),
+        ),
+    )
 
     @Test
     fun `configured content restore downloads independent artifacts closes stores and removes owned scratch`(): Unit = runBlocking {

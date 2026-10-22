@@ -59,7 +59,7 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 
-/** Real Pipeline persistence and NATS dispatch around the real native backup service. */
+/** Real Pipeline persistence and NATS dispatch around native backup and restore services. */
 @OptIn(InternalDI::class)
 internal class PostgresBackupPipelineFixture private constructor(
     private val nats: SharedNatsContainer,
@@ -95,8 +95,8 @@ internal class PostgresBackupPipelineFixture private constructor(
         pipelines = provide()
     }
 
-    suspend fun start(): PipelineRun = withConnectionManager {
-        assertNotNull(runs.start(pipeline, PipelineValue.ofJson(JsonPrimitive("snapshot")), "", OffsetDateTime.now(),
+    suspend fun start(input: PipelineValue = PipelineValue.ofJson(JsonPrimitive("snapshot"))): PipelineRun = withConnectionManager {
+        assertNotNull(runs.start(pipeline, input, "", OffsetDateTime.now(),
             ImpersonatedAuthenticationContext(caller, listOf(administrator))))
     }
 
@@ -155,6 +155,7 @@ internal class PostgresBackupPipelineFixture private constructor(
             directory: Path,
             includeContentReferences: Boolean = false,
             contentSource: String = "",
+            graph: Pipeline? = null,
         ): PostgresBackupPipelineFixture {
             val json = application.json
             val nats = SharedNatsContainer().apply { start() }
@@ -182,7 +183,7 @@ internal class PostgresBackupPipelineFixture private constructor(
                     }
                 }
                 FlywayMigration(pool).migrate(listOf(provide<Migration>(name = "pipelines-migrations")))
-                val declared = Pipeline(id = UUID.NIL, name = "native database backup", acceptedInputType = "JSON",
+                val declared = graph ?: Pipeline(id = UUID.NIL, name = "native database backup", acceptedInputType = "JSON",
                     nodes = listOf(InputNode("in", acceptedType = "JSON"),
                         PostgresBackupNode("backup", sourceId = "instance", storageKey = "retained",
                             includeContentReferences = includeContentReferences, contentSource = contentSource), OutputNode("out")),

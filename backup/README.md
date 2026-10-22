@@ -237,6 +237,32 @@ This action captures database state, optional reference evidence and optional re
 Matching database/object recovery points, protected retention and keys, full-instance restore
 and deployment rebinding remain separate work.
 
+## Restore PostgreSQL and content through Pipelines
+
+The **Restore PostgreSQL and Content** action (`postgresBackup.restoreContent`) reads a retained
+content report, verifies its database artifact and declared assets, and restores them through
+the existing configured recovery service. Set **Backup storage ID** and **Target content storage ID**
+to independent entries under `backup.objectStores`. Configure the empty database target under
+`backup.postgres.restore` as described below.
+
+Feed the retained report directory from a backup receipt's `contentReportPath` into `reportPath`.
+For a JSON Pipeline input, connect Input through **To String** to that port, then connect the
+restored manifest output to Output. The action emits the native manifest only after the service
+returns successfully, including store closure and scratch cleanup. Preview records the selection
+without running recovery.
+
+Run this from a recovery instance whose journal is outside the database being restored. Keep
+the target application and other destination writers stopped, the target stores isolated, and
+retained input immutable. The source database, source assets and capture configuration are unnecessary.
+The queued action retains the caller's identity and requires backup administration access.
+
+Ordinary Pipeline retries can reuse completed asset checkpoints after a partial transfer or a
+rolled-back database restore. This action does not reconcile a lost native acknowledgement or replay
+a completed restore request. A native acknowledgement, store-close or cleanup failure can follow a
+committed database; inspect that target before retrying. A populated target remains blocked.
+Required keys, deployment rebinding, application activation and full recovery-point classification
+remain separate from restoration of these selected components.
+
 ## Native PostgreSQL database artifacts
 
 `PostgresBackupRunService.backupContentConfigured` runs combined capture using
@@ -528,7 +554,7 @@ rolled-back database restore, retry reuses verified target assets. Keep progress
 recovery database and keep both destinations isolated with exclusive writers throughout.
 The caller owns immutable input and independent backup storage; supplied stores stay open.
 The source database, capture configuration, content services and standalone object manifest
-are unnecessary. This is a service operation; no Pipeline or CLI restore command is added.
+are unnecessary. The Restore PostgreSQL and Content action uses the configured entry point below.
 
 If the native acknowledgement is lost, inspect the target before retrying: its commit may have
 succeeded, and a populated database is rejected. Successful return identifies the restored native
@@ -576,8 +602,8 @@ artifact. Cancellation or lost acknowledgement may arrive after commit; inspect 
 before retrying. A populated destination is rejected rather than automatically cleared/replayed.
 Only restore trusted artifacts: checksums verify integrity, not source trust or authenticity.
 
-The service still needs Pipeline/API/Studio/CLI orchestration, independently protected retention
-and encryption, and a matching committed object inventory before it can form a complete snapshot.
+The service restores selected components. Independently protected retention and encryption,
+a matching committed object inventory and the other recovery requirements remain separate.
 
 ## Architecture
 
