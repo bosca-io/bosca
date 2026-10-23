@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -32,6 +32,7 @@ import { checkDocuments } from './documents.mjs';
 import { checkSourcePolish } from './source-polish.mjs';
 import { checkVisualizations } from './visualizations.mjs';
 import { checkDashboards } from './dashboards.mjs';
+import { driverDiagnostics } from './driver-diagnostics.mjs';
 
 const base = process.argv[2];
 const mode = process.argv[3] ?? 'fixture';
@@ -55,7 +56,7 @@ const browser = spawn(process.env.BML_DESIGN_CHROME_BINARY ?? (process.platform 
 ], { stdio: 'ignore' });
 let launchError;
 browser.on('error', error => { launchError = error; });
-let ws;
+let ws, diagnostics;
 try {
   let ready = false;
   for (let attempt = 0; attempt < 100; attempt++) {
@@ -75,6 +76,7 @@ try {
   const consoleErrors = [];
   ws.addEventListener('message', event => {
     const message = JSON.parse(event.data);
+    diagnostics?.event(message);
     if (message.method === 'Runtime.exceptionThrown') exceptions.push(message.params.exceptionDetails);
     if (message.method === 'Runtime.consoleAPICalled' && message.params.type === 'error') {
       consoleErrors.push(message.params.args.map(arg => arg.value ?? arg.description));
@@ -84,6 +86,7 @@ try {
       if (responses.length > 20) responses.shift();
     }
     if (!message.id) return;
+    diagnostics?.received(message.id, message.error);
     const item = pending.get(message.id);
     if (!item) return;
     pending.delete(message.id);
@@ -91,14 +94,16 @@ try {
     if (message.error) item.reject(new Error(JSON.stringify(message.error)));
     else item.resolve(message.result);
   });
-  function call(method, params = {}) {
+  function call(method, params = {}, deadline = 10000) {
     return new Promise((resolve, reject) => {
       const id = ++sequence;
-      const timeout = setTimeout(() => { pending.delete(id); reject(new Error(`CDP timeout: ${method}${params.expression ? `: ${params.expression}` : ""}`)); }, 10000);
+      diagnostics?.sent(id, method, params);
+      const timeout = setTimeout(() => { pending.delete(id); diagnostics?.timedOut(id); reject(new Error(`CDP timeout: ${method}${params.expression ? `: ${params.expression}` : ""}`)); }, deadline);
       pending.set(id, { resolve, reject, timeout });
       ws.send(JSON.stringify({ id, method, params }));
     });
   }
+  diagnostics = driverDiagnostics({ browser, cdp, artifacts, mode, call });
   async function evaluate(expression) {
     const result = await call('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true });
     if (result.exceptionDetails) throw new Error(JSON.stringify(result.exceptionDetails));
@@ -123,9 +128,34 @@ try {
   }
 
   await call('Page.enable');await call('Runtime.enable');await call('Network.enable');await call('Page.bringToFront');
+  // Enable before a possible long-running evaluation so a failure probe can interrupt V8.
+  await call('Debugger.enable');
   const key=async value=>{for(const type of ['keyDown','keyUp'])await call('Input.dispatchKeyEvent',{type,key:value,windowsVirtualKeyCode:{Enter:13,Tab:9,ArrowRight:39,ArrowLeft:37,ArrowDown:40,ArrowUp:38,Escape:27}[value],...(type==='keyDown'&&value==='Enter'?{text:'\r'}:{})});};
   const navigate=async path=>{await call('Page.navigate',{url:base+path});await until(`document.readyState==='complete'&&document.querySelector('main')&&location.pathname===${JSON.stringify(path)}`);};
-  if(process.argv[4]==='--dashboards') {
+  if(['--driver-promise-probe','--driver-busy-probe'].includes(process.argv[4])) {
+    const busy = process.argv[4]==='--driver-busy-probe';
+    const expression = busy ? '(function controlledBusyProbe(){while(true){}})()\n//# sourceURL=bml-driver-busy-probe.js' : 'new Promise(() => {})';
+    let observed;
+    try { await evaluate(expression); } catch (error) { observed = error; }
+    assert.match(observed?.message ?? '', /CDP timeout: Runtime.evaluate/);
+    const path = await diagnostics.capture(observed), report = JSON.parse(await readFile(path, 'utf8'));
+    assert.equal(report.error.message, observed.message);
+    assert.equal(report.failedOperation.state, 'timeout');
+    assert.ok(report.failedOperation.elapsed>=10000, 'The original ten-second request deadline is unchanged');
+    assert.ok(report.probes.browser.product.startsWith('Chrome/'));
+    assert.ok(report.processes.some(row=>row.pid===browser.pid));
+    assert.ok(report.probes.targets.some(target=>target.type==='page'));
+    if(busy) {
+      assert.match(report.probes.rendererError.message, /CDP timeout/);
+      assert.ok(report.probes.paused.frames.some(frame=>frame.functionName==='controlledBusyProbe'));
+      assert.ok(report.probes.paused.frames.some(frame=>frame.url==='bml-driver-busy-probe.js'));
+    } else assert.equal(report.probes.renderer.result.value.ready,'complete');
+    console.log(`Driver ${busy?'busy renderer':'pending promise'} evidence verified: ${path}`);
+  } else if(process.argv[4]==='--surfaces') {
+    await checkSurfaces({navigate,evaluate,until,call,artifacts,mode});
+  } else if(process.argv[4]==='--feedback') {
+    await checkFeedback({navigate,evaluate,until,call,artifacts,mode});
+  } else if(process.argv[4]==='--dashboards') {
     await checkDashboards({navigate,evaluate,until,call,key,artifacts,mode});
   } else if(process.argv[4]==='--dashboard-accessibility') {
     await checkAccessibility({navigate,evaluate,until,call,artifacts,mode,paths:['/dashboards','/components/visualization'],reportName:'dashboard-accessibility'});
@@ -233,7 +263,11 @@ try {
   await checkSurfaces({navigate,evaluate,until,call,artifacts,mode});
   }
   assert.deepEqual(exceptions,[]);
-  if(!process.argv[4]?.startsWith('--')) console.log(`Catalog ${mode}: foundation, themes, 44 packaged export contracts, references, overlays, views, trees, comments, editors, aliases and native fallbacks passed`);
+  if(!process.argv[4]?.startsWith('--')) console.log(`Catalog ${mode}: foundation, themes, ${Object.keys(JSON.parse(process.argv[4])).length} packaged export contracts, references, overlays, views, trees, comments, editors, aliases and native fallbacks passed`);
+} catch (error) {
+  try { await diagnostics?.capture(error); }
+  catch (diagnosticError) { console.error('Browser diagnostics failed:', diagnosticError); }
+  throw error;
 } finally {
   checkpoint('cleanup started');
   if(ws)ws.close();browser.kill('SIGTERM');

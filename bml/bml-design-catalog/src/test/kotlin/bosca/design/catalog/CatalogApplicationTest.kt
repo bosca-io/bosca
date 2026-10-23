@@ -29,6 +29,28 @@ class CatalogApplicationTest {
     private val classpath = System.getProperty("catalog.classpath")
 
     @Test
+    fun `driver diagnostics distinguish pending promises and blocked renderers`() {
+        withServer(false) { base, _ ->
+            runBrowser(base, false, "--driver-promise-probe", 60)
+            runBrowser(base, false, "--driver-busy-probe", 60)
+        }
+    }
+
+    @Test
+    fun `surface keyboard scrolling completes before retained layout checks`() {
+        for (development in listOf(false, true)) withServer(development) { base, _ ->
+            runBrowser(base, development, "--surfaces", 60)
+        }
+    }
+
+    @Test
+    fun `feedback tooltips finish placement and rendering checks`() {
+        for (development in listOf(false, true)) withServer(development) { base, _ ->
+            runBrowser(base, development, "--feedback", 60)
+        }
+    }
+
+    @Test
     fun `dashboard layouts retain widgets and native form values`() {
         for (development in listOf(false, true)) withServer(development) { base, _ ->
             runBrowser(base, development, "--dashboards", 90)

@@ -22,8 +22,9 @@ Open `http://localhost:9093/`. Pass another port with `--args=9094` if needed.
 | `/overlays` | Independent modal forms, retained drafts, rejected confirmations, popover forms and menus, sizes and trigger variants |
 | `/json` | Independent dark/light JSON drafts, retained engine state, pending/rejected saves, native reset, controlled options and tree/text/table/empty/invalid/readonly/disabled variants |
 | `/flows` | Independent VueFlow graphs, named-port connections, native forms, retained viewports, read-only, rejection and reset |
+| `/dashboards` | Movable/resizable widgets, locked layouts, keyboard handles, native forms and responsive stacking |
 | `/charts` | Chart.js built-in types, CSS colors, responsive canvases, data tables and local selection toasts |
-| `/components/visualization` | Flow and chart API references and authoring |
+| `/components/visualization` | Dashboard, flow and chart API references and authoring |
 | `/documents` | Independent TipTap documents, rich text formatting, native JSON form values, rejected saves, reset and readonly/disabled states |
 | `/source/languages` | Kotlin, TypeScript, JavaScript and BML syntax examples |
 | `/source` | Independent dark/light source viewers, requested lines, language/wrap changes, preserved state, content replacement and compact/bare/empty layouts |
@@ -34,7 +35,7 @@ Open `http://localhost:9093/`. Pass another port with `--args=9094` if needed.
 | `/views` | Search queries, native category values and caller-owned tab panels, retained drafts, rejected searches, changing tab lists and long/empty/readonly/disabled variants |
 | `/choices` | Local required/custom choices, multiple native values, tag limits, loading/disabled controls and controlled defaults in two palettes |
 | `/selection` | Server-filtered, offset-paged picker in independent dark/light roots, with failed-search retry, loading/disabled controls, native reset and toast saves |
-| `/components` | Linked index of all 44 exports and normal unprefixed authoring |
+| `/components` | Linked index of all 46 exports and normal unprefixed authoring |
 | `/components/controls` | Buttons, inputs, choices, search, segments, accessible local tabs, native selects and the paged picker's authoring source |
 | `/components/layout` | Surfaces, headings, native disclosure, application header and route tabs |
 | `/components/feedback` | Alerts, badges, empty/loading states, icons, mark, tooltips, copy controls, repeatable notifications and timestamps |
@@ -334,6 +335,15 @@ actions and Tab order, live control-height/font overrides, and compact/bare grow
 Chrome defaults to the installed Google Chrome app on macOS or `google-chrome` on Linux. Set
 `BML_DESIGN_CHROME_BINARY` for another executable. Desktop/phone screenshots are written under
 `build/reports/browser/`.
+
+On failure the browser driver saves `catalog-<mode>-driver-failure-<timestamp>-<sequence>.json`
+before cleanup. It retains the original error, recent protocol operations and timings, owned Chrome
+process metadata and browser/renderer health probes. A blocked renderer also gets a bounded native
+stack sample on macOS and an interrupting JavaScript stack capture. Diagnostic failures stay in that
+report; the original test still fails. No acceptance request is retried and its ten-second deadline
+stays unchanged. Controlled pending-promise and busy-renderer probes verify this distinction using
+isolated Chrome instances. The debugger is enabled before acceptance so it can interrupt a busy V8
+evaluation; pause-event collection happens only after a failed renderer probe.
 
 Flow/chart acceptance runs actual VueFlow drags and keyboard connections plus all eight Chart.js
 built-in types, CSS series colors, controlled updates, native form rules, reset, repeated disposal,
