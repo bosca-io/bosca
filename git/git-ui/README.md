@@ -64,7 +64,8 @@ The client schema contains the fields used by the UI. Its contract test compares
 The normal HTTP suite measures production assets for login, the repository list, a pull request,
 a pipeline, a source/editing page and orchestrator settings. It checks one merged page script beside
 global authentication, one copy of each BML runtime registry, editor-engine isolation, unique
-stylesheet/font links, anonymous same-origin resource responses and all four library notices.
+stylesheet/font links, anonymous same-origin resource responses and the font, icon, source-view
+and JSON-editor notices used by these pages.
 `build/reports/design-assets/git-page-assets.json` records per-page and per-asset raw/gzip sizes,
 content types and digests. Font totals include every referenced subset; browsers request the subsets
 matching their rendered text. Global CSS retains Git's editor palette rules on basic pages; engine
@@ -79,6 +80,19 @@ GIT_SERVER_TEST_BINARY="$PWD/git/git-server/build/native/nativeCompile/bosca-git
 ```
 
 It creates isolated PostgreSQL/NATS resources and shuts down both listeners in that process. `-Ob` is quick optimization; release optimization is a separate check.
+
+The standalone native UI host has a focused acceptance task:
+
+```bash
+./gradlew :git:git-ui-server:nativeCompile --build-args=-Ob :git:git-ui:nativeUiHostTest --no-configuration-cache --no-parallel
+```
+
+It copies the executable into a temporary directory with its isolated API configuration, verifies
+embedded resource origins and actual HTTP assets/fonts, then runs the source, repository and JSON
+browser workflows at all four viewport widths. Reports live in `build/reports/native-ui/` under this
+project. `executable.txt` records the current binary and bound origin before browser acceptance,
+including runs whose later assertions fail. Source checks require unfilled active rows/gutters and
+a neutral keyboard-focus border while preserving consumer surface, text and syntax colors.
 
 See the [application specification](../../specs/git/bml-git-application-spec.md) and [Studio inventory](../../specs/git/studio-ui-inventory.md). Studio and the main server are unchanged in this step.
 

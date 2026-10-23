@@ -53,6 +53,7 @@ class GitUiNativeHostTest {
             server = process
             val client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build()
             val base = awaitServer(process, log)
+            File(artifacts, "executable.txt").writeText("name=${binary.name}\nbytes=${binary.length()}\nsha256=${digest(binary.readBytes())}\norigin=$base\n")
             val ready = client.send(HttpRequest.newBuilder(base.resolve("/api/v1/ready"))
                 .timeout(Duration.ofSeconds(10)).build(), HttpResponse.BodyHandlers.ofString())
             assertEquals(200, ready.statusCode(), ready.body())
@@ -72,7 +73,6 @@ class GitUiNativeHostTest {
             assertEquals(0, checks.exitValue(), browserLog.readText() + "\nNative host:\n" + log.readText())
             assertTrue(process.isAlive, log.readText())
             assertFalse("bml: no META-INF/bosca/bml/build-id resource" in log.readText(), log.readText())
-            File(artifacts, "executable.txt").writeText("name=${binary.name}\nbytes=${binary.length()}\nsha256=${digest(binary.readBytes())}\norigin=$base\n")
         } finally {
             browserProcess?.let { stop(it) }
             server?.let { stop(it) }
