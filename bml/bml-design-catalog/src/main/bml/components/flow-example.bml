@@ -1,0 +1,32 @@
+<component tag="flow-example">
+  <prop name="id" type="String" required />
+  <prop name="title" type="String" required />
+  <script server provides="flow" scope="server-session">bosca.design.catalog.CatalogFlow(id)</script>
+  <card :title="title"><island name="flow" :key="id">
+    <div class="catalog-stack" :data-catalog-flow="flow.id" :data-reject-connections="flow.rejectConnections">
+      <if flow.visible>
+        <form class="example-form" @submit="flow.save(form.graph)" :data-flow-form="flow.id">
+          <flow-editor :id='"flow-" + flow.id' label="Example graph" :value="flow.value" :readOnly="flow.readOnly"
+                       :disabled="flow.disabled" :error="flow.error" :preserveKey='"flow-" + flow.id' />
+          <div class="example-actions"><button type="submit" primary size="sm" :disabled="flow.disabled || flow.readOnly">Save graph</button><button type="reset" size="sm" :disabled="flow.disabled || flow.readOnly">Reset graph</button></div>
+        </form>
+      </if>
+      <details data-example-states><disclosure-heading>Example states</disclosure-heading><div class="catalog-stack visualization-states">
+        <switch label="Read only" :checked="flow.readOnly" @change="flow.toggleReadOnly" data-flow-readonly />
+        <switch label="Disabled" :checked="flow.disabled" @change="flow.toggleDisabled" data-flow-disabled />
+        <switch label="Reject saves" :checked="flow.reject" @change="flow.toggleRejection" data-flow-reject />
+        <switch label="Reject connections" :checked="flow.rejectConnections" @change="flow.toggleConnections" data-flow-connections />
+        <switch label="Show canvas" :checked="flow.visible" @change="flow.toggleVisible" data-flow-visible />
+        <div class="example-actions"><button size="sm" @click="flow.refresh" data-flow-refresh>Refresh example</button><button size="sm" @click="flow.replace" data-flow-replace>Replace graph</button></div>
+      </div></details>
+      <toast :id='"flow-notice-" + flow.id' :message="flow.notice" :sequence="flow.noticeSequence" :tone='if (flow.error.isBlank()) "success" else "error"' :data-flow-toast="flow.id" />
+    </div>
+  </island></card>
+  <script client scoped>
+    import { retainDisclosure } from "@client/catalog-disclosure";
+    retainDisclosure(ctx);
+    ctx.on<CustomEvent>(ctx.root, "flowconnect", event => {
+      if (ctx.root.querySelector("[data-reject-connections]")?.hasAttribute("data-reject-connections")) event.preventDefault();
+    });
+  </script>
+</component>

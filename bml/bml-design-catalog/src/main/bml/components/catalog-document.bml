@@ -2,6 +2,9 @@
   <prop name="title" type="String" required />
   <prop name="description" type="String" required />
   <prop name="current" type="String" required />
+  <script server provides="lightAppearance">
+    currentRenderContext().cookies["bosca_catalog_appearance"] == "light"
+  </script>
   <html lang="en">
     <head>
       <meta charset="utf-8" />
@@ -24,12 +27,16 @@
           <a href="/surfaces" :aria-current='if (current == "/surfaces") "page" else null'><icon name="boxes" />Surfaces</a>
           <a href="/source" :aria-current='if (current == "/source") "page" else null'><icon name="code" />Source</a>
           <a href="/json" :aria-current='if (current == "/json") "page" else null'><icon name="code" />JSON</a>
+          <a href="/flows" :aria-current='if (current == "/flows") "page" else null'><icon name="boxes" />Flows</a>
+          <a href="/dashboards" :aria-current='if (current == "/dashboards") "page" else null'><icon name="list" />Dashboards</a>
+          <a href="/charts" :aria-current='if (current == "/charts") "page" else null'><icon name="list" />Charts</a>
+          <a href="/documents" :aria-current='if (current == "/documents") "page" else null'><icon name="book-open" />Documents</a>
           <a href="/comments" :aria-current='if (current == "/comments") "page" else null'><icon name="message" />Comments</a>
           <a href="/overlays" :aria-current='if (current == "/overlays") "page" else null'><icon name="boxes" />Overlays</a>
           <a href="/themes" :aria-current='if (current == "/themes") "page" else null'><icon name="settings" />Themes</a>
         </nav>
         <div class="catalog-appearance">
-          <switch label="Light appearance" name="lightAppearance" data-catalog-light />
+          <switch label="Light appearance" name="lightAppearance" :checked="lightAppearance" data-catalog-light />
         </div>
       </app-header>
       <page-shell class="catalog-main">
@@ -45,4 +52,8 @@
       </page-shell>
     </body>
   </html>
+  <script client scoped>
+    import { rememberAppearance } from "@client/catalog-appearance";
+    rememberAppearance(ctx);
+  </script>
 </component>

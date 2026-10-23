@@ -10,12 +10,13 @@
 }
 [data-bml-source-view].compact-code .cm-editor { min-height: 0; }
 [data-bml-source-view].bare-code .cm-editor { min-height: 225px; max-height: 800px; }
-[data-bml-source-view] .cm-editor.cm-focused { outline: 1px solid var(--accent); outline-offset: -1px; }
+[data-bml-source-view] .cm-editor.cm-focused { outline: none; }
+[data-bml-source-view] .cm-editor:has(.cm-content:focus-visible) { outline: 1px solid var(--control-border, var(--line-2)); outline-offset: -1px; }
 [data-bml-source-view] .cm-editor .cm-scroller { overflow: auto; font-family: var(--font-mono); line-height: 1.7; }
 [data-bml-source-view] .cm-content { padding: 12px 0; }
 [data-bml-source-view] .cm-gutters { background: var(--source-bg, var(--bg-1)); color: var(--source-gutter, var(--fg-3)); border: 0; }
 [data-bml-source-view] .cm-activeLine,
-[data-bml-source-view] .cm-activeLineGutter { background: var(--source-active-line, var(--bg-2)); }
+[data-bml-source-view] .cm-activeLineGutter { background: transparent; }
 [data-bml-source-view] .cm-editor .cm-selectionBackground,
 [data-bml-source-view] .cm-editor ::selection { background: var(--source-selection, color-mix(in oklch, var(--accent) 25%, transparent)); }
 [data-bml-source-view] .cm-cursor { border-left-color: var(--accent); }
@@ -30,6 +31,8 @@
 [data-bml-source-view] .cm-foldPlaceholder { background: var(--bg-3); color: var(--fg-2); border-color: var(--line-2); }
 [data-bml-source-view] .cm-selectionMatch { background: var(--source-active-line, var(--bg-2)); }
 [data-bml-source-view] .source-keyword { color: var(--source-keyword, var(--purple)); }
+[data-bml-source-view] .source-tag { color: var(--source-tag, var(--info)); }
+[data-bml-source-view] .source-attribute { color: var(--source-attribute, var(--warn)); }
 [data-bml-source-view] .source-name { color: var(--source-name, var(--fg-1)); }
 [data-bml-source-view] .source-function { color: var(--source-function, var(--info)); }
 [data-bml-source-view] .source-constant { color: var(--source-constant, var(--warn)); }
@@ -49,6 +52,7 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  justify-content: flex-end;
   gap: 6px 8px;
   padding: 8px;
   font: 12.5px/1.5 var(--font-sans);
@@ -56,12 +60,15 @@
 [data-bml-source-view] .cm-editor .cm-panel.cm-search :is(input, button, label) { margin: 0; font: inherit; }
 [data-bml-source-view] .cm-editor .cm-panel.cm-search :is(.cm-textfield, button) {
   box-sizing: border-box;
-  min-height: var(--control-height-sm);
-  padding: 0 10px;
 }
-[data-bml-source-view] .cm-editor .cm-panel.cm-search .cm-textfield { flex: 1 1 180px; width: auto; min-width: 0; }
+[data-bml-source-view] .cm-editor .cm-panel.cm-search .cm-textfield { flex: 1 1 180px; width: auto; min-width: 0; min-height: var(--control-height-sm); padding: 0 10px; }
 [data-bml-source-view] .cm-editor .cm-panel.cm-search .cm-textfield::placeholder { color: var(--fg-3); opacity: 1; }
-[data-bml-source-view] .cm-editor .cm-panel.cm-search button { flex: none; white-space: nowrap; }
+[data-bml-source-view] .cm-editor .cm-panel.cm-search button {
+  flex: none;
+  min-height: var(--control-height-xs);
+  padding: 0 8px;
+  white-space: nowrap;
+}
 [data-bml-source-view] .cm-editor .cm-panel.cm-search button:hover { background: var(--bg-3); }
 [data-bml-source-view] .cm-editor .cm-panel.cm-search label {
   display: inline-flex;
@@ -73,15 +80,16 @@
 [data-bml-source-view] .cm-editor .cm-panel.cm-search label input[type=checkbox] { flex: none; width: 14px; height: 14px; margin: 0; }
 [data-bml-source-view] .cm-editor .cm-panel.cm-search button[name=close] {
   position: static;
-  min-width: var(--control-height-sm);
+  min-width: var(--control-height-xs);
   margin-left: auto;
   padding: 0;
   border: 0;
   border-radius: var(--r-sm);
   color: inherit;
   font-size: 18px;
+  line-height: 1;
 }
-[data-bml-source-view] .cm-editor .cm-panel.cm-search :is(input, button):focus-visible { outline: var(--focus-width) solid var(--accent); outline-offset: 2px; }
+[data-bml-source-view] .cm-editor .cm-panel.cm-search :is(input, button):focus-visible { outline: var(--focus-width) solid var(--control-border, var(--line-2)); outline-offset: 2px; }
 [data-bml-source-view].compact-code:has(.cm-panel.cm-search) { min-height: 240px; }
 [data-bml-source-view] .cm-searchMatch,
 [data-bml-source-view] .cm-searchMatch span { color: var(--source-search-fg, var(--source-fg, var(--fg-1))); }

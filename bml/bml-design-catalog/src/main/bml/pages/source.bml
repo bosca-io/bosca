@@ -16,6 +16,7 @@
     <card title="Use in your application"><div class="catalog-stack">
       <p class="catalog-description">Keep a stable preservation key for updates around a viewer. Change that key when replacing its content or toolbar children. Colors and surface dimensions come from your application's CSS.</p>
       <a class="catalog-link" href="/components/content#ref-source-view">Source API and authoring</a>
+      <a class="catalog-link" href="/source/languages">Kotlin, TypeScript, JavaScript and BML examples</a>
     </div></card>
   </catalog-document>
 </page>

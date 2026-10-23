@@ -21,7 +21,7 @@
         <dt>Consumer CSS</dt><dd>{ css }</dd>
       </dl>
       <h3>Authoring</h3>
-      <pre class="code-sample" role="group" tabindex="0" :aria-label='name + " authoring source"'><code>{ snippet }</code></pre>
+      <source-view :content="snippet" path="example.bml" language="bml" :label='name + " authoring source"' compact />
     </details>
   </html:section>
 </component>

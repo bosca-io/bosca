@@ -1,0 +1,97 @@
+<component tag="document-editor">
+  <prop name="id" type="String" required />
+  <prop name="label" type="String" required />
+  <prop name="name" type="String" default="document" />
+  <prop name="value" type="String" :default='"{\"type\":\"doc\",\"content\":[{\"type\":\"paragraph\"}]}"' />
+  <prop name="readOnly" type="Boolean" default="false" />
+  <prop name="disabled" type="Boolean" default="false" />
+  <prop name="required" type="Boolean" default="false" />
+  <prop name="error" type="String" default="" />
+  <prop name="hint" type="String" default="" />
+  <prop name="placeholder" type="String" default="Start writing…" />
+  <prop name="preserveKey" type="String" default="" />
+  <div class="document-editor" data-bml-document-editor role="group" :aria-label="label"
+       :data-bml-preserve="preserveKey.takeIf(String::isNotBlank)" :data-value="value" :data-name="name"
+       :data-label="label" :data-readonly="readOnly" :data-disabled="disabled" :data-required="required"
+       :data-error="error" :data-placeholder="placeholder" :data-editor-id="id" {...attrs}>
+    <div ref="toolbar" class="document-toolbar" role="toolbar" :aria-label='label + " formatting"' hidden>
+      <html:select ref="block" aria-label="Text style">
+        <option value="paragraph">Paragraph</option>
+        <option value="1">Heading 1</option><option value="2">Heading 2</option><option value="3">Heading 3</option>
+        <option value="4">Heading 4</option><option value="5">Heading 5</option><option value="6">Heading 6</option>
+      </html:select>
+      <div class="document-command-group" role="group" aria-label="Text formatting">
+        <button size="xs" data-document-command="bold" aria-pressed="false">Bold</button>
+        <button size="xs" data-document-command="italic" aria-pressed="false">Italic</button>
+        <button size="xs" data-document-command="underline" aria-pressed="false">Underline</button>
+        <button size="xs" data-document-command="strike" aria-pressed="false">Strike</button>
+        <button size="xs" data-document-command="code" aria-pressed="false">Code</button>
+      </div>
+      <div class="document-command-group" role="group" aria-label="Lists and blocks">
+        <button size="xs" data-document-command="bulletList" aria-pressed="false">Bullets</button>
+        <button size="xs" data-document-command="orderedList" aria-pressed="false">Numbers</button>
+        <button size="xs" data-document-command="taskList" aria-pressed="false">Tasks</button>
+        <button size="xs" data-document-command="blockquote" aria-pressed="false">Quote</button>
+        <button size="xs" data-document-command="codeBlock" aria-pressed="false">Code block</button>
+      </div>
+      <div class="document-command-group" role="group" aria-label="Insert content">
+        <button size="xs" data-document-command="link" aria-pressed="false">Link</button>
+        <button size="xs" data-document-command="image">Image</button>
+        <button size="xs" data-document-command="table">Table</button>
+        <button size="xs" data-document-command="horizontalRule">Divider</button>
+      </div>
+      <div class="document-command-group" role="group" aria-label="Additional formatting">
+        <button size="xs" data-document-command="superscript" aria-pressed="false">Superscript</button>
+        <button size="xs" data-document-command="subscript" aria-pressed="false">Subscript</button>
+        <html:select ref="alignment" aria-label="Text alignment">
+          <option value="left">Align left</option><option value="center">Center</option>
+          <option value="right">Align right</option><option value="justify">Justify</option>
+        </html:select>
+        <button size="xs" data-document-command="undo">Undo</button>
+        <button size="xs" data-document-command="redo">Redo</button>
+      </div>
+      <div ref="tableActions" class="document-command-group" role="group" aria-label="Table editing" hidden>
+        <button size="xs" data-document-command="addRowAfter">Add row</button>
+        <button size="xs" data-document-command="addColumnAfter">Add column</button>
+        <button size="xs" data-document-command="deleteRow">Delete row</button>
+        <button size="xs" data-document-command="deleteColumn">Delete column</button>
+        <button size="xs" data-document-command="toggleHeaderRow">Header row</button>
+        <button size="xs" data-document-command="mergeCells">Merge cells</button>
+        <button size="xs" data-document-command="splitCell">Split cell</button>
+        <button size="xs" data-document-command="deleteTable">Delete table</button>
+      </div>
+    </div>
+    <div ref="insert" class="document-insert" role="group" aria-label="Insert link or image" hidden>
+      <label>URL <input ref="url" inputmode="url" placeholder="https://example.com or /page" /></label>
+      <label ref="altLabel" hidden>Image description <input ref="alt" /></label>
+      <div class="document-command-group">
+        <button size="sm" ref="apply">Apply</button><button size="sm" ref="removeLink">Remove link</button>
+        <button size="sm" ref="cancelInsert">Cancel</button>
+      </div>
+    </div>
+    <textarea ref="value" :id="id" :name="name" :aria-label="label" :readonly="readOnly" :disabled="disabled"
+              :aria-describedby='id + "-hint " + id + "-error"' spellcheck="false">{ value }</textarea>
+    <div ref="editor" class="document-surface" />
+    <small :id='id + "-hint"' :hidden="hint.isBlank()">{ hint }</small>
+    <p ref="feedback" :id='id + "-error"' role="status" aria-live="polite" :hidden="error.isBlank()">{ error }</p>
+  </div>
+  <style scoped>
+    .document-editor { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+    .document-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+    .document-command-group { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+    .document-toolbar[hidden], .document-command-group[hidden], .document-insert[hidden], [hidden] { display: none; }
+    .document-toolbar select { max-width: 100%; min-height: var(--control-height-xs); padding: 0 6px; border: 1px solid var(--control-border, var(--line-2)); border-radius: var(--r-sm); background: var(--bg-2); color: var(--fg-0); font: 12px/1.5 var(--font-sans); }
+    .document-toolbar select:focus-visible { outline: var(--focus-width) solid var(--accent); outline-offset: 2px; }
+    .document-insert { display: flex; flex-direction: column; gap: 12px; padding: 12px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--bg-2); }
+    .document-insert label { display: flex; flex-direction: column; gap: 6px; font: 12px/1.5 var(--font-sans); }
+    .document-surface:empty { display: none; }
+    textarea { box-sizing: border-box; width: 100%; min-height: var(--document-height, 320px); padding: 16px; border: 1px solid var(--control-border, var(--line)); border-radius: var(--r-md); background: var(--bg-1); color: var(--fg-1); font: 13px/1.7 var(--font-mono); resize: vertical; }
+    textarea:focus-visible { outline: 1px solid var(--accent); }
+    small { color: var(--fg-2); font: 12px/18px var(--font-sans); }
+    p { margin: 0; color: var(--err); font: 12px/18px var(--font-sans); }
+  </style>
+  <script client scoped>
+    import { mountDocumentEditor } from "@client/helpers/document-editor";
+    mountDocumentEditor(ctx);
+  </script>
+</component>

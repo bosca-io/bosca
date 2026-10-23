@@ -69,7 +69,7 @@ export async function checkSource({ call, evaluate, until: poll, base, mode, art
   assert.deepEqual(await evaluate(`(() => {const root=${root};return [getComputedStyle(root.querySelector('.cm-editor')).backgroundColor,
     getComputedStyle(root.querySelector('.cm-editor')).color,getComputedStyle(root.querySelector('.cm-gutters')).color,
     getComputedStyle(root.querySelector('.source-keyword')).color,getComputedStyle(root.querySelector('.cm-activeLine')).backgroundColor];})()`),
-    ['rgb(239, 246, 255)','rgb(30, 58, 138)','rgb(30, 64, 175)','rgb(29, 78, 216)','rgb(219, 234, 254)']);
+    ['rgb(239, 246, 255)','rgb(30, 58, 138)','rgb(30, 64, 175)','rgb(29, 78, 216)','rgba(0, 0, 0, 0)']);
   await key('Escape');await key('Tab');
   assert.ok(await evaluate(`!${root}.contains(document.activeElement)`),'Escape then Tab restores native focus navigation');
   await evaluate(`document.querySelector('[data-source-bare] .cm-content').focus()`);await key('Escape');await key('Tab');
@@ -99,10 +99,10 @@ export async function checkSource({ call, evaluate, until: poll, base, mode, art
     height:root.offsetHeight,panel:panel.getBoundingClientRect().toJSON(),viewer:root.getBoundingClientRect().toJSON(),
     viewport:root.querySelector('.cm-scroller').clientHeight,font:getComputedStyle(panel).fontFamily,
     targets:[...panel.children].filter(el=>el.matches('input,button,label')).map(el=>({
-      box:el.getBoundingClientRect().toJSON(),fontSize:parseFloat(getComputedStyle(el).fontSize)}))};})()`);
+      kind:el.tagName,box:el.getBoundingClientRect().toJSON(),fontSize:parseFloat(getComputedStyle(el).fontSize)}))};})()`);
   const checkPanel=(state,height=30)=>{
     assert.equal(state.targets.length,8);assert.ok(state.viewport>=44&&state.panel.bottom<=state.viewer.bottom+0.5);
-    for(const target of state.targets)assert.ok(target.box.height>=height-0.5&&target.fontSize>=12&&
+    for(const target of state.targets)assert.ok(target.box.height>=(target.kind==='BUTTON'&&height===30?24:height)-0.5&&target.fontSize>=12&&
       target.box.left>=state.panel.left+7.5&&target.box.right<=state.panel.right-7.5,JSON.stringify(target));
   };
   try {
@@ -130,7 +130,7 @@ export async function checkSource({ call, evaluate, until: poll, base, mode, art
       const colors=()=>evaluate(`Array.from(${viewer}.querySelectorAll('.cm-searchMatch,.cm-searchMatch span')).map(el=>getComputedStyle(el).color)`);
       const normal=await colors();
       assert.ok(normal.length>2&&normal.every(color=>color===before.foreground),'Highlighted syntax uses the consuming viewer foreground');
-      await evaluate(`window.consumerSearchStyle=document.createElement('style');window.consumerSearchStyle.textContent='[data-search-colors] {--source-search-fg:#fff;--source-search-match:#281250;--source-selection:#481475;--control-height-sm:36px;--font-sans:system-ui,sans-serif;}';document.head.append(window.consumerSearchStyle);${viewer}.setAttribute('data-search-colors','')`);
+      await evaluate(`window.consumerSearchStyle=document.createElement('style');window.consumerSearchStyle.textContent='[data-search-colors] {--source-search-fg:#fff;--source-search-match:#281250;--source-selection:#481475;--control-height-sm:36px;--control-height-xs:36px;--font-sans:system-ui,sans-serif;}';document.head.append(window.consumerSearchStyle);${viewer}.setAttribute('data-search-colors','')`);
       const overridden=await colors();assert.ok(overridden.every(color=>color==='rgb(255, 255, 255)'));
       const sized=await panelGeometry(viewer);checkPanel(sized,36);assert.ok(sized.font.includes('system-ui'));
       assert.deepEqual(await snapshot(),before,'Search overrides preserve source, geometry and outside/sibling syntax');

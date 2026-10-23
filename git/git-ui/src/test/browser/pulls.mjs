@@ -625,7 +625,21 @@ for (const width of [1920, 1440, 1024, 390]) {
   await click('.diff-sidebar button[aria-label="Collapse Test"]');
   await until(`document.querySelector('.diff-sidebar [data-path="Test/.gitkeep"]').hidden`);
   await pressKey("ArrowRight");
-  await until(`document.activeElement?.getAttribute('aria-label') === 'Test/.gitkeep'`);
+  await until(`document.activeElement === document.querySelector('.diff-sidebar [data-path="Test/.gitkeep"] a')`);
+  assert.deepEqual(await ev(`({label:document.activeElement.getAttribute('aria-label'),
+    title:document.activeElement.title,href:document.activeElement.getAttribute('href'),
+    visible:!document.activeElement.closest('[data-path]').hidden})`),
+    {label:".gitkeep",title:"Test/.gitkeep",href:"#diff-Test%2F.gitkeep",visible:true},
+    "The focused file uses its visible name and retains the exact full path and destination");
+  const focusedFile = await call("Runtime.evaluate", {expression:"document.activeElement"});
+  try {
+    const tree = await call("Accessibility.getPartialAXTree", {objectId:focusedFile.result.objectId,fetchRelatives:false});
+    assert.equal(tree.nodes[0].ignored,false);
+    assert.equal(tree.nodes[0].role.value,"link");
+    assert.equal(tree.nodes[0].name.value,".gitkeep");
+  } finally {
+    await call("Runtime.releaseObject", {objectId:focusedFile.result.objectId});
+  }
   await pressKey("Enter");
   await until(`decodeURIComponent(location.hash) === '#diff-Test/.gitkeep'`);
   await ev(`window.scrollTo(0, 0); document.querySelector('main').scrollTop = 0`);

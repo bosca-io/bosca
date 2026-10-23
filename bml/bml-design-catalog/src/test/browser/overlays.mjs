@@ -165,7 +165,7 @@ export async function checkOverlays({ navigate, evaluate, until: poll, call, art
   const measurements=[];
   for(const width of [1440,390]) {
     await call('Emulation.setDeviceMetricsOverride',{width,height:640,deviceScaleFactor:1,mobile:false});
-    await evaluate(`document.querySelector('[data-catalog-light]').click();document.fonts.ready`);
+    await evaluate(`if(!document.querySelector('[data-catalog-light]').checked)document.querySelector('[data-catalog-light]').click();document.fonts.ready`);
     await evaluate(`document.querySelectorAll('.toast-region:popover-open [data-bml-ref=dismiss]').forEach(button=>button.click());document.querySelectorAll('[data-example-states]').forEach(details=>{details.open=false;});document.querySelector('.catalog-content').scrollIntoView({block:'start'});window.scrollTo(0,0)`);
     const page=await evaluate(`(()=>{const cards=[...document.querySelectorAll('.catalog-grid .ui-card')].map(card=>card.getBoundingClientRect());return {overflow:document.documentElement.scrollWidth-innerWidth,cardGap:cards[1].top-cards[0].bottom};})()`);
     assert.ok(page.overflow<=0&&(width>900||page.cardGap>=23.5),JSON.stringify(page));

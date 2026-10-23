@@ -1,0 +1,27 @@
+<component tag="chart-example">
+  <prop name="id" type="String" required />
+  <prop name="title" type="String" required />
+  <script server provides="chart" scope="server-session">bosca.design.catalog.CatalogChart(id)</script>
+  <card :title="title"><island name="chart" :key="id"><div class="catalog-stack" :data-catalog-chart="chart.id">
+    <if chart.visible><chart :id='"chart-" + chart.id' :label="chart.label" :config="chart.config" :loading="chart.loading"
+      :error='if (chart.failed) "This example could not load its data." else ""' :preserveKey='"chart-" + chart.id' /></if>
+    <form class="example-form" @submit="chart.chooseType(form.chartType)"><field label="Chart type"><select name="chartType" label="Chart type" :value="chart.type">
+      <for kind in bosca.design.catalog.CatalogChart.types><option :value="kind">{ kind }</option></for>
+    </select></field><div class="example-actions"><button type="submit" size="sm">Apply type</button><button size="sm" @click="chart.replace" data-chart-replace>Replace data</button></div></form>
+    <details data-example-states><disclosure-heading>Example states</disclosure-heading><div class="catalog-stack visualization-states">
+      <switch label="Loading" :checked="chart.loading" @change="chart.toggleLoading" data-chart-loading />
+      <switch label="Failed request" :checked="chart.failed" @change="chart.toggleFailure" data-chart-failed />
+      <switch label="Empty data" :checked="chart.empty" @change="chart.toggleEmpty" data-chart-empty />
+      <switch label="Show chart" :checked="chart.visible" @change="chart.toggleVisible" data-chart-visible />
+      <div class="example-actions"><button size="sm" @click="chart.refresh" data-chart-refresh>Refresh example</button></div>
+    </div></details>
+    <toast :id='"chart-notice-" + chart.id' :message="chart.notice" :sequence="chart.noticeSequence" :data-chart-toast="chart.id" />
+  </div></island></card>
+  <script client scoped>
+    import { retainDisclosure } from "@client/catalog-disclosure";
+    retainDisclosure(ctx);
+    ctx.on<CustomEvent<{ datasetIndex: number; index: number }>>(ctx.root, "chartselect", event => {
+      ctx.dispatch(chart.selected(event.detail.datasetIndex, event.detail.index));
+    });
+  </script>
+</component>

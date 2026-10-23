@@ -1,0 +1,11 @@
+<page route="/source/languages">
+  <catalog-document title="Source languages" description="Kotlin, TypeScript, JavaScript and BML syntax colors." current="/source">
+    <p class="page-intro">A filename selects the language. An explicit language value takes priority. BML highlights markup, scoped Kotlin server code, TypeScript client code and CSS.</p>
+    <div class="catalog-grid">
+      <card title="Kotlin"><source-view :content='"val greeting: String = \"Hello\"\nfun welcome(name: String) = greeting + name"' path="example.kt" label="Kotlin source" compact data-language-example="kt" /></card>
+      <card title="TypeScript"><source-view :content='"interface Person { name: string }\nexport const greet = (person: Person): string => person.name;"' path="example.ts" label="TypeScript source" compact data-language-example="ts" /></card>
+      <card title="JavaScript"><source-view :content='"export function greet(name) {\n  return \"Hello, \" + name;\n}"' path="example.js" label="JavaScript source" compact data-language-example="js" /></card>
+      <card title="BML"><source-view :content='"<page route=\"/hello\">\n  <script server provides=\"message\">\n    val greeting = \"Hello\"\n    greeting.uppercase()\n  </script>\n  <button primary>{ message }</button>\n  <style scoped>button { color: var(--accent); }</style>\n  <script client scoped>\n    const label: string = \"Hello\";\n    console.log(label);\n  </script>\n</page>"' path="example.bml" label="BML source" compact data-language-example="bml" /></card>
+    </div>
+  </catalog-document>
+</page>

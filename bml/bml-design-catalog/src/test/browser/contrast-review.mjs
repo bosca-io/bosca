@@ -75,10 +75,29 @@ export function assertContrast(evidence) {
 export async function reviewContrastFindings({ incomplete, evaluate, reviews }) {
   const findings = incomplete.filter(rule => rule.id === 'color-contrast').flatMap(rule => rule.nodes);
   for (const finding of findings) assert.equal(finding.target.length, 1, 'Review shadow/frame contrast explicitly');
-  const evidence = await evaluate(`(${JSON.stringify(findings.map(finding => finding.target[0]))}).map(selector => (${inspectContrast.toString()})(selector))`);
+  const evidence = await evaluate(`(${JSON.stringify(findings.map(finding => finding.target[0]))}).map(selector => {
+    const matches = [...document.querySelectorAll(selector)];
+    return matches.map((element, matchIndex) => {
+      let resolvedSelector = selector;
+      if (matches.length > 1) {
+        const parts = [];
+        for (let node = element; node; node = node.parentElement) {
+          parts.unshift(node.parentElement
+            ? node.localName + ':nth-child(' + ([...node.parentElement.children].indexOf(node) + 1) + ')'
+            : node.localName);
+        }
+        resolvedSelector = parts.join(' > ');
+      }
+      return { matchedCount: matches.length, matchIndex, resolvedSelector,
+        dom: (${inspectContrast.toString()})(resolvedSelector) };
+    });
+  })`);
   findings.forEach((finding, index) => {
-    const row = { rule: 'color-contrast', target: finding.target,
-      reasons: [...finding.any, ...finding.all, ...finding.none].map(check => check.data?.messageKey), dom: evidence[index] };
-    reviews.push(row); assertContrast(row.dom);
+    assert.ok(evidence[index].length > 0, `Missing contrast target: ${JSON.stringify(finding.target)}`);
+    for (const match of evidence[index]) {
+      const row = { rule: 'color-contrast', target: finding.target,
+        reasons: [...finding.any, ...finding.all, ...finding.none].map(check => check.data?.messageKey), ...match };
+      reviews.push(row); assertContrast(row.dom);
+    }
   });
 }

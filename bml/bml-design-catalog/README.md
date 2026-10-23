@@ -21,6 +21,11 @@ Open `http://localhost:9093/`. Pass another port with `--args=9094` if needed.
 | `/comments` | Independent dark/light comment drafts, pending/rejected posts, native reset and controlled replacements, readonly/disabled/paused/long/escaped variants |
 | `/overlays` | Independent modal forms, retained drafts, rejected confirmations, popover forms and menus, sizes and trigger variants |
 | `/json` | Independent dark/light JSON drafts, retained engine state, pending/rejected saves, native reset, controlled options and tree/text/table/empty/invalid/readonly/disabled variants |
+| `/flows` | Independent VueFlow graphs, named-port connections, native forms, retained viewports, read-only, rejection and reset |
+| `/charts` | Chart.js built-in types, CSS colors, responsive canvases, data tables and local selection toasts |
+| `/components/visualization` | Flow and chart API references and authoring |
+| `/documents` | Independent TipTap documents, rich text formatting, native JSON form values, rejected saves, reset and readonly/disabled states |
+| `/source/languages` | Kotlin, TypeScript, JavaScript and BML syntax examples |
 | `/source` | Independent dark/light source viewers, requested lines, language/wrap changes, preserved state, content replacement and compact/bare/empty layouts |
 | `/surfaces` | Panels, padded/unpadded/untitled cards, retained native disclosures, empty/loading/table views and long labels in two palettes |
 | `/feedback` | Independent copy outcomes, tooltip placements, repeated toast tones, long notifications and native selectable values |
@@ -29,16 +34,18 @@ Open `http://localhost:9093/`. Pass another port with `--args=9094` if needed.
 | `/views` | Search queries, native category values and caller-owned tab panels, retained drafts, rejected searches, changing tab lists and long/empty/readonly/disabled variants |
 | `/choices` | Local required/custom choices, multiple native values, tag limits, loading/disabled controls and controlled defaults in two palettes |
 | `/selection` | Server-filtered, offset-paged picker in independent dark/light roots, with failed-search retry, loading/disabled controls, native reset and toast saves |
-| `/components` | Linked index of all 41 exports and normal unprefixed authoring |
+| `/components` | Linked index of all 44 exports and normal unprefixed authoring |
 | `/components/controls` | Buttons, inputs, choices, search, segments, accessible local tabs, native selects and the paged picker's authoring source |
 | `/components/layout` | Surfaces, headings, native disclosure, application header and route tabs |
 | `/components/feedback` | Alerts, badges, empty/loading states, icons, mark, tooltips, copy controls, repeatable notifications and timestamps |
 | `/components/overlays` | Native modal focus/return, a failed confirmation that retains its draft, and a popover |
-| `/components/content` | Scrolling table, keyboard trees, validated comment composer, JSON save/rejection, readonly/disabled editors and a source viewer |
+| `/components/content` | Scrolling table, keyboard trees, validated comment composer, JSON save/rejection, readonly/disabled editors and a source viewer and TipTap documents |
 | `/components/aliases` | A separate, optional aliased spelling beside the normal short name |
 
-The appearance switch changes application CSS through the native checkbox state. It requires no
-theme service or JavaScript and does not change the library dependency. Palette sections retain their
+The appearance switch changes application CSS through the native checkbox state. A catalog-owned
+cookie remembers the choice across navigation and reload; the server renders that saved state before
+scripts load, and restored history pages reconcile it on return. Without scripts, the saved choice is
+still rendered and the switch changes the current page. It does not change the library dependency. Palette sections retain their
 own colors when the surrounding document changes appearance. The form's BML actions use local
 session state and never call a product API. Native labels, required fields, choices and navigation
 remain available without scripts; server form actions require BML's browser runtime.
@@ -132,10 +139,15 @@ the result-panel key changes with accepted search content. Delayed-response chec
 link focus, forward/reverse Tab traversal and focus left outside the example in both palettes and
 viewport sizes. The local-only reference also makes plain-text panels keyboard reachable.
 
+The `/documents` examples submit ProseMirror JSON through their own form actions. TipTap supplies
+general rich text editing; saved/rejected outcomes use toasts, local drafts survive refreshes, and
+controlled replacements install new content. Unsupported application-specific nodes report an error
+and retain their original JSON. Both palettes use the same component.
+
 The `/source` examples keep a stable preservation key for surrounding updates and change it for
 content revisions. The application owns requested lines and server options; the compiled viewer owns
 selection, scroll, search and local wrapping. Refresh feedback uses a toast. The source reference shows
-the complete local composition, and the page includes short/medium/long compact snippets, compact
+the complete local composition with BML syntax colors, and the page includes short/medium/long compact snippets, compact
 without a toolbar, wrapped markup and empty source. Neither source text nor viewer state is sent to
 a product API.
 
@@ -167,7 +179,8 @@ Rejection toasts remain inside the active modal so their dismiss controls are ke
 The native fallback fits its container; the clipping example applies only to enhanced panels. The page also shows
 all three dialog sizes, text/link/block/plain/ghost triggers and a disabled trigger.
 
-The content route reaches both source and structured JSON engines. The source route reaches only
+The content route reaches source, structured JSON and document engines. Other component reference
+routes load the source viewer for colored authoring snippets. The documents route reaches only TipTap. The source route reaches only
 the standalone source viewer; the JSON route reaches only the structured editor. Ordinary control
 pages exclude both engines. The optional alias declaration stays in its
 own example page; normal pages use the single unaliased root import.
@@ -186,7 +199,7 @@ development JVMs using only built JARs, exercise HTTP assets and actions, and us
 Chrome profile. Each child binds its own ephemeral port; readiness requires its successful bind log
 and a catalog HTTP response. Fixture checks also run both modes together beside occupied IPv4 and
 IPv6 endpoints. They check navigation, rejected-draft retention, pending and saved form state,
-independent instances, CSS-only light appearance, two palettes, narrow layouts, native fallbacks and
+independent instances, saved light/dark appearance, two palettes, narrow layouts, native fallbacks and
 the 11 packaged Geist/Geist Mono assets. Notification regressions cover dismissed/expired/visible
 toasts through native navigation and Browser Back, reload, retained form values, unrelated updates
 after returning and new actions with repeated message text. The suite compares the catalog index and documented prop
@@ -252,7 +265,7 @@ They wait for CSS transitions to finish before measuring colors and include tran
 These are targeted checks, not a complete accessibility audit. Results are saved as
 `build/reports/browser/catalog-<mode>-presentation.json` beside the screenshots.
 
-The ordinary test suite also runs axe-core against all 21 routes in packaged production and
+The ordinary test suite also runs axe-core against all catalog routes in packaged production and
 development applications at 1440px and 390px, in both document appearances. Additional scans cover
 open choices, navigation menus, dialogs, tooltips, error toasts, validation, pending/loaded tables and
 example-state disclosures. Confirmed violations fail the test without disabling rules. Findings
@@ -321,3 +334,25 @@ actions and Tab order, live control-height/font overrides, and compact/bare grow
 Chrome defaults to the installed Google Chrome app on macOS or `google-chrome` on Linux. Set
 `BML_DESIGN_CHROME_BINARY` for another executable. Desktop/phone screenshots are written under
 `build/reports/browser/`.
+
+Flow/chart acceptance runs actual VueFlow drags and keyboard connections plus all eight Chart.js
+built-in types, CSS series colors, controlled updates, native form rules, reset, repeated disposal,
+independent dark/light roots and script-disabled alternatives at desktop/phone widths:
+
+```sh
+./gradlew :bml:bml-design-catalog:test --tests 'bosca.design.catalog.CatalogApplicationTest.flows and charts*' --tests 'bosca.design.catalog.CatalogApplicationTest.visualizations pass*' --tests 'bosca.design.catalog.ChartTableTest'
+```
+
+Visualization accessibility reports use `catalog-<mode>-visualization-accessibility.json`; scans include expanded node/connection controls and chart data tables.
+
+The `/dashboards` examples use `dashboard-grid` and `dashboard-item` with Studio's cell-coordinate
+model. Each palette contains a real Chart.js widget, a retained note input and a locked summary.
+The application owns layout saving and rejection; completion feedback uses toasts. Compact handles
+support pointer gestures, keyboard movement/resizing and Escape cancellation. Narrow containers stack
+without rewriting desktop coordinates. Widget DOM and local content survive geometry and surrounding
+updates. Focused acceptance covers collisions/locks, native forms and reset, controlled layout,
+independent roots, CSS gaps, invalid input, repeated disposal and script-disabled content:
+
+```sh
+./gradlew :bml:bml-design-catalog:test --tests 'bosca.design.catalog.CatalogApplicationTest.dashboard layouts*' --tests 'bosca.design.catalog.CatalogApplicationTest.dashboards pass*'
+```

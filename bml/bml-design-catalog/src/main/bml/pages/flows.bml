@@ -1,0 +1,7 @@
+<page route="/flows">
+  <catalog-document title="Flow editing" description="VueFlow diagrams with application-owned nodes, connections and actions." current="/flows">
+    <p class="page-intro">Drag nodes, select a node or connection, and use Fit to see the graph. Open Nodes and connections for keyboard selection and named-port connections. Each example keeps its own graph and viewport.</p>
+    <div class="catalog-grid"><div class="catalog-palette-dark"><flow-example id="dark" title="Dark palette" /></div><div class="catalog-palette-light"><flow-example id="light" title="Light palette" /></div></div>
+    <card title="Use in your application"><div class="catalog-stack"><p class="catalog-description">Your application supplies VueFlow nodes and edges, validates proposed connections and saves the graph through its own form. Node inspectors and pipeline behavior belong to that application.</p><a class="catalog-link" href="/components/visualization#ref-flow-editor">Flow editor API and authoring</a></div></card>
+  </catalog-document>
+</page>

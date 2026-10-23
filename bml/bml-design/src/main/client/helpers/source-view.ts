@@ -9,6 +9,8 @@ import "./source-view.css";
 
 const highlight = HighlightStyle.define([
   { tag: tags.keyword, class: "source-keyword" },
+  { tag: [tags.tagName, tags.angleBracket], class: "source-tag" },
+  { tag: tags.attributeName, class: "source-attribute" },
   { tag: [tags.name, tags.deleted, tags.character, tags.propertyName, tags.macroName], class: "source-name" },
   { tag: [tags.function(tags.variableName), tags.labelName], class: "source-function" },
   { tag: [tags.color, tags.constant(tags.name), tags.standard(tags.name)], class: "source-constant" },

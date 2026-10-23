@@ -34,7 +34,7 @@
     </card>
     <card title="Component reference">
       <div class="catalog-stack">
-        <p class="catalog-description">Browse the public props, native behavior and authoring examples for all 41 components.</p>
+        <p class="catalog-description">Browse the public props, native behavior and authoring examples for all 46 components.</p>
         <a class="catalog-link" href="/components">Browse components <icon name="arrow-right" /></a>
       </div>
     </card>

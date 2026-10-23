@@ -23,9 +23,11 @@
                 :data-bml-preserve="preserveKey.takeIf(String::isNotBlank)" {...attrs}>
     <if !bare>
       <div class="toolbar source-toolbar">
-        <slot />
-        <icon-button ref="wrap" icon="wrap" label="Toggle line wrapping" :aria-pressed="wrapped.toString()" />
-        <span class="muted editor-mode" title="Escape then Tab leaves the editor">Read-only</span>
+        <div class="source-caption"><slot /></div>
+        <div class="source-actions">
+          <span class="muted editor-mode" title="Escape then Tab leaves the editor">Read-only</span>
+          <icon-button ref="wrap" icon="wrap" size="xs" label="Toggle line wrapping" :aria-pressed="wrapped.toString()" />
+        </div>
       </div>
     </if>
     <textarea ref="content" hidden>{ content }</textarea>
@@ -76,13 +78,14 @@
       flex-wrap: wrap;
       align-items: center;
       flex: none;
-      padding: 8px 12px;
+      padding: 6px 10px;
       gap: 8px;
       border-bottom: 1px solid var(--line);
     }
+    .source-caption { min-width: 0; }
+    .source-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
     .editor-mode {
       color: var(--fg-3);
-      margin-left: auto;
       font-size: 11px;
     }
     .source {

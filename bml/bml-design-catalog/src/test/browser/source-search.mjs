@@ -11,7 +11,7 @@ export async function checkSourceSearch({navigate,evaluate,until,call,key,artifa
       await call('Emulation.setDeviceMetricsOverride',{width,height:1000,deviceScaleFactor:1,mobile:false});
       await call('Network.clearBrowserCookies');await navigate('/source');
       await until(`document.querySelectorAll('[data-source-ready]').length===8`);
-      if(appearance==='light')await evaluate(`document.querySelector('[data-catalog-light]').click()`);
+      if(appearance==='light')await evaluate(`if(!document.querySelector('[data-catalog-light]').checked)document.querySelector('[data-catalog-light]').click()`);
       await evaluate('document.fonts.ready');
       const root=`document.querySelector('[data-catalog-source=${id}]')`;
       const snapshot=()=>evaluate(`(()=>{const root=${root},box=root.getBoundingClientRect();return {

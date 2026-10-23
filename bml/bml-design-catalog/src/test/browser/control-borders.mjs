@@ -33,6 +33,7 @@ export async function checkControlBorders({ navigate, evaluate, until: poll, cal
         for (const path of scripts
           ? ['/themes', '/components/controls', '/components/content', '/components/overlays']
           : ['/components/controls', '/components/content']) {
+          await call('Network.clearBrowserCookies');
           await navigate(path);
           await evaluate('document.fonts.ready');
           if (scripts && path === '/components/controls') {

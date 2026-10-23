@@ -60,6 +60,8 @@ internal class GitUiAssetAudit(
             }
             assertEquals("source" in engines, "data-bml-source-view" in js, "$path source helper")
             assertEquals("json" in engines, "jse-main" in js, "$path structured editor engine")
+            assertTrue("ProseMirror" !in js && "data-document-ready" !in js, "$path must exclude the unused document editor")
+            assertTrue("vue-flow__node" !in js && "data-chart-ready" !in js && "data-grid-ready" !in js, "$path must exclude unused visualization engines")
             assertEquals(engines.isNotEmpty(), "cm-editor" in js, "$path CodeMirror engine")
             assertEquals(if (engines.isNotEmpty()) 1 else 0,
                 Regex("multiple instances of @codemirror/state").findAll(js).count(),

@@ -107,7 +107,7 @@ export async function checkPickers({ navigate, evaluate, until: poll, call, arti
   await evaluate(`document.querySelector('[data-picker-form=light]').requestSubmit()`);
   await until(`document.querySelector('[data-picker-toast=light]').matches(':popover-open')`);
   assert.equal(await evaluate(`${native('dark')}.value`), '');
-  await evaluate(`document.querySelector('[data-catalog-light]').click()`);
+  await evaluate(`if(!document.querySelector('[data-catalog-light]').checked)document.querySelector('[data-catalog-light]').click()`);
 
   for (const width of [1440, 390]) {
     await call('Emulation.setDeviceMetricsOverride', { width, height: 1000, deviceScaleFactor: 1, mobile: false });

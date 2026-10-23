@@ -1,6 +1,6 @@
 # Bosca Design Library
 
-Compiled BML controls extracted from Git UI. The library owns presentation; applications own their
+Reusable BML controls, including components extracted from Git UI. The library owns presentation; applications own their
 documents, forms, state, actions, navigation, and CSS themes. Its Kotlin package is
 `bosca.design.generated`, and its artifact coordinate is `io.bosca:bml-design`.
 
@@ -11,6 +11,18 @@ dependencies {
     implementation(project(":bml:bml-design"))
 }
 ```
+
+For a published dependency, use the available release selected by your application with matching
+BML tooling. Here `boscaVersion` is that application-selected version:
+
+```kotlin
+dependencies {
+    implementation("io.bosca:bml-design:$boscaVersion")
+}
+```
+
+Use your configured Bosca artifact repository. See [compiled library setup](/bml-reference/libraries#consume-a-library)
+for dependency and import behavior. The import below is the same for workspace and published dependencies.
 
 Declare one `src/main/bml/imports.bml`:
 
@@ -34,12 +46,35 @@ Pages and local components, including nested source directories, can then use:
 The containing page or component declares the application's state and island as usual. The example
 consumer in [examples/design-library](/bml-reference/design-library#catalog-and-example-consumer) demonstrates this wiring.
 The [catalog application](/bml-reference/design-library#catalog-and-example-consumer) provides references and rendered examples
-for all 41 exports, with its own navigation, local actions and CSS palettes.
+for all 46 exports, with its own navigation, local actions and CSS palettes.
 See [Migrating Git UI components](/bml-reference/design-migration) for the complete tag mapping, caller changes,
 and ownership of styles and browser behavior.
 Use `<html:button>`, `<html:input>` and `<html:section>` for native elements after importing their library counterparts.
 Local component definitions take precedence throughout their module. An optional `as="design"`
 import provides `<design:button>` with the same runtime identity and assets as `<button>`.
+
+## Release notes
+
+### Initial extraction
+
+- The library contains 41 components from Git UI, including foundation controls, layout, selection,
+  navigation, overlays, clipboard actions, trees, feedback, timestamps and editors. One unaliased
+  root import makes their short names available throughout an application.
+- Applications style colors, fonts, borders, control spacing and editor surfaces through the
+  [public CSS variables](/bml-reference/design-tokens). Independent palettes can coexist, and overlays inherit their
+  owning palette. The original Geist fonts, Bosca mark, icons and dependency notices ship with the library.
+- Shared interactions retain native form values, keyboard operation, declarative events and state
+  through surrounding updates. Applications own their documents, routes, actions and transport.
+  Git retains its editing, preview, draft and domain adapters.
+- `source-view` supplies a read-only viewer with requested-line navigation and search. Finder controls
+  wrap at narrow widths; compact snippets expand while search is open and restore their height on close.
+  `json-editor` supplies structured editing with a native form value; virtual tables retain logical row
+  positions and complete header-column alignment.
+- Toasts announce each new sequence without replaying retained messages after navigation. Quiet copy
+  confirmation preserves surrounding geometry, and local view tabs retain focus during pending updates.
+- Migration replaces `ui-*` calls with short names, uses `page-shell` for the former `ui-page`, moves
+  navigation values to `bosca.design.model.NavigationItem`, and marks persistent async choices explicitly.
+  The [migration guide](/bml-reference/design-migration) lists every tag and caller adjustment.
 
 ## Fonts and notices
 
@@ -109,6 +144,11 @@ CSS, globally or on a themed container. Declaring the packaged faces does not fo
 | `time` | Required `value: String`; `relative`, `ago`, `inheritTypography`: `Boolean = false`; `format: String = ""` | Native time receives additional attributes/classes, its original value as datetime/title and an English server-rendered label. No child content. Use `html:time` for a native timestamp after importing this component. |
 | `comment-editor` | Required `id: String` and `label: String`; `value`, `error`, `hint`, `describedBy`: `String = ""`; `submitDisabled: Boolean = false`; `submitLabel: String = "comment"`; `placeholder: String = "Write a comment…"`; `name: String = "body"` | Native required textarea receives additional attributes/classes, its ID and preservation key. Default children supply action controls. The caller owns its surrounding form, submission and error outcomes. |
 | `json-editor` | Required `name: String`; `value: String = "{}"`; `label: String = "JSON editor"`; `mode: String = "tree"` (`tree`, `text`, `table`); `readOnly: Boolean = false`; `disabled: Boolean = false`; `error: String = ""`; `preserveKey: String = ""` | Structured editor with a native textarea form value and escaped no-script fallback. Additional attributes/classes target its labelled group. Syntax and caller feedback appear in a live status. No child content. |
+| `flow-editor` | Required `id`, `label`: `String`; `name: String = "graph"`; `value: String = "{\"nodes\":[],\"edges\":[]}"`; `readOnly`, `disabled`: `Boolean = false`; `error`, `preserveKey`: `String = ""` | VueFlow canvas with native JSON form value, named ports, selection/connection/change events, view controls and text outline. Additional attributes/classes reach the root; default children follow the outline. |
+| `chart` | Required `id`, `label`, `config`: `String`; `loading: Boolean = false`; `error`, `preserveKey`: `String = ""` | Chart.js JSON configuration, CSS palette defaults, responsive named canvas and server-rendered data table. Additional attributes/classes reach the root; default children follow the table. |
+| `dashboard-grid` | Required `id`, `label`: `String`; `name: String = "layout"`; `value`, `lockedIds`: `String = "[]"`; `columns: Int = 12`; `cellHeight: Int = 60`; `stackBelow: Int = 480`; `readOnly`, `disabled`: `Boolean = false`; `error`, `preserveKey`: `String = ""` | Studio-style dashboard geometry, native JSON form value, pointer/keyboard movement and resizing, locked widgets and narrow-container stacking. Direct default children are dashboard items; extra attributes reach the root. |
+| `dashboard-item` | Required `itemId`, `label`: `String` | Named widget and layout handles. Attributes reach the section; default children remain ordinary BML content in a scrolling body. |
+| `document-editor` | Required `id`, `label`: `String`; `name: String = "document"`; `value: String` (ProseMirror JSON, defaults to an empty document); `readOnly`, `disabled`, `required`: `Boolean = false`; `error`, `hint`, `preserveKey`: `String = ""`; `placeholder: String = "Start writing…"` | TipTap rich text with a native JSON form value. Additional attributes/classes reach the labelled root. The application owns forms, validation and persistence. No child content. |
 | `source-view` | Required `content: String`; `path`, `language`, `preserveKey`: `String = ""`; `label: String = "File source"`; `line: Int = 0`; `compact`, `bare`, `wrapped`: `Boolean = false` | Section receives additional attributes/classes and default toolbar action children. CodeMirror enhances escaped, focusable source markup into a read-only viewer. The application owns the content, requested line and surrounding layout. |
 
 Regular controls are 32px high, compact controls 30px, and extra-small buttons 24px. Field labels use
@@ -372,23 +412,68 @@ default. Change `id` to reset after successful submission, including when the se
 empty. The helper reconnects to the current form, and unmount removes its listeners and observer.
 It supplies no storage, transport, permissions or rich-text formatting.
 
+## Rich text documents
+
+`document-editor` uses TipTap with the same ProseMirror JSON document format as Studio. It supplies
+headings, bold/italic/underline/strike/inline code, superscript/subscript, block quotes, bullet/numbered
+and nested task lists, links, images, tables, code blocks, text alignment and undo/redo. Images use a
+supplied URL and description; storage and uploads belong to the consuming application.
+
+```html
+<form @submit="article.save(form.document)">
+  <document-editor id="article-body" label="Article body" name="document"
+                   :value="article.value" :error="article.error"
+                   preserveKey="article-draft" required />
+  <button type="submit" primary>Save article</button>
+</form>
+```
+
+`value` is a serialized ProseMirror `doc` object. The native field contains the current JSON immediately
+when editing and participates in ordinary form serialization. `documentchange` bubbles with
+`detail.document`; native `input` and `change` events also bubble from the field. The component makes
+no service calls. Stable preservation keys retain local edits, selection, scroll and focus through
+unrelated updates. A changed `value` replaces the document and becomes the native reset default;
+changing the key mounts a new editor. Reset restores the latest supplied value. Pending form actions
+lock editing. Read-only values remain in form data; disabled values are excluded.
+
+The toolbar has one Tab stop. Left and Right move between controls; Up and Down keep native select
+behavior. Tab then reaches the editor. Standard TipTap editing shortcuts remain available.
+Escape then Tab leaves the editor, including from a table. Link/image inputs preserve the source
+selection; Escape closes them. `required` checks document
+content rather than the length of the serialized JSON. Errors are announced beside the editor.
+Without scripts, the native textarea exposes the supplied JSON.
+
+The initial component covers the general rich text schema. Studio collaboration, authenticated
+mentions and metadata/template-specific blocks need a consuming application's integration.
+Unsupported nodes, marks and attributes report an error and retain the original JSON instead of
+silently discarding content. The built-in image node retains Studio's optional `metadataId`.
+
+Colors inherit the application palette. `--document-bg` and `--document-fg` override the surface and
+text; `--document-height` defaults to `320px` and `--document-max-height` to `640px`.
+`--document-selection` controls table-cell selection. Shared font, border, radius and focus tokens
+also apply. TipTap is bundled only on routes using this component; consumers need no npm dependency.
+Dependency notices ship in `META-INF/licenses/bml-design/document-editor.txt`.
+
 ## Read-only source
 
 `source-view` displays supplied text. `path` infers the language and adds context to the accessible
 label; an explicit `language` takes priority. Existing inference covers JavaScript/TypeScript/JSX/TSX,
-Kotlin, Python, Java, Rust, Go, JSON, Markdown, HTML/BML/Vue markup, CSS/SCSS, YAML and SQL. An
-unknown language uses plain text. `line` optionally selects and scrolls to a valid one-based line;
+Kotlin, Python, Java, Rust, Go, JSON, Markdown, HTML/Vue markup, CSS/SCSS, YAML and SQL. BML highlights markup, self-closing components, Kotlin
+server scripts, TypeScript client scripts and CSS. Unknown languages use plain text. `line` optionally selects and scrolls to a valid one-based line;
 zero, negative and out-of-range values do not move the selection. The viewer does not read URLs.
 
-The toolbar supplies a line-wrap toggle and projected application actions. `wrapped` controls initial
+The toolbar keeps its compact 24px wrap control on the right, beside the read-only label; projected
+application content stays on the left. `wrapped` controls initial
 wrapping and changed server values. `compact` keeps the source's 110/180/240px snippet sizes for up
 to three, up to eight and longer source texts. `bare` removes the toolbar and allows a 225–800px
 source surface with a smaller phone viewport bound. When both are set, compact sizing applies and
 the toolbar stays hidden. Normal viewers can use a caller class to size their surrounding surface.
 
 CodeMirror remains read-only, with selection, search, line numbers and its normal folding controls.
-Search fields, buttons and option labels use the shared small-control height and UI font, with
-spaced, wrapping rows on narrow screens. Compact viewers grow to at least 240px while search is
+The source surface has no filled active-line highlight; focus uses a neutral control border.
+Text selections and search matches retain their own colors. Finder fields and option labels use the
+shared small-control height; its buttons use the 24px extra-small height. Controls align right and wrap
+with spacing on narrow screens, using the application UI font. Compact viewers grow to at least 240px while search is
 open so controls and code fit together; closing search restores their configured snippet size.
 Escape then Tab restores native focus navigation, including for bare viewers.
 Use a stable `preserveKey` to retain CodeMirror state, scroll, focus and local wrapping through
@@ -418,6 +503,7 @@ background/foreground, gutter, active line, selection, panels, search match and 
 | `--source-selection` | 25% accent mixed with transparent |
 | `--source-search-match` | 30% warning mixed with transparent |
 | `--source-search-fg` | `--source-fg`, falling back to `--fg-1` |
+| `--source-tag`, `--source-attribute` | `--info`, `--warn` |
 | `--source-keyword`, `--source-function`, `--source-operator`, `--source-heading` | `--purple`, `--info`, `--info`, `--info` |
 | `--source-name`, `--source-definition`, `--source-constant`, `--source-type` | `--fg-1`, `--fg-0`, `--warn`, `--warn` |
 | `--source-string`, `--source-comment` | `--ok`, `--fg-3` |
@@ -637,7 +723,7 @@ pending states, repeated disposal, fallback forms and desktop/phone geometry.
 
 ## Catalog and example consumer
 
-The workspace includes a standalone catalog with references and rendered examples for all 41
+The workspace includes a standalone catalog with references and rendered examples for all 46
 exports, plus an isolated application exercising the same dependency through short tags and
 consumer CSS. Run either application from the workspace root:
 
@@ -650,3 +736,114 @@ The catalog defaults to `http://localhost:9093`; the example consumer defaults t
 `http://localhost:9092`. Both applications own their documents, state, actions and CSS palettes.
 The example covers native escapes, optional aliases, forms, interactive controls and two themes.
 The catalog provides component authoring examples alongside its rendered states.
+
+
+
+## Dashboard layouts
+
+`dashboard-grid` uses Studio's `id`, `x`, `y`, `w`, `h` layout model with ordinary BML
+widgets. Coordinates are whole cells in a 12-column grid by default; row height defaults to
+60px. Every layout ID must match one direct `dashboard-item` child, and widgets cannot overlap.
+Extra layout fields survive edits. The application owns widget content, data, adding/removing
+widgets and saving. No extra npm dependency is needed by a consuming application.
+
+```html
+<dashboard-grid id="overview" label="Overview" :value="dashboard.layoutJson"
+                :lockedIds="dashboard.lockedIdsJson" preserveKey="overview">
+  <dashboard-item itemId="visits" label="Visits">
+    <chart id="visits-chart" label="Daily visits" :config="dashboard.chartJson" />
+  </dashboard-item>
+  <dashboard-item itemId="summary" label="Summary">
+    <p>{ dashboard.summary }</p>
+  </dashboard-item>
+</dashboard-grid>
+```
+
+Supply layout JSON such as `[{"id":"visits","x":0,"y":0,"w":8,"h":6},
+{"id":"summary","x":8,"y":0,"w":4,"h":6}]`. `columns`, `cellHeight` and `stackBelow`
+configure geometry. Containers narrower than `stackBelow` (480px) stack widgets without changing
+the stored layout; `stackBelow=0` keeps the grid at any width. The saved array order is the reading
+and stacked order; moves change geometry without reordering the widget DOM.
+
+Compact Move and Resize buttons support pointer gestures and one-cell arrow-key changes. Escape
+and pointer cancellation discard an unfinished gesture. Unlocked collisions push widgets down;
+moves into `lockedIds` are rejected. Locked, readonly, disabled and pending widgets retain their
+content. The grid locks layout handles; nested form controls keep their own availability rules.
+`layoutchange` supplies `{layout,itemId,kind}` with `kind` equal to `move` or `resize`.
+
+`name` defaults to `layout`; the native textarea carries current JSON. Readonly values submit,
+disabled values are excluded, and native reset restores the latest supplied value. Changed `value`
+installs new geometry without remounting widgets. Keep `preserveKey` stable across surrounding
+updates to retain layout, chart canvases, editors and unsaved input; change that key when changing
+the widget composition. Invalid coordinates, IDs, collisions or options reveal the JSON and error
+instead of submitting stale geometry. Without scripts, the JSON field and stacked BML content remain
+visible. The server still validates submitted layouts according to the application's own rules.
+
+Colors use ordinary CSS. `--dashboard-gap` defaults to 16px, `--dashboard-item-padding` to 16px,
+`--dashboard-item-bg` to `--bg-1`, and `--dashboard-chart-height` to 260px for charts placed directly
+in a widget. Widget bodies scroll within their assigned height. `/dashboards` demonstrates independent
+dark/light dashboards, retained note input, a real Chart.js widget, locked content and local save
+rejection; `/components/visualization` documents both tags.
+
+## Flows and charts
+
+`flow-editor` uses the same VueFlow core version as Studio. Supply ordinary VueFlow nodes and edges
+as serialized JSON. Nodes need unique IDs and finite `{x,y}` positions; edges reference existing nodes.
+The built-in `card` node reads `data.label`, `description`, `status`, `tone` and optional `inputs`/`outputs`
+arrays of `{id,label}` ports. Omit a port array for an anonymous handle; an empty array removes that
+side's handles. VueFlow `sourcePosition` and `targetPosition` choose the handle sides. Standard `default`, `input`, `output` and `group` nodes and VueFlow edge configuration
+are also available. Unknown consumer data is retained.
+
+```html
+<form @submit="pipeline.save(form.graph)">
+  <flow-editor id="pipeline-graph" label="Pipeline graph" name="graph"
+               :value="pipeline.graphJson" preserveKey="pipeline-graph" />
+  <button type="submit">Save</button>
+</form>
+```
+
+The native textarea receives JSON immediately after graph edits. `flowchange` bubbles `{graph}`;
+`flowselect` bubbles `{kind,id,data}`. `flowconnect` is cancelable and supplies `{connection}` with
+VueFlow source/target and optional sourceHandle/targetHandle IDs. A consuming client handler calls
+`event.preventDefault()` synchronously when its domain rules reject the connection. The component
+adds accepted connections and suppresses duplicates. The application owns node creation, settings,
+validation, inspectors, automatic layout, persistence and pipeline execution.
+
+Fit and zoom use compact controls. The expandable node/connection list provides native selection and
+From/To controls for keyboard connections. Canvas arrow keys move selected editable nodes; Remove
+selected performs explicit deletion, including edges attached to deleted nodes. Tab leaves the canvas.
+`readOnly` prevents editing while allowing selection and pan/zoom. `disabled` disables interaction and
+excludes the native form value; pending forms lock graph edits. Surrounding updates with the same
+`preserveKey` retain draft positions, selection and viewport. Changed `value` replaces the graph on the
+existing canvas; native reset restores the latest supplied value. Optional `viewport:{x,y,zoom}` is
+restored, and edits include the current viewport. Removing the component disposes its Vue app and
+VueFlow store. Without scripts its labelled JSON textarea remains available.
+
+`chart` uses [Chart.js](https://www.chartjs.org/) directly. Supply JSON configuration with `type`,
+`data.labels`, `data.datasets` arrays and optional Chart.js `options`. Bar, line, scatter, bubble, pie,
+doughnut, radar and polarArea charts are supported, including mixed dataset types, stacking and
+custom axes. Numeric and object points retain their values. Category and linear axes use the
+built-in scales. The component does not bundle a date adapter for time axes.
+
+```html
+<chart id="daily-visits" label="Daily visits" :config="analytics.chartJson"
+       :loading="analytics.loading" :error="analytics.error" preserveKey="daily-visits" />
+```
+
+The component resolves CSS colors and typography into instance-local Chart.js options; explicit
+dataset colors and axis/legend options take priority. Container resizing and appearance changes
+refresh the canvas without changing the application data. `--chart-height` controls the dedicated
+responsive container. Reduced-motion preferences disable animation. Configuration remains JSON;
+callbacks or plugins supplied as executable strings are not evaluated.
+
+A named canvas is accompanied by View data, a server-rendered table that remains readable without
+scripts. Point actions provide keyboard access to the same `chartselect` event as canvas clicks:
+`{datasetIndex,index,label,value}`. Applications can use that event for drill-down or toast feedback.
+Loading, empty data and errors retain the chart footprint. Changed data updates the retained chart;
+changed type replaces the Chart.js instance on the same canvas. Unmount destroys the instance and
+its listeners. Queries, result mapping, pagination and data transport belong to the consuming app.
+
+Dependency notices ship in `META-INF/licenses/bml-design/flow-editor.txt` and `chart.txt`. These engines
+are reached only by pages using their components; a consuming application needs no VueFlow, Vue
+or Chart.js npm installation. `/flows`, `/charts` and `/components/visualization` in the catalog show
+both palettes, states and public authoring.

@@ -5,10 +5,10 @@ import { reviewAccessibilityFindings } from './accessibility-review.mjs';
 import { reviewContrastFindings } from './contrast-review.mjs';
 
 /** Full-document axe checks; reports keep manual-review findings separate from confirmed violations. */
-export async function checkAccessibility({navigate,evaluate,until:poll,call,artifacts,mode,widths=[1440,390],appearances=['dark','light']}) {
+export async function checkAccessibility({navigate,evaluate,until:poll,call,artifacts,mode,widths=[1440,390],appearances=['dark','light'],paths,reportName=paths?'editor-accessibility':'accessibility'}) {
   const until=expression=>poll(`Boolean(${expression})`);
   const axe=await readFile(new URL('../../../node_modules/axe-core/axe.min.js',import.meta.url),'utf8');
-  const routes=['/','/foundation','/themes','/selection','/choices','/views','/trees','/navigation','/feedback','/surfaces','/source','/json','/comments','/overlays','/components','/components/controls','/components/layout','/components/feedback','/components/overlays','/components/content','/components/aliases'];
+  const routes=paths??['/','/foundation','/themes','/selection','/choices','/views','/trees','/navigation','/feedback','/surfaces','/source','/source/languages','/documents','/flows','/charts','/dashboards','/components/visualization','/json','/comments','/overlays','/components','/components/controls','/components/layout','/components/feedback','/components/overlays','/components/content','/components/aliases'];
   const reports=[];
   const scan=async(path,width,appearance,state)=>{
     await evaluate('document.fonts.ready');
@@ -19,7 +19,7 @@ export async function checkAccessibility({navigate,evaluate,until:poll,call,arti
       await reviewAccessibilityFindings({incomplete:result.incomplete,evaluate,call,reviews:report.reviews});
       await reviewContrastFindings({incomplete:result.incomplete,evaluate,reviews:report.reviews});
     }
-    finally { await writeFile(join(artifacts,`catalog-${mode}-accessibility.json`),JSON.stringify(reports,null,2)); }
+    finally { await writeFile(join(artifacts,`catalog-${mode}-${reportName}.json`),JSON.stringify(reports,null,2)); }
   };
   for(const width of widths) {
     await call('Emulation.setDeviceMetricsOverride',{width,height:1000,deviceScaleFactor:1,mobile:false});
@@ -29,10 +29,19 @@ export async function checkAccessibility({navigate,evaluate,until:poll,call,arti
       await until(`[...document.querySelectorAll('[data-bml-method]')].every(node=>node.dataset.bmlActionBound==='true')`);
       if(path==='/json'||path==='/components/content')await until(`document.querySelectorAll('[data-json-ready]').length>=${path==='/json'?8:3}`);
       if(path==='/source'||path==='/components/content')await until(`document.querySelectorAll('[data-source-ready]').length>=${path==='/source'?7:1}`);
+      if(path==='/source/languages')await until(`document.querySelectorAll('[data-source-ready]').length===4`);
+      if(path==='/flows'||path==='/components/visualization')await until(`document.querySelector('[data-flow-ready]')`);
+      if(path==='/charts'||path==='/components/visualization')await until(`document.querySelector('[data-chart-ready]')`);
+      if(path==='/dashboards'||path==='/components/visualization')await until(`document.querySelector('[data-grid-ready]')`);
+      if(path==='/documents')await until(`document.querySelectorAll('[data-document-ready]').length===3`);
       if(path==='/selection'||path==='/choices')await until(`document.querySelector('select.enhanced')`);
-      if(appearance==='light')await evaluate(`document.querySelector('[data-catalog-light]').click()`);
+      if(appearance==='light')await evaluate(`if(!document.querySelector('[data-catalog-light]').checked)document.querySelector('[data-catalog-light]').click()`);
       await evaluate(axe);
       await scan(path,width,appearance,'initial');
+      if(path==='/flows'||path==='/charts'||path==='/components/visualization') {
+        await evaluate(`document.querySelectorAll('[data-bml-flow-editor] details,[data-bml-chart] details').forEach(details=>details.open=true)`);
+        await scan(path,width,appearance,'expanded graph outline and chart data');
+      }
       if(await evaluate(`document.querySelectorAll('[data-example-states]').length>0`)) {
         await evaluate(`document.querySelectorAll('[data-example-states]').forEach(details=>details.open=true)`);
         await scan(path,width,appearance,'example states');
@@ -92,15 +101,16 @@ export async function checkAccessibility({navigate,evaluate,until:poll,call,arti
     }
   }
   await navigate('/components/controls');
-  const sample=`document.querySelector('#ref-button .code-sample')`;
-  await evaluate(`${sample}.scrollIntoView({block:'center'});${sample}.focus()`);
-  for(const type of ['keyDown','keyUp'])await call('Input.dispatchKeyEvent',{type,key:'ArrowRight',windowsVirtualKeyCode:39});
-  await until(`${sample}.scrollLeft>0`);
-  assert.equal(await evaluate(`${sample}.getAttribute('aria-label')`),'button authoring source');
+  const sample=`document.querySelector('#ref-button .reference-details [data-source-ready]')`;
+  await until(sample);
+  await evaluate(`${sample}.scrollIntoView({block:'center'});${sample}.querySelector('.cm-content').focus()`);
+  for(const type of ['keyDown','keyUp'])await call('Input.dispatchKeyEvent',{type,key:'End',windowsVirtualKeyCode:35});
+  await until(`${sample}.querySelector('.cm-scroller').scrollLeft>0`);
+  assert.equal(await evaluate(`${sample}.querySelector('.cm-content').getAttribute('aria-label')`),'button authoring source: example.bml');
   const violations=reports.flatMap(report=>report.violations.map(rule=>({path:report.path,width:report.width,appearance:report.appearance,state:report.state,id:rule.id,nodes:rule.nodes.map(node=>({target:node.target,summary:node.failureSummary}))})));
   assert.deepEqual(violations,[],JSON.stringify(violations,null,2));
   const reviewed=reports.flatMap(report=>report.reviews);
-  for(const id of ['aria-valid-attr-value','aria-toggle-field-name','label-content-name-mismatch'])assert.ok(reviewed.some(review=>review.rule===id),`No ${id} review evidence`);
+  if(!paths)for(const id of ['aria-valid-attr-value','aria-toggle-field-name','label-content-name-mismatch'])assert.ok(reviewed.some(review=>review.rule===id),`No ${id} review evidence`);
   const contrast=reviewed.filter(review=>review.rule==='color-contrast');
   assert.ok(contrast.length>0,'No retained contrast evidence');
   console.log(`Catalog ${mode}: ${reports.length} axe ${reports[0].version} scans, zero confirmed violations; ${reviewed.length-contrast.length} popup/name findings verified against DOM and browser accessibility evidence; ${contrast.length} solid foreground/background measurements. Original manual findings remain in accessibility.json`);

@@ -12,7 +12,7 @@ export async function checkEmptyWidgets({navigate,evaluate,until,call,artifacts,
       await call('Network.clearBrowserCookies');
       await navigate('/views');
       if(scripts)await until(`Boolean(document.querySelector('[data-views-refresh=dark]')?.dataset.bmlActionBound==='true')`);
-      if(appearance==='light')await evaluate(`document.querySelector('[data-catalog-light]').click()`);
+      await evaluate(`if(document.querySelector('[data-catalog-light]').checked!==${appearance==='light'})document.querySelector('[data-catalog-light]').click()`);
       const groups=await evaluate(`(()=>{
         const segments=document.querySelector('[data-views-empty-segments]'),tabs=document.querySelector('[data-views-empty-tabs]');
         const form=document.createElement('form');segments.after(form);form.append(segments);
@@ -35,7 +35,7 @@ export async function checkEmptyWidgets({navigate,evaluate,until,call,artifacts,
       assert.ok(groups.overflow<=0);
       for(const path of ['/trees','/components/content']) {
         await navigate(path);
-        if(appearance==='light')await evaluate(`document.querySelector('[data-catalog-light]').click()`);
+        await evaluate(`if(document.querySelector('[data-catalog-light]').checked!==${appearance==='light'})document.querySelector('[data-catalog-light]').click()`);
         const state=await evaluate(`(()=>{const root=document.querySelector('[role=tree][aria-label="Empty files"]');
           return {visible:root.checkVisibility(),targets:root.querySelectorAll('a,button,[tabindex]').length,
             populated:[...document.querySelectorAll('[role=tree]')].filter(tree=>tree!==root&&tree.checkVisibility()).length,

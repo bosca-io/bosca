@@ -15,10 +15,11 @@ export async function checkContrastVisibility({ navigate, evaluate, until: poll,
       await call('Emulation.setDeviceMetricsOverride', { width, height: 1000, deviceScaleFactor: 1, mobile: false });
       const open = async path => {
         await call('Network.clearBrowserCookies'); await navigate(path); await evaluate('document.fonts.ready');
-        if (appearance === 'light') await evaluate(`document.querySelector('[data-catalog-light]').click()`);
+        if (appearance === 'light') await evaluate(`if(!document.querySelector('[data-catalog-light]').checked)document.querySelector('[data-catalog-light]').click()`);
         await evaluate(axe);
       };
       const measure = async (path, selector, state, scroll = true) => {
+        await until(`document.querySelector(${JSON.stringify(selector)})`);
         const before = await inspect(selector);
         if (scroll) await evaluate(`document.querySelector(${JSON.stringify(selector)}).scrollIntoView({block:'center',inline:'nearest'})`);
         const visible = await inspect(selector), result = await scan(selector);
@@ -31,7 +32,7 @@ export async function checkContrastVisibility({ navigate, evaluate, until: poll,
         ['/foundation', '.catalog-footer'],
         ['/components/controls', '#ref-button .reference-api code'],
         ['/components/layout', '#ref-card dd:last-child'],
-        ['/components/feedback', '#ref-copy .code-sample code'],
+        ['/components/feedback', '#ref-copy .reference-details .cm-lineNumbers .cm-activeLineGutter'],
         ['/components/overlays', '#ref-dialog .reference-details summary'],
         ['/components/content', '#ref-source-view .reference-api code'],
       ]) {

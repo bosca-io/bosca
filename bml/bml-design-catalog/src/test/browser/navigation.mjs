@@ -82,7 +82,7 @@ export async function checkRouteNavigation({navigate,evaluate,until:poll,call,ar
   const measurements=[];
   for(const width of [1440,390]) {
     await call('Emulation.setDeviceMetricsOverride',{width,height:1000,deviceScaleFactor:1,mobile:false});await navigate('/navigation');await until(`${node('tabs')}.hasAttribute('data-tabs-enhanced')`);
-    await evaluate(`document.fonts.ready;document.querySelector('[data-catalog-light]').click();document.querySelectorAll('[data-example-states]').forEach(details=>details.open=false)`);
+    await evaluate(`document.fonts.ready;if(!document.querySelector('[data-catalog-light]').checked)document.querySelector('[data-catalog-light]').click();document.querySelectorAll('[data-example-states]').forEach(details=>details.open=false)`);
     await evaluate(`Promise.all(document.getAnimations().filter(animation=>animation instanceof CSSTransition).map(animation=>animation.finished)).then(()=>true)`);
     for(const id of ['dark','light'])await until(fit(id));
     const geometry=await evaluate(`(()=>{const groups=[...document.querySelectorAll('[data-catalog-navigation]')].map(owner=>{const host=owner.querySelector('[data-navigation-host]'),note=owner.querySelector('.example-note');return {id:owner.dataset.catalogNavigation,gap:note.getBoundingClientRect().top-host.getBoundingClientRect().bottom};});const style=getComputedStyle(document.querySelector('[data-navigation-header]'));return {groups,overflow:document.documentElement.scrollWidth-innerWidth,header:{margin:style.marginLeft,padding:style.paddingLeft}};})()`);

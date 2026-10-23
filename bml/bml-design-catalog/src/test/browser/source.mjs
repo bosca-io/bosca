@@ -81,7 +81,7 @@ export async function checkSources({ navigate, evaluate, until: poll, key, call,
   const measurements = [];
   for (const width of [1440, 390]) {
     await call('Emulation.setDeviceMetricsOverride', { width, height: 1000, deviceScaleFactor: 1, mobile: false });
-    await evaluate(`document.querySelector('[data-catalog-light]').click();document.fonts.ready`);
+    await evaluate(`if(!document.querySelector('[data-catalog-light]').checked)document.querySelector('[data-catalog-light]').click();document.fonts.ready`);
     await until(`document.documentElement.scrollWidth<=innerWidth`);
     assert.deepEqual(await evaluate(`['dark','light'].map(id=>getComputedStyle(document.querySelector('[data-catalog-source='+id+'] .cm-editor')).backgroundColor)`), ['rgb(16, 19, 28)', 'rgb(255, 255, 255)']);
     const samples = await evaluate(`(() => {

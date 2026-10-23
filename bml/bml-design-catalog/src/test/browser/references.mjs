@@ -14,7 +14,7 @@ export async function checkReferences({ navigate, evaluate, until: poll, key, ca
     await navigate(path);
     const entries = await evaluate(`Array.from(document.querySelectorAll('[data-export]'), entry => ({
       tag:entry.dataset.export, api:entry.querySelector('.reference-api').textContent,
-      contract:entry.querySelector('dd').textContent, snippet:entry.querySelector('.code-sample').textContent,
+      contract:entry.querySelector('dd').textContent, snippet:entry.querySelector('.reference-details [data-bml-source-view] textarea').value,
       rendered:entry.querySelector('.reference-demo').children.length>0,
       compiled:!!entry.querySelector('.reference-demo [data-bml-c~="bml-696f2e626f7363613a626d6c2d64657369676e-'+entry.dataset.export+'"]')
     }))`);
@@ -109,7 +109,7 @@ export async function checkReferences({ navigate, evaluate, until: poll, key, ca
   await until(`document.querySelector('[data-catalog-json-toast=reference]').matches(':popover-open')&&document.querySelector('[data-catalog-json-toast=reference] [role=status]').textContent==='Settings saved.'`);
   assert.ok(await evaluate(`!document.querySelector('[data-catalog-json-result]')`));
   assert.ok(await evaluate(`${json}.getAttribute('aria-invalid')==='false'&&document.querySelector('[data-name=readonly-settings] textarea').readOnly&&document.querySelector('[data-name=disabled-settings] textarea').disabled&&document.querySelector('[data-name=disabled-settings] textarea').value==='{}'`));
-  const source = 'document.querySelector("[data-source-ready]")';
+  const source = 'document.querySelector("[data-export=source-view] .reference-demo [data-source-ready]")';
   await evaluate(`window.catalogSource=${source}.querySelector('.cm-content').textContent;${source}.querySelector('.cm-content').focus()`);
   await call('Input.insertText',{text:'Cannot edit this'});
   assert.ok(await evaluate(`${source}.querySelector('.cm-content').textContent===window.catalogSource`));

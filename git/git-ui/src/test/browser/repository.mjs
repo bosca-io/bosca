@@ -139,6 +139,8 @@ await until(
   '[...document.querySelectorAll(".tree-list a.tree-name")].some(link => link.textContent.trim() === "README.md")',
 );
 await until('document.readyState === "complete"');
+// The deferred summary above the file list must finish before pointer coordinates are measured.
+await until('Boolean(document.querySelector(".repository-summary .stat-grid"))');
 await ev("document.fonts.ready.then(() => true)");
 const readmeRow = await ev(`(() => {
   const link = [...document.querySelectorAll('.tree-list a.tree-name')].find(link => link.textContent.trim() === 'README.md');
@@ -149,14 +151,35 @@ const readmePoint = await ev(`(() => {
   const bounds = link.closest('.tree-row').getBoundingClientRect();
   return {x:bounds.left+bounds.width*0.6,y:bounds.top+bounds.height/2};
 })()`);
-for (const type of ["mousePressed", "mouseReleased"])
-  await call("Input.dispatchMouseEvent", {
-    type,
-    ...readmePoint,
-    button: "left",
-    clickCount: 1,
-  });
-await until('new URLSearchParams(location.search).get("file") === "README.md"');
+const pointerState = () => ev(`(() => {
+  const link = [...document.querySelectorAll('.tree-list a.tree-name')].find(link => link.textContent.trim() === 'README.md');
+  const hit = document.elementFromPoint(${readmePoint.x}, ${readmePoint.y});
+  return {url:location.href, point:${JSON.stringify(readmePoint)}, viewport:{width:innerWidth,height:innerHeight},
+    row:link?.closest('.tree-row').getBoundingClientRect().toJSON(), href:link?.href,
+    hit:hit?.outerHTML, hitLink:hit?.closest('a')?.href,
+    scroll:[...document.querySelectorAll('html,body,main,.git-main')].map(node=>({
+      tag:node.tagName,class:node.className,top:node.scrollTop,height:node.clientHeight,content:node.scrollHeight}))};
+})()`);
+const pointerEvidence = {before:await pointerState()};
+try {
+  assert.equal(pointerEvidence.before.hitLink,pointerEvidence.before.href,
+    "The measured point must target the README row before clicking");
+  for (const type of ["mousePressed", "mouseReleased"])
+    await call("Input.dispatchMouseEvent", {
+      type,
+      ...readmePoint,
+      button: "left",
+      clickCount: 1,
+    });
+  await until('new URLSearchParams(location.search).get("file") === "README.md"');
+} catch (error) {
+  await writeFile(process.env.GIT_UI_ARTIFACT_DIR + "/bosca-git-ui-file-pointer-failure.png",
+    Buffer.from((await call("Page.captureScreenshot", {format:"png"})).data,"base64"));
+  throw error;
+} finally {
+  pointerEvidence.after = await pointerState();
+  await writeFile(process.env.GIT_UI_ARTIFACT_DIR + "/bosca-git-ui-file-pointer.json",JSON.stringify(pointerEvidence,null,2));
+}
 const readmeNavigation = await ev(`({url:location.href})`);
 await writeFile(
   process.env.GIT_UI_ARTIFACT_DIR + "/bosca-git-ui-file-navigation.json",

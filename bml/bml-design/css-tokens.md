@@ -124,13 +124,18 @@ redeclaring each overlay. Tooltip, select and tab popups stay in that subtree an
 layer; the library does not copy theme colors to JavaScript or move them to the document body.
 
 Source colors use the [documented `--source-*` hooks](README.md#read-only-source), with palette-derived
-defaults for surface, foreground, gutter, selection, active lines, search and syntax roles.
+defaults for surface, foreground, gutter, selection, search and syntax roles. Source focus uses the neutral
+control border; active lines stay unfilled. `--source-active-line` still controls bracket and selection-match accents.
 `--source-search-fg` supplies text over both search-match backgrounds, independently of syntax colors.
 Pair it with `--source-search-match` and `--source-selection` when overriding those backgrounds. Structured
 editing uses the [documented `--json-*` hooks](README.md#structured-json). `--json-accent` controls its
 menu/link colors and derived hover, focus, editing and selection colors together. `--json-selection`
 can override the selection separately; `--json-scheme` defaults to `light`. These hooks apply on the
 editor root or an ancestor. The adapter owns the underlying editor variables and scoped styles.
+
+Rich text uses `--document-bg`, `--document-fg`, `--document-height`, `--document-max-height` and
+`--document-selection`; see [rich text documents](README.md#rich-text-documents). Fonts, borders,
+radii and focus reuse the ordinary component tokens.
 
 Literal palette colors live in the shared defaults. The Bosca SVG paths remain the original artwork;
 its face colors are themeable. Caller-supplied badge `color`, heading `iconColor`, source content,
@@ -141,3 +146,35 @@ The compiled consumer's `/themes` page demonstrates base-token fallback, explici
 shared sizing/focus and live overlay colors in independent roots, including native controls with
 scripts disabled. Its other pages exercise forms, selection, tooltips, modal state, source and JSON
 editing through real BML rendering and actions in production and development.
+
+## Diagram and chart surfaces
+
+| Token | Default | Purpose |
+| --- | --- | --- |
+| `--flow-height` | `420px` | Canvas height |
+| `--flow-bg` | `--bg-2` | Canvas surface |
+| `--flow-node-bg` | `--bg-1` | Node surface |
+| `--flow-edge` | `--fg-2` | Edge stroke |
+| `--flow-handle` | `--accent` | Connection handles |
+| `--chart-height` | `280px` | Responsive chart container height |
+| `--chart-bg` | `transparent` | Canvas backing surface |
+| `--chart-fg` | inherited text color | Axis and legend text |
+| `--chart-grid` | `--line` | Grid strokes |
+| `--chart-series-1` … `--chart-series-6` | `--accent`, `--ok`, `--warn`, `--info`, `--err`, `--fg-2` | Dataset colors, cycling after six series |
+
+These inherit per instance. Flow nodes use the shared typography, borders, status colors and focus
+indicator. Chart.js canvas options resolve inherited CSS on mount, appearance changes and updates.
+Explicit Chart.js dataset colors and axis/legend settings take priority over CSS defaults.
+
+## Dashboard widgets
+
+| Token | Default | Purpose |
+| --- | --- | --- |
+| `--dashboard-gap` | `16px` | Column/row and stacked widget spacing; use one nonnegative CSS length |
+| `--dashboard-item-bg` | `--bg-1` | Widget surface |
+| `--dashboard-item-padding` | `16px` | Scrolling widget body padding |
+| `--dashboard-chart-height` | `260px` | Height for a chart directly inside a widget |
+
+The consumer controls colors through the shared palette, border and focus tokens. Grid geometry is
+computed from `columns`, `cellHeight`, `stackBelow` and layout JSON. The internal column/row custom
+properties carry engine coordinates and are not theme tokens.

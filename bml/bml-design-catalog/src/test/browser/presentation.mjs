@@ -75,6 +75,7 @@ export async function checkPresentation({ navigate, evaluate, until: poll, key, 
     await call('Emulation.setDeviceMetricsOverride', { width, height: 1000, deviceScaleFactor: 1, mobile: false });
     for (const appearance of ['dark', 'light']) {
       for (const path of ['/', '/foundation']) {
+        await call('Network.clearBrowserCookies');
         await navigate(path);
         await evaluate(`document.fonts.ready`);
         if (appearance === 'light') await evaluate(`document.querySelector('[data-catalog-light]').click()`);

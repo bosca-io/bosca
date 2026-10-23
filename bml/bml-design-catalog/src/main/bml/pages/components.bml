@@ -1,5 +1,5 @@
 <page route="/components">
-  <catalog-document title="Components" description="Public APIs and rendered examples for all 41 library exports." current="/components">
+  <catalog-document title="Components" description="Public APIs and rendered examples for all 46 library exports." current="/components">
     <p class="page-intro">Import the library once. Use short component names throughout your application, then set colors in your own CSS.</p>
     <pre class="code-sample" role="group" tabindex="0" aria-label="Library import"><code>&lt;import library="io.bosca:bml-design" /&gt;</code></pre>
     <div class="catalog-grid">
@@ -76,10 +76,17 @@
             <li><a href="/components/content#ref-comment-editor" data-export-link="comment-editor"><code>comment-editor</code></a></li>
             <li><a href="/components/content#ref-json-editor" data-export-link="json-editor"><code>json-editor</code></a></li>
             <li><a href="/components/content#ref-source-view" data-export-link="source-view"><code>source-view</code></a></li>
+            <li><a href="/components/content#ref-document-editor" data-export-link="document-editor"><code>document-editor</code></a></li>
           </ul>
         </div>
       </card>
     </div>
+    <card title="Dashboards, flows and charts"><div class="catalog-stack"><p class="catalog-description">Dashboard layouts, diagrams and analytics visualization.</p><ul class="reference-index">
+      <li><a href="/components/visualization#ref-dashboard-grid" data-export-link="dashboard-grid"><code>dashboard-grid</code></a></li>
+      <li><a href="/components/visualization#ref-dashboard-item" data-export-link="dashboard-item"><code>dashboard-item</code></a></li>
+      <li><a href="/components/visualization#ref-flow-editor" data-export-link="flow-editor"><code>flow-editor</code></a></li>
+      <li><a href="/components/visualization#ref-chart" data-export-link="chart"><code>chart</code></a></li>
+    </ul></div></card>
     <card title="Optional aliases">
       <div class="catalog-stack">
         <p class="catalog-description">Use an alias when you want an explicit name for a collision. Normal examples use the root unaliased import.</p>

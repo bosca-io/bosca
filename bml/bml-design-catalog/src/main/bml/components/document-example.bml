@@ -1,0 +1,42 @@
+<component tag="document-example">
+  <prop name="id" type="String" required />
+  <prop name="title" type="String" required />
+  <script server provides="document" scope="server-session">bosca.design.catalog.CatalogDocument(id)</script>
+  <card :title="title">
+    <island name="document" :key="id">
+      <div class="catalog-stack" :data-catalog-document="document.id">
+        <if document.visible>
+          <form class="example-form" @submit="document.save(form.document)" :data-document-form="document.id">
+            <document-editor :id='"document-" + document.id' label="Example document" name="document"
+                             :value="document.value" :readOnly="document.readOnly" :disabled="document.disabled"
+                             :error="document.error" required hint="Use the formatting toolbar or standard editing shortcuts."
+                             :preserveKey='"document-" + document.id + "-" + document.revision' />
+            <div class="example-actions">
+              <button type="submit" primary size="sm" :disabled="document.disabled || document.readOnly">Save document</button>
+              <button type="reset" size="sm" :disabled="document.disabled || document.readOnly">Reset draft</button>
+            </div>
+          </form>
+        </if>
+        <details data-example-states>
+          <disclosure-heading>Example states</disclosure-heading>
+          <div class="catalog-stack document-state-options">
+            <switch label="Reject saves" :checked="document.reject" @change="document.toggleRejection" :data-document-reject="document.id" />
+            <switch label="Read only" :checked="document.readOnly" @change="document.toggleReadOnly" :data-document-readonly="document.id" />
+            <switch label="Disabled" :checked="document.disabled" @change="document.toggleDisabled" :data-document-disabled="document.id" />
+            <switch label="Show editor" :checked="document.visible" @change="document.toggleVisible" :data-document-visible="document.id" />
+            <div class="example-actions">
+              <button size="sm" @click="document.refresh" :data-document-refresh="document.id">Refresh example</button>
+              <button size="sm" @click="document.replace" :data-document-replace="document.id">Replace document</button>
+            </div>
+          </div>
+        </details>
+        <toast :id='"document-notice-" + document.id' :message="document.notice" :sequence="document.noticeSequence"
+               :tone='if (document.error.isBlank()) "success" else "error"' :data-document-toast="document.id" />
+      </div>
+    </island>
+  </card>
+  <script client scoped>
+    import { retainDisclosure } from "@client/catalog-disclosure";
+    retainDisclosure(ctx);
+  </script>
+</component>

@@ -1,0 +1,37 @@
+<component tag="dashboard-grid">
+  <prop name="id" type="String" required />
+  <prop name="label" type="String" required />
+  <prop name="name" type="String" default="layout" />
+  <prop name="value" type="String" default="[]" />
+  <prop name="columns" type="Int" default="12" />
+  <prop name="cellHeight" type="Int" default="60" />
+  <prop name="stackBelow" type="Int" default="480" />
+  <prop name="lockedIds" type="String" default="[]" />
+  <prop name="readOnly" type="Boolean" default="false" />
+  <prop name="disabled" type="Boolean" default="false" />
+  <prop name="error" type="String" default="" />
+  <prop name="preserveKey" type="String" default="" />
+  <div class="dashboard-grid" data-bml-dashboard-grid role="group" :aria-label="label"
+       :data-grid-id="id" :data-name="name" :data-value="value" :data-columns="columns" :data-cell-height="cellHeight"
+       :data-stack-below="stackBelow" :data-locked-ids="lockedIds" :data-readonly="readOnly" :data-disabled="disabled"
+       :data-error="error" :data-bml-preserve="preserveKey.takeIf(String::isNotBlank)" {...attrs}>
+    <p ref="instructions" :id='id + "-instructions"'>Use the Move and Resize buttons with arrow keys to arrange widgets. Drag their handles with a pointer. Escape cancels a drag. Narrow containers stack widgets without changing the saved layout.</p>
+    <label class="layout-label" :for="id">{ label } layout JSON</label>
+    <textarea ref="value" :id="id" :name="name" :readonly="readOnly" :disabled="disabled" spellcheck="false">{ value }</textarea>
+    <div class="dashboard-cells" ref="cells"><slot /></div>
+    <p ref="feedback" class="dashboard-feedback" :hidden="error.isBlank()">{ error }</p>
+  </div>
+  <style scoped>
+    .dashboard-grid { display: flex; flex-direction: column; gap: 16px; min-width: 0; color: var(--fg-1); font: 13px/1.5 var(--font-sans); }
+    p { margin: 0; color: var(--fg-2); }
+    textarea { box-sizing: border-box; width: 100%; min-height: 120px; padding: 12px; border: 1px solid var(--control-border, var(--line)); border-radius: var(--r-sm); color: var(--fg-1); background: var(--bg-1); font: 13px/1.6 var(--font-mono); }
+    textarea:focus-visible { outline: var(--focus-width) solid var(--accent); outline-offset: 2px; }
+    .dashboard-cells { display: flex; flex-direction: column; gap: var(--dashboard-gap, 16px); min-width: 0; position: relative; }
+    .dashboard-feedback { color: var(--err); }
+    [hidden] { display: none; }
+  </style>
+  <script client scoped>
+    import { mountDashboardGrid } from "@client/helpers/dashboard-grid";
+    mountDashboardGrid(ctx);
+  </script>
+</component>

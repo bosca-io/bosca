@@ -1,4 +1,4 @@
-import { javascript } from "@codemirror/lang-javascript";
+import { javascript, typescriptLanguage } from "@codemirror/lang-javascript";
 import { python } from "@codemirror/lang-python";
 import { java } from "@codemirror/lang-java";
 import { rust } from "@codemirror/lang-rust";
@@ -12,6 +12,19 @@ import { sql } from "@codemirror/lang-sql";
 import { StreamLanguage } from "@codemirror/language";
 import { kotlin } from "@codemirror/legacy-modes/mode/clike";
 
+const kotlinLanguage = StreamLanguage.define(kotlin);
+
+/** BML permits self-closing components and Kotlin/TypeScript in explicitly scoped script blocks. */
+function bml() {
+  return html({
+    selfClosingTags: true,
+    nestedLanguages: [
+      { tag: "script", attrs: attributes => "server" in attributes, parser: kotlinLanguage.parser },
+      { tag: "script", attrs: attributes => "client" in attributes, parser: typescriptLanguage.parser },
+    ],
+  });
+}
+
 /** Infer the existing source language from a filename or an explicit language name. */
 export function codeLanguage(path: string, language = "") {
   const name = language.toLowerCase();
@@ -21,14 +34,15 @@ export function codeLanguage(path: string, language = "") {
     return javascript({ typescript: true, jsx: ext === "tsx" });
   if (ext === "js" || ext === "jsx" || ext === "mjs")
     return javascript({ jsx: ext === "jsx" });
-  if (ext === "kt" || ext === "kts") return StreamLanguage.define(kotlin);
+  if (ext === "kt" || ext === "kts") return kotlinLanguage;
   if (ext === "py") return python();
   if (ext === "java") return java();
   if (ext === "rs") return rust();
   if (ext === "go") return go();
   if (ext === "json") return json();
   if (ext === "md" || ext === "markdown") return markdown();
-  if (ext === "html" || ext === "bml" || ext === "vue") return html();
+  if (ext === "bml") return bml();
+  if (ext === "html" || ext === "vue") return html();
   if (ext === "css" || ext === "scss") return css();
   if (ext === "yaml" || ext === "yml") return yaml();
   if (ext === "sql") return sql();

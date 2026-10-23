@@ -29,6 +29,89 @@ class CatalogApplicationTest {
     private val classpath = System.getProperty("catalog.classpath")
 
     @Test
+    fun `dashboard layouts retain widgets and native form values`() {
+        for (development in listOf(false, true)) withServer(development) { base, _ ->
+            runBrowser(base, development, "--dashboards", 90)
+        }
+    }
+
+    @Test
+    fun `dashboards pass accessibility in both palettes and viewport sizes`() {
+        for (development in listOf(false, true)) withServer(development) { base, _ ->
+            runBrowser(base, development, "--dashboard-accessibility", 90)
+        }
+    }
+
+    @Test
+    fun `visualization engines stay isolated to consuming pages`() {
+        for (development in listOf(false, true)) withServer(development) { base, client ->
+            for (path in listOf("/foundation", "/flows", "/charts", "/components/visualization")) {
+                val response = request(client, base, path)
+                assertEquals(200, response.statusCode(), path)
+                val html = response.body()
+                val scripts = Regex("""<script\b[^>]*\bsrc="([^"]+)"""").findAll(html).map { it.groupValues[1] }.toList()
+                assertTrue(scripts.isNotEmpty(), path)
+                val source = scripts.joinToString("\n") { url ->
+                    val asset = request(client, base, url)
+                    assertEquals(200, asset.statusCode(), url)
+                    asset.body()
+                }
+                assertEquals(path in listOf("/flows", "/components/visualization"), "data-flow-ready" in source, "$path VueFlow adapter")
+                assertEquals(path in listOf("/charts", "/components/visualization"), "data-chart-ready" in source, "$path Chart.js adapter")
+                assertEquals(path in listOf("/flows", "/components/visualization"), "vue-flow__node" in source, "$path VueFlow engine")
+                assertEquals(path in listOf("/charts", "/components/visualization"), "chartjs" in source, "$path Chart.js engine")
+                if (path == "/charts") {
+                    for (palette in listOf("Dark", "Light"))
+                        assertTrue(Regex("""<caption\b[^>]*>$palette palette visits</caption>""").containsMatchIn(html), html)
+                    assertTrue("Visits" in html && "Mon" in html && "Wed" in html, html)
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `flows and charts retain independent state and native values`() {
+        for (development in listOf(false, true)) withServer(development) { base, _ ->
+            runBrowser(base, development, "--visualizations", 90)
+        }
+    }
+
+    @Test
+    fun `visualizations pass accessibility in both palettes and viewport sizes`() {
+        for (development in listOf(false, true)) withServer(development) { base, _ ->
+            runBrowser(base, development, "--visualization-accessibility", 90)
+        }
+    }
+
+    @Test
+    fun `new editor examples pass accessibility in both palettes and viewport sizes`() {
+        for (development in listOf(false, true)) withServer(development) { base, _ ->
+            runBrowser(base, development, "--editor-accessibility", 60)
+        }
+    }
+
+    @Test
+    fun `rich documents retain native form values formatting and independent drafts`() {
+        for (development in listOf(false, true)) withServer(development) { base, _ ->
+            runBrowser(base, development, "--documents", 60)
+        }
+    }
+
+    @Test
+    fun `source languages authoring colors and compact controls follow consumer styles`() {
+        for (development in listOf(false, true)) withServer(development) { base, _ ->
+            runBrowser(base, development, "--source-polish", 60)
+        }
+    }
+
+    @Test
+    fun `catalog appearance persists across navigation reload and history`() {
+        for (development in listOf(false, true)) withServer(development) { base, _ ->
+            runBrowser(base, development, "--appearance", 60)
+        }
+    }
+
+    @Test
     fun `packaged catalog serves isolated examples assets and real browser actions`() {
         val files = classpath.split(File.pathSeparator).map(::File)
         assertTrue(files.all { it.isFile && it.extension == "jar" })
@@ -39,7 +122,7 @@ class CatalogApplicationTest {
             Json.decodeFromString(BmlLibraryManifest.serializer(), jar.getInputStream(jar.getJarEntry("META-INF/bml/library-manifest.json"))
                 .bufferedReader().use { it.readText() }).components.filter { it.exported }
         }
-        assertEquals(41, exports.size)
+        assertEquals(46, exports.size)
         val expectedApi = buildJsonObject {
             for (component in exports) put(component.tag, buildJsonObject {
                 put("scoped", component.styles.isNotBlank())
@@ -58,7 +141,7 @@ class CatalogApplicationTest {
             assertTrue(jar.getInputStream(manifest).readBytes().isNotEmpty())
         }
         for (development in listOf(false, true)) withServer(development) { base, client ->
-            for (path in listOf("/", "/foundation", "/themes", "/selection", "/source", "/json", "/comments", "/overlays", "/choices", "/views", "/trees", "/navigation", "/feedback", "/surfaces", "/components", "/components/controls",
+            for (path in listOf("/", "/foundation", "/themes", "/selection", "/source", "/source/languages", "/documents", "/flows", "/charts", "/dashboards", "/components/visualization", "/json", "/comments", "/overlays", "/choices", "/views", "/trees", "/navigation", "/feedback", "/surfaces", "/components", "/components/controls",
                 "/components/layout", "/components/feedback", "/components/overlays", "/components/content", "/components/aliases")) {
                 val response = request(client, base, path)
                 assertEquals(200, response.statusCode(), path + response.body())

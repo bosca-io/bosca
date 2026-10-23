@@ -12,7 +12,7 @@ export async function checkSourcePanel({navigate,evaluate,until,call,key,artifac
       await call('Emulation.setDeviceMetricsOverride',{width,height:1000,deviceScaleFactor:1,mobile:false});
       await call('Network.clearBrowserCookies');await navigate('/source');
       await until(`document.querySelectorAll('[data-source-ready]').length===8`);
-      if(appearance==='light')await evaluate(`document.querySelector('[data-catalog-light]').click()`);
+      if(appearance==='light')await evaluate(`if(!document.querySelector('[data-catalog-light]').checked)document.querySelector('[data-catalog-light]').click()`);
       await evaluate('document.fonts.ready');
       const root=`document.querySelector(${JSON.stringify(selector)})`;
       const panel=`${root}.querySelector('.cm-search')`;
@@ -27,14 +27,16 @@ export async function checkSourcePanel({navigate,evaluate,until,call,key,artifac
         viewer:root.getBoundingClientRect().toJSON(),panel:panel.getBoundingClientRect().toJSON(),
         viewport:root.querySelector('.cm-scroller').clientHeight,font:getComputedStyle(panel).fontFamily,
         targets:[...panel.children].filter(el=>el.matches('input,button,label')).map(el=>({
-          name:el.name||el.textContent.trim(),box:el.getBoundingClientRect().toJSON(),fontSize:parseFloat(getComputedStyle(el).fontSize)})),
+          name:el.name||el.textContent.trim(),kind:el.tagName,box:el.getBoundingClientRect().toJSON(),fontSize:parseFloat(getComputedStyle(el).fontSize)})),
         overflow:document.documentElement.scrollWidth-innerWidth};})()`);
       const check=(state,height)=>{
         assert.equal(state.targets.length,8);
         assert.ok(state.viewport>=44&&state.panel.bottom<=state.viewer.bottom+0.5&&state.overflow<=0,JSON.stringify(state));
         for(const target of state.targets) {
           const b=target.box;
-          assert.ok(b.height>=height-0.5&&target.fontSize>=12,JSON.stringify(target));
+          const expected=target.kind==='BUTTON'&&height===30?24:height;
+          assert.ok(b.height>=expected-0.5&&target.fontSize>=12,JSON.stringify(target));
+          if(target.kind==='BUTTON')assert.ok(b.height<=expected+0.5,JSON.stringify(target));
           assert.ok(b.left>=state.panel.left+7.5&&b.right<=state.panel.right-7.5&&b.top>=state.panel.top+7.5&&b.bottom<=state.panel.bottom-7.5,JSON.stringify(target));
         }
         for(let i=0;i<state.targets.length;i++)for(const second of state.targets.slice(i+1)) {
@@ -63,7 +65,7 @@ export async function checkSourcePanel({navigate,evaluate,until,call,key,artifac
         await key('Tab');assert.equal(await evaluate('document.activeElement.name'),name);
       }
       if(selector.includes('catalog-source')) {
-        await evaluate(`window.panelStyle=document.createElement('style');window.panelStyle.textContent='[data-panel-size] {--control-height-sm:36px;--font-sans:system-ui,sans-serif;}';document.head.append(window.panelStyle);${root}.setAttribute('data-panel-size','')`);
+        await evaluate(`window.panelStyle=document.createElement('style');window.panelStyle.textContent='[data-panel-size] {--control-height-sm:36px;--control-height-xs:36px;--font-sans:system-ui,sans-serif;}';document.head.append(window.panelStyle);${root}.setAttribute('data-panel-size','')`);
         const overridden=await geometry();check(overridden,36);assert.ok(overridden.font.includes('system-ui'));
         reports.at(-1).overridden=overridden;
         await evaluate(`${root}.removeAttribute('data-panel-size');window.panelStyle.remove()`);

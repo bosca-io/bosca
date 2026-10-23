@@ -28,7 +28,11 @@ export async function checkSurfaces({navigate,evaluate,until:poll,call,artifacts
   await evaluate('window.releaseSurfaceLoad()');await until(`${node('table')}&&${node('toast')}.dataset.sequence==='2'`);
   assert.ok(await truth(`${node('table')}.getAttribute('role')==='region'&&${node('table')}.getAttribute('aria-label')==='Local component examples'&&${node('table')}.tabIndex===0&&${node('table')}.querySelectorAll('tbody tr').length===15&&${node('table')}.querySelectorAll('th[scope=col]').length===3&&${node('empty','light')}.checkVisibility()&&!${node('table','light')}`));
   await call('Emulation.setDeviceMetricsOverride',{width:390,height:1000,deviceScaleFactor:1,mobile:false});
-  await evaluate(`${node('table')}.scrollIntoView({block:'center'});${node('table')}.focus()`);await key('ArrowRight');await key('PageDown');await until(`${node('table')}.scrollLeft>0&&${node('table')}.scrollTop>0`);
+  await evaluate(`${node('table')}.scrollIntoView({block:'center'});${node('table')}.focus();window.surfaceScrollFinished=new Promise(resolve=>${node('table')}.addEventListener('scrollend',resolve,{once:true}))`);
+  await key('ArrowRight');await evaluate('window.surfaceScrollFinished.then(()=>true)');
+  await evaluate(`window.surfaceScrollFinished=new Promise(resolve=>${node('table')}.addEventListener('scrollend',resolve,{once:true}))`);
+  await key('PageDown');await evaluate('window.surfaceScrollFinished.then(()=>true)');
+  await until(`${node('table')}.scrollLeft>0&&${node('table')}.scrollTop>0`);
   await evaluate(`${node('table')}.scrollTo({left:80,top:120,behavior:'instant'})`);await evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
   await evaluate(`window.surfaceTable=${node('table')};window.surfaceScroll=[window.surfaceTable.scrollLeft,window.surfaceTable.scrollTop]`);
   await action('refresh',`${node('toast')}.dataset.sequence==='3'`);
@@ -45,7 +49,7 @@ export async function checkSurfaces({navigate,evaluate,until:poll,call,artifacts
   const measurements=[];
   for(const width of [1440,390]) {
     await call('Emulation.setDeviceMetricsOverride',{width,height:1000,deviceScaleFactor:1,mobile:false});await navigate('/surfaces');await until(`${node('form','light')}?.dataset.bmlActionBound==='true'`);await evaluate('document.fonts.ready');
-    await evaluate(`document.querySelector('[data-catalog-light]').click()`);await settle();
+    await evaluate(`if(!document.querySelector('[data-catalog-light]').checked)document.querySelector('[data-catalog-light]').click()`);await settle();
     for(const id of ['dark','light']) {
       if(await truth(`!${node('table',id)}`))await load(id);
       await states(id);
