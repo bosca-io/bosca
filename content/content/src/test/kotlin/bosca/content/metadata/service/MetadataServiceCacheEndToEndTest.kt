@@ -434,6 +434,102 @@ class MetadataServiceCacheEndToEndTest {
     }
 
     @Test
+    fun `storage references require matching database-backed kinds and versions before excluding a primary`(): Unit = runBlocking {
+        val backingTables = mapOf(
+            "bosca/v-data" to "data",
+            "bosca/v-guide" to "guides",
+            "bosca/v-document-template" to "document_templates",
+            "bosca/v-data-template" to "data_templates",
+            "bosca/v-guide-template" to "guide_templates",
+            "bosca/v-collection-template" to "collection_templates",
+        )
+        val owners = mutableListOf<UUID>()
+        val expectations = mutableListOf<Triple<UUID, Int, Boolean>>()
+        suspend fun owner(
+            type: String,
+            storedKind: String? = type,
+            storedVersion: Int = 2,
+            length: Long? = null,
+            uploaded: Boolean = false,
+            historical: Boolean = false,
+            asset: Boolean,
+        ): UUID {
+            val id = UUID.random().also { owners.add(it) }
+            rawUpdate("""
+                insert into metadata (id, version, name, content_type, content_length, uploaded)
+                values (?, 2, 'Database storage evidence', '$type', ${length ?: "null"}, ${if (uploaded) "now()" else "null"})
+            """.trimIndent(), id)
+            storedKind?.let { kind ->
+                val table = backingTables.getValue(kind)
+                val extra = when (table) {
+                    "document_templates" -> ", content" to ", '{\"document\":{\"type\":\"doc\"}}'"
+                    "guides", "guide_templates" -> ", type, rrule" to ", 'linear', ''"
+                    else -> "" to ""
+                }
+                rawUpdate("""
+                    insert into $table (metadata_id, version${extra.first})
+                    values (?, $storedVersion${extra.second})
+                """.trimIndent(), id)
+            }
+            if (historical) {
+                rawUpdate("""
+                    insert into metadata_versions (id, version, name, content_type, content_length)
+                    values (?, 1, 'Earlier database content', '$type', ${length ?: "null"})
+                """.trimIndent(), id)
+            }
+            expectations.add(Triple(id, if (historical) 1 else 2, asset))
+            return id
+        }
+        try {
+            val attachments = backingTables.keys.map { type ->
+                val attached = owner(type, asset = false)
+                rawUpdate("""
+                    insert into metadata_supplementary (metadata_id, key, name, content_type, uploaded, content_length)
+                    values (?, 'preview', 'Stored preview', 'image/png', now(), 9)
+                """.trimIndent(), attached)
+                owner(type, storedVersion = 1, historical = true, asset = false)
+                owner(type, storedKind = null, asset = true)
+                owner(type, storedVersion = 1, asset = true)
+                val wrongKind = if (type == "bosca/v-data") "bosca/v-guide" else "bosca/v-data"
+                owner(type, storedKind = wrongKind, asset = true)
+                owner(type, uploaded = true, asset = true)
+                owner(type, length = 17, asset = true)
+                owner(type, storedKind = null, historical = true, asset = true)
+                owner(type, historical = true, asset = true)
+                owner(type, storedVersion = 1, length = 17, historical = true, asset = true)
+                attached
+            }
+            owner("bosca/v-bible", storedKind = "bosca/v-data", asset = true)
+            owner("bosca/custom", storedKind = "bosca/v-guide", asset = true)
+            withRequest {
+                val all = service.getStorageReferences(0, Int.MAX_VALUE)
+                val primaries = all.filter {
+                    it.kind in setOf(ContentStorageReferenceKind.METADATA, ContentStorageReferenceKind.METADATA_VERSION)
+                }
+                for ((id, version, expected) in expectations) {
+                    assertEquals(expected, primaries.any { it.contentId == id && it.version == version },
+                        "Binary reference selection for $id version $version")
+                }
+                for (id in attachments) {
+                    assertEquals(ContentStorageReferenceKind.METADATA_SUPPLEMENTARY, all.single { it.contentId == id }.kind)
+                }
+                val paged = buildList {
+                    var offset = 0L
+                    while (true) {
+                        val page = service.getStorageReferences(offset, 7)
+                        if (page.isEmpty()) break
+                        addAll(page)
+                        offset += page.size
+                    }
+                }
+                assertEquals(all, paged)
+            }
+        } finally {
+            withRequest { owners.forEach { repository.deleteById(it) } }
+        }
+    }
+
+    @Test
     fun `storage references keep the caller snapshot across pages while source rows change`(): Unit = runBlocking {
         val owner = withRequest {
             repository.add(

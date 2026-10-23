@@ -8,9 +8,17 @@ import bosca.cache.asCoroutineContext
 import bosca.cache.nats.NatsCacheManager
 import bosca.content.collection.service.CollectionService
 import bosca.content.metadata.graphql.MetadataContentUrlsController
+import bosca.content.metadata.model.DataType
+import bosca.content.metadata.model.GuideType
 import bosca.content.metadata.model.MetadataContentUrls
 import bosca.content.metadata.service.BibleService
+import bosca.content.metadata.service.CollectionTemplateService
+import bosca.content.metadata.service.DataService
+import bosca.content.metadata.service.DataTemplateService
 import bosca.content.metadata.service.DocumentService
+import bosca.content.metadata.service.DocumentTemplateService
+import bosca.content.metadata.service.GuideService
+import bosca.content.metadata.service.GuideTemplateService
 import bosca.content.metadata.service.MetadataService
 import bosca.content.security.CollectionPermissionEvaluator
 import bosca.content.security.MetadataPermissionEvaluator
@@ -57,6 +65,14 @@ internal class PostgresContentRecoveryFixture(private val root: Path, private va
     private val image = UUID.parse("10000000-0000-0000-0000-000000000001")
     private val publicImage = UUID.parse("10000000-0000-0000-0000-000000000002")
     private val document = UUID.parse("10000000-0000-0000-0000-000000000003")
+    private val data = UUID.parse("10000000-0000-0000-0000-000000000004")
+    private val guide = UUID.parse("10000000-0000-0000-0000-000000000005")
+    private val documentTemplate = UUID.parse("10000000-0000-0000-0000-000000000006")
+    private val dataTemplate = UUID.parse("10000000-0000-0000-0000-000000000007")
+    private val guideTemplate = UUID.parse("10000000-0000-0000-0000-000000000008")
+    private val collectionTemplate = UUID.parse("10000000-0000-0000-0000-000000000009")
+    private val step = UUID.parse("10000000-0000-0000-0000-000000000010")
+    private val module = UUID.parse("10000000-0000-0000-0000-000000000011")
     private val collection = UUID.parse("20000000-0000-0000-0000-000000000001")
     private val supplementary = UUID.parse("30000000-0000-0000-0000-000000000001")
     private val collectionSupplementary = UUID.parse("30000000-0000-0000-0000-000000000002")
@@ -64,6 +80,9 @@ internal class PostgresContentRecoveryFixture(private val root: Path, private va
     private val reader = UUID.parse("50000000-0000-0000-0000-000000000001")
     private val outsider = UUID.parse("50000000-0000-0000-0000-000000000002")
     private val body = """{"document":{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Restored document"}]}]}}"""
+    private val defaults = """{"answer":7}"""
+    private val configuration = """{"theme":"light"}"""
+    private val recurrence = "RRULE:FREQ=DAILY;COUNT=2"
 
     fun seed(sql: (String) -> Unit) {
         sql("""
@@ -82,6 +101,33 @@ internal class PostgresContentRecoveryFixture(private val root: Path, private va
             insert into metadata (id, name, content_type) values ('$document', 'Document', 'bosca/v-document');
             insert into documents (metadata_id, version, title, content)
                 values ('$document', 1, 'Recovered document', '$body');
+            insert into metadata (id, name, content_type, attributes) values
+                ('$data', 'Data', 'bosca/v-data', '{"answer":42}'),
+                ('$guide', 'Guide', 'bosca/v-guide', '{}'),
+                ('$documentTemplate', 'Document template', 'bosca/v-document-template', '{}'),
+                ('$dataTemplate', 'Data template', 'bosca/v-data-template', '{}'),
+                ('$guideTemplate', 'Guide template', 'bosca/v-guide-template', '{}'),
+                ('$collectionTemplate', 'Collection template', 'bosca/v-collection-template', '{}'),
+                ('$step', 'Guide step', 'bosca/v-guide-step', '{}'),
+                ('$module', 'Guide module', 'bosca/v-guide-step-module', '{}');
+            insert into document_templates (metadata_id, version, content, configuration, schema, default_attributes)
+                values ('$documentTemplate', 1, '$body', '$configuration', '{"type":"object"}', '$defaults');
+            insert into data_templates (metadata_id, version, type, default_attributes)
+                values ('$dataTemplate', 1, 'attributes', '$defaults');
+            insert into data (metadata_id, version, type, template_metadata_id, template_metadata_version)
+                values ('$data', 1, 'attributes', '$dataTemplate', 1);
+            insert into guide_templates (metadata_id, version, rrule, type, configuration, default_attributes)
+                values ('$guideTemplate', 1, '$recurrence', 'linear_progress', '$configuration', '$defaults');
+            insert into guides (metadata_id, version, rrule, type, template_metadata_id, template_metadata_version)
+                values ('$guide', 1, '$recurrence', 'linear_progress', '$guideTemplate', 1);
+            insert into documents (metadata_id, version, title, content) values
+                ('$step', 1, 'Recovered step', '$body'), ('$module', 1, 'Recovered module', '$body');
+            insert into guide_steps (metadata_id, version, id, step_metadata_id, step_metadata_version, sort)
+                values ('$guide', 1, 13, '$step', 1, 0);
+            insert into guide_step_modules (metadata_id, version, step, id, module_metadata_id, module_metadata_version, sort)
+                values ('$guide', 1, 13, 17, '$module', 1, 0);
+            insert into collection_templates (metadata_id, version, configuration, default_attributes)
+                values ('$collectionTemplate', 1, '$configuration', '$defaults');
             insert into metadata_relationships (metadata1_id, metadata2_id, relationship, attributes)
                 values ('$document', '$image', 'illustration', '{"caption":"Preserved"}');
             insert into collection_items (collection_id, child_metadata_id, attributes)
@@ -135,6 +181,44 @@ internal class PostgresContentRecoveryFixture(private val root: Path, private va
                 val restoredDocument = assertNotNull(documents.getDocument(document, 1))
                 assertEquals("Recovered document", restoredDocument.title)
                 assertEquals(json.parseToJsonElement(body), json.encodeToJsonElement(Content.serializer(), assertNotNull(restoredDocument.content)))
+                val restoredData = assertNotNull(provide<DataService>().getData(data, 1))
+                assertEquals(DataType.ATTRIBUTES, restoredData.type)
+                assertEquals(dataTemplate, restoredData.templateMetadataId)
+                assertEquals(1, restoredData.templateMetadataVersion)
+                assertEquals(JsonPrimitive(42), assertNotNull(metadata.getById(data)).attributes?.jsonObject?.get("answer"))
+                val restoredDataTemplate = assertNotNull(provide<DataTemplateService>().getTemplate(dataTemplate, 1))
+                assertEquals(DataType.ATTRIBUTES, restoredDataTemplate.type)
+                assertEquals(json.parseToJsonElement(defaults), restoredDataTemplate.defaultAttributes)
+                val restoredDocumentTemplate = assertNotNull(provide<DocumentTemplateService>().getTemplate(documentTemplate, 1))
+                assertEquals(json.parseToJsonElement(body), json.encodeToJsonElement(Content.serializer(), assertNotNull(restoredDocumentTemplate.content)))
+                assertEquals(json.parseToJsonElement(configuration), restoredDocumentTemplate.configuration)
+                assertEquals(json.parseToJsonElement("""{"type":"object"}"""), restoredDocumentTemplate.schema)
+                assertEquals(json.parseToJsonElement(defaults), restoredDocumentTemplate.defaultAttributes)
+                val restoredCollectionTemplate = assertNotNull(provide<CollectionTemplateService>().getCollectionTemplate(collectionTemplate, 1))
+                assertEquals(json.parseToJsonElement(configuration), restoredCollectionTemplate.configuration)
+                assertEquals(json.parseToJsonElement(defaults), restoredCollectionTemplate.defaultAttributes)
+                val restoredGuideTemplate = assertNotNull(provide<GuideTemplateService>().getTemplate(guideTemplate, 1))
+                assertEquals(recurrence, restoredGuideTemplate.rrule)
+                assertEquals(GuideType.LINEAR_PROGRESS, restoredGuideTemplate.type)
+                assertEquals(json.parseToJsonElement(configuration), restoredGuideTemplate.configuration)
+                assertEquals(json.parseToJsonElement(defaults), restoredGuideTemplate.defaultAttributes)
+                val guides = provide<GuideService>()
+                val restoredGuide = assertNotNull(guides.getGuide(guide, 1))
+                assertEquals(recurrence, restoredGuide.rrule)
+                assertEquals(GuideType.LINEAR_PROGRESS, restoredGuide.type)
+                assertEquals(guideTemplate, restoredGuide.templateMetadataId)
+                assertEquals(1, restoredGuide.templateMetadataVersion)
+                assertEquals(1L, guides.getStepCount(guide, 1))
+                val restoredStep = guides.getGuideSteps(guide, 1, 0, 10).single()
+                assertEquals(13L, restoredStep.id)
+                assertEquals(step, restoredStep.stepMetadataId)
+                assertEquals(1, restoredStep.stepMetadataVersion)
+                val restoredModule = guides.getGuideStepModules(guide, 1, restoredStep.id).single()
+                assertEquals(17L, restoredModule.id)
+                assertEquals(module, restoredModule.moduleMetadataId)
+                assertEquals(1, restoredModule.moduleMetadataVersion)
+                assertEquals("Recovered step", assertNotNull(documents.getDocument(step, 1)).title)
+                assertEquals("Recovered module", assertNotNull(documents.getDocument(module, 1)).title)
                 val link = metadata.getRelationships(document).single()
                 assertEquals(image, link.metadataId2)
                 assertEquals("illustration", link.relationship)

@@ -70,10 +70,11 @@ interface MetadataService : PermissionService<Metadata, UUID>, TransitioningServ
      * bypassing content caches. Includes soft-deleted owners and records without upload evidence.
      * Includes current primary/supplementary records and historical primary/supplementary records;
      * historical supplementary UUIDs are unavailable and are returned as null, never inferred.
-     * Document, guide-step and guide-step-module primaries stored in an exact matching documents
-     * row without a declared binary length or upload are excluded. Historical primaries use the
-     * matching document version and length evidence. Their supplementary assets remain included;
-     * missing document rows and unknown types remain possible storage references.
+     * Document, guide-step, guide-step-module, data, guide and template primaries with an exact
+     * ID/version row in their corresponding content table and no binary length or upload are
+     * excluded. Historical primaries use the matching content version and length evidence.
+     * Supplementary assets remain included; missing backing rows, other kinds and unknown types
+     * remain possible storage references.
      *
      * Uses deterministic offset pagination: [offset] must be nonnegative and [limit] positive.
      * Run all pages in one caller-owned database snapshot for a consistent inventory. This method

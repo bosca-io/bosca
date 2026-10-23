@@ -172,10 +172,11 @@ Ordinary Pipeline retry takes a fresh database point and reuses already verified
 The check runs on new capture attempts. Replaying a completed request still returns its
 historical receipt without inspecting retained storage again.
 
-Database-only documents and document-backed guide steps/modules retain their bodies in the
-PostgreSQL artifact. When the matching document exists and no binary upload or length is declared,
-their primary content needs no object payload. Their attachments still use object backup. Missing
-document rows and other content without upload evidence remain explicit gaps.
+Documents, document-backed guide steps/modules, data, guides and their templates retain their
+content in PostgreSQL. This includes document, data, guide and collection templates. When the exact
+ID/version has its corresponding content row and no binary upload or length is declared, its primary
+needs no object payload. Attachments still use object backup. Missing backing rows and other kinds
+without upload evidence remain explicit gaps; a `bosca/*` content type alone does not exclude a file.
 
 References without upload evidence remain explicit in the report. This includes pending uploads
 and historical metadata whose schema did not save an upload timestamp. They are not declared
