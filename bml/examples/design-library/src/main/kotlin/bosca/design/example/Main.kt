@@ -12,7 +12,8 @@ fun main(args: Array<String>) {
     if (args.firstOrNull() == "--check-resources") {
         for (path in listOf("design-example.css", "META-INF/licenses/bml-design/geist.txt",
             "META-INF/licenses/bml-design/lucide.txt", "META-INF/licenses/bml-design/source-view.txt",
-            "META-INF/licenses/bml-design/json-editor.txt")) {
+            "META-INF/licenses/bml-design/json-editor.txt", "META-INF/licenses/bml-design/document-editor.txt",
+            "META-INF/licenses/bml-design/flow-editor.txt", "META-INF/licenses/bml-design/chart.txt")) {
             val bytes = checkNotNull(BmlPages::class.java.getResourceAsStream("/$path")) { "Missing resource: $path" }
                 .use { it.readBytes() }
             println("$path\t${bosca.bml.project.ContentDigest.sha256(bytes)}")

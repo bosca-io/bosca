@@ -118,6 +118,22 @@ export async function checkComposition({ call, evaluate, until, base, mode, arti
     await evaluate('window.scrollTo(0,0)');await until('document.documentElement.scrollWidth<=innerWidth');
     const shot=await call('Page.captureScreenshot',{format:'png'});await writeFile(join(artifacts,`composition-${mode}-${width}.png`),Buffer.from(shot.data,'base64'));
   }
+  // Change the native offset while reading a real action response, before a scroll event can run.
+  await evaluate(`${row('long.txt')}.querySelector('a').focus();${local}.scrollTop=0;new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))`);
+  const previousUpdate = await evaluate("document.querySelector('[data-composition-update=light]').textContent");
+  await evaluate(`(() => {const root=${local};window.treeScrollRace={events:0};window.raceTree=root;
+    window.recordTreeScroll=()=>window.treeScrollRace.events++;root.addEventListener('scroll',window.recordTreeScroll);
+    const original=window.fetch.bind(window);window.fetch=async(...args)=>{const response=await original(...args);
+      if(String(args[0]).includes('/_bml/action')){window.fetch=original;const json=response.json.bind(response);
+        response.json=async()=>{const data=await json();root.scrollTop=root.scrollHeight;window.treeScrollRace.before=root.scrollTop;window.treeScrollRace.events=0;return data;};}return response;};
+    document.addEventListener('bml:update',()=>{window.treeScrollRace.eventsAtUpdate=window.treeScrollRace.events;},{capture:true,once:true});
+    document.querySelector('[data-composition-update=light]').click();})()`);
+  await until(`document.querySelector('[data-composition-update=light]').textContent!==${JSON.stringify(previousUpdate)}`);
+  const race=await evaluate(`({...window.treeScrollRace,after:${local}.scrollTop,retained:${local}===window.raceTree,focused:document.activeElement===${row('long.txt')}.querySelector('a')})`);
+  await writeFile(join(artifacts,`tree-scroll-race-${mode}.json`),JSON.stringify(race,null,2));
+  await evaluate(`${local}.removeEventListener('scroll',window.recordTreeScroll)`);
+  assert.ok(race.eventsAtUpdate===0&&race.before>0&&race.before===race.after&&race.retained&&race.focused,
+    `A real action preserves the current scroll position before its scroll event: ${JSON.stringify(race)}`);
   const baseline=await listeners('document'),observers=await evaluate('window.compositionObservers.size');
   await evaluate(`window.removedComment=${field};window.removedTree=${local};window.removedServerTree=document.querySelector('[data-server-tree=light]')`);
   await click('[data-composition-toggle=light]');await until(`!${field}&&window.compositionObservers.size===${observers-1}`);

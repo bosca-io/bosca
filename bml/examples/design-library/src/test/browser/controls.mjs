@@ -17,6 +17,7 @@ import { checkSource } from './source-checks.mjs';
 import { checkJson } from './json-checks.mjs';
 import { checkEmptyWidgets } from './empty-checks.mjs';
 import { checkThemes } from './theme-checks.mjs';
+import { checkWidgets } from './widget-checks.mjs';
 
 const base = process.argv[2];
 const mode = process.argv[3] ?? 'fixture';
@@ -377,6 +378,8 @@ try {
     return !field.hidden&&field.value==='{"replacement":2}'&&new FormData(field.form).get('settings')===field.value&&
       document.querySelector('[data-json-invalid] textarea').value==='{invalid: '&&!document.querySelector('.jse-main');})()`),
     'No-script fallback keeps exact drafts and native form values');
+  await call('Emulation.setScriptExecutionDisabled', { value: false });
+  await checkWidgets({ call, evaluate, until, base, mode, artifacts });
   assert.deepEqual(exceptions, []);
   console.log(`Design library browser checks passed (${mode}); screenshots: ${artifacts}`);
 } finally {

@@ -42,7 +42,8 @@ class DesignLibraryTest {
                 }
                 val expected = listOf("design-example.css", "META-INF/licenses/bml-design/geist.txt",
                     "META-INF/licenses/bml-design/lucide.txt", "META-INF/licenses/bml-design/source-view.txt",
-                    "META-INF/licenses/bml-design/json-editor.txt").associateWith { path ->
+                    "META-INF/licenses/bml-design/json-editor.txt", "META-INF/licenses/bml-design/document-editor.txt",
+                    "META-INF/licenses/bml-design/flow-editor.txt", "META-INF/licenses/bml-design/chart.txt").associateWith { path ->
                     val bytes = checkNotNull(DesignLibraryTest::class.java.getResourceAsStream("/$path")).use { it.readBytes() }
                     ContentDigest.sha256(bytes)
                 }
@@ -127,7 +128,7 @@ class DesignLibraryTest {
                     assertEquals(digest, ContentDigest.sha256(bytes), name)
                     assertTrue(bytes.contentEquals(bytesByDigest.getValue(digest)), name)
                 }
-                for (name in listOf("geist", "lucide", "source-view", "json-editor")) {
+                for (name in listOf("geist", "lucide", "source-view", "json-editor", "document-editor", "flow-editor", "chart")) {
                     val path = "META-INF/licenses/bml-design/$name.txt"
                     val notice = binary.getInputStream(binary.getJarEntry(path)).readBytes()
                     assertTrue(notice.isNotEmpty(), path)
@@ -138,14 +139,16 @@ class DesignLibraryTest {
             bytesByDigest
         }
         for (development in listOf(false, true)) withServer(development) { base, client ->
-            val html = request(client, base, "/aliases").body()
+            val aliases = request(client, base, "/aliases")
+            assertEquals(200, aliases.statusCode(), "development=$development: ${aliases.body()}")
+            val html = aliases.body()
             val links = Regex("<link[^>]+href=\"([^\"]+)\"").findAll(html)
                 .map { it.groupValues[1].replace("&amp;", "&") }
                 .filter { it.startsWith("/_bml/libraries/") && it.substringBefore('?').endsWith(".css") }.toList()
             assertEquals(links.distinct(), links)
             val styles = links.map { request(client, base, it).also { response -> assertEquals(200, response.statusCode()) }.body() }
             val fontStyles = styles.filter { "@font-face" in it }
-            assertEquals(1, fontStyles.size)
+            assertEquals(1, fontStyles.size, "development=$development links=$links html=$html styles=$styles")
             val css = fontStyles.single()
             assertFalse("/_git/" in css || "https://" in css || "file:" in css)
             assertEquals(11, Regex("@font-face").findAll(css).count())
@@ -176,6 +179,10 @@ class DesignLibraryTest {
             }
             val basic = script("index")
             assertFalse("cm-editor" in basic || "source-keyword" in basic || "jse-main" in basic)
+            val widgetMarkers = listOf("data-document-ready", "data-flow-ready", "data-chart-ready", "data-grid-ready")
+            assertTrue(widgetMarkers.none { it in basic }, "Basic controls exclude optional widget engines")
+            val widgets = script("widgets")
+            assertTrue(widgetMarkers.all { it in widgets }, "The independent widget page includes all four engines")
             val json = script("json")
             assertTrue("jse-main" in json && "jse-tree-mode" in json && "jse-table-mode" in json)
             assertFalse(Regex("""(?:from|import)\s*["'](?:vanilla-jsoneditor(?:/index.js)?|svelte|@fortawesome/free-(?:regular|solid)-svg-icons)["']""").containsMatchIn(json))
@@ -203,6 +210,12 @@ class DesignLibraryTest {
             assertFalse("<script>unsafe()</script>" in json || "/_git/" in json, json)
             assertTrue(styles(json).any { "--jse-background-color" in it })
             assertFalse(styles(json).any { ".source-keyword" in it })
+            val widgets = request(client, base, "/widgets").body()
+            assertTrue(listOf("data-bml-document-editor", "data-bml-flow-editor", "data-bml-dashboard-grid", "data-bml-chart").all { it in widgets }, widgets)
+            assertTrue("Visits" in widgets && "Monday" in widgets && "name=\"document\"" in widgets && "name=\"graph\"" in widgets && "name=\"layout\"" in widgets, widgets)
+            assertTrue(styles(widgets).any { ".tiptap" in it })
+            assertTrue(styles(widgets).any { ".vue-flow__node" in it })
+            assertFalse(styles(widgets).any { "--jse-background-color" in it || ".source-keyword" in it })
         }
     }
 

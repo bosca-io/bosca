@@ -8,6 +8,7 @@
     <body>
       <page-shell class="fixture-shell" data-shell="example">
         <h1>Design library</h1>
+        <p><a href="/widgets">Document, graph, chart and dashboard examples</a></p>
         <div class="themes">
           <div class="light" data-palette="light"><preferences id="light" title="Light preferences" /></div>
           <div class="purple" data-palette="purple"><preferences id="purple" title="Dark preferences" /></div>

@@ -158,6 +158,8 @@ The `/composition` page combines local and server-loaded trees, plain comment fo
 Its own state supplies directory actions, delayed submissions, permission changes, rejected drafts
 and controlled values. Two themes exercise native links, initial local disclosure, roving focus,
 type-ahead, focus into asynchronously added children and preservation across server updates.
+An action-response check changes the tree offset before its native scroll event, verifying that
+the immediate position survives replacement as well as previously settled scrolling.
 Comment checks cover native names/values, blank/readonly/disabled/permission states, sizing,
 Ctrl+Enter, pending feedback, failure/retry, current descriptions, retained draft/caret/focus,
 controlled values and native reset. Repeated removal/remount checks listeners and observers.
@@ -166,11 +168,21 @@ comment form values, native Tab stops for every rendered file link and server ti
 Timestamp tests cover English UTC/default, custom offset formats, relative past/future/older dates,
 escaped invalid values and invalid-pattern errors. Desktop and phone screenshots cover this page.
 
+The `/widgets` page consumes TipTap documents, VueFlow graphs and a Chart.js chart projected into
+a dashboard grid. One application-owned form saves document, graph and layout JSON together.
+Workspace, source-free Maven and native browser runs cover both palettes at 1440px/390px, real
+document input and graph movement, desktop grid movement, narrow stacking without coordinate
+changes, retained engines and unsaved widget input across server refreshes, current saved values
+and independent instances. With scripts disabled, native JSON fields and the chart data table remain
+available. The consumer has no npm dependencies for these engines; basic pages exclude their code.
+All seven packaged dependency notices are checked against their original resources and source archive.
+
 The `/source` page consumes the compiled read-only CodeMirror viewer with no CodeMirror npm
 dependency in this application. It covers explicit and inferred languages, requested lines independent
 of URL parameters, wrapping, compact/bare and empty/plain-text cases, escaped native fallback,
 search, read-only keyboard behavior, preserved state/focus and changed caller options. Its two
-palettes and live CSS overrides exercise editor, gutter, active-line, search and syntax colors.
+palettes and live CSS overrides exercise editor, gutter, search and syntax colors. Current rows and
+gutter rows stay unfilled, with a neutral border on focus.
 Removal/remount checks CodeMirror destruction, observers and document listeners. HTTP/archive
 checks prove that ordinary button/card pages exclude viewer JS/CSS while source pages include it.
 Git also consumes this viewer; its editable and preview workflows remain in the Git application.
@@ -217,7 +229,7 @@ This uses GraalVM quick optimization. The dedicated task reuses the consumer int
 copying only the executable into a fresh working directory for each launch. Production/development
 HTTP and browser checks therefore use embedded assets, without external JARs or source directories.
 The binary's `--check-resources` command reports the SHA-256 digests of the application stylesheet
-and four dependency notices; the tests compare them with the JAR resources. Font checks also compare
+and seven dependency notices; the tests compare them with the JAR resources. Font checks also compare
 all 11 original hashes and verify MIME types, caching and deduplication. Application-owned native
 metadata includes the compiled BML resources, stylesheet, notices and established Netty registrations.
 This consumer check does not establish Git-host native or IDE source-navigation acceptance.

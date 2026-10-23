@@ -39,6 +39,23 @@ h1 {
 .alternate {
   --accent: #2563eb;
 }
+.widget-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  min-width: 0;
+}
+.widget-theme {
+  --document-height: 180px;
+  --flow-height: 280px;
+  --chart-height: 220px;
+  --dashboard-gap: 16px;
+}
+.widget-theme pre {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 .composition-theme form {
   margin-top: 18px;
 }

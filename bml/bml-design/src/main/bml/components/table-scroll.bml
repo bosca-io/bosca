@@ -14,8 +14,4 @@
       outline-offset: 2px;
     }
   </style>
-  <script client scoped>
-    import { retainTableScroll } from "@client/helpers/table";
-    retainTableScroll(ctx);
-  </script>
 </component>

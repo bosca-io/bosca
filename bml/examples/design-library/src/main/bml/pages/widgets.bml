@@ -1,0 +1,17 @@
+<page route="/widgets">
+  <html lang="en">
+    <head>
+      <meta charset="utf-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1" />
+      <title>Rich widgets</title>
+    </head>
+    <body><page-shell>
+      <h1>Rich widgets</h1>
+      <p>Write a document, arrange a graph and save a dashboard using the same application form.</p>
+      <div class="widget-stack">
+        <div class="light widget-theme" data-widget-palette="light"><widget-controls id="light" /></div>
+        <div class="purple widget-theme" data-widget-palette="purple"><widget-controls id="purple" /></div>
+      </div>
+    </page-shell></body>
+  </html>
+</page>
