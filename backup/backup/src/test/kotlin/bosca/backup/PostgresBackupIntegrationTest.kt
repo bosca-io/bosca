@@ -1,6 +1,7 @@
 package bosca.backup
 
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonObject
 
 import bosca.serialization.UUID
 
@@ -174,6 +175,82 @@ class PostgresBackupIntegrationTest {
             if (::postgres.isInitialized) postgres.stop()
             if (::root.isInitialized) root.toFile().deleteRecursively()
         }
+    }
+
+    @Test
+    fun `native key inventory records populated encrypted stores without copying secrets`(): Unit = runBlocking {
+        createKeyInventoryTables()
+        sql("""
+            insert into configuration_values values (decode('0102', 'hex'));
+            insert into meilisearch_nodes values (decode('0304', 'hex'));
+            insert into kubernetes.cluster_credential values (decode('0506', 'hex'));
+            insert into kubernetes.helm_repo_credential values (decode('0708', 'hex'));
+            insert into pipelines.pipeline_secret values ('private-pipeline-ciphertext');
+            insert into git.pipeline_secrets values ('private-git-ciphertext');
+        """.trimIndent())
+        val manifest = service.capture("source-instance", output)
+        val fields = backupTestJson.encodeToJsonElement(PostgresBackupManifest.serializer(), manifest).jsonObject
+        assertEquals(backupTestJson.parseToJsonElement("""{
+            "security.encryption.key":["public.configuration_values","public.meilisearch_nodes","kubernetes.cluster_credential","kubernetes.helm_repo_credential"],
+            "PIPELINE_SECRET_KEY":["pipelines.pipeline_secret","git.pipeline_secrets"]
+        }"""), fields["requiredKeys"])
+        val encoded = output.resolve("manifest.json").readText()
+        assertFalse(encoded.contains("private-pipeline-ciphertext"))
+        assertFalse(encoded.contains("private-git-ciphertext"))
+        assertEquals(manifest, service.verify(output))
+        assertEquals(0, pool.activeConnections)
+    }
+
+    @Test
+    fun `native key inventory distinguishes absent empty and unencrypted stores`(): Unit = runBlocking {
+        val absent = service.capture("source-instance", output)
+        assertEquals(backupTestJson.parseToJsonElement("{}"),
+            backupTestJson.encodeToJsonElement(PostgresBackupManifest.serializer(), absent).jsonObject["requiredKeys"])
+        createKeyInventoryTables()
+        sql("insert into meilisearch_nodes values (null)")
+        val empty = service.capture("source-instance", root.resolve("empty-key-inventory"))
+        assertEquals(backupTestJson.parseToJsonElement("{}"),
+            backupTestJson.encodeToJsonElement(PostgresBackupManifest.serializer(), empty).jsonObject["requiredKeys"])
+    }
+
+    @Test
+    fun `native key inventory shares the dump snapshot while encrypted rows change`(): Unit = runBlocking {
+        createKeyInventoryTables()
+        sql("insert into configuration_values values (decode('0102', 'hex'))")
+        val manifest = service.capture("source-instance", output, onSnapshot = {
+            sql("delete from configuration_values; insert into pipelines.pipeline_secret values ('later-ciphertext')")
+        })
+        assertEquals(backupTestJson.parseToJsonElement("""{"security.encryption.key":["public.configuration_values"]}"""),
+            backupTestJson.encodeToJsonElement(PostgresBackupManifest.serializer(), manifest).jsonObject["requiredKeys"])
+        pool.close()
+        sql("drop database source with (force)", "postgres")
+        install(configured = false)
+        restore()
+        assertEquals("1", scalar("select count(*) from configuration_values", "recovered"))
+        assertEquals("0", scalar("select count(*) from pipelines.pipeline_secret", "recovered"))
+    }
+
+    @Test
+    fun `native key inventory errors prevent artifact publication and release the snapshot`(): Unit = runBlocking {
+        sql("create table configuration_values (opaque text)")
+        val failure = assertFailsWith<java.sql.SQLException> { service.capture("source-instance", output) }
+        assertTrue(failure.message.orEmpty().contains("value"))
+        assertFalse(Files.exists(output))
+        assertEquals(0, pool.activeConnections)
+    }
+
+    private fun createKeyInventoryTables() {
+        // Minimal encrypted columns exercise native relation discovery; application recovery uses CoreMigration.
+        sql("""
+            create table configuration_values (value bytea);
+            create table meilisearch_nodes (api_key bytea);
+            create schema kubernetes;
+            create schema pipelines;
+            create table kubernetes.cluster_credential (data bytea);
+            create table kubernetes.helm_repo_credential (data bytea);
+            create table pipelines.pipeline_secret (encrypted_value text);
+            create table git.pipeline_secrets (encrypted_value text);
+        """.trimIndent())
     }
 
     @Test
@@ -2050,7 +2127,7 @@ class PostgresBackupIntegrationTest {
     }
 
     private suspend fun withContentRecovery(
-        beforeCapture: () -> Unit = {},
+        beforeCapture: suspend () -> Unit = {},
         includeAssets: Boolean = true,
         configured: Boolean = false,
         beforeRecovery: () -> Unit = {},
@@ -2125,6 +2202,10 @@ class PostgresBackupIntegrationTest {
                 )
             },
         ) { report, _, _ ->
+            assertEquals(mapOf("security.encryption.key" to listOf("public.configuration_values")), report.database.requiredKeys)
+            val encoded = backupTestJson.encodeToString(PostgresBackupContentReport.serializer(), report)
+            assertFalse(encoded.contains("local-recovery-test-encryption-key"))
+            assertFalse(encoded.contains("local-recovery-private-value"))
             assertEquals(report.database, service.restoreContentConfigured(contentReportPath(report), "retained", "recovery-target"))
             assertRecoveryScratchClean()
             val restored = ConnectionPool(ConnectionFactoryImpl(
@@ -3849,6 +3930,9 @@ class PostgresBackupIntegrationTest {
     private suspend fun install(configured: Boolean = true, restoreConfigured: Boolean = true) {
         if (::application.isInitialized) application.shutdown()
         val config = buildJsonObject {
+            put("security", buildJsonObject {
+                put("encryption", buildJsonObject { put("key", "local-recovery-test-encryption-key") })
+            })
             sharedContentStorage?.let { target -> put("content", buildJsonObject {
                 put("storage", Json.encodeToJsonElement(StorageConfiguration.serializer(), target))
                 put("urlSigner", buildJsonObject { put("secretKey", "local-recovery-test-signing-key") })

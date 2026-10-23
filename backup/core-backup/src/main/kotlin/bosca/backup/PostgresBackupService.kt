@@ -73,6 +73,9 @@ interface PostgresBackupService : Service {
      * Its byte identity and record count are bound to the returned manifest. This requires Bosca's
      * content schema and services; ordinary database-only capture does not resolve those services.
      * Neither the inventory nor its successful transfer establishes retained asset coverage.
+     * The manifest also records known encryption-key names and populated encrypted tables from
+     * that database view. Key values are never copied into metadata; availability, decryption and
+     * dependencies of other modules require separate recovery validation.
      */
     suspend fun capture(
         sourceId: String,

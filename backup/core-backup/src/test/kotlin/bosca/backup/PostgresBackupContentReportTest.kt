@@ -59,7 +59,7 @@ class PostgresBackupContentReportTest {
             report.copy(inspection = inspection.copy(store = " ")),
             report.copy(inspection = inspection.copy(store = "other")),
             report.copy(objects = objects.copy(version = 2)),
-            report.copy(database = database.copy(version = 2)),
+            report.copy(database = database.copy(version = 3)),
             report.copy(version = 2), report.copy(format = "other"),
         )) assertFailsWith<IllegalArgumentException> { invalid.validate() }
     }

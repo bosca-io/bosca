@@ -7,6 +7,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNotNull
 
 class PostgresBackupManifestTest {
     private val manifest = PostgresBackupManifest(
@@ -38,7 +39,7 @@ class PostgresBackupManifestTest {
         decoded.validate()
         assertEquals(manifest, decoded)
         val fields = Json.parseToJsonElement(encoded).jsonObject
-        for (header in listOf("format", "version", "payloadPath")) {
+        for (header in listOf("format", "version", "payloadPath", "requiredKeys")) {
             assertFailsWith<SerializationException> {
                 Json.decodeFromJsonElement(PostgresBackupManifest.serializer(), JsonObject(fields - header))
             }
@@ -46,8 +47,38 @@ class PostgresBackupManifestTest {
     }
 
     @Test
+    fun `native manifest explicitly records an empty key inventory`() {
+        val encoded = Json.encodeToJsonElement(PostgresBackupManifest.serializer(), manifest).jsonObject
+        assertEquals(JsonObject(emptyMap()), assertNotNull(encoded["requiredKeys"]))
+    }
+
+    @Test
+    fun `key requirements preserve names and sources and reject incomplete declarations`() {
+        val selected = manifest.copy(requiredKeys = mapOf(
+            "security.encryption.key" to listOf("public.configuration_values"),
+            "PIPELINE_SECRET_KEY" to listOf("pipelines.pipeline_secret", "git.pipeline_secrets"),
+        ))
+        selected.validate()
+        assertEquals(selected, Json.decodeFromString(PostgresBackupManifest.serializer(),
+            Json.encodeToString(PostgresBackupManifest.serializer(), selected)))
+        for (invalid in listOf(
+            mapOf(" " to listOf("public.configuration_values")),
+            mapOf("security.encryption.key" to emptyList()),
+            mapOf("security.encryption.key" to listOf(" ")),
+            mapOf("security.encryption.key" to listOf("public.configuration_values", "public.configuration_values")),
+        )) {
+            assertFailsWith<IllegalArgumentException> { manifest.copy(requiredKeys = invalid).validate() }
+        }
+    }
+
+    @Test
+    fun `native manifests reject the version without required key metadata`() {
+        assertFailsWith<IllegalArgumentException> { manifest.copy(version = 1).validate() }
+    }
+
+    @Test
     fun `format version and native payload name are fixed`() {
-        for (invalid in listOf(manifest.copy(format = "other"), manifest.copy(version = 2),
+        for (invalid in listOf(manifest.copy(format = "other"), manifest.copy(version = 3),
             manifest.copy(payloadPath = "../data"), manifest.copy(payloadPath = "other.dump"))) {
             assertFailsWith<IllegalArgumentException> { invalid.validate() }
         }

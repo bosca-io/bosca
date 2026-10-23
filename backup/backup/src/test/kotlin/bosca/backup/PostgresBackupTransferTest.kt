@@ -1188,7 +1188,7 @@ class PostgresBackupTransferTest {
     @Test
     fun `unsupported metadata and missing payloads fail without creating completed local output`(): Unit = runBlocking {
         Files.createDirectories(completed.parent)
-        for (bad in listOf(manifest.copy(version = 2), manifest.copy(payloadPath = "../database.dump"))) {
+        for (bad in listOf(manifest.copy(version = 3), manifest.copy(payloadPath = "../database.dump"))) {
             completed.writeText(encoded(bad))
             assertFailsWith<IllegalArgumentException> { service.download(backup, prefix, downloaded) }
             assertFalse(Files.exists(downloaded))
@@ -1240,11 +1240,11 @@ class PostgresBackupTransferTest {
     @Test
     fun `unsupported completed formats cannot be repaired using matching intent`(): Unit = runBlocking {
         service.upload(local, backup, prefix)
-        completed.writeText(encoded(manifest.copy(version = 2)))
+        completed.writeText(encoded(manifest.copy(version = 3)))
         writes.clear()
         assertFailsWith<IllegalArgumentException> { service.upload(local, backup, prefix) }
         assertTrue(writes.isEmpty())
-        assertEquals(2, decode(completed).version)
+        assertEquals(3, decode(completed).version)
     }
 
     @Test

@@ -6,6 +6,11 @@ import bosca.cache.RequestCacheSerializer
 import bosca.cache.RequestCacheSerializerImpl
 import bosca.cache.asCoroutineContext
 import bosca.cache.nats.NatsCacheManager
+import bosca.configuration.repository.ConfigurationPermissionRepositoryImpl
+import bosca.configuration.repository.ConfigurationRepositoryImpl
+import bosca.configuration.repository.ConfigurationValueRepositoryImpl
+import bosca.configuration.service.ConfigurationService
+import bosca.configuration.service.ConfigurationServiceImpl
 import bosca.content.collection.service.CollectionService
 import bosca.content.metadata.graphql.MetadataContentUrlsController
 import bosca.content.metadata.model.DataType
@@ -26,11 +31,14 @@ import bosca.content.video.service.VideoService
 import bosca.db.ConnectionManager
 import bosca.db.ConnectionPool
 import bosca.db.asCoroutineContext
+import bosca.di.ConfigurationProviderRegistrar
 import bosca.di.ContentProviderRegistrar
+import bosca.di.SecurityProviderRegistrar
 import bosca.di.annotation.InternalDI
 import bosca.di.provide
 import bosca.di.provides
 import bosca.documents.Content
+import bosca.security.encryption.EncryptionServiceImpl
 import bosca.security.model.PermissionAction
 import bosca.security.repository.PrincipalGroupRepositoryImpl
 import bosca.security.repository.PrincipalRepositoryImpl
@@ -40,6 +48,8 @@ import bosca.security.service.ImpersonatedAuthenticationContext
 import bosca.security.service.ScopedAuthenticatedPrincipal
 import bosca.security.service.SecurityService
 import bosca.serialization.UUID
+import bosca.server.BoscaApplication
+import bosca.server.config.ApplicationConfig
 import bosca.slug.service.SlugService
 import bosca.storage.service.ObjectStorageService
 import bosca.storage.service.download
@@ -47,6 +57,8 @@ import bosca.test.resources.SharedNatsContainer
 import io.mockk.mockk
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.HexFormat
+import javax.crypto.AEADBadTagException
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -54,6 +66,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
 import kotlin.io.path.writeText
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
@@ -79,13 +92,21 @@ internal class PostgresContentRecoveryFixture(private val root: Path, private va
     private val readers = UUID.parse("40000000-0000-0000-0000-000000000001")
     private val reader = UUID.parse("50000000-0000-0000-0000-000000000001")
     private val outsider = UUID.parse("50000000-0000-0000-0000-000000000002")
+    private val configurationId = UUID.parse("60000000-0000-0000-0000-000000000001")
     private val body = """{"document":{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Restored document"}]}]}}"""
     private val defaults = """{"answer":7}"""
     private val configuration = """{"theme":"light"}"""
     private val recurrence = "RRULE:FREQ=DAILY;COUNT=2"
+    private val configurationValue = """{"token":"local-recovery-private-value"}"""
 
-    fun seed(sql: (String) -> Unit) {
+    suspend fun seed(sql: (String) -> Unit) {
+        val encrypted = EncryptionServiceImpl(provide()).encrypt(configurationValue.toByteArray(), configurationId)
+        val hex = HexFormat.of()
         sql("""
+            insert into configurations (id, key, description)
+                values ('$configurationId', 'recovery.private', 'Encrypted recovery check');
+            insert into configuration_values (configuration_id, value, nonce)
+                values ('$configurationId', decode('${hex.formatHex(encrypted.data)}', 'hex'), decode('${hex.formatHex(encrypted.nonce)}', 'hex'));
             insert into groups (id, name, description) values ('$readers', 'recovery.readers', 'Private content readers');
             insert into principals (id, verified, anonymous) values ('$reader', true, false), ('$outsider', true, false);
             insert into principal_groups (principal, group_id) values ('$reader', '$readers');
@@ -156,6 +177,8 @@ internal class PostgresContentRecoveryFixture(private val root: Path, private va
             provides<CacheManager>(singleton = true, overrideExisting = true) { cache }
             provides<RequestCacheSerializer>(singleton = true, overrideExisting = true) { serializer }
             ContentProviderRegistrar().register()
+            ConfigurationProviderRegistrar().register()
+            SecurityProviderRegistrar().register()
             // These services are outside the read checks; unexpected calls fail.
             provides<BibleService>(singleton = true, overrideExisting = true) { mockk() }
             provides<VideoService>(singleton = true, overrideExisting = true) { mockk() }
@@ -166,6 +189,10 @@ internal class PostgresContentRecoveryFixture(private val root: Path, private va
             val documents = provide<DocumentService>()
             val storage = provide<ObjectStorageService>()
             request(pool, cache, serializer) {
+                val configurations = provide<ConfigurationService>()
+                assertEquals(configurationId, assertNotNull(configurations.getByKey("recovery.private")).id)
+                assertEquals(json.parseToJsonElement(configurationValue), configurations.getValue(configurationId))
+                assertUnavailableEncryptionKeys()
                 val current = assertNotNull(metadata.getById(image))
                 assertEquals(7, current.version)
                 assertEquals("Saved image", current.name)
@@ -265,6 +292,30 @@ internal class PostgresContentRecoveryFixture(private val root: Path, private va
         val principal = assertNotNull(PrincipalRepositoryImpl().getPrincipalById(id))
         val groups = PrincipalGroupRepositoryImpl().getPrincipalGroups(id)
         return ImpersonatedAuthenticationContext(principal, groups)
+    }
+
+    private suspend fun assertUnavailableEncryptionKeys() {
+        suspend fun verify(key: String?, block: suspend (ConfigurationService) -> Unit) {
+            val config = if (key == null) "{}" else """{"security":{"encryption":{"key":"$key"}}}"""
+            val application = BoscaApplication(ApplicationConfig.load(config.byteInputStream()), ownsServices = false)
+            try {
+                block(ConfigurationServiceImpl(
+                    ConfigurationRepositoryImpl(),
+                    ConfigurationValueRepositoryImpl(),
+                    ConfigurationPermissionRepositoryImpl(),
+                    EncryptionServiceImpl(application),
+                ))
+            } finally {
+                application.shutdown()
+            }
+        }
+        verify(null) { service ->
+            val missing = assertFailsWith<IllegalStateException> { service.getValue(configurationId) }
+            assertTrue(missing.message.orEmpty().contains("security.encryption.key"))
+        }
+        verify("different-local-key") { service ->
+            assertFailsWith<AEADBadTagException> { service.getValue(configurationId) }
+        }
     }
 
     private suspend fun request(

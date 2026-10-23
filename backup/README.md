@@ -376,6 +376,25 @@ sources. Cluster-global roles/tablespaces, external data and object-storage byte
 this artifact. PostgreSQL sequence values follow native dump semantics rather than an
 MVCC history of each counter value.
 
+Native artifact format version 2 requires a `requiredKeys` map. It records known encryption-key
+names and the populated encrypted tables that need them, from that same database view:
+
+- `security.encryption.key`: configuration values, Meilisearch API keys, Kubernetes cluster
+  credentials and private Helm repository credentials.
+- `PIPELINE_SECRET_KEY`: Pipeline node secrets and Git pipeline secrets.
+
+Absent or empty encrypted stores add no dependency; Meilisearch nodes without an API key also
+add none. Every capture writes this map, including `{}`. Version 1 lacks this required dependency
+inventory and is rejected; take a new capture with version 2. Missing headers, blank names, empty
+source lists and duplicate source entries are rejected. Capture reads only table existence and
+whether ciphertext is present; no ciphertext, plaintext, key value, key hash or credential is
+copied into the manifest. An inspection error prevents publication rather than omitting the dependency.
+
+Keep the original keys in independently protected secret storage and supply them to the recovered
+application. This inventory covers the known stores above; it neither proves key availability or
+identity nor inventories dependencies of arbitrary modules. Native restore does not transfer or
+validate these keys. Confirm application decryption before treating a recovered installation as usable.
+
 The optional `onSnapshot` callback on `capture` enumerates database references in that same
 read-only view before `pg_dump` starts. It uses the current connection-manager context;
 caches and other connections are outside the captured view. Callback failure or cancellation

@@ -50,6 +50,8 @@ dependencies {
     testImplementation(libs.mockk)
     testImplementation(project(":bosca-core:test-support"))
     testImplementation(project(":bosca-core:security"))
+    testImplementation(project(":bosca-core:configuration"))
+    testImplementation(project(":bosca-core:core-configuration"))
     testImplementation(project(":pipelines:pipelines"))
 }
 

@@ -370,6 +370,7 @@ class PostgresBackupServiceImpl(
                         }
                     }
                     currentCoroutineContext().ensureActive()
+                    val requiredKeys = postgresBackupRequiredKeys()
                     val inventory = if (includeContentReferences) {
                         PostgresBackupContentInventoryFile(application.json).write(
                             destination, metadataService.get(), collectionService.get(),
@@ -384,7 +385,7 @@ class PostgresBackupServiceImpl(
                             rows.getObject(1, OffsetDateTime::class.java).toInstant().toString()
                         }
                     }
-                    metadata.copy(completed = completed, contentInventory = inventory)
+                    metadata.copy(completed = completed, contentInventory = inventory, requiredKeys = requiredKeys)
                 } catch (error: Throwable) {
                     snapshotFailure = error
                     throw error

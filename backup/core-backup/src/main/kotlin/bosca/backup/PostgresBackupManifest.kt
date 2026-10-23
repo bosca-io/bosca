@@ -11,7 +11,9 @@ import java.time.format.DateTimeParseException
  * database clock. [snapshotId] is provenance only: it cannot be imported after capture releases its
  * transaction. [snapshot] records PostgreSQL's logical visibility boundary independently of transfer time.
  * [contentInventory] binds reference evidence from that same view to this artifact; it does not
- * establish retained asset coverage.
+ * establish retained asset coverage. [requiredKeys] maps known key names to the populated encrypted
+ * tables that require them in that view. It contains no key values and does not prove key availability
+ * or cover dependencies of arbitrary modules.
  */
 @Serializable
 data class PostgresBackupManifest(
@@ -31,15 +33,17 @@ data class PostgresBackupManifest(
     @Required
     val payloadPath: String = "database.dump",
     @Required
-    val version: Int = 1,
+    val version: Int = 2,
     @Required
     val format: String = "bosca-postgres-backup",
     val contentInventory: PostgresBackupContentInventory? = null,
+    @Required
+    val requiredKeys: Map<String, List<String>> = emptyMap(),
 ) {
     /** Rejects unsupported formats and incomplete database recovery metadata. */
     fun validate() {
         contentInventory?.validate()
-        require(format == "bosca-postgres-backup" && version == 1) { "Unsupported PostgreSQL backup format/version" }
+        require(format == "bosca-postgres-backup" && version == 2) { "Unsupported PostgreSQL backup format/version" }
         require(payloadPath == "database.dump") { "Unsupported PostgreSQL backup payload path: $payloadPath" }
         require(listOf(id, sourceId, database, snapshotId, snapshot, serverVersion, encoding).all { it.isNotBlank() }) {
             "PostgreSQL backup identity and boundary metadata are required"
@@ -58,5 +62,11 @@ data class PostgresBackupManifest(
         require(extensions.all { (name, version) -> name.isNotBlank() && version.isNotBlank() }) {
             "PostgreSQL extension names and versions are required"
         }
+        require(requiredKeys.all { (name, tables) ->
+            name.isNotBlank() &&
+                tables.isNotEmpty() &&
+                tables.all { it.isNotBlank() } &&
+                tables.distinct().size == tables.size
+        }) { "Required encryption keys need names and distinct nonblank source tables" }
     }
 }
