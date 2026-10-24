@@ -171,6 +171,10 @@ the immediate position survives replacement as well as previously settled scroll
 Comment checks cover native names/values, blank/readonly/disabled/permission states, sizing,
 Ctrl+Enter, pending feedback, failure/retry, current descriptions, retained draft/caret/focus,
 controlled values and native reset. Repeated removal/remount checks listeners and observers.
+The shared browser suite records actual accessibility ancestry through branch groups, stable item
+names, sibling positions/set sizes and disabled state in both palettes. It checks retained groups,
+loaded and removed server branches and remounted controls. These assertions run in workspace,
+source-free Maven and native production/development modes; each report records the browser version.
 Disabled native directories are skipped during keyboard traversal. Script-disabled checks retain
 comment form values, native Tab stops for every rendered file link and server timestamps.
 Timestamp tests cover English UTC/default, custom offset formats, relative past/future/older dates,

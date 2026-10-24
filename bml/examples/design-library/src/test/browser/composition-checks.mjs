@@ -4,6 +4,7 @@ import { join } from 'node:path';
 
 /** Compiled tree navigation, native comments, server actions and timestamp presentation. */
 export async function checkComposition({ call, evaluate, until, base, mode, artifacts }) {
+  const accessibility={browser:await call('Browser.getVersion'),cases:[]};
   const field='document.querySelector("[data-comment=light]")';
   const local='document.querySelector("[data-local-tree=light]")';
   const row=path=>`${local}.querySelector('[data-path=${JSON.stringify(path)}]')`;
@@ -21,6 +22,28 @@ export async function checkComposition({ call, evaluate, until, base, mode, arti
     await call('Runtime.releaseObject',{objectId:handle.result.objectId});
     return result.listeners.length;
   };
+  const branch=async(expression,{stage,palette,name,parents,label,disabled=false})=>{
+    const handle=await call('Runtime.evaluate',{expression});
+    assert.ok(handle.result.objectId,expression);
+    try {
+      const {nodes}=await call('Accessibility.getPartialAXTree',{objectId:handle.result.objectId,fetchRelatives:true});
+      const hierarchy=nodes.map(node=>({id:node.nodeId,parent:node.parentId,ignored:node.ignored,
+        role:node.role?.value,name:node.name?.value,
+        properties:Object.fromEntries((node.properties??[]).map(property=>[property.name,property.value.value]))}));
+      accessibility.cases.push({stage,palette,name,parents,label,hierarchy});
+      await writeFile(join(artifacts,`tree-accessibility-${mode}.json`),JSON.stringify(accessibility,null,2));
+      const byId=new Map(hierarchy.map(node=>[node.id,node]));let item=hierarchy[0];
+      assert.equal(item.ignored,false);assert.equal(item.role,'treeitem');assert.equal(item.name,name);
+      assert.equal(item.properties.disabled??false,disabled);
+      assert.equal(item.properties.level,parents.length+1);
+      for(const parent of parents) {
+        const group=byId.get(item.parent);assert.equal(group?.role,'group',JSON.stringify(hierarchy));
+        item=byId.get(group.parent);assert.equal(item?.role,'treeitem');assert.equal(item.name,parent);
+        assert.equal(item.properties.expanded,true);
+      }
+      const tree=byId.get(item.parent);assert.equal(tree?.role,'tree');assert.equal(tree.name,label);
+    } finally {await call('Runtime.releaseObject',{objectId:handle.result.objectId});}
+  };
   const probe=await call('Page.addScriptToEvaluateOnNewDocument',{source:`(() => {
     window.compositionObservers=new Set();const Base=MutationObserver;
     window.MutationObserver=class extends Base {observe(...args){super.observe(...args);window.compositionObservers.add(this);}disconnect(){super.disconnect();window.compositionObservers.delete(this);}};
@@ -28,6 +51,18 @@ export async function checkComposition({ call, evaluate, until, base, mode, arti
   await call('Emulation.setDeviceMetricsOverride',{width:1440,height:1100,deviceScaleFactor:1,mobile:false});
   await call('Page.navigate',{url:base+'/composition'});
   await until(`document.readyState==='complete'&&${field}?.value==='Seed'&&document.querySelector('[data-readonly-comment]').readOnly&&${row('docs/guide.md')}.hidden`);
+  for(const width of [1440,390]) {
+    await call('Emulation.setDeviceMetricsOverride',{width,height:1100,deviceScaleFactor:1,mobile:false});
+    for(const palette of ['light','purple']) {
+      const root=`document.querySelector('[data-local-tree=${palette}]')`;
+      await branch(`${root}.querySelector('[data-path="src/lib/helper.ts"]')`,{stage:`initial-${width}`,palette,name:'helper.ts',parents:['Library','Source'],label:`Local files ${palette}`});
+      assert.deepEqual(await evaluate(`[...${root}.querySelectorAll('[role=treeitem]')].map(row=>[row.getAttribute('aria-posinset'),row.getAttribute('aria-setsize')])`),
+        [['1','4'],['1','2'],['1','1'],['2','2'],['2','4'],['1','1'],['3','4'],['4','4']]);
+    }
+  }
+  await call('Emulation.setDeviceMetricsOverride',{width:1440,height:1100,deviceScaleFactor:1,mobile:false});
+  assert.equal(await evaluate(`document.querySelector('[data-disabled-tree] [data-path=locked]').getAttribute('aria-disabled')`),'true');
+  await branch(`document.querySelector('[data-disabled-tree] [data-path=locked]')`,{stage:'disabled-directory',palette:'shared',name:'Locked folder',parents:[],label:'Unavailable folders',disabled:true});
   assert.deepEqual(await evaluate(`(() => {const field=${field},root=${local},link=root.querySelector('[data-file-link]');return {
     label:root.querySelector('[role=tree]').getAttribute('aria-label'),level:root.querySelector('[data-path="src/lib/helper.ts"]').getAttribute('aria-level'),
     tabStops:[...root.querySelectorAll('.ui-tree-row')].filter(row=>row.tabIndex===0).length,selected:root.querySelector('[aria-selected=true]').dataset.path,
@@ -60,7 +95,7 @@ export async function checkComposition({ call, evaluate, until, base, mode, arti
   await key('ArrowLeft');await key('ArrowLeft');assert.ok(await evaluate(`${row('docs/guide.md')}.hidden`));
   await key('Home');await key('l');assert.ok(await focused('src/lib'));await key('l');assert.ok(await focused('LICENSE'));
   await key('Home');await key('ArrowRight');await key('ArrowLeft');
-  await evaluate(`window.savedLocalTree=${local};${row('long.txt')}.querySelector('a').focus();${local}.scrollTop=${local}.scrollHeight;window.savedTreeScroll=${local}.scrollTop`);
+  await evaluate(`window.savedLocalTree=${local};window.savedLocalBranch=${row('src')}.querySelector('[data-tree-children]');${row('long.txt')}.querySelector('a').focus();${local}.scrollTop=${local}.scrollHeight;window.savedTreeScroll=${local}.scrollTop`);
   assert.ok(await evaluate('window.savedTreeScroll>0'));await click('[data-composition-update=light]');
   await until(`document.querySelector('[data-composition-update=light]').textContent.includes('Update 1')`);
   const retained=await evaluate(`({root:${local}===window.savedLocalTree,collapsed:${row('src/lib/helper.ts')}.hidden,
@@ -70,16 +105,20 @@ export async function checkComposition({ call, evaluate, until, base, mode, arti
   await writeFile(join(artifacts,`tree-retention-${mode}.json`),JSON.stringify(retained,null,2));
   assert.ok(retained.root&&retained.collapsed&&retained.focused&&retained.scroll===retained.expectedScroll,
     `Local collapse state, scroll and focus survive an unrelated server update: ${JSON.stringify(retained)}`);
+  assert.ok(await evaluate(`${row('src')}.querySelector('[data-tree-children]')===window.savedLocalBranch`),'Retained native rows keep their branch group');
+  await branch(row('src/main.kt'),{stage:'retained-update',palette:'light',name:'main.kt',parents:['Source'],label:'Local files light'});
   assert.ok(await evaluate(`!document.querySelector('[data-local-tree=purple] [data-path="src/lib/helper.ts"]').hidden`),'Separate tree instances retain independent state');
   await evaluate(`window.remoteDirectory=document.querySelector('[data-remote-directory=light]');window.remoteDirectory.focus()`);
   await key('ArrowRight');
   await until(`document.querySelector('[data-server-tree=light] [data-path="remote/loaded.txt"] a')&&window.remoteDirectory.closest('[role=treeitem]').getAttribute('aria-expanded')==='true'`);
   assert.ok(await evaluate(`document.activeElement===window.remoteDirectory`),'Loading leaves focus on the preserved directory');
+  await branch(`document.querySelector('[data-server-tree=light] [data-path="remote/loaded.txt"]')`,{stage:'loaded-children',palette:'light',name:'Loaded file',parents:['Remote'],label:'Server files light'});
   await key('ArrowRight');
   assert.ok(await evaluate(`document.activeElement===document.querySelector('[data-server-tree=light] [data-path="remote/loaded.txt"] a')`));
   assert.ok(await evaluate(`window.remoteDirectory===document.querySelector('[data-remote-directory=light]')`),'The preserved native disclosure control survives asynchronous loading');
   await key('ArrowLeft');await key('ArrowLeft');
   await until(`!document.querySelector('[data-server-tree=light] [data-path="remote/loaded.txt"]')`);
+  assert.ok(await evaluate(`!document.querySelector('[data-server-tree=light] [data-tree-children]')`),'Removed server children leave no branch ownership');
   assert.ok(await evaluate(`document.activeElement===window.remoteDirectory&&window.remoteDirectory.closest('[role=treeitem]').getAttribute('aria-expanded')==='false'`));
   await type('Draft & <body>');await evaluate(`window.savedComment=${field};${field}.setSelectionRange(3,7)`);
   await click('[data-composition-update=light]');await until(`document.querySelector('[data-composition-update=light]').textContent.includes('Update 2')`);
@@ -146,6 +185,7 @@ export async function checkComposition({ call, evaluate, until, base, mode, arti
     assert.equal(await listeners('document'),baseline,'Repeated remounts do not accumulate document listeners');
     if(cycle<2){await click('[data-composition-toggle=light]');await until(`!${field}&&window.compositionObservers.size===${observers-1}`);}
   }
+  await branch(row('src/lib/helper.ts'),{stage:'remounted',palette:'light',name:'helper.ts',parents:['Library','Source'],label:'Local files light'});
   await evaluate(`${local}.querySelector('[data-file-link]').focus()`);await key('Enter');
   await until('location.pathname==="/composition-target"&&document.querySelector("[data-file-destination]")');
   await call('Page.removeScriptToEvaluateOnNewDocument',{identifier:probe.identifier});

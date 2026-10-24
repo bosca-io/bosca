@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { writeFile } from "node:fs/promises";
+import { join, resolve } from "node:path";
 const base = process.env.GIT_UI_BASE_URL;
 if (!base) throw Error("Set GIT_UI_BASE_URL to the isolated browser fixture.");
 const targets = await (
@@ -108,6 +110,27 @@ async function key(value,modifiers=0) {
  for(const type of ['keyDown','keyUp'])await call('Input.dispatchKeyEvent',{type,key:value,code:value,windowsVirtualKeyCode:code,modifiers,...(value==='Enter'&&type==='keyDown'?{text:'\r'}:{})});
 }
 async function viewport(width){await call('Emulation.setDeviceMetricsOverride',{width,height:width===390?844:900,deviceScaleFactor:1,mobile:width===390});}
+const treeAccessibility={browser:await call('Browser.getVersion'),cases:[]};
+async function checkFocusedBranch(width) {
+ const expected=await ev(`(()=>{const control=document.activeElement,row=control.closest('[role=treeitem]'),tree=row.closest('[role=tree]'),path=row.dataset.path,parts=path.split('/');return {name:row.querySelector('.tree-label').textContent.trim(),level:Number(row.getAttribute('aria-level')),position:Number(row.getAttribute('aria-posinset')),size:Number(row.getAttribute('aria-setsize')),label:tree.getAttribute('aria-label'),parents:parts.slice(0,-1).map((_,index)=>[...tree.querySelectorAll('[data-path]')].find(item=>item.dataset.path===parts.slice(0,index+1).join('/')).querySelector('.tree-label').textContent.trim()).reverse()};})()`);
+ const handle=await call('Runtime.evaluate',{expression:"document.activeElement.closest('[role=treeitem]')"});
+ try {
+  const {nodes}=await call('Accessibility.getPartialAXTree',{objectId:handle.result.objectId,fetchRelatives:true});
+  const hierarchy=nodes.map(node=>({id:node.nodeId,parent:node.parentId,ignored:node.ignored,role:node.role?.value,name:node.name?.value,
+   properties:Object.fromEntries((node.properties??[]).map(property=>[property.name,property.value.value]))}));
+  treeAccessibility.cases.push({width,expected,hierarchy});
+  await writeFile(join(resolve(process.env.GIT_UI_ARTIFACT_DIR??'build/reports/browser'),'git-tree-accessibility.json'),JSON.stringify(treeAccessibility,null,2));
+  const byId=new Map(hierarchy.map(node=>[node.id,node]));let item=hierarchy[0];
+  assert.equal(item.ignored,false);assert.equal(item.role,'treeitem');assert.equal(item.name,expected.name);
+  assert.equal(item.properties.level,expected.level);assert.equal(expected.level,expected.parents.length+1);
+  assert.ok(expected.position>=1&&expected.size>=expected.position,'File declares its sibling position');
+  for(const parent of expected.parents) {
+   const group=byId.get(item.parent);assert.equal(group?.role,'group','File branch has an accessible group');
+   item=byId.get(group.parent);assert.equal(item?.role,'treeitem');assert.equal(item.name,parent);assert.equal(item.properties.expanded,true);
+  }
+  assert.equal(byId.get(item.parent)?.role,'tree');assert.equal(byId.get(item.parent)?.name,expected.label);
+ } finally {await call('Runtime.releaseObject',{objectId:handle.result.objectId});}
+}
 const prefix=`bml-${Buffer.from('io.bosca:bml-design').toString('hex')}-`;
 for(const width of [1920,1440,1024,390]) {
  await viewport(width);
@@ -158,6 +181,7 @@ for(const width of [1920,1440,1024,390]) {
  assert.equal(await ev(`document.activeElement.closest('[role=treeitem]').getAttribute('aria-expanded')`),'true','Right opens the directory while keeping focus');
  await key('ArrowRight');
  assert.ok(await ev(`document.activeElement.closest('[role=treeitem]').dataset.path.includes('/')`),'A second Right enters the open directory');
+ await checkFocusedBranch(width);
  await key('End');
  const destination=await ev(`document.activeElement.getAttribute('href')`);
  assert.ok(destination?.startsWith('#'));
