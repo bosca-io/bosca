@@ -15,6 +15,7 @@ import { checkOverlays } from './overlays.mjs';
 import { checkLocalChoices } from './choices.mjs';
 import { checkSearchViews } from './views.mjs';
 import { checkTrees } from './trees.mjs';
+import { checkDeepTrees } from './deep-tree.mjs';
 import { checkRouteNavigation } from './navigation.mjs';
 import { checkFeedback } from './feedback.mjs';
 import { checkCopyOverflow } from './copy-overflow.mjs';
@@ -151,6 +152,10 @@ try {
       assert.ok(report.probes.paused.frames.some(frame=>frame.url==='bml-driver-busy-probe.js'));
     } else assert.equal(report.probes.renderer.result.value.ready,'complete');
     console.log(`Driver ${busy?'busy renderer':'pending promise'} evidence verified: ${path}`);
+  } else if(process.argv[4]==='--deep-tree') {
+    await checkDeepTrees({navigate,evaluate,until,call,artifacts,mode});
+  } else if(process.argv[4]==='--tree-accessibility') {
+    await checkAccessibility({navigate,evaluate,until,call,artifacts,mode,paths:['/trees'],reportName:'tree-accessibility'});
   } else if(process.argv[4]==='--surfaces') {
     await checkSurfaces({navigate,evaluate,until,call,artifacts,mode});
   } else if(process.argv[4]==='--feedback') {

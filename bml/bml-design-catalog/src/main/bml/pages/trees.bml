@@ -24,6 +24,10 @@
         <p class="example-note">Wrapped labels remain inside their available width. Indentation is capped at twelve levels.</p>
       </div></card>
     </div>
+    <div class="catalog-grid">
+      <div class="catalog-palette-dark"><card title="Thirteen levels · dark palette"><deep-tree-example id="dark" /></card></div>
+      <div class="catalog-palette-light"><card title="Thirteen levels · light palette"><deep-tree-example id="light" /></card></div>
+    </div>
     <card title="Use in your application"><div class="catalog-stack">
       <p class="catalog-description">Supply flat rows with stable slash-separated paths and explicit depths. The application owns links, server loading and selected files. Keep a stable key for local disclosure; change it when replacing rows. Preserve the native directory button when adding asynchronous children.</p>
       <a class="catalog-link" href="/components/content#ref-tree">Tree API and complete authoring example</a>

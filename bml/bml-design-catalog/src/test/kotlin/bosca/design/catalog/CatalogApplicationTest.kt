@@ -37,6 +37,14 @@ class CatalogApplicationTest {
     }
 
     @Test
+    fun `deep trees expose all levels and retain keyboard navigation`() {
+        for (development in listOf(false, true)) withServer(development) { base, _ ->
+            runBrowser(base, development, "--deep-tree", 60)
+            runBrowser(base, development, "--tree-accessibility", 60)
+        }
+    }
+
+    @Test
     fun `surface keyboard scrolling completes before retained layout checks`() {
         for (development in listOf(false, true)) withServer(development) { base, _ ->
             runBrowser(base, development, "--surfaces", 60)

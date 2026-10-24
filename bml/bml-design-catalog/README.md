@@ -126,6 +126,14 @@ Tab stop. Static cases cover empty trees, unavailable directories, truncated nam
 labels. The tree and tree-item references include the complete composition source. Declarative tree
 item actions bind to their row; native attributes and preservation keys target its button or link.
 
+Both palettes also include a complete thirteen-level hierarchy in a bounded tree, with a wrapped
+selected file and an unavailable sibling folder. The dedicated deep-tree browser check records the
+actual browser version and accessibility roles, names, levels, selection and expanded states. It
+exercises keyboard traversal, collapsed descendants, disabled folders, native destinations and
+script-disabled links at 1440px and 390px. Full-rule tree accessibility reports retain axe's warnings
+about levels above six. Browser metadata checks do not establish spoken screen-reader compatibility;
+assistive-technology qualification and review of the flat-row hierarchy remain release work.
+
 The `/views` composition uses native query and category values to filter deterministic local
 examples. The application owns accepted results, rejected drafts, selected views and uniquely linked
 tab panels. Editing a query or category keeps previous results until the next accepted search.
