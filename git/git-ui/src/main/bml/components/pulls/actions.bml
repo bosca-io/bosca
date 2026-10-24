@@ -46,7 +46,9 @@
                 </button>
               </form>
               <if model.page.hasMergeBlockers>
-                <p class="action-note" data-tone="error">Cannot merge — conflicts detected.</p>
+                <p class="action-note" data-tone="error">Cannot merge — resolve conflicts or unavailable branches.</p>
+              <else-if model.page.hasFailingStatusChecks>
+                <p class="action-note" data-tone="error">Required status checks are not passing.</p>
               <else-if model.page.pull.dependencies.any { it.status.name != "MERGED" }>
                 <p class="action-note">Open dependencies will be included in the merge confirmation.</p>
               </if>
@@ -60,7 +62,7 @@
                 :showTrigger="false"
                 :openRequest="model.mergeDialogRequest"
               >
-                <form class="modal-form" @submit="model.merge(true, ctx)">
+                <form class="modal-form" @submit="model.merge(true, false, ctx)">
                   <div class="modal-fields">
                     <if model.message.isNotBlank()><alert>{ model.message }</alert></if>
                     <div class="detail-heading">
@@ -79,19 +81,30 @@
                             </a>
                             <git-pull-status :status="pull.status.name" />
                           </div>
+                          <if pull.failingStatusChecks.isNotEmpty()>
+                            <p class="plan-blocked">Required checks: { pull.failingStatusChecks.joinToString(", ") }</p>
+                          </if>
                           <if !pull.mergeable>
                             <p class="plan-blocked">Cannot merge this pull request.</p>
                           </if>
                         </li>
                       </for>
                     </ol>
+                    <if model.checksBlocked && model.page.canBypassStatusChecks>
+                      <alert>As an administrator, you can bypass required status checks for every pull request in this plan. Reviews and merge conflicts must still be resolved.</alert>
+                    </if>
                     <if model.mergeBlocked>
                       <alert>Resolve the blocked pull requests before merging.</alert>
                     </if>
                   </div>
-                  <footer class="modal-footer">
+                  <footer class="modal-footer merge-footer">
                     <button ref="cancel">Cancel</button>
-                    <button type="submit" primary icon="merge" :disabled="model.mergeBlocked">
+                    <if model.checksBlocked && model.page.canBypassStatusChecks>
+                      <button class="danger" icon="merge" :disabled="model.mergeBlocked" @click="model.merge(true, true, ctx)">
+                        Bypass status checks and merge
+                      </button>
+                    </if>
+                    <button type="submit" primary icon="merge" :disabled="model.mergeBlocked || model.checksBlocked">
                       { if (model.plan.size > 1) "Merge pull requests" else "Merge pull request" }
                     </button>
                   </footer>
@@ -146,6 +159,9 @@
     </html:section>
   </island>
   <style scoped>
+    .merge-footer {
+      flex-wrap: wrap;
+    }
     .merge-form {
       display: flex;
       flex-direction: column;

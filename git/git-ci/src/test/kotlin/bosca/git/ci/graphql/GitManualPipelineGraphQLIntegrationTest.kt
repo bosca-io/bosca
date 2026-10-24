@@ -94,10 +94,16 @@ class GitManualPipelineGraphQLIntegrationTest {
         coEvery { pipelines.parseDefinition(repositoryId, any(), pipeline.filePath) } returns definition
         coEvery { repositories.findById(repositoryId) } returns mockk<Repository>()
         coEvery { browse.resolveRef(repositoryId, "refs/heads/main") } returns "commit-sha"
-        coEvery { runRepository.create(any()) } answers { firstArg<PipelineRun>().copy(id = UUID.random()) }
+        val persisted = mutableMapOf<UUID, PipelineRun>()
+        coEvery { runRepository.create(any()) } answers {
+            firstArg<PipelineRun>().copy(id = UUID.random()).also { persisted[it.id] = it }
+        }
+        coEvery { runRepository.findById(any()) } answers { persisted[firstArg()] }
+        coEvery { runRepository.findByCommit(repositoryId, "commit-sha") } answers { persisted.values.toList() }
         val runs = PipelineRunServiceImpl(runRepository, jobs, mockk(relaxed = true), pipelines, Json,
             mockk(relaxed = true), mockk<bosca.kubernetes.service.KubernetesJobDispatchService>(relaxed = true).asProvider(),
-            mockk(relaxed = true), mockk(relaxed = true))
+            mockk(relaxed = true), mockk(relaxed = true),
+            commitStatusService = io.mockk.mockk(relaxed = true))
         val permissionEvaluator = mockk<bosca.git.security.RepositoryPermissionEvaluator>(relaxed = true)
         val authentication = mockk<AuthenticationContext>()
         every { authentication.principal() } returns mockk { every { id } returns principalId }

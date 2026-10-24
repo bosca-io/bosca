@@ -118,6 +118,7 @@ interface PullRequestService : Service {
      * before writing; merge metadata, ref updates/deletion, and event registration commit together.
      * Holds the repository write lock through commit. Cancellation rolls back the ref and PR.
      * A supplied [expectedVersion] rejects a merge based on a previous PR comparison.
+     * [bypassStatusChecks] skips only required CI checks; the API must authorize the administrator override.
      */
     suspend fun merge(
         id: UUID,
@@ -126,6 +127,7 @@ interface PullRequestService : Service {
         mergerName: String,
         mergerEmail: String,
         expectedVersion: Long? = null,
+        bypassStatusChecks: Boolean = false,
     ): PullRequest
 
     /**
@@ -141,6 +143,7 @@ interface PullRequestService : Service {
      * dependency-first plan so an authorization decision cannot be reused after the graph changes.
      * The returned list is in the order merged.
      * A supplied [expectedVersion] verifies the root PR before merging any dependencies.
+     * [bypassStatusChecks] applies the authorized CI override to every PR in the plan.
      */
     suspend fun mergeWithDependencies(
         id: UUID,
@@ -150,7 +153,11 @@ interface PullRequestService : Service {
         mergerEmail: String,
         expectedPullRequestIds: List<UUID>,
         expectedVersion: Long? = null,
+        bypassStatusChecks: Boolean = false,
     ): List<PullRequest>
+
+    /** Returns reported or required check contexts without a successful result on the current source head. */
+    suspend fun getFailingStatusChecks(id: UUID): List<String>
 
     /**
      * Checks whether a PR can be cleanly merged without actually performing the merge.

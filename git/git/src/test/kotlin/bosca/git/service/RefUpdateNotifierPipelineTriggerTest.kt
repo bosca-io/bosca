@@ -39,6 +39,7 @@ import kotlinx.coroutines.CancellationException
  */
 class RefUpdateNotifierPipelineTriggerTest {
 
+    private val statuses = mockk<CommitStatusService>(relaxed = true)
     private val enqueuer = mockk<JobConfigurationEnqueuer>()
     private val repositoryRepository = mockk<GitRepositoryRepository>(relaxed = true)
     private val json = Json {
@@ -58,6 +59,7 @@ class RefUpdateNotifierPipelineTriggerTest {
     fun setup() {
         ProviderRegistry.clear()
         provides<Json> { json }
+        provides<CommitStatusService> { statuses }
         provides<JobConfigurationEnqueuer>(name = "pipeline-trigger") { enqueuer }
     }
 
@@ -97,6 +99,11 @@ class RefUpdateNotifierPipelineTriggerTest {
         val job = enqueued.map { json.decodeFromJsonElement(PipelineTriggerJob.serializer(), it) }
             .single { it.ref == "refs/tags/v1.0.0" }
         assertEquals(commitId.name(), job.afterSha, "the trigger must carry the commit, not the tag object")
+        io.mockk.coVerifyOrder {
+            statuses.recordStatus(job.repositoryId, commitId.name(), "ci/configuration",
+                bosca.git.model.CommitStatusState.PENDING, "Selecting CI jobs", null, "refs/tags/v1.0.0")
+            enqueuer.enqueue(any(), any())
+        }
     }
 
     @Test
@@ -119,6 +126,7 @@ class RefUpdateNotifierPipelineTriggerTest {
         notifier.notifyRefsUpdated(repo, UUID.random(), listOf(RefChange("refs/heads/main", ObjectId.zeroId(), commitId)))
 
         kotlin.test.assertTrue(enqueued.isEmpty(), "a [skip ci] commit must not trigger a pipeline")
+        coVerify(exactly = 0) { statuses.recordStatus(any(), any(), any(), any(), any(), any(), any()) }
     }
 
     @Test

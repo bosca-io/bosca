@@ -2,6 +2,8 @@
 
 package bosca.pipelines.service
 
+import bosca.pipelines.trigger.enqueue
+
 import bosca.db.afterCommit
 import bosca.db.connectionOrNull
 import bosca.di.ProviderRegistry
@@ -374,6 +376,12 @@ class PipelineRunServiceImpl(
     }
 
     override suspend fun get(runId: UUID): PipelineRun? = runRepository.getById(runId)
+
+    override suspend fun findLatestByInput(pipelineId: UUID, inputType: String, inputMatch: JsonElement): PipelineRun? =
+        runRepository.findLatestByInput(pipelineId, inputType, inputMatch)
+
+    override suspend fun enqueueEvent(pipelineId: UUID, eventName: String, input: JsonElement, created: OffsetDateTime): UUID =
+        bosca.pipelines.trigger.PipelineRunJob(pipelineId, eventName, input, created).enqueue().getId()
 
     override suspend fun listActive(offset: Long, limit: Int): List<PipelineRun> =
         runRepository.listActive(offset, limit)

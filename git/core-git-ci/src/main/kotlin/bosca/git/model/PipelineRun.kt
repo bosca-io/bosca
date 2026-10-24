@@ -27,6 +27,11 @@ data class PipelineRun(
      *  names (`release.version`, `promotion.environment`, `inputs.*`) — what the dashboard's plan
      *  view and promotion-chain validation read back. */
     val parameters: kotlinx.serialization.json.JsonElement = kotlinx.serialization.json.JsonObject(emptyMap()),
+    /** Original run whose immutable commit, trigger and inputs this attempt repeats. */
+    @ColumnName("rerun_of") val rerunOf: UUID? = null,
+    /** Orders full and in-place retries by the request that started the attempt. */
+    @ColumnName("attempt_order") val attemptOrder: Long = 0,
+    @Contextual val modified: OffsetDateTime = OffsetDateTime.now(),
     @Contextual val created: OffsetDateTime = OffsetDateTime.now(),
     @Contextual val started: OffsetDateTime? = null,
     @Contextual val finished: OffsetDateTime? = null

@@ -28,6 +28,10 @@ interface CollectionRepository {
     @Query("select * from collections where id = :id")
     suspend fun getById(id: UUID): Collection?
 
+    /** Replaces the collection's labels and updates its modification time. */
+    @Query("update collections set labels = :labels, modified = now() where id = :id")
+    suspend fun setLabels(id: UUID, labels: List<String>)
+
     @Query("select * from collections where id = any(:ids)")
     suspend fun getByIds(ids: List<UUID>): List<Collection>
 

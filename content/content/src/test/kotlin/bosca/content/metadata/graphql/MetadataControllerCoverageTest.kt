@@ -192,7 +192,7 @@ class MetadataControllerCoverageTest {
     @Test
     fun `parentId created uploaded ready labels resolvers`() {
         val parent = UUID.random()
-        val md = metadata(parentId = parent)
+        val md = metadata(parentId = parent).copy(labels = listOf("featured", "Summer reading"))
         assertEquals(parent, controller.parentId(md))
         assertEquals(md.created, controller.created(md))
         assertEquals(md.uploaded, controller.uploaded(md))

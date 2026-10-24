@@ -553,6 +553,14 @@ interface MetadataService : PermissionService<Metadata, UUID>, TransitioningServ
     suspend fun setCategories(id: UUID, categoryId: List<UUID>)
 
     /**
+     * Replaces all freeform labels on the current metadata entry.
+     *
+     * @param id the metadata identifier
+     * @param labels the labels to store; an empty list clears all labels
+     */
+    suspend fun setLabels(id: UUID, labels: List<String>)
+
+    /**
      * Assigns a trait to a metadata entry.
      *
      * @param id the metadata identifier

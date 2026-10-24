@@ -60,6 +60,11 @@ private fun contextDiff(): JsonObject {
 }
 
 internal fun pullStateFixture(base: String, number: Int): String {
+    if (number == 13) return JsonObject(Json.parseToJsonElement(base).jsonObject + mapOf(
+        "id" to JsonPrimitive("pull-checks"), "number" to JsonPrimitive(13),
+        "title" to JsonPrimitive("Required checks pending"),
+        "failingStatusChecks" to JsonArray(listOf(JsonPrimitive("ci/build"), JsonPrimitive("ci/missing"))),
+    )).toString()
     if (number !in 2..12) return base
     val state = listOf("DRAFT", "MERGED", "CLOSED", "OPEN", "OPEN", "OPEN", "OPEN", "OPEN", "OPEN", "MERGED", "OPEN")[number - 2]
     val id = listOf("pull-draft", "pull-merged", "pull-closed", "pull-conflicts", "pull-empty", "pull-edit", "pull-missing-branch", "pull-first-comment", "pull-replies", "pull-merged-no-base", "pull-context")[number - 2]

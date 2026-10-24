@@ -67,7 +67,7 @@ class GitHubPullRequestSynchronizationIntegrationTest {
     private val native = PullRequestServiceImpl(nativeRepository, dependencies, reviews,
         mockk(relaxed = true), hostedRepository, mockk(relaxed = true), protections, dfs,
         mockk(relaxed = true), statuses, locks, profiles, security)
-    private val service = GitHubSyncServiceImpl(repository, hostedService, secrets, security, writes, github, locks, native, profiles, permissions, protections)
+    private val service = GitHubSyncServiceImpl(repository, hostedService, secrets, security, writes, github, locks, native, profiles, permissions, protections, io.mockk.mockk(relaxed = true), mockk(), mockk())
     private val json = Json { serializersModule = SerializersModule { contextual(UUIDSerializer()); contextual(OffsetDateTimeSerializer()) } }
     private var remote = remote()
     private var nextNumber = 0
@@ -94,6 +94,7 @@ class GitHubPullRequestSynchronizationIntegrationTest {
         coEvery { security.getPrincipalGroups(principalId) } returns listOf(writers)
         coEvery { hostedService.getPermissions(hosted) } returns listOf(RepositoryPermission(repositoryId, writers.id, bosca.security.model.PermissionAction.EDIT))
         coEvery { protections.findMatchingRule(repositoryId, any()) } returns null
+        coEvery { statuses.areRequiredChecksPassing(any(), any(), any()) } returns true
         every { dfsRepository.resolve("refs/heads/feature") } returns org.eclipse.jgit.lib.ObjectId.fromString("1".repeat(40))
         every { dfsRepository.refDatabase.findRef("refs/heads/feature") } returns org.eclipse.jgit.lib.ObjectIdRef.Unpeeled(
             org.eclipse.jgit.lib.Ref.Storage.NEW, "refs/heads/feature", org.eclipse.jgit.lib.ObjectId.fromString("1".repeat(40)))

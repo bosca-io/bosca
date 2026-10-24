@@ -1,6 +1,7 @@
 package bosca.git.ui
 
 import bosca.server.BoscaApplication
+import bosca.server.websocket.CloseReason
 import bosca.server.websocket.WebSocketFrame
 import bosca.server.websocket.WebSocketSession
 import java.net.URI
@@ -132,7 +133,14 @@ private suspend fun WebSocketSession.relaySubscriptions(endpoint: URI) = corouti
                 when (frame) {
                     is WebSocketFrame.Text -> upstream.sendText(frame.text, true).await()
                     is WebSocketFrame.Close -> {
-                        upstream.sendClose(frame.code, frame.reason).await()
+                        // An empty browser close is reported as 1005, which is never a wire status.
+                        // Java's client requires a status, so close the upstream normally in that case.
+                        val code = if (frame.code == CloseReason.Codes.NO_STATUS_RECEIVED) {
+                            WebSocket.NORMAL_CLOSURE
+                        } else {
+                            frame.code
+                        }
+                        upstream.sendClose(code, frame.reason).await()
                         break
                     }
                     is WebSocketFrame.Binary -> {

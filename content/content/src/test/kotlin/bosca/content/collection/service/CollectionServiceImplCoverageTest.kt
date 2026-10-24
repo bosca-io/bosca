@@ -613,6 +613,30 @@ class CollectionServiceImplCoverageTest {
     }
 
     @Test
+    fun `setLabels persists replacements and clears cached labels without changing other fields`() = runTest(timeout = kotlin.time.Duration.parse("60s")) {
+        val collection = newCollection("Labeled collection")
+        val replacements = listOf(listOf("featured", "Summer reading", "été"), listOf("archived"), emptyList())
+
+        for (labels in replacements) {
+            withRequest {
+                val before = assertNotNull(service.getById(collection.id))
+                service.setLabels(collection.id, labels)
+                val updated = assertNotNull(service.getById(collection.id))
+                assertEquals(before.copy(labels = labels, modified = updated.modified), updated)
+            }
+            assertEquals(labels, withRequest { service.getById(collection.id)?.labels })
+            assertEquals(labels, withRequest { CollectionRepositoryImpl().getById(collection.id)?.labels })
+        }
+    }
+
+    @Test
+    fun `setLabels fails for missing collection`() = runTest(timeout = kotlin.time.Duration.parse("60s")) {
+        assertFailsWith<IllegalStateException> {
+            withRequest { service.setLabels(UUID.random(), listOf("featured")) }
+        }
+    }
+
+    @Test
     fun `setCollectionOrdering updates ordering`() = runTest(timeout = kotlin.time.Duration.parse("60s")) {
         val created = newCollection("ordering")
         withRequest { service.setCollectionOrdering(created.id, buildJsonObject { put("k", "v") }) }

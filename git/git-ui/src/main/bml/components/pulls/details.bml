@@ -8,10 +8,10 @@
         <dd class="info-value"><git-pull-status :status="page.pull.status.name" /></dd>
       </div>
       <div class="info-row">
-        <dt class="info-label">Mergeable</dt>
+        <dt class="info-label">Merge conflicts</dt>
         <dd class="info-value">
-          <badge :color='if (page.pull.mergeable) "#34d99a" else "#ff5d6c"'>
-            { if (page.pull.mergeable) "Yes" else "No" }
+          <badge :color='if (page.pull.status.name != "OPEN") "#a1a1aa" else if (page.pull.mergeable) "#34d99a" else "#ff5d6c"'>
+            { if (page.pull.status.name != "OPEN") "Not checked" else if (page.pull.mergeable) "None" else if (page.pull.conflictingFiles.isEmpty()) "Unavailable" else "Unresolved" }
           </badge>
         </dd>
       </div>

@@ -3,6 +3,7 @@ package bosca.git.graphql
 import bosca.git.model.CommitInfo
 import bosca.git.model.DiffFile
 import bosca.git.model.MergeStrategy
+import bosca.git.model.MergeResult
 import bosca.git.model.PullRequest
 import bosca.git.model.PullRequestStatus
 import bosca.git.model.Review
@@ -13,6 +14,7 @@ import bosca.git.service.RepositoryService
 import bosca.graphql.GraphQLController
 import bosca.graphql.annotations.Field
 import bosca.graphql.annotations.TypeController
+import bosca.graphql.server.ResolverContext
 import bosca.profile.model.Profile
 import bosca.profile.profile.service.ProfileService
 import bosca.security.model.PermissionAction
@@ -91,18 +93,31 @@ class GitPullRequestController(
     fun updated(source: PullRequest): OffsetDateTime = source.updated
 
     @Field
-    suspend fun mergeable(source: PullRequest): Boolean {
+    suspend fun mergeable(source: PullRequest, environment: ResolverContext): Boolean {
         if (source.status != PullRequestStatus.OPEN) return false
-        val result = pullRequestService.checkMergeability(source.id)
+        val result = mergeability(source, environment)
         return result.success
     }
 
     @Field
-    suspend fun conflictingFiles(source: PullRequest): List<String> {
+    suspend fun failingStatusChecks(source: PullRequest): List<String> {
         if (source.status != PullRequestStatus.OPEN) return emptyList()
-        val result = pullRequestService.checkMergeability(source.id)
+        return pullRequestService.getFailingStatusChecks(source.id)
+    }
+
+    @Field
+    suspend fun conflictingFiles(source: PullRequest, environment: ResolverContext): List<String> {
+        if (source.status != PullRequestStatus.OPEN) return emptyList()
+        val result = mergeability(source, environment)
         return result.conflictingFiles
     }
+
+    private suspend fun mergeability(source: PullRequest, environment: ResolverContext): MergeResult =
+        environment.dataLoaders.getOrPutLoader<UUID, MergeResult>(
+            "GitPullRequest.mergeability", source.version,
+        ) { ids, _ ->
+            ids.map { pullRequestService.checkMergeability(it) }
+        }.load(source.id) ?: error("Missing mergeability result for pull request ${source.id}")
 
     @Field
     suspend fun assigneeIds(source: PullRequest): List<UUID> {

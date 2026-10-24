@@ -1489,6 +1489,41 @@ class CollectionMutationControllerCoverageTest {
     }
 
     @Test
+    fun `setLabels replaces and clears labels with edit permission`() = runTest {
+        val id = UUID.random()
+        val col = collection(id)
+        coEvery { service.getById(id) } returns col
+        coEvery { permissionEvaluator.verifyAllowed(authentication, col, PermissionAction.EDIT) } returns Unit
+        coEvery { service.setLabels(id, any()) } returns Unit
+
+        for (labels in listOf(listOf("featured", "Summer reading"), emptyList())) {
+            assertTrue(controller.setLabels(authentication, id, labels))
+            coVerify(exactly = 1) { service.setLabels(id, labels) }
+        }
+        coVerify(exactly = 2) { permissionEvaluator.verifyAllowed(authentication, col, PermissionAction.EDIT) }
+    }
+
+    @Test
+    fun `setLabels not found returns false without writing`() = runTest {
+        val id = UUID.random()
+        coEvery { service.getById(id) } returns null
+
+        assertFalse(controller.setLabels(authentication, id, emptyList()))
+        coVerify(exactly = 0) { service.setLabels(any(), any()) }
+    }
+
+    @Test
+    fun `setLabels does not write when edit permission is denied`() = runTest {
+        val id = UUID.random()
+        val col = collection(id)
+        coEvery { service.getById(id) } returns col
+        coEvery { permissionEvaluator.verifyAllowed(authentication, col, PermissionAction.EDIT) } throws SecurityException("denied")
+
+        assertFailsWith<SecurityException> { controller.setLabels(authentication, id, listOf("featured")) }
+        coVerify(exactly = 0) { service.setLabels(any(), any()) }
+    }
+
+    @Test
     fun `setTemplate happy path`() = runTest {
         val collectionId = UUID.random()
         val templateId = UUID.random()

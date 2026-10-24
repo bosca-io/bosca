@@ -85,6 +85,7 @@ dependencies {
     testImplementation(libs.kotlin.test)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.mockk)
+    testImplementation(libs.logback.classic)
     testImplementation(libs.testcontainers)
     testImplementation(project(":bosca-core:test-support"))
 

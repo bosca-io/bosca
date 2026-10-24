@@ -1253,6 +1253,13 @@ class MetadataServiceImpl(
         MetadataUpdated(metadata).dispatch()
     }
 
+    override suspend fun setLabels(id: UUID, labels: List<String>) = transaction {
+        repository.setLabels(id, labels)
+        removeFromCache(id)
+        val metadata = getById(id) ?: error("missing metadata")
+        MetadataUpdated(metadata).dispatch()
+    }
+
     override suspend fun addTrait(id: UUID, traitId: String) {
         traits.addTrait(id, traitId)
         removeFromCache(id)

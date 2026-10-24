@@ -40,6 +40,9 @@ class GitHubNodesTest {
         "Title", "feature", "main", UUID.random())
     private val pullRequestInputs get() = NodeInputs(mapOf("event" to PipelineValue.of(pullRequest, PullRequestEvent.serializer())))
 
+    private val ciEvent = CommitStatusEvent(repositoryId, UUID.random(), java.time.OffsetDateTime.now())
+    private val ciInputs get() = NodeInputs(mapOf("event" to PipelineValue.of(ciEvent, CommitStatusEvent.serializer())))
+
     @BeforeTest fun setup() { provides<GitHubSyncService> { service } }
     @AfterTest fun cleanup() = ProviderRegistry.clear()
 
@@ -50,6 +53,12 @@ class GitHubNodesTest {
         coEvery { service.synchronizePullRequest(delivery) } returns GitHubSyncResult.APPLIED
         coEvery { service.synchronizePullRequest(pullRequest) } returns GitHubSyncResult.UNCHANGED
         coEvery { service.reconcilePullRequests() } returns listOf(GitHubPullRequestState(repositoryId = repositoryId))
+        coEvery { service.synchronizeCommitStatus(ciEvent) } returns GitHubSyncResult.APPLIED
+        coEvery { service.reconcileCiStatuses() } returns 2
+        val ciReconcile = GitHubReconcileCiStatusesNode("ciReconcile")
+        assertEquals("2", ((ciReconcile.run(context(), NodeInputs(mapOf("request" to PipelineValue.ofJson(JsonNull)))) as NodeResult.Output).value?.encode(json))?.jsonPrimitive?.content)
+        val ci = GitHubExportCiStatusNode("ci")
+        assertEquals("APPLIED", ((ci.run(context(), ciInputs) as NodeResult.Output).value?.encode(json))?.jsonPrimitive?.content)
         val push = GitHubPushNode("push", "Import", "Original delivery", NodePosition(10.0, 20.0))
         val ref = GitHubRefNode("ref", "Export", "Original ref", NodePosition(30.0, 40.0))
         val imported = push.run(context(), pushInputs) as NodeResult.Output
@@ -65,7 +74,7 @@ class GitHubNodesTest {
         assertEquals("APPLIED", ((importPr.run(context(), pushInputs) as NodeResult.Output).value?.encode(json))?.jsonPrimitive?.content)
         assertEquals("UNCHANGED", ((exportPr.run(context(), pullRequestInputs) as NodeResult.Output).value?.encode(json))?.jsonPrimitive?.content)
         assertEquals("1", ((reconcilePr.run(context(), NodeInputs(mapOf("request" to PipelineValue.ofJson(JsonNull)))) as NodeResult.Output).value?.encode(json))?.jsonPrimitive?.content)
-        for (node in listOf(push, ref, reconcile, importPr, exportPr, reconcilePr)) {
+        for (node in listOf(push, ref, reconcile, importPr, exportPr, reconcilePr, ci, ciReconcile)) {
             val decoded = json.decodeFromString(PipelineNode.serializer(), json.encodeToString(PipelineNode.serializer(), node))
             assertEquals(node.id, decoded.id); assertEquals(node.name, decoded.name)
             assertEquals(node.description, decoded.description); assertEquals(node.position, decoded.position)
@@ -74,7 +83,9 @@ class GitHubNodesTest {
     }
 
     @Test fun `dry run traces effects without calling services and tolerates unwired inputs`() = runBlocking {
-        for ((node, inputs) in listOf(GitHubPushNode("push") to pushInputs, GitHubRefNode("ref") to refInputs,
+        for ((node, inputs) in listOf(
+            GitHubReconcileCiStatusesNode("ciReconcile") to NodeInputs(mapOf("request" to PipelineValue.ofJson(JsonNull))),
+            GitHubExportCiStatusNode("ci") to ciInputs, GitHubPushNode("push") to pushInputs, GitHubRefNode("ref") to refInputs,
             GitHubReconcileRefsNode("reconcile") to NodeInputs(mapOf("request" to PipelineValue.ofJson(JsonObject(emptyMap())))),
             GitHubImportPullRequestNode("importPr") to pushInputs, GitHubExportPullRequestNode("exportPr") to pullRequestInputs,
             GitHubReconcilePullRequestsNode("reconcilePr") to NodeInputs(mapOf("request" to PipelineValue.ofJson(JsonObject(emptyMap())))))) {
@@ -87,6 +98,8 @@ class GitHubNodesTest {
             assertFailsWith<IllegalStateException> { node.run(context(), NodeInputs(emptyMap())) }
             assertIs<NodeResult.Suspend>(node.run(context(runId = UUID.random()), inputs))
         }
+        coVerify(exactly = 0) { service.reconcileCiStatuses(any()) }
+        coVerify(exactly = 0) { service.synchronizeCommitStatus(any()) }
         coVerify(exactly = 0) { service.synchronizePush(any()) }
         coVerify(exactly = 0) { service.synchronizeRef(any()) }
         coVerify(exactly = 0) { service.reconcileRefs(any()) }

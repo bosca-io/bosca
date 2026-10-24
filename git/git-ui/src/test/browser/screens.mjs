@@ -484,7 +484,7 @@ async function inspectLoadingStates(width) {
     await nav("/repositories/repo");
     await waitForHeldRequest();
     await until(
-      "document.querySelector('[data-bml-deferred][aria-busy=true] .loading-state')",
+      "document.querySelectorAll('[data-bml-deferred][aria-busy=true] .stat-skeleton').length===5",
     );
     assert.ok(
       await ev(
@@ -492,15 +492,35 @@ async function inspectLoadingStates(width) {
       ),
       "Retry is shown only after a failed load",
     );
-    await captureLoading("statistics", width, ".stats-state .loading-state");
+    const statistics = await ev(`(() => {
+      const root=document.querySelector('.repository-summary');
+      return {name:'statistics',viewport:${width},width:root.getBoundingClientRect().width,
+        placeholders:[...root.querySelectorAll('.stat-skeleton')].map(element=>({
+          label:element.getAttribute('aria-label'),role:element.getAttribute('role'),
+          visible:element.checkVisibility({opacityProperty:true}),
+          width:element.getBoundingClientRect().width,height:element.getBoundingClientRect().height,
+          animation:getComputedStyle(element).animationName,duration:getComputedStyle(element).animationDuration,
+        }))};
+    })()`);
+    assert.deepEqual(statistics.placeholders.map(item => item.label),
+      ['Loading commits', 'Loading branches', 'Loading tags', 'Loading contributors', 'Loading size']);
+    assert.ok(statistics.placeholders.every(item => item.role === 'status' && item.visible && item.width > 0 && item.height > 0),
+      'Every statistic has a visible, accessible loading placeholder');
+    assert.ok(statistics.placeholders.every(item => item.animation === 'stat-pulse' && item.duration === '1.5s'),
+      'Statistics use the established placeholder animation');
+    loadingStates.push(statistics);
+    await writeFile(
+      `${process.env.GIT_UI_ARTIFACT_DIR}/bosca-git-ui-loading-statistics-${width}.png`,
+      Buffer.from((await call('Page.captureScreenshot', {format:'png',captureBeyondViewport:false})).data,'base64'),
+    );
     await call("Emulation.setEmulatedMedia", {
       features: [{ name: "prefers-reduced-motion", value: "reduce" }],
     });
-    assert.equal(
+    assert.ok(
       await ev(
-        "getComputedStyle(document.querySelector('.stats-state .spinner')).animationName",
+        "[...document.querySelectorAll('.stat-skeleton')].every(element=>getComputedStyle(element).animationName==='none')",
       ),
-      "none",
+      'Statistics placeholders respect reduced motion',
     );
     await call("Emulation.setEmulatedMedia", { features: [] });
   } finally {

@@ -56,6 +56,7 @@ query GitUiPull($id: UUID!) {
       targetBranch
       authorId
       mergeable
+      failingStatusChecks
       created
       updated
       sourceRepositoryId
@@ -125,6 +126,7 @@ query GitUiMergePlan($id: UUID!) {
       title
       status
       mergeable
+      failingStatusChecks
     }
   }
 }
@@ -137,17 +139,17 @@ mutation GitUiCreatePull($input: CreateGitPullRequestInput!) {
     }
   }
 }
-mutation GitUiMergePull($id: UUID!, $strategy: GitMergeStrategy!, $expectedVersion: Long!) {
+mutation GitUiMergePull($id: UUID!, $strategy: GitMergeStrategy!, $expectedVersion: Long!, $bypassStatusChecks: Boolean!) {
   git {
-    mergePullRequest(id: $id, strategy: $strategy, expectedVersion: $expectedVersion) {
+    mergePullRequest(id: $id, strategy: $strategy, expectedVersion: $expectedVersion, bypassStatusChecks: $bypassStatusChecks) {
       id
       status
     }
   }
 }
-mutation GitUiMergePullDependencies($id: UUID!, $strategy: GitMergeStrategy!, $expectedVersion: Long!) {
+mutation GitUiMergePullDependencies($id: UUID!, $strategy: GitMergeStrategy!, $expectedVersion: Long!, $bypassStatusChecks: Boolean!) {
   git {
-    mergePullRequestWithDependencies(id: $id, strategy: $strategy, expectedVersion: $expectedVersion) {
+    mergePullRequestWithDependencies(id: $id, strategy: $strategy, expectedVersion: $expectedVersion, bypassStatusChecks: $bypassStatusChecks) {
       id
       status
     }

@@ -303,11 +303,12 @@ type GitMutation {
 
   createPullRequest(input: CreateGitPullRequestInput!): GitPullRequest!
   updatePullRequest(id: UUID!, input: UpdateGitPullRequestInput!): GitPullRequest!
-  mergePullRequest(id: UUID!, strategy: GitMergeStrategy!, expectedVersion: Long): GitPullRequest!
+  mergePullRequest(id: UUID!, strategy: GitMergeStrategy!, expectedVersion: Long, bypassStatusChecks: Boolean! = false): GitPullRequest!
   mergePullRequestWithDependencies(
     id: UUID!
     strategy: GitMergeStrategy!
     expectedVersion: Long
+    bypassStatusChecks: Boolean! = false
   ): [GitPullRequest!]!
   closePullRequest(id: UUID!): GitPullRequest!
   reopenPullRequest(id: UUID!): GitPullRequest!
@@ -489,8 +490,10 @@ type GitPullRequest {
   mergeBaseSha: String
   created: DateTime!
   updated: DateTime!
-  "Whether the PR can be cleanly merged."
+  "Whether Git can merge the branches without conflicts. Does not include reviews, dependencies or status checks."
   mergeable: Boolean!
+  "Reported or required checks without a successful result on the current source commit, including required checks that have not reported."
+  failingStatusChecks: [String!]!
   "Files with merge conflicts, if any."
   conflictingFiles: [String!]!
   "Profile IDs of users assigned to this PR."
