@@ -8,6 +8,9 @@
         "pattern": "design-example\\.css"
       },
       {
+        "pattern": "logback\\.xml"
+      },
+      {
         "pattern": "META-INF/licenses/bml-design/.*\\.txt"
       }
     ]

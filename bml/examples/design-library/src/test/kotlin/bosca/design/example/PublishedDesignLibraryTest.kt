@@ -4,7 +4,6 @@ import org.gradle.testkit.runner.GradleRunner
 import org.gradle.testkit.runner.TaskOutcome
 import org.gradle.testkit.runner.UnexpectedBuildFailure
 import java.io.File
-import java.net.ServerSocket
 import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
@@ -147,25 +146,27 @@ class PublishedDesignLibraryTest {
     }
 
     private fun withServer(classpath: String, development: Boolean, log: File, check: (String) -> Unit) {
-        val port = ServerSocket(0).use { it.localPort }
+        var base: String? = null
         val process = ProcessBuilder(System.getProperty("design.fixture.java"), "-Dbml.dev=$development", "-cp", classpath,
-            "bosca.design.example.MainKt", port.toString()).redirectErrorStream(true).redirectOutput(log).start()
+            "bosca.design.example.MainKt", "0").redirectErrorStream(true).redirectOutput(log).start()
         try {
-            var ready = false
+            var boundPort: Int? = null
             for (attempt in 0 until 200) {
                 assertTrue(process.isAlive, log.readText())
-                try { java.net.Socket("localhost", port).use { ready = true; break } }
-                catch (_: java.net.ConnectException) { Thread.sleep(25) }
+                boundPort = designBoundPort(log.readText())
+                if (boundPort != null) break
+                Thread.sleep(25)
             }
-            assertTrue(ready, log.readText())
-            val base = "http://localhost:$port"
+            val port = requireNotNull(boundPort) { "Published consumer did not report a successful bind: ${log.readText()}" }
+            val endpoint = "http://localhost:$port"
+            base = endpoint
             val response = requestDesignFixture(HttpClient.newHttpClient(),
-                HttpRequest.newBuilder(URI(base)).timeout(Duration.ofSeconds(10)).GET().build())
+                HttpRequest.newBuilder(URI(endpoint)).timeout(Duration.ofSeconds(10)).GET().build())
             assertEquals(200, response.statusCode(), response.body())
-            check(base)
+            check(endpoint)
         } catch (failure: Throwable) {
             val state = if (process.isAlive) "alive" else "exit=${process.exitValue()}"
-            failure.addSuppressed(IllegalStateException("Published design development=$development at http://localhost:$port " +
+            failure.addSuppressed(IllegalStateException("Published design development=$development at ${base ?: "unbound port"} " +
                 "(pid=${process.pid()} $state): ${log.readText()}"))
             throw failure
         } finally {

@@ -7,13 +7,16 @@ import bosca.bml.project.ContentDigest
 import java.io.File
 import java.net.CookieManager
 import java.net.CookiePolicy
-import java.net.ServerSocket
+import java.net.InetAddress
+import java.net.InetSocketAddress
+import java.net.StandardProtocolFamily
 import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
+import java.nio.channels.ServerSocketChannel
 import java.time.Duration
 import java.util.concurrent.TimeUnit
 import java.util.Properties
@@ -40,7 +43,7 @@ class DesignLibraryTest {
                 val actual = log.readLines().filter { '\t' in it }.associate {
                     val (path, digest) = it.split('\t'); path to digest
                 }
-                val expected = listOf("design-example.css", "META-INF/licenses/bml-design/geist.txt",
+                val expected = listOf("design-example.css", "logback.xml", "META-INF/licenses/bml-design/geist.txt",
                     "META-INF/licenses/bml-design/lucide.txt", "META-INF/licenses/bml-design/source-view.txt",
                     "META-INF/licenses/bml-design/json-editor.txt", "META-INF/licenses/bml-design/document-editor.txt",
                     "META-INF/licenses/bml-design/flow-editor.txt", "META-INF/licenses/bml-design/chart.txt").associateWith { path ->
@@ -335,6 +338,30 @@ class DesignLibraryTest {
     }
 
     @Test
+    fun `consumer children bind distinct ports beside occupied IPv4 and IPv6 listeners`() {
+        ServerSocketChannel.open(StandardProtocolFamily.INET).use { ipv4 ->
+            ipv4.bind(InetSocketAddress(InetAddress.getByName("127.0.0.1"), 0))
+            ServerSocketChannel.open(StandardProtocolFamily.INET6).use { ipv6 ->
+                ipv6.bind(InetSocketAddress(InetAddress.getByName("::1"), 0))
+                val occupied = listOf(ipv4, ipv6).map { (it.localAddress as InetSocketAddress).port }
+                withServer(false) { production, productionClient ->
+                    withServer(true) { development, developmentClient ->
+                        assertFalse(URI(production).port in occupied)
+                        assertFalse(URI(development).port in occupied)
+                        assertFalse(production == development)
+                        for ((base, client) in listOf(production to productionClient, development to developmentClient)) {
+                            val response = request(client, base, "/aliases")
+                            assertEquals(200, response.statusCode(), response.body())
+                            assertTrue("data-alias=\"plain\"" in response.body(), response.body())
+                            assertTrue("/_bml/libraries/" in response.body(), response.body())
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
     fun `browser preserves native semantics geometry themes and action context`() {
         for (development in listOf(false, true)) withServer(development) { base, _ ->
             val log = File.createTempFile("design-browser-", ".log")
@@ -374,27 +401,29 @@ class DesignLibraryTest {
 
     private fun withServer(command: List<String>, directory: File?, development: Boolean, test: (String, HttpClient) -> Unit) {
         assertTrue(classpath.split(File.pathSeparator).all { File(it).isFile && it.endsWith(".jar") }, classpath)
-        val port = ServerSocket(0).use { it.localPort }
-        val base = "http://localhost:$port"
+        var base: String? = null
         val log = File.createTempFile("design-fixture-", ".log")
         val launch = if (System.getProperty("design.fixture.binary") == null) command.toMutableList().apply {
             add(1, "-Dbml.dev=$development")
         } else command + "-Dbml.dev=$development"
-        val process = ProcessBuilder(launch + port.toString()).directory(directory)
+        val process = ProcessBuilder(launch + "0").directory(directory)
             .redirectErrorStream(true).redirectOutput(log).start()
         try {
-            var ready = false
+            var boundPort: Int? = null
             for (attempt in 0 until 200) {
                 assertTrue(process.isAlive, log.readText())
-                try { java.net.Socket("localhost", port).use { ready = true; break } }
-                catch (_: java.net.ConnectException) { Thread.sleep(25) }
+                boundPort = designBoundPort(log.readText())
+                if (boundPort != null) break
+                Thread.sleep(25)
             }
-            assertTrue(ready, log.readText())
+            val port = requireNotNull(boundPort) { "Consumer did not report a successful bind: ${log.readText()}" }
+            val endpoint = "http://localhost:$port"
+            base = endpoint
             val client = HttpClient.newBuilder().cookieHandler(CookieManager(null, CookiePolicy.ACCEPT_ALL)).build()
-            test(base, client)
+            test(endpoint, client)
         } catch (failure: Throwable) {
             val state = if (process.isAlive) "alive" else "exit=${process.exitValue()}"
-            failure.addSuppressed(IllegalStateException("Design fixture development=$development at $base " +
+            failure.addSuppressed(IllegalStateException("Design fixture development=$development at ${base ?: "unbound port"} " +
                 "(pid=${process.pid()} $state): ${log.readText()}"))
             throw failure
         } finally {

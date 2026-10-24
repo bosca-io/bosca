@@ -17,6 +17,7 @@ dependencies {
     implementation(project(":bosca-core:core-graalvm"))
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.kotlinx.coroutines.core)
+    runtimeOnly(libs.logback.classic)
     testImplementation(libs.kotlin.test.junit)
     testImplementation(project(":bml:bml-compiler"))
     testImplementation(gradleTestKit())

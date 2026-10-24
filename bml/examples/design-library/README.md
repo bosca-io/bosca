@@ -41,6 +41,13 @@ geometry/accessibility, alias identity/resource deduplication, and native elemen
 disabled. Additional compiler checks cover local precedence, import collisions, and typed prop
 diagnostics against the actual design-library artifact.
 
+Server fixtures request an OS-assigned port and read the successful Netty bind from that child's
+private INFO log. Startup has a five-second budget; an existing listener or configured endpoint
+does not establish readiness. The same lifecycle is used for workspace, source-free Maven and
+native launches. An integration check holds separate IPv4/IPv6 listeners open while production and
+development children bind distinct endpoints. The application packages its logging configuration
+for the native executable as well as the JVM.
+
 The compiled-consumer browser checks also verify empty tabs, segments and tree bodies at desktop
 and phone widths, with scripts enabled and disabled. Empty widgets stay out of the accessibility
 tree while the native segment form value and populated controls remain available.
@@ -228,8 +235,8 @@ For native verification, build and exercise the standalone executable from the w
 This uses GraalVM quick optimization. The dedicated task reuses the consumer integration class,
 copying only the executable into a fresh working directory for each launch. Production/development
 HTTP and browser checks therefore use embedded assets, without external JARs or source directories.
-The binary's `--check-resources` command reports the SHA-256 digests of the application stylesheet
-and seven dependency notices; the tests compare them with the JAR resources. Font checks also compare
+The binary's `--check-resources` command reports the SHA-256 digests of the application stylesheet,
+logging configuration and seven dependency notices; the tests compare them with the JAR resources. Font checks also compare
 all 11 original hashes and verify MIME types, caching and deduplication. Application-owned native
 metadata includes the compiled BML resources, stylesheet, notices and established Netty registrations.
 This consumer check does not establish Git-host native or IDE source-navigation acceptance.
