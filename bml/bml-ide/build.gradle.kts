@@ -36,6 +36,12 @@ dependencies {
 }
 
 intellijPlatform {
+    pluginVerification {
+        ides {
+            current()
+            providers.gradleProperty("bml.ideVerificationPath").orNull?.let { local(it) }
+        }
+    }
     pluginConfiguration {
         name = "Bosca BML"
         ideaVersion {

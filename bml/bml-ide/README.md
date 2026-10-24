@@ -11,6 +11,7 @@ Run from the workspace root:
 ./gradlew :bml:bml-ide:buildPlugin     # package bml/bml-ide/build/distributions/bml-ide-*.zip
 ./gradlew :bml:bml-ide:runIde          # launch a sandbox IDE with the plugin loaded
 ./gradlew :bml:bml-ide:verifyPluginStructure # packaged descriptor and layout checks
+./gradlew :bml:bml-ide:verifyPlugin    # binary compatibility with the configured SDK
 ```
 
 Targets **IntelliJ IDEA Ultimate 2026.1.2** (`useInstaller = false` resolves the published Maven
@@ -61,8 +62,16 @@ checks global import changes, source/version mismatches and module isolation. `b
 packages the shared BML parser and manifest/import contracts without their
 transitive server dependencies or another Kotlin compiler.
 
-These fixtures use the configured 2026.1.2 SDK. Live operation in another installed IDE and
-compatibility with other platform versions require separate qualification.
+These fixtures use the configured 2026.1.2 SDK. To check the packaged plugin's binary compatibility
+with another installed IDE as well, pass its installation directory:
+
+```bash
+./gradlew :bml:bml-ide:verifyPlugin -Pbml.ideVerificationPath="/path/to/IntelliJ IDEA.app"
+```
+
+The verifier reads the IDE installation and writes reports under `build/reports/pluginVerifier`.
+It does not install the plugin or change that IDE's settings. Binary verification and the SDK
+fixtures do not establish live manual operation in another IDE.
 
 ## Follow-on stages
 
