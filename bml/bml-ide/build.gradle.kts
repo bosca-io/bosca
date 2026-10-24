@@ -40,7 +40,7 @@ intellijPlatform {
         name = "Bosca BML"
         ideaVersion {
             sinceBuild = "261"
-            // untilBuild left at the SDK default branch cap for v1.
+            // Compatibility beyond the configured SDK is qualified separately.
         }
     }
 }

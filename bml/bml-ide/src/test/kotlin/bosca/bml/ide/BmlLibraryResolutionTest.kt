@@ -17,6 +17,7 @@ import com.intellij.openapi.util.io.FileUtil
 import com.intellij.openapi.vfs.JarFileSystem
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.openapi.vfs.VfsUtilCore
 import com.intellij.psi.PsiDocumentManager
 import com.intellij.psi.PsiFile
 import com.intellij.testFramework.builders.EmptyModuleFixtureBuilder
@@ -67,7 +68,60 @@ class BmlLibraryResolutionTest : CodeInsightFixtureTestCase<EmptyModuleFixtureBu
             assertTrue(target.containingFile.virtualFile.url.startsWith(sources.url))
             assertEquals("\"button\"", target.text)
         }
-        assertEquals(82, BmlComponentDecls.all(file).size)
+        assertEquals(publicComponents(binary).size * 2, BmlComponentDecls.all(file).size)
+    }
+
+    fun testEveryPublicDesignComponentNavigatesToItsAttachedSource() {
+        val binary = artifact("binary")
+        val sources = artifact("sources")
+        val components = publicComponents(binary)
+        attach("design", binary, sources)
+        myFixture.addFileToProject("imports.bml", """<import library="io.bosca:bml-design"/>""")
+        val file = page(buildString {
+            append("""<import library="io.bosca:bml-design" as="ui"/><page route="/">""")
+            components.forEach { component ->
+                listOf(component.tag, "ui:${component.tag}").forEach { tag ->
+                    append("<$tag/><$tag>Example</$tag>")
+                }
+            }
+            append("</page>")
+        })
+        assertEmpty(BmlComponentDecls.scope(file).problems)
+        assertEquals(components.size * 2, BmlComponentDecls.all(file).size)
+        components.forEach { component ->
+            val source = requireNotNull(sources.findFileByRelativePath(component.source.entry))
+            listOf(component.tag, "ui:${component.tag}").forEach { tag ->
+                val references = Regex("</?(${Regex.escape(tag)})(?=[\\s/>])").findAll(file.text).toList()
+                assertEquals("opening, closing and self-closing $tag", 3, references.size)
+                references.forEach { match ->
+                    val offset = requireNotNull(match.groups[1]).range.first
+                    val target = requireNotNull(file.findReferenceAt(offset)?.resolve()) { "$tag must navigate" }
+                    assertEquals("original attached source for $tag", source.url, target.containingFile.virtualFile.url)
+                    assertEquals(component.tag, target.text.trim('"', '\''))
+                }
+            }
+        }
+    }
+
+    fun testEveryPublicDesignTagAndPropCompletesWithoutSourceAttachments() {
+        val binary = artifact("binary")
+        val components = publicComponents(binary)
+        attach("design", binary)
+        myFixture.addFileToProject("imports.bml", """<import library="io.bosca:bml-design"/>""")
+        val alias = """<import library="io.bosca:bml-design" as="ui"/>"""
+        myFixture.configureByText("home.bml", """$alias<page route="/"><<caret></page>""")
+        val tags = myFixture.completeBasic().orEmpty().groupBy { it.lookupString }
+        components.forEach { component ->
+            listOf(component.tag, "ui:${component.tag}").forEach { tag ->
+                assertEquals("metadata completion offers $tag once", 1, tags[tag].orEmpty().size)
+                myFixture.configureByText("home.bml", """$alias<page route="/"><$tag <caret>/></page>""")
+                val props = myFixture.completeBasic().orEmpty().map { it.lookupString }
+                component.props.forEach { prop ->
+                    assertTrue("literal $tag.${prop.name}: $props", prop.name in props)
+                    assertTrue("bound $tag.${prop.name}: $props", ":${prop.name}" in props)
+                }
+            }
+        }
     }
 
     fun testRealDesignTagAndPropCompletionUsesMetadata() {
@@ -88,15 +142,22 @@ class BmlLibraryResolutionTest : CodeInsightFixtureTestCase<EmptyModuleFixtureBu
         attach("design", artifact("binary"), sources)
         attach("stdlib", jarRoot(File(com.intellij.util.PathUtil.getJarPathForClass(kotlin.Unit::class.java))))
         myFixture.addFileToProject("Anchor.kt", "package fixture\nclass Anchor")
-        val file = page("""<page route="/"><script server>val item = bosca.design.model.NavigationItem("Main", "/", false)</script></page>""")
-        val host = com.intellij.psi.util.PsiTreeUtil.findChildrenOfType(file, BmlInjectionHost::class.java)
-            .single { it.node.elementType == BmlElementTypes.SCRIPT_SERVER_HOST }
-        val injected = requireNotNull(com.intellij.lang.injection.InjectedLanguageManager.getInstance(project).getInjectedPsiFiles(host))
-            .single().first
-        val target = requireNotNull(BmlFragmentResolver.resolve(host, injected.text, injected.text.indexOf("NavigationItem") + 1))
-        assertEquals("NavigationItem.kt", target.containingFile.name)
-        assertTrue("navigation must open attached Kotlin source: ${target.containingFile.virtualFile.url}",
-            target.containingFile.virtualFile.url.startsWith(sources.url))
+        val constructors = mapOf(
+            "NavigationItem" to """("Main", "/", false)""",
+            "ChartPoint" to """(0, 0, "Visits", "Monday", "12")""",
+            "ChartTable" to "(kotlin.collections.emptyList())",
+        )
+        constructors.forEach { (name, arguments) ->
+            val file = page("""<page route="/"><script server>val item = bosca.design.model.$name$arguments</script></page>""")
+            val host = com.intellij.psi.util.PsiTreeUtil.findChildrenOfType(file, BmlInjectionHost::class.java)
+                .single { it.node.elementType == BmlElementTypes.SCRIPT_SERVER_HOST }
+            val injected = requireNotNull(com.intellij.lang.injection.InjectedLanguageManager.getInstance(project).getInjectedPsiFiles(host))
+                .single().first
+            val target = requireNotNull(BmlFragmentResolver.resolve(host, injected.text, injected.text.indexOf(name) + 1))
+            assertEquals("$name.kt", target.containingFile.name)
+            assertTrue("navigation must open attached Kotlin source: ${target.containingFile.virtualFile.url}",
+                target.containingFile.virtualFile.url.startsWith(sources.url))
+        }
     }
 
     fun testAttachedSourcesDoNotImplicitlyImportAnyExports() {
@@ -309,6 +370,13 @@ class BmlLibraryResolutionTest : CodeInsightFixtureTestCase<EmptyModuleFixtureBu
         scratch += copy
         original.copyTo(copy, overwrite = true)
         return jarRoot(copy)
+    }
+
+    private fun publicComponents(binary: VirtualFile): List<BmlLibraryComponent> {
+        val metadata = requireNotNull(binary.findFileByRelativePath(BmlLibraryArtifacts.MANIFEST_PATH))
+        return BmlLibraryArtifacts.decode(VfsUtilCore.loadText(metadata)).components.filter { it.exported }.also {
+            assertEquals("current Design Library public exports", 46, it.size)
+        }
     }
 
     private fun attach(name: String, binary: VirtualFile, sources: VirtualFile? = null, owner: Module = module): Library {

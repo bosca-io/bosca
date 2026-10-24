@@ -10,7 +10,7 @@ Run from the workspace root:
 ./gradlew :bml:bml-ide:compileKotlin   # compile against the IDE SDK
 ./gradlew :bml:bml-ide:buildPlugin     # package bml/bml-ide/build/distributions/bml-ide-*.zip
 ./gradlew :bml:bml-ide:runIde          # launch a sandbox IDE with the plugin loaded
-./gradlew :bml:bml-ide:verifyPlugin    # plugin-structure / compatibility checks
+./gradlew :bml:bml-ide:verifyPluginStructure # packaged descriptor and layout checks
 ```
 
 Targets **IntelliJ IDEA Ultimate 2026.1.2** (`useInstaller = false` resolves the published Maven
@@ -53,10 +53,16 @@ toolchain. Ultimate supplies the JavaScript/TypeScript support used for client-s
 
 Run `./gradlew :bml:bml-ide:test` from the workspace root for the editor tests. Library acceptance
 attaches the actual Design Library binary and sources artifacts to an isolated IDE project, with
-no producer checkout. It checks component references, metadata completion, global import changes,
-source/version mismatches, module isolation, and embedded Kotlin navigation to attached view-model
-source. `buildPlugin` packages the shared BML parser and manifest/import contracts without their
+no producer checkout or compiled consumer. All 46 public components navigate through bare and
+optional aliased opening, closing and self-closing tags to their original attached BML declarations.
+Every public prop completes in literal and bound form even without source attachments. Kotlin
+navigation reaches attached `NavigationItem`, `ChartPoint` and `ChartTable` source. The suite also
+checks global import changes, source/version mismatches and module isolation. `buildPlugin`
+packages the shared BML parser and manifest/import contracts without their
 transitive server dependencies or another Kotlin compiler.
+
+These fixtures use the configured 2026.1.2 SDK. Live operation in another installed IDE and
+compatibility with other platform versions require separate qualification.
 
 ## Follow-on stages
 
