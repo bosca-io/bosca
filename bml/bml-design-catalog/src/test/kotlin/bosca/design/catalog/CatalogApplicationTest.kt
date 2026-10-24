@@ -45,6 +45,13 @@ class CatalogApplicationTest {
     }
 
     @Test
+    fun `Firefox trees retain native keyboard navigation`() {
+        for (development in listOf(false, true)) withServer(development) { base, _ ->
+            runBrowser(base, development, "--firefox-tree", 60, System.getProperty("catalog.firefoxBrowser"))
+        }
+    }
+
+    @Test
     fun `surface keyboard scrolling completes before retained layout checks`() {
         for (development in listOf(false, true)) withServer(development) { base, _ ->
             runBrowser(base, development, "--surfaces", 60)
@@ -315,14 +322,21 @@ class CatalogApplicationTest {
         }
     }
 
-    private fun runBrowser(base: String, development: Boolean, argument: String, timeoutSeconds: Long) {
+    private fun runBrowser(base: String, development: Boolean, argument: String, timeoutSeconds: Long,
+                           script: String = System.getProperty("catalog.browser")) {
         val log = File.createTempFile("catalog-browser-", ".log")
-        val process = ProcessBuilder(System.getProperty("catalog.node"), System.getProperty("catalog.browser"), base,
+        val process = ProcessBuilder(System.getProperty("catalog.node"), script, base,
             if (development) "development" else "production", argument).redirectErrorStream(true).redirectOutput(log).start()
         try {
             assertTrue(process.waitFor(timeoutSeconds, TimeUnit.SECONDS), "Browser timed out: ${log.readText()}")
             assertEquals(0, process.exitValue(), log.readText())
-        } finally { process.destroyForcibly(); log.delete() }
+        } finally {
+            if (process.isAlive) {
+                process.descendants().use { children -> children.toList().asReversed().forEach { it.destroyForcibly() } }
+                process.destroyForcibly()
+            }
+            log.delete()
+        }
     }
 
     private fun withServer(development: Boolean, test: (String, HttpClient) -> Unit) {

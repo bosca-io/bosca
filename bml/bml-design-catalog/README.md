@@ -346,6 +346,24 @@ Chrome defaults to the installed Google Chrome app on macOS or `google-chrome` o
 `BML_DESIGN_CHROME_BINARY` for another executable. Desktop/phone screenshots are written under
 `build/reports/browser/`.
 
+An optional Firefox qualification uses the installed Firefox app on macOS or `firefox` on Linux.
+Set `BML_DESIGN_FIREFOX_BINARY` for another executable. It runs the packaged catalog in production
+and development with fresh headless profiles, including a profile with application scripts disabled.
+The ordinary test and Chrome browser tasks do not require Firefox. Run from the workspace root:
+
+```sh
+./gradlew :bml:bml-design-catalog:firefoxTest
+```
+
+This task always executes against the installed browser. The thirteen-level tree fixture checks
+real browser keyboard input, two-step disclosure, focus, disabled rows, native links, declared branch
+ownership, sibling metadata and desktop/phone geometry in both palettes. Enhanced pages receive
+full-document axe scans with their original incomplete findings retained. The script-disabled profile
+uses synchronous DOM, keyboard, font and layout checks; Firefox does not run asynchronous axe in that
+mode. Reports, browser logs and screenshots use the
+`catalog-<mode>-firefox-tree` prefix in `build/reports/browser/`. These Gecko behavior and DOM checks
+complement the Chrome accessibility snapshots; spoken screen-reader qualification remains separate.
+
 On failure the browser driver saves `catalog-<mode>-driver-failure-<timestamp>-<sequence>.json`
 before cleanup. It retains the original error, recent protocol operations and timings, owned Chrome
 process metadata and browser/renderer health probes. A blocked renderer also gets a bounded native

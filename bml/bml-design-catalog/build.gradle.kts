@@ -40,14 +40,31 @@ tasks.withType<Test>().configureEach {
     systemProperty("catalog.java", javaToolchains.launcherFor(java.toolchain).get().executablePath.asFile.absolutePath)
     systemProperty("catalog.node", bml.nodeExecutable.get())
     systemProperty("catalog.browser", layout.projectDirectory.file("src/test/browser/catalog.mjs").asFile.absolutePath)
+    systemProperty("catalog.firefoxBrowser", layout.projectDirectory.file("src/test/browser/firefox-tree.mjs").asFile.absolutePath)
 }
+
+val firefoxTreeTest = "bosca.design.catalog.CatalogApplicationTest.Firefox trees retain native keyboard navigation"
+tasks.test { filter { excludeTestsMatching(firefoxTreeTest) } }
 
 tasks.register<Test>("browserTest") {
     group = "verification"
     description = "Verify the packaged catalog over HTTP and in an isolated browser."
     testClassesDirs = sourceSets.test.get().output.classesDirs
     classpath = sourceSets.test.get().runtimeClasspath
-    filter { includeTestsMatching("bosca.design.catalog.CatalogApplicationTest") }
+    filter {
+        includeTestsMatching("bosca.design.catalog.CatalogApplicationTest")
+        excludeTestsMatching(firefoxTreeTest)
+    }
+}
+
+tasks.register<Test>("firefoxTest") {
+    group = "verification"
+    description = "Qualify tree behavior in an installed Firefox using an isolated headless profile."
+    testClassesDirs = sourceSets.test.get().output.classesDirs
+    classpath = sourceSets.test.get().runtimeClasspath
+    filter { includeTestsMatching(firefoxTreeTest) }
+    outputs.upToDateWhen { false }
+    outputs.cacheIf("Qualifies the locally installed Firefox version") { false }
 }
 
 tasks.register<Test>("accessibilityTest") {
