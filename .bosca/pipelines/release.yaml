@@ -80,6 +80,9 @@ jobs:
         coordinate: "io.bosca:bml:${{ version }}"
       - type: maven
         namespace: bosca-maven
+        coordinate: "io.bosca:bml-design:${{ version }}"
+      - type: maven
+        namespace: bosca-maven
         coordinate: "io.bosca:bml-compiler:${{ version }}"
       - type: maven
         namespace: bosca-maven
@@ -96,6 +99,9 @@ jobs:
       - type: maven
         namespace: bosca-maven
         coordinate: "io.bosca.bml:io.bosca.bml.gradle.plugin:${{ version }}"
+      - type: maven
+        namespace: bosca-maven
+        coordinate: "io.bosca.bml.host:io.bosca.bml.host.gradle.plugin:${{ version }}"
     steps:
       - name: Checkout
         uses: checkout

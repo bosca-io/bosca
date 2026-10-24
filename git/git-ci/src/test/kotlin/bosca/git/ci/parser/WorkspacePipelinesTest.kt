@@ -46,14 +46,23 @@ class WorkspacePipelinesTest {
         assertEquals("always()", notify.condition)
         val artifacts = definition.jobs.getValue("publish-jvm").artifacts
         assertTrue(artifacts.all { it.type == "maven" && it.namespace == "bosca-maven" })
-        val modules = listOf("core", "bml-annotations", "core-bml", "bml", "bml-compiler", "bml-server", "bml-message-host", "bml-message-client", "bml-gradle")
+        val modules = listOf("core", "bml-annotations", "core-bml", "bml", "bml-design", "bml-compiler", "bml-server", "bml-message-host", "bml-message-client", "bml-gradle")
+        val pluginIds = listOf("io.bosca.bml", "io.bosca.bml.host")
+        val coordinates = artifacts.map { it.coordinate }
+        val expectedCoordinates = modules.map { "io.bosca:$it" } + pluginIds.map { "$it:$it.gradle.plugin" }
         assertEquals(
-            modules.map { "io.bosca:$it:\${{ version }}" }.toSet() + "io.bosca.bml:io.bosca.bml.gradle.plugin:\${{ version }}",
-            artifacts.map { it.coordinate }.toSet(),
+            expectedCoordinates.map { "$it:\${{ version }}" }.toSet(),
+            coordinates.toSet(),
         )
+        assertEquals(coordinates.size, coordinates.toSet().size, "each publication is declared once")
         assertFalse(definition.jobs.values.flatMap { it.steps }.any { it.uses == "git-push" || it.uses == "git-update-workspace-refs" })
 
         val expressions = PipelineExpressionParser()
+        for (tag in listOf("7.4.0", "v7.4.0")) {
+            val context = ExpressionContext(ref = "refs/tags/$tag", event = "tag")
+            assertEquals(expectedCoordinates.map { "$it:7.4.0" }.toSet(),
+                artifacts.map { expressions.interpolate(it.coordinate, context) }.toSet())
+        }
         val success = assertNotNull(notify.steps.first { it.name == "Notify Success" }.condition)
         val failure = assertNotNull(notify.steps.first { it.name == "Notify Failure" }.condition)
         val results = notify.needs.associate { "needs.$it.result" to "success" }
