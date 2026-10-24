@@ -7,6 +7,8 @@ import bosca.bml.library.BmlLibraryProp
 import bosca.bml.library.BmlLibrarySource
 import bosca.bml.project.ContentDigest
 import com.intellij.openapi.application.WriteAction
+import com.intellij.openapi.fileEditor.FileDocumentManager
+import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.module.Module
 import com.intellij.openapi.module.ModuleManager
 import com.intellij.openapi.roots.CompilerModuleExtension
@@ -122,6 +124,58 @@ class BmlLibraryResolutionTest : CodeInsightFixtureTestCase<EmptyModuleFixtureBu
                 }
             }
         }
+    }
+
+    fun testGoToDeclarationActionOpensAttachedComponentSources() {
+        val binary = artifact("binary")
+        val sources = artifact("sources")
+        attach("design", binary, sources)
+        myFixture.addFileToProject("imports.bml", """<import library="io.bosca:bml-design"/>""")
+        val button = requireNotNull(sources.findFileByRelativePath("bml/components/button.bml"))
+        val declaration = VfsUtilCore.loadText(button).indexOf("\"button\"")
+        assertTrue(declaration >= 0)
+        listOf("button", "ui:button").forEach { tag ->
+            val caretTag = tag.take(1) + "<caret>" + tag.drop(1)
+            listOf("<$caretTag/>", "<$caretTag>Save</$tag>", "<$tag>Save</$caretTag>").forEach { body ->
+                page("""<import library="io.bosca:bml-design" as="ui"/><page route="/">$body</page>""")
+                assertGoToDeclaration(button, declaration)
+            }
+        }
+    }
+
+    fun testGoToDeclarationActionContinuesFromAttachedComponentToKotlinSource() {
+        val binary = artifact("binary")
+        val sources = artifact("sources")
+        attach("design", binary, sources)
+        attach("stdlib", jarRoot(File(com.intellij.util.PathUtil.getJarPathForClass(kotlin.Unit::class.java))))
+        myFixture.addFileToProject("Anchor.kt", "package fixture\nclass Anchor")
+        val chart = requireNotNull(sources.findFileByRelativePath("bml/components/chart.bml"))
+        val model = requireNotNull(sources.findFileByRelativePath("bosca/design/model/ChartTable.kt"))
+        val file = page("""<import library="io.bosca:bml-design"/><page route="/"><chart/></page>""")
+        myFixture.editor.caretModel.moveToOffset(file.text.indexOf("<chart") + 2)
+        assertGoToDeclaration(chart, VfsUtilCore.loadText(chart).indexOf("\"chart\""))
+        myFixture.configureFromExistingVirtualFile(chart)
+        myFixture.editor.caretModel.moveToOffset(myFixture.file.text.indexOf("ChartTable.from") + "ChartTable.".length + 1)
+        val declaration = Regex("fun\\s+(from)\\b").find(VfsUtilCore.loadText(model))
+        assertGoToDeclaration(model, requireNotNull(declaration?.groups?.get(1)).range.first)
+    }
+
+    fun testAttachedSourceKotlinActionDoesNotBorrowUnrelatedModuleContext() {
+        val sources = artifact("sources")
+        attach("design", artifact("binary"), sources)
+        attach("stdlib", jarRoot(File(com.intellij.util.PathUtil.getJarPathForClass(kotlin.Unit::class.java))))
+        val unrelated = otherModule()
+        val root = ModuleRootManager.getInstance(unrelated).sourceRoots.single()
+        WriteAction.run<RuntimeException> {
+            com.intellij.openapi.vfs.VfsUtil.saveText(root.createChildData(this, "Shadow.kt"),
+                "package bosca.design.model\nclass ChartTable { companion object { fun from(value: String) = value } }")
+        }
+        val chart = requireNotNull(sources.findFileByRelativePath("bml/components/chart.bml"))
+        val model = requireNotNull(sources.findFileByRelativePath("bosca/design/model/ChartTable.kt"))
+        myFixture.configureFromExistingVirtualFile(chart)
+        myFixture.editor.caretModel.moveToOffset(myFixture.file.text.indexOf("ChartTable.from") + "ChartTable.".length + 1)
+        val declaration = Regex("fun\\s+(from)\\b").find(VfsUtilCore.loadText(model))
+        assertGoToDeclaration(model, requireNotNull(declaration?.groups?.get(1)).range.first)
     }
 
     fun testRealDesignTagAndPropCompletionUsesMetadata() {
@@ -322,6 +376,9 @@ class BmlLibraryResolutionTest : CodeInsightFixtureTestCase<EmptyModuleFixtureBu
         assertEmpty(BmlComponentDecls.scope(file).problems)
         val target = requireNotNull(BmlComponentDecls.find(file, "project-tag"))
         assertEquals(root.url + "/project-tag.bml", target.containingFile.virtualFile.url)
+        myFixture.editor.caretModel.moveToOffset(file.text.indexOf("<project-tag") + 2)
+        assertGoToDeclaration(target.containingFile.virtualFile,
+            VfsUtilCore.loadText(target.containingFile.virtualFile).indexOf("\"project-tag\""))
     }
 
     fun testGlobalImportValidationExplainsUnboundPageTags() {
@@ -354,6 +411,19 @@ class BmlLibraryResolutionTest : CodeInsightFixtureTestCase<EmptyModuleFixtureBu
     }
 
     private fun page(markup: String): PsiFile = myFixture.configureByText("home.bml", markup)
+
+    private fun assertGoToDeclaration(source: VirtualFile, offset: Int) {
+        val before = requireNotNull(FileEditorManager.getInstance(project).selectedTextEditor)
+        assertFalse("navigation must start outside the expected target",
+            source.url == FileDocumentManager.getInstance().getFile(before.document)?.url)
+        myFixture.performEditorAction("GotoDeclaration")
+        val editor = requireNotNull(FileEditorManager.getInstance(project).selectedTextEditor) {
+            "Go to Declaration must open ${source.url}"
+        }
+        assertEquals("original attached source", source.url,
+            FileDocumentManager.getInstance().getFile(editor.document)?.url)
+        assertEquals("source declaration caret", offset, editor.caretModel.offset)
+    }
 
     private fun replace(file: PsiFile, text: String) {
         WriteAction.run<RuntimeException> {

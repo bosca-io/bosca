@@ -58,7 +58,10 @@ no producer checkout or compiled consumer. All 46 public components navigate thr
 optional aliased opening, closing and self-closing tags to their original attached BML declarations.
 Every public prop completes in literal and bound form even without source attachments. Kotlin
 navigation reaches attached `NavigationItem`, `ChartPoint` and `ChartTable` source. The suite also
-checks global import changes, source/version mismatches and module isolation. `buildPlugin`
+invokes the registered Go to Declaration action, checking the selected original BML/Kotlin file
+and declaration offset. Kotlin inside an attached BML source uses that attachment's Kotlin context,
+including in a BML-only consumer with a conflicting type in an unrelated module. Other cases
+check global import changes, source/version mismatches and module isolation. `buildPlugin`
 packages the shared BML parser and manifest/import contracts without their
 transitive server dependencies or another Kotlin compiler.
 
