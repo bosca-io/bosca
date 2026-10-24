@@ -119,8 +119,9 @@ complete local composition. Component-index and example page introductions use t
 The `/trees` examples supply local component links and a separately loaded folder in each palette.
 The application owns paths, selected files, loading, rejection and toast sequences. Local trees keep
 stable keys for disclosure, scroll and focus through surrounding updates; replacing files changes
-that key. Server-loaded directories preserve their native buttons so Right Arrow can enter a new
-child after loading. Moving focus elsewhere during loading leaves it there. Native disabled folder
+that key. Right Arrow opens a closed directory without moving focus. Server-loaded directories
+preserve their native buttons; another Right enters the first child after loading. Moving focus
+elsewhere during loading leaves it there. Native disabled folder
 buttons are skipped by roving navigation. Without scripts, every rendered file link retains its native
 Tab stop. Static cases cover empty trees, unavailable directories, truncated names and wrapped/deep
 labels. The tree and tree-item references include the complete composition source. Declarative tree
@@ -132,7 +133,8 @@ actual browser version and accessibility roles, names, levels, selection and exp
 exercises keyboard traversal, collapsed descendants, disabled folders, native destinations and
 script-disabled links at 1440px and 390px. Full-rule tree accessibility reports retain axe's warnings
 about levels above six. Browser metadata checks do not establish spoken screen-reader compatibility;
-assistive-technology qualification and review of the flat-row hierarchy remain release work.
+spoken assistive-technology qualification remains release work. Enhanced rows expose branch group
+ownership and sibling metadata while retaining their server-rendered DOM positions.
 
 The `/views` composition uses native query and category values to filter deterministic local
 examples. The application owns accepted results, rejected drafts, selected views and uniquely linked

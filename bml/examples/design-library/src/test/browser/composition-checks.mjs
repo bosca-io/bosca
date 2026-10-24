@@ -53,10 +53,10 @@ export async function checkComposition({ call, evaluate, until, base, mode, arti
   await key('ArrowRight');assert.ok(await focused('src/lib/helper.ts'));
   await key('ArrowLeft');assert.ok(await focused('src/lib'));
   await key('ArrowLeft');assert.ok(await evaluate(`${row('src/lib/helper.ts')}.hidden&&${row('src/lib')}.getAttribute('aria-expanded')==='false'`));
-  await key('ArrowRight');assert.ok(await focused('src/lib/helper.ts'));
+  await key('ArrowRight');assert.ok(await focused('src/lib'));await key('ArrowRight');assert.ok(await focused('src/lib/helper.ts'));
   await key('End');await key('ArrowDown');assert.ok(await focused('long.txt'));
   await key('Home');await key('ArrowUp');assert.ok(await focused('src'));
-  await key('d');assert.ok(await focused('docs'));await key('ArrowRight');assert.ok(await focused('docs/guide.md'));
+  await key('d');assert.ok(await focused('docs'));await key('ArrowRight');assert.ok(await focused('docs'));await key('ArrowRight');assert.ok(await focused('docs/guide.md'));
   await key('ArrowLeft');await key('ArrowLeft');assert.ok(await evaluate(`${row('docs/guide.md')}.hidden`));
   await key('Home');await key('l');assert.ok(await focused('src/lib'));await key('l');assert.ok(await focused('LICENSE'));
   await key('Home');await key('ArrowRight');await key('ArrowLeft');
@@ -73,8 +73,11 @@ export async function checkComposition({ call, evaluate, until, base, mode, arti
   assert.ok(await evaluate(`!document.querySelector('[data-local-tree=purple] [data-path="src/lib/helper.ts"]').hidden`),'Separate tree instances retain independent state');
   await evaluate(`window.remoteDirectory=document.querySelector('[data-remote-directory=light]');window.remoteDirectory.focus()`);
   await key('ArrowRight');
-  await until(`document.activeElement===document.querySelector('[data-server-tree=light] [data-path="remote/loaded.txt"] a')`);
-  assert.ok(await evaluate(`window.remoteDirectory===document.querySelector('[data-remote-directory=light]')`),'Async child focus follows the preserved native disclosure control');
+  await until(`document.querySelector('[data-server-tree=light] [data-path="remote/loaded.txt"] a')&&window.remoteDirectory.closest('[role=treeitem]').getAttribute('aria-expanded')==='true'`);
+  assert.ok(await evaluate(`document.activeElement===window.remoteDirectory`),'Loading leaves focus on the preserved directory');
+  await key('ArrowRight');
+  assert.ok(await evaluate(`document.activeElement===document.querySelector('[data-server-tree=light] [data-path="remote/loaded.txt"] a')`));
+  assert.ok(await evaluate(`window.remoteDirectory===document.querySelector('[data-remote-directory=light]')`),'The preserved native disclosure control survives asynchronous loading');
   await key('ArrowLeft');await key('ArrowLeft');
   await until(`!document.querySelector('[data-server-tree=light] [data-path="remote/loaded.txt"]')`);
   assert.ok(await evaluate(`document.activeElement===window.remoteDirectory&&window.remoteDirectory.closest('[role=treeitem]').getAttribute('aria-expanded')==='false'`));

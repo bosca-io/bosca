@@ -164,7 +164,8 @@ publication.
 The `/composition` page combines local and server-loaded trees, plain comment forms and timestamps.
 Its own state supplies directory actions, delayed submissions, permission changes, rejected drafts
 and controlled values. Two themes exercise native links, initial local disclosure, roving focus,
-type-ahead, focus into asynchronously added children and preservation across server updates.
+type-ahead, focus retained during asynchronous loading, a subsequent Right Arrow into loaded children,
+and preservation across server updates.
 An action-response check changes the tree offset before its native scroll event, verifying that
 the immediate position survives replacement as well as previously settled scrolling.
 Comment checks cover native names/values, blank/readonly/disabled/permission states, sizing,

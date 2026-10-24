@@ -155,7 +155,9 @@ for(const width of [1920,1440,1024,390]) {
  await key('ArrowLeft');
  assert.equal(await ev(`document.activeElement.closest('[role=treeitem]').getAttribute('aria-expanded')`),'false');
  await key('ArrowRight');
- assert.ok(await ev(`document.activeElement.closest('[role=treeitem]').dataset.path.includes('/')`),'Right opens a local directory and enters a child');
+ assert.equal(await ev(`document.activeElement.closest('[role=treeitem]').getAttribute('aria-expanded')`),'true','Right opens the directory while keeping focus');
+ await key('ArrowRight');
+ assert.ok(await ev(`document.activeElement.closest('[role=treeitem]').dataset.path.includes('/')`),'A second Right enters the open directory');
  await key('End');
  const destination=await ev(`document.activeElement.getAttribute('href')`);
  assert.ok(destination?.startsWith('#'));

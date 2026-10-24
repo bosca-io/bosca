@@ -10,6 +10,7 @@
   <div
     :class='"ui-tree-item depth-" + depth.coerceIn(0, 12) + if (wrap) " wrap" else ""'
     role="treeitem"
+    :aria-label="label"
     :aria-level="depth.coerceAtLeast(0) + 1"
     :aria-expanded='if (directory) expanded.toString() else null'
     :aria-selected="selected.toString()"

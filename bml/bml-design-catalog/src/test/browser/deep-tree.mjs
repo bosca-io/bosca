@@ -46,13 +46,28 @@ export async function checkDeepTrees({navigate,evaluate,until,call,artifacts,mod
           assert.equal(item.properties.level,index+1,JSON.stringify(item));
           assert.equal(item.properties.selected,index===12);
           if(index<12) {
-            assert.equal(item.name,`Collapse Level ${index+1}`);
+            assert.equal(item.name,`Level ${index+1}`);
             assert.equal(item.properties.expanded,true);
           } else {
             assert.equal(item.name,'veryLongComponentIdentifierThatRemainsReadableWithoutSpaces.bml');
             assert.equal(item.properties.expanded,undefined,'A file is not an expandable parent');
           }
         }
+        const handle=await call('Runtime.evaluate',{expression:row(id,12)});
+        try {
+          const {nodes}=await call('Accessibility.getPartialAXTree',{objectId:handle.result.objectId,fetchRelatives:true});
+          result.hierarchy=nodes.map(node=>({id:node.nodeId,parent:node.parentId,role:node.role?.value,name:node.name?.value,
+            level:node.properties?.find(property=>property.name==='level')?.value.value}));
+          const byId=new Map(result.hierarchy.map(node=>[node.id,node]));let child=result.hierarchy[0];
+          for(let level=13;level>1;level--) {
+            const group=byId.get(child.parent);assert.equal(group?.role,'group',JSON.stringify(result.hierarchy));
+            child=byId.get(group.parent);assert.equal(child?.role,'treeitem');assert.equal(child.level,level-1);
+          }
+          assert.equal(byId.get(child.parent)?.role,'tree');
+        } finally {await call('Runtime.releaseObject',{objectId:handle.result.objectId});}
+        result.siblings=await evaluate(`[...${root(id)}.querySelectorAll('[role=treeitem]')].map(row=>({position:row.ariaPosInSet,size:row.ariaSetSize,parent:row.parentElement.role}))`);
+        assert.deepEqual(result.siblings.map(item=>[item.position,item.size]),[['1','3'],...Array.from({length:12},()=>['1','1']),['2','3'],['3','3']]);
+        assert.ok(result.siblings.every(item=>item.parent==='tree'),'Native rows stay in their server-rendered DOM positions');
         result.file=await ax(target(id,12));
         assert.equal(result.file.role,'link');assert.equal(result.file.name,result.levels[12].name);
         result.disabled=await ax(target(id,13));
@@ -66,11 +81,11 @@ export async function checkDeepTrees({navigate,evaluate,until,call,artifacts,mod
         await key('ArrowLeft');await focused(id,11);
         assert.equal(await evaluate(`${row(id,12)}.hidden`),true);
         result.closed=await ax(row(id,11));
-        assert.equal(result.closed.properties.expanded,false);assert.equal(result.closed.name,'Expand Level 12');
+        assert.equal(result.closed.properties.expanded,false);assert.equal(result.closed.name,'Level 12');
         assert.equal((await ax(row(id,12))).ignored,true,'Collapsed descendants leave the accessibility tree');
         await key('ArrowLeft');await focused(id,10);
         await key('ArrowRight');await focused(id,11);
-        await key('Enter');await focused(id,11);
+        await key('ArrowRight');await focused(id,11);
         assert.equal(await evaluate(`${row(id,12)}.hidden`),false);
         await key('ArrowRight');await focused(id,12);
         await key('ArrowDown');await focused(id,14);

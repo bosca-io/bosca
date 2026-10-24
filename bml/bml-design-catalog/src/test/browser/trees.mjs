@@ -10,6 +10,15 @@ export async function checkTrees({navigate,evaluate,until:poll,call,artifacts,mo
   const node=(part,id='dark')=>`document.querySelector('[data-tree-${part}=${id}]')`;
   const row=(path,id='dark',kind='local')=>`${node(kind,id)}.querySelector('[data-path=${JSON.stringify(path)}]')`;
   const focused=path=>truth(`document.activeElement===${row(path)}.querySelector('.ui-tree-row')`);
+  const checkLoadedBranch=async()=>{
+    const handle=await call('Runtime.evaluate',{expression:row('remote/button.bml','dark','server')});
+    try {
+      const {nodes}=await call('Accessibility.getPartialAXTree',{objectId:handle.result.objectId,fetchRelatives:true});
+      const file=nodes[0],group=nodes.find(node=>node.nodeId===file.parentId),directory=nodes.find(node=>node.nodeId===group?.parentId);
+      assert.equal(group?.role?.value,'group');assert.equal(directory?.role?.value,'treeitem');
+      assert.equal(directory?.name?.value,'Examples','Loaded children belong to their named directory');
+    } finally {await call('Runtime.releaseObject',{objectId:handle.result.objectId});}
+  };
   const key=async value=>{for(const type of ['keyDown','keyUp'])await call('Input.dispatchKeyEvent',{type,key:value,windowsVirtualKeyCode:{Enter:13,Tab:9,Home:36,End:35,ArrowDown:40,ArrowUp:38,ArrowLeft:37,ArrowRight:39}[value],...(type==='keyDown'&&value==='Enter'?{text:'\r'}:{})});};
   const action=async(name,done)=>{await evaluate(`window.treeAction=${node(name)};window.treeAction.click()`);await until(`!window.treeAction.isConnected&&(${done})`);};
   const listeners=async expression=>{
@@ -36,18 +45,19 @@ export async function checkTrees({navigate,evaluate,until:poll,call,artifacts,mo
   await key('ArrowRight');assert.ok(await focused('src/components/button.bml'));
   await key('ArrowLeft');assert.ok(await focused('src/components'));
   await key('ArrowLeft');assert.ok(await truth(`${row('src/components/button.bml')}.hidden&&${row('src/components')}.getAttribute('aria-expanded')==='false'`));
-  await key('ArrowRight');assert.ok(await focused('src/components/button.bml'));
+  await key('ArrowRight');assert.ok(await focused('src/components'));await key('ArrowRight');assert.ok(await focused('src/components/button.bml'));
   await key('Home');await key('ArrowUp');assert.ok(await focused('src'));
-  await key('d');assert.ok(await focused('docs'));await key('ArrowRight');assert.ok(await focused('docs/guide.md'));
+  await key('d');assert.ok(await focused('docs'));await key('ArrowRight');assert.ok(await focused('docs'));await key('ArrowRight');assert.ok(await focused('docs/guide.md'));
   await key('ArrowLeft');await key('ArrowLeft');assert.ok(await truth(`${row('docs/guide.md')}.hidden`));
   await key('Home');await key('s');assert.ok(await focused('src/components/switch.bml'));
   await key('s');assert.ok(await focused('src/components/select.bml'));
   await key('End');await key('ArrowDown');assert.ok(await focused('long-example.bml'));
-  await evaluate(`window.localFiles=${node('local')};window.localFiles.scrollTop=window.localFiles.scrollHeight;window.localFileScroll=window.localFiles.scrollTop;${node('example')}.querySelector('[data-example-states]').open=true`);
+  await evaluate(`window.localFiles=${node('local')};window.localBranch=${row('src')}.querySelector('[data-tree-children]');window.localFiles.scrollTop=window.localFiles.scrollHeight;window.localFileScroll=window.localFiles.scrollTop;${node('example')}.querySelector('[data-example-states]').open=true`);
   assert.ok(await truth('window.localFileScroll>0'));
   await action('refresh',`${node('toast')}.matches(':popover-open')`);
   const retained=await evaluate(`({root:${node('local')}===window.localFiles,scroll:${node('local')}.scrollTop,previousScroll:window.localFileScroll,focused:document.activeElement===${row('long-example.bml')}.querySelector('a'),localClosed:${row('docs/guide.md')}.hidden,otherClosed:${row('docs/guide.md','light')}.hidden,disclosure:${node('example')}.querySelector('details').open})`);
   assert.ok(retained.root&&retained.scroll===retained.previousScroll&&retained.focused&&retained.localClosed&&retained.otherClosed&&retained.disclosure,JSON.stringify(retained));
+  assert.ok(await truth(`${row('src')}.querySelector('[data-tree-children]')===window.localBranch`),'Retained disclosure keeps its branch group');
   await evaluate(`${node('toast')}.querySelector('[data-bml-ref=dismiss]').click()`);
   await action('reject',`${node('reject')}.checked`);
   await evaluate(`window.remoteDirectory=${node('directory')};window.remoteDirectory.focus()`);await key('ArrowRight');
@@ -58,14 +68,19 @@ export async function checkTrees({navigate,evaluate,until:poll,call,artifacts,mo
   await until(`typeof window.releaseTreeLoad==='function'&&${row('remote','dark','server')}.hasAttribute('data-bml-action-pending')`);
   assert.ok(await truth(`(()=>{const button=${node('directory')},box=button.getBoundingClientRect();return button.closest('[role=treeitem]').getAttribute('aria-busy')==='true'&&box.height===window.directorySize.height&&box.width===window.directorySize.width;})()`));
   await evaluate('window.releaseTreeLoad()');
-  await until(`${row('remote/button.bml','dark','server')}&&document.activeElement===${row('remote/button.bml','dark','server')}.querySelector('a')`);
+  await until(`${row('remote/button.bml','dark','server')}&&!${row('remote','dark','server')}.hasAttribute('data-bml-action-pending')`);
+  assert.ok(await truth(`document.activeElement===${node('directory')}`),'Loading children leaves focus on their directory');
+  await checkLoadedBranch();
+  await key('ArrowRight');assert.ok(await truth(`document.activeElement===${row('remote/button.bml','dark','server')}.querySelector('a')`));
   assert.ok(await truth(`${node('directory')}===window.remoteDirectory&&${node('directory')}.getAttribute('aria-label')==='Collapse Examples'&&!${row('remote/button.bml','light','server')}`));
   await key('ArrowLeft');await key('ArrowLeft');await until(`!${row('remote/button.bml','dark','server')}`);
+  assert.ok(await truth(`!${row('remote','dark','server')}.querySelector('[data-tree-children]')`),'Removing server children removes their ownership group');
   await evaluate(`(()=>{const original=window.fetch.bind(window);window.fetch=async(...args)=>{if(String(args[0]).includes('/_bml/action')){window.fetch=original;await new Promise(resolve=>{window.releaseOtherTreeLoad=resolve;});}return original(...args);};${node('directory')}.focus()})()`);await key('ArrowRight');
   await until(`typeof window.releaseOtherTreeLoad==='function'`);
   await evaluate(`document.querySelector('[data-catalog-light]').focus();window.releaseOtherTreeLoad()`);
   await until(`${row('remote/button.bml','dark','server')}&&!${row('remote','dark','server')}.hasAttribute('data-bml-action-pending')`);
   assert.ok(await truth(`document.activeElement===document.querySelector('[data-catalog-light]')`),'Loading does not take focus back after the viewer leaves the tree');
+  await checkLoadedBranch();
   await action('replace',`${row('src/components/input.bml')}.getAttribute('aria-selected')==='true'`);
   assert.ok(await truth(`${node('local')}!==window.localFiles&&!window.localFiles.isConnected&&${node('directory')}===window.remoteDirectory&&${row('remote/button.bml','dark','server')}&&${row('src/components/button.bml','light')}.getAttribute('aria-selected')==='true'`));
   await evaluate(`window.removedTrees=[${node('local')},${node('server')}];window.removedDirectory=${row('src')}`);

@@ -5,7 +5,7 @@
     <div class="catalog-stack" :data-tree-example="files.id">
       <if files.visible>
         <div class="catalog-stack" data-tree-local-block>
-          <p class="example-note">Local disclosure keeps all file links in the document. Use Right to open a folder and enter its first child.</p>
+          <p class="example-note">Local disclosure keeps all file links in the document. Use Right to open a folder, then Right again to enter its first child.</p>
           <div class="catalog-tree-frame">
             <tree label="Local example files" heading="Component files" local
                   :preserveKey='"catalog-local-files-" + files.id + "-" + files.revision' :data-tree-local="files.id">

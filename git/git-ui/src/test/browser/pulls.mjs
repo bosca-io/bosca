@@ -625,6 +625,8 @@ for (const width of [1920, 1440, 1024, 390]) {
   await click('.diff-sidebar button[aria-label="Collapse Test"]');
   await until(`document.querySelector('.diff-sidebar [data-path="Test/.gitkeep"]').hidden`);
   await pressKey("ArrowRight");
+  assert.equal(await ev(`document.activeElement.closest('[data-path]').dataset.path`),"Test","Opening keeps focus on the directory");
+  await pressKey("ArrowRight");
   await until(`document.activeElement === document.querySelector('.diff-sidebar [data-path="Test/.gitkeep"] a')`);
   assert.deepEqual(await ev(`({label:document.activeElement.getAttribute('aria-label'),
     title:document.activeElement.title,href:document.activeElement.getAttribute('href'),

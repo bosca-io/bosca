@@ -1,11 +1,9 @@
 import type { ClientContext, IslandUpdate } from "@bosca/bml";
 
-// Native controls may survive a server tree replacement while their children are loaded.
-const enterChild = new WeakSet<HTMLElement>();
-
 /** Keyboard behavior for flat path-based trees; callers own links and asynchronous children. */
 export function keyboardTree(ctx: ClientContext) {
   const tree = ctx.root.querySelector<HTMLElement>('[role="tree"]');
+  if (!tree) return;
   const collapsed = new Set<string>();
   const serverExpanded = new Map<string, boolean>();
   let focusedPath = "";
@@ -18,6 +16,41 @@ export function keyboardTree(ctx: ClientContext) {
   const rows = () => allRows().filter(row => !row.hidden && !control(row)?.matches(":disabled"));
   const rowOf = (target: EventTarget | null) => target instanceof Element
     ? target.closest<HTMLElement>('[role="treeitem"]') : null;
+  const syncHierarchy = (all: HTMLElement[]) => {
+    const paths = new Map(all.map(row => [row.dataset.path, row]));
+    const branches = new Map<HTMLElement, HTMLElement[]>();
+    // Keep server-owned rows and preserved native controls in place across BML replacements.
+    // Owned groups express the same path hierarchy to assistive technology without moving DOM.
+    for (const row of all) row.querySelector(":scope > [data-tree-children]")?.removeAttribute("aria-owns");
+    for (const row of all) {
+      if (!row.id) row.id = `tree-item-${crypto.randomUUID()}`;
+      const path = row.dataset.path ?? "", separator = path.lastIndexOf("/");
+      const parent = separator < 0 ? undefined : paths.get(path.substring(0, separator));
+      const owner = parent?.hasAttribute("aria-expanded") ? parent : tree;
+      const siblings = branches.get(owner) ?? [];
+      siblings.push(row);
+      branches.set(owner, siblings);
+      if (control(row)?.matches(":disabled")) row.setAttribute("aria-disabled", "true");
+      else row.removeAttribute("aria-disabled");
+    }
+    for (const siblings of branches.values()) siblings.forEach((row, index) => {
+      row.setAttribute("aria-posinset", String(index + 1));
+      row.setAttribute("aria-setsize", String(siblings.length));
+    });
+    for (const row of all) {
+      const children = branches.get(row);
+      let group = row.querySelector<HTMLElement>(":scope > [data-tree-children]");
+      if (!children?.length) { group?.remove(); continue; }
+      if (!group) {
+        group = document.createElement("div");
+        group.setAttribute("role", "group");
+        group.setAttribute("data-tree-children", "");
+        row.append(group);
+      }
+      group.setAttribute("aria-owns", children.map(child => child.id).join(" "));
+      group.hidden = row.hidden || row.getAttribute("aria-expanded") !== "true";
+    }
+  };
   const focus = (row?: HTMLElement) => {
     if (!row) return;
     focusedPath = row.dataset.path ?? "";
@@ -53,6 +86,7 @@ export function keyboardTree(ctx: ClientContext) {
         }
       }
     }
+    syncHierarchy(all);
     const visible = rows();
     const focused = rowOf(document.activeElement);
     if (focused && all.includes(focused)) {
@@ -67,12 +101,6 @@ export function keyboardTree(ctx: ClientContext) {
       if (target) target.tabIndex = row === active ? 0 : -1;
     }
     if (ownedFocus && (document.activeElement === document.body || focused?.hidden)) control(active)?.focus();
-    const parentControl = control(active);
-    if (parentControl && document.activeElement === parentControl && enterChild.has(parentControl)
-        && active?.getAttribute("aria-expanded") === "true") {
-      const child = visible.find(row => row.dataset.path?.startsWith(`${active.dataset.path}/`));
-      if (child) { enterChild.delete(parentControl); focus(child); }
-    }
   };
   ctx.on<FocusEvent>(ctx.root, "focusin", event => {
     const row = rowOf(event.target);
@@ -84,8 +112,6 @@ export function keyboardTree(ctx: ClientContext) {
   ctx.on<FocusEvent>(ctx.root, "focusout", event => {
     if (event.relatedTarget instanceof Node) {
       if (!ctx.root.contains(event.relatedTarget)) ownedFocus = false;
-      const target = event.target instanceof HTMLElement ? event.target : null;
-      if (target) enterChild.delete(target);
     }
   });
   ctx.on<MouseEvent>(ctx.root, "click", event => {
@@ -104,7 +130,6 @@ export function keyboardTree(ctx: ClientContext) {
     const visible = rows(), index = visible.indexOf(row), path = row.dataset.path ?? "";
     const expanded = row.getAttribute("aria-expanded");
     const target = control(row);
-    if (event.key !== "ArrowRight" && target) enterChild.delete(target);
     if (["ArrowDown", "ArrowUp", "Home", "End", "ArrowRight", "ArrowLeft"].includes(event.key)) {
       event.preventDefault();
       search = "";
@@ -113,8 +138,8 @@ export function keyboardTree(ctx: ClientContext) {
       if (event.key === "Home") focus(visible[0]);
       if (event.key === "End") focus(visible.at(-1));
       if (event.key === "ArrowRight" && expanded !== null && target) {
-        enterChild.add(target);
-        if (expanded === "false") target.click(); else sync();
+        if (expanded === "false") target.click();
+        else focus(visible.find(entry => entry.dataset.path?.startsWith(`${path}/`)));
       }
       if (event.key === "ArrowLeft") {
         if (expanded === "true") target?.click();

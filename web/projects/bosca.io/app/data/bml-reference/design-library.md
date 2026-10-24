@@ -369,9 +369,10 @@ BML's same-origin contract client. The library's own helper uses the same declar
 Use `tree-item` as flat children of `tree`, with unique, stable slash-separated paths and explicit
 depths. File destinations remain native links; directory controls remain separate native buttons.
 File links use their visible label as their accessible name and retain the full path in their title.
-Down/Up, Home/End, Right to expand/enter, Left to collapse/return and type-ahead operate on visible
+Down/Up, Home/End, Left to collapse/return and type-ahead operate on visible
 items with one roving tab stop, skipping disabled native directory buttons. Repeating a letter cycles
-matching labels. Enter follows a file link
+matching labels. Right opens a closed directory while keeping focus there; another Right enters
+its first child once it is open. Enter follows a file link
 or activates its directory button. The helper does not load data, persist expansion or change routes.
 
 `local` trees disclose descendants already in the child list and honor initial `expanded` props.
@@ -379,9 +380,11 @@ Use a stable `preserveKey` to retain the whole local tree, disclosure state, scr
 updates. Its children remain client-owned; change/remove that key when replacing the item list or
 its props. For server-loaded trees, the application supplies directory actions, expanded state and
 new rows. Preserve the native directory control with an additional `data-bml-preserve` attribute so
-Right Arrow can enter an asynchronously added child after the update. The helper follows the
-currently focused control and does not take focus back from another element. Nonnegative depth
-sets the ARIA level; indentation is capped at twelve levels. `wrap` makes long labels wrap.
+loading leaves focus on the directory after the update. A subsequent Right Arrow enters the first
+loaded child. The helper does not take focus back from another element.
+The enhancement adds owned branch groups and explicit sibling positions/set sizes without moving
+server-rendered rows or native controls. Tree item names remain their visible labels through disclosure.
+Nonnegative depth sets the ARIA level; indentation is capped at twelve levels. `wrap` makes long labels wrap.
 Without scripts, rendered file links retain their native Tab stops. The helper installs roving focus
 only when scripts run.
 
