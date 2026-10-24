@@ -4,6 +4,7 @@ import bosca.graphql.GraphQLWebSocketProtocolHandler
 import bosca.server.BoscaApplication
 import bosca.server.config.ApplicationConfig
 import bosca.server.netty.NettyServerEngine
+import java.net.BindException
 import java.net.ServerSocket
 import java.net.URI
 import java.net.http.HttpClient
@@ -11,11 +12,14 @@ import java.net.http.WebSocket
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CompletionStage
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.ExecutionException
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
+import kotlin.coroutines.cancellation.CancellationException
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 import kotlinx.coroutines.flow.flow
 import kotlinx.serialization.json.*
@@ -26,10 +30,8 @@ import kotlinx.serialization.json.*
 class GitSubscriptionProxyTest {
     @Test
     fun `SDK init subscription results completion and auth rejection cross the relay`() {
-        val upstreamPort = ServerSocket(0).use { it.localPort }
-        val uiPort = ServerSocket(0).use { it.localPort }
         val frames = CopyOnWriteArrayList<String>()
-        val upstream = application(upstreamPort)
+        val upstream = application()
         upstream.router.webSocket("/graphqlws", "graphql-transport-ws") {
             GraphQLWebSocketProtocolHandler.handle(
                 this,
@@ -56,10 +58,14 @@ class GitSubscriptionProxyTest {
                 },
             )
         }
-        val ui = application(uiPort)
-        installGitSubscriptions(ui, "http://localhost:$upstreamPort/graphql")
-        val engines = listOf(start(upstream, upstreamPort), start(ui, uiPort))
+        val engines = mutableListOf<NettyServerEngine>()
         try {
+            val upstreamEngine = start(upstream).also(engines::add)
+            val upstreamPort = checkNotNull(upstreamEngine.boundPort)
+            val ui = application()
+            installGitSubscriptions(ui, "http://localhost:$upstreamPort/graphql")
+            val uiEngine = start(ui).also(engines::add)
+            val uiPort = checkNotNull(uiEngine.boundPort)
             val messages = Messages()
             val socket =
                 HttpClient.newHttpClient()
@@ -124,7 +130,7 @@ class GitSubscriptionProxyTest {
             assertEquals(4401, denied.close.get(5, TimeUnit.SECONDS))
             deniedSocket.abort()
         } finally {
-            engines.forEach { it.stopWithoutHalting() }
+            engines.asReversed().forEach { it.stopWithoutHalting() }
         }
     }
 
@@ -136,7 +142,21 @@ class GitSubscriptionProxyTest {
         )
     }
 
-    private fun application(port: Int): BoscaApplication =
+    @Test
+    fun `occupied listener cannot satisfy failed server startup`() {
+        ServerSocket(0).use { occupied ->
+            var engine: NettyServerEngine? = null
+            try {
+                assertFailsWith<BindException> {
+                    engine = start(application(occupied.localPort), occupied.localPort)
+                }
+            } finally {
+                engine?.stopWithoutHalting()
+            }
+        }
+    }
+
+    private fun application(port: Int = 0): BoscaApplication =
         BoscaApplication(
             ApplicationConfig.load(
                 "bosca:\n  server:\n    port: $port\n    drain-timeout-ms: 0\n    development: true\n"
@@ -144,19 +164,40 @@ class GitSubscriptionProxyTest {
             )
         )
 
-    private fun start(application: BoscaApplication, port: Int): NettyServerEngine {
+    private fun start(application: BoscaApplication, port: Int = 0): NettyServerEngine {
         application.freezeMiddleware()
         val engine = NettyServerEngine(application, port)
-        thread(isDaemon = true) { engine.start() }
-        repeat(100) {
+        val finished = CompletableFuture<Unit>()
+        thread(isDaemon = true, name = "git-subscription-test-server") {
             try {
-                java.net.Socket("localhost", port).close()
-                return engine
-            } catch (_: java.io.IOException) {
-                Thread.sleep(20)
+                engine.start()
+                finished.complete(Unit)
+            } catch (failure: Exception) {
+                finished.completeExceptionally(failure)
+                if (failure is CancellationException) throw failure
             }
         }
-        error("Test server did not start")
+        var ready = false
+        try {
+            repeat(100) {
+                if (finished.isDone) {
+                    try {
+                        finished.get()
+                    } catch (failure: ExecutionException) {
+                        throw checkNotNull(failure.cause)
+                    }
+                    error("Test server stopped before becoming ready")
+                }
+                if (engine.boundPort != null) {
+                    ready = true
+                    return engine
+                }
+                Thread.sleep(20)
+            }
+            error("Test server did not start")
+        } finally {
+            if (!ready) engine.stopWithoutHalting()
+        }
     }
 
     private class Messages : WebSocket.Listener {
