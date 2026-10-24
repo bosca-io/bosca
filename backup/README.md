@@ -263,7 +263,7 @@ and the assets selected by a content report together.
 
 A native acknowledgement or later close/cleanup failure can follow a committed database. Inspect
 the target before retrying; populated targets remain blocked. The action does not reconcile that
-commit or replay a completed restore request. Required keys, deployment configuration, activation
+commit or replay a completed restore request. Key identity, deployment configuration, activation
 and full recovery-point classification remain separate.
 
 ## Restore PostgreSQL and content through Pipelines
@@ -289,7 +289,7 @@ Ordinary Pipeline retries can reuse completed asset checkpoints after a partial 
 rolled-back database restore. This action does not reconcile a lost native acknowledgement or replay
 a completed restore request. A native acknowledgement, store-close or cleanup failure can follow a
 committed database; inspect that target before retrying. A populated target remains blocked.
-Required keys, deployment rebinding, application activation and full recovery-point classification
+Key identity, deployment rebinding, application activation and full recovery-point classification
 remain separate from restoration of these selected components.
 
 ## Native PostgreSQL database artifacts
@@ -392,8 +392,16 @@ copied into the manifest. An inspection error prevents publication rather than o
 
 Keep the original keys in independently protected secret storage and supply them to the recovered
 application. This inventory covers the known stores above; it neither proves key availability or
-identity nor inventories dependencies of arbitrary modules. Native restore does not transfer or
-validate these keys. Confirm application decryption before treating a recovered installation as usable.
+identity nor inventories dependencies of arbitrary modules. Restore preflight and execution require
+declared `security.encryption.key` configuration. Declared `PIPELINE_SECRET_KEY` requirements need
+an explicit environment value containing base64-encoded AES key bytes of length 16, 24 or 32.
+Unsupported key requirements fail. Checks run before native destination clients; combined restore
+also checks before retained asset reads. Execution repeats them after an earlier preflight.
+
+Capture, verification and artifact transport need no runtime decryption keys. These checks validate
+availability and encoding without copying or transferring key values. They do not prove that available
+keys match the source ciphertext. Confirm application decryption before treating a recovered
+installation as usable.
 
 The optional `onSnapshot` callback on `capture` enumerates database references in that same
 read-only view before `pg_dump` starts. It uses the current connection-manager context;
@@ -614,7 +622,7 @@ are unnecessary. The Restore PostgreSQL and Content action uses the configured e
 
 If the native acknowledgement is lost, inspect the target before retrying: its commit may have
 succeeded, and a populated database is rejected. Successful return identifies the restored native
-artifact and declared assets. Required keys, deployment configuration, application activation
+artifact and declared assets. Key identity, deployment configuration, application activation
 and proof of an atomic database/object recovery point remain separate.
 
 `restoreContentConfigured(reportPath, backupStorageKey, destinationStorageKey)` manages the

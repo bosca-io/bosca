@@ -203,6 +203,9 @@ interface PostgresBackupService : Service {
      * Requires the expected destination database name, libpq restore service and psql; pg_restore
      * and source capture configuration/services are not needed. The destination must be an empty
      * primary database compatible with the artifact's PostgreSQL major version, encoding and extensions.
+     * Before opening a destination client, requires declared security.encryption.key configuration
+     * and an explicit base64-encoded AES PIPELINE_SECRET_KEY environment value when declared.
+     * Unsupported key requirements fail. Availability and encoding do not prove source-key identity.
      * Runs outside an active caller transaction on the storage dispatcher. Leaves the artifact and
      * destination data unchanged; cancellation stops the local client and cleans owned scratch.
      * The caller keeps the destination offline and excludes concurrent writers. This reserves
@@ -218,6 +221,9 @@ interface PostgresBackupService : Service {
      * references block writes, including gaps without an upload timestamp. Recorded report
      * counts are not current verification. Verifies every declared asset, destination conflicts
      * and the empty PostgreSQL target before writing anything, using the existing restore services.
+     * Checks declared runtime-key availability before retained asset reads and repeats that check
+     * before the native restore. Missing, unusable or unsupported requirements block destination writes;
+     * matching configured keys to source ciphertext still requires application decryption validation.
      *
      * Copies assets to their original keys in [destination] through the shared checkpoints,
      * then restores the native database in one transaction. Native restore repeats its checks.
@@ -232,7 +238,7 @@ interface PostgresBackupService : Service {
      *
      * Returns the restored native manifest. This materializes the selected components without
      * proving atomic database/object correspondence or publishing a complete recovery-point receipt.
-     * Required keys, deployment rebinding and application activation remain separate.
+     * Key identity, deployment rebinding and application activation remain separate.
      */
     suspend fun restoreContent(
         directory: Path,
@@ -294,6 +300,9 @@ interface PostgresBackupService : Service {
      * Uses a single transaction without source database ownership, grants or tablespaces;
      * application permission rows remain ordinary data. Needs no source connection/configuration
      * and rejects an active caller transaction. Runtime credentials stay outside the artifact.
+     * Rechecks declared key availability/encoding before destination clients; an earlier successful
+     * [preflightRestore] does not authorize restoration after configuration changes. This does not
+     * verify that available keys match the captured ciphertext.
      * Failures preserve the artifact and are propagated. Cancellation stops the native process;
      * a commit may already have succeeded, so inspect the destination before retrying. This
      * never drops/cleans an existing database and does not restore object storage or deployment state.

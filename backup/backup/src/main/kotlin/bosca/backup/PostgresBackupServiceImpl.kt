@@ -187,6 +187,7 @@ class PostgresBackupServiceImpl(
         report.validate()
         val database = verify(directory)
         require(database == report.database) { "Local database artifact does not match the selected content report" }
+        checkPostgresBackupKeys(database, application.environment.config)
         val objects = report.objects.copy(objects = report.objects.objects.toList())
         val store = report.inspection.store
         var unverified = 0L

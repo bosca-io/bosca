@@ -15,7 +15,9 @@ internal class PostgresBackupRestore(private val application: BoscaApplication) 
     suspend fun restore(directory: Path, manifest: PostgresBackupManifest): PostgresBackupManifest = execute(directory, manifest)
 
     private suspend fun execute(directory: Path?, manifest: PostgresBackupManifest): PostgresBackupManifest {
+        currentCoroutineContext().ensureActive()
         val config = application.environment.config
+        checkPostgresBackupKeys(manifest, config)
         fun required(key: String): String {
             val value = checkNotNull(config.propertyOrNull("backup.postgres.restore.$key")) {
                 "Missing backup.postgres.restore.$key configuration"

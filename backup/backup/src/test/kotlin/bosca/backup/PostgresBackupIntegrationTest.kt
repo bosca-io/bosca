@@ -106,6 +106,7 @@ class PostgresBackupIntegrationTest {
     private var recoveryStorage: StorageConfiguration? = null
     private var scratchDirectory: String? = null
     private var sharedContentStorage: StorageConfiguration? = null
+    private var encryptionKey: String? = "local-recovery-test-encryption-key"
     private val output get() = root.resolve("capture")
     private val user = "backup_test"
     private val password = "local-test-only"
@@ -736,6 +737,7 @@ class PostgresBackupIntegrationTest {
     private suspend fun withNativeRecovery(
         includeReferences: Boolean = false,
         backupConfiguration: StorageConfiguration? = null,
+        beforeCapture: suspend () -> Unit = {},
         beforeRecovery: () -> Unit = {},
         block: suspend (PostgresBackupManifest, String) -> Unit,
     ) {
@@ -743,6 +745,7 @@ class PostgresBackupIntegrationTest {
             contentCaptureServices()
             contentAsset("10000000-0000-0000-0000-000000000001")
         }
+        beforeCapture()
         val manifest = service.capture("original-instance", output, includeReferences)
         val path = "native/${manifest.id}"
         retained = backupConfiguration ?: StorageConfiguration("fs", "", basePath = root.resolve("native-retained").toString())
@@ -1089,6 +1092,164 @@ class PostgresBackupIntegrationTest {
         assertFalse(Files.exists(root.resolve("download")))
         assertFalse(Files.exists(root.resolve("report.json")))
         assertEquals(0, pool.activeConnections)
+    }
+
+    private suspend fun declaredKeyArtifact(key: String = "security.encryption.key"): PostgresBackupManifest {
+        val declared = service.capture("instance", output).copy(requiredKeys = mapOf(key to listOf("public.configuration_values")))
+        output.resolve("manifest.json").writeText(application.json.encodeToString(PostgresBackupManifest.serializer(), declared))
+        return declared
+    }
+
+    @Test
+    fun `native key preflight rejects a missing declared key before destination clients`(): Unit = runBlocking {
+        val manifest = declaredKeyArtifact()
+        createTarget()
+        val entered = root.resolve("key-preflight-entered")
+        psqlTool = writeTool("touch ${quote(entered)}; exit 0")
+        encryptionKey = null
+        install(configured = false)
+        val failure = assertFailsWith<IllegalStateException> { service.preflightRestore(output) }
+        assertTrue(failure.message.orEmpty().contains("security.encryption.key"))
+        assertFalse(Files.exists(entered))
+        assertEquals(manifest, service.verify(output))
+        assertNativeRecoveryEmpty()
+    }
+
+    @Test
+    fun `native key preflight rejects unsupported declared keys before destination clients`(): Unit = runBlocking {
+        val manifest = declaredKeyArtifact("plugin.encryption.key")
+        createTarget()
+        val entered = root.resolve("unknown-key-preflight-entered")
+        psqlTool = writeTool("touch ${quote(entered)}; exit 0")
+        install(configured = false)
+        val failure = assertFailsWith<IllegalArgumentException> { service.preflightRestore(output) }
+        assertTrue(failure.message.orEmpty().contains("plugin.encryption.key"))
+        assertFalse(Files.exists(entered))
+        assertEquals(manifest, service.verify(output))
+        assertNativeRecoveryEmpty()
+    }
+
+    @Test
+    fun `native key preflight repeats availability after a successful earlier check`(): Unit = runBlocking {
+        val manifest = declaredKeyArtifact()
+        createTarget()
+        assertEquals(manifest, service.preflightRestore(output))
+        val entered = root.resolve("key-restore-entered")
+        restoreTool = writeTool("touch ${quote(entered)}; exit 0")
+        encryptionKey = null
+        install(configured = false)
+        val failure = assertFailsWith<IllegalStateException> { service.restore(output) }
+        assertTrue(failure.message.orEmpty().contains("security.encryption.key"))
+        assertFalse(Files.exists(entered))
+        assertEquals(manifest, service.verify(output))
+        assertNativeRecoveryEmpty()
+    }
+
+    @Test
+    fun `native key preflight leaves capture verification and transport independent of keys`(): Unit = runBlocking {
+        createKeyInventoryTables()
+        sql("insert into configuration_values values (decode('0102', 'hex'))")
+        encryptionKey = null
+        install()
+        val manifest = service.capture("instance", output)
+        assertTrue(manifest.requiredKeys.containsKey("security.encryption.key"))
+        contentCaptureStorage { _, backup ->
+            assertEquals(manifest, service.upload(output, backup, "key-portability"))
+            pool.close()
+            sql("drop database source with (force)", "postgres")
+            assertTrue(output.toFile().deleteRecursively())
+            install(configured = false)
+            val downloaded = root.resolve("key-download")
+            assertEquals(manifest, service.download(backup, "key-portability", downloaded))
+            assertEquals(manifest, service.verify(downloaded))
+            val failure = assertFailsWith<IllegalStateException> { service.preflightRestore(downloaded) }
+            assertTrue(failure.message.orEmpty().contains("security.encryption.key"))
+            assertEquals(manifest, service.verify(downloaded))
+        }
+    }
+
+    @Test
+    fun `configured native key preflight rejects missing keys before destination clients`(): Unit = runBlocking {
+        val entered = root.resolve("configured-key-preflight-entered")
+        withNativeRecovery(
+            beforeCapture = {
+                createKeyInventoryTables()
+                sql("insert into configuration_values values (decode('0102', 'hex'))")
+            },
+            beforeRecovery = {
+                encryptionKey = null
+                psqlTool = writeTool("touch ${quote(entered)}; exit 0")
+            },
+        ) { manifest, path ->
+            assertTrue(manifest.requiredKeys.containsKey("security.encryption.key"))
+            val failure = assertFailsWith<IllegalStateException> { service.restoreConfigured(path, "retained") }
+            assertTrue(failure.message.orEmpty().contains("security.encryption.key"))
+            assertFalse(Files.exists(entered))
+            assertNativeRecoveryEmpty()
+        }
+    }
+
+    @Test
+    fun `queued native key preflight records failure without destination writes`(): Unit = runBlocking {
+        withNativeRecovery(
+            beforeCapture = {
+                createKeyInventoryTables()
+                sql("insert into configuration_values values (decode('0102', 'hex'))")
+            },
+            beforeRecovery = { encryptionKey = null },
+        ) { _, path ->
+            PostgresBackupPipelineFixture.create(application, provide<ConnectionPool>(), root, graph = nativeRestorePipeline()).use { pipeline ->
+                val initial = pipeline.start(PipelineValue.ofJson(JsonPrimitive(path)))
+                pipeline.execute(pipeline.next())
+                pipeline.fail(pipeline.next(), retry = false)
+                val failed = pipeline.get(initial.id)
+                assertEquals(PipelineRunStatus.FAILED, failed.status)
+                assertEquals(null, failed.output)
+                assertTrue(failed.error.orEmpty().contains("security.encryption.key"))
+                assertNativeRecoveryEmpty()
+                pipeline.verifyNoServiceAccountFallback()
+            }
+        }
+    }
+
+    @Test
+    fun `combined content key preflight rejects missing keys before storage reads or destination writes`(): Unit = runBlocking {
+        withContentRecovery(beforeRecovery = { encryptionKey = null }) { report, backup, target ->
+            val manifest = report.database.copy(requiredKeys = mapOf("security.encryption.key" to listOf("public.configuration_values")))
+            output.resolve("manifest.json").writeText(application.json.encodeToString(PostgresBackupManifest.serializer(), manifest))
+            var reads = 0
+            val observed = object : ObjectStorageService by backup {
+                override suspend fun getInputStream(path: ObjectPath): InputStream {
+                    reads++
+                    return backup.getInputStream(path)
+                }
+            }
+            val failure = assertFailsWith<IllegalStateException> {
+                service.restoreContent(output, report.copy(database = manifest), observed, target, "recovered-assets")
+            }
+            assertTrue(failure.message.orEmpty().contains("security.encryption.key"))
+            assertEquals(0, reads)
+            assertContentRecoveryUnwritten()
+            output.resolve("manifest.json").writeText(application.json.encodeToString(PostgresBackupManifest.serializer(), report.database))
+        }
+    }
+
+    @Test
+    fun `configured content key preflight rejects missing keys before destination writes`(): Unit = runBlocking {
+        val content = PostgresContentRecoveryFixture(root, backupTestJson)
+        withContentRecovery(
+            configured = true,
+            beforeCapture = { content.seed(::sql) },
+            beforeRecovery = { encryptionKey = null },
+        ) { report, _, _ ->
+            assertTrue(report.database.requiredKeys.containsKey("security.encryption.key"))
+            val failure = assertFailsWith<IllegalStateException> {
+                service.restoreContentConfigured(contentReportPath(report), "retained", "recovery-target")
+            }
+            assertTrue(failure.message.orEmpty().contains("security.encryption.key"))
+            assertContentRecoveryUnwritten()
+            assertRecoveryScratchClean()
+        }
     }
 
     @Test
@@ -3930,9 +4091,9 @@ class PostgresBackupIntegrationTest {
     private suspend fun install(configured: Boolean = true, restoreConfigured: Boolean = true) {
         if (::application.isInitialized) application.shutdown()
         val config = buildJsonObject {
-            put("security", buildJsonObject {
-                put("encryption", buildJsonObject { put("key", "local-recovery-test-encryption-key") })
-            })
+            encryptionKey?.let { key -> put("security", buildJsonObject {
+                put("encryption", buildJsonObject { put("key", key) })
+            }) }
             sharedContentStorage?.let { target -> put("content", buildJsonObject {
                 put("storage", Json.encodeToJsonElement(StorageConfiguration.serializer(), target))
                 put("urlSigner", buildJsonObject { put("secretKey", "local-recovery-test-signing-key") })
