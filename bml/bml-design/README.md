@@ -602,6 +602,10 @@ Dynamic option/tag rules live in the real library stylesheet under its owning se
 
 ## Source ownership
 
+The Git UI paths below refer to extraction baseline
+`9e9e4f6124be93f6fd506cb03cb43cb7fa54dbed`. The [migration guide](migration.md)
+maps all 41 original components to their current exports and records caller adjustments.
+
 | Library source | Extracted source in Git UI |
 | --- | --- |
 | `components/button.bml` | `components/ui/button.bml` |
@@ -643,6 +647,8 @@ Dynamic option/tag rules live in the real library stylesheet under its owning se
 | `components/tree-item.bml` | `components/ui/tree-item.bml` |
 | `components/time.bml` | `components/ui/time.bml` |
 | `components/comment-editor.bml` | `components/ui/comment-editor.bml` |
+| `components/json-editor.bml` | `components/ui/json-editor.bml` |
+| `client/helpers/json-editor.ts` | `src/main/client/json-editor.ts`, with form state and engine lifecycle owned by the library |
 | `components/source-view.bml` | `components/ui/source-view.bml` |
 | `client/helpers/source-view.ts` | Read-only setup, wrapping and cleanup from `src/main/client/editor.ts` |
 | `client/helpers/source-language.ts` | Existing language inference from `src/main/client/editor.ts` |
