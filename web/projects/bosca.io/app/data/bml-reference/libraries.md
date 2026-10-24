@@ -2,7 +2,7 @@
 
 BML libraries package reusable components with their compiled Kotlin, client code, styles, assets
 and public types. Applications consume their binary dependencies; original sources are attachments
-for editing and navigation. The [Bosca Design Library](/bml-reference/design-library) supplies 41 shared
+for editing and navigation. The [Bosca Design Library](/bml-reference/design-library) supplies shared
 web components through `io.bosca:bml-design`.
 
 ## Consume a library
