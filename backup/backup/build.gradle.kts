@@ -52,6 +52,9 @@ dependencies {
     testImplementation(project(":bosca-core:security"))
     testImplementation(project(":bosca-core:configuration"))
     testImplementation(project(":bosca-core:core-configuration"))
+    testImplementation(project(":social:core-profile"))
+    testImplementation(project(":social:profile"))
+    testImplementation(project(":content:core-comments"))
     testImplementation(project(":pipelines:pipelines"))
 }
 

@@ -12,6 +12,7 @@ import bosca.configuration.repository.ConfigurationValueRepositoryImpl
 import bosca.configuration.service.ConfigurationService
 import bosca.configuration.service.ConfigurationServiceImpl
 import bosca.content.collection.service.CollectionService
+import bosca.content.graphql.ContentController
 import bosca.content.metadata.graphql.MetadataContentUrlsController
 import bosca.content.metadata.model.DataType
 import bosca.content.metadata.model.GuideType
@@ -35,6 +36,7 @@ import bosca.di.ConfigurationProviderRegistrar
 import bosca.di.ContentProviderRegistrar
 import bosca.di.SecurityProviderRegistrar
 import bosca.di.annotation.InternalDI
+import bosca.di.asProvider
 import bosca.di.provide
 import bosca.di.provides
 import bosca.documents.Content
@@ -197,11 +199,16 @@ internal class PostgresContentRecoveryFixture(private val root: Path, private va
                 assertEquals(7, current.version)
                 assertEquals("Saved image", current.name)
                 assertEquals("image", storage.download(current).use { it.reader().readText() })
-                val history = metadata.getStorageReferences(0, 100).single {
-                    it.contentId == image && it.version == 6
-                }
+                assertEquals(current, metadata.getById(image, null))
+                assertEquals(current, metadata.getById(image, 7))
+                val history = assertNotNull(metadata.getById(image, 6))
+                assertEquals(image, history.id)
+                assertEquals(6, history.version)
+                assertEquals("Earlier image", history.name)
                 assertEquals(7L, history.contentLength)
-                assertEquals("earlier", storage.download(current.copy(version = assertNotNull(history.version))).use { it.reader().readText() })
+                assertEquals("metadata/$image/6/content", storage.getPath(history).toString())
+                assertEquals("earlier", storage.download(history).use { it.reader().readText() })
+                assertNull(metadata.getById(image, 5))
                 val thumbnail = metadata.getSupplementary(image).single()
                 assertEquals(supplementary, thumbnail.id)
                 assertEquals("thumbnail", storage.download(current, thumbnail.id).use { it.reader().readText() })
@@ -267,6 +274,9 @@ internal class PostgresContentRecoveryFixture(private val root: Path, private va
                 assertTrue(metadataPermissions.isContentAllowed(allowed, current, PermissionAction.VIEW))
                 assertFalse(metadataPermissions.isContentAllowed(denied, current, PermissionAction.VIEW))
                 assertFalse(metadataPermissions.isContentAllowed(null, current, PermissionAction.VIEW))
+                assertTrue(metadataPermissions.isContentAllowed(allowed, history, PermissionAction.VIEW))
+                assertFalse(metadataPermissions.isContentAllowed(denied, history, PermissionAction.VIEW))
+                assertFalse(metadataPermissions.isContentAllowed(null, history, PermissionAction.VIEW))
                 assertTrue(collectionPermissions.isAllowed(allowed, parent, PermissionAction.VIEW))
                 assertFalse(collectionPermissions.isAllowed(denied, parent, PermissionAction.VIEW))
                 val public = assertNotNull(metadata.getById(publicImage))
@@ -277,7 +287,20 @@ internal class PostgresContentRecoveryFixture(private val root: Path, private va
                     override fun principal() = ScopedAuthenticatedPrincipal(identity.asPrincipal(), restoredGroups, listOf("collections:view"), null, 1)
                 }
                 assertFalse(metadataPermissions.isContentAllowed(restricted, current, PermissionAction.VIEW))
+                assertFalse(metadataPermissions.isContentAllowed(restricted, history, PermissionAction.VIEW))
+                val content = ContentController(
+                    provide<SlugService>(), metadata.asProvider(), metadataPermissions.asProvider(),
+                    collections.asProvider(), collectionPermissions.asProvider(), mockk(), mockk(), mockk(), groups,
+                )
+                assertEquals(history, content.metadata(allowed, image, 6))
+                assertEquals(current, content.metadata(allowed, image, null))
+                assertNull(content.metadata(allowed, image, 5))
+                assertNull(content.metadata(denied, image, 6))
+                assertNull(content.metadata(null, image, 6))
+                assertNull(content.metadata(restricted, image, 6))
                 val urls = MetadataContentUrlsController(metadataPermissions, storage)
+                assertNull(urls.download(denied, MetadataContentUrls(history), false))
+                assertNull(urls.download(null, MetadataContentUrls(history), false))
                 assertNull(urls.download(denied, MetadataContentUrls(current), false))
                 assertNull(urls.download(null, MetadataContentUrls(current), false))
                 val url = assertNotNull(urls.download(null, MetadataContentUrls(public), false)).url

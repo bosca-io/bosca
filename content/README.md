@@ -84,6 +84,15 @@ In CI (`CI=true`), missing bundle configuration or a failed download fails the b
 
 The project follows a core/impl split where `core-*` modules define contracts (interfaces, models, annotations) and implementation modules provide PostgreSQL-backed repositories with GraphQL exposure. Content items move through states via a workflow engine with permission-gated transitions and job history tracking. Collections and metadata support supplementary attachments with source tracking. All content is language-tagged with localization as a first-class concern. The Bible compiler is a specialized module for parsing and compiling Bible text into the platform's content model.
 
+## Metadata versions
+
+`MetadataService.getById(id, version)` reads the matching current or archived logical version.
+Omitting the version reads the current item; an absent explicit version returns null.
+Batched metadata reads follow the same rules. Archived content keeps its original metadata
+ID and logical-version storage path and uses the item's current access controls.
+History returns the fields it retained. Upload/ready timestamps, ETags and source URL/status
+were not captured and remain null; they are not inferred from the current version.
+
 ## Finding a guide from a step
 
 When a search result contains a step's metadata ID, query `Metadata.parentGuides`

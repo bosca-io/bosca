@@ -207,9 +207,19 @@ class MetadataServiceImpl(
         traits.getMetadataTraitsByMetadataId(it.id).map { it.traitId }
     }
 
-    private val metadataCacheByIdVersion = ServiceCache("metadata:version", MetadataCacheKeySerializer) {
-        // TODO: support lookup by version
-        repository.getById(it.id)
+    private val metadataCacheByIdVersion = ServiceCache("metadata:version", MetadataCacheKeySerializer, { keys, batch ->
+        val current = repository.getByIds(keys.map { it.id }).associateBy { it.id }
+        for (key in keys) {
+            val metadata = current[key.id] ?: continue
+            val version = key.version
+            val result = if (version == null || metadata.version == version) metadata
+            else repository.getArchivedById(key.id, version)
+            result?.let { batch.setData(key, it) }
+        }
+    }) {
+        val version = it.version
+        if (version == null) repository.getById(it.id)
+        else repository.getById(it.id, version) ?: repository.getArchivedById(it.id, version)
     }
 
     private val metadataProfiles = ServiceCache("metadata:profiles", MetadataCacheKeySerializer) {
@@ -321,7 +331,8 @@ class MetadataServiceImpl(
         return repository.getByParentId(id)
     }
 
-    override suspend fun getById(id: UUID, version: Int?) = metadataCacheByIdVersion.get(MetadataCacheKeyId(id, version))
+    override suspend fun getById(id: UUID, version: Int?) =
+        if (version == null) getById(id) else metadataCacheByIdVersion.get(MetadataCacheKeyId(id, version))
 
     override suspend fun getByIds(ids: List<UUID>): List<Metadata> = repository.getByIds(ids)
 
@@ -334,7 +345,7 @@ class MetadataServiceImpl(
     }
 
     override suspend fun getByIdBatched(batch: Batch<MetadataCacheKeyId, Metadata>) {
-        metadataCacheById.addToBatch(batch)
+        metadataCacheByIdVersion.addToBatch(batch)
     }
 
     override suspend fun getCategories(id: UUID): List<Category> {
