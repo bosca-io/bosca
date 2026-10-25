@@ -18,6 +18,8 @@ kotlin {
 }
 
 dependencies {
+    // Generated renderer declarations carry BML marker annotations.
+    api(project(":bml:bml-annotations"))
     // Generated <inject> bindings call Bosca DI's suspend provide<T>() API. Expose the small DI
     // contract so every BML consumer can compile generated renderers without an extra dependency.
     api(project(":services-di:di"))
